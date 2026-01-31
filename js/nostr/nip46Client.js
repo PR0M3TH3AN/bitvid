@@ -25,6 +25,7 @@ import {
   assertAnyRelayAccepted as defaultAssertAnyRelayAccepted,
 } from "../nostrPublish.js";
 import { devLogger, userLogger } from "../utils/logger.js";
+import { hexToBytes } from "../utils/hex.js";
 import { Nip46RequestQueue, NIP46_PRIORITY } from "./nip46Queue.js";
 
 export const HEX64_REGEX = /^[0-9a-f]{64}$/i;
@@ -1071,7 +1072,10 @@ function resolveAvailableNip46Ciphers(
     typeof nip44v2GetConversationKey === "function"
   ) {
     registerCipher("nip44.v2", () => {
-      const conversationKey = nip44v2GetConversationKey(privateKey, remotePubkey);
+      const conversationKey = nip44v2GetConversationKey(
+        hexToBytes(privateKey),
+        remotePubkey,
+      );
 
       if (!conversationKey) {
         throw new Error("Failed to derive a nip44 conversation key for remote signing.");
@@ -1095,7 +1099,10 @@ function resolveAvailableNip46Ciphers(
     typeof nip44GetConversationKey === "function"
   ) {
     registerCipher("nip44", () => {
-      const conversationKey = nip44GetConversationKey(privateKey, remotePubkey);
+      const conversationKey = nip44GetConversationKey(
+        hexToBytes(privateKey),
+        remotePubkey,
+      );
 
       if (!conversationKey) {
         throw new Error("Failed to derive a nip44 conversation key for remote signing.");
@@ -1494,7 +1501,7 @@ export class Nip46RpcClient {
       if (!tools || typeof tools.getPublicKey !== "function") {
         throw new Error("Public key derivation is unavailable.");
       }
-      this.clientPublicKey = tools.getPublicKey(this.clientPrivateKey);
+      this.clientPublicKey = tools.getPublicKey(hexToBytes(this.clientPrivateKey));
       if (!this.clientPublicKey || !HEX64_REGEX.test(this.clientPublicKey)) {
         throw new Error("Failed to derive a valid public key for the remote signer session.");
       }

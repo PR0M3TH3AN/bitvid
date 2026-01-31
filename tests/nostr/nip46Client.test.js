@@ -25,8 +25,8 @@ test("Nip46RpcClient encrypts payloads with nip44 conversation keys", async () =
 
   const clientSecret = utils.bytesToHex(generateSecretKey());
   const remoteSecret = utils.bytesToHex(generateSecretKey());
-  const clientPublicKey = getPublicKey(clientSecret);
-  const remotePubkey = getPublicKey(remoteSecret);
+  const clientPublicKey = getPublicKey(utils.hexToBytes(clientSecret));
+  const remotePubkey = getPublicKey(utils.hexToBytes(remoteSecret));
 
   const rpcClient = new Nip46RpcClient({
     nostrClient: { relays: [] },
@@ -43,8 +43,8 @@ test("Nip46RpcClient encrypts payloads with nip44 conversation keys", async () =
 
   const conversationKey =
     typeof nip44.v2.getConversationKey === "function"
-      ? nip44.v2.getConversationKey(clientSecret, remotePubkey)
-      : nip44.v2.utils.getConversationKey(clientSecret, remotePubkey);
+      ? nip44.v2.getConversationKey(utils.hexToBytes(clientSecret), remotePubkey)
+      : nip44.v2.utils.getConversationKey(utils.hexToBytes(clientSecret), remotePubkey);
   const decryptedWithTools = nip44.v2.decrypt(ciphertext, conversationKey);
   assert.equal(
     decryptedWithTools,
@@ -71,13 +71,13 @@ test("decryptNip46PayloadWithKeys handles nip44.v2 ciphertext", async () => {
 
   const clientSecret = utils.bytesToHex(generateSecretKey());
   const remoteSecret = utils.bytesToHex(generateSecretKey());
-  const remotePubkey = getPublicKey(remoteSecret);
+  const remotePubkey = getPublicKey(utils.hexToBytes(remoteSecret));
 
   const serialized = JSON.stringify({ message: "hello", count: 42 });
   const conversationKey =
     typeof nip44.v2.getConversationKey === "function"
-      ? nip44.v2.getConversationKey(clientSecret, remotePubkey)
-      : nip44.v2.utils.getConversationKey(clientSecret, remotePubkey);
+      ? nip44.v2.getConversationKey(utils.hexToBytes(clientSecret), remotePubkey)
+      : nip44.v2.utils.getConversationKey(utils.hexToBytes(clientSecret), remotePubkey);
   const ciphertext = nip44.v2.encrypt(serialized, conversationKey);
 
   const { plaintext, algorithm } = await decryptNip46PayloadWithKeys(
@@ -104,13 +104,13 @@ test("decryptNip46PayloadWithKeys coerces structured handshake payloads", async 
 
   const clientSecret = utils.bytesToHex(generateSecretKey());
   const remoteSecret = utils.bytesToHex(generateSecretKey());
-  const remotePubkey = getPublicKey(remoteSecret);
+  const remotePubkey = getPublicKey(utils.hexToBytes(remoteSecret));
 
   const serialized = JSON.stringify({ message: "hello", count: 42 });
   const conversationKey =
     typeof nip44.v2.getConversationKey === "function"
-      ? nip44.v2.getConversationKey(clientSecret, remotePubkey)
-      : nip44.v2.utils.getConversationKey(clientSecret, remotePubkey);
+      ? nip44.v2.getConversationKey(utils.hexToBytes(clientSecret), remotePubkey)
+      : nip44.v2.utils.getConversationKey(utils.hexToBytes(clientSecret), remotePubkey);
   const ciphertext = nip44.v2.encrypt(serialized, conversationKey);
   const [ciphertextPart, nonce] = ciphertext.split("\n");
 
@@ -154,13 +154,13 @@ test("decryptNip46PayloadWithKeys decodes buffer-based handshake payloads", asyn
 
   const clientSecret = utils.bytesToHex(generateSecretKey());
   const remoteSecret = utils.bytesToHex(generateSecretKey());
-  const remotePubkey = getPublicKey(remoteSecret);
+  const remotePubkey = getPublicKey(utils.hexToBytes(remoteSecret));
 
   const serialized = JSON.stringify({ message: "hello", count: 42 });
   const conversationKey =
     typeof nip44.v2.getConversationKey === "function"
-      ? nip44.v2.getConversationKey(clientSecret, remotePubkey)
-      : nip44.v2.utils.getConversationKey(clientSecret, remotePubkey);
+      ? nip44.v2.getConversationKey(utils.hexToBytes(clientSecret), remotePubkey)
+      : nip44.v2.utils.getConversationKey(utils.hexToBytes(clientSecret), remotePubkey);
   const ciphertext = nip44.v2.encrypt(serialized, conversationKey);
   const [ciphertextPart, nonce] = ciphertext.split("\n");
   const ciphertextBuffer = Buffer.from(ciphertext, "utf8");
@@ -197,10 +197,10 @@ test("decryptNip46PayloadWithKeys supports nip04-style ciphertext wrappers", asy
 
   const clientSecret = utils.bytesToHex(generateSecretKey());
   const remoteSecret = utils.bytesToHex(generateSecretKey());
-  const remotePubkey = getPublicKey(remoteSecret);
+  const remotePubkey = getPublicKey(utils.hexToBytes(remoteSecret));
 
   const serialized = JSON.stringify({ message: "hello", count: 42 });
-  const ciphertext = await nip04.encrypt(clientSecret, remotePubkey, serialized);
+  const ciphertext = await nip04.encrypt(utils.hexToBytes(clientSecret), remotePubkey, serialized);
   const [ciphertextPart, iv] = ciphertext.split("?iv=");
 
   const structuredPayload = {
@@ -254,8 +254,8 @@ test("parseNip46ConnectionString handles remote signer key hints", async () => {
   const signerSecret = utils.bytesToHex(generateSecretKey());
   const userSecret = utils.bytesToHex(generateSecretKey());
 
-  const signerPubkey = getPublicKey(signerSecret).toLowerCase();
-  const userPubkey = getPublicKey(userSecret).toLowerCase();
+  const signerPubkey = getPublicKey(utils.hexToBytes(signerSecret)).toLowerCase();
+  const userPubkey = getPublicKey(utils.hexToBytes(userSecret)).toLowerCase();
 
   const signerNpub = nip19.npubEncode(signerPubkey);
   const userNpub = nip19.npubEncode(userPubkey);
@@ -295,13 +295,13 @@ test(
     const remoteSignerSecret = utils.bytesToHex(generateSecretKey());
     const userSecret = utils.bytesToHex(generateSecretKey());
 
-    const remoteSignerPubkey = getPublicKey(remoteSignerSecret).toLowerCase();
-    const userPubkey = getPublicKey(userSecret).toLowerCase();
+    const remoteSignerPubkey = getPublicKey(utils.hexToBytes(remoteSignerSecret)).toLowerCase();
+    const userPubkey = getPublicKey(utils.hexToBytes(userSecret)).toLowerCase();
 
     const conversationKey =
       typeof nip44.v2.getConversationKey === "function"
-        ? nip44.v2.getConversationKey(clientSecret, remoteSignerPubkey)
-        : nip44.v2.utils.getConversationKey(clientSecret, remoteSignerPubkey);
+        ? nip44.v2.getConversationKey(utils.hexToBytes(clientSecret), remoteSignerPubkey)
+        : nip44.v2.utils.getConversationKey(utils.hexToBytes(clientSecret), remoteSignerPubkey);
 
     const payload = JSON.stringify({ id: "ack", result: "ok" });
     const ciphertext = nip44.v2.encrypt(payload, conversationKey);
@@ -333,12 +333,12 @@ test(
     const { attemptDecryptNip46HandshakePayload } = await loadNip46Module();
 
     const clientSecret = utils.bytesToHex(generateSecretKey());
-    const clientPubkey = getPublicKey(clientSecret).toLowerCase();
+    const clientPubkey = getPublicKey(utils.hexToBytes(clientSecret)).toLowerCase();
     const remoteSecret = utils.bytesToHex(generateSecretKey());
-    const remotePubkey = getPublicKey(remoteSecret).toLowerCase();
+    const remotePubkey = getPublicKey(utils.hexToBytes(remoteSecret)).toLowerCase();
 
     const payload = JSON.stringify({ id: "ack", result: "ack" });
-    const ciphertext = nip04.encrypt(remoteSecret, clientPubkey, payload);
+    const ciphertext = nip04.encrypt(utils.hexToBytes(remoteSecret), clientPubkey, payload);
     const [ciphertextPart, ivPart] = ciphertext.split("?iv=");
 
     assert.ok(ivPart, "nip04 encryption should emit an iv segment");

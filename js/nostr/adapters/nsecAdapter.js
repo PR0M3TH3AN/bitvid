@@ -3,6 +3,7 @@
 import { signEventWithPrivateKey } from "../publishHelpers.js";
 import { createPrivateKeyCipherClosures } from "../signerHelpers.js";
 import { ensureNostrTools, getCachedNostrTools } from "../toolkit.js";
+import { hexToBytes } from "../../utils/hex.js";
 import { normalizeActorKey } from "../watchHistory.js";
 
 const HEX64_REGEX = /^[0-9a-f]{64}$/i;
@@ -30,7 +31,7 @@ async function resolvePublicKey(privateKey, pubkey) {
 
   const tools = (await ensureNostrTools()) || getCachedNostrTools();
   if (tools?.getPublicKey && typeof tools.getPublicKey === "function") {
-    const derived = tools.getPublicKey(privateKey);
+    const derived = tools.getPublicKey(hexToBytes(privateKey));
     const normalized = normalizeActorKey(derived);
     if (normalized && HEX64_REGEX.test(normalized)) {
       return normalized;

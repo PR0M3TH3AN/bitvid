@@ -45,14 +45,14 @@ describe("Nostr Private Key Signer", () => {
     const outboundCipher = await signer.nip04Encrypt(recipientPubkey, message);
     assert.equal(typeof outboundCipher, "string");
     const decryptedByRecipient = await nostrTools.nip04.decrypt(
-      recipientPrivateHex,
+      recipientKeyBytes,
       signer.pubkey,
       outboundCipher,
     );
     assert.equal(decryptedByRecipient, message);
 
     const inboundCipher = await nostrTools.nip04.encrypt(
-      recipientPrivateHex,
+      recipientKeyBytes,
       signer.pubkey,
       message,
     );
