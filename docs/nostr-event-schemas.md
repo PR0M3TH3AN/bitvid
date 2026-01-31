@@ -85,6 +85,9 @@ sign/encrypt calls. Call `clearActiveSigner()` on logout if your integration
 manages session state manually; the built-in logout handler already does this
 for the default extension flow.
 
+For adapter implementation details and test guidance, see
+[`docs/signing-adapter.md`](signing-adapter.md).
+
 ### Accessing raw events
 
 `NostrClient` now keeps a lightweight cache of parsed videos alongside a
