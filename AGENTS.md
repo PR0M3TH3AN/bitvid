@@ -190,6 +190,15 @@ When moving a feature to a controller, follow these steps:
 
 ---
 
+## 11. Telemetry & Error Aggregation
+
+* **Tooling:** Use `npm run telemetry:aggregate` (which runs `scripts/agent/telemetry-aggregator.mjs`) to collect, sanitize, and aggregate errors from CI/test runs, smoke tests, and agent logs.
+* **Privacy Policy:** The tool automatically strips PII (IPs, emails, hex keys, bech32 keys) from logs. **Do not** manually inspect raw logs containing PII unless necessary for debugging in a secure environment; rely on the sanitized reports in `ai/reports/`.
+* **Opt-in:** Telemetry generation is opt-in. You must set the environment variable `ENABLE_TELEMETRY=true` when running the aggregator.
+* **Reports:** Aggregated reports are generated in `ai/reports/telemetry-YYYYMMDD.md` and `artifacts/error-aggregates.json`. These files provide prioritized issues for triage.
+
+---
+
 ## Next
 
 Please read these documents next.
