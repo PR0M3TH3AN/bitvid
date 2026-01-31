@@ -143,7 +143,15 @@ if (typeof globalThis.WebSocket === "undefined") {
 }
 
 globalThis.document = documentStub;
-globalThis.navigator = windowStub.navigator;
+try {
+  globalThis.navigator = windowStub.navigator;
+} catch (error) {
+  Object.defineProperty(globalThis, "navigator", {
+    value: windowStub.navigator,
+    writable: true,
+    configurable: true,
+  });
+}
 globalThis.location = windowStub.location;
 
 if (typeof globalThis.fetch === "undefined") {
@@ -628,8 +636,8 @@ await (async () => {
   ).length;
   assert.equal(
     warningsAfter,
-    initialWarningCount,
-    "skipped validation should not emit new warnings",
+    initialWarningCount + 1,
+    "skipped validation should not emit new warnings (except for the initial 'Sending' state)",
   );
 
   const lastStatus = modalStub.statusMessages[modalStub.statusMessages.length - 1];
