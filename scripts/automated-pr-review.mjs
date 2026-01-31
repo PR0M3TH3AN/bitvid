@@ -129,6 +129,10 @@ async function reviewPR(prNumber, baseRef) {
     hasFailures = true;
     commentBody += '### ⚠️ Lint Warnings/Errors\n\n';
     commentBody += '```\n' + lintRes.stdout + '\n' + lintRes.stderr + '\n```\n\n';
+
+    if (lintRes.stdout.includes('stylelint') || lintRes.stderr.includes('stylelint')) {
+       commentBody += '> **💡 Tip:** Try running `npm run lint:css -- --fix` to automatically resolve some style issues.\n\n';
+    }
   }
 
   // 4. Unit Tests
@@ -138,6 +142,18 @@ async function reviewPR(prNumber, baseRef) {
     hasFailures = true;
     commentBody += '### ❌ Test Failures\n\n';
     commentBody += '```\n' + testRes.stdout + '\n' + testRes.stderr + '\n```\n\n';
+
+    // Extract failing test files
+    const failingTests = [];
+    const failureRegex = /✖\s+(tests\/[\w\-\.\/]+)\s+failed with exit code 1/g;
+    let match;
+    while ((match = failureRegex.exec(testRes.stdout + '\n' + testRes.stderr)) !== null) {
+        failingTests.push(match[1]);
+    }
+
+    if (failingTests.length > 0) {
+        commentBody += `> **Suggested areas to inspect:** ${failingTests.map(f => `\`${f}\``).join(', ')}\n`;
+    }
     commentBody += '> **Suggestion:** Inspect the stack trace above. Run `npm run test:unit` locally to reproduce.\n\n';
   } else {
     commentBody += '### ✅ Tests Passed\n\nAll unit tests passed.\n\n';
