@@ -10,13 +10,6 @@ globalThis.window = dom.window;
 globalThis.localStorage = dom.window.localStorage;
 globalThis.self = dom.window;
 
-// Import module under test
-// using dynamic import to ensure globals are set first
-const { profileCache } = await import("../js/state/profileCache.js");
-const { CACHE_POLICIES, STORAGE_TIERS } = await import("../js/nostr/cachePolicies.js");
-const { NOTE_TYPES } = await import("../js/nostrEventSchemas.js");
-const { WATCH_HISTORY_LIST_IDENTIFIER } = await import("../js/config.js");
-
 // Mock console to suppress expected warnings
 const originalConsole = globalThis.console;
 globalThis.console = {
@@ -24,6 +17,13 @@ globalThis.console = {
   warn: () => {}, // suppress warn
   error: () => {}, // suppress error
 };
+
+// Import module under test
+// using dynamic import to ensure globals are set first
+const { profileCache } = await import("../js/state/profileCache.js");
+const { CACHE_POLICIES, STORAGE_TIERS } = await import("../js/nostr/cachePolicies.js");
+const { NOTE_TYPES } = await import("../js/nostrEventSchemas.js");
+const { WATCH_HISTORY_LIST_IDENTIFIER } = await import("../js/config.js");
 
 test.beforeEach(() => {
   profileCache.reset();

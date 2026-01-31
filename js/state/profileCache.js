@@ -386,7 +386,7 @@ class ProfileCache {
       try {
         listener(event, detail);
       } catch (error) {
-        console.error("[ProfileCache] Listener error", error);
+        userLogger.error("[ProfileCache] Listener error", error);
       }
     }
   }
