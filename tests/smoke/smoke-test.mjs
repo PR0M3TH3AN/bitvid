@@ -76,6 +76,7 @@ async function main() {
 
       try {
         browserLog('Step 1: Importing Client...');
+        // Note: In browser context, paths are relative to the served root (http://localhost:8000/)
         const { nostrClient } = await import('./js/nostrClientFacade.js');
         const { encodeHexToNpub } = await import('./js/nostr/nip46Client.js');
 
