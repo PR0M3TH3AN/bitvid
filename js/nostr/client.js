@@ -130,6 +130,7 @@ import {
   summarizeDmEventForLog,
 } from "./dmDecryptDiagnostics.js";
 import { devLogger, userLogger } from "../utils/logger.js";
+import { hexToBytes } from "../utils/hex.js";
 import { LRUCache } from "../utils/lruCache.js";
 import { updateConversationFromMessage, writeMessages } from "../storage/dmDb.js";
 import {
@@ -1629,7 +1630,7 @@ export class NostrClient {
       if (!tools || typeof tools.getPublicKey !== "function") {
         throw new Error("Public key derivation is unavailable for remote signing.");
       }
-      publicKey = tools.getPublicKey(privateKey);
+      publicKey = tools.getPublicKey(hexToBytes(privateKey));
     }
 
     if (!publicKey || !HEX64_REGEX.test(publicKey)) {
@@ -2275,7 +2276,7 @@ export class NostrClient {
         if (!tools || typeof tools.getPublicKey !== "function") {
           throw new Error("Public key derivation is unavailable for the remote signer handshake.");
         }
-        clientPublicKey = normalizeNostrPubkey(tools.getPublicKey(clientPrivateKey));
+        clientPublicKey = normalizeNostrPubkey(tools.getPublicKey(hexToBytes(clientPrivateKey)));
       }
 
       if (!clientPublicKey || !HEX64_REGEX.test(clientPublicKey)) {
@@ -3440,7 +3441,7 @@ export class NostrClient {
 
     let pubkey = "";
     try {
-      pubkey = getPublicKey(normalizedPrivateKey);
+      pubkey = getPublicKey(hexToBytes(normalizedPrivateKey));
     } catch (error) {
       let retrySuccess = false;
       try {
@@ -3551,7 +3552,7 @@ export class NostrClient {
 
     let pubkey = "";
     try {
-      pubkey = getPublicKey(privateKey);
+      pubkey = getPublicKey(hexToBytes(privateKey));
     } catch (error) {
       const failure = new Error("Failed to derive the public key.");
       failure.cause = error;
@@ -3595,7 +3596,7 @@ export class NostrClient {
         throw new Error("Public key derivation is unavailable.");
       }
       try {
-        normalizedPubkey = getPublicKey(normalizedPrivateKey);
+        normalizedPubkey = getPublicKey(hexToBytes(normalizedPrivateKey));
       } catch (error) {
         const failure = new Error("Failed to derive the public key.");
         failure.cause = error;
@@ -3733,7 +3734,7 @@ export class NostrClient {
         throw new Error("Public key derivation is unavailable.");
       }
       try {
-        normalizedPubkey = getPublicKey(normalizedPrivateKey);
+        normalizedPubkey = getPublicKey(hexToBytes(normalizedPrivateKey));
       } catch (error) {
         const failure = new Error("Failed to derive the public key.");
         failure.cause = error;
