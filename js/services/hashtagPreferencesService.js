@@ -785,7 +785,6 @@ class HashtagPreferencesService {
           reject(timeoutError);
         }, DECRYPT_TIMEOUT_MS);
       });
-
       try {
         decryptResult = await Promise.race([decryptPromise, timeoutPromise]);
       } finally {
