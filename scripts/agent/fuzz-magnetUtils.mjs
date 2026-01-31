@@ -1,4 +1,14 @@
-// Fuzz harness for js/magnetUtils.js
+/**
+ * Fuzz harness for js/magnetUtils.js
+ *
+ * Targets:
+ * - normalizeAndAugmentMagnet
+ *
+ * Strategy:
+ * - Generates malformed magnet URIs and random strings.
+ * - Fuzzes options object (trackers, webseeds).
+ * - Checks for parsing crashes.
+ */
 import "./setup-test-env.js";
 import { Fuzzer } from "./fuzz-lib.mjs";
 import { normalizeAndAugmentMagnet } from "../../js/magnetUtils.js";
@@ -42,4 +52,4 @@ async function fuzzTest(fuzzer, state) {
   }
 }
 
-fuzzer.runFuzzLoop(5000, fuzzTest).catch(console.error);
+fuzzer.runFuzzLoop(50000, fuzzTest).catch(console.error);
