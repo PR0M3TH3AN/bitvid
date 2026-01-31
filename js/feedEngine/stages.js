@@ -261,11 +261,10 @@ export function createResolvePostedAtStage({
       });
     }
 
-    for (const task of tasks) {
-      try {
-        await task();
-      } catch (error) {
-        context?.log?.(`[${stageName}] resolution task failed`, error);
+    const results = await Promise.allSettled(tasks.map((task) => task()));
+    for (const result of results) {
+      if (result.status === "rejected") {
+        context?.log?.(`[${stageName}] resolution task failed`, result.reason);
       }
     }
 
