@@ -248,8 +248,10 @@ test(
       tags: [["encrypted", "nip04"]],
     };
 
+    let fetchCalls = 0;
     nostrClient.fetchListIncrementally = async () => {
-      return [event];
+      fetchCalls += 1;
+      return fetchCalls === 1 ? [event] : [];
     };
     nostrClient.relays = relayUrls;
     nostrClient.writeRelays = relayUrls;
