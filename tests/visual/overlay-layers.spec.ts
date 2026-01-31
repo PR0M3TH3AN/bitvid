@@ -11,11 +11,6 @@ declare global {
 
 test.describe("overlay layering tokens", () => {
   async function dismissDisclaimerModal(page: Page) {
-    const modal = page.locator("#disclaimerModal");
-    if ((await modal.count()) === 0) {
-      return;
-    }
-
     await page.evaluate(() => {
       try {
         window.localStorage?.setItem("hasSeenDisclaimer", "true");
@@ -32,11 +27,16 @@ test.describe("overlay layering tokens", () => {
       document.body?.classList.remove("modal-open");
     });
 
-    await page.waitForFunction(() =>
-      Array.from(
-        document.querySelectorAll("#disclaimerModal")
-      ).every((modalElement) => modalElement.classList.contains("hidden"))
-    );
+    // Check if the modal exists in the DOM before waiting for it to be hidden.
+    // If it doesn't exist, we've already set the localStorage flag so it shouldn't open.
+    const modal = page.locator("#disclaimerModal");
+    if ((await modal.count()) > 0) {
+      await page.waitForFunction(() =>
+        Array.from(document.querySelectorAll("#disclaimerModal")).every(
+          (modalElement) => modalElement.classList.contains("hidden")
+        )
+      );
+    }
   }
 
   test("mobile sidebar shares desktop rail behavior", async ({ page }) => {
