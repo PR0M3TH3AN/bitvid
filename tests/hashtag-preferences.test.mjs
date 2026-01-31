@@ -45,6 +45,9 @@ test.beforeEach(async () => {
   restoreNostrClient();
   restoreRelayManager();
   window.nostr = originalWindowNostr;
+  if (nostrClient.extensionPermissionCache) {
+    nostrClient.extensionPermissionCache.clear();
+  }
 
   // Setup default mock signer to prevent auto-save errors
   setActiveSigner({
@@ -258,7 +261,9 @@ test(
 
     const decryptCalls = [];
     window.nostr = {
+      enable: async () => Promise.resolve(true),
       nip04: {
+        encrypt: async () => "cipher",
         decrypt: async () => {
           decryptCalls.push("nip04");
           return JSON.stringify({
@@ -268,6 +273,10 @@ test(
           });
         },
       },
+      nip44: {
+        encrypt: async () => "cipher",
+        decrypt: async () => "plaintext",
+      }
     };
 
     clearActiveSigner();
@@ -558,6 +567,7 @@ test(
 
     // Mock window.nostr
     window.nostr = {
+        enable: async () => Promise.resolve(true),
         nip04: {
             decrypt: async (pk, ciphertext) => {
                 if (pk !== pubkey) throw new Error("Wrong pubkey");
@@ -606,6 +616,7 @@ test(
 
       // Mock window.nostr
       window.nostr = {
+          enable: async () => Promise.resolve(true),
           nip04: {
               decrypt: async (pk, ciphertext) => {
                   if (pk !== pubkey) throw new Error("Wrong pubkey");
