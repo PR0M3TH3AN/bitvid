@@ -71,6 +71,10 @@ test.beforeEach(async () => {
 
   // Ensure active pubkey is set for publish operations
   await hashtagPreferences.load("0".repeat(64));
+
+  if (nostrClient.extensionPermissionCache) {
+    nostrClient.extensionPermissionCache.clear();
+  }
 });
 
 test.after(() => {

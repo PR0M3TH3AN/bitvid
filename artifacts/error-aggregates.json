@@ -1,1 +1,13 @@
-[]
+[
+  {
+    "fingerprint": "e1da49a7",
+    "title": "load defers permission-required decrypts until explicitly enabled",
+    "count": 1,
+    "sources": [
+      "unit-test:test_unit.log"
+    ],
+    "severity": "High",
+    "stack": "TestContext.<anonymous> (file://$REPO/tests/hashtag-preferences.test.mjs:300:14)\n    async Test.run (node:internal/test_runner/test:1054:7)\n    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)\n  ...\n# Subtest: interest and disinterest lists remain exclusive",
+    "owner": "QA Team"
+  }
+]
