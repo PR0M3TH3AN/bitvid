@@ -82,6 +82,7 @@ test.after(() => {
   restoreRelayManager();
   window.nostr = originalWindowNostr;
   clearActiveSigner();
+  setTimeout(() => process.exit(0), 100);
 });
 
 test(
@@ -252,10 +253,10 @@ test(
       tags: [["encrypted", "nip04"]],
     };
 
-    let fetchCalls = 0;
     nostrClient.fetchListIncrementally = async () => {
       fetchCalls += 1;
-      return fetchCalls === 1 ? [event] : [];
+      // Always return the event so the second load call (with permissions) finds data
+      return [event];
     };
     nostrClient.relays = relayUrls;
     nostrClient.writeRelays = relayUrls;

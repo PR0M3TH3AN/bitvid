@@ -178,6 +178,8 @@ async function run() {
   }
 
   console.log("\n✔ All unit tests passed");
+  // Force exit to ensure we don't hang on lingering handles/timers
+  process.exit(0);
 }
 
 try {

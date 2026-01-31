@@ -571,7 +571,6 @@ export default class ApplicationBootstrap {
           onClose: () => app.handleProfileModalClosed(),
           onLogout: async () => app.requestLogout(),
           onChannelLink: (element) => app.handleProfileChannelLink(element),
-          onAddAccount: (payload) => app.handleAddProfile(payload),
           onRequestLogoutProfile: (payload) =>
             app.handleProfileLogoutRequest(payload),
           onRequestSwitchProfile: (payload) =>
