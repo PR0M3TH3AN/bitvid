@@ -909,24 +909,16 @@ class HashtagPreferencesService {
           DEFAULT_NIP07_ENCRYPTION_METHODS,
         );
         if (!permissionResult?.ok) {
-          const error =
-            permissionResult?.error instanceof Error
-              ? permissionResult.error
-              : new Error(
-                  "Extension encryption permissions are required to read hashtag preferences.",
-                );
-          error.code = "hashtag-preferences-permission-required";
-          return { ok: false, error };
+          userLogger.warn(
+            `${LOG_PREFIX} Extension permission request failed/denied, but attempting operation via fallback.`,
+            permissionResult?.error,
+          );
         }
       } catch (error) {
         userLogger.warn(
-          `${LOG_PREFIX} Extension permissions request failed while loading preferences`,
+          `${LOG_PREFIX} Extension permissions request threw, attempting fallback.`,
           error,
         );
-        const wrapped =
-          error instanceof Error ? error : new Error(String(error));
-        wrapped.code = "hashtag-preferences-permission-required";
-        return { ok: false, error: wrapped };
       }
     }
 
@@ -970,11 +962,12 @@ class HashtagPreferencesService {
       );
     }
 
-    const nostrApi = allowPermissionPrompt
-      ? typeof window !== "undefined"
-        ? window?.nostr
-        : null
-      : null;
+    const nostrApi =
+      typeof window !== "undefined" && window?.nostr
+        ? window.nostr
+        : typeof globalThis !== "undefined" && globalThis?.nostr
+          ? globalThis.nostr
+          : null;
     if (nostrApi) {
       if (typeof nostrApi.nip04?.decrypt === "function") {
         registerDecryptor(
