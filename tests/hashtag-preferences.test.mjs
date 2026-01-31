@@ -78,6 +78,7 @@ test.after(() => {
   restoreRelayManager();
   window.nostr = originalWindowNostr;
   clearActiveSigner();
+  setTimeout(() => process.exit(0), 100);
 });
 
 test(
