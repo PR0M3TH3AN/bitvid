@@ -45,6 +45,9 @@ test.beforeEach(async () => {
   restoreNostrClient();
   restoreRelayManager();
   window.nostr = originalWindowNostr;
+  if (nostrClient.extensionPermissionCache) {
+    nostrClient.extensionPermissionCache.clear();
+  }
 
   // Setup default mock signer to prevent auto-save errors
   setActiveSigner({
@@ -265,9 +268,9 @@ test(
     // Create a mock window.nostr that properly simulates extension behavior.
     // Specifically, enable() needs to exist so nostrClient detects it as an extension.
     window.nostr = {
-      enable: async () => {},
-      getPublicKey: async () => pubkey,
+      enable: async () => Promise.resolve(true),
       nip04: {
+        encrypt: async () => "cipher",
         decrypt: async () => {
           if (!permissionState.enabled) throw new Error("permission denied");
           decryptCalls.push("nip04");
@@ -278,6 +281,10 @@ test(
           });
         },
       },
+      nip44: {
+        encrypt: async () => "cipher",
+        decrypt: async () => "plaintext",
+      }
     };
 
     clearActiveSigner();
@@ -572,6 +579,7 @@ test(
 
     // Mock window.nostr
     window.nostr = {
+        enable: async () => Promise.resolve(true),
         nip04: {
             decrypt: async (pk, ciphertext) => {
                 if (pk !== pubkey) throw new Error("Wrong pubkey");
@@ -620,6 +628,7 @@ test(
 
       // Mock window.nostr
       window.nostr = {
+          enable: async () => Promise.resolve(true),
           nip04: {
               decrypt: async (pk, ciphertext) => {
                   if (pk !== pubkey) throw new Error("Wrong pubkey");
