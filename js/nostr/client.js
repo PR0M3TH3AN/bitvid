@@ -130,6 +130,7 @@ import {
   summarizeDmEventForLog,
 } from "./dmDecryptDiagnostics.js";
 import { devLogger, userLogger } from "../utils/logger.js";
+import { hexToBytes } from "../utils/hex.js";
 import { LRUCache } from "../utils/lruCache.js";
 import { updateConversationFromMessage, writeMessages } from "../storage/dmDb.js";
 import {
@@ -1629,7 +1630,7 @@ export class NostrClient {
       if (!tools || typeof tools.getPublicKey !== "function") {
         throw new Error("Public key derivation is unavailable for remote signing.");
       }
-      publicKey = tools.getPublicKey(privateKey);
+      publicKey = tools.getPublicKey(hexToBytes(privateKey));
     }
 
     if (!publicKey || !HEX64_REGEX.test(publicKey)) {
@@ -2275,7 +2276,7 @@ export class NostrClient {
         if (!tools || typeof tools.getPublicKey !== "function") {
           throw new Error("Public key derivation is unavailable for the remote signer handshake.");
         }
-        clientPublicKey = normalizeNostrPubkey(tools.getPublicKey(clientPrivateKey));
+        clientPublicKey = normalizeNostrPubkey(tools.getPublicKey(hexToBytes(clientPrivateKey)));
       }
 
       if (!clientPublicKey || !HEX64_REGEX.test(clientPublicKey)) {
@@ -3440,7 +3441,7 @@ export class NostrClient {
 
     let pubkey = "";
     try {
-      pubkey = getPublicKey(normalizedPrivateKey);
+      pubkey = getPublicKey(hexToBytes(normalizedPrivateKey));
     } catch (error) {
       let retrySuccess = false;
       try {
@@ -3551,7 +3552,7 @@ export class NostrClient {
 
     let pubkey = "";
     try {
-      pubkey = getPublicKey(privateKey);
+      pubkey = getPublicKey(hexToBytes(privateKey));
     } catch (error) {
       const failure = new Error("Failed to derive the public key.");
       failure.cause = error;
@@ -3595,7 +3596,7 @@ export class NostrClient {
         throw new Error("Public key derivation is unavailable.");
       }
       try {
-        normalizedPubkey = getPublicKey(normalizedPrivateKey);
+        normalizedPubkey = getPublicKey(hexToBytes(normalizedPrivateKey));
       } catch (error) {
         const failure = new Error("Failed to derive the public key.");
         failure.cause = error;
@@ -3733,7 +3734,7 @@ export class NostrClient {
         throw new Error("Public key derivation is unavailable.");
       }
       try {
-        normalizedPubkey = getPublicKey(normalizedPrivateKey);
+        normalizedPubkey = getPublicKey(hexToBytes(normalizedPrivateKey));
       } catch (error) {
         const failure = new Error("Failed to derive the public key.");
         failure.cause = error;
@@ -7650,6 +7651,7 @@ export class NostrClient {
 
       const toProcess = eventBuffer;
       eventBuffer = [];
+      const videosNeedingMetadata = [];
 
       for (const evt of toProcess) {
         try {
@@ -7706,21 +7708,28 @@ export class NostrClient {
             this.activeMap.set(activeKey, video);
             onVideo(video); // Trigger the callback that re-renders
 
-            // Fetch NIP-71 metadata (categorization tags) in the background
-            this.populateNip71MetadataForVideos([video])
-              .then(() => {
-                this.applyRootCreatedAt(video);
-              })
-              .catch((error) => {
-                devLogger.warn(
-                  "[nostr] Failed to hydrate NIP-71 metadata for live video:",
-                  error
-                );
-              });
+            // Defer NIP-71 fetch for batching
+            videosNeedingMetadata.push(video);
           }
         } catch (err) {
           devLogger.error("[subscribeVideos] Error processing event:", err);
         }
+      }
+
+      if (videosNeedingMetadata.length > 0) {
+        // Fetch NIP-71 metadata (categorization tags) in the background
+        this.populateNip71MetadataForVideos(videosNeedingMetadata)
+          .then(() => {
+            for (const video of videosNeedingMetadata) {
+              this.applyRootCreatedAt(video);
+            }
+          })
+          .catch((error) => {
+            devLogger.warn(
+              "[nostr] Failed to hydrate NIP-71 metadata for live video batch:",
+              error,
+            );
+          });
       }
 
       // Persist processed events after each flush so reloads warm quickly.
