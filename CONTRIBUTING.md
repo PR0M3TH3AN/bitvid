@@ -121,7 +121,7 @@ To set up the project locally:
    npm run test:unit
    ```
 
-   _Note: Running the full suite (`npm run test:unit`) is resource-intensive and may time out in some environments. We strongly recommend using sharded runs for local development: `npm run test:unit:shard1`._
+   _Note: Running the full suite (`npm run test:unit`) is resource-intensive, runs sequentially, and may time out in some environments. We strongly recommend using sharded runs for local development to save time: `npm run test:unit:shard1`._
 
    You can also run end-to-end and visual tests:
 

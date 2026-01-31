@@ -959,9 +959,10 @@ class UserBlockListManager {
       };
 
       if (
-        !signer ||
-        (!signerHasRequiredDecryptors(signer) &&
-          typeof nostrClient?.ensureActiveSignerForPubkey === "function")
+        allowPermissionPrompt &&
+        (!signer ||
+          (!signerHasRequiredDecryptors(signer) &&
+            typeof nostrClient?.ensureActiveSignerForPubkey === "function"))
       ) {
         signer = await nostrClient.ensureActiveSignerForPubkey(normalized);
       }

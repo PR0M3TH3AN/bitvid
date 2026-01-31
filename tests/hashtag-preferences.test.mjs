@@ -71,6 +71,10 @@ test.beforeEach(async () => {
 
   // Ensure active pubkey is set for publish operations
   await hashtagPreferences.load("0".repeat(64));
+
+  if (nostrClient.extensionPermissionCache) {
+    nostrClient.extensionPermissionCache.clear();
+  }
 });
 
 test.after(() => {
@@ -78,6 +82,7 @@ test.after(() => {
   restoreRelayManager();
   window.nostr = originalWindowNostr;
   clearActiveSigner();
+  setTimeout(() => process.exit(0), 100);
 });
 
 test(
@@ -248,7 +253,6 @@ test(
       tags: [["encrypted", "nip04"]],
     };
 
-    let fetchCalls = 0;
     nostrClient.fetchListIncrementally = async () => {
       fetchCalls += 1;
       return [event];
@@ -270,6 +274,7 @@ test(
       signEvent: async (e) => e,
       nip04: {
         decrypt: async () => {
+          if (!permissionState.enabled) throw new Error("permission denied");
           decryptCalls.push("nip04");
           return JSON.stringify({
             version: 1,
