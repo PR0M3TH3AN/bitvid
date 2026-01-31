@@ -146,8 +146,9 @@ async function reviewPR(prNumber, baseRef) {
     // Extract failing test files
     const failingTests = [];
     const failureRegex = /✖\s+(tests\/[\w\-\.\/]+)\s+failed with exit code 1/g;
+    const testOutput = testRes.stdout + '\n' + testRes.stderr;
     let match;
-    while ((match = failureRegex.exec(testRes.stdout + '\n' + testRes.stderr)) !== null) {
+    while ((match = failureRegex.exec(testOutput)) !== null) {
         failingTests.push(match[1]);
     }
 
