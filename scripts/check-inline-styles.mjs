@@ -26,6 +26,8 @@ const IGNORED_DIRS = new Set([
   "logs",
   "playwright-report",
   "test-results",
+  "issues",
+  "scripts",
 ]);
 
 const DIST_SCAN_PREFIXES = new Set([
