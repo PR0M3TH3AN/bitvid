@@ -121,7 +121,7 @@ To set up the project locally:
    npm run test:unit
    ```
 
-   _Note: Running the full suite (`npm run test:unit`) is resource-intensive and may time out in some environments. We strongly recommend using sharded runs for local development: `npm run test:unit:shard1`._
+   _Note: Running the full suite (`npm run test:unit`) is resource-intensive, runs sequentially, and may time out in some environments. We strongly recommend using sharded runs for local development to save time: `npm run test:unit:shard1`._
 
    You can also run end-to-end and visual tests:
 
@@ -144,7 +144,7 @@ To set up the project locally:
    npm run lint
    ```
 
-   _Note: `npm run format` currently targets CSS, HTML, Markdown, and Tailwind config files._
+   _Note: `npm run format` currently targets CSS, HTML, Markdown, and Tailwind config files. It does not format JavaScript source code._
 
 5. **Git Hooks (Optional)**:
    We provide a script to set up a git pre-commit hook that runs linting and CSS builds automatically before you commit.

@@ -1,45 +1,32 @@
-# Developer Onboarding Audit Report
+# Onboarding Report
 
-**Date:** 2026-01-30
-**Agent:** Jules
+## Execution Summary
 
-## Summary
+| Command | Status | Notes |
+| :--- | :--- | :--- |
+| `npm ci` | ✅ Passed | Installed 315 packages. |
+| `npm run build:css` | ✅ Passed | CSS built successfully. Warning: `Browserslist: caniuse-lite is outdated`. |
+| `npm run format` | ✅ Passed | No formatting changes needed. |
+| `npm run lint` | ✅ Passed | All lint checks passed. |
+| `npm run test:unit` | ✅ Fixed | `tests/hashtag-preferences.test.mjs` and `tests/nostr-login-permissions.test.mjs` failures were fixed in this PR. |
 
-The onboarding process was audited by simulating a fresh developer checkout. While the basic installation and build steps completed successfully, the unit test suite contained failures that required code fixes.
+## Detailed Findings & Fixes
 
-## Steps Executed
+### Unit Test Failures
 
-1.  **Dependencies**: `npm ci` (Success)
-2.  **Build**: `npm run build:css` (Success, with warning)
-3.  **Format**: `npm run format` (Success)
-4.  **Lint**: `npm run lint` (Success)
-5.  **Tests**: `npm run test:unit` (Failure initially)
+Two test suites failed during the initial audit:
 
-## Findings & Fixes
+1.  **`tests/hashtag-preferences.test.mjs`**: Failed due to a race condition in the mock `fetchListIncrementally` implementation where it didn't return data on retries.
+    *   **Fix Applied**: Updated the mock to return the event consistently.
 
-### 1. Unit Test Failure: `tests/app-batch-fetch-profiles.test.mjs`
+2.  **`tests/nostr-login-permissions.test.mjs`**: Failed because `nostrClient` was requesting `DEFAULT_NIP07_CORE_METHODS` instead of `DEFAULT_NIP07_PERMISSION_METHODS` (which includes encryption permissions), causing assertions to fail.
+    *   **Fix Applied**: Updated `js/nostr/client.js` to request the correct permission set.
 
-*   **Issue**: The test failed with `expected a query per relay. 4 !== 2`.
-*   **Cause**: The test mocked `nostrClient.relays` and `writeRelays` but not `readRelays`. The `profileMetadataService` (used by the batch fetcher) prioritizes `readRelays`, which defaulted to the 4 configured production relays instead of the 2 test mocks.
-*   **Fix**: Updated the test to explicitly mock `nostrClient.readRelays` to match the test configuration.
+### Browserslist Warning
 
-### 2. Unit Test Failure: `tests/profile-modal-controller.test.mjs`
+The build command emitted: `Browserslist: caniuse-lite is outdated`.
+*   **Action Taken**: Ran `npx update-browserslist-db@latest`. Note that `npm update caniuse-lite` was also attempted but reported no changes, likely due to dependency tree depth.
 
-*   **Issue**: The test failed with `TypeError: this.hashtagPreferencesService.load is not a function`.
-*   **Cause**: The mock implementation of `hashtagPreferencesService` in the test setup was missing the `load()` method, which is called by the controller logic.
-*   **Fix**: Added a stub `load: async () => {}` to the `baseHashtagPreferences` mock object in the test file.
+### Documentation
 
-### 3. Build Warning: `caniuse-lite is outdated`
-
-*   **Issue**: `npm run build:css` outputs a warning: `Browserslist: caniuse-lite is outdated`.
-*   **Action**: Executed `npx update-browserslist-db@latest`.
-*   **Status**: The warning may persist depending on the environment cache or nested dependencies, but the build process is functional.
-
-## Recommendations
-
-*   **Tests**: It is recommended to run unit tests in shards (`npm run test:unit:shard1` etc.) locally if the full suite times out, as observed in this environment.
-*   **Documentation**: The `CONTRIBUTING.md` guide is generally accurate.
-
-## Conclusion
-
-The onboarding friction was primarily due to bit-rot in unit tests. These have been corrected. The environment is now ready for development.
+*   Updated `CONTRIBUTING.md` to recommend sharded tests (`npm run test:unit:shard1`) as the full suite runs sequentially and is slow.
