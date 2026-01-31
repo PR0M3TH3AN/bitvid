@@ -26,6 +26,13 @@
 4.  **`tests/nostr-send-direct-message.test.mjs`**: Susceptible to similar hangs.
     *   **Fix Applied**: Added `after(() => setTimeout(() => process.exit(0), 100))` to force exit.
 
+5.  **`tests/nostr-service-access-control.test.mjs`**: Caused hangs due to mock tool cleanup.
+    *   **Fix Applied**: Added `setTimeout(() => process.exit(0), 100)` in `after` hook.
+
+### Test Runner Robustness
+
+*   **`scripts/run-unit-tests.mjs`**: Updated to explicitly call `process.exit(0)` upon successful completion of all tests. This acts as a global safeguard against lingering open handles (e.g., from `nostr-tools` relays or timers) causing CI timeouts.
+
 ### Browserslist Warning
 
 The build command emitted: `Browserslist: caniuse-lite is outdated`.

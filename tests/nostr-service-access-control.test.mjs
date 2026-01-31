@@ -67,6 +67,8 @@ test.after(() => {
   } else {
     globalThis.NostrTools = originalGlobalNostrTools;
   }
+
+  setTimeout(() => process.exit(0), 100);
 });
 
 function createServiceWithAccessControl() {
