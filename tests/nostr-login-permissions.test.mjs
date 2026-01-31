@@ -1,15 +1,15 @@
 import "./test-helpers/setup-localstorage.mjs";
 import assert from "node:assert/strict";
-import test from "node:test";
+import { describe, it, beforeEach, afterEach, after } from "node:test";
 
 import { nostrClient } from "../js/nostrClientFacade.js";
 import { NostrClient, __testExports } from "../js/nostr/client.js";
 import nip07Provider from "../js/services/authProviders/nip07.js";
 import { accessControl } from "../js/accessControl.js";
+import { DEFAULT_NIP07_ENCRYPTION_METHODS } from "../js/nostr/nip07Permissions.js";
 
 const {
   runNip07WithRetry,
-  DEFAULT_NIP07_ENCRYPTION_METHODS,
 } = __testExports ?? {};
 
 const EXPECTED_ENCRYPTION_PERMISSIONS = Array.isArray(
@@ -31,14 +31,6 @@ function clearStoredPermissions() {
     // Ignore storage cleanup issues in tests
   }
 }
-
-test.beforeEach(() => {
-  clearStoredPermissions();
-});
-
-test.afterEach(() => {
-  clearStoredPermissions();
-});
 
 function setupLoginEnvironment({ enableImpl, getPublicKey = HEX_PUBKEY } = {}) {
   const previousWindow = typeof global.window === "undefined" ? undefined : global.window;
@@ -168,363 +160,426 @@ test("NIP-07 login requests decrypt permissions upfront", async () => {
     const pubkey = result.pubkey;
     assert.equal(pubkey, HEX_PUBKEY);
     assert.ok(env.enableCalls.length >= 1, "extension.enable should be invoked");
+
+    // Explicit checks for permissions we know should be there
     assert.ok(
-      nostrClient.extensionPermissionCache.has("nip04.encrypt"),
+      cache.has("nip04.encrypt"),
       "nip04.encrypt permission should be tracked as granted",
     );
     assert.ok(
-      nostrClient.extensionPermissionCache.has("nip04.decrypt"),
+      cache.has("nip04.decrypt"),
       "nip04.decrypt permission should be tracked as granted",
     );
     assert.ok(
-      nostrClient.extensionPermissionCache.has("nip44.encrypt"),
+      cache.has("nip44.encrypt"),
       "nip44.encrypt permission should be tracked as granted",
     );
     assert.ok(
-      nostrClient.extensionPermissionCache.has("nip44.decrypt"),
+      cache.has("nip44.decrypt"),
       "nip44.decrypt permission should be tracked as granted",
     );
+
+    // Dynamic check for all expected methods
     for (const method of EXPECTED_ENCRYPTION_PERMISSIONS) {
       assert.ok(
-        nostrClient.extensionPermissionCache.has(method),
+        cache.has(method),
         `${method} permission should be tracked as granted`,
       );
     }
+
     assert.ok(
-      nostrClient.extensionPermissionCache.has("sign_event"),
+      cache.has("sign_event"),
       "sign_event permission should be tracked as granted",
     );
   } finally {
     env.restore();
     nostrClient.logout();
     clearStoredPermissions();
-  }
-});
+  });
 
-test("NIP-07 decrypt reuses cached extension permissions", async () => {
-  const env = setupLoginEnvironment();
-  try {
-    const decryptCalls = {
-      nip04: 0,
-      nip44: 0,
-    };
-    window.nostr.nip04 = {
-      decrypt: async (actorKey, ciphertext) => {
-        decryptCalls.nip04 += 1;
-        assert.equal(actorKey, HEX_PUBKEY);
-        return `plaintext:${ciphertext}`;
-      },
-    };
-    window.nostr.nip44 = {
-      decrypt: async (actorKey, ciphertext) => {
-        decryptCalls.nip44 += 1;
-        assert.equal(actorKey, HEX_PUBKEY);
-        return `plaintext44:${ciphertext}`;
-      },
-    };
+  afterEach(() => {
+    clearStoredPermissions();
+  });
 
     const result = await nip07Provider.login({ nostrClient });
     const pubkey = result.pubkey;
     assert.equal(pubkey, HEX_PUBKEY);
+
+    // Refresh cache reference
+    const cache = nostrClient.extensionPermissionCache;
+
     for (const method of EXPECTED_ENCRYPTION_PERMISSIONS) {
       assert.ok(
-        nostrClient.extensionPermissionCache.has(method),
+        cache.has(method),
         `nostrClient should track ${method} after login`,
       );
     }
 
-    const storedRaw = localStorage.getItem(PERMISSIONS_STORAGE_KEY);
-    assert.ok(storedRaw, "extension permissions should persist to localStorage");
-    let storedMethods = [];
+  it("NIP-07 login requests decrypt permissions upfront", async () => {
+    const env = setupLoginEnvironment();
     try {
-      const parsed = JSON.parse(storedRaw);
-      storedMethods = Array.isArray(parsed)
-        ? parsed
-        : Array.isArray(parsed?.grantedMethods)
-          ? parsed.grantedMethods
-          : [];
-    } catch (error) {
-      storedMethods = [];
-    }
-    const storedSet = new Set(
-      storedMethods
-        .filter((method) => typeof method === "string")
-        .map((method) => method.trim())
-        .filter(Boolean),
-    );
-    for (const method of EXPECTED_ENCRYPTION_PERMISSIONS) {
+      const result = await nip07Provider.login({ nostrClient });
+      const pubkey = result.pubkey;
+      assert.equal(pubkey, HEX_PUBKEY);
+      assert.ok(env.enableCalls.length >= 1, "extension.enable should be invoked");
       assert.ok(
-        storedSet.has(method),
-        `stored permissions should include ${method}`,
+        nostrClient.extensionPermissionCache.has("nip04.encrypt"),
+        "nip04.encrypt permission should be tracked as granted",
       );
-    }
-    const baselineEnableCalls = env.enableCalls.length;
-    const freshClient = new NostrClient();
-    freshClient.pubkey = HEX_PUBKEY;
-
-    for (const method of EXPECTED_ENCRYPTION_PERMISSIONS) {
       assert.ok(
-        freshClient.extensionPermissionCache.has(method),
-        `fresh client should hydrate ${method} from storage`,
+        nostrClient.extensionPermissionCache.has("nip04.decrypt"),
+        "nip04.decrypt permission should be tracked as granted",
       );
+      assert.ok(
+        nostrClient.extensionPermissionCache.has("nip44.encrypt"),
+        "nip44.encrypt permission should be tracked as granted",
+      );
+      assert.ok(
+        nostrClient.extensionPermissionCache.has("nip44.decrypt"),
+        "nip44.decrypt permission should be tracked as granted",
+      );
+      for (const method of EXPECTED_ENCRYPTION_PERMISSIONS) {
+        assert.ok(
+          nostrClient.extensionPermissionCache.has(method),
+          `${method} permission should be tracked as granted`,
+        );
+      }
+      assert.ok(
+        nostrClient.extensionPermissionCache.has("sign_event"),
+        "sign_event permission should be tracked as granted",
+      );
+    } finally {
+      env.restore();
+      nostrClient.logout();
+      clearStoredPermissions();
     }
+  });
 
-    for (const method of ["nip04.decrypt", "nip44.decrypt"]) {
-      const permissionResult = await freshClient.ensureExtensionPermissions([
-        method,
-      ]);
-      assert.equal(permissionResult.ok, true);
+  it("NIP-07 decrypt reuses cached extension permissions", async () => {
+    const env = setupLoginEnvironment();
+    try {
+      const decryptCalls = {
+        nip04: 0,
+        nip44: 0,
+      };
+      window.nostr.nip04 = {
+        decrypt: async (actorKey, ciphertext) => {
+          decryptCalls.nip04 += 1;
+          assert.equal(actorKey, HEX_PUBKEY);
+          return `plaintext:${ciphertext}`;
+        },
+      };
+      window.nostr.nip44 = {
+        decrypt: async (actorKey, ciphertext) => {
+          decryptCalls.nip44 += 1;
+          assert.equal(actorKey, HEX_PUBKEY);
+          return `plaintext44:${ciphertext}`;
+        },
+      };
+
+      const result = await nip07Provider.login({ nostrClient });
+      const pubkey = result.pubkey;
+      assert.equal(pubkey, HEX_PUBKEY);
+      for (const method of EXPECTED_ENCRYPTION_PERMISSIONS) {
+        assert.ok(
+          nostrClient.extensionPermissionCache.has(method),
+          `nostrClient should track ${method} after login`,
+        );
+      }
+
+      const storedRaw = localStorage.getItem(PERMISSIONS_STORAGE_KEY);
+      assert.ok(storedRaw, "extension permissions should persist to localStorage");
+      let storedMethods = [];
+      try {
+        const parsed = JSON.parse(storedRaw);
+        storedMethods = Array.isArray(parsed)
+          ? parsed
+          : Array.isArray(parsed?.grantedMethods)
+            ? parsed.grantedMethods
+            : [];
+      } catch (error) {
+        storedMethods = [];
+      }
+      const storedSet = new Set(
+        storedMethods
+          .filter((method) => typeof method === "string")
+          .map((method) => method.trim())
+          .filter(Boolean),
+      );
+      for (const method of EXPECTED_ENCRYPTION_PERMISSIONS) {
+        assert.ok(
+          storedSet.has(method),
+          `stored permissions should include ${method}`,
+        );
+      }
+      const baselineEnableCalls = env.enableCalls.length;
+      const freshClient = new NostrClient();
+      freshClient.pubkey = HEX_PUBKEY;
+
+      for (const method of EXPECTED_ENCRYPTION_PERMISSIONS) {
+        assert.ok(
+          freshClient.extensionPermissionCache.has(method),
+          `fresh client should hydrate ${method} from storage`,
+        );
+      }
+
+      for (const method of ["nip04.decrypt", "nip44.decrypt"]) {
+        const permissionResult = await freshClient.ensureExtensionPermissions([
+          method,
+        ]);
+        assert.equal(permissionResult.ok, true);
+        assert.equal(
+          env.enableCalls.length,
+          baselineEnableCalls,
+          `cached permissions should prevent extra enable() calls for ${method}`,
+        );
+      }
+
+      const plaintext = await window.nostr.nip04.decrypt(HEX_PUBKEY, "ciphertext");
+      assert.equal(plaintext, "plaintext:ciphertext");
+      const plaintext44 = await window.nostr.nip44.decrypt(
+        HEX_PUBKEY,
+        "ciphertext44",
+      );
+      assert.equal(plaintext44, "plaintext44:ciphertext44");
       assert.equal(
         env.enableCalls.length,
         baselineEnableCalls,
-        `cached permissions should prevent extra enable() calls for ${method}`,
+        "decrypt calls should not trigger additional enable() prompts",
       );
+      assert.equal(decryptCalls.nip04, 1);
+      assert.equal(decryptCalls.nip44, 1);
+    } finally {
+      env.restore();
+      nostrClient.logout();
+      clearStoredPermissions();
     }
-
-    const plaintext = await window.nostr.nip04.decrypt(HEX_PUBKEY, "ciphertext");
-    assert.equal(plaintext, "plaintext:ciphertext");
-    const plaintext44 = await window.nostr.nip44.decrypt(
-      HEX_PUBKEY,
-      "ciphertext44",
-    );
-    assert.equal(plaintext44, "plaintext44:ciphertext44");
-    assert.equal(
-      env.enableCalls.length,
-      baselineEnableCalls,
-      "decrypt calls should not trigger additional enable() prompts",
-    );
-    assert.equal(decryptCalls.nip04, 1);
-    assert.equal(decryptCalls.nip44, 1);
-  } finally {
-    env.restore();
-    nostrClient.logout();
-    clearStoredPermissions();
-  }
-});
-
-test("NIP-07 login falls back when structured permissions fail", async () => {
-  clearStoredPermissions();
-  const env = setupLoginEnvironment({
-    enableImpl(options) {
-      if (
-        options &&
-        Array.isArray(options.permissions) &&
-        options.permissions.length &&
-        typeof options.permissions[0] === "object"
-      ) {
-        return Promise.reject(new Error("object permissions unsupported"));
-      }
-      if (options && Array.isArray(options.permissions)) {
-        return Promise.resolve();
-      }
-      return Promise.reject(new Error("unexpected enable invocation"));
-    },
   });
 
-  try {
-    const result = await nip07Provider.login({ nostrClient });
-    const pubkey = result.pubkey;
-    assert.equal(pubkey, HEX_PUBKEY);
-    // With Structured -> String -> Plain order, this succeeds at step 2 (String).
-    // The login flow may perform multiple permission requests (e.g. core -> full).
-    // We expect at least one successful sequence (2 calls).
-    assert.ok(env.enableCalls.length >= 2, "should retry with alternate payloads");
-
-    // Check the first sequence (core permissions)
-    const [objectCall, stringCall] = env.enableCalls;
-    assert.ok(Array.isArray(objectCall?.permissions));
-    assert.equal(
-      typeof objectCall.permissions[0],
-      "object",
-      "structured permission request should be attempted first",
-    );
-    assert.ok(Array.isArray(stringCall?.permissions));
-    assert.equal(
-      typeof stringCall.permissions[0],
-      "string",
-      "string-based permissions should be attempted after structured payloads",
-    );
-
-    // If we have more calls (full permissions upgrade), verify they follow the same pattern
-    if (env.enableCalls.length > 2) {
-      // The 3rd call should be a new structured attempt for full permissions
-      const upgradeObjectCall = env.enableCalls[2];
-      // The 4th call (if 3rd failed) should be string
-      const upgradeStringCall = env.enableCalls[3];
-
-      if (upgradeObjectCall) {
-         assert.ok(Array.isArray(upgradeObjectCall.permissions), "upgrade attempt should use permissions");
-      }
-      // We don't strictly assert `plainCall` is undefined because a 2nd pass might happen
-    }
-  } finally {
-    env.restore();
-    nostrClient.logout();
+  it("NIP-07 login falls back when structured permissions fail", async () => {
     clearStoredPermissions();
-  }
-});
-
-test("NIP-07 login supports extensions that only allow enable() without payload", async () => {
-  clearStoredPermissions();
-  const env = setupLoginEnvironment({
-    enableImpl(options) {
-      if (options !== undefined) {
-        return Promise.reject(new Error("payloads not supported"));
-      }
-      return Promise.resolve();
-    },
-  });
-
-  try {
-    const result = await nip07Provider.login({ nostrClient });
-    const pubkey = result.pubkey;
-    assert.equal(pubkey, HEX_PUBKEY);
-    // With Structured -> String -> Plain order, we expect at least 3 calls for the first success:
-    // 1. Structured (rejected)
-    // 2. String (rejected)
-    // 3. Plain (accepted)
-    // If login does a second pass (upgrade), it might repeat this sequence.
-    assert.ok(
-      env.enableCalls.length >= 3,
-      "should eventually succeed with plain enable()",
-    );
-
-    // Verify the first sequence structure
-    const [objectCall, stringCall, plainCall] = env.enableCalls;
-    assert.ok(objectCall !== undefined);
-    assert.ok(stringCall !== undefined);
-    // plainCall is the one that succeeded (called with undefined/no args)
-    assert.equal(plainCall, undefined, "successful attempt should use plain enable()");
-  } finally {
-    env.restore();
-    nostrClient.logout();
-    clearStoredPermissions();
-  }
-});
-
-test("NIP-07 login quickly retries when a permission payload stalls", async () => {
-  const originalOverride = global.__BITVID_NIP07_ENABLE_VARIANT_TIMEOUT_MS__;
-  global.__BITVID_NIP07_ENABLE_VARIANT_TIMEOUT_MS__ = 80;
-
-  clearStoredPermissions();
-  const env = setupLoginEnvironment({
-    enableImpl(options) {
-      if (options === undefined) {
-        return Promise.reject(new Error("needs permissions"));
-      }
-      if (
-        options &&
-        Array.isArray(options.permissions) &&
-        options.permissions.length &&
-        typeof options.permissions[0] === "object"
-      ) {
-        return new Promise(() => {});
-      }
-      return Promise.resolve();
-    },
-  });
-
-  try {
-    const start = Date.now();
-    const result = await nip07Provider.login({ nostrClient });
-    const pubkey = result.pubkey;
-    const duration = Date.now() - start;
-    assert.equal(pubkey, HEX_PUBKEY);
-    assert.ok(
-      duration < 1000,
-      `login should fall back quickly from stalled enable payloads (duration: ${duration}ms)`,
-    );
-    // Structured (stalls) -> String (resolves)
-    // Plain is skipped because String resolved.
-    // Login might do this twice (Core then Full), so 2 or 4 calls.
-    assert.ok(env.enableCalls.length >= 2, "should attempt structured (stalls) and then string payload");
-
-    const [objectCall, stringCall] = env.enableCalls;
-    assert.ok(Array.isArray(objectCall?.permissions));
-    assert.equal(typeof objectCall.permissions[0], "object");
-    assert.ok(Array.isArray(stringCall?.permissions));
-    assert.equal(typeof stringCall.permissions[0], "string");
-  } finally {
-    env.restore();
-    nostrClient.logout();
-    if (originalOverride === undefined) {
-      delete global.__BITVID_NIP07_ENABLE_VARIANT_TIMEOUT_MS__;
-    } else {
-      global.__BITVID_NIP07_ENABLE_VARIANT_TIMEOUT_MS__ = originalOverride;
-    }
-    clearStoredPermissions();
-  }
-});
-
-test("NIP-07 login does not wait for deferred permission grants", async () => {
-  clearStoredPermissions();
-  const env = setupLoginEnvironment();
-  const originalEnsurePermissions = nostrClient.ensureExtensionPermissions;
-  let completionPromise;
-
-  nostrClient.ensureExtensionPermissions = async () => {
-    completionPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error("permission denied")), 300);
+    const env = setupLoginEnvironment({
+      enableImpl(options) {
+        if (
+          options &&
+          Array.isArray(options.permissions) &&
+          options.permissions.length &&
+          typeof options.permissions[0] === "object"
+        ) {
+          return Promise.reject(new Error("object permissions unsupported"));
+        }
+        if (options && Array.isArray(options.permissions)) {
+          return Promise.resolve();
+        }
+        return Promise.reject(new Error("unexpected enable invocation"));
+      },
     });
-    return { ok: true, completionPromise };
-  };
 
-  try {
-    const start = Date.now();
-    const result = await nip07Provider.login({ nostrClient });
-    const duration = Date.now() - start;
-    assert.equal(result.pubkey, HEX_PUBKEY);
-    assert.ok(
-      duration < 200,
-      `login should resolve before deferred permission grants (duration: ${duration}ms)`,
-    );
-    assert.ok(completionPromise, "completionPromise should be captured");
-    await assert.rejects(
-      completionPromise,
-      /permission denied/,
-      "deferred permission grants should still reject",
-    );
-  } finally {
-    nostrClient.ensureExtensionPermissions = originalEnsurePermissions;
-    env.restore();
-    nostrClient.logout();
-    clearStoredPermissions();
-  }
-});
+    try {
+      const result = await nip07Provider.login({ nostrClient });
+      const pubkey = result.pubkey;
+      assert.equal(pubkey, HEX_PUBKEY);
+      // With Structured -> String -> Plain order, this succeeds at step 2 (String).
+      // The login flow may perform multiple permission requests (e.g. core -> full).
+      // We expect at least one successful sequence (2 calls).
+      assert.ok(env.enableCalls.length >= 2, "should retry with alternate payloads");
 
-test("NIP-07 login surfaces enable permission errors", async () => {
-  clearStoredPermissions();
-  const env = setupLoginEnvironment({
-    enableImpl() {
-      return Promise.reject(new Error("permission denied"));
-    },
+      // Check the first sequence (core permissions)
+      const [objectCall, stringCall] = env.enableCalls;
+      assert.ok(Array.isArray(objectCall?.permissions));
+      assert.equal(
+        typeof objectCall.permissions[0],
+        "object",
+        "structured permission request should be attempted first",
+      );
+      assert.ok(Array.isArray(stringCall?.permissions));
+      assert.equal(
+        typeof stringCall.permissions[0],
+        "string",
+        "string-based permissions should be attempted after structured payloads",
+      );
+
+      // If we have more calls (full permissions upgrade), verify they follow the same pattern
+      if (env.enableCalls.length > 2) {
+        // The 3rd call should be a new structured attempt for full permissions
+        const upgradeObjectCall = env.enableCalls[2];
+        // The 4th call (if 3rd failed) should be string
+        const upgradeStringCall = env.enableCalls[3];
+
+        if (upgradeObjectCall) {
+           assert.ok(Array.isArray(upgradeObjectCall.permissions), "upgrade attempt should use permissions");
+        }
+        // We don't strictly assert `plainCall` is undefined because a 2nd pass might happen
+      }
+    } finally {
+      env.restore();
+      nostrClient.logout();
+      clearStoredPermissions();
+    }
   });
 
-  try {
-    await assert.rejects(() => nip07Provider.login({ nostrClient }), /permission denied/);
-  } finally {
-    env.restore();
-    nostrClient.logout();
+  it("NIP-07 login supports extensions that only allow enable() without payload", async () => {
     clearStoredPermissions();
+    const env = setupLoginEnvironment({
+      enableImpl(options) {
+        if (options !== undefined) {
+          return Promise.reject(new Error("payloads not supported"));
+        }
+        return Promise.resolve();
+      },
+    });
+
+    try {
+      const result = await nip07Provider.login({ nostrClient });
+      const pubkey = result.pubkey;
+      assert.equal(pubkey, HEX_PUBKEY);
+      // With Structured -> String -> Plain order, we expect at least 3 calls for the first success:
+      // 1. Structured (rejected)
+      // 2. String (rejected)
+      // 3. Plain (accepted)
+      // If login does a second pass (upgrade), it might repeat this sequence.
+      assert.ok(
+        env.enableCalls.length >= 3,
+        "should eventually succeed with plain enable()",
+      );
+
+      // Verify the first sequence structure
+      const [objectCall, stringCall, plainCall] = env.enableCalls;
+      assert.ok(objectCall !== undefined);
+      assert.ok(stringCall !== undefined);
+      // plainCall is the one that succeeded (called with undefined/no args)
+      assert.equal(plainCall, undefined, "successful attempt should use plain enable()");
+    } finally {
+      env.restore();
+      nostrClient.logout();
+      clearStoredPermissions();
+    }
+  });
+
+  it("NIP-07 login quickly retries when a permission payload stalls", async () => {
+    const originalOverride = global.__BITVID_NIP07_ENABLE_VARIANT_TIMEOUT_MS__;
+    global.__BITVID_NIP07_ENABLE_VARIANT_TIMEOUT_MS__ = 80;
+
+    clearStoredPermissions();
+    const env = setupLoginEnvironment({
+      enableImpl(options) {
+        if (options === undefined) {
+          return Promise.reject(new Error("needs permissions"));
+        }
+        if (
+          options &&
+          Array.isArray(options.permissions) &&
+          options.permissions.length &&
+          typeof options.permissions[0] === "object"
+        ) {
+          return new Promise(() => {});
+        }
+        return Promise.resolve();
+      },
+    });
+
+    try {
+      const start = Date.now();
+      const result = await nip07Provider.login({ nostrClient });
+      const pubkey = result.pubkey;
+      const duration = Date.now() - start;
+      assert.equal(pubkey, HEX_PUBKEY);
+      assert.ok(
+        duration < 1000,
+        `login should fall back quickly from stalled enable payloads (duration: ${duration}ms)`,
+      );
+      // Structured (stalls) -> String (resolves)
+      // Plain is skipped because String resolved.
+      // Login might do this twice (Core then Full), so 2 or 4 calls.
+      assert.ok(env.enableCalls.length >= 2, "should attempt structured (stalls) and then string payload");
+
+      const [objectCall, stringCall] = env.enableCalls;
+      assert.ok(Array.isArray(objectCall?.permissions));
+      assert.equal(typeof objectCall.permissions[0], "object");
+      assert.ok(Array.isArray(stringCall?.permissions));
+      assert.equal(typeof stringCall.permissions[0], "string");
+    } finally {
+      env.restore();
+      nostrClient.logout();
+      if (originalOverride === undefined) {
+        delete global.__BITVID_NIP07_ENABLE_VARIANT_TIMEOUT_MS__;
+      } else {
+        global.__BITVID_NIP07_ENABLE_VARIANT_TIMEOUT_MS__ = originalOverride;
+      }
+      clearStoredPermissions();
+    }
+  });
+
+  it("NIP-07 login does not wait for deferred permission grants", async () => {
+    clearStoredPermissions();
+    const env = setupLoginEnvironment();
+    const originalEnsurePermissions = nostrClient.ensureExtensionPermissions;
+    let completionPromise;
+
+    nostrClient.ensureExtensionPermissions = async () => {
+      completionPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error("permission denied")), 300);
+      });
+      return { ok: true, completionPromise };
+    };
+
+    try {
+      const start = Date.now();
+      const result = await nip07Provider.login({ nostrClient });
+      const duration = Date.now() - start;
+      assert.equal(result.pubkey, HEX_PUBKEY);
+      assert.ok(
+        duration < 200,
+        `login should resolve before deferred permission grants (duration: ${duration}ms)`,
+      );
+      assert.ok(completionPromise, "completionPromise should be captured");
+      await assert.rejects(
+        completionPromise,
+        /permission denied/,
+        "deferred permission grants should still reject",
+      );
+    } finally {
+      nostrClient.ensureExtensionPermissions = originalEnsurePermissions;
+      env.restore();
+      nostrClient.logout();
+      clearStoredPermissions();
+    }
+  });
+
+  it("NIP-07 login surfaces enable permission errors", async () => {
+    clearStoredPermissions();
+    const env = setupLoginEnvironment({
+      enableImpl() {
+        return Promise.reject(new Error("permission denied"));
+      },
+    });
+
+    try {
+      await assert.rejects(() => nip07Provider.login({ nostrClient }), /permission denied/);
+    } finally {
+      env.restore();
+      nostrClient.logout();
+      clearStoredPermissions();
+    }
+  });
+
+  if (typeof runNip07WithRetry === "function") {
+    it("runNip07WithRetry respects timeout without retry multiplier", async () => {
+      const start = Date.now();
+      await assert.rejects(
+        () =>
+          runNip07WithRetry(() => new Promise(() => {}), {
+            label: "test-op",
+            timeoutMs: 60,
+            retryMultiplier: 1,
+          }),
+        (error) =>
+          error instanceof Error &&
+          error.message ===
+            "Timed out waiting for the NIP-07 extension. Confirm the extension prompt in your browser toolbar and try again.",
+      );
+      const duration = Date.now() - start;
+      assert.ok(duration < 400, `operation should reject promptly (duration: ${duration}ms)`);
+    });
   }
 });
-
-if (typeof runNip07WithRetry === "function") {
-  test("runNip07WithRetry respects timeout without retry multiplier", async () => {
-    const start = Date.now();
-    await assert.rejects(
-      () =>
-        runNip07WithRetry(() => new Promise(() => {}), {
-          label: "test-op",
-          timeoutMs: 60,
-          retryMultiplier: 1,
-        }),
-      (error) =>
-        error instanceof Error &&
-        error.message ===
-          "Timed out waiting for the NIP-07 extension. Confirm the extension prompt in your browser toolbar and try again.",
-    );
-    const duration = Date.now() - start;
-    assert.ok(duration < 400, `operation should reject promptly (duration: ${duration}ms)`);
-  });
-}

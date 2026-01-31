@@ -51,14 +51,6 @@ The grid health module manages per-card WebTorrent probes and badge updates:
   - `reason` is normalized into known values such as `timeout`, `no-trackers`, `invalid`, etc.
 - `setBadge` applies `data-stream-health-state`, `data-stream-health-peers`, and `data-stream-health-reason` on both the card and badge, then calls `updateVideoCardSourceVisibility`.
 
-### Tracker-based probes (`js/healthService.js`)
-
-`js/healthService.js` provides a queueing + caching wrapper around tracker pings for other health consumers:
-
-- `queueHealthCheck(magnet, onResult)` uses a PQueue (`CONCURRENCY` from `js/trackerConfig.js`).
-- Results are cached by info hash for `HEALTH_TTL_MS`.
-- Responses are normalized into a default object with `ok`, `seeders`, `leechers`, `responded`, and `from` fields.
-
 ## Card visibility rules
 
 `js/utils/cardSourceVisibility.js` centralizes hide/show behavior based on health datasets:
