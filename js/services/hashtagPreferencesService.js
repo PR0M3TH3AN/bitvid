@@ -775,19 +775,22 @@ class HashtagPreferencesService {
       const decryptPromise = this.decryptEvent(latest, normalized, {
         allowPermissionPrompt,
       });
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(
-          () => {
-            const timeoutError = new Error(
-              `Decryption timed out after ${DECRYPT_TIMEOUT_MS / 1000}s`,
-            );
-            timeoutError.code = "hashtag-preferences-decrypt-timeout";
-            reject(timeoutError);
-          },
-          DECRYPT_TIMEOUT_MS,
-        ),
-      );
-      decryptResult = await Promise.race([decryptPromise, timeoutPromise]);
+      let timeoutId;
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+          const timeoutError = new Error(
+            `Decryption timed out after ${DECRYPT_TIMEOUT_MS / 1000}s`,
+          );
+          timeoutError.code = "hashtag-preferences-decrypt-timeout";
+          reject(timeoutError);
+        }, DECRYPT_TIMEOUT_MS);
+      });
+
+      try {
+        decryptResult = await Promise.race([decryptPromise, timeoutPromise]);
+      } finally {
+        if (timeoutId) clearTimeout(timeoutId);
+      }
     } catch (error) {
       decryptResult = { ok: false, error };
     }
