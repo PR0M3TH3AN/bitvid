@@ -134,7 +134,23 @@ export function signEventWithPrivateKey(event, privateKey) {
     throw new Error("Missing signing primitives");
   }
 
-  const finalized = finalizeFn(prepared, normalizedKey);
+  // nostr-tools v2 expects Uint8Array for secret key
+  let secretKey = normalizedKey;
+  if (tools?.utils?.hexToBytes) {
+    try {
+      secretKey = tools.utils.hexToBytes(normalizedKey);
+    } catch (err) {
+      // Ignore conversion error, finalizeFn might throw or handle it
+    }
+  } else if (canonicalTools?.utils?.hexToBytes) {
+    try {
+      secretKey = canonicalTools.utils.hexToBytes(normalizedKey);
+    } catch (err) {
+      // Ignore
+    }
+  }
+
+  const finalized = finalizeFn(prepared, secretKey);
   if (
     !finalized ||
     typeof finalized.id !== "string" ||

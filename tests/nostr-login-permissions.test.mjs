@@ -195,25 +195,13 @@ test("NIP-07 login requests decrypt permissions upfront", async () => {
     env.restore();
     nostrClient.logout();
     clearStoredPermissions();
-  });
+  }
+});
 
+describe("NIP-07 Login Permissions", () => {
   afterEach(() => {
     clearStoredPermissions();
   });
-
-    const result = await nip07Provider.login({ nostrClient });
-    const pubkey = result.pubkey;
-    assert.equal(pubkey, HEX_PUBKEY);
-
-    // Refresh cache reference
-    const cache = nostrClient.extensionPermissionCache;
-
-    for (const method of EXPECTED_ENCRYPTION_PERMISSIONS) {
-      assert.ok(
-        cache.has(method),
-        `nostrClient should track ${method} after login`,
-      );
-    }
 
   it("NIP-07 login requests decrypt permissions upfront", async () => {
     const env = setupLoginEnvironment();
