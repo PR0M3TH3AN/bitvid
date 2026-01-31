@@ -1,6 +1,6 @@
 import { prepareStaticModal, openStaticModal, closeStaticModal } from "./staticModalAccessibility.js";
 import { sanitizeProfileMediaUrl } from "../../utils/profileMedia.js";
-import { userLogger } from "../../utils/logger.js";
+import { devLogger } from "../../utils/logger.js";
 
 const DEFAULT_PROFILE_AVATAR = "assets/svg/default-profile.svg";
 
@@ -335,7 +335,7 @@ export class EventDetailsModal {
             }
           })
           .catch((error) => {
-            userLogger.warn(
+            devLogger.warn(
               "[EventDetailsModal] Failed to fetch raw event:",
               error,
             );
@@ -442,7 +442,7 @@ export class EventDetailsModal {
         }
       }
     } catch (e) {
-      userLogger.warn("[EventDetailsModal] Failed to load history", e);
+      devLogger.warn("[EventDetailsModal] Failed to load history", e);
     } finally {
       this.isLoadingHistory = false;
       this.updateNavigationState();
