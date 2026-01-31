@@ -135,4 +135,3 @@ attempting privileged calls.
 
 - [`docs/nostr-auth.md`](nostr-auth.md)
 - [`docs/nip46-remote-signers.md`](nip46-remote-signers.md)
-- [`docs/signing-adapter.md`](signing-adapter.md)
