@@ -6176,23 +6176,157 @@ export class ProfileModalController {
     }
   }
 
-  async invokeAddAccountCallback(loginResult) {
-    if (typeof this.callbacks.onAddAccount !== "function") {
+  async handleAddProfile(payload = {}) {
+    const loginResult =
+      payload && typeof payload === "object" ? payload.loginResult : null;
+
+    if (!loginResult) {
+      devLogger.warn(
+        "[ProfileModalController] Ignoring add profile callback without an authentication result.",
+      );
       return;
     }
 
     try {
-      await this.callbacks.onAddAccount({
-        controller: this,
-        loginResult,
+      const { pubkey, authType: loginAuthType, providerId } =
+        typeof loginResult === "object" && loginResult
+          ? loginResult
+          : { pubkey: loginResult };
+
+      const detailAuthType =
+        typeof loginResult?.detail?.authType === "string"
+          ? loginResult.detail.authType
+          : null;
+      const detailProviderId =
+        typeof loginResult?.detail?.providerId === "string"
+          ? loginResult.detail.providerId
+          : null;
+
+      const resolvedAuthType = (() => {
+        const candidates = [
+          detailAuthType,
+          loginAuthType,
+          detailProviderId,
+          providerId,
+        ];
+        for (const candidate of candidates) {
+          if (typeof candidate !== "string") {
+            continue;
+          }
+          const trimmed = candidate.trim();
+          if (trimmed) {
+            return trimmed;
+          }
+        }
+        return "nip07";
+      })();
+
+      const resolvedProviderId = (() => {
+        const candidates = [detailProviderId, providerId, resolvedAuthType];
+        for (const candidate of candidates) {
+          if (typeof candidate !== "string") {
+            continue;
+          }
+          const trimmed = candidate.trim();
+          if (trimmed) {
+            return trimmed;
+          }
+        }
+        return resolvedAuthType;
+      })();
+
+      const normalizedPubkey = this.normalizeHexPubkey(pubkey);
+      if (!normalizedPubkey) {
+        throw new Error(
+          "Received an invalid public key from the authentication provider.",
+        );
+      }
+
+      const savedProfiles = this.getSavedProfiles();
+      const alreadySaved = savedProfiles.some(
+        (entry) => this.normalizeHexPubkey(entry.pubkey) === normalizedPubkey,
+      );
+      if (alreadySaved) {
+        this.showSuccess("That profile is already saved on this device.");
+        return;
+      }
+
+      const npub = this.safeEncodeNpub(normalizedPubkey) || "";
+      let profileMeta = this.services.getProfileCacheEntry(normalizedPubkey)?.profile;
+
+      if (!profileMeta) {
+        await this.services.authService.loadOwnProfile(normalizedPubkey);
+        profileMeta = this.services.getProfileCacheEntry(normalizedPubkey)?.profile;
+      }
+
+      const name = profileMeta?.name || "";
+      const picture =
+        profileMeta?.picture || "assets/svg/default-profile.svg";
+
+      savedProfiles.push({
+        pubkey: normalizedPubkey,
+        npub,
+        name,
+        picture,
+        authType: resolvedAuthType,
+        providerId: resolvedProviderId,
       });
+
+      this.setSavedProfiles(savedProfiles, { persist: false, persistActive: false });
+      this.persistSavedProfiles({ persistActive: false });
+      this.renderSavedProfiles();
+
+      this.showSuccess("Profile added. Select it when you're ready to switch.");
     } catch (error) {
-      devLogger.warn(
-        "[ProfileModalController] onAddAccount callback threw:",
+      const cancellationCodes = new Set([
+        "login-cancelled",
+        "user-cancelled",
+        "modal-dismissed",
+      ]);
+      if (
+        error &&
+        typeof error === "object" &&
+        typeof error.code === "string" &&
+        cancellationCodes.has(error.code)
+      ) {
+        this.log("[ProfileModalController] Add profile flow cancelled.", error);
+        return;
+      }
+
+      devLogger.error(
+        "[ProfileModalController] Failed to add profile via authentication provider:",
         error,
       );
-      throw error;
+
+      const message = this.describeLoginErrorService(
+        error,
+        "Couldn't add that profile. Please try again.",
+      );
+
+      const rejectionError =
+        error instanceof Error
+          ? error
+          : new Error(message || "Couldn't add that profile. Please try again.");
+
+      if (message && rejectionError.message !== message) {
+        rejectionError.message = message;
+      }
+
+      if (
+        error &&
+        typeof error === "object" &&
+        error.code &&
+        !rejectionError.code
+      ) {
+        rejectionError.code = error.code;
+      }
+
+      throw rejectionError;
     }
+  }
+
+  async invokeAddAccountCallback(loginResult) {
+    return this.handleAddProfile({ loginResult });
   }
 
   renderSavedProfiles() {

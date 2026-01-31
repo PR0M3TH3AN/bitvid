@@ -71,6 +71,10 @@ test.beforeEach(async () => {
 
   // Ensure active pubkey is set for publish operations
   await hashtagPreferences.load("0".repeat(64));
+
+  if (nostrClient.extensionPermissionCache) {
+    nostrClient.extensionPermissionCache.clear();
+  }
 });
 
 test.after(() => {
@@ -78,6 +82,7 @@ test.after(() => {
   restoreRelayManager();
   window.nostr = originalWindowNostr;
   clearActiveSigner();
+  setTimeout(() => process.exit(0), 100);
 });
 
 test(
@@ -255,9 +260,13 @@ test(
     nostrClient.writeRelays = relayUrls;
 
     const decryptCalls = [];
+    const permissionState = { enabled: false };
     window.nostr = {
+      enable: async () => { permissionState.enabled = true; },
+      getPublicKey: async () => pubkey,
       nip04: {
         decrypt: async () => {
+          if (!permissionState.enabled) throw new Error("permission denied");
           decryptCalls.push("nip04");
           return JSON.stringify({
             version: 1,
