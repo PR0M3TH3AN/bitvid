@@ -959,13 +959,12 @@ class HashtagPreferencesService {
       );
     }
 
-    const nostrApi = allowPermissionPrompt
-      ? typeof window !== "undefined" && window?.nostr
+    const nostrApi =
+      typeof window !== "undefined" && window?.nostr
         ? window.nostr
         : typeof globalThis !== "undefined" && globalThis?.nostr
           ? globalThis.nostr
-          : null
-      : null;
+          : null;
     if (nostrApi) {
       if (typeof nostrApi.nip04?.decrypt === "function") {
         registerDecryptor(
