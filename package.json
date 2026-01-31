@@ -51,10 +51,9 @@
     "cross-env": "^10.1.0",
     "esbuild": "^0.25.12",
     "jsdom": "^27.4.0",
-    "nostr-tools": "^2.19.4",
+    "nostr-tools": "2.19.4",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.19",
-    "ws": "^8.19.0",
-    "cross-env": "^10.1.0"
+    "ws": "^8.19.0"
   }
 }
