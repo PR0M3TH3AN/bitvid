@@ -859,10 +859,10 @@ class SubscriptionsManager {
 
     let signer = getActiveSigner();
     if (
-      !signer ||
-      (!signerHasRequiredDecryptors(signer) &&
-        typeof nostrClient?.ensureActiveSignerForPubkey === "function" &&
-        allowPermissionPrompt)
+      allowPermissionPrompt &&
+      (!signer ||
+        (!signerHasRequiredDecryptors(signer) &&
+          typeof nostrClient?.ensureActiveSignerForPubkey === "function"))
     ) {
       signer = await nostrClient.ensureActiveSignerForPubkey(userPubkey);
     }
