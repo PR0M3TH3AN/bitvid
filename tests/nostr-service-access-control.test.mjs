@@ -67,7 +67,7 @@ test.after(() => {
   } else {
     globalThis.NostrTools = originalGlobalNostrTools;
   }
-
+  // Force exit to prevent hanging handles from singletons
   setTimeout(() => process.exit(0), 100);
 });
 

@@ -250,6 +250,8 @@ test(
     };
 
     nostrClient.fetchListIncrementally = async () => {
+      fetchCalls += 1;
+      // Always return the event so the second load call (with permissions) finds data
       return [event];
     };
     nostrClient.relays = relayUrls;
@@ -257,7 +259,7 @@ test(
 
     const decryptCalls = [];
     window.nostr = {
-      enable: async () => {},
+      enable: async () => true,
       getPublicKey: async () => pubkey,
       nip04: {
         decrypt: async () => {
