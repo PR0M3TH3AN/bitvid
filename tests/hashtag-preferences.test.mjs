@@ -256,6 +256,8 @@ test(
 
     const decryptCalls = [];
     window.nostr = {
+      enable: async () => {},
+      getPublicKey: async () => pubkey,
       nip04: {
         decrypt: async () => {
           decryptCalls.push("nip04");
