@@ -6737,7 +6737,13 @@ export class NostrClient {
       }
 
       const chunkSize = 100;
-      for (let index = 0; index < identifierRecords.length; index += chunkSize) {
+      const publishPromises = [];
+
+      for (
+        let index = 0;
+        index < identifierRecords.length;
+        index += chunkSize
+      ) {
         const chunk = identifierRecords.slice(index, index + chunkSize);
         const eventIds = chunk
           .filter((record) => record.type === "e")
@@ -6757,50 +6763,58 @@ export class NostrClient {
         });
 
         const signedDelete = await queueSignEvent(signer, deleteEvent);
-        const publishResults = await publishEventToRelays(
-          this.pool,
-          this.relays,
-          signedDelete,
-        );
-        const publishSummary = summarizePublishResults(publishResults);
 
-        publishSummary.accepted.forEach(({ url }) =>
-          devLogger.log(`Delete event published to ${url}`),
-        );
+        const publishPromise = (async () => {
+          const publishResults = await publishEventToRelays(
+            this.pool,
+            this.relays,
+            signedDelete,
+          );
+          const publishSummary = summarizePublishResults(publishResults);
 
-        if (publishSummary.failed.length) {
-          publishSummary.failed.forEach(({ url, error: relayError }) => {
-            const reason =
-              relayError instanceof Error
-                ? relayError.message
-                : relayError
-                ? String(relayError)
-                : "publish failed";
-            userLogger.warn(
-              `[nostr] Delete event not accepted by ${url}: ${reason}`,
-              relayError,
-            );
-          });
-        }
+          publishSummary.accepted.forEach(({ url }) =>
+            devLogger.log(`Delete event published to ${url}`)
+          );
 
-        if (signedDelete?.id) {
-          this.rawEvents.set(signedDelete.id, signedDelete);
-        }
+          if (publishSummary.failed.length) {
+            publishSummary.failed.forEach(({ url, error: relayError }) => {
+              const reason =
+                relayError instanceof Error
+                  ? relayError.message
+                  : relayError
+                  ? String(relayError)
+                  : "publish failed";
+              userLogger.warn(
+                `[nostr] Delete event not accepted by ${url}: ${reason}`,
+                relayError
+              );
+            });
+          }
 
-        deleteSummaries.push({
-          event: signedDelete,
-          publishResults,
-          summary: publishSummary,
-          identifiers: {
-            events: chunk
-              .filter((record) => record.type === "e")
-              .map((record) => record.value),
-            addresses: chunk
-              .filter((record) => record.type === "a")
-              .map((record) => record.value),
-          },
-        });
+          if (signedDelete?.id) {
+            this.rawEvents.set(signedDelete.id, signedDelete);
+          }
+
+          return {
+            event: signedDelete,
+            publishResults,
+            summary: publishSummary,
+            identifiers: {
+              events: chunk
+                .filter((record) => record.type === "e")
+                .map((record) => record.value),
+              addresses: chunk
+                .filter((record) => record.type === "a")
+                .map((record) => record.value),
+            },
+          };
+        })();
+
+        publishPromises.push(publishPromise);
       }
+
+      const chunkResults = await Promise.all(publishPromises);
+      deleteSummaries.push(...chunkResults);
     }
 
     this.saveLocalData("delete-events", { immediate: true });
