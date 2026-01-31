@@ -6530,6 +6530,8 @@ export class ProfileModalController {
               ? formatNpub(meta.npub) || DEFAULT_SAVED_PROFILE_LABEL
               : DEFAULT_SAVED_PROFILE_LABEL);
           avatarImg.alt = `${cardDisplayName} avatar`;
+          avatarImg.loading = "lazy";
+          avatarImg.decoding = "async";
           avatarSpan.appendChild(avatarImg);
 
           const metaSpan = document.createElement("div");
@@ -6801,6 +6803,8 @@ export class ProfileModalController {
     avatarImg.className = "h-full w-full object-cover";
     avatarImg.src = avatarUrl;
     avatarImg.alt = `${safeName} avatar`;
+    avatarImg.loading = "lazy";
+    avatarImg.decoding = "async";
     avatarWrapper.appendChild(avatarImg);
 
     const textStack = document.createElement("div");

@@ -1241,6 +1241,8 @@ export function buildHistoryCard({ item, video, profile, variant }) {
       : FALLBACK_AVATAR;
   avatarImg.src = avatarSrc;
   avatarImg.alt = profile?.name || "Avatar";
+  avatarImg.loading = "lazy";
+  avatarImg.decoding = "async";
   avatarBtn.appendChild(avatarImg);
 
   const authorNameBtn = document.createElement("button");

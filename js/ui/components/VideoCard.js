@@ -763,7 +763,8 @@ export class VideoCard {
       }
     }
 
-    img.loading = "lazy";
+    // Eager load the first 2 cards to improve LCP
+    img.loading = this.index < 2 ? "eager" : "lazy";
     img.decoding = "async";
     img.alt = this.video.title || "";
 
@@ -904,7 +905,9 @@ export class VideoCard {
     const avatar = this.createElement("img", {
       attrs: {
         src: "assets/svg/default-profile.svg",
-        alt: "Placeholder"
+        alt: "Placeholder",
+        loading: "lazy",
+        decoding: "async",
       }
     });
     avatar.classList.add(
