@@ -6,10 +6,10 @@ import { nostrClient } from "../js/nostrClientFacade.js";
 import { NostrClient, __testExports } from "../js/nostr/client.js";
 import nip07Provider from "../js/services/authProviders/nip07.js";
 import { accessControl } from "../js/accessControl.js";
+import { DEFAULT_NIP07_ENCRYPTION_METHODS } from "../js/nostr/nip07Permissions.js";
 
 const {
   runNip07WithRetry,
-  DEFAULT_NIP07_ENCRYPTION_METHODS,
 } = __testExports ?? {};
 
 const EXPECTED_ENCRYPTION_PERMISSIONS = Array.isArray(
@@ -153,8 +153,47 @@ function setupLoginEnvironment({ enableImpl, getPublicKey = HEX_PUBKEY } = {}) {
   };
 }
 
-describe("Nostr Login Permissions", () => {
-  beforeEach(() => {
+test("NIP-07 login requests decrypt permissions upfront", async () => {
+  const env = setupLoginEnvironment();
+  try {
+    const result = await nip07Provider.login({ nostrClient });
+    const pubkey = result.pubkey;
+    assert.equal(pubkey, HEX_PUBKEY);
+    assert.ok(env.enableCalls.length >= 1, "extension.enable should be invoked");
+
+    // Explicit checks for permissions we know should be there
+    assert.ok(
+      cache.has("nip04.encrypt"),
+      "nip04.encrypt permission should be tracked as granted",
+    );
+    assert.ok(
+      cache.has("nip04.decrypt"),
+      "nip04.decrypt permission should be tracked as granted",
+    );
+    assert.ok(
+      cache.has("nip44.encrypt"),
+      "nip44.encrypt permission should be tracked as granted",
+    );
+    assert.ok(
+      cache.has("nip44.decrypt"),
+      "nip44.decrypt permission should be tracked as granted",
+    );
+
+    // Dynamic check for all expected methods
+    for (const method of EXPECTED_ENCRYPTION_PERMISSIONS) {
+      assert.ok(
+        cache.has(method),
+        `${method} permission should be tracked as granted`,
+      );
+    }
+
+    assert.ok(
+      cache.has("sign_event"),
+      "sign_event permission should be tracked as granted",
+    );
+  } finally {
+    env.restore();
+    nostrClient.logout();
     clearStoredPermissions();
   });
 
@@ -162,10 +201,19 @@ describe("Nostr Login Permissions", () => {
     clearStoredPermissions();
   });
 
-  after(() => {
-    // Force exit to prevent open handles (e.g. intervals in nostrClient) from hanging the test runner
-    process.exit(0);
-  });
+    const result = await nip07Provider.login({ nostrClient });
+    const pubkey = result.pubkey;
+    assert.equal(pubkey, HEX_PUBKEY);
+
+    // Refresh cache reference
+    const cache = nostrClient.extensionPermissionCache;
+
+    for (const method of EXPECTED_ENCRYPTION_PERMISSIONS) {
+      assert.ok(
+        cache.has(method),
+        `nostrClient should track ${method} after login`,
+      );
+    }
 
   it("NIP-07 login requests decrypt permissions upfront", async () => {
     const env = setupLoginEnvironment();
