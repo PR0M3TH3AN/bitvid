@@ -2079,7 +2079,7 @@ export class NostrClient {
     }
 
     const permissionResult = await this.ensureExtensionPermissions(
-      DEFAULT_NIP07_CORE_METHODS,
+      DEFAULT_NIP07_PERMISSION_METHODS,
       { context: "login", logMetrics: true, showStatus: false },
     );
     if (!permissionResult.ok) {
