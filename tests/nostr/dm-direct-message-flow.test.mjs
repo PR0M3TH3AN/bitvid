@@ -117,7 +117,11 @@ async function configureNostrTools() {
 
   const nostrTools = await import("nostr-tools");
 
-  globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__ = nostrTools;
+  Object.defineProperty(globalThis, "__BITVID_CANONICAL_NOSTR_TOOLS__", {
+    value: nostrTools,
+    writable: true,
+    configurable: true,
+  });
   globalThis.NostrTools = nostrTools;
   globalThis.nostrToolsReady = Promise.resolve({ ok: true, value: nostrTools });
 
@@ -125,7 +129,11 @@ async function configureNostrTools() {
     if (previousCanonical === undefined) {
       delete globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__;
     } else {
-      globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__ = previousCanonical;
+      Object.defineProperty(globalThis, "__BITVID_CANONICAL_NOSTR_TOOLS__", {
+        value: previousCanonical,
+        writable: true,
+        configurable: true,
+      });
     }
 
     if (previousNostrTools === undefined) {
