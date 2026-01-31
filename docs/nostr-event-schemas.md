@@ -348,5 +348,6 @@ npm run test:unit
 ```
 
 When modifying schemas or builders, use `scripts/agent/validate-events.mjs` to
-verify your changes locally. This tool also scans the codebase to ensure all
-active event builders are covered by tests.
+verify your changes locally. This tool validates that builders produce events
+conforming to the defined schemas, covering standard and application-specific
+usage patterns.
