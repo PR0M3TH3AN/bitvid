@@ -7,21 +7,18 @@ import { LRUCache } from "../utils/lruCache.js";
 import { CACHE_POLICIES } from "./cachePolicies.js";
 import { NOTE_TYPES } from "../nostrEventSchemas.js";
 import { queueSignEvent } from "./signRequestQueue.js";
-import { sanitizeRelayList as sanitizeRelayUrls } from "./nip46Client.js";
 
 const CACHE_POLICY = CACHE_POLICIES[NOTE_TYPES.VIDEO_REACTION];
 const reactionCache = new LRUCache({ maxSize: 100 });
 
 function sanitizeRelayList(primary, fallback) {
-  const primaryList = sanitizeRelayUrls(Array.isArray(primary) ? primary : []);
-  if (primaryList.length) {
-    return primaryList;
+  if (Array.isArray(primary) && primary.length) {
+    return primary;
   }
-  const fallbackList = sanitizeRelayUrls(Array.isArray(fallback) ? fallback : []);
-  if (fallbackList.length) {
-    return fallbackList;
+  if (Array.isArray(fallback) && fallback.length) {
+    return fallback;
   }
-  return sanitizeRelayUrls(RELAY_URLS);
+  return RELAY_URLS;
 }
 
 function normalizeString(value) {

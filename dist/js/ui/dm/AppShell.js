@@ -2,7 +2,6 @@ import { Composer } from "./Composer.js";
 import { ConversationList } from "./ConversationList.js";
 import { MessageThread } from "./MessageThread.js";
 import { DMPrivacySettings } from "./DMPrivacySettings.js";
-import { DMRelaySettings } from "./DMRelaySettings.js";
 import { aggregateZapTotals } from "./zapHelpers.js";
 import { createZapInterface } from "./ZapInterface.js";
 
@@ -137,7 +136,6 @@ export class AppShell {
     onToggleTypingIndicators,
     onRefreshConversations,
     onBack,
-    onOpenSettings,
   } = {}) {
     if (!doc) {
       throw new Error("AppShell requires a document reference.");
@@ -184,23 +182,15 @@ export class AppShell {
         popover.remove();
         return;
       }
-      popover = createElement(doc, "div", "dm-settings-popover absolute z-50 right-4 top-12 flex flex-col gap-4");
-
-      const privacySettings = DMPrivacySettings({
+      popover = DMPrivacySettings({
         document: doc,
         readReceiptsEnabled: dmPrivacySettings.readReceiptsEnabled,
         typingIndicatorsEnabled: dmPrivacySettings.typingIndicatorsEnabled,
         onToggleReadReceipts,
         onToggleTypingIndicators,
       });
-      popover.appendChild(privacySettings);
-
-      const relaySettings = DMRelaySettings({ document: doc });
-      popover.appendChild(relaySettings);
+      popover.classList.add("dm-settings-popover", "absolute", "z-50", "right-4", "top-12", "bg-surface", "border", "border-border", "rounded-xl");
       sidebarHeader.appendChild(popover);
-      if (typeof onOpenSettings === "function") {
-        onOpenSettings(popover);
-      }
 
       const closeHandler = (event) => {
         if (!popover.contains(event.target) && event.target !== settingsBtn && !settingsBtn.contains(event.target)) {

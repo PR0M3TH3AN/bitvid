@@ -1,8 +1,6 @@
 import { devLogger, userLogger } from "../utils/logger.js";
 
 const TELEMETRY_STORAGE_KEY = "bitvid:relay-health-telemetry-opt-in";
-const PERSISTENT_FAILURE_THRESHOLD = 3;
-const USER_LOG_COOLDOWN_MS = 5 * 60 * 1000;
 
 function resolveLogger(logger) {
   if (logger && logger.dev && logger.user) {
@@ -92,10 +90,8 @@ class RelayHealthService {
         connected: false,
         lastLatencyMs: null,
         errorCount: 0,
-        consecutiveFailures: 0,
         lastCheckedAt: null,
         lastErrorAt: null,
-        lastUserLogAt: null,
       });
     }
 
@@ -133,47 +129,22 @@ class RelayHealthService {
     const state = this.ensureRelayState(relayUrl);
     state.connected = true;
     state.lastCheckedAt = Date.now();
-    state.consecutiveFailures = 0;
     if (Number.isFinite(latencyMs)) {
       state.lastLatencyMs = Math.max(0, Math.round(latencyMs));
-    }
-
-    if (this.nostrClient && typeof this.nostrClient.clearRelayBackoff === "function") {
-      this.nostrClient.clearRelayBackoff(relayUrl);
     }
   }
 
   recordRelayFailure(relayUrl, error) {
     const state = this.ensureRelayState(relayUrl);
-    const now = Date.now();
     state.connected = false;
     state.errorCount += 1;
-    state.consecutiveFailures += 1;
-    state.lastCheckedAt = now;
-    state.lastErrorAt = now;
-
-    if (this.nostrClient && typeof this.nostrClient.markRelayUnreachable === "function") {
-      this.nostrClient.markRelayUnreachable(relayUrl, 60000, {
-        reason: "relay-health-failed",
-      });
-    }
+    state.lastCheckedAt = Date.now();
+    state.lastErrorAt = Date.now();
 
     this.logger.dev.warn("[relayHealth] Relay check failed.", {
       relayUrl,
       error,
     });
-
-    if (
-      state.consecutiveFailures >= PERSISTENT_FAILURE_THRESHOLD &&
-      (!state.lastUserLogAt || now - state.lastUserLogAt >= USER_LOG_COOLDOWN_MS)
-    ) {
-      state.lastUserLogAt = now;
-      this.logger.user.warn("[relayHealth] Relay unreachable after repeated failures.", {
-        relayUrl,
-        errorCount: state.consecutiveFailures,
-        lastError: error,
-      });
-    }
   }
 
   async checkRelay(relayUrl) {

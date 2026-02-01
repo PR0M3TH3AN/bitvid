@@ -11,10 +11,6 @@ export default class UrlHealthController {
     this.logger = logger;
     this.constants = constants;
     this.callbacks = callbacks;
-
-    this.activeVideoProbes = 0;
-    this.videoProbeQueue = [];
-    this.MAX_CONCURRENT_VIDEO_PROBES = 3;
   }
 
   getUrlHealthPlaceholderMarkup(options = {}) {
@@ -258,85 +254,67 @@ export default class UrlHealthController {
       return { outcome: "error" };
     }
 
-    if (this.activeVideoProbes >= this.MAX_CONCURRENT_VIDEO_PROBES) {
-      await new Promise((resolve) => {
-        this.videoProbeQueue.push(resolve);
-      });
-    }
+    return new Promise((resolve) => {
+      const video = document.createElement("video");
+      let settled = false;
+      let timeoutId = null;
 
-    this.activeVideoProbes++;
-
-    try {
-      return await new Promise((resolve) => {
-        const video = document.createElement("video");
-        let settled = false;
-        let timeoutId = null;
-
-        const cleanup = () => {
-          if (timeoutId) {
-            clearTimeout(timeoutId);
-          }
-          video.removeEventListener("loadeddata", handleSuccess);
-          video.removeEventListener("canplay", handleSuccess);
-          video.removeEventListener("error", handleError);
-          try {
-            video.pause();
-          } catch (err) {
-            // ignore pause failures
-          }
-          try {
-            video.removeAttribute("src");
-            video.load();
-          } catch (err) {
-            // ignore cleanup failures
-          }
-        };
-
-        const settle = (result) => {
-          if (settled) {
-            return;
-          }
-          settled = true;
-          cleanup();
-          resolve(result);
-        };
-
-        const handleSuccess = () => {
-          settle({ outcome: "ok" });
-        };
-
-        const handleError = () => {
-          settle({ outcome: "error" });
-        };
-
-        if (Number.isFinite(effectiveTimeout) && effectiveTimeout > 0) {
-          timeoutId = setTimeout(() => {
-            settle({ outcome: "timeout" });
-          }, effectiveTimeout);
+      const cleanup = () => {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
         }
-
+        video.removeEventListener("loadeddata", handleSuccess);
+        video.removeEventListener("canplay", handleSuccess);
+        video.removeEventListener("error", handleError);
         try {
-          video.preload = "metadata";
-          video.muted = true;
-          video.playsInline = true;
-          video.addEventListener("loadeddata", handleSuccess, { once: true });
-          video.addEventListener("canplay", handleSuccess, { once: true });
-          video.addEventListener("error", handleError, { once: true });
-          video.src = trimmed;
+          video.pause();
+        } catch (err) {
+          // ignore pause failures
+        }
+        try {
+          video.removeAttribute("src");
           video.load();
         } catch (err) {
-          settle({ outcome: "error", error: err });
+          // ignore cleanup failures
         }
-      });
-    } finally {
-      this.activeVideoProbes--;
-      if (this.videoProbeQueue.length > 0) {
-        const next = this.videoProbeQueue.shift();
-        if (typeof next === "function") {
-          next();
+      };
+
+      const settle = (result) => {
+        if (settled) {
+          return;
         }
+        settled = true;
+        cleanup();
+        resolve(result);
+      };
+
+      const handleSuccess = () => {
+        settle({ outcome: "ok" });
+      };
+
+      const handleError = () => {
+        settle({ outcome: "error" });
+      };
+
+      if (Number.isFinite(effectiveTimeout) && effectiveTimeout > 0) {
+        timeoutId = setTimeout(() => {
+          settle({ outcome: "timeout" });
+        }, effectiveTimeout);
       }
-    }
+
+      try {
+        video.preload = "metadata";
+        video.muted = true;
+        video.playsInline = true;
+        video.addEventListener("loadeddata", handleSuccess, { once: true });
+        video.addEventListener("canplay", handleSuccess, { once: true });
+        video.addEventListener("error", handleError, { once: true });
+        video.src = trimmed;
+        video.load();
+      } catch (err) {
+        settle({ outcome: "error", error: err });
+      }
+    });
   }
 
   async probeUrl(url, options = {}) {

@@ -39,10 +39,6 @@ function normalizeRelayUrl(input) {
     return null;
   }
 
-  const enforceTls =
-    typeof window !== "undefined" &&
-    window?.location?.protocol === "https:";
-
   let candidate = input.trim();
   if (!candidate) {
     return null;
@@ -60,18 +56,6 @@ function normalizeRelayUrl(input) {
   }
 
   if (parsed.protocol !== "wss:" && parsed.protocol !== "ws:") {
-    return null;
-  }
-
-  if (enforceTls && parsed.protocol === "ws:") {
-    try {
-      parsed = new URL(candidate.replace(/^ws:/i, "wss:"));
-    } catch (error) {
-      return null;
-    }
-  }
-
-  if (enforceTls && parsed.protocol !== "wss:") {
     return null;
   }
 

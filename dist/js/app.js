@@ -31,7 +31,7 @@ import { collectVideoTags } from "./utils/videoTags.js";
 import { normalizeHashtag } from "./utils/hashtagNormalization.js";
 import { sanitizeProfileMediaUrl } from "./utils/profileMedia.js";
 import { ADMIN_INITIAL_EVENT_BLACKLIST } from "./lists.js";
-import { userBlocks, USER_BLOCK_EVENTS } from "./userBlocks.js";
+import { userBlocks } from "./userBlocks.js";
 import { relayManager } from "./relayManager.js";
 import {
   createFeedEngine,
@@ -64,10 +64,6 @@ import getAuthProvider, {
 import hashtagPreferences, {
   HASHTAG_PREFERENCES_EVENTS,
 } from "./services/hashtagPreferencesService.js";
-import {
-  fetchProfileMetadata,
-  ensureProfileMetadataSubscription,
-} from "./services/profileMetadataService.js";
 import { getSidebarLoadingMarkup } from "./sidebarLoading.js";
 import { subscriptions } from "./subscriptions.js";
 import {
@@ -77,6 +73,7 @@ import {
 import { isWatchHistoryDebugEnabled } from "./watchHistoryDebug.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import createPopover from "./ui/overlay/popoverEngine.js";
+import { createVideoSettingsMenuPanel } from "./ui/components/videoMenuRenderers.js";
 import moderationService from "./services/moderationService.js";
 import { sanitizeRelayList } from "./nostr/nip46Client.js";
 import { buildDmRelayListEvent, buildShareEvent } from "./nostrEventSchemas.js";
@@ -89,7 +86,7 @@ import {
   onActiveSignerChanged,
 } from "./nostrClientRegistry.js";
 import { queueSignEvent } from "./nostr/signRequestQueue.js";
-import { DEFAULT_NIP07_CORE_METHODS } from "./nostr/nip07Permissions.js";
+import { DEFAULT_NIP07_PERMISSION_METHODS } from "./nostr/nip07Permissions.js";
 import {
   initViewCounter,
   subscribeToVideoViewCount,
@@ -173,7 +170,6 @@ import EngagementController from "./ui/engagementController.js";
 import SimilarContentController from "./ui/similarContentController.js";
 import UrlHealthController from "./ui/urlHealthController.js";
 import VideoModalCommentController from "./ui/videoModalCommentController.js";
-import VideoModalController from "./ui/videoModalController.js";
 import TorrentStatusController from "./ui/torrentStatusController.js";
 import ShareNostrController from "./ui/shareNostrController.js";
 import ModerationActionController from "./services/moderationActionController.js";
@@ -188,7 +184,6 @@ const UNSUPPORTED_BTITH_MESSAGE =
 const FALLBACK_THUMBNAIL_SRC = "/assets/jpg/video-thumbnail-fallback.jpg";
 const VIDEO_EVENT_KIND = 30078;
 const HEX64_REGEX = /^[0-9a-f]{64}$/i;
-const RELAY_UI_BATCH_DELAY_MS = 250;
 /**
  * Simple IntersectionObserver-based lazy loader for images (or videos).
  *
@@ -224,14 +219,6 @@ class Application {
     setStoredCurrentVideo(value ?? null);
   }
 
-  get activeProfilePubkey() {
-    return getActiveProfilePubkey();
-  }
-
-  get savedProfiles() {
-    return getSavedProfiles();
-  }
-
   constructor({ services = {}, ui = {}, helpers = {}, loadView: viewLoader } = {}) {
     this.loadView = typeof viewLoader === "function" ? viewLoader : null;
 
@@ -260,33 +247,9 @@ class Application {
     const { modalManager } = this.bootstrapper.initialize();
     this.modalManager = modalManager;
 
-    this.videoModalController = new VideoModalController({
-      getVideoModal: () => this.videoModal,
-      callbacks: {
-        showError: (msg) => this.showError(msg),
-        getLastModalTrigger: () => this.lastModalTrigger,
-        setLastModalTrigger: (val) => this.setLastModalTrigger(val),
-        getCurrentVideo: () => this.currentVideo,
-      },
-    });
-
     this.modalCreatorProfileRequestToken = null;
     this.dmRecipientPubkey = null;
     this.dmRelayHints = new Map();
-    this.authLoadingState = { profile: "idle", lists: "idle", dms: "idle" };
-    this.permissionPromptShownForSession = false;
-    this.permissionPromptVisible = false;
-    this.permissionPromptInFlight = false;
-    this.permissionPromptPending = new Set();
-    this.relayUiRefreshTimeout = null;
-    this.lastRelayHealthWarningAt = 0;
-    this.appStartedAt = Date.now();
-    this.activeIntervals = [];
-    this.torrentStatusIntervalId = null;
-    this.torrentStatusNodes = null;
-    this.torrentStatusVisibilityHandler = null;
-    this.torrentStatusPageHideHandler = null;
-    this.urlProbePromises = new Map();
 
     this.commentController = null;
     this.initializeCommentController();
@@ -607,10 +570,6 @@ class Application {
       if (typeof this.loadView !== "function") {
         const module = await import("./viewManager.js");
         this.loadView = module?.loadView || null;
-      }
-
-      if (nostrClient && typeof nostrClient.warmupExtension === "function") {
-        nostrClient.warmupExtension();
       }
 
       // Force update of any registered service workers to ensure latest code is used.
@@ -1131,43 +1090,6 @@ class Application {
     }
   }
 
-  dispatchAuthLoadingState(detail = {}) {
-    if (typeof window === "undefined" || typeof window.dispatchEvent !== "function") {
-      return false;
-    }
-
-    try {
-      const payload = { ...(typeof detail === "object" && detail ? detail : {}) };
-      window.dispatchEvent(new CustomEvent("bitvid:auth-loading-state", { detail: payload }));
-      return true;
-    } catch (error) {
-      devLogger.warn("[Application] Failed to dispatch auth loading state:", error);
-      return false;
-    }
-  }
-
-  updateAuthLoadingState(partial = {}) {
-    const baseState =
-      this.authLoadingState && typeof this.authLoadingState === "object"
-        ? this.authLoadingState
-        : { profile: "idle", lists: "idle", dms: "idle" };
-    const nextState = {
-      ...baseState,
-      ...(partial && typeof partial === "object" ? partial : {}),
-    };
-    this.authLoadingState = nextState;
-
-    const root = typeof document !== "undefined" ? document.documentElement : null;
-    if (root) {
-      root.dataset.authProfileLoading = nextState.profile || "idle";
-      root.dataset.authListsLoading = nextState.lists || "idle";
-      root.dataset.authDmsLoading = nextState.dms || "idle";
-    }
-
-    this.dispatchAuthLoadingState(nextState);
-    return nextState;
-  }
-
   normalizeModalTrigger(candidate) {
     if (!candidate) {
       return null;
@@ -1207,23 +1129,162 @@ class Application {
    * Show the modal and set the "Please stand by" poster on the video.
    */
   async showModalWithPoster(video = this.currentVideo, options = {}) {
-    const result = await this.videoModalController.showModalWithPoster(video, options);
-    this.cacheTorrentStatusNodes();
-    return result;
+    if (!this.videoModal) {
+      return null;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(options || {}, "trigger")) {
+      this.setLastModalTrigger(options.trigger);
+    }
+
+    const targetVideo = video || this.currentVideo;
+    if (!targetVideo) {
+      this.log(
+        "[Application] Skipping video modal open; no target video is available.",
+      );
+      return null;
+    }
+
+    try {
+      const { root } = await this.ensureVideoModalReady({
+        ensureVideoElement: true,
+      });
+
+      if (!this.videoModal) {
+        return root || null;
+      }
+
+      this.videoModal.open(targetVideo, {
+        triggerElement: this.lastModalTrigger,
+      });
+      this.applyModalLoadingPoster();
+
+      return (
+        root ||
+        (typeof this.videoModal.getRoot === "function"
+          ? this.videoModal.getRoot()
+          : null)
+      );
+    } catch (error) {
+      devLogger.error(
+        "[Application] Failed to open the video modal before playback:",
+        error
+      );
+      this.showError("Could not open the video player. Please try again.");
+      return null;
+    }
   }
 
   applyModalLoadingPoster() {
-    this.videoModalController.applyModalLoadingPoster();
+    if (!this.videoModal) {
+      return;
+    }
+    this.videoModal.applyLoadingPoster();
   }
 
   forceRemoveModalPoster(reason = "manual-clear") {
-    return this.videoModalController.forceRemoveModalPoster(reason);
+    if (!this.videoModal) {
+      return false;
+    }
+    return this.videoModal.forceRemovePoster(reason);
   }
 
   async ensureVideoModalReady({ ensureVideoElement = false } = {}) {
-    const result = await this.videoModalController.ensureVideoModalReady({ ensureVideoElement });
-    this.modalVideo = result.videoElement;
-    return result;
+    if (!this.videoModal) {
+      throw new Error("Video modal instance is not available.");
+    }
+
+    const getRoot = () =>
+      typeof this.videoModal.getRoot === "function"
+        ? this.videoModal.getRoot()
+        : null;
+    const getVideoElement = () =>
+      typeof this.videoModal.getVideoElement === "function"
+        ? this.videoModal.getVideoElement()
+        : null;
+
+    const existingRoot = getRoot();
+    const existingVideoElement = getVideoElement();
+    const rootConnected = Boolean(existingRoot && existingRoot.isConnected);
+    const hasVideoElement = Boolean(existingVideoElement);
+    const videoConnected = Boolean(
+      existingVideoElement && existingVideoElement.isConnected,
+    );
+
+    const needsRehydrate =
+      !rootConnected || !hasVideoElement || !videoConnected;
+
+    if (!needsRehydrate) {
+      this.modalVideo = existingVideoElement;
+
+      if (
+        existingVideoElement &&
+        this.videoModal &&
+        typeof this.videoModal.setVideoElement === "function"
+      ) {
+        const modalVideo =
+          typeof this.videoModal.getVideoElement === "function"
+            ? this.videoModal.getVideoElement()
+            : null;
+        if (modalVideo !== existingVideoElement) {
+          this.videoModal.setVideoElement(existingVideoElement);
+        }
+      }
+
+      return {
+        root: existingRoot,
+        videoElement: existingVideoElement,
+      };
+    }
+
+    if (!videoConnected) {
+      this.modalVideo = null;
+    }
+
+    if (!this.videoModalReadyPromise) {
+      if (typeof this.videoModal.load !== "function") {
+        throw new Error("Video modal does not expose a load() method.");
+      }
+      this.videoModalReadyPromise = Promise.resolve(this.videoModal.load());
+    }
+
+    try {
+      await this.videoModalReadyPromise;
+    } catch (error) {
+      this.videoModalReadyPromise = null;
+      throw error;
+    }
+
+    this.videoModalReadyPromise = null;
+
+    const readyRoot = getRoot();
+    const readyVideoElement = getVideoElement();
+    const readyVideoConnected = Boolean(
+      readyVideoElement && readyVideoElement.isConnected,
+    );
+
+    if (readyVideoConnected) {
+      this.modalVideo = readyVideoElement;
+      if (
+        this.videoModal &&
+        typeof this.videoModal.setVideoElement === "function"
+      ) {
+        this.videoModal.setVideoElement(readyVideoElement);
+      }
+    } else {
+      this.modalVideo = null;
+    }
+
+    if (ensureVideoElement && !readyVideoConnected) {
+      throw new Error(
+        "Video modal video element is missing after load().",
+      );
+    }
+
+    return {
+      root: readyRoot,
+      videoElement: readyVideoConnected ? readyVideoElement : null,
+    };
   }
 
   initializeSimilarContentController() {
@@ -1428,7 +1489,7 @@ class Application {
       this.videoModal.setViewCountPointer(pointerKey);
     }
     try {
-      const token = subscribeToVideoViewCount(pointer, ({ total, status, partial }) => {
+      const token = subscribeToVideoViewCount(pointer, ({ total, status }) => {
         const latestViewEl = this.videoModal?.getViewCountElement() || null;
         if (!latestViewEl) {
           return;
@@ -1437,12 +1498,10 @@ class Application {
         if (Number.isFinite(total)) {
           const numeric = Number(total);
           if (this.videoModal) {
-            const label = this.formatViewCountLabel(numeric);
             this.videoModal.updateViewCountLabel(
-              partial ? `${label} (partial)` : label
+              this.formatViewCountLabel(numeric)
             );
           }
-          latestViewEl.dataset.viewCountState = partial ? "partial" : "ready";
           return;
         }
 
@@ -1450,12 +1509,10 @@ class Application {
           if (this.videoModal) {
             this.videoModal.updateViewCountLabel("Loading views…");
           }
-          latestViewEl.dataset.viewCountState = "hydrating";
         } else {
           if (this.videoModal) {
             this.videoModal.updateViewCountLabel("– views");
           }
-          latestViewEl.dataset.viewCountState = status;
         }
       });
 
@@ -2033,9 +2090,7 @@ class Application {
       case "nip04-missing":
         return "Your Nostr extension must support NIP-04 to manage private block lists.";
       case "extension-permission-denied":
-        return "Your Nostr extension denied the encryption permissions needed to update your block list.";
-      case "extension-encryption-permission-denied":
-        return "Your Nostr extension denied the encryption permissions needed to update your block list.";
+        return "Permission to update your block list was denied by your Nostr extension.";
       case "sign-event-missing":
       case "signer-missing":
         return "Connect a Nostr signer that can encrypt and sign updates before managing block lists.";
@@ -2066,9 +2121,7 @@ class Application {
       case "hashtag-preferences-missing-signer":
         return "Connect a Nostr signer that supports encryption before managing hashtag preferences.";
       case "hashtag-preferences-extension-denied":
-        return "Your signer denied the encryption permissions needed to manage hashtag preferences.";
-      case "hashtag-preferences-permission-required":
-        return "Your Nostr extension must grant encryption permissions to read hashtag preferences.";
+        return "Permission to manage hashtag preferences was denied by your signer.";
       case "hashtag-preferences-no-decryptors":
         return "Unable to decrypt hashtag preferences with the active signer.";
       case "hashtag-preferences-decrypt-failed":
@@ -2095,100 +2148,6 @@ class Application {
         : "Failed to update hashtag preferences. Please try again.";
 
     return fallback;
-  }
-
-  resetPermissionPromptState() {
-    this.permissionPromptShownForSession = false;
-    this.permissionPromptVisible = false;
-    this.permissionPromptInFlight = false;
-    if (this.permissionPromptPending instanceof Set) {
-      this.permissionPromptPending.clear();
-    } else {
-      this.permissionPromptPending = new Set();
-    }
-    this.updatePermissionPromptCta();
-  }
-
-  capturePermissionPromptRequirement(source) {
-    const normalized =
-      typeof source === "string" ? source.trim().toLowerCase() : "";
-    if (!normalized) {
-      return;
-    }
-
-    this.permissionPromptPending.add(normalized);
-
-    if (!this.permissionPromptShownForSession) {
-      this.permissionPromptShownForSession = true;
-      this.permissionPromptVisible = true;
-    }
-
-    this.updatePermissionPromptCta();
-  }
-
-  capturePermissionPromptFromError(error) {
-    const code =
-      error && typeof error.code === "string" ? error.code.trim() : "";
-
-    switch (code) {
-      case "subscriptions-permission-required":
-        this.capturePermissionPromptRequirement("subscriptions");
-        break;
-      case "user-blocklist-permission-required":
-        this.capturePermissionPromptRequirement("user-blocks");
-        break;
-      case "hashtag-preferences-permission-required":
-        this.capturePermissionPromptRequirement("hashtag-preferences");
-        break;
-      default:
-        break;
-    }
-  }
-
-  resolvePermissionPromptMessage() {
-    const needsSubscriptions = this.permissionPromptPending.has("subscriptions");
-    const needsHashtags = this.permissionPromptPending.has("hashtag-preferences");
-    const needsBlocks = this.permissionPromptPending.has("user-blocks");
-
-    if (needsBlocks && needsSubscriptions && needsHashtags) {
-      return "Unlock private lists and enable permissions to load your subscriptions and hashtag preferences.";
-    }
-    if (needsBlocks && needsSubscriptions) {
-      return "Unlock private lists and enable permissions to load your subscriptions.";
-    }
-    if (needsBlocks && needsHashtags) {
-      return "Unlock private lists and enable permissions to load your hashtag preferences.";
-    }
-    if (needsSubscriptions && needsHashtags) {
-      return "Enable permissions to load your subscriptions and hashtag preferences.";
-    }
-    if (needsBlocks) {
-      return "Unlock private lists to load your block list.";
-    }
-    if (needsSubscriptions) {
-      return "Enable permissions to load your subscriptions.";
-    }
-    if (needsHashtags) {
-      return "Enable permissions to load your hashtag preferences.";
-    }
-    return "";
-  }
-
-  updatePermissionPromptCta() {
-    if (!this.profileController?.setPermissionPromptCtaState) {
-      return;
-    }
-
-    const shouldShow =
-      this.permissionPromptVisible && this.permissionPromptPending.size > 0;
-    const message = shouldShow ? this.resolvePermissionPromptMessage() : "";
-
-    this.profileController.setPermissionPromptCtaState({
-      visible: shouldShow,
-      message,
-      buttonLabel: "Enable permissions",
-      busy: this.permissionPromptInFlight,
-    });
   }
 
   normalizeHashtagPreferenceList(list) {
@@ -2423,7 +2382,7 @@ class Application {
     this.tagPreferenceMenuController.refreshActiveMenus();
   }
 
-  async loadHashtagPreferencesForPubkey(pubkey, options = {}) {
+  async loadHashtagPreferencesForPubkey(pubkey) {
     if (
       !this.hashtagPreferences ||
       typeof this.hashtagPreferences.load !== "function"
@@ -2432,7 +2391,7 @@ class Application {
     }
 
     try {
-      await this.hashtagPreferences.load(pubkey, options);
+      await this.hashtagPreferences.load(pubkey);
       return true;
     } catch (error) {
       devLogger.error(
@@ -2615,14 +2574,6 @@ class Application {
       });
     }
 
-    if (userBlocks && typeof userBlocks.on === "function") {
-      userBlocks.on(USER_BLOCK_EVENTS.STATUS, (detail) => {
-        if (detail?.status === "permission-required") {
-          this.capturePermissionPromptRequirement("user-blocks");
-        }
-      });
-    }
-
     if (this.appChromeController) {
       this.appChromeController.initialize();
       return;
@@ -2702,7 +2653,7 @@ class Application {
     }
 
     const messageContext =
-      reason === "login" && postLoginResult?.blocksLoaded === true
+      reason === "login" && postLoginResult?.blocksLoaded !== false
         ? "Applying your filters…"
         : "Refreshing videos…";
 
@@ -2806,9 +2757,7 @@ class Application {
     }
 
     if (signer.type === "extension" && nostrClient.ensureExtensionPermissions) {
-      const permissionResult = await nostrClient.ensureExtensionPermissions(
-        DEFAULT_NIP07_CORE_METHODS,
-      );
+      const permissionResult = await nostrClient.ensureExtensionPermissions();
       if (!permissionResult?.ok) {
         userLogger.warn(
           "[Application] Signer permissions denied while publishing DM relays.",
@@ -3323,20 +3272,17 @@ class Application {
         );
       }
 
-      const activePubkey = this.pubkey;
-      if (activePubkey) {
-        try {
-          await this.nostrService.loadDirectMessages({
-            actorPubkey: activePubkey,
-            limit: 50,
-            initialLoad: true,
-          });
-        } catch (error) {
-          devLogger.warn(
-            "[Application] Failed to sync direct messages during login:",
-            error,
-          );
-        }
+      try {
+        await this.nostrService.loadDirectMessages({
+          actorPubkey: activePubkey,
+          limit: 50,
+          initialLoad: true,
+        });
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to sync direct messages during login:",
+          error,
+        );
       }
     }
 
@@ -4146,131 +4092,11 @@ class Application {
     );
   }
 
-  async handlePermissionPromptRequest() {
-    if (this.permissionPromptInFlight) {
-      return;
-    }
-
-    const activePubkey = this.normalizeHexPubkey(this.pubkey);
-    if (!activePubkey) {
-      return;
-    }
-
-    const needsSubscriptions = this.permissionPromptPending.has("subscriptions");
-    const needsHashtags = this.permissionPromptPending.has("hashtag-preferences");
-    const needsBlocks = this.permissionPromptPending.has("user-blocks");
-
-    if (!needsSubscriptions && !needsHashtags && !needsBlocks) {
-      return;
-    }
-
-    this.permissionPromptInFlight = true;
-    this.updatePermissionPromptCta();
-
-    const tasks = [];
-
-    if (needsSubscriptions && subscriptions?.ensureLoaded) {
-      const subscriptionTask = subscriptions
-        .ensureLoaded(activePubkey, { allowPermissionPrompt: true })
-        .then(() => {
-          this.capturePermissionPromptFromError(subscriptions?.lastLoadError);
-          if (
-            subscriptions?.lastLoadError?.code !==
-            "subscriptions-permission-required"
-          ) {
-            this.permissionPromptPending.delete("subscriptions");
-            if (this.profileController) {
-              this.profileController.populateSubscriptionsList();
-            }
-            if (typeof subscriptions?.refreshActiveFeed === "function") {
-              return subscriptions.refreshActiveFeed({
-                reason: "permission-prompt",
-              });
-            }
-          }
-          return null;
-        })
-        .catch((error) => {
-          devLogger.warn(
-            "[Application] Failed to refresh subscriptions after permission prompt:",
-            error,
-          );
-          this.capturePermissionPromptFromError(error);
-        });
-      tasks.push(subscriptionTask);
-    }
-
-    if (needsBlocks && userBlocks?.loadBlocks) {
-      let permissionRequired = false;
-      const blocksTask = userBlocks
-        .loadBlocks(activePubkey, {
-          allowPermissionPrompt: true,
-          statusCallback: (detail) => {
-            if (detail?.status === "permission-required") {
-              permissionRequired = true;
-            }
-          },
-        })
-        .then(() => {
-          if (!permissionRequired) {
-            this.permissionPromptPending.delete("user-blocks");
-          }
-        })
-        .catch((error) => {
-          devLogger.warn(
-            "[Application] Failed to refresh block list after permission prompt:",
-            error,
-          );
-          this.capturePermissionPromptFromError(error);
-        });
-      tasks.push(blocksTask);
-    }
-
-    if (needsHashtags && this.hashtagPreferences?.load) {
-      const hashtagTask = this.hashtagPreferences
-        .load(activePubkey, { allowPermissionPrompt: true })
-        .then(() => {
-          this.capturePermissionPromptFromError(
-            this.hashtagPreferences?.lastLoadError,
-          );
-          if (
-            this.hashtagPreferences?.lastLoadError?.code !==
-            "hashtag-preferences-permission-required"
-          ) {
-            this.permissionPromptPending.delete("hashtag-preferences");
-            this.updateCachedHashtagPreferences();
-            this.refreshTagPreferenceUi();
-            if (this.profileController) {
-              this.profileController.populateHashtagPreferences();
-            }
-          }
-        })
-        .catch((error) => {
-          devLogger.warn(
-            "[Application] Failed to refresh hashtag preferences after permission prompt:",
-            error,
-          );
-          this.capturePermissionPromptFromError(error);
-        });
-      tasks.push(hashtagTask);
-    }
-
-    await Promise.allSettled(tasks);
-
-    if (this.permissionPromptPending.size === 0) {
-      this.permissionPromptVisible = false;
-    }
-
-    this.permissionPromptInFlight = false;
-    this.updatePermissionPromptCta();
-  }
-
   async handleAuthLogin(detail = {}) {
     const postLoginPromise =
       detail && typeof detail.postLoginPromise?.then === "function"
         ? detail.postLoginPromise
         : Promise.resolve(detail?.postLogin ?? null);
-    const postLoginResult = detail?.postLogin ?? null;
 
     if (detail && typeof detail === "object") {
       try {
@@ -4283,8 +4109,6 @@ class Application {
     if (detail?.identityChanged) {
       this.resetViewLoggingState();
     }
-
-    this.resetPermissionPromptState();
 
     // Stop existing feed subscription to prioritize user data sync
     if (
@@ -4308,6 +4132,10 @@ class Application {
     const urlParams = new URLSearchParams(window.location.search);
     const hasVideoParam = urlParams.has("v");
 
+    if (!normalizedView || normalizedView === "most-recent-videos") {
+      setHashView("for-you", { preserveVideoParam: hasVideoParam });
+    }
+
     const rawProviderId =
       typeof detail?.providerId === "string" ? detail.providerId.trim() : "";
     const rawAuthType =
@@ -4322,37 +4150,85 @@ class Application {
       previousPubkey: detail?.previousPubkey,
       identityChanged: Boolean(detail?.identityChanged),
     };
-    const activePubkey = detail?.pubkey || this.pubkey;
 
-    const initialLoadingState = {
-      profile: activePubkey ? "loading" : "idle",
-      lists: activePubkey ? "loading" : "idle",
-      dms: activePubkey ? "loading" : "idle",
-    };
-    this.updateAuthLoadingState(initialLoadingState);
+    try {
+      await this.handleModerationSettingsChange({
+        settings: getModerationSettings(),
+        skipRefresh: true,
+      });
+    } catch (error) {
+      devLogger.warn(
+        "Failed to sync moderation settings after login:",
+        error,
+      );
+    }
+
+    if (loginContext.identityChanged) {
+      this.resetHashtagPreferencesState();
+      try {
+        this.watchHistoryTelemetry?.resetPlaybackLoggingState?.();
+        this.watchHistoryTelemetry?.refreshPreferenceSettings?.();
+      } catch (error) {
+        devLogger.warn(
+          "Failed to refresh watch history telemetry after identity change:",
+          error,
+        );
+      }
+    }
+
+    const hashtagPreferencesPromise = Promise.resolve(
+      this.loadHashtagPreferencesForPubkey(loginContext.pubkey),
+    ).catch((error) => {
+      devLogger.warn(
+        "[Application] Background hashtag preferences load failed:",
+        error
+      );
+    });
+
+    if (this.zapController) {
+      try {
+        this.zapController.setVisibility(
+          Boolean(this.currentVideo?.lightningAddress),
+        );
+      } catch (error) {
+        devLogger.warn("[Application] Failed to refresh zap visibility after login:", error);
+      }
+    }
+
+    const shouldReopenZap = this.pendingModalZapOpen;
+    this.pendingModalZapOpen = false;
+    if (shouldReopenZap) {
+      const hasLightning = Boolean(this.currentVideo?.lightningAddress);
+      if (hasLightning && this.videoModal?.openZapDialog) {
+        Promise.resolve()
+          .then(() => this.videoModal.openZapDialog())
+          .then((opened) => {
+            if (opened) {
+              this.zapController?.open();
+            }
+          })
+          .catch((error) => {
+            devLogger.warn(
+              "[Application] Failed to reopen zap dialog after login:",
+              error,
+            );
+          });
+      }
+    }
 
     this.dispatchAuthChange({
       status: "login",
       loggedIn: true,
       pubkey: loginContext.pubkey || null,
       previousPubkey: loginContext.previousPubkey || null,
-      authLoadingState: this.authLoadingState,
     });
 
-    const cachedProfile =
-      detail?.postLogin && typeof detail.postLogin === "object"
-        ? detail.postLogin.profile || null
-        : null;
-    if (activePubkey && cachedProfile) {
-      try {
-        this.updateActiveProfileUI(activePubkey, cachedProfile);
-      } catch (error) {
-        devLogger.warn(
-          "[Application] Failed to apply cached profile during login:",
-          error,
-        );
-      }
-    }
+    const nwcPromise = Promise.resolve()
+      .then(() => this.nwcSettingsService.onLogin(loginContext))
+      .catch((error) => {
+        devLogger.error("Failed to process NWC settings during login:", error);
+        return null;
+      });
 
     if (this.profileController) {
       try {
@@ -4375,189 +4251,47 @@ class Application {
       this.renderSavedProfiles();
     }
 
-    const accessControlReadyPromise =
-      accessControl && typeof accessControl.ensureReady === "function"
-        ? Promise.resolve()
-            .then(() => accessControl.ensureReady())
-            .catch((error) => {
-              userLogger.error(
-                "[Application] Failed to refresh admin lists after login:",
-                error,
-              );
-              throw error;
-            })
-        : null;
-
-    const profileStatePromise = Promise.resolve(postLoginPromise)
-      .then(async (postLogin) => {
-        // 1. Relays and Profile are now loaded (sequentially or efficiently by authService)
-        const nextProfile = postLogin?.profile || cachedProfile;
-        if (activePubkey && nextProfile) {
-          this.updateActiveProfileUI(activePubkey, nextProfile);
+    const activePubkey = detail?.pubkey || this.pubkey;
+    postLoginPromise
+      .then((postLogin) => {
+        if (activePubkey && postLogin?.profile) {
+          this.updateActiveProfileUI(activePubkey, postLogin.profile);
         }
         this.forceRefreshAllProfiles();
-        this.updateAuthLoadingState({
-          profile: nextProfile ? "ready" : "error",
-        });
-        return postLogin;
       })
       .catch((error) => {
         devLogger.error("Post-login hydration failed:", error);
-        this.updateAuthLoadingState({ profile: "error" });
-        return null;
       });
 
-    // Chain list loading to profile state to ensure relays are loaded first.
-    const listStatePromise = profileStatePromise.then(() => {
-      const tasks = [];
-      if (activePubkey && typeof this.authService.loadBlocksForPubkey === "function") {
-        tasks.push(
-          this.authService
-            .loadBlocksForPubkey(activePubkey, { allowPermissionPrompt: false })
-            .catch((error) => {
-              devLogger.warn(
-                "[Application] Failed to load blocks during login:",
-                error,
-              );
-              throw error;
-            }),
-        );
-      }
+    let postLoginResult = null;
+    try {
+      postLoginResult = await postLoginPromise;
+    } catch (error) {
+      devLogger.error("Post-login processing failed:", error);
+    }
 
-      if (
-        activePubkey &&
-        subscriptions &&
-        typeof subscriptions.ensureLoaded === "function"
-      ) {
-        tasks.push(
-          subscriptions.ensureLoaded(activePubkey, {
-            allowPermissionPrompt: false,
-          })
-            .then(() => {
-              this.capturePermissionPromptFromError(
-                subscriptions?.lastLoadError,
-              );
-            })
-            .catch((error) => {
-              devLogger.warn(
-                "[Application] Failed to load subscriptions during login:",
-                error,
-              );
-              this.capturePermissionPromptFromError(error);
-              throw error;
-            }),
-        );
-      }
+    await nwcPromise;
+    // We do not await hashtagPreferencesPromise here; it loads in the background.
 
-      if (!tasks.length) {
-        this.updateAuthLoadingState({ lists: "idle" });
-        return Promise.resolve(true);
-      }
-
-      return Promise.allSettled(tasks).then((results) => {
-        const success = results.every(
-          (result) => result.status === "fulfilled",
-        );
-        this.updateAuthLoadingState({
-          lists: success ? "ready" : "error",
-        });
-        return success;
-      });
-    });
-
-    const dmStatePromise = profileStatePromise.then(() => {
-      if (
-        activePubkey &&
-        this.nostrService &&
-        typeof this.nostrService.loadDirectMessages === "function"
-      ) {
-        return this.nostrService
-          .loadDirectMessages({
-            actorPubkey: activePubkey,
-            limit: 50,
-            initialLoad: true,
-          })
-          .then(() => {
-            this.updateAuthLoadingState({ dms: "ready" });
-          })
-          .catch((error) => {
-            devLogger.warn(
-              "[Application] Failed to load direct messages during login:",
-              error,
-            );
-            this.updateAuthLoadingState({ dms: "error" });
-          });
-      }
-      this.updateAuthLoadingState({ dms: "idle" });
-      return Promise.resolve();
-    });
-
-    const nwcPromise = profileStatePromise.then(() => {
-      if (
-        activePubkey &&
-        this.nwcSettingsService &&
-        typeof this.nwcSettingsService.hydrateNwcSettingsForPubkey === "function"
-      ) {
-        return this.nwcSettingsService
-          .hydrateNwcSettingsForPubkey(activePubkey)
-          .catch((error) => {
-            devLogger.warn(
-              "[Application] Failed to hydrate NWC settings during login:",
-              error,
-            );
-          });
-      }
-      return Promise.resolve();
-    });
-
-    const hashtagPreferencesPromise = profileStatePromise.then(() => {
-      if (
-        activePubkey &&
-        this.hashtagPreferences &&
-        typeof this.hashtagPreferences.load === "function"
-      ) {
-        return this.hashtagPreferences
-          .load(activePubkey, {
-            allowPermissionPrompt: false,
-          })
-          .then(() => {
-            this.capturePermissionPromptFromError(
-              this.hashtagPreferences?.lastLoadError,
-            );
-          })
-          .catch((error) => {
-            devLogger.warn(
-              "[Application] Failed to load hashtag preferences during login:",
-              error,
-            );
-            this.capturePermissionPromptFromError(error);
-          });
-      }
-      return Promise.resolve();
-    });
-
-    void Promise.allSettled([
-      profileStatePromise,
-      listStatePromise,
-      dmStatePromise,
-    ]);
-    void nwcPromise;
-    void hashtagPreferencesPromise;
+    try {
+      await accessControl.ensureReady();
+    } catch (error) {
+      userLogger.error(
+        "[Application] Failed to refresh admin lists after login:",
+        error,
+      );
+    }
 
     if (activePubkey) {
-      const seedBlacklist = () => {
-        const aggregatedBlacklist = accessControl.getBlacklist();
-        return userBlocks.seedWithNpubs(
-          activePubkey,
-          Array.isArray(aggregatedBlacklist) ? aggregatedBlacklist : [],
-        );
-      };
+      const aggregatedBlacklist = accessControl.getBlacklist();
 
       // Background the seeding process because it involves publishing events,
       // which can block the login flow significantly.
-      Promise.resolve(accessControlReadyPromise)
-        .catch(() => null)
-        .then(() => seedBlacklist())
+      userBlocks
+        .seedWithNpubs(
+          activePubkey,
+          Array.isArray(aggregatedBlacklist) ? aggregatedBlacklist : []
+        )
         .catch((error) => {
           if (
             error?.code === "extension-permission-denied" ||
@@ -4566,17 +4300,38 @@ class Application {
           ) {
             userLogger.error(
               "[Application] Failed to seed shared block list after login:",
-              error,
+              error
             );
           } else {
             devLogger.error(
               "[Application] Unexpected error while seeding shared block list:",
-              error,
+              error
             );
           }
         });
 
-      // Subscriptions are loaded in list tasks to align with per-category loading states.
+      // Attempt to load blocks with a short timeout so we don't block the UI forever.
+      // If it times out, the UI will refresh reactively when the data arrives.
+      const blockLoadPromise = userBlocks.ensureLoaded(activePubkey);
+      const blockLoadTimeout = new Promise((resolve) =>
+        setTimeout(resolve, 2000)
+      );
+      try {
+        await Promise.race([blockLoadPromise, blockLoadTimeout]);
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Block list load timed out or failed:",
+          error
+        );
+      }
+
+      // Load subscriptions in the background to avoid blocking the main feed.
+      subscriptions.ensureLoaded(activePubkey).catch((error) => {
+        devLogger.warn(
+          "[Application] Failed to load subscriptions during login:",
+          error
+        );
+      });
     }
 
     try {
@@ -4585,103 +4340,22 @@ class Application {
       devLogger.warn("Failed to reinitialize video list view after login:", error);
     }
 
-    this.lastIdentityRefreshPromise = this.refreshAllVideoGrids({
-      reason: "auth-login",
-      forceMainReload: true,
-    });
-    this.lastIdentityRefreshPromise
-      .catch((error) => {
-        devLogger.error("Failed to refresh video grids after login:", error);
-      })
-      .finally(() => {
-        this.lastIdentityRefreshPromise = null;
+    try {
+      this.lastIdentityRefreshPromise = this.refreshAllVideoGrids({
+        reason: "auth-login",
+        forceMainReload: true,
       });
+      await this.lastIdentityRefreshPromise;
+    } catch (error) {
+      devLogger.error("Failed to refresh video grids after login:", error);
+    } finally {
+      this.lastIdentityRefreshPromise = null;
+    }
 
     this.forceRefreshAllProfiles();
 
     if (this.uploadModal?.refreshCloudflareBucketPreview) {
-      Promise.resolve()
-        .then(() => this.uploadModal.refreshCloudflareBucketPreview())
-        .catch((error) => {
-          devLogger.warn(
-            "[Application] Failed to refresh cloudflare bucket preview after login:",
-            error,
-          );
-        });
-    }
-  }
-
-  handleBlocksLoaded(detail = {}) {
-    if (detail?.blocksLoaded !== true) {
-      return;
-    }
-
-    if (this.profileController) {
-      try {
-        this.profileController.populateBlockedList();
-      } catch (error) {
-        devLogger.warn(
-          "[Application] Failed to refresh blocked list after blocks loaded:",
-          error,
-        );
-      }
-    }
-
-    try {
-      void this.onVideosShouldRefresh({ reason: "blocks-loaded" });
-    } catch (error) {
-      devLogger.warn(
-        "[Application] Failed to refresh videos after blocks loaded:",
-        error,
-      );
-    }
-  }
-
-  handleRelaysLoaded(detail = {}) {
-    if (detail?.relaysLoaded !== true) {
-      return;
-    }
-
-    this.scheduleRelayUiRefresh();
-  }
-
-  scheduleRelayUiRefresh() {
-    if (this.relayUiRefreshTimeout) {
-      return;
-    }
-
-    const scheduleTimeout =
-      typeof window !== "undefined" && typeof window.setTimeout === "function"
-        ? window.setTimeout.bind(window)
-        : setTimeout;
-
-    this.relayUiRefreshTimeout = scheduleTimeout(() => {
-      this.relayUiRefreshTimeout = null;
-      this.flushRelayUiRefresh();
-    }, RELAY_UI_BATCH_DELAY_MS);
-  }
-
-  flushRelayUiRefresh() {
-    if (!this.profileController) {
-      return;
-    }
-
-    try {
-      this.profileController.populateProfileRelays();
-    } catch (error) {
-      devLogger.warn(
-        "[Application] Failed to refresh profile relays after relays loaded:",
-        error,
-      );
-    }
-
-    try {
-      void this.profileController.refreshDmRelayPreferences({ force: true });
-    } catch (error) {
-      devLogger.warn(
-        "[Application] Failed to refresh DM relay preferences after relays loaded:",
-        error,
-      );
+      await this.uploadModal.refreshCloudflareBucketPreview();
     }
   }
 
@@ -4717,8 +4391,6 @@ class Application {
     this.pendingModalZapOpen = false;
 
     this.resetHashtagPreferencesState();
-    this.resetPermissionPromptState();
-    this.updateAuthLoadingState({ profile: "idle", lists: "idle", dms: "idle" });
 
     await this.nwcSettingsService.onLogout({
       pubkey: detail?.pubkey || this.pubkey,
@@ -4792,22 +4464,6 @@ class Application {
         this.zapController.setVisibility(Boolean(this.currentVideo?.lightningAddress));
       } catch (error) {
         devLogger.warn("Failed to reset zap controller during logout:", error);
-      }
-    }
-
-    if (typeof this.nostrService?.stopDirectMessageSubscription === "function") {
-      try {
-        this.nostrService.stopDirectMessageSubscription();
-      } catch (error) {
-        devLogger.warn("Failed to stop DM subscription during logout:", error);
-      }
-    }
-
-    if (typeof this.nostrService?.clearDirectMessages === "function") {
-      try {
-        this.nostrService.clearDirectMessages({ emit: true });
-      } catch (error) {
-        devLogger.warn("Failed to clear cached DMs during logout:", error);
       }
     }
 
@@ -5043,81 +4699,11 @@ class Application {
   }
 
   clearActiveIntervals() {
-    if (Array.isArray(this.activeIntervals)) {
-      this.activeIntervals.forEach((id) => clearInterval(id));
+    if (!Array.isArray(this.activeIntervals) || !this.activeIntervals.length) {
+      return;
     }
+    this.activeIntervals.forEach((id) => clearInterval(id));
     this.activeIntervals = [];
-    this.torrentStatusIntervalId = null;
-  }
-
-  cacheTorrentStatusNodes() {
-    const doc =
-      (this.videoModal && this.videoModal.document) ||
-      (typeof document !== "undefined" ? document : null);
-    if (!doc || typeof doc.getElementById !== "function") {
-      this.torrentStatusNodes = null;
-      return;
-    }
-    this.torrentStatusNodes = {
-      status: doc.getElementById("status"),
-      progress: doc.getElementById("progress"),
-      peers: doc.getElementById("peers"),
-      speed: doc.getElementById("speed"),
-      downloaded: doc.getElementById("downloaded"),
-    };
-  }
-
-  clearTorrentStatusNodes() {
-    this.torrentStatusNodes = null;
-  }
-
-  removeActiveInterval(intervalId) {
-    if (!intervalId || !Array.isArray(this.activeIntervals)) {
-      return;
-    }
-    this.activeIntervals = this.activeIntervals.filter((id) => id !== intervalId);
-  }
-
-  addTorrentStatusVisibilityHandlers({ onPause, onResume, onClose } = {}) {
-    this.removeTorrentStatusVisibilityHandlers();
-    const handleVisibilityChange = () => {
-      if (!document.body.contains(this.modalVideo)) {
-        if (typeof onClose === "function") {
-          onClose();
-        }
-        this.removeTorrentStatusVisibilityHandlers();
-        return;
-      }
-      if (document.visibilityState === "hidden") {
-        if (typeof onPause === "function") {
-          onPause();
-        }
-        return;
-      }
-      if (typeof onResume === "function") {
-        onResume();
-      }
-    };
-    const handlePageHide = () => {
-      if (typeof onPause === "function") {
-        onPause();
-      }
-    };
-    this.torrentStatusVisibilityHandler = handleVisibilityChange;
-    this.torrentStatusPageHideHandler = handlePageHide;
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("pagehide", handlePageHide);
-  }
-
-  removeTorrentStatusVisibilityHandlers() {
-    if (this.torrentStatusVisibilityHandler) {
-      document.removeEventListener("visibilitychange", this.torrentStatusVisibilityHandler);
-      this.torrentStatusVisibilityHandler = null;
-    }
-    if (this.torrentStatusPageHideHandler) {
-      window.removeEventListener("pagehide", this.torrentStatusPageHideHandler);
-      this.torrentStatusPageHideHandler = null;
-    }
   }
 
   cancelPendingViewLogging() {
@@ -5623,16 +5209,25 @@ class Application {
       return;
     }
 
-    this.cacheTorrentStatusNodes();
-
-    const updateMirrorStatus = () => {
+    const updateInterval = setInterval(() => {
       if (!document.body.contains(this.modalVideo)) {
-        this.stopTorrentStatusInterval();
-        this.removeTorrentStatusVisibilityHandlers();
+        clearInterval(updateInterval);
         return;
       }
       this.updateTorrentStatus(torrentInstance);
-      const { status, progress, peers, speed, downloaded } = this.torrentStatusNodes || {};
+    }, 3000);
+    this.activeIntervals.push(updateInterval);
+
+    const mirrorInterval = setInterval(() => {
+      if (!document.body.contains(this.modalVideo)) {
+        clearInterval(mirrorInterval);
+        return;
+      }
+      const status = document.getElementById("status");
+      const progress = document.getElementById("progress");
+      const peers = document.getElementById("peers");
+      const speed = document.getElementById("speed");
+      const downloaded = document.getElementById("downloaded");
       if (this.videoModal) {
         if (status) {
           this.videoModal.updateStatus(status.textContent);
@@ -5660,37 +5255,8 @@ class Application {
           this.videoModal.updateDownloaded(downloaded.textContent);
         }
       }
-    };
-
-    this.stopTorrentStatusInterval();
-    this.startTorrentStatusInterval(updateMirrorStatus);
-
-    this.addTorrentStatusVisibilityHandlers({
-      onPause: () => this.stopTorrentStatusInterval(),
-      onResume: () => this.startTorrentStatusInterval(updateMirrorStatus),
-      onClose: () => this.stopTorrentStatusInterval(),
-    });
-  }
-
-  startTorrentStatusInterval(callback) {
-    if (this.torrentStatusIntervalId) {
-      return;
-    }
-    if (document.visibilityState === "hidden") {
-      return;
-    }
-    const intervalId = setInterval(callback, 3000);
-    this.torrentStatusIntervalId = intervalId;
-    this.activeIntervals.push(intervalId);
-  }
-
-  stopTorrentStatusInterval() {
-    if (!this.torrentStatusIntervalId) {
-      return;
-    }
-    clearInterval(this.torrentStatusIntervalId);
-    this.removeActiveInterval(this.torrentStatusIntervalId);
-    this.torrentStatusIntervalId = null;
+    }, 3000);
+    this.activeIntervals.push(mirrorInterval);
   }
 
   /**
@@ -5700,7 +5266,6 @@ class Application {
     // 1) Clear timers/listeners immediately so playback stats stop updating
     this.cancelPendingViewLogging();
     this.clearActiveIntervals();
-    this.removeTorrentStatusVisibilityHandlers();
     this.teardownModalViewCountSubscription();
     if (this.reactionController) {
       this.reactionController.unsubscribe();
@@ -5745,7 +5310,6 @@ class Application {
     this.lastModalTrigger = null;
 
     this.currentMagnetUri = null;
-    this.clearTorrentStatusNodes();
 
     // 3) Kick off heavy cleanup work asynchronously. We still await it so
     // callers that depend on teardown finishing behave the same, but the
@@ -6724,41 +6288,6 @@ class Application {
       });
   }
 
-  checkRelayHealthWarning() {
-    if (!nostrClient || typeof nostrClient.getHealthyRelays !== "function") {
-      return false;
-    }
-
-    // Give the app a grace period to establish initial connections before complaining.
-    const now = Date.now();
-    const GRACE_PERIOD_MS = 10000;
-    if (now - (this.appStartedAt || now) < GRACE_PERIOD_MS) {
-      return false;
-    }
-
-    const relayCandidates = Array.isArray(nostrClient.relays) ? nostrClient.relays : [];
-    if (!relayCandidates.length) {
-      return false;
-    }
-
-    const healthyRelays = nostrClient.getHealthyRelays(relayCandidates);
-    if (healthyRelays.length) {
-      return false;
-    }
-
-    const cooldownMs = 30000;
-    if (now - (this.lastRelayHealthWarningAt || 0) < cooldownMs) {
-      return true;
-    }
-
-    this.lastRelayHealthWarningAt = now;
-    this.showStatus(
-      "All configured relays are unhealthy. Data may be missing until a relay reconnects.",
-      { autoHideMs: 12000, showSpinner: false },
-    );
-    return true;
-  }
-
   /**
    * Subscribe to videos (older + new) and render them as they come in.
    */
@@ -6778,7 +6307,6 @@ class Application {
     this.loadVideosPromise = (async () => {
       devLogger.log("Starting loadVideos... (forceFetch =", forceFetch, ")");
       this.setFeedTelemetryContext("recent");
-      this.checkRelayHealthWarning();
 
       const container = this.mountVideoListView();
       const hasCachedVideos =
@@ -6834,7 +6362,6 @@ class Application {
   async loadForYouVideos(forceFetch = false) {
     devLogger.log("Starting loadForYouVideos... (forceFetch =", forceFetch, ")");
     this.setFeedTelemetryContext("for-you");
-    this.checkRelayHealthWarning();
 
     const container = this.mountVideoListView({ includeTags: false });
     const hasCachedVideos =
@@ -7981,17 +7508,139 @@ class Application {
     return true;
   }
 
-  requestVideoSettingsMenu(detail = {}) {
-    if (this.videoSettingsMenuController) {
-      this.videoSettingsMenuController.requestMenu(detail);
+  ensureSettingsPopover(detail = {}) {
+    const trigger = detail.trigger || null;
+    if (!trigger) {
+      return null;
     }
+
+    let entry = this.videoSettingsPopovers.get(trigger);
+    if (!entry) {
+      entry = {
+        trigger,
+        context: {
+          card: detail.card || null,
+          video: detail.video || null,
+          index: Number.isFinite(detail.index) ? Math.floor(detail.index) : 0,
+          capabilities: detail.capabilities || {},
+          restoreFocusOnClose: detail.restoreFocus !== false,
+        },
+        popover: null,
+      };
+
+      const render = ({ document: documentRef, close }) => {
+        const panel = createVideoSettingsMenuPanel({
+          document: documentRef,
+          video: entry.context.video,
+          index: entry.context.index,
+          capabilities: entry.context.capabilities,
+          designSystem: this.designSystemContext,
+        });
+
+        if (!panel) {
+          return null;
+        }
+
+        const buttons = panel.querySelectorAll("button[data-action]");
+        buttons.forEach((button) => {
+          button.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            const action = button.dataset.action || "";
+            const handled = entry.context.card?.handleSettingsMenuAction?.(
+              action,
+              { event },
+            );
+
+            if (!handled && this.isDevMode) {
+              userLogger.warn(`[SettingsMenu] Unhandled action: ${action}`);
+            }
+
+            close();
+          });
+        });
+
+        return panel;
+      };
+
+      const documentRef =
+        trigger.ownerDocument ||
+        (typeof document !== "undefined" ? document : null);
+
+      const popover = createPopover(trigger, render, {
+        document: documentRef,
+        placement: "bottom-end",
+      });
+
+      const originalDestroy = popover.destroy?.bind(popover);
+      if (typeof originalDestroy === "function") {
+        popover.destroy = (...args) => {
+          originalDestroy(...args);
+          if (this.videoSettingsPopovers.get(trigger) === entry) {
+            this.videoSettingsPopovers.delete(trigger);
+          }
+        };
+      }
+
+      entry.popover = popover;
+      this.videoSettingsPopovers.set(trigger, entry);
+    }
+
+    entry.context = {
+      ...entry.context,
+      card: detail.card || entry.context.card,
+      video: detail.video || entry.context.video,
+      index: Number.isFinite(detail.index)
+        ? Math.floor(detail.index)
+        : entry.context.index,
+      capabilities: detail.capabilities || entry.context.capabilities,
+      restoreFocusOnClose: detail.restoreFocus !== false,
+    };
+
+    return entry;
+  }
+
+  requestVideoSettingsMenu(detail = {}) {
+    const entry = this.ensureSettingsPopover(detail);
+    if (!entry?.popover) {
+      return;
+    }
+
+    if (typeof entry.popover.isOpen === "function" && entry.popover.isOpen()) {
+      entry.popover.close({
+        restoreFocus: entry.context.restoreFocusOnClose !== false,
+      });
+      return;
+    }
+
+    entry.popover
+      .open()
+      .catch((error) =>
+        userLogger.error("[SettingsMenu] Failed to open popover:", error),
+      );
   }
 
   closeVideoSettingsMenu(detail = {}) {
-    if (this.videoSettingsMenuController) {
-      return this.videoSettingsMenuController.closeMenu(detail);
+    const trigger = detail.trigger || null;
+    const restoreFocus = detail.restoreFocus !== false;
+
+    if (trigger) {
+      const entry = this.videoSettingsPopovers.get(trigger);
+      if (entry?.popover && typeof entry.popover.close === "function") {
+        return entry.popover.close({ restoreFocus });
+      }
+      return false;
     }
-    return false;
+
+    let closed = false;
+    this.videoSettingsPopovers.forEach((entry) => {
+      if (entry?.popover && typeof entry.popover.close === "function") {
+        const result = entry.popover.close({ restoreFocus });
+        closed = closed || result;
+      }
+    });
+    return closed;
   }
 
   ensureTagPreferencePopover(detail) {
@@ -8401,23 +8050,7 @@ class Application {
   }
 
   async probeUrl(url, options = {}) {
-    const trimmed = typeof url === "string" ? url.trim() : "";
-    if (!trimmed) {
-      return this.urlHealthController.probeUrl(url, options);
-    }
-    const existing = this.urlProbePromises.get(trimmed);
-    if (existing) {
-      return existing;
-    }
-    const probePromise = (async () => {
-      try {
-        return await this.urlHealthController.probeUrl(trimmed, options);
-      } finally {
-        this.urlProbePromises.delete(trimmed);
-      }
-    })();
-    this.urlProbePromises.set(trimmed, probePromise);
-    return probePromise;
+    return this.urlHealthController.probeUrl(url, options);
   }
 
   async playHttp(videoEl, url) {
@@ -9759,43 +9392,45 @@ class Application {
       Array.isArray(nostrClient?.relays) && nostrClient.relays.length
         ? nostrClient.relays
         : null;
-    if (!relayList) {
+    if (!relayList || !nostrClient?.pool || typeof nostrClient.pool.list !== "function") {
       return;
     }
 
-    const profileEntry = await fetchProfileMetadata(normalized, {
-      nostr: nostrClient,
-      relays: relayList,
-      logger: devLogger,
-    });
+    const events = await nostrClient.pool.list(relayList, [
+      { kinds: [0], authors: [normalized], limit: 1 },
+    ]);
 
     if (this.modalCreatorProfileRequestToken !== requestToken) {
       return;
     }
 
-    if (!profileEntry?.event) {
+    const newest = Array.isArray(events)
+      ? events.reduce((latest, event) => {
+          if (!event || typeof event !== "object") {
+            return latest;
+          }
+          const eventPubkey = this.normalizeHexPubkey(event.pubkey);
+          if (eventPubkey && eventPubkey !== normalized) {
+            return latest;
+          }
+          const createdAt = Number.isFinite(event.created_at) ? event.created_at : 0;
+          if (!latest || createdAt > latest.createdAt) {
+            return { createdAt, event };
+          }
+          return latest;
+        }, null)
+      : null;
+
+    if (!newest || !newest.event) {
       if (this.modalCreatorProfileRequestToken === requestToken) {
         this.modalCreatorProfileRequestToken = null;
       }
       return;
     }
 
-    ensureProfileMetadataSubscription({
-      pubkey: normalized,
-      nostr: nostrClient,
-      relays: relayList,
-      onProfile: ({ profile }) => {
-        if (typeof this.setProfileCacheEntry === "function" && profile) {
-          this.setProfileCacheEntry(normalized, profile);
-        }
-      },
-    });
-
     let parsed = null;
     try {
-      parsed = profileEntry.event.content
-        ? JSON.parse(profileEntry.event.content)
-        : null;
+      parsed = newest.event.content ? JSON.parse(newest.event.content) : null;
     } catch (error) {
       devLogger.warn(
         `[Application] Failed to parse creator profile content for ${normalized}:`,
@@ -10218,6 +9853,7 @@ class Application {
   destroy() {
     this.clearActiveIntervals();
     this.teardownModalViewCountSubscription();
+    this.videoModalReadyPromise = null;
 
     if (this.moderationActionController) {
       try {
@@ -10401,11 +10037,6 @@ class Application {
       this.moreMenuController.setVideoModal(null);
       this.moreMenuController.destroy();
       this.moreMenuController = null;
-    }
-
-    if (this.videoSettingsMenuController) {
-      this.videoSettingsMenuController.destroy();
-      this.videoSettingsMenuController = null;
     }
 
     if (this.profileController) {

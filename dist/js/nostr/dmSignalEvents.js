@@ -9,20 +9,17 @@ import { devLogger, userLogger } from "../utils/logger.js";
 import { queueSignEvent } from "./signRequestQueue.js";
 import { getActiveSigner } from "../nostrClientRegistry.js";
 import { isSessionActor } from "./sessionActor.js";
-import { sanitizeRelayList as sanitizeRelayUrls } from "./nip46Client.js";
 
 const DEFAULT_TYPING_EXPIRY_SECONDS = 15;
 
 function sanitizeRelayList(primary, fallback) {
-  const primaryList = sanitizeRelayUrls(Array.isArray(primary) ? primary : []);
-  if (primaryList.length) {
-    return primaryList;
+  if (Array.isArray(primary) && primary.length) {
+    return primary;
   }
-  const fallbackList = sanitizeRelayUrls(Array.isArray(fallback) ? fallback : []);
-  if (fallbackList.length) {
-    return fallbackList;
+  if (Array.isArray(fallback) && fallback.length) {
+    return fallback;
   }
-  return sanitizeRelayUrls(RELAY_URLS);
+  return RELAY_URLS;
 }
 
 function normalizeString(value) {

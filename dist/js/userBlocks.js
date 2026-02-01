@@ -20,12 +20,7 @@ import {
 import { profileCache } from "./state/profileCache.js";
 import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
 import { relayManager } from "./relayManager.js";
-import {
-  DEFAULT_NIP07_ENCRYPTION_METHODS,
-  runNip07WithRetry,
-  NIP07_PRIORITY,
-} from "./nostr/nip07Permissions.js";
-import { relaySubscriptionService } from "./services/relaySubscriptionService.js";
+import { runNip07WithRetry, NIP07_PRIORITY } from "./nostr/nip07Permissions.js";
 
 class TinyEventEmitter {
   constructor() {
@@ -79,10 +74,8 @@ export const USER_BLOCK_EVENTS = Object.freeze({
 const FAST_BLOCKLIST_RELAY_LIMIT = 3;
 const FAST_BLOCKLIST_TIMEOUT_MS = 2500;
 const BACKGROUND_BLOCKLIST_TIMEOUT_MS = 6000;
-const DECRYPT_TIMEOUT_MS = 15000;
-const BACKGROUND_DECRYPT_TIMEOUT_MS = 2500;
+const DECRYPT_TIMEOUT_MS = 90000;
 const DECRYPT_RETRY_DELAY_MS = 10000;
-const MAX_BLOCKLIST_ENTRIES = 5000;
 
 function sanitizeRelayList(candidate) {
   return Array.isArray(candidate)
@@ -310,16 +303,13 @@ function serializeBlockListTagMatrix(values, ownerPubkey, options = {}) {
   return JSON.stringify(tags);
 }
 
-function extractPubkeysFromTags(tags, ownerPubkey = null, options = {}) {
+function extractPubkeysFromTags(tags, ownerPubkey = null) {
   if (!Array.isArray(tags)) {
     return [];
   }
   const collected = [];
   const seen = new Set();
   const owner = ownerPubkey ? normalizeHex(ownerPubkey) : null;
-  const limit = Number.isFinite(options?.limit)
-    ? Math.max(0, Math.floor(options.limit))
-    : null;
 
   for (const entry of tags) {
     if (!Array.isArray(entry) || entry.length < 2) {
@@ -335,14 +325,11 @@ function extractPubkeysFromTags(tags, ownerPubkey = null, options = {}) {
     }
     seen.add(normalized);
     collected.push(normalized);
-    if (limit !== null && collected.length >= limit) {
-      break;
-    }
   }
   return collected;
 }
 
-function parseBlockListPlaintext(plaintext, ownerPubkey, options = {}) {
+function parseBlockListPlaintext(plaintext, ownerPubkey) {
   if (typeof plaintext !== "string" || !plaintext) {
     return [];
   }
@@ -359,45 +346,20 @@ function parseBlockListPlaintext(plaintext, ownerPubkey, options = {}) {
   }
 
   const owner = normalizeHex(ownerPubkey);
-  const limit = Number.isFinite(options?.limit)
-    ? Math.max(0, Math.floor(options.limit))
-    : null;
 
   if (Array.isArray(parsed)) {
-    if (limit !== null && parsed.length > limit) {
-      devLogger.warn(
-        "[UserBlockList] Block list payload exceeds entry limit; truncating.",
-        { limit, payloadSize: parsed.length },
-      );
-    }
-    return extractPubkeysFromTags(parsed, owner, { limit });
+    return extractPubkeysFromTags(parsed, owner);
   }
 
   if (parsed && typeof parsed === "object") {
     if (Array.isArray(parsed.tags) && parsed.tags.length) {
-      if (limit !== null && parsed.tags.length > limit) {
-        devLogger.warn(
-          "[UserBlockList] Block list tag payload exceeds entry limit; truncating.",
-          { limit, payloadSize: parsed.tags.length },
-        );
-      }
-      return extractPubkeysFromTags(parsed.tags, owner, { limit });
+      return extractPubkeysFromTags(parsed.tags, owner);
     }
 
     const legacy = Array.isArray(parsed.blockedPubkeys) ? parsed.blockedPubkeys : [];
-    if (limit !== null && legacy.length > limit) {
-      devLogger.warn(
-        "[UserBlockList] Legacy block list payload exceeds entry limit; truncating.",
-        { limit, payloadSize: legacy.length },
-      );
-    }
-    const normalizedLegacy = legacy
+    return legacy
       .map((value) => normalizeHex(value))
       .filter((value) => value && value !== owner);
-    if (limit === null) {
-      return normalizedLegacy;
-    }
-    return normalizedLegacy.slice(0, limit);
   }
 
   return [];
@@ -686,9 +648,6 @@ class UserBlockListManager {
     this.emitter = new TinyEventEmitter();
     this.seedStateCache = new Map();
     this.decryptRetryTimeoutId = null;
-    this.loadPromise = null;
-    this.loadingPubkey = null;
-    this.blockListSubscriptionKey = null;
 
     profileCache.subscribe((event, detail) => {
       if (event === "profileChanged") {
@@ -703,7 +662,6 @@ class UserBlockListManager {
   }
 
   reset() {
-    this.stopBlockListSubscription();
     this.blockedPubkeys.clear();
     this.blockEventId = null;
     this.blockEventCreatedAt = null;
@@ -715,56 +673,6 @@ class UserBlockListManager {
       clearTimeout(this.decryptRetryTimeoutId);
       this.decryptRetryTimeoutId = null;
     }
-    this.loadPromise = null;
-    this.loadingPubkey = null;
-  }
-
-  stopBlockListSubscription() {
-    if (this.blockListSubscriptionKey) {
-      relaySubscriptionService.stopSubscription(
-        this.blockListSubscriptionKey,
-        "reset",
-      );
-      this.blockListSubscriptionKey = null;
-    }
-  }
-
-  ensureBlockListSubscription(userPubkey, relays) {
-    const normalized = normalizeHex(userPubkey);
-    if (!normalized || !nostrClient?.pool) {
-      return null;
-    }
-
-    const key = `block-list:${normalized}`;
-    this.blockListSubscriptionKey = key;
-
-    const filters = [
-      { kinds: [10000], authors: [normalized] },
-      { kinds: [30002], authors: [normalized], "#d": [BLOCK_LIST_IDENTIFIER] },
-    ];
-
-    return relaySubscriptionService.ensureSubscription({
-      key,
-      pool: nostrClient.pool,
-      relays,
-      filters,
-      label: "block-list",
-      onEvent: (event) => this.handleBlockListEvent(event),
-    });
-  }
-
-  handleBlockListEvent(event) {
-    const normalized = normalizeHex(event?.pubkey);
-    if (!normalized || normalized !== this.activePubkey) {
-      return;
-    }
-    if (!isUserBlockListEvent(event)) {
-      return;
-    }
-
-    this.loadBlocks(normalized).catch((error) => {
-      devLogger.warn("[UserBlockList] Failed to refresh after block list event", error);
-    });
   }
 
   on(eventName, handler) {
@@ -775,32 +683,29 @@ class UserBlockListManager {
     return Array.from(this.blockedPubkeys);
   }
 
-  scheduleDecryptRetry(userPubkey, detail = {}) {
+  scheduleDecryptRetry(userPubkey, error) {
     if (!userPubkey) {
       return;
     }
     if (this.decryptRetryTimeoutId) {
       clearTimeout(this.decryptRetryTimeoutId);
     }
-    const retryMeta = detail && typeof detail === "object" ? detail : {};
-    const signerStatus = retryMeta.signerStatus || "unknown";
     this.decryptRetryTimeoutId = setTimeout(() => {
       this.decryptRetryTimeoutId = null;
       if (this.activePubkey !== userPubkey) {
         return;
       }
-      const sinceValue = Number.isFinite(this.blockEventCreatedAt)
-        ? Math.max(0, this.blockEventCreatedAt - 1)
-        : undefined;
       this.loadBlocks(userPubkey, {
-        since: sinceValue,
+        since: Number.isFinite(this.blockEventCreatedAt)
+          ? this.blockEventCreatedAt
+          : undefined,
       }).catch((retryError) => {
         userLogger.warn("[UserBlockList] Decryption retry failed:", retryError);
       });
     }, DECRYPT_RETRY_DELAY_MS);
     devLogger.log(
-      `[UserBlockList] Decryption stalled (${signerStatus}); retrying in ${DECRYPT_RETRY_DELAY_MS / 1000}s.`,
-      retryMeta.error || retryMeta,
+      `[UserBlockList] Decryption timed out; scheduling retry in ${DECRYPT_RETRY_DELAY_MS / 1000}s.`,
+      error,
     );
   }
 
@@ -827,38 +732,6 @@ class UserBlockListManager {
 
   async loadBlocks(userPubkey, options = {}) {
     const normalized = normalizeHex(userPubkey);
-
-    if (this.loadPromise && this.loadingPubkey === normalized) {
-      devLogger.log("[UserBlockList] Reusing in-flight block list load.", {
-        pubkey: normalized,
-      });
-      return this.loadPromise;
-    }
-
-    if (this.loadPromise && this.loadingPubkey && this.loadingPubkey !== normalized) {
-      devLogger.log("[UserBlockList] Waiting for existing block list load to settle.", {
-        previous: this.loadingPubkey,
-        next: normalized,
-      });
-      await this.loadPromise.catch(() => {});
-    }
-
-    const loadPromise = this.loadBlocksInternal(normalized, options);
-    this.loadPromise = loadPromise;
-    this.loadingPubkey = normalized;
-
-    try {
-      return await loadPromise;
-    } finally {
-      if (this.loadPromise === loadPromise) {
-        this.loadPromise = null;
-        this.loadingPubkey = null;
-      }
-    }
-  }
-
-  async loadBlocksInternal(userPubkey, options = {}) {
-    const normalized = normalizeHex(userPubkey);
     this.activePubkey = normalized;
 
     if (!normalized) {
@@ -872,15 +745,6 @@ class UserBlockListManager {
       : null;
     const statusCallback =
       typeof options?.statusCallback === "function" ? options.statusCallback : null;
-    const loadMode = options?.mode === "background" ? "background" : "interactive";
-    const allowPermissionPrompt =
-      options?.allowPermissionPrompt !== false && loadMode !== "background";
-    const decryptTimeoutMs = Number.isFinite(options?.decryptTimeoutMs)
-      ? Math.max(0, Math.floor(options.decryptTimeoutMs))
-      : allowPermissionPrompt
-        ? DECRYPT_TIMEOUT_MS
-        : BACKGROUND_DECRYPT_TIMEOUT_MS;
-    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 12000 : 3000;
 
     const emitStatus = (detail) => {
       if (!detail || typeof detail !== "object") {
@@ -909,23 +773,12 @@ class UserBlockListManager {
     const readRelays = relayManager.getReadRelayUrls();
     const relays = readRelays.length > 0 ? readRelays : Array.from(DEFAULT_RELAY_URLS);
     emitStatus({ status: "loading", relays });
-    if (!nostrClient?.pool && typeof nostrClient?.ensurePool === "function") {
-      try {
-        await nostrClient.ensurePool();
-      } catch (error) {
-        devLogger.warn("[UserBlockList] Failed to initialize relay pool for subscription", error);
-      }
-    }
-    this.ensureBlockListSubscription(normalized, relays);
 
-    const localData = this._loadLocal(normalized);
-    const hasLocalData = !!localData;
+    const localBlocks = this._loadLocal(normalized);
+    const hasLocalData = !!localBlocks;
 
-    if (localData) {
-      this.blockedPubkeys = localData.blockedPubkeys;
-      if (Number.isFinite(localData.createdAt)) {
-        this.blockEventCreatedAt = localData.createdAt;
-      }
+    if (localBlocks) {
+      this.blockedPubkeys = localBlocks;
       this.loaded = true;
       this.emitter.emit(USER_BLOCK_EVENTS.CHANGE, {
         action: "sync",
@@ -968,44 +821,21 @@ class UserBlockListManager {
 
       const signerHasNip04 = typeof signer?.nip04Decrypt === "function";
       const signerHasNip44 = typeof signer?.nip44Decrypt === "function";
-      const signerAvailable = Boolean(signer);
-      const signerHasDecryptors = signerHasNip04 || signerHasNip44;
-      const signerStatus = signerAvailable
-        ? signerHasDecryptors
-          ? "present"
-          : "present-missing-decryptor"
-        : "missing";
 
       let permissionError = null;
       if ((!signerHasNip44 && requiresNip44) || (!signerHasNip04 && requiresNip04)) {
-        if (!allowPermissionPrompt) {
-          const error = new Error(
-            "Encryption permissions are required to decrypt the block list.",
-          );
-          error.code = "user-blocklist-permission-required";
-          error.permissionRequestDeferred = true;
-          permissionError = error;
-        } else {
-          try {
-            const permissionResult = await requestDefaultExtensionPermissions(
-              DEFAULT_NIP07_ENCRYPTION_METHODS,
-            );
-            if (!permissionResult?.ok) {
-              const error =
-                permissionResult?.error instanceof Error
-                  ? permissionResult.error
-                  : new Error(
-                      "Extension encryption permissions are required to use the browser decryptor.",
-                    );
-              error.code = "user-blocklist-permission-required";
-              permissionError = error;
-            }
-          } catch (error) {
-            const wrapped =
-              error instanceof Error ? error : new Error(String(error));
-            wrapped.code = "user-blocklist-permission-required";
-            permissionError = wrapped;
+        try {
+          const permissionResult = await requestDefaultExtensionPermissions();
+          if (!permissionResult?.ok) {
+            permissionError =
+              permissionResult?.error instanceof Error
+                ? permissionResult.error
+                : new Error(
+                    "Extension permissions are required to use the browser decryptor.",
+                  );
           }
+        } catch (error) {
+          permissionError = error instanceof Error ? error : new Error(String(error));
         }
       }
 
@@ -1050,12 +880,6 @@ class UserBlockListManager {
       }
 
       const nostrApi = typeof window !== "undefined" ? window?.nostr : null;
-      const decrypterOptions = {
-        priority: NIP07_PRIORITY.HIGH,
-        timeoutMs: nip07DecryptTimeoutMs,
-        retryMultiplier: 1,
-      };
-
       if (nostrApi) {
         if (typeof nostrApi.nip04?.decrypt === "function") {
           registerDecryptor(
@@ -1063,7 +887,7 @@ class UserBlockListManager {
             (payload) =>
               runNip07WithRetry(
                 () => nostrApi.nip04.decrypt(normalized, payload),
-                { label: "nip04.decrypt", ...decrypterOptions },
+                { label: "nip04.decrypt", priority: NIP07_PRIORITY.HIGH },
               ),
             "extension",
           );
@@ -1080,7 +904,7 @@ class UserBlockListManager {
               (payload) =>
                 runNip07WithRetry(() => nip44.decrypt(normalized, payload), {
                   label: "nip44.decrypt",
-                  ...decrypterOptions,
+                  priority: NIP07_PRIORITY.HIGH,
                 }),
               "extension",
             );
@@ -1094,7 +918,7 @@ class UserBlockListManager {
               (payload) =>
                 runNip07WithRetry(() => nip44v2.decrypt(normalized, payload), {
                   label: "nip44.v2.decrypt",
-                  ...decrypterOptions,
+                  priority: NIP07_PRIORITY.HIGH,
                 }),
               "extension",
             );
@@ -1104,7 +928,7 @@ class UserBlockListManager {
                 (payload) =>
                   runNip07WithRetry(
                     () => nip44v2.decrypt(normalized, payload),
-                    { label: "nip44.v2.decrypt", ...decrypterOptions },
+                    { label: "nip44.v2.decrypt", priority: NIP07_PRIORITY.HIGH },
                   ),
                 "extension",
               );
@@ -1113,16 +937,11 @@ class UserBlockListManager {
         }
       }
 
-      if (permissionError) {
-        permissionError.signerStatus = signerStatus;
-      }
-
       return {
         decryptors,
         sources,
         permissionError,
         order: determineDecryptionOrder(event, Array.from(decryptors.keys())),
-        signerStatus,
       };
     };
 
@@ -1227,35 +1046,26 @@ class UserBlockListManager {
         this.blockEventCreatedAt = newestCreatedAt;
 
         // Helper to decrypt a single event
-        const decryptEvent = async (ev, meta = {}) => {
+        const decryptEvent = async (ev) => {
           if (!ev) return [];
           const isContentEmpty = !ev.content || !ev.content.trim();
 
           if (isContentEmpty) {
             // Handle tag-only lists (e.g. Kind 10000 with empty content but populated p tags)
             if (Array.isArray(ev.tags) && ev.tags.length) {
-              return extractPubkeysFromTags(ev.tags, normalized, {
-                limit: MAX_BLOCKLIST_ENTRIES,
-              });
+              return extractPubkeysFromTags(ev.tags, normalized);
             }
             return [];
           }
 
-          const { decryptors, order, sources, permissionError, signerStatus } =
+          const { decryptors, order, sources, permissionError } =
             await resolveDecryptors(ev);
-          meta.signerStatus = signerStatus;
-          meta.decryptorSources = Array.from(sources.entries()).map(
-            ([scheme, source]) => ({ scheme, source }),
-          );
 
           if (!decryptors.size) {
             if (permissionError) {
               throw permissionError;
             }
-            const error = new Error("No decryptor available for block list event.");
-            error.code = "user-blocklist-no-decryptor";
-            error.signerStatus = signerStatus;
-            throw error;
+            return [];
           }
 
           let decryptedText = "";
@@ -1279,48 +1089,27 @@ class UserBlockListManager {
             return [];
           }
 
-          return parseBlockListPlaintext(decryptedText, normalized, {
-            limit: MAX_BLOCKLIST_ENTRIES,
-          });
+          return parseBlockListPlaintext(decryptedText, normalized);
         };
 
         const mergedPubkeys = new Set();
         let decryptionError = null;
-        const decryptMeta = {
-          mute: { eventId: newestMute?.id || null },
-          block: { eventId: newestBlock?.id || null },
-        };
-        const resolveSignerStatus = () => {
-          const statuses = [decryptMeta.mute.signerStatus, decryptMeta.block.signerStatus]
-            .filter(Boolean);
-          if (!statuses.length) {
-            return "unknown";
-          }
-          if (statuses.every((status) => status === "missing")) {
-            return "missing";
-          }
-          if (statuses.some((status) => status === "present-missing-decryptor")) {
-            return "present-missing-decryptor";
-          }
-          return "present";
-        };
 
         try {
           const decryptPromise = Promise.all([
-            decryptEvent(newestMute, decryptMeta.mute),
-            decryptEvent(newestBlock, decryptMeta.block),
+            decryptEvent(newestMute),
+            decryptEvent(newestBlock),
           ]);
           const timeoutPromise = new Promise((_, reject) =>
             setTimeout(
               () => {
                 const timeoutError = new Error(
-                  `Decryption timed out after ${decryptTimeoutMs / 1000}s`,
+                  `Decryption timed out after ${DECRYPT_TIMEOUT_MS / 1000}s`,
                 );
                 timeoutError.code = "user-blocklist-decrypt-timeout";
-                timeoutError.signerStatus = resolveSignerStatus();
                 reject(timeoutError);
               },
-              decryptTimeoutMs,
+              DECRYPT_TIMEOUT_MS,
             ),
           );
 
@@ -1337,54 +1126,13 @@ class UserBlockListManager {
         }
 
         if (decryptionError) {
-          if (decryptionError.code === "user-blocklist-permission-required") {
-            const signerStatus =
-              decryptionError.signerStatus || resolveSignerStatus();
+          if (decryptionError.code === "user-blocklist-decrypt-timeout") {
             this.blockedPubkeys = previousState.blockedPubkeys;
             this.blockEventId = previousState.blockEventId;
             this.blockEventCreatedAt = previousState.blockEventCreatedAt;
             this.loaded = true;
-            emitStatus({
-              status: "permission-required",
-              signerStatus,
-              source,
-              reason: "decryptor-permission",
-              allowPermissionPrompt,
-              mode: loadMode,
-              events: [newestMute?.id, newestBlock?.id].filter(Boolean),
-              error: decryptionError,
-            });
             emitStatus({ status: "settled" });
-            return;
-          }
-          if (decryptionError.code === "user-blocklist-decrypt-timeout") {
-            const signerStatus =
-              decryptionError.signerStatus || resolveSignerStatus();
-            applyBlockedPubkeys([], {
-              source,
-              reason: "decrypt-timeout",
-              signerStatus,
-              events: [newestMute?.id, newestBlock?.id].filter(Boolean),
-            });
-            this.loaded = true;
-            emitStatus({
-              status: "applied-empty",
-              reason: "decrypt-timeout",
-              signerStatus,
-              source,
-            });
-            emitStatus({ status: "settled" });
-            userLogger.warn(
-              "[UserBlockList] Decryption timed out; applying empty list and retrying in background.",
-              {
-                signerStatus,
-                events: [newestMute?.id, newestBlock?.id].filter(Boolean),
-              },
-            );
-            this.scheduleDecryptRetry(normalized, {
-              error: decryptionError,
-              signerStatus,
-            });
+            this.scheduleDecryptRetry(normalized, decryptionError);
             return;
           }
           userLogger.warn(
@@ -1395,13 +1143,10 @@ class UserBlockListManager {
           this.blockEventId = previousState.blockEventId;
           this.blockEventCreatedAt = previousState.blockEventCreatedAt;
           this.loaded = true;
-          const signerStatus =
-            decryptionError.signerStatus || resolveSignerStatus();
           emitStatus({
             status: "error",
             error: decryptionError,
             decryptor: "mixed",
-            signerStatus,
           });
           emitStatus({ status: "settled" });
           return;
@@ -1437,13 +1182,9 @@ class UserBlockListManager {
         }
       };
 
-      // Anchor the fetch to the service's current state to prevent desync.
-      // If we have cached data, we ask for updates since that timestamp.
-      // If we have no data, we force a full fetch (since=0).
-      const fetchSince =
-        hasLocalData && Number.isFinite(this.blockEventCreatedAt)
-          ? this.blockEventCreatedAt
-          : 0;
+      // If we don't have local data, we must ignore the sync metadata and force a full fetch (since: 0).
+      // Otherwise, we might miss data if the metadata store says we are up-to-date but the actual list is missing.
+      const fetchSince = hasLocalData ? undefined : 0;
 
       // Concurrent incremental fetch for both kinds
       const [muteEvents, blockEvents] = await Promise.all([
@@ -1493,15 +1234,7 @@ class UserBlockListManager {
     }
     const cached = profileCache.getProfileData(normalizedActorHex, "blocks");
     if (Array.isArray(cached)) {
-      return { blockedPubkeys: new Set(cached), createdAt: null };
-    }
-    if (cached && typeof cached === "object") {
-      return {
-        blockedPubkeys: new Set(
-          Array.isArray(cached.blockedPubkeys) ? cached.blockedPubkeys : [],
-        ),
-        createdAt: Number.isFinite(cached.createdAt) ? cached.createdAt : null,
-      };
+      return new Set(cached);
     }
     return null;
   }
@@ -1511,11 +1244,11 @@ class UserBlockListManager {
     if (!normalizedActorHex) {
       return;
     }
-    profileCache.setProfileData(normalizedActorHex, "blocks", {
-      blockedPubkeys: Array.from(this.blockedPubkeys),
-      createdAt: this.blockEventCreatedAt,
-      version: 1,
-    });
+    profileCache.setProfileData(
+      normalizedActorHex,
+      "blocks",
+      Array.from(this.blockedPubkeys),
+    );
   }
 
   _getSeedState(actorHex) {
@@ -2056,18 +1789,16 @@ class UserBlockListManager {
     }
 
     if (signer.type === "extension") {
-      const permissionResult = await requestDefaultExtensionPermissions(
-        DEFAULT_NIP07_ENCRYPTION_METHODS,
-      );
+      const permissionResult = await requestDefaultExtensionPermissions();
       if (!permissionResult.ok) {
         userLogger.warn(
           "[UserBlockList] Signer permissions denied while updating the block list.",
           permissionResult.error,
         );
         const err = new Error(
-          "The active signer must allow encryption before updating the block list.",
+          "The active signer must allow encryption and signing before updating the block list.",
         );
-        err.code = "extension-encryption-permission-denied";
+        err.code = "extension-permission-denied";
         err.cause = permissionResult.error;
         throw err;
       }

@@ -381,24 +381,6 @@
             data-profile-mobile-pane
             aria-hidden="true"
           >
-            <div
-              id="profilePermissionPrompt"
-              class="card hidden flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"
-              role="status"
-              aria-live="polite"
-            >
-              <p
-                id="profilePermissionPromptMessage"
-                class="text-sm text-muted"
-              ></p>
-              <button
-                id="profilePermissionPromptButton"
-                type="button"
-                class="btn focus-ring"
-              >
-                Enable permissions
-              </button>
-            </div>
             <div id="profileModalPanes" class="profile-modal__panes">
             <section
               id="profilePaneAccount"
@@ -705,18 +687,6 @@
                   </div>
                 </div>
               </div>
-              <div class="flex items-center justify-between gap-3">
-                <h3 class="text-base font-semibold text-text">Relays</h3>
-                <button
-                  id="relayListRefreshBtn"
-                  type="button"
-                  class="btn-ghost btn-icon"
-                  data-size="sm"
-                  aria-label="Refresh relay list"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path><path d="M16 21h5v-5"></path></svg>
-                </button>
-              </div>
               <ul id="relayList" class="grid-stack" data-orientation="vertical"></ul>
               <div id="relayHealthPanel" class="card space-y-4 p-5">
                 <div class="flex flex-wrap items-start justify-between gap-3">
@@ -733,18 +703,6 @@
                   >
                     Refresh
                   </button>
-                </div>
-                <div
-                  id="relayHealthSummary"
-                  class="rounded-md border border-border/70 bg-surface/40 p-3"
-                >
-                  <div class="flex flex-wrap items-center justify-between gap-2">
-                    <p class="text-2xs font-semibold uppercase tracking-extra-wide text-muted-strong">
-                      Relay status
-                    </p>
-                    <p id="relayHealthCounts" class="text-xs font-semibold text-text"></p>
-                  </div>
-                  <p id="relayHealthMessage" class="mt-1 text-xs text-muted"></p>
                 </div>
                 <label
                   for="relayHealthTelemetryOptIn"
@@ -962,22 +920,11 @@
               </div>
 
               <div class="card space-y-4 p-5">
-                <div class="flex items-start justify-between gap-3">
-                  <div class="space-y-1">
-                    <h3 class="text-base font-semibold text-text">Interests</h3>
-                    <p class="text-sm text-muted">
-                      Videos tagged with these hashtags will be highlighted for you.
-                    </p>
-                  </div>
-                  <button
-                    id="profileHashtagInterestRefreshBtn"
-                    type="button"
-                    class="btn-ghost btn-icon"
-                    data-size="sm"
-                    aria-label="Refresh interest hashtags"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path><path d="M16 21h5v-5"></path></svg>
-                  </button>
+                <div class="space-y-1">
+                  <h3 class="text-base font-semibold text-text">Interests</h3>
+                  <p class="text-sm text-muted">
+                    Videos tagged with these hashtags will be highlighted for you.
+                  </p>
                 </div>
                 <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
                   <label
@@ -1016,22 +963,11 @@
               </div>
 
               <div class="card space-y-4 p-5">
-                <div class="flex items-start justify-between gap-3">
-                  <div class="space-y-1">
-                    <h3 class="text-base font-semibold text-text">Disinterests</h3>
-                    <p class="text-sm text-muted">
-                      We’ll de-emphasize or hide videos using these hashtags.
-                    </p>
-                  </div>
-                  <button
-                    id="profileHashtagDisinterestRefreshBtn"
-                    type="button"
-                    class="btn-ghost btn-icon"
-                    data-size="sm"
-                    aria-label="Refresh disinterest hashtags"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path><path d="M16 21h5v-5"></path></svg>
-                  </button>
+                <div class="space-y-1">
+                  <h3 class="text-base font-semibold text-text">Disinterests</h3>
+                  <p class="text-sm text-muted">
+                    We’ll de-emphasize or hide videos using these hashtags.
+                  </p>
                 </div>
                 <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
                   <label
@@ -1079,24 +1015,6 @@
               <p class="text-sm text-muted">
                 These are the creators you’ve subscribed to directly in bitvid.
               </p>
-              <p
-                id="subscriptionsStatus"
-                class="text-sm text-muted"
-                role="status"
-                aria-live="polite"
-              ></p>
-              <div class="flex items-center justify-between gap-3">
-                <h3 class="text-base font-semibold text-text">Subscriptions</h3>
-                <button
-                  id="subscriptionsRefreshBtn"
-                  type="button"
-                  class="btn-ghost btn-icon"
-                  data-size="sm"
-                  aria-label="Refresh subscriptions"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path><path d="M16 21h5v-5"></path></svg>
-                </button>
-              </div>
               <div
                 id="subscriptionsEmpty"
                 class="card border border-dashed border-border/60 p-6 text-center text-sm text-muted"
@@ -1115,18 +1033,6 @@
               <p class="text-sm text-muted">
                 Add friends to spotlight creators you want to keep up with across bitvid.
               </p>
-              <div class="flex items-center justify-between gap-3">
-                <h3 class="text-base font-semibold text-text">Friends</h3>
-                <button
-                  id="friendsRefreshBtn"
-                  type="button"
-                  class="btn-ghost btn-icon"
-                  data-size="sm"
-                  aria-label="Refresh friends"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path><path d="M16 21h5v-5"></path></svg>
-                </button>
-              </div>
               <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
                 <label class="flex-1 text-sm text-muted-strong" for="friendsInput">
                   <span class="mb-2 block font-medium">Creator npub</span>
@@ -1345,18 +1251,6 @@
                 Creators you block are hidden from your bitvid experience. This
                 list is private to your account.
               </p>
-              <div class="flex items-center justify-between gap-3">
-                <h3 class="text-base font-semibold text-text">Blocked creators</h3>
-                <button
-                  id="blockedRefreshBtn"
-                  type="button"
-                  class="btn-ghost btn-icon"
-                  data-size="sm"
-                  aria-label="Refresh blocked creators"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path><path d="M16 21h5v-5"></path></svg>
-                </button>
-              </div>
               <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
                 <label class="flex-1 text-sm text-muted-strong" for="blockedInput">
                   <span class="mb-2 block font-medium">Creator npub</span>
@@ -1387,7 +1281,7 @@
             </section>
             <section
               id="profilePaneMessages"
-              class="profile-pane hidden space-y-4"
+              class="profile-pane hidden"
               role="tabpanel"
               aria-labelledby="profileNavMessages"
             >
@@ -1426,11 +1320,10 @@
                     <button
                       id="profileHistoryRefresh"
                       type="button"
-                      class="btn-ghost btn-icon focus-ring"
+                      class="btn-ghost focus-ring inline-flex items-center gap-2"
                       data-size="sm"
-                      aria-label="Refresh watch history"
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path><path d="M16 21h5v-5"></path></svg>
+                      Refresh
                     </button>
                   </div>
                 </div>
@@ -1526,18 +1419,7 @@
 
               <div id="adminModeratorsSection" class="space-y-4 hidden" aria-hidden="true">
                 <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div class="flex items-center gap-2">
-                    <h4 class="text-base font-semibold text-text">Moderators</h4>
-                    <button
-                      id="adminModeratorsRefreshBtn"
-                      type="button"
-                      class="btn-ghost btn-icon"
-                      data-size="sm"
-                      aria-label="Refresh moderators"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path><path d="M16 21h5v-5"></path></svg>
-                    </button>
-                  </div>
+                  <h4 class="text-base font-semibold text-text">Moderators</h4>
                   <p class="text-xs uppercase tracking-wide text-muted">
                     Super Admin only
                   </p>
@@ -1576,18 +1458,7 @@
 
               <div id="adminWhitelistSection" class="space-y-4">
                 <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div class="flex items-center gap-2">
-                    <h4 class="text-base font-semibold text-text">Whitelist</h4>
-                    <button
-                      id="adminWhitelistRefreshBtn"
-                      type="button"
-                      class="btn-ghost btn-icon"
-                      data-size="sm"
-                      aria-label="Refresh whitelist"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path><path d="M16 21h5v-5"></path></svg>
-                    </button>
-                  </div>
+                  <h4 class="text-base font-semibold text-text">Whitelist</h4>
                 </div>
                 <p class="text-sm text-muted">
                   Creators listed here remain visible when whitelist mode is enabled. Accounts can appear in both lists, and the blacklist always takes precedence.
@@ -1623,18 +1494,7 @@
 
               <div id="adminBlacklistSection" class="space-y-4">
                 <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div class="flex items-center gap-2">
-                    <h4 class="text-base font-semibold text-text">Blacklist</h4>
-                    <button
-                      id="adminBlacklistRefreshBtn"
-                      type="button"
-                      class="btn-ghost btn-icon"
-                      data-size="sm"
-                      aria-label="Refresh blacklist"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path><path d="M16 21h5v-5"></path></svg>
-                    </button>
-                  </div>
+                  <h4 class="text-base font-semibold text-text">Blacklist</h4>
                 </div>
                 <p class="text-sm text-muted">
                   Creators on the blacklist are hidden from bitvid everywhere. Accounts can appear in both lists, and the blacklist always takes precedence.

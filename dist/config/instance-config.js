@@ -17,13 +17,11 @@
  * Whether the current deployment should enable developer-centric behavior.
  *
  * When `true`, bitvid surfaces extra logging, debug helpers, and experimental
- * UI affordances intended for development environments. Leave the value
- * `false` for production so end users receive the stable experience; use the
- * runtime overrides documented in `js/config.js` when you need to toggle dev
- * mode without editing this file. Downstream modules read this flag via
- * `js/config.js`.
+ * UI affordances intended for development environments. Set the value to
+ * `false` before deploying to production so that end users receive the stable
+ * experience. Downstream modules read this flag via `js/config.js`.
  */
-export const IS_DEV_MODE = false;
+export const IS_DEV_MODE = true;
 
 /**
  * Whether development builds should surface extra verbose diagnostics.
@@ -31,10 +29,8 @@ export const IS_DEV_MODE = false;
  * Set this to `true` to keep high-volume development warnings (like COUNT
  * request failures) visible in the console. Flip it to `false` when you want
  * a quieter dev mode without disabling other development helpers entirely.
- * Use the runtime override documented in `js/config.js` if you need to toggle
- * verbosity without editing this file.
  */
-export const IS_VERBOSE_DEV_MODE = false;
+export const IS_VERBOSE_DEV_MODE = true;
 
 /**
  * Whether the current deployment should operate in lockdown mode.

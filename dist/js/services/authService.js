@@ -26,7 +26,6 @@ import { profileCache } from "../state/profileCache.js";
 import getDefaultAuthProvider, {
   providers as defaultAuthProviders,
 } from "./authProviders/index.js";
-import { fetchProfileMetadata } from "./profileMetadataService.js";
 
 class SimpleEventEmitter {
   constructor(logger = null) {
@@ -623,12 +622,8 @@ export default class AuthService {
       postLoginError: null,
     };
 
-    const { detail: postLoginDetail, completionPromise } = this.applyPostLoginState({
-      deferBlocks: true,
-    });
-    detail.postLogin = postLoginDetail;
-
-    const postLoginPromise = Promise.resolve(completionPromise)
+    const postLoginPromise = Promise.resolve()
+      .then(() => this.applyPostLoginState())
       .then((postLogin) => {
         detail.postLogin = postLogin;
         detail.postLoginError = null;
@@ -682,151 +677,75 @@ export default class AuthService {
     return detail;
   }
 
-  applyPostLoginState({ deferBlocks = false } = {}) {
+  async applyPostLoginState() {
     const activePubkey = this.normalizeHexPubkey(getPubkey()) || getPubkey();
-    const cachedEntry = activePubkey ? this.getProfileCacheEntry(activePubkey) : null;
-    const cachedProfile = cachedEntry?.profile || FALLBACK_PROFILE;
     const detail = {
       pubkey: activePubkey || null,
-      blocksLoaded: deferBlocks ? null : false,
+      blocksLoaded: false,
       relaysLoaded: false,
-      profile: cachedProfile,
+      profile: null,
     };
 
     if (!activePubkey) {
-      return { detail, completionPromise: Promise.resolve(detail) };
+      return detail;
     }
-
-    const runOperation = async (operation) => {
-      try {
-        const value = await operation.promise;
-        const resolved = operation.onFulfilled(value);
-        detail[operation.name] = resolved;
-        if (typeof operation.emit === "function") {
-          operation.emit(resolved, null);
-        }
-        return resolved;
-      } catch (error) {
-        const resolved = operation.onRejected(error);
-        detail[operation.name] = resolved;
-        if (typeof operation.emit === "function") {
-          operation.emit(resolved, error);
-        }
-        return resolved;
-      }
-    };
 
     const schedule = (callback) => Promise.resolve().then(() => callback());
 
-    const completionPromise = (async () => {
-      if (this.relayManager && typeof this.relayManager.loadRelayList === "function") {
-        const relayOp = {
-          name: "relaysLoaded",
-          promise: schedule(() => this.relayManager.loadRelayList(activePubkey)),
-          onFulfilled: () => true,
-          onRejected: (error) => {
-            this.log("[AuthService] Failed to load relay list", error);
-            return false;
-          },
-          emit: (value, error) => {
-            this.emit("relaysLoaded", {
-              pubkey: activePubkey,
-              relaysLoaded: value,
-              error: error ?? null,
-            });
-          },
-        };
-        await runOperation(relayOp);
-      }
+    const operations = [];
 
-      const concurrentOps = [];
-
-      if (!deferBlocks) {
-        const blocksOperation = this.createBlocksLoadOperation(activePubkey, schedule);
-        if (blocksOperation) {
-          concurrentOps.push(blocksOperation);
-        }
-      }
-
-      concurrentOps.push({
-        name: "profile",
-        promise: schedule(() => this.loadOwnProfile(activePubkey)),
-        onFulfilled: (value) => {
-          const profile = value || FALLBACK_PROFILE;
-          this.setProfileCacheEntry(activePubkey, profile, {
-            persist: true,
-            reason: "post-login",
-          });
-          return profile;
-        },
+    if (this.userBlocks && typeof this.userBlocks.loadBlocks === "function") {
+      operations.push({
+        name: "blocksLoaded",
+        promise: schedule(() => this.userBlocks.loadBlocks(activePubkey)),
+        onFulfilled: () => true,
         onRejected: (error) => {
-          this.log("[AuthService] Failed to load own profile", error);
-          const fallbackProfile = cachedProfile || FALLBACK_PROFILE;
-          this.setProfileCacheEntry(activePubkey, fallbackProfile, {
-            persist: true,
-            reason: "post-login-fallback",
-          });
-          return fallbackProfile;
+          this.log("[AuthService] Failed to load block list", error);
+          return false;
         },
       });
-
-      await Promise.allSettled(concurrentOps.map(runOperation));
-
-      return detail;
-    })();
-
-    return { detail, completionPromise };
-  }
-
-  createBlocksLoadOperation(
-    activePubkey,
-    schedule = (callback) => Promise.resolve().then(() => callback()),
-    options = {},
-  ) {
-    if (!this.userBlocks || typeof this.userBlocks.loadBlocks !== "function") {
-      return null;
     }
 
-    return {
-      name: "blocksLoaded",
-      promise: schedule(() => this.userBlocks.loadBlocks(activePubkey, options)),
-      onFulfilled: () => true,
+    if (this.relayManager && typeof this.relayManager.loadRelayList === "function") {
+      operations.push({
+        name: "relaysLoaded",
+        promise: schedule(() => this.relayManager.loadRelayList(activePubkey)),
+        onFulfilled: () => true,
+        onRejected: (error) => {
+          this.log("[AuthService] Failed to load relay list", error);
+          return false;
+        },
+      });
+    }
+
+    operations.push({
+      name: "profile",
+      promise: schedule(() => this.loadOwnProfile(activePubkey)),
+      onFulfilled: (value) => value,
       onRejected: (error) => {
-        this.log("[AuthService] Failed to load block list", error);
-        return false;
+        this.log("[AuthService] Failed to load own profile", error);
+        return null;
       },
-      emit: (value, error) => {
-        this.emit("blocksLoaded", {
-          pubkey: activePubkey,
-          blocksLoaded: value,
-          error: error ?? null,
-        });
-      },
-    };
-  }
+    });
 
-  async loadBlocksForPubkey(pubkey, options = {}) {
-    const normalized = this.normalizeHexPubkey(pubkey) ||
-      (typeof pubkey === "string" ? pubkey.trim() : "");
-    if (!normalized) {
-      return false;
-    }
+    const settled = await Promise.allSettled(
+      operations.map((operation) => operation.promise)
+    );
 
-    const operation = this.createBlocksLoadOperation(normalized, undefined, options);
-    if (!operation) {
-      return false;
-    }
+    settled.forEach((result, index) => {
+      const operation = operations[index];
+      if (!operation) {
+        return;
+      }
 
-    try {
-      const value = await operation.promise;
-      const resolved = operation.onFulfilled(value);
-      operation.emit?.(resolved, null);
-      return resolved;
-    } catch (error) {
-      const resolved = operation.onRejected(error);
-      operation.emit?.(resolved, error);
-      return resolved;
-    }
+      if (result.status === "fulfilled") {
+        detail[operation.name] = operation.onFulfilled(result.value);
+      } else {
+        detail[operation.name] = operation.onRejected(result.reason);
+      }
+    });
+
+    return detail;
   }
 
   async logout() {
@@ -843,14 +762,6 @@ export default class AuthService {
     setPubkey(null);
     setCurrentUserNpub(null);
     setActiveProfilePubkey(null, { persist: true });
-
-    try {
-      if (profileCache && typeof profileCache.reset === "function") {
-        profileCache.reset();
-      }
-    } catch (error) {
-      this.log("[AuthService] profileCache.reset threw", error);
-    }
 
     try {
       resetModerationSettings({ persist: true });
@@ -1212,16 +1123,44 @@ export default class AuthService {
     }
 
     try {
-      const result = await fetchProfileMetadata(normalized, {
-        nostr: this.nostrClient,
-      });
+      const results = await Promise.all(
+        this.nostrClient.relays.map((relayUrl) =>
+          this.nostrClient.pool.list([relayUrl], [
+            { kinds: [0], authors: [normalized], limit: 1 },
+          ])
+        )
+      );
 
-      if (result?.event && typeof this.nostrClient?.handleEvent === "function") {
-        this.nostrClient.handleEvent(result.event);
+      const events = results.flat();
+      let newest = null;
+      for (const event of events) {
+        if (!event || event.pubkey !== normalized || !event.content) {
+          continue;
+        }
+        if (!newest || event.created_at > newest.created_at) {
+          newest = event;
+        }
       }
 
-      if (result?.profile) {
-        return result.profile;
+      if (newest) {
+        if (this.nostrClient && typeof this.nostrClient.handleEvent === "function") {
+          this.nostrClient.handleEvent(newest);
+        }
+        if (newest.content) {
+          const data = JSON.parse(newest.content);
+          const profile = {
+            name: data.display_name || data.name || FALLBACK_PROFILE.name,
+            picture: data.picture || FALLBACK_PROFILE.picture,
+            about: typeof data.about === "string" ? data.about : FALLBACK_PROFILE.about,
+            website:
+              typeof data.website === "string" ? data.website : FALLBACK_PROFILE.website,
+            banner:
+              typeof data.banner === "string" ? data.banner : FALLBACK_PROFILE.banner,
+            lud16: typeof data.lud16 === "string" ? data.lud16 : FALLBACK_PROFILE.lud16,
+            lud06: typeof data.lud06 === "string" ? data.lud06 : FALLBACK_PROFILE.lud06,
+          };
+          return profile;
+        }
       }
     } catch (error) {
       this.log("[AuthService] Failed to fetch profile", error);

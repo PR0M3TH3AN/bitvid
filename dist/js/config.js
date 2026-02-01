@@ -47,39 +47,10 @@ import {
 
 export const WATCH_HISTORY_VERSION_TAG_VALUE = "2";
 
-const runtimeScope = typeof globalThis === "undefined" ? null : globalThis;
-
-const parseBooleanOverride = (value) => {
-  if (typeof value === "boolean") {
-    return value;
-  }
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    if (normalized === "true") {
-      return true;
-    }
-    if (normalized === "false") {
-      return false;
-    }
-  }
-  return null;
-};
-
-const devModeOverride = parseBooleanOverride(
-  runtimeScope?.__BITVID_DEV_MODE_OVERRIDE__
-);
-const verboseDevModeOverride = parseBooleanOverride(
-  runtimeScope?.__BITVID_VERBOSE_DEV_MODE_OVERRIDE__
-);
-
-export const isDevMode =
-  devModeOverride === null ? Boolean(IS_DEV_MODE) : devModeOverride;
+export const isDevMode = Boolean(IS_DEV_MODE);
 export { IS_DEV_MODE };
 
-export const isVerboseDevMode =
-  verboseDevModeOverride === null
-    ? Boolean(IS_VERBOSE_DEV_MODE)
-    : verboseDevModeOverride;
+export const isVerboseDevMode = Boolean(IS_VERBOSE_DEV_MODE);
 export { IS_VERBOSE_DEV_MODE };
 
 export const isLockdownMode = Boolean(IS_LOCKDOWN_MODE);
