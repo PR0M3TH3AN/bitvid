@@ -4498,6 +4498,11 @@ export class ProfileModalController {
         this.setDirectMessageRecipient(threadsToRender[0].remoteHex, {
           reason: "thread-default",
         });
+        const conversationId = this.buildDmConversationId(
+          normalizedActor,
+          threadsToRender[0].remoteHex,
+        );
+        this.setFocusedDmConversation(conversationId);
       } else if (hasActiveRecipient) {
         this.updateMessageThreadSelection(activeRecipient);
       }
@@ -4563,6 +4568,8 @@ export class ProfileModalController {
       activeThread,
       timeline,
     } = await this.buildDmConversationData(snapshot, { actorPubkey });
+
+    this.setFocusedDmConversation(activeConversationId);
 
     const currentRecipient = this.resolveActiveDmRecipient();
     if (!currentRecipient && activeThread?.remoteHex) {
