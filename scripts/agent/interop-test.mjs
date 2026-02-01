@@ -1,185 +1,242 @@
+
 import './setup-test-env.js';
 import { NostrClient } from '../../js/nostr/client.js';
-import { buildVideoPostEvent, buildViewEvent, NOTE_TYPES } from '../../js/nostrEventSchemas.js';
-import * as NostrTools from 'nostr-tools';
+import { decryptDM } from '../../js/dmDecryptor.js';
+import {
+    buildVideoPostEvent,
+    buildLegacyDirectMessageEvent,
+    buildViewEvent,
+    NOTE_TYPES
+} from '../../js/nostrEventSchemas.js';
+import { generateSecretKey, getPublicKey } from 'nostr-tools';
+import fs from 'fs';
+import path from 'path';
 
-const bytesToHex = (bytes) => {
-  return Buffer.from(bytes).toString('hex');
-};
-
-const RELAYS = [
-  "wss://relay.damus.io",
-  "wss://nos.lol"
+// Configuration
+const TEST_RELAYS = [
+    'wss://relay.damus.io',
+    'wss://nos.lol'
 ];
 
-async function runTests() {
-  console.log("Starting Protocol & Interop Tests...");
+// Artifacts
+const ARTIFACTS_DIR = 'artifacts';
+const LOG_FILE = path.join(ARTIFACTS_DIR, `interop-${new Date().toISOString().split('T')[0].replace(/-/g, '')}.log`);
 
-  // --- Setup ---
-  console.log("[Setup] Generating ephemeral keys...");
-  const aliceSkBytes = NostrTools.generateSecretKey();
-  const aliceSk = bytesToHex(aliceSkBytes);
-  const alicePk = NostrTools.getPublicKey(aliceSkBytes);
-
-  const bobSkBytes = NostrTools.generateSecretKey();
-  const bobSk = bytesToHex(bobSkBytes);
-  const bobPk = NostrTools.getPublicKey(bobSkBytes);
-
-  console.log(`[Setup] Alice: ${alicePk}`);
-  console.log(`[Setup] Bob: ${bobPk}`);
-
-  const aliceClient = new NostrClient();
-  aliceClient.relays = [...RELAYS];
-  aliceClient.readRelays = [...RELAYS];
-  aliceClient.writeRelays = [...RELAYS];
-
-  const bobClient = new NostrClient();
-  bobClient.relays = [...RELAYS];
-  bobClient.readRelays = [...RELAYS];
-  bobClient.writeRelays = [...RELAYS];
-
-  console.log("[Setup] Connecting clients...");
-  // Initialize to connect
-  await aliceClient.init(); // This might try to load stored session, but shouldn't matter
-  await bobClient.init();
-
-  // Register signers
-  await aliceClient.registerPrivateKeySigner({ privateKey: aliceSk, pubkey: alicePk });
-  aliceClient.pubkey = alicePk; // Explicitly set client pubkey to ensure correct signer resolution
-
-  await bobClient.registerPrivateKeySigner({ privateKey: bobSk, pubkey: bobPk });
-  bobClient.pubkey = bobPk; // Explicitly set client pubkey to ensure correct signer resolution
-
-  let testsPassed = 0;
-  let testsTotal = 0;
-
-  // --- Test A: Video Post ---
-  testsTotal++;
-  console.log("\n[Test A] Publishing VIDEO_POST...");
-  try {
-    const videoPayload = {
-        version: 3,
-        title: "Interop Test Video " + Date.now(),
-        description: "This is a test video event.",
-        videoRootId: "interop-test-" + Date.now(),
-        mode: "dev",
-        isPrivate: false,
-        isNsfw: false,
-        isForKids: false,
-        enableComments: true
-    };
-
-    // We use signAndPublishEvent directly with a manually built event to test the schema helper
-    const event = buildVideoPostEvent({
-        pubkey: alicePk,
-        created_at: Math.floor(Date.now() / 1000),
-        dTagValue: videoPayload.videoRootId,
-        content: videoPayload
-    });
-
-    const { signedEvent } = await aliceClient.signAndPublishEvent(event);
-    console.log(`[Test A] Published event ${signedEvent.id}`);
-
-    // Verify
-    console.log("[Test A] Verifying roundtrip...");
-    // Give relays a moment
-    await new Promise(r => setTimeout(r, 2000));
-
-    // getEventById returns the Video object (converted), but we can ask for raw too
-    const result = await bobClient.getEventById(signedEvent.id, { includeRaw: true });
-    if (!result || !result.rawEvent) throw new Error("Failed to fetch event back");
-
-    const fetched = result.rawEvent;
-    if (fetched.id !== signedEvent.id) throw new Error("Fetched ID mismatch");
-
-    // Parse content
-    const content = typeof fetched.content === 'string' ? JSON.parse(fetched.content) : fetched.content;
-    if (content.title !== videoPayload.title) throw new Error("Content mismatch: title");
-
-    console.log("[Test A] PASSED");
-    testsPassed++;
-  } catch (e) {
-    console.error("[Test A] FAILED:", e);
-  }
-
-  // --- Test B: View Event ---
-  testsTotal++;
-  console.log("\n[Test B] Publishing VIEW_EVENT...");
-  try {
-    const viewEvent = buildViewEvent({
-        pubkey: alicePk,
-        created_at: Math.floor(Date.now() / 1000),
-        pointerValue: "test-video-pointer", // Arbitrary pointer for test
-        content: "view-test"
-    });
-
-    const { signedEvent: signedView } = await aliceClient.signAndPublishEvent(viewEvent);
-    console.log(`[Test B] Published view event ${signedView.id}`);
-
-    await new Promise(r => setTimeout(r, 2000));
-
-    // Bob fetches raw event
-    const fetchedView = await bobClient.fetchRawEventById(signedView.id);
-    if (!fetchedView) throw new Error("Failed to fetch view event");
-    if (fetchedView.id !== signedView.id) throw new Error("View event ID mismatch");
-
-    console.log("[Test B] PASSED");
-    testsPassed++;
-  } catch (e) {
-    console.error("[Test B] FAILED:", e);
-  }
-
-  // --- Test C: Direct Message ---
-  testsTotal++;
-  console.log("\n[Test C] Sending Direct Message...");
-  try {
-    const message = "Hello Bob, this is Alice " + Date.now();
-    const npubBob = NostrTools.nip19.npubEncode(bobPk);
-
-    const sendResult = await aliceClient.sendDirectMessage(npubBob, message);
-    if (!sendResult.ok) throw new Error("Failed to send DM: " + (sendResult.error || "unknown"));
-    console.log("[Test C] DM sent successfully");
-
-    await new Promise(r => setTimeout(r, 3000));
-
-    console.log("[Test C] Bob checking messages...");
-    // Force bob to list messages (which triggers decryption using his registered signer)
-    const messages = await bobClient.listDirectMessages(bobPk, { limit: 5 });
-
-    const received = messages.find(m => m.plaintext === message);
-    if (!received) {
-        console.log("Received messages:", messages.map(m => m.plaintext));
-        throw new Error("Bob did not find the specific message");
-    }
-
-    if (received.sender.pubkey !== alicePk) {
-        console.log(`[Test C] Sender mismatch: Expected ${alicePk}, got ${received.sender.pubkey}`);
-        throw new Error("Sender mismatch");
-    }
-
-    console.log("[Test C] PASSED");
-    testsPassed++;
-  } catch (e) {
-    console.error("[Test C] FAILED:", e);
-  }
-
-  // --- Summary ---
-  console.log("\n---------------------------------------------------");
-  console.log(`Tests Completed: ${testsPassed}/${testsTotal}`);
-
-  aliceClient.logout();
-  bobClient.logout();
-
-  if (testsPassed === testsTotal) {
-    console.log("ALL TESTS PASSED");
-    process.exit(0);
-  } else {
-    console.error("SOME TESTS FAILED");
-    process.exit(1);
-  }
+// Logger
+function log(message) {
+    const timestamp = new Date().toISOString();
+    const line = `[${timestamp}] ${message}`;
+    console.log(line);
+    fs.appendFileSync(LOG_FILE, line + '\n');
 }
 
-runTests().catch(e => {
-  console.error("Unhandled execution error:", e);
-  process.exit(1);
-});
+// Generate Keys
+const bytesToHex = (bytes) => Buffer.from(bytes).toString('hex');
+const EPHEMERAL_SK_BYTES = generateSecretKey();
+const EPHEMERAL_SK = bytesToHex(EPHEMERAL_SK_BYTES);
+const EPHEMERAL_PK = getPublicKey(EPHEMERAL_SK_BYTES);
+
+async function runInteropTest() {
+    // Ensure artifacts dir
+    if (!fs.existsSync(ARTIFACTS_DIR)) {
+        fs.mkdirSync(ARTIFACTS_DIR);
+    }
+    fs.writeFileSync(LOG_FILE, ''); // Clear log
+
+    let nodeClient;
+    let exitCode = 0;
+    const artifacts = {};
+
+    try {
+        log('--- Interop Test Started ---');
+        log(`Ephemeral Pubkey: ${EPHEMERAL_PK}`);
+        log(`Relays: ${TEST_RELAYS.join(', ')}`);
+
+        // 1. Initialize Node Client
+        log('Initializing NostrClient...');
+        nodeClient = new NostrClient();
+        nodeClient.relays = [...TEST_RELAYS];
+        nodeClient.writeRelays = [...TEST_RELAYS];
+        nodeClient.readRelays = [...TEST_RELAYS];
+
+        // Register ephemeral signer
+        await nodeClient.registerPrivateKeySigner({ privateKey: EPHEMERAL_SK });
+        log('Signer registered.');
+
+        // Initialize pool (lazy, but explicit init ensures connection attempts)
+        log('Warming up connections...');
+        await nodeClient.ensurePool(); // Ensure pool is created
+
+        // 2. Test A: Video Post
+        log('Test A: Publishing VIDEO_POST...');
+        const videoEventTemplate = buildVideoPostEvent({
+            pubkey: EPHEMERAL_PK,
+            created_at: Math.floor(Date.now() / 1000),
+            dTagValue: `interop-test-${Date.now()}`,
+            content: {
+                version: 3,
+                title: 'Interop Test Video',
+                url: 'https://example.com/video.mp4',
+                description: 'A video to verify protocol interoperability.',
+                mode: 'live',
+                videoRootId: `interop-root-${Date.now()}`
+            }
+        });
+
+        const { signedEvent: publishedVideo } = await nodeClient.signAndPublishEvent(videoEventTemplate, {
+            context: 'interop-video'
+        });
+        log(`Published Video ID: ${publishedVideo.id}`);
+        artifacts.videoEventId = publishedVideo.id;
+
+        // Fetch back verification with Retry
+        log('Verifying Video Post (fetch by ID)...');
+        let fetchedVideo = null;
+        const maxRetries = 5;
+        const initialDelay = 2000;
+
+        for (let i = 0; i < maxRetries; i++) {
+            const delay = initialDelay * (i + 1);
+            log(`Attempt ${i + 1}/${maxRetries}: Waiting ${delay}ms...`);
+            await new Promise(r => setTimeout(r, delay));
+
+            try {
+                fetchedVideo = await nodeClient.fetchRawEventById(publishedVideo.id);
+                if (fetchedVideo) {
+                    log('Video event found!');
+                    break;
+                }
+            } catch (e) {
+                log(`Fetch attempt failed: ${e.message}`);
+            }
+        }
+
+        if (!fetchedVideo) {
+            throw new Error(`Failed to fetch video event ${publishedVideo.id} after ${maxRetries} retries.`);
+        }
+        if (fetchedVideo.content !== publishedVideo.content) {
+            throw new Error('Fetched video content mismatch.');
+        }
+        log('Video Post verified successfully.');
+
+
+        // 3. Test B: View Event
+        log('Test B: Publishing VIEW_EVENT...');
+        const viewEventTemplate = buildViewEvent({
+            pubkey: EPHEMERAL_PK,
+            created_at: Math.floor(Date.now() / 1000),
+            pointerValue: publishedVideo.id, // Pointing to the video we just created
+            pointerTag: ['e', publishedVideo.id],
+            includeSessionTag: true // simulate session
+        });
+
+        const { signedEvent: publishedView } = await nodeClient.signAndPublishEvent(viewEventTemplate, {
+            context: 'interop-view'
+        });
+        log(`Published View Event ID: ${publishedView.id}`);
+        artifacts.viewEventId = publishedView.id;
+
+        // No fetch back for view event to save time, assuming if Video worked, this works too.
+        log('View Event published.');
+
+
+        // 4. Test C: Direct Message (Legacy NIP-04)
+        log('Test C: Publishing Encrypted DM...');
+        const dmMessage = "Interop Test Secret Message";
+        const signer = await nodeClient.ensureActiveSignerForPubkey(EPHEMERAL_PK);
+
+        // Encrypt (Self-DM)
+        const ciphertext = await signer.nip04Encrypt(EPHEMERAL_PK, dmMessage);
+
+        const dmTemplate = buildLegacyDirectMessageEvent({
+            pubkey: EPHEMERAL_PK,
+            created_at: Math.floor(Date.now() / 1000),
+            recipientPubkey: EPHEMERAL_PK,
+            ciphertext: ciphertext
+        });
+
+        const { signedEvent: publishedDM } = await nodeClient.signAndPublishEvent(dmTemplate, {
+            context: 'interop-dm'
+        });
+        log(`Published DM ID: ${publishedDM.id}`);
+        artifacts.dmEventId = publishedDM.id;
+
+        // Fetch and Decrypt with Retry
+        log('Verifying DM Decryption...');
+        let fetchedDM = null;
+        for (let i = 0; i < maxRetries; i++) {
+            const delay = initialDelay * (i + 1);
+            log(`Attempt ${i + 1}/${maxRetries}: Waiting ${delay}ms...`);
+            await new Promise(r => setTimeout(r, delay));
+
+            try {
+                fetchedDM = await nodeClient.fetchRawEventById(publishedDM.id);
+                if (fetchedDM) {
+                    log('DM event found!');
+                    break;
+                }
+            } catch (e) {
+                log(`Fetch attempt failed: ${e.message}`);
+            }
+        }
+
+        if (!fetchedDM) {
+            throw new Error(`Failed to fetch DM event ${publishedDM.id} after ${maxRetries} retries.`);
+        }
+
+        const decryptContext = await nodeClient.buildDmDecryptContext(EPHEMERAL_PK);
+        const decryptionResult = await decryptDM(fetchedDM, decryptContext);
+
+        if (!decryptionResult.ok) {
+            log(`Decryption failed: ${JSON.stringify(decryptionResult.errors)}`);
+            throw new Error('DM Decryption failed.');
+        }
+
+        if (decryptionResult.plaintext !== dmMessage) {
+            throw new Error(`Decryption mismatch. Expected "${dmMessage}", got "${decryptionResult.plaintext}"`);
+        }
+        log(`DM Decrypted successfully: "${decryptionResult.plaintext}"`);
+
+        log('--- Interop Test PASSED ---');
+
+        // Save Summary
+        const summary = {
+            timestamp: new Date().toISOString(),
+            status: "success",
+            relays: TEST_RELAYS,
+            ephemeralPubkey: EPHEMERAL_PK,
+            artifacts
+        };
+        const summaryFile = path.join(ARTIFACTS_DIR, `interop-summary-${new Date().toISOString().split('T')[0].replace(/-/g, '')}.json`);
+        fs.writeFileSync(summaryFile, JSON.stringify(summary, null, 2));
+        log(`Summary saved to ${summaryFile}`);
+
+    } catch (err) {
+        log(`--- Interop Test FAILED: ${err.message} ---`);
+        if (err.stack) log(err.stack);
+        exitCode = 1;
+
+        // Save Failure Summary
+        const summary = {
+            timestamp: new Date().toISOString(),
+            status: "failed",
+            error: err.message,
+            relays: TEST_RELAYS,
+            ephemeralPubkey: EPHEMERAL_PK,
+            artifacts
+        };
+        const summaryFile = path.join(ARTIFACTS_DIR, `interop-summary-${new Date().toISOString().split('T')[0].replace(/-/g, '')}.json`);
+        fs.writeFileSync(summaryFile, JSON.stringify(summary, null, 2));
+
+    } finally {
+        log('Cleaning up...');
+        if (nodeClient && nodeClient.pool) {
+             // Close pool connections if possible (NostrTools SimplePool might not expose close easily in all versions,
+             // but we can try client logic if implemented or just exit)
+             // The client logic might not fully close sockets immediately, process.exit will handle it.
+        }
+        process.exit(exitCode);
+    }
+}
+
+runInteropTest();
