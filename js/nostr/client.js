@@ -724,10 +724,12 @@ class EventsCacheStore {
    * Only writes changes (diffs against fingerprints).
    *
    * @param {{events: Map, tombstones: Map, savedAt: number}} payload - The state to save.
+   * @param {Set<string>|null} [dirtyEventIds] - Optional set of event IDs that have changed.
+   * @param {Set<string>|null} [dirtyTombstoneKeys] - Optional set of tombstone keys that have changed.
    * @returns {Promise<{persisted: boolean, eventWrites: number, eventDeletes: number, tombstoneWrites: number, tombstoneDeletes: number}>}
    * Stats about the persistence operation.
    */
-  async persistSnapshot(payload) {
+  async persistSnapshot(payload, dirtyEventIds = null, dirtyTombstoneKeys = null) {
     const db = await this.getDb();
     if (!db) {
       return { persisted: false };
@@ -746,8 +748,15 @@ class EventsCacheStore {
     let tombstoneWrites = 0;
     let tombstoneDeletes = 0;
 
-    for (const [id, video] of events.entries()) {
-      if (!id) {
+    // Optimization: If dirtyEventIds is provided, only check those events.
+    // Otherwise, iterate over all events in the payload.
+    const eventsIterable =
+      dirtyEventIds instanceof Set
+        ? Array.from(dirtyEventIds).map((id) => [id, events.get(id)])
+        : events.entries();
+
+    for (const [id, video] of eventsIterable) {
+      if (!id || !video) {
         continue;
       }
       const fingerprint = this.computeEventFingerprint(video);
@@ -760,17 +769,32 @@ class EventsCacheStore {
       eventWrites++;
     }
 
-    for (const persistedId of Array.from(this.persistedEventFingerprints.keys())) {
-      if (events.has(persistedId)) {
-        continue;
+    // Optimization: Skip deletion scan if we are processing partial updates (dirtyEventIds)
+    // AND the total number of events hasn't decreased. This avoids checking 'has()' on thousands of items.
+    const shouldScanEventDeletions =
+      !dirtyEventIds || events.size < this.persistedEventFingerprints.size;
+
+    if (shouldScanEventDeletions) {
+      for (const persistedId of Array.from(
+        this.persistedEventFingerprints.keys()
+      )) {
+        if (events.has(persistedId)) {
+          continue;
+        }
+        eventsStore.delete(persistedId);
+        this.persistedEventFingerprints.delete(persistedId);
+        eventDeletes++;
       }
-      eventsStore.delete(persistedId);
-      this.persistedEventFingerprints.delete(persistedId);
-      eventDeletes++;
     }
 
-    for (const [key, timestamp] of tombstones.entries()) {
-      if (!key) {
+    // Optimization: If dirtyTombstoneKeys is provided, only check those.
+    const tombstonesIterable =
+      dirtyTombstoneKeys instanceof Set
+        ? Array.from(dirtyTombstoneKeys).map((key) => [key, tombstones.get(key)])
+        : tombstones.entries();
+
+    for (const [key, timestamp] of tombstonesIterable) {
+      if (!key || !Number.isFinite(timestamp)) {
         continue;
       }
       const fingerprint = this.computeTombstoneFingerprint(timestamp);
@@ -783,13 +807,21 @@ class EventsCacheStore {
       tombstoneWrites++;
     }
 
-    for (const persistedKey of Array.from(this.persistedTombstoneFingerprints.keys())) {
-      if (tombstones.has(persistedKey)) {
-        continue;
+    const shouldScanTombstoneDeletions =
+      !dirtyTombstoneKeys ||
+      tombstones.size < this.persistedTombstoneFingerprints.size;
+
+    if (shouldScanTombstoneDeletions) {
+      for (const persistedKey of Array.from(
+        this.persistedTombstoneFingerprints.keys()
+      )) {
+        if (tombstones.has(persistedKey)) {
+          continue;
+        }
+        tombstoneStore.delete(persistedKey);
+        this.persistedTombstoneFingerprints.delete(persistedKey);
+        tombstoneDeletes++;
       }
-      tombstoneStore.delete(persistedKey);
-      this.persistedTombstoneFingerprints.delete(persistedKey);
-      tombstoneDeletes++;
     }
 
     metaStore.put({ key: "meta", savedAt, version: 1 });
@@ -1243,6 +1275,8 @@ export class NostrClient {
 
     this.rootCreatedAtByRoot = new Map();
 
+    this.dirtyEventIds = new Set();
+    this.dirtyTombstones = new Set();
     this.hasRestoredLocalData = false;
     this.eventsCacheStore = new EventsCacheStore();
     this.syncMetadataStore = new SyncMetadataStore();
@@ -2831,6 +2865,7 @@ export class NostrClient {
     }
 
     this.tombstones.set(key, timestamp);
+    this.dirtyTombstones.add(key);
 
     const activeVideo = this.activeMap.get(key);
     if (activeVideo) {
@@ -3887,6 +3922,8 @@ export class NostrClient {
     this.activeMap.clear();
     this.rootCreatedAtByRoot.clear();
     this.tombstones.clear();
+    this.dirtyEventIds.clear();
+    this.dirtyTombstones.clear();
 
     const tombstoneEntries =
       events instanceof Map && payload.tombstones instanceof Map
@@ -7227,6 +7264,7 @@ export class NostrClient {
       cached.description = "This version was deleted by the creator.";
       cached.videoRootId = baseRoot;
       this.allEvents.set(vid.id, cached);
+      this.dirtyEventIds.add(vid.id);
 
       const activeKey = getActiveKey(cached);
       if (activeKey) {
@@ -7477,21 +7515,48 @@ export class NostrClient {
     // The `EventsCacheStore` handles differential updates (only saving changed fingerprints)
     // to keep IDB writes fast.
 
+    // Capture snapshots of dirty sets to optimize persistence
+    const dirtyEventIdsSnapshot = new Set(this.dirtyEventIds);
+    const dirtyTombstonesSnapshot = new Set(this.dirtyTombstones);
+
+    // Clear the tracked items from the main sets so we don't re-process them next time.
+    // New items added during the async save will remain in the main sets.
+    for (const id of dirtyEventIdsSnapshot) {
+      this.dirtyEventIds.delete(id);
+    }
+    for (const key of dirtyTombstonesSnapshot) {
+      this.dirtyTombstones.delete(key);
+    }
+
     const payload = this.buildCachePayload();
     const startedAt = Date.now();
     let summary = null;
     let target = "localStorage";
 
     try {
-      summary = await this.eventsCacheStore.persistSnapshot(payload);
+      summary = await this.eventsCacheStore.persistSnapshot(
+        payload,
+        dirtyEventIdsSnapshot,
+        dirtyTombstonesSnapshot
+      );
       if (summary?.persisted) {
         target = "IndexedDB";
       }
     } catch (error) {
-      devLogger.warn("[nostr] Failed to persist events cache to IndexedDB:", error);
+      devLogger.warn(
+        "[nostr] Failed to persist events cache to IndexedDB:",
+        error
+      );
     }
 
     if (!summary?.persisted) {
+      // If persistence failed, re-queue the dirty items for the next attempt.
+      for (const id of dirtyEventIdsSnapshot) {
+        this.dirtyEventIds.add(id);
+      }
+      for (const key of dirtyTombstonesSnapshot) {
+        this.dirtyTombstones.add(key);
+      }
       this.persistCacheToLocalStorage(payload);
     }
 
@@ -7690,6 +7755,7 @@ export class NostrClient {
 
           // Store in allEvents (history preservation)
           this.allEvents.set(evt.id, video);
+          this.dirtyEventIds.add(evt.id);
 
           // If it's a "deleted" note, remove from activeMap
           if (video.deleted) {
@@ -7930,6 +7996,7 @@ export class NostrClient {
       // Merge into allEvents
       for (const [id, vid] of localAll.entries()) {
         this.allEvents.set(id, vid);
+        this.dirtyEventIds.add(id);
         this.applyRootCreatedAt(vid);
       }
 
@@ -8118,6 +8185,7 @@ export class NostrClient {
       this.applyTombstoneGuard(video);
     }
     this.allEvents.set(eventId, video);
+    this.dirtyEventIds.add(eventId);
 
     if (includeRaw) {
       return { video, rawEvent };
@@ -8718,6 +8786,7 @@ export class NostrClient {
               this.applyTombstoneGuard(parsed);
             }
             this.allEvents.set(rootEvent.id, parsed);
+            this.dirtyEventIds.add(rootEvent.id);
             localMatches.push(parsed);
           }
         }
@@ -8778,6 +8847,7 @@ export class NostrClient {
                 this.applyTombstoneGuard(parsed);
               }
               this.allEvents.set(evt.id, parsed);
+              this.dirtyEventIds.add(evt.id);
             }
           } catch (err) {
             devLogger.warn("[nostr] Failed to convert historical event:", err);
