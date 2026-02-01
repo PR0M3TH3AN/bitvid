@@ -7560,9 +7560,6 @@ export class NostrClient {
     let summary = null;
     let target = "localStorage";
 
-    const dirtyEventsSnapshot = new Set(this.dirtyEventIds);
-    const dirtyTombstonesSnapshot = new Set(this.dirtyTombstones);
-
     try {
       summary = await this.eventsCacheStore.persistSnapshot(
         payload,
@@ -7571,12 +7568,6 @@ export class NostrClient {
       );
       if (summary?.persisted) {
         target = "IndexedDB";
-        for (const id of dirtyEventsSnapshot) {
-          this.dirtyEventIds.delete(id);
-        }
-        for (const key of dirtyTombstonesSnapshot) {
-          this.dirtyTombstones.delete(key);
-        }
       }
     } catch (error) {
       devLogger.warn(
