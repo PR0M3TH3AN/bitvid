@@ -5,7 +5,7 @@ const COLOR_MIX_PATTERN = /^color-mix\([\s\S]+\)$/;
 const NON_TOKEN_LENGTH_PATTERN = /^(?!.*var\().*\b\d*\.?\d+(?:px|rem)\b/;
 
 module.exports = {
-  ignoreFiles: ['css/tailwind.generated.css'],
+  ignoreFiles: ['css/tailwind.generated.css', 'bitvid-working-webtorrent/**'],
   rules: {
     'at-rule-no-unknown': [true, { ignoreAtRules: ['tailwind', 'layer', 'apply'] }],
     'import-notation': 'string',

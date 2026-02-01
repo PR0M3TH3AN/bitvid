@@ -11,7 +11,7 @@ const repoRoot = path.resolve(__dirname, "..");
 
 const TARGET_DIRECTORIES = ["js/ui", "torrent/ui"];
 const TARGET_FILES = ["js/channelProfile.js", "css/tailwind.source.css"];
-const IGNORED_DIRECTORIES = new Set(["dist", "vendor"]);
+const IGNORED_DIRECTORIES = new Set(["dist", "vendor", "bitvid-working-webtorrent"]);
 const IGNORED_EXTENSIONS = new Set([".min.js", ".map"]);
 const ALLOWED_FILES = new Set([
   "js/ui/components/RevertModal.js",
