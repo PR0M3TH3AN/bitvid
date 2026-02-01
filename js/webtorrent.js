@@ -1035,6 +1035,15 @@ export class TorrentClient {
         chromeOptions.urlList = candidateUrls;
       }
 
+      const addExplicitWebSeeds = (torrent) => {
+        if (!candidateUrls.length || typeof torrent?.addWebSeed !== "function") {
+          return;
+        }
+        candidateUrls.forEach((url) => {
+          torrent.addWebSeed(url);
+        });
+      };
+
       return new Promise((resolve, reject) => {
         // 3) Add the torrent to the client and handle accordingly.
         if (isFirefoxBrowser) {
@@ -1044,6 +1053,7 @@ export class TorrentClient {
             { ...chromeOptions, maxWebConns: 4 },
             (torrent) => {
               this.log("Torrent added (Firefox path):", torrent.name);
+              addExplicitWebSeeds(torrent);
               this.handleFirefoxTorrent(torrent, videoElement, resolve, reject);
             }
           );
@@ -1051,6 +1061,7 @@ export class TorrentClient {
           this.log("Starting torrent download (Chrome path)");
           this.client.add(effectiveMagnetURI, chromeOptions, (torrent) => {
             this.log("Torrent added (Chrome path):", torrent.name);
+            addExplicitWebSeeds(torrent);
             this.handleChromeTorrent(torrent, videoElement, resolve, reject);
           });
         }
