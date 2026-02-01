@@ -1,4 +1,5 @@
 import { userLogger } from "../utils/logger.js";
+import { safeDecodeURIComponent } from "../utils/safeDecode.js";
 import { PLAYBACK_START_TIMEOUT } from "../constants.js";
 // js/services/playbackService.js
 
@@ -66,6 +67,43 @@ const AUTH_STATUS_CODES = new Set([401, 403]);
 const SSL_ERROR_PATTERN = /(ssl|cert|certificate)/i;
 const CORS_ERROR_PATTERN = /cors/i;
 const PROBE_CACHE_TTL_MS = 45000;
+const WEBSEED_PARAM_KEYS = new Set(["ws", "webseed"]);
+
+const extractWebSeedsFromMagnet = (magnetUri) => {
+  if (typeof magnetUri !== "string") {
+    return [];
+  }
+  const trimmed = magnetUri.trim();
+  if (!trimmed) {
+    return [];
+  }
+  const [withoutFragment] = trimmed.split("#", 1);
+  const [, query = ""] = withoutFragment.split("?", 2);
+  if (!query) {
+    return [];
+  }
+
+  const webSeeds = [];
+  for (const segment of query.split("&")) {
+    if (!segment) {
+      continue;
+    }
+    const [rawKey, rawValue = ""] = segment.split("=", 2);
+    if (!rawKey) {
+      continue;
+    }
+    const key = rawKey.trim().toLowerCase();
+    if (!WEBSEED_PARAM_KEYS.has(key)) {
+      continue;
+    }
+    const decodedValue = safeDecodeURIComponent(rawValue.replace(/\+/g, "%20"));
+    const candidate = decodedValue.trim();
+    if (candidate) {
+      webSeeds.push(candidate);
+    }
+  }
+  return webSeeds;
+};
 
 const getHostedUrlFailureDetails = (probeResult = {}) => {
   const outcome = probeResult?.outcome || "error";
@@ -775,7 +813,33 @@ class PlaybackSession extends SimpleEventEmitter {
       let cleanupHostedUrlStatusListeners = () => {};
 
       const httpsUrl = this.sanitizedUrl;
-      const webSeedCandidates = httpsUrl ? [httpsUrl] : [];
+      const webSeedCandidates = [];
+      const webSeedSet = new Set();
+
+      const addWebSeedCandidate = (candidate) => {
+        if (typeof candidate !== "string") {
+          return;
+        }
+        const trimmed = candidate.trim();
+        if (!trimmed) {
+          return;
+        }
+        const key = trimmed.toLowerCase();
+        if (webSeedSet.has(key)) {
+          return;
+        }
+        webSeedSet.add(key);
+        webSeedCandidates.push(trimmed);
+      };
+
+      if (httpsUrl) {
+        addWebSeedCandidate(httpsUrl);
+      }
+
+      const magnetWebSeeds = extractWebSeedsFromMagnet(this.magnetForPlayback);
+      if (magnetWebSeeds.length > 0) {
+        magnetWebSeeds.forEach((seed) => addWebSeedCandidate(seed));
+      }
 
       if (webSeedCandidates.length > 0) {
         this.service.log(
