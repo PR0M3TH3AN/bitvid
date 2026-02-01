@@ -111,10 +111,10 @@ To set up the project locally:
 
    ```bash
    npm run build
+   npx serve dist
    ```
 
-   (This runs `npm run build:css` to generate Tailwind styles.)
-   This command executes `scripts/build-dist.mjs` to prepare the `dist/` directory for deployment. It copies an explicit allowlist of files (including `index.html`, `_headers`, `_redirects`) and directories (including `assets`, `js`, `css`, `config`) to `dist/`, excluding development artifacts like `scripts/` and `issues/`.
+   (The build command populates the `dist/` directory, which you can then serve locally.)
 
 3. **Run Tests**:
 
@@ -145,8 +145,8 @@ To set up the project locally:
    npm run lint
    ```
 
-   _Note: `npm run format` currently targets CSS, HTML, Markdown, and Tailwind config files._
-   _Note: `npm run lint` checks for CSS errors, hex color usage (use tokens instead), inline styles, and design token compliance._
+   - **Format**: Targets CSS, HTML, Markdown, and config files. (Note: JavaScript files are not currently auto-formatted by this command).
+   - **Lint**: Checks for CSS errors, hex color usage, inline styles, and design token compliance. (Note: There is no ESLint configuration for JavaScript logic; this step focuses on style and design system guards).
 
 5. **Git Hooks (Optional)**:
    We provide a script to set up a git pre-commit hook that runs linting and CSS builds automatically before you commit.
