@@ -207,6 +207,11 @@ export class TorrentClient {
     magnetURI,
     { timeoutMs = 8000, maxWebConns = 2, polls = 2, urlList = [] } = {}
   ) {
+    // Debug log for CI investigation
+    if (typeof process !== "undefined" && process.env.NODE_ENV === "test") {
+      console.log(`[probePeers] magnetURI=${magnetURI?.substring(0, 20)}... urlList=${JSON.stringify(urlList)}`);
+    }
+
     const magnet = stripXsParameter(magnetURI);
 
     if (!magnet) {
@@ -227,6 +232,10 @@ export class TorrentClient {
 
     const hasMagnetWebSeed = magnet.includes("ws=") || magnet.includes("webSeed=");
     const hasExplicitWebSeed = Array.isArray(urlList) && urlList.length > 0;
+
+    if (typeof process !== "undefined" && process.env.NODE_ENV === "test") {
+      console.log(`[probePeers] hasMagnetWebSeed=${hasMagnetWebSeed} hasExplicitWebSeed=${hasExplicitWebSeed}`);
+    }
 
     if (hasExplicitWebSeed) {
       const wsParams = urlList
@@ -336,6 +345,9 @@ export class TorrentClient {
         }
         torrent = client.add(augmentedMagnet, addOptions);
       } catch (err) {
+        if (typeof process !== "undefined" && process.env.NODE_ENV === "test") {
+          console.log(`[probePeers] client.add threw:`, err);
+        }
         finalize({
           reason: "error",
           error: toError(err),
@@ -345,16 +357,53 @@ export class TorrentClient {
         return;
       }
 
-      const settleHealthy = () => {
-        const peers = Math.max(1, Math.floor(normalizeNumber(torrent?.numPeers, 1)));
-        finalize({ healthy: true, peers, reason: "peer" });
+      let webSeedCount = 0;
+
+      const getWebSeedCount = () => {
+        if (torrent?.wires?.length) {
+          const wireCount = torrent.wires.filter(
+            (wire) => wire?.type === "webSeed"
+          ).length;
+          return Math.max(webSeedCount, wireCount);
+        }
+        return webSeedCount;
       };
 
-      torrent.once("wire", settleHealthy);
+      const getPeerCounts = () => {
+        const regularPeers = Math.max(
+          0,
+          Math.floor(normalizeNumber(torrent?.numPeers, 0))
+        );
+        const webSeeds = getWebSeedCount();
+        return {
+          regularPeers,
+          webSeeds,
+          totalPeers: regularPeers + webSeeds,
+        };
+      };
+
+      const settleHealthy = (counts = getPeerCounts()) => {
+        const peers = Math.max(1, counts.totalPeers);
+        const webseedOnly = counts.regularPeers === 0 && counts.webSeeds > 0;
+        finalize({
+          healthy: true,
+          peers,
+          reason: webseedOnly ? "webseed" : "peer",
+          webseedOnly,
+        });
+      };
+
+      torrent.on("wire", (wire) => {
+        if (wire?.type === "webSeed") {
+          webSeedCount += 1;
+        }
+        settleHealthy();
+      });
 
       torrent.once("error", (err) => {
-        const peers = Math.max(0, Math.floor(normalizeNumber(torrent?.numPeers, 0)));
-        const webseedOnly = peers === 0 && hasWebSeed;
+        const counts = getPeerCounts();
+        const webseedOnly = counts.regularPeers === 0 && counts.webSeeds > 0;
+        const peers = Math.max(0, counts.totalPeers);
         finalize({
           healthy: webseedOnly,
           reason: webseedOnly ? "webseed" : "error",
@@ -368,6 +417,9 @@ export class TorrentClient {
         timeoutId = setTimeout(() => {
           const peers = Math.max(0, Math.floor(normalizeNumber(torrent?.numPeers, 0)));
           const webseedOnly = peers === 0 && hasWebSeed;
+          if (typeof process !== "undefined" && process.env.NODE_ENV === "test" && !webseedOnly && hasWebSeed) {
+             console.log(`[probePeers:timeout] logic check: peers=${peers} hasWebSeed=${hasWebSeed} webseedOnly=${webseedOnly}`);
+          }
           finalize({
             healthy: webseedOnly,
             peers,
@@ -386,9 +438,16 @@ export class TorrentClient {
             if (!torrent || settled) {
               return;
             }
-            const peers = Math.max(0, Math.floor(normalizeNumber(torrent.numPeers, 0)));
-            if (peers > 0) {
-              finalize({ healthy: true, peers, reason: "peer" });
+            const counts = getPeerCounts();
+            if (counts.totalPeers > 0) {
+              const webseedOnly =
+                counts.regularPeers === 0 && counts.webSeeds > 0;
+              finalize({
+                healthy: true,
+                peers: counts.totalPeers,
+                reason: webseedOnly ? "webseed" : "peer",
+                webseedOnly,
+              });
             }
           }, pollInterval);
         }, pollInterval);
@@ -990,6 +1049,15 @@ export class TorrentClient {
         chromeOptions.urlList = candidateUrls;
       }
 
+      const addExplicitWebSeeds = (torrent) => {
+        if (!candidateUrls.length || typeof torrent?.addWebSeed !== "function") {
+          return;
+        }
+        candidateUrls.forEach((url) => {
+          torrent.addWebSeed(url);
+        });
+      };
+
       return new Promise((resolve, reject) => {
         // 3) Add the torrent to the client and handle accordingly.
         if (isFirefoxBrowser) {
@@ -999,6 +1067,7 @@ export class TorrentClient {
             { ...chromeOptions, maxWebConns: 4 },
             (torrent) => {
               this.log("Torrent added (Firefox path):", torrent.name);
+              addExplicitWebSeeds(torrent);
               this.handleFirefoxTorrent(torrent, videoElement, resolve, reject);
             }
           );
@@ -1006,6 +1075,7 @@ export class TorrentClient {
           this.log("Starting torrent download (Chrome path)");
           this.client.add(effectiveMagnetURI, chromeOptions, (torrent) => {
             this.log("Torrent added (Chrome path):", torrent.name);
+            addExplicitWebSeeds(torrent);
             this.handleChromeTorrent(torrent, videoElement, resolve, reject);
           });
         }

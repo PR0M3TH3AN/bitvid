@@ -66,6 +66,10 @@ describe("WebTorrent Regression Tests", () => {
       urlList: [webSeedUrl]
     });
 
+    if (!result.webseedOnly) {
+      console.log("Failed result:", result);
+    }
+
     assert.strictEqual(result.webseedOnly, true, "Should detect webseed only scenario");
     assert.strictEqual(result.healthy, true, "Should be healthy due to webseed");
     assert.strictEqual(result.reason, "webseed", "Reason should be 'webseed'");
