@@ -19,6 +19,11 @@ class MockWebTorrent extends EventEmitter {
     setTimeout(() => {
         if (typeof cb === 'function') cb(torrent);
         this.emit('torrent', torrent);
+
+        // Simulate webseed connection if urlList is present
+        if (opts && Array.isArray(opts.urlList) && opts.urlList.length > 0) {
+            torrent.emit('wire', { type: 'webSeed' });
+        }
     }, 10);
 
     return torrent;
