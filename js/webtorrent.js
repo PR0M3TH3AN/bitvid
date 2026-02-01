@@ -747,16 +747,19 @@ export class TorrentClient {
       this.log("Video error:", e.target.error);
     });
 
-    videoElement.addEventListener(
-      "canplay",
-      () => {
-        this.attemptAutoplay(videoElement, "chrome");
-      },
-      { once: true }
-    );
+    const tryStart = () => {
+      this.attemptAutoplay(videoElement, "chrome");
+    };
+
+    videoElement.addEventListener("canplay", tryStart, { once: true });
+    videoElement.addEventListener("loadeddata", tryStart, { once: true });
 
     try {
       file.streamTo(videoElement);
+      // If the video is already ready (e.g. from cache or fast load), try starting immediately
+      if (videoElement.readyState >= 3) {
+        tryStart();
+      }
       this.currentTorrent = torrent;
       resolve(torrent);
     } catch (err) {
@@ -786,16 +789,19 @@ export class TorrentClient {
       this.log("Video error (Firefox path):", e.target.error);
     });
 
-    videoElement.addEventListener(
-      "canplay",
-      () => {
-        this.attemptAutoplay(videoElement, "firefox");
-      },
-      { once: true }
-    );
+    const tryStart = () => {
+      this.attemptAutoplay(videoElement, "firefox");
+    };
+
+    videoElement.addEventListener("canplay", tryStart, { once: true });
+    videoElement.addEventListener("loadeddata", tryStart, { once: true });
 
     try {
       file.streamTo(videoElement, { highWaterMark: 256 * 1024 });
+      // If the video is already ready (e.g. from cache or fast load), try starting immediately
+      if (videoElement.readyState >= 3) {
+        tryStart();
+      }
       this.currentTorrent = torrent;
       resolve(torrent);
     } catch (err) {
