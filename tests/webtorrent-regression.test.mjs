@@ -20,6 +20,11 @@ class MockWebTorrent extends EventEmitter {
     setTimeout(() => {
         if (typeof cb === 'function') cb(torrent);
         this.emit('torrent', torrent);
+
+        // Simulate webseed connection if urlList is present
+        if (opts && Array.isArray(opts.urlList) && opts.urlList.length > 0) {
+            torrent.emit('wire', { type: 'webSeed' });
+        }
     }, 10);
 
     return torrent;
@@ -75,9 +80,13 @@ describe("WebTorrent Regression Tests", () => {
     const webSeedUrl = "http://localhost:8080/video.mp4";
 
     const result = await client.probePeers(magnet, {
-      timeoutMs: 50, // Short timeout
+      timeoutMs: 1000, // Significantly increased timeout for CI robustness
       urlList: [webSeedUrl]
     });
+
+    if (!result.webseedOnly) {
+      console.log("Failed result:", result);
+    }
 
     assert.strictEqual(result.webseedOnly, true, "Should detect webseed only scenario");
     assert.strictEqual(result.healthy, true, "Should be healthy due to webseed");

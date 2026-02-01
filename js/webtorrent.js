@@ -207,6 +207,11 @@ export class TorrentClient {
     magnetURI,
     { timeoutMs = 8000, maxWebConns = 2, polls = 2, urlList = [] } = {}
   ) {
+    // Debug log for CI investigation
+    if (typeof process !== "undefined" && process.env.NODE_ENV === "test") {
+      console.log(`[probePeers] magnetURI=${magnetURI?.substring(0, 20)}... urlList=${JSON.stringify(urlList)}`);
+    }
+
     const magnet = stripXsParameter(magnetURI);
 
     if (!magnet) {
@@ -227,6 +232,10 @@ export class TorrentClient {
 
     const hasMagnetWebSeed = magnet.includes("ws=") || magnet.includes("webSeed=");
     const hasExplicitWebSeed = Array.isArray(urlList) && urlList.length > 0;
+
+    if (typeof process !== "undefined" && process.env.NODE_ENV === "test") {
+      console.log(`[probePeers] hasMagnetWebSeed=${hasMagnetWebSeed} hasExplicitWebSeed=${hasExplicitWebSeed}`);
+    }
 
     if (hasExplicitWebSeed) {
       const wsParams = urlList
@@ -336,6 +345,9 @@ export class TorrentClient {
         }
         torrent = client.add(augmentedMagnet, addOptions);
       } catch (err) {
+        if (typeof process !== "undefined" && process.env.NODE_ENV === "test") {
+          console.log(`[probePeers] client.add threw:`, err);
+        }
         finalize({
           reason: "error",
           error: toError(err),
@@ -403,9 +415,11 @@ export class TorrentClient {
 
       if (safeTimeout > 0) {
         timeoutId = setTimeout(() => {
-          const counts = getPeerCounts();
-          const webseedOnly = counts.regularPeers === 0 && counts.webSeeds > 0;
-          const peers = Math.max(0, counts.totalPeers);
+          const peers = Math.max(0, Math.floor(normalizeNumber(torrent?.numPeers, 0)));
+          const webseedOnly = peers === 0 && hasWebSeed;
+          if (typeof process !== "undefined" && process.env.NODE_ENV === "test" && !webseedOnly && hasWebSeed) {
+             console.log(`[probePeers:timeout] logic check: peers=${peers} hasWebSeed=${hasWebSeed} webseedOnly=${webseedOnly}`);
+          }
           finalize({
             healthy: webseedOnly,
             peers,

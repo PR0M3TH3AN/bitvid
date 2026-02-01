@@ -164,13 +164,13 @@ To run **bitvid** locally:
    http://localhost:3000
    ```
 
-   _Note: If you prefer manual steps, you can run `npm run build` followed by `npx serve` or `python -m http.server 8000`._
+   _Note: If you prefer manual steps, you can run `npm run build` followed by `npx serve dist`._
 
 #### Quick Reference
 
 - **Run unit tests**: `npm run test:unit`
-- **Format code**: `npm run format`
-- **Lint code**: `npm run lint`
+- **Format code**: `npm run format` (CSS, HTML, MD, Config)
+- **Lint code**: `npm run lint` (Styles, Tokens, Hex - no JS logic)
 
 ### Dev Container
 

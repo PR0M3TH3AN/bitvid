@@ -1,0 +1,29 @@
+TAP version 13
+# Subtest: WebTorrent Regression Tests
+    # Subtest: probePeers should report healthy if webseed is present even with 0 peers
+    ok 1 - probePeers should report healthy if webseed is present even with 0 peers
+      ---
+      duration_ms: 204.415485
+      type: 'test'
+      ...
+    # Subtest: probePeers should report unhealthy if no webseed and 0 peers
+    ok 2 - probePeers should report unhealthy if no webseed and 0 peers
+      ---
+      duration_ms: 52.544489
+      type: 'test'
+      ...
+    1..2
+ok 1 - WebTorrent Regression Tests
+  ---
+  duration_ms: 259.856073
+  type: 'suite'
+  ...
+1..1
+# tests 2
+# suites 1
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 269.477515

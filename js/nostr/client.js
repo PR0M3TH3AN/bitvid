@@ -747,6 +747,7 @@ class EventsCacheStore {
     let eventDeletes = 0;
     let tombstoneWrites = 0;
     let tombstoneDeletes = 0;
+    let skipped = 0;
 
     // Optimization: If dirtyEventIds is provided, only check those events.
     // Otherwise, iterate over all events in the payload.
@@ -759,6 +760,16 @@ class EventsCacheStore {
       if (!id || !video) {
         continue;
       }
+
+      if (
+        dirtyEventIds &&
+        !dirtyEventIds.has(id) &&
+        this.persistedEventFingerprints.has(id)
+      ) {
+        skipped++;
+        continue;
+      }
+
       const fingerprint = this.computeEventFingerprint(video);
       const prevFingerprint = this.persistedEventFingerprints.get(id);
       if (prevFingerprint === fingerprint) {
@@ -797,6 +808,16 @@ class EventsCacheStore {
       if (!key || !Number.isFinite(timestamp)) {
         continue;
       }
+
+      if (
+        dirtyTombstones &&
+        !dirtyTombstones.has(key) &&
+        this.persistedTombstoneFingerprints.has(key)
+      ) {
+        skipped++;
+        continue;
+      }
+
       const fingerprint = this.computeTombstoneFingerprint(timestamp);
       const prevFingerprint = this.persistedTombstoneFingerprints.get(key);
       if (prevFingerprint === fingerprint) {
@@ -834,6 +855,7 @@ class EventsCacheStore {
       eventDeletes,
       tombstoneWrites,
       tombstoneDeletes,
+      skipped,
     };
   }
 }
@@ -1272,6 +1294,8 @@ export class NostrClient {
      * @public
      */
     this.tombstones = new Map();
+    this.dirtyEventIds = new Set();
+    this.dirtyTombstones = new Set();
 
     this.rootCreatedAtByRoot = new Map();
 
@@ -3974,6 +3998,9 @@ export class NostrClient {
         `[nostr] Restored ${this.allEvents.size} cached events from ${sourceLabel}`,
       );
     }
+
+    this.dirtyEventIds.clear();
+    this.dirtyTombstones.clear();
 
     return this.allEvents.size > 0;
   }
@@ -7533,6 +7560,9 @@ export class NostrClient {
     let summary = null;
     let target = "localStorage";
 
+    const dirtyEventsSnapshot = new Set(this.dirtyEventIds);
+    const dirtyTombstonesSnapshot = new Set(this.dirtyTombstones);
+
     try {
       summary = await this.eventsCacheStore.persistSnapshot(
         payload,
@@ -7541,6 +7571,12 @@ export class NostrClient {
       );
       if (summary?.persisted) {
         target = "IndexedDB";
+        for (const id of dirtyEventsSnapshot) {
+          this.dirtyEventIds.delete(id);
+        }
+        for (const key of dirtyTombstonesSnapshot) {
+          this.dirtyTombstones.delete(key);
+        }
       }
     } catch (error) {
       devLogger.warn(
@@ -7562,7 +7598,7 @@ export class NostrClient {
 
     const durationMs = Date.now() - startedAt;
     devLogger.log(
-      `[nostr] Cached events persisted via ${target} (reason=${reason}, duration=${durationMs}ms, events+${summary?.eventWrites ?? 0}/-${summary?.eventDeletes ?? 0}, tombstones+${summary?.tombstoneWrites ?? 0}/-${summary?.tombstoneDeletes ?? 0})`,
+      `[nostr] Cached events persisted via ${target} (reason=${reason}, duration=${durationMs}ms, events+${summary?.eventWrites ?? 0}/-${summary?.eventDeletes ?? 0}, tombstones+${summary?.tombstoneWrites ?? 0}/-${summary?.tombstoneDeletes ?? 0}, skipped=${summary?.skipped ?? 0})`,
     );
 
     return summary?.persisted;
