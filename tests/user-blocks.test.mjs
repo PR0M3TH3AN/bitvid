@@ -100,8 +100,8 @@ await (async () => {
 
     assert.deepEqual(
       calls,
-      [...relays, ...relays],
-      "loadBlocks should initiate queries for all relays concurrently (twice, for block list and mute list)"
+      [...relays, ...relays, ...relays],
+      "loadBlocks should initiate queries for all relays concurrently (thrice, for block list, mute list, and legacy kind 30002)"
     );
 
     // Reverting to original test data:
@@ -254,7 +254,7 @@ await (async () => {
 
     assert.deepEqual(
       calls,
-      [...relays, ...relays],
+      [...relays, ...relays, ...relays],
       "loadBlocks should query fast and background relays concurrently",
     );
 

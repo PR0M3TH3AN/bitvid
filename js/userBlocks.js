@@ -934,9 +934,9 @@ class UserBlockListManager {
     const hasLocalData = !!localData;
 
     if (localData) {
-      this._privateBlocks = localData.blockedPubkeys;
-      this._publicMutes = new Set(); // Local cache structure currently only stores 'blockedPubkeys'
-      this.blockedPubkeys = new Set(this._privateBlocks);
+      this._privateBlocks = localData.privateBlocks || localData.blockedPubkeys || new Set();
+      this._publicMutes = localData.publicMutes || new Set();
+      this.blockedPubkeys = new Set([...this._privateBlocks, ...this._publicMutes]);
 
       if (Number.isFinite(localData.createdAt)) {
         this.blockEventCreatedAt = localData.createdAt;
@@ -1467,8 +1467,8 @@ class UserBlockListManager {
           ? this.blockEventCreatedAt
           : 0;
 
-      // Concurrent incremental fetch for both kinds
-      const [muteEvents, blockEvents] = await Promise.all([
+      // Concurrent incremental fetch for all variants
+      const [muteEvents, blockEvents, legacyEvents] = await Promise.all([
         nostrClient.fetchListIncrementally({
           kind: 10000,
           pubkey: normalized,
@@ -1484,9 +1484,17 @@ class UserBlockListManager {
           since: fetchSince,
           timeoutMs: 12000,
         }),
+        nostrClient.fetchListIncrementally({
+          kind: 30002,
+          pubkey: normalized,
+          dTag: BLOCK_LIST_IDENTIFIER,
+          relayUrls: relays,
+          since: fetchSince,
+          timeoutMs: 12000,
+        }),
       ]);
 
-      const combined = [...muteEvents, ...blockEvents];
+      const combined = [...muteEvents, ...blockEvents, ...legacyEvents];
 
       // If combined is empty, check if we have loaded state
       if (!combined.length) {
@@ -1518,10 +1526,21 @@ class UserBlockListManager {
       return { blockedPubkeys: new Set(cached), createdAt: null };
     }
     if (cached && typeof cached === "object") {
+      const privateBlocks = new Set(
+        Array.isArray(cached.privateBlocks) ? cached.privateBlocks : [],
+      );
+      const publicMutes = new Set(
+        Array.isArray(cached.publicMutes) ? cached.publicMutes : [],
+      );
+      // Fallback for legacy cache format
+      const blockedPubkeys = new Set(
+        Array.isArray(cached.blockedPubkeys) ? cached.blockedPubkeys : [],
+      );
+
       return {
-        blockedPubkeys: new Set(
-          Array.isArray(cached.blockedPubkeys) ? cached.blockedPubkeys : [],
-        ),
+        privateBlocks,
+        publicMutes,
+        blockedPubkeys,
         createdAt: Number.isFinite(cached.createdAt) ? cached.createdAt : null,
       };
     }
@@ -1534,9 +1553,12 @@ class UserBlockListManager {
       return;
     }
     profileCache.setProfileData(normalizedActorHex, "blocks", {
-      blockedPubkeys: Array.from(this._privateBlocks), // Local cache historically stores private blocks
+      privateBlocks: Array.from(this._privateBlocks),
+      publicMutes: Array.from(this._publicMutes),
+      // Keep blockedPubkeys for backward compatibility if needed, or just relying on new keys
+      blockedPubkeys: Array.from(this.blockedPubkeys),
       createdAt: this.blockEventCreatedAt,
-      version: 1,
+      version: 2,
     });
   }
 
