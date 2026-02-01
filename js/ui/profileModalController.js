@@ -1403,6 +1403,7 @@ export class ProfileModalController {
     this.pendingDirectMessagesUpdate = null;
     this.pendingMessagesRender = null;
     this.messagesStatusClearTimeout = null;
+    this.profileMessagesRenderToken = 0;
     this.dmPrivacyToggleTouched = false;
     this.dmReadReceiptCache = new Set();
     this.dmTypingLastSentAt = 0;
@@ -4470,7 +4471,45 @@ export class ProfileModalController {
       ? this.normalizeHexPubkey(actorPubkey)
       : this.resolveActiveDmActor();
 
+    const renderToken = (this.profileMessagesRenderToken += 1);
+    const renderThreads = (threadsToRender) => {
+      this.profileMessagesList.innerHTML = "";
+
+      if (!threadsToRender.length) {
+        this.profileMessagesList.classList.add("hidden");
+        this.profileMessagesList.setAttribute("hidden", "");
+        void this.renderDirectMessageConversation();
+        return;
+      }
+
+      for (const thread of threadsToRender) {
+        const item = this.createDirectMessageThreadItem(thread);
+        if (item) {
+          this.profileMessagesList.appendChild(item);
+        }
+      }
+
+      const activeRecipient = this.resolveActiveDmRecipient();
+      const hasActiveRecipient =
+        activeRecipient &&
+        threadsToRender.some((thread) => thread.remoteHex === activeRecipient);
+
+      if (threadsToRender.length && !hasActiveRecipient) {
+        this.setDirectMessageRecipient(threadsToRender[0].remoteHex, {
+          reason: "thread-default",
+        });
+      } else if (hasActiveRecipient) {
+        this.updateMessageThreadSelection(activeRecipient);
+      }
+
+      this.profileMessagesList.classList.remove("hidden");
+      this.profileMessagesList.removeAttribute("hidden");
+      void this.renderDirectMessageConversation();
+    };
+
     const threads = this.groupDirectMessages(messages, normalizedActor);
+    renderThreads(threads);
+
     const remoteKeys = new Set();
     for (const thread of threads) {
       if (thread.remoteHex) {
@@ -4483,48 +4522,28 @@ export class ProfileModalController {
       this.services.batchFetchProfiles &&
       typeof this.services.batchFetchProfiles === "function"
     ) {
-      try {
-        await this.services.batchFetchProfiles(remoteKeys);
-      } catch (error) {
-        devLogger.warn(
-          "[profileModal] Failed to fetch DM profile metadata:",
-          error,
-        );
-      }
+      Promise.resolve(this.services.batchFetchProfiles(remoteKeys))
+        .then(() => {
+          if (this.profileMessagesRenderToken !== renderToken) {
+            return;
+          }
+          const latestMessages = Array.isArray(this.directMessagesCache)
+            ? this.directMessagesCache
+            : messages;
+          const latestActor = this.resolveActiveDmActor() || normalizedActor;
+          const refreshedThreads = this.groupDirectMessages(
+            latestMessages,
+            latestActor,
+          );
+          renderThreads(refreshedThreads);
+        })
+        .catch((error) => {
+          devLogger.warn(
+            "[profileModal] Failed to fetch DM profile metadata:",
+            error,
+          );
+        });
     }
-
-    this.profileMessagesList.innerHTML = "";
-
-    if (!threads.length) {
-      this.profileMessagesList.classList.add("hidden");
-      this.profileMessagesList.setAttribute("hidden", "");
-      void this.renderDirectMessageConversation();
-      return;
-    }
-
-    for (const thread of threads) {
-      const item = this.createDirectMessageThreadItem(thread);
-      if (item) {
-        this.profileMessagesList.appendChild(item);
-      }
-    }
-
-    const activeRecipient = this.resolveActiveDmRecipient();
-    const hasActiveRecipient =
-      activeRecipient &&
-      threads.some((thread) => thread.remoteHex === activeRecipient);
-
-    if (threads.length && !hasActiveRecipient) {
-      this.setDirectMessageRecipient(threads[0].remoteHex, {
-        reason: "thread-default",
-      });
-    } else if (hasActiveRecipient) {
-      this.updateMessageThreadSelection(activeRecipient);
-    }
-
-    this.profileMessagesList.classList.remove("hidden");
-    this.profileMessagesList.removeAttribute("hidden");
-    void this.renderDirectMessageConversation();
   }
 
   async renderDmAppShell(messages, { actorPubkey = null } = {}) {
