@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>bitvid Feature Request Form</title>
+    <script type="module" src="./theme-sync.js"></script>
+    <!-- Link to your main stylesheet -->
+    <link rel="stylesheet" href="../../css/tailwind.generated.css" />
+    <!-- Load nostr‑tools v2.17.0 -->
+    <script src="https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js"></script>
+  </head>
+  <body class="iframe-form" data-ds="new">
+    <div class="container">
+      <div class="form-container">
+        <p>
+          Have an idea for improving bitvid? We’d love to hear it! Please use
+          this form to request new features or enhancements. Your feedback helps
+          shape the future of bitvid.
+        </p>
+        <form id="feature-form">
+          <!-- Section 1: User Information -->
+          <h2>1. User Information</h2>
+          <label for="userNpub">Nostr Public Key (npub) (optional):</label>
+          <input
+            class="form-control"
+            type="text"
+            id="userNpub"
+            placeholder="Enter your npub (optional)"
+          />
+          <p>Are you a (check all that apply):</p>
+          <div class="checkbox-group">
+            <label
+              ><input
+                class="checkbox"
+                type="checkbox"
+                name="userRole"
+                value="Viewer"
+              />
+              Viewer</label
+            >
+            <label
+              ><input
+                class="checkbox"
+                type="checkbox"
+                name="userRole"
+                value="Content Creator"
+              />
+              Content Creator</label
+            >
+            <label
+              ><input
+                class="checkbox"
+                type="checkbox"
+                name="userRole"
+                value="Developer/Contributor"
+              />
+              Developer / Contributor</label
+            >
+          </div>
+
+          <!-- Section 2: Feature Request Details -->
+          <h2>2. Feature Request Details</h2>
+          <label for="featureName">Feature Name:</label>
+          <input
+            class="form-control"
+            type="text"
+            id="featureName"
+            placeholder="Short, descriptive title"
+            required
+          />
+          <label for="featureDescription">Describe the feature:</label>
+          <textarea
+            class="textarea"
+            id="featureDescription"
+            rows="3"
+            placeholder="Explain in detail what the feature does and how it works"
+          ></textarea>
+          <label for="featureImportance">Why is this feature important?</label>
+          <textarea
+            class="textarea"
+            id="featureImportance"
+            rows="2"
+            placeholder="Describe how this will improve the platform and benefit users"
+          ></textarea>
+          <label for="beneficiary">Who would benefit from this feature?</label>
+          <input
+            class="form-control"
+            type="text"
+            id="beneficiary"
+            placeholder="e.g., Content Creators, Viewers, Both"
+          />
+
+          <!-- Section 3: Additional Information -->
+          <h2>3. Additional Information</h2>
+          <label for="existingPlatforms"
+            >Are there existing platforms that have this feature?</label
+          >
+          <textarea
+            class="textarea"
+            id="existingPlatforms"
+            rows="2"
+            placeholder="Provide examples if applicable"
+          ></textarea>
+          <label for="mockups">Do you have any mockups or examples?</label>
+          <textarea
+            class="textarea"
+            id="mockups"
+            rows="2"
+            placeholder="Links, screenshots, or diagrams"
+          ></textarea>
+          <label for="willingToTest"
+            >Would you be willing to help test this feature if
+            implemented?</label
+          >
+          <select class="select" id="willingToTest">
+            <option value="">Select an option</option>
+            <option value="Yes">Yes</option>
+            <option value="No">No</option>
+          </select>
+
+          <!-- Section 4: Priority & Impact -->
+          <h2>4. Priority &amp; Impact</h2>
+          <p>How urgent is this feature?</p>
+          <div class="checkbox-group">
+            <label
+              ><input
+                class="checkbox"
+                type="checkbox"
+                name="featurePriority"
+                value="High"
+              />
+              High (Essential for platform success)</label
+            >
+            <label
+              ><input
+                class="checkbox"
+                type="checkbox"
+                name="featurePriority"
+                value="Medium"
+              />
+              Medium (Would improve experience significantly)</label
+            >
+            <label
+              ><input
+                class="checkbox"
+                type="checkbox"
+                name="featurePriority"
+                value="Low"
+              />
+              Low
+              (Nice to have, but not urgent)</label
+            >
+          </div>
+          <label for="techChallenges"
+            >Does this feature require technical expertise to implement?</label
+          >
+          <textarea
+            class="textarea"
+            id="techChallenges"
+            rows="2"
+            placeholder="Describe any dependencies or challenges"
+          ></textarea>
+
+          <button class="btn" type="submit">Submit Feature Request</button>
+        </form>
+        <div id="status"></div>
+      </div>
+    </div>
+    <script>
+      // Provide no-op fallback loggers so embeds stay functional if bitvidLogger is unavailable.
+      const noopLogger = {
+        log: () => {},
+        info: () => {},
+        warn: () => {},
+        error: () => {},
+      };
+      const dev = window.bitvidLogger?.dev || noopLogger;
+      const user = window.bitvidLogger?.user || noopLogger;
+
+      document.addEventListener("DOMContentLoaded", () => {
+        // Logging function
+        function log(msg, type = "info") {
+          const div = document.createElement("div");
+          div.classList.add("status-line");
+          if (type === "error") div.classList.add("error");
+          if (type === "success") div.classList.add("success");
+          if (type === "warn") div.classList.add("warn");
+          div.textContent = msg;
+          document.getElementById("status").appendChild(div);
+          const formatted = `[${type.toUpperCase()}] ${msg}`;
+          if (type === "error") {
+            user.error(formatted);
+          } else if (type === "warn") {
+            user.warn(formatted);
+          } else if (type === "success") {
+            user.log(formatted);
+          } else if (type === "info") {
+            dev.info(formatted);
+          } else {
+            dev.log(formatted);
+          }
+        }
+        function clear() {
+          document.getElementById("status").innerHTML = "";
+        }
+        if (!window.NostrTools) {
+          log("NostrTools not loaded. Check console or ad-blockers.", "error");
+          return;
+        }
+        const {
+          generateSecretKey,
+          getPublicKey,
+          finalizeEvent,
+          nip04,
+          nip19,
+          SimplePool,
+          Relay,
+        } = window.NostrTools;
+
+        // Set the recipient's NPUB (your personal NPUB)
+        const recipientNpub =
+          "npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe";
+        const RELAYS = [
+          "wss://relay.snort.social",
+          "wss://relay.damus.io",
+          "wss://relay.primal.net",
+        ];
+        const pool = new SimplePool();
+
+        document
+          .getElementById("feature-form")
+          .addEventListener("submit", async (ev) => {
+            ev.preventDefault();
+            clear();
+            try {
+              // Section 1: User Information
+              const userNpub = document.getElementById("userNpub").value.trim();
+              const roleNodes = document.querySelectorAll(
+                'input[name="userRole"]:checked'
+              );
+              let userRoles = [];
+              roleNodes.forEach((node) => {
+                userRoles.push(node.value);
+              });
+
+              // Section 2: Feature Request Details
+              const featureName = document
+                .getElementById("featureName")
+                .value.trim();
+              const featureDescription = document
+                .getElementById("featureDescription")
+                .value.trim();
+              const featureImportance = document
+                .getElementById("featureImportance")
+                .value.trim();
+              const beneficiary = document
+                .getElementById("beneficiary")
+                .value.trim();
+
+              // Section 3: Additional Information
+              const existingPlatforms = document
+                .getElementById("existingPlatforms")
+                .value.trim();
+              const mockups = document.getElementById("mockups").value.trim();
+              const willingToTest = document
+                .getElementById("willingToTest")
+                .value.trim();
+
+              // Section 4: Priority & Impact
+              const priorityNodes = document.querySelectorAll(
+                'input[name="featurePriority"]:checked'
+              );
+              let featurePriorities = [];
+              priorityNodes.forEach((node) => {
+                featurePriorities.push(node.value);
+              });
+              const techChallenges = document
+                .getElementById("techChallenges")
+                .value.trim();
+
+              // Construct Markdown feature request
+              const featureRequestContent = `
+# **bitvid Feature Request Form**
+
+Have an idea for improving bitvid? We’d love to hear it! Please use this form to request new features or enhancements. Your feedback helps shape the future of bitvid.
+
+## **1. User Information**
+- **Nostr Public Key (npub) (optional):** ${userNpub || "N/A"}
+- **Roles:** ${userRoles.length > 0 ? userRoles.join(", ") : "N/A"}
+
+## **2. Feature Request Details**
+- **Feature Name:** ${featureName || "N/A"}
+- **Describe the feature:**  
+  ${featureDescription || "N/A"}
+- **Why is this feature important?**  
+  ${featureImportance || "N/A"}
+- **Who would benefit from this feature?**  
+  ${beneficiary || "N/A"}
+
+## **3. Additional Information**
+- **Are there existing platforms that have this feature?**  
+  ${existingPlatforms || "N/A"}
+- **Do you have any mockups or examples?**  
+  ${mockups || "N/A"}
+- **Would you be willing to help test this feature if implemented?** ${
+                willingToTest || "N/A"
+              }
+
+## **4. Priority & Impact**
+- **How urgent is this feature?**  
+  ${featurePriorities.length > 0 ? featurePriorities.join(", ") : "N/A"}
+- **Does this feature require technical expertise to implement?**  
+  ${techChallenges || "N/A"}
+
+---
+
+### **Processing & Consideration**
+All feature requests are reviewed, but not all may be implemented. We prioritize based on user demand, feasibility, and impact on bitvid. Thank you for helping us improve!
+
+For further discussions, reach out through bitvid’s Nostr support channels.
+            `.trim();
+
+              log(
+                "[DEBUG] Constructed feature request content:\n" +
+                  featureRequestContent
+              );
+
+              // Decode the recipient NPUB
+              log("Decoding recipient npub...");
+              const decoded = nip19.decode(recipientNpub);
+              log("[DEBUG] Decoded npub: " + JSON.stringify(decoded));
+              if (decoded.type !== "npub") {
+                throw new Error("Decoded type is not npub.");
+              }
+              const targetPubHex = decoded.data;
+              log("Recipient pubkey: " + targetPubHex.slice(0, 16) + "...");
+
+              // Generate an ephemeral key pair
+              log("Generating ephemeral key...");
+              const ephemeralPriv = generateSecretKey();
+              const ephemeralPubHex = getPublicKey(ephemeralPriv);
+              log("Ephemeral pubkey: " + ephemeralPubHex.slice(0, 16) + "...");
+
+              // Encrypt the feature request content
+              log("Encrypting feature request content (nip04)...");
+              const ciphertext = await nip04.encrypt(
+                ephemeralPriv,
+                targetPubHex,
+                featureRequestContent
+              );
+              log("[DEBUG] Ciphertext: " + ciphertext);
+              log("Encryption done.");
+
+              // Build the event template
+              const now = Math.floor(Date.now() / 1000);
+              const eventTemplate = {
+                kind: 4,
+                created_at: now,
+                tags: [["p", targetPubHex]],
+                content: ciphertext,
+              };
+              log(
+                "[DEBUG] Event template before finalizing: " +
+                  JSON.stringify(eventTemplate)
+              );
+
+              // Finalize the event
+              const event = finalizeEvent(eventTemplate, ephemeralPriv);
+              log("[DEBUG] Final event: " + JSON.stringify(event));
+
+              // Publish to relays
+              log("Publishing the feature request to relays...");
+              await Promise.any(pool.publish(RELAYS, event));
+              log("At least one relay accepted the event.", "success");
+
+              // Subscribe to verify event storage
+              for (const url of RELAYS) {
+                log("Connecting to " + url + " for subscription...");
+                const relay = await Relay.connect(url);
+                relay.subscribe([{ authors: [ephemeralPubHex], kinds: [4] }], {
+                  onEvent(foundEvent) {
+                    if (foundEvent.id === event.id) {
+                      log(
+                        "[" +
+                          url +
+                          "] => Found our feature request in storage! ID: " +
+                          foundEvent.id.slice(0, 8) +
+                          "...",
+                        "success"
+                      );
+                    }
+                  },
+                  onEose() {
+                    relay.close();
+                  },
+                });
+              }
+
+              log(
+                "Done. If the logs show that at least one relay accepted the event and the feature request was stored, it will be reviewed accordingly."
+              );
+            } catch (err) {
+              log("Error: " + err.message, "error");
+              user.error(err);
+            }
+          });
+      });
+    </script>
+    <div id="uiOverlay" data-overlay-root aria-hidden="true"></div>
+  </body>
+</html>

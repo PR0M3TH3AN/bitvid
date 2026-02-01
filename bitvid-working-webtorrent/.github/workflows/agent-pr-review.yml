@@ -1,0 +1,52 @@
+name: Automated Agent PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  agent-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/PR0M3TH3AN/bitvid.git || true
+          git fetch upstream
+
+      - name: Verify upstream branch and diff
+        run: |
+          if git ls-remote --heads upstream "${{ github.base_ref }}" | grep "${{ github.base_ref }}" > /dev/null; then
+            git fetch upstream "${{ github.base_ref }}"
+            git diff --name-only upstream/${{ github.base_ref }}...HEAD
+          else
+            echo "::warning::Branch upstream/${{ github.base_ref }} not found. Skipping diff."
+          fi
+
+      - name: Run Agent Review
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+          GITHUB_BASE_REPO_URL: ${{ github.event.pull_request.base.repo.clone_url }}
+        run: node scripts/automated-pr-review.mjs
