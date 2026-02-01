@@ -22,6 +22,7 @@ beforeEach(() => {
 
   globalThis.window = {
     location: { origin: "" },
+    crypto: globalThis.crypto,
     NostrTools: {
       nip19: {
         decode: () => ({ type: "npub", data: "pubkey123" }),
@@ -29,11 +30,10 @@ beforeEach(() => {
     },
   };
 
-  globalThis.File = class TestFile {
+  globalThis.File = class TestFile extends Blob {
     constructor(parts, name, options = {}) {
-      this.parts = parts;
+      super(parts, options);
       this.name = name;
-      this.type = options.type;
     }
   };
 
@@ -109,7 +109,7 @@ describe("R2Service bucket selection", () => {
 
     await service.handleCloudflareUploadSubmit({
       npub,
-      file: { name: "video.mp4", type: "video/mp4" },
+      file: new globalThis.File([], "video.mp4", { type: "video/mp4" }),
       metadata: { title: "Test upload" },
       publishVideoNote: mock.fn(async () => true),
     });

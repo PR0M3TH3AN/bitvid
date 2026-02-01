@@ -248,6 +248,8 @@ test(
       : nostrClient.writeRelays;
     const originalWindowNostr = window.nostr;
 
+    let fetchCalls = 0;
+
     const event = {
       id: "pref-permission",
       created_at: 400,
