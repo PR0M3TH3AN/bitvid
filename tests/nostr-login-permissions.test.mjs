@@ -165,25 +165,31 @@ describe("NIP-07 Login Permissions", () => {
       const pubkey = result.pubkey;
       assert.equal(pubkey, HEX_PUBKEY);
       assert.ok(env.enableCalls.length >= 1, "extension.enable should be invoked");
-
-      const permissionsToCheck = [
-        "nip04.encrypt",
-        "nip04.decrypt",
-        "nip44.encrypt",
-        "nip44.decrypt",
-        ...EXPECTED_ENCRYPTION_PERMISSIONS
-      ];
-
-      for (const method of permissionsToCheck) {
+      assert.ok(
+        nostrClient.extensionPermissionCache.has("nip04.encrypt"),
+        "nip04.encrypt permission should be tracked as granted",
+      );
+      assert.ok(
+        nostrClient.extensionPermissionCache.has("nip04.decrypt"),
+        "nip04.decrypt permission should be tracked as granted",
+      );
+      assert.ok(
+        nostrClient.extensionPermissionCache.has("nip44.encrypt"),
+        "nip44.encrypt permission should be tracked as granted",
+      );
+      assert.ok(
+        nostrClient.extensionPermissionCache.has("nip44.decrypt"),
+        "nip44.decrypt permission should be tracked as granted",
+      );
+      for (const method of EXPECTED_ENCRYPTION_PERMISSIONS) {
         assert.ok(
           nostrClient.extensionPermissionCache.has(method),
-          `${method} permission should be tracked as granted`
+          `${method} permission should be tracked as granted`,
         );
       }
-
       assert.ok(
         nostrClient.extensionPermissionCache.has("sign_event"),
-        "sign_event permission should be tracked as granted"
+        "sign_event permission should be tracked as granted",
       );
     } finally {
       env.restore();
@@ -214,18 +220,18 @@ describe("NIP-07 Login Permissions", () => {
         },
       };
 
-      await nip07Provider.login({ nostrClient });
-
+      const result = await nip07Provider.login({ nostrClient });
+      const pubkey = result.pubkey;
+      assert.equal(pubkey, HEX_PUBKEY);
       for (const method of EXPECTED_ENCRYPTION_PERMISSIONS) {
         assert.ok(
           nostrClient.extensionPermissionCache.has(method),
-          `nostrClient should track ${method} after login`
+          `nostrClient should track ${method} after login`,
         );
       }
 
       const storedRaw = localStorage.getItem(PERMISSIONS_STORAGE_KEY);
       assert.ok(storedRaw, "extension permissions should persist to localStorage");
-
       let storedMethods = [];
       try {
         const parsed = JSON.parse(storedRaw);
@@ -246,10 +252,9 @@ describe("NIP-07 Login Permissions", () => {
       for (const method of EXPECTED_ENCRYPTION_PERMISSIONS) {
         assert.ok(
           storedSet.has(method),
-          `stored permissions should include ${method}`
+          `stored permissions should include ${method}`,
         );
       }
-
       const baselineEnableCalls = env.enableCalls.length;
       const freshClient = new NostrClient();
       freshClient.pubkey = HEX_PUBKEY;
@@ -257,7 +262,7 @@ describe("NIP-07 Login Permissions", () => {
       for (const method of EXPECTED_ENCRYPTION_PERMISSIONS) {
         assert.ok(
           freshClient.extensionPermissionCache.has(method),
-          `fresh client should hydrate ${method} from storage`
+          `fresh client should hydrate ${method} from storage`,
         );
       }
 
@@ -269,7 +274,7 @@ describe("NIP-07 Login Permissions", () => {
         assert.equal(
           env.enableCalls.length,
           baselineEnableCalls,
-          `cached permissions should prevent extra enable() calls for ${method}`
+          `cached permissions should prevent extra enable() calls for ${method}`,
         );
       }
 
@@ -283,7 +288,7 @@ describe("NIP-07 Login Permissions", () => {
       assert.equal(
         env.enableCalls.length,
         baselineEnableCalls,
-        "decrypt calls should not trigger additional enable() prompts"
+        "decrypt calls should not trigger additional enable() prompts",
       );
       assert.equal(decryptCalls.nip04, 1);
       assert.equal(decryptCalls.nip44, 1);
@@ -317,27 +322,37 @@ describe("NIP-07 Login Permissions", () => {
       const result = await nip07Provider.login({ nostrClient });
       const pubkey = result.pubkey;
       assert.equal(pubkey, HEX_PUBKEY);
+      // With Structured -> String -> Plain order, this succeeds at step 2 (String).
+      // The login flow may perform multiple permission requests (e.g. core -> full).
+      // We expect at least one successful sequence (2 calls).
       assert.ok(env.enableCalls.length >= 2, "should retry with alternate payloads");
 
+      // Check the first sequence (core permissions)
       const [objectCall, stringCall] = env.enableCalls;
       assert.ok(Array.isArray(objectCall?.permissions));
       assert.equal(
         typeof objectCall.permissions[0],
         "object",
-        "structured permission request should be attempted first"
+        "structured permission request should be attempted first",
       );
       assert.ok(Array.isArray(stringCall?.permissions));
       assert.equal(
         typeof stringCall.permissions[0],
         "string",
-        "string-based permissions should be attempted after structured payloads"
+        "string-based permissions should be attempted after structured payloads",
       );
 
+      // If we have more calls (full permissions upgrade), verify they follow the same pattern
       if (env.enableCalls.length > 2) {
+        // The 3rd call should be a new structured attempt for full permissions
         const upgradeObjectCall = env.enableCalls[2];
+        // The 4th call (if 3rd failed) should be string
+        const upgradeStringCall = env.enableCalls[3];
+
         if (upgradeObjectCall) {
            assert.ok(Array.isArray(upgradeObjectCall.permissions), "upgrade attempt should use permissions");
         }
+        // We don't strictly assert `plainCall` is undefined because a 2nd pass might happen
       }
     } finally {
       env.restore();
@@ -361,14 +376,21 @@ describe("NIP-07 Login Permissions", () => {
       const result = await nip07Provider.login({ nostrClient });
       const pubkey = result.pubkey;
       assert.equal(pubkey, HEX_PUBKEY);
+      // With Structured -> String -> Plain order, we expect at least 3 calls for the first success:
+      // 1. Structured (rejected)
+      // 2. String (rejected)
+      // 3. Plain (accepted)
+      // If login does a second pass (upgrade), it might repeat this sequence.
       assert.ok(
         env.enableCalls.length >= 3,
-        "should eventually succeed with plain enable()"
+        "should eventually succeed with plain enable()",
       );
 
+      // Verify the first sequence structure
       const [objectCall, stringCall, plainCall] = env.enableCalls;
       assert.ok(objectCall !== undefined);
       assert.ok(stringCall !== undefined);
+      // plainCall is the one that succeeded (called with undefined/no args)
       assert.equal(plainCall, undefined, "successful attempt should use plain enable()");
     } finally {
       env.restore();
@@ -407,8 +429,11 @@ describe("NIP-07 Login Permissions", () => {
       assert.equal(pubkey, HEX_PUBKEY);
       assert.ok(
         duration < 1000,
-        `login should fall back quickly from stalled enable payloads (duration: ${duration}ms)`
+        `login should fall back quickly from stalled enable payloads (duration: ${duration}ms)`,
       );
+      // Structured (stalls) -> String (resolves)
+      // Plain is skipped because String resolved.
+      // Login might do this twice (Core then Full), so 2 or 4 calls.
       assert.ok(env.enableCalls.length >= 2, "should attempt structured (stalls) and then string payload");
 
       const [objectCall, stringCall] = env.enableCalls;
@@ -448,13 +473,13 @@ describe("NIP-07 Login Permissions", () => {
       assert.equal(result.pubkey, HEX_PUBKEY);
       assert.ok(
         duration < 200,
-        `login should resolve before deferred permission grants (duration: ${duration}ms)`
+        `login should resolve before deferred permission grants (duration: ${duration}ms)`,
       );
       assert.ok(completionPromise, "completionPromise should be captured");
       await assert.rejects(
         completionPromise,
         /permission denied/,
-        "deferred permission grants should still reject"
+        "deferred permission grants should still reject",
       );
     } finally {
       nostrClient.ensureExtensionPermissions = originalEnsurePermissions;

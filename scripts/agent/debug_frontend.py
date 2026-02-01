@@ -1,37 +1,23 @@
-import asyncio
-from playwright.async_api import async_playwright
 import sys
+from playwright.sync_api import sync_playwright
 
-async def run():
-    async with async_playwright() as p:
-        browser = await p.chromium.launch()
-        page = await browser.new_page()
+def run():
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
 
-        # Listen for console logs with location
-        def handle_console(msg):
-            loc = msg.location
-            print(f"console:{msg.type}: {msg.text} @ {loc['url']}:{loc['lineNumber']}")
-
-        page.on("console", handle_console)
-
-        # Listen for exceptions
+        page.on("console", lambda msg: print(f"console:{msg.type}: {msg.text}"))
         page.on("pageerror", lambda exc: print(f"pageerror: {exc}"))
-
-        # Listen for failed requests
-        page.on("requestfailed", lambda req: print(f"requestfailed: {req.url} {req.failure}"))
-
-        # Listen for 404s specifically
-        page.on("response", lambda res: print(f"response:{res.status}: {res.url}") if res.status >= 400 else None)
+        page.on("requestfailed", lambda req: print(f"requestfailed: {req.url} - {req.failure}"))
 
         try:
-            print("Navigating to http://localhost:8000...")
-            await page.goto("http://localhost:8000")
-            # Wait a bit for initialization
-            await page.wait_for_timeout(5000)
+            page.goto("http://localhost:8000")
+            # Wait a bit for JS to execute and errors to appear
+            page.wait_for_timeout(5000)
         except Exception as e:
-            print(f"Navigation error: {e}")
+            print(f"Error navigating: {e}")
         finally:
-            await browser.close()
+            browser.close()
 
 if __name__ == "__main__":
-    asyncio.run(run())
+    run()

@@ -92,9 +92,10 @@ test("sendDirectMessage succeeds with private key signer and no extension", asyn
     nostrClient.readRelays = [RELAY_URL];
     nostrClient.writeRelays = [RELAY_URL];
 
-    const senderSecret = canonicalTools.generateSecretKey();
-    const senderPrivateKey = canonicalTools.utils.bytesToHex(senderSecret);
-    const senderPubkey = canonicalTools.getPublicKey(senderSecret);
+    const senderPrivateKey = canonicalTools.utils.bytesToHex(
+      canonicalTools.generateSecretKey(),
+    );
+    const senderPubkey = canonicalTools.getPublicKey(senderPrivateKey);
     const recipientSecret = canonicalTools.generateSecretKey();
     const recipientPrivateKey = canonicalTools.utils.bytesToHex(recipientSecret);
     const recipientPubkey = canonicalTools.getPublicKey(recipientSecret);
@@ -111,7 +112,7 @@ test("sendDirectMessage succeeds with private key signer and no extension", asyn
     const originalNip44 = signer?.nip44Encrypt;
     if (signer) {
       signer.signEvent = (event) => {
-        const finalized = canonicalTools.finalizeEvent(event, senderSecret);
+        const finalized = canonicalTools.finalizeEvent(event, senderPrivateKey);
         return { ...event, id: finalized.id, sig: finalized.sig };
       };
       delete signer.nip04Encrypt;
@@ -132,7 +133,7 @@ test("sendDirectMessage succeeds with private key signer and no extension", asyn
     assert.notEqual(event.content, "", "ciphertext should not be empty");
 
     const decrypted = await canonicalTools.nip04.decrypt(
-      recipientSecret,
+      recipientPrivateKey,
       senderPubkey,
       event.content,
     );

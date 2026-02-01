@@ -42,7 +42,7 @@ const VALUE_ALLOWLIST = new Map([
 ]);
 
 const MARKUP_EXTENSIONS = new Set([".html", ".md", ".mdx", ".markdown", ".njk", ".nunjucks"]);
-const MARKUP_IGNORED_DIRECTORIES = new Set(["node_modules", ".git", "issues", "scripts"]);
+const MARKUP_IGNORED_DIRECTORIES = new Set(["node_modules", ".git"]);
 const CLASS_ATTRIBUTE_PATTERN = /class\s*=\s*(["'])(.*?)\1/gis;
 const BRACKET_UTILITY_PATTERN = /\[[^\]]+\]/g;
 const CHECK_MODES = new Set(["all", "tokens", "brackets"]);
