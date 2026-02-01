@@ -32,7 +32,9 @@ const IGNORED_GLOBS = [
   'tests/visual/embed-layout.spec.ts',
   'ai/**',
   '**/*.ai',
-  'releases/**'
+  'releases/**',
+  'bitvid-working-webtorrent/**',
+  'scripts/agent/**'
 ];
 
 const gitArgs = [
