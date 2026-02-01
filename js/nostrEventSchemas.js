@@ -513,7 +513,7 @@ const BASE_SCHEMAS = {
       name: "d",
       value: SUBSCRIPTION_LIST_IDENTIFIER,
     },
-    appendTags: DEFAULT_APPEND_TAGS,
+    appendTags: [["encrypted", "nip44_v2"]],
     content: {
       format: "encrypted-tag-list",
       description:
@@ -2405,12 +2405,22 @@ export function buildSubscriptionListEvent(params) {
   if (identifierName && identifierValue) {
     tags.push([identifierName, identifierValue]);
   }
+  appendSchemaTags(tags, schema);
   const normalizedEncryption =
     typeof encryption === "string" ? encryption.trim() : "";
   if (normalizedEncryption) {
-    tags.push(["encrypted", normalizedEncryption]);
+    let updated = false;
+    for (const tag of tags) {
+      if (Array.isArray(tag) && tag[0] === "encrypted") {
+        tag[1] = normalizedEncryption;
+        updated = true;
+        break;
+      }
+    }
+    if (!updated) {
+      tags.push(["encrypted", normalizedEncryption]);
+    }
   }
-  appendSchemaTags(tags, schema);
 
   const event = {
     kind: schema?.kind ?? 30000,

@@ -173,7 +173,7 @@ Video posts should treat `videoRootId` as the stable series identifier that rema
 | DM relay hints (`NOTE_TYPES.DM_RELAY_LIST`) | `10050` | Repeating `['relay', <relay url>]` tags to advertise delivery relays for NIP-17 gift-wrapped DMs | Empty content |
 | View counter (`NOTE_TYPES.VIEW_EVENT`) | `WATCH_HISTORY_KIND` (default `30079`) | Canonical tag set: `['t','view']`, a pointer tag (`['e', <eventId>]` or `['a', <address>]`), and a stable dedupe tag `['d', <view identifier>]`, with optional `['session','true']` when a session actor signs; schema overrides may append extra tags. `['video', ...]` is supported for legacy overrides only. | Optional plaintext message |
 | Watch history month (`NOTE_TYPES.WATCH_HISTORY`) | `WATCH_HISTORY_KIND` (default `30079`) | Replaceable list tag `['d', `${WATCH_HISTORY_LIST_IDENTIFIER}:<YYYY-MM>`]` with optional `['month', <YYYY-MM>]` marker plus schema append tags; no chunk pointers required. | JSON payload `{ version, month: 'YYYY-MM', items: [{ id: <eventId\|address>, watched_at?: <unix seconds> }] }` |
-| Subscription list (`NOTE_TYPES.SUBSCRIPTION_LIST`) | `30000` | `['d', 'subscriptions']` | NIP-04/NIP-44 encrypted JSON array of NIP-51 follow-set tuples (e.g., `[['p', <hex>], …]`) |
+| Subscription list (`NOTE_TYPES.SUBSCRIPTION_LIST`) | `30000` | `['d', 'subscriptions']`, `['encrypted', 'nip44_v2']` (updated to the negotiated scheme at publish time) | NIP-04/NIP-44 encrypted JSON array of NIP-51 follow-set tuples (e.g., `[['p', <hex>], …]`) |
 | User block list (`NOTE_TYPES.USER_BLOCK_LIST`) | `10000` | `['d', 'user-blocks']` | NIP-04/NIP-44 encrypted JSON `{ blockedPubkeys: string[] }` |
 | Hashtag preferences (`NOTE_TYPES.HASHTAG_PREFERENCES`) | `30015` | `['d', 'bitvid:tag-preferences']` plus schema-appended `['encrypted','nip44_v2']` | NIP-44 encrypted JSON `{ version, interests: string[], disinterests: string[] }` |
 | Admin moderation list (`NOTE_TYPES.ADMIN_MODERATION_LIST`) | `30000` | `['d', 'bitvid:admin:editors']`, repeated `['p', <pubkey>]` entries | Empty content |
@@ -209,6 +209,12 @@ Subscription lists therefore match the
 events with the shared `['d','subscriptions']` identifier. Builders continue to
 encrypt the payload so individual follows stay private unless explicitly
 revealed by the author.
+
+Publishers should include an explicit `['encrypted', '<scheme>']` tag on
+subscription list events, preferring `nip44_v2` (or `nip44`) and falling back to
+`nip04` only when no NIP-44 encryptor is available. This mirrors the encrypted
+tagging used for hashtag preference lists so consumers can select the correct
+decryptor quickly.
 
 NIP-94 compliance: mirror events now normalize the `['m', <mime>]` tag to lowercase—covering both user input and inferred values—so they satisfy [NIP-94's lowercase MIME requirement](./nips/94.md). Related helpers reuse the same normalization to keep future publishers aligned.
 
