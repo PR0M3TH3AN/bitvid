@@ -114,6 +114,7 @@ To set up the project locally:
    ```
 
    (This runs `npm run build:css` to generate Tailwind styles.)
+   This command executes `scripts/build-dist.mjs` to prepare the `dist/` directory for deployment. It copies an explicit allowlist of files (including `index.html`, `_headers`, `_redirects`) and directories (including `assets`, `js`, `css`, `config`) to `dist/`, excluding development artifacts like `scripts/` and `issues/`.
 
 3. **Run Tests**:
 
