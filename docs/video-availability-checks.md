@@ -38,6 +38,8 @@ This document explains how bitvid probes URL and torrent availability, caches re
 
 ## Torrent (stream) health checks
 
+For a detailed architectural overview of the WebTorrent implementation, including webseed handling and Service Worker integration, see [WebTorrent Architecture & Strategy](webtorrent-architecture.md).
+
 ### Card-level probes (`js/gridHealth.js`)
 
 The grid health module manages per-card WebTorrent probes and badge updates:

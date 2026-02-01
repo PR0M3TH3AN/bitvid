@@ -92,6 +92,14 @@ describe("WebTorrent Regression Tests", () => {
     assert.strictEqual(result.healthy, true, "Should be healthy due to webseed");
     assert.strictEqual(result.reason, "peer", "Reason should be 'peer'");
     assert.ok(result.peers >= 1, "Should report at least 1 peer");
+
+    // Verify that the client ACTUALLY received the webseed in the urlList
+    // This ensures we don't regress on passing the parameter
+    // Note: probePeers uses 'probeClient', not the main 'client'
+    const torrent = client.probeClient.torrents[0];
+    assert.ok(torrent, "Torrent should have been created");
+    assert.ok(Array.isArray(torrent.opts.urlList), "urlList should be an array");
+    assert.ok(torrent.opts.urlList.includes(webSeedUrl), "urlList should contain the webseed URL");
   });
 
   it("probePeers should report unhealthy if no webseed and 0 peers", async () => {
