@@ -135,9 +135,9 @@ function normalizeResult(result) {
   const peers = Number.isFinite(result.peers)
     ? Math.max(0, Number(result.peers))
     : 0;
-  const healthy = Boolean(result.healthy) && peers > 0;
-  const reason = typeof result.reason === "string" ? result.reason : "error";
   const webseedOnly = Boolean(result.webseedOnly) && peers === 0;
+  const healthy = (Boolean(result.healthy) && peers > 0) || webseedOnly;
+  const reason = typeof result.reason === "string" ? result.reason : "error";
   return {
     healthy,
     peers: healthy ? Math.max(1, peers) : peers,

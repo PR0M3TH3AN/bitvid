@@ -222,11 +222,19 @@ export class TorrentClient {
     }
 
     const trackers = normalizeTrackerList(TorrentClient.PROBE_TRACKERS);
-    const { magnet: augmentedMagnet, appended, hasProbeTrackers } =
+    let { magnet: augmentedMagnet, appended, hasProbeTrackers } =
       appendProbeTrackers(magnet, trackers);
 
     const hasMagnetWebSeed = magnet.includes("ws=") || magnet.includes("webSeed=");
     const hasExplicitWebSeed = Array.isArray(urlList) && urlList.length > 0;
+
+    if (hasExplicitWebSeed) {
+      const wsParams = urlList
+        .map((url) => `ws=${encodeURIComponent(url)}`)
+        .join("&");
+      const separator = augmentedMagnet.includes("?") ? "&" : "?";
+      augmentedMagnet = `${augmentedMagnet}${separator}${wsParams}`;
+    }
     const hasWebSeed = hasMagnetWebSeed || hasExplicitWebSeed;
 
     if (!hasProbeTrackers && !hasWebSeed) {
@@ -929,7 +937,21 @@ export class TorrentClient {
    */
   async streamVideo(magnetURI, videoElement, opts = {}) {
     try {
-      const effectiveMagnetURI = stripXsParameter(magnetURI);
+      let effectiveMagnetURI = stripXsParameter(magnetURI);
+      const candidateUrls = Array.isArray(opts?.urlList)
+        ? opts.urlList
+            .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+            .filter((entry) => /^https?:\/\//i.test(entry))
+        : [];
+
+      if (candidateUrls.length > 0) {
+        const wsParams = candidateUrls
+          .map((url) => `ws=${encodeURIComponent(url)}`)
+          .join("&");
+        const separator = effectiveMagnetURI.includes("?") ? "&" : "?";
+        effectiveMagnetURI = `${effectiveMagnetURI}${separator}${wsParams}`;
+      }
+
       if (
         effectiveMagnetURI !==
         (typeof magnetURI === "string" ? magnetURI.trim() : "")
@@ -962,11 +984,6 @@ export class TorrentClient {
       }
 
       const isFirefoxBrowser = this.isFirefox();
-      const candidateUrls = Array.isArray(opts?.urlList)
-        ? opts.urlList
-            .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
-            .filter((entry) => /^https?:\/\//i.test(entry))
-        : [];
 
       const chromeOptions = { strategy: "sequential" };
       if (candidateUrls.length) {
