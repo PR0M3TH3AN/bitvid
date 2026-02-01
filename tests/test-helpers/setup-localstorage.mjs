@@ -44,6 +44,10 @@ if (typeof globalThis.window.localStorage === "undefined") {
   globalThis.window.localStorage = globalThis.localStorage;
 }
 
+if (typeof globalThis.window.crypto === "undefined" && typeof globalThis.crypto !== "undefined") {
+  globalThis.window.crypto = globalThis.crypto;
+}
+
 if (typeof globalThis.structuredClone === "undefined") {
   globalThis.structuredClone = (val) => JSON.parse(JSON.stringify(val));
 }
