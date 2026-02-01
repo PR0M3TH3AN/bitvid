@@ -33,7 +33,8 @@ const IGNORED_GLOBS = [
   'ai/**',
   '**/*.ai',
   'releases/**',
-  'bitvid-working-webtorrent/**'
+  'bitvid-working-webtorrent/**',
+  'scripts/agent/**'
 ];
 
 const gitArgs = [

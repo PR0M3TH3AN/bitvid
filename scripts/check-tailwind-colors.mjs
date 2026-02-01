@@ -10,7 +10,12 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..");
 
 const TARGET_DIRECTORIES = ["components", "js", "views"];
-const IGNORED_DIRECTORIES = new Set(["ed-legacy", "legacy", "__snapshots__", "bitvid-working-webtorrent"]);
+const IGNORED_DIRECTORIES = new Set([
+  "ed-legacy",
+  "legacy",
+  "__snapshots__",
+  "bitvid-working-webtorrent",
+]);
 const LEGACY_ALLOWLIST = new Set([
   "components/ed-/revert-video-modal.html",
   "components/ed-/profile-modal.html",
