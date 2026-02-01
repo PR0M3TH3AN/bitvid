@@ -1,4 +1,5 @@
 
+import "./test-helpers/setup-localstorage.mjs";
 import { test, describe, it, after, before } from "node:test";
 import assert from "node:assert";
 import EventEmitter from "events";
@@ -36,6 +37,18 @@ class MockTorrent extends EventEmitter {
     this.opts = opts;
     this.numPeers = 0;
     this.files = [];
+    this.wires = [];
+
+    // Simulate webseeds if provided in opts
+    if (opts && Array.isArray(opts.urlList) && opts.urlList.length > 0) {
+        // Create mock wires for webseeds
+        this.wires = opts.urlList.map(url => ({ type: 'webSeed' }));
+
+        // Emit wire events asynchronously to simulate connection
+        setTimeout(() => {
+            this.wires.forEach(wire => this.emit('wire', wire));
+        }, 5);
+    }
   }
 
   destroy(opts, cb) {
