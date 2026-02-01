@@ -1187,10 +1187,14 @@ class PlaybackSession extends SimpleEventEmitter {
         // Try Torrent First
         if (this.magnetForPlayback) {
           try {
+            // If we have a fallback URL, use the effective timeout.
+            // Otherwise, we must wait indefinitely for peers because there is no plan B.
+            const torrentTimeout = httpsUrl ? effectiveTimeout : 0;
+
             // Wrap Torrent attempt in timeout
             const torrentResult = await withTimeout(
               attemptTorrentPlayback("preference"),
-              effectiveTimeout,
+              torrentTimeout,
               "Torrent Playback"
             );
 
