@@ -79,7 +79,7 @@ export default class VideoListViewController {
     }
 
     const messageContext =
-      reason === "login" && postLoginResult?.blocksLoaded === true
+      reason === "login" && postLoginResult?.blocksLoaded !== false
         ? "Applying your filters…"
         : "Refreshing videos…";
 

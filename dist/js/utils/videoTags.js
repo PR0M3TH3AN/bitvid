@@ -44,7 +44,7 @@ function normalizeTagValue(rawValue) {
  * @returns {string} The tag prefixed with `#` when a tag exists, otherwise an
  *                   empty string.
  */
-function formatTagDisplay(tag) {
+export function formatTagDisplay(tag) {
   if (typeof tag !== "string") {
     return "";
   }

@@ -1134,20 +1134,16 @@ export class VideoListView {
       elements: new Set(),
       lastTotal: null,
       lastStatus: "idle",
-      lastPartial: false,
       lastText: "– views",
     };
 
     try {
-      const token = subscribeToVideoViewCount(pointerInfo.pointer, ({ total, status, partial }) => {
+      const token = subscribeToVideoViewCount(pointerInfo.pointer, ({ total, status }) => {
         let text;
         if (Number.isFinite(total)) {
           const numeric = Number(total);
           entry.lastTotal = numeric;
           text = this.formatters.formatViewCountLabel(numeric);
-          if (partial) {
-            text = `${text} (partial)`;
-          }
         } else if (status === "hydrating") {
           text = "Loading views…";
         } else {
@@ -1155,7 +1151,6 @@ export class VideoListView {
         }
 
         entry.lastStatus = status;
-        entry.lastPartial = Boolean(partial);
         entry.lastText = text;
 
         for (const el of Array.from(entry.elements)) {
@@ -1164,11 +1159,6 @@ export class VideoListView {
             continue;
           }
           el.textContent = text;
-          if (entry.lastPartial) {
-            el.dataset.viewCountState = "partial";
-          } else {
-            el.dataset.viewCountState = status;
-          }
         }
       });
       entry.token = token;
@@ -1203,9 +1193,6 @@ export class VideoListView {
     if (typeof pointerInfo.key === "string") {
       viewCountEl.dataset.viewPointer = pointerInfo.key;
     }
-    viewCountEl.dataset.viewCountState = entry.lastPartial
-      ? "partial"
-      : entry.lastStatus;
     viewCountEl.textContent = entry.lastText;
   }
 

@@ -28,30 +28,14 @@ an operator might change it.
     debug affordances. The value is re-exported as `isDevMode` in
     `js/config.js` and controls `window.__BITVID_DEV_MODE__` as well as
     logger routing.
-  - **Why change it:** Defaults to `false` for production builds. Set to `true`
-    for local development, or use the runtime override described below to
-    toggle dev mode without editing this file.
+  - **Why change it:** Set to `false` for production builds so only the stable
+    UX and user-facing logging remain.
 
 - **`IS_VERBOSE_DEV_MODE`**
   - **What it does:** Enables high-volume diagnostics inside dev mode (for
     example, repeated COUNT failures).
   - **Why change it:** Keep `true` while debugging noisy workflows and set to
     `false` when you want a quieter dev console without disabling dev mode.
-    Defaults to `false` for production.
-
-To override the dev flags at runtime (for example in a staging build) without
-changing `config/instance-config.js`, inject one or both of the following
-globals **before** `js/config.js` loads:
-
-```html
-<script>
-  window.__BITVID_DEV_MODE_OVERRIDE__ = true;
-  window.__BITVID_VERBOSE_DEV_MODE_OVERRIDE__ = true;
-</script>
-```
-
-The overrides accept boolean values or the strings `"true"` / `"false"` so they
-can be injected at build time.
 
 - **`IS_LOCKDOWN_MODE`**
   - **What it does:** Toggles a lockdown posture that limits access and switches

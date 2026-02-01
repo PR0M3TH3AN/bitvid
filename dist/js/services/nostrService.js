@@ -176,30 +176,6 @@ function sanitizeSnapshotTimestamp(value) {
   return floored;
 }
 
-function resolveDirectMessageCreatedAt(message) {
-  const createdAt = sanitizeSnapshotTimestamp(
-    message?.message?.created_at ??
-      message?.event?.created_at ??
-      message?.created_at ??
-      message?.timestamp,
-  );
-
-  if (createdAt) {
-    return createdAt;
-  }
-
-  return Math.floor(Date.now() / 1000);
-}
-
-function resolveDirectMessageSortValue(message) {
-  return sanitizeSnapshotTimestamp(
-    message?.created_at ??
-      message?.timestamp ??
-      message?.message?.created_at ??
-      message?.event?.created_at,
-  );
-}
-
 const SNAPSHOT_PREVIEW_LIMIT = 160;
 
 function sanitizeSnapshotPreview(value) {
@@ -264,7 +240,11 @@ function resolvePreviewCacheKey(message) {
       : typeof message?.remotePubkey === "string"
       ? message.remotePubkey.trim()
       : "";
-  const timestamp = resolveDirectMessageSortValue(message);
+  const timestamp = Number.isFinite(message?.timestamp)
+    ? Math.floor(message.timestamp)
+    : Number.isFinite(message?.message?.created_at)
+    ? Math.floor(message.message.created_at)
+    : 0;
 
   if (remote && timestamp) {
     return `snapshot:${remote}:${timestamp}`;
@@ -421,7 +401,11 @@ function normalizeDirectMessageRecord(message, actorPubkey = "") {
     receiverPubkey = senderPubkey === actor ? remote : actor;
   }
 
-  const createdAt = resolveDirectMessageCreatedAt(message);
+  const createdAt = sanitizeSnapshotTimestamp(
+    message?.message?.created_at ??
+      message?.event?.created_at ??
+      message?.timestamp,
+  );
 
   const kind =
     Number.isFinite(message?.message?.kind)
@@ -475,7 +459,7 @@ function buildSnapshotFromMessages(messages, actorPubkey = "", resolvePreview = 
       continue;
     }
 
-    const timestamp = resolveDirectMessageSortValue(message);
+    const timestamp = sanitizeSnapshotTimestamp(message.timestamp);
     const preview =
       typeof resolvePreview === "function"
         ? resolvePreview(message)
@@ -494,60 +478,6 @@ function buildSnapshotFromMessages(messages, actorPubkey = "", resolvePreview = 
   return Array.from(threadMap.values()).sort(
     (a, b) => (b.latestTimestamp || 0) - (a.latestTimestamp || 0),
   );
-}
-
-function normalizeDirectMessagePayload(message) {
-  if (!message || message.ok !== true) {
-    return null;
-  }
-
-  const eventId = typeof message?.event?.id === "string" ? message.event.id : "";
-  if (!eventId) {
-    return null;
-  }
-
-  const createdAt = resolveDirectMessageCreatedAt(message);
-
-  return {
-    ...message,
-    created_at: createdAt,
-    timestamp: createdAt,
-  };
-}
-
-function mergeDirectMessageCache(existingMessages, incomingMessages) {
-  const mergedIndex = new Map();
-
-  const upsert = (message) => {
-    const normalized = normalizeDirectMessagePayload(message);
-    if (!normalized) {
-      return;
-    }
-
-    const eventId = normalized.event.id;
-    const existing = mergedIndex.get(eventId);
-    if (
-      !existing ||
-      normalized.created_at >= resolveDirectMessageSortValue(existing)
-    ) {
-      mergedIndex.set(eventId, normalized);
-    }
-  };
-
-  for (const message of Array.isArray(existingMessages) ? existingMessages : []) {
-    upsert(message);
-  }
-
-  for (const message of Array.isArray(incomingMessages) ? incomingMessages : []) {
-    upsert(message);
-  }
-
-  const mergedMessages = Array.from(mergedIndex.values());
-  mergedMessages.sort(
-    (a, b) => resolveDirectMessageSortValue(b) - resolveDirectMessageSortValue(a),
-  );
-
-  return { messages: mergedMessages, index: mergedIndex };
 }
 
 function hydrateMessagesFromSnapshot(snapshot, actorPubkey = "") {
@@ -629,7 +559,6 @@ export class NostrService {
     this.dmMessageIndex = new Map();
     this.dmSubscription = null;
     this.dmActorPubkey = null;
-    this.dmSubscriptionRelays = null;
     this.dmHydratedFromSnapshot = false;
     this.dmNotificationManager = new DmNotificationManager({
       logger: userLogger,
@@ -770,13 +699,6 @@ export class NostrService {
     if (this.dmPreviewCache) {
       this.dmPreviewCache.clear();
     }
-    if (this.dmNotificationManager?.reset) {
-      try {
-        this.dmNotificationManager.reset();
-      } catch (error) {
-        userLogger.warn("[nostrService] Failed to reset DM notifications cache", error);
-      }
-    }
     const activeActor = normalizeHexPubkey(
       typeof actorPubkey === "string" && actorPubkey
         ? actorPubkey
@@ -871,10 +793,17 @@ export class NostrService {
       return;
     }
 
-    const normalized = normalizeDirectMessagePayload(message);
-    if (!normalized) {
-      return;
-    }
+    const normalized = {
+      ...message,
+      timestamp:
+        Number.isFinite(message?.timestamp)
+          ? message.timestamp
+          : Number.isFinite(message?.message?.created_at)
+          ? message.message.created_at
+          : Number.isFinite(message?.event?.created_at)
+          ? message.event.created_at
+          : Date.now() / 1000,
+    };
 
     this.dmMessageIndex.set(eventId, normalized);
 
@@ -899,9 +828,7 @@ export class NostrService {
       this.dmMessages.push(normalized);
     }
 
-    this.dmMessages.sort(
-      (a, b) => resolveDirectMessageSortValue(b) - resolveDirectMessageSortValue(a),
-    );
+    this.dmMessages.sort((a, b) => (b?.timestamp || 0) - (a?.timestamp || 0));
     if (actor) {
       this.dmActorPubkey = actor;
     }
@@ -964,14 +891,8 @@ export class NostrService {
       return this.getDirectMessages();
     }
 
-    if (force) {
-      this.dmMessages = [];
-      this.dmMessageIndex = new Map();
-    }
-
-    const merged = mergeDirectMessageCache(this.dmMessages, hydrated);
-    this.dmMessageIndex = merged.index;
-    this.dmMessages = merged.messages;
+    this.dmMessages = hydrated;
+    this.dmMessageIndex = new Map();
     this.dmHydratedFromSnapshot = hydrated.length > 0;
 
     const snapshot = this.getDirectMessages();
@@ -1006,8 +927,6 @@ export class NostrService {
       : Number.isFinite(decryptLimitCandidate) && decryptLimitCandidate > 0
       ? Math.floor(decryptLimitCandidate)
       : null;
-    const sinceCandidate = Number(options.since);
-    const untilCandidate = Number(options.until);
 
     if (resolvedDecryptLimit && resolvedDecryptLimit > resolvedLimit) {
       resolvedDecryptLimit = resolvedLimit;
@@ -1032,27 +951,6 @@ export class NostrService {
 
     this.dmActorPubkey = normalizedActor;
 
-    let resolvedSince =
-      Number.isFinite(sinceCandidate) && sinceCandidate >= 0
-        ? Math.floor(sinceCandidate)
-        : null;
-    const resolvedUntil =
-      Number.isFinite(untilCandidate) && untilCandidate >= 0
-        ? Math.floor(untilCandidate)
-        : null;
-    if (resolvedSince === null && initialLoad) {
-      let latestTimestamp = 0;
-      for (const message of Array.isArray(this.dmMessages) ? this.dmMessages : []) {
-        const timestamp = resolveDirectMessageSortValue(message);
-        if (timestamp > latestTimestamp) {
-          latestTimestamp = timestamp;
-        }
-      }
-      if (latestTimestamp > 0) {
-        resolvedSince = Math.max(latestTimestamp - 60, 0);
-      }
-    }
-
     let messages = [];
     try {
       messages = await this.nostrClient.listDirectMessages(normalizedActor, {
@@ -1060,8 +958,6 @@ export class NostrService {
         ...options,
         limit: resolvedLimit,
         decryptLimit: resolvedDecryptLimit,
-        ...(resolvedSince !== null ? { since: resolvedSince } : {}),
-        ...(resolvedUntil !== null ? { until: resolvedUntil } : {}),
         onMessage: (message) => {
           this.applyDirectMessage(message, { reason: "load-incremental" });
         },
@@ -1072,19 +968,37 @@ export class NostrService {
     }
 
     const collected = [];
+    const index = new Map();
 
     for (const message of Array.isArray(messages) ? messages : []) {
-      const normalized = normalizeDirectMessagePayload(message);
-      if (!normalized) {
+      if (!message || message.ok !== true) {
         continue;
       }
 
+      const eventId = message?.event?.id;
+      if (typeof eventId !== "string" || !eventId) {
+        continue;
+      }
+
+      const normalized = {
+        ...message,
+        timestamp:
+          Number.isFinite(message?.timestamp)
+            ? message.timestamp
+            : Number.isFinite(message?.message?.created_at)
+            ? message.message.created_at
+            : Number.isFinite(message?.event?.created_at)
+            ? message.event.created_at
+            : Date.now() / 1000,
+      };
+
+      index.set(eventId, normalized);
       collected.push(normalized);
     }
 
-    const merged = mergeDirectMessageCache(this.dmMessages, collected);
-    this.dmMessageIndex = merged.index;
-    this.dmMessages = merged.messages;
+    collected.sort((a, b) => (b?.timestamp || 0) - (a?.timestamp || 0));
+    this.dmMessageIndex = index;
+    this.dmMessages = collected;
 
     const snapshot = this.getDirectMessages();
 
@@ -1118,36 +1032,14 @@ export class NostrService {
   }
 
   async ensureDirectMessageSubscription({ actorPubkey, relays, ...handlers } = {}) {
+    if (this.dmSubscription) {
+      return this.dmSubscription;
+    }
+
     const activeActor = actorPubkey || this.resolveActiveDmActor();
     const normalizedActor = normalizeHexPubkey(activeActor);
     if (!normalizedActor) {
       return null;
-    }
-
-    if (this.dmSubscription) {
-      if (this.dmActorPubkey === normalizedActor) {
-        devLogger.log(
-          "[nostrService] Reusing existing DM subscription for active actor.",
-          {
-            actorPubkey: normalizedActor,
-            relays: Array.isArray(this.dmSubscriptionRelays)
-              ? this.dmSubscriptionRelays
-              : [],
-          },
-        );
-        return this.dmSubscription;
-      }
-      devLogger.log(
-        "[nostrService] Replacing existing DM subscription for new actor.",
-        {
-          previous: this.dmActorPubkey,
-          next: normalizedActor,
-          previousRelays: Array.isArray(this.dmSubscriptionRelays)
-            ? this.dmSubscriptionRelays
-            : [],
-        },
-      );
-      this.stopDirectMessageSubscription();
     }
 
     let resolvedRelays = Array.isArray(relays) ? relays : null;
@@ -1250,13 +1142,6 @@ export class NostrService {
 
       this.dmSubscription = subscription;
       this.dmActorPubkey = normalizedActor;
-      this.dmSubscriptionRelays = Array.isArray(resolvedRelays)
-        ? resolvedRelays.slice()
-        : [];
-      devLogger.log("[nostrService] DM subscription activated.", {
-        actorPubkey: normalizedActor,
-        relays: resolvedRelays,
-      });
       this.emit("directMessages:subscribed", { subscription });
       if (relaySelection?.warning === DM_RELAY_WARNING_FALLBACK) {
         this.emit("directMessages:relayWarning", {
@@ -1288,7 +1173,6 @@ export class NostrService {
       }
     }
     this.dmSubscription = null;
-    this.dmSubscriptionRelays = null;
   }
 
   async persistDirectMessageSnapshot(actorPubkey = null, messages = null) {

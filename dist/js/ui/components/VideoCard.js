@@ -916,15 +916,6 @@ export class VideoCard {
       "rounded-full",
       "object-cover"
     );
-    if (!avatar.dataset.avatarFallbackBound) {
-      avatar.addEventListener("error", () => {
-        if (avatar.getAttribute("src") !== DEFAULT_PROFILE_AVATAR) {
-          avatar.src = DEFAULT_PROFILE_AVATAR;
-        }
-        avatar.dataset.avatarLoadFailed = "true";
-      });
-      avatar.dataset.avatarFallbackBound = "true";
-    }
     if (this.video.pubkey) {
       avatar.dataset.pubkey = this.video.pubkey;
     }

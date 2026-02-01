@@ -50,7 +50,6 @@ restoreCacheSnapshot();
  * @property {Map<string, number>} dedupeBuckets
  * @property {number} lastSyncedAt
  * @property {"idle"|"hydrating"|"live"|"stale"} status
- * @property {boolean} partial
  */
 
 /**
@@ -279,7 +278,6 @@ function restoreCacheSnapshot() {
         dedupeBuckets,
         lastSyncedAt,
         status: status === "hydrating" || status === "live" ? "idle" : status,
-        partial: Boolean(state.partial),
       });
     }
   } catch (error) {
@@ -301,7 +299,6 @@ function persistCacheSnapshot() {
           dedupeBuckets: Array.from(state.dedupeBuckets.entries()),
           lastSyncedAt: state.lastSyncedAt,
           status: state.status,
-          partial: Boolean(state.partial),
         },
       ]);
     }
@@ -324,7 +321,6 @@ function ensurePointerState(key) {
       dedupeBuckets: new Map(),
       lastSyncedAt: 0,
       status: "idle",
-      partial: false,
     };
     pointerStates.set(key, state);
   } else if (!(state.dedupeBuckets instanceof Map)) {
@@ -377,7 +373,6 @@ function notifyHandlers(key) {
     total: state.total,
     lastSyncedAt: state.lastSyncedAt,
     status: state.status,
-    partial: Boolean(state.partial),
   };
   for (const handler of listeners.handlers.values()) {
     try {
@@ -499,15 +494,6 @@ async function hydratePointer(key, listeners) {
     ? Number(countResult.total)
     : null;
 
-  if (countResult && typeof countResult === "object") {
-    const state = ensurePointerState(key);
-    const nextPartial = Boolean(countResult.partial);
-    if (state.partial !== nextPartial) {
-      state.partial = nextPartial;
-      mutated = true;
-    }
-  }
-
   if (bestCount !== null) {
     const state = ensurePointerState(key);
     const shouldUpdate = bestCount > state.total || state.total === 0;
@@ -611,7 +597,6 @@ export function subscribeToVideoViewCount(pointerInput, handler, options = {}) {
       total: state.total,
       lastSyncedAt: state.lastSyncedAt,
       status: state.status,
-      partial: Boolean(state.partial),
     });
   } catch (error) {
     userLogger.warn("[viewCounter] Initial handler invocation threw:", error);

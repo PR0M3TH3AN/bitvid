@@ -1,4 +1,3 @@
-import { isVerboseDevMode } from "../config.js";
 import { devLogger } from "../utils/logger.js";
 
 export default class TorrentStatusController {
@@ -8,36 +7,14 @@ export default class TorrentStatusController {
     }
     this.getVideoModal = getVideoModal;
     this.onRemovePoster = typeof onRemovePoster === "function" ? onRemovePoster : () => {};
-    this.lastEmitted = {
-      status: null,
-      progress: null,
-      peers: null,
-      speed: null,
-      downloaded: null,
-    };
-    this.lastVerboseLogAt = 0;
-    this.lastVerboseSummaryKey = "";
-    this.verboseLogIntervalMs = 3000;
   }
 
   update(torrent) {
-    if (!torrent) {
-      if (isVerboseDevMode) {
-        this.logVerboseSummary({ hasTorrent: false });
-      }
-      return;
-    }
+    devLogger.log("[DEBUG] TorrentStatusController.update called with torrent:", torrent);
 
-    if (isVerboseDevMode) {
-      this.logVerboseSummary({
-        hasTorrent: true,
-        progress: torrent.progress,
-        numPeers: torrent.numPeers,
-        downloadSpeed: torrent.downloadSpeed,
-        downloaded: torrent.downloaded,
-        length: torrent.length,
-        ready: torrent.ready,
-      });
+    if (!torrent) {
+      devLogger.log("[DEBUG] torrent is null/undefined!");
+      return;
     }
 
     if (torrent.ready || (typeof torrent.progress === "number" && torrent.progress > 0)) {
@@ -49,79 +26,48 @@ export default class TorrentStatusController {
       );
     }
 
+    // Log only fields that actually exist on the torrent:
+    devLogger.log("[DEBUG] torrent.progress =", torrent.progress);
+    devLogger.log("[DEBUG] torrent.numPeers =", torrent.numPeers);
+    devLogger.log("[DEBUG] torrent.downloadSpeed =", torrent.downloadSpeed);
+    devLogger.log("[DEBUG] torrent.downloaded =", torrent.downloaded);
+    devLogger.log("[DEBUG] torrent.length =", torrent.length);
+    devLogger.log("[DEBUG] torrent.ready =", torrent.ready);
+
     const videoModal = this.getVideoModal();
 
     // Use "Complete" vs. "Downloading" as the textual status.
     if (videoModal) {
-      const fullyDownloaded = Number(torrent.progress) >= 1;
-      const status = torrent.ready
-        ? "Ready to play"
-        : fullyDownloaded
-          ? "Complete"
-          : "Downloading";
-      this.updateIfChanged("status", status, () => {
-        if (typeof videoModal.updateStatus === "function") {
-          videoModal.updateStatus(status);
-        }
-      });
+      const fullyDownloaded = torrent.progress >= 1;
+      if (typeof videoModal.updateStatus === "function") {
+        videoModal.updateStatus(fullyDownloaded ? "Complete" : "Downloading");
+      }
 
-      const progressValue = Number.isFinite(torrent.progress)
-        ? `${(torrent.progress * 100).toFixed(2)}%`
-        : "0.00%";
-      this.updateIfChanged("progress", progressValue, () => {
-        if (typeof videoModal.updateProgress === "function") {
-          videoModal.updateProgress(progressValue);
-        }
-      });
+      if (typeof videoModal.updateProgress === "function") {
+        const percent = (torrent.progress * 100).toFixed(2);
+        videoModal.updateProgress(`${percent}%`);
+      }
 
-      const peersValue = `Peers: ${Number.isFinite(torrent.numPeers) ? torrent.numPeers : 0}`;
-      this.updateIfChanged("peers", peersValue, () => {
-        if (typeof videoModal.updatePeers === "function") {
-          videoModal.updatePeers(peersValue);
-        }
-      });
+      if (typeof videoModal.updatePeers === "function") {
+        videoModal.updatePeers(`Peers: ${torrent.numPeers}`);
+      }
 
-      const speedValue = Number.isFinite(torrent.downloadSpeed)
-        ? `${(torrent.downloadSpeed / 1024).toFixed(2)} KB/s`
-        : "0.00 KB/s";
-      this.updateIfChanged("speed", speedValue, () => {
-        if (typeof videoModal.updateSpeed === "function") {
-          videoModal.updateSpeed(speedValue);
-        }
-      });
+      if (typeof videoModal.updateSpeed === "function") {
+        const kb = (torrent.downloadSpeed / 1024).toFixed(2);
+        videoModal.updateSpeed(`${kb} KB/s`);
+      }
 
-      const downloadedMb = Number.isFinite(torrent.downloaded)
-        ? (torrent.downloaded / (1024 * 1024)).toFixed(2)
-        : "0.00";
-      const lengthMb = Number.isFinite(torrent.length)
-        ? (torrent.length / (1024 * 1024)).toFixed(2)
-        : "0.00";
-      const downloadedValue = `${downloadedMb} MB / ${lengthMb} MB`;
-      this.updateIfChanged("downloaded", downloadedValue, () => {
-        if (typeof videoModal.updateDownloaded === "function") {
-          videoModal.updateDownloaded(downloadedValue);
-        }
-      });
+      if (typeof videoModal.updateDownloaded === "function") {
+        const downloadedMb = (torrent.downloaded / (1024 * 1024)).toFixed(2);
+        const lengthMb = (torrent.length / (1024 * 1024)).toFixed(2);
+        videoModal.updateDownloaded(
+          `${downloadedMb} MB / ${lengthMb} MB`
+        );
+      }
+
+      if (torrent.ready && typeof videoModal.updateStatus === "function") {
+        videoModal.updateStatus("Ready to play");
+      }
     }
-  }
-
-  updateIfChanged(key, nextValue, updater) {
-    if (this.lastEmitted[key] === nextValue) {
-      return;
-    }
-    this.lastEmitted[key] = nextValue;
-    updater();
-  }
-
-  logVerboseSummary(summary) {
-    const summaryKey = JSON.stringify(summary);
-    const now = Date.now();
-    const shouldSample = now - this.lastVerboseLogAt >= this.verboseLogIntervalMs;
-    if (summaryKey === this.lastVerboseSummaryKey && !shouldSample) {
-      return;
-    }
-    this.lastVerboseSummaryKey = summaryKey;
-    this.lastVerboseLogAt = now;
-    devLogger.debug("[DEBUG] TorrentStatusController.update", summary);
   }
 }

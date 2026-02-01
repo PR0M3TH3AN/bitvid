@@ -1520,8 +1520,6 @@ export default class MoreMenuController {
           const message =
             error?.code === "nip04-missing"
               ? "Your Nostr extension must support NIP-04 to manage private lists."
-              : error?.code === "extension-encryption-permission-denied"
-              ? "Your Nostr extension must allow encryption to update your block list."
               : "Failed to update your block list. Please try again.";
           this.callbacks.showError(message);
         }

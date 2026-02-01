@@ -62,160 +62,6 @@ class SimpleEventEmitter {
 const HOSTED_URL_SUCCESS_MESSAGE = "✅ Streaming from hosted URL";
 const DEFAULT_UNSUPPORTED_BTITH_MESSAGE =
   "This magnet link is missing a compatible BitTorrent v1 info hash.";
-const AUTH_STATUS_CODES = new Set([401, 403]);
-const SSL_ERROR_PATTERN = /(ssl|cert|certificate)/i;
-const CORS_ERROR_PATTERN = /cors/i;
-const PROBE_CACHE_TTL_MS = 45000;
-
-const getHostedUrlFailureDetails = (probeResult = {}) => {
-  const outcome = probeResult?.outcome || "error";
-  const status = Number.isFinite(probeResult?.status)
-    ? probeResult.status
-    : null;
-  const error = probeResult?.error;
-  const isAuthStatus = status !== null && AUTH_STATUS_CODES.has(status);
-
-  if (outcome === "timeout") {
-    return {
-      category: "external",
-      message:
-        "Hosted URL timed out. We’ll try WebTorrent if available.",
-      status,
-    };
-  }
-
-  if (outcome === "bad") {
-    if (isAuthStatus) {
-      return {
-        category: "auth",
-        message:
-          "Hosted URL requires authorization or a signed request. Please log in or re-sign.",
-        status,
-      };
-    }
-
-    if (status === 404) {
-      return {
-        category: "external",
-        message: "Hosted URL not found (404).",
-        status,
-      };
-    }
-
-    if (status === 403) {
-      return {
-        category: "external",
-        message: "Hosted URL blocked (403).",
-        status,
-      };
-    }
-
-    if (status && status >= 500) {
-      return {
-        category: "external",
-        message: `Hosted URL unavailable (HTTP ${status}).`,
-        status,
-      };
-    }
-
-    if (status) {
-      return {
-        category: "external",
-        message: `Hosted URL failed (HTTP ${status}).`,
-        status,
-      };
-    }
-  }
-
-  if (outcome === "opaque" || outcome === "unknown") {
-    return {
-      category: "external",
-      message:
-        "Hosted URL blocked by browser security (CORS/SSL). We’ll try WebTorrent if available.",
-      status,
-    };
-  }
-
-  if (outcome === "error") {
-    const message = error?.message || "";
-    if (SSL_ERROR_PATTERN.test(message)) {
-      return {
-        category: "external",
-        message:
-          "Hosted URL blocked due to SSL certificate issues.",
-        status,
-      };
-    }
-    if (CORS_ERROR_PATTERN.test(message)) {
-      return {
-        category: "external",
-        message:
-          "Hosted URL blocked by CORS. We’ll try WebTorrent if available.",
-        status,
-      };
-    }
-    return {
-      category: "external",
-      message:
-        "Hosted URL failed to load due to network or security restrictions.",
-      status,
-    };
-  }
-
-  return {
-    category: "external",
-    message: "Hosted URL failed to load.",
-    status,
-  };
-};
-
-const getHostedVideoErrorMessage = (videoElement) => {
-  if (!videoElement?.error) {
-    return "";
-  }
-
-  const error = videoElement.error;
-  const code = error.code;
-  const mediaErrorCodes =
-    typeof MediaError !== "undefined"
-      ? MediaError
-      : {
-          MEDIA_ERR_ABORTED: 1,
-          MEDIA_ERR_NETWORK: 2,
-          MEDIA_ERR_DECODE: 3,
-          MEDIA_ERR_SRC_NOT_SUPPORTED: 4,
-        };
-
-  switch (code) {
-    case mediaErrorCodes.MEDIA_ERR_ABORTED:
-      return "Hosted playback was interrupted.";
-    case mediaErrorCodes.MEDIA_ERR_NETWORK:
-      return "Hosted playback failed due to network/CORS restrictions.";
-    case mediaErrorCodes.MEDIA_ERR_DECODE:
-      return "Hosted playback failed to decode the video.";
-    case mediaErrorCodes.MEDIA_ERR_SRC_NOT_SUPPORTED:
-      return "Hosted playback failed: source not supported or blocked.";
-    default:
-      return "Hosted playback failed to load.";
-  }
-};
-
-const getTorrentErrorMessage = (error) => {
-  if (!error) {
-    return "WebTorrent could not start. Please try again.";
-  }
-  const message = error.message || "";
-  if (message.includes(DEFAULT_UNSUPPORTED_BTITH_MESSAGE)) {
-    return DEFAULT_UNSUPPORTED_BTITH_MESSAGE;
-  }
-  if (/tracker|announce|peer/i.test(message)) {
-    return "WebTorrent could not reach any peers or trackers.";
-  }
-  if (/permission|blocked|denied/i.test(message)) {
-    return "WebTorrent was blocked by the browser or network.";
-  }
-  return "WebTorrent could not start. Please try again.";
-};
 
 export class PlaybackService {
   constructor({
@@ -242,9 +88,6 @@ export class PlaybackService {
     this.analyticsCallbacks = analyticsCallbacks || {};
     this.playbackStartTimeout = playbackStartTimeout;
     this.currentSession = null;
-    this.probeCache = new Map();
-    this.probeInFlight = new Map();
-    this.probeCacheTtlMs = PROBE_CACHE_TTL_MS;
   }
 
   log(...args) {
@@ -272,76 +115,6 @@ export class PlaybackService {
         this.log(`[PlaybackService] ${eventName} callback threw`, err);
       }
     }
-  }
-
-  getProbeCacheKey({ url, magnet }) {
-    const trimmedUrl = typeof url === "string" ? url.trim() : "";
-    const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
-    return `${trimmedUrl}::${trimmedMagnet}`;
-  }
-
-  pruneProbeCache(now = Date.now()) {
-    for (const [key, entry] of this.probeCache.entries()) {
-      if (!entry || !Number.isFinite(entry.expiresAt) || entry.expiresAt <= now) {
-        this.probeCache.delete(key);
-      }
-    }
-  }
-
-  getCachedProbeResult(cacheKey, now = Date.now()) {
-    this.pruneProbeCache(now);
-    const entry = this.probeCache.get(cacheKey);
-    if (!entry || entry.expiresAt <= now) {
-      return null;
-    }
-    return entry.result;
-  }
-
-  storeProbeResult(cacheKey, result, now = Date.now()) {
-    const ttl =
-      Number.isFinite(this.probeCacheTtlMs) && this.probeCacheTtlMs > 0
-        ? this.probeCacheTtlMs
-        : PROBE_CACHE_TTL_MS;
-    this.probeCache.set(cacheKey, { result, expiresAt: now + ttl });
-  }
-
-  async probeHostedUrl({ url, magnet, probeUrl } = {}) {
-    const sanitizedUrl = typeof url === "string" ? url.trim() : "";
-    if (!sanitizedUrl) {
-      return { outcome: "invalid" };
-    }
-    const cacheKey = this.getProbeCacheKey({
-      url: sanitizedUrl,
-      magnet,
-    });
-    const cachedResult = this.getCachedProbeResult(cacheKey);
-    if (cachedResult) {
-      return cachedResult;
-    }
-    const inFlight = this.probeInFlight.get(cacheKey);
-    if (inFlight) {
-      return inFlight;
-    }
-
-    const probePromise = (async () => {
-      try {
-        const result =
-          typeof probeUrl === "function"
-            ? await probeUrl(sanitizedUrl)
-            : { outcome: "error" };
-        this.storeProbeResult(cacheKey, result);
-        return result;
-      } catch (error) {
-        const result = { outcome: "error", error };
-        this.storeProbeResult(cacheKey, result);
-        return result;
-      } finally {
-        this.probeInFlight.delete(cacheKey);
-      }
-    })();
-
-    this.probeInFlight.set(cacheKey, probePromise);
-    return probePromise;
   }
 
   prepareVideoElement(videoElement) {
@@ -829,19 +602,10 @@ class PlaybackSession extends SimpleEventEmitter {
           throw new Error("No torrent playback handler provided.");
         }
 
-        let torrentInstance;
-        try {
-          torrentInstance = await playViaWebTorrent(this.magnetForPlayback, {
-            fallbackMagnet: this.fallbackMagnet,
-            urlList: webSeedCandidates,
-          });
-        } catch (err) {
-          const errorMessage = getTorrentErrorMessage(err);
-          if (errorMessage) {
-            this.emit("status", { message: errorMessage });
-          }
-          throw new Error(errorMessage, { cause: err });
-        }
+        const torrentInstance = await playViaWebTorrent(this.magnetForPlayback, {
+          fallbackMagnet: this.fallbackMagnet,
+          urlList: webSeedCandidates,
+        });
 
         this.service.handleAnalyticsEvent("sourcechange", { source: "torrent" });
         this.emit("sourcechange", { source: "torrent" });
@@ -916,11 +680,8 @@ class PlaybackSession extends SimpleEventEmitter {
           { once: true }
         );
 
-        const probeResult = await this.service.probeHostedUrl({
-          url: httpsUrl,
-          magnet: this.trimmedMagnet,
-          probeUrl,
-        });
+        const probeResult =
+          typeof probeUrl === "function" ? await probeUrl(httpsUrl) : null;
         const probeOutcome = probeResult?.outcome || "error";
         const probeStatus = probeResult?.status || "unknown";
         const shouldAttemptHosted =
@@ -965,11 +726,7 @@ class PlaybackSession extends SimpleEventEmitter {
                   attachWatchdogs({ stallMs: 0 });
                   return;
                 }
-                const errorMessage = getHostedVideoErrorMessage(activeVideoEl);
-                if (errorMessage) {
-                  this.emit("status", { message: errorMessage });
-                }
-                outcomeResolver({ status: "fallback", reason, errorMessage });
+                outcomeResolver({ status: "fallback", reason });
               },
             });
           };
@@ -1035,25 +792,12 @@ class PlaybackSession extends SimpleEventEmitter {
 
           // Fallback triggered
           const fallbackReason = playbackOutcome?.reason || "watchdog-triggered";
-          return {
-            status: "fallback",
-            reason: fallbackReason,
-            errorMessage: playbackOutcome?.errorMessage,
-          };
-        }
-
-        const failureDetails = getHostedUrlFailureDetails(probeResult);
-        if (failureDetails?.message) {
-          this.emit("status", { message: failureDetails.message });
+          return { status: "fallback", reason: fallbackReason };
         }
 
         cleanupHostedUrlStatusListeners();
         cleanupDebugListeners();
-        return {
-          status: "fallback",
-          reason: "probe-failed",
-          errorMessage: failureDetails?.message,
-        };
+        return { status: "fallback", reason: "probe-failed" };
       };
 
       // --- Timeout Wrapper ---
@@ -1085,8 +829,6 @@ class PlaybackSession extends SimpleEventEmitter {
 
       const effectiveTimeout = forcedSource ? 0 : playbackStartTimeout;
 
-      let hostedErrorMessage = "";
-
       if (tryUrlFirst) {
         if (httpsUrl) {
           // Wrap URL attempt in timeout
@@ -1098,10 +840,6 @@ class PlaybackSession extends SimpleEventEmitter {
 
           if (urlResult && urlResult.source === "url") {
             return urlResult;
-          }
-
-          if (typeof urlResult?.errorMessage === "string") {
-            hostedErrorMessage = urlResult.errorMessage;
           }
 
           // If timeout or failure, proceed to fallback
@@ -1167,18 +905,13 @@ class PlaybackSession extends SimpleEventEmitter {
           if (urlResult && urlResult.source === "url") {
             return urlResult;
           }
-
-          if (typeof urlResult?.errorMessage === "string") {
-            hostedErrorMessage = urlResult.errorMessage;
-          }
         }
       }
 
       const message =
-        hostedErrorMessage ||
-        (this.magnetProvided && !this.magnetForPlayback
+        this.magnetProvided && !this.magnetForPlayback
           ? unsupportedBtihMessage
-          : "No playable source found.");
+          : "No playable source found.";
       this.emit("status", { message });
       this.service.handleAnalyticsEvent("sourcechange", { source: null });
       this.emit("sourcechange", { source: null });

@@ -34,7 +34,6 @@ import ProfileModalController from "./profileModalController.js";
 import LoginModalController from "./loginModalController.js";
 import { VideoListView } from "./views/VideoListView.js";
 import MoreMenuController from "./moreMenuController.js";
-import VideoSettingsMenuController from "./videoSettingsMenuController.js";
 import AppChromeController from "./appChromeController.js";
 import { getSidebarLoadingMarkup } from "../sidebarLoading.js";
 import { isWatchHistoryDebugEnabled } from "../watchHistoryDebug.js";
@@ -409,30 +408,6 @@ export default class ApplicationBootstrap {
         }
       }),
     );
-    app.authEventUnsubscribes.push(
-      app.authService.on("blocksLoaded", (detail) => {
-        try {
-          app.handleBlocksLoaded(detail);
-        } catch (error) {
-          devLogger.warn(
-            "Failed to process blocks loaded event:",
-            error,
-          );
-        }
-      }),
-    );
-    app.authEventUnsubscribes.push(
-      app.authService.on("relaysLoaded", (detail) => {
-        try {
-          app.handleRelaysLoaded(detail);
-        } catch (error) {
-          devLogger.warn(
-            "Failed to process relays loaded event:",
-            error,
-          );
-        }
-      }),
-    );
 
     app.commentThreadService =
       this.services.commentThreadService ||
@@ -604,7 +579,6 @@ export default class ApplicationBootstrap {
             app.handleProfilePrivacyToggle(payload),
           onPublishDmRelayPreferences: (payload) =>
             app.handleProfilePublishDmRelayPreferences(payload),
-          onRequestPermissionPrompt: () => app.handlePermissionPromptRequest(),
         };
 
         app.profileController = new ProfileModalController({
@@ -697,10 +671,7 @@ export default class ApplicationBootstrap {
       },
     });
     app.moreMenuController.setVideoModal(app.videoModal);
-    app.videoSettingsMenuController = new VideoSettingsMenuController({
-      designSystem: app.designSystemContext,
-      isDevMode,
-    });
+    app.videoSettingsPopovers = new Map();
     app.tagPreferencePopovers = new Map();
 
     app.subscriptionsLink = null;
@@ -716,29 +687,6 @@ export default class ApplicationBootstrap {
     app.statusAutoHideHandle = null;
     app.lastExperimentalWarningKey = null;
     app.lastExperimentalWarningAt = 0;
-
-    if (
-      nostrClient &&
-      typeof nostrClient.setExtensionPermissionStatusHandler === "function"
-    ) {
-      nostrClient.setExtensionPermissionStatusHandler((status) => {
-        if (!status || typeof status !== "object") {
-          return;
-        }
-        const message =
-          typeof status.message === "string" ? status.message.trim() : "";
-        if (!message) {
-          return;
-        }
-        const autoHideMs = Number.isFinite(status.autoHideMs)
-          ? status.autoHideMs
-          : 12000;
-        const showSpinner = status.showSpinner !== false;
-        if (typeof app.showStatus === "function") {
-          app.showStatus(message, { autoHideMs, showSpinner });
-        }
-      });
-    }
 
     app.pubkey = null;
     app.currentMagnetUri = null;

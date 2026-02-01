@@ -23,32 +23,8 @@ import { WSS_TRACKERS } from "./constants.js";
 import { safeDecodeURIComponent } from "./utils/safeDecode.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import { emit } from "./embedDiagnostics.js";
-import { infoHashFromMagnet, webSeedsFromMagnet } from "./magnets.js";
 
 const DEFAULT_PROBE_TRACKERS = Object.freeze([...WSS_TRACKERS]);
-
-function stripXsParameter(magnetURI) {
-  const trimmed = typeof magnetURI === "string" ? magnetURI.trim() : "";
-  if (
-    typeof window !== "undefined" &&
-    (window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1")
-  ) {
-    try {
-      const [prefix, queryString] = trimmed.split("?");
-      if (queryString) {
-        const params = new URLSearchParams(queryString);
-        if (params.has("xs")) {
-          params.delete("xs");
-          return `${prefix}?${params.toString()}`;
-        }
-      }
-    } catch (err) {
-      // ignore
-    }
-  }
-  return trimmed;
-}
 
 function normalizeTrackerList(trackers) {
   const normalized = [];
@@ -185,8 +161,6 @@ export class TorrentClient {
 
     // Timeout for SW operations
     this.TIMEOUT_DURATION = 60000;
-
-    this.probeInFlight = new Map();
   }
 
   ensureClientForProbe() {
@@ -205,10 +179,9 @@ export class TorrentClient {
    */
   async probePeers(
     magnetURI,
-    { timeoutMs = 8000, maxWebConns = 2, polls = 2, urlList = [] } = {}
+    { timeoutMs = 8000, maxWebConns = 2, polls = 3, urlList = [] } = {}
   ) {
-    const magnet = stripXsParameter(magnetURI);
-
+    const magnet = typeof magnetURI === "string" ? magnetURI.trim() : "";
     if (!magnet) {
       return {
         healthy: false,
@@ -241,21 +214,14 @@ export class TorrentClient {
       };
     }
 
-    const infoHash = infoHashFromMagnet(magnet);
-    const probeKey = infoHash || null;
-
-    if (probeKey && this.probeInFlight.has(probeKey)) {
-      return this.probeInFlight.get(probeKey);
-    }
-
     const client = this.ensureClientForProbe();
     const safeTimeout = Math.max(0, normalizeNumber(timeoutMs, 8000));
-    const safePolls = Math.max(0, Math.floor(normalizeNumber(polls, 2)));
+    const safePolls = Math.max(1, Math.floor(normalizeNumber(polls, 3)));
     const safeMaxWebConns = Math.max(1, Math.floor(normalizeNumber(maxWebConns, 2)));
-    const pollInterval =
-      safePolls > 0
-        ? Math.max(1000, Math.floor(safeTimeout / Math.max(1, safePolls)))
-        : 0;
+    const pollInterval = Math.max(
+      250,
+      Math.floor(safeTimeout / Math.max(1, safePolls))
+    );
 
     const startedAt =
       typeof performance !== "undefined" && performance?.now
@@ -264,12 +230,11 @@ export class TorrentClient {
 
     emit("torrent-probe-start", { magnet: augmentedMagnet });
 
-    const probePromise = new Promise((resolve) => {
+    return new Promise((resolve) => {
       let settled = false;
       let torrent = null;
       let timeoutId = null;
       let pollId = null;
-      let pollStartId = null;
 
       const finalize = (overrides = {}) => {
         if (settled) {
@@ -283,10 +248,6 @@ export class TorrentClient {
         if (pollId) {
           clearInterval(pollId);
           pollId = null;
-        }
-        if (pollStartId) {
-          clearTimeout(pollStartId);
-          pollStartId = null;
         }
         if (torrent) {
           try {
@@ -367,34 +328,16 @@ export class TorrentClient {
         }, safeTimeout);
       }
 
-      if (safePolls > 0 && pollInterval > 0) {
-        pollStartId = setTimeout(() => {
-          if (!torrent || settled) {
-            return;
-          }
-          pollId = setInterval(() => {
-            if (!torrent || settled) {
-              return;
-            }
-            const peers = Math.max(0, Math.floor(normalizeNumber(torrent.numPeers, 0)));
-            if (peers > 0) {
-              finalize({ healthy: true, peers, reason: "peer" });
-            }
-          }, pollInterval);
-        }, pollInterval);
-      }
-    });
-
-    if (probeKey) {
-      this.probeInFlight.set(probeKey, probePromise);
-      probePromise.finally(() => {
-        if (this.probeInFlight.get(probeKey) === probePromise) {
-          this.probeInFlight.delete(probeKey);
+      pollId = setInterval(() => {
+        if (!torrent || settled) {
+          return;
         }
-      });
-    }
-
-    return probePromise;
+        const peers = Math.max(0, Math.floor(normalizeNumber(torrent.numPeers, 0)));
+        if (peers > 0) {
+          finalize({ healthy: true, peers, reason: "peer" });
+        }
+      }, pollInterval);
+    });
   }
 
   log(...args) {
@@ -927,24 +870,9 @@ export class TorrentClient {
    */
   async streamVideo(magnetURI, videoElement, opts = {}) {
     try {
-      const effectiveMagnetURI = stripXsParameter(magnetURI);
-      if (
-        effectiveMagnetURI !==
-        (typeof magnetURI === "string" ? magnetURI.trim() : "")
-      ) {
-        this.log(
-          "[WebTorrent] Stripped 'xs' parameter to prevent CORS errors on localhost.",
-        );
-      }
-
-      emit("torrent-stream-start", { magnet: effectiveMagnetURI });
+      emit("torrent-stream-start", { magnet: magnetURI });
       // 1) Make sure we have a WebTorrent client and a valid SW registration.
       const initResult = await this.init();
-
-      if (!this.client) {
-        throw new Error("Client destroyed during initialization");
-      }
-
       const serviceWorkerReady =
         !!(initResult?.serviceWorkerReady && this.swRegistration);
 
@@ -960,18 +888,15 @@ export class TorrentClient {
       }
 
       const isFirefoxBrowser = this.isFirefox();
-      const explicitUrls = Array.isArray(opts?.urlList)
+      const candidateUrls = Array.isArray(opts?.urlList)
         ? opts.urlList
             .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
             .filter((entry) => /^https?:\/\//i.test(entry))
         : [];
 
-      const magnetUrls = webSeedsFromMagnet(effectiveMagnetURI);
-      const combinedUrls = [...new Set([...explicitUrls, ...magnetUrls])];
-
       const chromeOptions = { strategy: "sequential" };
-      if (combinedUrls.length) {
-        chromeOptions.urlList = combinedUrls;
+      if (candidateUrls.length) {
+        chromeOptions.urlList = candidateUrls;
       }
 
       return new Promise((resolve, reject) => {
@@ -979,7 +904,7 @@ export class TorrentClient {
         if (isFirefoxBrowser) {
           this.log("Starting torrent download (Firefox path)");
           this.client.add(
-            effectiveMagnetURI,
+            magnetURI,
             { ...chromeOptions, maxWebConns: 4 },
             (torrent) => {
               this.log("Torrent added (Firefox path):", torrent.name);
@@ -988,7 +913,7 @@ export class TorrentClient {
           );
         } else {
           this.log("Starting torrent download (Chrome path)");
-          this.client.add(effectiveMagnetURI, chromeOptions, (torrent) => {
+          this.client.add(magnetURI, chromeOptions, (torrent) => {
             this.log("Torrent added (Chrome path):", torrent.name);
             this.handleChromeTorrent(torrent, videoElement, resolve, reject);
           });
