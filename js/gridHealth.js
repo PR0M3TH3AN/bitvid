@@ -135,9 +135,9 @@ function normalizeResult(result) {
   const peers = Number.isFinite(result.peers)
     ? Math.max(0, Number(result.peers))
     : 0;
-  const webseedOnly = Boolean(result.webseedOnly) && peers === 0;
-  const healthy = (Boolean(result.healthy) && peers > 0) || webseedOnly;
+  const healthy = Boolean(result.healthy) && peers > 0;
   const reason = typeof result.reason === "string" ? result.reason : "error";
+  const webseedOnly = Boolean(result.webseedOnly) && peers === 0;
   return {
     healthy,
     peers: healthy ? Math.max(1, peers) : peers,
@@ -603,8 +603,7 @@ function handleCardVisible({ card, pendingByCard, priority = 0 }) {
         setBadge(card, "unknown");
         return;
       }
-      const isWebseedOnly = result.webseedOnly || result.reason === "webseed";
-      if (!result.hasProbeTrackers && !isWebseedOnly) {
+      if (!result.hasProbeTrackers) {
         setBadge(card, "unknown", result);
         return;
       }
