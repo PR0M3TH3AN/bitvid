@@ -5248,65 +5248,73 @@ export class NostrClient {
       options,
     );
 
-    let events = [];
-    try {
-      events = await this.pool.list(relaysToUse, filters);
-    } catch (error) {
-      devLogger.warn("[nostr] Failed to list DM events.", error);
-      throw error;
-    }
-
-    const deduped = new Map();
-    for (const event of Array.isArray(events) ? events : []) {
-      if (!event || typeof event !== "object") {
-        continue;
-      }
-      const key =
-        typeof event.id === "string" && event.id
-          ? event.id
-          : `${event.kind || ""}:${event.pubkey || ""}:${event.created_at || ""}`;
-      if (!deduped.has(key)) {
-        deduped.set(key, event);
-      }
-    }
-
-    let decryptTargets = Array.from(deduped.values());
-    decryptTargets.sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
-
-    if (decryptLimit && decryptTargets.length > decryptLimit) {
-      devLogger.debug("[nostr] Limiting DM decrypt workload", {
-        requested: decryptTargets.length,
-        decryptLimit,
-      });
-      decryptTargets = decryptTargets.slice(0, decryptLimit);
-    }
-
+    const dedupedIds = new Set();
     const messages = [];
-    for (const event of decryptTargets) {
-      try {
-        const decrypted = await this.decryptDirectMessageEvent(event, {
-          actorPubkey: context.actorPubkey || actorPubkeyInput,
-        });
-        if (decrypted?.ok) {
-          messages.push(decrypted);
-          if (typeof options.onMessage === "function") {
-            try {
-              options.onMessage(decrypted);
-            } catch (error) {
-              devLogger.warn("[nostr] onMessage callback threw:", error);
+    let decryptedCount = 0;
+
+    return new Promise((resolve) => {
+      const sub = this.pool.sub(relaysToUse, filters);
+      const timeoutMs = options.timeoutMs || 10000;
+      let settled = false;
+      let timeoutId = null;
+
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        if (timeoutId) clearTimeout(timeoutId);
+        sub.unsub();
+        messages.sort((a, b) => (b?.timestamp || 0) - (a?.timestamp || 0));
+        resolve(messages);
+      };
+
+      timeoutId = setTimeout(() => {
+        devLogger.warn("[nostr] listDirectMessages timed out.");
+        finish();
+      }, timeoutMs);
+
+      sub.on("event", async (event) => {
+        if (!event || typeof event !== "object") return;
+
+        const eventId = typeof event.id === "string" ? event.id : "";
+        if (eventId && dedupedIds.has(eventId)) return;
+        if (eventId) dedupedIds.add(eventId);
+
+        if (decryptLimit && decryptedCount >= decryptLimit) {
+          // We reached the limit, but since relays may send out of order,
+          // strictly stopping here might miss newer messages if they arrive late.
+          // However, to respect the limit and avoid over-decrypting massive histories,
+          // we stop processing new decrypts.
+          return;
+        }
+
+        try {
+          const decrypted = await this.decryptDirectMessageEvent(event, {
+            actorPubkey: context.actorPubkey || actorPubkeyInput,
+          });
+
+          if (decrypted?.ok) {
+            decryptedCount++;
+            messages.push(decrypted);
+            if (typeof options.onMessage === "function") {
+              try {
+                options.onMessage(decrypted);
+              } catch (error) {
+                devLogger.warn("[nostr] onMessage callback threw:", error);
+              }
             }
           }
+        } catch (error) {
+          devLogger.warn("[nostr] Failed to decrypt DM event during list.", {
+            error: sanitizeDecryptError(error),
+            event: summarizeDmEventForLog(event),
+          });
         }
-      } catch (error) {
-        devLogger.warn("[nostr] Failed to decrypt DM event during list.", {
-          error: sanitizeDecryptError(error),
-          event: summarizeDmEventForLog(event),
-        });
-      }
-    }
+      });
 
-    messages.sort((a, b) => (b?.timestamp || 0) - (a?.timestamp || 0));
-    return messages;
+      sub.on("eose", () => {
+        finish();
+      });
+    });
   }
 
   subscribeDirectMessages(actorPubkeyInput = null, options = {}) {
