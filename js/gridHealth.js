@@ -603,7 +603,8 @@ function handleCardVisible({ card, pendingByCard, priority = 0 }) {
         setBadge(card, "unknown");
         return;
       }
-      if (!result.hasProbeTrackers) {
+      const isWebseedOnly = result.webseedOnly || result.reason === "webseed";
+      if (!result.hasProbeTrackers && !isWebseedOnly) {
         setBadge(card, "unknown", result);
         return;
       }
