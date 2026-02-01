@@ -522,7 +522,7 @@ const BASE_SCHEMAS = {
   },
   [NOTE_TYPES.USER_BLOCK_LIST]: {
     type: NOTE_TYPES.USER_BLOCK_LIST,
-    label: "User block list",
+    label: "User block list (legacy)",
     kind: 10000,
     identifierTag: {
       name: "d",
@@ -532,7 +532,7 @@ const BASE_SCHEMAS = {
     content: {
       format: "encrypted-tag-list",
       description:
-        "NIP-04/NIP-44 encrypted JSON array of mute tags per NIP-51 (e.g., [['p', <hex>], …]).",
+        "Legacy NIP-51 block list using custom d tag. Migrated to standard Mute List (kind 10000).",
     },
   },
   [NOTE_TYPES.HASHTAG_PREFERENCES]: {
@@ -604,7 +604,7 @@ const BASE_SCHEMAS = {
     appendTags: DEFAULT_APPEND_TAGS,
     content: {
       format: "text",
-      description: "Optional content (often encrypted) with public p tags.",
+      description: "Standard NIP-51 Mute List. Public mutes in 'p' tags, private blocks in encrypted content.",
     },
   },
   [NOTE_TYPES.DELETION]: {

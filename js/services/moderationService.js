@@ -1489,101 +1489,8 @@ export class ModerationService {
     }
   }
 
-  async publishViewerMuteList({ owner, muted }) {
-    const viewer = normalizeHex(owner || this.viewerPubkey);
-    if (!viewer) {
-      const error = new Error("viewer-not-logged-in");
-      error.code = "viewer-not-logged-in";
-      throw error;
-    }
-
-    if (this.viewerIsSessionActor && viewer === this.viewerPubkey) {
-      this.saveLocalMutes(viewer, muted);
-      this.replaceTrustedMuteList(viewer, muted, {
-        createdAt: Date.now() / 1000,
-        eventId: `local-${Date.now()}`,
-      });
-      return { ok: true, event: null, results: [] };
-    }
-
-    await this.ensurePool();
-
-    let signer = getActiveSigner();
-    if (!signer && typeof this.nostrClient?.ensureActiveSignerForPubkey === "function") {
-      signer = await this.nostrClient.ensureActiveSignerForPubkey(viewer);
-    }
-
-    const canSign = typeof signer?.canSign === "function"
-      ? signer.canSign()
-      : typeof signer?.signEvent === "function";
-    if (!canSign || typeof signer?.signEvent !== "function") {
-      const error = new Error("nostr-extension-missing");
-      error.code = "nostr-extension-missing";
-      throw error;
-    }
-
-    if (signer?.type === "extension") {
-      const permissionResult = await this.requestExtensionPermissions([
-        "sign_event",
-        "get_public_key",
-      ]);
-      if (!permissionResult?.ok) {
-        const error = new Error("extension-permission-denied");
-        error.code = "extension-permission-denied";
-        error.details = permissionResult?.error || null;
-        throw error;
-      }
-    }
-
-    const tags = [];
-    if (muted instanceof Set || Array.isArray(muted)) {
-      for (const value of muted) {
-        const normalized = normalizeHex(value);
-        if (!normalized || normalized === viewer) {
-          continue;
-        }
-        tags.push(["p", normalized]);
-      }
-    }
-
-    const event = {
-      kind: 10000,
-      created_at: Math.floor(Date.now() / 1000),
-      tags,
-      content: "",
-      pubkey: viewer,
-    };
-
-    let signedEvent;
-    try {
-      signedEvent = await signer.signEvent(event);
-    } catch (error) {
-      const wrapped = new Error("signature-failed");
-      wrapped.code = "signature-failed";
-      wrapped.details = error;
-      throw wrapped;
-    }
-
-    const relays = resolveRelayList(this.nostrClient, { write: true });
-    if (!relays.length) {
-      const error = new Error("no-relays-configured");
-      error.code = "no-relays-configured";
-      throw error;
-    }
-
-    let results = [];
-    try {
-      results = await publishEventToRelays(this.nostrClient.pool, relays, signedEvent);
-      assertAnyRelayAccepted(results, { context: "mute list" });
-    } catch (error) {
-      const wrapped = new Error("mute-list-publish-failed");
-      wrapped.code = "mute-list-publish-failed";
-      wrapped.details = error;
-      throw wrapped;
-    }
-
-    this.applyTrustedMuteEvent(viewer, signedEvent);
-    return { ok: true, event: signedEvent, results };
+  async publishViewerMuteList() {
+    throw new Error("Mute list publishing is now handled by userBlocks.");
   }
 
   async addAuthorToViewerMuteList(pubkey) {
@@ -1594,29 +1501,11 @@ export class ModerationService {
       throw error;
     }
 
-    const target = normalizeHex(pubkey);
-    if (!target) {
-      const error = new Error("invalid-target");
-      error.code = "invalid-target";
-      throw error;
+    if (this.userBlocks && typeof this.userBlocks.addMute === "function") {
+      return this.userBlocks.addMute(pubkey, viewer);
     }
 
-    if (target === viewer) {
-      const error = new Error("self");
-      error.code = "self";
-      throw error;
-    }
-
-    await this.ensureViewerMuteListLoaded(viewer);
-
-    if (this.viewerMuteList.has(target)) {
-      return { ok: true, already: true };
-    }
-
-    const next = new Set(this.viewerMuteList);
-    next.add(target);
-
-    return this.publishViewerMuteList({ owner: viewer, muted: next });
+    throw new Error("Mute list management is delegated to userBlocks.");
   }
 
   async removeAuthorFromViewerMuteList(pubkey) {
@@ -1627,21 +1516,11 @@ export class ModerationService {
       throw error;
     }
 
-    const target = normalizeHex(pubkey);
-    if (!target) {
-      return { ok: true, already: true };
+    if (this.userBlocks && typeof this.userBlocks.removeMute === "function") {
+      return this.userBlocks.removeMute(pubkey, viewer);
     }
 
-    await this.ensureViewerMuteListLoaded(viewer);
-
-    if (!this.viewerMuteList.has(target)) {
-      return { ok: true, already: true };
-    }
-
-    const next = new Set(this.viewerMuteList);
-    next.delete(target);
-
-    return this.publishViewerMuteList({ owner: viewer, muted: next });
+    throw new Error("Mute list management is delegated to userBlocks.");
   }
 
   isAuthorMutedByTrusted(pubkey) {

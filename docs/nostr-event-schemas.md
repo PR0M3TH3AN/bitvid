@@ -174,13 +174,13 @@ Video posts should treat `videoRootId` as the stable series identifier that rema
 | View counter (`NOTE_TYPES.VIEW_EVENT`) | `WATCH_HISTORY_KIND` (default `30079`) | Canonical tag set: `['t','view']`, a pointer tag (`['e', <eventId>]` or `['a', <address>]`), and a stable dedupe tag `['d', <view identifier>]`, with optional `['session','true']` when a session actor signs; schema overrides may append extra tags. `['video', ...]` is supported for legacy overrides only. | Optional plaintext message |
 | Watch history month (`NOTE_TYPES.WATCH_HISTORY`) | `WATCH_HISTORY_KIND` (default `30079`) | Replaceable list tag `['d', `${WATCH_HISTORY_LIST_IDENTIFIER}:<YYYY-MM>`]` with optional `['month', <YYYY-MM>]` marker plus schema append tags; no chunk pointers required. | JSON payload `{ version, month: 'YYYY-MM', items: [{ id: <eventId\|address>, watched_at?: <unix seconds> }] }` |
 | Subscription list (`NOTE_TYPES.SUBSCRIPTION_LIST`) | `30000` | `['d', 'subscriptions']`, `['encrypted', 'nip44_v2']` (updated to the negotiated scheme at publish time) | NIP-04/NIP-44 encrypted JSON array of NIP-51 follow-set tuples (e.g., `[['p', <hex>], …]`) |
-| User block list (`NOTE_TYPES.USER_BLOCK_LIST`) | `10000` | `['d', 'user-blocks']` | NIP-04/NIP-44 encrypted JSON `{ blockedPubkeys: string[] }` |
+| User block list (`NOTE_TYPES.USER_BLOCK_LIST`) | `10000` | `['d', 'user-blocks']` | **LEGACY**. NIP-04/NIP-44 encrypted JSON `{ blockedPubkeys: string[] }`. Migrated to standard Mute List. |
 | Hashtag preferences (`NOTE_TYPES.HASHTAG_PREFERENCES`) | `30015` | `['d', 'bitvid:tag-preferences']` plus schema-appended `['encrypted','nip44_v2']` | NIP-44 encrypted JSON `{ version, interests: string[], disinterests: string[] }` |
 | Admin moderation list (`NOTE_TYPES.ADMIN_MODERATION_LIST`) | `30000` | `['d', 'bitvid:admin:editors']`, repeated `['p', <pubkey>]` entries | Empty content |
 | Admin blacklist (`NOTE_TYPES.ADMIN_BLACKLIST`) | `30000` | `['d', 'bitvid:admin:blacklist']`, repeated `['p', <pubkey>]` entries | Empty content |
 | Admin whitelist (`NOTE_TYPES.ADMIN_WHITELIST`) | `30000` | `['d', 'bitvid:admin:whitelist']`, repeated `['p', <pubkey>]` entries | Empty content |
 | Profile metadata (`NOTE_TYPES.PROFILE_METADATA`) | `0` | `['d', ...]` is not used | JSON payload with NIP-01 fields (`name`, `about`, `picture`, `nip05`, etc.) |
-| Mute list (`NOTE_TYPES.MUTE_LIST`) | `10000` | Repeated `['p', <pubkey>]` tags for blocked/muted users | Optional content (often encrypted) |
+| Mute list (`NOTE_TYPES.MUTE_LIST`) | `10000` | Repeated `['p', <pubkey>]` tags for public mutes | Encrypted content for private blocks. Standard NIP-51. |
 | Deletion (`NOTE_TYPES.DELETION`) | `5` | `['e', <event id>]` or `['a', <coordinate>]` | Reason for deletion |
 | Legacy Direct Message (`NOTE_TYPES.LEGACY_DM`) | `4` | `['p', <recipient pubkey>]` | NIP-04 encrypted ciphertext |
 | Zap request (`NOTE_TYPES.ZAP_REQUEST`) | `9734` | `['p', <recipient pubkey>]` plus optional `['e', <event id>]`, `['a', <coordinate>]`, `['amount', <msats>]`, `['lnurl', <bech32>]`, and `['relays', ...]` for receipt publishing | Optional plaintext zap note |
@@ -270,7 +270,16 @@ To prevent relay spikes, we only invoke `publish()` when the local interests or
 disinterests change—UI handlers short-circuit if a user toggles a tag back to
 its prior state. The method fans out to the configured write relays via
 `publishEventToRelays`, and `assertAnyRelayAccepted` ensures at least one relay
-acknowledges the update before treating the migration as complete.【F:js/services/hashtagPreferencesService.js†L761-L784】
+acknowledges the update before treating the migration as complete.
+
+### User Mute/Block List (Kind 10000)
+
+bitvid now uses the standard NIP-51 Mute List (kind 10000 without a `d` tag) to store both public mutes and private blocks.
+
+*   **Public Mutes**: Stored as `['p', <pubkey>]` tags. These are visible to anyone and are used for "Trusted Mute" graph analysis.
+*   **Private Blocks**: Stored as NIP-04/NIP-44 encrypted JSON in the `content` field (`{ blockedPubkeys: string[] }`). These are only visible to the user.
+
+The legacy `d=user-blocks` list is still read for backward compatibility but is no longer updated. New updates merge both legacy and standard lists into the standard Kind 10000 event.
 
 ### Operator checklist
 

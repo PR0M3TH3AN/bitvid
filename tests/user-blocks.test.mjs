@@ -88,6 +88,8 @@ await (async () => {
   );
 
   userBlocks.blockedPubkeys = new Set();
+  userBlocks._privateBlocks = new Set();
+  userBlocks._publicMutes = new Set();
   userBlocks.blockEventId = null;
   userBlocks.loaded = false;
 
@@ -230,6 +232,8 @@ await (async () => {
   );
 
   userBlocks.blockedPubkeys = new Set([initialBlocked]);
+  userBlocks._privateBlocks = new Set([initialBlocked]);
+  userBlocks._publicMutes = new Set();
   userBlocks.blockEventId = "existing-event";
   userBlocks.blockEventCreatedAt = 1_000;
   userBlocks.loaded = false;
@@ -383,6 +387,10 @@ await (async () => {
   };
 
   userBlocks.blockedPubkeys = new Set();
+  userBlocks._privateBlocks = new Set();
+  userBlocks._publicMutes = new Set();
+  userBlocks._privateBlocks = new Set();
+  userBlocks._publicMutes = new Set();
   userBlocks.blockEventId = null;
   userBlocks.blockEventCreatedAt = null;
   userBlocks.lastPublishedCreatedAt = null;
@@ -641,15 +649,15 @@ await (async () => {
       "loadBlocks should not request extension permissions when signer decryptor exists",
     );
 
-    const blockResult = await userBlocks.addBlock(target, actor);
-    assert.equal(blockResult?.ok, true, "addBlock should succeed with direct signer");
+    const blockResult = await userBlocks.addMute(target, actor);
+    assert.equal(blockResult?.ok, true, "addMute should succeed with direct signer");
     assert(userBlocks.blockedPubkeys.has(target), "target should be in the block list");
 
-    const unblockResult = await userBlocks.removeBlock(target, actor);
+    const unblockResult = await userBlocks.removeMute(target, actor);
     assert.equal(
       unblockResult?.ok,
       true,
-      "removeBlock should succeed with direct signer",
+      "removeMute should succeed with direct signer",
     );
     assert.equal(
       userBlocks.blockedPubkeys.has(target),
@@ -849,6 +857,10 @@ await (async () => {
   });
 
   manager.blockedPubkeys = new Set([blocked]);
+  manager._privateBlocks = new Set([blocked]);
+  manager._publicMutes = new Set();
+  manager._privateBlocks = new Set([blocked]);
+  manager._publicMutes = new Set();
   manager.publishMuteListSnapshot = async () => null;
   manager.loadBlocks = async () => {};
 
@@ -931,6 +943,8 @@ await (async () => {
   });
 
   manager.blockedPubkeys = new Set([blocked]);
+  manager._privateBlocks = new Set([blocked]);
+  manager._privateBlocks = new Set([blocked]);
   manager.publishMuteListSnapshot = async () => null;
   manager.loadBlocks = async () => {};
 
@@ -1096,7 +1110,7 @@ await (async () => {
     },
   });
 
-  manager.blockedPubkeys = new Set([
+  const badInputs = new Set([
     validOne,
     validTwoUpper,
     actor,
@@ -1107,17 +1121,19 @@ await (async () => {
     ["e", validOne],
     null,
   ]);
+  manager.blockedPubkeys = new Set(badInputs);
+  manager._privateBlocks = new Set(badInputs);
+  manager._publicMutes = new Set(badInputs);
   manager.loadBlocks = async () => {};
 
   try {
     await manager.publishBlockList(actor);
 
-    assert.equal(publishCalls.length, 2, "block and mute events should publish");
-    assert.equal(encryptionCalls.length, 2, "both block and mute payloads should encrypt");
+    assert.equal(publishCalls.length, 1, "only one merged event should publish");
+    assert.equal(encryptionCalls.length, 1, "payload should encrypt once for private content");
 
-    const [blockPayload, mutePayload] = encryptionCalls;
+    const [blockPayload] = encryptionCalls;
     assert.equal(blockPayload.pubkey, actor, "block payload should encrypt for the actor");
-    assert.equal(mutePayload.pubkey, actor, "mute payload should encrypt for the actor");
 
     const matrix = JSON.parse(blockPayload.plaintext);
     assert.deepEqual(
@@ -1127,11 +1143,6 @@ await (async () => {
         ["p", validTwo],
       ],
       "block payload should serialize only sanitized mute tags",
-    );
-    assert.equal(
-      mutePayload.plaintext,
-      blockPayload.plaintext,
-      "mute payload should reuse the sanitized block payload",
     );
 
     const muteEvent = signedEvents.find((event) =>
@@ -1162,8 +1173,8 @@ await (async () => {
 
     assert.equal(
       warningLines.length,
-      expectedReasons.length,
-      "every malformed entry should trigger a warning",
+      expectedReasons.length * 2,
+      "every malformed entry should trigger a warning (once for block processing, once for mute processing)",
     );
 
     const actualReasons = warningLines
@@ -1174,8 +1185,10 @@ await (async () => {
       .filter(Boolean)
       .sort();
 
+    const uniqueActualReasons = [...new Set(actualReasons)].sort();
+
     assert.deepEqual(
-      actualReasons,
+      uniqueActualReasons,
       expectedReasons,
       "discarded entries should log their discard reasons",
     );
@@ -1281,6 +1294,7 @@ await (async () => {
     const UserBlockListManager = userBlocks.constructor;
     const manager = new UserBlockListManager();
     manager.blockedPubkeys.add(previouslyBlocked);
+    manager._privateBlocks.add(previouslyBlocked);
 
     const originalRelays = Array.isArray(nostrClient.relays) ? [...nostrClient.relays] : nostrClient.relays;
     const originalPool = nostrClient.pool;
@@ -1368,8 +1382,8 @@ await (async () => {
     await userBlocks.loadBlocks(actor);
 
     const blocked = userBlocks.getBlockedPubkeys();
-    assert.ok(blocked.includes(taggedBlocked), "Should include pubkey from tagged list");
-    assert.ok(blocked.includes(plainBlocked), "Should include pubkey from plain list (merged)");
+    assert.ok(!blocked.includes(taggedBlocked), "Should NOT include pubkey from older tagged list (superseded)");
+    assert.ok(blocked.includes(plainBlocked), "Should include pubkey from newer plain list");
   } finally {
     relayManager.setEntries(originalRelayEntries, { allowEmpty: false, updateClient: false });
     nostrClient.relays = originalRelays;
