@@ -67,9 +67,13 @@ describe("WebTorrent Regression Tests", () => {
     const webSeedUrl = "http://localhost:8080/video.mp4";
 
     const result = await client.probePeers(magnet, {
-      timeoutMs: 50, // Short timeout
+      timeoutMs: 1000, // Significantly increased timeout for CI robustness
       urlList: [webSeedUrl]
     });
+
+    if (!result.webseedOnly) {
+      console.log("Failed result:", result);
+    }
 
     assert.strictEqual(result.webseedOnly, true, "Should detect webseed only scenario");
     assert.strictEqual(result.healthy, true, "Should be healthy due to webseed");

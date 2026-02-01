@@ -727,7 +727,7 @@ class EventsCacheStore {
    * @returns {Promise<{persisted: boolean, eventWrites: number, eventDeletes: number, tombstoneWrites: number, tombstoneDeletes: number}>}
    * Stats about the persistence operation.
    */
-  async persistSnapshot(payload) {
+  async persistSnapshot(payload, dirtyEventIds = null, dirtyTombstones = null) {
     const db = await this.getDb();
     if (!db) {
       return { persisted: false };
@@ -745,11 +745,22 @@ class EventsCacheStore {
     let eventDeletes = 0;
     let tombstoneWrites = 0;
     let tombstoneDeletes = 0;
+    let skipped = 0;
 
     for (const [id, video] of events.entries()) {
       if (!id) {
         continue;
       }
+
+      if (
+        dirtyEventIds &&
+        !dirtyEventIds.has(id) &&
+        this.persistedEventFingerprints.has(id)
+      ) {
+        skipped++;
+        continue;
+      }
+
       const fingerprint = this.computeEventFingerprint(video);
       const prevFingerprint = this.persistedEventFingerprints.get(id);
       if (prevFingerprint === fingerprint) {
@@ -773,6 +784,16 @@ class EventsCacheStore {
       if (!key) {
         continue;
       }
+
+      if (
+        dirtyTombstones &&
+        !dirtyTombstones.has(key) &&
+        this.persistedTombstoneFingerprints.has(key)
+      ) {
+        skipped++;
+        continue;
+      }
+
       const fingerprint = this.computeTombstoneFingerprint(timestamp);
       const prevFingerprint = this.persistedTombstoneFingerprints.get(key);
       if (prevFingerprint === fingerprint) {
@@ -802,6 +823,7 @@ class EventsCacheStore {
       eventDeletes,
       tombstoneWrites,
       tombstoneDeletes,
+      skipped,
     };
   }
 }
@@ -1240,6 +1262,8 @@ export class NostrClient {
      * @public
      */
     this.tombstones = new Map();
+    this.dirtyEventIds = new Set();
+    this.dirtyTombstones = new Set();
 
     this.rootCreatedAtByRoot = new Map();
 
@@ -2831,6 +2855,7 @@ export class NostrClient {
     }
 
     this.tombstones.set(key, timestamp);
+    this.dirtyTombstones.add(key);
 
     const activeVideo = this.activeMap.get(key);
     if (activeVideo) {
@@ -3937,6 +3962,9 @@ export class NostrClient {
         `[nostr] Restored ${this.allEvents.size} cached events from ${sourceLabel}`,
       );
     }
+
+    this.dirtyEventIds.clear();
+    this.dirtyTombstones.clear();
 
     return this.allEvents.size > 0;
   }
@@ -7227,6 +7255,7 @@ export class NostrClient {
       cached.description = "This version was deleted by the creator.";
       cached.videoRootId = baseRoot;
       this.allEvents.set(vid.id, cached);
+      this.dirtyEventIds.add(vid.id);
 
       const activeKey = getActiveKey(cached);
       if (activeKey) {
@@ -7482,13 +7511,29 @@ export class NostrClient {
     let summary = null;
     let target = "localStorage";
 
+    const dirtyEventsSnapshot = new Set(this.dirtyEventIds);
+    const dirtyTombstonesSnapshot = new Set(this.dirtyTombstones);
+
     try {
-      summary = await this.eventsCacheStore.persistSnapshot(payload);
+      summary = await this.eventsCacheStore.persistSnapshot(
+        payload,
+        dirtyEventsSnapshot,
+        dirtyTombstonesSnapshot,
+      );
       if (summary?.persisted) {
         target = "IndexedDB";
+        for (const id of dirtyEventsSnapshot) {
+          this.dirtyEventIds.delete(id);
+        }
+        for (const key of dirtyTombstonesSnapshot) {
+          this.dirtyTombstones.delete(key);
+        }
       }
     } catch (error) {
-      devLogger.warn("[nostr] Failed to persist events cache to IndexedDB:", error);
+      devLogger.warn(
+        "[nostr] Failed to persist events cache to IndexedDB:",
+        error,
+      );
     }
 
     if (!summary?.persisted) {
@@ -7497,7 +7542,7 @@ export class NostrClient {
 
     const durationMs = Date.now() - startedAt;
     devLogger.log(
-      `[nostr] Cached events persisted via ${target} (reason=${reason}, duration=${durationMs}ms, events+${summary?.eventWrites ?? 0}/-${summary?.eventDeletes ?? 0}, tombstones+${summary?.tombstoneWrites ?? 0}/-${summary?.tombstoneDeletes ?? 0})`,
+      `[nostr] Cached events persisted via ${target} (reason=${reason}, duration=${durationMs}ms, events+${summary?.eventWrites ?? 0}/-${summary?.eventDeletes ?? 0}, tombstones+${summary?.tombstoneWrites ?? 0}/-${summary?.tombstoneDeletes ?? 0}, skipped=${summary?.skipped ?? 0})`,
     );
 
     return summary?.persisted;
@@ -7690,6 +7735,7 @@ export class NostrClient {
 
           // Store in allEvents (history preservation)
           this.allEvents.set(evt.id, video);
+          this.dirtyEventIds.add(evt.id);
 
           // If it's a "deleted" note, remove from activeMap
           if (video.deleted) {
@@ -7930,6 +7976,7 @@ export class NostrClient {
       // Merge into allEvents
       for (const [id, vid] of localAll.entries()) {
         this.allEvents.set(id, vid);
+        this.dirtyEventIds.add(id);
         this.applyRootCreatedAt(vid);
       }
 
@@ -8118,6 +8165,7 @@ export class NostrClient {
       this.applyTombstoneGuard(video);
     }
     this.allEvents.set(eventId, video);
+    this.dirtyEventIds.add(eventId);
 
     if (includeRaw) {
       return { video, rawEvent };
@@ -8718,6 +8766,7 @@ export class NostrClient {
               this.applyTombstoneGuard(parsed);
             }
             this.allEvents.set(rootEvent.id, parsed);
+            this.dirtyEventIds.add(rootEvent.id);
             localMatches.push(parsed);
           }
         }
@@ -8778,6 +8827,7 @@ export class NostrClient {
                 this.applyTombstoneGuard(parsed);
               }
               this.allEvents.set(evt.id, parsed);
+              this.dirtyEventIds.add(evt.id);
             }
           } catch (err) {
             devLogger.warn("[nostr] Failed to convert historical event:", err);
