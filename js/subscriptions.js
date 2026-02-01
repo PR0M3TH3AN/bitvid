@@ -887,8 +887,13 @@ class SubscriptionsManager {
       signer = await nostrClient.ensureActiveSignerForPubkey(userPubkey);
     }
 
-    const signerHasNip04 = typeof signer?.nip04Decrypt === "function";
-    const signerHasNip44 = typeof signer?.nip44Decrypt === "function";
+    const signerCapabilities = signer?.capabilities;
+    const signerHasNip04 =
+      typeof signer?.nip04Decrypt === "function" &&
+      (!signerCapabilities || signerCapabilities.nip04 !== false);
+    const signerHasNip44 =
+      typeof signer?.nip44Decrypt === "function" &&
+      (!signerCapabilities || signerCapabilities.nip44 !== false);
 
     const nostrApi = allowPermissionPrompt
       ? typeof window !== "undefined"

@@ -1225,9 +1225,7 @@ export default class MoreMenuController {
         }
 
         try {
-          const result = await this.moderationService.addAuthorToViewerMuteList(
-            targetHex,
-          );
+          const result = await this.userBlocks.addMute(targetHex, viewerPubkey);
           if (result?.already) {
             this.callbacks.showSuccess("You already muted this creator.");
           } else {
@@ -1251,21 +1249,18 @@ export default class MoreMenuController {
           this.refreshActiveMuteButtons({ author: targetHex });
         } catch (error) {
           switch (error?.code) {
-            case "viewer-not-logged-in":
-              this.callbacks.showError("Please login to manage your mute list.");
-              break;
-            case "invalid-target":
+            case "invalid":
               this.callbacks.showError("Unable to determine the creator to mute.");
               break;
             case "self":
               this.callbacks.showError("You cannot mute yourself.");
               break;
-            case "nostr-extension-missing":
+            case "signer-missing":
               this.callbacks.showError(
                 "A Nostr extension is required to update your mute list.",
               );
               break;
-            case "extension-permission-denied":
+            case "extension-encryption-permission-denied":
               this.callbacks.showError(
                 "Allow your Nostr extension to sign events before muting creators.",
               );
@@ -1293,9 +1288,7 @@ export default class MoreMenuController {
         }
 
         try {
-          const result = await this.moderationService.removeAuthorFromViewerMuteList(
-            targetHex,
-          );
+          const result = await this.userBlocks.removeMute(targetHex, viewerPubkey);
           if (result?.already) {
             this.callbacks.showSuccess("This creator is not on your mute list.");
           } else {
@@ -1319,15 +1312,12 @@ export default class MoreMenuController {
           this.refreshActiveMuteButtons({ author: targetHex });
         } catch (error) {
           switch (error?.code) {
-            case "viewer-not-logged-in":
-              this.callbacks.showError("Please login to manage your mute list.");
-              break;
-            case "nostr-extension-missing":
+            case "signer-missing":
               this.callbacks.showError(
                 "A Nostr extension is required to update your mute list.",
               );
               break;
-            case "extension-permission-denied":
+            case "extension-encryption-permission-denied":
               this.callbacks.showError(
                 "Allow your Nostr extension to sign events before updating your mute list.",
               );

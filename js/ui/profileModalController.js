@@ -1899,7 +1899,7 @@ export class ProfileModalController {
     );
     ensureAriaLabel(this.profileSubscriptionsRefreshBtn, "Refresh subscriptions");
     ensureAriaLabel(this.profileFriendsRefreshBtn, "Refresh friends");
-    ensureAriaLabel(this.profileBlockedRefreshBtn, "Refresh blocked creators");
+    ensureAriaLabel(this.profileBlockedRefreshBtn, "Refresh muted & blocked users");
     ensureAriaLabel(this.adminModeratorsRefreshBtn, "Refresh moderators");
     ensureAriaLabel(this.adminWhitelistRefreshBtn, "Refresh whitelist");
     ensureAriaLabel(this.adminBlacklistRefreshBtn, "Refresh blacklist");
@@ -9519,9 +9519,9 @@ export class ProfileModalController {
             ? "Your Nostr extension must support NIP-04 to manage private lists."
             : mutationResult?.error?.code ===
               "extension-encryption-permission-denied"
-            ? "Your Nostr extension must allow encryption to update your block list."
+            ? "Your Nostr extension must allow encryption to update your mute/block list."
             : mutationResult?.error?.message ||
-              "Failed to update your block list. Please try again.";
+              "Failed to update your mute/block list. Please try again.";
         context.error = mutationResult?.error || null;
         context.reason = mutationResult?.reason || "service-error";
         if (message) {
@@ -9541,8 +9541,8 @@ export class ProfileModalController {
         error?.code === "nip04-missing"
           ? "Your Nostr extension must support NIP-04 to manage private lists."
           : error?.code === "extension-encryption-permission-denied"
-          ? "Your Nostr extension must allow encryption to update your block list."
-          : "Failed to update your block list. Please try again.";
+          ? "Your Nostr extension must allow encryption to update your mute/block list."
+          : "Failed to update your mute/block list. Please try again.";
       this.showError(message);
     }
 
@@ -9585,18 +9585,18 @@ export class ProfileModalController {
       });
 
       if (mutationResult?.ok) {
-        this.showSuccess("Creator removed from your block list.");
+        this.showSuccess("Creator removed from your mute/block list.");
       } else if (mutationResult?.reason === "not-blocked") {
-        this.showSuccess("Creator already removed from your block list.");
+        this.showSuccess("Creator already removed from your mute/block list.");
       } else if (mutationResult?.error) {
         const message =
           mutationResult.error.code === "nip04-missing"
             ? "Your Nostr extension must support NIP-04 to manage private lists."
             : mutationResult.error.code ===
               "extension-encryption-permission-denied"
-            ? "Your Nostr extension must allow encryption to update your block list."
+            ? "Your Nostr extension must allow encryption to update your mute/block list."
             : mutationResult.error.message ||
-              "Failed to update your block list. Please try again.";
+              "Failed to update your mute/block list. Please try again.";
         if (message) {
           this.showError(message);
         }
@@ -9612,8 +9612,8 @@ export class ProfileModalController {
         error?.code === "nip04-missing"
           ? "Your Nostr extension must support NIP-04 to manage private lists."
           : error?.code === "extension-encryption-permission-denied"
-          ? "Your Nostr extension must allow encryption to update your block list."
-          : "Failed to update your block list. Please try again.";
+          ? "Your Nostr extension must allow encryption to update your mute/block list."
+          : "Failed to update your mute/block list. Please try again.";
       this.showError(message);
     }
   }
