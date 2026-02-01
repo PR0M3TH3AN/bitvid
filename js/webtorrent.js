@@ -415,8 +415,9 @@ export class TorrentClient {
 
       if (safeTimeout > 0) {
         timeoutId = setTimeout(() => {
-          const peers = Math.max(0, Math.floor(normalizeNumber(torrent?.numPeers, 0)));
-          const webseedOnly = peers === 0 && hasWebSeed;
+          const counts = getPeerCounts();
+          const peers = Math.max(0, counts.totalPeers);
+          const webseedOnly = counts.regularPeers === 0 && counts.webSeeds > 0;
           if (typeof process !== "undefined" && process.env.NODE_ENV === "test" && !webseedOnly && hasWebSeed) {
              console.log(`[probePeers:timeout] logic check: peers=${peers} hasWebSeed=${hasWebSeed} webseedOnly=${webseedOnly}`);
           }
