@@ -9860,198 +9860,29 @@ class Application {
   }
 
   updateNotificationPortalVisibility() {
-    const portal = this.notificationPortal;
-    const HTMLElementCtor =
-      portal?.ownerDocument?.defaultView?.HTMLElement ||
-      (typeof HTMLElement !== "undefined" ? HTMLElement : null);
-
-    if (!portal || !HTMLElementCtor || !(portal instanceof HTMLElementCtor)) {
-      return;
+    if (this.notificationController) {
+      this.notificationController.updateNotificationPortalVisibility();
     }
-
-    const containers = [
-      this.errorContainer,
-      this.statusContainer,
-      this.successContainer,
-    ];
-
-    const hasVisibleBanner = containers.some((container) => {
-      if (!container || !(container instanceof HTMLElementCtor)) {
-        return false;
-      }
-      return !container.classList.contains("hidden");
-    });
-
-    portal.classList.toggle("notification-portal--active", hasVisibleBanner);
   }
 
   showError(msg) {
-    const container = this.errorContainer;
-    const HTMLElementCtor =
-      container?.ownerDocument?.defaultView?.HTMLElement ||
-      (typeof HTMLElement !== "undefined" ? HTMLElement : null);
-
-    if (!container || !HTMLElementCtor || !(container instanceof HTMLElementCtor)) {
-      if (msg) {
-        userLogger.error(msg);
-      }
-      return;
+    if (this.notificationController) {
+      this.notificationController.showError(msg);
+    } else if (msg) {
+      userLogger.error(msg);
     }
-
-    if (!msg) {
-      // Remove any content, then hide
-      container.textContent = "";
-      container.classList.add("hidden");
-      this.updateNotificationPortalVisibility();
-      return;
-    }
-
-    // If there's a message, show it
-    container.textContent = msg;
-    container.classList.remove("hidden");
-    this.updateNotificationPortalVisibility();
-
-    userLogger.error(msg);
-
-    // Optional auto-hide after 5 seconds
-    setTimeout(() => {
-      if (container !== this.errorContainer) {
-        return;
-      }
-      container.textContent = "";
-      container.classList.add("hidden");
-      this.updateNotificationPortalVisibility();
-    }, 5000);
   }
 
   showStatus(msg, options = {}) {
-    const container = this.statusContainer;
-    const messageTarget = this.statusMessage;
-    const ownerDocument =
-      container?.ownerDocument || (typeof document !== "undefined" ? document : null);
-    const defaultView =
-      ownerDocument?.defaultView || (typeof window !== "undefined" ? window : null);
-    const clearScheduler =
-      defaultView?.clearTimeout ||
-      (typeof clearTimeout === "function" ? clearTimeout : null);
-    const schedule =
-      defaultView?.setTimeout || (typeof setTimeout === "function" ? setTimeout : null);
-
-    if (this.statusAutoHideHandle && typeof clearScheduler === "function") {
-      clearScheduler(this.statusAutoHideHandle);
-      this.statusAutoHideHandle = null;
-    }
-
-    const HTMLElementCtor =
-      container?.ownerDocument?.defaultView?.HTMLElement ||
-      (typeof HTMLElement !== "undefined" ? HTMLElement : null);
-
-    if (!container || !HTMLElementCtor || !(container instanceof HTMLElementCtor)) {
-      return;
-    }
-
-    const { autoHideMs, showSpinner } =
-      options && typeof options === "object" ? options : Object.create(null);
-
-    const shouldShowSpinner = showSpinner !== false;
-    const existingSpinner = container.querySelector(".status-spinner");
-
-    if (shouldShowSpinner) {
-      if (!(existingSpinner instanceof HTMLElementCtor)) {
-        const spinner = ownerDocument?.createElement?.("span") || null;
-        if (spinner) {
-          spinner.className = "status-spinner";
-          spinner.setAttribute("aria-hidden", "true");
-          if (messageTarget && container.contains(messageTarget)) {
-            container.insertBefore(spinner, messageTarget);
-          } else {
-            container.insertBefore(spinner, container.firstChild);
-          }
-        }
-      }
-    } else if (existingSpinner instanceof HTMLElementCtor) {
-      existingSpinner.remove();
-    }
-
-    if (!msg) {
-      if (messageTarget && messageTarget instanceof HTMLElementCtor) {
-        messageTarget.textContent = "";
-      }
-      container.classList.add("hidden");
-      this.updateNotificationPortalVisibility();
-      return;
-    }
-
-    if (messageTarget && messageTarget instanceof HTMLElementCtor) {
-      messageTarget.textContent = msg;
-    } else {
-      container.textContent = msg;
-    }
-    container.classList.remove("hidden");
-    this.updateNotificationPortalVisibility();
-
-    if (
-      Number.isFinite(autoHideMs) &&
-      autoHideMs > 0 &&
-      typeof schedule === "function"
-    ) {
-      const expectedText =
-        messageTarget && messageTarget instanceof HTMLElementCtor
-          ? messageTarget.textContent
-          : container.textContent;
-      this.statusAutoHideHandle = schedule(() => {
-        this.statusAutoHideHandle = null;
-        const activeContainer = this.statusContainer;
-        if (activeContainer !== container) {
-          return;
-        }
-        const activeMessageTarget =
-          this.statusMessage && typeof this.statusMessage.textContent === "string"
-            ? this.statusMessage
-            : activeContainer;
-        if (activeMessageTarget.textContent !== expectedText) {
-          return;
-        }
-        if (activeMessageTarget === this.statusMessage) {
-          this.statusMessage.textContent = "";
-        } else {
-          activeContainer.textContent = "";
-        }
-        activeContainer.classList.add("hidden");
-        this.updateNotificationPortalVisibility();
-      }, autoHideMs);
+    if (this.notificationController) {
+      this.notificationController.showStatus(msg, options);
     }
   }
 
   showSuccess(msg) {
-    const container = this.successContainer;
-    const HTMLElementCtor =
-      container?.ownerDocument?.defaultView?.HTMLElement ||
-      (typeof HTMLElement !== "undefined" ? HTMLElement : null);
-
-    if (!container || !HTMLElementCtor || !(container instanceof HTMLElementCtor)) {
-      return;
+    if (this.notificationController) {
+      this.notificationController.showSuccess(msg);
     }
-
-    if (!msg) {
-      container.textContent = "";
-      container.classList.add("hidden");
-      this.updateNotificationPortalVisibility();
-      return;
-    }
-
-    container.textContent = msg;
-    container.classList.remove("hidden");
-    this.updateNotificationPortalVisibility();
-
-    setTimeout(() => {
-      if (container !== this.successContainer) {
-        return;
-      }
-      container.textContent = "";
-      container.classList.add("hidden");
-      this.updateNotificationPortalVisibility();
-    }, 5000);
   }
 
   log(message, ...args) {
@@ -10084,20 +9915,9 @@ class Application {
       this.moderationActionController = null;
     }
 
-    if (this.statusAutoHideHandle) {
-      const ownerDocument =
-        this.statusContainer?.ownerDocument ||
-        (typeof document !== "undefined" ? document : null);
-      const defaultView =
-        ownerDocument?.defaultView ||
-        (typeof window !== "undefined" ? window : null);
-      const clearScheduler =
-        defaultView?.clearTimeout ||
-        (typeof clearTimeout === "function" ? clearTimeout : null);
-      if (typeof clearScheduler === "function") {
-        clearScheduler(this.statusAutoHideHandle);
-      }
-      this.statusAutoHideHandle = null;
+    if (this.notificationController) {
+      this.notificationController.destroy();
+      this.notificationController = null;
     }
 
     if (this.watchHistoryTelemetry) {

@@ -1,4 +1,4 @@
-import { devLogger } from "../utils/logger.js";
+import { devLogger, userLogger } from "../utils/logger.js";
 import { MediaLoader } from "../utils/mediaLoader.js";
 import { attachHealthBadges } from "../gridHealth.js";
 import { attachUrlHealthBadges } from "../urlHealthObserver.js";
@@ -36,6 +36,7 @@ import { VideoListView } from "./views/VideoListView.js";
 import MoreMenuController from "./moreMenuController.js";
 import VideoSettingsMenuController from "./videoSettingsMenuController.js";
 import AppChromeController from "./appChromeController.js";
+import NotificationController from "./notificationController.js";
 import { getSidebarLoadingMarkup } from "../sidebarLoading.js";
 import { isWatchHistoryDebugEnabled } from "../watchHistoryDebug.js";
 import { splitAndZap as splitAndZapDefault } from "../payments/zapSplit.js";
@@ -706,13 +707,19 @@ export default class ApplicationBootstrap {
     app.forYouLink = null;
     app.exploreLink = null;
 
-    app.notificationPortal = doc?.getElementById("notificationPortal") || null;
-    app.errorContainer = doc?.getElementById("errorContainer") || null;
-    app.successContainer = doc?.getElementById("successContainer") || null;
-    app.statusContainer = doc?.getElementById("statusContainer") || null;
-    app.statusMessage =
-      app.statusContainer?.querySelector("[data-status-message]") || null;
-    app.statusAutoHideHandle = null;
+    app.notificationController = new NotificationController({
+      portal: doc?.getElementById("notificationPortal") || null,
+      errorContainer: doc?.getElementById("errorContainer") || null,
+      successContainer: doc?.getElementById("successContainer") || null,
+      statusContainer: doc?.getElementById("statusContainer") || null,
+      loggers: {
+        userLogger,
+        devLogger,
+      },
+      documentRef: doc,
+      windowRef: this.window,
+    });
+
     app.lastExperimentalWarningKey = null;
     app.lastExperimentalWarningAt = 0;
 
