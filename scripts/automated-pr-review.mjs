@@ -176,7 +176,10 @@ async function reviewPR(prNumber, baseRef) {
   if (sensitiveChanges.length > 0) {
     commentBody += '### 🛡️ Guardrails\n\n';
     commentBody += 'This PR modifies sensitive files. **Security and Protocol Review Required.**\n';
+
+    // Explicit flags for CI/bots to pick up
     commentBody += '`requires-security-review` `requires-protocol-review`\n\n';
+
     commentBody += '<details><summary>Sensitive Files Touched</summary>\n\n';
     sensitiveChanges.forEach(f => commentBody += `- ${f}\n`);
     commentBody += '\n</details>\n\n';
