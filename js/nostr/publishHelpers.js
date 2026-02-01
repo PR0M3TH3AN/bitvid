@@ -16,7 +16,6 @@ import {
   getCachedNostrTools,
   readToolkitFromScope,
 } from "./toolkit.js";
-import { hexToBytes } from "../utils/hex.js";
 import { DEFAULT_NIP07_PERMISSION_METHODS } from "./nip07Permissions.js";
 import { devLogger, userLogger } from "../utils/logger.js";
 import { logRebroadcastCountFailure } from "./countDiagnostics.js";
@@ -135,7 +134,7 @@ export function signEventWithPrivateKey(event, privateKey) {
     throw new Error("Missing signing primitives");
   }
 
-  const finalized = finalizeFn(prepared, hexToBytes(normalizedKey));
+  const finalized = finalizeFn(prepared, normalizedKey);
   if (
     !finalized ||
     typeof finalized.id !== "string" ||
