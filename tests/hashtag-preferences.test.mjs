@@ -253,7 +253,7 @@ test(
       tags: [["encrypted", "nip04"]],
     };
 
-    let fetchCalls = 0;
+    fetchCalls = 0;
     nostrClient.fetchListIncrementally = async () => {
       fetchCalls += 1;
       return fetchCalls <= 4 ? [event] : [];
