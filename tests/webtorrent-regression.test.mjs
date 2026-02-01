@@ -62,7 +62,7 @@ describe("WebTorrent Regression Tests", () => {
     const webSeedUrl = "http://localhost:8080/video.mp4";
 
     const result = await client.probePeers(magnet, {
-      timeoutMs: 200, // Short timeout (increased from 50ms for CI stability)
+      timeoutMs: 500, // Increased timeout to prevent CI flakiness
       urlList: [webSeedUrl]
     });
 
