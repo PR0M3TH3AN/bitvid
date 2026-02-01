@@ -40,7 +40,7 @@ import { relaySubscriptionService } from "./services/relaySubscriptionService.js
 
 const SUBSCRIPTION_SET_KIND =
   getNostrEventSchema(NOTE_TYPES.SUBSCRIPTION_LIST)?.kind ?? 30000;
-const DECRYPT_TIMEOUT_MS = 15000;
+const DECRYPT_TIMEOUT_MS = 90000;
 const DECRYPT_RETRY_DELAY_MS = 10000;
 
 function normalizeHexPubkey(value) {
@@ -114,17 +114,23 @@ function determineDecryptionOrder(event, availableSchemes) {
   const available = Array.isArray(availableSchemes) ? availableSchemes : [];
   const availableSet = new Set(available);
   const prioritized = [];
+  const hasNip44 =
+    availableSet.has("nip44_v2") || availableSet.has("nip44");
+  const allowNip04 = !hasNip44 && availableSet.has("nip04");
 
   const hints = extractEncryptionHints(event);
   const aliasMap = {
     nip04: ["nip04"],
-    nip44: ["nip44", "nip44_v2"],
+    nip44: ["nip44_v2", "nip44"],
     nip44_v2: ["nip44_v2", "nip44"],
   };
 
   for (const hint of hints) {
     const candidates = Array.isArray(aliasMap[hint]) ? aliasMap[hint] : [hint];
     for (const candidate of candidates) {
+      if (candidate === "nip04" && !allowNip04) {
+        continue;
+      }
       if (availableSet.has(candidate) && !prioritized.includes(candidate)) {
         prioritized.push(candidate);
         break;
@@ -132,7 +138,11 @@ function determineDecryptionOrder(event, availableSchemes) {
     }
   }
 
-  for (const fallback of ["nip44_v2", "nip44", "nip04"]) {
+  const fallbacks = ["nip44_v2", "nip44"];
+  if (allowNip04) {
+    fallbacks.push("nip04");
+  }
+  for (const fallback of fallbacks) {
     if (availableSet.has(fallback) && !prioritized.includes(fallback)) {
       prioritized.push(fallback);
     }
@@ -322,7 +332,8 @@ class TinyEventEmitter {
 
 /**
  * Manages the user's subscription list (kind=30000 follow set) *privately*,
- * using encrypted NIP-51 tag arrays (NIP-04/NIP-44) for the content field.
+ * using encrypted NIP-51 tag arrays (prefer NIP-44 v2) for the content field.
+ * Published events should include an explicit ["encrypted", "<scheme>"] tag.
  * Also handles fetching and rendering subscribed channels' videos
  * in the same card style as your home page.
  */
@@ -454,6 +465,8 @@ class SubscriptionsManager {
       const allowPermissionPrompt = options?.allowPermissionPrompt !== false;
       const wasBackgroundLoading = this.backgroundLoading;
       const normalizedUserPubkey = normalizeHexPubkey(userPubkey) || userPubkey;
+      const wasLoadedForUser =
+        this.loaded && this.currentUserPubkey === normalizedUserPubkey;
       this.lastLoadError = null;
 
       const readRelays = relayManager.getReadRelayUrls();
@@ -487,6 +500,7 @@ class SubscriptionsManager {
       const cachedSnapshot = parseCachedSubscriptionSnapshot(
         profileCache.getProfileData(normalizedUserPubkey, "subscriptions"),
       );
+      const hadCachedSnapshot = cachedSnapshot.hasSnapshot;
       const shouldForceFullFetch = !cachedSnapshot.hasSnapshot;
       let events = await nostrClient.fetchListIncrementally({
         kind: SUBSCRIPTION_SET_KIND,
@@ -631,6 +645,12 @@ class SubscriptionsManager {
             action: "background-loaded",
             subscribedPubkeys: Array.from(this.subscribedPubkeys),
           });
+        }
+        if (wasLoadedForUser || hadCachedSnapshot) {
+          userLogger.warn(
+            "[SubscriptionsManager] Preserving cached subscriptions despite decryption failure.",
+          );
+          return;
         }
         if (!this.loaded) {
           this.subscribedPubkeys.clear();
@@ -1104,8 +1124,9 @@ class SubscriptionsManager {
   }
 
   /**
-   * Encrypt (NIP-04) + publish the updated subscription set
+   * Encrypt (prefer NIP-44 v2, fallback to NIP-04) + publish the updated subscription set
    * as kind=30000 with ["d", "subscriptions"] to be replaceable.
+   * The published event includes an ["encrypted", "<scheme>"] tag.
    */
   async publishSubscriptionList(userPubkey) {
     if (!userPubkey) {
