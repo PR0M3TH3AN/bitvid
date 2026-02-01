@@ -17,7 +17,7 @@ import {
   buildVideoPostEvent,
   buildRepostEvent,
   buildShareEvent,
-  buildProfileMetadataEvent,
+  buildProfileMetadataEvent
 } from "./nostrEventSchemas.js";
 
 // Inspect the current schema
@@ -25,7 +25,7 @@ console.log(getNostrEventSchema(NOTE_TYPES.VIDEO_POST));
 
 // Temporarily override the kind while debugging
 setNostrEventSchemaOverrides({
-  [NOTE_TYPES.VIDEO_POST]: { kind: 30000 },
+  [NOTE_TYPES.VIDEO_POST]: { kind: 30000 }
 });
 
 // Build an event with the active schema
@@ -37,8 +37,8 @@ const event = buildVideoPostEvent({
     version: 3,
     title: "Test",
     videoRootId: "debug",
-    infoHash: "0123456789abcdef0123456789abcdef01234567",
-  },
+    infoHash: "0123456789abcdef0123456789abcdef01234567"
+  }
 });
 ```
 
@@ -62,10 +62,14 @@ setActiveSigner({
   type: "extension", // optional label, used to request NIP-07 permissions
   pubkey, // hex or npub of the active account
   signEvent: (event) => extension.signEvent(event),
-  nip04Encrypt: (targetHex, plaintext) => extension.nip04.encrypt(targetHex, plaintext),
-  nip04Decrypt: (actorHex, ciphertext) => extension.nip04.decrypt(actorHex, ciphertext),
-  nip44Encrypt: (targetHex, plaintext) => extension.nip44.encrypt(targetHex, plaintext),
-  nip44Decrypt: (actorHex, ciphertext) => extension.nip44.decrypt(actorHex, ciphertext),
+  nip04Encrypt: (targetHex, plaintext) =>
+    extension.nip04.encrypt(targetHex, plaintext),
+  nip04Decrypt: (actorHex, ciphertext) =>
+    extension.nip04.decrypt(actorHex, ciphertext),
+  nip44Encrypt: (targetHex, plaintext) =>
+    extension.nip44.encrypt(targetHex, plaintext),
+  nip44Decrypt: (actorHex, ciphertext) =>
+    extension.nip44.decrypt(actorHex, ciphertext)
 });
 
 await nostrClient.ensureExtensionPermissions();
@@ -99,7 +103,7 @@ once:
 
 ```js
 const { video, rawEvent } = await nostrClient.getEventById(eventId, {
-  includeRaw: true,
+  includeRaw: true
 });
 
 // `video` is the normalized bitvid object and `rawEvent` is the original
@@ -123,7 +127,10 @@ timestamps.
 through the dedicated facade when you need to run a NIP-07 handshake:
 
 ```js
-import { nostrClient, requestDefaultExtensionPermissions } from "./nostrClientFacade.js";
+import {
+  nostrClient,
+  requestDefaultExtensionPermissions
+} from "./nostrClientFacade.js";
 ```
 
 The compatibility shim has been removed; import from the facades above to avoid
@@ -148,18 +155,18 @@ import { updateWatchHistoryListWithDefaultClient } from "./nostrWatchHistoryFaca
 
 ## Event catalogue
 
-| Note | Kind (default) | Tags | Content format |
-| --- | --- | --- | --- |
-| Video post (`NOTE_TYPES.VIDEO_POST`) | `30078` | `['t','video']`, `['d', <stable video identifier>]`, `['s', <storage pointer>]` plus optional schema append tags | JSON payload using Content Schema v3 (`version`, `title`, optional `url`, `magnet`, `thumbnail`, `description`, `mode`, `videoRootId`, `deleted`, `isPrivate`, `isNsfw`, `isForKids`, `enableComments`, `infoHash`, `fileSha256`, `originalFileSha256`, `ws`, `xs`) |
-| NIP-94 mirror (`NOTE_TYPES.VIDEO_MIRROR`) | `1063` | Tags forwarded from `publishVideo` (URL, mime type, thumbnail, alt text, magnet) | Plain text alt description |
-| Repost (`NOTE_TYPES.REPOST`) | `6` | `['e', <event id>, <relay?>]` with optional address pointer `['a', <kind:pubkey:identifier>, <relay?>]`, and `['p', <pubkey>]` when the origin author is known; inherits schema append tags | JSON-serialized event being reposted (or empty if unavailable) |
-| Generic Repost (`NOTE_TYPES.GENERIC_REPOST`) | `16` | Same as Repost; specific for non-text kinds (e.g. videos). | Same as Repost. |
-| Share note (`NOTE_TYPES.SHARE`) | `1` | `['e', <video id>, '', 'mention']` plus `['p', <video pubkey>, '', 'mention']` when available; repeating `['r', <relay url>, <read/write?>]` tags for relay hints; inherits schema append tags | Plain text share content from the compose modal |
-| Video reaction (`NOTE_TYPES.VIDEO_REACTION`) | `7` | `['e', <event id>, <relay?>]` or `['a', <kind:pubkey:identifier>, <relay?>]`, and `['p', <author pubkey>]` | Reaction content (e.g. `+`, `-`, or emoji) |
-| Video comment (`NOTE_TYPES.VIDEO_COMMENT`) | `1111` | NIP-22 root scope tags `['A'\|`E`\|`I`, <pointer>, <relay?>?], `['K', <root kind>]`, and `['P', <root author pubkey>, <relay?>?]` plus parent metadata `['E'\|`I`, <parent pointer>, <relay?>?, <author?>], `['K', <parent kind>]`, `['P', <parent author>, <relay?>?]`; inherits schema append tags | Plain text body sanitized to valid UTF-8 |
-| DM attachment (`NOTE_TYPES.DM_ATTACHMENT`) | `15` | `['p', <recipient pubkey>]`, `['x', <sha256 of uploaded bytes>]`, `['url', <download url>]`, optional `['name', <filename>]`, `['type', <mime>]`, `['size', <bytes>]`, optional `['k', <base64 key>]`; inherits schema append tags | Empty content; attachment metadata is represented as tags |
-| DM read receipt (`NOTE_TYPES.DM_READ_RECEIPT`) | `20001` | `['p', <recipient pubkey>]`, `['e', <message event id>]`, optional `['k', <message kind>]`; inherits schema append tags | Empty content; ephemeral receipt for message activity |
-| DM typing indicator (`NOTE_TYPES.DM_TYPING`) | `20002` | `['p', <recipient pubkey>]`, optional `['e', <conversation event id>]`, `['t','typing']`, `['expiration', <unix seconds>]`; inherits schema append tags | Empty content; ephemeral typing indicator that expires quickly |
+| Note                                           | Kind (default) | Tags                                                                                                                                                                                                                                                                                               | Content format                                                                                                                                                                                                                                                      |
+| ---------------------------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Video post (`NOTE_TYPES.VIDEO_POST`)           | `30078`        | `['t','video']`, `['d', <stable video identifier>]`, `['s', <storage pointer>]` plus optional schema append tags                                                                                                                                                                                   | JSON payload using Content Schema v3 (`version`, `title`, optional `url`, `magnet`, `thumbnail`, `description`, `mode`, `videoRootId`, `deleted`, `isPrivate`, `isNsfw`, `isForKids`, `enableComments`, `infoHash`, `fileSha256`, `originalFileSha256`, `ws`, `xs`) |
+| NIP-94 mirror (`NOTE_TYPES.VIDEO_MIRROR`)      | `1063`         | Tags forwarded from `publishVideo` (URL, mime type, thumbnail, alt text, magnet)                                                                                                                                                                                                                   | Plain text alt description                                                                                                                                                                                                                                          |
+| Repost (`NOTE_TYPES.REPOST`)                   | `6`            | `['e', <event id>, <relay?>]` with optional address pointer `['a', <kind:pubkey:identifier>, <relay?>]`, and `['p', <pubkey>]` when the origin author is known; inherits schema append tags                                                                                                        | JSON-serialized event being reposted (or empty if unavailable)                                                                                                                                                                                                      |
+| Generic Repost (`NOTE_TYPES.GENERIC_REPOST`)   | `16`           | Same as Repost; specific for non-text kinds (e.g. videos).                                                                                                                                                                                                                                         | Same as Repost.                                                                                                                                                                                                                                                     |
+| Share note (`NOTE_TYPES.SHARE`)                | `1`            | `['e', <video id>, '', 'mention']` plus `['p', <video pubkey>, '', 'mention']` when available; repeating `['r', <relay url>, <read/write?>]` tags for relay hints; inherits schema append tags                                                                                                     | Plain text share content from the compose modal                                                                                                                                                                                                                     |
+| Video reaction (`NOTE_TYPES.VIDEO_REACTION`)   | `7`            | `['e', <event id>, <relay?>]` or `['a', <kind:pubkey:identifier>, <relay?>]`, and `['p', <author pubkey>]`                                                                                                                                                                                         | Reaction content (e.g. `+`, `-`, or emoji)                                                                                                                                                                                                                          |
+| Video comment (`NOTE_TYPES.VIDEO_COMMENT`)     | `1111`         | NIP-22 root scope tags `['A'\|`E`\|`I`, <pointer>, <relay?>?], `['K', <root kind>]`, and `['P', <root author pubkey>, <relay?>?]`plus parent metadata`['E'\|`I`, <parent pointer>, <relay?>?, <author?>], `['K', <parent kind>]`, `['P', <parent author>, <relay?>?]`; inherits schema append tags | Plain text body sanitized to valid UTF-8                                                                                                                                                                                                                            |
+| DM attachment (`NOTE_TYPES.DM_ATTACHMENT`)     | `15`           | `['p', <recipient pubkey>]`, `['x', <sha256 of uploaded bytes>]`, `['url', <download url>]`, optional `['name', <filename>]`, `['type', <mime>]`, `['size', <bytes>]`, optional `['k', <base64 key>]`; inherits schema append tags                                                                 | Empty content; attachment metadata is represented as tags                                                                                                                                                                                                           |
+| DM read receipt (`NOTE_TYPES.DM_READ_RECEIPT`) | `20001`        | `['p', <recipient pubkey>]`, `['e', <message event id>]`, optional `['k', <message kind>]`; inherits schema append tags                                                                                                                                                                            | Empty content; ephemeral receipt for message activity                                                                                                                                                                                                               |
+| DM typing indicator (`NOTE_TYPES.DM_TYPING`)   | `20002`        | `['p', <recipient pubkey>]`, optional `['e', <conversation event id>]`, `['t','typing']`, `['expiration', <unix seconds>]`; inherits schema append tags                                                                                                                                            | Empty content; ephemeral typing indicator that expires quickly                                                                                                                                                                                                      |
 
 > **Publishing note:** Session actors only emit passive telemetry (for example, view counters) and must **not** sign video comments. Require a logged-in Nostr signer for comment publishing via [`commentEvents`](../js/nostr/commentEvents.js).
 
@@ -174,7 +181,7 @@ Video posts should treat `videoRootId` as the stable series identifier that rema
 | View counter (`NOTE_TYPES.VIEW_EVENT`) | `WATCH_HISTORY_KIND` (default `30079`) | Canonical tag set: `['t','view']`, a pointer tag (`['e', <eventId>]` or `['a', <address>]`), and a stable dedupe tag `['d', <view identifier>]`, with optional `['session','true']` when a session actor signs; schema overrides may append extra tags. `['video', ...]` is supported for legacy overrides only. | Optional plaintext message |
 | Watch history month (`NOTE_TYPES.WATCH_HISTORY`) | `WATCH_HISTORY_KIND` (default `30079`) | Replaceable list tag `['d', `${WATCH_HISTORY_LIST_IDENTIFIER}:<YYYY-MM>`]` with optional `['month', <YYYY-MM>]` marker plus schema append tags; no chunk pointers required. | JSON payload `{ version, month: 'YYYY-MM', items: [{ id: <eventId\|address>, watched_at?: <unix seconds> }] }` |
 | Subscription list (`NOTE_TYPES.SUBSCRIPTION_LIST`) | `30000` | `['d', 'subscriptions']`, `['encrypted', 'nip44_v2']` (updated to the negotiated scheme at publish time) | NIP-04/NIP-44 encrypted JSON array of NIP-51 follow-set tuples (e.g., `[['p', <hex>], …]`) |
-| User block list (`NOTE_TYPES.USER_BLOCK_LIST`) | `10000` | `['d', 'user-blocks']` | **LEGACY**. NIP-04/NIP-44 encrypted JSON `{ blockedPubkeys: string[] }`. Migrated to standard Mute List. |
+| User block list (`NOTE_TYPES.USER_BLOCK_LIST`) | `10000` | `['d', 'user-blocks']` | **LEGACY**. NIP-04/NIP-44 encrypted JSON array of [NIP-51](https://github.com/nostr-protocol/nips/blob/master/51.md) tag tuples. Migrated to standard Mute List (kind `10000`) which uses public tags for mutes and encrypted content for private blocks. |
 | Hashtag preferences (`NOTE_TYPES.HASHTAG_PREFERENCES`) | `30015` | `['d', 'bitvid:tag-preferences']` plus schema-appended `['encrypted','nip44_v2']` | NIP-44 encrypted JSON `{ version, interests: string[], disinterests: string[] }` |
 | Admin moderation list (`NOTE_TYPES.ADMIN_MODERATION_LIST`) | `30000` | `['d', 'bitvid:admin:editors']`, repeated `['p', <pubkey>]` entries | Empty content |
 | Admin blacklist (`NOTE_TYPES.ADMIN_BLACKLIST`) | `30000` | `['d', 'bitvid:admin:blacklist']`, repeated `['p', <pubkey>]` entries | Empty content |
@@ -196,11 +203,11 @@ any short message or commentary accompanying the share.
 
 The builder attaches the following tags:
 
-* `['e', <event id>, '', 'mention']` — the shared video’s event id, normalized to
+- `['e', <event id>, '', 'mention']` — the shared video’s event id, normalized to
   lowercase hex.
-* `['p', <pubkey>, '', 'mention']` — the shared video’s author pubkey,
+- `['p', <pubkey>, '', 'mention']` — the shared video’s author pubkey,
   normalized to lowercase hex.
-* `['r', <relay url>, <read/write?>]` — optional relay hints. Relay URLs are
+- `['r', <relay url>, <read/write?>]` — optional relay hints. Relay URLs are
   trimmed, duplicates are removed, and the optional marker is normalized to
   `read` or `write` when provided.
 
@@ -222,9 +229,9 @@ NIP-94 compliance: mirror events now normalize the `['m', <mime>]` tag to lowerc
 
 bitvid now consumes both legacy direct messages (kind `4`) and modern gift-wrap envelopes (kind `1059`). The `js/dmDecryptor.js` helper unwraps these events by:
 
-* checking `['encrypted']` hints on kind `4` events to prioritize `nip44` ciphertext before falling back to `nip04`
-* unwrapping kind `1059` gift wraps with nested `nip44` decrypt operations until the inner rumor payload is available
-* returning a normalized payload that carries sender metadata, recipient relay hints, the decrypted plaintext, and derived timestamps for sorting
+- checking `['encrypted']` hints on kind `4` events to prioritize `nip44` ciphertext before falling back to `nip04`
+- unwrapping kind `1059` gift wraps with nested `nip44` decrypt operations until the inner rumor payload is available
+- returning a normalized payload that carries sender metadata, recipient relay hints, the decrypted plaintext, and derived timestamps for sorting
 
 `NostrClient` exposes `listDirectMessages()` and `subscribeDirectMessages()` APIs that hydrate decryptors lazily (preferring extension-provided helpers) and cache results in an LRU keyed by event id. `NostrService` mirrors the normalized messages via `getDirectMessages()` and emits updates as new events arrive so the UI can render private conversations without reimplementing the unwrap logic.
 
@@ -258,11 +265,11 @@ the next time a user saves their interests from the profile modal. Legacy
 resave their preferences to publish the canonical kind. That publish path
 already:
 
-* rehydrates the signer via `getActiveSigner()` and aborts when no signer is
+- rehydrates the signer via `getActiveSigner()` and aborts when no signer is
   available, so background jobs cannot emit preferences without user consent;
-* encrypts the normalized payload once per save using the strongest available
+- encrypts the normalized payload once per save using the strongest available
   NIP-44/NIP-04 scheme before calling `buildHashtagPreferenceEvent()`; and
-* writes a single replaceable event per account thanks to the stable
+- writes a single replaceable event per account thanks to the stable
   `['d','bitvid:tag-preferences']` tag, avoiding duplicate relay load because
   later publishes overwrite the previous value.【F:js/services/hashtagPreferencesService.js†L604-L788】
 
@@ -276,8 +283,8 @@ acknowledges the update before treating the migration as complete.
 
 bitvid now uses the standard NIP-51 Mute List (kind 10000 without a `d` tag) to store both public mutes and private blocks.
 
-*   **Public Mutes**: Stored as `['p', <pubkey>]` tags. These are visible to anyone and are used for "Trusted Mute" graph analysis.
-*   **Private Blocks**: Stored as NIP-04/NIP-44 encrypted JSON in the `content` field (`{ blockedPubkeys: string[] }`). These are only visible to the user.
+- **Public Mutes**: Stored as `['p', <pubkey>]` tags. These are visible to anyone and are used for "Trusted Mute" graph analysis.
+- **Private Blocks**: Stored as NIP-04/NIP-44 encrypted JSON in the `content` field (`{ blockedPubkeys: string[] }`). These are only visible to the user.
 
 The legacy `d=user-blocks` list is still read for backward compatibility but is no longer updated. New updates merge both legacy and standard lists into the standard Kind 10000 event.
 
