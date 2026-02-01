@@ -724,10 +724,12 @@ class EventsCacheStore {
    * Only writes changes (diffs against fingerprints).
    *
    * @param {{events: Map, tombstones: Map, savedAt: number}} payload - The state to save.
+   * @param {Set<string>|null} [dirtyEventIds] - Optional set of event IDs that have changed.
+   * @param {Set<string>|null} [dirtyTombstoneKeys] - Optional set of tombstone keys that have changed.
    * @returns {Promise<{persisted: boolean, eventWrites: number, eventDeletes: number, tombstoneWrites: number, tombstoneDeletes: number}>}
    * Stats about the persistence operation.
    */
-  async persistSnapshot(payload, dirtyEventIds = null, dirtyTombstones = null) {
+  async persistSnapshot(payload, dirtyEventIds = null, dirtyTombstoneKeys = null) {
     const db = await this.getDb();
     if (!db) {
       return { persisted: false };
@@ -747,8 +749,15 @@ class EventsCacheStore {
     let tombstoneDeletes = 0;
     let skipped = 0;
 
-    for (const [id, video] of events.entries()) {
-      if (!id) {
+    // Optimization: If dirtyEventIds is provided, only check those events.
+    // Otherwise, iterate over all events in the payload.
+    const eventsIterable =
+      dirtyEventIds instanceof Set
+        ? Array.from(dirtyEventIds).map((id) => [id, events.get(id)])
+        : events.entries();
+
+    for (const [id, video] of eventsIterable) {
+      if (!id || !video) {
         continue;
       }
 
@@ -771,17 +780,32 @@ class EventsCacheStore {
       eventWrites++;
     }
 
-    for (const persistedId of Array.from(this.persistedEventFingerprints.keys())) {
-      if (events.has(persistedId)) {
-        continue;
+    // Optimization: Skip deletion scan if we are processing partial updates (dirtyEventIds)
+    // AND the total number of events hasn't decreased. This avoids checking 'has()' on thousands of items.
+    const shouldScanEventDeletions =
+      !dirtyEventIds || events.size < this.persistedEventFingerprints.size;
+
+    if (shouldScanEventDeletions) {
+      for (const persistedId of Array.from(
+        this.persistedEventFingerprints.keys()
+      )) {
+        if (events.has(persistedId)) {
+          continue;
+        }
+        eventsStore.delete(persistedId);
+        this.persistedEventFingerprints.delete(persistedId);
+        eventDeletes++;
       }
-      eventsStore.delete(persistedId);
-      this.persistedEventFingerprints.delete(persistedId);
-      eventDeletes++;
     }
 
-    for (const [key, timestamp] of tombstones.entries()) {
-      if (!key) {
+    // Optimization: If dirtyTombstoneKeys is provided, only check those.
+    const tombstonesIterable =
+      dirtyTombstoneKeys instanceof Set
+        ? Array.from(dirtyTombstoneKeys).map((key) => [key, tombstones.get(key)])
+        : tombstones.entries();
+
+    for (const [key, timestamp] of tombstonesIterable) {
+      if (!key || !Number.isFinite(timestamp)) {
         continue;
       }
 
@@ -804,13 +828,21 @@ class EventsCacheStore {
       tombstoneWrites++;
     }
 
-    for (const persistedKey of Array.from(this.persistedTombstoneFingerprints.keys())) {
-      if (tombstones.has(persistedKey)) {
-        continue;
+    const shouldScanTombstoneDeletions =
+      !dirtyTombstoneKeys ||
+      tombstones.size < this.persistedTombstoneFingerprints.size;
+
+    if (shouldScanTombstoneDeletions) {
+      for (const persistedKey of Array.from(
+        this.persistedTombstoneFingerprints.keys()
+      )) {
+        if (tombstones.has(persistedKey)) {
+          continue;
+        }
+        tombstoneStore.delete(persistedKey);
+        this.persistedTombstoneFingerprints.delete(persistedKey);
+        tombstoneDeletes++;
       }
-      tombstoneStore.delete(persistedKey);
-      this.persistedTombstoneFingerprints.delete(persistedKey);
-      tombstoneDeletes++;
     }
 
     metaStore.put({ key: "meta", savedAt, version: 1 });
@@ -1267,6 +1299,8 @@ export class NostrClient {
 
     this.rootCreatedAtByRoot = new Map();
 
+    this.dirtyEventIds = new Set();
+    this.dirtyTombstones = new Set();
     this.hasRestoredLocalData = false;
     this.eventsCacheStore = new EventsCacheStore();
     this.syncMetadataStore = new SyncMetadataStore();
@@ -3912,6 +3946,8 @@ export class NostrClient {
     this.activeMap.clear();
     this.rootCreatedAtByRoot.clear();
     this.tombstones.clear();
+    this.dirtyEventIds.clear();
+    this.dirtyTombstones.clear();
 
     const tombstoneEntries =
       events instanceof Map && payload.tombstones instanceof Map
@@ -7506,6 +7542,19 @@ export class NostrClient {
     // The `EventsCacheStore` handles differential updates (only saving changed fingerprints)
     // to keep IDB writes fast.
 
+    // Capture snapshots of dirty sets to optimize persistence
+    const dirtyEventIdsSnapshot = new Set(this.dirtyEventIds);
+    const dirtyTombstonesSnapshot = new Set(this.dirtyTombstones);
+
+    // Clear the tracked items from the main sets so we don't re-process them next time.
+    // New items added during the async save will remain in the main sets.
+    for (const id of dirtyEventIdsSnapshot) {
+      this.dirtyEventIds.delete(id);
+    }
+    for (const key of dirtyTombstonesSnapshot) {
+      this.dirtyTombstones.delete(key);
+    }
+
     const payload = this.buildCachePayload();
     const startedAt = Date.now();
     let summary = null;
@@ -7517,8 +7566,8 @@ export class NostrClient {
     try {
       summary = await this.eventsCacheStore.persistSnapshot(
         payload,
-        dirtyEventsSnapshot,
-        dirtyTombstonesSnapshot,
+        dirtyEventIdsSnapshot,
+        dirtyTombstonesSnapshot
       );
       if (summary?.persisted) {
         target = "IndexedDB";
@@ -7532,11 +7581,18 @@ export class NostrClient {
     } catch (error) {
       devLogger.warn(
         "[nostr] Failed to persist events cache to IndexedDB:",
-        error,
+        error
       );
     }
 
     if (!summary?.persisted) {
+      // If persistence failed, re-queue the dirty items for the next attempt.
+      for (const id of dirtyEventIdsSnapshot) {
+        this.dirtyEventIds.add(id);
+      }
+      for (const key of dirtyTombstonesSnapshot) {
+        this.dirtyTombstones.add(key);
+      }
       this.persistCacheToLocalStorage(payload);
     }
 
