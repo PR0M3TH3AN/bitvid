@@ -4,7 +4,7 @@
   "type": "module",
   "version": "1.0.0",
   "scripts": {
-    "start": "npm run build && npx serve",
+    "start": "npm run build && npx serve dist",
     "serve": "npx serve",
     "build": "node scripts/build-dist.mjs",
     "build:css": "tailwindcss -c tailwind.config.cjs -i css/tailwind.source.css -o css/tailwind.generated.css --minify",
