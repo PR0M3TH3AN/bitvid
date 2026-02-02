@@ -44,6 +44,7 @@ import {
   setLinkPreviewAutoFetch,
 } from "../utils/linkPreviewSettings.js";
 import { SubscriptionHistoryController } from "./subscriptionHistoryController.js";
+import { DMSettingsModalController } from "./dm/DMSettingsModalController.js";
 
 const noop = () => {};
 
@@ -1432,6 +1433,7 @@ export class ProfileModalController {
     this.adminEmptyMessages = new Map();
     this.hashtagPreferencesUnsubscribe = null;
     this.subscriptionHistoryController = new SubscriptionHistoryController();
+    this.dmSettingsModalController = new DMSettingsModalController();
 
     if (
       this.subscriptionsService &&
@@ -2495,6 +2497,69 @@ export class ProfileModalController {
           : "Failed to publish DM relay hints.";
       this.showError(message);
       this.setDmRelayPreferencesStatus(message);
+    }
+  }
+
+  openDmSettingsModal() {
+    const owner = this.resolveActiveDmRelayOwner();
+    if (!owner) {
+      this.showError("Please sign in to manage DM settings.");
+      return;
+    }
+
+    const privacySettings = this.getDmPrivacySettingsSnapshot();
+    const relayHints = this.getActiveDmRelayPreferences();
+
+    this.dmSettingsModalController.show({
+      privacySettings,
+      relayHints,
+      onPrivacyChange: (key, value) => {
+        this.persistDmPrivacySettings({ [key]: value });
+        if (key === "readReceiptsEnabled") {
+          this.showStatus(
+            value ? "Read receipts enabled." : "Read receipts disabled.",
+          );
+        } else if (key === "typingIndicatorsEnabled") {
+          this.showStatus(
+            value ? "Typing indicators enabled." : "Typing indicators disabled.",
+          );
+        }
+      },
+      onPublishRelays: async (urls) => {
+        return this.handleDmSettingsPublish(urls);
+      },
+    });
+  }
+
+  async handleDmSettingsPublish(relays) {
+    const owner = this.resolveActiveDmRelayOwner();
+    if (!owner) {
+      return { ok: false, error: "not-logged-in" };
+    }
+
+    // Update local state first
+    this.setActiveDmRelayPreferences(relays);
+
+    // Publish using existing logic
+    const callback = this.callbacks.onPublishDmRelayPreferences;
+    if (!callback || callback === noop) {
+      return { ok: false, error: "unavailable" };
+    }
+
+    try {
+      const result = await callback({
+        pubkey: owner,
+        relays,
+        controller: this,
+      });
+
+      if (result?.ok) {
+        this.populateDmRelayPreferences(); // Refresh old UI just in case
+        return result;
+      }
+      return { ok: false, error: result?.error || "failed" };
+    } catch (error) {
+      return { ok: false, error: error };
     }
   }
 
@@ -4644,9 +4709,7 @@ export class ProfileModalController {
           this.handleTypingIndicatorsToggle(enabled);
         },
         onOpenSettings: () => {
-          this.cacheDmRelayElements();
-          this.bindDmRelayControls();
-          this.populateDmRelayPreferences();
+          this.openDmSettingsModal();
         },
       });
     } catch (error) {
