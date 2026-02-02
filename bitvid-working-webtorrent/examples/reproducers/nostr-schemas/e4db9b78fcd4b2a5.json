@@ -1,6 +1,0 @@
-{
-  "hash": "e4db9b78fcd4b2a5",
-  "message": "missing-event-relay",
-  "stack": "Error: missing-event-relay\n    at buildRepostEvent (file:///app/js/nostrEventSchemas.js:869:13)\n    at test (file:///app/scripts/agent/fuzz-nostr-schemas.mjs:91:9)\n    at Fuzzer.runFuzzLoop (file:///app/scripts/agent/fuzz-lib.mjs:142:23)",
-  "timestamp": "2026-01-20T16:32:00.400Z"
-}
