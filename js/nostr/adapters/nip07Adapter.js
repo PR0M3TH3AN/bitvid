@@ -1,7 +1,7 @@
 // js/nostr/adapters/nip07Adapter.js
 
 import { normalizeActorKey } from "../watchHistory.js";
-import { runNip07WithRetry } from "../nip07Permissions.js";
+import { runNip07WithRetry, NIP07_PRIORITY } from "../nip07Permissions.js";
 
 async function retryNip07Call(operation, label, priority) {
   let lastError = null;
@@ -196,7 +196,11 @@ export async function createNip07Adapter(initialExtension, { preloadedPubkey } =
       if (typeof ext?.signEvent !== "function") {
         throw new Error("NIP-07 extension missing signEvent.");
       }
-      return retryNip07Call(() => ext.signEvent(event), "extension.signEvent");
+      return retryNip07Call(
+        () => ext.signEvent(event),
+        "extension.signEvent",
+        NIP07_PRIORITY.HIGH,
+      );
     },
     requestPermissions,
     destroy: async () => {},
