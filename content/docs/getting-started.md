@@ -2,9 +2,12 @@ Ready to jump in? Here's everything you need to know to start watching and shari
 
 ## Watching Videos
 
-1. Just visit [bitvid.network](https://bitvid.network) or one of our alternate sites like [bitvid.btc.us](https://bitvid.btc.us) and [bitvid.eth.limo](https://bitvid.eth.limo).
-2. Browse the videos on the homepage
-3. Click any video to start watching
+1. Visit [bitvid.network](https://bitvid.network).
+2. **(Optional) Install as an App:**
+   - **Desktop:** On Chrome-based browsers, click the "Install" icon in the address bar to run bitvid as a standalone app.
+   - **Mobile:** Tap "Share" (iOS) or the menu (Android) and select "Add to Home Screen".
+3. Browse the videos on the homepage
+4. Click any video to start watching
    That's it! No account needed to watch.
 
 ## Sharing Your Videos
