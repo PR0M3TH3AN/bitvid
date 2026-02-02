@@ -1,6 +1,8 @@
 import { DayDivider } from "./DayDivider.js";
 import { MessageBubble } from "./MessageBubble.js";
 
+let hasPeekAnimationPlayed = false;
+
 function createElement(doc, tag, className, text) {
   const element = doc.createElement(tag);
   if (className) {
@@ -142,10 +144,13 @@ export function MessageThread({
 
   // Scroll to bottom and peek
   if (messages.length > 0) {
-    const animate = () => {
-      timeline.scrollTop = timeline.scrollHeight;
+    const performPeek = () => {
+      if (hasPeekAnimationPlayed) {
+        return;
+      }
 
       if (timeline.scrollHeight > timeline.clientHeight) {
+        hasPeekAnimationPlayed = true;
         setTimeout(() => {
           const targetScroll = Math.max(0, timeline.scrollTop - 40);
           timeline.scrollTo({ top: targetScroll, behavior: "smooth" });
@@ -160,6 +165,11 @@ export function MessageThread({
       }
     };
 
+    const initializeScroll = () => {
+      timeline.scrollTop = timeline.scrollHeight;
+      performPeek();
+    };
+
     if (typeof IntersectionObserver !== "undefined") {
       const observer = new IntersectionObserver((entries) => {
         const entry = entries[0];
@@ -167,15 +177,12 @@ export function MessageThread({
           observer.disconnect();
           // First ensure we are at bottom
           timeline.scrollTop = timeline.scrollHeight;
-          setTimeout(animate, 300);
+          setTimeout(initializeScroll, 300);
         }
       }, { threshold: 0.1 });
       observer.observe(timeline);
     } else {
-      setTimeout(() => {
-        timeline.scrollTop = timeline.scrollHeight;
-        animate();
-      }, 0);
+      setTimeout(initializeScroll, 0);
     }
   }
 
