@@ -276,7 +276,9 @@ export class StorageService {
 
     // 2. Encrypt hex key with signer (encrypt to self)
     // We prefer NIP-44 if available, else NIP-04
-    if (typeof signer.nip44Encrypt === "function") {
+    const caps = signer.capabilities || { nip04: true, nip44: true };
+
+    if (caps.nip44 && typeof signer.nip44Encrypt === "function") {
       try {
         const ciphertext = await signer.nip44Encrypt(pubkey, hexKey);
         return { method: "nip44", ciphertext };
@@ -285,10 +287,10 @@ export class StorageService {
       }
     }
 
-    if (typeof signer.nip04Encrypt === "function") {
+    if (caps.nip04 && typeof signer.nip04Encrypt === "function") {
       const ciphertext = await signer.nip04Encrypt(pubkey, hexKey);
       return { method: "nip04", ciphertext };
-    } else if (typeof signer.encrypt === "function") {
+    } else if (caps.nip04 && typeof signer.encrypt === "function") {
       // Legacy NIP-04 direct method on some signer objects
       const ciphertext = await signer.encrypt(pubkey, hexKey);
       return { method: "nip04", ciphertext };
@@ -306,15 +308,16 @@ export class StorageService {
    */
   async _decryptMasterKey(encryptedData, signer, pubkey) {
     const { method, ciphertext } = encryptedData;
+    const caps = signer.capabilities || { nip04: true, nip44: true };
     let hexKey = null;
 
-    if (method === "nip44" && typeof signer.nip44Decrypt === "function") {
+    if (method === "nip44" && caps.nip44 && typeof signer.nip44Decrypt === "function") {
       hexKey = await signer.nip44Decrypt(pubkey, ciphertext);
     } else if (method === "nip04" || !method) {
       // Default to NIP-04 if method not specified (legacy)
-      if (typeof signer.nip04Decrypt === "function") {
+      if (caps.nip04 && typeof signer.nip04Decrypt === "function") {
         hexKey = await signer.nip04Decrypt(pubkey, ciphertext);
-      } else if (typeof signer.decrypt === "function") {
+      } else if (caps.nip04 && typeof signer.decrypt === "function") {
         hexKey = await signer.decrypt(pubkey, ciphertext);
       }
     }
