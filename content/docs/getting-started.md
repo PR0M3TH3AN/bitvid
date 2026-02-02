@@ -26,9 +26,11 @@ Ready to jump in? Here's everything you need to know to start watching and shari
 ### Step 3: Share on bitvid
 
 1. Click "Share a Video" on bitvid to open the upload modal.
-2. In **Custom** mode, enter your title, paste the hosted HTTPS URL, and (optionally) add the magnet plus any `ws`/`xs` hints. Switch to the experimental **Cloudflare** quick upload mode if you want bitvid to push the file straight to your Cloudflare R2 bucket—have your Account ID, S3 Access Key ID, and Secret Access Key ready (the advanced toggle also accepts an API token, Zone ID, and base domain if you use them).
+2. Choose your upload mode:
+   - **Upload Video**: Select a file from your device to upload directly to your Cloudflare R2 bucket. If you haven't configured storage yet, click **"Configure Storage"** to enter your R2 credentials (Account ID, Access Key ID, Secret Access Key) in your Profile settings.
+   - **External URL**: If you already host your video elsewhere, paste the HTTPS URL and (optionally) a WebTorrent magnet link.
 3. Review the rest of the form: add a description and thumbnail, decide whether to allow comments, and set the NSFW or "For Kids" toggles to match your content. Explore the metadata section to fill in captions, duration, publish time, hashtags, participants, and other fields so first-time viewers have all the context they need.
-4. Click "Post" to publish once everything looks right.
+4. Click "Publish Video" to post your content.
 
 ## Tips for Success
 
