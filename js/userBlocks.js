@@ -1468,14 +1468,18 @@ class UserBlockListManager {
           : 0;
 
       // Concurrent incremental fetch for all variants
-      const [muteEvents, blockEvents, legacyEvents] = await Promise.all([
-        nostrClient.fetchListIncrementally({
-          kind: 10000,
-          pubkey: normalized,
-          relayUrls: relays,
-          since: fetchSince,
-          timeoutMs: 12000,
-        }),
+      // We prioritize standard NIP-51 lists (Kind 10000) to ensure the UI loads quickly.
+      // Legacy variants are fetched in parallel but processed separately to avoid blocking.
+
+      const standardFetchPromise = nostrClient.fetchListIncrementally({
+        kind: 10000,
+        pubkey: normalized,
+        relayUrls: relays,
+        since: fetchSince,
+        timeoutMs: 6000,
+      });
+
+      const legacyFetchPromise = Promise.all([
         nostrClient.fetchListIncrementally({
           kind: 10000,
           pubkey: normalized,
@@ -1494,17 +1498,40 @@ class UserBlockListManager {
         }),
       ]);
 
-      const combined = [...muteEvents, ...blockEvents, ...legacyEvents];
-
-      // If combined is empty, check if we have loaded state
-      if (!combined.length) {
-         if (!this.loaded) {
-            // Assuming empty if we have no prior state
-            await applyEvents([], { source: "incremental" });
-         }
-      } else {
-         await applyEvents(combined, { source: "incremental" });
+      // FAST PATH: Process Standard List immediately
+      let standardEvents = [];
+      try {
+        standardEvents = await standardFetchPromise;
+        if (Array.isArray(standardEvents) && standardEvents.length > 0) {
+          await applyEvents(standardEvents, { source: "fast-standard" });
+          this.loaded = true;
+        }
+      } catch (standardError) {
+        devLogger.warn("[UserBlockList] Standard fetch failed:", standardError);
       }
+
+      // SLOW PATH: Process Legacy Lists (and Standard if it was empty/failed)
+      // We do NOT await this for the main return, allowing the UI to unblock immediately
+      // if the standard list was found.
+      legacyFetchPromise
+        .then(async ([blockEvents, legacyEvents]) => {
+          const combined = [...standardEvents, ...blockEvents, ...legacyEvents];
+
+          if (!combined.length) {
+            // Only apply empty if we haven't already marked loaded (meaning standard failed or was empty)
+            // or if we want to ensure we settle state.
+            // If standard was found, we don't need to do anything for empty legacy.
+            if (!this.loaded) {
+              await applyEvents([], { source: "empty-result" });
+            }
+          } else {
+            // Re-apply merged results to catch any legacy blocks
+            await applyEvents(combined, { source: "incremental-merge" });
+          }
+        })
+        .catch((legacyError) => {
+          devLogger.warn("[UserBlockList] Legacy fetch failed:", legacyError);
+        });
 
 
     } catch (error) {
