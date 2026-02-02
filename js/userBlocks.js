@@ -1041,7 +1041,7 @@ class UserBlockListManager {
           "nip44",
           (payload) =>
             signer.nip44Decrypt(normalized, payload, {
-              priority: NIP07_PRIORITY.HIGH,
+              priority: NIP07_PRIORITY.LOW,
             }),
           "active-signer",
         );
@@ -1049,7 +1049,7 @@ class UserBlockListManager {
           "nip44_v2",
           (payload) =>
             signer.nip44Decrypt(normalized, payload, {
-              priority: NIP07_PRIORITY.HIGH,
+              priority: NIP07_PRIORITY.LOW,
             }),
           "active-signer",
         );
@@ -1060,7 +1060,7 @@ class UserBlockListManager {
           "nip04",
           (payload) =>
             signer.nip04Decrypt(normalized, payload, {
-              priority: NIP07_PRIORITY.HIGH,
+              priority: NIP07_PRIORITY.LOW,
             }),
           "active-signer",
         );
@@ -1068,7 +1068,7 @@ class UserBlockListManager {
 
       const nostrApi = typeof window !== "undefined" ? window?.nostr : null;
       const decrypterOptions = {
-        priority: NIP07_PRIORITY.HIGH,
+        priority: NIP07_PRIORITY.LOW,
         timeoutMs: nip07DecryptTimeoutMs,
         retryMultiplier: 1,
       };
