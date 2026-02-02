@@ -32,18 +32,18 @@ To allow your browser to upload files directly to Cloudflare, you must allow Cro
 [
   {
     "AllowedOrigins": ["http://127.0.0.1:5500", "https://bitvid.network"],
-    "AllowedMethods": ["GET", "PUT", "POST", "DELETE", "HEAD"],
+    "AllowedMethods": ["GET", "PUT", "POST", "DELETE", "HEAD", "OPTIONS"],
     "AllowedHeaders": ["*"],
     "ExposeHeaders": ["ETag", "Content-Length", "Content-Range", "Accept-Ranges"],
     "MaxAgeSeconds": 3600
   }
 ]
 ```
-> **Note:** Replace the `AllowedOrigins` values with the exact origins you use in development and production (the scheme and port must match exactly). Apply this policy on the **bucket’s S3 API endpoint**, not just the public URL or custom domain. Uploads go through the **S3 API endpoint** (`<account>.r2.cloudflarestorage.com`), and Cloudflare’s UI does **not** require adding `OPTIONS` to `AllowedMethods`.
+> **Note:** Replace the `AllowedOrigins` values with the exact origins you use in development and production (the scheme and port must match exactly). Uploads go through the **S3 API endpoint** (`<account>.r2.cloudflarestorage.com`), and browser-based uploads require `OPTIONS` for preflight requests.
 
 5. Click **"Save"**.
 
-### 3. Create an API Token
+### 3. Create an API Token (S3 Credentials)
 
 1. Go back to the **R2 Overview** page.
 2. Click **"Manage R2 API Tokens"** (right sidebar).
@@ -54,17 +54,19 @@ To allow your browser to upload files directly to Cloudflare, you must allow Cro
    - **Specific Bucket(s)**: Select the bucket you created in Step 1.
    - **TTL**: "Forever".
 5. Click **"Create API Token"**.
+6. **Copy the credentials**: You will need the **Access Key ID** and **Secret Access Key**.
 
 ### 4. Configure bitvid
 
 1. Copy the **Access Key ID**, **Secret Access Key**, and your **Account ID** (found on the R2 Overview page).
-2. Return to the **Upload Video** modal in bitvid.
-3. Click **"Configure R2 Storage"**.
-4. Enter your:
+2. In bitvid, open your **Profile** (click your avatar).
+3. Navigate to the **Storage** tab (or click **"Configure R2 Storage"** in the Upload Modal to be redirected there).
+4. Click **"Add Connection"** and select **Cloudflare R2**.
+5. Enter your:
    - **Account ID**
    - **Access Key ID**
    - **Secret Access Key**
    - **Public Bucket URL** (from Step 1)
-5. Click **"Verify & Save"**.
+6. Click **"Save Connection"**.
 
-bitvid will verify your credentials by uploading a small test file. Once verified, you are ready to upload!
+bitvid will verify your credentials by uploading a small test file. Once verified, return to the Upload Modal to start sharing!

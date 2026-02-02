@@ -56,7 +56,7 @@ To maintain a functional and ethical platform, the following types of content ar
 
 bitvid enforces these guidelines through client-side visibility rules that match the current `moreMenuController` and `userBlocks` behavior:
 
-- **Blurred previews:** When trusted NIP-56 `nudity` reports reach the configured blur threshold (`DEFAULT_BLUR_THRESHOLD` in [`config/instance-config.js`](../config/instance-config.js)), thumbnails render blurred and autoplay previews pause. Every blur includes a “show anyway” override. The upstream configuration currently uses three trusted reporters, but adjust the export to match your policy.
+- **Blurred previews:** When trusted NIP-56 `nudity` reports reach the configured blur threshold (`DEFAULT_BLUR_THRESHOLD` in [`config/instance-config.js`](../config/instance-config.js)), thumbnails render blurred and autoplay previews pause. Every blur includes a “show anyway” override. The upstream configuration currently uses one trusted report, but adjust the export to match your policy.
 - **Downranked authors:** Muting a creator adds them to your NIP-51 mute list (kind `10000`). Videos from muted creators are deprioritized but still visible with clear badges so you can reverse the action.
 - **Personal blocks:** Blocking a creator adds them to your private block list (`userBlocks`). Videos from blocked creators are hidden from feeds, carousels, and modals unless you explicitly unblock them.
 - **Admin hard hides:** Moderator-maintained blacklists (NIP-51 kind `30000`) remove creators from default feeds for everyone using the hosted client. Moderators can still review the content through “show anyway” controls when auditing decisions.
