@@ -250,6 +250,7 @@ async function runLoadTest() {
     };
 
     let prevRx = 0;
+    let prevCpuUsage = process.cpuUsage();
 
     const monitorInterval = setInterval(async () => {
         const now = Date.now();
@@ -268,6 +269,10 @@ async function runLoadTest() {
         // Resources
         const mem = process.memoryUsage().heapUsed / 1024 / 1024; // MB
 
+        const cpuUsage = process.cpuUsage(prevCpuUsage);
+        prevCpuUsage = process.cpuUsage();
+        const cpuPercent = (cpuUsage.user + cpuUsage.system) / 10000; // Microseconds to percent (approx for 1s interval)
+
         // Crypto Stats
         const signTimes = bots.flatMap(b => b.signTimes);
         // Clear sign times to avoid memory leak and get instantaneous avg
@@ -275,12 +280,13 @@ async function runLoadTest() {
         const avgSign = signTimes.length ? signTimes.reduce((a, b) => a + b, 0) / signTimes.length : 0;
 
         // Log
-        console.log(`[Monitor] Latency: ${latency ?? 'timeout'}ms | RX: ${rxDelta}/s | Mem: ${mem.toFixed(1)}MB | Sign: ${avgSign.toFixed(2)}ms`);
+        console.log(`[Monitor] Latency: ${latency ?? 'timeout'}ms | RX: ${rxDelta}/s | Mem: ${mem.toFixed(1)}MB | CPU: ${cpuPercent.toFixed(1)}% | Sign: ${avgSign.toFixed(2)}ms`);
 
         metrics.timestamps.push(new Date().toISOString());
         metrics.latency.push(latency);
         metrics.throughput.push(rxDelta);
         metrics.memory.push(mem);
+        metrics.cpu.push(cpuPercent);
         metrics.avgSignTime.push(avgSign);
 
     }, 1000);
