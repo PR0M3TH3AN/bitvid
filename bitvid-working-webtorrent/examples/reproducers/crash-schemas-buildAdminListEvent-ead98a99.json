@@ -1,0 +1,6 @@
+{
+  "function": "buildAdminListEvent",
+  "input": "{\"threadParticipantPubkey\":\"=\\\"-ge5\",\"includeSessionTag\":\"C2@IUQ8DFi3\",\"address\":\"\\udab6ꇷ뻼웖\\ude2d\\udf2c䙹轂岀ꊀ魯㣝»ﾋ趃㩎떡\\ude0d얭⿴灎쳽幔箆⋙Ё⥩덙\",\"ciphertext\":{\"bQyO]\":null,\"6<w,>\":false},\"listKey\":{},\"Xx)&~\":\"䍖ᔩ㒪暸╝鋶簇ᯢ⽷\\udd40察畂캌\\udc5d൒\\uda52魾웁尢󳰘穁鶽ߒ\\uda6c諉┯쭈蟡㿏ࢬ\\udcdf\\udea9㺖\"}",
+  "error": "Error: toString throw",
+  "stack": "Error: toString throw\n    at Object.toString (file:///app/scripts/agent/fuzz-schemas.mjs:83:31)\n    at Module.buildAdminListEvent (file:///app/js/nostrEventSchemas.js:2296:54)\n    at fn (file:///app/scripts/agent/fuzz-schemas.mjs:152:64)\n    at run (file:///app/scripts/agent/fuzz-schemas.mjs:167:32)\n    at file:///app/scripts/agent/fuzz-schemas.mjs:216:1"
+}

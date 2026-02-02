@@ -1,0 +1,64 @@
+{
+  "items": [
+    {
+      "title": "Overview",
+      "id": "overview",
+      "slug": "overview",
+      "path": "content/docs/overview.md",
+      "children": [
+        {
+          "title": "Getting Started",
+          "id": "getting-started",
+          "slug": "getting-started",
+          "path": "content/docs/getting-started.md"
+        },
+        {
+          "title": "About Bitvid",
+          "id": "about",
+          "slug": "about",
+          "path": "content/docs/about.md"
+        }
+      ]
+    },
+    {
+      "title": "Guides",
+      "id": "guides",
+      "slug": "guides",
+      "path": "content/docs/guides/index.md",
+      "children": [
+        {
+          "title": "Upload Content",
+          "id": "upload-content",
+          "slug": "upload-content",
+          "path": "content/docs/guides/upload-content.md"
+        }
+      ]
+    },
+    {
+      "title": "Community",
+      "id": "community",
+      "slug": "community",
+      "path": "content/docs/community/index.md",
+      "children": [
+        {
+          "title": "Community Guidelines",
+          "id": "community-guidelines",
+          "slug": "community-guidelines",
+          "path": "content/docs/community/community-guidelines.md"
+        },
+        {
+          "title": "Links",
+          "id": "links",
+          "slug": "links",
+          "path": "content/docs/community/links.md"
+        }
+      ]
+    },
+    {
+      "title": "Roadmap",
+      "id": "roadmap",
+      "slug": "roadmap",
+      "path": "content/docs/roadmap.md"
+    }
+  ]
+}

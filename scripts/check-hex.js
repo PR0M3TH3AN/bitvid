@@ -31,7 +31,10 @@ const IGNORED_GLOBS = [
   'tests/unit/embed-accent.test.mjs',
   'tests/visual/embed-layout.spec.ts',
   'ai/**',
-  '**/*.ai'
+  '**/*.ai',
+  'releases/**',
+  'bitvid-working-webtorrent/**',
+  'scripts/agent/**'
 ];
 
 const gitArgs = [

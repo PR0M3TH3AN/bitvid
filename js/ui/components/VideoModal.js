@@ -6201,11 +6201,16 @@ export class VideoModal {
     try {
       const token = subscribeToVideoViewCount(
         pointerInfo.pointer,
-        ({ total, status }) => {
+        ({ total, status, partial }) => {
           if (!viewEl || !viewEl.isConnected) {
             return;
           }
-          viewEl.textContent = this.getViewCountLabel(total, status);
+          viewEl.textContent = this.getViewCountLabel(total, status, partial);
+          if (partial) {
+            viewEl.dataset.viewCountState = "partial";
+          } else {
+            viewEl.dataset.viewCountState = status;
+          }
         }
       );
       return { pointer: pointerInfo.pointer, token };
@@ -6216,9 +6221,10 @@ export class VideoModal {
     }
   }
 
-  getViewCountLabel(total, status) {
+  getViewCountLabel(total, status, partial) {
     if (Number.isFinite(total)) {
-      return this.formatViewCountLabel(Number(total));
+      const label = this.formatViewCountLabel(Number(total));
+      return partial ? `${label} (partial)` : label;
     }
     if (status === "hydrating") {
       return "Loading…";

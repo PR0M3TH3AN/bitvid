@@ -5,7 +5,7 @@ import {
   requestDefaultExtensionPermissions,
 } from "./nostrClientFacade.js";
 import { convertEventToVideo as sharedConvertEventToVideo } from "./nostr/index.js";
-import { normalizeNostrPubkey } from "./nostr/nip46Client.js";
+import { normalizeNostrPubkey, sanitizeRelayList } from "./nostr/nip46Client.js";
 import {
   listVideoViewEvents,
   subscribeVideoViewEvents,
@@ -31,7 +31,12 @@ import { devLogger, userLogger } from "./utils/logger.js";
 import moderationService from "./services/moderationService.js";
 import nostrService from "./services/nostrService.js";
 import { profileCache } from "./state/profileCache.js";
-import { runNip07WithRetry, NIP07_PRIORITY } from "./nostr/nip07Permissions.js";
+import {
+  DEFAULT_NIP07_ENCRYPTION_METHODS,
+  runNip07WithRetry,
+  NIP07_PRIORITY,
+} from "./nostr/nip07Permissions.js";
+import { relaySubscriptionService } from "./services/relaySubscriptionService.js";
 
 const SUBSCRIPTION_SET_KIND =
   getNostrEventSchema(NOTE_TYPES.SUBSCRIPTION_LIST)?.kind ?? 30000;
@@ -109,17 +114,23 @@ function determineDecryptionOrder(event, availableSchemes) {
   const available = Array.isArray(availableSchemes) ? availableSchemes : [];
   const availableSet = new Set(available);
   const prioritized = [];
+  const hasNip44 =
+    availableSet.has("nip44_v2") || availableSet.has("nip44");
+  const allowNip04 = !hasNip44 && availableSet.has("nip04");
 
   const hints = extractEncryptionHints(event);
   const aliasMap = {
     nip04: ["nip04"],
-    nip44: ["nip44", "nip44_v2"],
+    nip44: ["nip44_v2", "nip44"],
     nip44_v2: ["nip44_v2", "nip44"],
   };
 
   for (const hint of hints) {
     const candidates = Array.isArray(aliasMap[hint]) ? aliasMap[hint] : [hint];
     for (const candidate of candidates) {
+      if (candidate === "nip04" && !allowNip04) {
+        continue;
+      }
       if (availableSet.has(candidate) && !prioritized.includes(candidate)) {
         prioritized.push(candidate);
         break;
@@ -127,7 +138,11 @@ function determineDecryptionOrder(event, availableSchemes) {
     }
   }
 
-  for (const fallback of ["nip44_v2", "nip44", "nip04"]) {
+  const fallbacks = ["nip44_v2", "nip44"];
+  if (allowNip04) {
+    fallbacks.push("nip04");
+  }
+  for (const fallback of fallbacks) {
     if (availableSet.has(fallback) && !prioritized.includes(fallback)) {
       prioritized.push(fallback);
     }
@@ -317,7 +332,8 @@ class TinyEventEmitter {
 
 /**
  * Manages the user's subscription list (kind=30000 follow set) *privately*,
- * using encrypted NIP-51 tag arrays (NIP-04/NIP-44) for the content field.
+ * using encrypted NIP-51 tag arrays (prefer NIP-44 v2) for the content field.
+ * Published events should include an explicit ["encrypted", "<scheme>"] tag.
  * Also handles fetching and rendering subscribed channels' videos
  * in the same card style as your home page.
  */
@@ -329,10 +345,12 @@ class SubscriptionsManager {
     this.currentUserPubkey = null;
     this.loaded = false;
     this.loadingPromise = null;
+    this.backgroundLoading = false;
     this.subscriptionListView = null;
     this.lastRunOptions = null;
     this.lastResult = null;
     this.lastContainerId = null;
+    this.lastLoadError = null;
     this.unsubscribeFromNostrUpdates = null;
     this.pendingRefreshPromise = null;
     this.scheduledRefreshDetail = null;
@@ -341,6 +359,7 @@ class SubscriptionsManager {
     this.emitter = new TinyEventEmitter();
     this.decryptRetryTimeoutId = null;
     this.ensureNostrServiceListener();
+    this.subscriptionKey = null;
 
     profileCache.subscribe((event, detail) => {
       if (event === "profileChanged") {
@@ -350,7 +369,9 @@ class SubscriptionsManager {
       } else if (event === "runtimeCleared" && detail.pubkey === this.currentUserPubkey) {
         this.reset();
         if (this.currentUserPubkey) {
-          this.loadSubscriptions(this.currentUserPubkey);
+          this.loadSubscriptions(this.currentUserPubkey, {
+            allowPermissionPrompt: false,
+          });
         }
       }
     });
@@ -359,12 +380,13 @@ class SubscriptionsManager {
   /**
    * Decrypt the subscription list from kind=30000 (d="subscriptions").
    */
-  async loadSubscriptions(userPubkey) {
+  async loadSubscriptions(userPubkey, options = {}) {
     if (!userPubkey) {
       userLogger.warn("[SubscriptionsManager] No pubkey => cannot load subs.");
       return;
     }
 
+    const allowPermissionPrompt = options?.allowPermissionPrompt !== false;
     const normalizedUserPubkey = normalizeHexPubkey(userPubkey) || userPubkey;
 
     // 1. Attempt to load from cache first
@@ -379,14 +401,25 @@ class SubscriptionsManager {
       this.loaded = true;
 
       // Trigger background update
-      this.updateFromRelays(userPubkey).catch((err) => {
+      if (!allowPermissionPrompt && !this.backgroundLoading) {
+        this.backgroundLoading = true;
+        this.emitter.emit("change", {
+          action: "background-loading",
+          subscribedPubkeys: Array.from(this.subscribedPubkeys),
+          background: true,
+        });
+      } else if (allowPermissionPrompt) {
+        this.backgroundLoading = false;
+      }
+
+      this.updateFromRelays(userPubkey, { allowPermissionPrompt }).catch((err) => {
         devLogger.warn("[SubscriptionsManager] Background update failed:", err);
       });
       return;
     }
 
     // 2. If no cache, must wait for relays
-    await this.updateFromRelays(userPubkey);
+    await this.updateFromRelays(userPubkey, { allowPermissionPrompt });
   }
 
   saveToCache(userPubkey) {
@@ -402,7 +435,7 @@ class SubscriptionsManager {
     return this.emitter.on(eventName, handler);
   }
 
-  scheduleDecryptRetry(userPubkey, error) {
+  scheduleDecryptRetry(userPubkey, error, options = {}) {
     const normalized = normalizeHexPubkey(userPubkey) || userPubkey;
     if (!normalized) {
       return;
@@ -415,7 +448,7 @@ class SubscriptionsManager {
       if (this.currentUserPubkey && this.currentUserPubkey !== normalized) {
         return;
       }
-      this.updateFromRelays(normalized).catch((retryError) => {
+      this.updateFromRelays(normalized, options).catch((retryError) => {
         userLogger.warn("[SubscriptionsManager] Decryption retry failed:", retryError);
       });
     }, DECRYPT_RETRY_DELAY_MS);
@@ -425,11 +458,16 @@ class SubscriptionsManager {
     );
   }
 
-  async updateFromRelays(userPubkey) {
+  async updateFromRelays(userPubkey, options = {}) {
     if (!userPubkey) return;
 
     try {
+      const allowPermissionPrompt = options?.allowPermissionPrompt !== false;
+      const wasBackgroundLoading = this.backgroundLoading;
       const normalizedUserPubkey = normalizeHexPubkey(userPubkey) || userPubkey;
+      const wasLoadedForUser =
+        this.loaded && this.currentUserPubkey === normalizedUserPubkey;
+      this.lastLoadError = null;
 
       const readRelays = relayManager.getReadRelayUrls();
       const relayUrls = readRelays.length > 0 ? readRelays : Array.from(DEFAULT_RELAY_URLS);
@@ -437,20 +475,39 @@ class SubscriptionsManager {
         devLogger.warn(
           "[SubscriptionsManager] No relay URLs available while loading subscriptions.",
         );
+        if (wasBackgroundLoading) {
+          this.backgroundLoading = false;
+          this.emitter.emit("change", {
+            action: "background-loaded",
+            subscribedPubkeys: Array.from(this.subscribedPubkeys),
+          });
+        }
         return;
       }
+      if (!nostrClient?.pool && typeof nostrClient?.ensurePool === "function") {
+        try {
+          await nostrClient.ensurePool();
+        } catch (error) {
+          devLogger.warn(
+            "[SubscriptionsManager] Failed to initialize relay pool for subscription",
+            error,
+          );
+        }
+      }
+      this.ensureSubscriptionListSubscription(normalizedUserPubkey, relayUrls);
 
       // Use incremental fetch helper
       const cachedSnapshot = parseCachedSubscriptionSnapshot(
         profileCache.getProfileData(normalizedUserPubkey, "subscriptions"),
       );
+      const hadCachedSnapshot = cachedSnapshot.hasSnapshot;
       const shouldForceFullFetch = !cachedSnapshot.hasSnapshot;
       let events = await nostrClient.fetchListIncrementally({
         kind: SUBSCRIPTION_SET_KIND,
         pubkey: normalizedUserPubkey,
         dTag: SUBSCRIPTION_LIST_IDENTIFIER,
         relayUrls,
-        since: shouldForceFullFetch ? 0 : undefined,
+        since: shouldForceFullFetch ? 0 : (cachedSnapshot.createdAt || 0),
         timeoutMs: 12000,
       });
 
@@ -473,7 +530,7 @@ class SubscriptionsManager {
           pubkey: normalizedSessionActorPubkey,
           dTag: SUBSCRIPTION_LIST_IDENTIFIER,
           relayUrls,
-          since: shouldForceSessionFetch ? 0 : undefined,
+          since: shouldForceSessionFetch ? 0 : (sessionCachedSnapshot.createdAt || 0),
           timeoutMs: 12000,
         });
         if (sessionEvents.length) {
@@ -516,6 +573,13 @@ class SubscriptionsManager {
            // This means no updates. We keep what we have.
            devLogger.log("[SubscriptionsManager] No updates from relays.");
         }
+        if (wasBackgroundLoading) {
+          this.backgroundLoading = false;
+          this.emitter.emit("change", {
+            action: "background-loaded",
+            subscribedPubkeys: Array.from(this.subscribedPubkeys),
+          });
+        }
         return;
       }
 
@@ -534,7 +598,9 @@ class SubscriptionsManager {
 
       let decryptResult;
       try {
-        const decryptPromise = this.decryptSubscriptionEvent(newest, userPubkey);
+        const decryptPromise = this.decryptSubscriptionEvent(newest, userPubkey, {
+          allowPermissionPrompt,
+        });
         const timeoutPromise = new Promise((_, reject) =>
           setTimeout(
             () => {
@@ -553,17 +619,39 @@ class SubscriptionsManager {
       }
 
       if (!decryptResult.ok) {
+        this.lastLoadError = decryptResult.error || null;
         if (decryptResult.error?.code === "subscriptions-decrypt-timeout") {
           if (!this.loaded && !cachedSnapshot.hasSnapshot) {
             this.loaded = true;
           }
-          this.scheduleDecryptRetry(normalizedUserPubkey, decryptResult.error);
+          this.scheduleDecryptRetry(normalizedUserPubkey, decryptResult.error, {
+            allowPermissionPrompt,
+          });
+          return;
+        }
+        if (
+          !allowPermissionPrompt &&
+          decryptResult.error?.code === "subscriptions-permission-required"
+        ) {
           return;
         }
         userLogger.error(
           "[SubscriptionsManager] Failed to decrypt subscription list:",
           decryptResult.error,
         );
+        if (wasBackgroundLoading) {
+          this.backgroundLoading = false;
+          this.emitter.emit("change", {
+            action: "background-loaded",
+            subscribedPubkeys: Array.from(this.subscribedPubkeys),
+          });
+        }
+        if (wasLoadedForUser || hadCachedSnapshot) {
+          userLogger.warn(
+            "[SubscriptionsManager] Preserving cached subscriptions despite decryption failure.",
+          );
+          return;
+        }
         if (!this.loaded) {
           this.subscribedPubkeys.clear();
           this.subsEventId = null;
@@ -583,6 +671,9 @@ class SubscriptionsManager {
       this.subscribedPubkeys = newSet;
       this.currentUserPubkey = normalizedUserPubkey;
       this.loaded = true;
+      if (wasBackgroundLoading) {
+        this.backgroundLoading = false;
+      }
 
       // Update persistent cache
       this.saveToCache(normalizedUserPubkey);
@@ -610,22 +701,31 @@ class SubscriptionsManager {
             error
           );
         });
+      } else if (wasBackgroundLoading) {
+        this.emitter.emit("change", {
+          action: "background-loaded",
+          subscribedPubkeys: Array.from(this.subscribedPubkeys),
+        });
       }
 
     } catch (err) {
+      this.lastLoadError = err || null;
       userLogger.error("[SubscriptionsManager] Failed to update subs from relays:", err);
     }
   }
 
   reset() {
+    this.stopSubscriptionListSubscription();
     this.subscribedPubkeys.clear();
     this.subsEventId = null;
     this.subsEventCreatedAt = null;
     this.currentUserPubkey = null;
     this.loaded = false;
+    this.backgroundLoading = false;
     this.lastRunOptions = null;
     this.lastResult = null;
     this.hasRenderedOnce = false;
+    this.lastLoadError = null;
     if (this.decryptRetryTimeoutId) {
       clearTimeout(this.decryptRetryTimeoutId);
       this.decryptRetryTimeoutId = null;
@@ -633,7 +733,56 @@ class SubscriptionsManager {
     this.emitter.emit("change", { action: "reset", subscribedPubkeys: [] });
   }
 
-  async ensureLoaded(actorHex) {
+  stopSubscriptionListSubscription() {
+    if (this.subscriptionKey) {
+      relaySubscriptionService.stopSubscription(this.subscriptionKey, "reset");
+      this.subscriptionKey = null;
+    }
+  }
+
+  ensureSubscriptionListSubscription(userPubkey, relays) {
+    const normalized = normalizeHexPubkey(userPubkey);
+    if (!normalized || !nostrClient?.pool) {
+      return null;
+    }
+
+    const key = `subscriptions:${normalized}`;
+    this.subscriptionKey = key;
+
+    const filters = [
+      {
+        kinds: [SUBSCRIPTION_SET_KIND],
+        authors: [normalized],
+        "#d": [SUBSCRIPTION_LIST_IDENTIFIER],
+      },
+    ];
+
+    return relaySubscriptionService.ensureSubscription({
+      key,
+      pool: nostrClient.pool,
+      relays,
+      filters,
+      label: "subscription-list",
+      onEvent: (event) => this.handleSubscriptionListEvent(event),
+    });
+  }
+
+  handleSubscriptionListEvent(event) {
+    const normalized = normalizeHexPubkey(event?.pubkey);
+    if (!normalized || normalized !== this.currentUserPubkey) {
+      return;
+    }
+
+    this.updateFromRelays(normalized, { allowPermissionPrompt: false })
+      .catch((error) => {
+        devLogger.warn(
+          "[SubscriptionsManager] Failed to refresh after subscription list event",
+          error,
+        );
+      });
+  }
+
+  async ensureLoaded(actorHex, options = {}) {
     devLogger.log("[SubscriptionsManager] ensureLoaded start", actorHex);
     const normalizedActor = normalizeHexPubkey(actorHex) || actorHex;
     if (!normalizedActor) {
@@ -655,7 +804,7 @@ class SubscriptionsManager {
       return;
     }
 
-    const loader = this.loadSubscriptions(normalizedActor);
+    const loader = this.loadSubscriptions(normalizedActor, options);
     this.loadingPromise = loader;
 
     try {
@@ -709,7 +858,7 @@ class SubscriptionsManager {
     return Array.from(this.subscribedPubkeys);
   }
 
-  async decryptSubscriptionEvent(event, userPubkey) {
+  async decryptSubscriptionEvent(event, userPubkey, options = {}) {
     const ciphertext = typeof event?.content === "string" ? event.content : "";
     if (!ciphertext) {
       const error = new Error("Subscription event is missing ciphertext content.");
@@ -717,6 +866,7 @@ class SubscriptionsManager {
       return { ok: false, error };
     }
 
+    const allowPermissionPrompt = options?.allowPermissionPrompt !== false;
     const hints = extractEncryptionHints(event);
     const requiresNip44 = hints.includes("nip44") || hints.includes("nip44_v2");
     const requiresNip04 = !hints.length || hints.includes("nip04") || !requiresNip44;
@@ -729,17 +879,27 @@ class SubscriptionsManager {
 
     let signer = getActiveSigner();
     if (
-      !signer ||
-      (!signerHasRequiredDecryptors(signer) &&
-        typeof nostrClient?.ensureActiveSignerForPubkey === "function")
+      allowPermissionPrompt &&
+      (!signer ||
+        (!signerHasRequiredDecryptors(signer) &&
+          typeof nostrClient?.ensureActiveSignerForPubkey === "function"))
     ) {
       signer = await nostrClient.ensureActiveSignerForPubkey(userPubkey);
     }
 
-    const signerHasNip04 = typeof signer?.nip04Decrypt === "function";
-    const signerHasNip44 = typeof signer?.nip44Decrypt === "function";
+    const signerCapabilities = signer?.capabilities;
+    const signerHasNip04 =
+      typeof signer?.nip04Decrypt === "function" &&
+      (!signerCapabilities || signerCapabilities.nip04 !== false);
+    const signerHasNip44 =
+      typeof signer?.nip44Decrypt === "function" &&
+      (!signerCapabilities || signerCapabilities.nip44 !== false);
 
-    const nostrApi = typeof window !== "undefined" ? window?.nostr : null;
+    const nostrApi = allowPermissionPrompt
+      ? typeof window !== "undefined"
+        ? window?.nostr
+        : null
+      : null;
     const windowHasNip04 = typeof nostrApi?.nip04?.decrypt === "function";
     const windowHasNip44 =
       (nostrApi?.nip44 && typeof nostrApi.nip44.decrypt === "function") ||
@@ -749,8 +909,17 @@ class SubscriptionsManager {
       (!signerHasNip44 && !windowHasNip44 && requiresNip44) ||
       (!signerHasNip04 && !windowHasNip04 && requiresNip04)
     ) {
+      if (!allowPermissionPrompt) {
+        const error = new Error(
+          "Decrypt permissions are required to read subscriptions."
+        );
+        error.code = "subscriptions-permission-required";
+        return { ok: false, error };
+      }
       try {
-        const permissionResult = await requestDefaultExtensionPermissions();
+        const permissionResult = await requestDefaultExtensionPermissions(
+          DEFAULT_NIP07_ENCRYPTION_METHODS,
+        );
         if (!permissionResult?.ok) {
           const error =
             permissionResult?.error instanceof Error
@@ -798,13 +967,19 @@ class SubscriptionsManager {
     }
 
     if (nostrApi) {
+      const decrypterOptions = {
+        priority: NIP07_PRIORITY.HIGH,
+        timeoutMs: 12000,
+        retryMultiplier: 1,
+      };
+
       if (typeof nostrApi.nip04?.decrypt === "function") {
         registerDecryptor("nip04", (payload) =>
           runNip07WithRetry(
             () => nostrApi.nip04.decrypt(userPubkey, payload),
             {
               label: "nip04.decrypt",
-              priority: NIP07_PRIORITY.HIGH,
+              ...decrypterOptions,
             },
           ),
         );
@@ -821,7 +996,7 @@ class SubscriptionsManager {
               () => nip44.decrypt(userPubkey, payload),
               {
                 label: "nip44.decrypt",
-                priority: NIP07_PRIORITY.HIGH,
+                ...decrypterOptions,
               },
             ),
           );
@@ -835,7 +1010,7 @@ class SubscriptionsManager {
               () => nip44v2.decrypt(userPubkey, payload),
               {
                 label: "nip44.v2.decrypt",
-                priority: NIP07_PRIORITY.HIGH,
+                ...decrypterOptions,
               },
             ),
           );
@@ -845,7 +1020,7 @@ class SubscriptionsManager {
                 () => nip44v2.decrypt(userPubkey, payload),
                 {
                   label: "nip44.v2.decrypt",
-                  priority: NIP07_PRIORITY.HIGH,
+                  ...decrypterOptions,
                 },
               ),
             );
@@ -954,8 +1129,9 @@ class SubscriptionsManager {
   }
 
   /**
-   * Encrypt (NIP-04) + publish the updated subscription set
+   * Encrypt (prefer NIP-44 v2, fallback to NIP-04) + publish the updated subscription set
    * as kind=30000 with ["d", "subscriptions"] to be replaceable.
+   * The published event includes an ["encrypted", "<scheme>"] tag.
    */
   async publishSubscriptionList(userPubkey) {
     if (!userPubkey) {
@@ -979,7 +1155,9 @@ class SubscriptionsManager {
     }
 
     if (signer.type === "extension") {
-      const permissionResult = await requestDefaultExtensionPermissions();
+      const permissionResult = await requestDefaultExtensionPermissions(
+        DEFAULT_NIP07_ENCRYPTION_METHODS,
+      );
       if (!permissionResult.ok) {
         userLogger.warn(
           "[SubscriptionsManager] Signer permissions denied while updating subscriptions.",
@@ -1087,13 +1265,6 @@ class SubscriptionsManager {
       userLogger.error("Failed to sign subscription list:", signErr);
       throw signErr;
     }
-
-    const sanitizeRelayList = (candidate) =>
-      Array.isArray(candidate)
-        ? candidate
-            .map((url) => (typeof url === "string" ? url.trim() : ""))
-            .filter(Boolean)
-        : [];
 
     const writeRelays = sanitizeRelayList(nostrClient.writeRelays);
     const fallbackRelays = writeRelays.length

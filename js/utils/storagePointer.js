@@ -8,7 +8,7 @@ export function normalizeStoragePointer(value) {
   return safeTrim(value);
 }
 
-export function parseStoragePointer(value) {
+function parseStoragePointer(value) {
   const normalized = normalizeStoragePointer(value);
   if (!normalized) {
     return null;
@@ -38,7 +38,7 @@ export function buildStoragePointerValue({ provider, prefix } = {}) {
   return `${normalizedProvider}:${normalizedPrefix}`;
 }
 
-export function deriveStoragePrefixFromUrl(url) {
+function deriveStoragePrefixFromUrl(url) {
   const trimmed = safeTrim(url);
   if (!trimmed || !/^https?:\/\//i.test(trimmed)) {
     return "";

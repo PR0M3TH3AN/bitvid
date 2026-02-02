@@ -1,6 +1,6 @@
 // js/ui/moderationCopy.js
 
-export function buildModerationReasonText(context) {
+function buildModerationReasonText(context) {
   if (!context) {
     return "";
   }
@@ -31,7 +31,7 @@ export function buildModerationReasonText(context) {
   return combined.charAt(0).toUpperCase() + combined.slice(1);
 }
 
-export function buildHiddenSummaryLabel(context) {
+function buildHiddenSummaryLabel(context) {
   if (!context) {
     return "";
   }

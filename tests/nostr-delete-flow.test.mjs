@@ -8,10 +8,11 @@ await (async function testDeleteFlowPublishesDeletionFlag() {
   const client = new NostrClient();
   client.hydrateVideoHistory = async () => {};
 
-  const pubkey = "PUBKEY123";
+  const pubkey = "0000000000000000000000000000000000000000000000000000000000000001";
   const videoRootId = "root-abc";
+  const baseVideoId = "0000000000000000000000000000000000000000000000000000000000000002";
   const baseVideo = {
-    id: "evt-original",
+    id: baseVideoId,
     pubkey,
     created_at: 1_700_000_000,
     version: 3,
@@ -75,8 +76,10 @@ await (async function testDeleteFlowPublishesDeletionFlag() {
   client.revertVideo = async (event) => {
     revertCalls.push(event);
     const created_at = baseVideo.created_at + 500 + revertCalls.length;
+    // Use valid hex ID for revert event to ensure e-tag logic works
+    const revertEventId = "000000000000000000000000000000000000000000000000000000000000000" + (3 + revertCalls.length);
     const revertEvent = {
-      id: `revert-${revertCalls.length}`,
+      id: revertEventId,
       kind: 30078,
       pubkey,
       created_at,

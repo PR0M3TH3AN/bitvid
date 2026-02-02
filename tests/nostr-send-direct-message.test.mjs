@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { after } from "node:test";
 
 const RELAY_URL = "wss://relay.unit.test";
+
+after(() => {
+  setTimeout(() => process.exit(0), 100);
+});
 
 test("sendDirectMessage succeeds with private key signer and no extension", async () => {
   const previousCanonical = globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__;

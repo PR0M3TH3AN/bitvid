@@ -150,29 +150,31 @@ To run **bitvid** locally:
    npm ci
    ```
 
-3. Build the project:
+3. Start the application:
 
    ```bash
-   npm run build
+   npm start
    ```
 
-   (This generates `css/tailwind.generated.css`, which is gitignored and required for styling.)
+   This command builds the project (generating `css/tailwind.generated.css`) and starts a local server.
 
-4. Start a local server:
-   - Using Python:
-     ```bash
-     python -m http.server 8000
-     ```
-   - Or with Node.js:
-     ```bash
-     npx serve
-     ```
+4. Open the site in your browser:
 
-5. Open the site in your browser:
+   ```
+   http://localhost:3000
+   ```
 
-```
-http://localhost:8000
-```
+   _Note: If you prefer manual steps, you can run `npm run build` followed by `npx serve dist`._
+
+#### Quick Reference
+
+- **Run unit tests**: `npm run test:unit`
+- **Format code**: `npm run format` (CSS, HTML, MD, Config)
+- **Lint code**: `npm run lint` (Styles, Tokens, Hex - no JS logic)
+
+### Dev Container
+
+This project includes a `.devcontainer` configuration. If you use VS Code, you can open the project in a container to get a pre-configured environment with all dependencies installed.
 
 ### Developer Quickstart
 
@@ -226,13 +228,14 @@ To quickly view the location of these artifacts:
 
 Use these artifacts to inspect the UI state at the moment of failure and diagnose rendering issues or regressions.
 
-### Send your first video post
+### Quickstart: Send your first video post
 
-Use the event builders in `js/nostrEventSchemas.js` (the source of truth for all event definitions) to construct valid video notes. See [`docs/nostr-event-schemas.md`](docs/nostr-event-schemas.md) for full schema documentation.
+To programmatically publish videos, use the event builders in `js/nostrEventSchemas.js` (the source of truth for all event definitions) to construct valid video notes. See [`docs/nostr-event-schemas.md`](docs/nostr-event-schemas.md) for full schema documentation.
 
 ```javascript
 import { buildVideoPostEvent } from "./js/nostrEventSchemas.js";
 
+// Ensure dependencies are installed (npm ci)
 // 1. Build the event object (useful for inspection or custom publishing)
 const event = buildVideoPostEvent({
   // Provide your hex pubkey (not npub)
@@ -243,7 +246,7 @@ const event = buildVideoPostEvent({
     version: 3,
     title: "My First Video",
     videoRootId: "my-first-video", // Logical ID, matches the d-tag
-    url: "https://example.com/video.mp4",
+    url: "https://example.com/video.mp4", // The builder automatically derives the required 's' storage tag from this URL
     description: "This is a test video post sent via the SDK."
     // magnet: "magnet:?xt=urn:btih:..." // Optional fallback (provide the raw magnet string)
   }
@@ -283,7 +286,7 @@ package scripts to keep formatting, linting, and generated output consistent:
 - **Core scripts:**
 
   ```bash
-  npm run format    # normalize CSS/HTML/JS/MD sources with Prettier + tailwindcss plugin
+  npm run format    # normalize CSS/HTML/MD/Config sources with Prettier + tailwindcss plugin
   npm run lint:css  # enforce design token usage and guard against raw hex colors
   npm run build     # run the Tailwind build locally (output remains gitignored)
   ```
@@ -312,7 +315,7 @@ commands from the repo root:
 1. Install dependencies (only required after cloning or when packages change):
 
    ```bash
-   npm install
+   npm ci
    ```
 
 2. Rebuild the Tailwind bundle for local verification (the output stays
@@ -429,8 +432,11 @@ artifacts now that the deploy pipeline owns the build step.
     preparing a new deployment.
   - See [`docs/instance-config.md`](docs/instance-config.md) for a full
     reference of every setting and how to tune it.
-  - Flip `IS_DEV_MODE` to `false` before shipping production builds. The flag
-    flows into `js/config.js` as `isDevMode`, seeds the
+  - `IS_DEV_MODE` and `IS_VERBOSE_DEV_MODE` default to `false` for production.
+    If you need dev logging in a staging or QA build without editing source,
+    inject `window.__BITVID_DEV_MODE_OVERRIDE__` and/or
+    `window.__BITVID_VERBOSE_DEV_MODE_OVERRIDE__` before `js/config.js` loads.
+    The flag flows into `js/config.js` as `isDevMode`, seeds the
     `window.__BITVID_DEV_MODE__` global for inline scripts, and gates whether the
     dev logging channel emits to the console. See
     [`docs/logging.md`](docs/logging.md) for rollout guidance.

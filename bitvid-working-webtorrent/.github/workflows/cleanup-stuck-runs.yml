@@ -1,0 +1,72 @@
+name: Cleanup stuck workflow runs
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cancel stuck workflow runs
+        uses: actions/github-script@v7
+        env:
+          STALE_THRESHOLD_HOURS: '2'
+        with:
+          script: |
+            const thresholdHours = Number(process.env.STALE_THRESHOLD_HOURS || 2);
+            const thresholdMs = thresholdHours * 60 * 60 * 1000;
+            const now = Date.now();
+
+            const statuses = ['queued', 'in_progress'];
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const staleRuns = [];
+
+            for (const status of statuses) {
+              const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
+                owner,
+                repo,
+                status,
+                per_page: 100,
+              });
+
+              for (const run of runs) {
+                const createdAt = Date.parse(run.created_at);
+                if (Number.isNaN(createdAt)) {
+                  core.warning(`Skipping run ${run.id} (${run.name}) due to invalid created_at.`);
+                  continue;
+                }
+
+                const ageMs = now - createdAt;
+                if (ageMs > thresholdMs) {
+                  staleRuns.push({
+                    id: run.id,
+                    name: run.name,
+                    status: run.status,
+                    created_at: run.created_at,
+                    html_url: run.html_url,
+                  });
+                }
+              }
+            }
+
+            if (staleRuns.length === 0) {
+              core.info(`No runs older than ${thresholdHours} hours found in queued/in_progress.`);
+              return;
+            }
+
+            core.info(`Found ${staleRuns.length} stale runs older than ${thresholdHours} hours.`);
+
+            for (const run of staleRuns) {
+              core.info(`Canceling run ${run.id} (${run.name}) status=${run.status} created_at=${run.created_at} url=${run.html_url}`);
+              await github.request('POST /repos/{owner}/{repo}/actions/runs/{run_id}/force-cancel', {
+                owner,
+                repo,
+                run_id: run.id,
+              });
+            }

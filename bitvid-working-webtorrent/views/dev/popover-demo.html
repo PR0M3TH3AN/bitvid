@@ -1,0 +1,316 @@
+<!-- views/dev/popover-demo.html -->
+<!DOCTYPE html>
+<html lang="en" data-ds="new">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Popover & Menu Demo • bitvid</title>
+    <link rel="stylesheet" href="../../css/tailwind.generated.css" />
+  </head>
+  <body class="bg-surface text-text">
+    <main class="mx-auto flex min-h-screen max-w-docs flex-col gap-12 px-lg py-xl">
+      <header class="bv-stack bv-stack--tight">
+        <h1 class="text-3xl font-semibold text-text-strong">Popover &amp; Menu Demo</h1>
+        <p class="text-muted">
+          This manual QA page mounts a sample video card and modal so you can verify
+          overlay menus with the shared popover engine. Review the implementation notes in
+          <a href="../../docs/menus.md" class="text-info hover:text-info-strong">docs/menus.md</a>
+          for architectural guidance.
+        </p>
+      </header>
+
+      <section class="space-y-6">
+        <h2 class="text-2xl font-semibold text-text">Video card</h2>
+        <article class="card overflow-hidden" data-demo-card>
+          <div class="relative">
+            <div class="ratio-16-9 bg-overlay-panel">
+              <div class="absolute inset-0 flex items-center justify-center gap-3 text-center">
+                <span class="rounded-full bg-overlay-black/60 px-3 py-1 text-xs uppercase tracking-wide text-text">
+                  Preview thumbnail
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              class="btn-ghost absolute right-3 top-3 inline-flex h-10 w-10 items-center justify-center text-lg"
+              aria-label="Open card menu"
+              data-demo-card-more
+            >
+              ⋮
+            </button>
+          </div>
+          <div class="bv-stack bv-stack--tight border-t border-border px-md py-md">
+            <h3 class="text-lg font-semibold text-text">Understanding overlay primitives</h3>
+            <p class="text-sm text-muted">
+              Tap the more button to open an actions menu rendered through
+              <code class="font-mono text-3xs text-info">createPopover</code>.
+            </p>
+          </div>
+        </article>
+      </section>
+
+      <section class="space-y-6">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+          <div class="bv-stack bv-stack--tight">
+            <h2 class="text-2xl font-semibold text-text">Search filters</h2>
+            <p class="text-sm text-muted">
+              Open the popover to review the MVP filter controls and keyboard
+              navigation behaviors.
+            </p>
+          </div>
+          <button
+            type="button"
+            class="btn-ghost"
+            data-demo-search-filters
+          >
+            Open filters
+          </button>
+        </div>
+      </section>
+
+      <section class="space-y-6">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <h2 class="text-2xl font-semibold text-text">Modal actions</h2>
+            <p class="text-sm text-muted">
+              Launch the demo modal to test menus layered above a backdrop.
+            </p>
+          </div>
+          <button
+            type="button"
+            class="btn"
+            data-demo-open-modal
+            aria-haspopup="dialog"
+            aria-controls="popoverDemoModal"
+          >
+            Open modal demo
+          </button>
+        </div>
+      </section>
+    </main>
+
+    <div
+      id="popoverDemoModal"
+      class="bv-modal hidden items-center"
+      role="dialog"
+      aria-modal="true"
+      aria-hidden="true"
+      aria-labelledby="popoverDemoModalTitle"
+      data-demo-modal
+    >
+      <div class="bv-modal-backdrop" data-variant="veil" data-demo-modal-backdrop></div>
+      <div
+        class="bv-modal__panel max-h-modal-shell overflow-y-auto space-y-6"
+        data-demo-modal-panel
+        tabindex="-1"
+      >
+        <div class="flex items-start justify-between gap-4">
+          <div class="bv-stack bv-stack--tight">
+            <h3 id="popoverDemoModalTitle" class="text-xl font-semibold text-text">
+              Modal context menu demo
+            </h3>
+            <p class="text-sm text-muted">
+              Use the menu button to confirm popovers behave while a modal is open.
+            </p>
+          </div>
+          <button
+            type="button"
+            class="btn-ghost"
+            aria-label="Close modal"
+            data-demo-modal-close
+          >
+            ✕
+          </button>
+        </div>
+        <div class="space-y-4">
+          <p class="text-sm text-text">
+            The popover below targets the modal action trigger. Confirm focus returns to the
+            trigger after closing the menu and that the modal backdrop remains intact.
+          </p>
+          <button
+            type="button"
+            class="btn"
+            data-demo-modal-more
+          >
+            Modal action menu
+          </button>
+        </div>
+        <div class="space-y-2 rounded-lg border border-border/60 bg-overlay-panel-soft p-4 text-sm text-muted">
+          <p class="font-semibold text-text">QA checklist</p>
+          <ul class="list-disc space-y-1 pl-5">
+            <li>Open the card and modal menus and verify they render inside the overlay root.</li>
+            <li>Resize the viewport; menus should reposition without clipping their trigger.</li>
+            <li>Confirm focus is restored to the trigger when each menu closes.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      import ensureOverlayRoot from "../../js/ui/overlay/overlayRoot.js";
+      import createPopover from "../../js/ui/overlay/popoverEngine.js";
+
+      const doc = document;
+      ensureOverlayRoot(doc);
+
+      function buildMenu({ container, heading, actions, close }) {
+        const panel = container.ownerDocument.createElement("div");
+        panel.className = "popover__panel bv-stack bv-stack--tight";
+
+        if (heading) {
+          const title = container.ownerDocument.createElement("p");
+          title.className = "text-xs font-semibold uppercase tracking-wide text-muted";
+          title.textContent = heading;
+          panel.appendChild(title);
+        }
+
+        const list = container.ownerDocument.createElement("div");
+        list.className = "menu space-y-1";
+
+        actions.forEach(({ label, action, variant }) => {
+          const item = container.ownerDocument.createElement("button");
+          item.type = "button";
+          item.className = "menu__item justify-between";
+          if (variant) {
+            item.dataset.variant = variant;
+          }
+          item.dataset.action = action;
+          item.textContent = label;
+          item.addEventListener("click", () => close({ restoreFocus: true }));
+          list.appendChild(item);
+        });
+
+        panel.appendChild(list);
+        container.append(panel);
+        return panel;
+      }
+
+      function wirePopover(trigger, config) {
+        if (!trigger) {
+          return null;
+        }
+
+        const popover = createPopover(
+          trigger,
+          ({ container, close }) =>
+            buildMenu({ container, close, heading: config.heading, actions: config.actions }),
+          {
+            document: trigger.ownerDocument,
+            placement: config.placement || "bottom-end",
+            restoreFocusOnClose: true,
+          },
+        );
+
+        trigger.addEventListener("click", async (event) => {
+          event.preventDefault();
+          await popover.open();
+        });
+
+        return popover;
+      }
+
+      const cardMoreButton = doc.querySelector("[data-demo-card-more]");
+      const cardPopover = wirePopover(cardMoreButton, {
+        heading: "Video actions",
+        actions: [
+          { label: "Play now", action: "play" },
+          { label: "Add to playlist", action: "playlist" },
+          { label: "Share link", action: "share" },
+          { label: "Report", action: "report", variant: "critical" },
+        ],
+      });
+
+      const filterButton = doc.querySelector("[data-demo-search-filters]");
+      const filterPopover = wirePopover(filterButton, {
+        heading: "Search filters",
+        actions: [
+          { label: "Sort by Date", action: "sort-date" },
+          { label: "Sort by Popularity", action: "sort-pop" },
+          { label: "Show NSFW", action: "nsfw" },
+        ],
+        placement: "bottom-start",
+      });
+
+      const modal = doc.querySelector("[data-demo-modal]");
+      const modalPanel = modal?.querySelector("[data-demo-modal-panel]");
+      const modalBackdrop = modal?.querySelector("[data-demo-modal-backdrop]");
+      const openModalButton = doc.querySelector("[data-demo-open-modal]");
+      const closeModalButton = modal?.querySelector("[data-demo-modal-close]");
+      const modalMoreButton = modal?.querySelector("[data-demo-modal-more]");
+
+      let modalPopover = null;
+
+      function trapScroll(active) {
+        const method = active ? "add" : "remove";
+        doc.documentElement.classList[method]("modal-open");
+        doc.body.classList[method]("modal-open");
+      }
+
+      function showModal() {
+        if (!modal) {
+          return;
+        }
+        modal.classList.remove("hidden");
+        modal.removeAttribute("hidden");
+        modal.setAttribute("aria-hidden", "false");
+        trapScroll(true);
+        if (typeof modalPanel?.focus === "function") {
+          modalPanel.focus({ preventScroll: true });
+        }
+      }
+
+      function hideModal({ reason } = {}) {
+        if (!modal) {
+          return;
+        }
+        if (modalPopover?.isOpen?.()) {
+          modalPopover.close({ restoreFocus: false });
+        }
+        modal.classList.add("hidden");
+        modal.setAttribute("hidden", "true");
+        modal.setAttribute("aria-hidden", "true");
+        trapScroll(false);
+        if (openModalButton && reason !== "restore-focus-skip") {
+          openModalButton.focus();
+        }
+      }
+
+      openModalButton?.addEventListener("click", (event) => {
+        event.preventDefault();
+        showModal();
+      });
+
+      closeModalButton?.addEventListener("click", (event) => {
+        event.preventDefault();
+        hideModal();
+      });
+
+      modalBackdrop?.addEventListener("click", () => hideModal());
+
+      modal?.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+          event.stopPropagation();
+          hideModal();
+        }
+      });
+
+      modalPopover = wirePopover(modalMoreButton, {
+        heading: "Modal actions",
+        actions: [
+          { label: "Pin video", action: "pin" },
+          { label: "Save for later", action: "save" },
+          { label: "Block channel", action: "block", variant: "critical" },
+        ],
+      });
+
+      // Keep popovers healthy when the DOM tears down.
+      doc.addEventListener("visibilitychange", () => {
+        if (doc.visibilityState === "hidden") {
+          cardPopover?.close?.({ restoreFocus: false });
+          filterPopover?.close?.({ restoreFocus: false });
+          modalPopover?.close?.({ restoreFocus: false });
+        }
+      });
+    </script>
+  </body>
+</html>

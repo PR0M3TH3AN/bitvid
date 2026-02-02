@@ -1,0 +1,12 @@
+saved_config.yaml
+repo-context.txt
+node_modules/
+src/webtorrent-docs/
+playwright-report/
+test-results/
+tests/visual/__snapshots__/
+artifacts/
+css/tailwind.generated.css
+ai/reports/
+*.log
+coverage/

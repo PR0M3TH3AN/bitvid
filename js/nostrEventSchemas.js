@@ -513,7 +513,7 @@ const BASE_SCHEMAS = {
       name: "d",
       value: SUBSCRIPTION_LIST_IDENTIFIER,
     },
-    appendTags: DEFAULT_APPEND_TAGS,
+    appendTags: [["encrypted", "nip44_v2"]],
     content: {
       format: "encrypted-tag-list",
       description:
@@ -522,7 +522,7 @@ const BASE_SCHEMAS = {
   },
   [NOTE_TYPES.USER_BLOCK_LIST]: {
     type: NOTE_TYPES.USER_BLOCK_LIST,
-    label: "User block list",
+    label: "User block list (legacy)",
     kind: 10000,
     identifierTag: {
       name: "d",
@@ -532,7 +532,7 @@ const BASE_SCHEMAS = {
     content: {
       format: "encrypted-tag-list",
       description:
-        "NIP-04/NIP-44 encrypted JSON array of mute tags per NIP-51 (e.g., [['p', <hex>], …]).",
+        "Legacy NIP-51 block list using custom d tag. Migrated to standard Mute List (kind 10000).",
     },
   },
   [NOTE_TYPES.HASHTAG_PREFERENCES]: {
@@ -604,7 +604,7 @@ const BASE_SCHEMAS = {
     appendTags: DEFAULT_APPEND_TAGS,
     content: {
       format: "text",
-      description: "Optional content (often encrypted) with public p tags.",
+      description: "Standard NIP-51 Mute List. Public mutes in 'p' tags, private blocks in encrypted content.",
     },
   },
   [NOTE_TYPES.DELETION]: {
@@ -2405,12 +2405,22 @@ export function buildSubscriptionListEvent(params) {
   if (identifierName && identifierValue) {
     tags.push([identifierName, identifierValue]);
   }
+  appendSchemaTags(tags, schema);
   const normalizedEncryption =
     typeof encryption === "string" ? encryption.trim() : "";
   if (normalizedEncryption) {
-    tags.push(["encrypted", normalizedEncryption]);
+    let updated = false;
+    for (const tag of tags) {
+      if (Array.isArray(tag) && tag[0] === "encrypted") {
+        tag[1] = normalizedEncryption;
+        updated = true;
+        break;
+      }
+    }
+    if (!updated) {
+      tags.push(["encrypted", normalizedEncryption]);
+    }
   }
-  appendSchemaTags(tags, schema);
 
   const event = {
     kind: schema?.kind ?? 30000,

@@ -58,6 +58,7 @@ const TRUSTED_MUTE_HIDE_HELPER_TEXT =
   "Reaching this count hides cards (with “Show anyway”); lower signals only blur thumbnails or block autoplay.";
 const TYPING_INDICATOR_TTL_SECONDS = 15;
 const TYPING_INDICATOR_COOLDOWN_MS = 4000;
+const DIRECT_MESSAGES_BATCH_DELAY_MS = 250;
 
 const ADD_PROFILE_CANCELLATION_CODES = new Set([
   "login-cancelled",
@@ -1194,6 +1195,7 @@ export class ProfileModalController {
       onTogglePrivacy: callbacks.onTogglePrivacy || noop,
       onOpenRelays: callbacks.onOpenRelays || noop,
       onPublishDmRelayPreferences: callbacks.onPublishDmRelayPreferences || noop,
+      onRequestPermissionPrompt: callbacks.onRequestPermissionPrompt || noop,
     };
 
     this.profileModal = null;
@@ -1251,6 +1253,9 @@ export class ProfileModalController {
     this.addRelayButton = null;
     this.restoreRelaysButton = null;
     this.relayHealthPanel = null;
+    this.relayHealthSummary = null;
+    this.relayHealthCounts = null;
+    this.relayHealthMessage = null;
     this.relayHealthList = null;
     this.relayHealthStatus = null;
     this.relayHealthRefreshButton = null;
@@ -1314,14 +1319,32 @@ export class ProfileModalController {
     this.walletStatusText = null;
     this.profileWalletStatusText = null;
     this.hashtagStatusText = null;
+    this.hashtagBackgroundLoading = false;
     this.hashtagInterestList = null;
     this.hashtagInterestEmpty = null;
     this.hashtagInterestInput = null;
     this.addHashtagInterestButton = null;
+    this.profileHashtagInterestRefreshBtn = null;
     this.hashtagDisinterestList = null;
     this.hashtagDisinterestEmpty = null;
     this.hashtagDisinterestInput = null;
     this.addHashtagDisinterestButton = null;
+    this.profileHashtagDisinterestRefreshBtn = null;
+    this.subscriptionsStatusText = null;
+    this.subscriptionsBackgroundLoading = false;
+    this.permissionPromptCta = null;
+    this.permissionPromptCtaMessage = null;
+    this.permissionPromptCtaButton = null;
+    this.permissionPromptCtaState = {
+      visible: false,
+      message: "",
+      buttonLabel: "Enable permissions",
+      busy: false,
+    };
+    this.profileSubscriptionsRefreshBtn = null;
+    this.profileFriendsRefreshBtn = null;
+    this.profileBlockedRefreshBtn = null;
+    this.profileRelayRefreshBtn = null;
     this.moderationSettingsCard = null;
     this.moderationBlurInput = null;
     this.moderationAutoplayInput = null;
@@ -1340,6 +1363,7 @@ export class ProfileModalController {
     this.adminModeratorList = null;
     this.addModeratorButton = null;
     this.moderatorInput = null;
+    this.adminModeratorsRefreshBtn = null;
     this.adminModeratorsSection = null;
     this.adminModeratorsEmpty = null;
     this.adminAddModeratorButton = null;
@@ -1349,6 +1373,7 @@ export class ProfileModalController {
     this.whitelistList = null;
     this.addWhitelistButton = null;
     this.whitelistInput = null;
+    this.adminWhitelistRefreshBtn = null;
     this.adminWhitelistSection = null;
     this.adminWhitelistEmpty = null;
     this.adminWhitelistList = null;
@@ -1359,6 +1384,7 @@ export class ProfileModalController {
     this.blacklistList = null;
     this.addBlacklistButton = null;
     this.blacklistInput = null;
+    this.adminBlacklistRefreshBtn = null;
     this.adminBlacklistSection = null;
     this.adminBlacklistEmpty = null;
     this.adminBlacklistList = null;
@@ -1373,8 +1399,11 @@ export class ProfileModalController {
     this.directMessagesLastActor = null;
     this.directMessagesSubscription = null;
     this.directMessagesUnsubscribes = [];
+    this.directMessagesRenderTimeout = null;
+    this.pendingDirectMessagesUpdate = null;
     this.pendingMessagesRender = null;
     this.messagesStatusClearTimeout = null;
+    this.profileMessagesRenderToken = 0;
     this.dmPrivacyToggleTouched = false;
     this.dmReadReceiptCache = new Set();
     this.dmTypingLastSentAt = 0;
@@ -1412,8 +1441,8 @@ export class ProfileModalController {
       this.subscriptionsService &&
       typeof this.subscriptionsService.on === "function"
     ) {
-      this.subscriptionsService.on("change", () => {
-        void this.populateSubscriptionsList();
+      this.subscriptionsService.on("change", (detail) => {
+        this.handleSubscriptionsChange(detail);
       });
     }
 
@@ -1494,6 +1523,12 @@ export class ProfileModalController {
     this.profileModalPaneWrapper =
       this.profileModalRoot?.querySelector("[data-profile-mobile-pane]") || null;
     this.profileModal = this.profileModalRoot;
+    this.permissionPromptCta =
+      document.getElementById("profilePermissionPrompt") || null;
+    this.permissionPromptCtaMessage =
+      document.getElementById("profilePermissionPromptMessage") || null;
+    this.permissionPromptCtaButton =
+      document.getElementById("profilePermissionPromptButton") || null;
     this.closeButton = document.getElementById("closeProfileModal") || null;
     this.profileModalBackButton =
       document.getElementById("profileModalBack") || null;
@@ -1564,6 +1599,12 @@ export class ProfileModalController {
       document.getElementById("restoreRelaysBtn") || null;
     this.relayHealthPanel =
       document.getElementById("relayHealthPanel") || null;
+    this.relayHealthSummary =
+      document.getElementById("relayHealthSummary") || null;
+    this.relayHealthCounts =
+      document.getElementById("relayHealthCounts") || null;
+    this.relayHealthMessage =
+      document.getElementById("relayHealthMessage") || null;
     this.relayHealthList =
       document.getElementById("relayHealthList") || null;
     this.relayHealthStatus =
@@ -1572,20 +1613,28 @@ export class ProfileModalController {
       document.getElementById("relayHealthRefreshBtn") || null;
     this.relayHealthTelemetryToggle =
       document.getElementById("relayHealthTelemetryOptIn") || null;
+    this.profileRelayRefreshBtn =
+      document.getElementById("relayListRefreshBtn") || null;
 
     this.subscriptionList =
       document.getElementById("subscriptionsList") || null;
     this.subscriptionListEmpty =
       document.getElementById("subscriptionsEmpty") || null;
+    this.profileSubscriptionsRefreshBtn =
+      document.getElementById("subscriptionsRefreshBtn") || null;
     this.friendList = document.getElementById("friendsList") || null;
     this.friendListEmpty = document.getElementById("friendsEmpty") || null;
     this.friendInput = document.getElementById("friendsInput") || null;
     this.addFriendButton = document.getElementById("addFriendBtn") || null;
+    this.profileFriendsRefreshBtn =
+      document.getElementById("friendsRefreshBtn") || null;
 
     this.blockList = document.getElementById("blockedList") || null;
     this.blockListEmpty = document.getElementById("blockedEmpty") || null;
     this.blockInput = document.getElementById("blockedInput") || null;
     this.addBlockedButton = document.getElementById("addBlockedBtn") || null;
+    this.profileBlockedRefreshBtn =
+      document.getElementById("blockedRefreshBtn") || null;
 
     this.profileMessagesPane =
       document.getElementById("profilePaneMessages") || null;
@@ -1629,16 +1678,7 @@ export class ProfileModalController {
       document.getElementById("profileMessagesPrivacyToggle") || null;
     this.profileMessagesPrivacyMode =
       document.getElementById("profileMessagesPrivacyMode") || null;
-    this.profileMessagesRelayList =
-      document.getElementById("profileMessagesRelayList") || null;
-    this.profileMessagesRelayInput =
-      document.getElementById("profileMessagesRelayInput") || null;
-    this.profileMessagesRelayAddButton =
-      document.getElementById("profileMessagesRelayAdd") || null;
-    this.profileMessagesRelayPublishButton =
-      document.getElementById("profileMessagesRelayPublish") || null;
-    this.profileMessagesRelayStatus =
-      document.getElementById("profileMessagesRelayStatus") || null;
+    this.cacheDmRelayElements();
     this.profileMessagesUnreadDot =
       document.getElementById("profileMessagesUnreadDot") || null;
     this.dmAppShellContainer =
@@ -1698,6 +1738,8 @@ export class ProfileModalController {
       document.getElementById("profileHashtagInterestInput") || null;
     this.addHashtagInterestButton =
       document.getElementById("profileAddHashtagInterestBtn") || null;
+    this.profileHashtagInterestRefreshBtn =
+      document.getElementById("profileHashtagInterestRefreshBtn") || null;
     this.hashtagDisinterestList =
       document.getElementById("profileHashtagDisinterestList") || null;
     this.hashtagDisinterestEmpty =
@@ -1706,6 +1748,11 @@ export class ProfileModalController {
       document.getElementById("profileHashtagDisinterestInput") || null;
     this.addHashtagDisinterestButton =
       document.getElementById("profileAddHashtagDisinterestBtn") || null;
+    this.profileHashtagDisinterestRefreshBtn =
+      document.getElementById("profileHashtagDisinterestRefreshBtn") || null;
+    this.subscriptionsStatusText =
+      document.getElementById("subscriptionsStatus") || null;
+    this.applyPermissionPromptCtaState();
 
     this.profileRelayList = this.relayList;
     this.profileRelayInput = this.relayInput;
@@ -1774,6 +1821,8 @@ export class ProfileModalController {
       document.getElementById("adminAddModeratorBtn") || null;
     this.moderatorInput =
       document.getElementById("adminModeratorInput") || null;
+    this.adminModeratorsRefreshBtn =
+      document.getElementById("adminModeratorsRefreshBtn") || null;
 
     this.storageUnlockBtn = document.getElementById("profileStorageUnlockBtn") || null;
     this.storageSaveBtn = document.getElementById("storageSaveBtn") || null;
@@ -1815,6 +1864,8 @@ export class ProfileModalController {
       document.getElementById("adminAddWhitelistBtn") || null;
     this.whitelistInput =
       document.getElementById("adminWhitelistInput") || null;
+    this.adminWhitelistRefreshBtn =
+      document.getElementById("adminWhitelistRefreshBtn") || null;
     this.blacklistSection =
       document.getElementById("adminBlacklistSection") || null;
     this.blacklistEmpty =
@@ -1825,6 +1876,33 @@ export class ProfileModalController {
       document.getElementById("adminAddBlacklistBtn") || null;
     this.blacklistInput =
       document.getElementById("adminBlacklistInput") || null;
+    this.adminBlacklistRefreshBtn =
+      document.getElementById("adminBlacklistRefreshBtn") || null;
+
+    const ensureAriaLabel = (button, label) => {
+      if (!(button instanceof HTMLElement)) {
+        return;
+      }
+      if (!button.getAttribute("aria-label")) {
+        button.setAttribute("aria-label", label);
+      }
+    };
+
+    ensureAriaLabel(this.profileRelayRefreshBtn, "Refresh relay list");
+    ensureAriaLabel(
+      this.profileHashtagInterestRefreshBtn,
+      "Refresh interest hashtags",
+    );
+    ensureAriaLabel(
+      this.profileHashtagDisinterestRefreshBtn,
+      "Refresh disinterest hashtags",
+    );
+    ensureAriaLabel(this.profileSubscriptionsRefreshBtn, "Refresh subscriptions");
+    ensureAriaLabel(this.profileFriendsRefreshBtn, "Refresh friends");
+    ensureAriaLabel(this.profileBlockedRefreshBtn, "Refresh muted & blocked users");
+    ensureAriaLabel(this.adminModeratorsRefreshBtn, "Refresh moderators");
+    ensureAriaLabel(this.adminWhitelistRefreshBtn, "Refresh whitelist");
+    ensureAriaLabel(this.adminBlacklistRefreshBtn, "Refresh blacklist");
 
     this.adminWhitelistSection = this.whitelistSection;
     this.adminWhitelistEmpty = this.whitelistEmpty;
@@ -2197,6 +2275,63 @@ export class ProfileModalController {
 
   handleLinkPreviewToggle(enabled) {
     setLinkPreviewAutoFetch(Boolean(enabled));
+  }
+
+  cacheDmRelayElements() {
+    this.profileMessagesRelayList =
+      document.getElementById("profileMessagesRelayList") || null;
+    this.profileMessagesRelayInput =
+      document.getElementById("profileMessagesRelayInput") || null;
+    this.profileMessagesRelayAddButton =
+      document.getElementById("profileMessagesRelayAdd") || null;
+    this.profileMessagesRelayPublishButton =
+      document.getElementById("profileMessagesRelayPublish") || null;
+    this.profileMessagesRelayStatus =
+      document.getElementById("profileMessagesRelayStatus") || null;
+  }
+
+  bindDmRelayControls() {
+    const bindOnce = (element, eventName, handler, key) => {
+      if (!(element instanceof HTMLElement)) {
+        return;
+      }
+      const datasetKey = key || "dmRelayBound";
+      if (element.dataset[datasetKey] === "true") {
+        return;
+      }
+      element.dataset[datasetKey] = "true";
+      element.addEventListener(eventName, handler);
+    };
+
+    bindOnce(
+      this.profileMessagesRelayAddButton,
+      "click",
+      () => {
+        void this.handleAddDmRelayPreference();
+      },
+      "dmRelayAddBound",
+    );
+
+    bindOnce(
+      this.profileMessagesRelayInput,
+      "keydown",
+      (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          void this.handleAddDmRelayPreference();
+        }
+      },
+      "dmRelayInputBound",
+    );
+
+    bindOnce(
+      this.profileMessagesRelayPublishButton,
+      "click",
+      () => {
+        void this.handlePublishDmRelayPreferences();
+      },
+      "dmRelayPublishBound",
+    );
   }
 
   async refreshDmRelayPreferences({ force = false } = {}) {
@@ -3471,6 +3606,8 @@ export class ProfileModalController {
         return "We couldn’t create secure wrapper keys for NIP-17 delivery.";
       case "extension-permission-denied":
         return "Please grant your Nostr extension permission to send messages.";
+      case "extension-encryption-permission-denied":
+        return "Please grant your Nostr extension encryption permission to send messages.";
       case "missing-actor-pubkey":
         return "We couldn’t determine your public key to send this message.";
       case "nostr-uninitialized":
@@ -4334,7 +4471,50 @@ export class ProfileModalController {
       ? this.normalizeHexPubkey(actorPubkey)
       : this.resolveActiveDmActor();
 
+    const renderToken = (this.profileMessagesRenderToken += 1);
+    const renderThreads = (threadsToRender) => {
+      this.profileMessagesList.innerHTML = "";
+
+      if (!threadsToRender.length) {
+        this.profileMessagesList.classList.add("hidden");
+        this.profileMessagesList.setAttribute("hidden", "");
+        void this.renderDirectMessageConversation();
+        return;
+      }
+
+      for (const thread of threadsToRender) {
+        const item = this.createDirectMessageThreadItem(thread);
+        if (item) {
+          this.profileMessagesList.appendChild(item);
+        }
+      }
+
+      const activeRecipient = this.resolveActiveDmRecipient();
+      const hasActiveRecipient =
+        activeRecipient &&
+        threadsToRender.some((thread) => thread.remoteHex === activeRecipient);
+
+      if (threadsToRender.length && !hasActiveRecipient) {
+        this.setDirectMessageRecipient(threadsToRender[0].remoteHex, {
+          reason: "thread-default",
+        });
+        const conversationId = this.buildDmConversationId(
+          normalizedActor,
+          threadsToRender[0].remoteHex,
+        );
+        this.setFocusedDmConversation(conversationId);
+      } else if (hasActiveRecipient) {
+        this.updateMessageThreadSelection(activeRecipient);
+      }
+
+      this.profileMessagesList.classList.remove("hidden");
+      this.profileMessagesList.removeAttribute("hidden");
+      void this.renderDirectMessageConversation();
+    };
+
     const threads = this.groupDirectMessages(messages, normalizedActor);
+    renderThreads(threads);
+
     const remoteKeys = new Set();
     for (const thread of threads) {
       if (thread.remoteHex) {
@@ -4347,48 +4527,28 @@ export class ProfileModalController {
       this.services.batchFetchProfiles &&
       typeof this.services.batchFetchProfiles === "function"
     ) {
-      try {
-        await this.services.batchFetchProfiles(remoteKeys);
-      } catch (error) {
-        devLogger.warn(
-          "[profileModal] Failed to fetch DM profile metadata:",
-          error,
-        );
-      }
+      Promise.resolve(this.services.batchFetchProfiles(remoteKeys))
+        .then(() => {
+          if (this.profileMessagesRenderToken !== renderToken) {
+            return;
+          }
+          const latestMessages = Array.isArray(this.directMessagesCache)
+            ? this.directMessagesCache
+            : messages;
+          const latestActor = this.resolveActiveDmActor() || normalizedActor;
+          const refreshedThreads = this.groupDirectMessages(
+            latestMessages,
+            latestActor,
+          );
+          renderThreads(refreshedThreads);
+        })
+        .catch((error) => {
+          devLogger.warn(
+            "[profileModal] Failed to fetch DM profile metadata:",
+            error,
+          );
+        });
     }
-
-    this.profileMessagesList.innerHTML = "";
-
-    if (!threads.length) {
-      this.profileMessagesList.classList.add("hidden");
-      this.profileMessagesList.setAttribute("hidden", "");
-      void this.renderDirectMessageConversation();
-      return;
-    }
-
-    for (const thread of threads) {
-      const item = this.createDirectMessageThreadItem(thread);
-      if (item) {
-        this.profileMessagesList.appendChild(item);
-      }
-    }
-
-    const activeRecipient = this.resolveActiveDmRecipient();
-    const hasActiveRecipient =
-      activeRecipient &&
-      threads.some((thread) => thread.remoteHex === activeRecipient);
-
-    if (threads.length && !hasActiveRecipient) {
-      this.setDirectMessageRecipient(threads[0].remoteHex, {
-        reason: "thread-default",
-      });
-    } else if (hasActiveRecipient) {
-      this.updateMessageThreadSelection(activeRecipient);
-    }
-
-    this.profileMessagesList.classList.remove("hidden");
-    this.profileMessagesList.removeAttribute("hidden");
-    void this.renderDirectMessageConversation();
   }
 
   async renderDmAppShell(messages, { actorPubkey = null } = {}) {
@@ -4408,6 +4568,8 @@ export class ProfileModalController {
       activeThread,
       timeline,
     } = await this.buildDmConversationData(snapshot, { actorPubkey });
+
+    this.setFocusedDmConversation(activeConversationId);
 
     const currentRecipient = this.resolveActiveDmRecipient();
     if (!currentRecipient && activeThread?.remoteHex) {
@@ -4492,6 +4654,11 @@ export class ProfileModalController {
         },
         onToggleTypingIndicators: (enabled) => {
           this.handleTypingIndicatorsToggle(enabled);
+        },
+        onOpenSettings: () => {
+          this.cacheDmRelayElements();
+          this.bindDmRelayControls();
+          this.populateDmRelayPreferences();
         },
       });
     } catch (error) {
@@ -4969,28 +5136,49 @@ export class ProfileModalController {
     this.updateMessagesReloadState();
   }
 
-  handleDirectMessagesUpdated(detail = {}) {
-    if (
-      this.activeMessagesRequest &&
-      detail?.reason !== "load-incremental"
-    ) {
+  clearDirectMessagesUpdateQueue() {
+    if (this.directMessagesRenderTimeout) {
+      const clearTimeoutFn =
+        typeof window !== "undefined" && typeof window.clearTimeout === "function"
+          ? window.clearTimeout.bind(window)
+          : clearTimeout;
+      clearTimeoutFn(this.directMessagesRenderTimeout);
+      this.directMessagesRenderTimeout = null;
+    }
+    this.pendingDirectMessagesUpdate = null;
+  }
+
+  scheduleDirectMessagesRender(payload = null) {
+    if (!payload) {
       return;
     }
 
-    const messages = Array.isArray(detail?.messages)
-      ? detail.messages
-      : [];
-    this.directMessagesCache = messages;
+    this.pendingDirectMessagesUpdate = payload;
 
-    const actor = this.resolveActiveDmActor();
-    if (!actor) {
-      this.setMessagesLoadingState("unauthenticated");
+    if (this.directMessagesRenderTimeout) {
       return;
     }
 
-    this.directMessagesLastActor = actor;
+    const scheduleTimeout =
+      typeof window !== "undefined" && typeof window.setTimeout === "function"
+        ? window.setTimeout.bind(window)
+        : setTimeout;
 
-    void this.renderProfileMessages(messages, { actorPubkey: actor })
+    this.directMessagesRenderTimeout = scheduleTimeout(() => {
+      this.directMessagesRenderTimeout = null;
+      this.flushDirectMessagesRender();
+    }, DIRECT_MESSAGES_BATCH_DELAY_MS);
+  }
+
+  flushDirectMessagesRender() {
+    const pending = this.pendingDirectMessagesUpdate;
+    this.pendingDirectMessagesUpdate = null;
+    if (!pending) {
+      return;
+    }
+
+    const { messages, actorPubkey, reason } = pending;
+    void this.renderProfileMessages(messages, { actorPubkey })
       .then(() => {
         if (!messages.length) {
           this.setMessagesLoadingState("empty");
@@ -4998,8 +5186,6 @@ export class ProfileModalController {
           this.setMessagesLoadingState("ready");
         }
 
-        const reason =
-          typeof detail?.reason === "string" ? detail.reason : "";
         if (reason === "subscription") {
           this.setMessagesAnnouncement("New direct message received.");
         } else if (reason === "load") {
@@ -5018,11 +5204,40 @@ export class ProfileModalController {
       });
   }
 
+  handleDirectMessagesUpdated(detail = {}) {
+    if (
+      this.activeMessagesRequest &&
+      detail?.reason !== "load-incremental"
+    ) {
+      return;
+    }
+
+    const messages = Array.isArray(detail?.messages)
+      ? detail.messages
+      : [];
+    this.directMessagesCache = messages;
+
+    const actor = this.resolveActiveDmActor();
+    if (!actor) {
+      this.setMessagesLoadingState("unauthenticated");
+      this.clearDirectMessagesUpdateQueue();
+      return;
+    }
+
+    this.directMessagesLastActor = actor;
+    this.scheduleDirectMessagesRender({
+      messages,
+      actorPubkey: actor,
+      reason: typeof detail?.reason === "string" ? detail.reason : "",
+    });
+  }
+
   handleDirectMessagesCleared() {
     if (this.activeMessagesRequest) {
       return;
     }
 
+    this.clearDirectMessagesUpdateQueue();
     this.directMessagesCache = [];
     this.setDirectMessageRecipient(null, { reason: "clear" });
     if (this.profileMessagesList instanceof HTMLElement) {
@@ -5049,6 +5264,15 @@ export class ProfileModalController {
     const error = detail?.error || detail?.failure || detail;
     const reason = detail?.context?.reason || "";
     const errorCode = error?.code || "";
+    const errorMessage =
+      typeof error === "string"
+        ? error
+        : typeof error?.message === "string"
+          ? error.message
+          : "";
+    const requiresNip44Decryptor =
+      typeof errorMessage === "string" &&
+      errorMessage.includes("Gift wrap events require a NIP-44 decryptor");
 
     const isBenign =
       reason === "no-decryptors" ||
@@ -5065,6 +5289,21 @@ export class ProfileModalController {
     }
 
     if (this.activeMessagesRequest) {
+      return;
+    }
+
+    if (requiresNip44Decryptor) {
+      const nip44Message =
+        "NIP-17 direct messages require a NIP-44-capable signer or extension. Unlock or update your extension to continue.";
+      if (!this.directMessagesCache.length) {
+        this.setMessagesLoadingState("error", {
+          message: nip44Message,
+        });
+        return;
+      }
+
+      this.setMessagesAnnouncement(nip44Message);
+      this.updateMessagesReloadState();
       return;
     }
 
@@ -5138,6 +5377,12 @@ export class ProfileModalController {
       });
     }
 
+    if (this.permissionPromptCtaButton instanceof HTMLElement) {
+      this.permissionPromptCtaButton.addEventListener("click", () => {
+        this.callbacks.onRequestPermissionPrompt({ controller: this });
+      });
+    }
+
     Object.entries(this.navButtons).forEach(([name, button]) => {
       if (button instanceof HTMLElement) {
         button.addEventListener("click", () => {
@@ -5155,6 +5400,27 @@ export class ProfileModalController {
     if (this.restoreRelaysButton instanceof HTMLElement) {
       this.restoreRelaysButton.addEventListener("click", () => {
         void this.handleRestoreRelays();
+      });
+    }
+
+    if (this.profileRelayRefreshBtn instanceof HTMLElement) {
+      this.profileRelayRefreshBtn.addEventListener("click", () => {
+        const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
+        if (!activeHex) {
+          return;
+        }
+        const service = this.services.relayManager;
+        if (!service || typeof service.loadRelayList !== "function") {
+          return;
+        }
+        void service
+          .loadRelayList(activeHex)
+          .then(() => {
+            this.populateProfileRelays();
+          })
+          .catch((error) => {
+            devLogger.warn("[profileModal] Failed to refresh relay list:", error);
+          });
       });
     }
 
@@ -5176,6 +5442,27 @@ export class ProfileModalController {
       });
     }
 
+    if (this.profileBlockedRefreshBtn instanceof HTMLElement) {
+      this.profileBlockedRefreshBtn.addEventListener("click", () => {
+        const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
+        if (!activeHex) {
+          return;
+        }
+        const blocksService = this.services.userBlocks;
+        if (!blocksService || typeof blocksService.loadBlocks !== "function") {
+          return;
+        }
+        void blocksService
+          .loadBlocks(activeHex)
+          .then(() => {
+            this.populateBlockedList();
+          })
+          .catch((error) => {
+            devLogger.warn("[profileModal] Failed to refresh blocked list:", error);
+          });
+      });
+    }
+
     if (this.blockInput instanceof HTMLElement) {
       this.blockInput.addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
@@ -5185,10 +5472,93 @@ export class ProfileModalController {
       });
     }
 
+    if (this.profileSubscriptionsRefreshBtn instanceof HTMLElement) {
+      this.profileSubscriptionsRefreshBtn.addEventListener("click", () => {
+        const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
+        if (!activeHex) {
+          return;
+        }
+        const service = this.subscriptionsService;
+        if (!service || typeof service.loadSubscriptions !== "function") {
+          return;
+        }
+        void service
+          .loadSubscriptions(activeHex, { allowPermissionPrompt: true })
+          .then(() => {
+            void this.populateSubscriptionsList();
+          })
+          .catch((error) => {
+            devLogger.warn(
+              "[profileModal] Failed to refresh subscriptions list:",
+              error,
+            );
+          });
+      });
+    }
+
+    if (this.profileFriendsRefreshBtn instanceof HTMLElement) {
+      this.profileFriendsRefreshBtn.addEventListener("click", () => {
+        const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
+        if (!activeHex) {
+          return;
+        }
+        const moderationService = this.moderationService;
+        const refreshPromise =
+          moderationService &&
+          typeof moderationService.ensureViewerContactsLoaded === "function"
+            ? moderationService.ensureViewerContactsLoaded(activeHex)
+            : this.subscriptionsService &&
+              typeof this.subscriptionsService.ensureLoaded === "function"
+            ? this.subscriptionsService.ensureLoaded(activeHex)
+            : null;
+
+        void Promise.resolve(refreshPromise)
+          .then(() => {
+            this.populateFriendsList();
+          })
+          .catch((error) => {
+            devLogger.warn("[profileModal] Failed to refresh friends list:", error);
+          });
+      });
+    }
+
     if (this.addHashtagInterestButton instanceof HTMLElement) {
       this.addHashtagInterestButton.addEventListener("click", () => {
         void this.handleAddHashtagPreference("interest");
       });
+    }
+
+    const handleHashtagRefresh = () => {
+      const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
+      if (!activeHex) {
+        return;
+      }
+      const service = this.hashtagPreferencesService;
+      if (!service || typeof service.load !== "function") {
+        return;
+      }
+      void service
+        .load(activeHex, { allowPermissionPrompt: true })
+        .catch((error) => {
+        devLogger.warn(
+          "[profileModal] Failed to refresh hashtag preferences:",
+          error,
+        );
+      });
+    };
+
+    if (this.profileHashtagInterestRefreshBtn instanceof HTMLElement) {
+      this.profileHashtagInterestRefreshBtn.addEventListener(
+        "click",
+        handleHashtagRefresh,
+      );
+    }
+
+    if (this.profileHashtagDisinterestRefreshBtn instanceof HTMLElement) {
+      this.profileHashtagDisinterestRefreshBtn.addEventListener(
+        "click",
+        handleHashtagRefresh,
+      );
     }
 
     if (this.hashtagInterestInput instanceof HTMLElement) {
@@ -5253,26 +5623,7 @@ export class ProfileModalController {
       });
     }
 
-    if (this.profileMessagesRelayAddButton instanceof HTMLElement) {
-      this.profileMessagesRelayAddButton.addEventListener("click", () => {
-        void this.handleAddDmRelayPreference();
-      });
-    }
-
-    if (this.profileMessagesRelayInput instanceof HTMLElement) {
-      this.profileMessagesRelayInput.addEventListener("keydown", (event) => {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          void this.handleAddDmRelayPreference();
-        }
-      });
-    }
-
-    if (this.profileMessagesRelayPublishButton instanceof HTMLElement) {
-      this.profileMessagesRelayPublishButton.addEventListener("click", () => {
-        void this.handlePublishDmRelayPreferences();
-      });
-    }
+    this.bindDmRelayControls();
 
     if (this.profileMessageSendButton instanceof HTMLElement) {
       this.profileMessageSendButton.addEventListener("click", () => {
@@ -5414,6 +5765,21 @@ export class ProfileModalController {
       });
     }
 
+    if (this.adminModeratorsRefreshBtn instanceof HTMLElement) {
+      this.adminModeratorsRefreshBtn.addEventListener("click", () => {
+        const service = this.services.accessControl;
+        if (!service || typeof service.refresh !== "function") {
+          return;
+        }
+        void service
+          .refresh()
+          .then(() => this.refreshAdminPaneState())
+          .catch((error) => {
+            devLogger.warn("[profileModal] Failed to refresh moderators:", error);
+          });
+      });
+    }
+
     if (this.moderatorInput instanceof HTMLElement) {
       this.moderatorInput.addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
@@ -5429,6 +5795,21 @@ export class ProfileModalController {
       });
     }
 
+    if (this.adminWhitelistRefreshBtn instanceof HTMLElement) {
+      this.adminWhitelistRefreshBtn.addEventListener("click", () => {
+        const service = this.services.accessControl;
+        if (!service || typeof service.refresh !== "function") {
+          return;
+        }
+        void service
+          .refresh()
+          .then(() => this.refreshAdminPaneState())
+          .catch((error) => {
+            devLogger.warn("[profileModal] Failed to refresh whitelist:", error);
+          });
+      });
+    }
+
     if (this.whitelistInput instanceof HTMLElement) {
       this.whitelistInput.addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
@@ -5441,6 +5822,21 @@ export class ProfileModalController {
     if (this.addBlacklistButton instanceof HTMLElement) {
       this.addBlacklistButton.addEventListener("click", () => {
         void this.handleAdminListMutation("blacklist", "add");
+      });
+    }
+
+    if (this.adminBlacklistRefreshBtn instanceof HTMLElement) {
+      this.adminBlacklistRefreshBtn.addEventListener("click", () => {
+        const service = this.services.accessControl;
+        if (!service || typeof service.refresh !== "function") {
+          return;
+        }
+        void service
+          .refresh()
+          .then(() => this.refreshAdminPaneState())
+          .catch((error) => {
+            devLogger.warn("[profileModal] Failed to refresh blacklist:", error);
+          });
       });
     }
 
@@ -5806,23 +6202,157 @@ export class ProfileModalController {
     }
   }
 
-  async invokeAddAccountCallback(loginResult) {
-    if (typeof this.callbacks.onAddAccount !== "function") {
+  async handleAddProfile(payload = {}) {
+    const loginResult =
+      payload && typeof payload === "object" ? payload.loginResult : null;
+
+    if (!loginResult) {
+      devLogger.warn(
+        "[ProfileModalController] Ignoring add profile callback without an authentication result.",
+      );
       return;
     }
 
     try {
-      await this.callbacks.onAddAccount({
-        controller: this,
-        loginResult,
+      const { pubkey, authType: loginAuthType, providerId } =
+        typeof loginResult === "object" && loginResult
+          ? loginResult
+          : { pubkey: loginResult };
+
+      const detailAuthType =
+        typeof loginResult?.detail?.authType === "string"
+          ? loginResult.detail.authType
+          : null;
+      const detailProviderId =
+        typeof loginResult?.detail?.providerId === "string"
+          ? loginResult.detail.providerId
+          : null;
+
+      const resolvedAuthType = (() => {
+        const candidates = [
+          detailAuthType,
+          loginAuthType,
+          detailProviderId,
+          providerId,
+        ];
+        for (const candidate of candidates) {
+          if (typeof candidate !== "string") {
+            continue;
+          }
+          const trimmed = candidate.trim();
+          if (trimmed) {
+            return trimmed;
+          }
+        }
+        return "nip07";
+      })();
+
+      const resolvedProviderId = (() => {
+        const candidates = [detailProviderId, providerId, resolvedAuthType];
+        for (const candidate of candidates) {
+          if (typeof candidate !== "string") {
+            continue;
+          }
+          const trimmed = candidate.trim();
+          if (trimmed) {
+            return trimmed;
+          }
+        }
+        return resolvedAuthType;
+      })();
+
+      const normalizedPubkey = this.normalizeHexPubkey(pubkey);
+      if (!normalizedPubkey) {
+        throw new Error(
+          "Received an invalid public key from the authentication provider.",
+        );
+      }
+
+      const savedProfiles = this.getSavedProfiles();
+      const alreadySaved = savedProfiles.some(
+        (entry) => this.normalizeHexPubkey(entry.pubkey) === normalizedPubkey,
+      );
+      if (alreadySaved) {
+        this.showSuccess("That profile is already saved on this device.");
+        return;
+      }
+
+      const npub = this.safeEncodeNpub(normalizedPubkey) || "";
+      let profileMeta = this.services.getProfileCacheEntry(normalizedPubkey)?.profile;
+
+      if (!profileMeta) {
+        await this.services.authService.loadOwnProfile(normalizedPubkey);
+        profileMeta = this.services.getProfileCacheEntry(normalizedPubkey)?.profile;
+      }
+
+      const name = profileMeta?.name || "";
+      const picture =
+        profileMeta?.picture || "assets/svg/default-profile.svg";
+
+      savedProfiles.push({
+        pubkey: normalizedPubkey,
+        npub,
+        name,
+        picture,
+        authType: resolvedAuthType,
+        providerId: resolvedProviderId,
       });
+
+      this.setSavedProfiles(savedProfiles, { persist: false, persistActive: false });
+      this.persistSavedProfiles({ persistActive: false });
+      this.renderSavedProfiles();
+
+      this.showSuccess("Profile added. Select it when you're ready to switch.");
     } catch (error) {
-      devLogger.warn(
-        "[ProfileModalController] onAddAccount callback threw:",
+      const cancellationCodes = new Set([
+        "login-cancelled",
+        "user-cancelled",
+        "modal-dismissed",
+      ]);
+      if (
+        error &&
+        typeof error === "object" &&
+        typeof error.code === "string" &&
+        cancellationCodes.has(error.code)
+      ) {
+        this.log("[ProfileModalController] Add profile flow cancelled.", error);
+        return;
+      }
+
+      devLogger.error(
+        "[ProfileModalController] Failed to add profile via authentication provider:",
         error,
       );
-      throw error;
+
+      const message = this.describeLoginErrorService(
+        error,
+        "Couldn't add that profile. Please try again.",
+      );
+
+      const rejectionError =
+        error instanceof Error
+          ? error
+          : new Error(message || "Couldn't add that profile. Please try again.");
+
+      if (message && rejectionError.message !== message) {
+        rejectionError.message = message;
+      }
+
+      if (
+        error &&
+        typeof error === "object" &&
+        error.code &&
+        !rejectionError.code
+      ) {
+        rejectionError.code = error.code;
+      }
+
+      throw rejectionError;
     }
+  }
+
+  async invokeAddAccountCallback(loginResult) {
+    return this.handleAddProfile({ loginResult });
   }
 
   renderSavedProfiles() {
@@ -6818,11 +7348,20 @@ export class ProfileModalController {
       this.populateStoragePane();
     } else if (target === "hashtags") {
       this.populateHashtagPreferences();
+      if (activeHex && this.hashtagPreferencesService) {
+        this.hashtagPreferencesService
+          .load(activeHex, { allowPermissionPrompt: true })
+          .catch(noop);
+      }
+      this.refreshHashtagBackgroundStatus();
     } else if (target === "subscriptions") {
       if (activeHex && this.subscriptionsService) {
-        this.subscriptionsService.loadSubscriptions(activeHex).catch(noop);
+        this.subscriptionsService
+          .loadSubscriptions(activeHex, { allowPermissionPrompt: true })
+          .catch(noop);
       }
       void this.populateSubscriptionsList();
+      this.refreshSubscriptionsBackgroundStatus();
     } else if (target === "blocked") {
       if (activeHex && this.services.userBlocks) {
         this.services.userBlocks.loadBlocks(activeHex).catch(noop);
@@ -6947,11 +7486,45 @@ export class ProfileModalController {
     this.relayHealthStatus.textContent = text;
   }
 
+  updateRelayHealthSummary(snapshot = []) {
+    if (!this.relayHealthCounts || !this.relayHealthMessage) {
+      return;
+    }
+
+    const entries = Array.isArray(snapshot) ? snapshot : [];
+    const total = entries.length;
+    const healthy = entries.filter((entry) => entry.connected).length;
+    const failed = Math.max(0, total - healthy);
+
+    this.relayHealthCounts.textContent = `${healthy} healthy • ${failed} failed`;
+
+    let message = "";
+    if (!total) {
+      message = "No relays configured.";
+    } else if (failed > 0) {
+      message =
+        failed === total
+          ? "All relays are unreachable. Check your connection or update your relay list."
+          : `${failed} relay${failed === 1 ? "" : "s"} unreachable. Playback and publishing may be delayed.`;
+    } else {
+      message = "All relays reachable.";
+    }
+
+    this.relayHealthMessage.className = "mt-1 text-xs text-muted";
+    if (failed > 0) {
+      this.relayHealthMessage.classList.add("text-status-warning");
+    } else if (total > 0) {
+      this.relayHealthMessage.classList.add("text-status-success");
+    }
+    this.relayHealthMessage.textContent = message;
+  }
+
   renderRelayHealthSnapshot(snapshot = []) {
     if (!this.relayHealthList) {
       return;
     }
 
+    this.updateRelayHealthSummary(snapshot);
     this.relayHealthList.innerHTML = "";
 
     if (!snapshot.length) {
@@ -7465,6 +8038,58 @@ export class ProfileModalController {
     };
   }
 
+  setPermissionPromptCtaState(nextState = {}) {
+    if (!nextState || typeof nextState !== "object") {
+      return;
+    }
+
+    this.permissionPromptCtaState = {
+      ...this.permissionPromptCtaState,
+      ...nextState,
+    };
+
+    this.applyPermissionPromptCtaState();
+  }
+
+  applyPermissionPromptCtaState() {
+    if (!(this.permissionPromptCta instanceof HTMLElement)) {
+      return;
+    }
+
+    const fallbackMessage =
+      "Enable permissions to load your subscriptions and hashtag preferences.";
+    const {
+      visible,
+      message,
+      buttonLabel,
+      busy,
+    } = this.permissionPromptCtaState || {};
+    const normalizedMessage =
+      typeof message === "string" && message.trim()
+        ? message.trim()
+        : fallbackMessage;
+
+    this.permissionPromptCta.classList.toggle("hidden", !visible);
+    this.permissionPromptCta.setAttribute("aria-hidden", (!visible).toString());
+
+    if (this.permissionPromptCtaMessage instanceof HTMLElement) {
+      this.permissionPromptCtaMessage.textContent = normalizedMessage;
+    }
+
+    if (this.permissionPromptCtaButton instanceof HTMLButtonElement) {
+      const normalizedLabel =
+        typeof buttonLabel === "string" && buttonLabel.trim()
+          ? buttonLabel.trim()
+          : "Enable permissions";
+      this.permissionPromptCtaButton.textContent = normalizedLabel;
+      this.permissionPromptCtaButton.disabled = Boolean(busy);
+      this.permissionPromptCtaButton.setAttribute(
+        "aria-busy",
+        busy ? "true" : "false",
+      );
+    }
+  }
+
   setHashtagStatus(message = "", tone = "muted") {
     if (!(this.hashtagStatusText instanceof HTMLElement)) {
       return;
@@ -7508,6 +8133,89 @@ export class ProfileModalController {
     }
   }
 
+  setSubscriptionsStatus(message = "", tone = "muted") {
+    if (!(this.subscriptionsStatusText instanceof HTMLElement)) {
+      return;
+    }
+
+    const classList = this.subscriptionsStatusText.classList;
+    classList.remove(
+      "text-status-success",
+      "text-status-warning",
+      "text-status-danger",
+      "text-status-info",
+      "text-muted",
+    );
+
+    const normalized =
+      typeof message === "string" && message.trim() ? message.trim() : "";
+
+    if (!normalized) {
+      this.subscriptionsStatusText.textContent = "";
+      this.subscriptionsStatusText.classList.add("text-muted", "hidden");
+      return;
+    }
+
+    this.subscriptionsStatusText.textContent = normalized;
+    this.subscriptionsStatusText.classList.remove("hidden");
+
+    switch (tone) {
+      case "success":
+        classList.add("text-status-success");
+        break;
+      case "warning":
+      case "error":
+        classList.add("text-status-warning");
+        break;
+      case "info":
+        classList.add("text-status-info");
+        break;
+      default:
+        classList.add("text-muted");
+        break;
+    }
+  }
+
+  refreshHashtagBackgroundStatus() {
+    const isBackground = this.hashtagPreferencesService?.backgroundLoading === true;
+    const statusText = this.hashtagStatusText?.textContent?.trim?.() || "";
+
+    if (isBackground && !this.hashtagBackgroundLoading) {
+      this.hashtagBackgroundLoading = true;
+      if (!statusText) {
+        this.setHashtagStatus("Loading in background…", "info");
+      }
+      return;
+    }
+
+    if (!isBackground && this.hashtagBackgroundLoading) {
+      if (statusText === "Loading in background…") {
+        this.setHashtagStatus("", "muted");
+      }
+      this.hashtagBackgroundLoading = false;
+    }
+  }
+
+  refreshSubscriptionsBackgroundStatus() {
+    const isBackground = this.subscriptionsService?.backgroundLoading === true;
+    const statusText = this.subscriptionsStatusText?.textContent?.trim?.() || "";
+
+    if (isBackground && !this.subscriptionsBackgroundLoading) {
+      this.subscriptionsBackgroundLoading = true;
+      if (!statusText) {
+        this.setSubscriptionsStatus("Loading in background…", "info");
+      }
+      return;
+    }
+
+    if (!isBackground && this.subscriptionsBackgroundLoading) {
+      if (statusText === "Loading in background…") {
+        this.setSubscriptionsStatus("", "muted");
+      }
+      this.subscriptionsBackgroundLoading = false;
+    }
+  }
+
   clearHashtagInputs() {
     if (this.hashtagInterestInput instanceof HTMLInputElement) {
       this.hashtagInterestInput.value = "";
@@ -7526,6 +8234,7 @@ export class ProfileModalController {
     if (!snapshot.interests.length && !snapshot.disinterests.length) {
       this.setHashtagStatus("", "muted");
     }
+    this.refreshHashtagBackgroundStatus();
   }
 
   renderHashtagList(type, tags) {
@@ -7843,7 +8552,45 @@ export class ProfileModalController {
       detail && typeof detail.preferences === "object"
         ? detail.preferences
         : detail;
+    const action = typeof detail?.action === "string" ? detail.action : "";
+
+    if (action === "background-loading") {
+      this.hashtagBackgroundLoading = true;
+      this.setHashtagStatus("Loading in background…", "info");
+    } else if (
+      (action === "sync" || action === "background-loaded" || action === "reset") &&
+      this.hashtagBackgroundLoading
+    ) {
+      const statusText = this.hashtagStatusText?.textContent?.trim?.() || "";
+      if (statusText === "Loading in background…") {
+        this.setHashtagStatus("", "muted");
+      }
+      this.hashtagBackgroundLoading = false;
+    }
+
     this.populateHashtagPreferences(preferences);
+    this.refreshHashtagBackgroundStatus();
+  }
+
+  handleSubscriptionsChange(detail = {}) {
+    const action = typeof detail?.action === "string" ? detail.action : "";
+
+    if (action === "background-loading") {
+      this.subscriptionsBackgroundLoading = true;
+      this.setSubscriptionsStatus("Loading in background…", "info");
+    } else if (
+      (action === "sync" || action === "background-loaded" || action === "reset") &&
+      this.subscriptionsBackgroundLoading
+    ) {
+      const statusText = this.subscriptionsStatusText?.textContent?.trim?.() || "";
+      if (statusText === "Loading in background…") {
+        this.setSubscriptionsStatus("", "muted");
+      }
+      this.subscriptionsBackgroundLoading = false;
+    }
+
+    void this.populateSubscriptionsList();
+    this.refreshSubscriptionsBackgroundStatus();
   }
 
   populateBlockedList(blocked = null) {
@@ -8037,12 +8784,14 @@ export class ProfileModalController {
     const service = this.subscriptionsService;
     if (!service) {
       this.clearSubscriptionsList();
+      this.refreshSubscriptionsBackgroundStatus();
       return;
     }
 
     const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
     if (!activeHex) {
       this.clearSubscriptionsList();
+      this.refreshSubscriptionsBackgroundStatus();
       return;
     }
 
@@ -8141,6 +8890,7 @@ export class ProfileModalController {
       if (!deduped.length) {
         this.subscriptionListEmpty.classList.remove("hidden");
         this.subscriptionList.classList.add("hidden");
+        this.refreshSubscriptionsBackgroundStatus();
         return;
       }
 
@@ -8237,6 +8987,7 @@ export class ProfileModalController {
           );
         }
       }
+      this.refreshSubscriptionsBackgroundStatus();
     } catch (error) {
       devLogger.warn("[profileModal] Failed to populate subscriptions list:", error);
     }
@@ -8766,8 +9517,11 @@ export class ProfileModalController {
         const message =
           mutationResult?.error?.code === "nip04-missing"
             ? "Your Nostr extension must support NIP-04 to manage private lists."
+            : mutationResult?.error?.code ===
+              "extension-encryption-permission-denied"
+            ? "Your Nostr extension must allow encryption to update your mute/block list."
             : mutationResult?.error?.message ||
-              "Failed to update your block list. Please try again.";
+              "Failed to update your mute/block list. Please try again.";
         context.error = mutationResult?.error || null;
         context.reason = mutationResult?.reason || "service-error";
         if (message) {
@@ -8786,7 +9540,9 @@ export class ProfileModalController {
       const message =
         error?.code === "nip04-missing"
           ? "Your Nostr extension must support NIP-04 to manage private lists."
-          : "Failed to update your block list. Please try again.";
+          : error?.code === "extension-encryption-permission-denied"
+          ? "Your Nostr extension must allow encryption to update your mute/block list."
+          : "Failed to update your mute/block list. Please try again.";
       this.showError(message);
     }
 
@@ -8829,15 +9585,18 @@ export class ProfileModalController {
       });
 
       if (mutationResult?.ok) {
-        this.showSuccess("Creator removed from your block list.");
+        this.showSuccess("Creator removed from your mute/block list.");
       } else if (mutationResult?.reason === "not-blocked") {
-        this.showSuccess("Creator already removed from your block list.");
+        this.showSuccess("Creator already removed from your mute/block list.");
       } else if (mutationResult?.error) {
         const message =
           mutationResult.error.code === "nip04-missing"
             ? "Your Nostr extension must support NIP-04 to manage private lists."
+            : mutationResult.error.code ===
+              "extension-encryption-permission-denied"
+            ? "Your Nostr extension must allow encryption to update your mute/block list."
             : mutationResult.error.message ||
-              "Failed to update your block list. Please try again.";
+              "Failed to update your mute/block list. Please try again.";
         if (message) {
           this.showError(message);
         }
@@ -8852,7 +9611,9 @@ export class ProfileModalController {
       const message =
         error?.code === "nip04-missing"
           ? "Your Nostr extension must support NIP-04 to manage private lists."
-          : "Failed to update your block list. Please try again.";
+          : error?.code === "extension-encryption-permission-denied"
+          ? "Your Nostr extension must allow encryption to update your mute/block list."
+          : "Failed to update your mute/block list. Please try again.";
       this.showError(message);
     }
   }
@@ -12751,7 +13512,9 @@ export class ProfileModalController {
         this.services.userBlocks.loadBlocks(activePubkey).catch(noop);
       }
       if (this.subscriptionsService) {
-        this.subscriptionsService.loadSubscriptions(activePubkey).catch(noop);
+        this.subscriptionsService
+          .loadSubscriptions(activePubkey, { allowPermissionPrompt: false })
+          .catch(noop);
       }
     }
 

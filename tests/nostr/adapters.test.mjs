@@ -25,7 +25,17 @@ test("createNsecAdapter wires signing and cipher capabilities", async () => {
   const canonicalTools = { ...nostrTools };
 
   try {
-    globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__ = canonicalTools;
+    try {
+      Object.defineProperty(globalThis, "__BITVID_CANONICAL_NOSTR_TOOLS__", {
+        value: canonicalTools,
+        writable: true,
+        configurable: true,
+      });
+    } catch (e) {
+      try {
+        globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__ = canonicalTools;
+      } catch (ignore) {}
+    }
     globalThis.NostrTools = canonicalTools;
     globalThis.nostrToolsReady = Promise.resolve({
       ok: true,
@@ -55,7 +65,17 @@ test("createNsecAdapter wires signing and cipher capabilities", async () => {
     if (previousCanonical === undefined) {
       delete globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__;
     } else {
-      globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__ = previousCanonical;
+      try {
+        Object.defineProperty(globalThis, "__BITVID_CANONICAL_NOSTR_TOOLS__", {
+          value: previousCanonical,
+          writable: true,
+          configurable: true,
+        });
+      } catch (e) {
+        try {
+          globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__ = previousCanonical;
+        } catch (ignore) {}
+      }
     }
 
     if (previousNostrTools === undefined) {

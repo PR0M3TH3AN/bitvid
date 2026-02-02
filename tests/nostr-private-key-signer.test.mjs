@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { describe, it, after } from "node:test";
 
-test("registerPrivateKeySigner exposes nip04 helpers", async () => {
-  const previousCanonical = globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__;
+describe("Nostr Private Key Signer", () => {
+  after(() => {
+    setTimeout(() => process.exit(0), 100);
+  });
+
+  it("registerPrivateKeySigner exposes nip04 helpers", async () => {
+    const previousCanonical = globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__;
   const previousNostrTools = globalThis.NostrTools;
   const previousReady = globalThis.nostrToolsReady;
 
@@ -77,4 +82,5 @@ test("registerPrivateKeySigner exposes nip04 helpers", async () => {
       globalThis.nostrToolsReady = previousReady;
     }
   }
+});
 });

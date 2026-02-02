@@ -1,7 +1,17 @@
 # Upgrade esbuild
 
-- **Current Version:** 0.25.12
-- **Latest Version:** 0.27.2
+## Status
+- **Current:** `0.25.12`
+- **Latest:** `0.27.2`
 
-**Status:** Major Upgrade Required
-**Reason:** 0.x version bump may contain breaking changes. Requires strict testing and separate PR.
+## Details
+`esbuild` 0.x versions may have breaking changes between minor versions.
+Used for build scripts (`scripts/build-dist.mjs`, `scripts/build-beacon.mjs`).
+
+## Plan
+1. Update `esbuild`.
+2. Run build scripts: `npm run build`, `npm run build:beacon`.
+3. Verify output bundles work correctly.
+
+## Guardrails
+- Build tool upgrade.

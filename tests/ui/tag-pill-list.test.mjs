@@ -4,7 +4,6 @@ import { JSDOM } from "jsdom";
 
 import {
   renderTagPillStrip,
-  updateTagPillStrip,
 } from "../../js/ui/components/tagPillList.js";
 
 test("renderTagPillStrip builds buttons with labels and icons", () => {
@@ -79,48 +78,4 @@ test("renderTagPillStrip wires the activation callback", () => {
   assert.equal(activations[0].tag, "#nostr");
   assert.equal(activations[0].button, buttons[0]);
   assert(activations[0].event instanceof document.defaultView.Event);
-});
-
-test("updateTagPillStrip replaces buttons and rewires handlers", () => {
-  const { document } = new JSDOM("<!DOCTYPE html>").window;
-  const firstActivations = [];
-  const secondActivations = [];
-
-  const { root, buttons: initialButtons } = renderTagPillStrip({
-    document,
-    tags: ["nostr"],
-    onTagActivate(tag) {
-      firstActivations.push(tag);
-    },
-  });
-
-  document.body.append(root);
-
-  initialButtons[0].click();
-  assert.deepEqual(firstActivations, ["#nostr"]);
-
-  const { buttons: updatedButtons } = updateTagPillStrip({
-    root,
-    document,
-    tags: ["video"],
-    onTagActivate(tag, { button }) {
-      secondActivations.push({ tag, button });
-    },
-    getTagState: () => "interest",
-  });
-
-  assert.equal(root.querySelectorAll("button").length, 1);
-  assert.equal(updatedButtons[0].dataset.tag, "#video");
-
-  const updatedIcon = updatedButtons[0].querySelector(".video-tag-pill__icon svg");
-  assert(updatedIcon, "updated button should contain the svg icon");
-  assert.equal(updatedButtons[0].dataset.preferenceState, "interest");
-  assert.equal(updatedButtons[0].dataset.variant, "success");
-
-  // Ensure the old handler is removed by dispatching a click on the detached button.
-  initialButtons[0].dispatchEvent(new document.defaultView.Event("click", { bubbles: true }));
-  assert.deepEqual(firstActivations, ["#nostr"]);
-
-  updatedButtons[0].click();
-  assert.deepEqual(secondActivations, [{ tag: "#video", button: updatedButtons[0] }]);
 });

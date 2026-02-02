@@ -2,6 +2,7 @@
 
 import { NostrClient } from "./client.js";
 import {
+  DEFAULT_NIP07_CORE_METHODS,
   DEFAULT_NIP07_ENCRYPTION_METHODS,
   DEFAULT_NIP07_PERMISSION_METHODS,
 } from "./nip07Permissions.js";
@@ -26,6 +27,7 @@ export function requestDefaultExtensionPermissions(
 
 export {
   NostrClient,
+  DEFAULT_NIP07_CORE_METHODS,
   DEFAULT_NIP07_ENCRYPTION_METHODS,
   DEFAULT_NIP07_PERMISSION_METHODS,
 };

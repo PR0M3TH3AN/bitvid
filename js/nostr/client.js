@@ -137,6 +137,7 @@ import {
   resolveDmRelaySelection,
 } from "../services/dmNostrService.js";
 import {
+  DEFAULT_NIP07_CORE_METHODS,
   DEFAULT_NIP07_ENCRYPTION_METHODS,
   DEFAULT_NIP07_PERMISSION_METHODS,
   NIP07_PRIORITY,
@@ -306,24 +307,26 @@ function resolveSignerCapabilities(signer) {
 
   return {
     sign:
-      typeof capabilities.sign === "boolean"
-        ? capabilities.sign
-        : typeof signer.signEvent === "function",
+      (typeof capabilities.sign === "boolean" && capabilities.sign) ||
+      typeof signer.signEvent === "function",
     nip44:
-      typeof capabilities.nip44 === "boolean"
-        ? capabilities.nip44
-        : typeof signer.nip44Encrypt === "function" ||
-          typeof signer.nip44Decrypt === "function",
+      (typeof capabilities.nip44 === "boolean" && capabilities.nip44) ||
+      typeof signer.nip44Encrypt === "function" ||
+      typeof signer.nip44Decrypt === "function",
     nip04:
-      typeof capabilities.nip04 === "boolean"
-        ? capabilities.nip04
-        : typeof signer.nip04Encrypt === "function" ||
-          typeof signer.nip04Decrypt === "function",
+      (typeof capabilities.nip04 === "boolean" && capabilities.nip04) ||
+      typeof signer.nip04Encrypt === "function" ||
+      typeof signer.nip04Decrypt === "function",
   };
 }
 
 function hydrateExtensionSignerCapabilities(signer) {
-  if (!signer || typeof signer !== "object" || signer.type !== "extension") {
+  if (!signer || typeof signer !== "object") {
+    return;
+  }
+
+  const signerType = typeof signer.type === "string" ? signer.type : "";
+  if (signerType !== "extension" && signerType !== "nip07") {
     return;
   }
 
@@ -355,7 +358,13 @@ function setActiveSigner(signer) {
 
   hydrateExtensionSignerCapabilities(signer);
   attachNipMethodAliases(signer);
-  signer.capabilities = resolveSignerCapabilities(signer);
+
+  const capsDescriptor = Object.getOwnPropertyDescriptor(signer, "capabilities");
+  const isGetter = capsDescriptor && typeof capsDescriptor.get === "function";
+
+  if (!isGetter) {
+    signer.capabilities = resolveSignerCapabilities(signer);
+  }
 
   const pubkey =
     typeof signer.pubkey === "string" && signer.pubkey.trim()
@@ -371,6 +380,18 @@ function setActiveSigner(signer) {
 function getActiveSigner() {
   const signer = getActiveSignerFromRegistry();
   hydrateExtensionSignerCapabilities(signer);
+  attachNipMethodAliases(signer);
+  if (signer && typeof signer === "object") {
+    const capsDescriptor = Object.getOwnPropertyDescriptor(
+      signer,
+      "capabilities",
+    );
+    const isGetter = capsDescriptor && typeof capsDescriptor.get === "function";
+
+    if (!isGetter) {
+      signer.capabilities = resolveSignerCapabilities(signer);
+    }
+  }
   return signer;
 }
 
@@ -385,6 +406,18 @@ function logoutSigner(pubkey) {
 function resolveActiveSigner(pubkey) {
   const signer = resolveActiveSignerFromRegistry(pubkey);
   hydrateExtensionSignerCapabilities(signer);
+  attachNipMethodAliases(signer);
+  if (signer && typeof signer === "object") {
+    const capsDescriptor = Object.getOwnPropertyDescriptor(
+      signer,
+      "capabilities",
+    );
+    const isGetter = capsDescriptor && typeof capsDescriptor.get === "function";
+
+    if (!isGetter) {
+      signer.capabilities = resolveSignerCapabilities(signer);
+    }
+  }
   return signer;
 }
 
@@ -395,6 +428,65 @@ function shouldRequestExtensionPermissions(signer) {
   return signer.type === "extension";
 }
 
+const PERMISSION_STATUS_AUTO_HIDE_MS = 12_000;
+const ENCRYPTION_METHOD_PREFIXES = ["nip04.", "nip44."];
+
+function hasEncryptionPermissionMethods(methods) {
+  if (!Array.isArray(methods)) {
+    return false;
+  }
+  return methods.some((method) =>
+    ENCRYPTION_METHOD_PREFIXES.some((prefix) => method.startsWith(prefix)),
+  );
+}
+
+function hasSigningPermissionMethods(methods) {
+  if (!Array.isArray(methods)) {
+    return false;
+  }
+  return methods.some(
+    (method) => method === "sign_event" || method === "get_public_key",
+  );
+}
+
+function resolvePermissionStatusMessage(methods, context) {
+  const normalizedContext =
+    typeof context === "string" ? context.trim().toLowerCase() : "";
+
+  if (normalizedContext === "dm") {
+    return "Approve the extension prompt to enable encrypted direct messages.";
+  }
+  if (normalizedContext === "lists") {
+    return "Approve the extension prompt to access your encrypted lists.";
+  }
+
+  const includesEncryption = hasEncryptionPermissionMethods(methods);
+  const includesSigning = hasSigningPermissionMethods(methods);
+
+  if (includesEncryption && includesSigning) {
+    return "Approve the extension prompt to enable signing and encrypted features (DMs, subscriptions, block lists).";
+  }
+  if (includesEncryption) {
+    return "Approve the extension prompt to enable encrypted features like DMs and private lists.";
+  }
+  if (includesSigning) {
+    return "Approve the extension prompt to enable signing.";
+  }
+
+  return "Approve the extension prompt to continue.";
+}
+
+const RELAY_CONNECT_TIMEOUT_MS = 5000;
+const RELAY_RECONNECT_BASE_DELAY_MS = 2000;
+const RELAY_RECONNECT_MAX_DELAY_MS = 60000;
+const RELAY_RECONNECT_MAX_ATTEMPTS = 5;
+const RELAY_BACKOFF_BASE_DELAY_MS = 1000;
+const RELAY_BACKOFF_MAX_DELAY_MS = 8000;
+const RELAY_CIRCUIT_BREAKER_THRESHOLD = 3;
+const RELAY_CIRCUIT_BREAKER_COOLDOWN_MS = 10 * 60 * 1000;
+const RELAY_FAILURE_WINDOW_MS = 5 * 60 * 1000;
+const RELAY_FAILURE_WINDOW_THRESHOLD = 3;
+const RELAY_SUMMARY_LOG_INTERVAL_MS = 30000;
 const EVENTS_CACHE_STORAGE_KEY = "bitvid:eventsCache:v1";
 // We use the policy TTL, but currently the storage backend is hardcoded to IDB (with localStorage fallback).
 // Future refactors should make EventsCacheStore dynamic based on CACHE_POLICIES[NOTE_TYPES.VIDEO_POST].storage.
@@ -462,6 +554,12 @@ class EventsCacheStore {
     return typeof indexedDB !== "undefined";
   }
 
+  /**
+   * Opens (or returns existing) connection to the IndexedDB database.
+   * Handles schema upgrades (creating object stores).
+   *
+   * @returns {Promise<IDBDatabase|null>} The database instance or null if not supported.
+   */
   async getDb() {
     if (!this.isSupported()) {
       return null;
@@ -507,6 +605,14 @@ class EventsCacheStore {
     return `ts:${timestamp}`;
   }
 
+  /**
+   * Pre-loads fingerprints of all persisted items into memory.
+   *
+   * This is critical for the "Incremental Persistence" strategy. By knowing
+   * what is already on disk (via fingerprints), we can avoid writing unchanged records.
+   *
+   * @param {IDBDatabase} db - The database instance.
+   */
   async ensureFingerprintsLoaded(db) {
     if (this.hasLoadedFingerprints || !db) {
       return;
@@ -618,10 +724,12 @@ class EventsCacheStore {
    * Only writes changes (diffs against fingerprints).
    *
    * @param {{events: Map, tombstones: Map, savedAt: number}} payload - The state to save.
+   * @param {Set<string>|null} [dirtyEventIds] - Optional set of event IDs that have changed.
+   * @param {Set<string>|null} [dirtyTombstoneKeys] - Optional set of tombstone keys that have changed.
    * @returns {Promise<{persisted: boolean, eventWrites: number, eventDeletes: number, tombstoneWrites: number, tombstoneDeletes: number}>}
    * Stats about the persistence operation.
    */
-  async persistSnapshot(payload) {
+  async persistSnapshot(payload, dirtyEventIds = null, dirtyTombstoneKeys = null) {
     const db = await this.getDb();
     if (!db) {
       return { persisted: false };
@@ -639,11 +747,29 @@ class EventsCacheStore {
     let eventDeletes = 0;
     let tombstoneWrites = 0;
     let tombstoneDeletes = 0;
+    let skipped = 0;
 
-    for (const [id, video] of events.entries()) {
-      if (!id) {
+    // Optimization: If dirtyEventIds is provided, only check those events.
+    // Otherwise, iterate over all events in the payload.
+    const eventsIterable =
+      dirtyEventIds instanceof Set
+        ? Array.from(dirtyEventIds).map((id) => [id, events.get(id)])
+        : events.entries();
+
+    for (const [id, video] of eventsIterable) {
+      if (!id || !video) {
         continue;
       }
+
+      if (
+        dirtyEventIds &&
+        !dirtyEventIds.has(id) &&
+        this.persistedEventFingerprints.has(id)
+      ) {
+        skipped++;
+        continue;
+      }
+
       const fingerprint = this.computeEventFingerprint(video);
       const prevFingerprint = this.persistedEventFingerprints.get(id);
       if (prevFingerprint === fingerprint) {
@@ -654,19 +780,44 @@ class EventsCacheStore {
       eventWrites++;
     }
 
-    for (const persistedId of Array.from(this.persistedEventFingerprints.keys())) {
-      if (events.has(persistedId)) {
-        continue;
+    // Optimization: Skip deletion scan if we are processing partial updates (dirtyEventIds)
+    // AND the total number of events hasn't decreased. This avoids checking 'has()' on thousands of items.
+    const shouldScanEventDeletions =
+      !dirtyEventIds || events.size < this.persistedEventFingerprints.size;
+
+    if (shouldScanEventDeletions) {
+      for (const persistedId of Array.from(
+        this.persistedEventFingerprints.keys()
+      )) {
+        if (events.has(persistedId)) {
+          continue;
+        }
+        eventsStore.delete(persistedId);
+        this.persistedEventFingerprints.delete(persistedId);
+        eventDeletes++;
       }
-      eventsStore.delete(persistedId);
-      this.persistedEventFingerprints.delete(persistedId);
-      eventDeletes++;
     }
 
-    for (const [key, timestamp] of tombstones.entries()) {
-      if (!key) {
+    // Optimization: If dirtyTombstoneKeys is provided, only check those.
+    const tombstonesIterable =
+      dirtyTombstoneKeys instanceof Set
+        ? Array.from(dirtyTombstoneKeys).map((key) => [key, tombstones.get(key)])
+        : tombstones.entries();
+
+    for (const [key, timestamp] of tombstonesIterable) {
+      if (!key || !Number.isFinite(timestamp)) {
         continue;
       }
+
+      if (
+        dirtyTombstones &&
+        !dirtyTombstones.has(key) &&
+        this.persistedTombstoneFingerprints.has(key)
+      ) {
+        skipped++;
+        continue;
+      }
+
       const fingerprint = this.computeTombstoneFingerprint(timestamp);
       const prevFingerprint = this.persistedTombstoneFingerprints.get(key);
       if (prevFingerprint === fingerprint) {
@@ -677,13 +828,21 @@ class EventsCacheStore {
       tombstoneWrites++;
     }
 
-    for (const persistedKey of Array.from(this.persistedTombstoneFingerprints.keys())) {
-      if (tombstones.has(persistedKey)) {
-        continue;
+    const shouldScanTombstoneDeletions =
+      !dirtyTombstoneKeys ||
+      tombstones.size < this.persistedTombstoneFingerprints.size;
+
+    if (shouldScanTombstoneDeletions) {
+      for (const persistedKey of Array.from(
+        this.persistedTombstoneFingerprints.keys()
+      )) {
+        if (tombstones.has(persistedKey)) {
+          continue;
+        }
+        tombstoneStore.delete(persistedKey);
+        this.persistedTombstoneFingerprints.delete(persistedKey);
+        tombstoneDeletes++;
       }
-      tombstoneStore.delete(persistedKey);
-      this.persistedTombstoneFingerprints.delete(persistedKey);
-      tombstoneDeletes++;
     }
 
     metaStore.put({ key: "meta", savedAt, version: 1 });
@@ -696,6 +855,7 @@ class EventsCacheStore {
       eventDeletes,
       tombstoneWrites,
       tombstoneDeletes,
+      skipped,
     };
   }
 }
@@ -971,8 +1131,8 @@ function buildDmFilters(actorPubkey, { since, until, limit } = {}) {
   const normalizedSince = Number.isFinite(since) ? Math.floor(since) : undefined;
   const normalizedUntil = Number.isFinite(until) ? Math.floor(until) : undefined;
 
-  const baseFilterPayload = (kind) => {
-    const payload = { kinds: [kind] };
+  const baseFilterPayload = (kinds) => {
+    const payload = { kinds: Array.isArray(kinds) ? kinds : [kinds] };
     if (normalizedLimit !== undefined) {
       payload.limit = normalizedLimit;
     }
@@ -986,20 +1146,15 @@ function buildDmFilters(actorPubkey, { since, until, limit } = {}) {
   };
 
   if (normalizedActor) {
-    const authorFilter = baseFilterPayload(4);
+    const authorFilter = baseFilterPayload(DM_EVENT_KINDS);
     authorFilter.authors = [normalizedActor];
     filters.push(authorFilter);
 
-    const directFilter = baseFilterPayload(4);
+    const directFilter = baseFilterPayload(DM_EVENT_KINDS);
     directFilter["#p"] = [normalizedActor];
     filters.push(directFilter);
-
-    const giftWrapFilter = baseFilterPayload(1059);
-    giftWrapFilter["#p"] = [normalizedActor];
-    filters.push(giftWrapFilter);
   } else {
-    const fallbackFilter = baseFilterPayload(DM_EVENT_KINDS[0]);
-    fallbackFilter.kinds = DM_EVENT_KINDS.slice();
+    const fallbackFilter = baseFilterPayload(DM_EVENT_KINDS);
     filters.push(fallbackFilter);
   }
 
@@ -1086,6 +1241,8 @@ export class NostrClient {
    * - State tracking (allEvents, activeMap).
    * - Signer negotiation (NIP-07, NIP-46, local).
    * - Background caching with IndexedDB.
+   *
+   * For a detailed architectural overview, see `docs/nostr-client-overview.md`.
    */
   constructor() {
     /**
@@ -1137,9 +1294,13 @@ export class NostrClient {
      * @public
      */
     this.tombstones = new Map();
+    this.dirtyEventIds = new Set();
+    this.dirtyTombstones = new Set();
 
     this.rootCreatedAtByRoot = new Map();
 
+    this.dirtyEventIds = new Set();
+    this.dirtyTombstones = new Set();
     this.hasRestoredLocalData = false;
     this.eventsCacheStore = new EventsCacheStore();
     this.syncMetadataStore = new SyncMetadataStore();
@@ -1261,6 +1422,13 @@ export class NostrClient {
     this.sessionActorCipherClosuresPrivateKey = null;
     this.countUnsupportedRelays = new Set();
     this.unreachableRelays = new Set();
+    this.relayBackoff = new Map();
+    this.relayFailureCounts = new Map();
+    this.relayFailureWindows = new Map();
+    this.relayCircuitBreakers = new Map();
+    this.relaySummaryLogTimestamps = new Map();
+    this.relayReconnectTimer = null;
+    this.relayReconnectAttempt = 0;
     this.isInitialized = false;
     this.nip46Client = null;
     this.pendingHandshakeCancel = null;
@@ -1301,6 +1469,11 @@ export class NostrClient {
 
     this.extensionPermissionCache =
       storedPermissions instanceof Set ? storedPermissions : new Set();
+    this.extensionReady = false;
+    this.extensionPermissionsGranted = this.hasCachedExtensionPermissions(
+      DEFAULT_NIP07_PERMISSION_METHODS,
+    );
+    this.extensionPermissionStatusHandler = null;
   }
 
   getStoredNip46Metadata() {
@@ -1906,8 +2079,16 @@ export class NostrClient {
     const maxAttempts = 3;
 
     // Optimistic check: if window.nostr is already there, use it immediately.
-    if (typeof window !== "undefined" && window.nostr) {
+    if (this.extensionReady && typeof window !== "undefined") {
+      extension = window.nostr || null;
+      if (!extension) {
+        this.extensionReady = false;
+      }
+    }
+
+    if (!extension && typeof window !== "undefined" && window.nostr) {
       extension = window.nostr;
+      this.extensionReady = true;
     } else {
       while (!extension && attempts < maxAttempts) {
         try {
@@ -1915,6 +2096,7 @@ export class NostrClient {
           const timeout = attempts === 0 ? 1500 : 3000;
           await waitForNip07Extension(timeout);
           extension = window.nostr;
+          this.extensionReady = Boolean(extension);
         } catch (waitError) {
           devLogger.log(
             `Timed out waiting for extension injection (attempt ${
@@ -1956,6 +2138,7 @@ export class NostrClient {
 
     const permissionResult = await this.ensureExtensionPermissions(
       DEFAULT_NIP07_PERMISSION_METHODS,
+      { context: "login", logMetrics: true, showStatus: false },
     );
     if (!permissionResult.ok) {
       const denialMessage =
@@ -2035,18 +2218,11 @@ export class NostrClient {
       }
     }
 
-    const adapter = await createNip07Adapter(extension);
+    const adapter = await createNip07Adapter(extension, {
+      preloadedPubkey: pubkey,
+    });
     adapter.pubkey = pubkey;
     setActiveSigner(adapter);
-
-    this.ensureExtensionPermissions(DEFAULT_NIP07_PERMISSION_METHODS).catch(
-      (err) => {
-        userLogger.warn(
-          "[nostr] Extension permissions were not fully granted after login:",
-          err,
-        );
-      },
-    );
 
     return { pubkey, signer: adapter };
   }
@@ -2713,6 +2889,7 @@ export class NostrClient {
     }
 
     this.tombstones.set(key, timestamp);
+    this.dirtyTombstones.add(key);
 
     const activeVideo = this.activeMap.get(key);
     if (activeVideo) {
@@ -2811,12 +2988,74 @@ export class NostrClient {
         // Ignore storage persistence issues in non-browser environments
       }
     }
+
+    this.extensionPermissionsGranted = this.hasCachedExtensionPermissions(
+      DEFAULT_NIP07_PERMISSION_METHODS,
+    );
   }
 
-  async ensureExtensionPermissions(methods = DEFAULT_NIP07_PERMISSION_METHODS) {
+  hasCachedExtensionPermissions(methods = DEFAULT_NIP07_PERMISSION_METHODS) {
+    if (!Array.isArray(methods)) {
+      return true;
+    }
+
+    const normalized = methods
+      .map((method) => normalizePermissionMethod(method))
+      .filter(Boolean);
+
+    if (!normalized.length) {
+      return true;
+    }
+
+    if (!this.extensionPermissionCache) {
+      return false;
+    }
+
+    return normalized.every((method) => this.extensionPermissionCache.has(method));
+  }
+
+  setExtensionPermissionStatusHandler(handler) {
+    this.extensionPermissionStatusHandler =
+      typeof handler === "function" ? handler : null;
+  }
+
+  emitExtensionPermissionStatus(status) {
+    if (typeof this.extensionPermissionStatusHandler !== "function") {
+      return;
+    }
+
+    try {
+      this.extensionPermissionStatusHandler(status);
+    } catch (error) {
+      devLogger.warn(
+        "[nostr] Extension permission status handler threw:",
+        error,
+      );
+    }
+  }
+
+  warmupExtension() {
+    const extension =
+      typeof window !== "undefined" && window && window.nostr ? window.nostr : null;
+    this.extensionReady = Boolean(extension);
+    this.extensionPermissionsGranted = this.hasCachedExtensionPermissions(
+      DEFAULT_NIP07_PERMISSION_METHODS,
+    );
+    return {
+      ready: this.extensionReady,
+      permissionsGranted: this.extensionPermissionsGranted,
+    };
+  }
+
+  async ensureExtensionPermissions(
+    methods = DEFAULT_NIP07_PERMISSION_METHODS,
+    options = {},
+  ) {
     if (!Array.isArray(methods)) {
       methods = [];
     }
+
+    const config = options && typeof options === "object" ? options : {};
 
     const normalized = Array.from(
       new Set(
@@ -2847,20 +3086,90 @@ export class NostrClient {
           return { ok: false, error: new Error("extension-unavailable") };
         }
       }
+      this.extensionReady =
+        typeof window !== "undefined" && window && Boolean(window.nostr);
+      this.extensionPermissionsGranted = this.hasCachedExtensionPermissions(
+        DEFAULT_NIP07_PERMISSION_METHODS,
+      );
       return { ok: true };
     }
 
     const extension = typeof window !== "undefined" ? window.nostr : null;
     if (!extension) {
+      this.extensionReady = false;
       return { ok: false, error: new Error("extension-unavailable") };
     }
+    this.extensionReady = true;
+
+    const statusHandler =
+      typeof config.onStatus === "function"
+        ? config.onStatus
+        : this.extensionPermissionStatusHandler;
+    const shouldShowStatus = config.showStatus !== false;
+    const statusMessage =
+      typeof config.statusMessage === "string" && config.statusMessage.trim()
+        ? config.statusMessage.trim()
+        : resolvePermissionStatusMessage(normalized, config.context);
+    const statusAutoHideMs = Number.isFinite(config.autoHideMs)
+      ? config.autoHideMs
+      : PERMISSION_STATUS_AUTO_HIDE_MS;
+    const shouldShowSpinner = config.showSpinner !== false;
+
+    if (statusHandler && shouldShowStatus && statusMessage) {
+      try {
+        statusHandler({
+          phase: "permission",
+          state: "prompt",
+          context:
+            typeof config.context === "string" ? config.context.trim() : "",
+          message: statusMessage,
+          methods: outstanding.slice(),
+          autoHideMs: statusAutoHideMs,
+          showSpinner: shouldShowSpinner,
+        });
+      } catch (error) {
+        devLogger.warn(
+          "[nostr] Failed to emit extension permission status:",
+          error,
+        );
+      }
+    }
+
+    const shouldLogMetrics = config.logMetrics === true;
+    const now =
+      typeof performance !== "undefined" &&
+      typeof performance.now === "function"
+        ? () => performance.now()
+        : () => Date.now();
+    const metricsStart = shouldLogMetrics ? now() : null;
 
     const enableResult = await requestEnablePermissions(extension, outstanding, {
       isDevMode,
     });
 
+    if (shouldLogMetrics && metricsStart !== null) {
+      const metricsContext =
+        typeof config.metricsLabel === "string" && config.metricsLabel.trim()
+          ? config.metricsLabel.trim()
+          : typeof config.context === "string" && config.context.trim()
+            ? config.context.trim()
+            : "permissions";
+      const durationMs = Math.max(0, Math.round(now() - metricsStart));
+      userLogger.info(
+        `[nostr] extension.enable duration (${metricsContext})`,
+        {
+          durationMs,
+          requestedCount: outstanding.length,
+          ok: Boolean(enableResult?.ok),
+        },
+      );
+    }
+
     if (enableResult?.ok) {
       this.markExtensionPermissions(outstanding);
+      this.extensionPermissionsGranted = this.hasCachedExtensionPermissions(
+        DEFAULT_NIP07_PERMISSION_METHODS,
+      );
       return enableResult;
     }
 
@@ -2929,11 +3238,19 @@ export class NostrClient {
       return existingSigner;
     }
 
+    // Optimization: Check if a signer was registered while we were waiting for the extension call
+    const raceWinner = resolveActiveSigner(extensionPubkey || normalizedPubkey);
+    if (raceWinner && typeof raceWinner.signEvent === "function") {
+      return raceWinner;
+    }
+
     if (typeof extension.signEvent !== "function") {
       return existingSigner;
     }
 
-    const adapter = await createNip07Adapter(extension);
+    const adapter = await createNip07Adapter(extension, {
+      preloadedPubkey: extensionPubkey,
+    });
     if (extensionPubkey) {
       adapter.pubkey = extensionPubkey;
     }
@@ -3629,6 +3946,8 @@ export class NostrClient {
     this.activeMap.clear();
     this.rootCreatedAtByRoot.clear();
     this.tombstones.clear();
+    this.dirtyEventIds.clear();
+    this.dirtyTombstones.clear();
 
     const tombstoneEntries =
       events instanceof Map && payload.tombstones instanceof Map
@@ -3680,9 +3999,24 @@ export class NostrClient {
       );
     }
 
+    this.dirtyEventIds.clear();
+    this.dirtyTombstones.clear();
+
     return this.allEvents.size > 0;
   }
 
+  /**
+   * Restores application state from the best available local cache.
+   *
+   * 1. Attempts to load from `IndexedDB` (preferred).
+   * 2. Falls back to `localStorage` if IDB fails or is empty.
+   * 3. Rehydrates `allEvents`, `activeMap`, and `tombstones`.
+   *
+   * This implements the "Stale-While-Revalidate" pattern: the UI renders
+   * immediately with this data while network requests proceed in the background.
+   *
+   * @returns {Promise<boolean>} True if data was successfully restored.
+   */
   async restoreLocalData() {
     if (this.hasRestoredLocalData) {
       return this.allEvents.size > 0;
@@ -3772,7 +4106,7 @@ export class NostrClient {
    * - Updates the `SyncMetadataStore` with the new max `created_at` on success.
    *
    * **Concurrency:**
-   * - Batches relay requests in chunks of 4 to avoid saturating network connections.
+   * - Batches relay requests in chunks of 8 to avoid saturating network connections.
    *
    * @param {object} params
    * @param {number} params.kind - The event kind to fetch (e.g. 10000 for mute list).
@@ -3780,6 +4114,7 @@ export class NostrClient {
    * @param {string} [params.dTag] - Optional d-tag for addressable events (NIP-33).
    * @param {string[]} [params.relayUrls] - List of relays to query. Defaults to client's configured relays.
    * @param {function} [params.fetchFn] - Custom fetch function (mocks or specialized logic). Defaults to `pool.list`.
+   * @param {number} [params.since] - Explicit start timestamp (overrides storage).
    * @param {number} [params.timeoutMs] - Optional per-relay timeout for list fetches; defaults to a higher list-friendly baseline.
    * @returns {Promise<import("nostr-tools").Event[]>} Deduplicated list of events found across all relays.
    */
@@ -3812,10 +4147,27 @@ export class NostrClient {
       : this.relays;
 
     const healthyCandidates = this.getHealthyRelays(relaysToUse);
+    let relayCandidates = healthyCandidates;
+    if (!healthyCandidates.length && relaysToUse.length) {
+      const sanitizedFallback = sanitizeRelayList(relaysToUse);
+      const defaultFallback = sanitizeRelayList(Array.from(DEFAULT_RELAY_URLS));
+      relayCandidates = sanitizedFallback.length
+        ? sanitizedFallback
+        : defaultFallback.length
+          ? defaultFallback
+          : sanitizeRelayList(Array.from(RELAY_URLS));
+      devLogger.warn(
+        "[fetchListIncrementally] Healthy relays exhausted; using fallback relay list for one-off fetch.",
+        {
+          requested: relaysToUse,
+          fallback: relayCandidates,
+        },
+      );
+    }
     const readPreferences = new Set(Array.isArray(this.readRelays) ? this.readRelays : []);
 
     // Sort relays: prefer user's read relays first
-    const sortedRelays = healthyCandidates.sort((a, b) => {
+    const sortedRelays = relayCandidates.sort((a, b) => {
       const aPreferred = readPreferences.has(a);
       const bPreferred = readPreferences.has(b);
       if (aPreferred && !bPreferred) return -1;
@@ -3842,7 +4194,7 @@ export class NostrClient {
     const pool = await this.ensurePool();
     const actualFetchFn = typeof fetchFn === "function"
       ? fetchFn
-      : (r, f) => pool.list([r], [f]);
+      : (r, f, timeout) => pool.list([r], [f], { timeout });
 
     const chunks = [];
     for (let i = 0; i < normalizedRelays.length; i += concurrencyLimit) {
@@ -3900,7 +4252,7 @@ export class NostrClient {
         try {
           // Wrap fetch with a timeout to prevent hanging on slow relays
           let events = await withRequestTimeout(
-            actualFetchFn(relayUrl, filter),
+            actualFetchFn(relayUrl, filter, listTimeoutMs),
             listTimeoutMs,
             null,
             `Fetch from ${relayUrl} timed out`
@@ -3935,7 +4287,7 @@ export class NostrClient {
             try {
               delete filter.since;
               const events = await withRequestTimeout(
-                actualFetchFn(relayUrl, filter),
+                actualFetchFn(relayUrl, filter, listTimeoutMs),
                 listTimeoutMs,
                 null,
                 `Full fetch fallback from ${relayUrl} timed out`
@@ -4194,6 +4546,16 @@ export class NostrClient {
    *
    * @returns {Promise<void>} Resolves when the relay pool is initialized and connections are attempted.
    */
+  /**
+   * Main entry point for the client.
+   *
+   * 1. Restores local state from IndexedDB (Stale-While-Revalidate).
+   * 2. Initializes the relay connection pool.
+   * 3. Connects to configured relays.
+   * 4. Restores any persistent remote signer sessions.
+   *
+   * @returns {Promise<void>} Resolves after the initial relay connection attempt completes.
+   */
   async init() {
     if (this.isInitialized) {
       return;
@@ -4218,11 +4580,16 @@ export class NostrClient {
         .filter((r) => r.success)
         .map((r) => r.url);
       if (successfulRelays.length === 0) {
-        throw new Error("No relays connected");
+        userLogger.warn(
+          "[nostr] No relays connected during init. Retrying in the background.",
+        );
+        this.scheduleRelayReconnect({ reason: "initial-connect-failed" });
+      } else {
+        this.resetRelayReconnectState();
+        devLogger.log(
+          `Connected to ${successfulRelays.length} relay(s)`,
+        );
       }
-      devLogger.log(
-        `Connected to ${successfulRelays.length} relay(s)`,
-      );
     } catch (err) {
       userLogger.error("Nostr init failed:", err);
       throw err;
@@ -4302,16 +4669,29 @@ export class NostrClient {
   // while the 5s timer guards against relays that never respond. We immediately
   // `unsub` to avoid leaking subscriptions. Note: any future change must still
   // provide a lightweight readiness check with similar timeout semantics.
+  /**
+   * Connects to all configured relays in parallel.
+   *
+   * - Skips relays that are already connected.
+   * - Updates internal connectivity state.
+   * - Does NOT throw if individual relays fail, but returns a summary.
+   *
+   * @returns {Promise<Array<{url: string, success: boolean}>>} Connection results.
+   */
   async connectToRelays() {
+    const relayTargets = this.getHealthyRelays(this.relays);
+    if (!relayTargets.length) {
+      return [];
+    }
     const results = await Promise.all(
-      this.relays.map(
+      relayTargets.map(
         (url) =>
           new Promise((resolve) => {
             const sub = this.pool.sub([url], [{ kinds: [0], limit: 1 }]);
             const timeout = setTimeout(() => {
               sub.unsub();
               resolve({ url, success: false });
-            }, 5000);
+            }, RELAY_CONNECT_TIMEOUT_MS);
 
             const succeed = () => {
               clearTimeout(timeout);
@@ -4326,9 +4706,11 @@ export class NostrClient {
 
     for (const result of results) {
       if (result.success) {
-        this.unreachableRelays.delete(result.url);
+        this.clearRelayBackoff(result.url);
       } else {
-        this.unreachableRelays.add(result.url);
+        this.markRelayUnreachable(result.url, 60000, {
+          reason: "connect-timeout",
+        });
         if (isDevMode) {
           devLogger.warn(`[nostr] Marked relay as unreachable: ${result.url}`);
         }
@@ -4338,7 +4720,105 @@ export class NostrClient {
     return results;
   }
 
-  markRelayUnreachable(url, ttlMs = 60000) {
+  resolveRelayReconnectDelayMs(attempt) {
+    const safeAttempt = Number.isFinite(attempt) ? Math.max(0, attempt) : 0;
+    const computed = RELAY_RECONNECT_BASE_DELAY_MS * Math.pow(2, safeAttempt);
+    return Math.min(RELAY_RECONNECT_MAX_DELAY_MS, computed);
+  }
+
+  resetRelayReconnectState() {
+    this.relayReconnectAttempt = 0;
+    if (this.relayReconnectTimer) {
+      clearTimeout(this.relayReconnectTimer);
+      this.relayReconnectTimer = null;
+    }
+  }
+
+  scheduleRelayReconnect({ reason = "retry" } = {}) {
+    if (this.relayReconnectTimer) {
+      return;
+    }
+    if (this.relayReconnectAttempt >= RELAY_RECONNECT_MAX_ATTEMPTS) {
+      if (isDevMode) {
+        devLogger.debug(
+          "[nostr] Relay reconnect attempts exhausted.",
+          {
+            attempts: this.relayReconnectAttempt,
+            reason,
+          },
+        );
+      }
+      return;
+    }
+
+    const delayMs = this.resolveRelayReconnectDelayMs(this.relayReconnectAttempt);
+    const attemptNumber = this.relayReconnectAttempt + 1;
+    this.relayReconnectAttempt = attemptNumber;
+
+    if (isDevMode) {
+      devLogger.debug("[nostr] Scheduling relay reconnect attempt.", {
+        attempt: attemptNumber,
+        delayMs,
+        reason,
+      });
+    }
+
+    this.relayReconnectTimer = setTimeout(async () => {
+      this.relayReconnectTimer = null;
+      try {
+        const results = await this.connectToRelays();
+        const successful = results.some((result) => result.success);
+        if (successful) {
+          this.resetRelayReconnectState();
+          return;
+        }
+      } catch (error) {
+        devLogger.warn("[nostr] Relay reconnect attempt failed:", error);
+      }
+      this.scheduleRelayReconnect({ reason: "reconnect-failed" });
+    }, delayMs);
+  }
+
+  logRelaySummary({
+    key,
+    level = "warn",
+    message,
+    payload,
+  } = {}) {
+    if (!key || !message) {
+      return;
+    }
+    const now = Date.now();
+    const lastLogged = this.relaySummaryLogTimestamps.get(key) || 0;
+    if (now - lastLogged < RELAY_SUMMARY_LOG_INTERVAL_MS) {
+      return;
+    }
+    this.relaySummaryLogTimestamps.set(key, now);
+    const channel = isDevMode ? devLogger : userLogger;
+    const logFn =
+      typeof channel[level] === "function" ? channel[level] : channel.warn;
+    if (payload) {
+      logFn(`[nostr] ${message}`, payload);
+    } else {
+      logFn(`[nostr] ${message}`);
+    }
+  }
+
+  resolveRelayBackoffMs(failureCount, ttlOverride) {
+    const baseMs = RELAY_BACKOFF_BASE_DELAY_MS;
+    const maxMs = RELAY_BACKOFF_MAX_DELAY_MS;
+    const computed = Math.min(
+      maxMs,
+      baseMs * Math.pow(2, Math.max(0, failureCount - 1))
+    );
+    const override = Number(ttlOverride);
+    if (Number.isFinite(override) && override > 0) {
+      return Math.min(computed, Math.floor(override));
+    }
+    return computed;
+  }
+
+  clearRelayBackoff(url) {
     if (!url || typeof url !== "string") {
       return;
     }
@@ -4346,15 +4826,110 @@ export class NostrClient {
     if (!normalized) {
       return;
     }
-    this.unreachableRelays.add(normalized);
-    if (ttlMs > 0) {
-      setTimeout(() => {
-        this.unreachableRelays.delete(normalized);
-        if (isDevMode) {
-          devLogger.debug(`[nostr] Cleared temporary failure mark for ${normalized}`);
-        }
-      }, ttlMs);
+    const hadBackoffState =
+      this.relayBackoff.has(normalized) ||
+      this.unreachableRelays.has(normalized) ||
+      this.relayFailureCounts.has(normalized) ||
+      this.relayCircuitBreakers.has(normalized);
+    this.relayBackoff.delete(normalized);
+    this.relayFailureCounts.delete(normalized);
+    this.relayFailureWindows.delete(normalized);
+    this.unreachableRelays.delete(normalized);
+    this.relayCircuitBreakers.delete(normalized);
+    if (hadBackoffState) {
+      this.logRelaySummary({
+        key: `relay-recovered:${normalized}`,
+        level: "info",
+        message: "Relay recovered; backoff cleared.",
+        payload: { relay: normalized },
+      });
     }
+  }
+
+  recordRelayFailureWindow(url) {
+    if (!url || typeof url !== "string") {
+      return 0;
+    }
+    const normalized = url.trim();
+    if (!normalized) {
+      return 0;
+    }
+    const now = Date.now();
+    const cutoff = now - RELAY_FAILURE_WINDOW_MS;
+    const history = this.relayFailureWindows.get(normalized) || [];
+    const filtered = history.filter(
+      (timestamp) => Number.isFinite(timestamp) && timestamp >= cutoff,
+    );
+    filtered.push(now);
+    this.relayFailureWindows.set(normalized, filtered);
+    return filtered.length;
+  }
+
+  markRelayUnreachable(url, ttlMs = 60000, { reason = null } = {}) {
+    if (!url || typeof url !== "string") {
+      return;
+    }
+    const normalized = url.trim();
+    if (!normalized) {
+      return;
+    }
+    const windowFailureCount = this.recordRelayFailureWindow(normalized);
+    const nextFailureCount = (this.relayFailureCounts.get(normalized) || 0) + 1;
+    this.relayFailureCounts.set(normalized, nextFailureCount);
+    const backoffMs = this.resolveRelayBackoffMs(nextFailureCount, ttlMs);
+    const retryAt = Date.now() + backoffMs;
+    this.relayBackoff.set(normalized, {
+      retryAt,
+      backoffMs,
+      failureCount: nextFailureCount,
+      reason,
+    });
+    this.unreachableRelays.add(normalized);
+    const shouldOpenCircuit =
+      nextFailureCount >= RELAY_CIRCUIT_BREAKER_THRESHOLD ||
+      windowFailureCount >= RELAY_FAILURE_WINDOW_THRESHOLD;
+    if (shouldOpenCircuit) {
+      const now = Date.now();
+      const openUntil = now + RELAY_CIRCUIT_BREAKER_COOLDOWN_MS;
+      const existing = this.relayCircuitBreakers.get(normalized);
+      const nextOpenUntil =
+        existing && Number.isFinite(existing.openUntil)
+          ? Math.max(existing.openUntil, openUntil)
+          : openUntil;
+      const circuitReason =
+        reason ||
+        (nextFailureCount >= RELAY_CIRCUIT_BREAKER_THRESHOLD
+          ? "consecutive-failures"
+          : "windowed-failures");
+      this.relayCircuitBreakers.set(normalized, {
+        openUntil: nextOpenUntil,
+        failureCount: nextFailureCount,
+        reason: circuitReason,
+      });
+      this.logRelaySummary({
+        key: `relay-circuit:${normalized}`,
+        level: "warn",
+        message: "Circuit breaker opened for relay.",
+        payload: {
+          relay: normalized,
+          openUntil: nextOpenUntil,
+          failureCount: nextFailureCount,
+          reason: circuitReason,
+        },
+      });
+    }
+    this.logRelaySummary({
+      key: `relay-backoff:${normalized}`,
+      level: "warn",
+      message: "Relay backoff applied.",
+      payload: {
+        relay: normalized,
+        backoffMs,
+        failureCount: nextFailureCount,
+        retryAt,
+        reason,
+      },
+    });
   }
 
   getHealthyRelays(candidates) {
@@ -4362,7 +4937,47 @@ export class NostrClient {
     if (!this.unreachableRelays.size) {
       return source;
     }
-    return source.filter((url) => !this.unreachableRelays.has(url));
+    const now = Date.now();
+    return source.filter((url) => {
+      const circuit = this.relayCircuitBreakers.get(url);
+      if (circuit && Number.isFinite(circuit.openUntil)) {
+        if (circuit.openUntil > now) {
+          return false;
+        }
+        this.relayCircuitBreakers.delete(url);
+        this.relayFailureCounts.delete(url);
+        this.relayFailureWindows.delete(url);
+        this.unreachableRelays.delete(url);
+        this.relayBackoff.delete(url);
+        this.logRelaySummary({
+          key: `relay-circuit-reset:${url}`,
+          level: "info",
+          message: "Circuit breaker reset for relay.",
+          payload: { relay: url },
+        });
+      }
+      if (!this.unreachableRelays.has(url)) {
+        return true;
+      }
+      const entry = this.relayBackoff.get(url);
+      if (!entry) {
+        return false;
+      }
+      if (Number.isFinite(entry.retryAt) && entry.retryAt > now) {
+        return false;
+      }
+      this.relayBackoff.delete(url);
+      this.relayFailureCounts.delete(url);
+      this.relayFailureWindows.delete(url);
+      this.unreachableRelays.delete(url);
+      this.logRelaySummary({
+        key: `relay-backoff-expired:${url}`,
+        level: "info",
+        message: "Relay backoff expired.",
+        payload: { relay: url },
+      });
+      return true;
+    });
   }
 
   /**
@@ -4416,6 +5031,8 @@ export class NostrClient {
       this.extensionPermissionCache.clear();
     }
     clearStoredNip07Permissions();
+    this.extensionReady = false;
+    this.extensionPermissionsGranted = false;
     devLogger.log("User logged out.");
   }
 
@@ -4507,7 +5124,24 @@ export class NostrClient {
       activeSigner = getActiveSigner();
     }
 
-    if (activeSigner) {
+    let extensionPermissionResult = null;
+    if (
+      activeSigner?.type === "extension" &&
+      typeof this.ensureExtensionPermissions === "function"
+    ) {
+      extensionPermissionResult = await this.ensureExtensionPermissions(
+        DEFAULT_NIP07_ENCRYPTION_METHODS,
+        { context: "dm" },
+      );
+      if (!extensionPermissionResult?.ok) {
+        devLogger.warn(
+          "[nostr] Extension encryption permissions missing for DM decryption.",
+          extensionPermissionResult?.error,
+        );
+      }
+    }
+
+    if (activeSigner && extensionPermissionResult?.ok !== false) {
       const capabilities = resolveSignerCapabilities(activeSigner);
       if (
         capabilities.nip44 &&
@@ -4678,65 +5312,73 @@ export class NostrClient {
       options,
     );
 
-    let events = [];
-    try {
-      events = await this.pool.list(relaysToUse, filters);
-    } catch (error) {
-      devLogger.warn("[nostr] Failed to list DM events.", error);
-      throw error;
-    }
-
-    const deduped = new Map();
-    for (const event of Array.isArray(events) ? events : []) {
-      if (!event || typeof event !== "object") {
-        continue;
-      }
-      const key =
-        typeof event.id === "string" && event.id
-          ? event.id
-          : `${event.kind || ""}:${event.pubkey || ""}:${event.created_at || ""}`;
-      if (!deduped.has(key)) {
-        deduped.set(key, event);
-      }
-    }
-
-    let decryptTargets = Array.from(deduped.values());
-    decryptTargets.sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
-
-    if (decryptLimit && decryptTargets.length > decryptLimit) {
-      devLogger.debug("[nostr] Limiting DM decrypt workload", {
-        requested: decryptTargets.length,
-        decryptLimit,
-      });
-      decryptTargets = decryptTargets.slice(0, decryptLimit);
-    }
-
+    const dedupedIds = new Set();
     const messages = [];
-    for (const event of decryptTargets) {
-      try {
-        const decrypted = await this.decryptDirectMessageEvent(event, {
-          actorPubkey: context.actorPubkey || actorPubkeyInput,
-        });
-        if (decrypted?.ok) {
-          messages.push(decrypted);
-          if (typeof options.onMessage === "function") {
-            try {
-              options.onMessage(decrypted);
-            } catch (error) {
-              devLogger.warn("[nostr] onMessage callback threw:", error);
+    let decryptedCount = 0;
+
+    return new Promise((resolve) => {
+      const sub = this.pool.sub(relaysToUse, filters);
+      const timeoutMs = options.timeoutMs || 10000;
+      let settled = false;
+      let timeoutId = null;
+
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        if (timeoutId) clearTimeout(timeoutId);
+        sub.unsub();
+        messages.sort((a, b) => (b?.timestamp || 0) - (a?.timestamp || 0));
+        resolve(messages);
+      };
+
+      timeoutId = setTimeout(() => {
+        devLogger.warn("[nostr] listDirectMessages timed out.");
+        finish();
+      }, timeoutMs);
+
+      sub.on("event", async (event) => {
+        if (!event || typeof event !== "object") return;
+
+        const eventId = typeof event.id === "string" ? event.id : "";
+        if (eventId && dedupedIds.has(eventId)) return;
+        if (eventId) dedupedIds.add(eventId);
+
+        if (decryptLimit && decryptedCount >= decryptLimit) {
+          // We reached the limit, but since relays may send out of order,
+          // strictly stopping here might miss newer messages if they arrive late.
+          // However, to respect the limit and avoid over-decrypting massive histories,
+          // we stop processing new decrypts.
+          return;
+        }
+
+        try {
+          const decrypted = await this.decryptDirectMessageEvent(event, {
+            actorPubkey: context.actorPubkey || actorPubkeyInput,
+          });
+
+          if (decrypted?.ok) {
+            decryptedCount++;
+            messages.push(decrypted);
+            if (typeof options.onMessage === "function") {
+              try {
+                options.onMessage(decrypted);
+              } catch (error) {
+                devLogger.warn("[nostr] onMessage callback threw:", error);
+              }
             }
           }
+        } catch (error) {
+          devLogger.warn("[nostr] Failed to decrypt DM event during list.", {
+            error: sanitizeDecryptError(error),
+            event: summarizeDmEventForLog(event),
+          });
         }
-      } catch (error) {
-        devLogger.warn("[nostr] Failed to decrypt DM event during list.", {
-          error: sanitizeDecryptError(error),
-          event: summarizeDmEventForLog(event),
-        });
-      }
-    }
+      });
 
-    messages.sort((a, b) => (b?.timestamp || 0) - (a?.timestamp || 0));
-    return messages;
+      sub.on("eose", () => {
+        finish();
+      });
+    });
   }
 
   subscribeDirectMessages(actorPubkeyInput = null, options = {}) {
@@ -4954,16 +5596,17 @@ export class NostrClient {
 
     if (shouldRequestExtensionPermissions(signer)) {
       const permissionResult = await this.ensureExtensionPermissions(
-        DEFAULT_NIP07_PERMISSION_METHODS,
+        DEFAULT_NIP07_ENCRYPTION_METHODS,
+        { context: "dm" },
       );
       if (!permissionResult.ok) {
         userLogger.warn(
-          "[nostr] Cannot send direct message without extension permissions.",
+          "[nostr] Cannot send direct message without encryption permissions.",
           permissionResult.error,
         );
         return {
           ok: false,
-          error: "extension-permission-denied",
+          error: "extension-encryption-permission-denied",
           details: permissionResult.error,
         };
       }
@@ -6233,7 +6876,7 @@ export class NostrClient {
 
     if (shouldRequestExtensionPermissions(signer)) {
       const permissionResult = await this.ensureExtensionPermissions(
-        DEFAULT_NIP07_PERMISSION_METHODS,
+        DEFAULT_NIP07_CORE_METHODS,
       );
       if (!permissionResult.ok) {
         userLogger.warn(
@@ -6241,7 +6884,7 @@ export class NostrClient {
           permissionResult.error,
         );
         const error = new Error(
-          "The active signer must grant decrypt and sign permissions before editing a video.",
+          "The active signer must allow signing before editing a video.",
         );
         error.code = "extension-permission-denied";
         error.cause = permissionResult.error;
@@ -6412,7 +7055,7 @@ export class NostrClient {
 
     if (shouldRequestExtensionPermissions(signer)) {
       const permissionResult = await this.ensureExtensionPermissions(
-        DEFAULT_NIP07_PERMISSION_METHODS,
+        DEFAULT_NIP07_CORE_METHODS,
       );
       if (!permissionResult.ok) {
         userLogger.warn(
@@ -6420,7 +7063,7 @@ export class NostrClient {
           permissionResult.error,
         );
         const error = new Error(
-          "The active signer must grant decrypt and sign permissions before reverting a video.",
+          "The active signer must allow signing before reverting a video.",
         );
         error.code = "extension-permission-denied";
         error.cause = permissionResult.error;
@@ -6648,6 +7291,7 @@ export class NostrClient {
       cached.description = "This version was deleted by the creator.";
       cached.videoRootId = baseRoot;
       this.allEvents.set(vid.id, cached);
+      this.dirtyEventIds.add(vid.id);
 
       const activeKey = getActiveKey(cached);
       if (activeKey) {
@@ -6720,7 +7364,7 @@ export class NostrClient {
 
       if (shouldRequestExtensionPermissions(signer)) {
         const permissionResult = await this.ensureExtensionPermissions(
-          DEFAULT_NIP07_PERMISSION_METHODS,
+          DEFAULT_NIP07_CORE_METHODS,
         );
         if (!permissionResult.ok) {
           userLogger.warn(
@@ -6728,7 +7372,7 @@ export class NostrClient {
             permissionResult.error,
           );
           const error = new Error(
-            "The active signer must grant decrypt and sign permissions before deleting a video.",
+            "The active signer must allow signing before deleting a video.",
           );
           error.code = "extension-permission-denied";
           error.cause = permissionResult.error;
@@ -6841,12 +7485,16 @@ export class NostrClient {
   }
 
   /**
-   * Schedules a persistence task to save the current state (events, tombstones) to local storage.
+   * Schedules a persistence operation to save current state to cache.
+   *
+   * - Uses a debounce strategy (75ms) to prevent write thrashing during bursts.
+   * - Can be forced to run immediately via `options.immediate`.
+   * - Coordinates with `requestIdleCallback` to avoid blocking the main thread.
    *
    * @param {string} [reason="unspecified"] - Debug label for why persistence was triggered.
-   * @param {object} [options]
-   * @param {boolean} [options.immediate=false] - If true, bypasses the debounce timer and saves immediately.
-   * @returns {Promise<boolean>} A promise resolving to whether persistence succeeded.
+   * @param {object} [options] - Configuration.
+   * @param {boolean} [options.immediate=false] - If true, bypasses debounce and persists immediately.
+   * @returns {Promise<boolean>|null} The persistence promise or null if debounced.
    */
   saveLocalData(reason = "unspecified", options = {}) {
     const { immediate = false } = options;
@@ -6894,27 +7542,54 @@ export class NostrClient {
     // The `EventsCacheStore` handles differential updates (only saving changed fingerprints)
     // to keep IDB writes fast.
 
+    // Capture snapshots of dirty sets to optimize persistence
+    const dirtyEventIdsSnapshot = new Set(this.dirtyEventIds);
+    const dirtyTombstonesSnapshot = new Set(this.dirtyTombstones);
+
+    // Clear the tracked items from the main sets so we don't re-process them next time.
+    // New items added during the async save will remain in the main sets.
+    for (const id of dirtyEventIdsSnapshot) {
+      this.dirtyEventIds.delete(id);
+    }
+    for (const key of dirtyTombstonesSnapshot) {
+      this.dirtyTombstones.delete(key);
+    }
+
     const payload = this.buildCachePayload();
     const startedAt = Date.now();
     let summary = null;
     let target = "localStorage";
 
     try {
-      summary = await this.eventsCacheStore.persistSnapshot(payload);
+      summary = await this.eventsCacheStore.persistSnapshot(
+        payload,
+        dirtyEventIdsSnapshot,
+        dirtyTombstonesSnapshot
+      );
       if (summary?.persisted) {
         target = "IndexedDB";
       }
     } catch (error) {
-      devLogger.warn("[nostr] Failed to persist events cache to IndexedDB:", error);
+      devLogger.warn(
+        "[nostr] Failed to persist events cache to IndexedDB:",
+        error
+      );
     }
 
     if (!summary?.persisted) {
+      // If persistence failed, re-queue the dirty items for the next attempt.
+      for (const id of dirtyEventIdsSnapshot) {
+        this.dirtyEventIds.add(id);
+      }
+      for (const key of dirtyTombstonesSnapshot) {
+        this.dirtyTombstones.add(key);
+      }
       this.persistCacheToLocalStorage(payload);
     }
 
     const durationMs = Date.now() - startedAt;
     devLogger.log(
-      `[nostr] Cached events persisted via ${target} (reason=${reason}, duration=${durationMs}ms, events+${summary?.eventWrites ?? 0}/-${summary?.eventDeletes ?? 0}, tombstones+${summary?.tombstoneWrites ?? 0}/-${summary?.tombstoneDeletes ?? 0})`,
+      `[nostr] Cached events persisted via ${target} (reason=${reason}, duration=${durationMs}ms, events+${summary?.eventWrites ?? 0}/-${summary?.eventDeletes ?? 0}, tombstones+${summary?.tombstoneWrites ?? 0}/-${summary?.tombstoneDeletes ?? 0}, skipped=${summary?.skipped ?? 0})`,
     );
 
     return summary?.persisted;
@@ -7107,6 +7782,7 @@ export class NostrClient {
 
           // Store in allEvents (history preservation)
           this.allEvents.set(evt.id, video);
+          this.dirtyEventIds.add(evt.id);
 
           // If it's a "deleted" note, remove from activeMap
           if (video.deleted) {
@@ -7347,6 +8023,7 @@ export class NostrClient {
       // Merge into allEvents
       for (const [id, vid] of localAll.entries()) {
         this.allEvents.set(id, vid);
+        this.dirtyEventIds.add(id);
         this.applyRootCreatedAt(vid);
       }
 
@@ -7535,6 +8212,7 @@ export class NostrClient {
       this.applyTombstoneGuard(video);
     }
     this.allEvents.set(eventId, video);
+    this.dirtyEventIds.add(eventId);
 
     if (includeRaw) {
       return { video, rawEvent };
@@ -7764,13 +8442,25 @@ export class NostrClient {
     try {
       relay = await this.pool.ensureRelay(normalizedUrl);
     } catch (error) {
-      throw new Error(`Failed to connect to relay ${normalizedUrl}`);
+      const connectError = new Error(
+        `Failed to connect to relay ${normalizedUrl}`
+      );
+      connectError.code = "relay-connect-failed";
+      this.markRelayUnreachable(normalizedUrl, 60000, {
+        reason: "connect-failed",
+      });
+      throw connectError;
     }
 
     if (!relay) {
-      throw new Error(
+      const relayError = new Error(
         `Relay ${normalizedUrl} is unavailable for COUNT requests.`
       );
+      relayError.code = "relay-unavailable";
+      this.markRelayUnreachable(normalizedUrl, 60000, {
+        reason: "relay-unavailable",
+      });
+      throw relayError;
     }
 
     const frame = ["COUNT", requestId, ...normalizedFilters];
@@ -7822,16 +8512,27 @@ export class NostrClient {
     }
 
     const timeoutMs = this.getRequestTimeoutMs(options.timeoutMs);
-    const rawResult = await withRequestTimeout(
-      countPromise,
-      timeoutMs,
-      () => {
-        if (relay?.openCountRequests instanceof Map) {
-          relay.openCountRequests.delete(requestId);
-        }
-      },
-      `COUNT request timed out after ${timeoutMs}ms`
-    );
+    let rawResult;
+    try {
+      rawResult = await withRequestTimeout(
+        countPromise,
+        timeoutMs,
+        () => {
+          if (relay?.openCountRequests instanceof Map) {
+            relay.openCountRequests.delete(requestId);
+          }
+        },
+        `COUNT request timed out after ${timeoutMs}ms`
+      );
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message.includes("COUNT request timed out")
+      ) {
+        error.code = "count-timeout";
+      }
+      throw error;
+    }
 
     const countValue = this.extractCountValue(rawResult);
     return ["COUNT", requestId, { count: countValue }];
@@ -7840,7 +8541,7 @@ export class NostrClient {
   async countEventsAcrossRelays(filters, options = {}) {
     const normalizedFilters = this.normalizeCountFilters(filters);
     if (!normalizedFilters.length) {
-      return { total: 0, best: null, perRelay: [] };
+      return { total: 0, best: null, perRelay: [], partial: false };
     }
 
     const relayList =
@@ -7854,6 +8555,8 @@ export class NostrClient {
       .map((url) => (typeof url === "string" ? url.trim() : ""))
       .filter(Boolean);
 
+    const eligibleRelays = this.getHealthyRelays(normalizedRelayList);
+    const eligibleRelaySet = new Set(eligibleRelays);
     const activeRelays = [];
     const precomputedEntries = [];
 
@@ -7868,6 +8571,15 @@ export class NostrClient {
         });
         continue;
       }
+      if (!eligibleRelaySet.has(url)) {
+        precomputedEntries.push({
+          url,
+          ok: false,
+          skipped: true,
+          reason: "backoff",
+        });
+        continue;
+      }
       activeRelays.push(url);
     }
 
@@ -7878,15 +8590,28 @@ export class NostrClient {
             timeoutMs: options.timeoutMs,
           });
           const count = this.extractCountValue(frame?.[2]);
+          this.clearRelayBackoff(url);
           return { url, ok: true, frame, count };
         } catch (error) {
           const isUnsupported = error?.code === "count-unsupported";
+          const isTimeout =
+            error?.code === "count-timeout" || error?.code === "timeout";
           if (isUnsupported) {
             this.countUnsupportedRelays.add(url);
           } else {
             logRelayCountFailure(url, error);
+            this.markRelayUnreachable(url, 60000, {
+              reason: isTimeout ? "count-timeout" : "count-error",
+            });
           }
-          return { url, ok: false, error, unsupported: isUnsupported };
+          return {
+            url,
+            ok: false,
+            error,
+            unsupported: isUnsupported,
+            timedOut: isTimeout,
+            errorCode: error?.code || null,
+          };
         }
       })
     );
@@ -7940,11 +8665,15 @@ export class NostrClient {
     });
 
     const total = bestEstimate ? bestEstimate.count : 0;
+    const partial = perRelayResults.some(
+      (entry) => entry?.timedOut || entry?.skipped
+    );
 
     return {
       total,
       best: bestEstimate,
       perRelay,
+      partial,
     };
   }
 
@@ -8084,6 +8813,7 @@ export class NostrClient {
               this.applyTombstoneGuard(parsed);
             }
             this.allEvents.set(rootEvent.id, parsed);
+            this.dirtyEventIds.add(rootEvent.id);
             localMatches.push(parsed);
           }
         }
@@ -8144,6 +8874,7 @@ export class NostrClient {
                 this.applyTombstoneGuard(parsed);
               }
               this.allEvents.set(evt.id, parsed);
+              this.dirtyEventIds.add(evt.id);
             }
           } catch (err) {
             devLogger.warn("[nostr] Failed to convert historical event:", err);

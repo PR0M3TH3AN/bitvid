@@ -135,7 +135,7 @@ export function attachAmbientBackground(videoElement, canvasElement, options = {
   let destroyed = false;
   let lastTime = 0;
   let tainted = false;
-  let resizeBound = false;
+  let resizeObserver = null;
 
   const clearCanvas = () => {
     if (!canvasElement) {
@@ -152,9 +152,12 @@ export function attachAmbientBackground(videoElement, canvasElement, options = {
       cancelFrame(rafId);
       rafId = 0;
     }
-    if (resizeBound && win) {
+    if (resizeObserver) {
+      resizeObserver.disconnect();
+      resizeObserver = null;
+    }
+    if (win) {
       win.removeEventListener("resize", handleResize);
-      resizeBound = false;
     }
   };
 
@@ -176,7 +179,11 @@ export function attachAmbientBackground(videoElement, canvasElement, options = {
     lastTime = timestamp;
 
     try {
-      const { width, height } = resizeCanvas(canvasElement, videoElement);
+      // Optimization: Rely on ResizeObserver for dimensions.
+      // Do NOT call resizeCanvas() here to avoid layout thrashing.
+      const width = canvasElement.width || 0;
+      const height = canvasElement.height || 0;
+
       if (!width || !height) {
         schedule();
         return;
@@ -203,10 +210,26 @@ export function attachAmbientBackground(videoElement, canvasElement, options = {
     running = true;
     lastTime = 0;
     resizeCanvas(canvasElement, videoElement);
-    if (win && !resizeBound) {
+
+    if (!resizeObserver && win && typeof win.ResizeObserver === "function") {
+      try {
+        resizeObserver = new win.ResizeObserver(() => {
+          if (!destroyed) {
+            resizeCanvas(canvasElement, videoElement);
+          }
+        });
+        const host = canvasElement.parentElement || canvasElement;
+        resizeObserver.observe(host);
+      } catch (err) {
+        if (logger && typeof logger.warn === "function") {
+          logger.warn("[ambientBackground] Failed to initialize ResizeObserver", err);
+        }
+      }
+    } else if (win && !resizeObserver) {
+      // Fallback for browsers without ResizeObserver
       win.addEventListener("resize", handleResize);
-      resizeBound = true;
     }
+
     step();
   };
 

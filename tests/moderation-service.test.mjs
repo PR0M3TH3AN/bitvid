@@ -394,10 +394,38 @@ test("viewer mute list publishes and updates aggregation", async (t) => {
     }),
   };
 
+  const mockUserBlocks = {
+    async addMute(pubkey, viewer) {
+      // Simulate the publish that userBlocks would do
+      const event = {
+        kind: 10000,
+        pubkey: viewer,
+        tags: [["p", pubkey]],
+        content: "",
+        created_at: Math.floor(Date.now() / 1000),
+      };
+      await nostrClient.pool.publish([], event);
+      return { ok: true };
+    },
+    async removeMute(pubkey, viewer) {
+      const event = {
+        kind: 10000,
+        pubkey: viewer,
+        tags: [],
+        content: "",
+        created_at: Math.floor(Date.now() / 1000),
+      };
+      await nostrClient.pool.publish([], event);
+      return { ok: true };
+    },
+    on: () => () => {},
+  };
+
   const service = new ModerationService({
     logger: () => {},
     nostrClient,
     userLogger: noopUserLogger,
+    userBlocks: mockUserBlocks,
     requestExtensionPermissions: async () => ({ ok: true }),
   });
 

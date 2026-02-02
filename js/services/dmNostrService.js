@@ -1,4 +1,9 @@
-import { ensureNostrTools, resolveSimplePoolConstructor, shimLegacySimplePoolMethods } from "../nostr/toolkit.js";
+import {
+  DEFAULT_RELAY_URLS,
+  ensureNostrTools,
+  resolveSimplePoolConstructor,
+  shimLegacySimplePoolMethods,
+} from "../nostr/toolkit.js";
 import { sanitizeRelayList } from "../nostr/nip46Client.js";
 import { publishEventToRelay } from "../nostrPublish.js";
 import logger from "../utils/logger.js";
@@ -10,6 +15,7 @@ const DEFAULT_BACKOFF = {
 };
 
 const MAX_SEEN_EVENT_IDS = 5000;
+const DM_RELAY_LIST_TIMEOUT_MS = 5000;
 export const DM_RELAY_WARNING_FALLBACK = "dm-relays-fallback";
 
 function normalizeRelayList(relays) {
@@ -55,6 +61,29 @@ function extractRelayHintsFromEvent(event) {
   );
 }
 
+function withTimeout(promise, timeoutMs, errorCode) {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return promise;
+  }
+
+  let timeoutId = null;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      const error = new Error("DM relay discovery timed out.");
+      if (errorCode) {
+        error.code = errorCode;
+      }
+      reject(error);
+    }, timeoutMs);
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  });
+}
+
 export async function resolveDmRelaySelection({
   pubkey,
   relayHints = [],
@@ -74,11 +103,14 @@ export async function resolveDmRelaySelection({
   const discoveryList = sanitizeRelayList(
     Array.isArray(discoveryRelays) ? discoveryRelays : [],
   );
-  const fallbackList = sanitizeRelayList(
+  const candidateFallbackList = sanitizeRelayList(
     Array.isArray(fallbackRelays) && fallbackRelays.length
       ? fallbackRelays
       : discoveryRelays,
   );
+  const defaultFallbackList = sanitizeRelayList(Array.from(DEFAULT_RELAY_URLS));
+  const fallbackList =
+    candidateFallbackList.length > 0 ? candidateFallbackList : defaultFallbackList;
 
   if (
     normalizedPubkey &&
@@ -87,9 +119,13 @@ export async function resolveDmRelaySelection({
     discoveryList.length
   ) {
     try {
-      const events = await pool.list(discoveryList, [
-        { kinds: [10050], authors: [normalizedPubkey], limit: 1 },
-      ]);
+      const events = await withTimeout(
+        pool.list(discoveryList, [
+          { kinds: [10050], authors: [normalizedPubkey], limit: 1 },
+        ]),
+        DM_RELAY_LIST_TIMEOUT_MS,
+        "dm-relay-discovery-timeout",
+      );
       const sorted = Array.isArray(events)
         ? events
             .filter((entry) => entry && entry.pubkey === normalizedPubkey)
@@ -103,6 +139,13 @@ export async function resolveDmRelaySelection({
       }
     } catch (error) {
       resolvedLogger.dev.warn("[dmNostrService] Failed to fetch DM relay hints.", error);
+      if (fallbackList.length) {
+        return {
+          relays: fallbackList,
+          source: "fallback",
+          warning: DM_RELAY_WARNING_FALLBACK,
+        };
+      }
     }
   }
 

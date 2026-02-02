@@ -985,6 +985,15 @@ export class SimilarContentCard {
     avatarImg.decoding = "async";
     avatarImg.loading = "lazy";
     avatarImg.alt = "";
+    if (!avatarImg.dataset.avatarFallbackBound) {
+      avatarImg.addEventListener("error", () => {
+        if (avatarImg.getAttribute("src") !== DEFAULT_PROFILE_AVATAR) {
+          avatarImg.src = DEFAULT_PROFILE_AVATAR;
+        }
+        avatarImg.dataset.avatarLoadFailed = "true";
+      });
+      avatarImg.dataset.avatarFallbackBound = "true";
+    }
     avatarWrapper.appendChild(avatarImg);
 
     // Append avatar then text

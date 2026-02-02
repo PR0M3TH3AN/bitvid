@@ -4,6 +4,9 @@
 	"features": {
 		"ghcr.io/devcontainers/features/github-cli:1": {}
 	},
+	"forwardPorts": [
+		3000
+	],
 	"postCreateCommand": "npm ci && npm run build && npx playwright install",
 	"customizations": {
 		"vscode": {

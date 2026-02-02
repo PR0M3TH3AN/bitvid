@@ -21,12 +21,16 @@ export const DEFAULT_NIP07_ENCRYPTION_METHODS = Object.freeze([
   "nip44.v2.decrypt",
 ]);
 
-export const DEFAULT_NIP07_PERMISSION_METHODS = Object.freeze([
+export const DEFAULT_NIP07_CORE_METHODS = Object.freeze([
   // Core auth + relay metadata
   "get_public_key",
   "sign_event",
   "read_relays",
   "write_relays",
+]);
+
+export const DEFAULT_NIP07_PERMISSION_METHODS = Object.freeze([
+  ...DEFAULT_NIP07_CORE_METHODS,
   ...DEFAULT_NIP07_ENCRYPTION_METHODS,
 ]);
 

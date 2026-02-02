@@ -1,0 +1,717 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Moderation Fixtures • bitvid</title>
+    <base href="/" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="/css/tailwind.generated.css" />
+    <style>
+      .moderation-fixtures {
+        background-color: var(--surface-base);
+        color: var(--text-primary);
+        font-family: var(--font-family-sans);
+      }
+      .moderation-fixtures__main {
+        max-width: 60rem;
+        margin: 0 auto;
+        padding: var(--space-xl) var(--space-lg) var(--space-2xl);
+      }
+      .moderation-fixtures__title {
+        font-size: var(--font-size-2xl);
+        font-weight: 700;
+        margin-bottom: var(--space-lg);
+      }
+      .moderation-fixtures__section {
+        margin-bottom: var(--space-2xl);
+      }
+      .moderation-fixtures__section-title {
+        font-size: var(--font-size-xl);
+        font-weight: 600;
+        margin-bottom: var(--space-2xs);
+      }
+      .moderation-fixtures__section-description {
+        color: var(--text-muted);
+        margin-bottom: var(--space-md);
+      }
+      .fixture-toggle {
+        margin-top: var(--space-sm);
+        font-size: var(--font-size-sm);
+        color: var(--text-muted);
+      }
+      .fixture-toggle__label {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-xs);
+      }
+    </style>
+  </head>
+  <body class="moderation-fixtures" data-ds="new">
+    <main id="moderationFixtureRoot" class="moderation-fixtures__main">
+      <h1 class="moderation-fixtures__title">Moderation Test Fixtures</h1>
+      <p>
+        These scenarios mirror the QA vectors in
+        <code>docs/moderation/testing.md</code> so automated checks can assert
+        blur thresholds, autoplay blocking, and local override persistence.
+      </p>
+    </main>
+    <script type="module">
+      import { VideoCard } from "/js/ui/components/VideoCard.js";
+      import moderationService from "/js/services/moderationService.js";
+
+      const STORAGE_KEY = "bitvid:moderation:fixture-overrides";
+      const READY_FLAG = "__moderationFixturesReady__";
+      // These fixtures mirror the upstream defaults in config/instance-config.js.
+      // Update the numbers alongside DEFAULT_BLUR_THRESHOLD, DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+      // DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD, and DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD when they change.
+      const fixtures = [
+        {
+          key: "blur-threshold",
+          heading: "Blur threshold (config default: ≥3 trusted nudity reports)",
+          description:
+            "Card should be blurred and autoplay disabled until the viewer overrides it.",
+          thresholds: { blur: 3, autoplay: 2 },
+          video: {
+            id: "1".repeat(64),
+            title: "Fixture: Blurred Preview",
+            pubkey: "a".repeat(64),
+            thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg"
+          },
+          moderation: {
+            blockAutoplay: true,
+            blurThumbnail: true,
+            trustedCount: 3,
+            reportType: "nudity"
+          },
+          reporters: [
+            { name: "Jess F1", pubkey: "b".repeat(64), latest: 1_700_000_010 },
+            { name: "Mira F1", pubkey: "c".repeat(64), latest: 1_700_000_020 },
+            { name: "Omar F1", pubkey: "d".repeat(64), latest: 1_700_000_030 }
+          ],
+          blockToggle: {
+            label: "Simulate viewer blocking Mira F1",
+            pubkey: "c".repeat(64)
+          }
+        },
+        {
+          key: "autoplay-threshold",
+          heading:
+            "Autoplay threshold (config default: ≥2 trusted nudity reports)",
+          description:
+            "Card should block autoplay but stay unblurred so users can inspect the thumbnail.",
+          video: {
+            id: "2".repeat(64),
+            title: "Fixture: Autoplay Blocked",
+            pubkey: "e".repeat(64),
+            thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg"
+          },
+          moderation: {
+            blockAutoplay: true,
+            blurThumbnail: false,
+            trustedCount: 2,
+            reportType: "nudity"
+          },
+          reporters: [
+            { name: "Jess F1", pubkey: "b".repeat(64), latest: 1_700_000_010 },
+            { name: "Mira F1", pubkey: "c".repeat(64), latest: 1_700_000_020 }
+          ]
+        },
+        {
+          key: "show-anyway",
+          heading: '"Show anyway" override (persists locally)',
+          description:
+            'Card starts blurred and blocked; activating "Show anyway" should persist across reloads.',
+          enableOverride: true,
+          video: {
+            id: "3".repeat(64),
+            title: "Fixture: Override Persistence",
+            pubkey: "f".repeat(64),
+            thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg"
+          },
+          moderation: {
+            blockAutoplay: true,
+            blurThumbnail: true,
+            trustedCount: 3,
+            reportType: "nudity"
+          },
+          reporters: [
+            { name: "Jess F1", pubkey: "b".repeat(64), latest: 1_700_000_010 },
+            { name: "Mira F1", pubkey: "c".repeat(64), latest: 1_700_000_020 },
+            { name: "Omar F1", pubkey: "d".repeat(64), latest: 1_700_000_030 }
+          ]
+        },
+        {
+          key: "trusted-report-hide",
+          heading: "Trusted report hide (config default: ≥3 spam reports)",
+          description:
+            'Card should render hidden with spam copy until the viewer clicks "Show anyway".',
+          enableOverride: true,
+          thresholds: { reportHide: 3 },
+          video: {
+            id: "4".repeat(64),
+            title: "Fixture: Trusted Report Hide",
+            pubkey: "aa".repeat(32),
+            thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg"
+          },
+          moderation: {
+            blockAutoplay: true,
+            blurThumbnail: true,
+            trustedCount: 3,
+            reportType: "spam"
+          },
+          reporters: [
+            { name: "Jess F1", pubkey: "b".repeat(64), latest: 1_700_000_010 },
+            { name: "Mira F1", pubkey: "c".repeat(64), latest: 1_700_000_020 },
+            { name: "Omar F1", pubkey: "d".repeat(64), latest: 1_700_000_030 }
+          ]
+        },
+        {
+          key: "trusted-mute-hide",
+          heading: "Trusted mute hide (F1 mute list threshold)",
+          description:
+            "Card should default to hidden when a trusted contact mutes the author and allow an override.",
+          enableOverride: true,
+          thresholds: { muteHide: 1 },
+          video: {
+            id: "5".repeat(64),
+            title: "Fixture: Trusted Mute Hide",
+            pubkey: "bb".repeat(32),
+            thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg"
+          },
+          moderation: {
+            blockAutoplay: false,
+            blurThumbnail: false,
+            trustedMuted: true,
+            trustedMuteCount: 1
+          },
+          muters: [{ name: "Jess F1", pubkey: "b".repeat(64) }]
+        }
+      ];
+
+      const blockedReportersByVideo = new Map();
+
+      function getBlockedSet(videoId) {
+        if (typeof videoId !== "string" || !videoId) {
+          return null;
+        }
+        return blockedReportersByVideo.get(videoId) || null;
+      }
+
+      function setReporterBlocked(videoId, pubkey, blocked) {
+        if (
+          typeof videoId !== "string" ||
+          !videoId ||
+          typeof pubkey !== "string" ||
+          !pubkey
+        ) {
+          return;
+        }
+
+        let entry = blockedReportersByVideo.get(videoId);
+        if (blocked) {
+          if (!entry) {
+            entry = new Set();
+            blockedReportersByVideo.set(videoId, entry);
+          }
+          entry.add(pubkey);
+          return;
+        }
+
+        if (!entry) {
+          return;
+        }
+
+        entry.delete(pubkey);
+        if (!entry.size) {
+          blockedReportersByVideo.delete(videoId);
+        }
+      }
+
+      function isReporterBlocked(videoId, pubkey) {
+        const entry = getBlockedSet(videoId);
+        if (!entry) {
+          return false;
+        }
+        return entry.has(pubkey);
+      }
+
+      function getActiveReporters(fixture, videoId) {
+        const reporters = Array.isArray(fixture?.reporters)
+          ? fixture.reporters
+          : [];
+        if (!reporters.length) {
+          return [];
+        }
+
+        const entry = getBlockedSet(videoId);
+        if (!entry || !entry.size) {
+          return reporters.slice();
+        }
+
+        return reporters.filter((reporter) => {
+          const key =
+            typeof reporter?.pubkey === "string" ? reporter.pubkey : "";
+          if (!key) {
+            return false;
+          }
+          return !entry.has(key);
+        });
+      }
+
+      function normalizeFixtureReporters(reporters) {
+        if (!Array.isArray(reporters)) {
+          return [];
+        }
+
+        return reporters
+          .map((reporter) => {
+            if (!reporter || typeof reporter !== "object") {
+              return null;
+            }
+            const pubkey =
+              typeof reporter.pubkey === "string" ? reporter.pubkey : "";
+            if (!pubkey) {
+              return null;
+            }
+            const latest = Number.isFinite(reporter.latest)
+              ? Math.floor(reporter.latest)
+              : 0;
+            const name = typeof reporter.name === "string" ? reporter.name : "";
+            return { name, pubkey, latest };
+          })
+          .filter(Boolean);
+      }
+
+      window.__MODERATION_FIXTURE_STORAGE_KEY__ = STORAGE_KEY;
+      window[READY_FLAG] = false;
+
+      function loadOverrides() {
+        try {
+          const raw = window.localStorage?.getItem(STORAGE_KEY);
+          if (!raw) {
+            return {};
+          }
+          const parsed = JSON.parse(raw);
+          return parsed && typeof parsed === "object" ? parsed : {};
+        } catch {
+          return {};
+        }
+      }
+
+      function persistOverrides(next) {
+        try {
+          window.localStorage?.setItem(STORAGE_KEY, JSON.stringify(next));
+        } catch {
+          /* ignore persistence issues in test fixtures */
+        }
+      }
+
+      function buildSummary(fixture, videoId, sanitizedReporters = null) {
+        if (!fixture?.moderation?.reportType) {
+          return null;
+        }
+
+        const reporters =
+          Array.isArray(sanitizedReporters) && sanitizedReporters
+            ? sanitizedReporters
+            : normalizeFixtureReporters(getActiveReporters(fixture, videoId));
+
+        const latest = reporters.reduce(
+          (max, reporter) => Math.max(max, reporter.latest),
+          0
+        );
+
+        return {
+          eventId: fixture.video.id,
+          totalTrusted: reporters.length,
+          types: {
+            [fixture.moderation.reportType]: {
+              trusted: reporters.length,
+              total: reporters.length,
+              latest
+            }
+          },
+          updatedAt: Date.now()
+        };
+      }
+
+      function buildModerationState(fixture, overrides, videoId) {
+        const overrideEntry = overrides?.[videoId];
+        const activeReporters = getActiveReporters(fixture, videoId);
+        const sanitizedReporters = normalizeFixtureReporters(activeReporters);
+        const thresholds =
+          fixture.thresholds && typeof fixture.thresholds === "object"
+            ? {
+                blur: 3,
+                autoplay: 2,
+                reportHide: 3,
+                muteHide: 1,
+                ...fixture.thresholds
+              }
+            : { blur: 3, autoplay: 2, reportHide: 3, muteHide: 1 };
+        const autoplayThreshold = Number.isFinite(thresholds.autoplay)
+          ? Math.max(0, Math.floor(thresholds.autoplay))
+          : 2;
+        const blurThreshold = Number.isFinite(thresholds.blur)
+          ? Math.max(0, Math.floor(thresholds.blur))
+          : 3;
+        const reportHideThreshold = Number.isFinite(thresholds.reportHide)
+          ? Math.max(0, Math.floor(thresholds.reportHide))
+          : 3;
+        const muteHideThreshold = Number.isFinite(thresholds.muteHide)
+          ? Math.max(0, Math.floor(thresholds.muteHide))
+          : 1;
+        const initialBlock = fixture.moderation.blockAutoplay === true;
+        const initialBlur = fixture.moderation.blurThumbnail === true;
+        const trustedCount = sanitizedReporters.length;
+
+        const reporterDisplayNames = sanitizedReporters
+          .map((reporter) => reporter.name)
+          .filter((value) => typeof value === "string" && value);
+
+        const reporterPubkeys = sanitizedReporters.map(
+          (reporter) => reporter.pubkey
+        );
+
+        const trustedReporterEntries = sanitizedReporters.map((reporter) => ({
+          pubkey: reporter.pubkey,
+          latest: reporter.latest
+        }));
+
+        const muterEntries = Array.isArray(fixture.muters)
+          ? fixture.muters
+          : [];
+        const muterPubkeys = muterEntries
+          .map((muter) =>
+            typeof muter?.pubkey === "string" ? muter.pubkey : ""
+          )
+          .filter(Boolean);
+        const muterDisplayNames = muterEntries
+          .map((muter) => (typeof muter?.name === "string" ? muter.name : ""))
+          .filter(Boolean);
+        const trustedMuted = fixture.moderation.trustedMuted === true;
+        const muteCount = Number.isFinite(fixture.moderation.trustedMuteCount)
+          ? Math.max(0, Math.floor(fixture.moderation.trustedMuteCount))
+          : muterPubkeys.length;
+
+        const hideFromMute = trustedMuted && muteCount >= muteHideThreshold;
+        const hideFromReports = trustedCount >= reportHideThreshold;
+        let hidden = fixture.moderation.hidden === true;
+        let hideReason =
+          typeof fixture.moderation.hideReason === "string"
+            ? fixture.moderation.hideReason
+            : "";
+        const hideBypass =
+          typeof fixture.moderation.hideBypass === "string"
+            ? fixture.moderation.hideBypass
+            : "";
+
+        if (hideFromMute) {
+          hidden = true;
+          hideReason = "trusted-mute-hide";
+        } else if (hideFromReports) {
+          hidden = true;
+          hideReason = "trusted-report-hide";
+        } else if (!hidden) {
+          hideReason = "";
+        }
+
+        const hideCounts = hidden
+          ? {
+              trustedMuteCount: muteCount,
+              trustedReportCount: trustedCount
+            }
+          : null;
+
+        const base = {
+          reportType: fixture.moderation.reportType,
+          trustedCount,
+          reporterDisplayNames,
+          reporterPubkeys,
+          trustedReporters: trustedReporterEntries,
+          trustedMuted,
+          trustedMuters: muterPubkeys,
+          trustedMuteCount: muteCount,
+          trustedMuterDisplayNames: muterDisplayNames
+        };
+
+        const summary = buildSummary(fixture, videoId, sanitizedReporters);
+        if (summary) {
+          base.summary = summary;
+        }
+
+        const computedBlock = initialBlock && trustedCount >= autoplayThreshold;
+        let computedBlur = initialBlur && trustedCount >= blurThreshold;
+
+        if (!computedBlur && (trustedMuted || hidden)) {
+          computedBlur = true;
+        }
+
+        const originalState = {
+          blockAutoplay: computedBlock,
+          blurThumbnail: computedBlur,
+          hidden,
+          hideReason: hidden ? hideReason : "",
+          hideCounts: hideCounts
+            ? {
+                trustedMuteCount: Math.max(
+                  0,
+                  Number(hideCounts.trustedMuteCount) || 0
+                ),
+                trustedReportCount: Math.max(
+                  0,
+                  Number(hideCounts.trustedReportCount) || 0
+                )
+              }
+            : null,
+          hideBypass,
+          hideTriggered: hidden
+        };
+
+        base.original = {
+          blockAutoplay: originalState.blockAutoplay,
+          blurThumbnail: originalState.blurThumbnail,
+          hidden: originalState.hidden,
+          hideReason: originalState.hideReason,
+          hideCounts: originalState.hideCounts,
+          hideBypass: originalState.hideBypass,
+          hideTriggered: originalState.hideTriggered
+        };
+
+        if (overrideEntry?.showAnyway) {
+          base.viewerOverride = {
+            showAnyway: true,
+            updatedAt: Number.isFinite(overrideEntry.updatedAt)
+              ? Math.floor(overrideEntry.updatedAt)
+              : Date.now()
+          };
+          base.blockAutoplay = false;
+          base.blurThumbnail = false;
+          base.hidden = false;
+          if (base.hideReason) {
+            delete base.hideReason;
+          }
+          if (base.hideCounts) {
+            delete base.hideCounts;
+          }
+          if (base.hideBypass) {
+            delete base.hideBypass;
+          }
+        } else {
+          base.blockAutoplay = originalState.blockAutoplay;
+          base.blurThumbnail = originalState.blurThumbnail;
+          if (originalState.hidden) {
+            base.hidden = true;
+            if (originalState.hideReason) {
+              base.hideReason = originalState.hideReason;
+            }
+            if (originalState.hideCounts) {
+              base.hideCounts = { ...originalState.hideCounts };
+            }
+            if (originalState.hideBypass) {
+              base.hideBypass = originalState.hideBypass;
+            }
+          } else {
+            if (base.hidden) {
+              delete base.hidden;
+            }
+            if (base.hideReason) {
+              delete base.hideReason;
+            }
+            if (base.hideCounts) {
+              delete base.hideCounts;
+            }
+            if (base.hideBypass) {
+              delete base.hideBypass;
+            }
+          }
+        }
+
+        return base;
+      }
+
+      function setOverride(overrides, videoId, entry) {
+        const next = { ...overrides };
+        next[videoId] = {
+          ...entry,
+          updatedAt: Number.isFinite(entry?.updatedAt)
+            ? Math.floor(entry.updatedAt)
+            : Date.now()
+        };
+        persistOverrides(next);
+        return next;
+      }
+
+      function createCard(fixture, overrides) {
+        const video = {
+          ...fixture.video
+        };
+        video.moderation = buildModerationState(fixture, overrides, video.id);
+
+        const card = new VideoCard({
+          document,
+          video,
+          shareUrl: "#",
+          formatters: {
+            formatTimeAgo: () => "just now",
+            formatNumber: (value) => {
+              if (typeof value === "number") {
+                return value.toLocaleString("en-US");
+              }
+              return String(value ?? "");
+            }
+          },
+          helpers: {
+            isMagnetSupported: () => true,
+            escapeHtml: (value) => String(value ?? ""),
+            toLocaleString: (value, locales, options) => {
+              if (value && typeof value.toLocaleString === "function") {
+                return value.toLocaleString(locales || "en-US", options);
+              }
+              return String(value ?? "");
+            }
+          },
+          assets: {
+            fallbackThumbnailSrc: "/assets/jpg/video-thumbnail-fallback.jpg"
+          },
+          designSystem: {
+            getMode: () => "new",
+            isNew: () => true
+          }
+        });
+
+        const refreshModeration = () => {
+          card.video.moderation = buildModerationState(
+            fixture,
+            overrides,
+            video.id
+          );
+          if (typeof card.refreshModerationUi === "function") {
+            card.refreshModerationUi();
+          }
+        };
+
+        if (fixture.enableOverride) {
+          card.onModerationOverride = () => {
+            overrides = setOverride(overrides, video.id, { showAnyway: true });
+            refreshModeration();
+            try {
+              document.dispatchEvent(
+                new CustomEvent("video:moderation-override", {
+                  detail: { video }
+                })
+              );
+            } catch {
+              /* ignore fixture event errors */
+            }
+            return true;
+          };
+        }
+
+        const root = card.getRoot();
+        root.dataset.testId = fixture.key;
+        if (fixture.enableOverride) {
+          root.dataset.moderationOverrideAvailable = "true";
+        }
+        return { card, root, refreshModeration };
+      }
+
+      function renderFixtures() {
+        const root = document.getElementById("moderationFixtureRoot");
+        if (!root) {
+          return;
+        }
+
+        let overrides = loadOverrides();
+
+        fixtures.forEach((fixture) => {
+          const section = document.createElement("section");
+          section.classList.add("moderation-fixtures__section");
+
+          const heading = document.createElement("h2");
+          heading.textContent = fixture.heading;
+          heading.classList.add("moderation-fixtures__section-title");
+          section.appendChild(heading);
+
+          if (fixture.description) {
+            const description = document.createElement("p");
+            description.textContent = fixture.description;
+            description.classList.add(
+              "moderation-fixtures__section-description"
+            );
+            section.appendChild(description);
+          }
+
+          const { root: cardRoot, refreshModeration } = createCard(
+            fixture,
+            overrides
+          );
+          section.appendChild(cardRoot);
+
+          // Force refresh after attach to ensure visibility state is correct
+          refreshModeration();
+
+          if (fixture.blockToggle && fixture.blockToggle.pubkey) {
+            const toggleWrapper = document.createElement("div");
+            toggleWrapper.classList.add("fixture-toggle");
+
+            const label = document.createElement("label");
+            label.classList.add("fixture-toggle__label");
+
+            const input = document.createElement("input");
+            input.type = "checkbox";
+            input.checked = isReporterBlocked(
+              fixture.video.id,
+              fixture.blockToggle.pubkey
+            );
+            input.addEventListener("change", () => {
+              const checked = input.checked;
+              setReporterBlocked(
+                fixture.video.id,
+                fixture.blockToggle.pubkey,
+                checked
+              );
+              const action = checked ? "block" : "unblock";
+              try {
+                const detail = {
+                  action,
+                  targetPubkey: fixture.blockToggle.pubkey
+                };
+                const maybePromise =
+                  moderationService?.queueUserBlockRefresh?.(detail);
+                if (maybePromise && typeof maybePromise.then === "function") {
+                  maybePromise.catch(() => {});
+                }
+              } catch {
+                /* ignore fixture errors */
+              }
+              refreshModeration();
+            });
+
+            const text = document.createElement("span");
+            text.textContent =
+              typeof fixture.blockToggle.label === "string"
+                ? fixture.blockToggle.label
+                : "Viewer blocks reporter";
+
+            label.appendChild(input);
+            label.appendChild(text);
+            toggleWrapper.appendChild(label);
+            section.appendChild(toggleWrapper);
+          }
+
+          root.appendChild(section);
+        });
+      }
+
+      renderFixtures();
+
+      // Delay the ready signal slightly to ensure layout and observers have settled
+      setTimeout(() => {
+        window[READY_FLAG] = true;
+        document.body.dataset.ready = "true";
+        window.dispatchEvent(new CustomEvent("moderation-fixtures-ready"));
+      }, 50);
+    </script>
+  </body>
+</html>

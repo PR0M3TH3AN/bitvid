@@ -1,7 +1,17 @@
 # Upgrade cross-env
 
-- **Current Version:** 7.0.3
-- **Latest Version:** 10.1.0
+## Status
+- **Current:** `7.0.3`
+- **Latest:** `10.1.0`
 
-**Status:** Major Upgrade Required
-**Reason:** Major version bump available. v10 requires Node >= 20, which may break CI/CD or local environments running older Node versions (e.g. Node 18). Requires explicit environment verification and separate PR.
+## Details
+Major version upgrade.
+Used in npm scripts to set environment variables.
+
+## Plan
+1. Update `cross-env`.
+2. Check if node version requirements changed (v10+ required likely).
+3. Run all npm scripts to verify `cross-env` invocations work.
+
+## Guardrails
+- Major upgrade.

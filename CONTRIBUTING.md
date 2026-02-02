@@ -22,31 +22,32 @@ See [https://developercertificate.org/](https://developercertificate.org/) for t
 
 ## (Optional) Contributor License Agreement (CLA)
 
-If we later introduce **dual-licensing** options (e.g., commercial licenses for enterprises), we may add an *optional* CLA for contributors who want to grant relicense rights. You will be asked to agree explicitly in any PR that requires it. We will keep community use under GPL-3.0-or-later.
+If we later introduce **dual-licensing** options (e.g., commercial licenses for enterprises), we may add an _optional_ CLA for contributors who want to grant relicense rights. You will be asked to agree explicitly in any PR that requires it. We will keep community use under GPL-3.0-or-later.
 
 ## Code Guidelines
 
-* Prefer small, focused PRs.
-* Add tests where reasonable; keep UI accessible.
-* Follow existing formatting/lint rules.
-* Update docs and user-facing text when behavior changes.
-* Do not commit `css/tailwind.generated.css`; it is generated at build time.
+- Prefer small, focused PRs.
+- Add tests where reasonable; keep UI accessible.
+- Follow existing formatting/lint rules.
+- Update docs and user-facing text when behavior changes.
+- Do not commit `css/tailwind.generated.css`; it is generated at build time.
 
 ## Agent PR Conventions
 
 Automated agents contributing to this repository should follow these rules:
+
 - **Atomic Commits**: Keep changes small, focused, and self-contained.
 - **Descriptive Titles**: Use clear, semantic titles (e.g., `fix(ui): resolve upload modal overflow`).
 - **Commit Messages**: Use the convention `type(scope): description (agent)` (e.g., `fix(ai): formatting (agent)` or `docs(ai): update quickstart (agent)`).
 - **Reference Issues**: Link to relevant issues in the PR description.
-- **Review AGENTS.md**: Always consult `AGENTS.md` for specific architectural guidelines and constraints before starting work.
+- **Review AGENTS.md**: Always consult `AGENTS.md` for specific architectural guidelines (like URL-first playback, token-first design system) and constraints before starting work.
 - **Efficiency**: Prefer running targeted or sharded tests (e.g., `npm run test:unit:shard1`) to conserve resources during iteration.
 
 ## Submitting a Pull Request
 
 1. Fork the repository and create a new branch from `main`.
 2. Make your changes, adding tests if applicable.
-3. Run `npm run format`, `npm run lint`, and unit tests (e.g. `npm run test:unit` or a shard like `npm run test:unit:shard1`) to ensure quality.
+3. Run `npm run format`, `npm run lint`, and unit tests (e.g. `npm run test:unit` or a shard like `npm run test:unit:shard1`) to ensure quality before pushing.
 4. (Optional) Run `npm run test:visual` if you made UI changes.
 5. (Optional) Run domain-specific tests if relevant (e.g., `npm run test:dm:unit` for Direct Messages).
 6. Push your branch and open a Pull Request against the `main` branch.
@@ -93,40 +94,59 @@ To set up the project locally:
 
 1. **Install Dependencies**:
    Use `npm ci` to ensure you get the exact dependencies from `package-lock.json`.
+
    ```bash
    npm ci
    ```
 
-2. **Build**:
+2. **Start the Application**:
+
+   ```bash
+   npm start
+   ```
+
+   This builds the project and starts a local server.
+
+   **Or, build manually:**
+
    ```bash
    npm run build
+   npx serve dist
    ```
-   (This runs `npm run build:css` to generate Tailwind styles.)
+
+   (The build command populates the `dist/` directory, which you can then serve locally.)
 
 3. **Run Tests**:
+
    ```bash
    npm run test:unit
    ```
-   *Note: Running the full suite (`npm run test:unit`) is resource-intensive and may time out in some environments. We strongly recommend using sharded runs for local development: `npm run test:unit:shard1`.*
+
+   _Note: Running the full suite (`npm run test:unit`) is resource-intensive, runs sequentially, and may time out in some environments. We strongly recommend using sharded runs for local development to save time: `npm run test:unit:shard1`._
 
    You can also run end-to-end and visual tests:
+
    ```bash
    npm run test:e2e
    npm run test:visual
    ```
 
    For Direct Message features, run:
+
    ```bash
    npm run test:dm:unit
    npm run test:dm:integration
    ```
 
 4. **Format & Lint**:
+
    ```bash
    npm run format
    npm run lint
    ```
-   *Note: `npm run format` currently only targets CSS, HTML, and Markdown files.*
+
+   - **Format**: Targets CSS, HTML, Markdown, and config files. (Note: JavaScript files are not currently auto-formatted by this command).
+   - **Lint**: Checks for CSS errors, hex color usage, inline styles, and design token compliance. (Note: There is no ESLint configuration for JavaScript logic; this step focuses on style and design system guards).
 
 5. **Git Hooks (Optional)**:
    We provide a script to set up a git pre-commit hook that runs linting and CSS builds automatically before you commit.
@@ -136,9 +156,20 @@ To set up the project locally:
 
 For a full guide, see the [Local Setup section in README.md](./README.md#local-setup).
 
+### Event Schema Validation
+
+When modifying event schemas or builders, verify your changes against the codebase and test suite:
+
+```bash
+node scripts/agent/validate-events.mjs
+```
+
+This script checks that all event builders produce valid events according to the definitions in `js/nostrEventSchemas.js`.
+
 ### Troubleshooting
 
 - **Browserslist Warning**: If you see `Browserslist: caniuse-lite is outdated` during the build, run:
+
   ```bash
   npx update-browserslist-db@latest
   ```
@@ -152,6 +183,7 @@ For a full guide, see the [Local Setup section in README.md](./README.md#local-s
 This project includes a `.devcontainer` configuration for VS Code. It provides a pre-configured environment with Node.js 22, the GitHub CLI, and necessary extensions.
 
 To use it:
+
 1. Open the project in VS Code.
 2. When prompted, re-open in Container (or use the command palette: "Dev Containers: Reopen in Container").
 3. The container will automatically:

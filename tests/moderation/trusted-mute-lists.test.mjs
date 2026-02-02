@@ -73,6 +73,8 @@ test("trusted mute lists from seeds hide authors for anonymous viewers", async (
 
   userBlocks.loadBlocks = async () => {};
   userBlocks.blockedPubkeys = new Set();
+  userBlocks._privateBlocks = new Set();
+  userBlocks._publicMutes = new Set();
   userBlocks.blockEventId = null;
   userBlocks.blockEventCreatedAt = null;
   userBlocks.lastPublishedCreatedAt = null;
@@ -103,7 +105,7 @@ test("trusted mute lists from seeds hide authors for anonymous viewers", async (
     },
   });
 
-  await userBlocks.addBlock(mutedHex, seedHex);
+  await userBlocks.addMute(mutedHex, seedHex);
 
   const muteEvent = signedEvents.find(
     (event) =>

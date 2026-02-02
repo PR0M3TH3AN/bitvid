@@ -1,4 +1,4 @@
-import { devLogger } from "../utils/logger.js";
+import { devLogger, userLogger } from "../utils/logger.js";
 import { MediaLoader } from "../utils/mediaLoader.js";
 import { attachHealthBadges } from "../gridHealth.js";
 import { attachUrlHealthBadges } from "../urlHealthObserver.js";
@@ -34,7 +34,9 @@ import ProfileModalController from "./profileModalController.js";
 import LoginModalController from "./loginModalController.js";
 import { VideoListView } from "./views/VideoListView.js";
 import MoreMenuController from "./moreMenuController.js";
+import VideoSettingsMenuController from "./videoSettingsMenuController.js";
 import AppChromeController from "./appChromeController.js";
+import NotificationController from "./notificationController.js";
 import { getSidebarLoadingMarkup } from "../sidebarLoading.js";
 import { isWatchHistoryDebugEnabled } from "../watchHistoryDebug.js";
 import { splitAndZap as splitAndZapDefault } from "../payments/zapSplit.js";
@@ -408,6 +410,30 @@ export default class ApplicationBootstrap {
         }
       }),
     );
+    app.authEventUnsubscribes.push(
+      app.authService.on("blocksLoaded", (detail) => {
+        try {
+          app.handleBlocksLoaded(detail);
+        } catch (error) {
+          devLogger.warn(
+            "Failed to process blocks loaded event:",
+            error,
+          );
+        }
+      }),
+    );
+    app.authEventUnsubscribes.push(
+      app.authService.on("relaysLoaded", (detail) => {
+        try {
+          app.handleRelaysLoaded(detail);
+        } catch (error) {
+          devLogger.warn(
+            "Failed to process relays loaded event:",
+            error,
+          );
+        }
+      }),
+    );
 
     app.commentThreadService =
       this.services.commentThreadService ||
@@ -546,7 +572,6 @@ export default class ApplicationBootstrap {
           onClose: () => app.handleProfileModalClosed(),
           onLogout: async () => app.requestLogout(),
           onChannelLink: (element) => app.handleProfileChannelLink(element),
-          onAddAccount: (payload) => app.handleAddProfile(payload),
           onRequestLogoutProfile: (payload) =>
             app.handleProfileLogoutRequest(payload),
           onRequestSwitchProfile: (payload) =>
@@ -579,6 +604,7 @@ export default class ApplicationBootstrap {
             app.handleProfilePrivacyToggle(payload),
           onPublishDmRelayPreferences: (payload) =>
             app.handleProfilePublishDmRelayPreferences(payload),
+          onRequestPermissionPrompt: () => app.handlePermissionPromptRequest(),
         };
 
         app.profileController = new ProfileModalController({
@@ -671,22 +697,54 @@ export default class ApplicationBootstrap {
       },
     });
     app.moreMenuController.setVideoModal(app.videoModal);
-    app.videoSettingsPopovers = new Map();
+    app.videoSettingsMenuController = new VideoSettingsMenuController({
+      designSystem: app.designSystemContext,
+      isDevMode,
+    });
     app.tagPreferencePopovers = new Map();
 
     app.subscriptionsLink = null;
     app.forYouLink = null;
     app.exploreLink = null;
 
-    app.notificationPortal = doc?.getElementById("notificationPortal") || null;
-    app.errorContainer = doc?.getElementById("errorContainer") || null;
-    app.successContainer = doc?.getElementById("successContainer") || null;
-    app.statusContainer = doc?.getElementById("statusContainer") || null;
-    app.statusMessage =
-      app.statusContainer?.querySelector("[data-status-message]") || null;
-    app.statusAutoHideHandle = null;
+    app.notificationController = new NotificationController({
+      portal: doc?.getElementById("notificationPortal") || null,
+      errorContainer: doc?.getElementById("errorContainer") || null,
+      successContainer: doc?.getElementById("successContainer") || null,
+      statusContainer: doc?.getElementById("statusContainer") || null,
+      loggers: {
+        userLogger,
+        devLogger,
+      },
+      documentRef: doc,
+      windowRef: this.window,
+    });
+
     app.lastExperimentalWarningKey = null;
     app.lastExperimentalWarningAt = 0;
+
+    if (
+      nostrClient &&
+      typeof nostrClient.setExtensionPermissionStatusHandler === "function"
+    ) {
+      nostrClient.setExtensionPermissionStatusHandler((status) => {
+        if (!status || typeof status !== "object") {
+          return;
+        }
+        const message =
+          typeof status.message === "string" ? status.message.trim() : "";
+        if (!message) {
+          return;
+        }
+        const autoHideMs = Number.isFinite(status.autoHideMs)
+          ? status.autoHideMs
+          : 12000;
+        const showSpinner = status.showSpinner !== false;
+        if (typeof app.showStatus === "function") {
+          app.showStatus(message, { autoHideMs, showSpinner });
+        }
+      });
+    }
 
     app.pubkey = null;
     app.currentMagnetUri = null;

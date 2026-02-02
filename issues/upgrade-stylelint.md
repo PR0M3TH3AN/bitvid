@@ -1,7 +1,17 @@
 # Upgrade stylelint
 
-- **Current Version:** 16.26.1
-- **Latest Version:** 17.0.0
+## Status
+- **Current:** `16.26.1`
+- **Latest:** `17.0.0`
 
-**Status:** Major Upgrade Required
-**Reason:** Major version bump available. Requires strict testing and separate PR.
+## Details
+Major version upgrade.
+May require updating rules in `stylelint.config.cjs`.
+
+## Plan
+1. Update `stylelint`.
+2. Run `npm run lint:css` to identify config errors or new violations.
+3. Fix config/violations.
+
+## Guardrails
+- Major upgrade.

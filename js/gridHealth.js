@@ -135,7 +135,17 @@ function normalizeResult(result) {
   const peers = Number.isFinite(result.peers)
     ? Math.max(0, Number(result.peers))
     : 0;
+
+  /**
+   * CRITICAL: Health determination relies SOLELY on `peers > 0`.
+   * Because we pass webseeds to the client, a connected webseed counts as a peer.
+   *
+   * Regression warning:
+   * Do not attempt to add `|| webseedOnly` here. If `peers` is 0, the webseed
+   * did not connect, and the stream is NOT healthy.
+   */
   const healthy = Boolean(result.healthy) && peers > 0;
+
   const reason = typeof result.reason === "string" ? result.reason : "error";
   const webseedOnly = Boolean(result.webseedOnly) && peers === 0;
   return {

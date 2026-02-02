@@ -74,7 +74,7 @@ function getSessionActorKey() {
   return normalizeActorKey(nostrClient?.sessionActor?.pubkey);
 }
 
-async function ensureWatchHistoryExtensionPermissions(actorKey) {
+async function ensureWatchHistoryExtensionPermissions(actorKey, options = {}) {
   const normalizedActor = normalizeActorKey(actorKey);
   if (!normalizedActor) {
     return { ok: true };
@@ -85,8 +85,13 @@ async function ensureWatchHistoryExtensionPermissions(actorKey) {
     return { ok: true };
   }
 
+  const allowPermissionPrompt = options?.allowPermissionPrompt !== false;
+
   let signer = getActiveSigner();
-  if (!signer && typeof nostrClient?.ensureActiveSignerForPubkey === "function") {
+  if (
+    allowPermissionPrompt &&
+    (!signer && typeof nostrClient?.ensureActiveSignerForPubkey === "function")
+  ) {
     signer = await nostrClient.ensureActiveSignerForPubkey(normalizedActor);
   }
 
@@ -94,6 +99,10 @@ async function ensureWatchHistoryExtensionPermissions(actorKey) {
     ? signer.canSign()
     : typeof signer?.signEvent === "function";
   if (!canSign || signer?.type !== "extension") {
+    return { ok: true };
+  }
+
+  if (!allowPermissionPrompt) {
     return { ok: true };
   }
 
@@ -984,7 +993,7 @@ async function snapshot(items, options = {}) {
   return run;
 }
 
-function scheduleWatchHistoryRefresh(actorKey, cacheEntry = {}) {
+function scheduleWatchHistoryRefresh(actorKey, cacheEntry = {}, options = {}) {
   if (!actorKey) {
     return Promise.resolve([]);
   }
@@ -996,6 +1005,7 @@ function scheduleWatchHistoryRefresh(actorKey, cacheEntry = {}) {
   const promise = (async () => {
     const permissionResult = await ensureWatchHistoryExtensionPermissions(
       actorKey,
+      options
     );
     if (!permissionResult.ok) {
       throw permissionResult.error;
@@ -1264,11 +1274,19 @@ async function loadLatest(actorInput, options = {}) {
   }
 
   if (!allowStale || !hasCachedItems) {
-    const resolved = await scheduleWatchHistoryRefresh(actorKey, cacheEntry);
+    const resolved = await scheduleWatchHistoryRefresh(
+      actorKey,
+      cacheEntry,
+      normalizedOptions
+    );
     return mergeQueuedItemsIfNeeded(actorKey, resolved);
   }
 
-  const refreshPromise = scheduleWatchHistoryRefresh(actorKey, cacheEntry);
+  const refreshPromise = scheduleWatchHistoryRefresh(
+    actorKey,
+    cacheEntry,
+    normalizedOptions
+  );
   refreshPromise.catch(() => {});
 
   devLogger.info(

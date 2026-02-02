@@ -49,6 +49,9 @@ test("batchFetchProfiles handles fast and failing relays", async () => {
   const originalRelays = Array.isArray(nostrClient.relays)
     ? [...nostrClient.relays]
     : [];
+  const originalReadRelays = Array.isArray(nostrClient.readRelays)
+    ? [...nostrClient.readRelays]
+    : nostrClient.readRelays;
   const originalWriteRelays = Array.isArray(nostrClient.writeRelays)
     ? [...nostrClient.writeRelays]
     : nostrClient.writeRelays;
@@ -57,9 +60,12 @@ test("batchFetchProfiles handles fast and failing relays", async () => {
   const poolListCalls = [];
 
   nostrClient.relays = [FAST_RELAY, FAIL_RELAY];
+  nostrClient.readRelays = [FAST_RELAY, FAIL_RELAY];
   nostrClient.writeRelays = [FAST_RELAY, FAIL_RELAY];
+  nostrClient.readRelays = [FAST_RELAY, FAIL_RELAY];
   nostrClient.pool = {
     list: (relays, filters) => {
+      // console.log("pool.list called with relays:", relays);
       poolListCalls.push({ relays, filters });
       const relayUrl = Array.isArray(relays) ? relays[0] : undefined;
       if (relayUrl === FAST_RELAY) {
@@ -92,9 +98,14 @@ test("batchFetchProfiles handles fast and failing relays", async () => {
     });
   } finally {
     nostrClient.relays = originalRelays;
+    nostrClient.readRelays = originalReadRelays;
     nostrClient.writeRelays = originalWriteRelays;
+    nostrClient.readRelays = originalReadRelays;
     nostrClient.pool = originalPool;
   }
+
+  // console.log("poolListCalls.length:", poolListCalls.length);
+  // console.log("nostrClient.relays:", nostrClient.relays);
 
   assert.equal(poolListCalls.length, 2, "expected a query per relay");
 

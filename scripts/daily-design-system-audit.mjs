@@ -7,7 +7,7 @@ const REPORT_FILE = "REMEDIATION_REPORT.md";
 const SHOULD_FIX = process.argv.includes("--fix");
 
 const CHECKS = [
-  { name: "CSS", command: "npm", args: ["run", "lint:css"] },
+  { name: "CSS", command: "npx", args: ["stylelint", "css/tailwind.source.css", "css/tokens.css", "css/docs.css"] },
   { name: "Hex Colors", command: "npm", args: ["run", "lint:hex"] },
   { name: "Inline Styles", command: "npm", args: ["run", "lint:inline-styles"] },
   { name: "Raw Lengths", command: "npm", args: ["run", "lint:tokens"] }, // check-design-tokens --check=tokens
@@ -38,8 +38,9 @@ function parseOutput(category, output) {
   const violations = [];
 
   if (category === "Hex Colors") {
-    // ./js/ui/ambientBackground.js:34:  return "#000000";
-    const regex = /^(\.\/.*):(\d+):(.*)$/;
+    // js/ui/ambientBackground.js:34:  return "#000000";
+    // Also supports ./ prefix if present
+    const regex = /^(.+?):(\d+):(.*)$/;
     for (const line of lines) {
       const match = line.trim().match(regex);
       if (match) {
@@ -101,15 +102,28 @@ function parseOutput(category, output) {
     // stylelint output
     // css/tailwind.source.css
     //  5757:3  ✖  Expected ...
-    // Just capture raw lines for now if we can't parse easily
-    // But since stylelint passed in my tests, I might not need complex parsing yet.
-    // If it fails, I'll just dump the output.
-    if (output.includes("✖") || output.includes("error")) {
-       violations.push({
-         file: "stylelint output",
-         line: 0,
-         snippet: output.trim() // Simplification
-       });
+    let currentFile = "";
+    for (const line of lines) {
+      const trimmed = line.trim();
+      // If line looks like a file path (ends with .css) and isn't an error line
+      if (trimmed.endsWith(".css") && !trimmed.includes("✖")) {
+        currentFile = trimmed;
+      } else {
+        const match = trimmed.match(/^(\d+):(\d+)\s+✖\s+(.+)$/);
+        if (match && currentFile) {
+          violations.push({
+            file: currentFile,
+            line: match[1],
+            snippet: match[3]
+          });
+        } else if (trimmed.includes("✖")) {
+          violations.push({
+            file: currentFile || "unknown",
+            line: 0,
+            snippet: trimmed
+          });
+        }
+      }
     }
   }
 

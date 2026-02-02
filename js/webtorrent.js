@@ -284,6 +284,19 @@ export class TorrentClient {
           announce: trackers,
           maxWebConns: safeMaxWebConns,
         };
+        /**
+         * CRITICAL: We pass the webseed URL (if present) to the client via `urlList`.
+         *
+         * Regression warning:
+         * In the past, we tried to separate "webseed health" from "peer health".
+         * That was a mistake. WebTorrent counts a connected webseed as a peer.
+         *
+         * If we pass `urlList` here, the client connects to the webseed, and `numPeers`
+         * increments to at least 1. This correctly signals "Healthy" to our `gridHealth` logic.
+         *
+         * DO NOT remove this parameter or try to handle webseeds manually outside the client.
+         * Trust the client to count the webseed as a peer.
+         */
         if (hasExplicitWebSeed) {
           addOptions.urlList = urlList;
         }
@@ -734,16 +747,19 @@ export class TorrentClient {
       this.log("Video error:", e.target.error);
     });
 
-    videoElement.addEventListener(
-      "canplay",
-      () => {
-        this.attemptAutoplay(videoElement, "chrome");
-      },
-      { once: true }
-    );
+    const tryStart = () => {
+      this.attemptAutoplay(videoElement, "chrome");
+    };
+
+    videoElement.addEventListener("canplay", tryStart, { once: true });
+    videoElement.addEventListener("loadeddata", tryStart, { once: true });
 
     try {
       file.streamTo(videoElement);
+      // If the video is already ready (e.g. from cache or fast load), try starting immediately
+      if (videoElement.readyState >= 3) {
+        tryStart();
+      }
       this.currentTorrent = torrent;
       resolve(torrent);
     } catch (err) {
@@ -773,16 +789,19 @@ export class TorrentClient {
       this.log("Video error (Firefox path):", e.target.error);
     });
 
-    videoElement.addEventListener(
-      "canplay",
-      () => {
-        this.attemptAutoplay(videoElement, "firefox");
-      },
-      { once: true }
-    );
+    const tryStart = () => {
+      this.attemptAutoplay(videoElement, "firefox");
+    };
+
+    videoElement.addEventListener("canplay", tryStart, { once: true });
+    videoElement.addEventListener("loadeddata", tryStart, { once: true });
 
     try {
       file.streamTo(videoElement, { highWaterMark: 256 * 1024 });
+      // If the video is already ready (e.g. from cache or fast load), try starting immediately
+      if (videoElement.readyState >= 3) {
+        tryStart();
+      }
       this.currentTorrent = torrent;
       resolve(torrent);
     } catch (err) {
@@ -895,6 +914,11 @@ export class TorrentClient {
         : [];
 
       const chromeOptions = { strategy: "sequential" };
+      /**
+       * CRITICAL: Passing `urlList` ensures the client can stream from the webseed.
+       * Without this, videos with 0 P2P peers will fail to play even if a valid
+       * webseed is available.
+       */
       if (candidateUrls.length) {
         chromeOptions.urlList = candidateUrls;
       }

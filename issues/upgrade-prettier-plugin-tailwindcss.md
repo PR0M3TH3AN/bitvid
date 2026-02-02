@@ -1,7 +1,17 @@
 # Upgrade prettier-plugin-tailwindcss
 
-- **Current Version:** 0.6.14
-- **Latest Version:** 0.7.2
+## Status
+- **Current:** `0.6.14`
+- **Latest:** `0.7.2`
 
-**Status:** Major Upgrade Required
-**Reason:** 0.x version bump may contain breaking changes. Requires strict testing and separate PR.
+## Details
+0.x minor version upgrade, potential breaking changes.
+Depends on `prettier` and `tailwindcss` versions.
+
+## Plan
+1. Update `prettier-plugin-tailwindcss`.
+2. Run `npm run format`.
+3. Check for formatting changes.
+
+## Guardrails
+- Dev tool upgrade.

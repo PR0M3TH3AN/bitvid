@@ -14,6 +14,7 @@ import { normalizePointerInput } from "./watchHistory.js";
 import { devLogger, userLogger } from "../utils/logger.js";
 import { logViewCountFailure } from "./countDiagnostics.js";
 import { queueSignEvent } from "./signRequestQueue.js";
+import { sanitizeRelayList as sanitizeRelayUrls } from "./nip46Client.js";
 
 const VIEW_EVENT_GUARD_PREFIX = "bitvid:viewed";
 
@@ -340,13 +341,15 @@ function flattenListResults(input) {
 }
 
 function sanitizeRelayList(primary, fallback) {
-  if (Array.isArray(primary) && primary.length) {
-    return primary;
+  const primaryList = sanitizeRelayUrls(Array.isArray(primary) ? primary : []);
+  if (primaryList.length) {
+    return primaryList;
   }
-  if (Array.isArray(fallback) && fallback.length) {
-    return fallback;
+  const fallbackList = sanitizeRelayUrls(Array.isArray(fallback) ? fallback : []);
+  if (fallbackList.length) {
+    return fallbackList;
   }
-  return RELAY_URLS;
+  return sanitizeRelayUrls(RELAY_URLS);
 }
 
 export async function listVideoViewEvents(client, pointer, options = {}) {
@@ -563,6 +566,7 @@ export async function countVideoViewEvents(client, pointer, options = {}) {
       perRelay: [],
       best: null,
       fallback: true,
+      partial: false,
     };
   }
 
@@ -588,18 +592,25 @@ export async function countVideoViewEvents(client, pointer, options = {}) {
     throw normalizeAbortError();
   }
 
+  let countAttemptPartial = false;
+
   try {
     const result = await client.countEventsAcrossRelays([pointerFilter], {
       relays: sanitizeRelayList(relayList, client.relays),
       timeoutMs: options?.timeoutMs,
     });
 
+    countAttemptPartial = Boolean(result?.partial);
+
     if (result?.perRelay?.some((entry) => entry && entry.ok)) {
-      return { ...result, fallback: false };
+      return { ...result, fallback: false, partial: countAttemptPartial };
     }
   } catch (error) {
     if (error?.code !== "count-unsupported") {
       logViewCountFailure(error);
+    }
+    if (error?.code === "count-timeout" || error?.code === "timeout") {
+      countAttemptPartial = true;
     }
   }
 
@@ -647,6 +658,7 @@ export async function countVideoViewEvents(client, pointer, options = {}) {
     perRelay: [],
     best: null,
     fallback: true,
+    partial: countAttemptPartial,
   };
 }
 

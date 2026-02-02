@@ -26,9 +26,8 @@ function runCommand(command, args = [], options = {}) {
   return result;
 }
 
-function getChangedFiles() {
+function getChangedFiles(baseRef) {
   try {
-    const baseRef = process.env.GITHUB_BASE_REF || 'main';
     const baseUrl = process.env.GITHUB_BASE_REPO_URL;
     let remote = 'origin';
 
@@ -64,7 +63,6 @@ function getChangedFiles() {
     console.error('Error getting changed files:', error.stderr || error.message);
     // Fallback: try 2-dot diff if 3-dot failed (e.g. shallow clone issues)
     try {
-       const baseRef = process.env.GITHUB_BASE_REF || 'main';
        const remote = process.env.GITHUB_BASE_REPO_URL ? 'upstream' : 'origin';
        const cmd = `git diff --name-only ${remote}/${baseRef} HEAD`;
        console.log(`Retrying with 2-dot diff: ${cmd}`);
@@ -77,8 +75,7 @@ function getChangedFiles() {
   }
 }
 
-function checkReleaseChannel(changedFiles) {
-  const baseRef = process.env.GITHUB_BASE_REF || 'main';
+function checkReleaseChannel(changedFiles, baseRef) {
   const warnings = [];
 
   if (baseRef === 'main') {
@@ -100,13 +97,11 @@ function checkReleaseChannel(changedFiles) {
   return warnings;
 }
 
-async function main() {
-  try {
-    console.log('Starting Automated PR Review...');
-    let commentBody = '## 🤖 Automated PR Review\n\n';
-    let hasFailures = false;
+async function reviewPR(prNumber, baseRef) {
+  console.log(`Starting Automated PR Review for PR #${prNumber} (base: ${baseRef})...`);
+  let commentBody = '## 🤖 Automated PR Review\n\n';
+  let hasFailures = false;
   let hasFormatChanges = false;
-  let microFixesStatus = '';
 
   // 1. Install Dependencies
   if (process.env.CI || process.argv.includes('--force-ci')) {
@@ -149,13 +144,13 @@ async function main() {
   }
 
   // 5. Security/Protocol Review Flags
-  const changedFiles = getChangedFiles();
+  const changedFiles = getChangedFiles(baseRef);
   const sensitiveChanges = changedFiles.filter(file =>
     SENSITIVE_PATHS.some(pattern => pattern.test(file))
   );
 
   // Release Channel Check
-  const channelWarnings = checkReleaseChannel(changedFiles);
+  const channelWarnings = checkReleaseChannel(changedFiles, baseRef);
   if (channelWarnings.length > 0) {
       commentBody += '### 🚀 Release Channel Checks\n\n';
       channelWarnings.forEach(w => commentBody += `${w}\n\n`);
@@ -182,7 +177,7 @@ async function main() {
   commentBody += '\n';
 
   // 6. Post Comment (if in CI)
-  if (process.env.GITHUB_TOKEN && process.env.PR_NUMBER) {
+  if (process.env.GITHUB_TOKEN && prNumber) {
     // Verify gh CLI is available
     console.log('Verifying GitHub CLI...');
     runCommand('gh', ['--version']);
@@ -194,7 +189,7 @@ async function main() {
             execSync('git config user.name "bitvid-agent"');
             execSync('git config user.email "agent@bitvid.network"');
             execSync('git add .');
-            execSync('git commit -m "fix(ai): formatting (agent)"');
+            execSync('git commit -m "fix(ai): formatting (agent) suggested"');
             execSync('git push');
 
             commentBody += '> **✅ Micro-fixes applied:** Formatting fixes have been committed to this branch.\n\n';
@@ -204,13 +199,11 @@ async function main() {
             // Fallback: Create a new branch and open a PR
             try {
                 console.log('Attempting to create a follow-up PR with fixes...');
-                const prNumber = process.env.PR_NUMBER;
                 const fixBranchName = `agent-fix/pr-${prNumber}-${Date.now()}`;
 
                 // Push the current HEAD (with fixes) to a new branch on origin
                 execSync(`git push origin HEAD:refs/heads/${fixBranchName}`);
 
-                const baseRef = process.env.GITHUB_BASE_REF || 'main';
                 const prTitle = `fix(ai): formatting fixes for PR #${prNumber}`;
                 const prBody = `This PR applies automated formatting fixes for PR #${prNumber}.`;
 
@@ -231,9 +224,9 @@ async function main() {
         }
     }
 
-    console.log('Posting comment to PR #' + process.env.PR_NUMBER);
+    console.log('Posting comment to PR #' + prNumber);
     try {
-      const gh = spawnSync('gh', ['pr', 'comment', process.env.PR_NUMBER, '-F', '-'], {
+      const gh = spawnSync('gh', ['pr', 'comment', prNumber, '-F', '-'], {
         input: commentBody,
         stdio: ['pipe', 'inherit', 'inherit']
       });
@@ -247,17 +240,92 @@ async function main() {
 
   }
 
-  // Always print the report to stdout so it's visible in logs (especially if posting fails or for debugging)
+  // Always print the report to stdout
   console.log('---------------------------------------------------');
-  console.log('PR Review Report:');
+  console.log(`PR Review Report for PR #${prNumber}:`);
   console.log(commentBody);
   console.log('---------------------------------------------------');
 
-    if (hasFailures) {
-      process.exit(1);
+  if (hasFailures) {
+    throw new Error('Lint or Test failures detected.');
+  }
+}
+
+async function main() {
+  try {
+    const isAll = process.argv.includes('--all');
+
+    if (isAll) {
+      console.log('Fetching all open PRs...');
+      // Get list of open PRs
+      const listCmd = ['pr', 'list', '--state', 'open', '--json', 'number,baseRefName,headRefName'];
+      const result = spawnSync('gh', listCmd, { encoding: 'utf-8' });
+
+      if (result.error || result.status !== 0) {
+        throw new Error(`Failed to list PRs: ${result.stderr || result.error?.message}`);
+      }
+
+      const prs = JSON.parse(result.stdout);
+      console.log(`Found ${prs.length} open PRs.`);
+
+      let hasGlobalFailures = false;
+
+      // Save current branch to restore later
+      let originalBranch;
+      try {
+        originalBranch = execSync('git branch --show-current', { encoding: 'utf-8' }).trim();
+      } catch (e) {
+        // Ignore
+      }
+
+      for (const pr of prs) {
+        try {
+          console.log(`\n=== Processing PR #${pr.number} ===`);
+
+          // Checkout PR
+          runCommand('gh', ['pr', 'checkout', pr.number]);
+
+          // Run Review
+          await reviewPR(pr.number, pr.baseRefName);
+
+        } catch (e) {
+          console.error(`❌ Failed to process PR #${pr.number}:`, e.message);
+          hasGlobalFailures = true;
+          // Continue to next PR
+        } finally {
+            // Clean up or reset if needed?
+            // Since we use gh pr checkout, we are on a different branch.
+            // Next iteration will checkout another branch.
+        }
+      }
+
+      if (originalBranch) {
+        console.log(`Restoring original branch: ${originalBranch}`);
+        try {
+            execSync(`git checkout ${originalBranch}`);
+        } catch(e) {
+            console.error('Failed to restore original branch');
+        }
+      }
+
+      if (hasGlobalFailures) {
+        process.exit(1);
+      }
+
+    } else {
+      const prNumber = process.env.PR_NUMBER;
+      const baseRef = process.env.GITHUB_BASE_REF || 'main';
+
+      if (prNumber) {
+          await reviewPR(prNumber, baseRef);
+      } else {
+          // Local run or manual invocation without specific PR env vars
+          console.log('No PR_NUMBER found and no --all flag. Running local review against ' + baseRef);
+          await reviewPR('local', baseRef);
+      }
     }
   } catch (error) {
-    console.error('Automated PR Review failed:', error);
+    console.error('Automated PR Review failed:', error.message);
     process.exit(1);
   }
 }

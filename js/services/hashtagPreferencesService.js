@@ -15,11 +15,17 @@ import {
   assertAnyRelayAccepted,
 } from "../nostrPublish.js";
 import { userLogger, devLogger } from "../utils/logger.js";
+import { sanitizeRelayList } from "../nostr/nip46Client.js";
 import { normalizeHashtag } from "../utils/hashtagNormalization.js";
 import { profileCache } from "../state/profileCache.js";
 import { DEFAULT_RELAY_URLS } from "../nostr/toolkit.js";
 import { relayManager } from "../relayManager.js";
-import { runNip07WithRetry, NIP07_PRIORITY } from "../nostr/nip07Permissions.js";
+import {
+  DEFAULT_NIP07_ENCRYPTION_METHODS,
+  runNip07WithRetry,
+  NIP07_PRIORITY,
+} from "../nostr/nip07Permissions.js";
+import { relaySubscriptionService } from "./relaySubscriptionService.js";
 
 const LOG_PREFIX = "[HashtagPreferences]";
 const HASHTAG_IDENTIFIER = "bitvid:tag-preferences";
@@ -91,14 +97,6 @@ function normalizeHexPubkey(pubkey) {
   }
 
   return null;
-}
-
-function sanitizeRelayList(candidate) {
-  return Array.isArray(candidate)
-    ? candidate
-        .map((url) => (typeof url === "string" ? url.trim() : ""))
-        .filter(Boolean)
-    : [];
 }
 
 function normalizeEncryptionToken(value) {
@@ -238,19 +236,24 @@ class HashtagPreferencesService {
     this.eventId = null;
     this.eventCreatedAt = null;
     this.loaded = false;
+    this.backgroundLoading = false;
     this.preferencesVersion = DEFAULT_VERSION;
     this.decryptRetryTimeoutId = null;
+    this.loadPromise = null;
+    this.loadingPubkey = null;
+    this.subscriptionKey = null;
+    this.lastLoadError = null;
 
     profileCache.subscribe((event, detail) => {
       if (event === "profileChanged") {
         this.reset();
         if (detail.pubkey) {
-          this.load(detail.pubkey);
+          this.load(detail.pubkey, { allowPermissionPrompt: false });
         }
       } else if (event === "runtimeCleared" && detail.pubkey === this.activePubkey) {
         this.reset();
         if (this.activePubkey) {
-          this.load(this.activePubkey);
+          this.load(this.activePubkey, { allowPermissionPrompt: false });
         }
       }
     });
@@ -261,17 +264,72 @@ class HashtagPreferencesService {
   }
 
   reset() {
+    this.stopHashtagPreferencesSubscription();
     this.interests = new Set();
     this.disinterests = new Set();
     this.eventId = null;
     this.eventCreatedAt = null;
     this.loaded = false;
+    this.backgroundLoading = false;
     this.preferencesVersion = DEFAULT_VERSION;
+    this.lastLoadError = null;
     if (this.decryptRetryTimeoutId) {
       clearTimeout(this.decryptRetryTimeoutId);
       this.decryptRetryTimeoutId = null;
     }
+    this.loadPromise = null;
+    this.loadingPubkey = null;
     this.emitChange("reset");
+  }
+
+  stopHashtagPreferencesSubscription() {
+    if (this.subscriptionKey) {
+      relaySubscriptionService.stopSubscription(this.subscriptionKey, "reset");
+      this.subscriptionKey = null;
+    }
+  }
+
+  ensureHashtagPreferencesSubscription(pubkey, relays) {
+    const normalized = normalizeHexPubkey(pubkey);
+    if (!normalized || !nostrClient?.pool) {
+      return null;
+    }
+
+    const schema = getNostrEventSchema(NOTE_TYPES.HASHTAG_PREFERENCES);
+    const canonicalKind = schema?.kind ?? 30015;
+    const legacyKind = 30005;
+    const kinds = canonicalKind === legacyKind
+      ? [canonicalKind]
+      : [canonicalKind, legacyKind];
+
+    const filters = kinds.map((kind) => ({
+      kinds: [kind],
+      authors: [normalized],
+      "#d": [HASHTAG_IDENTIFIER],
+    }));
+
+    const key = `hashtags:${normalized}`;
+    this.subscriptionKey = key;
+
+    return relaySubscriptionService.ensureSubscription({
+      key,
+      pool: nostrClient.pool,
+      relays,
+      filters,
+      label: "hashtag-preferences",
+      onEvent: (event) => this.handleHashtagPreferencesEvent(event),
+    });
+  }
+
+  handleHashtagPreferencesEvent(event) {
+    const normalized = normalizeHexPubkey(event?.pubkey);
+    if (!normalized || normalized !== this.activePubkey) {
+      return;
+    }
+
+    this.load(normalized, { allowPermissionPrompt: false }).catch((error) => {
+      devLogger.warn(`${LOG_PREFIX} Failed to refresh after hashtag event`, error);
+    });
   }
 
   saveToCache() {
@@ -425,7 +483,7 @@ class HashtagPreferencesService {
     }
   }
 
-  scheduleDecryptRetry(pubkey, error) {
+  scheduleDecryptRetry(pubkey, error, options = {}) {
     const normalized = normalizeHexPubkey(pubkey);
     if (!normalized) {
       return;
@@ -438,7 +496,7 @@ class HashtagPreferencesService {
       if (this.activePubkey && this.activePubkey !== normalized) {
         return;
       }
-      this.load(normalized).catch((retryError) => {
+      this.load(normalized, options).catch((retryError) => {
         userLogger.warn(`${LOG_PREFIX} Decryption retry failed`, retryError);
       });
     }, DECRYPT_RETRY_DELAY_MS);
@@ -448,14 +506,51 @@ class HashtagPreferencesService {
     );
   }
 
-  async load(pubkey) {
+  async load(pubkey, options = {}) {
     const normalized = normalizeHexPubkey(pubkey);
+
+    if (this.loadPromise && this.loadingPubkey === normalized) {
+      devLogger.log(`${LOG_PREFIX} Reusing in-flight preferences load.`, {
+        pubkey: normalized,
+      });
+      return this.loadPromise;
+    }
+
+    if (this.loadPromise && this.loadingPubkey && this.loadingPubkey !== normalized) {
+      devLogger.log(`${LOG_PREFIX} Waiting for existing preferences load to settle.`, {
+        previous: this.loadingPubkey,
+        next: normalized,
+      });
+      await this.loadPromise.catch(() => {});
+    }
+
+    const loadPromise = this.loadInternal(normalized, options);
+    this.loadPromise = loadPromise;
+    this.loadingPubkey = normalized;
+
+    try {
+      return await loadPromise;
+    } finally {
+      if (this.loadPromise === loadPromise) {
+        this.loadPromise = null;
+        this.loadingPubkey = null;
+      }
+    }
+  }
+
+  async loadInternal(pubkey, options = {}) {
+    const normalized = normalizeHexPubkey(pubkey);
+    const allowPermissionPrompt = options?.allowPermissionPrompt !== false;
+    this.lastLoadError = null;
     let wasLoadedForUser =
       this.activePubkey &&
       this.activePubkey === normalized &&
       (this.interests.size > 0 || this.disinterests.size > 0 || this.loaded);
 
     this.activePubkey = normalized;
+    if (allowPermissionPrompt) {
+      this.backgroundLoading = false;
+    }
 
     if (!normalized) {
       this.reset();
@@ -466,7 +561,12 @@ class HashtagPreferencesService {
     // Try cache first
     if (this.loadFromCache(normalized)) {
       wasLoadedForUser = true;
+      if (!allowPermissionPrompt && !this.backgroundLoading) {
+        this.backgroundLoading = true;
+        this.emitChange("background-loading", { background: true });
+      }
     }
+    const wasBackgroundLoading = this.backgroundLoading;
 
     if (
       !nostrClient ||
@@ -481,10 +581,18 @@ class HashtagPreferencesService {
         userLogger.warn(
           `${LOG_PREFIX} Keeping existing preferences despite client unavailability.`,
         );
+        if (wasBackgroundLoading) {
+          this.backgroundLoading = false;
+          this.emitChange("background-loaded", { background: false });
+        }
         return;
       }
       this.reset();
       this.loaded = true;
+      if (wasBackgroundLoading) {
+        this.backgroundLoading = false;
+        this.emitChange("background-loaded", { background: false });
+      }
       return;
     }
 
@@ -495,12 +603,31 @@ class HashtagPreferencesService {
         userLogger.warn(
           `${LOG_PREFIX} Keeping existing preferences; no relays available for refresh.`,
         );
+        if (wasBackgroundLoading) {
+          this.backgroundLoading = false;
+          this.emitChange("background-loaded", { background: false });
+        }
         return;
       }
       this.reset();
       this.loaded = true;
+      if (wasBackgroundLoading) {
+        this.backgroundLoading = false;
+        this.emitChange("background-loaded", { background: false });
+      }
       return;
     }
+    if (!nostrClient?.pool && typeof nostrClient?.ensurePool === "function") {
+      try {
+        await nostrClient.ensurePool();
+      } catch (error) {
+        devLogger.warn(
+          `${LOG_PREFIX} Failed to initialize relay pool for subscription`,
+          error,
+        );
+      }
+    }
+    this.ensureHashtagPreferencesSubscription(normalized, relays);
 
     const schema = getNostrEventSchema(NOTE_TYPES.HASHTAG_PREFERENCES);
     const canonicalKind = schema?.kind ?? 30015;
@@ -553,6 +680,10 @@ class HashtagPreferencesService {
           `${LOG_PREFIX} Failed to load hashtag preferences (keeping local state if any).`,
           fetchError,
         );
+        if (wasBackgroundLoading) {
+          this.backgroundLoading = false;
+          this.emitChange("background-loaded", { background: false });
+        }
         return;
       }
 
@@ -563,11 +694,19 @@ class HashtagPreferencesService {
         userLogger.warn(
           `${LOG_PREFIX} Keeping existing preferences despite empty relay response.`,
         );
+        if (wasBackgroundLoading) {
+          this.backgroundLoading = false;
+          this.emitChange("background-loaded", { background: false });
+        }
         return;
       }
 
       this.reset();
       this.loaded = true;
+      if (wasBackgroundLoading) {
+        this.backgroundLoading = false;
+        this.emitChange("background-loaded", { background: false });
+      }
       return;
     }
 
@@ -600,10 +739,18 @@ class HashtagPreferencesService {
 
     if (!latest) {
       if (wasLoadedForUser) {
+        if (wasBackgroundLoading) {
+          this.backgroundLoading = false;
+          this.emitChange("background-loaded", { background: false });
+        }
         return;
       }
       this.reset();
       this.loaded = true;
+      if (wasBackgroundLoading) {
+        this.backgroundLoading = false;
+        this.emitChange("background-loaded", { background: false });
+      }
       return;
     }
 
@@ -616,30 +763,39 @@ class HashtagPreferencesService {
       devLogger.log(
         `${LOG_PREFIX} Ignoring stale/concurrent preferences event (remote: ${latestCreatedAt}, local: ${currentCreatedAt}).`,
       );
+      if (wasBackgroundLoading) {
+        this.backgroundLoading = false;
+        this.emitChange("background-loaded", { background: false });
+      }
       return;
     }
 
     let decryptResult;
     try {
-      const decryptPromise = this.decryptEvent(latest, normalized);
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(
-          () => {
-            const timeoutError = new Error(
-              `Decryption timed out after ${DECRYPT_TIMEOUT_MS / 1000}s`,
-            );
-            timeoutError.code = "hashtag-preferences-decrypt-timeout";
-            reject(timeoutError);
-          },
-          DECRYPT_TIMEOUT_MS,
-        ),
-      );
-      decryptResult = await Promise.race([decryptPromise, timeoutPromise]);
+      const decryptPromise = this.decryptEvent(latest, normalized, {
+        allowPermissionPrompt,
+      });
+      let timeoutId;
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+          const timeoutError = new Error(
+            `Decryption timed out after ${DECRYPT_TIMEOUT_MS / 1000}s`,
+          );
+          timeoutError.code = "hashtag-preferences-decrypt-timeout";
+          reject(timeoutError);
+        }, DECRYPT_TIMEOUT_MS);
+      });
+      try {
+        decryptResult = await Promise.race([decryptPromise, timeoutPromise]);
+      } finally {
+        if (timeoutId) clearTimeout(timeoutId);
+      }
     } catch (error) {
       decryptResult = { ok: false, error };
     }
 
     if (!decryptResult.ok) {
+      this.lastLoadError = decryptResult.error || null;
       userLogger.warn(
         `${LOG_PREFIX} Failed to decrypt hashtag preferences`,
         decryptResult.error,
@@ -649,7 +805,15 @@ class HashtagPreferencesService {
         if (!wasLoadedForUser && !this.loaded) {
           this.loaded = true;
         }
-        this.scheduleDecryptRetry(normalized, decryptResult.error);
+        this.scheduleDecryptRetry(normalized, decryptResult.error, {
+          allowPermissionPrompt,
+        });
+        return;
+      }
+      if (
+        !allowPermissionPrompt &&
+        decryptResult.error?.code === "hashtag-preferences-permission-required"
+      ) {
         return;
       }
 
@@ -659,11 +823,19 @@ class HashtagPreferencesService {
         userLogger.warn(
           `${LOG_PREFIX} Preserving cached preferences despite decryption failure.`,
         );
+        if (wasBackgroundLoading) {
+          this.backgroundLoading = false;
+          this.emitChange("background-loaded", { background: false });
+        }
         return;
       }
 
       this.reset();
       this.loaded = true;
+      if (wasBackgroundLoading) {
+        this.backgroundLoading = false;
+        this.emitChange("background-loaded", { background: false });
+      }
       return;
     }
 
@@ -681,6 +853,9 @@ class HashtagPreferencesService {
         ? latest.created_at
         : null;
       this.loaded = true;
+      if (this.backgroundLoading) {
+        this.backgroundLoading = false;
+      }
       this.saveToCache();
       this.emitChange("sync", { scheme: decryptResult.scheme });
     } catch (error) {
@@ -693,7 +868,7 @@ class HashtagPreferencesService {
     }
   }
 
-  async decryptEvent(event, userPubkey) {
+  async decryptEvent(event, userPubkey, options = {}) {
     const ciphertext = typeof event?.content === "string" ? event.content : "";
     if (!ciphertext) {
       const error = new Error("Preference event missing ciphertext content.");
@@ -701,8 +876,13 @@ class HashtagPreferencesService {
       return { ok: false, error };
     }
 
+    const allowPermissionPrompt = options?.allowPermissionPrompt !== false;
     let signer = getActiveSigner();
-    if (!signer && typeof nostrClient?.ensureActiveSignerForPubkey === "function") {
+    if (
+      !signer &&
+      typeof nostrClient?.ensureActiveSignerForPubkey === "function" &&
+      allowPermissionPrompt
+    ) {
       signer = await nostrClient.ensureActiveSignerForPubkey(userPubkey);
     }
     const signerHasNip04 = typeof signer?.nip04Decrypt === "function";
@@ -716,11 +896,26 @@ class HashtagPreferencesService {
       (!signerHasNip44 && requiresNip44) ||
       (!signerHasNip04 && requiresNip04)
     ) {
+      if (!allowPermissionPrompt) {
+        const error = new Error(
+          "Decrypt permissions are required to read hashtag preferences.",
+        );
+        error.code = "hashtag-preferences-permission-required";
+        return { ok: false, error };
+      }
       try {
-        await requestDefaultExtensionPermissions();
+        const permissionResult = await requestDefaultExtensionPermissions(
+          DEFAULT_NIP07_ENCRYPTION_METHODS,
+        );
+        if (!permissionResult?.ok) {
+          userLogger.warn(
+            `${LOG_PREFIX} Extension permission request failed/denied, but attempting operation via fallback.`,
+            permissionResult?.error,
+          );
+        }
       } catch (error) {
         userLogger.warn(
-          `${LOG_PREFIX} Extension permissions request failed while loading preferences`,
+          `${LOG_PREFIX} Extension permissions request threw, attempting fallback.`,
           error,
         );
       }
@@ -766,7 +961,12 @@ class HashtagPreferencesService {
       );
     }
 
-    const nostrApi = typeof window !== "undefined" ? window?.nostr : null;
+    const nostrApi =
+      typeof window !== "undefined" && window?.nostr
+        ? window.nostr
+        : typeof globalThis !== "undefined" && globalThis?.nostr
+          ? globalThis.nostr
+          : null;
     if (nostrApi) {
       if (typeof nostrApi.nip04?.decrypt === "function") {
         registerDecryptor(
@@ -920,10 +1120,12 @@ class HashtagPreferencesService {
     }
 
     if (signer.type === "extension") {
-      const permissionResult = await requestDefaultExtensionPermissions();
+      const permissionResult = await requestDefaultExtensionPermissions(
+        DEFAULT_NIP07_ENCRYPTION_METHODS,
+      );
       if (!permissionResult?.ok) {
         const error = new Error(
-          "The active signer must allow encryption and signing before publishing preferences.",
+          "The active signer must allow encryption before publishing preferences.",
         );
         error.code = "hashtag-preferences-extension-denied";
         error.cause = permissionResult?.error || null;

@@ -4,12 +4,18 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
+// Ensure NODE_ENV is set to "test" so that nostrToolsBootstrap.js uses the mock toolkit
+process.env.NODE_ENV = "test";
+
 const rootDir = path.dirname(fileURLToPath(new URL("../package.json", import.meta.url)));
 const testsDir = path.join(rootDir, "tests");
 const testFiles = [];
 const setupImport = new URL("../tests/test-helpers/setup-localstorage.mjs", import.meta.url);
-const shardArg = process.argv.find((arg) => arg.startsWith("--shard="));
+const args = process.argv.slice(2);
+const shardArg = args.find((arg) => arg.startsWith("--shard="));
 const shardValue = shardArg ? shardArg.split("=")[1] : process.env.UNIT_TEST_SHARD;
+const filters = args.filter((arg) => !arg.startsWith("--"));
+
 const timeoutMs = process.env.UNIT_TEST_TIMEOUT_MS
   ? Number(process.env.UNIT_TEST_TIMEOUT_MS)
   : null;
@@ -86,19 +92,31 @@ async function run() {
     return;
   }
 
-  const shard = parseShard(shardValue);
-  const selectedTests = shard
-    ? testFiles.filter((_, index) => index % shard.total === shard.index - 1)
-    : testFiles;
+  let selectedTests = testFiles;
 
+  if (filters.length > 0) {
+    selectedTests = selectedTests.filter((file) =>
+      filters.some((f) => file.includes(f)),
+    );
+    if (selectedTests.length === 0) {
+      console.log(`No tests matched filters: ${filters.join(", ")}`);
+      return;
+    }
+    console.log(`Filtered to ${selectedTests.length} test(s).`);
+  }
+
+  const shard = parseShard(shardValue);
   if (shard) {
+    selectedTests = selectedTests.filter(
+      (_, index) => index % shard.total === shard.index - 1,
+    );
     console.log(
       `Using shard ${shard.index}/${shard.total} (${selectedTests.length} of ${testFiles.length} files).`,
     );
   }
 
   if (selectedTests.length === 0) {
-    console.log("No unit tests found for this shard.");
+    console.log("No unit tests found for this shard/filter.");
     return;
   }
 
@@ -175,6 +193,8 @@ async function run() {
   }
 
   console.log("\n✔ All unit tests passed");
+  // Force exit to ensure we don't hang on lingering handles/timers
+  process.exit(0);
 }
 
 try {

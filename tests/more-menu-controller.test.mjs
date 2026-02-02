@@ -166,18 +166,18 @@ test('block-author updates user blocks, reloads videos, and refreshes feeds', as
 test('mute-author updates viewer mute list and refreshes feeds', async () => {
   const events = [];
   const moderationStub = {
-    addAuthorToViewerMuteList: async (target) => {
-      events.push(['addMute', target]);
+    isAuthorMutedByViewer: () => false,
+  };
+  const userBlocksStub = {
+    addMute: async (target, viewer) => {
+      events.push(['addMute', target, viewer]);
       return { ok: true };
     },
-    removeAuthorFromViewerMuteList: async () => {
-      throw new Error('unreachable');
-    },
-    isAuthorMutedByViewer: () => false,
   };
 
   const controller = new MoreMenuController({
     moderationService: moderationStub,
+    userBlocks: userBlocksStub,
     callbacks: {
       getCurrentUserPubkey: () => 'viewerhex',
       getCurrentVideo: () => ({ pubkey: 'fallbackhex' }),
@@ -199,7 +199,7 @@ test('mute-author updates viewer mute list and refreshes feeds', async () => {
   await controller.handleMoreMenuAction('mute-author', { author: targetHex });
 
   assert.deepEqual(events, [
-    ['addMute', targetHex],
+    ['addMute', targetHex, 'viewerhex'],
     ['success', 'Creator muted. Their videos will be downranked in your feeds.'],
     [
       'refreshAllVideoGrids',
@@ -211,18 +211,18 @@ test('mute-author updates viewer mute list and refreshes feeds', async () => {
 test('unmute-author removes creators from viewer mute list', async () => {
   const events = [];
   const moderationStub = {
-    addAuthorToViewerMuteList: async () => {
-      throw new Error('unreachable');
-    },
-    removeAuthorFromViewerMuteList: async (target) => {
-      events.push(['removeMute', target]);
+    isAuthorMutedByViewer: () => true,
+  };
+  const userBlocksStub = {
+    removeMute: async (target, viewer) => {
+      events.push(['removeMute', target, viewer]);
       return { ok: true };
     },
-    isAuthorMutedByViewer: () => true,
   };
 
   const controller = new MoreMenuController({
     moderationService: moderationStub,
+    userBlocks: userBlocksStub,
     callbacks: {
       getCurrentUserPubkey: () => 'viewerhex',
       getCurrentVideo: () => ({ pubkey: 'fallbackhex' }),
@@ -244,7 +244,7 @@ test('unmute-author removes creators from viewer mute list', async () => {
   await controller.handleMoreMenuAction('unmute-author', { author: targetHex });
 
   assert.deepEqual(events, [
-    ['removeMute', targetHex],
+    ['removeMute', targetHex, 'viewerhex'],
     ['success', 'Creator removed from your mute list.'],
     [
       'refreshAllVideoGrids',
