@@ -983,8 +983,11 @@ class UserBlockListManager {
         signer = await nostrClient.ensureActiveSignerForPubkey(normalized);
       }
 
-      const signerHasNip04 = typeof signer?.nip04Decrypt === "function";
-      const signerHasNip44 = typeof signer?.nip44Decrypt === "function";
+      const caps = signer?.capabilities || {};
+      const signerHasNip04 =
+        caps.nip04 !== false && typeof signer?.nip04Decrypt === "function";
+      const signerHasNip44 =
+        caps.nip44 !== false && typeof signer?.nip44Decrypt === "function";
       const signerAvailable = Boolean(signer);
       const signerHasDecryptors = signerHasNip04 || signerHasNip44;
       const signerStatus = signerAvailable

@@ -166,6 +166,8 @@ await (async () => {
   }
 })();
 
+await new Promise((resolve) => setTimeout(resolve, 100));
+
 await (async () => {
   const actor = "a".repeat(64);
   const initialBlocked = "b".repeat(64);
@@ -327,6 +329,8 @@ await (async () => {
     window.nostr = originalNostr;
   }
 })();
+
+await new Promise((resolve) => setTimeout(resolve, 100));
 
 await (async () => {
   const actor = "1".repeat(64);
