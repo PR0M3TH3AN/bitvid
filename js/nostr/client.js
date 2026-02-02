@@ -7750,6 +7750,7 @@ export class NostrClient {
 
       const toProcess = eventBuffer;
       eventBuffer = [];
+      const updatedVideos = [];
 
       for (const evt of toProcess) {
         try {
@@ -7805,23 +7806,30 @@ export class NostrClient {
           const prevActive = this.activeMap.get(activeKey);
           if (!prevActive || video.created_at > prevActive.created_at) {
             this.activeMap.set(activeKey, video);
-            onVideo(video); // Trigger the callback that re-renders
-
-            // Fetch NIP-71 metadata (categorization tags) in the background
-            this.populateNip71MetadataForVideos([video])
-              .then(() => {
-                this.applyRootCreatedAt(video);
-              })
-              .catch((error) => {
-                devLogger.warn(
-                  "[nostr] Failed to hydrate NIP-71 metadata for live video:",
-                  error
-                );
-              });
+            updatedVideos.push(video);
           }
         } catch (err) {
           devLogger.error("[subscribeVideos] Error processing event:", err);
         }
+      }
+
+      if (updatedVideos.length > 0) {
+        // Trigger the callback once per batch to avoid UI thrashing
+        onVideo(updatedVideos);
+
+        // Fetch NIP-71 metadata (categorization tags) in the background for the whole batch
+        this.populateNip71MetadataForVideos(updatedVideos)
+          .then(() => {
+            for (const video of updatedVideos) {
+              this.applyRootCreatedAt(video);
+            }
+          })
+          .catch((error) => {
+            devLogger.warn(
+              "[nostr] Failed to hydrate NIP-71 metadata for live video batch:",
+              error
+            );
+          });
       }
 
       // Persist processed events after each flush so reloads warm quickly.

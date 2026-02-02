@@ -148,8 +148,11 @@ describe("NostrClient", () => {
       client.pool.sub.mock.mockImplementation(() => subMock);
 
       let capturedVideo = null;
-      const sub = client.subscribeVideos((video) => {
-        capturedVideo = video;
+      const sub = client.subscribeVideos((videos) => {
+        // Callback receives an array of updates
+        if (Array.isArray(videos) && videos.length > 0) {
+          capturedVideo = videos[0];
+        }
       });
       assert.ok(sub);
 
