@@ -146,7 +146,7 @@ To set up the project locally:
    ```
 
    - **Format**: Targets CSS, HTML, Markdown, and config files. (Note: JavaScript files are not currently auto-formatted by this command).
-   - **Lint**: Checks for CSS errors, hex color usage, inline styles, and design token compliance. (Note: There is no ESLint configuration for JavaScript logic; this step focuses on style and design system guards).
+   - **Lint**: Checks for CSS errors, hex color usage, inline styles, design tokens, and Tailwind guards. (Note: There is no ESLint configuration for JavaScript logic; this step focuses on style and design system guards).
 
 5. **Git Hooks (Optional)**:
    We provide a script to set up a git pre-commit hook that runs linting and CSS builds automatically before you commit.
