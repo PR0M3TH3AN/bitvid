@@ -196,8 +196,10 @@ await (async function testDeleteFlowPublishesDeletionFlag() {
     },
   };
 
-  client.subscribeVideos((videoUpdate) => {
-    seenUpdates.push(videoUpdate);
+  client.subscribeVideos((videos) => {
+    if (Array.isArray(videos)) {
+      seenUpdates.push(...videos);
+    }
   });
 
   const deleteEvent = {
@@ -300,8 +302,10 @@ await (async function testSubscribeVideosSkipsOlderThanTombstone() {
     },
   };
 
-  client.subscribeVideos((videoUpdate) => {
-    seenUpdates.push(videoUpdate);
+  client.subscribeVideos((videos) => {
+    if (Array.isArray(videos)) {
+      seenUpdates.push(...videos);
+    }
   });
 
   const pubkey = "PUBKEY789";
