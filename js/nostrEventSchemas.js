@@ -33,6 +33,7 @@ export const NOTE_TYPES = Object.freeze({
   ZAP_RECEIPT: "zapReceipt",
   WATCH_HISTORY: "watchHistory",
   SUBSCRIPTION_LIST: "subscriptionList",
+  SUBSCRIPTION_BACKUP: "subscriptionBackup",
   USER_BLOCK_LIST: "userBlockList",
   HASHTAG_PREFERENCES: "hashtagPreferences",
   DM_RELAY_LIST: "dmRelayList",
@@ -512,6 +513,20 @@ const BASE_SCHEMAS = {
     identifierTag: {
       name: "d",
       value: SUBSCRIPTION_LIST_IDENTIFIER,
+    },
+    appendTags: [["encrypted", "nip44_v2"]],
+    content: {
+      format: "encrypted-tag-list",
+      description:
+        "NIP-04/NIP-44 encrypted JSON array of NIP-51 tag tuples (e.g., [['p', <hex>], …]).",
+    },
+  },
+  [NOTE_TYPES.SUBSCRIPTION_BACKUP]: {
+    type: NOTE_TYPES.SUBSCRIPTION_BACKUP,
+    label: "Subscription list backup",
+    kind: 30000,
+    identifierTag: {
+      name: "d",
     },
     appendTags: [["encrypted", "nip44_v2"]],
     content: {

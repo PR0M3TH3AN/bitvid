@@ -43,6 +43,7 @@ import {
   getLinkPreviewSettings,
   setLinkPreviewAutoFetch,
 } from "../utils/linkPreviewSettings.js";
+import { SubscriptionHistoryController } from "./subscriptionHistoryController.js";
 
 const noop = () => {};
 
@@ -1436,6 +1437,7 @@ export class ProfileModalController {
     this.addAccountButtonState = null;
     this.adminEmptyMessages = new Map();
     this.hashtagPreferencesUnsubscribe = null;
+    this.subscriptionHistoryController = new SubscriptionHistoryController();
 
     if (
       this.subscriptionsService &&
@@ -1622,6 +1624,10 @@ export class ProfileModalController {
       document.getElementById("subscriptionsEmpty") || null;
     this.profileSubscriptionsRefreshBtn =
       document.getElementById("subscriptionsRefreshBtn") || null;
+    this.profileSubscriptionsHistoryBtn =
+      document.getElementById("subscriptionsHistoryBtn") || null;
+    this.profileSubscriptionsBackupBtn =
+      document.getElementById("subscriptionsBackupBtn") || null;
     this.friendList = document.getElementById("friendsList") || null;
     this.friendListEmpty = document.getElementById("friendsEmpty") || null;
     this.friendInput = document.getElementById("friendsInput") || null;
@@ -5664,6 +5670,32 @@ export class ProfileModalController {
       });
       this.profileMessageInput.addEventListener("input", () => {
         void this.maybePublishTypingIndicator();
+      });
+    }
+
+    if (this.profileSubscriptionsHistoryBtn) {
+      this.profileSubscriptionsHistoryBtn.addEventListener("click", () => {
+        const pubkey = this.normalizeHexPubkey(this.getActivePubkey());
+        if (pubkey) {
+          this.subscriptionHistoryController.show(pubkey);
+        } else {
+          this.showError("Please log in to view subscription history.");
+        }
+      });
+    }
+
+    if (this.profileSubscriptionsBackupBtn) {
+      this.profileSubscriptionsBackupBtn.addEventListener("click", () => {
+        const pubkey = this.normalizeHexPubkey(this.getActivePubkey());
+        if (pubkey) {
+          if (confirm("Create a backup of your current subscription list?")) {
+             this.subscriptionHistoryController.handleCreateBackup(pubkey).then(() => {
+                 this.showSuccess("Backup created.");
+             });
+          }
+        } else {
+          this.showError("Please log in to backup subscriptions.");
+        }
       });
     }
 

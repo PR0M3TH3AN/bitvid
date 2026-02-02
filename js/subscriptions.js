@@ -1133,7 +1133,7 @@ class SubscriptionsManager {
    * as kind=30000 with ["d", "subscriptions"] to be replaceable.
    * The published event includes an ["encrypted", "<scheme>"] tag.
    */
-  async publishSubscriptionList(userPubkey) {
+  async publishSubscriptionList(userPubkey, { isBackup = false } = {}) {
     if (!userPubkey) {
       throw new Error("No pubkey => cannot publish subscription list.");
     }
@@ -1257,6 +1257,17 @@ class SubscriptionsManager {
       content: cipherText,
       encryption: encryptionTagValue,
     });
+
+    if (isBackup) {
+      const backupId = `subscriptions-backup-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+      // Override d tag
+      const dTagIndex = evt.tags.findIndex(t => t[0] === 'd');
+      if (dTagIndex >= 0) {
+        evt.tags[dTagIndex][1] = backupId;
+      } else {
+        evt.tags.push(['d', backupId]);
+      }
+    }
 
     let signedEvent;
     try {
@@ -2063,6 +2074,90 @@ class SubscriptionsManager {
       limit,
       reason
     });
+  }
+
+  async createBackup(userPubkey) {
+    const backupEvent = await this.publishSubscriptionList(userPubkey, {
+      isBackup: true,
+    });
+    return backupEvent;
+  }
+
+  async fetchHistory(userPubkey) {
+    if (!userPubkey) return [];
+    const normalizedUserPubkey = normalizeHexPubkey(userPubkey);
+
+    // Fetch all kind 30000 events for this user to find backups and old versions
+    const events = await nostrClient.fetchEvents({
+      kinds: [SUBSCRIPTION_SET_KIND],
+      authors: [normalizedUserPubkey],
+      limit: 50, // Reasonable limit for history
+    });
+
+    return events
+      .filter((e) => {
+        const dTag = e.tags.find((t) => t[0] === "d")?.[1];
+        return (
+          dTag === SUBSCRIPTION_LIST_IDENTIFIER ||
+          (typeof dTag === "string" && dTag.startsWith("subscriptions-backup-"))
+        );
+      })
+      .sort((a, b) => b.created_at - a.created_at);
+  }
+
+  async restoreBackup(event, userPubkey) {
+    if (!event || !userPubkey) return;
+
+    const decryptResult = await this.decryptSubscriptionEvent(event, userPubkey);
+    if (!decryptResult.ok) {
+      throw decryptResult.error || new Error("Failed to decrypt backup");
+    }
+
+    const decryptedStr = decryptResult.plaintext;
+    const normalized = parseSubscriptionPlaintext(decryptedStr);
+
+    // Update local state
+    this.subscribedPubkeys = new Set(normalized);
+    this.saveToCache(userPubkey);
+
+    // Publish as current list
+    await this.publishSubscriptionList(userPubkey);
+
+    this.emitter.emit("change", {
+      action: "restore",
+      subscribedPubkeys: Array.from(this.subscribedPubkeys),
+    });
+
+    await this.refreshActiveFeed({ reason: "restore-backup" });
+  }
+
+  async rebroadcastBackup(event, userPubkey) {
+    if (!event || !userPubkey) return;
+
+    const dTag = event.tags.find(t => t[0] === 'd')?.[1];
+    if (!dTag) throw new Error("Invalid backup event: missing d tag");
+
+    let signer = getActiveSigner();
+    if (!signer) {
+      signer = await nostrClient.ensureActiveSignerForPubkey(userPubkey);
+    }
+
+    const newEvent = {
+      kind: event.kind,
+      created_at: Math.floor(Date.now() / 1000),
+      tags: event.tags,
+      content: event.content,
+      pubkey: userPubkey
+    };
+
+    const signedEvent = await signer.signEvent(newEvent);
+    await publishEventToRelays(
+      nostrClient.pool,
+      sanitizeRelayList(nostrClient.writeRelays),
+      signedEvent
+    );
+
+    return signedEvent;
   }
 
   convertEventToVideo(evt) {
