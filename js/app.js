@@ -47,6 +47,7 @@ import {
   createModerationStage,
   createResolvePostedAtStage,
   createTagPreferenceFilterStage,
+  createWatchHistorySuppressionStage,
   createChronologicalSorter,
   createSubscriptionAuthorsSource,
   registerWatchHistoryFeed,
@@ -120,6 +121,7 @@ import RevertModalController from "./ui/revertModalController.js";
 import TagPreferenceMenuController from "./ui/tagPreferenceMenuController.js";
 import ReactionController from "./ui/reactionController.js";
 import { pointerArrayToKey } from "./utils/pointer.js";
+import { pointerKey } from "./nostr/watchHistory.js";
 import resolveVideoPointer, {
   buildVideoAddressPointer,
 } from "./utils/videoPointer.js";
@@ -5753,6 +5755,7 @@ class Application {
             shouldIncludeVideo: (video, options) =>
               this.nostrService.shouldIncludeVideo(video, options),
           }),
+          createWatchHistorySuppressionStage(),
           createDedupeByRootStage({
             dedupe: (videos) => this.dedupeVideosByRoot(videos),
           }),
@@ -6093,7 +6096,7 @@ class Application {
     }
   }
 
-  buildForYouFeedRuntime() {
+  buildForYouFeedRuntime({ watchHistoryItems = [] } = {}) {
     const blacklist =
       this.blacklistedEventIds instanceof Set
         ? new Set(this.blacklistedEventIds)
@@ -6111,6 +6114,19 @@ class Application {
     const { interests = [], disinterests = [] } = preferenceSource || {};
     const moderationThresholds = this.getActiveModerationThresholds();
 
+    const watchedKeys = new Set();
+    if (Array.isArray(watchHistoryItems)) {
+      for (const item of watchHistoryItems) {
+        const key =
+          typeof item.pointerKey === "string" && item.pointerKey
+            ? item.pointerKey
+            : pointerKey(item.pointer || item);
+        if (key) {
+          watchedKeys.add(key);
+        }
+      }
+    }
+
     return {
       blacklistedEventIds: blacklist,
       isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
@@ -6121,6 +6137,41 @@ class Application {
       moderationThresholds: moderationThresholds
         ? { ...moderationThresholds }
         : undefined,
+      watchHistory: {
+        shouldSuppress: (item) => {
+          const video = item?.video;
+          if (!video || typeof video !== "object") {
+            return false;
+          }
+
+          if (video.id) {
+            const eKey = pointerKey({ type: "e", value: video.id });
+            if (watchedKeys.has(eKey)) {
+              return true;
+            }
+          }
+
+          if (
+            Number.isFinite(video.kind) &&
+            video.kind >= 30000 &&
+            video.kind < 40000 &&
+            typeof video.pubkey === "string"
+          ) {
+            const dTag = Array.isArray(video.tags)
+              ? video.tags.find((t) => Array.isArray(t) && t[0] === "d")
+              : null;
+            const dValue = dTag && typeof dTag[1] === "string" ? dTag[1] : "";
+            if (dValue) {
+              const aValue = `${video.kind}:${video.pubkey}:${dValue}`;
+              const aKey = pointerKey({ type: "a", value: aValue });
+              if (watchedKeys.has(aKey)) {
+                return true;
+              }
+            }
+          }
+          return false;
+        },
+      },
     };
   }
 
@@ -6324,8 +6375,20 @@ class Application {
     };
   }
 
-  refreshForYouFeed({ reason, fallbackVideos } = {}) {
-    const runtime = this.buildForYouFeedRuntime();
+  async refreshForYouFeed({ reason, fallbackVideos } = {}) {
+    let watchHistoryItems = [];
+    try {
+      watchHistoryItems = await watchHistoryService.loadLatest(undefined, {
+        allowStale: true,
+      });
+    } catch (error) {
+      devLogger.warn(
+        "[Application] Failed to preload watch history for For You feed:",
+        error,
+      );
+    }
+
+    const runtime = this.buildForYouFeedRuntime({ watchHistoryItems });
     const normalizedReason = typeof reason === "string" ? reason : undefined;
     const fallback = Array.isArray(fallbackVideos) ? fallbackVideos : [];
 
