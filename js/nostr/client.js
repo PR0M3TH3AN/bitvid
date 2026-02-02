@@ -8608,9 +8608,18 @@ export class NostrClient {
             this.countUnsupportedRelays.add(url);
           } else {
             logRelayCountFailure(url, error);
-            this.markRelayUnreachable(url, 60000, {
-              reason: isTimeout ? "count-timeout" : "count-error",
-            });
+            // If the count request timed out, we don't want to kill the entire relay connection
+            // because it might still be good for subscriptions.
+            // We only trip the circuit breaker for hard errors.
+            if (!isTimeout) {
+              this.markRelayUnreachable(url, 60000, {
+                reason: "count-error",
+              });
+            } else if (isDevMode) {
+              devLogger.warn(
+                `[nostr] Relay ${url} count timed out (ignored for circuit breaker).`
+              );
+            }
           }
           return {
             url,
