@@ -80,7 +80,7 @@ const FAST_BLOCKLIST_RELAY_LIMIT = 3;
 const FAST_BLOCKLIST_TIMEOUT_MS = 2500;
 const BACKGROUND_BLOCKLIST_TIMEOUT_MS = 6000;
 const DECRYPT_TIMEOUT_MS = 15000;
-const BACKGROUND_DECRYPT_TIMEOUT_MS = 2500;
+const BACKGROUND_DECRYPT_TIMEOUT_MS = 5000;
 const DECRYPT_RETRY_DELAY_MS = 10000;
 const MAX_BLOCKLIST_ENTRIES = 5000;
 
@@ -1384,26 +1384,27 @@ class UserBlockListManager {
           if (decryptionError.code === "user-blocklist-decrypt-timeout") {
             const signerStatus =
               decryptionError.signerStatus || resolveSignerStatus();
-            // If decrypt times out, we can still load public mutes from standard event tags?
-            // For safety, we probably shouldn't partially load if we expect encryption.
-            // But preserving existing state is safer or applying empty.
-            // Current logic applies empty.
-            applySets(new Set(), new Set(), {
-              source,
-              reason: "decrypt-timeout",
-              signerStatus,
-              events: [newestStandard?.id, newestLegacy?.id].filter(Boolean),
-            });
-            this.loaded = true;
+
+            // If decrypt times out, restore the previous state to avoid wiping the user's blocks.
+            // We then schedule a background retry.
+            this.blockedPubkeys = previousState.blockedPubkeys;
+            this._privateBlocks = previousState.privateBlocks;
+            this._publicMutes = previousState.publicMutes;
+            this.blockEventId = previousState.blockEventId;
+            this.blockEventCreatedAt = previousState.blockEventCreatedAt;
+            this.loaded = true; // Mark as loaded so UI renders, even if stale
+
             emitStatus({
-              status: "applied-empty",
+              status: "stale",
               reason: "decrypt-timeout",
               signerStatus,
               source,
+              blockedPubkeys: Array.from(this.blockedPubkeys),
             });
             emitStatus({ status: "settled" });
+
             userLogger.warn(
-              "[UserBlockList] Decryption timed out; applying empty list and retrying in background.",
+              "[UserBlockList] Decryption timed out; keeping stale list and retrying in background.",
               {
                 signerStatus,
                 events: [newestStandard?.id, newestLegacy?.id].filter(Boolean),
