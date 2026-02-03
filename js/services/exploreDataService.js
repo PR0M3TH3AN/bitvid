@@ -21,12 +21,18 @@ function normalizeAddressKey(value) {
   return trimmed.toLowerCase();
 }
 
-function collectVideoTags(video) {
-  const tags = new Set();
+const collectVideoTagsCache = new WeakMap();
 
+function collectVideoTags(video) {
   if (!video || typeof video !== "object") {
-    return tags;
+    return new Set();
   }
+
+  if (collectVideoTagsCache.has(video)) {
+    return collectVideoTagsCache.get(video);
+  }
+
+  const tags = new Set();
 
   if (Array.isArray(video.tags)) {
     for (const tag of video.tags) {
@@ -51,6 +57,7 @@ function collectVideoTags(video) {
     }
   }
 
+  collectVideoTagsCache.set(video, tags);
   return tags;
 }
 
