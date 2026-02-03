@@ -41,7 +41,7 @@ Automated agents contributing to this repository should follow these rules:
 - **Commit Messages**: Use the convention `type(scope): description (agent)` (e.g., `fix(ai): formatting (agent)` or `docs(ai): update quickstart (agent)`).
 - **Reference Issues**: Link to relevant issues in the PR description.
 - **Review AGENTS.md**: Always consult `AGENTS.md` for specific architectural guidelines (like URL-first playback, token-first design system) and constraints before starting work.
-- **Efficiency**: Prefer running targeted or sharded tests (e.g., `npm run test:unit:shard1`) to conserve resources during iteration.
+- **Efficiency**: Prefer running targeted or sharded tests (e.g., `npm run test:unit:shard1`, `shard2`, or `shard3`) to conserve resources during iteration.
 
 ## Submitting a Pull Request
 
@@ -122,7 +122,7 @@ To set up the project locally:
    npm run test:unit
    ```
 
-   _Note: Running the full suite (`npm run test:unit`) is resource-intensive, runs sequentially, and may time out in some environments. We strongly recommend using sharded runs for local development to save time: `npm run test:unit:shard1`._
+   _Note: Running the full suite (`npm run test:unit`) is resource-intensive, runs sequentially, and may time out in some environments. We strongly recommend using sharded runs for local development to save time: `npm run test:unit:shard1`, `shard2`, or `shard3`._
 
    You can also run end-to-end and visual tests:
 
