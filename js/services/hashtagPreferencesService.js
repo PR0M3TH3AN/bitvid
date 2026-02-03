@@ -397,7 +397,7 @@ class HashtagPreferencesService {
     return Array.from(this.disinterests).sort((a, b) => a.localeCompare(b));
   }
 
-  addInterest(tag) {
+  async addInterest(tag) {
     const normalized = normalizeHashtag(tag);
     if (!normalized) {
       return false;
@@ -409,16 +409,18 @@ class HashtagPreferencesService {
 
     if (!hadInterest || removedFromDisinterests) {
       this.emitChange("interest-added", { tag: normalized });
-      this.publish().catch((err) =>
-        userLogger.warn(`${LOG_PREFIX} Auto-save failed`, err),
-      );
+      try {
+        await this.publish();
+      } catch (err) {
+        userLogger.warn(`${LOG_PREFIX} Auto-save failed`, err);
+      }
       return true;
     }
 
     return false;
   }
 
-  removeInterest(tag) {
+  async removeInterest(tag) {
     const normalized = normalizeHashtag(tag);
     if (!normalized || !this.interests.has(normalized)) {
       return false;
@@ -426,13 +428,15 @@ class HashtagPreferencesService {
 
     this.interests.delete(normalized);
     this.emitChange("interest-removed", { tag: normalized });
-    this.publish().catch((err) =>
-      userLogger.warn(`${LOG_PREFIX} Auto-save failed`, err),
-    );
+    try {
+      await this.publish();
+    } catch (err) {
+      userLogger.warn(`${LOG_PREFIX} Auto-save failed`, err);
+    }
     return true;
   }
 
-  addDisinterest(tag) {
+  async addDisinterest(tag) {
     const normalized = normalizeHashtag(tag);
     if (!normalized) {
       return false;
@@ -444,16 +448,18 @@ class HashtagPreferencesService {
 
     if (!hadDisinterest || removedFromInterests) {
       this.emitChange("disinterest-added", { tag: normalized });
-      this.publish().catch((err) =>
-        userLogger.warn(`${LOG_PREFIX} Auto-save failed`, err),
-      );
+      try {
+        await this.publish();
+      } catch (err) {
+        userLogger.warn(`${LOG_PREFIX} Auto-save failed`, err);
+      }
       return true;
     }
 
     return false;
   }
 
-  removeDisinterest(tag) {
+  async removeDisinterest(tag) {
     const normalized = normalizeHashtag(tag);
     if (!normalized || !this.disinterests.has(normalized)) {
       return false;
@@ -461,9 +467,11 @@ class HashtagPreferencesService {
 
     this.disinterests.delete(normalized);
     this.emitChange("disinterest-removed", { tag: normalized });
-    this.publish().catch((err) =>
-      userLogger.warn(`${LOG_PREFIX} Auto-save failed`, err),
-    );
+    try {
+      await this.publish();
+    } catch (err) {
+      userLogger.warn(`${LOG_PREFIX} Auto-save failed`, err);
+    }
     return true;
   }
 

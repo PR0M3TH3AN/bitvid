@@ -2365,13 +2365,21 @@ class Application {
     }
 
     try {
-      await this.loadVideos(forceMainReload);
+      if (this.isForYouFeedActive()) {
+        await this.loadForYouVideos(forceMainReload);
+      } else if (this.isFeedActive("kids")) {
+        await this.loadKidsVideos(forceMainReload);
+      } else if (this.isFeedActive("explore")) {
+        await this.loadExploreVideos(forceMainReload);
+      } else {
+        await this.loadVideos(forceMainReload);
+      }
     } catch (error) {
       const contextMessage = normalizedReason
         ? ` after ${normalizedReason}`
         : "";
       devLogger.error(
-        `Failed to refresh recent videos${contextMessage}:`,
+        `Failed to refresh videos${contextMessage}:`,
         error,
       );
     }
