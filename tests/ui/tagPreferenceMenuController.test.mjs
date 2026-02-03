@@ -121,7 +121,7 @@ describe("TagPreferenceMenuController", () => {
   });
 
   describe("handleMenuAction", () => {
-    it("should call service method, notify update, publish, and notify update again", async () => {
+    it("should call service method and notify update", async () => {
       const tag = "bitcoin";
       const action = TAG_PREFERENCE_ACTIONS.ADD_INTEREST;
 
@@ -130,11 +130,11 @@ describe("TagPreferenceMenuController", () => {
       assert.strictEqual(mockHashtagPreferences.addInterest.mock.calls.length, 1);
       assert.strictEqual(mockHashtagPreferences.addInterest.mock.calls[0].arguments[0], tag);
 
-      // onPreferenceUpdate should be called twice (optimistic + confirmed)
-      assert.strictEqual(mockCallbacks.onPreferenceUpdate.mock.calls.length, 2);
+      // onPreferenceUpdate should be called once
+      assert.strictEqual(mockCallbacks.onPreferenceUpdate.mock.calls.length, 1);
 
-      // publish should be called
-      assert.strictEqual(mockHashtagPreferences.publish.mock.calls.length, 1);
+      // publish should not be called by controller directly
+      assert.strictEqual(mockHashtagPreferences.publish.mock.calls.length, 0);
     });
 
     it("should handle error and call showError", async () => {

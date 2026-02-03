@@ -325,17 +325,17 @@ test(
 test(
   "interest and disinterest lists remain exclusive",
   { concurrency: false },
-  () => {
+  async () => {
     hashtagPreferences.reset();
 
-    assert.equal(hashtagPreferences.addInterest("Focus"), true);
-    assert.equal(hashtagPreferences.addDisinterest("focus"), true);
+    assert.equal(await hashtagPreferences.addInterest("Focus"), true);
+    assert.equal(await hashtagPreferences.addDisinterest("focus"), true);
     assert.deepEqual(hashtagPreferences.getInterests(), []);
     assert.deepEqual(hashtagPreferences.getDisinterests(), ["focus"]);
 
-    assert.equal(hashtagPreferences.removeDisinterest("focus"), true);
+    assert.equal(await hashtagPreferences.removeDisinterest("focus"), true);
     assert.equal(hashtagPreferences.getDisinterests().length, 0);
-    assert.equal(hashtagPreferences.removeInterest("focus"), false);
+    assert.equal(await hashtagPreferences.removeInterest("focus"), false);
   },
 );
 
