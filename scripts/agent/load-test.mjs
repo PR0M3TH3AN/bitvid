@@ -322,20 +322,37 @@ async function runLoadTest() {
             errorRate: totalSent ? (totalErrors / totalSent) : 0,
             avgLatencyMs: avgLatency || 0,
             maxLatencyMs: Math.max(...validLatencies, 0),
-            avgSignTimeMs: avgGlobalSignTime
+            avgSignTimeMs: avgGlobalSignTime,
+            hot_functions: [
+                { name: "Event Signing (Client)", avgTimeMs: avgGlobalSignTime, calls: totalSent }
+            ]
         },
         bottlenecks: [], // To be filled by analysis
         metrics // Raw timeseries
     };
 
     // Analysis
-    if (report.results.errorRate > 0.05) report.bottlenecks.push("High Error Rate (>5%)");
-    if (report.results.avgLatencyMs > 500) report.bottlenecks.push("High Average Latency (>500ms)");
-    if (report.results.totalReceivedByObserver < (totalSent * 0.9)) report.bottlenecks.push("Possible Message Loss (Observer RX < 90% TX)");
+    report.remediation = [];
+
+    if (report.results.errorRate > 0.05) {
+        report.bottlenecks.push("High Error Rate (>5%)");
+        report.remediation.push("Investigate relay stability, network connection, or client payload validity.");
+    }
+
+    if (report.results.avgLatencyMs > 500) {
+        report.bottlenecks.push("High Average Latency (>500ms)");
+        report.remediation.push("Relay is overloaded. Consider optimizing event processing, increasing relay resources, or sharding.");
+    }
+
+    if (report.results.totalReceivedByObserver < (totalSent * 0.9)) {
+        report.bottlenecks.push("Possible Message Loss (Observer RX < 90% TX)");
+        report.remediation.push("Relay might be dropping events or internal queues are full. Check relay logs/configuration.");
+    }
 
     // Crypto Bottleneck Check
     if (avgGlobalSignTime > 5) {
         report.bottlenecks.push(`Cryptographic Bottleneck (Avg Sign Time ${avgGlobalSignTime.toFixed(2)}ms > 5ms)`);
+        report.remediation.push("Client-side event signing is slow. Review cryptographic library (nostr-tools) usage or client hardware capabilities.");
         report.requiresSecurityReview = true;
     }
 
