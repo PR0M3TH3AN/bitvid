@@ -22,7 +22,7 @@ Ready to jump in? Here's everything you need to know to start watching and shari
 
 ### Step 2: Prepare Your Video
 
-1. Host your video at an HTTPS URL that browsers can stream directly (MP4/WebM/HLS/DASH all work). You can use your own CDN, Cloudflare Stream, an R2 bucket, or any static site host—as long as the link begins with `https://`.
+1. Host your video at an HTTPS URL that browsers can stream directly. If you are uploading a file directly via bitvid, we accept **MP4, WebM, MOV, MKV, TS, M3U8, MPG, and MPEG**. For external hosting, ensure the format is streamable (MP4/WebM/HLS/DASH). You can use your own CDN, Cloudflare Stream, an R2 bucket, or any static site host—as long as the link begins with `https://`.
 2. (Optional but recommended) Generate a WebTorrent magnet so viewers can fall back to peer-to-peer delivery. Desktop apps like [WebTorrent Desktop](https://webtorrent.io/desktop/) or command-line tools can create the magnet for you.
 3. Double-check that either the hosted URL or the magnet (or both) is ready before you open the Upload modal.
 
