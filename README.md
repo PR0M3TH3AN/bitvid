@@ -182,7 +182,7 @@ See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full developer guide.
 
 **Verify your work:**
 
-- **Run unit tests**: `npm run test:unit` (Required before PRs). _Tip: Use `npm run test:unit:shard1` for faster local feedback._
+- **Run unit tests**: `npm run test:unit` (Required before PRs). _Tip: Use `npm run test:unit:shard1`, `shard2`, or `shard3` for faster local feedback._
 - **Format code**: `npm run format` (Required before PRs)
 - **Lint code**: `npm run lint` (Checks for CSS, hex colors, inline styles)
 
