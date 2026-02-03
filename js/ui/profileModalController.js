@@ -7403,52 +7403,54 @@ export class ProfileModalController {
     const shouldStayInMenu = keepMenuView && isMobile;
     this.setMobileView(shouldStayInMenu ? "menu" : "pane");
 
-    const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
+    setTimeout(() => {
+      const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
 
-    if (target === "history") {
-      void this.populateProfileWatchHistory();
-    } else if (target === "relays") {
-      this.populateProfileRelays();
-      void this.refreshRelayHealthPanel({
-        forceRefresh: true,
-        reason: "pane-select",
-      });
-    } else if (target === "messages") {
-      this.resumeProfileMessages();
-      void this.populateProfileMessages({ reason: "pane-select" });
-      void this.refreshDmRelayPreferences();
-    } else if (target === "wallet") {
-      this.refreshWalletPaneState();
-    } else if (target === "storage") {
-      this.populateStoragePane();
-    } else if (target === "hashtags") {
-      this.populateHashtagPreferences();
-      if (activeHex && this.hashtagPreferencesService) {
-        this.hashtagPreferencesService
-          .load(activeHex, { allowPermissionPrompt: true })
-          .catch(noop);
+      if (target === "history") {
+        void this.populateProfileWatchHistory();
+      } else if (target === "relays") {
+        this.populateProfileRelays();
+        void this.refreshRelayHealthPanel({
+          forceRefresh: true,
+          reason: "pane-select",
+        });
+      } else if (target === "messages") {
+        this.resumeProfileMessages();
+        void this.populateProfileMessages({ reason: "pane-select" });
+        void this.refreshDmRelayPreferences();
+      } else if (target === "wallet") {
+        this.refreshWalletPaneState();
+      } else if (target === "storage") {
+        this.populateStoragePane();
+      } else if (target === "hashtags") {
+        this.populateHashtagPreferences();
+        if (activeHex && this.hashtagPreferencesService) {
+          this.hashtagPreferencesService
+            .load(activeHex, { allowPermissionPrompt: true })
+            .catch(noop);
+        }
+        this.refreshHashtagBackgroundStatus();
+      } else if (target === "subscriptions") {
+        if (activeHex && this.subscriptionsService) {
+          this.subscriptionsService
+            .loadSubscriptions(activeHex, { allowPermissionPrompt: true })
+            .catch(noop);
+        }
+        void this.populateSubscriptionsList();
+        this.refreshSubscriptionsBackgroundStatus();
+      } else if (target === "blocked") {
+        if (activeHex && this.services.userBlocks) {
+          this.services.userBlocks.loadBlocks(activeHex).catch(noop);
+        }
+        this.populateBlockedList();
+      } else if (target === "safety") {
+        this.refreshModerationSettingsUi();
+        this.syncLinkPreviewSettingsUi();
       }
-      this.refreshHashtagBackgroundStatus();
-    } else if (target === "subscriptions") {
-      if (activeHex && this.subscriptionsService) {
-        this.subscriptionsService
-          .loadSubscriptions(activeHex, { allowPermissionPrompt: true })
-          .catch(noop);
-      }
-      void this.populateSubscriptionsList();
-      this.refreshSubscriptionsBackgroundStatus();
-    } else if (target === "blocked") {
-      if (activeHex && this.services.userBlocks) {
-        this.services.userBlocks.loadBlocks(activeHex).catch(noop);
-      }
-      this.populateBlockedList();
-    } else if (target === "safety") {
-      this.refreshModerationSettingsUi();
-      this.syncLinkPreviewSettingsUi();
-    }
 
-    this.callbacks.onSelectPane(target, { controller: this });
-    this.callbacks.onPaneShown(target, { controller: this });
+      this.callbacks.onSelectPane(target, { controller: this });
+      this.callbacks.onPaneShown(target, { controller: this });
+    }, 0);
   }
 
   populateProfileRelays(relayEntries = null) {
