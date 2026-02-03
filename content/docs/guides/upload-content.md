@@ -7,6 +7,22 @@ bitvid is a decentralized platform, but for larger video files, we currently sup
 - A **Cloudflare Account** (free to create).
 - An activated **R2 Plan** (there is a generous free tier, but you may need to add a payment method).
 
+## Supported Media & Limits
+
+Before you start, ensure your content meets the following requirements:
+
+### Accepted File Types
+- **Video:** `.mp4`, `.webm`, `.mov`, `.mkv`, `.ts`, `.m3u8`, `.mpg`, `.mpeg`
+- **Thumbnail:** Any standard image format (`image/*`)
+
+### File Size
+- **Recommended:** Up to **2GB** per file.
+- **Why?** Browser-based uploads rely on your device's memory for hashing and chunk management. Files larger than 2GB may cause browser instability or crashes.
+
+### Metadata
+- **Title:** Required.
+- **Description, Thumbnail, Tags:** Optional but highly recommended for discoverability.
+
 ## Step-by-Step Guide
 
 ### 1. Create a Bucket & Enable Public Access
@@ -25,7 +41,7 @@ To allow your browser to upload files directly to Cloudflare, you must allow Cro
 
 1. Still in your bucket's **Settings** tab, scroll down to **"CORS Policy"**.
 2. Click **"Add CORS Policy"** (or Edit).
-3. **Important:** Browser uploads use the AWS JavaScript SDK, which sends the `amz-sdk-invocation-id`, `amz-sdk-request`, and `x-amz-user-agent` headers. The simplest working setup is to allow all headers by setting `AllowedHeaders: ["*"]`.
+3. **Important:** Browser uploads use the **AWS JavaScript SDK v3**, which automatically adds headers like `amz-sdk-invocation-id`, `amz-sdk-request`, and `x-amz-user-agent`. You **must** allow these headers. The simplest and most robust setup is to set `AllowedHeaders: ["*"]`.
 4. Paste the following JSON configuration and **explicitly list every allowed app origin** (the scheme, host, and port must match exactly):
 
 ```json
@@ -39,7 +55,7 @@ To allow your browser to upload files directly to Cloudflare, you must allow Cro
   }
 ]
 ```
-> **Note:** Replace the `AllowedOrigins` values with the exact origins you use in development and production (the scheme and port must match exactly). Uploads go through the **S3 API endpoint** (`<account>.r2.cloudflarestorage.com`), and browser-based uploads require `OPTIONS` for preflight requests.
+> **Note:** Replace the `AllowedOrigins` values with the exact origins you use in development and production. Uploads go through the **S3 API endpoint** (`<account>.r2.cloudflarestorage.com`), and browser-based uploads require `OPTIONS` for preflight requests. The `ExposeHeaders` list ensures the SDK can correctly track multipart upload progress.
 
 5. Click **"Save"**.
 
