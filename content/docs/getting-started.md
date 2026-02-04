@@ -22,7 +22,7 @@ Ready to jump in? Here's everything you need to know to start watching and shari
 
 ### Step 2: Prepare Your Video
 
-1. Host your video at an HTTPS URL that browsers can stream directly. If you are uploading a file directly via bitvid, we accept **MP4, WebM, MOV, MKV, TS, M3U8, MPG, and MPEG**. For external hosting, ensure the format is streamable (MP4/WebM/HLS/DASH). You can use your own CDN, Cloudflare Stream, an R2 bucket, or any static site host—as long as the link begins with `https://`.
+1. Host your video at an HTTPS URL that browsers can stream directly. If you are uploading a file directly via bitvid, we accept **MP4, WebM, MOV, MKV, TS, M3U8, MPG, and MPEG** (Max 2GB recommended). For external hosting, ensure the format is streamable (MP4/WebM/HLS/DASH). You can use your own CDN, Cloudflare Stream, an R2 bucket, or any static site host—as long as the link begins with `https://`.
 2. (Optional but recommended) Generate a WebTorrent magnet so viewers can fall back to peer-to-peer delivery. Desktop apps like [WebTorrent Desktop](https://webtorrent.io/desktop/) or command-line tools can create the magnet for you.
 3. Double-check that either the hosted URL or the magnet (or both) is ready before you open the Upload modal.
 
@@ -30,7 +30,7 @@ Ready to jump in? Here's everything you need to know to start watching and shari
 
 1. Click "Share a Video" on bitvid to open the upload modal.
 2. Choose your upload mode:
-   - **Upload Video**: Select a file from your device to upload directly to your Cloudflare R2 bucket. If you haven't configured storage yet, click **"Configure Storage"** to enter your R2 credentials (Account ID, Access Key ID, Secret Access Key) in your Profile settings.
+   - **Upload Video**: Select a file from your device to upload directly to your Cloudflare R2 bucket. If you haven't configured storage yet, click **"Configure Storage"** to enter your R2 credentials (Account ID, Access Key ID, Secret Access Key, Bucket Name, Public Access URL) in your Profile settings.
    - **External URL**: If you already host your video elsewhere, paste the HTTPS URL and (optionally) a WebTorrent magnet link.
 3. Review the rest of the form: add a description and thumbnail, decide whether to allow comments, and set the NSFW or "For Kids" toggles to match your content. Explore the metadata section to fill in captions, duration, publish time, hashtags, participants, and other fields so first-time viewers have all the context they need.
 4. Click "Publish Video" to post your content.
