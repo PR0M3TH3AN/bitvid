@@ -79,8 +79,8 @@ export const USER_BLOCK_EVENTS = Object.freeze({
 const FAST_BLOCKLIST_RELAY_LIMIT = 3;
 const FAST_BLOCKLIST_TIMEOUT_MS = 2500;
 const BACKGROUND_BLOCKLIST_TIMEOUT_MS = 6000;
-const DECRYPT_TIMEOUT_MS = 15000;
-const BACKGROUND_DECRYPT_TIMEOUT_MS = 5000;
+const DECRYPT_TIMEOUT_MS = 30000;
+const BACKGROUND_DECRYPT_TIMEOUT_MS = 30000;
 const DECRYPT_RETRY_DELAY_MS = 10000;
 const MAX_BLOCKLIST_ENTRIES = 5000;
 
@@ -1044,7 +1044,7 @@ class UserBlockListManager {
           "nip44",
           (payload) =>
             signer.nip44Decrypt(normalized, payload, {
-              priority: NIP07_PRIORITY.LOW,
+              priority: NIP07_PRIORITY.NORMAL,
             }),
           "active-signer",
         );
@@ -1052,7 +1052,7 @@ class UserBlockListManager {
           "nip44_v2",
           (payload) =>
             signer.nip44Decrypt(normalized, payload, {
-              priority: NIP07_PRIORITY.LOW,
+              priority: NIP07_PRIORITY.NORMAL,
             }),
           "active-signer",
         );
@@ -1063,7 +1063,7 @@ class UserBlockListManager {
           "nip04",
           (payload) =>
             signer.nip04Decrypt(normalized, payload, {
-              priority: NIP07_PRIORITY.LOW,
+              priority: NIP07_PRIORITY.NORMAL,
             }),
           "active-signer",
         );
@@ -1071,7 +1071,7 @@ class UserBlockListManager {
 
       const nostrApi = typeof window !== "undefined" ? window?.nostr : null;
       const decrypterOptions = {
-        priority: NIP07_PRIORITY.LOW,
+        priority: NIP07_PRIORITY.NORMAL,
         timeoutMs: nip07DecryptTimeoutMs,
         retryMultiplier: 1,
       };
