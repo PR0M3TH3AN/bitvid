@@ -82,7 +82,8 @@ To allow your browser to upload files directly to Cloudflare, you must allow Cro
    - **Account ID**
    - **Access Key ID**
    - **Secret Access Key**
-   - **Public Bucket URL** (from Step 1)
+   - **Bucket Name** (from Step 1)
+   - **Public Access URL** (from Step 1)
 6. Click **"Save Connection"**.
 
 bitvid will verify your credentials by uploading a small test file. Once verified, return to the Upload Modal to start sharing!
