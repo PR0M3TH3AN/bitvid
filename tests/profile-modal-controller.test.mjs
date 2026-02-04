@@ -1307,3 +1307,26 @@ test('history pane lazily initializes the watch history renderer', async () => {
     assert.equal(controller.profileHistoryRenderer, null);
     assert.equal(controller.boundProfileHistoryVisibility, null);
 });
+
+test('handleDirectMessagesRelayWarning throttles status updates', async (t) => {
+  const statusCalls = [];
+  const controller = createController({
+    showStatus: (message) => statusCalls.push(message),
+  });
+  await controller.load();
+
+  const detail = { warning: 'dm-relays-fallback' };
+
+  controller.handleDirectMessagesRelayWarning(detail);
+  assert.equal(statusCalls.length, 1);
+  assert.match(statusCalls[0], /Privacy warning/);
+
+  // Second call should be suppressed
+  controller.handleDirectMessagesRelayWarning(detail);
+  assert.equal(statusCalls.length, 1);
+
+  // Reset should allow it again
+  controller.handleActiveDmIdentityChanged('newpubkey');
+  controller.handleDirectMessagesRelayWarning(detail);
+  assert.equal(statusCalls.length, 2);
+});

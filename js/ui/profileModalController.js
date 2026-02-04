@@ -1042,6 +1042,7 @@ export class ProfileModalController {
     this.adminSuperNpub = resolvedAdminSuperNpub;
     this.adminDmImageUrl = resolvedAdminDmImageUrl;
     this.bitvidWebsiteUrl = resolvedbitvidWebsiteUrl;
+    this.hasShownRelayWarning = false;
 
     this.internalState = {
       savedProfiles: [],
@@ -2795,6 +2796,7 @@ export class ProfileModalController {
       ? this.normalizeHexPubkey(actorPubkey)
       : this.resolveActiveDmActor();
 
+    this.hasShownRelayWarning = false;
     this.setDirectMessageRecipient(null, { reason: "clear" });
     this.resetAttachmentQueue({ clearInput: true });
     this.dmReadReceiptCache.clear();
@@ -5373,6 +5375,11 @@ export class ProfileModalController {
     if (detail?.warning !== "dm-relays-fallback") {
       return;
     }
+
+    if (this.hasShownRelayWarning) {
+      return;
+    }
+    this.hasShownRelayWarning = true;
 
     this.showStatus(
       "Privacy warning: direct messages are using your default relays because no NIP-17 relay list is available.",
