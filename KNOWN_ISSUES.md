@@ -7,14 +7,6 @@
 
 ### Visual Regression Tests (`test:visual`)
 - **Artifact Retention**: Visual tests are configured to retain screenshots, traces, and videos on failure to assist with debugging. These artifacts can be found in `artifacts/test-results/`.
-- **Kitchen Sink (`tests/visual/kitchen-sink.spec.ts`)**: Minor pixel mismatch (width 1292 vs expected 1280) in snapshot comparison.
-
-### E2E Tests (`test:e2e`)
-- **Modals (`tests/e2e/ui-modals.spec.ts`)**:
-    - `application-form` and `profile-modal` fail with 404 errors for requested resources (likely related to how `http-server` serves relative paths or nested components in the test runner).
-    - Several modals (`upload-modal`, `edit-video-modal`, etc.) timeout waiting for close actions or visibility checks. This might be due to the `reducedMotion` application interacting poorly with visibility checks or genuine performance issues in the test runner.
-    - `login-modal` fails to find the `[data-nsec-error]` element (it expects it to be visible but it remains hidden).
-- **Popover (`tests/e2e/popover.spec.ts`)**: Fails with `ReferenceError: getPanelWithTriggerMetrics is not defined`. This helper function seems to be missing or not imported correctly in the test file.
 
 ## CSS / Design System
 - The global CSS (`css/tailwind.source.css`) was updated to fix a linter error by using `calc(theme("screens.md") - var(--breakpoint-edge-offset))` instead of raw pixels.

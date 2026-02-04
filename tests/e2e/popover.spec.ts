@@ -1,92 +1,14 @@
 import { expect, test } from "@playwright/test";
-import type { Locator } from "@playwright/test";
+import {
+  getPanelMetrics,
+  getPanelWithTriggerMetrics,
+} from "./helpers/popoverUtils";
 import {
   applyReducedMotion,
+  ensureTestAssets,
   failOnConsoleErrors,
   waitForRAF,
 } from "./helpers/uiTestUtils";
-
-async function getPanelMetrics(locator: Locator) {
-  return locator.evaluate((node) => {
-    const rect = node.getBoundingClientRect();
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-    const tokenValue = window
-      .getComputedStyle(document.documentElement)
-      .getPropertyValue("--popover-inline-safe-max")
-      .trim();
-    const popoverMaxWidth = window
-      .getComputedStyle(node)
-      .getPropertyValue("--popover-max-width")
-      .trim();
-
-    return {
-      rect: {
-        top: rect.top,
-        left: rect.left,
-        right: rect.right,
-        bottom: rect.bottom,
-        width: rect.width,
-        height: rect.height,
-      },
-      viewport: { width: viewportWidth, height: viewportHeight },
-      placement: node.dataset.popoverPlacement || "",
-      state: node.dataset.popoverState || "",
-      popoverMaxWidth,
-      tokenMaxWidth: tokenValue,
-    };
-  });
-}
-
-async function getPanelWithTriggerMetrics(panel: Locator, trigger: Locator) {
-  const triggerHandle = await trigger.elementHandle();
-  if (!triggerHandle) {
-    throw new Error("Trigger element is not attached");
-  }
-
-  try {
-    return await panel.evaluate((node, triggerElement) => {
-      const rect = node.getBoundingClientRect();
-      const triggerRect = triggerElement.getBoundingClientRect();
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
-      const tokenValue = window
-        .getComputedStyle(document.documentElement)
-        .getPropertyValue("--popover-inline-safe-max")
-        .trim();
-      const popoverMaxWidth = window
-        .getComputedStyle(node)
-        .getPropertyValue("--popover-max-width")
-        .trim();
-
-      return {
-        rect: {
-          top: rect.top,
-          left: rect.left,
-          right: rect.right,
-          bottom: rect.bottom,
-          width: rect.width,
-          height: rect.height,
-        },
-        triggerRect: {
-          top: triggerRect.top,
-          left: triggerRect.left,
-          right: triggerRect.right,
-          bottom: triggerRect.bottom,
-          width: triggerRect.width,
-          height: triggerRect.height,
-        },
-        viewport: { width: viewportWidth, height: viewportHeight },
-        placement: node.dataset.popoverPlacement || "",
-        state: node.dataset.popoverState || "",
-        popoverMaxWidth,
-        tokenMaxWidth: tokenValue,
-      };
-    }, triggerHandle);
-  } finally {
-    await triggerHandle.dispose();
-  }
-}
 
 function assertWithinViewport(metrics: {
   rect: { top: number; left: number; right: number; bottom: number };
@@ -101,6 +23,7 @@ function assertWithinViewport(metrics: {
 
 test.describe("popover layout scenarios", () => {
   test.beforeEach(async ({ page }) => {
+    await ensureTestAssets(page);
     await applyReducedMotion(page);
     failOnConsoleErrors(page);
     await page.goto("/docs/popover-scenarios.html", { waitUntil: "networkidle" });
@@ -198,6 +121,7 @@ test.describe("popover layout scenarios", () => {
 
 test.describe("popover demo alignments", () => {
   test.beforeEach(async ({ page }) => {
+    await ensureTestAssets(page);
     await applyReducedMotion(page);
     failOnConsoleErrors(page);
     await page.goto("/views/dev/popover-demo.html", { waitUntil: "networkidle" });
