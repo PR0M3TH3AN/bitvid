@@ -25,6 +25,8 @@ function setupStorageReset(page) {
 }
 
 test.beforeEach(async ({ page }) => {
+  page.on('console', msg => console.log('PAGE LOG:', msg.text()));
+  page.on('pageerror', err => console.log('PAGE ERROR:', err.message));
   await setupStorageReset(page);
 });
 
@@ -79,6 +81,7 @@ test.describe("moderation fixtures", () => {
       "data-moderation-override-available",
       "true"
     );
+
     const showAnywayButton = overrideCard.getByRole("button", { name: "Show anyway" });
     const restoreButtonQuery = overrideCard.getByRole("button", {
       name: RESTORE_BUTTON_LABEL,
@@ -163,7 +166,7 @@ test.describe("moderation fixtures", () => {
     await expect(hideCard).toHaveAttribute("data-moderation-hide-reason", "trusted-report-hide");
     await expect(hideCard).toHaveAttribute("data-moderation-hide-trusted-report-count", "3");
     await expect(badge).toContainText("Hidden · 3 trusted spam reports");
-    // TODO: Investigate visibility check failure
+    // TODO: Investigate visibility check failure (fails with 0x0 size in headless)
     // await expect(showAnywayButton).toBeVisible();
     await expect(restoreButtonQuery).toHaveCount(0);
 
