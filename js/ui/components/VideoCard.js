@@ -904,7 +904,9 @@ export class VideoCard {
     const avatar = this.createElement("img", {
       attrs: {
         src: "assets/svg/default-profile.svg",
-        alt: "Placeholder"
+        alt: "Placeholder",
+        loading: "lazy",
+        decoding: "async",
       }
     });
     avatar.classList.add(
