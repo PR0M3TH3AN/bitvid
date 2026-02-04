@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import {
   applyReducedMotion,
+  ensureTestAssets,
   failOnConsoleErrors,
   forceOpenModal,
 } from "./helpers/uiTestUtils";
@@ -19,6 +20,7 @@ test.describe("login modal flows", () => {
   });
 
   test.beforeEach(async ({ page }) => {
+    await ensureTestAssets(page);
     await applyReducedMotion(page);
     failOnConsoleErrors(page);
     await page.goto("/components/login-modal.html", { waitUntil: "networkidle" });
@@ -202,6 +204,7 @@ test.describe("component modal pages", () => {
 
   for (const pageName of modalPages) {
     test(`closes ${pageName} modal`, async ({ page }) => {
+      await ensureTestAssets(page);
       await applyReducedMotion(page);
       failOnConsoleErrors(page);
       await page.goto(`/components/${pageName}.html`, {
