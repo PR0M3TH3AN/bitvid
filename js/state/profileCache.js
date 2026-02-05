@@ -16,6 +16,15 @@ const SECTION_TO_NOTE_TYPE = {
   "profile": NOTE_TYPES.PROFILE_METADATA,
 };
 
+// Helper to defer non-critical work to idle periods
+function runIdle(callback) {
+  if (typeof requestIdleCallback !== "undefined") {
+    requestIdleCallback(callback);
+  } else {
+    setTimeout(callback, 1);
+  }
+}
+
 function sanitizeProfileString(value) {
   if (typeof value !== "string") {
     return "";
@@ -316,17 +325,19 @@ class ProfileCache {
     const storageKey = this.getStorageKey(pubkey, section);
     const tier = this.getStorageTier(section);
 
-    // Save to storage
+    // Save to storage (Optimized: defer blocking I/O)
     if (tier === STORAGE_TIERS.LOCAL_STORAGE && typeof localStorage !== "undefined") {
-      try {
-        if (data === null || data === undefined) {
-          localStorage.removeItem(storageKey);
-        } else {
-          localStorage.setItem(storageKey, JSON.stringify(data));
+      runIdle(() => {
+        try {
+          if (data === null || data === undefined) {
+            localStorage.removeItem(storageKey);
+          } else {
+            localStorage.setItem(storageKey, JSON.stringify(data));
+          }
+        } catch (error) {
+          userLogger.warn(`[ProfileCache] Failed to save ${section} for ${pubkey}`, error);
         }
-      } catch (error) {
-        userLogger.warn(`[ProfileCache] Failed to save ${section} for ${pubkey}`, error);
-      }
+      });
     }
 
     // Update memory cache
