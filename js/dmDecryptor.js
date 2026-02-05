@@ -548,6 +548,8 @@ async function decryptLegacyDm(event, decryptors, actorPubkey) {
     }
   }
 
+  // Race all decryption attempts to return the first successful result
+  // This significantly reduces latency compared to sequential attempts
   try {
     return await Promise.any(attempts);
   } catch (aggregateError) {
