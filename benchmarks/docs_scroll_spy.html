@@ -104,12 +104,18 @@
                 entries.forEach(entry => {
                     if (entry.isIntersecting) {
                         setActive(entry.target.id);
+                    } else if (entry.boundingClientRect.top > 96) {
+                        // Scrolling up simulation
+                        const index = headings.findIndex((h) => h.id === entry.target.id);
+                        if (index > 0) {
+                            setActive(headings[index - 1].id);
+                        }
                     }
                 });
                 totalTime += (performance.now() - start);
                 count++;
             }, {
-                rootMargin: "-96px 0px -80% 0px",
+                rootMargin: "-96px 0px -50% 0px",
                 threshold: 0
             });
 

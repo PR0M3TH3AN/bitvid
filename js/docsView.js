@@ -362,11 +362,19 @@ function setupScrollSpy(container) {
       entries.forEach((entry) => {
         if (entry.isIntersecting) {
           setActiveSection(entry.target.id);
+        } else if (entry.boundingClientRect.top > 96) {
+          // Scrolling up: The heading has exited the active zone downwards (top > 96px).
+          // Activate the previous heading.
+          const index = trackedHeadings.findIndex((h) => h.id === entry.target.id);
+          if (index > 0) {
+            setActiveSection(trackedHeadings[index - 1].id);
+          }
         }
       });
     },
     {
-      rootMargin: "-96px 0px -80% 0px",
+      // Top offset 96px. Bottom offset 50% to support shorter screens.
+      rootMargin: "-96px 0px -50% 0px",
       threshold: 0,
     }
   );
