@@ -205,10 +205,8 @@ export function createFeedEngine({ logger } = {}) {
 
     for (const stage of entry.stages) {
       const result = await stage(items, context);
-      if (Array.isArray(result)) {
+      if (Array.isArray(result) && result !== items) {
         items = normalizeItems(result);
-      } else if (result == null) {
-        items = normalizeItems(items);
       }
     }
 
