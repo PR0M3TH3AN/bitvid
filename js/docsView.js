@@ -27,8 +27,8 @@ const scrollSpyState = {
   headings: [],
   linkLookup: new Map(),
   activeId: "",
-  rafId: null,
-  onScroll: null,
+  observer: null,
+  headingStatus: new Map(),
 };
 
 function getHashParams() {
@@ -109,7 +109,7 @@ function getChevronIcon(expanded) {
   if (expanded) {
     // Chevron Down
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
-      <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+      <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
     </svg>`;
   }
   // Chevron Right
@@ -260,17 +260,13 @@ function resetSectionHighlight() {
 }
 
 function clearScrollSpy() {
-  if (scrollSpyState.onScroll && typeof window !== "undefined") {
-    window.removeEventListener("scroll", scrollSpyState.onScroll);
-    window.removeEventListener("resize", scrollSpyState.onScroll);
+  if (scrollSpyState.observer) {
+    scrollSpyState.observer.disconnect();
+    scrollSpyState.observer = null;
   }
-  if (scrollSpyState.rafId && typeof cancelAnimationFrame === "function") {
-    cancelAnimationFrame(scrollSpyState.rafId);
-  }
-  scrollSpyState.rafId = null;
-  scrollSpyState.onScroll = null;
   scrollSpyState.headings = [];
   scrollSpyState.linkLookup = new Map();
+  scrollSpyState.headingStatus = new Map();
   resetSectionHighlight();
 }
 
@@ -345,34 +341,54 @@ function setupScrollSpy(container) {
   scrollSpyState.headings = trackedHeadings;
   scrollSpyState.linkLookup = linkLookup;
 
-  const updateActiveFromScroll = () => {
-    scrollSpyState.rafId = null;
-    const offset = 96;
-    let nextId = scrollSpyState.headings[0]?.id || "";
-    for (const heading of scrollSpyState.headings) {
-      const top = heading.getBoundingClientRect().top - offset;
-      if (top <= 0) {
-        nextId = heading.id;
-      } else {
-        break;
+  const callback = (entries) => {
+    let stateChanged = false;
+    entries.forEach((entry) => {
+      // 96px offset matching the original logic
+      const isAbove = entry.boundingClientRect.top <= 96;
+      const id = entry.target.id;
+      const wasAbove = scrollSpyState.headingStatus.get(id);
+
+      if (isAbove !== wasAbove) {
+        scrollSpyState.headingStatus.set(id, isAbove);
+        stateChanged = true;
       }
-    }
-    if (nextId) {
+    });
+
+    if (stateChanged) {
+      // Find the last heading that is "above" the offset
+      let nextId = "";
+      for (const heading of scrollSpyState.headings) {
+        if (scrollSpyState.headingStatus.get(heading.id)) {
+          nextId = heading.id;
+        } else {
+          break;
+        }
+      }
+
+      // If no heading is above (e.g. at very top), default to first if available?
+      // Original logic: `nextId = scrollSpyState.headings[0]?.id || "";`
+      // Then loop overwrites it if `top <= 0`.
+      // So if NO heading is `top <= 0`, it STAYS as the first one.
+      if (!nextId && scrollSpyState.headings.length > 0) {
+        nextId = scrollSpyState.headings[0].id;
+      }
+
       setActiveSection(nextId);
     }
   };
 
-  const onScroll = () => {
-    if (scrollSpyState.rafId) {
-      return;
-    }
-    scrollSpyState.rafId = requestAnimationFrame(updateActiveFromScroll);
-  };
+  const observer = new IntersectionObserver(callback, {
+    // Extend bottom margin significantly to capture elements coming from far below (jump scroll)
+    // while keeping the top boundary strict at 96px offset.
+    rootMargin: "-96px 0px 5000px 0px",
+    threshold: [0, 1],
+  });
 
-  scrollSpyState.onScroll = onScroll;
-  window.addEventListener("scroll", onScroll, { passive: true });
-  window.addEventListener("resize", onScroll);
-  onScroll();
+  scrollSpyState.headings.forEach((heading) => {
+    observer.observe(heading);
+  });
+  scrollSpyState.observer = observer;
 }
 
 function resolveDocItem(slug) {
@@ -418,6 +434,23 @@ function highlightCodeBlocks(container) {
   });
 }
 
+function addHeadingIds(container) {
+  const headings = container.querySelectorAll("h2, h3, h4, h5");
+  headings.forEach((heading) => {
+    if (!heading.id) {
+      const text = heading.textContent.trim();
+      // Simple slugify: lowercase, remove special chars, replace spaces with dashes
+      const slug = text
+        .toLowerCase()
+        .replace(/[^\w\s-]/g, "")
+        .replace(/\s+/g, "-");
+      if (slug) {
+        heading.id = slug;
+      }
+    }
+  });
+}
+
 async function renderMarkdown(path) {
   const container = document.getElementById("markdown-container");
   if (!container) {
@@ -440,6 +473,7 @@ async function renderMarkdown(path) {
     const markdownText = await response.text();
     const html = window.marked.parse(markdownText);
     container.innerHTML = html;
+    addHeadingIds(container);
     highlightCodeBlocks(container);
     const schedule =
       typeof requestIdleCallback === "function"
