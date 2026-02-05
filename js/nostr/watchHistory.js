@@ -1460,7 +1460,12 @@ class WatchHistoryManager {
       devLogger.warn("[nostr] Failed to sign watch history event:", error);
       return { ok: false, error: "signing-failed", retryable: false };
     }
-    const publishResults = await publishEventToRelays(pool, relays, signedEvent);
+    const publishResults = await publishEventToRelays(
+      pool,
+      relays,
+      signedEvent,
+      { waitForAll: true },
+    );
     const relayStatus = formatRelayStatus(publishResults);
     const acceptedCount = relayStatus.filter((entry) => entry.success).length;
     let anyRejected = false;
