@@ -26,6 +26,7 @@ function sanitizeProfileString(value) {
 class ProfileCache {
   constructor() {
     this.activePubkey = null;
+    // Optimized: Use nested map (pubkey -> section -> data) for O(1) clearing
     this.memoryCache = new Map(); // For runtime decrypted data: pubkey -> Map<section, data>
     this.listeners = new Set();
   }
@@ -367,6 +368,7 @@ class ProfileCache {
   }
 
   clearMemoryCache(pubkey) {
+    // Optimized: O(1) deletion due to nested map structure
     this.memoryCache.delete(pubkey);
   }
 
