@@ -37,20 +37,27 @@ test.describe('Docs ScrollSpy Correctness', () => {
 
 Introduction text...
 
+<style>
+  .test-spacer { height: 5000px; border: 1px solid red; }
+</style>
+
 <h2 id="section-1">Section 1</h2>
 
+<div class="test-spacer">
 Content for section 1...
-${'\n'.repeat(50)}
+</div>
 
 <h2 id="section-2">Section 2</h2>
 
+<div class="test-spacer">
 Content for section 2...
-${'\n'.repeat(50)}
+</div>
 
 <h2 id="section-3">Section 3</h2>
 
+<div class="test-spacer">
 Content for section 3...
-${'\n'.repeat(50)}
+</div>
       `;
 
       await route.fulfill({
@@ -105,38 +112,69 @@ ${'\n'.repeat(50)}
     await expect(page.locator('#link-section-2')).not.toHaveAttribute('data-docs-section-current', 'true');
 
     // Scroll to Section 2
-    // We scroll Section 2 to be near top.
-    const section2 = page.locator('#section-2');
-    await section2.scrollIntoViewIfNeeded();
-    // Adjust scroll to be exactly slightly below 96px or above.
-
-    // Let's scroll so Section 2 passes the 96px mark.
-    // We can evaluate scroll.
+    // We want Section 2 to be clearly above the 96px offset.
+    // Scrolling it to the very top (0px) ensures it is < 96px.
     await page.evaluate(() => {
-      const s2 = document.getElementById('section-2');
-      // Scroll s2 to 50px from top (above 96px line)
-      window.scrollTo(0, s2.offsetTop - 50);
+        const s2 = document.getElementById('section-2');
+        s2.scrollIntoView({ block: 'start' });
+        // Scroll a bit more to be safe (push it up/offsets down?)
+        // block: 'start' puts it at the top of the viewport (top=0).
+        // 0 <= 96 is True.
+
+        // Let's verify position
+        const rect = s2.getBoundingClientRect();
+        console.log(`PAGE LOG: After scroll s2, top=${rect.top}`);
     });
 
     // Wait for IO
     await page.waitForTimeout(1000);
 
+    // Explicitly wait for s2 to update its status to TRUE (it is now above the fold)
+    await page.waitForFunction(() => {
+       const status = window.__scrollSpyState.headingStatus.get('section-2');
+       return status === true;
+    }, null, { timeout: 5000 }).catch(() => console.log('PAGE LOG: Timed out waiting for s2 status update (TRUE)'));
+
+    // Debug state
+    await page.evaluate(() => {
+        const state = window.__scrollSpyState;
+        console.log('PAGE LOG: State after s2 scroll:', JSON.stringify({
+            activeId: state.activeId,
+            headingStatus: Array.from(state.headingStatus.entries())
+        }));
+    });
+
     // Now Section 2 should be active
-    // Because Section 2 is at 50px (above 96px).
-    // Section 1 is way above.
-    // Section 3 is below.
-    // Last non-intersecting is Section 2.
     await expect(page.locator('#link-section-2')).toHaveAttribute('data-docs-section-current', 'true');
     await expect(page.locator('#link-section-1')).not.toHaveAttribute('data-docs-section-current', 'true');
 
     // Scroll back up to Section 1
     await page.evaluate(() => {
-      const s1 = document.getElementById('section-1');
-      // Scroll s1 to 50px from top
-      window.scrollTo(0, s1.offsetTop - 50);
+        const s1 = document.getElementById('section-1');
+        s1.scrollIntoView({ block: 'start' });
+        // block: 'start' puts s1 at top=0.
+        // 0 <= 96 is True.
+
+        const rect = s1.getBoundingClientRect();
+        console.log(`PAGE LOG: After scroll s1, top=${rect.top}`);
     });
 
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1000);
+
+    // Debug state
+    await page.evaluate(() => {
+        const state = window.__scrollSpyState;
+        console.log('PAGE LOG: State after s1 scroll:', JSON.stringify({
+            activeId: state.activeId,
+            headingStatus: Array.from(state.headingStatus.entries())
+        }));
+    });
+
+    // Explicitly wait for s2 to update its status to false (it is now below the fold)
+    await page.waitForFunction(() => {
+       const status = window.__scrollSpyState.headingStatus.get('section-2');
+       return status === false;
+    }, null, { timeout: 5000 }).catch(() => console.log('PAGE LOG: Timed out waiting for s2 status update'));
 
     // Section 1 should be active
     await expect(page.locator('#link-section-1')).toHaveAttribute('data-docs-section-current', 'true');

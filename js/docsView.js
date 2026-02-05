@@ -31,6 +31,10 @@ const scrollSpyState = {
   headingStatus: new Map(),
 };
 
+if (typeof window !== "undefined") {
+  window.__scrollSpyState = scrollSpyState;
+}
+
 function getHashParams() {
   const hash = typeof window !== "undefined" ? window.location.hash : "";
   return new URLSearchParams(hash.startsWith("#") ? hash.slice(1) : hash);
@@ -346,6 +350,7 @@ function setupScrollSpy(container) {
     for (const entry of entries) {
       const offset = 96;
       const isAboveOrAt = entry.boundingClientRect.top <= offset;
+      // console.log(`[ScrollSpy] Update ${entry.target.id}: top=${entry.boundingClientRect.top}, isAboveOrAt=${isAboveOrAt}`);
       scrollSpyState.headingStatus.set(entry.target.id, isAboveOrAt);
     }
 
@@ -368,6 +373,7 @@ function setupScrollSpy(container) {
   const observer = new IntersectionObserver(observerCallback, {
     // Extend bottom margin significantly so that items "below the fold" are considered intersecting.
     // This ensures that we capture transitions when items cross the top offset (96px).
+    // We use a large but safe value to cover typical page lengths.
     rootMargin: "-96px 0px 500000px 0px",
     threshold: 0,
   });
