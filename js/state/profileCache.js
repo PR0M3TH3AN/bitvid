@@ -26,7 +26,7 @@ function sanitizeProfileString(value) {
 class ProfileCache {
   constructor() {
     this.activePubkey = null;
-    this.memoryCache = new Map(); // For runtime decrypted data: pubkey:section -> data
+    this.memoryCache = new Map(); // For runtime decrypted data: pubkey -> Map<section, data>
     this.listeners = new Set();
   }
 
@@ -262,9 +262,9 @@ class ProfileCache {
 
   getProfileData(pubkey, section) {
     // 1. Check memory cache (runtime data)
-    const memKey = `${pubkey}:${section}`;
-    if (this.memoryCache.has(memKey)) {
-      return this.memoryCache.get(memKey);
+    const userCache = this.memoryCache.get(pubkey);
+    if (userCache && userCache.has(section)) {
+      return userCache.get(section);
     }
 
     // 2. Load from persistence
@@ -295,7 +295,12 @@ class ProfileCache {
           }
 
           // Populate memory cache to avoid repeat parsing
-          this.memoryCache.set(memKey, parsed);
+          let userCache = this.memoryCache.get(pubkey);
+          if (!userCache) {
+            userCache = new Map();
+            this.memoryCache.set(pubkey, userCache);
+          }
+          userCache.set(section, parsed);
           return parsed;
         }
       } catch (error) {
@@ -324,39 +329,45 @@ class ProfileCache {
     }
 
     // Update memory cache
-    const memKey = `${pubkey}:${section}`;
-    this.memoryCache.set(memKey, data);
+    let userCache = this.memoryCache.get(pubkey);
+    if (!userCache) {
+      userCache = new Map();
+      this.memoryCache.set(pubkey, userCache);
+    }
+    userCache.set(section, data);
 
     this.emit("update", { pubkey, section, data });
     this.emit("partition-updated", { pubkey, key: section });
   }
 
   setMemoryDataForPubkey(pubkey, section, data) {
-    const memKey = `${pubkey}:${section}`;
-    this.memoryCache.set(memKey, data);
+    let userCache = this.memoryCache.get(pubkey);
+    if (!userCache) {
+      userCache = new Map();
+      this.memoryCache.set(pubkey, userCache);
+    }
+    userCache.set(section, data);
     this.emit("update", { pubkey, section, data });
   }
 
   setMemoryData(section, data) {
     if (!this.activePubkey) return;
-    const key = `${this.activePubkey}:${section}`;
-    this.memoryCache.set(key, data);
+    let userCache = this.memoryCache.get(this.activePubkey);
+    if (!userCache) {
+      userCache = new Map();
+      this.memoryCache.set(this.activePubkey, userCache);
+    }
+    userCache.set(section, data);
   }
 
   getMemoryData(section) {
     if (!this.activePubkey) return null;
-    const key = `${this.activePubkey}:${section}`;
-    return this.memoryCache.get(key);
+    const userCache = this.memoryCache.get(this.activePubkey);
+    return userCache ? userCache.get(section) : undefined;
   }
 
   clearMemoryCache(pubkey) {
-    // Clear all entries starting with pubkey:
-    const prefix = `${pubkey}:`;
-    for (const key of this.memoryCache.keys()) {
-      if (key.startsWith(prefix)) {
-        this.memoryCache.delete(key);
-      }
-    }
+    this.memoryCache.delete(pubkey);
   }
 
   clearSignerRuntime(pubkey) {
