@@ -1,7 +1,7 @@
 import './setup-test-env.js';
 import { WebSocket } from 'ws';
 import { generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools';
-import { buildVideoPostEvent, buildViewEvent } from '../../js/nostrEventSchemas.js';
+import { buildVideoPostEvent, buildViewEvent, buildVideoMirrorEvent } from '../../js/nostrEventSchemas.js';
 import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
@@ -73,41 +73,62 @@ class LoadBot {
     publish() {
         if (!this.connected || this.ws.readyState !== WebSocket.OPEN) return;
 
-        // Mix: 80% View Events (Small), 20% Video Post (Large)
+        // Mix: 80% View Events (Small), 20% Multi-part Video (Large)
         const isLarge = Math.random() < 0.2;
-        let eventTemplate;
+        const eventsToSend = [];
 
         if (isLarge) {
-            eventTemplate = buildVideoPostEvent({
+            const videoRootId = `root-${this.id}-${Date.now()}`;
+            // 1. Video Metadata (Kind 30078)
+            const videoEvent = buildVideoPostEvent({
                 pubkey: this.pk,
                 created_at: Math.floor(Date.now() / 1000),
-                dTagValue: `load-${this.id}-${Date.now()}`,
+                dTagValue: videoRootId,
                 content: {
                     version: 3,
                     title: `Load Test Video ${Date.now()}`,
-                    description: 'A' .repeat(500), // Filler content
-                    videoRootId: `root-${this.id}-${Date.now()}`,
+                    description: 'A'.repeat(5000), // Filler content ~5KB
+                    videoRootId: videoRootId,
                     magnet: `magnet:?xt=urn:btih:${'a'.repeat(40)}&dn=test`
                 }
             });
+            eventsToSend.push(videoEvent);
+
+            // 2. Video Mirror (Kind 1063) - Simulated "multi-part"
+            const mirrorEvent = buildVideoMirrorEvent({
+                pubkey: this.pk,
+                created_at: Math.floor(Date.now() / 1000),
+                tags: [
+                     ['a', `30078:${this.pk}:${videoRootId}`]
+                ],
+                content: {
+                    description: 'Mirror filler ' + 'B'.repeat(100)
+                }
+            });
+            eventsToSend.push(mirrorEvent);
+
         } else {
-            eventTemplate = buildViewEvent({
+            // View Event
+            const viewEvent = buildViewEvent({
                 pubkey: this.pk,
                 created_at: Math.floor(Date.now() / 1000),
                 content: 'view-ping',
                 dedupeTag: `view-${this.id}-${Date.now()}`
             });
+            eventsToSend.push(viewEvent);
         }
 
         try {
-            const t0 = performance.now();
-            const signedEvent = finalizeEvent(eventTemplate, this.sk);
-            const t1 = performance.now();
-            this.signTimes.push(t1 - t0);
+            for (const ev of eventsToSend) {
+                const t0 = performance.now();
+                const signedEvent = finalizeEvent(ev, this.sk);
+                const t1 = performance.now();
+                this.signTimes.push(t1 - t0);
 
-            const msg = JSON.stringify(['EVENT', signedEvent]);
-            this.ws.send(msg);
-            this.sentCount++;
+                const msg = JSON.stringify(['EVENT', signedEvent]);
+                this.ws.send(msg);
+                this.sentCount++;
+            }
         } catch (e) {
             this.errors++;
         }
@@ -195,12 +216,15 @@ async function runLoadTest() {
     const args = process.argv.slice(2);
     const clientsArg = args.find(a => a.startsWith('--clients='));
     const durationArg = args.find(a => a.startsWith('--duration='));
+    const rateArg = args.find(a => a.startsWith('--rate='));
 
     const NUM_CLIENTS = clientsArg ? parseInt(clientsArg.split('=')[1]) : 1000;
     const DURATION_SEC = durationArg ? parseInt(durationArg.split('=')[1]) : 60; // Default 1 min
-    const TARGET_RATE = 0.5; // Events per second per bot (0.5 * 1000 = 500 events/sec total)
+    const TOTAL_TARGET_RATE = rateArg ? parseInt(rateArg.split('=')[1]) : 500; // Events/sec total
+    const RATE_PER_CLIENT = TOTAL_TARGET_RATE / NUM_CLIENTS;
 
     console.log(`[Load Test] Starting with ${NUM_CLIENTS} clients for ${DURATION_SEC}s...`);
+    console.log(`[Load Test] Target Rate: ${TOTAL_TARGET_RATE} events/s (${RATE_PER_CLIENT.toFixed(2)}/client)`);
 
     // Ensure artifacts dir
     if (!fs.existsSync(ARTIFACTS_DIR)) fs.mkdirSync(ARTIFACTS_DIR);
@@ -222,7 +246,7 @@ async function runLoadTest() {
     const bots = [];
     console.log('[Load Test] Spawning bots...');
     for (let i = 0; i < NUM_CLIENTS; i++) {
-        const bot = new LoadBot(i, RELAY_URL, TARGET_RATE);
+        const bot = new LoadBot(i, RELAY_URL, RATE_PER_CLIENT);
         bots.push(bot);
     }
 
@@ -313,7 +337,8 @@ async function runLoadTest() {
         meta: {
             clients: NUM_CLIENTS,
             duration: DURATION_SEC,
-            targetRatePerClient: TARGET_RATE
+            targetTotalRate: TOTAL_TARGET_RATE,
+            ratePerClient: RATE_PER_CLIENT
         },
         results: {
             totalSent,
