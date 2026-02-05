@@ -76,7 +76,7 @@
             title: "Fixture: Blurred Preview",
             pubkey: "a".repeat(64),
             thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg",
-            url: "https://example.com/dummy.mp4"
+            url: "https://example.com/video.mp4"
           },
           moderation: {
             blockAutoplay: true,
@@ -105,7 +105,7 @@
             title: "Fixture: Autoplay Blocked",
             pubkey: "e".repeat(64),
             thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg",
-            url: "https://example.com/dummy.mp4"
+            url: "https://example.com/video.mp4"
           },
           moderation: {
             blockAutoplay: true,
@@ -616,6 +616,15 @@
           card.onModerationHide = () => {
             overrides = setOverride(overrides, video.id, { showAnyway: false });
             refreshModeration();
+            try {
+              document.dispatchEvent(
+                new CustomEvent("video:moderation-hide", {
+                  detail: { video }
+                })
+              );
+            } catch {
+              /* ignore fixture event errors */
+            }
             return true;
           };
         }
