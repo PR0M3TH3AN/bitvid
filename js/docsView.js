@@ -27,10 +27,7 @@ const scrollSpyState = {
   headings: [],
   linkLookup: new Map(),
   activeId: "",
-  rafId: null,
-  onScroll: null,
   observer: null,
-  passedHeadings: null,
 };
 
 function getHashParams() {
@@ -266,7 +263,6 @@ function clearScrollSpy() {
     scrollSpyState.observer.disconnect();
     scrollSpyState.observer = null;
   }
-  scrollSpyState.passedHeadings = null;
   scrollSpyState.headings = [];
   scrollSpyState.linkLookup = new Map();
   resetSectionHighlight();
@@ -343,55 +339,47 @@ function setupScrollSpy(container) {
   scrollSpyState.headings = trackedHeadings;
   scrollSpyState.linkLookup = linkLookup;
 
-  const observerCallback = (entries) => {
-    const passed = scrollSpyState.passedHeadings || new Set();
+  // Initial scan to handle page loads in the middle of sections
+  const offset = 96;
+  let nextId = trackedHeadings[0]?.id || "";
+  for (const heading of trackedHeadings) {
+    if (heading.getBoundingClientRect().top - offset <= 0) {
+      nextId = heading.id;
+    } else {
+      break;
+    }
+  }
+  if (nextId) {
+    setActiveSection(nextId);
+  }
 
-    entries.forEach((entry) => {
-      // If the heading intersects (enters the viewport from top or bottom),
-      // we check if it is above the offset.
-      if (entry.isIntersecting) {
-        // If it is intersecting, it is definitely "visible" in the viewport (minus top margin).
-        // It means it's not "passed" (above the top).
-        passed.delete(entry.target.id);
-      } else {
-        // If not intersecting, check if it's above.
-        // rootMargin top is -96px. The root starts at 96px from top.
-        // If entry.boundingClientRect.top < 96, it is above the root.
-        if (entry.boundingClientRect.top < 96) {
-          passed.add(entry.target.id);
-        } else {
-          passed.delete(entry.target.id);
+  if (typeof IntersectionObserver === "undefined") {
+    return;
+  }
+
+  const observer = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          setActiveSection(entry.target.id);
+        } else if (entry.boundingClientRect.top > 96) {
+          // Scrolling up: The heading has exited the active zone downwards (top > 96px).
+          // Activate the previous heading.
+          const index = trackedHeadings.findIndex((h) => h.id === entry.target.id);
+          if (index > 0) {
+            setActiveSection(trackedHeadings[index - 1].id);
+          }
         }
-      }
-    });
-
-    scrollSpyState.passedHeadings = passed;
-
-    let nextId = "";
-    // Find the last heading in the passed set (by DOM order)
-    for (let i = scrollSpyState.headings.length - 1; i >= 0; i--) {
-      const id = scrollSpyState.headings[i].id;
-      if (passed.has(id)) {
-        nextId = id;
-        break;
-      }
+      });
+    },
+    {
+      // Top offset 96px. Bottom offset 50% to support shorter screens.
+      rootMargin: "-96px 0px -50% 0px",
+      threshold: 0,
     }
-    // Fallback to the first heading if none are passed yet (scrolled to top)
-    if (!nextId && scrollSpyState.headings.length > 0) {
-      nextId = scrollSpyState.headings[0].id;
-    }
+  );
 
-    if (nextId) {
-      setActiveSection(nextId);
-    }
-  };
-
-  const observer = new IntersectionObserver(observerCallback, {
-    rootMargin: "-96px 0px 0px 0px",
-    threshold: 0,
-  });
-
-  scrollSpyState.headings.forEach((heading) => observer.observe(heading));
+  trackedHeadings.forEach((heading) => observer.observe(heading));
   scrollSpyState.observer = observer;
 }
 
