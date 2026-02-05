@@ -89,8 +89,7 @@ test.describe("moderation fixtures", () => {
 
     await expect(overrideCard).toHaveAttribute("data-autoplay-policy", "blocked");
     await expect(thumbnail).toHaveAttribute("data-thumbnail-state", "blurred");
-    // TODO: Investigate why visibility check fails in fixture environment (headless)
-    // await expect(showAnywayButton).toBeVisible();
+    await expect(showAnywayButton).toBeVisible();
     await expect(restoreButtonQuery).toHaveCount(0);
 
     // TODO: Investigate why click times out in fixture environment (headless)
@@ -166,8 +165,7 @@ test.describe("moderation fixtures", () => {
     await expect(hideCard).toHaveAttribute("data-moderation-hide-reason", "trusted-report-hide");
     await expect(hideCard).toHaveAttribute("data-moderation-hide-trusted-report-count", "3");
     await expect(badge).toContainText("Hidden · 3 trusted spam reports");
-    // TODO: Investigate visibility check failure (fails with 0x0 size in headless)
-    // await expect(showAnywayButton).toBeVisible();
+    await expect(showAnywayButton).toBeVisible();
     await expect(restoreButtonQuery).toHaveCount(0);
 
     // TODO: Investigate click timeout failure
@@ -219,8 +217,7 @@ test.describe("moderation fixtures", () => {
     await expect(muteCard).toHaveAttribute("data-moderation-trusted-mute-count", "1");
     await expect(badge).toContainText("Hidden · 1 trusted mute");
     await expect(thumbnail).toHaveAttribute("data-thumbnail-state", "blurred");
-    // TODO: Investigate visibility check failure
-    // await expect(showAnywayButton).toBeVisible();
+    await expect(showAnywayButton).toBeVisible();
     await expect(restoreButtonQuery).toHaveCount(0);
 
     // TODO: Investigate click timeout failure
