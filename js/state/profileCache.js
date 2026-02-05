@@ -367,8 +367,12 @@ class ProfileCache {
     return userCache ? userCache.get(section) : undefined;
   }
 
+  /**
+   * Clears all cached data for a specific public key from memory.
+   * This operation is O(1) thanks to the nested map structure.
+   * @param {string} pubkey - The hex public key to clear.
+   */
   clearMemoryCache(pubkey) {
-    // Optimized: O(1) deletion due to nested map structure
     this.memoryCache.delete(pubkey);
   }
 
