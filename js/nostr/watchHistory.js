@@ -1901,10 +1901,10 @@ class WatchHistoryManager {
         const chunkEvents = Array.isArray(results)
           ? results.flat().filter((event) => event && typeof event === "object")
           : [];
-        for (const event of chunkEvents) {
+        const decryptionPromises = chunkEvents.map(async (event) => {
           const ciphertext = typeof event.content === "string" ? event.content : "";
           if (!ciphertext) {
-            continue;
+            return [];
           }
           let plaintext = "";
           if (typeof decryptSigner.nip04Decrypt === "function") {
@@ -1915,13 +1915,17 @@ class WatchHistoryManager {
             }
           }
           if (!plaintext) {
-            continue;
+            return [];
           }
           const parsed = parseWatchHistoryPayload(plaintext);
           if (Array.isArray(parsed.items) && parsed.items.length) {
-            decryptedItems.push(...parsed.items);
+            return parsed.items;
           }
-        }
+          return [];
+        });
+
+        const chunkResults = await Promise.all(decryptionPromises);
+        decryptedItems.push(...chunkResults.flat());
       } catch (error) {
         devLogger.warn("[nostr] Failed to fetch watch history chunks:", error);
       }
