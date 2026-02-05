@@ -368,7 +368,7 @@ class ProfileCache {
   }
 
   clearMemoryCache(pubkey) {
-    // Optimized: O(1) deletion due to nested map structure
+    // Optimized: O(1) deletion using nested Map (pubkey -> section -> data)
     this.memoryCache.delete(pubkey);
   }
 
