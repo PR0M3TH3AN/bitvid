@@ -36,6 +36,8 @@ const DEFAULT_CONFIG_SCHEMA = Object.freeze({
   },
 });
 
+const NORMALIZED_MARKER = Symbol("normalized");
+
 function normalizeLogger(logger) {
   if (typeof logger === "function") {
     return logger;
@@ -58,13 +60,22 @@ function normalizeDto(candidate) {
     return null;
   }
 
+  if (candidate[NORMALIZED_MARKER]) {
+    return candidate;
+  }
+
   const video = candidate.video ?? null;
   const pointer = candidate.pointer ?? null;
   const metadata = isPlainObject(candidate.metadata)
     ? { ...candidate.metadata }
     : {};
 
-  return { video, pointer, metadata };
+  const dto = { video, pointer, metadata };
+  Object.defineProperty(dto, NORMALIZED_MARKER, {
+    value: true,
+    enumerable: false,
+  });
+  return dto;
 }
 
 function normalizeItems(items) {
@@ -183,9 +194,9 @@ export function createFeedEngine({ logger } = {}) {
     for (const stage of entry.stages) {
       const result = await stage(items, context);
       if (Array.isArray(result)) {
-        items = normalizeItems(result);
-      } else if (result == null) {
-        items = normalizeItems(items);
+        if (result !== items) {
+          items = normalizeItems(result);
+        }
       }
     }
 
