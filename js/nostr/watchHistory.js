@@ -24,6 +24,7 @@ import { DEFAULT_NIP07_PERMISSION_METHODS } from "./nip07Permissions.js";
 import { devLogger, userLogger } from "../utils/logger.js";
 import { profileCache } from "../state/profileCache.js";
 import { queueSignEvent } from "./signRequestQueue.js";
+import { pMap } from "../utils/async.js";
 
 /**
  * Domain utilities for watch-history interactions. This module owns pointer
@@ -1283,23 +1284,28 @@ class WatchHistoryManager {
      // High level wrapper to publish multiple months
      // records is { "YYYY-MM": [items] }
 
-     const results = [];
-     let allOk = true;
-     let anyRetryable = false;
-
      const months = Object.keys(records).sort();
-     for (const month of months) {
+
+     const results = await pMap(
+       months,
+       async (month) => {
          const items = records[month];
          // Ideally we check if this month changed before publishing.
          // For now, we rely on the caller or just publish.
          // In a real optimized system we'd track dirty flags per month.
+         return this.publishMonthRecord(month, items, options);
+       },
+       { concurrency: 3 },
+     );
 
-         const res = await this.publishMonthRecord(month, items, options);
-         results.push(res);
-         if (!res.ok) {
-             allOk = false;
-             if (res.retryable) anyRetryable = true;
-         }
+     let allOk = true;
+     let anyRetryable = false;
+
+     for (const res of results) {
+       if (!res.ok) {
+         allOk = false;
+         if (res.retryable) anyRetryable = true;
+       }
      }
 
      return {
