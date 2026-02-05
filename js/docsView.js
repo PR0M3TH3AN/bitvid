@@ -27,8 +27,8 @@ const scrollSpyState = {
   headings: [],
   linkLookup: new Map(),
   activeId: "",
-  rafId: null,
-  onScroll: null,
+  observer: null,
+  headingStatus: new Map(),
 };
 
 function getHashParams() {
@@ -260,17 +260,13 @@ function resetSectionHighlight() {
 }
 
 function clearScrollSpy() {
-  if (scrollSpyState.onScroll && typeof window !== "undefined") {
-    window.removeEventListener("scroll", scrollSpyState.onScroll);
-    window.removeEventListener("resize", scrollSpyState.onScroll);
+  if (scrollSpyState.observer) {
+    scrollSpyState.observer.disconnect();
+    scrollSpyState.observer = null;
   }
-  if (scrollSpyState.rafId && typeof cancelAnimationFrame === "function") {
-    cancelAnimationFrame(scrollSpyState.rafId);
-  }
-  scrollSpyState.rafId = null;
-  scrollSpyState.onScroll = null;
   scrollSpyState.headings = [];
   scrollSpyState.linkLookup = new Map();
+  scrollSpyState.headingStatus = new Map();
   resetSectionHighlight();
 }
 
@@ -344,35 +340,40 @@ function setupScrollSpy(container) {
 
   scrollSpyState.headings = trackedHeadings;
   scrollSpyState.linkLookup = linkLookup;
+  scrollSpyState.headingStatus = new Map();
 
-  const updateActiveFromScroll = () => {
-    scrollSpyState.rafId = null;
-    const offset = 96;
+  const observerCallback = (entries) => {
+    for (const entry of entries) {
+      const offset = 96;
+      const isAboveOrAt = entry.boundingClientRect.top <= offset;
+      scrollSpyState.headingStatus.set(entry.target.id, isAboveOrAt);
+    }
+
     let nextId = scrollSpyState.headings[0]?.id || "";
+
     for (const heading of scrollSpyState.headings) {
-      const top = heading.getBoundingClientRect().top - offset;
-      if (top <= 0) {
+      const isAboveOrAt = scrollSpyState.headingStatus.get(heading.id);
+      if (isAboveOrAt) {
         nextId = heading.id;
       } else {
         break;
       }
     }
+
     if (nextId) {
       setActiveSection(nextId);
     }
   };
 
-  const onScroll = () => {
-    if (scrollSpyState.rafId) {
-      return;
-    }
-    scrollSpyState.rafId = requestAnimationFrame(updateActiveFromScroll);
-  };
+  const observer = new IntersectionObserver(observerCallback, {
+    // Extend bottom margin significantly so that items "below the fold" are considered intersecting.
+    // This ensures that we capture transitions when items cross the top offset (96px).
+    rootMargin: "-96px 0px 500000px 0px",
+    threshold: 0,
+  });
 
-  scrollSpyState.onScroll = onScroll;
-  window.addEventListener("scroll", onScroll, { passive: true });
-  window.addEventListener("resize", onScroll);
-  onScroll();
+  scrollSpyState.observer = observer;
+  trackedHeadings.forEach((heading) => observer.observe(heading));
 }
 
 function resolveDocItem(slug) {
