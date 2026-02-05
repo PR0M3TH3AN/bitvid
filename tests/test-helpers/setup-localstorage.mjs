@@ -44,6 +44,16 @@ if (typeof globalThis.window.localStorage === "undefined") {
   globalThis.window.localStorage = globalThis.localStorage;
 }
 
+// Polyfill requestIdleCallback for synchronous testing if undefined
+if (typeof globalThis.requestIdleCallback === "undefined") {
+  globalThis.requestIdleCallback = (cb) => cb();
+  globalThis.cancelIdleCallback = () => {};
+  if (globalThis.window) {
+    globalThis.window.requestIdleCallback = globalThis.requestIdleCallback;
+    globalThis.window.cancelIdleCallback = globalThis.cancelIdleCallback;
+  }
+}
+
 if (typeof globalThis.window.crypto === "undefined" && typeof globalThis.crypto !== "undefined") {
   globalThis.window.crypto = globalThis.crypto;
 }
