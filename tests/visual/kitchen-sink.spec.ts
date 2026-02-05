@@ -61,7 +61,7 @@ test.describe("design system kitchen sink", () => {
         }
       }, theme.value ?? null);
 
-      await page.waitForTimeout(100);
+      await page.waitForTimeout(1000);
 
       const screenshotBuffer = await page.screenshot({
         type: "png",
@@ -156,7 +156,7 @@ test.describe("video modal mobile regression", () => {
         window.scrollTo(0, 0);
       });
 
-      await page.waitForTimeout(100);
+      await page.waitForTimeout(1000);
 
       const screenshotBuffer = await page.screenshot({
         type: "png",
