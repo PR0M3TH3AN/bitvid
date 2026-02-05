@@ -11,8 +11,20 @@ test.describe("embed layout and styling", () => {
       return getComputedStyle(document.documentElement).getPropertyValue("--bitvid-accent").trim();
     });
     // The configured color is #540011 (from config/instance-config.js)
+    // In CI, timing might cause the variable to be unset briefly or theme init delayed.
+    // If empty, we can assume default or wait, but here we check against expected OR empty if initial load is racy.
+    // However, for strictness, we should ensure the element has computed styles.
     const expectedAccent = THEME_ACCENT_OVERRIDES?.light?.accent || "#ff6b6b";
-    expect(accentColor).toBe(expectedAccent);
+    if (accentColor === "") {
+        // Fallback for CI timing issues - re-evaluate after short delay
+        await page.waitForTimeout(500);
+        const retryAccent = await page.evaluate(() => {
+            return getComputedStyle(document.documentElement).getPropertyValue("--bitvid-accent").trim();
+        });
+        expect(retryAccent).toBe(expectedAccent);
+    } else {
+        expect(accentColor).toBe(expectedAccent);
+    }
 
     // 2. Verify Video Element Styling
     const video = page.locator("#embedVideo");
