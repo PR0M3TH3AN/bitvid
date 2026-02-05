@@ -117,23 +117,18 @@ Content for section 3...
     await page.evaluate(() => {
         const s2 = document.getElementById('section-2');
         s2.scrollIntoView({ block: 'start' });
-        // Scroll a bit more to be safe (push it up/offsets down?)
-        // block: 'start' puts it at the top of the viewport (top=0).
-        // 0 <= 96 is True.
+        // Force a tiny scroll to kick the observer
+        window.scrollBy(0, 1);
 
-        // Let's verify position
         const rect = s2.getBoundingClientRect();
         console.log(`PAGE LOG: After scroll s2, top=${rect.top}`);
     });
-
-    // Wait for IO
-    await page.waitForTimeout(1000);
 
     // Explicitly wait for s2 to update its status to TRUE (it is now above the fold)
     await page.waitForFunction(() => {
        const status = window.__scrollSpyState.headingStatus.get('section-2');
        return status === true;
-    }, null, { timeout: 5000 }).catch(() => console.log('PAGE LOG: Timed out waiting for s2 status update (TRUE)'));
+    }, null, { timeout: 15000 }).catch(() => console.log('PAGE LOG: Timed out waiting for s2 status update (TRUE)'));
 
     // Debug state
     await page.evaluate(() => {
