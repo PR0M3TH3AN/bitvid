@@ -300,8 +300,36 @@ export function createExploreDiversitySorter({
 
     const selected = [];
     const remaining = [...candidates];
+    const candidateState = new Map();
+
+    for (const candidate of remaining) {
+      candidateState.set(candidate, {
+        maxSimilarity: 0,
+        similarItemId: "",
+      });
+    }
 
     while (remaining.length > 0) {
+      if (selected.length > 0) {
+        const lastSelected = selected[selected.length - 1];
+        const lastSelectedVector = vectors.get(lastSelected);
+        const lastSelectedId = stableVideoId(lastSelected);
+
+        for (const candidate of remaining) {
+          const state = candidateState.get(candidate);
+          const candidateVector = vectors.get(candidate);
+          const similarity = cosineSimilarity(
+            candidateVector,
+            lastSelectedVector,
+          );
+
+          if (similarity > state.maxSimilarity) {
+            state.maxSimilarity = similarity;
+            state.similarItemId = lastSelectedId;
+          }
+        }
+      }
+
       let bestCandidate = null;
       let bestMmr = Number.NEGATIVE_INFINITY;
       let bestRaw = Number.NEGATIVE_INFINITY;
@@ -326,22 +354,9 @@ export function createExploreDiversitySorter({
 
       for (const candidate of remaining) {
         const rawScore = normalizeScore(candidate?.metadata?.exploreScore);
-        let penalty = 0;
-        let similarItemId = "";
-
-        if (selected.length > 0) {
-          const candidateVector = vectors.get(candidate);
-          for (const selectedItem of selected) {
-            const similarity = cosineSimilarity(
-              candidateVector,
-              vectors.get(selectedItem),
-            );
-            if (similarity > penalty) {
-              penalty = similarity;
-              similarItemId = stableVideoId(selectedItem);
-            }
-          }
-        }
+        const state = candidateState.get(candidate);
+        const penalty = state.maxSimilarity;
+        const similarItemId = state.similarItemId;
 
         const mmrScore =
           normalizedLambda * rawScore - (1 - normalizedLambda) * penalty;
@@ -404,6 +419,7 @@ export function createExploreDiversitySorter({
       const index = remaining.indexOf(bestCandidate);
       if (index >= 0) {
         remaining.splice(index, 1);
+        candidateState.delete(bestCandidate);
       }
     }
 
