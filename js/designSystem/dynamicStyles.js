@@ -121,19 +121,6 @@ function insertEmptyRule(sheet, selectorText) {
   }
 }
 
-function findRuleIndex(sheet, rule) {
-  if (!sheet || !rule) {
-    return -1;
-  }
-  const { cssRules } = sheet;
-  for (let index = 0; index < cssRules.length; index += 1) {
-    if (cssRules[index] === rule) {
-      return index;
-    }
-  }
-  return -1;
-}
-
 function normalizeSelectors(selectors) {
   if (!Array.isArray(selectors)) {
     return [DEFAULT_SELECTOR];
@@ -242,18 +229,30 @@ export function releaseScope(scopeId) {
   const { sheet } = scope.manager;
   let removed = false;
 
+  const rulesToDelete = new Set();
   for (const record of scope.rules) {
-    const rule = record.rule;
-    if (!rule) {
-      continue;
+    if (record.rule) {
+      rulesToDelete.add(record.rule);
     }
-    const index = findRuleIndex(sheet, rule);
-    if (index >= 0) {
-      try {
-        sheet.deleteRule(index);
-        removed = true;
-      } catch (error) {
-        // Ignore deletion failures.
+  }
+
+  if (rulesToDelete.size > 0) {
+    const { cssRules } = sheet;
+    if (cssRules) {
+      for (let index = cssRules.length - 1; index >= 0; index -= 1) {
+        const rule = cssRules[index];
+        if (rulesToDelete.has(rule)) {
+          try {
+            sheet.deleteRule(index);
+            removed = true;
+            rulesToDelete.delete(rule);
+          } catch (error) {
+            // Ignore deletion failures.
+          }
+          if (rulesToDelete.size === 0) {
+            break;
+          }
+        }
       }
     }
   }
