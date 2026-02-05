@@ -388,7 +388,7 @@ async function decryptGiftWrap(event, decryptors, actorPubkey) {
 
   const errors = [];
 
-  for (const decryptor of decryptors) {
+  const attemptUnwrap = async (decryptor) => {
     try {
       const sealSerialized = await decryptor.decrypt(wrapPubkey, ciphertext, {
         event,
@@ -396,7 +396,8 @@ async function decryptGiftWrap(event, decryptors, actorPubkey) {
       });
       const seal = parseEventJson(sealSerialized, "wrap");
 
-      const sealCiphertext = typeof seal?.content === "string" ? seal.content : "";
+      const sealCiphertext =
+        typeof seal?.content === "string" ? seal.content : "";
       const sealPubkey = normalizeHex(seal?.pubkey);
       if (!sealCiphertext || !sealPubkey) {
         const error = new Error(
@@ -407,10 +408,14 @@ async function decryptGiftWrap(event, decryptors, actorPubkey) {
         throw error;
       }
 
-      const rumorSerialized = await decryptor.decrypt(sealPubkey, sealCiphertext, {
-        event: seal,
-        stage: "seal",
-      });
+      const rumorSerialized = await decryptor.decrypt(
+        sealPubkey,
+        sealCiphertext,
+        {
+          event: seal,
+          stage: "seal",
+        },
+      );
       const rumor = parseEventJson(rumorSerialized, "rumor");
       const normalizedRumor = normalizeInnerMessage(rumor);
 
@@ -437,13 +442,20 @@ async function decryptGiftWrap(event, decryptors, actorPubkey) {
         },
       });
     } catch (error) {
-      errors.push({
+      throw {
         scheme: decryptor.scheme || "",
         source: decryptor.source || "",
         stage: error?.stage || "wrap",
         error,
-      });
+      };
     }
+  };
+
+  try {
+    return await Promise.any(decryptors.map(attemptUnwrap));
+  } catch (aggregateError) {
+    const aggregatedErrors = aggregateError.errors || [];
+    errors.push(...aggregatedErrors);
   }
 
   return buildDecryptResult({
