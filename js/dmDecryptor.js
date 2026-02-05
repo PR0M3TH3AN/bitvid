@@ -501,53 +501,66 @@ async function decryptLegacyDm(event, decryptors, actorPubkey) {
     registerRemote(recipient?.pubkey);
   }
 
-  for (const decryptor of ordered) {
-    for (const remotePubkey of remoteCandidates) {
-      try {
-        const plaintext = await decryptor.decrypt(remotePubkey, ciphertext, {
-          event,
-          stage: "content",
-          remotePubkey,
-        });
+  const attemptDecryption = async (decryptor, remotePubkey) => {
+    try {
+      const plaintext = await decryptor.decrypt(remotePubkey, ciphertext, {
+        event,
+        stage: "content",
+        remotePubkey,
+      });
 
-        if (typeof plaintext === "string") {
-          const resolvedScheme =
-            normalizeScheme(hints.algorithms?.[0]) ||
-            normalizeScheme(decryptor.scheme) ||
-            "";
-          return buildDecryptResult({
-            ok: true,
-            event,
-            message: {
-              ...cloneEvent(event),
-              content: plaintext,
-            },
-            plaintext,
-            recipients,
-            senderPubkey,
-            actorPubkey,
-            decryptor,
-            scheme: resolvedScheme,
-          });
-        }
-      } catch (error) {
-        errors.push({
-          scheme: decryptor.scheme || "",
-          source: decryptor.source || "",
-          stage: "content",
-          remotePubkey,
-          error,
+      if (typeof plaintext === "string") {
+        const resolvedScheme =
+          normalizeScheme(hints.algorithms?.[0]) ||
+          normalizeScheme(decryptor.scheme) ||
+          "";
+        return buildDecryptResult({
+          ok: true,
+          event,
+          message: {
+            ...cloneEvent(event),
+            content: plaintext,
+          },
+          plaintext,
+          recipients,
+          senderPubkey,
+          actorPubkey,
+          decryptor,
+          scheme: resolvedScheme,
         });
       }
+      throw new Error("Decrypted content was not a valid string.");
+    } catch (error) {
+      throw {
+        scheme: decryptor.scheme || "",
+        source: decryptor.source || "",
+        stage: "content",
+        remotePubkey,
+        error,
+      };
+    }
+  };
+
+  const attempts = [];
+  for (const decryptor of ordered) {
+    for (const remotePubkey of remoteCandidates) {
+      attempts.push(attemptDecryption(decryptor, remotePubkey));
     }
   }
 
-  return buildDecryptResult({
-    ok: false,
-    event,
-    actorPubkey,
-    errors,
-  });
+  try {
+    return await Promise.any(attempts);
+  } catch (aggregateError) {
+    const aggregatedErrors = aggregateError.errors || [];
+    errors.push(...aggregatedErrors);
+
+    return buildDecryptResult({
+      ok: false,
+      event,
+      actorPubkey,
+      errors,
+    });
+  }
 }
 
 export async function decryptDM(event, context = {}) {
