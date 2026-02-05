@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scroll Spy Benchmark</title>
+    <style>
+        body { font-family: sans-serif; line-height: 1.6; margin: 0; padding: 0; }
+        nav { position: fixed; top: 0; left: 0; width: 200px; height: 100vh; overflow-y: auto; background: #f0f0f0; padding: 20px; box-sizing: border-box; }
+        main { margin-left: 220px; padding: 20px; }
+        section { height: 800px; border-bottom: 1px solid #ccc; padding-top: 100px; }
+        .active { color: red; font-weight: bold; }
+        h2 { margin: 0; }
+        .heavy {
+            display: flex;
+            flex-wrap: wrap;
+        }
+        .heavy div {
+            width: 10px;
+            height: 10px;
+            margin: 1px;
+            background: #ddd;
+        }
+    </style>
+</head>
+<body>
+    <nav id="toc"></nav>
+    <main id="content"></main>
+
+    <script>
+        const NUM_SECTIONS = 200;
+        const OFFSET = 96;
+        const headings = [];
+
+        const toc = document.getElementById('toc');
+        const content = document.getElementById('content');
+
+        for (let i = 0; i < NUM_SECTIONS; i++) {
+            const id = `section-${i}`;
+            const link = document.createElement('a');
+            link.href = `#${id}`;
+            link.textContent = `Section ${i}`;
+            link.style.display = 'block';
+            link.id = `link-${id}`;
+            toc.appendChild(link);
+
+            const section = document.createElement('section');
+            const h2 = document.createElement('h2');
+            h2.id = id;
+            h2.textContent = `Section ${i}`;
+            section.appendChild(h2);
+
+            const heavy = document.createElement('div');
+            heavy.className = 'heavy';
+            for (let j = 0; j < 500; j++) {
+                const d = document.createElement('div');
+                heavy.appendChild(d);
+            }
+            section.appendChild(heavy);
+
+            content.appendChild(section);
+            headings.push(h2);
+        }
+
+        let activeId = "";
+        function setActive(id) {
+            if (activeId === id) return;
+            if (activeId) {
+                const prev = document.getElementById(`link-${activeId}`);
+                if (prev) prev.classList.remove('active');
+            }
+            activeId = id;
+            if (id) {
+                const next = document.getElementById(`link-${id}`);
+                if (next) next.classList.add('active');
+            }
+        }
+
+        let totalTime = 0;
+        let count = 0;
+
+        function updateLegacy() {
+            const start = performance.now();
+            let nextId = headings[0].id;
+            for (const heading of headings) {
+                const top = heading.getBoundingClientRect().top - OFFSET;
+                if (top <= 0) {
+                    nextId = heading.id;
+                } else {
+                    break;
+                }
+            }
+            setActive(nextId);
+            totalTime += (performance.now() - start);
+            count++;
+        }
+
+        let observer;
+        function setupOptimized() {
+            if (observer) observer.disconnect();
+
+            observer = new IntersectionObserver((entries) => {
+                const start = performance.now();
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        setActive(entry.target.id);
+                    }
+                });
+                totalTime += (performance.now() - start);
+                count++;
+            }, {
+                rootMargin: "-96px 0px -80% 0px",
+                threshold: 0
+            });
+
+            headings.forEach(h => observer.observe(h));
+        }
+
+        let rafId;
+        window.startLegacy = () => {
+            totalTime = 0;
+            count = 0;
+            window.onScrollLegacy = () => {
+                // To measure pure layout thrashing cost, we should NOT wrap in RAF in the benchmark logic
+                // if we want to ensure it runs every scroll event.
+                // But realistically, it IS wrapped in RAF in production.
+                // So we stick to RAF, but we measure the execution time of the *inner* function.
+                if (rafId) return;
+                rafId = requestAnimationFrame(() => {
+                    updateLegacy();
+                    rafId = null;
+                });
+            };
+            window.addEventListener('scroll', window.onScrollLegacy);
+        };
+
+        window.stopLegacy = () => {
+             window.removeEventListener('scroll', window.onScrollLegacy);
+             if (rafId) cancelAnimationFrame(rafId);
+             rafId = null;
+        };
+
+        window.startOptimized = () => {
+            totalTime = 0;
+            count = 0;
+            setupOptimized();
+        };
+
+        window.stopOptimized = () => {
+            if (observer) observer.disconnect();
+        }
+
+        window.getMetrics = () => ({
+            avgTime: count ? totalTime / count : 0,
+            totalTime,
+            count
+        });
+    </script>
+</body>
+</html>

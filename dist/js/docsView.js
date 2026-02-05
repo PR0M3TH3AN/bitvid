@@ -27,8 +27,7 @@ const scrollSpyState = {
   headings: [],
   linkLookup: new Map(),
   activeId: "",
-  rafId: null,
-  onScroll: null,
+  observer: null,
 };
 
 function getHashParams() {
@@ -260,15 +259,10 @@ function resetSectionHighlight() {
 }
 
 function clearScrollSpy() {
-  if (scrollSpyState.onScroll && typeof window !== "undefined") {
-    window.removeEventListener("scroll", scrollSpyState.onScroll);
-    window.removeEventListener("resize", scrollSpyState.onScroll);
+  if (scrollSpyState.observer) {
+    scrollSpyState.observer.disconnect();
+    scrollSpyState.observer = null;
   }
-  if (scrollSpyState.rafId && typeof cancelAnimationFrame === "function") {
-    cancelAnimationFrame(scrollSpyState.rafId);
-  }
-  scrollSpyState.rafId = null;
-  scrollSpyState.onScroll = null;
   scrollSpyState.headings = [];
   scrollSpyState.linkLookup = new Map();
   resetSectionHighlight();
@@ -345,34 +339,40 @@ function setupScrollSpy(container) {
   scrollSpyState.headings = trackedHeadings;
   scrollSpyState.linkLookup = linkLookup;
 
-  const updateActiveFromScroll = () => {
-    scrollSpyState.rafId = null;
-    const offset = 96;
-    let nextId = scrollSpyState.headings[0]?.id || "";
-    for (const heading of scrollSpyState.headings) {
-      const top = heading.getBoundingClientRect().top - offset;
-      if (top <= 0) {
-        nextId = heading.id;
-      } else {
-        break;
-      }
+  // Initial scan to handle page loads in the middle of sections
+  const offset = 96;
+  let nextId = trackedHeadings[0]?.id || "";
+  for (const heading of trackedHeadings) {
+    if (heading.getBoundingClientRect().top - offset <= 0) {
+      nextId = heading.id;
+    } else {
+      break;
     }
-    if (nextId) {
-      setActiveSection(nextId);
-    }
-  };
+  }
+  if (nextId) {
+    setActiveSection(nextId);
+  }
 
-  const onScroll = () => {
-    if (scrollSpyState.rafId) {
-      return;
-    }
-    scrollSpyState.rafId = requestAnimationFrame(updateActiveFromScroll);
-  };
+  if (typeof IntersectionObserver === "undefined") {
+    return;
+  }
 
-  scrollSpyState.onScroll = onScroll;
-  window.addEventListener("scroll", onScroll, { passive: true });
-  window.addEventListener("resize", onScroll);
-  onScroll();
+  const observer = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          setActiveSection(entry.target.id);
+        }
+      });
+    },
+    {
+      rootMargin: "-96px 0px -80% 0px",
+      threshold: 0,
+    }
+  );
+
+  trackedHeadings.forEach((heading) => observer.observe(heading));
+  scrollSpyState.observer = observer;
 }
 
 function resolveDocItem(slug) {
