@@ -219,14 +219,11 @@ test.describe("moderation fixtures", () => {
     await expect(muteCard).toHaveAttribute("data-moderation-trusted-mute-count", "1");
     await expect(badge).toContainText("Hidden · 1 trusted mute");
     await expect(thumbnail).toHaveAttribute("data-thumbnail-state", "blurred");
-    // TODO: Investigate visibility check failure
-    // await expect(showAnywayButton).toBeVisible();
+    await expect(showAnywayButton).toBeVisible();
     await expect(restoreButtonQuery).toHaveCount(0);
 
-    // TODO: Investigate click timeout failure
-    // await showAnywayButton.click({ force: true });
+    await showAnywayButton.click();
 
-    /*
     await expect(muteCard).not.toHaveAttribute("data-moderation-hidden", "true");
     await expect(muteCard).toHaveAttribute("data-moderation-override", "show-anyway");
     await expect(muteCard.locator('[data-moderation-badge="true"]')).toContainText(
@@ -245,6 +242,5 @@ test.describe("moderation fixtures", () => {
     await expect(muteCard).not.toHaveAttribute("data-moderation-override", "show-anyway");
     await expect(thumbnail).toHaveAttribute("data-thumbnail-state", "blurred");
     await expect(muteCard.getByRole("button", { name: "Show anyway" })).toBeVisible();
-    */
   });
 });
