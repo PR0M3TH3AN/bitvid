@@ -156,7 +156,7 @@ To run **bitvid** locally:
    npm start
    ```
 
-   This command builds the project (generating `css/tailwind.generated.css`) and starts a local server.
+   This command runs a full production build (generating `dist/` and `css/tailwind.generated.css`) and starts a local server.
 
 4. Open the site in your browser:
 
@@ -164,13 +164,15 @@ To run **bitvid** locally:
    http://localhost:3000
    ```
 
+   _(Note: The default port is 3000, but `npx serve` may select a different port if 3000 is in use. Check your terminal output.)_
+
    _Note: If you prefer manual steps, you can run `npm run build` followed by `npx serve dist`._
 
 #### Quick Reference
 
 - **Run unit tests**: `npm run test:unit`
-- **Format code**: `npm run format` (CSS, HTML, MD, Config)
-- **Lint code**: `npm run lint` (Styles, Tokens, Hex - no JS logic)
+- **Format code**: `npm run format` (CSS, HTML, MD, Config - no JS logic)
+- **Lint code**: `npm run lint` (Styles, Tokens, Hex, Tailwind guards - no JS logic)
 
 ### Dev Container
 
@@ -183,8 +185,8 @@ See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full developer guide.
 **Verify your work:**
 
 - **Run unit tests**: `npm run test:unit` (Required before PRs). _Tip: Use `npm run test:unit:shard1`, `shard2`, or `shard3` for faster local feedback._
-- **Format code**: `npm run format` (Required before PRs)
-- **Lint code**: `npm run lint` (Checks for CSS, hex colors, inline styles)
+- **Format code**: `npm run format` (Required before PRs - only formats CSS, HTML, MD, and Config)
+- **Lint code**: `npm run lint` (Checks for CSS, hex colors, inline styles, design tokens, and Tailwind guards)
 
 **Other commands:**
 
@@ -288,7 +290,7 @@ package scripts to keep formatting, linting, and generated output consistent:
   ```bash
   npm run format    # normalize CSS/HTML/MD/Config sources with Prettier + tailwindcss plugin
   npm run lint:css  # enforce design token usage and guard against raw hex colors
-  npm run build     # run the Tailwind build locally (output remains gitignored)
+  npm run build     # run the full production build (generates dist/ and css/tailwind.generated.css)
   ```
 
 - **No hard-coded colors:** Follow the token-first rules in `AGENTS.md`—reach
@@ -302,7 +304,7 @@ npm run format            # format CSS/HTML/MD with Prettier + tailwindcss plugi
 npm run lint              # run CSS, hex color, inline-style, design-token, and Tailwind color/bracket guards in one pass
 npm run lint:css          # enforce token usage and forbid raw hex colors
 npm run lint:inline-styles # fail CI if inline style attributes or element.style usage slip in
-npm run build             # run the Tailwind build (delegates to npm run build:css)
+npm run build             # run the full production build (cleans dist/, runs build:css, and copies assets)
 npm run build:beacon      # bundle torrent/dist assets and re-run the inline-style guard
 npm run build:beacon:bundle # bundle beacon assets without running the guard (rarely needed)
 ```
