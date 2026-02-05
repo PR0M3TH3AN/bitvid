@@ -29,6 +29,8 @@ const scrollSpyState = {
   activeId: "",
   rafId: null,
   onScroll: null,
+  observer: null,
+  passedHeadings: null,
 };
 
 function getHashParams() {
@@ -260,15 +262,11 @@ function resetSectionHighlight() {
 }
 
 function clearScrollSpy() {
-  if (scrollSpyState.onScroll && typeof window !== "undefined") {
-    window.removeEventListener("scroll", scrollSpyState.onScroll);
-    window.removeEventListener("resize", scrollSpyState.onScroll);
+  if (scrollSpyState.observer) {
+    scrollSpyState.observer.disconnect();
+    scrollSpyState.observer = null;
   }
-  if (scrollSpyState.rafId && typeof cancelAnimationFrame === "function") {
-    cancelAnimationFrame(scrollSpyState.rafId);
-  }
-  scrollSpyState.rafId = null;
-  scrollSpyState.onScroll = null;
+  scrollSpyState.passedHeadings = null;
   scrollSpyState.headings = [];
   scrollSpyState.linkLookup = new Map();
   resetSectionHighlight();
@@ -345,34 +343,56 @@ function setupScrollSpy(container) {
   scrollSpyState.headings = trackedHeadings;
   scrollSpyState.linkLookup = linkLookup;
 
-  const updateActiveFromScroll = () => {
-    scrollSpyState.rafId = null;
-    const offset = 96;
-    let nextId = scrollSpyState.headings[0]?.id || "";
-    for (const heading of scrollSpyState.headings) {
-      const top = heading.getBoundingClientRect().top - offset;
-      if (top <= 0) {
-        nextId = heading.id;
+  const observerCallback = (entries) => {
+    const passed = scrollSpyState.passedHeadings || new Set();
+
+    entries.forEach((entry) => {
+      // If the heading intersects (enters the viewport from top or bottom),
+      // we check if it is above the offset.
+      if (entry.isIntersecting) {
+        // If it is intersecting, it is definitely "visible" in the viewport (minus top margin).
+        // It means it's not "passed" (above the top).
+        passed.delete(entry.target.id);
       } else {
+        // If not intersecting, check if it's above.
+        // rootMargin top is -96px. The root starts at 96px from top.
+        // If entry.boundingClientRect.top < 96, it is above the root.
+        if (entry.boundingClientRect.top < 96) {
+          passed.add(entry.target.id);
+        } else {
+          passed.delete(entry.target.id);
+        }
+      }
+    });
+
+    scrollSpyState.passedHeadings = passed;
+
+    let nextId = "";
+    // Find the last heading in the passed set (by DOM order)
+    for (let i = scrollSpyState.headings.length - 1; i >= 0; i--) {
+      const id = scrollSpyState.headings[i].id;
+      if (passed.has(id)) {
+        nextId = id;
         break;
       }
     }
+    // Fallback to the first heading if none are passed yet (scrolled to top)
+    if (!nextId && scrollSpyState.headings.length > 0) {
+      nextId = scrollSpyState.headings[0].id;
+    }
+
     if (nextId) {
       setActiveSection(nextId);
     }
   };
 
-  const onScroll = () => {
-    if (scrollSpyState.rafId) {
-      return;
-    }
-    scrollSpyState.rafId = requestAnimationFrame(updateActiveFromScroll);
-  };
+  const observer = new IntersectionObserver(observerCallback, {
+    rootMargin: "-96px 0px 0px 0px",
+    threshold: 0,
+  });
 
-  scrollSpyState.onScroll = onScroll;
-  window.addEventListener("scroll", onScroll, { passive: true });
-  window.addEventListener("resize", onScroll);
-  onScroll();
+  scrollSpyState.headings.forEach((heading) => observer.observe(heading));
+  scrollSpyState.observer = observer;
 }
 
 function resolveDocItem(slug) {

@@ -301,6 +301,13 @@ export function createExploreDiversitySorter({
     const selected = [];
     const remaining = [...candidates];
 
+    // Cache max similarity for each remaining candidate against the selected set
+    // Map<CandidateItem, { penalty: number, similarItemId: string }>
+    const similarityCache = new Map();
+    for (const candidate of remaining) {
+      similarityCache.set(candidate, { penalty: 0, similarItemId: "" });
+    }
+
     while (remaining.length > 0) {
       let bestCandidate = null;
       let bestMmr = Number.NEGATIVE_INFINITY;
@@ -326,22 +333,7 @@ export function createExploreDiversitySorter({
 
       for (const candidate of remaining) {
         const rawScore = normalizeScore(candidate?.metadata?.exploreScore);
-        let penalty = 0;
-        let similarItemId = "";
-
-        if (selected.length > 0) {
-          const candidateVector = vectors.get(candidate);
-          for (const selectedItem of selected) {
-            const similarity = cosineSimilarity(
-              candidateVector,
-              vectors.get(selectedItem),
-            );
-            if (similarity > penalty) {
-              penalty = similarity;
-              similarItemId = stableVideoId(selectedItem);
-            }
-          }
-        }
+        const { penalty, similarItemId } = similarityCache.get(candidate);
 
         const mmrScore =
           normalizedLambda * rawScore - (1 - normalizedLambda) * penalty;
@@ -404,6 +396,22 @@ export function createExploreDiversitySorter({
       const index = remaining.indexOf(bestCandidate);
       if (index >= 0) {
         remaining.splice(index, 1);
+        similarityCache.delete(bestCandidate);
+      }
+
+      // Update similarity cache for remaining candidates against the newly selected item
+      const bestCandidateVector = vectors.get(bestCandidate);
+      for (const candidate of remaining) {
+        const candidateVector = vectors.get(candidate);
+        const similarity = cosineSimilarity(
+          candidateVector,
+          bestCandidateVector,
+        );
+        const cache = similarityCache.get(candidate);
+        if (similarity > cache.penalty) {
+          cache.penalty = similarity;
+          cache.similarItemId = stableVideoId(bestCandidate);
+        }
       }
     }
 
