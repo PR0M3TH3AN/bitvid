@@ -79,7 +79,7 @@ test("ProfileCache: resolveAddressKey", (t) => {
   assert.equal(keyUnknown, `bitvid:profile:${pubkey}:unknownSection:v1`);
 });
 
-test("ProfileCache: set and get (memory and persistence)", (t) => {
+test("ProfileCache: set and get (memory and persistence)", async (t) => {
   const pubkey = "c".repeat(64);
   profileCache.setActiveProfile(pubkey);
 
@@ -98,6 +98,10 @@ test("ProfileCache: set and get (memory and persistence)", (t) => {
 
   // Check persistence
   const storageKey = profileCache.getStorageKey(pubkey, section);
+
+  // Wait for async write (runIdle/setTimeout)
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
   const storedRaw = localStorage.getItem(storageKey);
   assert.ok(storedRaw);
   assert.deepEqual(JSON.parse(storedRaw), data);
@@ -110,7 +114,7 @@ test("ProfileCache: set and get (memory and persistence)", (t) => {
   assert.deepEqual(reloaded, data);
 });
 
-test("ProfileCache: setProfile normalization and storage", (t) => {
+test("ProfileCache: setProfile normalization and storage", async (t) => {
   const pubkey = "d".repeat(64);
   const profileInput = {
     name: " Test User ",
@@ -131,6 +135,10 @@ test("ProfileCache: setProfile normalization and storage", (t) => {
 
   // Verify persistence
   const storageKey = profileCache.getStorageKey(pubkey, "profile");
+
+  // Wait for async write (runIdle/setTimeout)
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
   const stored = JSON.parse(localStorage.getItem(storageKey));
   assert.deepEqual(stored.profile, entry.profile);
 });

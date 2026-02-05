@@ -75,7 +75,8 @@
             id: "1".repeat(64),
             title: "Fixture: Blurred Preview",
             pubkey: "a".repeat(64),
-            thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg"
+            thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg",
+            url: "https://example.com/dummy.mp4"
           },
           moderation: {
             blockAutoplay: true,
@@ -103,7 +104,8 @@
             id: "2".repeat(64),
             title: "Fixture: Autoplay Blocked",
             pubkey: "e".repeat(64),
-            thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg"
+            thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg",
+            url: "https://example.com/dummy.mp4"
           },
           moderation: {
             blockAutoplay: true,
@@ -608,6 +610,12 @@
             } catch {
               /* ignore fixture event errors */
             }
+            return true;
+          };
+
+          card.onModerationHide = () => {
+            overrides = setOverride(overrides, video.id, { showAnyway: false });
+            refreshModeration();
             return true;
           };
         }
