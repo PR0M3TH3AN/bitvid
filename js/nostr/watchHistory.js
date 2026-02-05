@@ -1148,7 +1148,7 @@ class WatchHistoryManager {
 
          return this.publishMonthRecord(month, items, options);
        },
-       { concurrency: 3 },
+       { concurrency: 4 },
      );
 
      for (const res of results) {
