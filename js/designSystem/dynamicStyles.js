@@ -72,6 +72,7 @@ function ensureManager(doc) {
     styleElement,
     counter: 0,
     scopes: new Map(),
+    ruleIndices: null,
   };
   DOCUMENT_MANAGERS.set(doc, manager);
   return manager;
@@ -121,17 +122,23 @@ function insertEmptyRule(sheet, selectorText) {
   }
 }
 
-function findRuleIndex(sheet, rule) {
-  if (!sheet || !rule) {
+function rebuildRuleIndices(manager) {
+  if (!manager || !manager.sheet) return;
+  manager.ruleIndices = new Map();
+  const { cssRules } = manager.sheet;
+  for (let index = 0; index < cssRules.length; index += 1) {
+    manager.ruleIndices.set(cssRules[index], index);
+  }
+}
+
+function getRuleIndex(manager, rule) {
+  if (!manager || !rule || !manager.sheet) {
     return -1;
   }
-  const { cssRules } = sheet;
-  for (let index = 0; index < cssRules.length; index += 1) {
-    if (cssRules[index] === rule) {
-      return index;
-    }
+  if (!manager.ruleIndices) {
+    rebuildRuleIndices(manager);
   }
-  return -1;
+  return manager.ruleIndices.has(rule) ? manager.ruleIndices.get(rule) : -1;
 }
 
 function normalizeSelectors(selectors) {
@@ -162,6 +169,9 @@ export function registerScope(baseId, selectors = [DEFAULT_SELECTOR], options = 
     const selectorText = buildSelector(scopeId, selector);
     const rule = insertEmptyRule(manager.sheet, selectorText);
     if (rule) {
+      if (manager.ruleIndices) {
+        manager.ruleIndices.set(rule, manager.sheet.cssRules.length - 1);
+      }
       records.push({ selector, rule });
     }
   }
@@ -239,23 +249,36 @@ export function releaseScope(scopeId) {
     return false;
   }
 
-  const { sheet } = scope.manager;
+  const { manager } = scope;
+  const { sheet } = manager;
   let removed = false;
+
+  const indicesToDelete = [];
 
   for (const record of scope.rules) {
     const rule = record.rule;
     if (!rule) {
       continue;
     }
-    const index = findRuleIndex(sheet, rule);
+    const index = getRuleIndex(manager, rule);
     if (index >= 0) {
-      try {
-        sheet.deleteRule(index);
-        removed = true;
-      } catch (error) {
-        // Ignore deletion failures.
-      }
+      indicesToDelete.push(index);
     }
+  }
+
+  indicesToDelete.sort((a, b) => b - a);
+
+  for (const index of indicesToDelete) {
+    try {
+      sheet.deleteRule(index);
+      removed = true;
+    } catch (error) {
+      // Ignore deletion failures.
+    }
+  }
+
+  if (removed) {
+    manager.ruleIndices = null;
   }
 
   scope.manager.scopes.delete(scopeId);
