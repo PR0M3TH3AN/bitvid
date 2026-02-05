@@ -322,6 +322,7 @@ function setupScrollSpy(container) {
   const headings = Array.from(
     container.querySelectorAll("h2[id], h3[id], h4[id], h5[id]")
   );
+  console.log(`[Spy] setup found ${headings.length} headings`);
   if (headings.length === 0) {
     return;
   }
