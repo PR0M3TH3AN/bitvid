@@ -502,14 +502,19 @@ class SubscriptionsManager {
       );
       const hadCachedSnapshot = cachedSnapshot.hasSnapshot;
       const shouldForceFullFetch = !cachedSnapshot.hasSnapshot;
-      let events = await nostrClient.fetchListIncrementally({
-        kind: SUBSCRIPTION_SET_KIND,
-        pubkey: normalizedUserPubkey,
-        dTag: SUBSCRIPTION_LIST_IDENTIFIER,
-        relayUrls,
-        since: shouldForceFullFetch ? 0 : (cachedSnapshot.createdAt || 0),
-        timeoutMs: 12000,
-      });
+
+      // Fetch user and session actor subscription lists in parallel to reduce
+      // total relay wait time during login.
+      const fetchPromises = [
+        nostrClient.fetchListIncrementally({
+          kind: SUBSCRIPTION_SET_KIND,
+          pubkey: normalizedUserPubkey,
+          dTag: SUBSCRIPTION_LIST_IDENTIFIER,
+          relayUrls,
+          since: shouldForceFullFetch ? 0 : (cachedSnapshot.createdAt || 0),
+          timeoutMs: 12000,
+        }),
+      ];
 
       const normalizedSessionActorPubkey = normalizeNostrPubkey(
         nostrClient?.sessionActor?.pubkey,
@@ -525,17 +530,22 @@ class SubscriptionsManager {
           ),
         );
         const shouldForceSessionFetch = !sessionCachedSnapshot.hasSnapshot;
-        const sessionEvents = await nostrClient.fetchListIncrementally({
-          kind: SUBSCRIPTION_SET_KIND,
-          pubkey: normalizedSessionActorPubkey,
-          dTag: SUBSCRIPTION_LIST_IDENTIFIER,
-          relayUrls,
-          since: shouldForceSessionFetch ? 0 : (sessionCachedSnapshot.createdAt || 0),
-          timeoutMs: 12000,
-        });
-        if (sessionEvents.length) {
-          events = events.concat(sessionEvents);
-        }
+        fetchPromises.push(
+          nostrClient.fetchListIncrementally({
+            kind: SUBSCRIPTION_SET_KIND,
+            pubkey: normalizedSessionActorPubkey,
+            dTag: SUBSCRIPTION_LIST_IDENTIFIER,
+            relayUrls,
+            since: shouldForceSessionFetch ? 0 : (sessionCachedSnapshot.createdAt || 0),
+            timeoutMs: 12000,
+          }),
+        );
+      }
+
+      const fetchResults = await Promise.all(fetchPromises);
+      let events = fetchResults[0] || [];
+      if (shouldFetchSessionActor && fetchResults[1]?.length) {
+        events = events.concat(fetchResults[1]);
       }
 
       const mergedEvents = [];
@@ -809,7 +819,9 @@ class SubscriptionsManager {
 
     try {
       // Race against a timeout so the UI doesn't hang indefinitely if relays stall.
-      const timeoutMs = 6000;
+      // The timeout must accommodate relay fetch (~12s) + decryption (~3-12s per
+      // scheme attempt), so we use 30s to give the full pipeline enough room.
+      const timeoutMs = 30000;
       await Promise.race([
         loader,
         new Promise((_, reject) =>

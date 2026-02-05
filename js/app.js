@@ -4135,6 +4135,14 @@ class Application {
         : Promise.resolve(detail?.postLogin ?? null);
     const postLoginResult = detail?.postLogin ?? null;
 
+    // relaysReadyPromise resolves as soon as the user's relay list is loaded,
+    // before profile fetching completes. Lists can start loading immediately
+    // after relays are available — they don't depend on profile data.
+    const relaysReadyPromise =
+      detail && typeof detail.relaysReadyPromise?.then === "function"
+        ? detail.relaysReadyPromise
+        : postLoginPromise;
+
     if (detail && typeof detail === "object") {
       try {
         detail.__handled = true;
@@ -4270,8 +4278,10 @@ class Application {
         return null;
       });
 
-    // Chain list loading to profile state to ensure relays are loaded first.
-    const listStatePromise = profileStatePromise.then(() => {
+    // Start list loading as soon as relays are ready — lists don't depend on
+    // profile data, only on relay URLs. This runs in parallel with profile
+    // fetching instead of sequentially after it.
+    const listStatePromise = relaysReadyPromise.then(() => {
       const tasks = [];
       if (activePubkey && typeof this.authService.loadBlocksForPubkey === "function") {
         tasks.push(
@@ -4328,6 +4338,7 @@ class Application {
       });
     });
 
+    // DMs can wait for profile since they need encryption context.
     const dmStatePromise = profileStatePromise.then(() => {
       if (
         activePubkey &&
@@ -4373,7 +4384,8 @@ class Application {
       return Promise.resolve();
     });
 
-    const hashtagPreferencesPromise = profileStatePromise.then(() => {
+    // Hashtag preferences drive feed filtering — start as soon as relays are ready.
+    const hashtagPreferencesPromise = relaysReadyPromise.then(() => {
       if (
         activePubkey &&
         this.hashtagPreferences &&
@@ -4387,6 +4399,9 @@ class Application {
             this.capturePermissionPromptFromError(
               this.hashtagPreferences?.lastLoadError,
             );
+            // Ensure the cached snapshot is updated before the feed renders
+            // so the feed engine has access to interests/disinterests.
+            this.updateCachedHashtagPreferences();
           })
           .catch((error) => {
             devLogger.warn(
@@ -4399,13 +4414,9 @@ class Application {
       return Promise.resolve();
     });
 
-    void Promise.allSettled([
-      profileStatePromise,
-      listStatePromise,
-      dmStatePromise,
-    ]);
+    // Ensure DMs are tracked for cleanup.
+    void dmStatePromise;
     void nwcPromise;
-    void hashtagPreferencesPromise;
 
     if (activePubkey) {
       const seedBlacklist = () => {
@@ -4438,20 +4449,37 @@ class Application {
             );
           }
         });
-
-      // Subscriptions are loaded in list tasks to align with per-category loading states.
     }
 
+    // Show loading state immediately while lists are syncing.
     try {
       this.reinitializeVideoListView({ reason: "login", postLoginResult });
     } catch (error) {
       devLogger.warn("Failed to reinitialize video list view after login:", error);
     }
 
-    this.lastIdentityRefreshPromise = this.refreshAllVideoGrids({
-      reason: "auth-login",
-      forceMainReload: true,
-    });
+    // Wait for the critical feed-filtering lists (blocks, subscriptions,
+    // hashtag preferences) to settle before rendering the video grid. This
+    // prevents the feed from briefly showing unfiltered content. We use a
+    // time-boxed wait so the UI isn't blocked indefinitely if decryption stalls.
+    const FEED_SYNC_TIMEOUT_MS = 8000;
+    const feedSyncPromise = Promise.race([
+      Promise.allSettled([
+        listStatePromise,
+        hashtagPreferencesPromise,
+        profileStatePromise,
+      ]),
+      new Promise((resolve) => setTimeout(resolve, FEED_SYNC_TIMEOUT_MS)),
+    ]).catch(() => null);
+
+    // Chain the grid refresh after the feed data is available.
+    this.lastIdentityRefreshPromise = feedSyncPromise
+      .then(() =>
+        this.refreshAllVideoGrids({
+          reason: "auth-login",
+          forceMainReload: true,
+        }),
+      );
     this.lastIdentityRefreshPromise
       .catch((error) => {
         devLogger.error("Failed to refresh video grids after login:", error);
