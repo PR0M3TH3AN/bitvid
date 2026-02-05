@@ -75,7 +75,8 @@
             id: "1".repeat(64),
             title: "Fixture: Blurred Preview",
             pubkey: "a".repeat(64),
-            thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg"
+            thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg",
+            url: "https://example.com/video.mp4"
           },
           moderation: {
             blockAutoplay: true,
@@ -103,7 +104,8 @@
             id: "2".repeat(64),
             title: "Fixture: Autoplay Blocked",
             pubkey: "e".repeat(64),
-            thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg"
+            thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg",
+            url: "https://example.com/video.mp4"
           },
           moderation: {
             blockAutoplay: true,
@@ -127,7 +129,8 @@
             id: "3".repeat(64),
             title: "Fixture: Override Persistence",
             pubkey: "f".repeat(64),
-            thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg"
+            thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg",
+            url: "https://example.com/video.mp4"
           },
           moderation: {
             blockAutoplay: true,
@@ -152,7 +155,8 @@
             id: "4".repeat(64),
             title: "Fixture: Trusted Report Hide",
             pubkey: "aa".repeat(32),
-            thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg"
+            thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg",
+            url: "https://example.com/video.mp4"
           },
           moderation: {
             blockAutoplay: true,
@@ -177,7 +181,8 @@
             id: "5".repeat(64),
             title: "Fixture: Trusted Mute Hide",
             pubkey: "bb".repeat(32),
-            thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg"
+            thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg",
+            url: "https://example.com/video.mp4"
           },
           moderation: {
             blockAutoplay: false,
@@ -599,6 +604,21 @@
             try {
               document.dispatchEvent(
                 new CustomEvent("video:moderation-override", {
+                  detail: { video }
+                })
+              );
+            } catch {
+              /* ignore fixture event errors */
+            }
+            return true;
+          };
+
+          card.onModerationHide = () => {
+            overrides = setOverride(overrides, video.id, { showAnyway: false });
+            refreshModeration();
+            try {
+              document.dispatchEvent(
+                new CustomEvent("video:moderation-hide", {
                   detail: { video }
                 })
               );
