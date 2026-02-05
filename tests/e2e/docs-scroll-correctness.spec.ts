@@ -95,6 +95,9 @@ Content for section 3...
 
     // 8. Test ScrollSpy behavior
 
+    // Wait for ScrollSpy to be fully initialized
+    await page.waitForFunction(() => window.__scrollSpyReady === true, null, { timeout: 10000 });
+
     // Initial state: Section 1 is likely active or nothing if we are at top (Intro).
     // Intro is above Section 1.
     // Headings: Section 1 (h2), Section 2 (h2), Section 3 (h2).
@@ -103,9 +106,6 @@ Content for section 3...
     // All headings are below 96px.
     // Logic: if all intersecting (below), default to first?
     // `headings[0]?.id` -> section-1.
-
-    // Wait for IO to settle.
-    await page.waitForTimeout(500);
 
     // Check if Section 1 is active (default)
     await expect(page.locator('#link-section-1')).toHaveAttribute('data-docs-section-current', 'true');

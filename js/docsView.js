@@ -320,6 +320,9 @@ function resolveSectionLinks() {
 }
 
 function setupScrollSpy(container) {
+  if (typeof window !== "undefined") {
+    window.__scrollSpyReady = false;
+  }
   clearScrollSpy();
   if (typeof window === "undefined" || !container) {
     return;
@@ -380,6 +383,7 @@ function setupScrollSpy(container) {
 
   scrollSpyState.observer = observer;
   trackedHeadings.forEach((heading) => observer.observe(heading));
+  window.__scrollSpyReady = true;
 }
 
 function resolveDocItem(slug) {
