@@ -1856,9 +1856,9 @@ export class VideoCard {
       target.hidden = false;
       target.removeAttribute("hidden");
       target.removeAttribute("aria-hidden");
-      // If target is summary container, ensure it's displayed as block
+      // If target is summary container, ensure it's displayed as flex (to match bv-stack)
       if (target !== slot) {
-         target.style.setProperty("display", "block", "important");
+         target.style.setProperty("display", "flex", "important");
       } else {
          target.style.removeProperty("display");
       }
@@ -2009,7 +2009,7 @@ export class VideoCard {
 
     if (!this.hiddenSummaryEl) {
       this.hiddenSummaryEl = this.createElement("div", {
-        classNames: ["p-md", "bv-stack", "bv-stack--tight"],
+        classNames: ["p-md", "bv-stack", "bv-stack--tight", "items-start"],
       });
       this.hiddenSummaryEl.dataset.moderationHiddenContainer = "true";
       this.hiddenSummaryEl.setAttribute("role", "group");
