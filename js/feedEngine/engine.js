@@ -3,6 +3,8 @@
 import { isPlainObject } from "./utils.js";
 import { userLogger } from "../utils/logger.js";
 
+const NORMALIZED_MARKER = Symbol("FeedItemNormalized");
+
 const DEFAULT_FEED_CONFIG = Object.freeze({
   timeWindow: null,
   actorFilters: [],
@@ -58,19 +60,40 @@ function normalizeDto(candidate) {
     return null;
   }
 
+  if (candidate[NORMALIZED_MARKER]) {
+    return candidate;
+  }
+
   const video = candidate.video ?? null;
   const pointer = candidate.pointer ?? null;
   const metadata = isPlainObject(candidate.metadata)
     ? { ...candidate.metadata }
     : {};
 
-  return { video, pointer, metadata };
+  const normalized = { video, pointer, metadata };
+  normalized[NORMALIZED_MARKER] = true;
+  return normalized;
 }
 
 function normalizeItems(items) {
   if (!Array.isArray(items)) {
     return [];
   }
+
+  let dirty = false;
+  const len = items.length;
+  for (let i = 0; i < len; i++) {
+    const candidate = items[i];
+    if (!candidate || !candidate[NORMALIZED_MARKER]) {
+      dirty = true;
+      break;
+    }
+  }
+
+  if (!dirty) {
+    return items;
+  }
+
   const normalized = [];
   for (const candidate of items) {
     const dto = normalizeDto(candidate);
