@@ -105,7 +105,7 @@ To set up the project locally:
    npm start
    ```
 
-   This builds the project and starts a local server.
+   This command runs a full production build (generating `dist/` and `css/tailwind.generated.css`) and starts a local server.
 
    **Or, build manually:**
 
