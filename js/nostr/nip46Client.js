@@ -945,7 +945,7 @@ export function normalizeNip46CiphertextPayload(payload) {
         }
       }
 
-      if (scalarEntries.length >= 2) {
+      if (scalarEntries.length >= 2 && scalarEntries.length <= 16) {
         for (let i = 0; i < scalarEntries.length; i += 1) {
           for (let j = i + 1; j < scalarEntries.length; j += 1) {
             addCiphertextWithNonce(scalarEntries[i], scalarEntries[j]);
