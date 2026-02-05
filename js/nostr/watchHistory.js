@@ -1908,30 +1908,32 @@ class WatchHistoryManager {
         const chunkEvents = Array.isArray(results)
           ? results.flat().filter((event) => event && typeof event === "object")
           : [];
-        const decryptionPromises = chunkEvents.map(async (event) => {
-          const ciphertext = typeof event.content === "string" ? event.content : "";
-          if (!ciphertext) {
-            return [];
-          }
-          let plaintext = "";
-          if (typeof decryptSigner.nip04Decrypt === "function") {
-            try {
-              plaintext = await decryptSigner.nip04Decrypt(actorKey, ciphertext);
-            } catch (error) {
-              devLogger.warn("[nostr] Failed to decrypt watch history chunk:", error);
+        const chunkResults = await pMap(
+          chunkEvents,
+          async (event) => {
+            const ciphertext = typeof event.content === "string" ? event.content : "";
+            if (!ciphertext) {
+              return [];
             }
-          }
-          if (!plaintext) {
+            let plaintext = "";
+            if (typeof decryptSigner.nip04Decrypt === "function") {
+              try {
+                plaintext = await decryptSigner.nip04Decrypt(actorKey, ciphertext);
+              } catch (error) {
+                devLogger.warn("[nostr] Failed to decrypt watch history chunk:", error);
+              }
+            }
+            if (!plaintext) {
+              return [];
+            }
+            const parsed = parseWatchHistoryPayload(plaintext);
+            if (Array.isArray(parsed.items) && parsed.items.length) {
+              return parsed.items;
+            }
             return [];
-          }
-          const parsed = parseWatchHistoryPayload(plaintext);
-          if (Array.isArray(parsed.items) && parsed.items.length) {
-            return parsed.items;
-          }
-          return [];
-        });
-
-        const chunkResults = await Promise.all(decryptionPromises);
+          },
+          { concurrency: 5 },
+        );
         decryptedItems.push(...chunkResults.flat());
       } catch (error) {
         devLogger.warn("[nostr] Failed to fetch watch history chunks:", error);
