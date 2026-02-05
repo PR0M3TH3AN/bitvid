@@ -131,7 +131,7 @@ test.describe("video modal mobile regression", () => {
 
       await page.addStyleTag({
         content:
-          "*, *::before, *::after { transition-duration: 0s !important; animation-duration: 0s !important; animation-delay: 0s !important; caret-color: transparent !important; } ::-webkit-scrollbar { display: none; } body { -ms-overflow-style: none; scrollbar-width: none; width: 390px; max-width: 390px; overflow-x: hidden; margin: 0; }"
+          "*, *::before, *::after { transition-duration: 0s !important; animation-duration: 0s !important; animation-delay: 0s !important; caret-color: transparent !important; } ::-webkit-scrollbar { display: none; } body { -ms-overflow-style: none; scrollbar-width: none; width: 390px; max-width: 390px; overflow-x: hidden; margin: 0; } #creatorAvatar, #modalVideo, #ambientCanvas { visibility: hidden !important; }"
       });
 
       await page.evaluate(() => {
