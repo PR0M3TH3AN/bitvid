@@ -3,12 +3,19 @@
 import { normalizeActorKey } from "../watchHistory.js";
 import { runNip07WithRetry, NIP07_PRIORITY } from "../nip07Permissions.js";
 
-async function retryNip07Call(operation, label, priority) {
+async function retryNip07Call(operation, label, priority, options = {}) {
   let lastError = null;
   const attempts = 2; // Retry once on failure
+  const callOptions = { label, priority };
+  if (Number.isFinite(options.timeoutMs) && options.timeoutMs > 0) {
+    callOptions.timeoutMs = options.timeoutMs;
+  }
+  if (Number.isFinite(options.retryMultiplier)) {
+    callOptions.retryMultiplier = options.retryMultiplier;
+  }
   for (let i = 0; i < attempts; i++) {
     try {
-      return await runNip07WithRetry(operation, { label, priority });
+      return await runNip07WithRetry(operation, callOptions);
     } catch (error) {
       lastError = error;
       // Don't retry if user explicitly rejected
@@ -115,6 +122,7 @@ export async function createNip07Adapter(initialExtension, { preloadedPubkey } =
       () => nip04.decrypt(pubkey, ciphertext),
       "nip04.decrypt",
       options?.priority,
+      { timeoutMs: options?.timeoutMs, retryMultiplier: options?.retryMultiplier },
     );
   };
 
@@ -141,6 +149,7 @@ export async function createNip07Adapter(initialExtension, { preloadedPubkey } =
       () => nip44.decrypt(pubkey, ciphertext),
       "nip44.decrypt",
       options?.priority,
+      { timeoutMs: options?.timeoutMs, retryMultiplier: options?.retryMultiplier },
     );
   };
 

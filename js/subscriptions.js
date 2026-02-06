@@ -957,31 +957,35 @@ class SubscriptionsManager {
       decryptors.set(scheme, handler);
     };
 
+    // Use a shorter per-call timeout during background/login loads (no
+    // permission prompt) so stalled extension calls fail fast. Interactive
+    // loads get more time because the user may be approving a popup.
+    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 12000 : 5000;
+    const signerDecryptOptions = {
+      priority: NIP07_PRIORITY.HIGH,
+      timeoutMs: nip07DecryptTimeoutMs,
+      retryMultiplier: 1,
+    };
+
     if (signerHasNip44) {
       registerDecryptor("nip44", (payload) =>
-        signer.nip44Decrypt(userPubkey, payload, {
-          priority: NIP07_PRIORITY.HIGH,
-        }),
+        signer.nip44Decrypt(userPubkey, payload, signerDecryptOptions),
       );
       registerDecryptor("nip44_v2", (payload) =>
-        signer.nip44Decrypt(userPubkey, payload, {
-          priority: NIP07_PRIORITY.HIGH,
-        }),
+        signer.nip44Decrypt(userPubkey, payload, signerDecryptOptions),
       );
     }
 
     if (signerHasNip04) {
       registerDecryptor("nip04", (payload) =>
-        signer.nip04Decrypt(userPubkey, payload, {
-          priority: NIP07_PRIORITY.HIGH,
-        }),
+        signer.nip04Decrypt(userPubkey, payload, signerDecryptOptions),
       );
     }
 
     if (nostrApi) {
       const decrypterOptions = {
         priority: NIP07_PRIORITY.HIGH,
-        timeoutMs: 12000,
+        timeoutMs: nip07DecryptTimeoutMs,
         retryMultiplier: 1,
       };
 
