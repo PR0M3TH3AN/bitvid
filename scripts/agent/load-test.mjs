@@ -1,394 +1,288 @@
-import './setup-test-env.js';
-import { WebSocket } from 'ws';
+import WebSocket, { WebSocketServer } from 'ws';
+import { webcrypto } from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import { generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools';
-import { buildVideoPostEvent, buildViewEvent, buildVideoMirrorEvent } from '../../js/nostrEventSchemas.js';
-import fs from 'fs';
-import path from 'path';
-import { spawn } from 'child_process';
-import { performance } from 'perf_hooks';
 
-// --- Configuration ---
-const RELAY_PORT = 8890;
-const RELAY_URL = `ws://localhost:${RELAY_PORT}`;
-const ARTIFACTS_DIR = 'artifacts';
-const REPORT_FILE = path.join(ARTIFACTS_DIR, `load-report-${new Date().toISOString().split('T')[0].replace(/-/g, '')}.json`);
-
-// Guardrail: Ensure local relay
-if (!RELAY_URL.includes('localhost') && !RELAY_URL.includes('127.0.0.1')) {
-    console.error(`[Guardrail] Aborting: Public relay detected: ${RELAY_URL}`);
-    process.exit(1);
+// Polyfills for Node.js environment
+if (typeof globalThis.WebSocket === 'undefined') {
+  globalThis.WebSocket = WebSocket;
+}
+if (typeof globalThis.crypto === 'undefined') {
+  globalThis.crypto = webcrypto;
 }
 
-// --- Helpers ---
-const bytesToHex = (bytes) => Buffer.from(bytes).toString('hex');
+// Configuration
+const ARGS = process.argv.slice(2);
+const getConfig = (key, defaultVal) => {
+  const envKey = key.toUpperCase().replace(/-/g, '_');
+  if (process.env[envKey]) return process.env[envKey];
+  const flagIndex = ARGS.indexOf(`--${key}`);
+  if (flagIndex !== -1 && ARGS[flagIndex + 1]) return ARGS[flagIndex + 1];
+  return defaultVal;
+};
 
-// --- Load Bot ---
-class LoadBot {
-    constructor(id, relayUrl, rate = 1) {
-        this.id = id;
-        this.relayUrl = relayUrl;
-        this.rate = rate; // events per second
-        this.ws = null;
-        this.sk = generateSecretKey();
-        this.pk = getPublicKey(this.sk);
-        this.intervalId = null;
-        this.connected = false;
-        this.errors = 0;
-        this.sentCount = 0;
-        this.signTimes = [];
-    }
+const RELAY_URL = getConfig('relay-url', 'ws://localhost:8080');
+const CLIENT_COUNT = parseInt(getConfig('clients', '1000'), 10);
+const DURATION_SEC = parseInt(getConfig('duration', '600'), 10);
+const EVENT_RATE = parseFloat(getConfig('rate', '1.0')); // events per second per client
+const MODE = getConfig('mode', 'mixed'); // 'view', 'video', 'mixed'
+const MOCK_MODE = ARGS.includes('--mock');
 
-    connect() {
-        return new Promise((resolve, reject) => {
-            this.ws = new WebSocket(this.relayUrl);
+// Constants
+const KIND_VIDEO_POST = 30078;
+const KIND_WATCH_HISTORY = 30079;
+const START_TIME = Date.now();
 
-            this.ws.on('open', () => {
-                this.connected = true;
-                resolve();
-            });
+// Guardrails
+const isPublicRelay = (url) => {
+  if (MOCK_MODE) return false;
+  const u = new URL(url);
+  const host = u.hostname;
+  return !(
+    host === 'localhost' ||
+    host === '127.0.0.1' ||
+    host === '::1' ||
+    host.startsWith('192.168.') ||
+    host.startsWith('10.') ||
+    host.endsWith('.local')
+  );
+};
 
-            this.ws.on('error', (err) => {
-                this.errors++;
-                // console.error(`Bot ${this.id} error:`, err.message);
-                if (!this.connected) reject(err);
-            });
+if (isPublicRelay(RELAY_URL)) {
+  console.error(`ERROR: RELAY_URL '${RELAY_URL}' appears to be a public relay.`);
+  console.error('       Load tests must be run against local or dedicated test relays.');
+  process.exit(1);
+}
 
-            this.ws.on('close', () => {
-                this.connected = false;
-            });
-        });
-    }
+// Metrics
+const metrics = {
+  eventsSent: 0,
+  eventsAcked: 0,
+  eventsFailed: 0,
+  signingTimes: [],
+  latencies: [],
+  errors: {},
+};
 
-    start() {
-        if (!this.connected) return;
-        const intervalMs = 1000 / this.rate;
-        this.intervalId = setInterval(() => this.publish(), intervalMs);
-    }
-
-    stop() {
-        if (this.intervalId) clearInterval(this.intervalId);
-        if (this.ws) this.ws.terminate();
-    }
-
-    publish() {
-        if (!this.connected || this.ws.readyState !== WebSocket.OPEN) return;
-
-        // Mix: 80% View Events (Small), 20% Multi-part Video (Large)
-        const isLarge = Math.random() < 0.2;
-        const eventsToSend = [];
-
-        if (isLarge) {
-            const videoRootId = `root-${this.id}-${Date.now()}`;
-            // 1. Video Metadata (Kind 30078)
-            const videoEvent = buildVideoPostEvent({
-                pubkey: this.pk,
-                created_at: Math.floor(Date.now() / 1000),
-                dTagValue: videoRootId,
-                content: {
-                    version: 3,
-                    title: `Load Test Video ${Date.now()}`,
-                    description: 'A'.repeat(5000), // Filler content ~5KB
-                    videoRootId: videoRootId,
-                    magnet: `magnet:?xt=urn:btih:${'a'.repeat(40)}&dn=test`
-                }
-            });
-            eventsToSend.push(videoEvent);
-
-            // 2. Video Mirror (Kind 1063) - Simulated "multi-part"
-            const mirrorEvent = buildVideoMirrorEvent({
-                pubkey: this.pk,
-                created_at: Math.floor(Date.now() / 1000),
-                tags: [
-                     ['a', `30078:${this.pk}:${videoRootId}`]
-                ],
-                content: {
-                    description: 'Mirror filler ' + 'B'.repeat(100)
-                }
-            });
-            eventsToSend.push(mirrorEvent);
-
-        } else {
-            // View Event
-            const viewEvent = buildViewEvent({
-                pubkey: this.pk,
-                created_at: Math.floor(Date.now() / 1000),
-                content: 'view-ping',
-                dedupeTag: `view-${this.id}-${Date.now()}`
-            });
-            eventsToSend.push(viewEvent);
+// Mock Relay Server
+let mockServer;
+if (MOCK_MODE) {
+  console.log('Starting internal mock relay on port 8080...');
+  mockServer = new WebSocketServer({ port: 8080 });
+  mockServer.on('connection', (ws) => {
+    ws.on('message', (message) => {
+      try {
+        const data = JSON.parse(message);
+        if (Array.isArray(data) && data[0] === 'EVENT') {
+          const eventId = data[1].id;
+          ws.send(JSON.stringify(['OK', eventId, true, '']));
         }
-
-        try {
-            for (const ev of eventsToSend) {
-                const t0 = performance.now();
-                const signedEvent = finalizeEvent(ev, this.sk);
-                const t1 = performance.now();
-                this.signTimes.push(t1 - t0);
-
-                const msg = JSON.stringify(['EVENT', signedEvent]);
-                this.ws.send(msg);
-                this.sentCount++;
-            }
-        } catch (e) {
-            this.errors++;
-        }
-    }
-}
-
-// --- Observer ---
-class Observer {
-    constructor(relayUrl) {
-        this.relayUrl = relayUrl;
-        this.ws = null;
-        this.receivedCount = 0;
-        this.latencies = [];
-        this.connected = false;
-        this.subId = 'observer-sub';
-        this.probeMap = new Map(); // id -> timestamp
-    }
-
-    connect() {
-        return new Promise((resolve) => {
-            this.ws = new WebSocket(this.relayUrl);
-            this.ws.on('open', () => {
-                this.connected = true;
-                // Subscribe to all events
-                const msg = JSON.stringify(['REQ', this.subId, { limit: 0 }]); // Streaming only
-                this.ws.send(msg);
-                resolve();
-            });
-            this.ws.on('message', (data) => {
-                const msg = JSON.parse(data);
-                if (msg[0] === 'EVENT') {
-                    const event = msg[2];
-                    this.receivedCount++;
-                }
-            });
-        });
-    }
-
-    async measureLatency(probeBot) {
-        if (!this.connected) return;
-
-        const now = Date.now();
-        const probeId = `probe-${now}`;
-
-        // Create a distinct probe event
-        const eventTemplate = {
-            kind: 1,
-            created_at: Math.floor(now / 1000),
-            tags: [['t', 'probe']],
-            content: probeId,
-            pubkey: probeBot.pk
-        };
-        const signedEvent = finalizeEvent(eventTemplate, probeBot.sk);
-
-        return new Promise((resolve) => {
-            const timeout = setTimeout(() => resolve(null), 5000);
-
-            const listener = (data) => {
-                const msg = JSON.parse(data);
-                if (msg[0] === 'EVENT' && msg[2].id === signedEvent.id) {
-                    const rtt = Date.now() - now;
-                    clearTimeout(timeout);
-                    this.ws.off('message', listener);
-                    this.latencies.push(rtt);
-                    resolve(rtt);
-                }
-            };
-
-            this.ws.on('message', listener);
-
-            // Send
-            const msg = JSON.stringify(['EVENT', signedEvent]);
-            probeBot.ws.send(msg);
-        });
-    }
-
-    stop() {
-        if(this.ws) this.ws.terminate();
-    }
-}
-
-// --- Main ---
-async function runLoadTest() {
-    // Parse args
-    const args = process.argv.slice(2);
-    const clientsArg = args.find(a => a.startsWith('--clients='));
-    const durationArg = args.find(a => a.startsWith('--duration='));
-    const rateArg = args.find(a => a.startsWith('--rate='));
-
-    const NUM_CLIENTS = clientsArg ? parseInt(clientsArg.split('=')[1]) : 1000;
-    const DURATION_SEC = durationArg ? parseInt(durationArg.split('=')[1]) : 60; // Default 1 min
-    const TOTAL_TARGET_RATE = rateArg ? parseInt(rateArg.split('=')[1]) : 500; // Events/sec total
-    const RATE_PER_CLIENT = TOTAL_TARGET_RATE / NUM_CLIENTS;
-
-    console.log(`[Load Test] Starting with ${NUM_CLIENTS} clients for ${DURATION_SEC}s...`);
-    console.log(`[Load Test] Target Rate: ${TOTAL_TARGET_RATE} events/s (${RATE_PER_CLIENT.toFixed(2)}/client)`);
-
-    // Ensure artifacts dir
-    if (!fs.existsSync(ARTIFACTS_DIR)) fs.mkdirSync(ARTIFACTS_DIR);
-
-    // 1. Start Relay (Separate Process)
-    console.log('[Load Test] Spawning relay process...');
-    const relayProcess = spawn('node', ['scripts/agent/load-test-relay.mjs'], {
-        env: { ...process.env, PORT: String(RELAY_PORT) },
-        stdio: 'inherit' // Pipe output to see relay logs
+      } catch (e) {
+        // ignore malformed
+      }
     });
-
-    await new Promise(r => setTimeout(r, 2000)); // Warmup
-
-    // 2. Start Observer
-    const observer = new Observer(RELAY_URL);
-    await observer.connect();
-
-    // 3. Start Clients
-    const bots = [];
-    console.log('[Load Test] Spawning bots...');
-    for (let i = 0; i < NUM_CLIENTS; i++) {
-        const bot = new LoadBot(i, RELAY_URL, RATE_PER_CLIENT);
-        bots.push(bot);
-    }
-
-    // Connect in batches
-    const BATCH_SIZE = 50;
-    for (let i = 0; i < bots.length; i += BATCH_SIZE) {
-        await Promise.all(bots.slice(i, i + BATCH_SIZE).map(b => b.connect()));
-        process.stdout.write(`\r[Load Test] Connected ${Math.min(i + BATCH_SIZE, bots.length)}/${NUM_CLIENTS}`);
-    }
-    console.log('\n[Load Test] All bots connected.');
-
-    // Start Load
-    bots.forEach(b => b.start());
-
-    // 4. Monitoring Loop
-    const startTs = Date.now();
-    const endTs = startTs + (DURATION_SEC * 1000);
-    const metrics = {
-        timestamps: [],
-        cpu: [],
-        memory: [],
-        latency: [],
-        throughput: [],
-        avgSignTime: []
-    };
-
-    let prevRx = 0;
-    let prevCpuUsage = process.cpuUsage();
-
-    const monitorInterval = setInterval(async () => {
-        const now = Date.now();
-        if (now >= endTs) {
-            clearInterval(monitorInterval);
-            return;
-        }
-
-        // Latency Probe (use Bot 0)
-        const latency = await observer.measureLatency(bots[0]);
-
-        // Throughput
-        const rxDelta = observer.receivedCount - prevRx;
-        prevRx = observer.receivedCount;
-
-        // Resources
-        const mem = process.memoryUsage().heapUsed / 1024 / 1024; // MB
-
-        const cpuUsage = process.cpuUsage(prevCpuUsage);
-        prevCpuUsage = process.cpuUsage();
-        const cpuPercent = (cpuUsage.user + cpuUsage.system) / 10000; // Microseconds to percent (approx for 1s interval)
-
-        // Crypto Stats
-        const signTimes = bots.flatMap(b => b.signTimes);
-        // Clear sign times to avoid memory leak and get instantaneous avg
-        bots.forEach(b => b.signTimes = []);
-        const avgSign = signTimes.length ? signTimes.reduce((a, b) => a + b, 0) / signTimes.length : 0;
-
-        // Log
-        console.log(`[Monitor] Latency: ${latency ?? 'timeout'}ms | RX: ${rxDelta}/s | Mem: ${mem.toFixed(1)}MB | CPU: ${cpuPercent.toFixed(1)}% | Sign: ${avgSign.toFixed(2)}ms`);
-
-        metrics.timestamps.push(new Date().toISOString());
-        metrics.latency.push(latency);
-        metrics.throughput.push(rxDelta);
-        metrics.memory.push(mem);
-        metrics.cpu.push(cpuPercent);
-        metrics.avgSignTime.push(avgSign);
-
-    }, 1000);
-
-    // Wait for duration
-    await new Promise(r => setTimeout(r, DURATION_SEC * 1000));
-
-    // 5. Teardown
-    console.log('[Load Test] Stopping bots...');
-    bots.forEach(b => b.stop());
-    observer.stop();
-    relayProcess.kill();
-
-    // 6. Report
-    const totalSent = bots.reduce((acc, b) => acc + b.sentCount, 0);
-    const totalErrors = bots.reduce((acc, b) => acc + b.errors, 0);
-    const validLatencies = metrics.latency.filter(l => l !== null);
-    const avgLatency = validLatencies.length ? validLatencies.reduce((a, b) => a + b, 0) / validLatencies.length : 0;
-
-    // Global sign stats
-    const avgGlobalSignTime = metrics.avgSignTime.length ? metrics.avgSignTime.reduce((a,b)=>a+b, 0) / metrics.avgSignTime.length : 0;
-
-    const report = {
-        meta: {
-            clients: NUM_CLIENTS,
-            duration: DURATION_SEC,
-            targetTotalRate: TOTAL_TARGET_RATE,
-            ratePerClient: RATE_PER_CLIENT
-        },
-        results: {
-            totalSent,
-            totalReceivedByObserver: observer.receivedCount,
-            totalErrors,
-            errorRate: totalSent ? (totalErrors / totalSent) : 0,
-            avgLatencyMs: avgLatency || 0,
-            maxLatencyMs: Math.max(...validLatencies, 0),
-            avgSignTimeMs: avgGlobalSignTime,
-            hot_functions: [
-                { name: "Event Signing (Client)", avgTimeMs: avgGlobalSignTime, calls: totalSent }
-            ]
-        },
-        bottlenecks: [], // To be filled by analysis
-        metrics // Raw timeseries
-    };
-
-    // Analysis
-    report.remediation = [];
-
-    if (report.results.errorRate > 0.05) {
-        report.bottlenecks.push("High Error Rate (>5%)");
-        report.remediation.push("Investigate relay stability, network connection, or client payload validity.");
-    }
-
-    if (report.results.avgLatencyMs > 500) {
-        report.bottlenecks.push("High Average Latency (>500ms)");
-        report.remediation.push("Relay is overloaded. Consider optimizing event processing, increasing relay resources, or sharding.");
-    }
-
-    if (report.results.totalReceivedByObserver < (totalSent * 0.9)) {
-        report.bottlenecks.push("Possible Message Loss (Observer RX < 90% TX)");
-        report.remediation.push("Relay might be dropping events or internal queues are full. Check relay logs/configuration.");
-    }
-
-    // Crypto Bottleneck Check
-    if (avgGlobalSignTime > 5) {
-        report.bottlenecks.push(`Cryptographic Bottleneck (Avg Sign Time ${avgGlobalSignTime.toFixed(2)}ms > 5ms)`);
-        report.remediation.push("Client-side event signing is slow. Review cryptographic library (nostr-tools) usage or client hardware capabilities.");
-        report.requiresSecurityReview = true;
-    }
-
-    fs.writeFileSync(REPORT_FILE, JSON.stringify(report, null, 2));
-    console.log(`[Load Test] Report saved to ${REPORT_FILE}`);
-
-    if (report.bottlenecks.length > 0) {
-        console.warn('[Load Test] Bottlenecks identified:', report.bottlenecks);
-    } else {
-        console.log('[Load Test] No major bottlenecks detected.');
-    }
+  });
 }
 
-runLoadTest().catch(console.error);
+// Helpers
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const createClients = (n) => {
+  const clients = [];
+  for (let i = 0; i < n; i++) {
+    const sk = generateSecretKey();
+    clients.push({
+      sk,
+      pk: getPublicKey(sk),
+      ws: null,
+      connected: false,
+    });
+  }
+  return clients;
+};
+
+const connectClient = (client) => {
+  return new Promise((resolve) => {
+    client.ws = new WebSocket(RELAY_URL);
+    client.ws.on('open', () => {
+      client.connected = true;
+      resolve(true);
+    });
+    client.ws.on('error', (err) => {
+      metrics.errors[err.message] = (metrics.errors[err.message] || 0) + 1;
+      resolve(false);
+    });
+    client.ws.on('message', (data) => {
+        try {
+            const msg = JSON.parse(data.toString());
+            if (msg[0] === 'OK') {
+                const eventId = msg[1];
+                const accepted = msg[2];
+                const info = client.pendingEvents?.get(eventId);
+                if (info) {
+                    const latency = Date.now() - info.sentAt;
+                    metrics.latencies.push(latency);
+                    metrics.eventsAcked++;
+                    client.pendingEvents.delete(eventId);
+                }
+            }
+        } catch (e) {}
+    });
+    client.pendingEvents = new Map();
+  });
+};
+
+const generateEvent = (client) => {
+  const type = MODE === 'mixed' ? (Math.random() > 0.5 ? 'view' : 'video') : MODE;
+
+  const created_at = Math.floor(Date.now() / 1000);
+
+  if (type === 'view') {
+    return {
+      kind: KIND_WATCH_HISTORY,
+      created_at,
+      tags: [
+        ['t', 'view'],
+        ['d', Math.random().toString(36).substring(7)],
+      ],
+      content: 'Load test view event',
+    };
+  } else {
+    // Video post with multipart simulation (large tags)
+    const tags = [
+      ['d', Math.random().toString(36).substring(7)],
+      ['t', 'video'],
+      ['s', `magnet:?xt=urn:btih:${Math.random().toString(16).substring(2)}`],
+    ];
+    // Add dummy imeta tags to simulate load
+    for (let i = 0; i < 20; i++) {
+      tags.push(['imeta', `url https://example.com/segment_${i}.mp4`, `dim 1920x1080`, `mime video/mp4`]);
+    }
+
+    return {
+      kind: KIND_VIDEO_POST,
+      created_at,
+      tags,
+      content: JSON.stringify({
+        version: 3,
+        title: `Load Test Video ${Math.random()}`,
+        videoRootId: `root-${Math.random()}`,
+        description: 'Simulated multipart video event for load testing.',
+      }),
+    };
+  }
+};
+
+const runClientLoop = async (client) => {
+  const interval = 1000 / EVENT_RATE;
+
+  while (Date.now() - START_TIME < DURATION_SEC * 1000) {
+    if (!client.connected) {
+      await sleep(1000);
+      continue;
+    }
+
+    try {
+      const eventTemplate = generateEvent(client);
+
+      const signStart = process.hrtime();
+      const event = finalizeEvent(eventTemplate, client.sk);
+      const signEnd = process.hrtime(signStart);
+      const signTimeMs = (signEnd[0] * 1000) + (signEnd[1] / 1e6);
+      metrics.signingTimes.push(signTimeMs);
+
+      client.pendingEvents.set(event.id, { sentAt: Date.now() });
+      client.ws.send(JSON.stringify(['EVENT', event]));
+      metrics.eventsSent++;
+
+    } catch (e) {
+      metrics.eventsFailed++;
+      metrics.errors[e.message] = (metrics.errors[e.message] || 0) + 1;
+    }
+
+    // jitter
+    const delay = interval + (Math.random() * interval * 0.1);
+    await sleep(delay);
+  }
+};
+
+// Main execution
+(async () => {
+  console.log(`Starting Load Test`);
+  console.log(`  Relay: ${RELAY_URL}`);
+  console.log(`  Clients: ${CLIENT_COUNT}`);
+  console.log(`  Duration: ${DURATION_SEC}s`);
+  console.log(`  Rate: ${EVENT_RATE} events/s/client`);
+  console.log(`  Mode: ${MODE}`);
+  if (MOCK_MODE) console.log('  (Mock Mode Enabled)');
+
+  const clients = createClients(CLIENT_COUNT);
+  console.log(`Generated ${clients.length} client identities.`);
+
+  console.log('Connecting clients...');
+  const connections = await Promise.all(clients.map(connectClient));
+  const connectedCount = connections.filter(Boolean).length;
+  console.log(`Connected ${connectedCount}/${CLIENT_COUNT} clients.`);
+
+  if (connectedCount === 0) {
+    console.error('Failed to connect any clients. Aborting.');
+    process.exit(1);
+  }
+
+  console.log('Starting load generation...');
+  const loops = clients.map(client => runClientLoop(client));
+
+  await Promise.all(loops);
+
+  console.log('Test finished. Disconnecting...');
+  clients.forEach(c => c.ws?.close());
+  if (mockServer) mockServer.close();
+
+  // Reporting
+  const avgLatency = metrics.latencies.reduce((a, b) => a + b, 0) / metrics.latencies.length || 0;
+  const sortedLatencies = metrics.latencies.sort((a, b) => a - b);
+  const p95Latency = sortedLatencies[Math.floor(sortedLatencies.length * 0.95)] || 0;
+  const avgSigningTime = metrics.signingTimes.reduce((a, b) => a + b, 0) / metrics.signingTimes.length || 0;
+
+  const report = {
+    timestamp: new Date().toISOString(),
+    config: {
+      relayUrl: RELAY_URL,
+      clientCount: CLIENT_COUNT,
+      duration: DURATION_SEC,
+      rate: EVENT_RATE,
+      mode: MODE,
+    },
+    metrics: {
+      totalSent: metrics.eventsSent,
+      totalAcked: metrics.eventsAcked,
+      totalFailed: metrics.eventsFailed,
+      successRate: (metrics.eventsAcked / metrics.eventsSent) * 100 || 0,
+      avgLatencyMs: avgLatency,
+      p95LatencyMs: p95Latency,
+      avgSigningTimeMs: avgSigningTime,
+      throughput: metrics.eventsAcked / DURATION_SEC,
+    },
+    errors: metrics.errors,
+    hotFunctions: [
+      { name: 'Event Signing', avgTimeMs: avgSigningTime, note: 'Client-side CPU bottleneck' },
+      { name: 'Network Roundtrip', avgTimeMs: avgLatency, note: 'Network/Relay latency' }
+    ],
+    remediation: [
+      'If signing time is high, consider parallelizing clients or using more powerful client machines.',
+      'If latency is high, check relay resource usage (CPU, RAM, Disk I/O) or network bandwidth.',
+      'If failure rate is high, check relay error logs for rate limiting or rejection reasons.'
+    ]
+  };
+
+  const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
+  const reportDir = path.join(process.cwd(), 'artifacts');
+  if (!fs.existsSync(reportDir)) fs.mkdirSync(reportDir);
+  const reportPath = path.join(reportDir, `load-report-${dateStr}.json`);
+
+  fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
+  console.log(`Report saved to ${reportPath}`);
+
+  process.exit(0);
+})();
