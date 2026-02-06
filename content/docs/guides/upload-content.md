@@ -23,7 +23,7 @@ Before you start, ensure your content meets the following requirements:
 - **Title:** **Required**.
 - **Description:** Optional.
 - **Thumbnail:** Optional.
-- **Tags (Hashtags):** Optional but highly recommended for discoverability.
+- **Tags (Hashtags):** Optional but highly recommended for discoverability. Use the dedicated "Hashtags" section in the upload form.
 
 ## Step-by-Step Guide
 
@@ -48,7 +48,7 @@ To allow your browser to upload files directly to the storage bucket, you must a
 ```json
 [
   {
-    "AllowedOrigins": ["http://127.0.0.1:5500", "https://bitvid.network"],
+    "AllowedOrigins": ["http://localhost:5500", "https://bitvid.network"],
     "AllowedMethods": ["GET", "PUT", "POST", "DELETE", "HEAD", "OPTIONS"],
     "AllowedHeaders": ["*"],
     "ExposeHeaders": ["ETag", "Content-Length", "Content-Range", "Accept-Ranges"],
@@ -56,7 +56,7 @@ To allow your browser to upload files directly to the storage bucket, you must a
   }
 ]
 ```
-> **Note:** Replace `AllowedOrigins` with your actual development or production origins.
+> **Note:** Replace `AllowedOrigins` with your actual origins (e.g. `http://localhost:5500` for local development, or `https://your-custom-domain.com`).
 
 **S3 Compatible Providers:**
 bitvid will attempt to configure CORS automatically for generic S3 providers if your credentials have sufficient permissions. However, if uploads fail with CORS errors, apply a similar policy manually in your provider's console.
@@ -70,7 +70,7 @@ bitvid will attempt to configure CORS automatically for generic S3 providers if 
 ### 4. Configure bitvid
 
 1. In bitvid, open your **Profile** (click your avatar).
-2. Navigate to the **Storage** tab (or click **"Configure Storage"** in the Upload Modal).
+2. Navigate to the **Storage** tab in the sidebar menu (or click **"Configure Storage"** in the Upload Modal).
 3. Click **"Add Connection"** (or use the default form).
 4. Select **Cloudflare R2** or **S3 Compatible**.
 5. Enter your credentials:
