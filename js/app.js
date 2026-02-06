@@ -628,6 +628,15 @@ class Application {
       this.authService.hydrateFromStorage();
       this.renderSavedProfiles();
 
+      if (
+        this.nostrService &&
+        typeof this.nostrService.setDmBlockChecker === "function"
+      ) {
+        this.nostrService.setDmBlockChecker((pubkey) =>
+          this.isAuthorBlocked(pubkey),
+        );
+      }
+
       loadModerationOverridesFromStorage();
       loadModerationSettingsFromStorage();
       loadDmPrivacySettingsFromStorage();
