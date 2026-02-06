@@ -32,7 +32,7 @@ Ready to jump in? Here's everything you need to know to start watching and shari
 2. Choose your upload mode:
    - **Upload Video**: Select a file from your device to upload directly to your Cloudflare R2 or S3-compatible bucket. If you haven't configured storage yet, click **"Configure Storage"** to enter your credentials (Account ID/Endpoint, Access Keys, Bucket Name, Public URL) in your Profile settings.
    - **External URL**: If you already host your video elsewhere, paste the HTTPS URL and (optionally) a WebTorrent magnet link.
-3. Review the rest of the form: add a description and thumbnail, decide whether to allow comments, and set the NSFW or "For Kids" toggles to match your content. Explore the metadata section to fill in captions, duration, hashtags, and other fields.
+3. Review the rest of the form: add a description and thumbnail, decide whether to allow comments, and set the NSFW or "For Kids" toggles to match your content. Explore the metadata section to fill in duration, hashtags, and other fields.
 4. Click "Publish Video" to post your content.
 
 ## Tips for Success
@@ -40,7 +40,7 @@ Ready to jump in? Here's everything you need to know to start watching and shari
 - **Thumbnails:** Add eye-catching thumbnails to attract viewers.
 - **Descriptions:** Write clear descriptions to help people find your content.
 - **Visibility:** After posting, you can use the **More → Edit** action to toggle visibility or delete content.
-- **Watch History:** Encrypted watch-history sync lives in the [Watch History view](history.html), where you can clear devices or pause tracking whenever you need.
+- **Watch History:** Encrypted watch-history sync lives in the [Watch History view](/#view=history), where you can clear devices or pause tracking whenever you need.
 
 ## Need Help?
 
