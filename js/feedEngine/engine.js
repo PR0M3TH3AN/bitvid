@@ -246,6 +246,7 @@ export function createFeedEngine({ logger } = {}) {
   return {
     registerFeed,
     runFeed,
+    run: runFeed,
     listFeeds,
     getFeedDefinition,
   };

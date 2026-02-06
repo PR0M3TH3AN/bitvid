@@ -190,27 +190,34 @@ export function createAuthSessionCoordinator(deps) {
           return null;
         });
 
+      // PRE-AUTH: Request full permissions once so subsequent services don't
+      // spam individual prompts. This runs immediately (not gated behind
+      // relaysReadyPromise) so the user can approve while relays connect.
+      const permissionPromise = activePubkey
+        ? Promise.resolve()
+            .then(async () => {
+              const signer = await nostrClient.ensureActiveSignerForPubkey(
+                activePubkey,
+              );
+              if (signer?.type === "extension" || signer?.type === "nip07") {
+                await nostrClient.ensureExtensionPermissions(
+                  DEFAULT_NIP07_PERMISSION_METHODS,
+                );
+              }
+            })
+            .catch((error) => {
+              devLogger.warn("[Application] Pre-authorization failed:", error);
+            })
+        : Promise.resolve();
+
       // Start list loading as soon as relays are ready — lists don't depend on
       // profile data, only on relay URLs. This runs in parallel with profile
       // fetching instead of sequentially after it.
-      const listStatePromise = relaysReadyPromise.then(async () => {
-        // PRE-AUTH: Request full permissions once so subsequent services don't spam prompts.
-        if (activePubkey) {
-          try {
-            const signer = await nostrClient.ensureActiveSignerForPubkey(
-              activePubkey,
-            );
-            if (signer?.type === "extension" || signer?.type === "nip07") {
-              await nostrClient.ensureExtensionPermissions(
-                DEFAULT_NIP07_PERMISSION_METHODS,
-              );
-            }
-          } catch (error) {
-            devLogger.warn("[Application] Pre-authorization failed:", error);
-          }
-        }
-
-        // SEQUENTIAL LOAD: Ensure critical lists (blocks) load before content filters.
+      const listStatePromise = Promise.all([
+        relaysReadyPromise,
+        permissionPromise,
+      ]).then(async () => {
+        // SEQUENTIAL LOAD: Blocks must load first (foundation for all filtering).
         if (
           activePubkey &&
           typeof this.authService.loadBlocksForPubkey === "function"
@@ -227,23 +234,31 @@ export function createAuthSessionCoordinator(deps) {
           }
         }
 
+        // Subscriptions and hashtag preferences are independent of each other,
+        // so load them in parallel after blocks are ready.
+        const parallelListTasks = [];
+
         if (
           activePubkey &&
           subscriptions &&
           typeof subscriptions.ensureLoaded === "function"
         ) {
-          try {
-            await subscriptions.ensureLoaded(activePubkey, {
-              allowPermissionPrompt: false,
-            });
-            this.capturePermissionPromptFromError(subscriptions?.lastLoadError);
-          } catch (error) {
-            devLogger.warn(
-              "[Application] Failed to load subscriptions during login:",
-              error,
-            );
-            this.capturePermissionPromptFromError(error);
-          }
+          parallelListTasks.push(
+            subscriptions
+              .ensureLoaded(activePubkey, { allowPermissionPrompt: false })
+              .then(() => {
+                this.capturePermissionPromptFromError(
+                  subscriptions?.lastLoadError,
+                );
+              })
+              .catch((error) => {
+                devLogger.warn(
+                  "[Application] Failed to load subscriptions during login:",
+                  error,
+                );
+                this.capturePermissionPromptFromError(error);
+              }),
+          );
         }
 
         if (
@@ -251,22 +266,26 @@ export function createAuthSessionCoordinator(deps) {
           this.hashtagPreferences &&
           typeof this.hashtagPreferences.load === "function"
         ) {
-          try {
-            await this.hashtagPreferences.load(activePubkey, {
-              allowPermissionPrompt: false,
-            });
-            this.capturePermissionPromptFromError(
-              this.hashtagPreferences?.lastLoadError,
-            );
-            this.updateCachedHashtagPreferences();
-          } catch (error) {
-            devLogger.warn(
-              "[Application] Failed to load hashtag preferences during login:",
-              error,
-            );
-            this.capturePermissionPromptFromError(error);
-          }
+          parallelListTasks.push(
+            this.hashtagPreferences
+              .load(activePubkey, { allowPermissionPrompt: false })
+              .then(() => {
+                this.capturePermissionPromptFromError(
+                  this.hashtagPreferences?.lastLoadError,
+                );
+                this.updateCachedHashtagPreferences();
+              })
+              .catch((error) => {
+                devLogger.warn(
+                  "[Application] Failed to load hashtag preferences during login:",
+                  error,
+                );
+                this.capturePermissionPromptFromError(error);
+              }),
+          );
         }
+
+        await Promise.allSettled(parallelListTasks);
 
         this.updateAuthLoadingState({ lists: "ready" });
         return true;
@@ -370,7 +389,6 @@ export function createAuthSessionCoordinator(deps) {
       const feedSyncPromise = Promise.race([
         Promise.allSettled([
           listStatePromise,
-          hashtagPreferencesPromise,
           profileStatePromise,
         ]),
         new Promise((resolve) => setTimeout(resolve, FEED_SYNC_TIMEOUT_MS)),

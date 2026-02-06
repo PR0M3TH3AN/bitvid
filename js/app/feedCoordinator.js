@@ -1962,21 +1962,6 @@ export function createFeedCoordinator(deps) {
 
       this.videoListView.render(decoratedVideos, metadata);
       this.emitFeedImpressions(decoratedVideos);
-
-      if (typeof this.refreshVisibleModerationUi === "function") {
-        const renderReason =
-          metadata && typeof metadata.reason === "string" && metadata.reason
-            ? `render-${metadata.reason}`
-            : "render-video-list";
-        try {
-          this.refreshVisibleModerationUi({ reason: renderReason });
-        } catch (error) {
-          devLogger.warn(
-            "[Application] Failed to refresh moderation UI after rendering video list:",
-            error,
-          );
-        }
-      }
       this.updateModalSimilarContent();
     },
 
