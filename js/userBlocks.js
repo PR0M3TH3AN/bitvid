@@ -80,7 +80,7 @@ const FAST_BLOCKLIST_RELAY_LIMIT = 3;
 const FAST_BLOCKLIST_TIMEOUT_MS = 2500;
 const BACKGROUND_BLOCKLIST_TIMEOUT_MS = 6000;
 const DECRYPT_TIMEOUT_MS = 30000;
-const BACKGROUND_DECRYPT_TIMEOUT_MS = 30000;
+const BACKGROUND_DECRYPT_TIMEOUT_MS = 15000;
 const DECRYPT_RETRY_DELAY_MS = 10000;
 const MAX_BLOCKLIST_ENTRIES = 5000;
 
@@ -1039,21 +1039,26 @@ class UserBlockListManager {
         sources.set(scheme, source || "unknown");
       };
 
+      // Pass per-call timeouts to signer decrypt methods so they fail fast
+      // during login (3s) instead of using the 60s default. This prevents a
+      // single stalled extension call from blocking the entire decrypt pipeline.
+      const signerDecryptOptions = {
+        priority: NIP07_PRIORITY.NORMAL,
+        timeoutMs: nip07DecryptTimeoutMs,
+        retryMultiplier: 1,
+      };
+
       if (signerHasNip44) {
         registerDecryptor(
           "nip44",
           (payload) =>
-            signer.nip44Decrypt(normalized, payload, {
-              priority: NIP07_PRIORITY.NORMAL,
-            }),
+            signer.nip44Decrypt(normalized, payload, signerDecryptOptions),
           "active-signer",
         );
         registerDecryptor(
           "nip44_v2",
           (payload) =>
-            signer.nip44Decrypt(normalized, payload, {
-              priority: NIP07_PRIORITY.NORMAL,
-            }),
+            signer.nip44Decrypt(normalized, payload, signerDecryptOptions),
           "active-signer",
         );
       }
@@ -1062,9 +1067,7 @@ class UserBlockListManager {
         registerDecryptor(
           "nip04",
           (payload) =>
-            signer.nip04Decrypt(normalized, payload, {
-              priority: NIP07_PRIORITY.NORMAL,
-            }),
+            signer.nip04Decrypt(normalized, payload, signerDecryptOptions),
           "active-signer",
         );
       }

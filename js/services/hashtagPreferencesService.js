@@ -939,21 +939,27 @@ class HashtagPreferencesService {
       sources.set(scheme, source);
     };
 
+    // Use a shorter per-call timeout during background/login loads so stalled
+    // extension calls fail fast. Interactive loads (with permission prompts)
+    // get more time because the user may be approving a popup.
+    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 12000 : 5000;
+    const signerDecryptOptions = {
+      priority: NIP07_PRIORITY.HIGH,
+      timeoutMs: nip07DecryptTimeoutMs,
+      retryMultiplier: 1,
+    };
+
     if (signerHasNip44) {
       registerDecryptor(
         "nip44",
         (payload) =>
-          signer.nip44Decrypt(userPubkey, payload, {
-            priority: NIP07_PRIORITY.HIGH,
-          }),
+          signer.nip44Decrypt(userPubkey, payload, signerDecryptOptions),
         "active-signer",
       );
       registerDecryptor(
         "nip44_v2",
         (payload) =>
-          signer.nip44Decrypt(userPubkey, payload, {
-            priority: NIP07_PRIORITY.HIGH,
-          }),
+          signer.nip44Decrypt(userPubkey, payload, signerDecryptOptions),
         "active-signer",
       );
     }
@@ -962,13 +968,16 @@ class HashtagPreferencesService {
       registerDecryptor(
         "nip04",
         (payload) =>
-          signer.nip04Decrypt(userPubkey, payload, {
-            priority: NIP07_PRIORITY.HIGH,
-          }),
+          signer.nip04Decrypt(userPubkey, payload, signerDecryptOptions),
         "active-signer",
       );
     }
 
+    const extensionDecryptOptions = {
+      priority: NIP07_PRIORITY.HIGH,
+      timeoutMs: nip07DecryptTimeoutMs,
+      retryMultiplier: 1,
+    };
     const nostrApi =
       typeof window !== "undefined" && window?.nostr
         ? window.nostr
@@ -982,7 +991,7 @@ class HashtagPreferencesService {
           (payload) =>
             runNip07WithRetry(
               () => nostrApi.nip04.decrypt(userPubkey, payload),
-              { label: "nip04.decrypt", priority: NIP07_PRIORITY.HIGH },
+              { label: "nip04.decrypt", ...extensionDecryptOptions },
             ),
           "extension",
         );
@@ -1001,7 +1010,7 @@ class HashtagPreferencesService {
                 () => nip44.decrypt(userPubkey, payload),
                 {
                   label: "nip44.decrypt",
-                  priority: NIP07_PRIORITY.HIGH,
+                  ...extensionDecryptOptions,
                 },
               ),
             "extension",
@@ -1018,7 +1027,7 @@ class HashtagPreferencesService {
                 () => nip44v2.decrypt(userPubkey, payload),
                 {
                   label: "nip44.v2.decrypt",
-                  priority: NIP07_PRIORITY.HIGH,
+                  ...extensionDecryptOptions,
                 },
               ),
             "extension",
@@ -1031,7 +1040,7 @@ class HashtagPreferencesService {
                   () => nip44v2.decrypt(userPubkey, payload),
                   {
                     label: "nip44.v2.decrypt",
-                    priority: NIP07_PRIORITY.HIGH,
+                    ...extensionDecryptOptions,
                   },
                 ),
               "extension",
