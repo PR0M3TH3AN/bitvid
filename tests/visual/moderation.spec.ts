@@ -10,7 +10,7 @@ async function waitForFixtureReady(page) {
   // Inject critical styles to ensure layout works in headless even if external CSS lags
   await page.addStyleTag({
     content: `
-      .ratio-16-9 { width: 100% !important; padding-top: 56.25% !important; position: relative !important; background: #eee; display: block !important; }
+      .ratio-16-9 { width: 100% !important; padding-top: 56.25% !important; position: relative !important; background: lightgray; display: block !important; }
       .card { width: 100% !important; display: block !important; min-width: 200px !important; }
       .video-card__media { width: 100% !important; display: block !important; }
     `
