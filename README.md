@@ -43,7 +43,6 @@ Pick the flow that matches your source material. Supported S3 upload modes inclu
 1.  **Browser-held S3 keys (trusted operator only):** Enter your S3 credentials in the Storage tab to upload directly from the browser.
     > **Security Warning:** This mode requires storing encrypted credentials in the browser's IndexedDB. While keys are encrypted at rest, they are decrypted in memory during use. Use this mode only on self-hosted, trusted deployments where you control the environment. Do not enter high-value credentials on public or untrusted instances.
 2.  **Manual upload via provider console:** Upload your file to your storage provider (e.g., R2, S3) manually, then paste the public URL into the upload form.
-3.  **Operator-provided presigned manifests:** Use a presigned JSON manifest prepared externally to authorize the upload without exposing long-lived credentials to the browser.
 
 **Upload File (direct S3 upload)**:
 If you are using **Mode 1** (Browser-held keys), enter your credentials in the guided form or Storage tab. Optionally expand the **Advanced options** accordion to override pathing or access controls, then drop media files for bitvid to upload through the S3 API. The modal tracks progress, applies your metadata selections, auto-fills the primary `imeta` variant once the upload completes, and publishes the resulting URL back into the note automatically.
