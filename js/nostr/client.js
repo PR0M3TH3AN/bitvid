@@ -4654,13 +4654,17 @@ export class NostrClient {
           const relay = await originalEnsureRelay(url);
           if (relay && typeof relay.setMaxListeners === "function") {
             try {
-              relay.setMaxListeners(100);
+              relay.setMaxListeners(200);
             } catch (error) {
               // ignore
             }
           }
           return relay;
         };
+      } else {
+        devLogger.warn(
+          "[nostr] SimplePool.ensureRelay missing; max listeners patch skipped."
+        );
       }
 
       shimLegacySimplePoolMethods(instance);
@@ -5170,7 +5174,7 @@ export class NostrClient {
           (pubkey, ciphertext, options) =>
             activeSigner.nip44Decrypt(pubkey, ciphertext, {
               ...options,
-              priority: NIP07_PRIORITY.HIGH,
+              priority: NIP07_PRIORITY.NORMAL,
             }),
           {
             priority: -20,
@@ -5188,7 +5192,7 @@ export class NostrClient {
           (pubkey, ciphertext, options) =>
             activeSigner.nip04Decrypt(pubkey, ciphertext, {
               ...options,
-              priority: NIP07_PRIORITY.HIGH,
+              priority: NIP07_PRIORITY.NORMAL,
             }),
           {
             priority: -10,
