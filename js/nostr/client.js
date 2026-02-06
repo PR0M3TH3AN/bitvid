@@ -5152,7 +5152,7 @@ export class NostrClient {
           (pubkey, ciphertext, options) =>
             activeSigner.nip44Decrypt(pubkey, ciphertext, {
               ...options,
-              priority: NIP07_PRIORITY.HIGH,
+              priority: NIP07_PRIORITY.LOW,
             }),
           {
             priority: -20,
@@ -5170,7 +5170,7 @@ export class NostrClient {
           (pubkey, ciphertext, options) =>
             activeSigner.nip04Decrypt(pubkey, ciphertext, {
               ...options,
-              priority: NIP07_PRIORITY.HIGH,
+              priority: NIP07_PRIORITY.LOW,
             }),
           {
             priority: -10,
