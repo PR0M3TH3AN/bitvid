@@ -603,6 +603,8 @@ class Application {
         assertAnyRelayAccepted,
         queueSignEvent,
         bootstrapTrustedSeeds,
+        getModerationSettings,
+        getActiveProfilePubkey,
       })),
       writable: true,
       configurable: true,

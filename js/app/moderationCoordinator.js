@@ -179,8 +179,10 @@ export function createModerationCoordinator(deps) {
     },
 
     getActiveModerationThresholds() {
-      this.moderationSettings = this.moderationDecorator.normalizeModerationSettings(this.moderationSettings);
-      return { ...this.moderationSettings };
+      if (!this.moderationSettings || typeof this.moderationSettings !== "object") {
+        this.moderationSettings = this.moderationDecorator.normalizeModerationSettings(this.moderationSettings);
+      }
+      return this.moderationSettings;
     },
 
     decorateVideoModeration(video, feedContext = {}) {
