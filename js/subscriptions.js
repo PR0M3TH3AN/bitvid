@@ -651,6 +651,21 @@ class SubscriptionsManager {
           !allowPermissionPrompt &&
           decryptResult.error?.code === "subscriptions-permission-required"
         ) {
+          if (!this.loaded && !cachedSnapshot.hasSnapshot) {
+            this.loaded = true;
+          }
+          // Retry with permission prompt enabled so the signer / window.nostr
+          // path is available once the extension has finished initializing.
+          this.scheduleDecryptRetry(normalizedUserPubkey, decryptResult.error, {
+            allowPermissionPrompt: true,
+          });
+          if (wasBackgroundLoading) {
+            this.backgroundLoading = false;
+            this.emitter.emit("change", {
+              action: "background-loaded",
+              subscribedPubkeys: Array.from(this.subscribedPubkeys),
+            });
+          }
           return;
         }
         userLogger.error(
@@ -668,6 +683,9 @@ class SubscriptionsManager {
           userLogger.warn(
             "[SubscriptionsManager] Preserving cached subscriptions despite decryption failure.",
           );
+          this.scheduleDecryptRetry(normalizedUserPubkey, decryptResult.error, {
+            allowPermissionPrompt,
+          });
           return;
         }
         if (!this.loaded) {
@@ -676,6 +694,9 @@ class SubscriptionsManager {
           this.subsEventCreatedAt = null;
           this.loaded = true;
         }
+        this.scheduleDecryptRetry(normalizedUserPubkey, decryptResult.error, {
+          allowPermissionPrompt,
+        });
         return;
       }
 
@@ -825,11 +846,21 @@ class SubscriptionsManager {
     const loader = this.loadSubscriptions(normalizedActor, options);
     this.loadingPromise = loader;
 
+    // Clean up loadingPromise when the actual loader completes rather than
+    // when the timeout fires.  This prevents a second ensureLoaded() call
+    // from starting a duplicate load while the first is still in-flight.
+    const cleanup = () => {
+      if (this.loadingPromise === loader) {
+        this.loadingPromise = null;
+      }
+    };
+    loader.then(cleanup, cleanup);
+
     try {
       // Race against a timeout so the UI doesn't hang indefinitely if relays stall.
-      // The timeout must accommodate relay fetch (~12s) + decryption (~3-12s per
-      // scheme attempt), so we use 30s to give the full pipeline enough room.
-      const timeoutMs = 30000;
+      // The timeout must accommodate relay fetch (~12s) + decryption (~20s timeout
+      // with ~5s per scheme attempt × up to 3 schemes), so we use 45s.
+      const timeoutMs = 45000;
       await Promise.race([
         loader,
         new Promise((_, reject) =>
@@ -842,8 +873,11 @@ class SubscriptionsManager {
       devLogger.log("[SubscriptionsManager] ensureLoaded success");
     } catch (error) {
       userLogger.warn("[SubscriptionsManager] ensureLoaded timed out or failed:", error);
-    } finally {
-      this.loadingPromise = null;
+      // Mark as loaded so the UI can proceed.  The background loader will
+      // continue and emit a "change" event if it eventually succeeds.
+      if (!this.loaded) {
+        this.loaded = true;
+      }
     }
   }
 
