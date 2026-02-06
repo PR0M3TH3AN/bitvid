@@ -160,26 +160,30 @@ function buildTagVector(item) {
   return vector;
 }
 
+function normalizeVector(vector) {
+  if (!vector || vector.size === 0) {
+    return vector;
+  }
+  let norm = 0;
+  for (const value of vector.values()) {
+    norm += value * value;
+  }
+  norm = Math.sqrt(norm);
+  if (norm > 0) {
+    for (const [tag, value] of vector.entries()) {
+      vector.set(tag, value / norm);
+    }
+  }
+  return vector;
+}
+
 function cosineSimilarity(vectorA, vectorB) {
   if (!vectorA || !vectorB || vectorA.size === 0 || vectorB.size === 0) {
     return 0;
   }
 
+  // Vectors are assumed to be normalized, so cosine similarity is just the dot product.
   let dot = 0;
-  let normA = 0;
-  let normB = 0;
-
-  for (const value of vectorA.values()) {
-    normA += value * value;
-  }
-  for (const value of vectorB.values()) {
-    normB += value * value;
-  }
-
-  if (!Number.isFinite(normA) || !Number.isFinite(normB) || normA <= 0 || normB <= 0) {
-    return 0;
-  }
-
   const smaller = vectorA.size <= vectorB.size ? vectorA : vectorB;
   const larger = smaller === vectorA ? vectorB : vectorA;
 
@@ -190,17 +194,13 @@ function cosineSimilarity(vectorA, vectorB) {
     }
   }
 
-  const similarity = dot / (Math.sqrt(normA) * Math.sqrt(normB));
-  if (!Number.isFinite(similarity)) {
-    return 0;
-  }
-  if (similarity > 1) {
+  if (dot > 1) {
     return 1;
   }
-  if (similarity < -1) {
+  if (dot < -1) {
     return -1;
   }
-  return similarity;
+  return dot;
 }
 
 function resolveItemTimestamp(item) {
@@ -294,8 +294,12 @@ export function createExploreDiversitySorter({
     };
 
     const vectors = new Map();
+    const scores = new Map();
     for (const item of candidates) {
-      vectors.set(item, buildTagVector(item));
+      const vec = buildTagVector(item);
+      normalizeVector(vec);
+      vectors.set(item, vec);
+      scores.set(item, normalizeScore(item?.metadata?.exploreScore));
     }
 
     const selected = [];
@@ -340,7 +344,9 @@ export function createExploreDiversitySorter({
       let bestRawScore = Number.NEGATIVE_INFINITY;
 
       for (const candidate of remaining) {
-        const rawScore = normalizeScore(candidate?.metadata?.exploreScore);
+        const rawScore = scores.get(candidate);
+
+        // Track best raw score candidate (for why logging)
         if (rawScore > bestRawScore) {
           bestRawScore = rawScore;
           bestRawCandidate = candidate;
@@ -350,10 +356,7 @@ export function createExploreDiversitySorter({
             bestRawCandidate = candidate;
           }
         }
-      }
 
-      for (const candidate of remaining) {
-        const rawScore = normalizeScore(candidate?.metadata?.exploreScore);
         const state = candidateState.get(candidate);
         const penalty = state.maxSimilarity;
         const similarItemId = state.similarItemId;
