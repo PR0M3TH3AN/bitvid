@@ -21,9 +21,9 @@ describe("NIP-07 Concurrency Queue", () => {
     global.window = originalWindow;
   });
 
-  test("runs up to 2 tasks concurrently", async () => {
+  test("runs up to 3 tasks concurrently", async () => {
     const start = Date.now();
-    const delays = [200, 200, 100];
+    const delays = [200, 200, 200, 100];
     const log = [];
 
     const task = (id, delay) => async () => {
@@ -36,17 +36,18 @@ describe("NIP-07 Concurrency Queue", () => {
     const p1 = runNip07WithRetry(task(1, delays[0]), { priority: NIP07_PRIORITY.NORMAL });
     const p2 = runNip07WithRetry(task(2, delays[1]), { priority: NIP07_PRIORITY.NORMAL });
     const p3 = runNip07WithRetry(task(3, delays[2]), { priority: NIP07_PRIORITY.NORMAL });
+    const p4 = runNip07WithRetry(task(4, delays[3]), { priority: NIP07_PRIORITY.NORMAL });
 
-    await Promise.all([p1, p2, p3]);
+    await Promise.all([p1, p2, p3, p4]);
 
     const starts = log.filter(e => e.status === 'start');
 
-    // Task 1 and 2 should start almost immediately (concurrency 2)
-    assert.ok(Math.abs(starts[0].time - starts[1].time) < 50, "Task 1 and 2 should start concurrently");
+    // Task 1, 2, 3 should start almost immediately (concurrency 3)
+    assert.ok(Math.abs(starts[0].time - starts[2].time) < 50, "Task 1, 2, 3 should start concurrently");
 
-    // Task 3 should start after roughly 200ms (when slot opens)
+    // Task 4 should start after roughly 200ms (when slot opens)
     // Note: Node's setTimeout is not precise, so we use loose bounds
-    assert.ok(starts[2].time >= 150, "Task 3 should wait for a slot");
+    assert.ok(starts[3].time >= 150, "Task 4 should wait for a slot");
   });
 
   test("respects priority", async () => {
@@ -59,9 +60,10 @@ describe("NIP-07 Concurrency Queue", () => {
       return id;
     };
 
-    // Fill the queue (size 2)
+    // Fill the queue (size 3)
     runNip07WithRetry(task('blocker1', 100));
     runNip07WithRetry(task('blocker2', 100));
+    runNip07WithRetry(task('blocker3', 100));
 
     // Enqueue low priority
     const pLow = runNip07WithRetry(task('low', 50), { priority: NIP07_PRIORITY.LOW });

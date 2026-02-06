@@ -970,7 +970,7 @@ class SubscriptionsManager {
     // loads get more time because the user may be approving a popup.
     const nip07DecryptTimeoutMs = allowPermissionPrompt ? 15000 : 5000;
     const signerDecryptOptions = {
-      priority: NIP07_PRIORITY.HIGH,
+      priority: NIP07_PRIORITY.NORMAL,
       timeoutMs: nip07DecryptTimeoutMs,
       retryMultiplier: 1,
     };
@@ -992,7 +992,7 @@ class SubscriptionsManager {
 
     if (nostrApi) {
       const decrypterOptions = {
-        priority: NIP07_PRIORITY.HIGH,
+        priority: NIP07_PRIORITY.NORMAL,
         timeoutMs: nip07DecryptTimeoutMs,
         retryMultiplier: 1,
       };
