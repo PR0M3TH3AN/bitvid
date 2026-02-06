@@ -1043,7 +1043,7 @@ class UserBlockListManager {
       // during login (3s) instead of using the 60s default. This prevents a
       // single stalled extension call from blocking the entire decrypt pipeline.
       const signerDecryptOptions = {
-        priority: NIP07_PRIORITY.NORMAL,
+        priority: NIP07_PRIORITY.HIGH,
         timeoutMs: nip07DecryptTimeoutMs,
         retryMultiplier: 1,
       };
@@ -1074,7 +1074,7 @@ class UserBlockListManager {
 
       const nostrApi = typeof window !== "undefined" ? window?.nostr : null;
       const decrypterOptions = {
-        priority: NIP07_PRIORITY.NORMAL,
+        priority: NIP07_PRIORITY.HIGH,
         timeoutMs: nip07DecryptTimeoutMs,
         retryMultiplier: 1,
       };
