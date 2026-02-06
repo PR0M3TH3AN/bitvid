@@ -31,8 +31,11 @@ const LOG_PREFIX = "[HashtagPreferences]";
 const HASHTAG_IDENTIFIER = "bitvid:tag-preferences";
 const HEX64_REGEX = /^[0-9a-f]{64}$/i;
 const DEFAULT_VERSION = 1;
-const DECRYPT_TIMEOUT_MS = 90000;
+const DECRYPT_TIMEOUT_MS = 20000;
 const DECRYPT_RETRY_DELAY_MS = 10000;
+const DECRYPTION_CACHE_TTL_MS = 10 * 60 * 1000;
+
+const decryptionSuccessCache = new Map();
 
 class TinyEventEmitter {
   constructor() {
@@ -196,10 +199,14 @@ function extractEncryptionHints(event) {
   return hints;
 }
 
-function determineDecryptionOrder(event, availableSchemes) {
+function determineDecryptionOrder(event, availableSchemes, cachedScheme = null) {
   const available = Array.isArray(availableSchemes) ? availableSchemes : [];
   const availableSet = new Set(available);
   const prioritized = [];
+
+  if (cachedScheme && availableSet.has(cachedScheme)) {
+    prioritized.push(cachedScheme);
+  }
 
   const hints = extractEncryptionHints(event);
   const aliasMap = {
@@ -942,7 +949,7 @@ class HashtagPreferencesService {
     // Use a shorter per-call timeout during background/login loads so stalled
     // extension calls fail fast. Interactive loads (with permission prompts)
     // get more time because the user may be approving a popup.
-    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 12000 : 5000;
+    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 15000 : 5000;
     const signerDecryptOptions = {
       priority: NIP07_PRIORITY.HIGH,
       timeoutMs: nip07DecryptTimeoutMs,
@@ -1058,7 +1065,17 @@ class HashtagPreferencesService {
       return { ok: false, error };
     }
 
-    const order = determineDecryptionOrder(event, Array.from(decryptors.keys()));
+    const cachedEntry = decryptionSuccessCache.get(userPubkey);
+    const cachedScheme =
+      cachedEntry && Date.now() - cachedEntry.timestamp < DECRYPTION_CACHE_TTL_MS
+        ? cachedEntry.scheme
+        : null;
+
+    const order = determineDecryptionOrder(
+      event,
+      Array.from(decryptors.keys()),
+      cachedScheme,
+    );
     const attemptErrors = [];
 
     for (const scheme of order) {
@@ -1083,6 +1100,10 @@ class HashtagPreferencesService {
           });
           continue;
         }
+        decryptionSuccessCache.set(userPubkey, {
+          scheme,
+          timestamp: Date.now(),
+        });
         return { ok: true, plaintext, scheme };
       } catch (error) {
         if (source === "extension") {

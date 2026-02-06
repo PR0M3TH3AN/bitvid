@@ -90,7 +90,10 @@ import {
   onActiveSignerChanged,
 } from "./nostrClientRegistry.js";
 import { queueSignEvent } from "./nostr/signRequestQueue.js";
-import { DEFAULT_NIP07_CORE_METHODS } from "./nostr/nip07Permissions.js";
+import {
+  DEFAULT_NIP07_CORE_METHODS,
+  DEFAULT_NIP07_PERMISSION_METHODS,
+} from "./nostr/nip07Permissions.js";
 import {
   initViewCounter,
   subscribeToVideoViewCount,
@@ -4281,20 +4284,38 @@ class Application {
     // Start list loading as soon as relays are ready — lists don't depend on
     // profile data, only on relay URLs. This runs in parallel with profile
     // fetching instead of sequentially after it.
-    const listStatePromise = relaysReadyPromise.then(() => {
-      const tasks = [];
-      if (activePubkey && typeof this.authService.loadBlocksForPubkey === "function") {
-        tasks.push(
-          this.authService
-            .loadBlocksForPubkey(activePubkey, { allowPermissionPrompt: false })
-            .catch((error) => {
-              devLogger.warn(
-                "[Application] Failed to load blocks during login:",
-                error,
-              );
-              throw error;
-            }),
-        );
+    const listStatePromise = relaysReadyPromise.then(async () => {
+      // PRE-AUTH: Request full permissions once so subsequent services don't spam prompts.
+      if (activePubkey) {
+        try {
+          const signer = await nostrClient.ensureActiveSignerForPubkey(
+            activePubkey,
+          );
+          if (signer?.type === "extension" || signer?.type === "nip07") {
+            await nostrClient.ensureExtensionPermissions(
+              DEFAULT_NIP07_PERMISSION_METHODS,
+            );
+          }
+        } catch (error) {
+          devLogger.warn("[Application] Pre-authorization failed:", error);
+        }
+      }
+
+      // SEQUENTIAL LOAD: Ensure critical lists (blocks) load before content filters.
+      if (
+        activePubkey &&
+        typeof this.authService.loadBlocksForPubkey === "function"
+      ) {
+        try {
+          await this.authService.loadBlocksForPubkey(activePubkey, {
+            allowPermissionPrompt: false,
+          });
+        } catch (error) {
+          devLogger.warn(
+            "[Application] Failed to load blocks during login:",
+            error,
+          );
+        }
       }
 
       if (
@@ -4302,40 +4323,44 @@ class Application {
         subscriptions &&
         typeof subscriptions.ensureLoaded === "function"
       ) {
-        tasks.push(
-          subscriptions.ensureLoaded(activePubkey, {
+        try {
+          await subscriptions.ensureLoaded(activePubkey, {
             allowPermissionPrompt: false,
-          })
-            .then(() => {
-              this.capturePermissionPromptFromError(
-                subscriptions?.lastLoadError,
-              );
-            })
-            .catch((error) => {
-              devLogger.warn(
-                "[Application] Failed to load subscriptions during login:",
-                error,
-              );
-              this.capturePermissionPromptFromError(error);
-              throw error;
-            }),
-        );
+          });
+          this.capturePermissionPromptFromError(subscriptions?.lastLoadError);
+        } catch (error) {
+          devLogger.warn(
+            "[Application] Failed to load subscriptions during login:",
+            error,
+          );
+          this.capturePermissionPromptFromError(error);
+        }
       }
 
-      if (!tasks.length) {
-        this.updateAuthLoadingState({ lists: "idle" });
-        return Promise.resolve(true);
+      if (
+        activePubkey &&
+        this.hashtagPreferences &&
+        typeof this.hashtagPreferences.load === "function"
+      ) {
+        try {
+          await this.hashtagPreferences.load(activePubkey, {
+            allowPermissionPrompt: false,
+          });
+          this.capturePermissionPromptFromError(
+            this.hashtagPreferences?.lastLoadError,
+          );
+          this.updateCachedHashtagPreferences();
+        } catch (error) {
+          devLogger.warn(
+            "[Application] Failed to load hashtag preferences during login:",
+            error,
+          );
+          this.capturePermissionPromptFromError(error);
+        }
       }
 
-      return Promise.allSettled(tasks).then((results) => {
-        const success = results.every(
-          (result) => result.status === "fulfilled",
-        );
-        this.updateAuthLoadingState({
-          lists: success ? "ready" : "error",
-        });
-        return success;
-      });
+      this.updateAuthLoadingState({ lists: "ready" });
+      return true;
     });
 
     // DMs can wait for profile since they need encryption context.
@@ -4379,36 +4404,6 @@ class Application {
               "[Application] Failed to hydrate NWC settings during login:",
               error,
             );
-          });
-      }
-      return Promise.resolve();
-    });
-
-    // Hashtag preferences drive feed filtering — start as soon as relays are ready.
-    const hashtagPreferencesPromise = relaysReadyPromise.then(() => {
-      if (
-        activePubkey &&
-        this.hashtagPreferences &&
-        typeof this.hashtagPreferences.load === "function"
-      ) {
-        return this.hashtagPreferences
-          .load(activePubkey, {
-            allowPermissionPrompt: false,
-          })
-          .then(() => {
-            this.capturePermissionPromptFromError(
-              this.hashtagPreferences?.lastLoadError,
-            );
-            // Ensure the cached snapshot is updated before the feed renders
-            // so the feed engine has access to interests/disinterests.
-            this.updateCachedHashtagPreferences();
-          })
-          .catch((error) => {
-            devLogger.warn(
-              "[Application] Failed to load hashtag preferences during login:",
-              error,
-            );
-            this.capturePermissionPromptFromError(error);
           });
       }
       return Promise.resolve();
