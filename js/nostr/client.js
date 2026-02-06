@@ -4645,6 +4645,24 @@ export class NostrClient {
 
     const creation = Promise.resolve().then(() => {
       const instance = new SimplePool();
+
+      // Increase max listeners for relays managed by this pool to avoid
+      // warnings during high-concurrency fetches (e.g. login sync).
+      if (typeof instance.ensureRelay === "function") {
+        const originalEnsureRelay = instance.ensureRelay.bind(instance);
+        instance.ensureRelay = async (url) => {
+          const relay = await originalEnsureRelay(url);
+          if (relay && typeof relay.setMaxListeners === "function") {
+            try {
+              relay.setMaxListeners(100);
+            } catch (error) {
+              // ignore
+            }
+          }
+          return relay;
+        };
+      }
+
       shimLegacySimplePoolMethods(instance);
       this.pool = instance;
       return instance;

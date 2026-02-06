@@ -79,10 +79,13 @@ export const USER_BLOCK_EVENTS = Object.freeze({
 const FAST_BLOCKLIST_RELAY_LIMIT = 3;
 const FAST_BLOCKLIST_TIMEOUT_MS = 2500;
 const BACKGROUND_BLOCKLIST_TIMEOUT_MS = 6000;
-const DECRYPT_TIMEOUT_MS = 30000;
+const DECRYPT_TIMEOUT_MS = 20000;
 const BACKGROUND_DECRYPT_TIMEOUT_MS = 15000;
 const DECRYPT_RETRY_DELAY_MS = 10000;
 const MAX_BLOCKLIST_ENTRIES = 5000;
+const DECRYPTION_CACHE_TTL_MS = 10 * 60 * 1000;
+
+const decryptionSuccessCache = new Map();
 
 function sanitizeRelayList(candidate) {
   return Array.isArray(candidate)
@@ -152,10 +155,14 @@ function extractEncryptionHints(event) {
   return hints;
 }
 
-function determineDecryptionOrder(event, availableSchemes) {
+function determineDecryptionOrder(event, availableSchemes, cachedScheme = null) {
   const available = Array.isArray(availableSchemes) ? availableSchemes : [];
   const availableSet = new Set(available);
   const prioritized = [];
+
+  if (cachedScheme && availableSet.has(cachedScheme)) {
+    prioritized.push(cachedScheme);
+  }
 
   const hints = extractEncryptionHints(event);
   const aliasMap = {
@@ -883,16 +890,20 @@ class UserBlockListManager {
       ? Math.max(0, Math.floor(options.since))
       : null;
     const statusCallback =
-      typeof options?.statusCallback === "function" ? options.statusCallback : null;
-    const loadMode = options?.mode === "background" ? "background" : "interactive";
+      typeof options?.statusCallback === "function"
+        ? options.statusCallback
+        : null;
+    const loadMode =
+      options?.mode === "background" ? "background" : "interactive";
     const allowPermissionPrompt =
       options?.allowPermissionPrompt !== false && loadMode !== "background";
     const decryptTimeoutMs = Number.isFinite(options?.decryptTimeoutMs)
       ? Math.max(0, Math.floor(options.decryptTimeoutMs))
       : allowPermissionPrompt
-        ? DECRYPT_TIMEOUT_MS
-        : BACKGROUND_DECRYPT_TIMEOUT_MS;
-    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 12000 : 3000;
+      ? DECRYPT_TIMEOUT_MS
+      : BACKGROUND_DECRYPT_TIMEOUT_MS;
+    // Fail fast if we can't prompt, otherwise allow more time.
+    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 15000 : 3000;
 
     const emitStatus = (detail) => {
       if (!detail || typeof detail !== "object") {
@@ -1032,7 +1043,11 @@ class UserBlockListManager {
       const decryptors = new Map();
       const sources = new Map();
       const registerDecryptor = (scheme, handler, source) => {
-        if (!scheme || typeof handler !== "function" || decryptors.has(scheme)) {
+        if (
+          !scheme ||
+          typeof handler !== "function" ||
+          decryptors.has(scheme)
+        ) {
           return;
         }
         decryptors.set(scheme, handler);
@@ -1042,8 +1057,9 @@ class UserBlockListManager {
       // Pass per-call timeouts to signer decrypt methods so they fail fast
       // during login (3s) instead of using the 60s default. This prevents a
       // single stalled extension call from blocking the entire decrypt pipeline.
+      // Use HIGH priority for user blocks as they are critical for feed safety.
       const signerDecryptOptions = {
-        priority: NIP07_PRIORITY.NORMAL,
+        priority: NIP07_PRIORITY.HIGH,
         timeoutMs: nip07DecryptTimeoutMs,
         retryMultiplier: 1,
       };
@@ -1074,7 +1090,7 @@ class UserBlockListManager {
 
       const nostrApi = typeof window !== "undefined" ? window?.nostr : null;
       const decrypterOptions = {
-        priority: NIP07_PRIORITY.NORMAL,
+        priority: NIP07_PRIORITY.HIGH,
         timeoutMs: nip07DecryptTimeoutMs,
         retryMultiplier: 1,
       };
@@ -1140,11 +1156,21 @@ class UserBlockListManager {
         permissionError.signerStatus = signerStatus;
       }
 
+      const cachedEntry = decryptionSuccessCache.get(normalized);
+      const cachedScheme =
+        cachedEntry && Date.now() - cachedEntry.timestamp < DECRYPTION_CACHE_TTL_MS
+          ? cachedEntry.scheme
+          : null;
+
       return {
         decryptors,
         sources,
         permissionError,
-        order: determineDecryptionOrder(event, Array.from(decryptors.keys())),
+        order: determineDecryptionOrder(
+          event,
+          Array.from(decryptors.keys()),
+          cachedScheme,
+        ),
         signerStatus,
       };
     };
@@ -1285,6 +1311,10 @@ class UserBlockListManager {
               const plaintext = await handler(ev.content);
               if (typeof plaintext === "string") {
                 decryptedText = plaintext;
+                decryptionSuccessCache.set(normalized, {
+                  scheme,
+                  timestamp: Date.now(),
+                });
                 break;
               }
             } catch {

@@ -40,8 +40,11 @@ import { relaySubscriptionService } from "./services/relaySubscriptionService.js
 
 const SUBSCRIPTION_SET_KIND =
   getNostrEventSchema(NOTE_TYPES.SUBSCRIPTION_LIST)?.kind ?? 30000;
-const DECRYPT_TIMEOUT_MS = 90000;
+const DECRYPT_TIMEOUT_MS = 20000;
 const DECRYPT_RETRY_DELAY_MS = 10000;
+const DECRYPTION_CACHE_TTL_MS = 10 * 60 * 1000;
+
+const decryptionSuccessCache = new Map();
 
 function normalizeHexPubkey(value) {
   if (typeof value !== "string") {
@@ -110,10 +113,15 @@ function extractEncryptionHints(event) {
   return hints;
 }
 
-function determineDecryptionOrder(event, availableSchemes) {
+function determineDecryptionOrder(event, availableSchemes, cachedScheme = null) {
   const available = Array.isArray(availableSchemes) ? availableSchemes : [];
   const availableSet = new Set(available);
   const prioritized = [];
+
+  if (cachedScheme && availableSet.has(cachedScheme)) {
+    prioritized.push(cachedScheme);
+  }
+
   const hasNip44 =
     availableSet.has("nip44_v2") || availableSet.has("nip44");
   const allowNip04 = !hasNip44 && availableSet.has("nip04");
@@ -960,7 +968,7 @@ class SubscriptionsManager {
     // Use a shorter per-call timeout during background/login loads (no
     // permission prompt) so stalled extension calls fail fast. Interactive
     // loads get more time because the user may be approving a popup.
-    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 12000 : 5000;
+    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 15000 : 5000;
     const signerDecryptOptions = {
       priority: NIP07_PRIORITY.HIGH,
       timeoutMs: nip07DecryptTimeoutMs,
@@ -1054,7 +1062,17 @@ class SubscriptionsManager {
     }
 
     const availableSchemes = Array.from(decryptors.keys());
-    const order = determineDecryptionOrder(event, availableSchemes);
+    const cachedEntry = decryptionSuccessCache.get(userPubkey);
+    const cachedScheme =
+      cachedEntry && Date.now() - cachedEntry.timestamp < DECRYPTION_CACHE_TTL_MS
+        ? cachedEntry.scheme
+        : null;
+
+    const order = determineDecryptionOrder(
+      event,
+      availableSchemes,
+      cachedScheme,
+    );
     const attemptErrors = [];
 
     for (const scheme of order) {
@@ -1070,6 +1088,10 @@ class SubscriptionsManager {
           attemptErrors.push({ scheme, error });
           continue;
         }
+        decryptionSuccessCache.set(userPubkey, {
+          scheme,
+          timestamp: Date.now(),
+        });
         return { ok: true, plaintext, scheme };
       } catch (error) {
         attemptErrors.push({ scheme, error });
