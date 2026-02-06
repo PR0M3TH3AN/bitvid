@@ -635,12 +635,35 @@ export class NostrService {
       logger: userLogger,
     });
     this.dmPreviewCache = new LRUCache({ maxSize: DM_PREVIEW_CACHE_LIMIT });
+    this._dmBlockChecker = null;
     try {
       if (this.moderationService && typeof this.moderationService.setNostrClient === "function") {
         this.moderationService.setNostrClient(this.nostrClient);
       }
     } catch (error) {
       userLogger.warn("[nostrService] Failed to attach moderation service", error);
+    }
+  }
+
+  setDmBlockChecker(checker) {
+    this._dmBlockChecker =
+      typeof checker === "function" ? checker : null;
+  }
+
+  _isDmRemoteBlocked(message, actorPubkey) {
+    if (typeof this._dmBlockChecker !== "function") {
+      return false;
+    }
+    try {
+      const actor = normalizeHexPubkey(actorPubkey || this.dmActorPubkey || "");
+      const remote = resolveDirectMessageRemotePubkey(message, actor);
+      if (!remote) {
+        return false;
+      }
+      return this._dmBlockChecker(remote);
+    } catch (error) {
+      devLogger.warn("[nostrService] Block check failed for DM", error);
+      return false;
     }
   }
 
@@ -810,6 +833,13 @@ export class NostrService {
       return null;
     }
 
+    if (this._isDmRemoteBlocked(message, actorPubkey)) {
+      devLogger.log("[nostrService] Skipping persist for blocked DM sender", {
+        id: record.id,
+      });
+      return null;
+    }
+
     try {
       await writeMessages(record);
       const notificationResult = await this.dmNotificationManager.recordMessage({
@@ -873,6 +903,11 @@ export class NostrService {
 
     const normalized = normalizeDirectMessagePayload(message);
     if (!normalized) {
+      return;
+    }
+
+    if (this._isDmRemoteBlocked(normalized)) {
+      devLogger.log("[nostrService] Dropping DM from blocked user", { eventId });
       return;
     }
 

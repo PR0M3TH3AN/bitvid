@@ -798,8 +798,28 @@ export default class ApplicationBootstrap {
       try {
         const summaries =
           await app.nostrService.listDirectMessageConversationSummaries();
+        const actorHex =
+          typeof app.normalizeHexPubkey === "function" && app.pubkey
+            ? app.normalizeHexPubkey(app.pubkey)
+            : "";
+        const canCheckBlock =
+          userBlocks && typeof userBlocks.isBlocked === "function";
         const totalUnseen = Array.isArray(summaries)
           ? summaries.reduce((sum, summary) => {
+              if (canCheckBlock && actorHex && summary?.conversation_id) {
+                const parts = summary.conversation_id.split(":");
+                const remote =
+                  parts.length === 3 && parts[0] === "dm"
+                    ? parts[1] === actorHex
+                      ? parts[2]
+                      : parts[2] === actorHex
+                        ? parts[1]
+                        : ""
+                    : "";
+                if (remote && userBlocks.isBlocked(remote)) {
+                  return sum;
+                }
+              }
               const count = Number(summary?.unseen_count);
               return sum + (Number.isFinite(count) ? count : 0);
             }, 0)

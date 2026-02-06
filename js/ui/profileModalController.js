@@ -4197,7 +4197,15 @@ export class ProfileModalController {
       };
     }
 
-    const threads = this.groupDirectMessages(messages, actor);
+    const allThreads = this.groupDirectMessages(messages, actor);
+    const blocksService = this.services.userBlocks;
+    const isRemoteBlocked =
+      blocksService && typeof blocksService.isBlocked === "function"
+        ? (pubkey) => blocksService.isBlocked(pubkey)
+        : () => false;
+    const threads = allThreads.filter(
+      (thread) => !thread.remoteHex || !isRemoteBlocked(thread.remoteHex),
+    );
     const remoteKeys = new Set();
     threads.forEach((thread) => {
       if (thread.remoteHex) {
