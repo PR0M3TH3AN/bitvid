@@ -902,8 +902,11 @@ class UserBlockListManager {
       : allowPermissionPrompt
       ? DECRYPT_TIMEOUT_MS
       : BACKGROUND_DECRYPT_TIMEOUT_MS;
-    // Fail fast if we can't prompt, otherwise allow more time.
-    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 15000 : 3000;
+    // PERF: Previous 3s no-prompt timeout was too aggressive — extensions that
+    // have already granted permission still need time to decrypt. 8s gives a
+    // realistic window while still failing faster than the full 15s interactive
+    // timeout.
+    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 15000 : 8000;
 
     const emitStatus = (detail) => {
       if (!detail || typeof detail !== "object") {
@@ -1303,23 +1306,41 @@ class UserBlockListManager {
             throw error;
           }
 
+          // PERF: Try all decryption schemes in parallel via Promise.any().
+          // The first scheme to succeed wins, avoiding sequential 3-15s timeouts
+          // per scheme that previously made worst-case decryption take 45s+.
+          // Deduplicate schemes in the same family (nip44/nip44_v2 both call
+          // the same underlying signer.nip44Decrypt) to avoid redundant calls.
           let decryptedText = "";
-          for (const scheme of order) {
-            const handler = decryptors.get(scheme);
-            if (typeof handler !== "function") continue;
-            try {
-              const plaintext = await handler(ev.content);
-              if (typeof plaintext === "string") {
-                decryptedText = plaintext;
-                decryptionSuccessCache.set(normalized, {
-                  scheme,
-                  timestamp: Date.now(),
+          try {
+            const getSchemeFamily = (s) =>
+              s === "nip44" || s === "nip44_v2" ? "nip44" : s;
+            const seenFamilies = new Set();
+            const attempts = order
+              .map((scheme) => {
+                const family = getSchemeFamily(scheme);
+                if (seenFamilies.has(family)) return null;
+                seenFamilies.add(family);
+                const handler = decryptors.get(scheme);
+                if (typeof handler !== "function") return null;
+                return handler(ev.content).then((plaintext) => {
+                  if (typeof plaintext !== "string") {
+                    throw new Error("non-string-result");
+                  }
+                  return { plaintext, scheme };
                 });
-                break;
-              }
-            } catch {
-              // ignore
+              })
+              .filter(Boolean);
+            if (attempts.length) {
+              const result = await Promise.any(attempts);
+              decryptedText = result.plaintext;
+              decryptionSuccessCache.set(normalized, {
+                scheme: result.scheme,
+                timestamp: Date.now(),
+              });
             }
+          } catch {
+            // All schemes failed — decryptedText stays empty
           }
 
           if (!decryptedText) {

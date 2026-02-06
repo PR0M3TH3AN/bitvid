@@ -946,10 +946,11 @@ class HashtagPreferencesService {
       sources.set(scheme, source);
     };
 
-    // Use a shorter per-call timeout during background/login loads so stalled
-    // extension calls fail fast. Interactive loads (with permission prompts)
-    // get more time because the user may be approving a popup.
-    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 15000 : 5000;
+    // PERF: Previous 5s no-prompt timeout was too aggressive — extensions that
+    // have already granted permission still need time to decrypt. 8s gives a
+    // realistic window while still failing faster than the full 15s interactive
+    // timeout.
+    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 15000 : 8000;
     const signerDecryptOptions = {
       priority: NIP07_PRIORITY.NORMAL,
       timeoutMs: nip07DecryptTimeoutMs,
@@ -1076,52 +1077,55 @@ class HashtagPreferencesService {
       Array.from(decryptors.keys()),
       cachedScheme,
     );
-    const attemptErrors = [];
+    // PERF: Try all decryption schemes in parallel via Promise.any().
+    // The first scheme to succeed wins, avoiding sequential 3-15s timeouts
+    // per scheme that previously made worst-case decryption take 45s+.
+    // Deduplicate schemes in the same family (nip44/nip44_v2 both call
+    // the same underlying signer.nip44Decrypt) to avoid redundant calls.
+    const getSchemeFamily = (s) =>
+      s === "nip44" || s === "nip44_v2" ? "nip44" : s;
+    const seenFamilies = new Set();
+    const attempts = order
+      .map((scheme) => {
+        const family = getSchemeFamily(scheme);
+        if (seenFamilies.has(family)) return null;
+        seenFamilies.add(family);
+        const decryptFn = decryptors.get(scheme);
+        if (!decryptFn) return null;
+        return decryptFn(ciphertext).then((plaintext) => {
+          if (typeof plaintext !== "string") {
+            throw new Error("Decryption returned non-string payload.");
+          }
+          return { plaintext, scheme };
+        });
+      })
+      .filter(Boolean);
 
-    for (const scheme of order) {
-      const decryptFn = decryptors.get(scheme);
-      if (!decryptFn) {
-        continue;
-      }
-      const source = sources.get(scheme);
-
-      if (source === "extension") {
-        userLogger.info(
-          `${LOG_PREFIX} Attempting decryption via window.nostr fallback (${scheme})`,
-        );
-      }
-
+    if (attempts.length) {
       try {
-        const plaintext = await decryptFn(ciphertext);
-        if (typeof plaintext !== "string") {
-          attemptErrors.push({
-            scheme,
-            error: new Error("Decryption returned non-string payload."),
-          });
-          continue;
-        }
+        const result = await Promise.any(attempts);
         decryptionSuccessCache.set(userPubkey, {
-          scheme,
+          scheme: result.scheme,
           timestamp: Date.now(),
         });
-        return { ok: true, plaintext, scheme };
-      } catch (error) {
-        if (source === "extension") {
-          userLogger.warn(
-            `${LOG_PREFIX} window.nostr fallback decryption failed (${scheme})`,
-            error,
-          );
+        return { ok: true, plaintext: result.plaintext, scheme: result.scheme };
+      } catch (aggregateError) {
+        const attemptErrors = (aggregateError.errors || []).map((err, i) => ({
+          scheme: order[i] || "unknown",
+          error: err,
+        }));
+        const error = new Error("Failed to decrypt hashtag preferences.");
+        error.code = "hashtag-preferences-decrypt-failed";
+        if (attemptErrors.length) {
+          error.cause = attemptErrors;
         }
-        attemptErrors.push({ scheme, error });
+        return { ok: false, error, errors: attemptErrors };
       }
     }
 
     const error = new Error("Failed to decrypt hashtag preferences.");
     error.code = "hashtag-preferences-decrypt-failed";
-    if (attemptErrors.length) {
-      error.cause = attemptErrors;
-    }
-    return { ok: false, error, errors: attemptErrors };
+    return { ok: false, error, errors: [] };
   }
 
   async publish(options = {}) {
