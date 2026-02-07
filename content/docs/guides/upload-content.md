@@ -41,6 +41,8 @@ Before you start, ensure your content meets the following requirements:
 To allow your browser to upload files directly to the storage bucket, you must allow Cross-Origin Resource Sharing (CORS).
 
 **Cloudflare R2 (Manual Configuration Required):**
+bitvid will attempt to configure CORS automatically if your API keys have "Admin Read & Write" permissions. However, standard "Object Read & Write" tokens (recommended) cannot modify bucket settings, so you must configure this manually:
+
 1. In your bucket's **Settings** tab, scroll down to **"CORS Policy"**.
 2. Click **"Add CORS Policy"** (or Edit).
 3. Paste the following JSON configuration. You **must** allow headers used by the AWS SDK (`amz-sdk-*`).
@@ -56,7 +58,7 @@ To allow your browser to upload files directly to the storage bucket, you must a
   }
 ]
 ```
-> **Note:** Replace `AllowedOrigins` with your actual origins (e.g. `http://localhost:5500` for local development, or `https://your-custom-domain.com`).
+> **Note:** Replace `AllowedOrigins` with your actual origins. If you are using the official site, keep `https://bitvid.network`. If you are running a local instance, use `http://localhost:5500`.
 
 **S3 Compatible Providers:**
 bitvid will attempt to configure CORS automatically for generic S3 providers if your credentials have sufficient permissions. However, if uploads fail with CORS errors, apply a similar policy manually in your provider's console.
@@ -71,16 +73,20 @@ bitvid will attempt to configure CORS automatically for generic S3 providers if 
 
 1. In bitvid, open your **Profile** (click your avatar).
 2. Navigate to the **Storage** tab in the sidebar menu (or click **"Configure Storage"** in the Upload Modal).
-3. Click **"Add Connection"** (or use the default form).
-4. Select **Cloudflare R2** or **S3 Compatible**.
-5. Enter your credentials:
-   - **Account ID** (R2 only)
-   - **Access Key ID**
-   - **Secret Access Key**
-   - **Bucket Name**
-   - **Public Access URL** (The URL from Step 1)
-   - **Endpoint** (S3 Compatible only)
-6. Click **"Save Connection"**.
+3. Select **Cloudflare R2** or **S3 Compatible** from the dropdown.
+4. Enter your credentials:
+   - **Cloudflare R2**:
+     - **Account ID**: Found in your Cloudflare dashboard sidebar.
+     - **Access Key ID & Secret Access Key**: From Step 3.
+     - **Bucket Name**: The exact name of your bucket.
+     - **Public Access URL**: The R2.dev or custom domain URL from Step 1 (e.g., `https://pub-xxx.r2.dev`).
+   - **S3 Compatible**:
+     - **Endpoint**: The S3 API endpoint (e.g., `https://s3.us-east-1.amazonaws.com`).
+     - **Region**: (e.g., `us-east-1` or `auto`).
+     - **Access Key ID & Secret Access Key**: From Step 3.
+     - **Bucket Name**: The exact name of your bucket.
+     - **Public Access URL**: The base URL for public file access (e.g., `https://my-bucket.s3.amazonaws.com` or a CDN URL).
+5. Click **"Save Connection"**.
 
 bitvid will verify your credentials by attempting to list or upload a test file. Once verified, return to the Upload Modal to start sharing!
 
