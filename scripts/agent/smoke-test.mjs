@@ -1,3 +1,7 @@
+/**
+ * Smoke Test Script (Agent)
+ * Verifies key flows: login, relay connect, video post, DM decrypt.
+ */
 
 import './setup-test-env.js';
 import { startRelay } from './load-test-relay.mjs';
