@@ -4690,12 +4690,6 @@ export async function renderChannelVideosFromList({
       typeof app?.deriveVideoPointerInfo === "function"
         ? app.deriveVideoPointerInfo(video)
         : null;
-    if (
-      pointerInfo &&
-      typeof app?.persistWatchHistoryMetadataForVideo === "function"
-    ) {
-      app.persistWatchHistoryMetadataForVideo(video, pointerInfo);
-    }
 
     const shareUrl =
       typeof app?.buildShareUrlFromEventId === "function"
