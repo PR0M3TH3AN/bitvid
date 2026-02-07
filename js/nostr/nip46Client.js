@@ -317,125 +317,6 @@ export function clearStoredNip46Session() {
   }
 }
 
-const BECH32_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
-const BECH32_CHARSET_MAP = (() => {
-  const map = new Map();
-  for (let index = 0; index < BECH32_CHARSET.length; index += 1) {
-    map.set(BECH32_CHARSET[index], index);
-  }
-  return map;
-})();
-
-function bech32Polymod(values) {
-  const GENERATORS = [
-    0x3b6a57b2,
-    0x26508e6d,
-    0x1ea119fa,
-    0x3d4233dd,
-    0x2a1462b3,
-  ];
-
-  let chk = 1;
-  for (const value of values) {
-    const top = chk >> 25;
-    chk = ((chk & 0x1ffffff) << 5) ^ value;
-    for (let i = 0; i < GENERATORS.length; i += 1) {
-      if ((top >> i) & 1) {
-        chk ^= GENERATORS[i];
-      }
-    }
-  }
-  return chk;
-}
-
-function bech32HrpExpand(hrp) {
-  const result = [];
-  for (let i = 0; i < hrp.length; i += 1) {
-    result.push(hrp.charCodeAt(i) >> 5);
-  }
-  result.push(0);
-  for (let i = 0; i < hrp.length; i += 1) {
-    result.push(hrp.charCodeAt(i) & 31);
-  }
-  return result;
-}
-
-function bech32VerifyChecksum(hrp, data) {
-  return bech32Polymod([...bech32HrpExpand(hrp), ...data]) === 1;
-}
-
-function convertBits(data, fromBits, toBits) {
-  let accumulator = 0;
-  let bits = 0;
-  const result = [];
-  const maxValue = (1 << toBits) - 1;
-  const maxAccumulator = (1 << (fromBits + toBits - 1)) - 1;
-
-  for (const value of data) {
-    if (value < 0 || (value >> fromBits) !== 0) {
-      return null;
-    }
-    accumulator = ((accumulator << fromBits) | value) & maxAccumulator;
-    bits += fromBits;
-    while (bits >= toBits) {
-      bits -= toBits;
-      result.push((accumulator >> bits) & maxValue);
-    }
-  }
-
-  if (bits > 0) {
-    result.push((accumulator << (toBits - bits)) & maxValue);
-  }
-
-  return result;
-}
-
-function decodeBech32Npub(value) {
-  if (typeof value !== "string") {
-    return "";
-  }
-
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return "";
-  }
-
-  const normalized = trimmed.toLowerCase();
-  const separatorIndex = normalized.lastIndexOf("1");
-  if (separatorIndex <= 0 || separatorIndex + 7 > normalized.length) {
-    return "";
-  }
-
-  const hrp = normalized.slice(0, separatorIndex);
-  if (hrp !== "npub") {
-    return "";
-  }
-
-  const dataPart = normalized.slice(separatorIndex + 1);
-  const values = [];
-  for (let i = 0; i < dataPart.length; i += 1) {
-    const mapped = BECH32_CHARSET_MAP.get(dataPart[i]);
-    if (typeof mapped !== "number") {
-      return "";
-    }
-    values.push(mapped);
-  }
-
-  if (values.length < 7 || !bech32VerifyChecksum(hrp, values)) {
-    return "";
-  }
-
-  const words = values.slice(0, -6);
-  const bytes = convertBits(words, 5, 8);
-  if (!bytes || bytes.length !== 32) {
-    return "";
-  }
-
-  return Array.from(bytes)
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
-
 export function decodeNpubToHex(npub) {
   if (typeof npub !== "string") {
     return "";
@@ -478,11 +359,6 @@ export function decodeNpubToHex(npub) {
     } catch (error) {
       decodeError = error;
     }
-  }
-
-  const manualDecoded = decodeBech32Npub(trimmed);
-  if (manualDecoded) {
-    return manualDecoded;
   }
 
   if (isDevMode && warnableNpub) {
