@@ -2052,44 +2052,38 @@ export class NostrClient {
   }
 
   /**
-   * Establishes a NIP-46 connection with a remote signer (e.g., Nostr Connect / Bunker).
+   * Establishes a connection to a remote NIP-46 signer.
    *
-   * Process:
-   * 1. **Parse**: Decodes the `nostrconnect://` or `bunker://` URI.
-   * 2. **Handshake (if needed)**: If the URI is a "connect" request (no target pubkey yet),
-   *    it publishes an ephemeral event and waits for the signer to "ack".
-   * 3. **Connect**: Once the remote pubkey is known, sends a `connect` RPC command.
-   * 4. **Authorize**: Handles any `auth_url` challenges if the signer requires out-of-band approval.
-   * 5. **Session**: Stores the session metadata locally (if `remember: true`) to allow auto-reconnect.
-   *
-   * @param {object} [options]
-   * @param {string} options.connectionString - The `nostrconnect://` or `bunker://` URI.
-   * @param {boolean} [options.remember=true] - Persist the session to localStorage.
-   * @param {string} [options.clientPrivateKey] - Ephemeral local private key.
-   * @param {string} [options.clientPublicKey] - Ephemeral local public key.
-   * @param {string[]} [options.relays] - Explicit relay list.
-   * @param {string} [options.secret] - Shared secret for the handshake.
-   * @param {string} [options.permissions] - Requested permissions (comma-separated).
-   * @param {object} [options.metadata] - Identification metadata for the signer.
-   * @param {function} [options.onAuthUrl] - Callback for out-of-band auth challenges.
-   * @param {function} [options.onStatus] - Callback for connection status updates.
-   * @param {number} [options.handshakeTimeoutMs] - Max wait time for the handshake.
-   * @param {function} [options.validator] - Optional function to validate the user pubkey.
+   * @param {Object} [options={}] - Connection options.
+   * @param {string} options.connectionString - NIP-46 connection URI (nostrconnect:// or bunker://).
+   * @param {boolean} [options.remember=true] - Whether to persist the session in local storage.
+   * @param {string} [options.clientPrivateKey=""] - Optional private key for the client.
+   * @param {string} [options.clientPublicKey=""] - Optional public key for the client.
+   * @param {string[]} [options.relays=[]] - Optional relay URLs to override those in the URI.
+   * @param {string} [options.secret=""] - Optional secret for authentication.
+   * @param {string} [options.permissions=""] - Requested permissions (e.g., "sign_event:0").
+   * @param {Object} [options.metadata={}] - Metadata to present to the signer.
+   * @param {Function} [options.onAuthUrl] - Callback for handling authentication URLs.
+   * @param {Function} [options.onStatus] - Callback for connection status updates.
+   * @param {number} [options.handshakeTimeoutMs] - Timeout for the initial handshake.
+   * @param {Function} [options.validator=null] - Optional validation function to verify the user's pubkey.
+   * @returns {Promise<Object>} - Returns the user's pubkey and the NIP-46 signer instance.
    */
-  async connectRemoteSigner({
-    connectionString,
-    remember = true,
-    clientPrivateKey: providedClientPrivateKey = "",
-    clientPublicKey: providedClientPublicKey = "",
-    relays: providedRelays = [],
-    secret: providedSecret = "",
-    permissions: providedPermissions = "",
-    metadata: providedMetadata = {},
-    onAuthUrl,
-    onStatus,
-    handshakeTimeoutMs,
-    validator,
-  } = {}) {
+  async connectRemoteSigner(options = {}) {
+    const {
+      connectionString,
+      remember = true,
+      clientPrivateKey: providedClientPrivateKey = "",
+      clientPublicKey: providedClientPublicKey = "",
+      relays: providedRelays = [],
+      secret: providedSecret = "",
+      permissions: providedPermissions = "",
+      metadata: providedMetadata = {},
+      onAuthUrl,
+      onStatus,
+      handshakeTimeoutMs,
+      validator = null,
+    } = options;
     const parsed = parseNip46ConnectionString(connectionString);
     if (!parsed) {
       const error = new Error(
