@@ -92,14 +92,18 @@ This workflow uses the `force-cancel` endpoint to ensure stalled runs are termin
 
 To set up the project locally:
 
-1. **Install Dependencies**:
+1. **Prerequisites**:
+   - **Node.js**: v22 or higher.
+   - **NPM**: v10 or higher (included with Node 22).
+
+2. **Install Dependencies**:
    Use `npm ci` to ensure you get the exact dependencies from `package-lock.json`.
 
    ```bash
    npm ci
    ```
 
-2. **Start the Application**:
+3. **Start the Application**:
 
    ```bash
    npm start
@@ -116,7 +120,14 @@ To set up the project locally:
 
    (The build command populates the `dist/` directory, which you can then serve locally.)
 
-3. **Run Tests**:
+   **For CSS-only changes:**
+   If you are only iterating on styles, you can run the faster CSS build:
+
+   ```bash
+   npm run build:css
+   ```
+
+4. **Run Tests**:
 
    ```bash
    npm run test:unit
@@ -138,7 +149,7 @@ To set up the project locally:
    npm run test:dm:integration
    ```
 
-4. **Format & Lint**:
+5. **Format & Lint**:
 
    ```bash
    npm run format
@@ -148,7 +159,7 @@ To set up the project locally:
    - **Format**: Targets CSS, HTML, Markdown, and config files. (Note: JavaScript files are not currently auto-formatted by this command).
    - **Lint**: Checks for CSS errors, hex color usage, inline styles, design tokens, and Tailwind guards. (Note: There is no ESLint configuration for JavaScript logic; this step focuses on style and design system guards).
 
-5. **Git Hooks (Optional)**:
+6. **Git Hooks (Optional)**:
    We provide a script to set up a git pre-commit hook that runs linting and CSS builds automatically before you commit.
    ```bash
    ./scripts/setup-pre-commit.sh
