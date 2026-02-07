@@ -27,6 +27,7 @@ import getDefaultAuthProvider, {
   providers as defaultAuthProviders,
 } from "./authProviders/index.js";
 import { fetchProfileMetadata } from "./profileMetadataService.js";
+import { HEX64_REGEX } from "../utils/hex.js";
 
 class SimpleEventEmitter {
   constructor(logger = null) {
@@ -69,7 +70,7 @@ class SimpleEventEmitter {
   }
 }
 
-const HEX64_REGEX = /^[0-9a-f]{64}$/i;
+
 const FALLBACK_PROFILE = {
   name: "Unknown",
   picture: "assets/svg/default-profile.svg",

@@ -1,8 +1,9 @@
 // js/dmDecryptor.js
 
 import { normalizeActorKey } from "./nostr/watchHistory.js";
+import { HEX64_REGEX } from "./utils/hex.js";
 
-const HEX64_REGEX = /^[0-9a-f]{64}$/;
+
 
 const SUPPORTED_KINDS = new Set([4, 1059]);
 

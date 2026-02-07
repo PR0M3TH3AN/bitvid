@@ -189,6 +189,7 @@ import { createPlaybackCoordinator } from "./app/playbackCoordinator.js";
 import { createAuthSessionCoordinator } from "./app/authSessionCoordinator.js";
 import { createModalCoordinator } from "./app/modalCoordinator.js";
 import { createModerationCoordinator } from "./app/moderationCoordinator.js";
+import { HEX64_REGEX } from "./utils/hex.js";
 
 const recordVideoViewApi = (...args) => recordVideoView(nostrClient, ...args);
 
@@ -197,7 +198,7 @@ const UNSUPPORTED_BTITH_MESSAGE =
 
 const FALLBACK_THUMBNAIL_SRC = "/assets/jpg/video-thumbnail-fallback.jpg";
 const VIDEO_EVENT_KIND = 30078;
-const HEX64_REGEX = /^[0-9a-f]{64}$/i;
+
 const RELAY_UI_BATCH_DELAY_MS = 250;
 /**
  * Simple IntersectionObserver-based lazy loader for images (or videos).

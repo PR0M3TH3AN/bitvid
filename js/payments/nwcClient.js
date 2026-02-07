@@ -4,8 +4,9 @@ import { nostrToolsReady } from "../nostrToolsBootstrap.js";
 import { signEventWithPrivateKey } from "../nostr/publishHelpers.js";
 import { userLogger } from "../utils/logger.js";
 import { isZapAllowanceExhaustedError } from "./zapSharedState.js";
+import { HEX64_REGEX } from "../utils/hex.js";
 
-const HEX64_REGEX = /^[0-9a-f]{64}$/i;
+
 const URI_SCHEMES = [
   "nostr+walletconnect://",
   "walletconnect://",

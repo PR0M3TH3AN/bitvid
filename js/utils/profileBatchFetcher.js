@@ -3,9 +3,10 @@
 import { nostrClient } from "../nostrClientFacade.js";
 import { devLogger } from "./logger.js";
 import { fetchProfileMetadataBatch } from "../services/profileMetadataService.js";
+import { HEX64_REGEX } from "./hex.js";
 
 const DEFAULT_PROFILE_IMAGE = "assets/svg/default-profile.svg";
-const HEX64_REGEX = /^[0-9a-f]{64}$/i;
+
 
 export async function batchFetchProfilesFromRelays({
   authorSet,

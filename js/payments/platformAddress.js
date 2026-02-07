@@ -5,8 +5,9 @@ import { nostrClient } from "../nostrClientFacade.js";
 import { setProfileCacheEntry } from "../state/cache.js";
 import { nostrToolsReady } from "../nostrToolsBootstrap.js";
 import { userLogger } from "../utils/logger.js";
+import { HEX64_REGEX } from "../utils/hex.js";
 
-const HEX64_REGEX = /^[0-9a-f]{64}$/i;
+
 const CACHE_TTL_MS = 10 * 60 * 1000;
 
 let cachedAddress = null;
