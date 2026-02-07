@@ -60,7 +60,7 @@ function suggestOwner(stack) {
 function findUnitTestLogs() {
     const logs = [];
     if (fs.existsSync('.')) {
-        const rootFiles = fs.readdirSync('.').filter(f => f.match(/^test_unit.*\.log$/) || f === 'test_output.log');
+        const rootFiles = fs.readdirSync('.').filter(f => f.match(/^test_unit.*\.log$/) || f === 'test_output.log' || f === 'test_output.txt');
         logs.push(...rootFiles);
     }
 
