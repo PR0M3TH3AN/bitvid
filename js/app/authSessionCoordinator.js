@@ -9,6 +9,8 @@
  * Methods use `this` which is bound to the Application instance.
  */
 
+import { clearDecryptionSchemeCache } from "../nostr/decryptionSchemeCache.js";
+
 /**
  * @param {object} deps - Injected dependencies.
  * @returns {object} Methods to be bound to the Application instance.
@@ -218,10 +220,14 @@ export function createAuthSessionCoordinator(deps) {
       // parallel. They have no data dependencies on each other — only the feed
       // render needs all three to be settled. Loading them concurrently shaves
       // 20-30 seconds off the critical login path.
-      const listStatePromise = Promise.all([
-        relaysReadyPromise,
-        permissionPromise,
-      ]).then(async () => {
+      //
+      // PERF: Lists no longer wait for the permission pre-grant to complete.
+      // The NIP-07 extension already granted decrypt permissions during the
+      // login flow (ensureExtensionPermissions is called in loginWithExtension),
+      // so the signer adapter's decrypt functions work immediately. Waiting for
+      // the redundant pre-grant was adding 2-5 seconds of unnecessary latency
+      // before list loading could even begin.
+      const listStatePromise = relaysReadyPromise.then(async () => {
         const parallelListTasks = [];
 
         if (
@@ -535,6 +541,7 @@ export function createAuthSessionCoordinator(deps) {
 
       this.resetHashtagPreferencesState();
       this.resetPermissionPromptState();
+      clearDecryptionSchemeCache();
       this.updateAuthLoadingState({ profile: "idle", lists: "idle", dms: "idle" });
 
       await this.nwcSettingsService.onLogout({

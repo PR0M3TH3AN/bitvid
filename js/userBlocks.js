@@ -26,6 +26,10 @@ import {
   NIP07_PRIORITY,
 } from "./nostr/nip07Permissions.js";
 import { relaySubscriptionService } from "./services/relaySubscriptionService.js";
+import {
+  getLastSuccessfulScheme,
+  setLastSuccessfulScheme,
+} from "./nostr/decryptionSchemeCache.js";
 
 class TinyEventEmitter {
   constructor() {
@@ -81,11 +85,9 @@ const FAST_BLOCKLIST_TIMEOUT_MS = 2500;
 const BACKGROUND_BLOCKLIST_TIMEOUT_MS = 6000;
 const DECRYPT_TIMEOUT_MS = 20000;
 const BACKGROUND_DECRYPT_TIMEOUT_MS = 15000;
-const DECRYPT_RETRY_DELAY_MS = 10000;
+// PERF: Reduced from 10s to 3s for faster recovery during login.
+const DECRYPT_RETRY_DELAY_MS = 3000;
 const MAX_BLOCKLIST_ENTRIES = 5000;
-const DECRYPTION_CACHE_TTL_MS = 10 * 60 * 1000;
-
-const decryptionSuccessCache = new Map();
 
 function sanitizeRelayList(candidate) {
   return Array.isArray(candidate)
@@ -1159,11 +1161,9 @@ class UserBlockListManager {
         permissionError.signerStatus = signerStatus;
       }
 
-      const cachedEntry = decryptionSuccessCache.get(normalized);
-      const cachedScheme =
-        cachedEntry && Date.now() - cachedEntry.timestamp < DECRYPTION_CACHE_TTL_MS
-          ? cachedEntry.scheme
-          : null;
+      // Use the shared cross-service cache so all list services benefit from
+      // the first successful decrypt during login.
+      const cachedScheme = getLastSuccessfulScheme(normalized);
 
       return {
         decryptors,
@@ -1306,41 +1306,57 @@ class UserBlockListManager {
             throw error;
           }
 
+          // PERF: Fast path — if the shared cache already knows the correct
+          // scheme (e.g. another list decrypted first), try ONLY that scheme
+          // before falling back to the full parallel probe. This avoids
+          // queuing redundant NIP-07 extension calls.
+          let decryptedText = "";
+          const sharedCachedScheme = getLastSuccessfulScheme(normalized);
+          if (sharedCachedScheme && decryptors.has(sharedCachedScheme)) {
+            try {
+              const fastResult = await decryptors.get(sharedCachedScheme)(ev.content);
+              if (typeof fastResult === "string" && fastResult) {
+                decryptedText = fastResult;
+                setLastSuccessfulScheme(normalized, sharedCachedScheme);
+              }
+            } catch {
+              // Cached scheme failed — fall through to parallel probe.
+            }
+          }
+
           // PERF: Try all decryption schemes in parallel via Promise.any().
           // The first scheme to succeed wins, avoiding sequential 3-15s timeouts
           // per scheme that previously made worst-case decryption take 45s+.
           // Deduplicate schemes in the same family (nip44/nip44_v2 both call
           // the same underlying signer.nip44Decrypt) to avoid redundant calls.
-          let decryptedText = "";
-          try {
-            const getSchemeFamily = (s) =>
-              s === "nip44" || s === "nip44_v2" ? "nip44" : s;
-            const seenFamilies = new Set();
-            const attempts = order
-              .map((scheme) => {
-                const family = getSchemeFamily(scheme);
-                if (seenFamilies.has(family)) return null;
-                seenFamilies.add(family);
-                const handler = decryptors.get(scheme);
-                if (typeof handler !== "function") return null;
-                return handler(ev.content).then((plaintext) => {
-                  if (typeof plaintext !== "string") {
-                    throw new Error("non-string-result");
-                  }
-                  return { plaintext, scheme };
-                });
-              })
-              .filter(Boolean);
-            if (attempts.length) {
-              const result = await Promise.any(attempts);
-              decryptedText = result.plaintext;
-              decryptionSuccessCache.set(normalized, {
-                scheme: result.scheme,
-                timestamp: Date.now(),
-              });
+          if (!decryptedText) {
+            try {
+              const getSchemeFamily = (s) =>
+                s === "nip44" || s === "nip44_v2" ? "nip44" : s;
+              const seenFamilies = new Set();
+              const attempts = order
+                .map((scheme) => {
+                  const family = getSchemeFamily(scheme);
+                  if (seenFamilies.has(family)) return null;
+                  seenFamilies.add(family);
+                  const handler = decryptors.get(scheme);
+                  if (typeof handler !== "function") return null;
+                  return handler(ev.content).then((plaintext) => {
+                    if (typeof plaintext !== "string") {
+                      throw new Error("non-string-result");
+                    }
+                    return { plaintext, scheme };
+                  });
+                })
+                .filter(Boolean);
+              if (attempts.length) {
+                const result = await Promise.any(attempts);
+                decryptedText = result.plaintext;
+                setLastSuccessfulScheme(normalized, result.scheme);
+              }
+            } catch {
+              // All schemes failed — decryptedText stays empty
             }
-          } catch {
-            // All schemes failed — decryptedText stays empty
           }
 
           if (!decryptedText) {

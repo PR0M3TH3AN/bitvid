@@ -37,14 +37,19 @@ import {
   NIP07_PRIORITY,
 } from "./nostr/nip07Permissions.js";
 import { relaySubscriptionService } from "./services/relaySubscriptionService.js";
+import {
+  getLastSuccessfulScheme,
+  setLastSuccessfulScheme,
+} from "./nostr/decryptionSchemeCache.js";
 
 const SUBSCRIPTION_SET_KIND =
   getNostrEventSchema(NOTE_TYPES.SUBSCRIPTION_LIST)?.kind ?? 30000;
 const DECRYPT_TIMEOUT_MS = 20000;
-const DECRYPT_RETRY_DELAY_MS = 10000;
-const DECRYPTION_CACHE_TTL_MS = 10 * 60 * 1000;
-
-const decryptionSuccessCache = new Map();
+// PERF: Reduced from 10s to 3s — extensions that already granted permission
+// should recover quickly. The longer delay was causing unnecessary wait time
+// during the critical login path when the first decrypt attempt fails due to
+// the extension still initializing.
+const DECRYPT_RETRY_DELAY_MS = 3000;
 
 function normalizeHexPubkey(value) {
   if (typeof value !== "string") {
@@ -1097,17 +1102,31 @@ class SubscriptionsManager {
     }
 
     const availableSchemes = Array.from(decryptors.keys());
-    const cachedEntry = decryptionSuccessCache.get(userPubkey);
-    const cachedScheme =
-      cachedEntry && Date.now() - cachedEntry.timestamp < DECRYPTION_CACHE_TTL_MS
-        ? cachedEntry.scheme
-        : null;
+    // Use the shared cross-service cache so all list services benefit from
+    // the first successful decrypt during login.
+    const cachedScheme = getLastSuccessfulScheme(userPubkey);
 
     const order = determineDecryptionOrder(
       event,
       availableSchemes,
       cachedScheme,
     );
+
+    // PERF: Fast path — if the shared cache already knows the correct scheme
+    // (e.g. blocks decrypted first), try ONLY that scheme before falling back
+    // to the full parallel probe. This avoids queuing redundant extension calls.
+    if (cachedScheme && decryptors.has(cachedScheme)) {
+      try {
+        const plaintext = await decryptors.get(cachedScheme)(ciphertext);
+        if (typeof plaintext === "string") {
+          setLastSuccessfulScheme(userPubkey, cachedScheme);
+          return { ok: true, plaintext, scheme: cachedScheme };
+        }
+      } catch (_fastPathError) {
+        // Cached scheme failed — fall through to parallel probe.
+      }
+    }
+
     // PERF: Try all decryption schemes in parallel via Promise.any().
     // The first scheme to succeed wins, avoiding sequential 3-15s timeouts
     // per scheme that previously made worst-case decryption take 45s+.
@@ -1137,10 +1156,7 @@ class SubscriptionsManager {
     if (attempts.length) {
       try {
         const result = await Promise.any(attempts);
-        decryptionSuccessCache.set(userPubkey, {
-          scheme: result.scheme,
-          timestamp: Date.now(),
-        });
+        setLastSuccessfulScheme(userPubkey, result.scheme);
         return { ok: true, plaintext: result.plaintext, scheme: result.scheme };
       } catch (aggregateError) {
         const attemptErrors = (aggregateError.errors || []).map((err, i) => ({
