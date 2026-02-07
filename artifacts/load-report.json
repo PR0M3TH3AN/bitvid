@@ -1,99 +1,40 @@
 {
-  "meta": {
-    "clients": 50,
+  "config": {
+    "clients": 100,
     "duration": 10,
-    "targetTotalRate": 50,
-    "ratePerClient": 1
+    "rate": 5,
+    "relay": null,
+    "outputDir": "artifacts"
   },
-  "results": {
-    "totalSent": 545,
-    "totalReceivedByObserver": 554,
-    "totalErrors": 0,
-    "errorRate": 0,
-    "avgLatencyMs": 5.888888888888889,
-    "maxLatencyMs": 8,
-    "avgSignTimeMs": 5.534525739479302,
-    "hot_functions": [
-      {
-        "name": "Event Signing (Client)",
-        "avgTimeMs": 5.534525739479302,
-        "calls": 545
-      }
-    ]
+  "timestamp": "2026-02-07T19:37:19.456Z",
+  "durationSec": 10.459,
+  "throughput": 114.35127641265896,
+  "totalSent": 1197,
+  "totalAccepted": 1196,
+  "totalRejected": 0,
+  "totalErrors": 0,
+  "latency": {
+    "p50": 1,
+    "p95": 2,
+    "p99": 10,
+    "min": 0,
+    "max": 25,
+    "avg": 0.7842809364548495
   },
-  "bottlenecks": [
-    "Cryptographic Bottleneck (Avg Sign Time 5.53ms > 5ms)"
+  "signingTime": {
+    "avg": 5.981282806182139,
+    "max": 23.78902300000027
+  },
+  "resources": [
+    {
+      "time": 5443,
+      "cpuUser": 4805459,
+      "cpuSystem": 365368,
+      "rss": 96088064,
+      "heapTotal": 31481856,
+      "heapUsed": 13615216
+    }
   ],
-  "metrics": {
-    "timestamps": [
-      "2026-02-05T19:34:52.639Z",
-      "2026-02-05T19:34:53.638Z",
-      "2026-02-05T19:34:54.641Z",
-      "2026-02-05T19:34:55.649Z",
-      "2026-02-05T19:34:56.649Z",
-      "2026-02-05T19:34:57.649Z",
-      "2026-02-05T19:34:58.672Z",
-      "2026-02-05T19:34:59.671Z",
-      "2026-02-05T19:35:00.672Z"
-    ],
-    "cpu": [
-      47.1817,
-      40.502,
-      37.7894,
-      36.4607,
-      36.4638,
-      36.3083,
-      41.62,
-      35.6474,
-      35.4054
-    ],
-    "memory": [
-      12.619827270507812,
-      12.327117919921875,
-      16.86083221435547,
-      13.562667846679688,
-      16.10260009765625,
-      11.007034301757812,
-      14.259078979492188,
-      14.051017761230469,
-      15.620246887207031
-    ],
-    "latency": [
-      8,
-      6,
-      6,
-      5,
-      6,
-      6,
-      6,
-      5,
-      5
-    ],
-    "throughput": [
-      60,
-      59,
-      64,
-      63,
-      62,
-      62,
-      63,
-      60,
-      61
-    ],
-    "avgSignTime": [
-      6.518746254237273,
-      5.50673901724142,
-      5.487499650793643,
-      5.261303790322589,
-      5.267506754098338,
-      5.199484229508195,
-      6.068795209677216,
-      5.2998529661016915,
-      5.2008037833333525
-    ]
-  },
-  "remediation": [
-    "Client-side event signing is slow. Review cryptographic library (nostr-tools) usage or client hardware capabilities."
-  ],
-  "requiresSecurityReview": true
+  "topBottlenecks": [],
+  "proposedRemediation": []
 }
