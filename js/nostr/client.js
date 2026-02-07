@@ -2051,6 +2051,31 @@ export class NostrClient {
     return { pubkey, signer: adapter };
   }
 
+  /**
+   * Establishes a NIP-46 connection with a remote signer (e.g., Nostr Connect / Bunker).
+   *
+   * Process:
+   * 1. **Parse**: Decodes the `nostrconnect://` or `bunker://` URI.
+   * 2. **Handshake (if needed)**: If the URI is a "connect" request (no target pubkey yet),
+   *    it publishes an ephemeral event and waits for the signer to "ack".
+   * 3. **Connect**: Once the remote pubkey is known, sends a `connect` RPC command.
+   * 4. **Authorize**: Handles any `auth_url` challenges if the signer requires out-of-band approval.
+   * 5. **Session**: Stores the session metadata locally (if `remember: true`) to allow auto-reconnect.
+   *
+   * @param {object} [options]
+   * @param {string} options.connectionString - The `nostrconnect://` or `bunker://` URI.
+   * @param {boolean} [options.remember=true] - Persist the session to localStorage.
+   * @param {string} [options.clientPrivateKey] - Ephemeral local private key.
+   * @param {string} [options.clientPublicKey] - Ephemeral local public key.
+   * @param {string[]} [options.relays] - Explicit relay list.
+   * @param {string} [options.secret] - Shared secret for the handshake.
+   * @param {string} [options.permissions] - Requested permissions (comma-separated).
+   * @param {object} [options.metadata] - Identification metadata for the signer.
+   * @param {function} [options.onAuthUrl] - Callback for out-of-band auth challenges.
+   * @param {function} [options.onStatus] - Callback for connection status updates.
+   * @param {number} [options.handshakeTimeoutMs] - Max wait time for the handshake.
+   * @param {function} [options.validator] - Optional function to validate the user pubkey.
+   */
   async connectRemoteSigner({
     connectionString,
     remember = true,
@@ -2063,6 +2088,7 @@ export class NostrClient {
     onAuthUrl,
     onStatus,
     handshakeTimeoutMs,
+    validator,
   } = {}) {
     const parsed = parseNip46ConnectionString(connectionString);
     if (!parsed) {
@@ -2353,9 +2379,9 @@ export class NostrClient {
         userPubkey: summarizeHexForLog(userPubkey),
       });
 
-      if (typeof options?.validator === "function") {
+      if (typeof validator === "function") {
         try {
-          const isValid = await options.validator(userPubkey);
+          const isValid = await validator(userPubkey);
           if (!isValid) {
             throw new Error("Access denied.");
           }
@@ -2459,6 +2485,7 @@ export class NostrClient {
    * @param {object} [options]
    * @param {boolean} [options.silent=false] - Suppress error logs if restore fails.
    * @param {boolean} [options.forgetOnError=false] - Auto-delete session if invalid.
+   * @param {function} [options.validator] - Optional function to validate the user pubkey.
    * @returns {Promise<{pubkey: string, signer: object}>}
    */
   async useStoredRemoteSigner(options = {}) {

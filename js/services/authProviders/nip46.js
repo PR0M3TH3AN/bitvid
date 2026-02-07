@@ -173,14 +173,6 @@ export default {
       }
       devLogger.debug("[nip46] Reusing stored remote signer session");
 
-      // useStoredRemoteSigner should ideally accept a validator too, but if it restores a session,
-      // it might not expose a validator hook easily if not updated.
-      // Let's check NostrClient.useStoredRemoteSigner in client.js.
-      // It DOES NOT take a validator in my previous update (I missed it).
-      // I should update client.js to add validator to useStoredRemoteSigner too.
-      // For now, I will assume I will fix client.js later or accept that stored sessions are trusted?
-      // No, I must fix useStoredRemoteSigner too.
-
       result = await nostrClient.useStoredRemoteSigner({ validator });
       devLogger.debug("[nip46] Stored remote signer returned", {
         pubkey: summarizeHexForLog(normalizePubkey(result)),
