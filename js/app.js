@@ -100,7 +100,6 @@ import {
   formatViewCount,
   ingestLocalViewEvent,
 } from "./viewCounter.js";
-import { splitAndZap as splitAndZapDefault } from "./payments/zapSplit.js";
 import {
   formatAbsoluteTimestamp as formatAbsoluteTimestampUtil,
   formatAbsoluteDateWithOrdinal as formatAbsoluteDateWithOrdinalUtil,
