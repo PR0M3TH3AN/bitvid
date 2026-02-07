@@ -829,6 +829,16 @@ class HashtagPreferencesService {
         !allowPermissionPrompt &&
         decryptResult.error?.code === "hashtag-preferences-permission-required"
       ) {
+        if (!wasLoadedForUser && !this.loaded) {
+          this.loaded = true;
+        }
+        this.scheduleDecryptRetry(normalized, decryptResult.error, {
+          allowPermissionPrompt: true,
+        });
+        if (wasBackgroundLoading) {
+          this.backgroundLoading = false;
+          this.emitChange("background-loaded", { background: false });
+        }
         return;
       }
 
@@ -1085,6 +1095,7 @@ class HashtagPreferencesService {
     const getSchemeFamily = (s) =>
       s === "nip44" || s === "nip44_v2" ? "nip44" : s;
     const seenFamilies = new Set();
+    const attemptSchemes = [];
     const attempts = order
       .map((scheme) => {
         const family = getSchemeFamily(scheme);
@@ -1092,6 +1103,7 @@ class HashtagPreferencesService {
         seenFamilies.add(family);
         const decryptFn = decryptors.get(scheme);
         if (!decryptFn) return null;
+        attemptSchemes.push(scheme);
         return decryptFn(ciphertext).then((plaintext) => {
           if (typeof plaintext !== "string") {
             throw new Error("Decryption returned non-string payload.");
@@ -1111,7 +1123,7 @@ class HashtagPreferencesService {
         return { ok: true, plaintext: result.plaintext, scheme: result.scheme };
       } catch (aggregateError) {
         const attemptErrors = (aggregateError.errors || []).map((err, i) => ({
-          scheme: order[i] || "unknown",
+          scheme: attemptSchemes[i] || "unknown",
           error: err,
         }));
         const error = new Error("Failed to decrypt hashtag preferences.");
