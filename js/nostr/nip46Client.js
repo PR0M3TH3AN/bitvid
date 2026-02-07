@@ -15,6 +15,11 @@
 
 import { isDevMode } from "../config.js";
 import {
+  encryptSessionPrivateKey,
+  decryptSessionPrivateKey,
+  normalizeStoredEncryptionMetadata,
+} from "./sessionActor.js";
+import {
   DEFAULT_RELAY_URLS,
   ensureNostrTools,
   getCachedNostrTools,
@@ -223,6 +228,11 @@ export function sanitizeStoredNip46Session(candidate) {
     lastConnectedAt: Number.isFinite(candidate.lastConnectedAt)
       ? candidate.lastConnectedAt
       : Date.now(),
+    encryptedSecrets:
+      typeof candidate.encryptedSecrets === "string"
+        ? candidate.encryptedSecrets.trim()
+        : "",
+    keyEncryption: normalizeStoredEncryptionMetadata(candidate.keyEncryption),
   };
 }
 
@@ -251,7 +261,7 @@ export function readStoredNip46Session() {
       (typeof parsed?.clientPrivateKey === "string" ||
         typeof parsed?.secret === "string")
     ) {
-      writeStoredNip46Session(sanitized);
+      writeStoredNip46SessionSync(sanitized);
     }
     return sanitized;
   } catch (error) {
@@ -267,7 +277,7 @@ export function readStoredNip46Session() {
   }
 }
 
-export function writeStoredNip46Session(payload) {
+export function writeStoredNip46SessionSync(payload) {
   const storage = getNip46Storage();
   if (!storage) {
     return;
@@ -285,6 +295,8 @@ export function writeStoredNip46Session(payload) {
           metadata: payload.metadata,
           userPubkey: payload.userPubkey,
           lastConnectedAt: payload.lastConnectedAt,
+          encryptedSecrets: payload.encryptedSecrets,
+          keyEncryption: payload.keyEncryption,
         }
       : payload;
   const normalized = sanitizeStoredNip46Session(sanitizedInput);
@@ -302,6 +314,90 @@ export function writeStoredNip46Session(payload) {
   } catch (error) {
     // ignore persistence failures
   }
+}
+
+export async function writeStoredNip46Session(payload, passphrase) {
+  if (!payload || typeof payload !== "object") {
+    return;
+  }
+
+  const update = { ...payload };
+
+  if (
+    passphrase &&
+    typeof passphrase === "string" &&
+    passphrase.trim() &&
+    typeof update.clientPrivateKey === "string" &&
+    update.clientPrivateKey &&
+    typeof update.secret === "string" &&
+    update.secret
+  ) {
+    const secrets = JSON.stringify({
+      clientPrivateKey: update.clientPrivateKey,
+      secret: update.secret,
+    });
+
+    try {
+      const encrypted = await encryptSessionPrivateKey(
+        secrets,
+        passphrase.trim(),
+      );
+      update.encryptedSecrets = encrypted.ciphertext;
+      update.keyEncryption = {
+        salt: encrypted.salt,
+        iv: encrypted.iv,
+        iterations: encrypted.iterations,
+        hash: encrypted.hash,
+        algorithm: encrypted.algorithm,
+        version: encrypted.version,
+      };
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to encrypt remote signer session:", error);
+      // Fall through to write sanitized (non-sensitive) data only
+    }
+  }
+
+  // Ensure plain text keys are never persisted
+  delete update.clientPrivateKey;
+  delete update.secret;
+
+  writeStoredNip46SessionSync(update);
+}
+
+export async function decryptNip46Session(session, passphrase) {
+  if (!session || typeof session !== "object") {
+    return null;
+  }
+
+  if (
+    !session.encryptedSecrets ||
+    typeof session.encryptedSecrets !== "string"
+  ) {
+    return { ...session };
+  }
+
+  if (!passphrase || typeof passphrase !== "string" || !passphrase.trim()) {
+    throw new Error("Passphrase required to decrypt session.");
+  }
+
+  const payload = {
+    privateKeyEncrypted: session.encryptedSecrets,
+    encryption: session.keyEncryption,
+  };
+
+  const decryptedJson = await decryptSessionPrivateKey(payload, passphrase);
+  let secrets = null;
+  try {
+    secrets = JSON.parse(decryptedJson);
+  } catch (error) {
+    throw new Error("Decrypted session secrets are malformed.");
+  }
+
+  return {
+    ...session,
+    clientPrivateKey: secrets.clientPrivateKey,
+    secret: secrets.secret,
+  };
 }
 
 export function clearStoredNip46Session() {
