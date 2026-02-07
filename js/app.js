@@ -6,7 +6,7 @@ import { torrentClient } from "./webtorrent.js";
 import { emit } from "./embedDiagnostics.js";
 import {
   BITVID_WEBSITE_URL,
-} from "./config.js";
+} from "./config.js"; // Unused imports cleaned up
 import { accessControl } from "./accessControl.js";
 import { extractBtihFromMagnet, safeDecodeMagnet } from "./magnetUtils.js";
 import { deriveTorrentPlaybackConfig } from "./playbackUtils.js";
