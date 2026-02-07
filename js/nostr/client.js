@@ -165,6 +165,7 @@ import {
   sanitizeRelayList,
   readStoredNip46Session,
   writeStoredNip46Session,
+  decryptNip46Session,
   clearStoredNip46Session,
   parseNip46ConnectionString,
   generateNip46Secret,
@@ -1479,11 +1480,15 @@ export class NostrClient {
 
     const remotePubkey = stored.remotePubkey || "";
     const userPubkey = stored.userPubkey || "";
-    const canReconnect = Boolean(stored.clientPrivateKey && stored.secret);
+    const hasEncryptedSession =
+      typeof stored.encryptedSecrets === "string" && !!stored.encryptedSecrets;
+    const canReconnect =
+      Boolean(stored.clientPrivateKey && stored.secret) || hasEncryptedSession;
 
     return {
       hasSession: true,
       canReconnect,
+      hasEncryptedSession,
       remotePubkey,
       remoteNpub: encodeHexToNpub(remotePubkey),
       clientPublicKey: stored.clientPublicKey || "",
@@ -2234,6 +2239,7 @@ export class NostrClient {
     onAuthUrl,
     onStatus,
     handshakeTimeoutMs,
+    passphrase,
   } = {}) {
     const parsed = parseNip46ConnectionString(connectionString);
     if (!parsed) {
@@ -2552,19 +2558,26 @@ export class NostrClient {
           encryption: client.encryptionAlgorithm || handshakeAlgorithm || "",
           permissions: permissions || null,
         });
-        writeStoredNip46Session({
-          version: 1,
-          clientPublicKey,
-          remotePubkey,
-          relays,
-          encryption: client.encryptionAlgorithm || handshakeAlgorithm || "",
-          permissions,
-          metadata,
-          userPubkey,
-          lastConnectedAt: Date.now(),
-        });
+        await writeStoredNip46Session(
+          {
+            version: 1,
+            clientPublicKey,
+            remotePubkey,
+            relays,
+            encryption: client.encryptionAlgorithm || handshakeAlgorithm || "",
+            permissions,
+            metadata,
+            userPubkey,
+            lastConnectedAt: Date.now(),
+            clientPrivateKey,
+            secret,
+          },
+          passphrase,
+        );
       } else {
-        devLogger.debug("[nostr] Clearing stored remote signer session per request");
+        devLogger.debug(
+          "[nostr] Clearing stored remote signer session per request",
+        );
         clearStoredNip46Session();
       }
 
@@ -2637,13 +2650,38 @@ export class NostrClient {
       options && typeof options === "object" ? options : {};
     const silent = normalizedOptions.silent === true;
     const forgetOnError = normalizedOptions.forgetOnError === true;
-    const validator = typeof normalizedOptions.validator === "function" ? normalizedOptions.validator : null;
+    const passphrase =
+      typeof normalizedOptions.passphrase === "string"
+        ? normalizedOptions.passphrase
+        : null;
+    const validator =
+      typeof normalizedOptions.validator === "function"
+        ? normalizedOptions.validator
+        : null;
 
-    const stored = readStoredNip46Session();
+    let stored = readStoredNip46Session();
     if (!stored) {
-      const error = new Error("No remote signer session is stored on this device.");
+      const error = new Error(
+        "No remote signer session is stored on this device.",
+      );
       error.code = "no-stored-session";
       throw error;
+    }
+
+    if (stored.encryptedSecrets) {
+      if (!passphrase) {
+        const error = new Error("Passphrase required to unlock session.");
+        error.code = "passphrase-required";
+        throw error;
+      }
+      try {
+        stored = await decryptNip46Session(stored, passphrase);
+      } catch (decryptError) {
+        const error = new Error("Failed to decrypt stored session.");
+        error.code = "decrypt-failed";
+        error.cause = decryptError;
+        throw error;
+      }
     }
 
     const relays = resolveNip46Relays(stored.relays, this.relays);
@@ -2664,7 +2702,9 @@ export class NostrClient {
     });
 
     if (!stored.clientPrivateKey || !stored.secret) {
-      const error = new Error("Stored remote signer credentials are unavailable.");
+      const error = new Error(
+        "Stored remote signer credentials are unavailable.",
+      );
       error.code = "stored-session-missing-credentials";
       throw error;
     }
@@ -2708,17 +2748,22 @@ export class NostrClient {
       client.metadata = stored.metadata;
       const signer = await this.installNip46Client(client, { userPubkey });
 
-      writeStoredNip46Session({
-        version: 1,
-        clientPublicKey: stored.clientPublicKey,
-        remotePubkey: stored.remotePubkey,
-        relays: stored.relays,
-        encryption: client.encryptionAlgorithm || stored.encryption || "",
-        permissions: stored.permissions,
-        metadata: stored.metadata,
-        userPubkey,
-        lastConnectedAt: Date.now(),
-      });
+      await writeStoredNip46Session(
+        {
+          version: 1,
+          clientPublicKey: stored.clientPublicKey,
+          remotePubkey: stored.remotePubkey,
+          relays: stored.relays,
+          encryption: client.encryptionAlgorithm || stored.encryption || "",
+          permissions: stored.permissions,
+          metadata: stored.metadata,
+          userPubkey,
+          lastConnectedAt: Date.now(),
+          clientPrivateKey: stored.clientPrivateKey,
+          secret: stored.secret,
+        },
+        passphrase,
+      );
 
       devLogger.debug("[nostr] Stored remote signer session refreshed", {
         remotePubkey: summarizeHexForLog(stored.remotePubkey || ""),
