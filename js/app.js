@@ -5,24 +5,13 @@ import { recordVideoView } from "./nostrViewEventsFacade.js";
 import { torrentClient } from "./webtorrent.js";
 import { emit } from "./embedDiagnostics.js";
 import {
-  isDevMode,
-  ADMIN_SUPER_NPUB,
-  ADMIN_DM_IMAGE_URL,
   BITVID_WEBSITE_URL,
-  MAX_WALLET_DEFAULT_ZAP,
-  ALLOW_NSFW_CONTENT,
 } from "./config.js";
 import { accessControl } from "./accessControl.js";
 import { extractBtihFromMagnet, safeDecodeMagnet } from "./magnetUtils.js";
 import { deriveTorrentPlaybackConfig } from "./playbackUtils.js";
 import {
-  URL_FIRST_ENABLED,
   getTrustedMuteHideThreshold,
-  getTrustedSpamHideThreshold,
-  DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
-  DEFAULT_BLUR_THRESHOLD,
-  DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
-  DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
 } from "./constants.js";
 import { attachHealthBadges } from "./gridHealth.js";
 import { attachUrlHealthBadges } from "./urlHealthObserver.js";
@@ -30,7 +19,6 @@ import { updateVideoCardSourceVisibility } from "./utils/cardSourceVisibility.js
 import { collectVideoTags } from "./utils/videoTags.js";
 import { normalizeHashtag } from "./utils/hashtagNormalization.js";
 import { sanitizeProfileMediaUrl } from "./utils/profileMedia.js";
-import { ADMIN_INITIAL_EVENT_BLACKLIST } from "./lists.js";
 import { userBlocks } from "./userBlocks.js";
 import { relayManager } from "./relayManager.js";
 import {
