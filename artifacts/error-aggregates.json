@@ -1,13 +1,24 @@
 [
   {
-    "fingerprint": "e1da49a7",
-    "title": "load defers permission-required decrypts until explicitly enabled",
+    "fingerprint": "00257328",
+    "title": "Load Test Bottleneck: Cryptographic Bottleneck (Avg Sign Time 5.87ms > 5ms)",
     "count": 1,
     "sources": [
-      "unit-test:test_unit.log"
+      "load-test:load-report-20260204.json"
     ],
-    "severity": "High",
-    "stack": "TestContext.<anonymous> (file://$REPO/tests/hashtag-preferences.test.mjs:300:14)\n    async Test.run (node:internal/test_runner/test:1054:7)\n    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)\n  ...\n# Subtest: interest and disinterest lists remain exclusive",
-    "owner": "QA Team"
+    "severity": "Medium",
+    "stack": "Bottleneck: Cryptographic Bottleneck (Avg Sign Time 5.87ms > 5ms)\nRemediation: Client-side event signing is slow. Review cryptographic library (nostr-tools) usage or client hardware capabilities.",
+    "owner": "P2P Team"
+  },
+  {
+    "fingerprint": "bc06bea0",
+    "title": "Load Test Bottleneck: Cryptographic Bottleneck (Avg Sign Time 5.53ms > 5ms)",
+    "count": 1,
+    "sources": [
+      "load-test:load-report.json"
+    ],
+    "severity": "Medium",
+    "stack": "Bottleneck: Cryptographic Bottleneck (Avg Sign Time 5.53ms > 5ms)\nRemediation: Client-side event signing is slow. Review cryptographic library (nostr-tools) usage or client hardware capabilities.",
+    "owner": "P2P Team"
   }
 ]

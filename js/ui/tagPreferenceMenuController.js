@@ -276,16 +276,6 @@ export default class TagPreferenceMenuController {
       this.callbacks.onPreferenceUpdate();
     }
 
-    try {
-      await this.persistPreferencesFromMenu();
-    } catch (error) {
-      return;
-    }
-
-    if (this.callbacks.onPreferenceUpdate) {
-      this.callbacks.onPreferenceUpdate();
-    }
-
     if (typeof detail?.closePopover === "function") {
       detail.closePopover({ restoreFocus: false });
     }

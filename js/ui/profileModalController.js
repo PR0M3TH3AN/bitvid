@@ -43,6 +43,8 @@ import {
   getLinkPreviewSettings,
   setLinkPreviewAutoFetch,
 } from "../utils/linkPreviewSettings.js";
+import { SubscriptionHistoryController } from "./subscriptionHistoryController.js";
+import { DMSettingsModalController } from "./dm/DMSettingsModalController.js";
 
 const noop = () => {};
 
@@ -1040,6 +1042,7 @@ export class ProfileModalController {
     this.adminSuperNpub = resolvedAdminSuperNpub;
     this.adminDmImageUrl = resolvedAdminDmImageUrl;
     this.bitvidWebsiteUrl = resolvedbitvidWebsiteUrl;
+    this.hasShownRelayWarning = false;
 
     this.internalState = {
       savedProfiles: [],
@@ -1252,13 +1255,7 @@ export class ProfileModalController {
     this.relayInput = null;
     this.addRelayButton = null;
     this.restoreRelaysButton = null;
-    this.relayHealthPanel = null;
-    this.relayHealthSummary = null;
-    this.relayHealthCounts = null;
-    this.relayHealthMessage = null;
-    this.relayHealthList = null;
     this.relayHealthStatus = null;
-    this.relayHealthRefreshButton = null;
     this.relayHealthTelemetryToggle = null;
     this.relayHealthRefreshPromise = null;
     this.profileRelayList = null;
@@ -1436,6 +1433,8 @@ export class ProfileModalController {
     this.addAccountButtonState = null;
     this.adminEmptyMessages = new Map();
     this.hashtagPreferencesUnsubscribe = null;
+    this.subscriptionHistoryController = new SubscriptionHistoryController();
+    this.dmSettingsModalController = new DMSettingsModalController();
 
     if (
       this.subscriptionsService &&
@@ -1597,20 +1596,8 @@ export class ProfileModalController {
     this.addRelayButton = document.getElementById("addRelayBtn") || null;
     this.restoreRelaysButton =
       document.getElementById("restoreRelaysBtn") || null;
-    this.relayHealthPanel =
-      document.getElementById("relayHealthPanel") || null;
-    this.relayHealthSummary =
-      document.getElementById("relayHealthSummary") || null;
-    this.relayHealthCounts =
-      document.getElementById("relayHealthCounts") || null;
-    this.relayHealthMessage =
-      document.getElementById("relayHealthMessage") || null;
-    this.relayHealthList =
-      document.getElementById("relayHealthList") || null;
     this.relayHealthStatus =
       document.getElementById("relayHealthStatus") || null;
-    this.relayHealthRefreshButton =
-      document.getElementById("relayHealthRefreshBtn") || null;
     this.relayHealthTelemetryToggle =
       document.getElementById("relayHealthTelemetryOptIn") || null;
     this.profileRelayRefreshBtn =
@@ -1622,6 +1609,10 @@ export class ProfileModalController {
       document.getElementById("subscriptionsEmpty") || null;
     this.profileSubscriptionsRefreshBtn =
       document.getElementById("subscriptionsRefreshBtn") || null;
+    this.profileSubscriptionsHistoryBtn =
+      document.getElementById("subscriptionsHistoryBtn") || null;
+    this.profileSubscriptionsBackupBtn =
+      document.getElementById("subscriptionsBackupBtn") || null;
     this.friendList = document.getElementById("friendsList") || null;
     this.friendListEmpty = document.getElementById("friendsEmpty") || null;
     this.friendInput = document.getElementById("friendsInput") || null;
@@ -2510,6 +2501,69 @@ export class ProfileModalController {
     }
   }
 
+  openDmSettingsModal() {
+    const owner = this.resolveActiveDmRelayOwner();
+    if (!owner) {
+      this.showError("Please sign in to manage DM settings.");
+      return;
+    }
+
+    const privacySettings = this.getDmPrivacySettingsSnapshot();
+    const relayHints = this.getActiveDmRelayPreferences();
+
+    this.dmSettingsModalController.show({
+      privacySettings,
+      relayHints,
+      onPrivacyChange: (key, value) => {
+        this.persistDmPrivacySettings({ [key]: value });
+        if (key === "readReceiptsEnabled") {
+          this.showStatus(
+            value ? "Read receipts enabled." : "Read receipts disabled.",
+          );
+        } else if (key === "typingIndicatorsEnabled") {
+          this.showStatus(
+            value ? "Typing indicators enabled." : "Typing indicators disabled.",
+          );
+        }
+      },
+      onPublishRelays: async (urls) => {
+        return this.handleDmSettingsPublish(urls);
+      },
+    });
+  }
+
+  async handleDmSettingsPublish(relays) {
+    const owner = this.resolveActiveDmRelayOwner();
+    if (!owner) {
+      return { ok: false, error: "not-logged-in" };
+    }
+
+    // Update local state first
+    this.setActiveDmRelayPreferences(relays);
+
+    // Publish using existing logic
+    const callback = this.callbacks.onPublishDmRelayPreferences;
+    if (!callback || callback === noop) {
+      return { ok: false, error: "unavailable" };
+    }
+
+    try {
+      const result = await callback({
+        pubkey: owner,
+        relays,
+        controller: this,
+      });
+
+      if (result?.ok) {
+        this.populateDmRelayPreferences(); // Refresh old UI just in case
+        return result;
+      }
+      return { ok: false, error: result?.error || "failed" };
+    } catch (error) {
+      return { ok: false, error: error };
+    }
+  }
+
   buildDmRecipientContext(pubkey) {
     const normalized = this.normalizeHexPubkey(pubkey);
     if (!normalized) {
@@ -2742,6 +2796,7 @@ export class ProfileModalController {
       ? this.normalizeHexPubkey(actorPubkey)
       : this.resolveActiveDmActor();
 
+    this.hasShownRelayWarning = false;
     this.setDirectMessageRecipient(null, { reason: "clear" });
     this.resetAttachmentQueue({ clearInput: true });
     this.dmReadReceiptCache.clear();
@@ -4142,7 +4197,15 @@ export class ProfileModalController {
       };
     }
 
-    const threads = this.groupDirectMessages(messages, actor);
+    const allThreads = this.groupDirectMessages(messages, actor);
+    const blocksService = this.services.userBlocks;
+    const isRemoteBlocked =
+      blocksService && typeof blocksService.isBlocked === "function"
+        ? (pubkey) => blocksService.isBlocked(pubkey)
+        : () => false;
+    const threads = allThreads.filter(
+      (thread) => !thread.remoteHex || !isRemoteBlocked(thread.remoteHex),
+    );
     const remoteKeys = new Set();
     threads.forEach((thread) => {
       if (thread.remoteHex) {
@@ -4656,9 +4719,7 @@ export class ProfileModalController {
           this.handleTypingIndicatorsToggle(enabled);
         },
         onOpenSettings: () => {
-          this.cacheDmRelayElements();
-          this.bindDmRelayControls();
-          this.populateDmRelayPreferences();
+          this.openDmSettingsModal();
         },
       });
     } catch (error) {
@@ -5323,6 +5384,11 @@ export class ProfileModalController {
       return;
     }
 
+    if (this.hasShownRelayWarning) {
+      return;
+    }
+    this.hasShownRelayWarning = true;
+
     this.showStatus(
       "Privacy warning: direct messages are using your default relays because no NIP-17 relay list is available.",
       { autoHideMs: 5000 },
@@ -5417,16 +5483,14 @@ export class ProfileModalController {
           .loadRelayList(activeHex)
           .then(() => {
             this.populateProfileRelays();
+            void this.refreshRelayHealthPanel({
+              forceRefresh: true,
+              reason: "relay-update",
+            });
           })
           .catch((error) => {
             devLogger.warn("[profileModal] Failed to refresh relay list:", error);
           });
-      });
-    }
-
-    if (this.relayHealthRefreshButton instanceof HTMLElement) {
-      this.relayHealthRefreshButton.addEventListener("click", () => {
-        void this.refreshRelayHealthPanel({ forceRefresh: true, reason: "manual" });
       });
     }
 
@@ -5664,6 +5728,32 @@ export class ProfileModalController {
       });
       this.profileMessageInput.addEventListener("input", () => {
         void this.maybePublishTypingIndicator();
+      });
+    }
+
+    if (this.profileSubscriptionsHistoryBtn) {
+      this.profileSubscriptionsHistoryBtn.addEventListener("click", () => {
+        const pubkey = this.normalizeHexPubkey(this.getActivePubkey());
+        if (pubkey) {
+          this.subscriptionHistoryController.show(pubkey);
+        } else {
+          this.showError("Please log in to view subscription history.");
+        }
+      });
+    }
+
+    if (this.profileSubscriptionsBackupBtn) {
+      this.profileSubscriptionsBackupBtn.addEventListener("click", () => {
+        const pubkey = this.normalizeHexPubkey(this.getActivePubkey());
+        if (pubkey) {
+          if (confirm("Create a backup of your current subscription list?")) {
+             this.subscriptionHistoryController.handleCreateBackup(pubkey).then(() => {
+                 this.showSuccess("Backup created.");
+             });
+          }
+        } else {
+          this.showError("Please log in to backup subscriptions.");
+        }
       });
     }
 
@@ -7328,52 +7418,54 @@ export class ProfileModalController {
     const shouldStayInMenu = keepMenuView && isMobile;
     this.setMobileView(shouldStayInMenu ? "menu" : "pane");
 
-    const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
+    setTimeout(() => {
+      const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
 
-    if (target === "history") {
-      void this.populateProfileWatchHistory();
-    } else if (target === "relays") {
-      this.populateProfileRelays();
-      void this.refreshRelayHealthPanel({
-        forceRefresh: true,
-        reason: "pane-select",
-      });
-    } else if (target === "messages") {
-      this.resumeProfileMessages();
-      void this.populateProfileMessages({ reason: "pane-select" });
-      void this.refreshDmRelayPreferences();
-    } else if (target === "wallet") {
-      this.refreshWalletPaneState();
-    } else if (target === "storage") {
-      this.populateStoragePane();
-    } else if (target === "hashtags") {
-      this.populateHashtagPreferences();
-      if (activeHex && this.hashtagPreferencesService) {
-        this.hashtagPreferencesService
-          .load(activeHex, { allowPermissionPrompt: true })
-          .catch(noop);
+      if (target === "history") {
+        void this.populateProfileWatchHistory();
+      } else if (target === "relays") {
+        this.populateProfileRelays();
+        void this.refreshRelayHealthPanel({
+          forceRefresh: true,
+          reason: "pane-select",
+        });
+      } else if (target === "messages") {
+        this.resumeProfileMessages();
+        void this.populateProfileMessages({ reason: "pane-select" });
+        void this.refreshDmRelayPreferences();
+      } else if (target === "wallet") {
+        this.refreshWalletPaneState();
+      } else if (target === "storage") {
+        this.populateStoragePane();
+      } else if (target === "hashtags") {
+        this.populateHashtagPreferences();
+        if (activeHex && this.hashtagPreferencesService) {
+          this.hashtagPreferencesService
+            .load(activeHex, { allowPermissionPrompt: true })
+            .catch(noop);
+        }
+        this.refreshHashtagBackgroundStatus();
+      } else if (target === "subscriptions") {
+        if (activeHex && this.subscriptionsService) {
+          this.subscriptionsService
+            .loadSubscriptions(activeHex, { allowPermissionPrompt: true })
+            .catch(noop);
+        }
+        void this.populateSubscriptionsList();
+        this.refreshSubscriptionsBackgroundStatus();
+      } else if (target === "blocked") {
+        if (activeHex && this.services.userBlocks) {
+          this.services.userBlocks.loadBlocks(activeHex).catch(noop);
+        }
+        this.populateBlockedList();
+      } else if (target === "safety") {
+        this.refreshModerationSettingsUi();
+        this.syncLinkPreviewSettingsUi();
       }
-      this.refreshHashtagBackgroundStatus();
-    } else if (target === "subscriptions") {
-      if (activeHex && this.subscriptionsService) {
-        this.subscriptionsService
-          .loadSubscriptions(activeHex, { allowPermissionPrompt: true })
-          .catch(noop);
-      }
-      void this.populateSubscriptionsList();
-      this.refreshSubscriptionsBackgroundStatus();
-    } else if (target === "blocked") {
-      if (activeHex && this.services.userBlocks) {
-        this.services.userBlocks.loadBlocks(activeHex).catch(noop);
-      }
-      this.populateBlockedList();
-    } else if (target === "safety") {
-      this.refreshModerationSettingsUi();
-      this.syncLinkPreviewSettingsUi();
-    }
 
-    this.callbacks.onSelectPane(target, { controller: this });
-    this.callbacks.onPaneShown(target, { controller: this });
+      this.callbacks.onSelectPane(target, { controller: this });
+      this.callbacks.onPaneShown(target, { controller: this });
+    }, 0);
   }
 
   populateProfileRelays(relayEntries = null) {
@@ -7423,8 +7515,8 @@ export class ProfileModalController {
 
     relays.forEach((entry) => {
       const item = document.createElement("li");
-      item.className =
-        "card flex items-start justify-between gap-4 p-4";
+      item.className = "card flex items-start justify-between gap-4 p-4";
+      item.dataset.relayUrl = entry.url;
 
       const info = document.createElement("div");
       info.className = "flex-1 min-w-0";
@@ -7443,8 +7535,13 @@ export class ProfileModalController {
       }
       statusEl.textContent = modeLabel;
 
+      const health = document.createElement("div");
+      health.className = "flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-2xs text-muted empty:hidden";
+      health.dataset.role = "relay-health";
+
       info.appendChild(urlEl);
       info.appendChild(statusEl);
+      info.appendChild(health);
 
       const actions = document.createElement("div");
       actions.className = "flex items-center gap-2";
@@ -7486,126 +7583,58 @@ export class ProfileModalController {
     this.relayHealthStatus.textContent = text;
   }
 
-  updateRelayHealthSummary(snapshot = []) {
-    if (!this.relayHealthCounts || !this.relayHealthMessage) {
+  updateRelayHealthIndicators(snapshot = []) {
+    if (!this.relayList) {
       return;
     }
 
-    const entries = Array.isArray(snapshot) ? snapshot : [];
-    const total = entries.length;
-    const healthy = entries.filter((entry) => entry.connected).length;
-    const failed = Math.max(0, total - healthy);
-
-    this.relayHealthCounts.textContent = `${healthy} healthy • ${failed} failed`;
-
-    let message = "";
-    if (!total) {
-      message = "No relays configured.";
-    } else if (failed > 0) {
-      message =
-        failed === total
-          ? "All relays are unreachable. Check your connection or update your relay list."
-          : `${failed} relay${failed === 1 ? "" : "s"} unreachable. Playback and publishing may be delayed.`;
-    } else {
-      message = "All relays reachable.";
-    }
-
-    this.relayHealthMessage.className = "mt-1 text-xs text-muted";
-    if (failed > 0) {
-      this.relayHealthMessage.classList.add("text-status-warning");
-    } else if (total > 0) {
-      this.relayHealthMessage.classList.add("text-status-success");
-    }
-    this.relayHealthMessage.textContent = message;
-  }
-
-  renderRelayHealthSnapshot(snapshot = []) {
-    if (!this.relayHealthList) {
-      return;
-    }
-
-    this.updateRelayHealthSummary(snapshot);
-    this.relayHealthList.innerHTML = "";
-
-    if (!snapshot.length) {
-      const emptyState = document.createElement("li");
-      emptyState.className =
-        "card border border-dashed border-surface-strong p-4 text-center text-sm text-muted";
-      emptyState.textContent = "No relays configured.";
-      this.relayHealthList.appendChild(emptyState);
+    if (!Array.isArray(snapshot)) {
       return;
     }
 
     snapshot.forEach((entry) => {
-      const item = document.createElement("li");
-      item.className = "card flex flex-col gap-2 p-4";
-
-      const header = document.createElement("div");
-      header.className = "flex items-center justify-between gap-3";
-
-      const urlEl = document.createElement("p");
-      urlEl.className = "text-sm font-medium text-primary break-all";
-      urlEl.textContent = entry.url;
-
-      const connection = document.createElement("span");
-      const connected = Boolean(entry.connected);
-      connection.className = `text-xs font-semibold ${
-        connected ? "text-status-success" : "text-status-danger"
-      }`;
-      connection.textContent = connected ? "Connected" : "Unavailable";
-
-      header.appendChild(urlEl);
-      header.appendChild(connection);
-
-      const details = document.createElement("div");
-      details.className = "grid grid-cols-2 gap-3 text-xs text-muted sm:grid-cols-3";
-
-      const latency = document.createElement("div");
-      latency.className = "flex items-center justify-between gap-2";
-      const latencyLabel = document.createElement("span");
-      latencyLabel.textContent = "Latency";
-      const latencyValue = document.createElement("span");
-      latencyValue.className = "text-text";
-      latencyValue.textContent = Number.isFinite(entry.lastLatencyMs)
-        ? `${entry.lastLatencyMs} ms`
-        : "—";
-      latency.appendChild(latencyLabel);
-      latency.appendChild(latencyValue);
-
-      const errors = document.createElement("div");
-      errors.className = "flex items-center justify-between gap-2";
-      const errorsLabel = document.createElement("span");
-      errorsLabel.textContent = "Errors";
-      const errorsValue = document.createElement("span");
-      errorsValue.className = "text-text";
-      errorsValue.textContent = Number.isFinite(entry.errorCount)
-        ? `${entry.errorCount}`
-        : "0";
-      errors.appendChild(errorsLabel);
-      errors.appendChild(errorsValue);
-
-      const checks = document.createElement("div");
-      checks.className = "flex items-center justify-between gap-2";
-      const checksLabel = document.createElement("span");
-      checksLabel.textContent = "Checked";
-      const checksValue = document.createElement("span");
-      checksValue.className = "text-text";
-      if (Number.isFinite(entry.lastCheckedAt) && entry.lastCheckedAt > 0) {
-        checksValue.textContent = new Date(entry.lastCheckedAt).toLocaleTimeString();
-      } else {
-        checksValue.textContent = "—";
+      const url = entry.url;
+      const item = this.relayList.querySelector(
+        `li[data-relay-url="${CSS.escape(url)}"]`,
+      );
+      if (!item) {
+        return;
       }
-      checks.appendChild(checksLabel);
-      checks.appendChild(checksValue);
 
-      details.appendChild(latency);
-      details.appendChild(errors);
-      details.appendChild(checks);
+      const healthContainer = item.querySelector('[data-role="relay-health"]');
+      if (!healthContainer) {
+        return;
+      }
 
-      item.appendChild(header);
-      item.appendChild(details);
+      healthContainer.innerHTML = "";
 
-      this.relayHealthList.appendChild(item);
+      const createBadge = (label, value, colorClass) => {
+        const span = document.createElement("span");
+        span.className = "inline-flex items-center gap-1 bg-surface-strong/30 px-1.5 py-0.5 rounded";
+        const l = document.createElement("span");
+        l.textContent = label;
+        const v = document.createElement("span");
+        v.className = colorClass || "text-text";
+        v.textContent = value;
+        span.appendChild(l);
+        span.appendChild(v);
+        return span;
+      };
+
+      if (Number.isFinite(entry.lastLatencyMs)) {
+        let color = "text-status-success";
+        if (entry.lastLatencyMs > 1000) color = "text-status-danger";
+        else if (entry.lastLatencyMs > 300) color = "text-status-warning";
+        healthContainer.appendChild(
+          createBadge("Ping:", `${entry.lastLatencyMs}ms`, color),
+        );
+      }
+
+      if (entry.errorCount > 0) {
+        healthContainer.appendChild(
+          createBadge("Errors:", `${entry.errorCount}`, "text-status-danger"),
+        );
+      }
     });
   }
 
@@ -7626,7 +7655,7 @@ export class ProfileModalController {
 
   async refreshRelayHealthPanel({ forceRefresh = false, reason = "" } = {}) {
     const service = this.services?.relayHealthService;
-    if (!service || !this.relayHealthList) {
+    if (!service) {
       return [];
     }
 
@@ -7635,7 +7664,7 @@ export class ProfileModalController {
     }
 
     const snapshot = service.getSnapshot();
-    this.renderRelayHealthSnapshot(snapshot);
+    this.updateRelayHealthIndicators(snapshot);
 
     if (!forceRefresh) {
       return snapshot;
@@ -7645,13 +7674,14 @@ export class ProfileModalController {
       return this.relayHealthRefreshPromise;
     }
 
-    const statusMessage = reason === "manual" ? "Refreshing relay health…" : "Checking relays…";
+    const statusMessage =
+      reason === "manual" ? "Refreshing relay health…" : "Checking relays…";
     this.updateRelayHealthStatus(statusMessage);
 
     const refreshPromise = service
       .refresh()
       .then((latest) => {
-        this.renderRelayHealthSnapshot(latest);
+        this.updateRelayHealthIndicators(latest);
         this.updateRelayHealthStatus("Relay health updated.");
         return latest;
       })

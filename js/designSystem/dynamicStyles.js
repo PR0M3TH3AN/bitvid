@@ -121,19 +121,6 @@ function insertEmptyRule(sheet, selectorText) {
   }
 }
 
-function findRuleIndex(sheet, rule) {
-  if (!sheet || !rule) {
-    return -1;
-  }
-  const { cssRules } = sheet;
-  for (let index = 0; index < cssRules.length; index += 1) {
-    if (cssRules[index] === rule) {
-      return index;
-    }
-  }
-  return -1;
-}
-
 function normalizeSelectors(selectors) {
   if (!Array.isArray(selectors)) {
     return [DEFAULT_SELECTOR];
@@ -240,20 +227,65 @@ export function releaseScope(scopeId) {
   }
 
   const { sheet } = scope.manager;
+  const { scopes } = scope.manager;
   let removed = false;
 
-  for (const record of scope.rules) {
-    const rule = record.rule;
-    if (!rule) {
-      continue;
+  let startIndex = 0;
+  let found = false;
+
+  // Optimize: Calculate index range based on registered scopes instead of scanning sheet.
+  for (const [id, s] of scopes) {
+    if (id === scopeId) {
+      found = true;
+      break;
     }
-    const index = findRuleIndex(sheet, rule);
-    if (index >= 0) {
-      try {
-        sheet.deleteRule(index);
-        removed = true;
-      } catch (error) {
-        // Ignore deletion failures.
+    startIndex += s.rules.length;
+  }
+
+  if (found) {
+    const count = scope.rules.length;
+    if (count > 0 && sheet.cssRules) {
+      // Safety Check: Verify that the rule at the calculated index matches the first rule of the scope.
+      // This protects against desynchronization between the virtual scope registry and the actual stylesheet.
+      const firstRule = scope.rules[0]?.rule;
+      const isSynchronized = firstRule && sheet.cssRules[startIndex] === firstRule;
+
+      if (isSynchronized) {
+        // Fast path: Delete assuming contiguous block at startIndex
+        try {
+          for (let i = count - 1; i >= 0; i -= 1) {
+            sheet.deleteRule(startIndex + i);
+          }
+          removed = true;
+        } catch (error) {
+          // Ignore deletion failures.
+        }
+      } else {
+        // Fallback path: Linear scan (O(N))
+        const rulesToDelete = new Set();
+        for (const record of scope.rules) {
+          if (record.rule) {
+            rulesToDelete.add(record.rule);
+          }
+        }
+
+        if (rulesToDelete.size > 0) {
+          for (let index = sheet.cssRules.length - 1; index >= 0; index -= 1) {
+            const rule = sheet.cssRules[index];
+            if (rulesToDelete.has(rule)) {
+              try {
+                sheet.deleteRule(index);
+                removed = true;
+                rulesToDelete.delete(rule);
+              } catch (error) {
+                // Ignore deletion failures.
+              }
+              if (rulesToDelete.size === 0) {
+                break;
+              }
+            }
+          }
+        }
       }
     }
   }

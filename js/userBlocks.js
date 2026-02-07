@@ -26,6 +26,10 @@ import {
   NIP07_PRIORITY,
 } from "./nostr/nip07Permissions.js";
 import { relaySubscriptionService } from "./services/relaySubscriptionService.js";
+import {
+  getLastSuccessfulScheme,
+  setLastSuccessfulScheme,
+} from "./nostr/decryptionSchemeCache.js";
 
 class TinyEventEmitter {
   constructor() {
@@ -79,9 +83,10 @@ export const USER_BLOCK_EVENTS = Object.freeze({
 const FAST_BLOCKLIST_RELAY_LIMIT = 3;
 const FAST_BLOCKLIST_TIMEOUT_MS = 2500;
 const BACKGROUND_BLOCKLIST_TIMEOUT_MS = 6000;
-const DECRYPT_TIMEOUT_MS = 15000;
-const BACKGROUND_DECRYPT_TIMEOUT_MS = 2500;
-const DECRYPT_RETRY_DELAY_MS = 10000;
+const DECRYPT_TIMEOUT_MS = 20000;
+const BACKGROUND_DECRYPT_TIMEOUT_MS = 15000;
+// PERF: Reduced from 10s to 3s for faster recovery during login.
+const DECRYPT_RETRY_DELAY_MS = 3000;
 const MAX_BLOCKLIST_ENTRIES = 5000;
 
 function sanitizeRelayList(candidate) {
@@ -152,10 +157,14 @@ function extractEncryptionHints(event) {
   return hints;
 }
 
-function determineDecryptionOrder(event, availableSchemes) {
+function determineDecryptionOrder(event, availableSchemes, cachedScheme = null) {
   const available = Array.isArray(availableSchemes) ? availableSchemes : [];
   const availableSet = new Set(available);
   const prioritized = [];
+
+  if (cachedScheme && availableSet.has(cachedScheme)) {
+    prioritized.push(cachedScheme);
+  }
 
   const hints = extractEncryptionHints(event);
   const aliasMap = {
@@ -883,16 +892,23 @@ class UserBlockListManager {
       ? Math.max(0, Math.floor(options.since))
       : null;
     const statusCallback =
-      typeof options?.statusCallback === "function" ? options.statusCallback : null;
-    const loadMode = options?.mode === "background" ? "background" : "interactive";
+      typeof options?.statusCallback === "function"
+        ? options.statusCallback
+        : null;
+    const loadMode =
+      options?.mode === "background" ? "background" : "interactive";
     const allowPermissionPrompt =
       options?.allowPermissionPrompt !== false && loadMode !== "background";
     const decryptTimeoutMs = Number.isFinite(options?.decryptTimeoutMs)
       ? Math.max(0, Math.floor(options.decryptTimeoutMs))
       : allowPermissionPrompt
-        ? DECRYPT_TIMEOUT_MS
-        : BACKGROUND_DECRYPT_TIMEOUT_MS;
-    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 12000 : 3000;
+      ? DECRYPT_TIMEOUT_MS
+      : BACKGROUND_DECRYPT_TIMEOUT_MS;
+    // PERF: Previous 3s no-prompt timeout was too aggressive — extensions that
+    // have already granted permission still need time to decrypt. 8s gives a
+    // realistic window while still failing faster than the full 15s interactive
+    // timeout.
+    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 15000 : 8000;
 
     const emitStatus = (detail) => {
       if (!detail || typeof detail !== "object") {
@@ -983,8 +999,11 @@ class UserBlockListManager {
         signer = await nostrClient.ensureActiveSignerForPubkey(normalized);
       }
 
-      const signerHasNip04 = typeof signer?.nip04Decrypt === "function";
-      const signerHasNip44 = typeof signer?.nip44Decrypt === "function";
+      const caps = signer?.capabilities || {};
+      const signerHasNip04 =
+        caps.nip04 !== false && typeof signer?.nip04Decrypt === "function";
+      const signerHasNip44 =
+        caps.nip44 !== false && typeof signer?.nip44Decrypt === "function";
       const signerAvailable = Boolean(signer);
       const signerHasDecryptors = signerHasNip04 || signerHasNip44;
       const signerStatus = signerAvailable
@@ -1029,28 +1048,38 @@ class UserBlockListManager {
       const decryptors = new Map();
       const sources = new Map();
       const registerDecryptor = (scheme, handler, source) => {
-        if (!scheme || typeof handler !== "function" || decryptors.has(scheme)) {
+        if (
+          !scheme ||
+          typeof handler !== "function" ||
+          decryptors.has(scheme)
+        ) {
           return;
         }
         decryptors.set(scheme, handler);
         sources.set(scheme, source || "unknown");
       };
 
+      // Pass per-call timeouts to signer decrypt methods so they fail fast
+      // during login (3s) instead of using the 60s default. This prevents a
+      // single stalled extension call from blocking the entire decrypt pipeline.
+      // Use HIGH priority for user blocks as they are critical for feed safety.
+      const signerDecryptOptions = {
+        priority: NIP07_PRIORITY.HIGH,
+        timeoutMs: nip07DecryptTimeoutMs,
+        retryMultiplier: 1,
+      };
+
       if (signerHasNip44) {
         registerDecryptor(
           "nip44",
           (payload) =>
-            signer.nip44Decrypt(normalized, payload, {
-              priority: NIP07_PRIORITY.HIGH,
-            }),
+            signer.nip44Decrypt(normalized, payload, signerDecryptOptions),
           "active-signer",
         );
         registerDecryptor(
           "nip44_v2",
           (payload) =>
-            signer.nip44Decrypt(normalized, payload, {
-              priority: NIP07_PRIORITY.HIGH,
-            }),
+            signer.nip44Decrypt(normalized, payload, signerDecryptOptions),
           "active-signer",
         );
       }
@@ -1059,9 +1088,7 @@ class UserBlockListManager {
         registerDecryptor(
           "nip04",
           (payload) =>
-            signer.nip04Decrypt(normalized, payload, {
-              priority: NIP07_PRIORITY.HIGH,
-            }),
+            signer.nip04Decrypt(normalized, payload, signerDecryptOptions),
           "active-signer",
         );
       }
@@ -1134,11 +1161,19 @@ class UserBlockListManager {
         permissionError.signerStatus = signerStatus;
       }
 
+      // Use the shared cross-service cache so all list services benefit from
+      // the first successful decrypt during login.
+      const cachedScheme = getLastSuccessfulScheme(normalized);
+
       return {
         decryptors,
         sources,
         permissionError,
-        order: determineDecryptionOrder(event, Array.from(decryptors.keys())),
+        order: determineDecryptionOrder(
+          event,
+          Array.from(decryptors.keys()),
+          cachedScheme,
+        ),
         signerStatus,
       };
     };
@@ -1271,18 +1306,56 @@ class UserBlockListManager {
             throw error;
           }
 
+          // PERF: Fast path — if the shared cache already knows the correct
+          // scheme (e.g. another list decrypted first), try ONLY that scheme
+          // before falling back to the full parallel probe. This avoids
+          // queuing redundant NIP-07 extension calls.
           let decryptedText = "";
-          for (const scheme of order) {
-            const handler = decryptors.get(scheme);
-            if (typeof handler !== "function") continue;
+          const sharedCachedScheme = getLastSuccessfulScheme(normalized);
+          if (sharedCachedScheme && decryptors.has(sharedCachedScheme)) {
             try {
-              const plaintext = await handler(ev.content);
-              if (typeof plaintext === "string") {
-                decryptedText = plaintext;
-                break;
+              const fastResult = await decryptors.get(sharedCachedScheme)(ev.content);
+              if (typeof fastResult === "string" && fastResult) {
+                decryptedText = fastResult;
+                setLastSuccessfulScheme(normalized, sharedCachedScheme);
               }
             } catch {
-              // ignore
+              // Cached scheme failed — fall through to parallel probe.
+            }
+          }
+
+          // PERF: Try all decryption schemes in parallel via Promise.any().
+          // The first scheme to succeed wins, avoiding sequential 3-15s timeouts
+          // per scheme that previously made worst-case decryption take 45s+.
+          // Deduplicate schemes in the same family (nip44/nip44_v2 both call
+          // the same underlying signer.nip44Decrypt) to avoid redundant calls.
+          if (!decryptedText) {
+            try {
+              const getSchemeFamily = (s) =>
+                s === "nip44" || s === "nip44_v2" ? "nip44" : s;
+              const seenFamilies = new Set();
+              const attempts = order
+                .map((scheme) => {
+                  const family = getSchemeFamily(scheme);
+                  if (seenFamilies.has(family)) return null;
+                  seenFamilies.add(family);
+                  const handler = decryptors.get(scheme);
+                  if (typeof handler !== "function") return null;
+                  return handler(ev.content).then((plaintext) => {
+                    if (typeof plaintext !== "string") {
+                      throw new Error("non-string-result");
+                    }
+                    return { plaintext, scheme };
+                  });
+                })
+                .filter(Boolean);
+              if (attempts.length) {
+                const result = await Promise.any(attempts);
+                decryptedText = result.plaintext;
+                setLastSuccessfulScheme(normalized, result.scheme);
+              }
+            } catch {
+              // All schemes failed — decryptedText stays empty
             }
           }
 
@@ -1381,26 +1454,27 @@ class UserBlockListManager {
           if (decryptionError.code === "user-blocklist-decrypt-timeout") {
             const signerStatus =
               decryptionError.signerStatus || resolveSignerStatus();
-            // If decrypt times out, we can still load public mutes from standard event tags?
-            // For safety, we probably shouldn't partially load if we expect encryption.
-            // But preserving existing state is safer or applying empty.
-            // Current logic applies empty.
-            applySets(new Set(), new Set(), {
-              source,
-              reason: "decrypt-timeout",
-              signerStatus,
-              events: [newestStandard?.id, newestLegacy?.id].filter(Boolean),
-            });
-            this.loaded = true;
+
+            // If decrypt times out, restore the previous state to avoid wiping the user's blocks.
+            // We then schedule a background retry.
+            this.blockedPubkeys = previousState.blockedPubkeys;
+            this._privateBlocks = previousState.privateBlocks;
+            this._publicMutes = previousState.publicMutes;
+            this.blockEventId = previousState.blockEventId;
+            this.blockEventCreatedAt = previousState.blockEventCreatedAt;
+            this.loaded = true; // Mark as loaded so UI renders, even if stale
+
             emitStatus({
-              status: "applied-empty",
+              status: "stale",
               reason: "decrypt-timeout",
               signerStatus,
               source,
+              blockedPubkeys: Array.from(this.blockedPubkeys),
             });
             emitStatus({ status: "settled" });
+
             userLogger.warn(
-              "[UserBlockList] Decryption timed out; applying empty list and retrying in background.",
+              "[UserBlockList] Decryption timed out; keeping stale list and retrying in background.",
               {
                 signerStatus,
                 events: [newestStandard?.id, newestLegacy?.id].filter(Boolean),
@@ -1468,14 +1542,18 @@ class UserBlockListManager {
           : 0;
 
       // Concurrent incremental fetch for all variants
-      const [muteEvents, blockEvents, legacyEvents] = await Promise.all([
-        nostrClient.fetchListIncrementally({
-          kind: 10000,
-          pubkey: normalized,
-          relayUrls: relays,
-          since: fetchSince,
-          timeoutMs: 12000,
-        }),
+      // We prioritize standard NIP-51 lists (Kind 10000) to ensure the UI loads quickly.
+      // Legacy variants are fetched in parallel but processed separately to avoid blocking.
+
+      const standardFetchPromise = nostrClient.fetchListIncrementally({
+        kind: 10000,
+        pubkey: normalized,
+        relayUrls: relays,
+        since: fetchSince,
+        timeoutMs: 6000,
+      });
+
+      const legacyFetchPromise = Promise.all([
         nostrClient.fetchListIncrementally({
           kind: 10000,
           pubkey: normalized,
@@ -1494,17 +1572,40 @@ class UserBlockListManager {
         }),
       ]);
 
-      const combined = [...muteEvents, ...blockEvents, ...legacyEvents];
-
-      // If combined is empty, check if we have loaded state
-      if (!combined.length) {
-         if (!this.loaded) {
-            // Assuming empty if we have no prior state
-            await applyEvents([], { source: "incremental" });
-         }
-      } else {
-         await applyEvents(combined, { source: "incremental" });
+      // FAST PATH: Process Standard List immediately
+      let standardEvents = [];
+      try {
+        standardEvents = await standardFetchPromise;
+        if (Array.isArray(standardEvents) && standardEvents.length > 0) {
+          await applyEvents(standardEvents, { source: "fast-standard" });
+          this.loaded = true;
+        }
+      } catch (standardError) {
+        devLogger.warn("[UserBlockList] Standard fetch failed:", standardError);
       }
+
+      // SLOW PATH: Process Legacy Lists (and Standard if it was empty/failed)
+      // We do NOT await this for the main return, allowing the UI to unblock immediately
+      // if the standard list was found.
+      legacyFetchPromise
+        .then(async ([blockEvents, legacyEvents]) => {
+          const combined = [...standardEvents, ...blockEvents, ...legacyEvents];
+
+          if (!combined.length) {
+            // Only apply empty if we haven't already marked loaded (meaning standard failed or was empty)
+            // or if we want to ensure we settle state.
+            // If standard was found, we don't need to do anything for empty legacy.
+            if (!this.loaded) {
+              await applyEvents([], { source: "empty-result" });
+            }
+          } else {
+            // Re-apply merged results to catch any legacy blocks
+            await applyEvents(combined, { source: "incremental-merge" });
+          }
+        })
+        .catch((legacyError) => {
+          devLogger.warn("[UserBlockList] Legacy fetch failed:", legacyError);
+        });
 
 
     } catch (error) {

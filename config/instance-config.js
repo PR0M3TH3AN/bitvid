@@ -149,7 +149,7 @@ export const DNS_URL = "https://bitvid.network/";
  * forced to show the control.
  */
 export const TIP_JAR_URL =
-  "https://nostrtipjar.netlify.app/?n=npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe";
+  "https://tipjar.bitvid.network/?n=npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe";
 
 /**
  * Default image included in automated moderation DMs.

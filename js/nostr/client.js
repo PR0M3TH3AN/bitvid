@@ -157,14 +157,9 @@ import {
   readStoredSessionActorEntry,
   isSessionActor,
 } from "./sessionActor.js";
+import { HEX64_REGEX } from "../utils/hex.js";
 import {
-  HEX64_REGEX,
   NIP46_RPC_KIND,
-  NIP46_SESSION_STORAGE_KEY,
-  NIP46_PUBLISH_TIMEOUT_MS,
-  NIP46_RESPONSE_TIMEOUT_MS,
-  NIP46_SIGN_EVENT_TIMEOUT_MS,
-  NIP46_MAX_RETRIES,
   NIP46_HANDSHAKE_TIMEOUT_MS,
   NIP46_AUTH_CHALLENGE_MAX_ATTEMPTS,
   sanitizeRelayList,
@@ -4645,6 +4640,28 @@ export class NostrClient {
 
     const creation = Promise.resolve().then(() => {
       const instance = new SimplePool();
+
+      // Increase max listeners for relays managed by this pool to avoid
+      // warnings during high-concurrency fetches (e.g. login sync).
+      if (typeof instance.ensureRelay === "function") {
+        const originalEnsureRelay = instance.ensureRelay.bind(instance);
+        instance.ensureRelay = async (url) => {
+          const relay = await originalEnsureRelay(url);
+          if (relay && typeof relay.setMaxListeners === "function") {
+            try {
+              relay.setMaxListeners(200);
+            } catch (error) {
+              // ignore
+            }
+          }
+          return relay;
+        };
+      } else {
+        devLogger.warn(
+          "[nostr] SimplePool.ensureRelay missing; max listeners patch skipped."
+        );
+      }
+
       shimLegacySimplePoolMethods(instance);
       this.pool = instance;
       return instance;
@@ -5152,7 +5169,7 @@ export class NostrClient {
           (pubkey, ciphertext, options) =>
             activeSigner.nip44Decrypt(pubkey, ciphertext, {
               ...options,
-              priority: NIP07_PRIORITY.HIGH,
+              priority: NIP07_PRIORITY.NORMAL,
             }),
           {
             priority: -20,
@@ -5170,7 +5187,7 @@ export class NostrClient {
           (pubkey, ciphertext, options) =>
             activeSigner.nip04Decrypt(pubkey, ciphertext, {
               ...options,
-              priority: NIP07_PRIORITY.HIGH,
+              priority: NIP07_PRIORITY.NORMAL,
             }),
           {
             priority: -10,
@@ -7750,6 +7767,7 @@ export class NostrClient {
 
       const toProcess = eventBuffer;
       eventBuffer = [];
+      const updatedVideos = [];
 
       for (const evt of toProcess) {
         try {
@@ -7805,23 +7823,30 @@ export class NostrClient {
           const prevActive = this.activeMap.get(activeKey);
           if (!prevActive || video.created_at > prevActive.created_at) {
             this.activeMap.set(activeKey, video);
-            onVideo(video); // Trigger the callback that re-renders
-
-            // Fetch NIP-71 metadata (categorization tags) in the background
-            this.populateNip71MetadataForVideos([video])
-              .then(() => {
-                this.applyRootCreatedAt(video);
-              })
-              .catch((error) => {
-                devLogger.warn(
-                  "[nostr] Failed to hydrate NIP-71 metadata for live video:",
-                  error
-                );
-              });
+            updatedVideos.push(video);
           }
         } catch (err) {
           devLogger.error("[subscribeVideos] Error processing event:", err);
         }
+      }
+
+      if (updatedVideos.length > 0) {
+        // Trigger the callback once per batch to avoid UI thrashing
+        onVideo(updatedVideos);
+
+        // Fetch NIP-71 metadata (categorization tags) in the background for the whole batch
+        this.populateNip71MetadataForVideos(updatedVideos)
+          .then(() => {
+            for (const video of updatedVideos) {
+              this.applyRootCreatedAt(video);
+            }
+          })
+          .catch((error) => {
+            devLogger.warn(
+              "[nostr] Failed to hydrate NIP-71 metadata for live video batch:",
+              error
+            );
+          });
       }
 
       // Persist processed events after each flush so reloads warm quickly.
@@ -8600,9 +8625,18 @@ export class NostrClient {
             this.countUnsupportedRelays.add(url);
           } else {
             logRelayCountFailure(url, error);
-            this.markRelayUnreachable(url, 60000, {
-              reason: isTimeout ? "count-timeout" : "count-error",
-            });
+            // If the count request timed out, we don't want to kill the entire relay connection
+            // because it might still be good for subscriptions.
+            // We only trip the circuit breaker for hard errors.
+            if (!isTimeout) {
+              this.markRelayUnreachable(url, 60000, {
+                reason: "count-error",
+              });
+            } else if (isDevMode) {
+              devLogger.warn(
+                `[nostr] Relay ${url} count timed out (ignored for circuit breaker).`
+              );
+            }
           }
           return {
             url,

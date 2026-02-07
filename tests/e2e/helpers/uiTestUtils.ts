@@ -1,5 +1,14 @@
 import type { Page } from "@playwright/test";
 
+export async function ensureTestAssets(page: Page): Promise<void> {
+  const cssResponse = await page.request.head("/css/tailwind.generated.css");
+  if (!cssResponse.ok()) {
+    throw new Error(
+      "Test asset check failed: css/tailwind.generated.css is missing (404). Run `npm run build:css` before testing.",
+    );
+  }
+}
+
 export async function applyReducedMotion(page: Page): Promise<void> {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.addStyleTag({

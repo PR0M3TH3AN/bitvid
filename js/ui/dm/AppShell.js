@@ -179,6 +179,12 @@ export class AppShell {
     settingsBtn.ariaLabel = "Direct message settings";
     settingsBtn.addEventListener("click", (e) => {
       e.stopPropagation();
+
+      if (typeof onOpenSettings === "function") {
+        onOpenSettings();
+        return;
+      }
+
       let popover = sidebar.querySelector(".dm-settings-popover");
       if (popover) {
         popover.remove();
@@ -198,9 +204,6 @@ export class AppShell {
       const relaySettings = DMRelaySettings({ document: doc });
       popover.appendChild(relaySettings);
       sidebarHeader.appendChild(popover);
-      if (typeof onOpenSettings === "function") {
-        onOpenSettings(popover);
-      }
 
       const closeHandler = (event) => {
         if (!popover.contains(event.target) && event.target !== settingsBtn && !settingsBtn.contains(event.target)) {

@@ -4,8 +4,9 @@ import { signEventWithPrivateKey } from "../publishHelpers.js";
 import { createPrivateKeyCipherClosures } from "../signerHelpers.js";
 import { ensureNostrTools, getCachedNostrTools } from "../toolkit.js";
 import { normalizeActorKey } from "../watchHistory.js";
+import { HEX64_REGEX } from "../../utils/hex.js";
 
-const HEX64_REGEX = /^[0-9a-f]{64}$/i;
+
 
 function normalizePrivateKey(privateKey) {
   if (typeof privateKey !== "string") {

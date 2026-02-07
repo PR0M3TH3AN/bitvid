@@ -1,10 +1,11 @@
 import { userLogger } from "./utils/logger.js";
+import { HEX64_REGEX } from "./utils/hex.js";
 const DB_NAME = "bitvidSettings";
 const DB_VERSION = 1;
 const STORE_NAME = "kv";
 const KEY_PREFIX = "nwcSettings:";
 const LOCALSTORAGE_PREFIX = "bitvid:nwcSettings:";
-const HEX64_REGEX = /^[0-9a-f]{64}$/i;
+
 const MIN_DEFAULT_ZAP = 0;
 const MAX_DEFAULT_ZAP = 100000000;
 

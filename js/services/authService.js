@@ -27,6 +27,7 @@ import getDefaultAuthProvider, {
   providers as defaultAuthProviders,
 } from "./authProviders/index.js";
 import { fetchProfileMetadata } from "./profileMetadataService.js";
+import { HEX64_REGEX } from "../utils/hex.js";
 
 class SimpleEventEmitter {
   constructor(logger = null) {
@@ -69,7 +70,7 @@ class SimpleEventEmitter {
   }
 }
 
-const HEX64_REGEX = /^[0-9a-f]{64}$/i;
+
 const FALLBACK_PROFILE = {
   name: "Unknown",
   picture: "assets/svg/default-profile.svg",
@@ -623,10 +624,11 @@ export default class AuthService {
       postLoginError: null,
     };
 
-    const { detail: postLoginDetail, completionPromise } = this.applyPostLoginState({
+    const { detail: postLoginDetail, completionPromise, relaysReadyPromise } = this.applyPostLoginState({
       deferBlocks: true,
     });
     detail.postLogin = postLoginDetail;
+    detail.relaysReadyPromise = relaysReadyPromise;
 
     const postLoginPromise = Promise.resolve(completionPromise)
       .then((postLogin) => {
@@ -694,7 +696,8 @@ export default class AuthService {
     };
 
     if (!activePubkey) {
-      return { detail, completionPromise: Promise.resolve(detail) };
+      const resolved = Promise.resolve(detail);
+      return { detail, completionPromise: resolved, relaysReadyPromise: resolved };
     }
 
     const runOperation = async (operation) => {
@@ -718,6 +721,13 @@ export default class AuthService {
 
     const schedule = (callback) => Promise.resolve().then(() => callback());
 
+    // Expose relay readiness separately so list loading can start immediately
+    // after relays are available, without waiting for profile to complete.
+    let resolveRelaysReady;
+    const relaysReadyPromise = new Promise((resolve) => {
+      resolveRelaysReady = resolve;
+    });
+
     const completionPromise = (async () => {
       if (this.relayManager && typeof this.relayManager.loadRelayList === "function") {
         const relayOp = {
@@ -738,6 +748,7 @@ export default class AuthService {
         };
         await runOperation(relayOp);
       }
+      resolveRelaysReady(detail);
 
       const concurrentOps = [];
 
@@ -775,7 +786,7 @@ export default class AuthService {
       return detail;
     })();
 
-    return { detail, completionPromise };
+    return { detail, completionPromise, relaysReadyPromise };
   }
 
   createBlocksLoadOperation(

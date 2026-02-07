@@ -10,6 +10,7 @@ import { applyDesignSystemAttributes } from "./designSystem.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import { attachFeedInfoPopover } from "./ui/components/FeedInfoPopover.js";
 import { initDocsView } from "./docsView.js";
+import { FEED_TYPES } from "./constants.js";
 
 const TRACKING_SCRIPT_PATTERN = /(?:^|\/)tracking\.js(?:$|\?)/;
 
@@ -83,7 +84,7 @@ export async function loadView(viewUrl) {
  * Registry of view-specific initialization functions.
  */
 export const viewInitRegistry = {
-  "most-recent-videos": () => {
+  [FEED_TYPES.RECENT]: () => {
     const app = getApplication();
     if (app && typeof app.loadVideos === "function") {
       if (typeof app.mountVideoListView === "function") {
@@ -105,7 +106,7 @@ export const viewInitRegistry = {
       );
     }
   },
-  "for-you": () => {
+  [FEED_TYPES.FOR_YOU]: () => {
     initForYouView();
     const app = getApplication();
     if (app && typeof app.loadForYouVideos === "function") {
@@ -120,7 +121,7 @@ export const viewInitRegistry = {
       refreshApp.forceRefreshAllProfiles();
     }
   },
-  kids: () => {
+  [FEED_TYPES.KIDS]: () => {
     initKidsView();
     const app = getApplication();
     if (app && typeof app.loadKidsVideos === "function") {
@@ -134,7 +135,7 @@ export const viewInitRegistry = {
       refreshApp.forceRefreshAllProfiles();
     }
   },
-  explore: () => {
+  [FEED_TYPES.EXPLORE]: () => {
     initExploreView();
     const app = getApplication();
     if (app && typeof app.loadExploreVideos === "function") {
@@ -148,10 +149,10 @@ export const viewInitRegistry = {
       refreshApp.forceRefreshAllProfiles();
     }
   },
-  docs: async () => {
+  [FEED_TYPES.DOCS]: async () => {
     await initDocsView();
   },
-  history: async () => {
+  [FEED_TYPES.HISTORY]: async () => {
     try {
       const module = await import("./historyView.js");
       if (typeof module.initHistoryView === "function") {
@@ -167,7 +168,7 @@ export const viewInitRegistry = {
    * - If user is logged in, calls subscriptions.showSubscriptionVideos
    *   which loads subs if needed and renders the video grid in #subscriptionsVideoList
    */
-  subscriptions: async () => {
+  [FEED_TYPES.SUBSCRIPTIONS]: async () => {
     devLogger.log("Subscriptions view loaded.");
 
     const infoTrigger = document.getElementById("subscriptionsInfoTrigger");
@@ -195,11 +196,11 @@ export const viewInitRegistry = {
     );
   },
 
-  "channel-profile": () => {
+  [FEED_TYPES.CHANNEL]: () => {
     // Call the initialization function from channelProfile.js
     initChannelProfileView();
   },
-  search: async () => {
+  [FEED_TYPES.SEARCH]: async () => {
     try {
       const module = await import("./searchView.js");
       if (typeof module.initSearchView === "function") {

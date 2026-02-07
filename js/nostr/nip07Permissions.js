@@ -41,9 +41,11 @@ export const NIP07_PRIORITY = Object.freeze({
 });
 
 class Nip07RequestQueue {
-  constructor() {
+  constructor(maxConcurrent = 2) {
     this.queue = [];
-    this.running = false;
+    this.maxConcurrent =
+      Number.isFinite(maxConcurrent) && maxConcurrent > 0 ? maxConcurrent : 2;
+    this.activeCount = 0;
   }
 
   enqueue(task, priority = NIP07_PRIORITY.NORMAL) {
@@ -67,24 +69,29 @@ class Nip07RequestQueue {
   }
 
   async process() {
-    if (this.running) return;
-    this.running = true;
+    if (this.activeCount >= this.maxConcurrent) return;
 
-    while (this.queue.length > 0) {
+    while (this.activeCount < this.maxConcurrent && this.queue.length > 0) {
       const item = this.queue.shift();
       if (!item) break;
 
+      this.activeCount++;
       const { task, resolve, reject } = item;
 
-      try {
-        const result = await task();
-        resolve(result);
-      } catch (error) {
-        reject(error);
-      }
+      // We don't await the task here to allow parallelism loop to continue
+      Promise.resolve()
+        .then(() => task())
+        .then((result) => {
+          resolve(result);
+        })
+        .catch((error) => {
+          reject(error);
+        })
+        .finally(() => {
+          this.activeCount--;
+          this.process();
+        });
     }
-
-    this.running = false;
   }
 }
 
@@ -92,7 +99,10 @@ class Nip07RequestQueue {
 // This prevents "message channel closed" errors caused by race conditions
 // when multiple components (blocks, DMs, auth) query the extension simultaneously,
 // while allowing critical tasks (e.g. blocklist decryption) to jump the line.
-const requestQueue = new Nip07RequestQueue();
+// PERF: Increased from 3 to 5 to allow more parallel decrypt operations
+// during login when blocks, subscriptions, and hashtag preferences all need
+// to decrypt simultaneously.
+const requestQueue = new Nip07RequestQueue(5);
 
 export function getEnableVariantTimeoutMs() {
   const overrideValue =
@@ -258,7 +268,7 @@ export async function runNip07WithRetry(
   } = {},
 ) {
   // We wrap the entire retry logic in a queue task to ensure only one
-  // request hits the extension at a time.
+  // request hits the extension at a time (per slot).
   const executeTask = async () => {
     // We wrap the operation invocation to ensure it returns a fresh promise each time
     // we attempt it. This is critical for retries: if the first attempt stalls (dropped

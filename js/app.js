@@ -9,7 +9,6 @@ import {
   ADMIN_SUPER_NPUB,
   ADMIN_DM_IMAGE_URL,
   BITVID_WEBSITE_URL,
-  MAX_WALLET_DEFAULT_ZAP,
   ALLOW_NSFW_CONTENT,
 } from "./config.js";
 import { accessControl } from "./accessControl.js";
@@ -47,6 +46,7 @@ import {
   createModerationStage,
   createResolvePostedAtStage,
   createTagPreferenceFilterStage,
+  createWatchHistorySuppressionStage,
   createChronologicalSorter,
   createSubscriptionAuthorsSource,
   registerWatchHistoryFeed,
@@ -89,7 +89,10 @@ import {
   onActiveSignerChanged,
 } from "./nostrClientRegistry.js";
 import { queueSignEvent } from "./nostr/signRequestQueue.js";
-import { DEFAULT_NIP07_CORE_METHODS } from "./nostr/nip07Permissions.js";
+import {
+  DEFAULT_NIP07_CORE_METHODS,
+  DEFAULT_NIP07_PERMISSION_METHODS,
+} from "./nostr/nip07Permissions.js";
 import {
   initViewCounter,
   subscribeToVideoViewCount,
@@ -97,7 +100,6 @@ import {
   formatViewCount,
   ingestLocalViewEvent,
 } from "./viewCounter.js";
-import { splitAndZap as splitAndZapDefault } from "./payments/zapSplit.js";
 import {
   formatAbsoluteTimestamp as formatAbsoluteTimestampUtil,
   formatAbsoluteDateWithOrdinal as formatAbsoluteDateWithOrdinalUtil,
@@ -120,6 +122,7 @@ import RevertModalController from "./ui/revertModalController.js";
 import TagPreferenceMenuController from "./ui/tagPreferenceMenuController.js";
 import ReactionController from "./ui/reactionController.js";
 import { pointerArrayToKey } from "./utils/pointer.js";
+import { pointerKey } from "./nostr/watchHistory.js";
 import resolveVideoPointer, {
   buildVideoAddressPointer,
 } from "./utils/videoPointer.js";
@@ -179,6 +182,13 @@ import ShareNostrController from "./ui/shareNostrController.js";
 import ModerationActionController from "./services/moderationActionController.js";
 import ModerationDecorator from "./services/moderationDecorator.js";
 import { bootstrapTrustedSeeds } from "./services/trustBootstrap.js";
+import bindCoordinator from "./app/bindCoordinator.js";
+import { createFeedCoordinator } from "./app/feedCoordinator.js";
+import { createPlaybackCoordinator } from "./app/playbackCoordinator.js";
+import { createAuthSessionCoordinator } from "./app/authSessionCoordinator.js";
+import { createModalCoordinator } from "./app/modalCoordinator.js";
+import { createModerationCoordinator } from "./app/moderationCoordinator.js";
+import { HEX64_REGEX } from "./utils/hex.js";
 
 const recordVideoViewApi = (...args) => recordVideoView(nostrClient, ...args);
 
@@ -187,7 +197,7 @@ const UNSUPPORTED_BTITH_MESSAGE =
 
 const FALLBACK_THUMBNAIL_SRC = "/assets/jpg/video-thumbnail-fallback.jpg";
 const VIDEO_EVENT_KIND = 30078;
-const HEX64_REGEX = /^[0-9a-f]{64}$/i;
+
 const RELAY_UI_BATCH_DELAY_MS = 250;
 /**
  * Simple IntersectionObserver-based lazy loader for images (or videos).
@@ -429,6 +439,12 @@ class Application {
     this.initializeModerationActionController();
     this.initializeSimilarContentController();
 
+    // ── Coordinator modules ──────────────────────────────────────────
+    // Lazily initialised via _initCoordinators(). Runs here eagerly for
+    // normal construction and is also triggered on first delegator call
+    // so that instances created via Object.create() (test harnesses) work.
+    this._initCoordinators();
+
     this.editModalController = new EditModalController({
       services: {
         nostrService: {
@@ -489,6 +505,144 @@ class Application {
     };
     onActiveSignerChanged(this.handleShareNostrSignerChange);
     this.updateShareNostrAuthState({ reason: "init" });
+  }
+
+  /**
+   * Idempotent coordinator initialisation. Called eagerly from the
+   * constructor and lazily from delegators so that instances created
+   * via Object.create() (e.g. test harnesses) also work.
+   */
+  _initCoordinators() {
+    if (this._coordinatorsReady) return;
+    this._coordinatorsReady = true;
+
+    Object.defineProperty(this, "_feed", {
+      value: bindCoordinator(this, createFeedCoordinator({
+        devLogger,
+        userLogger,
+        nostrClient,
+        watchHistoryService,
+        subscriptions,
+        getSidebarLoadingMarkup,
+        pointerKey: pointerKey,
+        isValidMagnetUri,
+        readCachedUrlHealth,
+        persistUrlHealth,
+        createActiveNostrSource,
+        createBlacklistFilterStage,
+        createDisinterestFilterStage,
+        createDedupeByRootStage,
+        createExploreDiversitySorter,
+        createExploreScorerStage,
+        createKidsAudienceFilterStage,
+        createKidsScorerStage,
+        createKidsScoreSorter,
+        createModerationStage,
+        createResolvePostedAtStage,
+        createTagPreferenceFilterStage,
+        createWatchHistorySuppressionStage,
+        createChronologicalSorter,
+        createSubscriptionAuthorsSource,
+        registerWatchHistoryFeedFn: registerWatchHistoryFeed,
+      })),
+      writable: true,
+      configurable: true,
+    });
+
+    Object.defineProperty(this, "_playback", {
+      value: bindCoordinator(this, createPlaybackCoordinator({
+        devLogger,
+        userLogger,
+        nostrClient,
+        torrentClient,
+        emit,
+        accessControl,
+        isValidMagnetUri,
+        safeDecodeMagnet,
+        extractBtihFromMagnet,
+        collectVideoTags,
+        resolveVideoPointer,
+        formatShortNpub,
+        formatAbsoluteDateWithOrdinalUtil,
+        getVideoRootIdentifier,
+        applyRootTimestampToVideosMap,
+        syncActiveVideoRootTimestamp,
+        fetchProfileMetadata,
+        ensureProfileMetadataSubscription,
+        dedupeToNewestByRoot,
+        buildServiceWorkerFallbackStatus,
+        sanitizeProfileMediaUrl,
+        UNSUPPORTED_BTITH_MESSAGE,
+        BITVID_WEBSITE_URL,
+        FALLBACK_THUMBNAIL_SRC,
+      })),
+      writable: true,
+      configurable: true,
+    });
+
+    Object.defineProperty(this, "_auth", {
+      value: bindCoordinator(this, createAuthSessionCoordinator({
+        devLogger,
+        userLogger,
+        nostrClient,
+        accessControl,
+        userBlocks,
+        subscriptions,
+        hashtagPreferences,
+        storageService,
+        relayManager,
+        torrentClient,
+        getHashViewName,
+        setHashView,
+        DEFAULT_NIP07_PERMISSION_METHODS,
+        RELAY_UI_BATCH_DELAY_MS,
+        sanitizeRelayList,
+        buildDmRelayListEvent,
+        publishEventToRelays,
+        assertAnyRelayAccepted,
+        queueSignEvent,
+        bootstrapTrustedSeeds,
+        getModerationSettings,
+        getActiveProfilePubkey,
+      })),
+      writable: true,
+      configurable: true,
+    });
+
+    Object.defineProperty(this, "_modal", {
+      value: bindCoordinator(this, createModalCoordinator({
+        devLogger,
+        nostrClient,
+        recordVideoViewApi,
+        torrentClient,
+        watchHistoryService,
+        isWatchHistoryDebugEnabled,
+        subscribeToVideoViewCount,
+        unsubscribeFromVideoViewCount,
+        formatViewCount,
+        ingestLocalViewEvent,
+        pointerArrayToKey,
+        pointerKey: pointerKey,
+        getCanonicalDesignSystemMode,
+        BITVID_WEBSITE_URL,
+      })),
+      writable: true,
+      configurable: true,
+    });
+
+    Object.defineProperty(this, "_moderation", {
+      value: bindCoordinator(this, createModerationCoordinator({
+        devLogger,
+        ModerationActionController,
+        setModerationOverride,
+        clearModerationOverride,
+        userBlocks,
+        buildVideoAddressPointer,
+        VIDEO_EVENT_KIND,
+      })),
+      writable: true,
+      configurable: true,
+    });
   }
 
   get modalVideo() {
@@ -622,6 +776,15 @@ class Application {
 
       this.authService.hydrateFromStorage();
       this.renderSavedProfiles();
+
+      if (
+        this.nostrService &&
+        typeof this.nostrService.setDmBlockChecker === "function"
+      ) {
+        this.nostrService.setDmBlockChecker((pubkey) =>
+          this.isAuthorBlocked(pubkey),
+        );
+      }
 
       loadModerationOverridesFromStorage();
       loadModerationSettingsFromStorage();
@@ -1168,62 +1331,47 @@ class Application {
     return nextState;
   }
 
-  normalizeModalTrigger(candidate) {
-    if (!candidate) {
-      return null;
-    }
-    const doc =
-      (this.videoModal && this.videoModal.document) ||
-      (typeof document !== "undefined" ? document : null);
-    const isElement =
-      typeof candidate === "object" &&
-      candidate !== null &&
-      typeof candidate.nodeType === "number" &&
-      candidate.nodeType === 1 &&
-      typeof candidate.focus === "function";
-    if (!isElement) {
-      return null;
-    }
-    if (doc && typeof doc.contains === "function" && !doc.contains(candidate)) {
-      return null;
-    }
-    return candidate;
+  normalizeModalTrigger(...args) {
+    this._initCoordinators();
+    return this._modal.normalizeModalTrigger(...args);
   }
 
-  setLastModalTrigger(candidate) {
-    this.lastModalTrigger = this.normalizeModalTrigger(candidate);
-    return this.lastModalTrigger;
+  setLastModalTrigger(...args) {
+    this._initCoordinators();
+    return this._modal.setLastModalTrigger(...args);
   }
 
-  getDesignSystemMode() {
-    return getCanonicalDesignSystemMode();
+  getDesignSystemMode(...args) {
+    this._initCoordinators();
+    return this._modal.getDesignSystemMode(...args);
   }
 
-  isDesignSystemNew() {
-    return true;
+  isDesignSystemNew(...args) {
+    this._initCoordinators();
+    return this._modal.isDesignSystemNew(...args);
   }
 
   /**
    * Show the modal and set the "Please stand by" poster on the video.
    */
-  async showModalWithPoster(video = this.currentVideo, options = {}) {
-    const result = await this.videoModalController.showModalWithPoster(video, options);
-    this.cacheTorrentStatusNodes();
-    return result;
+  async showModalWithPoster(...args) {
+    this._initCoordinators();
+    return this._modal.showModalWithPoster(...args);
   }
 
-  applyModalLoadingPoster() {
-    this.videoModalController.applyModalLoadingPoster();
+  applyModalLoadingPoster(...args) {
+    this._initCoordinators();
+    return this._modal.applyModalLoadingPoster(...args);
   }
 
-  forceRemoveModalPoster(reason = "manual-clear") {
-    return this.videoModalController.forceRemoveModalPoster(reason);
+  forceRemoveModalPoster(...args) {
+    this._initCoordinators();
+    return this._modal.forceRemoveModalPoster(...args);
   }
 
-  async ensureVideoModalReady({ ensureVideoElement = false } = {}) {
-    const result = await this.videoModalController.ensureVideoModalReady({ ensureVideoElement });
-    this.modalVideo = result.videoElement;
-    return result;
+  async ensureVideoModalReady(...args) {
+    this._initCoordinators();
+    return this._modal.ensureVideoModalReady(...args);
   }
 
   initializeSimilarContentController() {
@@ -1312,37 +1460,24 @@ class Application {
     }
   }
 
-  formatViewCountLabel(total) {
-    const value = Number.isFinite(total) ? Number(total) : 0;
-    const label = value === 1 ? "view" : "views";
-    return `${formatViewCount(value)} ${label}`;
+  formatViewCountLabel(...args) {
+    this._initCoordinators();
+    return this._modal.formatViewCountLabel(...args);
   }
 
-  pruneDetachedViewCountElements() {
-    if (this.videoListView) {
-      this.videoListView.pruneDetachedViewCountElements();
-    }
+  pruneDetachedViewCountElements(...args) {
+    this._initCoordinators();
+    return this._modal.pruneDetachedViewCountElements(...args);
   }
 
-  teardownAllViewCountSubscriptions() {
-    if (this.videoListView) {
-      this.videoListView.teardownAllViewCountSubscriptions();
-    }
+  teardownAllViewCountSubscriptions(...args) {
+    this._initCoordinators();
+    return this._modal.teardownAllViewCountSubscriptions(...args);
   }
 
-  teardownModalViewCountSubscription() {
-    if (typeof this.modalViewCountUnsub === "function") {
-      try {
-        this.modalViewCountUnsub();
-      } catch (error) {
-        devLogger.warn("[viewCount] Failed to tear down modal subscription:", error);
-      }
-    }
-    this.modalViewCountUnsub = null;
-    if (this.videoModal) {
-      this.videoModal.updateViewCountLabel("– views");
-      this.videoModal.setViewCountPointer(null);
-    }
+  teardownModalViewCountSubscription(...args) {
+    this._initCoordinators();
+    return this._modal.teardownModalViewCountSubscription(...args);
   }
 
 
@@ -1411,73 +1546,9 @@ class Application {
     return false;
   }
 
-  subscribeModalViewCount(pointer, pointerKey) {
-    const viewEl = this.videoModal?.getViewCountElement() || null;
-    if (!viewEl) {
-      return;
-    }
-
-    this.teardownModalViewCountSubscription();
-
-    if (!pointer || !pointerKey) {
-      return;
-    }
-
-    if (this.videoModal) {
-      this.videoModal.updateViewCountLabel("Loading views…");
-      this.videoModal.setViewCountPointer(pointerKey);
-    }
-    try {
-      const token = subscribeToVideoViewCount(pointer, ({ total, status, partial }) => {
-        const latestViewEl = this.videoModal?.getViewCountElement() || null;
-        if (!latestViewEl) {
-          return;
-        }
-
-        if (Number.isFinite(total)) {
-          const numeric = Number(total);
-          if (this.videoModal) {
-            const label = this.formatViewCountLabel(numeric);
-            this.videoModal.updateViewCountLabel(
-              partial ? `${label} (partial)` : label
-            );
-          }
-          latestViewEl.dataset.viewCountState = partial ? "partial" : "ready";
-          return;
-        }
-
-        if (status === "hydrating") {
-          if (this.videoModal) {
-            this.videoModal.updateViewCountLabel("Loading views…");
-          }
-          latestViewEl.dataset.viewCountState = "hydrating";
-        } else {
-          if (this.videoModal) {
-            this.videoModal.updateViewCountLabel("– views");
-          }
-          latestViewEl.dataset.viewCountState = status;
-        }
-      });
-
-      this.modalViewCountUnsub = () => {
-        try {
-          unsubscribeFromVideoViewCount(pointer, token);
-        } catch (error) {
-          devLogger.warn(
-            "[viewCount] Failed to unsubscribe modal view counter:",
-            error
-          );
-        } finally {
-          this.modalViewCountUnsub = null;
-        }
-      };
-    } catch (error) {
-      devLogger.warn("[viewCount] Failed to subscribe modal view counter:", error);
-      if (this.videoModal) {
-        this.videoModal.updateViewCountLabel("– views");
-        this.videoModal.setViewCountPointer(null);
-      }
-    }
+  subscribeModalViewCount(...args) {
+    this._initCoordinators();
+    return this._modal.subscribeModalViewCount(...args);
   }
 
   async handleVideoReaction(detail = {}) {
@@ -2363,13 +2434,21 @@ class Application {
     }
 
     try {
-      await this.loadVideos(forceMainReload);
+      if (this.isForYouFeedActive()) {
+        await this.loadForYouVideos(forceMainReload);
+      } else if (this.isFeedActive("kids")) {
+        await this.loadKidsVideos(forceMainReload);
+      } else if (this.isFeedActive("explore")) {
+        await this.loadExploreVideos(forceMainReload);
+      } else {
+        await this.loadVideos(forceMainReload);
+      }
     } catch (error) {
       const contextMessage = normalizedReason
         ? ` after ${normalizedReason}`
         : "";
       devLogger.error(
-        `Failed to refresh recent videos${contextMessage}:`,
+        `Failed to refresh videos${contextMessage}:`,
         error,
       );
     }
@@ -3062,609 +3141,79 @@ class Application {
     }
   }
 
-  async handleProfileSwitchRequest({ pubkey, providerId } = {}) {
-    if (!pubkey) {
-      throw new Error("Missing pubkey for profile switch request.");
-    }
-
-    const result = await this.authService.switchProfile(pubkey, { providerId });
-
-    if (result?.switched) {
-      const detail = result.detail || null;
-
-      if (
-        detail?.postLoginPromise &&
-        typeof detail.postLoginPromise.then === "function"
-      ) {
-        try {
-          await detail.postLoginPromise;
-        } catch (error) {
-          devLogger.warn(
-            "Failed to complete post-login hydration before continuing after profile switch:",
-            error,
-          );
-        }
-      }
-
-      try {
-        await this.handleModerationSettingsChange({
-          settings: getModerationSettings(),
-          skipRefresh: true,
-        });
-      } catch (error) {
-        devLogger.warn(
-          "Failed to sync moderation settings after profile switch:",
-          error,
-        );
-      }
-
-      const refreshCompleted = await this.waitForIdentityRefresh({
-        reason: "profile-switch",
-      });
-
-      if (!refreshCompleted) {
-        devLogger.warn(
-          "[Application] Fallback identity refresh was required after switching profiles.",
-        );
-      }
-
-      if (this.watchHistoryTelemetry?.resetPlaybackLoggingState) {
-        try {
-          this.watchHistoryTelemetry.resetPlaybackLoggingState();
-        } catch (error) {
-          devLogger.warn(
-            "Failed to reset watch history telemetry after profile switch:",
-            error,
-          );
-        }
-      }
-
-      if (this.watchHistoryTelemetry?.refreshPreferenceSettings) {
-        try {
-          this.watchHistoryTelemetry.refreshPreferenceSettings();
-        } catch (error) {
-          devLogger.warn(
-            "Failed to refresh watch history preferences after profile switch:",
-            error,
-          );
-        }
-      }
-    }
-
-    return result;
+  async handleProfileSwitchRequest(...args) {
+    this._initCoordinators();
+    return this._auth.handleProfileSwitchRequest(...args);
   }
 
-  async waitForIdentityRefresh({
-    reason = "identity-refresh",
-    attempts = 6,
-  } = {}) {
-    const maxAttempts = Number.isFinite(attempts)
-      ? Math.max(1, Math.floor(attempts))
-      : 6;
-    const waitForTick = () =>
-      new Promise((resolve) => {
-        if (typeof queueMicrotask === "function") {
-          queueMicrotask(resolve);
-        } else if (typeof setTimeout === "function") {
-          setTimeout(resolve, 0);
-        } else {
-          resolve();
-        }
-      });
-
-    let promise = null;
-
-    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      const candidate = this.lastIdentityRefreshPromise;
-      if (candidate && typeof candidate.then === "function") {
-        promise = candidate;
-        break;
-      }
-      // Yield to allow the auth login flow to schedule the refresh promise.
-      // eslint-disable-next-line no-await-in-loop
-      await waitForTick();
-    }
-
-    if (promise && typeof promise.then === "function") {
-      try {
-        await promise;
-        return true;
-      } catch (error) {
-        devLogger.error(
-          "[Application] Identity refresh promise rejected:",
-          error,
-        );
-      }
-
-      const activePubkey = this.pubkey;
-      if (activePubkey) {
-        try {
-          await this.nostrService.loadDirectMessages({
-            actorPubkey: activePubkey,
-            limit: 50,
-            initialLoad: true,
-          });
-        } catch (error) {
-          devLogger.warn(
-            "[Application] Failed to sync direct messages during login:",
-            error,
-          );
-        }
-      }
-    }
-
-    try {
-      await this.refreshAllVideoGrids({
-        reason,
-        forceMainReload: true,
-      });
-    } catch (error) {
-      devLogger.error(
-        "[Application] Failed to refresh video grids after waiting for identity refresh:",
-        error,
-      );
-    }
-
-    return false;
+  async waitForIdentityRefresh(...args) {
+    this._initCoordinators();
+    return this._auth.waitForIdentityRefresh(...args);
   }
 
-  async handleProfileLogoutRequest({ pubkey, entry } = {}) {
-    const candidatePubkey =
-      typeof pubkey === "string" && pubkey.trim()
-        ? pubkey.trim()
-        : typeof entry?.pubkey === "string" && entry.pubkey.trim()
-          ? entry.pubkey.trim()
-          : "";
-
-    if (!candidatePubkey) {
-      return { loggedOut: false, reason: "invalid-pubkey" };
-    }
-
-    const normalizedTarget =
-      this.normalizeHexPubkey(candidatePubkey) || candidatePubkey;
-    if (!normalizedTarget) {
-      return { loggedOut: false, reason: "invalid-pubkey" };
-    }
-
-    const activeNormalized = this.normalizeHexPubkey(getActiveProfilePubkey());
-    if (activeNormalized && activeNormalized === normalizedTarget) {
-      const detail = await this.requestLogout();
-      return {
-        loggedOut: true,
-        reason: "active-profile",
-        active: true,
-        detail,
-      };
-    }
-
-    let removalResult;
-    try {
-      removalResult = this.authService.removeSavedProfile(candidatePubkey);
-    } catch (error) {
-      devLogger.error(
-        "[Application] Failed to remove saved profile during logout request:",
-        error,
-      );
-      return { loggedOut: false, reason: "remove-failed", error };
-    }
-
-    if (!removalResult?.removed) {
-      if (removalResult?.error) {
-        devLogger.warn(
-          "[Application] removeSavedProfile returned an error during logout request:",
-          removalResult.error,
-        );
-      }
-      return { loggedOut: false, reason: "not-found" };
-    }
-
-    if (
-      this.nwcSettingsService &&
-      typeof this.nwcSettingsService.clearStoredNwcSettings === "function"
-    ) {
-      try {
-        await this.nwcSettingsService.clearStoredNwcSettings(normalizedTarget, {
-          silent: true,
-        });
-      } catch (error) {
-        devLogger.warn(
-          "[Application] Failed to clear wallet settings for logged-out profile:",
-          error,
-        );
-      }
-    }
-
-    this.renderSavedProfiles();
-
-    return { loggedOut: true, removed: true };
+  async handleProfileLogoutRequest(...args) {
+    this._initCoordinators();
+    return this._auth.handleProfileLogoutRequest(...args);
   }
 
-  async handleProfileRelayOperation({
-    action,
-    url,
-    activePubkey,
-    skipPublishIfUnchanged = true,
-  } = {}) {
-    const context = {
-      action,
-      url,
-      ok: false,
-      changed: false,
-      reason: null,
-      error: null,
-      publishResult: null,
-      operationResult: null,
-    };
-
-    if (!activePubkey) {
-      context.reason = "no-active-pubkey";
-      return context;
-    }
-
-    const previous = relayManager.snapshot();
-
-    let operationResult;
-    try {
-      switch (action) {
-        case "add":
-          operationResult = relayManager.addRelay(url);
-          break;
-        case "remove":
-          operationResult = relayManager.removeRelay(url);
-          break;
-        case "restore":
-          operationResult = relayManager.restoreDefaults();
-          break;
-        case "mode-toggle":
-          operationResult = relayManager.cycleRelayMode(url);
-          break;
-        default: {
-          const error = Object.assign(new Error("Unknown relay operation."), {
-            code: "invalid-operation",
-          });
-          throw error;
-        }
-      }
-    } catch (error) {
-      context.reason = error?.code || "operation-error";
-      context.error = error;
-      return context;
-    }
-
-    context.operationResult = operationResult;
-    context.changed = Boolean(operationResult?.changed);
-
-    if (!context.changed && skipPublishIfUnchanged) {
-      context.reason = operationResult?.reason || "unchanged";
-      return context;
-    }
-
-    try {
-      const publishResult = await relayManager.publishRelayList(activePubkey);
-      if (!publishResult?.ok) {
-        throw Object.assign(new Error("No relays accepted the update."), {
-          code: "publish-failed",
-        });
-      }
-      context.ok = true;
-      context.publishResult = publishResult;
-
-      const refreshReason = `relay-${action || "update"}`;
-      try {
-        await this.onVideosShouldRefresh({ reason: refreshReason });
-      } catch (refreshError) {
-        devLogger.warn(
-          "[Profile] Failed to refresh videos after relay update:",
-          refreshError,
-        );
-      }
-
-      return context;
-    } catch (error) {
-      context.reason = error?.code || "publish-failed";
-      context.error = error;
-      try {
-        if (Array.isArray(previous)) {
-          relayManager.setEntries(previous, { allowEmpty: false });
-        }
-      } catch (restoreError) {
-        devLogger.warn(
-          "[Profile] Failed to restore relay preferences after publish error:",
-          restoreError,
-        );
-      }
-      return context;
-    }
+  async handleProfileRelayOperation(...args) {
+    this._initCoordinators();
+    return this._auth.handleProfileRelayOperation(...args);
   }
 
-  handleProfileRelayModeToggle(payload = {}) {
-    return payload?.context || null;
+  handleProfileRelayModeToggle(...args) {
+    this._initCoordinators();
+    return this._auth.handleProfileRelayModeToggle(...args);
   }
 
-  handleProfileRelayRestore(payload = {}) {
-    return payload?.context || null;
+  handleProfileRelayRestore(...args) {
+    this._initCoordinators();
+    return this._auth.handleProfileRelayRestore(...args);
   }
 
-  async handleProfileBlocklistMutation({
-    action,
-    actorHex,
-    targetHex,
-  } = {}) {
-    const context = { ok: false, reason: null, error: null };
-
-    if (!actorHex || !targetHex) {
-      context.reason = "invalid-target";
-      return context;
-    }
-
-    try {
-      await userBlocks.ensureLoaded(actorHex);
-      const isBlocked = userBlocks.isBlocked(targetHex);
-
-      if (action === "add") {
-        if (isBlocked) {
-          context.reason = "already-blocked";
-          return context;
-        }
-        await userBlocks.addBlock(targetHex, actorHex);
-        context.ok = true;
-        context.reason = "blocked";
-      } else if (action === "remove") {
-        if (!isBlocked) {
-          context.reason = "not-blocked";
-          return context;
-        }
-        await userBlocks.removeBlock(targetHex, actorHex);
-        context.ok = true;
-        context.reason = "unblocked";
-      } else {
-        context.reason = "invalid-action";
-        return context;
-      }
-
-      if (context.ok) {
-        try {
-          await this.onVideosShouldRefresh({ reason: `blocklist-${action}` });
-        } catch (refreshError) {
-          devLogger.error(
-            "Failed to refresh videos after blocklist mutation:",
-            refreshError,
-          );
-        }
-      }
-
-      return context;
-    } catch (error) {
-      context.error = error;
-      context.reason = error?.code || "service-error";
-      return context;
-    }
+  async handleProfileBlocklistMutation(...args) {
+    this._initCoordinators();
+    return this._auth.handleProfileBlocklistMutation(...args);
   }
 
-  async handleProfileAdminMutation(payload = {}) {
-    const action = payload?.action;
-    const context = { ok: false, error: null, result: null };
-
-    try {
-      switch (action) {
-        case "ensure-ready":
-          await accessControl.waitForReady();
-          context.ok = true;
-          break;
-        case "add-moderator":
-          context.result = await accessControl.addModerator(
-            payload.actorNpub,
-            payload.targetNpub,
-          );
-          context.ok = !!context.result?.ok;
-          break;
-        case "remove-moderator":
-          context.result = await accessControl.removeModerator(
-            payload.actorNpub,
-            payload.targetNpub,
-          );
-          context.ok = !!context.result?.ok;
-          break;
-        case "list-mutation":
-          if (payload.listType === "whitelist") {
-            context.result =
-              payload.mode === "add"
-                ? await accessControl.addToWhitelist(
-                    payload.actorNpub,
-                    payload.targetNpub,
-                  )
-                : await accessControl.removeFromWhitelist(
-                    payload.actorNpub,
-                    payload.targetNpub,
-                  );
-          } else {
-            context.result =
-              payload.mode === "add"
-                ? await accessControl.addToBlacklist(
-                    payload.actorNpub,
-                    payload.targetNpub,
-                  )
-                : await accessControl.removeFromBlacklist(
-                    payload.actorNpub,
-                    payload.targetNpub,
-                  );
-          }
-          context.ok = !!context.result?.ok;
-          break;
-        default:
-          context.error = Object.assign(
-            new Error("Unknown admin mutation."),
-            { code: "invalid-action" },
-          );
-      }
-    } catch (error) {
-      context.error = error;
-      return context;
-    }
-
-    return context;
+  async handleProfileAdminMutation(...args) {
+    this._initCoordinators();
+    return this._auth.handleProfileAdminMutation(...args);
   }
 
-  async handleProfileWalletPersist(options = {}) {
-    return this.nwcSettingsService.handleProfileWalletPersist(options);
+  async handleProfileWalletPersist(...args) {
+    this._initCoordinators();
+    return this._auth.handleProfileWalletPersist(...args);
   }
 
-  async handleProfileWalletTest({ nwcUri, defaultZap } = {}) {
-    return this.nwcSettingsService.ensureWallet({ nwcUri, defaultZap });
+  async handleProfileWalletTest(...args) {
+    this._initCoordinators();
+    return this._auth.handleProfileWalletTest(...args);
   }
 
-  async handleProfileWalletDisconnect() {
-    return this.nwcSettingsService.updateActiveNwcSettings(
-      this.nwcSettingsService.createDefaultNwcSettings(),
-    );
+  async handleProfileWalletDisconnect(...args) {
+    this._initCoordinators();
+    return this._auth.handleProfileWalletDisconnect(...args);
   }
 
-  handleProfileAdminNotifyError({ error } = {}) {
-    if (!error) {
-      return;
-    }
-    devLogger.warn("[admin] Notification dispatch issue:", error);
+  handleProfileAdminNotifyError(...args) {
+    this._initCoordinators();
+    return this._auth.handleProfileAdminNotifyError(...args);
   }
 
-  handleProfileHistoryEvent() {
-    return null;
+  handleProfileHistoryEvent(...args) {
+    this._initCoordinators();
+    return this._auth.handleProfileHistoryEvent(...args);
   }
 
-  async handleModerationSettingsChange({ settings, skipRefresh = false } = {}) {
-    const normalized = this.normalizeModerationSettings(settings);
-    this.moderationSettings = normalized;
-    const feedContext = {
-      feedName: this.feedName || "",
-      feedVariant: this.feedVariant || "",
-    };
-
-    if (this.videosMap instanceof Map) {
-      for (const video of this.videosMap.values()) {
-        if (video && typeof video === "object") {
-          this.decorateVideoModeration(video, feedContext);
-        }
-      }
-    }
-
-    if (
-      this.videoListView &&
-      Array.isArray(this.videoListView.videoCardInstances)
-    ) {
-      for (const card of this.videoListView.videoCardInstances) {
-        if (!card || typeof card.refreshModerationUi !== "function") {
-          continue;
-        }
-        if (card.video && typeof card.video === "object") {
-          this.decorateVideoModeration(card.video, feedContext);
-        }
-        try {
-          card.refreshModerationUi();
-        } catch (error) {
-          devLogger.warn(
-            "[Application] Failed to refresh moderation UI:",
-            error,
-          );
-        }
-      }
-    }
-
-    if (this.videoListView && Array.isArray(this.videoListView.currentVideos)) {
-      for (const video of this.videoListView.currentVideos) {
-        if (video && typeof video === "object") {
-          this.decorateVideoModeration(video, feedContext);
-        }
-      }
-    }
-
-    if (this.currentVideo && typeof this.currentVideo === "object") {
-      this.decorateVideoModeration(this.currentVideo, feedContext);
-    }
-
-    this.moderationDecorator.updateSettings(normalized);
-
-    if (!skipRefresh) {
-      try {
-        await this.onVideosShouldRefresh({ reason: "moderation-settings-change" });
-      } catch (error) {
-        devLogger.warn(
-          "[Application] Failed to refresh videos after moderation settings change:",
-          error,
-        );
-      }
-    }
-
-    return normalized;
+  async handleModerationSettingsChange(...args) {
+    this._initCoordinators();
+    return this._moderation.handleModerationSettingsChange(...args);
   }
 
-  refreshVisibleModerationUi({ reason } = {}) {
-    const context = reason ? ` after ${reason}` : "";
-    const feedContext = {
-      feedName: this.feedName || "",
-      feedVariant: this.feedVariant || "",
-    };
-
-    const redecorateVideo = (video) => {
-      if (!video || typeof video !== "object") {
-        return;
-      }
-
-      try {
-        this.decorateVideoModeration(video, feedContext);
-      } catch (error) {
-        devLogger.warn(
-          `[Application] Failed to decorate video moderation${context}:`,
-          error,
-        );
-      }
-    };
-
-    if (this.videosMap instanceof Map) {
-      for (const video of this.videosMap.values()) {
-        redecorateVideo(video);
-      }
-    }
-
-    if (this.videoListView && Array.isArray(this.videoListView.currentVideos)) {
-      for (const video of this.videoListView.currentVideos) {
-        redecorateVideo(video);
-      }
-    }
-
-    if (this.videoListView && Array.isArray(this.videoListView.videoCardInstances)) {
-      for (const card of this.videoListView.videoCardInstances) {
-        if (!card || typeof card !== "object") {
-          continue;
-        }
-
-        if (card.video && typeof card.video === "object") {
-          redecorateVideo(card.video);
-        }
-
-        if (typeof card.refreshModerationUi === "function") {
-          try {
-            card.refreshModerationUi();
-          } catch (error) {
-            devLogger.warn(
-              `[Application] Failed to refresh moderation UI on card${context}:`,
-              error,
-            );
-          }
-        }
-      }
-    }
-
-    if (this.currentVideo && typeof this.currentVideo === "object") {
-      redecorateVideo(this.currentVideo);
-
-      try {
-        this.videoModal?.refreshActiveVideoModeration?.({ video: this.currentVideo });
-      } catch (error) {
-        devLogger.warn(
-          `[Application] Failed to refresh video modal moderation UI${context}:`,
-          error,
-        );
-      }
-    }
+  refreshVisibleModerationUi(...args) {
+    this._initCoordinators();
+    return this._moderation.refreshVisibleModerationUi(...args);
   }
 
   updateActiveProfileUI(pubkey, profile = {}) {
@@ -4118,612 +3667,44 @@ class Application {
     this.updatePermissionPromptCta();
   }
 
-  async handleAuthLogin(detail = {}) {
-    const postLoginPromise =
-      detail && typeof detail.postLoginPromise?.then === "function"
-        ? detail.postLoginPromise
-        : Promise.resolve(detail?.postLogin ?? null);
-    const postLoginResult = detail?.postLogin ?? null;
-
-    if (detail && typeof detail === "object") {
-      try {
-        detail.__handled = true;
-      } catch (error) {
-        // Ignore attempts to mutate read-only descriptors.
-      }
-    }
-
-    if (detail?.identityChanged) {
-      this.resetViewLoggingState();
-    }
-
-    this.resetPermissionPromptState();
-
-    // Stop existing feed subscription to prioritize user data sync
-    if (
-      this.videoSubscription &&
-      typeof this.videoSubscription.unsub === "function"
-    ) {
-      this.videoSubscription.unsub();
-      this.videoSubscription = null;
-    }
-
-    this.applyAuthenticatedUiState();
-    this.commentController?.refreshAuthState?.();
-    this.updateShareNostrAuthState({ reason: "auth-login" });
-    if (typeof this.refreshUnreadDmIndicator === "function") {
-      void this.refreshUnreadDmIndicator({ reason: "auth-login" });
-    }
-
-    const currentView = getHashViewName();
-    const normalizedView =
-      typeof currentView === "string" ? currentView.toLowerCase() : "";
-    const urlParams = new URLSearchParams(window.location.search);
-    const hasVideoParam = urlParams.has("v");
-
-    const rawProviderId =
-      typeof detail?.providerId === "string" ? detail.providerId.trim() : "";
-    const rawAuthType =
-      typeof detail?.authType === "string" ? detail.authType.trim() : "";
-    const normalizedProvider =
-      (rawProviderId || rawAuthType).toLowerCase() || "";
-
-    this.maybeShowExperimentalLoginWarning(normalizedProvider);
-
-    const loginContext = {
-      pubkey: detail?.pubkey || this.pubkey,
-      previousPubkey: detail?.previousPubkey,
-      identityChanged: Boolean(detail?.identityChanged),
-    };
-    const activePubkey = detail?.pubkey || this.pubkey;
-
-    const initialLoadingState = {
-      profile: activePubkey ? "loading" : "idle",
-      lists: activePubkey ? "loading" : "idle",
-      dms: activePubkey ? "loading" : "idle",
-    };
-    this.updateAuthLoadingState(initialLoadingState);
-
-    this.dispatchAuthChange({
-      status: "login",
-      loggedIn: true,
-      pubkey: loginContext.pubkey || null,
-      previousPubkey: loginContext.previousPubkey || null,
-      authLoadingState: this.authLoadingState,
-    });
-
-    const cachedProfile =
-      detail?.postLogin && typeof detail.postLogin === "object"
-        ? detail.postLogin.profile || null
-        : null;
-    if (activePubkey && cachedProfile) {
-      try {
-        this.updateActiveProfileUI(activePubkey, cachedProfile);
-      } catch (error) {
-        devLogger.warn(
-          "[Application] Failed to apply cached profile during login:",
-          error,
-        );
-      }
-    }
-
-    if (this.profileController) {
-      try {
-        const maybePromise = this.profileController.handleAuthLogin(detail);
-        if (maybePromise && typeof maybePromise.then === "function") {
-          maybePromise.catch((error) => {
-            devLogger.error(
-              "Failed to process login within the profile controller:",
-              error,
-            );
-          });
-        }
-      } catch (error) {
-        devLogger.error(
-          "Failed to process login within the profile controller:",
-          error,
-        );
-      }
-    } else {
-      this.renderSavedProfiles();
-    }
-
-    const accessControlReadyPromise =
-      accessControl && typeof accessControl.ensureReady === "function"
-        ? Promise.resolve()
-            .then(() => accessControl.ensureReady())
-            .catch((error) => {
-              userLogger.error(
-                "[Application] Failed to refresh admin lists after login:",
-                error,
-              );
-              throw error;
-            })
-        : null;
-
-    const profileStatePromise = Promise.resolve(postLoginPromise)
-      .then(async (postLogin) => {
-        // 1. Relays and Profile are now loaded (sequentially or efficiently by authService)
-        const nextProfile = postLogin?.profile || cachedProfile;
-        if (activePubkey && nextProfile) {
-          this.updateActiveProfileUI(activePubkey, nextProfile);
-        }
-        this.forceRefreshAllProfiles();
-        this.updateAuthLoadingState({
-          profile: nextProfile ? "ready" : "error",
-        });
-        return postLogin;
-      })
-      .catch((error) => {
-        devLogger.error("Post-login hydration failed:", error);
-        this.updateAuthLoadingState({ profile: "error" });
-        return null;
-      });
-
-    // Chain list loading to profile state to ensure relays are loaded first.
-    const listStatePromise = profileStatePromise.then(() => {
-      const tasks = [];
-      if (activePubkey && typeof this.authService.loadBlocksForPubkey === "function") {
-        tasks.push(
-          this.authService
-            .loadBlocksForPubkey(activePubkey, { allowPermissionPrompt: false })
-            .catch((error) => {
-              devLogger.warn(
-                "[Application] Failed to load blocks during login:",
-                error,
-              );
-              throw error;
-            }),
-        );
-      }
-
-      if (
-        activePubkey &&
-        subscriptions &&
-        typeof subscriptions.ensureLoaded === "function"
-      ) {
-        tasks.push(
-          subscriptions.ensureLoaded(activePubkey, {
-            allowPermissionPrompt: false,
-          })
-            .then(() => {
-              this.capturePermissionPromptFromError(
-                subscriptions?.lastLoadError,
-              );
-            })
-            .catch((error) => {
-              devLogger.warn(
-                "[Application] Failed to load subscriptions during login:",
-                error,
-              );
-              this.capturePermissionPromptFromError(error);
-              throw error;
-            }),
-        );
-      }
-
-      if (!tasks.length) {
-        this.updateAuthLoadingState({ lists: "idle" });
-        return Promise.resolve(true);
-      }
-
-      return Promise.allSettled(tasks).then((results) => {
-        const success = results.every(
-          (result) => result.status === "fulfilled",
-        );
-        this.updateAuthLoadingState({
-          lists: success ? "ready" : "error",
-        });
-        return success;
-      });
-    });
-
-    const dmStatePromise = profileStatePromise.then(() => {
-      if (
-        activePubkey &&
-        this.nostrService &&
-        typeof this.nostrService.loadDirectMessages === "function"
-      ) {
-        return this.nostrService
-          .loadDirectMessages({
-            actorPubkey: activePubkey,
-            limit: 50,
-            initialLoad: true,
-          })
-          .then(() => {
-            this.updateAuthLoadingState({ dms: "ready" });
-          })
-          .catch((error) => {
-            devLogger.warn(
-              "[Application] Failed to load direct messages during login:",
-              error,
-            );
-            this.updateAuthLoadingState({ dms: "error" });
-          });
-      }
-      this.updateAuthLoadingState({ dms: "idle" });
-      return Promise.resolve();
-    });
-
-    const nwcPromise = profileStatePromise.then(() => {
-      if (
-        activePubkey &&
-        this.nwcSettingsService &&
-        typeof this.nwcSettingsService.hydrateNwcSettingsForPubkey === "function"
-      ) {
-        return this.nwcSettingsService
-          .hydrateNwcSettingsForPubkey(activePubkey)
-          .catch((error) => {
-            devLogger.warn(
-              "[Application] Failed to hydrate NWC settings during login:",
-              error,
-            );
-          });
-      }
-      return Promise.resolve();
-    });
-
-    const hashtagPreferencesPromise = profileStatePromise.then(() => {
-      if (
-        activePubkey &&
-        this.hashtagPreferences &&
-        typeof this.hashtagPreferences.load === "function"
-      ) {
-        return this.hashtagPreferences
-          .load(activePubkey, {
-            allowPermissionPrompt: false,
-          })
-          .then(() => {
-            this.capturePermissionPromptFromError(
-              this.hashtagPreferences?.lastLoadError,
-            );
-          })
-          .catch((error) => {
-            devLogger.warn(
-              "[Application] Failed to load hashtag preferences during login:",
-              error,
-            );
-            this.capturePermissionPromptFromError(error);
-          });
-      }
-      return Promise.resolve();
-    });
-
-    void Promise.allSettled([
-      profileStatePromise,
-      listStatePromise,
-      dmStatePromise,
-    ]);
-    void nwcPromise;
-    void hashtagPreferencesPromise;
-
-    if (activePubkey) {
-      const seedBlacklist = () => {
-        const aggregatedBlacklist = accessControl.getBlacklist();
-        return userBlocks.seedWithNpubs(
-          activePubkey,
-          Array.isArray(aggregatedBlacklist) ? aggregatedBlacklist : [],
-        );
-      };
-
-      // Background the seeding process because it involves publishing events,
-      // which can block the login flow significantly.
-      Promise.resolve(accessControlReadyPromise)
-        .catch(() => null)
-        .then(() => seedBlacklist())
-        .catch((error) => {
-          if (
-            error?.code === "extension-permission-denied" ||
-            error?.code === "nip04-missing" ||
-            error?.name === "RelayPublishError"
-          ) {
-            userLogger.error(
-              "[Application] Failed to seed shared block list after login:",
-              error,
-            );
-          } else {
-            devLogger.error(
-              "[Application] Unexpected error while seeding shared block list:",
-              error,
-            );
-          }
-        });
-
-      // Subscriptions are loaded in list tasks to align with per-category loading states.
-    }
-
-    try {
-      this.reinitializeVideoListView({ reason: "login", postLoginResult });
-    } catch (error) {
-      devLogger.warn("Failed to reinitialize video list view after login:", error);
-    }
-
-    this.lastIdentityRefreshPromise = this.refreshAllVideoGrids({
-      reason: "auth-login",
-      forceMainReload: true,
-    });
-    this.lastIdentityRefreshPromise
-      .catch((error) => {
-        devLogger.error("Failed to refresh video grids after login:", error);
-      })
-      .finally(() => {
-        this.lastIdentityRefreshPromise = null;
-      });
-
-    this.forceRefreshAllProfiles();
-
-    if (this.uploadModal?.refreshCloudflareBucketPreview) {
-      Promise.resolve()
-        .then(() => this.uploadModal.refreshCloudflareBucketPreview())
-        .catch((error) => {
-          devLogger.warn(
-            "[Application] Failed to refresh cloudflare bucket preview after login:",
-            error,
-          );
-        });
-    }
+  async handleAuthLogin(...args) {
+    this._initCoordinators();
+    return this._auth.handleAuthLogin(...args);
   }
 
-  handleBlocksLoaded(detail = {}) {
-    if (detail?.blocksLoaded !== true) {
-      return;
-    }
-
-    if (this.profileController) {
-      try {
-        this.profileController.populateBlockedList();
-      } catch (error) {
-        devLogger.warn(
-          "[Application] Failed to refresh blocked list after blocks loaded:",
-          error,
-        );
-      }
-    }
-
-    try {
-      void this.onVideosShouldRefresh({ reason: "blocks-loaded" });
-    } catch (error) {
-      devLogger.warn(
-        "[Application] Failed to refresh videos after blocks loaded:",
-        error,
-      );
-    }
+  handleBlocksLoaded(...args) {
+    this._initCoordinators();
+    return this._auth.handleBlocksLoaded(...args);
   }
 
-  handleRelaysLoaded(detail = {}) {
-    if (detail?.relaysLoaded !== true) {
-      return;
-    }
-
-    this.scheduleRelayUiRefresh();
+  handleRelaysLoaded(...args) {
+    this._initCoordinators();
+    return this._auth.handleRelaysLoaded(...args);
   }
 
-  scheduleRelayUiRefresh() {
-    if (this.relayUiRefreshTimeout) {
-      return;
-    }
-
-    const scheduleTimeout =
-      typeof window !== "undefined" && typeof window.setTimeout === "function"
-        ? window.setTimeout.bind(window)
-        : setTimeout;
-
-    this.relayUiRefreshTimeout = scheduleTimeout(() => {
-      this.relayUiRefreshTimeout = null;
-      this.flushRelayUiRefresh();
-    }, RELAY_UI_BATCH_DELAY_MS);
+  scheduleRelayUiRefresh(...args) {
+    this._initCoordinators();
+    return this._auth.scheduleRelayUiRefresh(...args);
   }
 
-  flushRelayUiRefresh() {
-    if (!this.profileController) {
-      return;
-    }
-
-    try {
-      this.profileController.populateProfileRelays();
-    } catch (error) {
-      devLogger.warn(
-        "[Application] Failed to refresh profile relays after relays loaded:",
-        error,
-      );
-    }
-
-    try {
-      void this.profileController.refreshDmRelayPreferences({ force: true });
-    } catch (error) {
-      devLogger.warn(
-        "[Application] Failed to refresh DM relay preferences after relays loaded:",
-        error,
-      );
-    }
+  flushRelayUiRefresh(...args) {
+    this._initCoordinators();
+    return this._auth.flushRelayUiRefresh(...args);
   }
 
-  async requestLogout() {
-    const detail = await this.authService.logout();
-
-    if (detail && typeof detail === "object") {
-      if (detail.__handled === true) {
-        return detail;
-      }
-
-      try {
-        detail.__handled = true;
-      } catch (error) {
-        devLogger.warn("Failed to mark logout detail as handled:", error);
-      }
-    }
-
-    await this.handleAuthLogout(detail);
-    return detail ?? null;
+  async requestLogout(...args) {
+    this._initCoordinators();
+    return this._auth.requestLogout(...args);
   }
 
-  async handleAuthLogout(detail = {}) {
-    if (detail && typeof detail === "object") {
-      try {
-        detail.__handled = true;
-      } catch (error) {
-        devLogger.warn("Failed to mark logout detail as handled:", error);
-      }
-    }
-
-    this.resetViewLoggingState();
-    this.pendingModalZapOpen = false;
-
-    this.resetHashtagPreferencesState();
-    this.resetPermissionPromptState();
-    this.updateAuthLoadingState({ profile: "idle", lists: "idle", dms: "idle" });
-
-    await this.nwcSettingsService.onLogout({
-      pubkey: detail?.pubkey || this.pubkey,
-      previousPubkey: detail?.previousPubkey,
-    });
-
-    if (this.profileController) {
-      try {
-        await this.profileController.handleAuthLogout(detail);
-      } catch (error) {
-        devLogger.error(
-          "Failed to process logout within the profile controller:",
-          error,
-        );
-      }
-    } else {
-      this.renderSavedProfiles();
-    }
-
-    this.applyLoggedOutUiState();
-    this.updateShareNostrAuthState({ reason: "auth-logout" });
-    if (typeof this.refreshUnreadDmIndicator === "function") {
-      void this.refreshUnreadDmIndicator({ reason: "auth-logout" });
-    } else if (this.appChromeController?.setUnreadDmIndicator) {
-      this.appChromeController.setUnreadDmIndicator(false);
-    }
-
-    const logoutView = getHashViewName();
-    if (
-      typeof logoutView === "string" &&
-      logoutView.trim().toLowerCase() === "for-you"
-    ) {
-      setHashView("most-recent-videos");
-    }
-
-    const activeModalVideo =
-      typeof this.videoModal?.getCurrentVideo === "function"
-        ? this.videoModal.getCurrentVideo()
-        : this.commentController?.currentVideo || null;
-
-    if (this.commentController && activeModalVideo) {
-      // Regression guard: ensure logout refreshes the modal thread so comments stay visible without reopening.
-      this.commentController.load(activeModalVideo);
-    } else {
-      this.commentController?.refreshAuthState?.();
-    }
-
-    try {
-      await this.handleModerationSettingsChange({
-        settings: getModerationSettings(),
-        skipRefresh: true,
-      });
-    } catch (error) {
-      devLogger.warn(
-        "Failed to reset moderation settings after logout:",
-        error,
-      );
-    }
-
-    if (this.videoModal?.closeZapDialog) {
-      try {
-        this.videoModal.closeZapDialog({ silent: true, restoreFocus: false });
-      } catch (error) {
-        devLogger.warn("Failed to close zap dialog during logout:", error);
-      }
-    }
-
-    if (this.zapController) {
-      try {
-        this.zapController.resetState();
-        this.zapController.setVisibility(Boolean(this.currentVideo?.lightningAddress));
-      } catch (error) {
-        devLogger.warn("Failed to reset zap controller during logout:", error);
-      }
-    }
-
-    if (typeof this.nostrService?.stopDirectMessageSubscription === "function") {
-      try {
-        this.nostrService.stopDirectMessageSubscription();
-      } catch (error) {
-        devLogger.warn("Failed to stop DM subscription during logout:", error);
-      }
-    }
-
-    if (typeof this.nostrService?.clearDirectMessages === "function") {
-      try {
-        this.nostrService.clearDirectMessages({ emit: true });
-      } catch (error) {
-        devLogger.warn("Failed to clear cached DMs during logout:", error);
-      }
-    }
-
-    if (typeof this.nostrService?.clearVideoSubscription === "function") {
-      try {
-        this.nostrService.clearVideoSubscription();
-      } catch (error) {
-        devLogger.warn("Failed to clear video subscription during logout:", error);
-      }
-    }
-
-    if (typeof this.nostrService?.resetVideosCache === "function") {
-      try {
-        this.nostrService.resetVideosCache();
-      } catch (error) {
-        devLogger.warn("Failed to reset cached videos during logout:", error);
-      }
-    }
-
-    await this.renderVideoList({
-      videos: [],
-      metadata: { reason: "auth:logout" },
-    });
-
-    this.dispatchAuthChange({
-      status: "logout",
-      loggedIn: false,
-      pubkey: detail?.pubkey || null,
-      previousPubkey: detail?.previousPubkey || null,
-    });
-
-    try {
-      await this.loadVideos(true);
-    } catch (error) {
-      devLogger.error("Failed to refresh videos after logout:", error);
-    }
-    this.forceRefreshAllProfiles();
-    if (this.uploadModal?.refreshCloudflareBucketPreview) {
-      await this.uploadModal.refreshCloudflareBucketPreview();
-    }
+  async handleAuthLogout(...args) {
+    this._initCoordinators();
+    return this._auth.handleAuthLogout(...args);
   }
 
-  handleProfileUpdated(detail = {}) {
-    if (this.profileController) {
-      this.profileController.handleProfileUpdated(detail);
-    } else if (Array.isArray(detail?.savedProfiles)) {
-      this.renderSavedProfiles();
-    }
-
-    const normalizedPubkey = detail?.pubkey
-      ? this.normalizeHexPubkey(detail.pubkey)
-      : null;
-    const profile = detail?.profile;
-
-    if (normalizedPubkey && profile) {
-      this.updateProfileInDOM(normalizedPubkey, profile);
-      if (
-        !this.profileController &&
-        this.normalizeHexPubkey(this.pubkey) === normalizedPubkey
-      ) {
-        this.updateActiveProfileUI(normalizedPubkey, profile);
-      }
-    }
+  handleProfileUpdated(...args) {
+    this._initCoordinators();
+    return this._auth.handleProfileUpdated(...args);
   }
 
   /**
@@ -4733,2131 +3714,297 @@ class Application {
    * next playback session can reuse the existing controllers without
    * reinitializing DOM bindings.
    */
-  async cleanup({
-    preserveSubscriptions = false,
-    preserveObservers = false,
-    preserveModals = false,
-  } = {}) {
-    this.log(
-      `[cleanup] Requested (preserveSubscriptions=${preserveSubscriptions}, preserveObservers=${preserveObservers}, preserveModals=${preserveModals})`
-    );
-    // Serialise teardown so overlapping calls (e.g. close button spam) don't
-    // race each other and clobber a fresh playback setup.
-    if (this.cleanupPromise) {
-      this.log("[cleanup] Waiting for in-flight cleanup to finish before starting a new run.");
-      try {
-        await this.cleanupPromise;
-      } catch (err) {
-        devLogger.warn("Previous cleanup rejected:", err);
-      }
-    }
-
-    const runCleanup = async () => {
-      this.log(
-        `[cleanup] Begin (preserveSubscriptions=${preserveSubscriptions}, preserveObservers=${preserveObservers}, preserveModals=${preserveModals})`
-      );
-      try {
-        this.cancelPendingViewLogging();
-        await this.flushWatchHistory("session-end", "cleanup").catch(
-          (error) => {
-            const message =
-              error && typeof error.message === "string"
-                ? error.message
-                : String(error ?? "unknown error");
-            this.log(`[cleanup] Watch history flush failed: ${message}`);
-          }
-        );
-        this.clearActiveIntervals();
-        if (this.playbackService) {
-          this.playbackService.cleanupWatchdog();
-        }
-        this.teardownModalViewCountSubscription();
-        if (this.reactionController) {
-          this.reactionController.unsubscribe();
-        }
-
-        if (!preserveObservers && this.mediaLoader) {
-          this.mediaLoader.disconnect();
-        }
-
-        if (!preserveObservers) {
-          this.teardownAllViewCountSubscriptions();
-        } else {
-          this.pruneDetachedViewCountElements();
-        }
-
-        if (!preserveSubscriptions) {
-          this.nostrService.clearVideoSubscription();
-          this.videoSubscription = this.nostrService.getVideoSubscription() || null;
-        }
-
-        // If there's a small inline player
-        if (this.videoElement) {
-          this.videoElement = this.teardownVideoElement(this.videoElement);
-        }
-        if (
-          this.videoModal &&
-          typeof this.videoModal.clearPosterCleanup === "function"
-        ) {
-          try {
-            this.videoModal.clearPosterCleanup();
-          } catch (err) {
-            devLogger.warn("[cleanup] video modal poster cleanup threw:", err);
-          }
-        }
-
-        const modalVideoEl = this.modalVideo;
-        if (modalVideoEl) {
-          const refreshedModal = this.teardownVideoElement(modalVideoEl, {
-            replaceNode: true,
-          });
-          if (refreshedModal) {
-            this.modalVideo = refreshedModal;
-            if (
-              this.videoModal &&
-              typeof this.videoModal.setVideoElement === "function"
-            ) {
-              try {
-                this.videoModal.setVideoElement(refreshedModal);
-              } catch (err) {
-                devLogger.warn(
-                  "[cleanup] Failed to sync video modal element after replacement:",
-                  err
-                );
-              }
-            }
-          }
-        }
-
-        this.commentController?.dispose({ resetUi: false });
-
-        if (!preserveModals) {
-          if (this.modalManager) {
-            try {
-              this.modalManager.teardown();
-            } catch (error) {
-              devLogger.warn("[cleanup] Modal teardown failed:", error);
-            }
-            this.modalManager = null;
-          }
-
-          if (this.bootstrapper) {
-            try {
-              this.bootstrapper.teardown();
-            } catch (error) {
-              devLogger.warn("[cleanup] Bootstrap teardown failed:", error);
-            }
-          }
-        }
-
-
-        // Tell webtorrent to cleanup
-        await torrentClient.cleanup();
-        this.log("[cleanup] WebTorrent cleanup resolved.");
-
-        try {
-          if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-            await fetch("/webtorrent/cancel/", { mode: "no-cors" });
-          }
-        } catch (err) {
-          // Ignore errors when cancelling the service worker stream; it may not be active.
-        }
-      } catch (err) {
-        devLogger.error("Cleanup error:", err);
-      } finally {
-        this.log("[cleanup] Finished.");
-      }
-    };
-
-    const cleanupPromise = runCleanup();
-    this.cleanupPromise = cleanupPromise;
-
-    try {
-      await cleanupPromise;
-    } finally {
-      if (this.cleanupPromise === cleanupPromise) {
-        this.cleanupPromise = null;
-      }
-    }
+  async cleanup(...args) {
+    this._initCoordinators();
+    return this._auth.cleanup(...args);
   }
 
-  async waitForCleanup() {
-    if (!this.cleanupPromise) {
-      return;
-    }
-
-    try {
-      this.log("[waitForCleanup] Awaiting previous cleanup before continuing.");
-      await this.cleanupPromise;
-      this.log("[waitForCleanup] Previous cleanup completed.");
-    } catch (err) {
-      devLogger.warn("waitForCleanup observed a rejected cleanup:", err);
-    }
+  async waitForCleanup(...args) {
+    this._initCoordinators();
+    return this._auth.waitForCleanup(...args);
   }
 
-  clearActiveIntervals() {
-    if (Array.isArray(this.activeIntervals)) {
-      this.activeIntervals.forEach((id) => clearInterval(id));
-    }
-    this.activeIntervals = [];
-    this.torrentStatusIntervalId = null;
+  clearActiveIntervals(...args) {
+    this._initCoordinators();
+    return this._auth.clearActiveIntervals(...args);
   }
 
-  cacheTorrentStatusNodes() {
-    const doc =
-      (this.videoModal && this.videoModal.document) ||
-      (typeof document !== "undefined" ? document : null);
-    if (!doc || typeof doc.getElementById !== "function") {
-      this.torrentStatusNodes = null;
-      return;
-    }
-    this.torrentStatusNodes = {
-      status: doc.getElementById("status"),
-      progress: doc.getElementById("progress"),
-      peers: doc.getElementById("peers"),
-      speed: doc.getElementById("speed"),
-      downloaded: doc.getElementById("downloaded"),
-    };
+  cacheTorrentStatusNodes(...args) {
+    this._initCoordinators();
+    return this._auth.cacheTorrentStatusNodes(...args);
   }
 
-  clearTorrentStatusNodes() {
-    this.torrentStatusNodes = null;
+  clearTorrentStatusNodes(...args) {
+    this._initCoordinators();
+    return this._auth.clearTorrentStatusNodes(...args);
   }
 
-  removeActiveInterval(intervalId) {
-    if (!intervalId || !Array.isArray(this.activeIntervals)) {
-      return;
-    }
-    this.activeIntervals = this.activeIntervals.filter((id) => id !== intervalId);
+  removeActiveInterval(...args) {
+    this._initCoordinators();
+    return this._auth.removeActiveInterval(...args);
   }
 
-  addTorrentStatusVisibilityHandlers({ onPause, onResume, onClose } = {}) {
-    this.removeTorrentStatusVisibilityHandlers();
-    const handleVisibilityChange = () => {
-      if (!document.body.contains(this.modalVideo)) {
-        if (typeof onClose === "function") {
-          onClose();
-        }
-        this.removeTorrentStatusVisibilityHandlers();
-        return;
-      }
-      if (document.visibilityState === "hidden") {
-        if (typeof onPause === "function") {
-          onPause();
-        }
-        return;
-      }
-      if (typeof onResume === "function") {
-        onResume();
-      }
-    };
-    const handlePageHide = () => {
-      if (typeof onPause === "function") {
-        onPause();
-      }
-    };
-    this.torrentStatusVisibilityHandler = handleVisibilityChange;
-    this.torrentStatusPageHideHandler = handlePageHide;
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("pagehide", handlePageHide);
+  addTorrentStatusVisibilityHandlers(...args) {
+    this._initCoordinators();
+    return this._auth.addTorrentStatusVisibilityHandlers(...args);
   }
 
-  removeTorrentStatusVisibilityHandlers() {
-    if (this.torrentStatusVisibilityHandler) {
-      document.removeEventListener("visibilitychange", this.torrentStatusVisibilityHandler);
-      this.torrentStatusVisibilityHandler = null;
-    }
-    if (this.torrentStatusPageHideHandler) {
-      window.removeEventListener("pagehide", this.torrentStatusPageHideHandler);
-      this.torrentStatusPageHideHandler = null;
-    }
+  removeTorrentStatusVisibilityHandlers(...args) {
+    this._initCoordinators();
+    return this._auth.removeTorrentStatusVisibilityHandlers(...args);
   }
 
-  cancelPendingViewLogging() {
-    this.watchHistoryTelemetry?.cancelPlaybackLogging?.();
+  cancelPendingViewLogging(...args) {
+    this._initCoordinators();
+    return this._modal.cancelPendingViewLogging(...args);
   }
 
-  resetViewLoggingState() {
-    this.watchHistoryTelemetry?.resetPlaybackLoggingState?.();
+  resetViewLoggingState(...args) {
+    this._initCoordinators();
+    return this._modal.resetViewLoggingState(...args);
   }
 
-  persistWatchHistoryMetadataForVideo(video, pointerInfo) {
-    if (this.watchHistoryTelemetry) {
-      this.watchHistoryTelemetry.persistMetadataForVideo(video, pointerInfo);
-      return;
-    }
-
-    if (
-      !pointerInfo ||
-      !pointerInfo.key ||
-      typeof watchHistoryService?.setLocalMetadata !== "function"
-    ) {
-      return;
-    }
-
-    if (!video || typeof video !== "object") {
-      return;
-    }
-
-    const metadata = {
-      video: {
-        id: typeof video.id === "string" ? video.id : "",
-        title: typeof video.title === "string" ? video.title : "",
-        thumbnail: typeof video.thumbnail === "string" ? video.thumbnail : "",
-        pubkey: typeof video.pubkey === "string" ? video.pubkey : "",
-      },
-    };
-
-    try {
-      watchHistoryService.setLocalMetadata(pointerInfo.key, metadata);
-    } catch (error) {
-      devLogger.warn(
-        "[watchHistory] Failed to persist local metadata for pointer:",
-        pointerInfo.key,
-        error,
-      );
-    }
+  persistWatchHistoryMetadataForVideo(...args) {
+    this._initCoordinators();
+    return this._modal.persistWatchHistoryMetadataForVideo(...args);
   }
 
-  dropWatchHistoryMetadata(pointerKey) {
-    if (this.watchHistoryTelemetry) {
-      this.watchHistoryTelemetry.dropMetadata(pointerKey);
-      return;
-    }
-
-    if (!pointerKey || typeof pointerKey !== "string") {
-      return;
-    }
-    if (typeof watchHistoryService?.removeLocalMetadata !== "function") {
-      return;
-    }
-    try {
-      watchHistoryService.removeLocalMetadata(pointerKey);
-    } catch (error) {
-      devLogger.warn(
-        "[watchHistory] Failed to remove cached metadata for pointer:",
-        pointerKey,
-        error,
-      );
-    }
+  dropWatchHistoryMetadata(...args) {
+    this._initCoordinators();
+    return this._modal.dropWatchHistoryMetadata(...args);
   }
 
-  async handleRemoveHistoryAction(dataset = {}, { trigger } = {}) {
-    if (!this.watchHistoryController) {
-      this.showError("Watch history sync is not available right now.");
-      return;
-    }
-
-    try {
-      await this.watchHistoryController.removeEntry({
-        dataset,
-        trigger,
-        removeCard: dataset.removeCard === "true",
-        reason: dataset.reason || "remove-item",
-      });
-    } catch (error) {
-      if (!error?.handled) {
-        this.showError("Failed to remove from history. Please try again.");
-      }
-    }
+  async handleRemoveHistoryAction(...args) {
+    this._initCoordinators();
+    return this._modal.handleRemoveHistoryAction(...args);
   }
 
-  async handleWatchHistoryRemoval(payload = {}) {
-    if (!this.watchHistoryTelemetry) {
-      this.showError("Watch history sync is not available right now.");
-      const error = new Error("watch-history-disabled");
-      error.handled = true;
-      throw error;
-    }
-    return this.watchHistoryTelemetry.handleRemoval(payload);
+  async handleWatchHistoryRemoval(...args) {
+    this._initCoordinators();
+    return this._modal.handleWatchHistoryRemoval(...args);
   }
 
-  flushWatchHistory(reason = "session-end", context = "watch-history") {
-    if (!this.watchHistoryTelemetry) {
-      return Promise.resolve();
-    }
-    return this.watchHistoryTelemetry.flush(reason, context);
+  flushWatchHistory(...args) {
+    this._initCoordinators();
+    return this._modal.flushWatchHistory(...args);
   }
 
-  getActiveViewIdentityKey() {
-    if (!this.watchHistoryTelemetry) {
-      const normalizedUser = this.normalizeHexPubkey(this.pubkey);
-      if (normalizedUser) {
-        return `actor:${normalizedUser}`;
-      }
-
-      const sessionActorPubkey = this.normalizeHexPubkey(
-        nostrClient?.sessionActor?.pubkey
-      );
-      if (sessionActorPubkey) {
-        return `actor:${sessionActorPubkey}`;
-      }
-
-      return "actor:anonymous";
-    }
-
-    return this.watchHistoryTelemetry.getActiveViewIdentityKey();
+  getActiveViewIdentityKey(...args) {
+    this._initCoordinators();
+    return this._modal.getActiveViewIdentityKey(...args);
   }
 
-  deriveViewIdentityKeyFromEvent(event) {
-    if (!this.watchHistoryTelemetry) {
-      if (!event || typeof event !== "object") {
-        return "";
-      }
-
-      const normalizedPubkey = this.normalizeHexPubkey(event.pubkey);
-      if (!normalizedPubkey) {
-        return "";
-      }
-
-      return `actor:${normalizedPubkey}`;
-    }
-
-    return this.watchHistoryTelemetry.deriveViewIdentityKeyFromEvent(event);
+  deriveViewIdentityKeyFromEvent(...args) {
+    this._initCoordinators();
+    return this._modal.deriveViewIdentityKeyFromEvent(...args);
   }
 
-  buildViewCooldownKey(pointerKey, identityKey) {
-    if (!this.watchHistoryTelemetry) {
-      const normalizedPointerKey =
-        typeof pointerKey === "string" && pointerKey.trim()
-          ? pointerKey.trim()
-          : "";
-      if (!normalizedPointerKey) {
-        return "";
-      }
-
-      const normalizedIdentity =
-        typeof identityKey === "string" && identityKey.trim()
-          ? identityKey.trim().toLowerCase()
-          : "";
-
-      return normalizedIdentity
-        ? `${normalizedPointerKey}::${normalizedIdentity}`
-        : normalizedPointerKey;
-    }
-
-    return this.watchHistoryTelemetry.buildViewCooldownKey(
-      pointerKey,
-      identityKey
-    );
+  buildViewCooldownKey(...args) {
+    this._initCoordinators();
+    return this._modal.buildViewCooldownKey(...args);
   }
 
-  preparePlaybackLogging(videoEl) {
-    if (!this.watchHistoryTelemetry) {
-      this.cancelPendingViewLogging();
-      return;
-    }
-
-    const pointer = this.currentVideoPointer;
-    const pointerKey = this.currentVideoPointerKey || pointerArrayToKey(pointer);
-
-    if (!pointer || !pointerKey) {
-      this.watchHistoryTelemetry.cancelPlaybackLogging();
-      return;
-    }
-
-    this.watchHistoryTelemetry.preparePlaybackLogging({
-      videoElement: videoEl,
-      pointer,
-      pointerKey,
-      video: this.currentVideo,
-    });
+  preparePlaybackLogging(...args) {
+    this._initCoordinators();
+    return this._modal.preparePlaybackLogging(...args);
   }
 
-  teardownVideoElement(videoElement, { replaceNode = false } = {}) {
-    if (!videoElement) {
-      this.log(
-        `[teardownVideoElement] No video provided (replaceNode=${replaceNode}); skipping.`
-      );
-      return videoElement;
-    }
-
-    const safe = (fn) => {
-      try {
-        fn();
-      } catch (err) {
-        devLogger.warn("[teardownVideoElement]", err);
-      }
-    };
-
-    const describeSource = () => {
-      try {
-        return videoElement.currentSrc || videoElement.src || "<unset>";
-      } catch (err) {
-        return "<unavailable>";
-      }
-    };
-
-    this.log(
-      `[teardownVideoElement] Resetting video (replaceNode=${replaceNode}) readyState=${videoElement.readyState} networkState=${videoElement.networkState} src=${describeSource()}`
-    );
-
-    safe(() => videoElement.pause());
-
-    safe(() => {
-      videoElement.removeAttribute("src");
-      videoElement.src = "";
-    });
-
-    safe(() => {
-      videoElement.srcObject = null;
-    });
-
-    safe(() => {
-      if ("crossOrigin" in videoElement) {
-        videoElement.crossOrigin = null;
-      }
-      if (videoElement.hasAttribute("crossorigin")) {
-        videoElement.removeAttribute("crossorigin");
-      }
-    });
-
-    safe(() => {
-      if (typeof videoElement.load === "function") {
-        videoElement.load();
-      }
-    });
-
-    if (!replaceNode || !videoElement.parentNode) {
-      this.log(
-        `[teardownVideoElement] Completed without node replacement (readyState=${videoElement.readyState}).`
-      );
-      return videoElement;
-    }
-
-    const parent = videoElement.parentNode;
-    const clone = videoElement.cloneNode(false);
-
-    if (clone.dataset && "autoplayBound" in clone.dataset) {
-      delete clone.dataset.autoplayBound;
-    }
-    if (clone.hasAttribute("data-autoplay-bound")) {
-      clone.removeAttribute("data-autoplay-bound");
-    }
-
-    safe(() => {
-      clone.removeAttribute("src");
-      clone.src = "";
-    });
-
-    safe(() => {
-      clone.srcObject = null;
-    });
-
-    safe(() => {
-      if ("crossOrigin" in clone) {
-        clone.crossOrigin = null;
-      }
-      if (clone.hasAttribute("crossorigin")) {
-        clone.removeAttribute("crossorigin");
-      }
-    });
-
-    clone.autoplay = videoElement.autoplay;
-    clone.controls = videoElement.controls;
-    clone.loop = videoElement.loop;
-    clone.muted = videoElement.muted;
-    clone.defaultMuted = videoElement.defaultMuted;
-    clone.preload = videoElement.preload;
-    clone.playsInline = videoElement.playsInline;
-
-    clone.poster = "";
-    if (clone.hasAttribute("poster")) {
-      clone.removeAttribute("poster");
-    }
-
-    let replaced = false;
-    safe(() => {
-      parent.replaceChild(clone, videoElement);
-      replaced = true;
-    });
-
-    if (!replaced) {
-      return videoElement;
-    }
-
-    safe(() => {
-      if (typeof clone.load === "function") {
-        clone.load();
-      }
-    });
-
-    this.log(
-      `[teardownVideoElement] Replaced modal video node (readyState=${clone.readyState} networkState=${clone.networkState}).`
-    );
-
-    return clone;
+  teardownVideoElement(...args) {
+    this._initCoordinators();
+    return this._modal.teardownVideoElement(...args);
   }
 
-  resetTorrentStats() {
-    try {
-      if (this.videoModal && typeof this.videoModal.resetStats === "function") {
-        this.videoModal.resetStats();
-      } else {
-        devLogger.info(
-          "[Application] resetTorrentStats: videoModal.resetStats not available — skipping."
-        );
-      }
-    } catch (err) {
-      devLogger.warn("[Application] resetTorrentStats failed", err);
-    }
+  resetTorrentStats(...args) {
+    this._initCoordinators();
+    return this._modal.resetTorrentStats(...args);
   }
 
 
-  setShareButtonState(enabled) {
-    if (this.videoModal) {
-      this.videoModal.setShareEnabled(enabled);
-    }
+  setShareButtonState(...args) {
+    this._initCoordinators();
+    return this._modal.setShareButtonState(...args);
   }
 
-  getShareUrlBase() {
-    if (typeof BITVID_WEBSITE_URL === "string" && BITVID_WEBSITE_URL) {
-      // Ensure no trailing slash for consistency if desired, though buildShareUrlFromNevent
-      // appends ?v=... so trailing slash is fine if URL ctor handles it.
-      // BITVID_WEBSITE_URL usually has a trailing slash in config, but let's be safe.
-      return BITVID_WEBSITE_URL.replace(/\/$/, "");
-    }
-
-    try {
-      const current = new URL(window.location.href);
-      // If we are in the embed, we want to strip that filename.
-      if (current.pathname.endsWith("/embed.html")) {
-        return `${current.origin}${current.pathname.replace(/\/embed\.html$/, "")}`;
-      }
-      return `${current.origin}${current.pathname}`;
-    } catch (err) {
-      const origin = window.location?.origin || "";
-      const pathname = window.location?.pathname || "";
-      if (origin || pathname) {
-        return `${origin}${pathname}`;
-      }
-      const href = window.location?.href || "";
-      if (href) {
-        const base = href.split(/[?#]/)[0];
-        if (base) {
-          return base;
-        }
-      }
-      devLogger.warn("Unable to determine share URL base:", err);
-      return "";
-    }
+  getShareUrlBase(...args) {
+    this._initCoordinators();
+    return this._modal.getShareUrlBase(...args);
   }
 
-  shouldDeferModeratedPlayback(video) {
-    if (!video || typeof video !== "object") {
-      return false;
-    }
-
-    const moderation =
-      video.moderation && typeof video.moderation === "object"
-        ? video.moderation
-        : null;
-
-    if (!moderation) {
-      return false;
-    }
-
-    if (moderation.viewerOverride?.showAnyway === true) {
-      return false;
-    }
-
-    const blurActive = moderation.blurThumbnail === true;
-    const hiddenActive = moderation.hidden === true;
-
-    return blurActive || hiddenActive;
+  shouldDeferModeratedPlayback(...args) {
+    this._initCoordinators();
+    return this._playback.shouldDeferModeratedPlayback(...args);
   }
 
-  resumePendingModeratedPlayback(video) {
-    const pending = this.pendingModeratedPlayback;
-    if (!pending) {
-      return;
-    }
-
-    const activeVideo = this.currentVideo || null;
-    const targetVideo = video && typeof video === "object" ? video : activeVideo;
-    if (!targetVideo) {
-      return;
-    }
-
-    const pendingId =
-      typeof pending.videoId === "string" && pending.videoId ? pending.videoId : "";
-    const targetId =
-      typeof targetVideo.id === "string" && targetVideo.id ? targetVideo.id : "";
-
-    const matchesId = pendingId && targetId && pendingId === targetId;
-    const matchesActive = !pendingId && !targetId && targetVideo === activeVideo;
-
-    if (!matchesId && !matchesActive) {
-      return;
-    }
-
-    this.pendingModeratedPlayback = null;
-
-    if (typeof this.playVideoWithFallback !== "function") {
-      return;
-    }
-
-    const playbackOptions = {
-      url: pending.url || "",
-      magnet: pending.magnet || "",
-    };
-
-    if (pending.triggerProvided) {
-      playbackOptions.trigger = Object.prototype.hasOwnProperty.call(pending, "trigger")
-        ? pending.trigger
-        : this.lastModalTrigger || null;
-    }
-
-    const playbackPromise = this.playVideoWithFallback(playbackOptions);
-    if (playbackPromise && typeof playbackPromise.catch === "function") {
-      playbackPromise.catch((error) => {
-        devLogger.error(
-          "[Application] Failed to resume moderated playback:",
-          error,
-        );
-      });
-    }
+  resumePendingModeratedPlayback(...args) {
+    this._initCoordinators();
+    return this._playback.resumePendingModeratedPlayback(...args);
   }
 
-  buildShareUrlFromNevent(nevent) {
-    if (!nevent) {
-      return "";
-    }
-    const base = this.getShareUrlBase();
-    if (!base) {
-      return "";
-    }
-    return `${base}?v=${encodeURIComponent(nevent)}`;
+  buildShareUrlFromNevent(...args) {
+    this._initCoordinators();
+    return this._playback.buildShareUrlFromNevent(...args);
   }
 
-  buildShareUrlFromEventId(eventId) {
-    if (!eventId) {
-      return "";
-    }
-
-    try {
-      const nevent = window.NostrTools.nip19.neventEncode({ id: eventId });
-      return this.buildShareUrlFromNevent(nevent);
-    } catch (err) {
-      devLogger.error("Error generating nevent for share URL:", err);
-      return "";
-    }
+  buildShareUrlFromEventId(...args) {
+    this._initCoordinators();
+    return this._playback.buildShareUrlFromEventId(...args);
   }
 
-  dedupeVideosByRoot(videos) {
-    if (!Array.isArray(videos) || videos.length === 0) {
-      return [];
-    }
-    return dedupeToNewestByRoot(videos);
+  dedupeVideosByRoot(...args) {
+    this._initCoordinators();
+    return this._playback.dedupeVideosByRoot(...args);
   }
 
-  autoplayModalVideo() {
-    if (this.currentVideo?.moderation?.blockAutoplay) {
-      this.log(
-        "[moderation] Skipping autoplay due to trusted reports or trusted mutes.",
-      );
-      return;
-    }
-    if (!this.modalVideo) return;
-    this.modalVideo.play().catch((err) => {
-      this.log("Autoplay failed:", err);
-      if (!this.modalVideo.muted) {
-        this.log("Falling back to muted autoplay.");
-        this.modalVideo.muted = true;
-        this.modalVideo.play().catch((err2) => {
-          this.log("Muted autoplay also failed:", err2);
-        });
-      }
-    });
+  autoplayModalVideo(...args) {
+    this._initCoordinators();
+    return this._playback.autoplayModalVideo(...args);
   }
 
-  startTorrentStatusMirrors(torrentInstance) {
-    if (!torrentInstance) {
-      return;
-    }
-
-    this.cacheTorrentStatusNodes();
-
-    const updateMirrorStatus = () => {
-      if (!document.body.contains(this.modalVideo)) {
-        this.stopTorrentStatusInterval();
-        this.removeTorrentStatusVisibilityHandlers();
-        return;
-      }
-      this.updateTorrentStatus(torrentInstance);
-      const { status, progress, peers, speed, downloaded } = this.torrentStatusNodes || {};
-      if (this.videoModal) {
-        if (status) {
-          this.videoModal.updateStatus(status.textContent);
-        }
-        if (progress) {
-          const doc = progress.ownerDocument;
-          const view = doc?.defaultView;
-          let widthValue = "";
-          if (view && typeof view.getComputedStyle === "function") {
-            const computed = view.getComputedStyle(progress);
-            widthValue =
-              computed?.getPropertyValue("--progress-width")?.trim() ||
-              computed?.getPropertyValue("width")?.trim() ||
-              "";
-          }
-          this.videoModal.updateProgress(widthValue);
-        }
-        if (peers) {
-          this.videoModal.updatePeers(peers.textContent);
-        }
-        if (speed) {
-          this.videoModal.updateSpeed(speed.textContent);
-        }
-        if (downloaded) {
-          this.videoModal.updateDownloaded(downloaded.textContent);
-        }
-      }
-    };
-
-    this.stopTorrentStatusInterval();
-    this.startTorrentStatusInterval(updateMirrorStatus);
-
-    this.addTorrentStatusVisibilityHandlers({
-      onPause: () => this.stopTorrentStatusInterval(),
-      onResume: () => this.startTorrentStatusInterval(updateMirrorStatus),
-      onClose: () => this.stopTorrentStatusInterval(),
-    });
+  startTorrentStatusMirrors(...args) {
+    this._initCoordinators();
+    return this._playback.startTorrentStatusMirrors(...args);
   }
 
-  startTorrentStatusInterval(callback) {
-    if (this.torrentStatusIntervalId) {
-      return;
-    }
-    if (document.visibilityState === "hidden") {
-      return;
-    }
-    const intervalId = setInterval(callback, 3000);
-    this.torrentStatusIntervalId = intervalId;
-    this.activeIntervals.push(intervalId);
+  startTorrentStatusInterval(...args) {
+    this._initCoordinators();
+    return this._playback.startTorrentStatusInterval(...args);
   }
 
-  stopTorrentStatusInterval() {
-    if (!this.torrentStatusIntervalId) {
-      return;
-    }
-    clearInterval(this.torrentStatusIntervalId);
-    this.removeActiveInterval(this.torrentStatusIntervalId);
-    this.torrentStatusIntervalId = null;
+  stopTorrentStatusInterval(...args) {
+    this._initCoordinators();
+    return this._playback.stopTorrentStatusInterval(...args);
   }
 
   /**
    * Hide the video modal.
    */
-  async hideModal() {
-    // 1) Clear timers/listeners immediately so playback stats stop updating
-    this.cancelPendingViewLogging();
-    this.clearActiveIntervals();
-    this.removeTorrentStatusVisibilityHandlers();
-    this.teardownModalViewCountSubscription();
-    if (this.reactionController) {
-      this.reactionController.unsubscribe();
-    }
-    this.pendingModeratedPlayback = null;
-    if (
-      this.videoModal &&
-      typeof this.videoModal.clearSimilarContent === "function"
-    ) {
-      try {
-        this.videoModal.clearSimilarContent();
-      } catch (error) {
-        devLogger.warn("[hideModal] Failed to clear similar content:", error);
-      }
-    }
-
-    // 2) Close the modal UI right away so the user gets instant feedback
-    const modalVideoElement =
-      (this.videoModal &&
-        typeof this.videoModal.getVideoElement === "function" &&
-        this.videoModal.getVideoElement()) ||
-      this.modalVideo ||
-      null;
-    if (modalVideoElement) {
-      try {
-        modalVideoElement.pause();
-        modalVideoElement.removeAttribute("src");
-        modalVideoElement.load();
-      } catch (error) {
-        devLogger.warn("[hideModal] Failed to reset modal video element:", error);
-      }
-    }
-
-    if (this.videoModal) {
-      try {
-        this.videoModal.close();
-      } catch (error) {
-        devLogger.warn("[hideModal] Failed to close video modal immediately:", error);
-      }
-    }
-
-    this.lastModalTrigger = null;
-
-    this.currentMagnetUri = null;
-    this.clearTorrentStatusNodes();
-
-    // 3) Kick off heavy cleanup work asynchronously. We still await it so
-    // callers that depend on teardown finishing behave the same, but the
-    // user-visible UI is already closed.
-    const performCleanup = async () => {
-      try {
-        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-          await fetch("/webtorrent/cancel/", { mode: "no-cors" });
-        }
-      } catch (err) {
-        devLogger.warn("[hideModal] webtorrent cancel fetch failed:", err);
-      }
-
-      await this.cleanup({
-        preserveSubscriptions: true,
-        preserveObservers: true,
-        preserveModals: true,
-      });
-    };
-
-    // 4) Remove only `?v=` but **keep** the hash
-    const url = new URL(window.location.href);
-    url.searchParams.delete("v"); // remove ?v= param
-    const newUrl = url.pathname + url.search + url.hash;
-    window.history.replaceState({}, "", newUrl);
-
-    try {
-      await performCleanup();
-    } catch (error) {
-      devLogger.error("[hideModal] Cleanup failed:", error);
-    }
+  async hideModal(...args) {
+    this._initCoordinators();
+    return this._modal.hideModal(...args);
   }
 
   /**
    * Register the default "recent" feed pipeline.
    */
-  registerRecentFeed() {
-    if (!this.feedEngine || typeof this.feedEngine.registerFeed !== "function") {
-      return null;
-    }
-
-    const existingDefinition =
-      typeof this.feedEngine.getFeedDefinition === "function"
-        ? this.feedEngine.getFeedDefinition("recent")
-        : null;
-    if (existingDefinition) {
-      return existingDefinition;
-    }
-
-    try {
-      const app = this;
-      const resolveThresholdFromApp = (key) => ({ runtimeValue, defaultValue }) => {
-        if (
-          Number.isFinite(runtimeValue) ||
-          runtimeValue === Number.POSITIVE_INFINITY
-        ) {
-          return runtimeValue;
-        }
-
-        if (app && typeof app.getActiveModerationThresholds === "function") {
-          const active = app.getActiveModerationThresholds();
-          const candidate = active && typeof active === "object" ? active[key] : undefined;
-          if (
-            Number.isFinite(candidate) ||
-            candidate === Number.POSITIVE_INFINITY
-          ) {
-            return candidate;
-          }
-        }
-
-        return defaultValue;
-      };
-      return this.feedEngine.registerFeed("recent", {
-        source: createActiveNostrSource({ service: this.nostrService }),
-        stages: [
-          createBlacklistFilterStage({
-            shouldIncludeVideo: (video, options) =>
-              this.nostrService.shouldIncludeVideo(video, options),
-          }),
-          createDedupeByRootStage({
-            dedupe: (videos) => this.dedupeVideosByRoot(videos),
-          }),
-          createModerationStage({
-            getService: () => this.nostrService.getModerationService(),
-            autoplayThreshold: resolveThresholdFromApp("autoplayBlockThreshold"),
-            blurThreshold: resolveThresholdFromApp("blurThreshold"),
-            trustedMuteHideThreshold: resolveThresholdFromApp("trustedMuteHideThreshold"),
-            trustedReportHideThreshold: resolveThresholdFromApp("trustedSpamHideThreshold"),
-          }),
-          createResolvePostedAtStage(),
-        ],
-        sorter: createChronologicalSorter(),
-        hooks: {
-          timestamps: {
-            getKnownVideoPostedAt: (video) => this.getKnownVideoPostedAt(video),
-            resolveVideoPostedAt: (video) => this.resolveVideoPostedAt(video),
-          },
-        },
-      });
-    } catch (error) {
-      devLogger.warn("[Application] Failed to register recent feed:", error);
-      return null;
-    }
+  registerRecentFeed(...args) {
+    this._initCoordinators();
+    return this._feed.registerRecentFeed(...args);
   }
 
   /**
    * Register the "for-you" feed pipeline.
    */
-  registerForYouFeed() {
-    if (!this.feedEngine || typeof this.feedEngine.registerFeed !== "function") {
-      return null;
-    }
-
-    const existingDefinition =
-      typeof this.feedEngine.getFeedDefinition === "function"
-        ? this.feedEngine.getFeedDefinition("for-you")
-        : null;
-    if (existingDefinition) {
-      return existingDefinition;
-    }
-
-    try {
-      const app = this;
-      const resolveThresholdFromApp = (key) => ({ runtimeValue, defaultValue }) => {
-        if (
-          Number.isFinite(runtimeValue) ||
-          runtimeValue === Number.POSITIVE_INFINITY
-        ) {
-          return runtimeValue;
-        }
-
-        if (app && typeof app.getActiveModerationThresholds === "function") {
-          const active = app.getActiveModerationThresholds();
-          const candidate = active && typeof active === "object" ? active[key] : undefined;
-          if (
-            Number.isFinite(candidate) ||
-            candidate === Number.POSITIVE_INFINITY
-          ) {
-            return candidate;
-          }
-        }
-
-        return defaultValue;
-      };
-      return this.feedEngine.registerFeed("for-you", {
-        source: createActiveNostrSource({ service: this.nostrService }),
-        stages: [
-          // Note: Tag-preference filtering is consolidated in createTagPreferenceFilterStage
-          // so each feed has a single source of truth for interest-based inclusion/ranking.
-          createTagPreferenceFilterStage(),
-          createBlacklistFilterStage({
-            shouldIncludeVideo: (video, options) =>
-              this.nostrService.shouldIncludeVideo(video, options),
-          }),
-          createDedupeByRootStage({
-            dedupe: (videos) => this.dedupeVideosByRoot(videos),
-          }),
-          createModerationStage({
-            getService: () => this.nostrService.getModerationService(),
-            autoplayThreshold: resolveThresholdFromApp("autoplayBlockThreshold"),
-            blurThreshold: resolveThresholdFromApp("blurThreshold"),
-            trustedMuteHideThreshold: resolveThresholdFromApp("trustedMuteHideThreshold"),
-            trustedReportHideThreshold: resolveThresholdFromApp("trustedSpamHideThreshold"),
-          }),
-          createResolvePostedAtStage(),
-        ],
-        sorter: createChronologicalSorter(),
-        hooks: {
-          timestamps: {
-            getKnownVideoPostedAt: (video) => this.getKnownVideoPostedAt(video),
-            resolveVideoPostedAt: (video) => this.resolveVideoPostedAt(video),
-          },
-        },
-      });
-    } catch (error) {
-      devLogger.warn("[Application] Failed to register for-you feed:", error);
-      return null;
-    }
+  registerForYouFeed(...args) {
+    this._initCoordinators();
+    return this._feed.registerForYouFeed(...args);
   }
 
   /**
    * Register the "kids" feed pipeline.
    */
-  registerKidsFeed() {
-    if (!this.feedEngine || typeof this.feedEngine.registerFeed !== "function") {
-      return null;
-    }
-
-    const existingDefinition =
-      typeof this.feedEngine.getFeedDefinition === "function"
-        ? this.feedEngine.getFeedDefinition("kids")
-        : null;
-    if (existingDefinition) {
-      return existingDefinition;
-    }
-
-    try {
-      const app = this;
-      const resolveThresholdFromApp = (key, kidsDefault) => ({
-        runtimeValue,
-        defaultValue,
-      }) => {
-        if (
-          Number.isFinite(runtimeValue) ||
-          runtimeValue === Number.POSITIVE_INFINITY
-        ) {
-          return runtimeValue;
-        }
-
-        if (app && typeof app.getActiveModerationThresholds === "function") {
-          const active = app.getActiveModerationThresholds();
-          const candidate = active && typeof active === "object" ? active[key] : undefined;
-          if (
-            Number.isFinite(candidate) ||
-            candidate === Number.POSITIVE_INFINITY
-          ) {
-            return candidate;
-          }
-        }
-
-        if (
-          Number.isFinite(kidsDefault) ||
-          kidsDefault === Number.POSITIVE_INFINITY
-        ) {
-          return kidsDefault;
-        }
-
-        return defaultValue;
-      };
-
-      const kidsDefaults = {
-        blurThreshold: 1,
-        trustedReportHideThreshold: 1,
-        trustedMuteHideThreshold: 1,
-      };
-
-      const disallowedWarnings = [
-        "nudity",
-        "sexual",
-        "graphic-violence",
-        "self-harm",
-        "drugs",
-      ];
-
-      const moderationStages = ["nudity", "violence", "self-harm"].map(
-        (reportType) =>
-          createModerationStage({
-            stageName: `kids-moderation-${reportType}`,
-            reportType,
-            getService: () => this.nostrService.getModerationService(),
-            autoplayThreshold: resolveThresholdFromApp("autoplayBlockThreshold"),
-            blurThreshold: resolveThresholdFromApp(
-              "blurThreshold",
-              kidsDefaults.blurThreshold,
-            ),
-            trustedMuteHideThreshold: resolveThresholdFromApp(
-              "trustedMuteHideThreshold",
-              kidsDefaults.trustedMuteHideThreshold,
-            ),
-            trustedReportHideThreshold: resolveThresholdFromApp(
-              "trustedSpamHideThreshold",
-              kidsDefaults.trustedReportHideThreshold,
-            ),
-          }),
-      );
-
-      return this.feedEngine.registerFeed("kids", {
-        source: createActiveNostrSource({ service: this.nostrService }),
-        stages: [
-          createBlacklistFilterStage({
-            shouldIncludeVideo: (video, options) =>
-              this.nostrService.shouldIncludeVideo(video, options),
-          }),
-          createKidsAudienceFilterStage({
-            disallowedWarnings,
-          }),
-          ...moderationStages,
-          createResolvePostedAtStage(),
-          createDedupeByRootStage({
-            dedupe: (videos) => this.dedupeVideosByRoot(videos),
-          }),
-          createKidsScorerStage(),
-        ],
-        sorter: createKidsScoreSorter(),
-        defaultConfig: {
-          ageGroup: "preschool",
-          educationalTags: [],
-          disallowedWarnings,
-        },
-        configSchema: {
-          ageGroup: {
-            type: "enum",
-            values: ["toddler", "preschool", "early", "older"],
-            description: "Target age group used for kids scoring defaults.",
-            default: "preschool",
-          },
-          educationalTags: {
-            type: "string[]",
-            description: "Optional educational tag overrides for kids scoring.",
-            default: [],
-          },
-          disallowedWarnings: {
-            type: "string[]",
-            description:
-              "Content warnings that should exclude videos from the kids feed.",
-            default: disallowedWarnings,
-          },
-        },
-        hooks: {
-          timestamps: {
-            getKnownVideoPostedAt: (video) => this.getKnownVideoPostedAt(video),
-            resolveVideoPostedAt: (video) => this.resolveVideoPostedAt(video),
-          },
-        },
-      });
-    } catch (error) {
-      devLogger.warn("[Application] Failed to register kids feed:", error);
-      return null;
-    }
+  registerKidsFeed(...args) {
+    this._initCoordinators();
+    return this._feed.registerKidsFeed(...args);
   }
 
   /**
    * Register the "explore" feed pipeline.
    */
-  registerExploreFeed() {
-    if (!this.feedEngine || typeof this.feedEngine.registerFeed !== "function") {
-      return null;
-    }
-
-    const existingDefinition =
-      typeof this.feedEngine.getFeedDefinition === "function"
-        ? this.feedEngine.getFeedDefinition("explore")
-        : null;
-    if (existingDefinition) {
-      return existingDefinition;
-    }
-
-    try {
-      const app = this;
-      const resolveThresholdFromApp = (key) => ({ runtimeValue, defaultValue }) => {
-        if (
-          Number.isFinite(runtimeValue) ||
-          runtimeValue === Number.POSITIVE_INFINITY
-        ) {
-          return runtimeValue;
-        }
-
-        if (app && typeof app.getActiveModerationThresholds === "function") {
-          const active = app.getActiveModerationThresholds();
-          const candidate = active && typeof active === "object" ? active[key] : undefined;
-          if (
-            Number.isFinite(candidate) ||
-            candidate === Number.POSITIVE_INFINITY
-          ) {
-            return candidate;
-          }
-        }
-
-        return defaultValue;
-      };
-      return this.feedEngine.registerFeed("explore", {
-        source: createActiveNostrSource({ service: this.nostrService }),
-        stages: [
-          createDisinterestFilterStage(),
-          createBlacklistFilterStage({
-            shouldIncludeVideo: (video, options) =>
-              this.nostrService.shouldIncludeVideo(video, options),
-          }),
-          createDedupeByRootStage({
-            dedupe: (videos) => this.dedupeVideosByRoot(videos),
-          }),
-          createModerationStage({
-            getService: () => this.nostrService.getModerationService(),
-            autoplayThreshold: resolveThresholdFromApp("autoplayBlockThreshold"),
-            blurThreshold: resolveThresholdFromApp("blurThreshold"),
-            trustedMuteHideThreshold: resolveThresholdFromApp("trustedMuteHideThreshold"),
-            trustedReportHideThreshold: resolveThresholdFromApp("trustedSpamHideThreshold"),
-          }),
-          createResolvePostedAtStage(),
-          createExploreScorerStage(),
-        ],
-        sorter: createExploreDiversitySorter(),
-        hooks: {
-          timestamps: {
-            getKnownVideoPostedAt: (video) => this.getKnownVideoPostedAt(video),
-            resolveVideoPostedAt: (video) => this.resolveVideoPostedAt(video),
-          },
-        },
-      });
-    } catch (error) {
-      devLogger.warn("[Application] Failed to register explore feed:", error);
-      return null;
-    }
+  registerExploreFeed(...args) {
+    this._initCoordinators();
+    return this._feed.registerExploreFeed(...args);
   }
 
-  registerSubscriptionsFeed() {
-    if (!this.feedEngine || typeof this.feedEngine.registerFeed !== "function") {
-      return null;
-    }
-
-    const existingDefinition =
-      typeof this.feedEngine.getFeedDefinition === "function"
-        ? this.feedEngine.getFeedDefinition("subscriptions")
-        : null;
-    if (existingDefinition) {
-      return existingDefinition;
-    }
-
-    try {
-      const app = this;
-      const resolveThresholdFromApp = (key) => ({ runtimeValue, defaultValue }) => {
-        if (
-          Number.isFinite(runtimeValue) ||
-          runtimeValue === Number.POSITIVE_INFINITY
-        ) {
-          return runtimeValue;
-        }
-
-        if (app && typeof app.getActiveModerationThresholds === "function") {
-          const active = app.getActiveModerationThresholds();
-          const candidate = active && typeof active === "object" ? active[key] : undefined;
-          if (
-            Number.isFinite(candidate) ||
-            candidate === Number.POSITIVE_INFINITY
-          ) {
-            return candidate;
-          }
-        }
-
-        return defaultValue;
-      };
-      return this.feedEngine.registerFeed("subscriptions", {
-        source: createSubscriptionAuthorsSource({ service: this.nostrService }),
-        stages: [
-          // Note: Tag-preference filtering is consolidated in createTagPreferenceFilterStage
-          // so each feed has a single source of truth for interest-based inclusion/ranking.
-          createTagPreferenceFilterStage(),
-          createBlacklistFilterStage({
-            shouldIncludeVideo: (video, options) =>
-              this.nostrService.shouldIncludeVideo(video, options),
-          }),
-          createDedupeByRootStage({
-            dedupe: (videos) => this.dedupeVideosByRoot(videos),
-          }),
-          createModerationStage({
-            getService: () => this.nostrService.getModerationService(),
-            autoplayThreshold: resolveThresholdFromApp("autoplayBlockThreshold"),
-            blurThreshold: resolveThresholdFromApp("blurThreshold"),
-            trustedMuteHideThreshold: resolveThresholdFromApp("trustedMuteHideThreshold"),
-            trustedReportHideThreshold: resolveThresholdFromApp("trustedSpamHideThreshold"),
-          }),
-          createResolvePostedAtStage(),
-        ],
-        sorter: createChronologicalSorter(),
-        hooks: {
-          subscriptions: {
-            resolveAuthors: () => subscriptions.getSubscribedAuthors(),
-          },
-          timestamps: {
-            getKnownVideoPostedAt: (video) => this.getKnownVideoPostedAt(video),
-            resolveVideoPostedAt: (video) => this.resolveVideoPostedAt(video),
-          },
-        },
-      });
-    } catch (error) {
-      devLogger.warn("[Application] Failed to register subscriptions feed:", error);
-      return null;
-    }
+  registerSubscriptionsFeed(...args) {
+    this._initCoordinators();
+    return this._feed.registerSubscriptionsFeed(...args);
   }
 
-  registerWatchHistoryFeed() {
-    if (!this.feedEngine || typeof this.feedEngine.registerFeed !== "function") {
-      return null;
-    }
-
-    const existingDefinition =
-      typeof this.feedEngine.getFeedDefinition === "function"
-        ? this.feedEngine.getFeedDefinition("watch-history")
-        : null;
-    if (existingDefinition) {
-      return existingDefinition;
-    }
-
-    try {
-      return registerWatchHistoryFeed(this.feedEngine, {
-        service: watchHistoryService,
-        nostr: this.nostrService,
-      });
-    } catch (error) {
-      devLogger.warn("[Application] Failed to register watch history feed:", error);
-      return null;
-    }
+  registerWatchHistoryFeed(...args) {
+    this._initCoordinators();
+    return this._feed.registerWatchHistoryFeed(...args);
   }
 
-  buildForYouFeedRuntime() {
-    const blacklist =
-      this.blacklistedEventIds instanceof Set
-        ? new Set(this.blacklistedEventIds)
-        : new Set();
-
-    const preferenceSource =
-      this.hashtagPreferencesSnapshot &&
-      typeof this.hashtagPreferencesSnapshot === "object"
-        ? this.hashtagPreferencesSnapshot
-        : typeof this.createHashtagPreferencesSnapshot === "function"
-        ? this.createHashtagPreferencesSnapshot()
-        : typeof this.getHashtagPreferences === "function"
-        ? this.getHashtagPreferences()
-        : {};
-    const { interests = [], disinterests = [] } = preferenceSource || {};
-    const moderationThresholds = this.getActiveModerationThresholds();
-
-    return {
-      blacklistedEventIds: blacklist,
-      isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
-      tagPreferences: {
-        interests: Array.isArray(interests) ? [...interests] : [],
-        disinterests: Array.isArray(disinterests) ? [...disinterests] : [],
-      },
-      moderationThresholds: moderationThresholds
-        ? { ...moderationThresholds }
-        : undefined,
-    };
+  buildForYouFeedRuntime(...args) {
+    this._initCoordinators();
+    return this._feed.buildForYouFeedRuntime(...args);
   }
 
-  buildExploreFeedRuntime() {
-    const exploreDataService =
-      this.exploreDataService && typeof this.exploreDataService === "object"
-        ? this.exploreDataService
-        : null;
-    const blacklist =
-      this.blacklistedEventIds instanceof Set
-        ? new Set(this.blacklistedEventIds)
-        : new Set();
-
-    const preferenceSource =
-      this.hashtagPreferencesSnapshot &&
-      typeof this.hashtagPreferencesSnapshot === "object"
-        ? this.hashtagPreferencesSnapshot
-        : typeof this.createHashtagPreferencesSnapshot === "function"
-        ? this.createHashtagPreferencesSnapshot()
-        : typeof this.getHashtagPreferences === "function"
-        ? this.getHashtagPreferences()
-        : {};
-    const { interests = [], disinterests = [] } = preferenceSource || {};
-    const moderationThresholds = this.getActiveModerationThresholds();
-
-    const watchHistorySource =
-      exploreDataService && typeof exploreDataService.getWatchHistoryTagCounts === "function"
-        ? exploreDataService.getWatchHistoryTagCounts()
-        : this.watchHistoryTagCounts;
-    const watchHistoryTagCounts =
-      watchHistorySource instanceof Map
-        ? new Map(watchHistorySource)
-        : watchHistorySource && typeof watchHistorySource === "object"
-        ? { ...watchHistorySource }
-        : undefined;
-
-    const exploreTagSource =
-      exploreDataService && typeof exploreDataService.getTagIdf === "function"
-        ? exploreDataService.getTagIdf()
-        : this.exploreTagIdf;
-    const exploreTagIdf =
-      exploreTagSource instanceof Map
-        ? new Map(exploreTagSource)
-        : exploreTagSource && typeof exploreTagSource === "object"
-        ? { ...exploreTagSource }
-        : undefined;
-
-    return {
-      blacklistedEventIds: blacklist,
-      isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
-      tagPreferences: {
-        interests: Array.isArray(interests) ? [...interests] : [],
-        disinterests: Array.isArray(disinterests) ? [...disinterests] : [],
-      },
-      watchHistoryTagCounts,
-      exploreTagIdf,
-      moderationThresholds: moderationThresholds
-        ? { ...moderationThresholds }
-        : undefined,
-    };
+  buildExploreFeedRuntime(...args) {
+    this._initCoordinators();
+    return this._feed.buildExploreFeedRuntime(...args);
   }
 
-  buildRecentFeedRuntime() {
-    const blacklist =
-      this.blacklistedEventIds instanceof Set
-        ? new Set(this.blacklistedEventIds)
-        : new Set();
-
-    const moderationThresholds = this.getActiveModerationThresholds();
-
-    return {
-      blacklistedEventIds: blacklist,
-      isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
-      moderationThresholds: moderationThresholds
-        ? { ...moderationThresholds }
-        : undefined,
-    };
+  buildRecentFeedRuntime(...args) {
+    this._initCoordinators();
+    return this._feed.buildRecentFeedRuntime(...args);
   }
 
-  buildKidsFeedRuntime() {
-    const blacklist =
-      this.blacklistedEventIds instanceof Set
-        ? new Set(this.blacklistedEventIds)
-        : new Set();
-
-    const feedDefinition =
-      this.feedEngine && typeof this.feedEngine.getFeedDefinition === "function"
-        ? this.feedEngine.getFeedDefinition("kids")
-        : null;
-    const configDefaults =
-      feedDefinition && typeof feedDefinition.configDefaults === "object"
-        ? feedDefinition.configDefaults
-        : {};
-
-    const runtimeOverrides =
-      this.kidsFeedRuntime && typeof this.kidsFeedRuntime === "object"
-        ? this.kidsFeedRuntime
-        : {};
-    const runtimeConfig =
-      this.kidsFeedConfig && typeof this.kidsFeedConfig === "object"
-        ? this.kidsFeedConfig
-        : {};
-
-    const resolveStringArray = (...candidates) => {
-      for (const candidate of candidates) {
-        if (!Array.isArray(candidate)) {
-          continue;
-        }
-        return candidate
-          .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
-          .filter(Boolean);
-      }
-      return [];
-    };
-
-    const disallowedWarnings = resolveStringArray(
-      runtimeOverrides.disallowedWarnings,
-      runtimeConfig.disallowedWarnings,
-      configDefaults.disallowedWarnings,
-    );
-    const kidsEducationalTags = resolveStringArray(
-      runtimeOverrides.kidsEducationalTags,
-      runtimeOverrides.educationalTags,
-      runtimeConfig.kidsEducationalTags,
-      runtimeConfig.educationalTags,
-      configDefaults.educationalTags,
-    );
-    const trustedAuthors = resolveStringArray(
-      runtimeOverrides.trustedAuthors,
-      runtimeConfig.trustedAuthors,
-    );
-
-    const ageGroupCandidates = [
-      runtimeOverrides.ageGroup,
-      runtimeConfig.ageGroup,
-      configDefaults.ageGroup,
-    ];
-    let ageGroup = "";
-    for (const candidate of ageGroupCandidates) {
-      if (typeof candidate !== "string") {
-        continue;
-      }
-      const trimmed = candidate.trim();
-      if (trimmed) {
-        ageGroup = trimmed;
-        break;
-      }
-    }
-
-    const runtimeModerationOverrides =
-      runtimeOverrides.moderationThresholds &&
-      typeof runtimeOverrides.moderationThresholds === "object"
-        ? runtimeOverrides.moderationThresholds
-        : null;
-    const configModerationOverrides =
-      runtimeConfig.moderationThresholds &&
-      typeof runtimeConfig.moderationThresholds === "object"
-        ? runtimeConfig.moderationThresholds
-        : null;
-    const kidsThresholdOverrides =
-      runtimeModerationOverrides || configModerationOverrides
-        ? {
-            ...(configModerationOverrides || {}),
-            ...(runtimeModerationOverrides || {}),
-          }
-        : null;
-
-    const moderationThresholds = this.getActiveModerationThresholds();
-    const resolvedModerationThresholds =
-      moderationThresholds || kidsThresholdOverrides
-        ? {
-            ...(moderationThresholds || {}),
-            ...(kidsThresholdOverrides || {}),
-          }
-        : undefined;
-
-    const parentalAllowlist = resolveStringArray(
-      runtimeOverrides.parentalAllowlist,
-      runtimeOverrides.allowlist,
-      runtimeConfig.parentalAllowlist,
-      runtimeConfig.allowlist,
-    );
-    const parentalBlocklist = resolveStringArray(
-      runtimeOverrides.parentalBlocklist,
-      runtimeOverrides.blocklist,
-      runtimeConfig.parentalBlocklist,
-      runtimeConfig.blocklist,
-    );
-
-    return {
-      blacklistedEventIds: blacklist,
-      isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
-      disallowedWarnings,
-      kidsEducationalTags,
-      educationalTags: kidsEducationalTags,
-      trustedAuthors,
-      ageGroup: ageGroup || undefined,
-      moderationThresholds: resolvedModerationThresholds,
-      parentalAllowlist,
-      parentalBlocklist,
-    };
+  buildKidsFeedRuntime(...args) {
+    this._initCoordinators();
+    return this._feed.buildKidsFeedRuntime(...args);
   }
 
-  refreshForYouFeed({ reason, fallbackVideos } = {}) {
-    const runtime = this.buildForYouFeedRuntime();
-    const normalizedReason = typeof reason === "string" ? reason : undefined;
-    const fallback = Array.isArray(fallbackVideos) ? fallbackVideos : [];
-
-    if (!this.feedEngine || typeof this.feedEngine.run !== "function") {
-      const metadata = {
-        reason: normalizedReason,
-        engine: "unavailable",
-      };
-      this.latestFeedMetadata = metadata;
-      this.videosMap = this.nostrService.getVideosMap();
-      if (this.videoListView) {
-        this.videoListView.state.videosMap = this.videosMap;
-      }
-      this.updateForYouTelemetryMetadata([], metadata);
-      this.renderVideoList({ videos: fallback, metadata });
-      return Promise.resolve({ videos: fallback, metadata });
-    }
-
-    return this.feedEngine
-      .run("for-you", { runtime })
-      .then((result) => {
-        const videos = Array.isArray(result?.videos) ? result.videos : [];
-        const metadata = {
-          ...(result?.metadata || {}),
-        };
-        if (normalizedReason) {
-          metadata.reason = normalizedReason;
-        }
-
-        this.latestFeedMetadata = metadata;
-        this.videosMap = this.nostrService.getVideosMap();
-        if (this.videoListView) {
-          this.videoListView.state.videosMap = this.videosMap;
-        }
-
-        const items = Array.isArray(result?.items) ? result.items : [];
-        this.updateForYouTelemetryMetadata(items, metadata);
-
-        const payload = { videos, metadata };
-        this.renderVideoList(payload);
-        return payload;
-      })
-      .catch((error) => {
-        devLogger.error("[Application] Failed to run for-you feed:", error);
-        const metadata = {
-          reason: normalizedReason || "error:for-you-feed",
-          error: true,
-        };
-        this.latestFeedMetadata = metadata;
-        this.videosMap = this.nostrService.getVideosMap();
-        if (this.videoListView) {
-          this.videoListView.state.videosMap = this.videosMap;
-        }
-        this.updateForYouTelemetryMetadata([], metadata);
-        const payload = { videos: fallback, metadata };
-        this.renderVideoList(payload);
-        return payload;
-      });
+  async refreshForYouFeed(...args) {
+    this._initCoordinators();
+    return this._feed.refreshForYouFeed(...args);
   }
 
-  refreshKidsFeed({ reason, fallbackVideos } = {}) {
-    const runtime = this.buildKidsFeedRuntime();
-    const normalizedReason = typeof reason === "string" ? reason : undefined;
-    const fallback = Array.isArray(fallbackVideos) ? fallbackVideos : [];
-
-    if (!this.feedEngine || typeof this.feedEngine.run !== "function") {
-      const metadata = {
-        reason: normalizedReason,
-        engine: "unavailable",
-      };
-      if (runtime?.ageGroup && !metadata.ageGroup) {
-        metadata.ageGroup = runtime.ageGroup;
-      }
-      this.latestFeedMetadata = metadata;
-      this.videosMap = this.nostrService.getVideosMap();
-      if (this.videoListView) {
-        this.videoListView.state.videosMap = this.videosMap;
-      }
-      this.updateFeedTelemetryMetadata("kids", [], metadata);
-      this.renderVideoList({ videos: fallback, metadata });
-      return Promise.resolve({ videos: fallback, metadata });
-    }
-
-    return this.feedEngine
-      .run("kids", { runtime })
-      .then((result) => {
-        const videos = Array.isArray(result?.videos) ? result.videos : [];
-        const metadata = {
-          ...(result?.metadata || {}),
-        };
-        if (normalizedReason) {
-          metadata.reason = normalizedReason;
-        }
-        if (runtime?.ageGroup && !metadata.ageGroup) {
-          metadata.ageGroup = runtime.ageGroup;
-        }
-
-        this.latestFeedMetadata = metadata;
-        this.videosMap = this.nostrService.getVideosMap();
-        if (this.videoListView) {
-          this.videoListView.state.videosMap = this.videosMap;
-        }
-
-        const items = Array.isArray(result?.items) ? result.items : [];
-        this.updateFeedTelemetryMetadata("kids", items, metadata);
-
-        const payload = { videos, metadata };
-        this.renderVideoList(payload);
-        return payload;
-      })
-      .catch((error) => {
-        devLogger.error("[Application] Failed to run kids feed:", error);
-        const metadata = {
-          reason: normalizedReason || "error:kids-feed",
-          error: true,
-        };
-        if (runtime?.ageGroup && !metadata.ageGroup) {
-          metadata.ageGroup = runtime.ageGroup;
-        }
-        this.latestFeedMetadata = metadata;
-        this.videosMap = this.nostrService.getVideosMap();
-        if (this.videoListView) {
-          this.videoListView.state.videosMap = this.videosMap;
-        }
-        this.updateFeedTelemetryMetadata("kids", [], metadata);
-        const payload = { videos: fallback, metadata };
-        this.renderVideoList(payload);
-        return payload;
-      });
+  refreshKidsFeed(...args) {
+    this._initCoordinators();
+    return this._feed.refreshKidsFeed(...args);
   }
 
-  refreshExploreFeed({ reason, fallbackVideos } = {}) {
-    const runtime = this.buildExploreFeedRuntime();
-    const normalizedReason = typeof reason === "string" ? reason : undefined;
-    const fallback = Array.isArray(fallbackVideos) ? fallbackVideos : [];
-    const applyExploreOrderingMetadata = (source) => {
-      const next = source && typeof source === "object" ? { ...source } : {};
-      if (!next.sortOrder) {
-        next.sortOrder = "explore";
-      }
-      next.preserveOrder = true;
-      return next;
-    };
-
-    if (!this.feedEngine || typeof this.feedEngine.run !== "function") {
-      const metadata = applyExploreOrderingMetadata({
-        reason: normalizedReason,
-        engine: "unavailable",
-      });
-      this.latestFeedMetadata = metadata;
-      this.videosMap = this.nostrService.getVideosMap();
-      if (this.videoListView) {
-        this.videoListView.state.videosMap = this.videosMap;
-      }
-      this.renderVideoList({ videos: fallback, metadata });
-      return Promise.resolve({ videos: fallback, metadata });
-    }
-
-    return this.feedEngine
-      .run("explore", { runtime })
-      .then((result) => {
-        const videos = Array.isArray(result?.videos) ? result.videos : [];
-        const metadata = applyExploreOrderingMetadata({
-          ...(result?.metadata || {}),
-          ...(normalizedReason ? { reason: normalizedReason } : {}),
-        });
-
-        this.latestFeedMetadata = metadata;
-        this.videosMap = this.nostrService.getVideosMap();
-        if (this.videoListView) {
-          this.videoListView.state.videosMap = this.videosMap;
-        }
-
-        const payload = { videos, metadata };
-        this.renderVideoList(payload);
-        return payload;
-      })
-      .catch((error) => {
-        devLogger.error("[Application] Failed to run explore feed:", error);
-        const metadata = applyExploreOrderingMetadata({
-          reason: normalizedReason || "error:explore-feed",
-          error: true,
-        });
-        this.latestFeedMetadata = metadata;
-        this.videosMap = this.nostrService.getVideosMap();
-        if (this.videoListView) {
-          this.videoListView.state.videosMap = this.videosMap;
-        }
-        const payload = { videos: fallback, metadata };
-        this.renderVideoList(payload);
-        return payload;
-      });
+  refreshExploreFeed(...args) {
+    this._initCoordinators();
+    return this._feed.refreshExploreFeed(...args);
   }
 
-  refreshRecentFeed({ reason, fallbackVideos } = {}) {
-    const runtime = this.buildRecentFeedRuntime();
-    const normalizedReason = typeof reason === "string" ? reason : undefined;
-    const fallback = Array.isArray(fallbackVideos) ? fallbackVideos : [];
-
-    if (!this.feedEngine || typeof this.feedEngine.run !== "function") {
-      const metadata = {
-        reason: normalizedReason,
-        engine: "unavailable",
-      };
-      this.latestFeedMetadata = metadata;
-      this.videosMap = this.nostrService.getVideosMap();
-      if (this.videoListView) {
-        this.videoListView.state.videosMap = this.videosMap;
-      }
-      this.renderVideoList({ videos: fallback, metadata });
-      return Promise.resolve({ videos: fallback, metadata });
-    }
-
-    return this.feedEngine
-      .run("recent", { runtime })
-      .then((result) => {
-        const videos = Array.isArray(result?.videos) ? result.videos : [];
-        const metadata = {
-          ...(result?.metadata || {}),
-        };
-        if (normalizedReason) {
-          metadata.reason = normalizedReason;
-        }
-
-        this.latestFeedMetadata = metadata;
-        this.videosMap = this.nostrService.getVideosMap();
-        if (this.videoListView) {
-          this.videoListView.state.videosMap = this.videosMap;
-        }
-
-        const payload = { videos, metadata };
-        this.renderVideoList(payload);
-        return payload;
-      })
-      .catch((error) => {
-        devLogger.error("[Application] Failed to run recent feed:", error);
-        const metadata = {
-          reason: normalizedReason || "error:recent-feed",
-          error: true,
-        };
-        this.latestFeedMetadata = metadata;
-        this.videosMap = this.nostrService.getVideosMap();
-        if (this.videoListView) {
-          this.videoListView.state.videosMap = this.videosMap;
-        }
-        const payload = { videos: fallback, metadata };
-        this.renderVideoList(payload);
-        return payload;
-      });
+  refreshRecentFeed(...args) {
+    this._initCoordinators();
+    return this._feed.refreshRecentFeed(...args);
   }
 
-  checkRelayHealthWarning() {
-    if (!nostrClient || typeof nostrClient.getHealthyRelays !== "function") {
-      return false;
-    }
-
-    // Give the app a grace period to establish initial connections before complaining.
-    const now = Date.now();
-    const GRACE_PERIOD_MS = 10000;
-    if (now - (this.appStartedAt || now) < GRACE_PERIOD_MS) {
-      return false;
-    }
-
-    const relayCandidates = Array.isArray(nostrClient.relays) ? nostrClient.relays : [];
-    if (!relayCandidates.length) {
-      return false;
-    }
-
-    const healthyRelays = nostrClient.getHealthyRelays(relayCandidates);
-    if (healthyRelays.length) {
-      return false;
-    }
-
-    const cooldownMs = 30000;
-    if (now - (this.lastRelayHealthWarningAt || 0) < cooldownMs) {
-      return true;
-    }
-
-    this.lastRelayHealthWarningAt = now;
-    this.showStatus(
-      "All configured relays are unhealthy. Data may be missing until a relay reconnects.",
-      { autoHideMs: 12000, showSpinner: false },
-    );
-    return true;
+  checkRelayHealthWarning(...args) {
+    this._initCoordinators();
+    return this._feed.checkRelayHealthWarning(...args);
   }
 
   /**
    * Subscribe to videos (older + new) and render them as they come in.
    */
-  async loadVideos(forceFetch = false) {
-    if (this.loadVideosPromise && !forceFetch) {
-      devLogger.log("Reusing in-flight loadVideos request.");
-      return this.loadVideosPromise;
-    }
-
-    const now = Date.now();
-    if (this.lastLoadVideosTime && (now - this.lastLoadVideosTime < 2000) && !forceFetch) {
-      devLogger.log("Skipping redundant loadVideos request (cooldown).");
-      return Promise.resolve();
-    }
-    this.lastLoadVideosTime = now;
-
-    this.loadVideosPromise = (async () => {
-      devLogger.log("Starting loadVideos... (forceFetch =", forceFetch, ")");
-      this.setFeedTelemetryContext("recent");
-      this.checkRelayHealthWarning();
-
-      const container = this.mountVideoListView();
-      const hasCachedVideos =
-        this.nostrService &&
-        Array.isArray(this.nostrService.getFilteredActiveVideos()) &&
-        this.nostrService.getFilteredActiveVideos().length > 0;
-
-      if (!hasCachedVideos) {
-        if (this.videoListView && container) {
-          this.videoListView.showLoading("Fetching recent videos…");
-        } else if (container) {
-          container.innerHTML = getSidebarLoadingMarkup("Fetching recent videos…");
-        }
-      }
-
-      let initialRefreshPromise = null;
-
-      const videos = await this.nostrService.loadVideos({
-        forceFetch,
-        blacklistedEventIds: this.blacklistedEventIds,
-        isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
-        onVideos: (payload, detail = {}) => {
-          const promise = this.refreshRecentFeed({
-            reason: detail?.reason,
-            fallbackVideos: payload,
-          });
-          if (!initialRefreshPromise) {
-            initialRefreshPromise = promise;
-          }
-        },
-      });
-
-      if (initialRefreshPromise) {
-        await initialRefreshPromise;
-      } else if (!Array.isArray(videos) || videos.length === 0) {
-        await this.refreshRecentFeed({ reason: "initial", fallbackVideos: [] });
-      }
-
-      this.videoSubscription = this.nostrService.getVideoSubscription() || null;
-      this.videosMap = this.nostrService.getVideosMap();
-      if (this.videoListView) {
-        this.videoListView.state.videosMap = this.videosMap;
-      }
-    })();
-
-    try {
-      await this.loadVideosPromise;
-    } finally {
-      this.loadVideosPromise = null;
-    }
+  async loadVideos(...args) {
+    this._initCoordinators();
+    return this._feed.loadVideos(...args);
   }
 
-  async loadForYouVideos(forceFetch = false) {
-    devLogger.log("Starting loadForYouVideos... (forceFetch =", forceFetch, ")");
-    this.setFeedTelemetryContext("for-you");
-    this.checkRelayHealthWarning();
-
-    const container = this.mountVideoListView({ includeTags: false });
-    const hasCachedVideos =
-      this.nostrService &&
-      Array.isArray(this.nostrService.getFilteredActiveVideos()) &&
-      this.nostrService.getFilteredActiveVideos().length > 0;
-
-    if (!hasCachedVideos) {
-      if (this.videoListView && container) {
-        this.videoListView.showLoading("Fetching for-you videos…");
-      } else if (container) {
-        container.innerHTML = getSidebarLoadingMarkup("Fetching for-you videos…");
-      }
-    }
-
-    let initialRefreshPromise = null;
-
-    const videos = await this.nostrService.loadVideos({
-      forceFetch,
-      blacklistedEventIds: this.blacklistedEventIds,
-      isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
-      onVideos: (payload, detail = {}) => {
-        const promise = this.refreshForYouFeed({
-          reason: detail?.reason,
-          fallbackVideos: payload,
-        });
-        if (!initialRefreshPromise) {
-          initialRefreshPromise = promise;
-        }
-      },
-    });
-
-    if (initialRefreshPromise) {
-      await initialRefreshPromise;
-    } else if (!Array.isArray(videos) || videos.length === 0) {
-      await this.refreshForYouFeed({ reason: "initial", fallbackVideos: [] });
-    }
-
-    this.videoSubscription = this.nostrService.getVideoSubscription() || null;
-    this.videosMap = this.nostrService.getVideosMap();
-    if (this.videoListView) {
-      this.videoListView.state.videosMap = this.videosMap;
-    }
+  async loadForYouVideos(...args) {
+    this._initCoordinators();
+    return this._feed.loadForYouVideos(...args);
   }
 
-  async loadKidsVideos(forceFetch = false) {
-    devLogger.log("Starting loadKidsVideos... (forceFetch =", forceFetch, ")");
-    this.setFeedTelemetryContext("kids");
-
-    const container = this.mountVideoListView({ includeTags: true });
-    const hasCachedVideos =
-      this.nostrService &&
-      Array.isArray(this.nostrService.getFilteredActiveVideos()) &&
-      this.nostrService.getFilteredActiveVideos().length > 0;
-
-    if (!hasCachedVideos) {
-      if (this.videoListView && container) {
-        this.videoListView.showLoading("Fetching kids videos…");
-      } else if (container) {
-        container.innerHTML = getSidebarLoadingMarkup("Fetching kids videos…");
-      }
-    }
-
-    let initialRefreshPromise = null;
-
-    const videos = await this.nostrService.loadVideos({
-      forceFetch,
-      blacklistedEventIds: this.blacklistedEventIds,
-      isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
-      onVideos: (payload, detail = {}) => {
-        const promise = this.refreshKidsFeed({
-          reason: detail?.reason,
-          fallbackVideos: payload,
-        });
-        if (!initialRefreshPromise) {
-          initialRefreshPromise = promise;
-        }
-      },
-    });
-
-    if (initialRefreshPromise) {
-      await initialRefreshPromise;
-    } else if (!Array.isArray(videos) || videos.length === 0) {
-      await this.refreshKidsFeed({ reason: "initial", fallbackVideos: [] });
-    }
-
-    this.videoSubscription = this.nostrService.getVideoSubscription() || null;
-    this.videosMap = this.nostrService.getVideosMap();
-    if (this.videoListView) {
-      this.videoListView.state.videosMap = this.videosMap;
-    }
+  async loadKidsVideos(...args) {
+    this._initCoordinators();
+    return this._feed.loadKidsVideos(...args);
   }
 
-  async loadExploreVideos(forceFetch = false) {
-    devLogger.log("Starting loadExploreVideos... (forceFetch =", forceFetch, ")");
-    this.setFeedTelemetryContext("explore");
-
-    const container = this.mountVideoListView({ includeTags: false });
-    const hasCachedVideos =
-      this.nostrService &&
-      Array.isArray(this.nostrService.getFilteredActiveVideos()) &&
-      this.nostrService.getFilteredActiveVideos().length > 0;
-
-    if (!hasCachedVideos) {
-      if (this.videoListView && container) {
-        this.videoListView.showLoading("Fetching explore videos…");
-      } else if (container) {
-        container.innerHTML = getSidebarLoadingMarkup("Fetching explore videos…");
-      }
-    }
-
-    let initialRefreshPromise = null;
-
-    const videos = await this.nostrService.loadVideos({
-      forceFetch,
-      blacklistedEventIds: this.blacklistedEventIds,
-      isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
-      onVideos: (payload, detail = {}) => {
-        const promise = this.refreshExploreFeed({
-          reason: detail?.reason,
-          fallbackVideos: payload,
-        });
-        if (!initialRefreshPromise) {
-          initialRefreshPromise = promise;
-        }
-      },
-    });
-
-    if (initialRefreshPromise) {
-      await initialRefreshPromise;
-    } else if (!Array.isArray(videos) || videos.length === 0) {
-      await this.refreshExploreFeed({ reason: "initial", fallbackVideos: [] });
-    }
-
-    this.videoSubscription = this.nostrService.getVideoSubscription() || null;
-    this.videosMap = this.nostrService.getVideosMap();
-    if (this.videoListView) {
-      this.videoListView.state.videosMap = this.videosMap;
-    }
+  async loadExploreVideos(...args) {
+    this._initCoordinators();
+    return this._feed.loadExploreVideos(...args);
   }
 
-  async loadOlderVideos(lastTimestamp) {
-    const olderVideos = await this.nostrService.loadOlderVideos(lastTimestamp, {
-      blacklistedEventIds: this.blacklistedEventIds,
-      isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
-    });
-
-    if (!Array.isArray(olderVideos) || olderVideos.length === 0) {
-      this.showSuccess("No more older videos found.");
-      return;
-    }
-
-    await this.refreshRecentFeed({ reason: "older-fetch" });
+  async loadOlderVideos(...args) {
+    this._initCoordinators();
+    return this._feed.loadOlderVideos(...args);
   }
 
   /**
    * Returns true if there's at least one strictly older version
    * (same videoRootId, created_at < current) which is NOT deleted.
    */
-  hasOlderVersion(video, allEvents) {
-    if (!video || !video.videoRootId) return false;
-
-    const rootId = video.videoRootId;
-    const currentTs = video.created_at;
-
-    // among ALL known events (including overshadowed), find older, not deleted
-    const olderMatches = allEvents.filter(
-      (v) => v.videoRootId === rootId && v.created_at < currentTs && !v.deleted
-    );
-    return olderMatches.length > 0;
+  hasOlderVersion(...args) {
+    this._initCoordinators();
+    return this._feed.hasOlderVersion(...args);
   }
 
   /**
@@ -6865,818 +4012,219 @@ class Application {
    * so they can re-use the exact same badge skeleton. Keeping the markup in
    * one place avoids subtle mismatches when we tweak copy or classes later.
    */
-  getUrlHealthPlaceholderMarkup(options = {}) {
-    return this.urlHealthController.getUrlHealthPlaceholderMarkup(options);
+  getUrlHealthPlaceholderMarkup(...args) {
+    this._initCoordinators();
+    return this._feed.getUrlHealthPlaceholderMarkup(...args);
   }
 
-  getTorrentHealthBadgeMarkup(options = {}) {
-    const includeMargin = options?.includeMargin !== false;
-    const classes = ["badge", "torrent-health-badge"];
-    if (includeMargin) {
-      classes.push("mt-sm");
-    }
-
-    return `
-      <span
-        class="${classes.join(" ")}"
-        data-stream-health-state="checking"
-        data-variant="neutral"
-        aria-live="polite"
-        role="status"
-      >
-        ⏳ Torrent
-      </span>
-    `;
+  getTorrentHealthBadgeMarkup(...args) {
+    this._initCoordinators();
+    return this._feed.getTorrentHealthBadgeMarkup(...args);
   }
 
-  isMagnetUriSupported(magnet) {
-    return isValidMagnetUri(magnet);
+  isMagnetUriSupported(...args) {
+    this._initCoordinators();
+    return this._feed.isMagnetUriSupported(...args);
   }
 
-  getCachedUrlHealth(eventId, url) {
-    return readCachedUrlHealth(eventId, url);
+  getCachedUrlHealth(...args) {
+    this._initCoordinators();
+    return this._feed.getCachedUrlHealth(...args);
   }
 
-  storeUrlHealth(eventId, url, result, ttlMs) {
-    return persistUrlHealth(eventId, url, result, ttlMs);
+  storeUrlHealth(...args) {
+    this._initCoordinators();
+    return this._feed.storeUrlHealth(...args);
   }
 
-  updateUrlHealthBadge(badgeEl, state, videoId) {
-    return this.urlHealthController.updateUrlHealthBadge(badgeEl, state, videoId);
+  updateUrlHealthBadge(...args) {
+    this._initCoordinators();
+    return this._feed.updateUrlHealthBadge(...args);
   }
 
-  handleUrlHealthBadge(payload) {
-    return this.urlHealthController.handleUrlHealthBadge(payload);
+  handleUrlHealthBadge(...args) {
+    this._initCoordinators();
+    return this._feed.handleUrlHealthBadge(...args);
   }
 
-  handleStreamHealthBadgeUpdate(detail) {
-    if (!detail || typeof detail !== "object") {
-      return;
-    }
-
-    const card = detail.card;
-    if (!(card instanceof HTMLElement)) {
-      return;
-    }
-
-    let videoId =
-      (card.dataset && card.dataset.videoId) ||
-      (typeof card.getAttribute === "function" ? card.getAttribute("data-video-id") : "") ||
-      "";
-
-    if (!videoId && typeof card.querySelector === "function") {
-      const fallback = card.querySelector("[data-video-id]");
-      if (fallback instanceof HTMLElement && fallback.dataset.videoId) {
-        videoId = fallback.dataset.videoId;
-      }
-    }
-
-    if (!videoId) {
-      return;
-    }
-
-    if (this.videoListView && typeof this.videoListView.cacheStreamHealth === "function") {
-      this.videoListView.cacheStreamHealth(videoId, {
-        state: detail.state,
-        peers: detail.peers,
-        reason: detail.reason,
-        checkedAt: detail.checkedAt,
-        text: detail.text,
-        tooltip: detail.tooltip,
-        role: detail.role,
-        ariaLive: detail.ariaLive,
-      });
-    }
+  handleStreamHealthBadgeUpdate(...args) {
+    this._initCoordinators();
+    return this._feed.handleStreamHealthBadgeUpdate(...args);
   }
 
-  getFeedTelemetryState(feedName = "") {
-    if (!this.feedTelemetryState || typeof this.feedTelemetryState !== "object") {
-      this.feedTelemetryState = {
-        activeFeed: "",
-        feeds: new Map(),
-      };
-    }
-
-    if (!(this.feedTelemetryState.feeds instanceof Map)) {
-      this.feedTelemetryState.feeds = new Map();
-    }
-
-    const normalized =
-      typeof feedName === "string" ? feedName.trim().toLowerCase() : "";
-    if (!normalized) {
-      return null;
-    }
-
-    if (this.feedTelemetryState.feeds.has(normalized)) {
-      return this.feedTelemetryState.feeds.get(normalized);
-    }
-
-    const state = {
-      matchedTagsById: new Map(),
-      matchReasonsById: new Map(),
-      kidsScoreById: new Map(),
-      moderationById: new Map(),
-      ageGroup: "",
-      lastImpressionSignature: "",
-      activePlayback: null,
-    };
-    this.feedTelemetryState.feeds.set(normalized, state);
-    return state;
+  getFeedTelemetryState(...args) {
+    this._initCoordinators();
+    return this._feed.getFeedTelemetryState(...args);
   }
 
-  setFeedTelemetryContext(feedName = "") {
-    const normalized =
-      typeof feedName === "string" ? feedName.trim().toLowerCase() : "";
-    const previousFeed = this.feedTelemetryState?.activeFeed || "";
-    if (previousFeed && previousFeed !== normalized) {
-      const previousState = this.getFeedTelemetryState(previousFeed);
-      if (previousState) {
-        previousState.lastImpressionSignature = "";
-        previousState.activePlayback = null;
-      }
-    }
-
-    const nextState = this.getFeedTelemetryState(normalized);
-    if (previousFeed !== normalized && nextState) {
-      nextState.lastImpressionSignature = "";
-      nextState.activePlayback = null;
-    }
-
-    this.feedTelemetryState.activeFeed = normalized;
+  setFeedTelemetryContext(...args) {
+    this._initCoordinators();
+    return this._feed.setFeedTelemetryContext(...args);
   }
 
-  isFeedActive(feedName = "") {
-    const normalized =
-      typeof feedName === "string" ? feedName.trim().toLowerCase() : "";
-    return Boolean(normalized && this.feedTelemetryState?.activeFeed === normalized);
+  isFeedActive(...args) {
+    this._initCoordinators();
+    return this._feed.isFeedActive(...args);
   }
 
-  isForYouFeedActive() {
-    return this.feedTelemetryState?.activeFeed === "for-you";
+  isForYouFeedActive(...args) {
+    this._initCoordinators();
+    return this._feed.isForYouFeedActive(...args);
   }
 
-  updateFeedTelemetryMetadata(feedName = "", items = [], metadata = {}) {
-    if (!this.isFeedActive(feedName)) {
-      return;
-    }
-
-    const feedState = this.getFeedTelemetryState(feedName);
-    if (!feedState) {
-      return;
-    }
-
-    const matchedTagsById = new Map();
-    const matchReasonsById = new Map();
-    const kidsScoreById = new Map();
-    const moderationById = new Map();
-
-    if (Array.isArray(items)) {
-      items.forEach((item) => {
-        const videoId =
-          typeof item?.video?.id === "string" ? item.video.id : "";
-        if (!videoId) {
-          return;
-        }
-        const matched =
-          Array.isArray(item?.metadata?.matchedInterests)
-            ? item.metadata.matchedInterests
-            : [];
-        matchedTagsById.set(videoId, matched);
-
-        const kidsScoreRaw = Number(item?.metadata?.kidsScore);
-        if (Number.isFinite(kidsScoreRaw)) {
-          kidsScoreById.set(videoId, kidsScoreRaw);
-        }
-
-        const moderationPayload = this.buildModerationTelemetry(item?.video);
-        if (moderationPayload) {
-          moderationById.set(videoId, moderationPayload);
-        }
-      });
-    }
-
-    const whyEntries = Array.isArray(metadata?.why) ? metadata.why : [];
-    whyEntries.forEach((entry) => {
-      if (!entry || entry.reason !== "matched-interests") {
-        return;
-      }
-      const videoId = typeof entry.videoId === "string" ? entry.videoId : "";
-      if (!videoId) {
-        return;
-      }
-      const reasons = matchReasonsById.get(videoId) || [];
-      reasons.push({
-        stage: typeof entry.stage === "string" ? entry.stage : "",
-        reason: entry.reason,
-      });
-      matchReasonsById.set(videoId, reasons);
-    });
-
-    const ageGroup =
-      typeof metadata?.ageGroup === "string" ? metadata.ageGroup.trim() : "";
-
-    feedState.matchedTagsById = matchedTagsById;
-    feedState.matchReasonsById = matchReasonsById;
-    feedState.kidsScoreById = kidsScoreById;
-    feedState.moderationById = moderationById;
-    feedState.ageGroup = ageGroup;
+  updateFeedTelemetryMetadata(...args) {
+    this._initCoordinators();
+    return this._feed.updateFeedTelemetryMetadata(...args);
   }
 
-  updateForYouTelemetryMetadata(items = [], metadata = {}) {
-    this.updateFeedTelemetryMetadata("for-you", items, metadata);
+  updateForYouTelemetryMetadata(...args) {
+    this._initCoordinators();
+    return this._feed.updateForYouTelemetryMetadata(...args);
   }
 
-  resolveVideoForTelemetry(videoId) {
-    if (typeof videoId !== "string" || !videoId) {
-      return null;
-    }
-
-    if (this.videosMap instanceof Map && this.videosMap.has(videoId)) {
-      return this.videosMap.get(videoId) || null;
-    }
-
-    if (this.videoListView && Array.isArray(this.videoListView.currentVideos)) {
-      return this.videoListView.currentVideos.find((video) => video?.id === videoId) || null;
-    }
-
-    return null;
+  resolveVideoForTelemetry(...args) {
+    this._initCoordinators();
+    return this._feed.resolveVideoForTelemetry(...args);
   }
 
-  resolveVideoIndex(videoId) {
-    if (!this.videoListView || !Array.isArray(this.videoListView.currentVideos)) {
-      return null;
-    }
-
-    const index = this.videoListView.currentVideos.findIndex(
-      (video) => video?.id === videoId,
-    );
-    return index >= 0 ? index : null;
+  resolveVideoIndex(...args) {
+    this._initCoordinators();
+    return this._feed.resolveVideoIndex(...args);
   }
 
-  buildModerationTelemetry(video) {
-    if (!video || typeof video !== "object") {
-      return null;
-    }
-
-    const moderation =
-      video.moderation && typeof video.moderation === "object"
-        ? video.moderation
-        : null;
-    if (!moderation) {
-      return null;
-    }
-
-    const payload = {
-      hidden: moderation.hidden === true,
-      blurThumbnail: moderation.blurThumbnail === true,
-      blockAutoplay: moderation.blockAutoplay === true,
-      viewerOverride: moderation.viewerOverride?.showAnyway === true,
-      trustedMuted: moderation.trustedMuted === true,
-    };
-
-    const reportType =
-      typeof moderation.reportType === "string" ? moderation.reportType : "";
-    if (reportType) {
-      payload.reportType = reportType;
-    }
-
-    return payload;
+  buildModerationTelemetry(...args) {
+    this._initCoordinators();
+    return this._feed.buildModerationTelemetry(...args);
   }
 
-  buildFeedTelemetryPayload(feedName = "", { video, videoId, position } = {}) {
-    if (!this.isFeedActive(feedName)) {
-      return null;
-    }
-
-    const feedState = this.getFeedTelemetryState(feedName);
-    if (!feedState) {
-      return null;
-    }
-
-    const eventId =
-      typeof videoId === "string" && videoId
-        ? videoId
-        : typeof video?.id === "string"
-          ? video.id
-          : "";
-    if (!eventId) {
-      return null;
-    }
-
-    const payload = {
-      feed: feedName,
-      eventId,
-      videoId: eventId,
-    };
-
-    if (feedName === "for-you") {
-      const matchedTagsRaw = feedState.matchedTagsById?.get(eventId) || [];
-      const matchedTags = Array.isArray(matchedTagsRaw)
-        ? Array.from(
-            new Set(
-              matchedTagsRaw
-                .filter((tag) => typeof tag === "string")
-                .map((tag) => tag.trim())
-                .filter(Boolean),
-            ),
-          )
-        : [];
-
-      const whyRaw = feedState.matchReasonsById?.get(eventId) || [];
-      const why = Array.isArray(whyRaw)
-        ? whyRaw.map((entry) => ({
-            stage: typeof entry.stage === "string" ? entry.stage : "",
-            reason: typeof entry.reason === "string" ? entry.reason : "",
-          }))
-        : [];
-
-      payload.matchedTags = matchedTags;
-      payload.why = why;
-    }
-
-    const ageGroup =
-      typeof feedState.ageGroup === "string" ? feedState.ageGroup : "";
-    if (ageGroup) {
-      payload.ageGroup = ageGroup;
-    }
-
-    const kidsScore = feedState.kidsScoreById?.get(eventId);
-    if (Number.isFinite(kidsScore)) {
-      payload.kidsScore = kidsScore;
-    }
-
-    const moderationPayload =
-      this.buildModerationTelemetry(video) || feedState.moderationById?.get(eventId);
-    if (moderationPayload) {
-      payload.moderation = moderationPayload;
-    }
-
-    const videoRootId =
-      typeof video?.videoRootId === "string" ? video.videoRootId : "";
-    if (videoRootId) {
-      payload.videoRootId = videoRootId;
-    }
-
-    const pubkey = typeof video?.pubkey === "string" ? video.pubkey : "";
-    if (pubkey) {
-      payload.pubkey = pubkey;
-    }
-
-    if (Number.isFinite(position)) {
-      payload.position = Math.max(0, Math.floor(position));
-    }
-
-    return payload;
+  buildFeedTelemetryPayload(...args) {
+    this._initCoordinators();
+    return this._feed.buildFeedTelemetryPayload(...args);
   }
 
-  buildForYouTelemetryPayload({ video, videoId, position } = {}) {
-    return this.buildFeedTelemetryPayload("for-you", {
-      video,
-      videoId,
-      position,
-    });
+  buildForYouTelemetryPayload(...args) {
+    this._initCoordinators();
+    return this._feed.buildForYouTelemetryPayload(...args);
   }
 
-  emitTelemetryEvent(eventName, payload) {
-    if (!eventName || !payload) {
-      return false;
-    }
-
-    const doc =
-      (this.videoModal && this.videoModal.document) ||
-      (typeof document !== "undefined" ? document : null);
-
-    if (!doc || typeof doc.dispatchEvent !== "function") {
-      return false;
-    }
-
-    try {
-      doc.dispatchEvent(
-        new CustomEvent("bitvid:telemetry", {
-          detail: { event: eventName, payload },
-        }),
-      );
-      return true;
-    } catch (error) {
-      userLogger.warn("[Application] Failed to emit telemetry event:", error);
-      return false;
-    }
+  emitTelemetryEvent(...args) {
+    this._initCoordinators();
+    return this._feed.emitTelemetryEvent(...args);
   }
 
-  resolveFeedTelemetryEventName(feedName = "", suffix = "") {
-    const normalized =
-      typeof feedName === "string" ? feedName.trim().toLowerCase() : "";
-    if (!normalized || !suffix) {
-      return "";
-    }
-
-    const prefixMap = new Map([
-      ["for-you", "for_you"],
-      ["kids", "kids_feed"],
-    ]);
-
-    const prefix = prefixMap.get(normalized);
-    if (!prefix) {
-      return "";
-    }
-
-    return `${prefix}_${suffix}`;
+  resolveFeedTelemetryEventName(...args) {
+    this._initCoordinators();
+    return this._feed.resolveFeedTelemetryEventName(...args);
   }
 
-  emitFeedTelemetryEvent(
-    feedName = "",
-    eventName = "",
-    { video, videoId, position } = {},
-  ) {
-    const payload = this.buildFeedTelemetryPayload(feedName, {
-      video,
-      videoId,
-      position,
-    });
-    if (!payload) {
-      return false;
-    }
-
-    return this.emitTelemetryEvent(eventName, payload);
+  emitFeedTelemetryEvent(...args) {
+    this._initCoordinators();
+    return this._feed.emitFeedTelemetryEvent(...args);
   }
 
-  emitForYouTelemetryEvent(eventName, { video, videoId, position } = {}) {
-    const payload = this.buildForYouTelemetryPayload({
-      video,
-      videoId,
-      position,
-    });
-    if (!payload) {
-      return false;
-    }
-
-    return this.emitTelemetryEvent(eventName, payload);
+  emitForYouTelemetryEvent(...args) {
+    this._initCoordinators();
+    return this._feed.emitForYouTelemetryEvent(...args);
   }
 
-  emitFeedImpressions(videos = [], { feedName } = {}) {
-    const normalized =
-      typeof feedName === "string"
-        ? feedName.trim().toLowerCase()
-        : this.feedTelemetryState?.activeFeed || "";
-    if (!normalized || !Array.isArray(videos)) {
-      return;
-    }
-
-    const feedState = this.getFeedTelemetryState(normalized);
-    if (!feedState) {
-      return;
-    }
-
-    const signature = videos
-      .map((video) => (typeof video?.id === "string" ? video.id : ""))
-      .filter(Boolean)
-      .join("|");
-
-    if (signature && signature === feedState.lastImpressionSignature) {
-      return;
-    }
-
-    feedState.lastImpressionSignature = signature;
-
-    const eventName = this.resolveFeedTelemetryEventName(normalized, "impression");
-    if (!eventName) {
-      return;
-    }
-
-    videos.forEach((video, index) => {
-      this.emitFeedTelemetryEvent(normalized, eventName, {
-        video,
-        videoId: video?.id,
-        position: index,
-      });
-    });
+  emitFeedImpressions(...args) {
+    this._initCoordinators();
+    return this._feed.emitFeedImpressions(...args);
   }
 
-  emitForYouImpressions(videos = []) {
-    this.emitFeedImpressions(videos, { feedName: "for-you" });
+  emitForYouImpressions(...args) {
+    this._initCoordinators();
+    return this._feed.emitForYouImpressions(...args);
   }
 
-  recordFeedClick(videoId, { feedName } = {}) {
-    const normalized =
-      typeof feedName === "string"
-        ? feedName.trim().toLowerCase()
-        : this.feedTelemetryState?.activeFeed || "";
-    if (!normalized || !videoId) {
-      return;
-    }
-
-    const feedState = this.getFeedTelemetryState(normalized);
-    if (!feedState) {
-      return;
-    }
-
-    const eventName = this.resolveFeedTelemetryEventName(normalized, "click");
-    if (!eventName) {
-      return;
-    }
-
-    const video = this.resolveVideoForTelemetry(videoId);
-    const position = this.resolveVideoIndex(videoId);
-
-    feedState.activePlayback = {
-      feed: normalized,
-      videoId,
-    };
-
-    this.emitFeedTelemetryEvent(normalized, eventName, {
-      video,
-      videoId,
-      position,
-    });
+  recordFeedClick(...args) {
+    this._initCoordinators();
+    return this._feed.recordFeedClick(...args);
   }
 
-  recordForYouClick(videoId) {
-    this.recordFeedClick(videoId, { feedName: "for-you" });
+  recordForYouClick(...args) {
+    this._initCoordinators();
+    return this._feed.recordForYouClick(...args);
   }
 
-  handleFeedViewTelemetry(detail = {}) {
-    const activeFeed = this.feedTelemetryState?.activeFeed || "";
-    if (!activeFeed) {
-      return;
-    }
-
-    const feedState = this.getFeedTelemetryState(activeFeed);
-    if (!feedState) {
-      return;
-    }
-
-    const activePlayback = feedState.activePlayback;
-    if (!activePlayback || activePlayback.feed !== activeFeed) {
-      return;
-    }
-
-    const currentVideoId =
-      typeof this.currentVideo?.id === "string"
-        ? this.currentVideo.id
-        : activePlayback.videoId;
-    if (!currentVideoId || currentVideoId !== activePlayback.videoId) {
-      return;
-    }
-
-    const pointerKey =
-      typeof detail?.pointerKey === "string" ? detail.pointerKey : "";
-    if (activePlayback.pointerKey && pointerKey) {
-      if (activePlayback.pointerKey !== pointerKey) {
-        return;
-      }
-    }
-
-    const video = this.resolveVideoForTelemetry(currentVideoId);
-    const payload = this.buildFeedTelemetryPayload(activeFeed, {
-      video,
-      videoId: currentVideoId,
-    });
-    if (!payload) {
-      return;
-    }
-
-    if (pointerKey) {
-      payload.pointerKey = pointerKey;
-    }
-
-    const eventName = this.resolveFeedTelemetryEventName(activeFeed, "watch");
-    if (!eventName) {
-      return;
-    }
-
-    this.emitTelemetryEvent(eventName, payload);
-    feedState.activePlayback = null;
+  handleFeedViewTelemetry(...args) {
+    this._initCoordinators();
+    return this._feed.handleFeedViewTelemetry(...args);
   }
 
-  async renderVideoList(payload) {
-    if (!this.videoListView) {
-      return;
-    }
-
-    const container = this.mountVideoListView();
-    if (!container) {
-      return;
-    }
-
-    let videos = [];
-    let metadata = null;
-
-    if (Array.isArray(payload)) {
-      videos = payload;
-    } else if (payload && typeof payload === "object") {
-      if (Array.isArray(payload.videos)) {
-        videos = payload.videos;
-      }
-      if (payload.metadata && typeof payload.metadata === "object") {
-        metadata = { ...payload.metadata };
-      }
-    }
-
-    this.latestFeedMetadata = metadata;
-    if (this.videoListView) {
-      this.videoListView.state.feedMetadata = metadata;
-    }
-
-    const decoratedVideos = Array.isArray(videos)
-      ? videos.map((video) => {
-          const moderated = this.decorateVideoModeration(video);
-          const targetVideo =
-            moderated && typeof moderated === "object" ? moderated : video;
-          const withIdentity = this.decorateVideoCreatorIdentity(targetVideo);
-          return withIdentity && typeof withIdentity === "object"
-            ? withIdentity
-            : targetVideo;
-        })
-      : [];
-
-    this.videoListView.render(decoratedVideos, metadata);
-    this.emitFeedImpressions(decoratedVideos);
-
-    if (typeof this.refreshVisibleModerationUi === "function") {
-      const renderReason =
-        metadata && typeof metadata.reason === "string" && metadata.reason
-          ? `render-${metadata.reason}`
-          : "render-video-list";
-      try {
-        this.refreshVisibleModerationUi({ reason: renderReason });
-      } catch (error) {
-        devLogger.warn(
-          "[Application] Failed to refresh moderation UI after rendering video list:",
-          error,
-        );
-      }
-    }
-    this.updateModalSimilarContent();
+  async renderVideoList(...args) {
+    this._initCoordinators();
+    return this._feed.renderVideoList(...args);
   }
 
-  refreshVideoDiscussionCounts(videos = [], options = {}) {
-    if (!this.discussionCountService) {
-      return;
-    }
-
-    const { videoListRoot = this.videoList || null } = options;
-
-    this.discussionCountService.refreshCounts(videos, {
-      videoListRoot,
-      nostrClient,
-    });
+  refreshVideoDiscussionCounts(...args) {
+    this._initCoordinators();
+    return this._feed.refreshVideoDiscussionCounts(...args);
   }
 
-  deriveModerationReportType(summary) {
-    return this.moderationDecorator.deriveModerationReportType(summary);
+  deriveModerationReportType(...args) {
+    this._initCoordinators();
+    return this._moderation.deriveModerationReportType(...args);
   }
 
-  deriveModerationTrustedCount(summary, reportType) {
-    return this.moderationDecorator.deriveModerationTrustedCount(summary, reportType);
+  deriveModerationTrustedCount(...args) {
+    this._initCoordinators();
+    return this._moderation.deriveModerationTrustedCount(...args);
   }
 
-  getReporterDisplayName(pubkey) {
-    return this.moderationDecorator.getReporterDisplayName(pubkey);
+  getReporterDisplayName(...args) {
+    this._initCoordinators();
+    return this._moderation.getReporterDisplayName(...args);
   }
 
-  normalizeModerationSettings(settings = null) {
-    return this.moderationDecorator.normalizeModerationSettings(settings);
+  normalizeModerationSettings(...args) {
+    this._initCoordinators();
+    return this._moderation.normalizeModerationSettings(...args);
   }
 
-  getActiveModerationThresholds() {
-    this.moderationSettings = this.moderationDecorator.normalizeModerationSettings(this.moderationSettings);
-    return { ...this.moderationSettings };
+  getActiveModerationThresholds(...args) {
+    this._initCoordinators();
+    return this._moderation.getActiveModerationThresholds(...args);
   }
 
-  decorateVideoModeration(video, feedContext = {}) {
-    const decorated = this.moderationDecorator.decorateVideo(video, feedContext);
-    if (
-      video &&
-      video.pubkey &&
-      this.isAuthorBlocked(video.pubkey) &&
-      decorated &&
-      decorated.moderation
-    ) {
-      decorated.moderation.viewerMuted = true;
-      decorated.moderation.hidden = true;
-      decorated.moderation.hideReason = "viewer-block";
-    }
-    return decorated;
+  decorateVideoModeration(...args) {
+    this._initCoordinators();
+    return this._moderation.decorateVideoModeration(...args);
   }
 
-  initializeModerationActionController() {
-    if (this.moderationActionController) {
-      return this.moderationActionController;
-    }
-
-    this.moderationActionController = new ModerationActionController({
-      services: {
-        setModerationOverride,
-        clearModerationOverride,
-        userBlocks,
-      },
-      selectors: {
-        getVideoById: (id) =>
-          this.videosMap instanceof Map && id ? this.videosMap.get(id) : null,
-        getCurrentVideo: () => this.currentVideo,
-      },
-      actions: {
-        decorateVideoModeration: (video) => this.decorateVideoModeration(video),
-        resumePlayback: (video) => this.resumePendingModeratedPlayback(video),
-        refreshVideos: (payload) => this.onVideosShouldRefresh(payload),
-        showStatus: (message, options) => this.showStatus(message, options),
-        showError: (message) => this.showError(message),
-        describeBlockError: (error) => this.describeUserBlockActionError(error),
-      },
-      auth: {
-        isLoggedIn: () => this.isUserLoggedIn(),
-        getViewerPubkey: () => this.pubkey,
-        normalizePubkey: (value) => this.normalizeHexPubkey(value),
-      },
-      ui: {
-        refreshCardModerationUi: (card, options) =>
-          this.refreshCardModerationUi(card, options),
-        dispatchModerationEvent: (eventName, detail) =>
-          this.dispatchModerationEvent(eventName, detail),
-      },
-    });
-
-    return this.moderationActionController;
+  initializeModerationActionController(...args) {
+    this._initCoordinators();
+    return this._moderation.initializeModerationActionController(...args);
   }
 
-  refreshCardModerationUi(card, { reason } = {}) {
-    if (!card || typeof card.refreshModerationUi !== "function") {
-      return false;
-    }
-
-    try {
-      card.refreshModerationUi();
-      return true;
-    } catch (error) {
-      const suffix = reason ? ` ${reason}` : "";
-      devLogger.warn(
-        `[Application] Failed to refresh moderation UI${suffix}:`,
-        error,
-      );
-      return false;
-    }
+  refreshCardModerationUi(...args) {
+    this._initCoordinators();
+    return this._moderation.refreshCardModerationUi(...args);
   }
 
-  dispatchModerationEvent(eventName, detail = {}) {
-    const doc =
-      (this.videoModal && this.videoModal.document) ||
-      (typeof document !== "undefined" ? document : null);
-
-    if (!doc || typeof doc.dispatchEvent !== "function") {
-      return false;
-    }
-
-    try {
-      doc.dispatchEvent(new CustomEvent(eventName, { detail }));
-      return true;
-    } catch (error) {
-      const eventLabels = {
-        "video:moderation-override": "moderation override event",
-        "video:moderation-block": "moderation block event",
-        "video:moderation-hide": "moderation hide event",
-      };
-      const label = eventLabels[eventName] || eventName;
-      devLogger.warn(`[Application] Failed to dispatch ${label}:`, error);
-      return false;
-    }
+  dispatchModerationEvent(...args) {
+    this._initCoordinators();
+    return this._moderation.dispatchModerationEvent(...args);
   }
 
-  handleModerationOverride(payload = {}) {
-    const controller = this.initializeModerationActionController();
-    if (!controller) {
-      return false;
-    }
-
-    return controller.handleOverride(payload);
+  handleModerationOverride(...args) {
+    this._initCoordinators();
+    return this._moderation.handleModerationOverride(...args);
   }
 
-  async handleModerationBlock(payload = {}) {
-    const controller = this.initializeModerationActionController();
-    if (!controller) {
-      return false;
-    }
-
-    return controller.handleBlock(payload);
+  async handleModerationBlock(...args) {
+    this._initCoordinators();
+    return this._moderation.handleModerationBlock(...args);
   }
 
-  handleModerationHide(payload = {}) {
-    const controller = this.initializeModerationActionController();
-    if (!controller) {
-      return false;
-    }
-
-    return controller.handleHide(payload);
+  handleModerationHide(...args) {
+    this._initCoordinators();
+    return this._moderation.handleModerationHide(...args);
   }
 
-  getVideoAddressPointer(video) {
-    if (
-      this.discussionCountService &&
-      typeof this.discussionCountService.getVideoAddressPointer === "function"
-    ) {
-      return this.discussionCountService.getVideoAddressPointer(video);
-    }
-
-    return buildVideoAddressPointer(video, { defaultKind: VIDEO_EVENT_KIND });
+  getVideoAddressPointer(...args) {
+    this._initCoordinators();
+    return this._moderation.getVideoAddressPointer(...args);
   }
 
   bindThumbnailFallbacks(container) {
@@ -8210,1132 +4758,74 @@ class Application {
   /**
    * If there's a ?v= param in the URL, auto-open that video.
    */
-  checkUrlParams() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const maybeNevent = urlParams.get("v");
-    if (!maybeNevent) return; // no link param
-
-    try {
-      const decoded = window.NostrTools.nip19.decode(maybeNevent);
-      if (decoded.type === "nevent" && decoded.data.id) {
-        const eventId = decoded.data.id;
-        const relay =
-          Array.isArray(decoded.data.relays) && decoded.data.relays.length
-            ? decoded.data.relays[0]
-            : null;
-        // 1) check local map
-        let localMatch = this.videosMap.get(eventId);
-        if (localMatch) {
-          this.playVideoByEventId(eventId, { relay });
-        } else {
-          // 2) fallback => getOldEventById
-          this.getOldEventById(eventId)
-            .then((video) => {
-              if (video) {
-                this.playVideoByEventId(eventId, { relay });
-              } else {
-                this.showError("No matching video found for that link.");
-              }
-            })
-            .catch((err) => {
-              devLogger.error("Error fetching older event by ID:", err);
-              this.showError("Could not load videos for the share link.");
-            });
-        }
-      }
-    } catch (err) {
-      devLogger.error("Error decoding nevent:", err);
-      this.showError("Invalid share link.");
-    }
+  checkUrlParams(...args) {
+    this._initCoordinators();
+    return this._playback.checkUrlParams(...args);
   }
 
-  async probeUrlWithVideoElement(url, timeoutMs) {
-    return this.urlHealthController.probeUrlWithVideoElement(url, timeoutMs);
+  async probeUrlWithVideoElement(...args) {
+    this._initCoordinators();
+    return this._playback.probeUrlWithVideoElement(...args);
   }
 
-  async probeUrl(url, options = {}) {
-    const trimmed = typeof url === "string" ? url.trim() : "";
-    if (!trimmed) {
-      return this.urlHealthController.probeUrl(url, options);
-    }
-    const existing = this.urlProbePromises.get(trimmed);
-    if (existing) {
-      return existing;
-    }
-    const probePromise = (async () => {
-      try {
-        return await this.urlHealthController.probeUrl(trimmed, options);
-      } finally {
-        this.urlProbePromises.delete(trimmed);
-      }
-    })();
-    this.urlProbePromises.set(trimmed, probePromise);
-    return probePromise;
+  async probeUrl(...args) {
+    this._initCoordinators();
+    return this._playback.probeUrl(...args);
   }
 
-  async playHttp(videoEl, url) {
-    const target = videoEl || this.modalVideo;
-    if (!target) {
-      return false;
-    }
-
-    const sanitizedUrl = typeof url === "string" ? url.trim() : "";
-    if (!sanitizedUrl) {
-      return false;
-    }
-
-    target.src = sanitizedUrl;
-
-    try {
-      await target.play();
-      return true;
-    } catch (err) {
-      devLogger.warn("[playHttp] Direct URL playback failed:", err);
-      return false;
-    }
+  async playHttp(...args) {
+    this._initCoordinators();
+    return this._playback.playHttp(...args);
   }
 
-  async playViaWebTorrent(
-    magnet,
-    { fallbackMagnet = "", urlList = [] } = {}
-  ) {
-    const sanitizedUrlList = Array.isArray(urlList)
-      ? urlList
-          .map((entry) =>
-            typeof entry === "string" ? entry.trim() : ""
-          )
-          .filter((entry) => /^https?:\/\//i.test(entry))
-      : [];
-
-    const attemptStream = async (candidate) => {
-      const trimmedCandidate =
-        typeof candidate === "string" ? candidate.trim() : "";
-      if (!trimmedCandidate) {
-        throw new Error("No magnet URI provided for torrent playback.");
-      }
-      if (!isValidMagnetUri(trimmedCandidate)) {
-        if (this.videoModal) {
-          this.videoModal.updateStatus(UNSUPPORTED_BTITH_MESSAGE);
-        }
-        throw new Error(UNSUPPORTED_BTITH_MESSAGE);
-      }
-      if (!this.modalVideo) {
-        throw new Error(
-          "No modal video element available for torrent playback."
-        );
-      }
-
-      const timestamp = Date.now().toString();
-      const [magnetPrefix, magnetQuery = ""] = trimmedCandidate.split("?", 2);
-      let normalizedMagnet = magnetPrefix;
-      let queryParts = magnetQuery
-        .split("&")
-        .map((part) => part.trim())
-        .filter((part) => part && !/^ts=\d+$/.test(part));
-
-      if (queryParts.length) {
-        normalizedMagnet = `${magnetPrefix}?${queryParts.join("&")}`;
-      }
-
-      const separator = normalizedMagnet.includes("?") ? "&" : "?";
-      const cacheBustedMagnet = `${normalizedMagnet}${separator}ts=${timestamp}`;
-
-      await torrentClient.cleanup();
-      this.resetTorrentStats();
-
-      if (this.videoModal) {
-        this.videoModal.updateStatus("Streaming via WebTorrent");
-        this.videoModal.setTorrentStatsVisibility?.(true);
-      }
-
-      const torrentInstance = await torrentClient.streamVideo(
-        cacheBustedMagnet,
-        this.modalVideo,
-        { urlList: sanitizedUrlList }
-      );
-
-      if (torrentClient.isServiceWorkerUnavailable()) {
-        const swError = torrentClient.getServiceWorkerInitError();
-        const statusMessage = buildServiceWorkerFallbackStatus(swError);
-        this.log(
-          "[playViaWebTorrent] Service worker unavailable; streaming directly via WebTorrent.",
-          swError
-        );
-        if (swError) {
-          userLogger.warn(
-            "[playViaWebTorrent] Service worker unavailable; direct streaming engaged.",
-            swError
-          );
-        }
-        if (this.videoModal) {
-          this.videoModal.updateStatus(statusMessage);
-        }
-      }
-      if (torrentInstance && torrentInstance.ready) {
-        // Some browsers delay `playing` events for MediaSource-backed torrents.
-        // Clearing the poster here prevents the historic "GIF stuck over the
-        // video" regression when WebTorrent is already feeding data.
-        this.forceRemoveModalPoster("webtorrent-ready");
-      }
-      this.startTorrentStatusMirrors(torrentInstance);
-      return torrentInstance;
-    };
-
-    const primaryTrimmed =
-      typeof magnet === "string" ? magnet.trim() : "";
-    const fallbackTrimmed =
-      typeof fallbackMagnet === "string" ? fallbackMagnet.trim() : "";
-    const hasFallback =
-      !!fallbackTrimmed && fallbackTrimmed !== primaryTrimmed;
-
-    try {
-      return await attemptStream(primaryTrimmed);
-    } catch (primaryError) {
-      if (!hasFallback) {
-        throw primaryError;
-      }
-      this.log(
-        `[playViaWebTorrent] Normalized magnet failed: ${primaryError.message}`
-      );
-      this.log(
-        "[playViaWebTorrent] Primary magnet failed, retrying original string."
-      );
-      try {
-        return await attemptStream(fallbackTrimmed);
-      } catch (fallbackError) {
-        throw fallbackError;
-      }
-    }
+  async playViaWebTorrent(...args) {
+    this._initCoordinators();
+    return this._playback.playViaWebTorrent(...args);
   }
 
   /**
    * Unified playback helper that prefers HTTP URL sources
    * and falls back to WebTorrent when needed.
    */
-  async playVideoWithFallback(options = {}) {
-    const { url = "", magnet = "", trigger, forcedSource } = options || {};
-
-    emit("playback-decision", {
-      method: forcedSource || (magnet ? "webtorrent" : "url"), // heuristic
-      details: {
-        url: Boolean(url),
-        magnet: Boolean(magnet),
-        forcedSource,
-      },
-    });
-
-    const hasTrigger = Object.prototype.hasOwnProperty.call(
-      options || {},
-      "trigger"
-    );
-    if (hasTrigger) {
-      this.setLastModalTrigger(trigger);
-    }
-    const sanitizedUrl = typeof url === "string" ? url.trim() : "";
-    const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
-    const previousSource = this.playSource || null;
-    const requestSignature = JSON.stringify({
-      url: sanitizedUrl,
-      magnet: trimmedMagnet,
-      forcedSource,
-    });
-
-    const modalVideoIsConnected = (() => {
-      if (!this.modalVideo) {
-        return false;
-      }
-      if (typeof this.modalVideo.isConnected === "boolean") {
-        return this.modalVideo.isConnected;
-      }
-      const ownerDocument = this.modalVideo.ownerDocument ||
-        (typeof document !== "undefined" ? document : null);
-      if (ownerDocument?.contains) {
-        try {
-          return ownerDocument.contains(this.modalVideo);
-        } catch (error) {
-          devLogger.warn(
-            "[playVideoWithFallback] Failed to determine modal video connection state",
-            error,
-          );
-        }
-      }
-      return true;
-    })();
-
-    const shouldReuseActiveSession =
-      modalVideoIsConnected &&
-      this.activePlaybackSession &&
-      typeof this.activePlaybackSession.matchesRequestSignature === "function" &&
-      this.activePlaybackSession.matchesRequestSignature(requestSignature);
-
-    if (shouldReuseActiveSession) {
-      this.log(
-        "[playVideoWithFallback] Duplicate playback request detected; reusing active session."
-      );
-      if (this.activePlaybackResultPromise) {
-        return this.activePlaybackResultPromise;
-      }
-      if (typeof this.activePlaybackSession.getResult === "function") {
-        return this.activePlaybackSession.getResult();
-      }
-      return { source: null };
-    }
-
-    await this.waitForCleanup();
-    this.cancelPendingViewLogging();
-
-    if (
-      previousSource === "torrent" &&
-      sanitizedUrl &&
-      this.playbackService &&
-      this.playbackService.torrentClient &&
-      typeof this.playbackService.torrentClient.cleanup === "function"
-    ) {
-      try {
-        this.log(
-          "[playVideoWithFallback] Previous playback used WebTorrent; cleaning up before preparing hosted session.",
-        );
-        await this.playbackService.torrentClient.cleanup();
-      } catch (error) {
-        devLogger.warn(
-          "[playVideoWithFallback] Pre-playback torrent cleanup threw:",
-          error,
-        );
-      }
-    }
-
-    let modalVideoEl = this.modalVideo;
-    const modalVideoFromController =
-      this.videoModal && typeof this.videoModal.getVideoElement === "function"
-        ? this.videoModal.getVideoElement()
-        : null;
-    if (modalVideoFromController && modalVideoFromController !== modalVideoEl) {
-      modalVideoEl = modalVideoFromController;
-      this.modalVideo = modalVideoEl;
-    }
-    const modalVideoConnected = Boolean(
-      modalVideoEl && modalVideoEl.isConnected,
-    );
-    if (!modalVideoEl || !modalVideoConnected) {
-      try {
-        const { videoElement } = await this.ensureVideoModalReady({
-          ensureVideoElement: true,
-        });
-        modalVideoEl = videoElement;
-        this.modalVideo = modalVideoEl;
-      } catch (error) {
-        this.log(
-          "[playVideoWithFallback] Failed to load video modal before playback:",
-          error
-        );
-        this.showError("Could not prepare the video player. Please try again.");
-        return { source: null, error };
-      }
-    }
-
-    if (!modalVideoEl) {
-      const error = new Error("Video element is not ready for playback.");
-      this.log(
-        "[playVideoWithFallback] Video element missing after modal load attempt."
-      );
-      this.showError("Video player is not ready yet. Please try again.");
-      return { source: null, error };
-    }
-
-    if (
-      this.videoModal &&
-      typeof this.videoModal.clearPosterCleanup === "function"
-    ) {
-      try {
-        this.videoModal.clearPosterCleanup();
-      } catch (err) {
-        devLogger.warn(
-          "[playVideoWithFallback] video modal poster cleanup threw:",
-          err
-        );
-      }
-    }
-
-    const refreshedModal = this.teardownVideoElement(modalVideoEl, {
-      replaceNode: true,
-    });
-    if (refreshedModal) {
-      if (
-        this.videoModal &&
-        typeof this.videoModal.setVideoElement === "function"
-      ) {
-        this.videoModal.setVideoElement(refreshedModal);
-      }
-      this.modalVideo = refreshedModal;
-      modalVideoEl = this.modalVideo;
-      this.applyModalLoadingPoster();
-    } else {
-      this.applyModalLoadingPoster();
-    }
-
-    const session = this.playbackService.createSession({
-      url: sanitizedUrl,
-      magnet: trimmedMagnet,
-      requestSignature,
-      videoElement: this.modalVideo,
-      waitForCleanup: () => this.waitForCleanup(),
-      cancelPendingViewLogging: () => this.cancelPendingViewLogging(),
-      clearActiveIntervals: () => this.clearActiveIntervals(),
-      showModalWithPoster: () => this.showModalWithPoster(),
-      teardownVideoElement: (videoEl, options) =>
-        this.teardownVideoElement(videoEl, options),
-      probeUrl: (candidateUrl) => this.probeUrl(candidateUrl),
-      playViaWebTorrent: (magnetUri, options) =>
-        this.playViaWebTorrent(magnetUri, options),
-      autoplay: () => this.autoplayModalVideo(),
-      unsupportedBtihMessage: UNSUPPORTED_BTITH_MESSAGE,
-      forcedSource,
-    });
-
-    this.activePlaybackSession = session;
-    this.activePlaybackResultPromise = null;
-
-    this.resetTorrentStats();
-    this.playSource = null;
-
-    const playbackConfig = session.getPlaybackConfig();
-    const magnetForPlayback = session.getMagnetForPlayback();
-    const fallbackMagnet = session.getFallbackMagnet();
-    const magnetProvided = session.getMagnetProvided();
-
-    if (this.currentVideo) {
-      this.currentVideo.magnet = magnetForPlayback;
-      this.currentVideo.normalizedMagnet = magnetForPlayback;
-      this.currentVideo.normalizedMagnetFallback = fallbackMagnet;
-      if (playbackConfig?.infoHash && !this.currentVideo.legacyInfoHash) {
-        this.currentVideo.legacyInfoHash = playbackConfig.infoHash;
-      }
-      this.currentVideo.torrentSupported = !!magnetForPlayback;
-    }
-    this.currentMagnetUri = magnetForPlayback || null;
-    // this.setCopyMagnetState(!!magnetForPlayback); // Removed
-
-    const unsubscribers = [];
-    const subscribe = (eventName, handler) => {
-      const off = session.on(eventName, handler);
-      unsubscribers.push(off);
-    };
-
-    subscribe("status", ({ message } = {}) => {
-      if (this.videoModal) {
-        this.videoModal.updateStatus(
-          typeof message === "string" ? message : ""
-        );
-      }
-    });
-
-    subscribe("video-prepared", ({ videoElement } = {}) => {
-      if (videoElement && videoElement !== this.modalVideo) {
-        this.modalVideo = videoElement;
-      }
-    });
-
-    subscribe("view-logging-request", ({ videoElement } = {}) => {
-      if (videoElement) {
-        this.preparePlaybackLogging(videoElement);
-      }
-    });
-
-    subscribe("poster-remove", ({ reason } = {}) => {
-      this.forceRemoveModalPoster(reason || "playback");
-    });
-
-    subscribe("sourcechange", ({ source } = {}) => {
-      this.playSource = source || null;
-      const usingTorrent = source === "torrent";
-      if (this.videoModal) {
-        this.videoModal.setTorrentStatsVisibility?.(usingTorrent);
-      }
-    });
-
-    subscribe("error", ({ error, message } = {}) => {
-      const displayMessage =
-        typeof message === "string"
-          ? message
-          : error && error.message
-          ? `Playback error: ${error.message}`
-          : "Playback error";
-      this.showError(displayMessage);
-    });
-
-    subscribe("finished", () => {
-      if (this.activePlaybackSession === session) {
-        this.activePlaybackSession = null;
-        this.activePlaybackResultPromise = null;
-      }
-      while (unsubscribers.length) {
-        const off = unsubscribers.pop();
-        if (typeof off === "function") {
-          try {
-            off();
-          } catch (err) {
-            devLogger.warn(
-              "[playVideoWithFallback] Listener cleanup error:",
-              err
-            );
-          }
-        }
-      }
-    });
-
-    const startPromise = session.start();
-    this.activePlaybackResultPromise = startPromise;
-    const result = await startPromise;
-
-    if (!result || result.error) {
-      return result;
-    }
-
-    emit("playback-started", {
-      method: result.source,
-      details: { startedAt: Date.now() },
-    });
-
-    return result;
+  async playVideoWithFallback(...args) {
+    this._initCoordinators();
+    return this._playback.playVideoWithFallback(...args);
   }
 
 
-  async playVideoByEventId(eventId, playbackHint = {}) {
-    if (!eventId) {
-      this.showError("No video identifier provided.");
-      return;
-    }
-
-    const hint = playbackHint && typeof playbackHint === "object"
-      ? playbackHint
-      : {};
-    const fallbackUrl =
-      typeof hint.url === "string" ? hint.url.trim() : "";
-    const fallbackTitle =
-      typeof hint.title === "string" ? hint.title : "";
-    const fallbackDescription =
-      typeof hint.description === "string" ? hint.description : "";
-    const fallbackMagnetRaw =
-      typeof hint.magnet === "string" ? hint.magnet.trim() : "";
-    let fallbackMagnetCandidate = "";
-    if (fallbackMagnetRaw) {
-      const decoded = safeDecodeMagnet(fallbackMagnetRaw);
-      fallbackMagnetCandidate = decoded || fallbackMagnetRaw;
-    }
-
-    const hasTrigger = Object.prototype.hasOwnProperty.call(hint, "trigger");
-    if (hasTrigger) {
-      this.setLastModalTrigger(hint.trigger);
-    } else {
-      this.setLastModalTrigger(null);
-    }
-
-    this.currentVideoPointer = null;
-    this.currentVideoPointerKey = null;
-    this.pendingModeratedPlayback = null;
-
-    if (this.blacklistedEventIds.has(eventId)) {
-      this.showError("This content has been removed or is not allowed.");
-      return;
-    }
-
-    let video = this.videosMap.get(eventId);
-    if (!video) {
-      video = await this.getOldEventById(eventId);
-    }
-    if (!video) {
-      if (fallbackUrl || fallbackMagnetCandidate) {
-        return this.playVideoWithoutEvent({
-          url: fallbackUrl,
-          magnet: fallbackMagnetCandidate,
-          title: fallbackTitle || "Untitled",
-          description: fallbackDescription || "",
-          trigger: hasTrigger ? hint.trigger : null,
-        });
-      }
-      this.showError("Video not found or has been removed.");
-      return;
-    }
-
-    try {
-      await accessControl.waitForReady();
-    } catch (error) {
-      devLogger.warn(
-        "Failed to ensure admin lists were loaded before playback:",
-        error
-      );
-    }
-    const authorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
-    if (!accessControl.canAccess(authorNpub)) {
-      if (accessControl.isBlacklisted(authorNpub)) {
-        this.showError("This content has been removed or is not allowed.");
-      } else if (accessControl.whitelistMode()) {
-        this.showError("This content is not from a whitelisted author.");
-      } else {
-        this.showError("This content has been removed or is not allowed.");
-      }
-      return;
-    }
-
-    this.decorateVideoModeration(video);
-
-    let trimmedUrl = typeof video.url === "string" ? video.url.trim() : "";
-    if (!trimmedUrl && fallbackUrl) {
-      trimmedUrl = fallbackUrl;
-    }
-    const rawMagnet =
-      typeof video.magnet === "string" ? video.magnet.trim() : "";
-    let legacyInfoHash =
-      typeof video.infoHash === "string" ? video.infoHash.trim().toLowerCase() : "";
-    const fallbackMagnetForCandidate = fallbackMagnetCandidate || "";
-    if (!legacyInfoHash && fallbackMagnetForCandidate) {
-      const extracted = extractBtihFromMagnet(fallbackMagnetForCandidate);
-      if (extracted) {
-        legacyInfoHash = extracted;
-      }
-    }
-
-    let magnetCandidate = rawMagnet || legacyInfoHash || "";
-    let decodedMagnetCandidate = safeDecodeMagnet(magnetCandidate);
-    let usableMagnetCandidate = decodedMagnetCandidate || magnetCandidate;
-    let magnetSupported = isValidMagnetUri(usableMagnetCandidate);
-
-    if (!magnetSupported && fallbackMagnetForCandidate) {
-      magnetCandidate = fallbackMagnetForCandidate;
-      decodedMagnetCandidate = safeDecodeMagnet(magnetCandidate);
-      usableMagnetCandidate = decodedMagnetCandidate || magnetCandidate;
-      magnetSupported = isValidMagnetUri(usableMagnetCandidate);
-    }
-
-    const sanitizedMagnet = magnetSupported ? usableMagnetCandidate : "";
-
-    const knownPostedAt = this.getKnownVideoPostedAt(video);
-    const normalizedEditedAt = Number.isFinite(video.created_at)
-      ? Math.floor(video.created_at)
-      : null;
-
-    const normalizedCreatorPubkey =
-      this.normalizeHexPubkey(video.pubkey) || video.pubkey;
-    const cachedCreatorProfileEntry =
-      normalizedCreatorPubkey && typeof this.getProfileCacheEntry === "function"
-        ? this.getProfileCacheEntry(normalizedCreatorPubkey)
-        : null;
-    const cachedCreatorProfile =
-      cachedCreatorProfileEntry &&
-      typeof cachedCreatorProfileEntry === "object"
-        ? cachedCreatorProfileEntry.profile || null
-        : null;
-    const initialLightningAddress =
-      typeof video.lightningAddress === "string"
-        ? video.lightningAddress.trim()
-        : "";
-
-    this.currentVideo = {
-      ...video,
-      url: trimmedUrl,
-      magnet: sanitizedMagnet,
-      originalMagnet:
-        magnetCandidate || fallbackMagnetForCandidate || legacyInfoHash || "",
-      torrentSupported: magnetSupported,
-      legacyInfoHash: video.legacyInfoHash || legacyInfoHash,
-      lightningAddress: initialLightningAddress || null,
-      lastEditedAt: normalizedEditedAt,
-    };
-
-    this.decorateVideoModeration(this.currentVideo);
-
-    const modalTags = collectVideoTags(this.currentVideo);
-    this.currentVideo.displayTags = modalTags;
-    const creatorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
-    const displayNpub = formatShortNpub(creatorNpub) || creatorNpub;
-    const initialCreatorProfile = this.resolveModalCreatorProfile({
-      video: this.currentVideo,
-      pubkey: normalizedCreatorPubkey,
-      cachedProfile: cachedCreatorProfile,
-    });
-    this.currentVideo.creatorName = initialCreatorProfile.name;
-    this.currentVideo.creatorPicture = initialCreatorProfile.picture;
-    this.currentVideo.creatorNpub = displayNpub;
-    if (this.currentVideo.creator && typeof this.currentVideo.creator === "object") {
-      this.currentVideo.creator = {
-        ...this.currentVideo.creator,
-        name: initialCreatorProfile.name,
-        picture: initialCreatorProfile.picture,
-        pubkey: normalizedCreatorPubkey,
-      };
-    } else {
-      this.currentVideo.creator = {
-        name: initialCreatorProfile.name,
-        picture: initialCreatorProfile.picture,
-        pubkey: normalizedCreatorPubkey,
-      };
-    }
-    this.updateModalSimilarContent({ activeVideo: this.currentVideo });
-
-    if (Number.isFinite(knownPostedAt)) {
-      this.cacheVideoRootCreatedAt(this.currentVideo, knownPostedAt);
-    } else if (this.currentVideo.rootCreatedAt) {
-      delete this.currentVideo.rootCreatedAt;
-    }
-
-    const dTagValue = (this.extractDTagValue(video.tags) || "").trim();
-    const pointerInfo = resolveVideoPointer({
-      kind: video.kind,
-      pubkey: video.pubkey,
-      videoRootId: video.videoRootId,
-      dTag: dTagValue,
-      fallbackEventId: video.id || eventId,
-      relay: hint.relay || video.relay,
-    });
-
-    this.currentVideoPointer = pointerInfo?.pointer || null;
-    this.currentVideoPointerKey = pointerInfo?.key || null;
-
-    if (this.currentVideo) {
-      this.currentVideo.pointer = this.currentVideoPointer;
-      this.currentVideo.pointerKey = this.currentVideoPointerKey;
-    }
-
-    const forYouState = this.getFeedTelemetryState("for-you");
-    if (
-      forYouState?.activePlayback?.feed === "for-you" &&
-      forYouState.activePlayback.videoId === eventId
-    ) {
-      forYouState.activePlayback.pointerKey = this.currentVideoPointerKey || null;
-    }
-
-    this.subscribeModalViewCount(
-      this.currentVideoPointer,
-      this.currentVideoPointerKey
-    );
-    this.reactionController.subscribe(
-      this.currentVideoPointer,
-      this.currentVideoPointerKey
-    );
-    this.syncModalMoreMenuData();
-
-    this.currentMagnetUri = sanitizedMagnet || null;
-
-    // this.setCopyMagnetState(!!sanitizedMagnet); // Removed
-    // this.setShareButtonState(true); // Moved to after showModalWithPoster
-
-    const nevent = window.NostrTools.nip19.neventEncode({ id: eventId });
-    let pushUrl =
-      this.buildShareUrlFromNevent(nevent) ||
-      `${this.getShareUrlBase() || window.location.pathname}?v=${encodeURIComponent(
-        nevent
-      )}`;
-
-    try {
-      const targetUrl = new URL(pushUrl, window.location.origin);
-      if (targetUrl.origin !== window.location.origin) {
-        pushUrl = `${window.location.pathname}${targetUrl.search}${targetUrl.hash}`;
-      }
-    } catch (err) {
-      devLogger.warn("[Application] Failed to normalize pushState URL:", err);
-    }
-
-    window.history.pushState({}, "", pushUrl);
-
-    this.zapController?.resetState();
-    this.zapController?.setVisibility(Boolean(this.currentVideo.lightningAddress));
-
-    const magnetInput =
-      sanitizedMagnet ||
-      decodedMagnetCandidate ||
-      magnetCandidate ||
-      fallbackMagnetForCandidate ||
-      legacyInfoHash ||
-      "";
-
-    await this.showModalWithPoster(this.currentVideo);
-
-    this.setShareButtonState(true);
-
-    this.commentController?.load(this.currentVideo);
-
-    const playbackOptions = {
-      url: trimmedUrl,
-      magnet: magnetInput,
-    };
-    if (hasTrigger) {
-      playbackOptions.trigger = this.lastModalTrigger;
-    }
-
-    let playbackPromise = null;
-    if (this.shouldDeferModeratedPlayback(this.currentVideo)) {
-      const pendingVideoId =
-        (this.currentVideo && typeof this.currentVideo.id === "string" && this.currentVideo.id)
-          ? this.currentVideo.id
-          : eventId || null;
-      this.pendingModeratedPlayback = {
-        ...playbackOptions,
-        triggerProvided: hasTrigger,
-        videoId: pendingVideoId,
-      };
-    } else {
-      playbackPromise = this.playVideoWithFallback(playbackOptions);
-    }
-
-    if (this.videoModal) {
-      const timestampPayload = this.buildModalTimestampPayload({
-        postedAt: this.currentVideo?.rootCreatedAt ?? null,
-        editedAt: normalizedEditedAt,
-      });
-      this.videoModal.updateMetadata({
-        title: video.title || "Untitled",
-        description: video.description || "No description available.",
-        timestamps: timestampPayload,
-        tags: modalTags,
-        creator: {
-          name: initialCreatorProfile.name,
-          avatarUrl: initialCreatorProfile.picture,
-          npub: displayNpub,
-        },
-      });
-    }
-
-    const profileRequestToken = Symbol("modal-profile-request");
-    this.modalCreatorProfileRequestToken = profileRequestToken;
-    this.fetchModalCreatorProfile({
-      pubkey: normalizedCreatorPubkey,
-      displayNpub,
-      cachedProfile: cachedCreatorProfile,
-      requestToken: profileRequestToken,
-    }).catch((error) => {
-      devLogger.error(
-        "[Application] Failed to fetch creator profile for modal:",
-        error,
-      );
-    });
-
-    this.ensureModalPostedTimestamp(this.currentVideo);
-
-    const playbackResult =
-      playbackPromise && typeof playbackPromise.then === "function"
-        ? await playbackPromise
-        : playbackPromise;
-
-    return playbackResult;
+  async playVideoByEventId(...args) {
+    this._initCoordinators();
+    return this._playback.playVideoByEventId(...args);
   }
 
-  buildModalTimestampPayload({ postedAt = null, editedAt = null } = {}) {
-    const normalizedPostedAt = Number.isFinite(postedAt)
-      ? Math.floor(postedAt)
-      : null;
-    const normalizedEditedAt = Number.isFinite(editedAt)
-      ? Math.floor(editedAt)
-      : null;
-
-    const payload = {
-      posted: "",
-      edited: "",
-    };
-
-    const effectivePostedAt =
-      normalizedPostedAt !== null ? normalizedPostedAt : normalizedEditedAt;
-
-    if (effectivePostedAt !== null) {
-      payload.posted = `Posted ${this.formatTimeAgo(effectivePostedAt)}`;
-    }
-
-    const shouldShowEdited =
-      normalizedEditedAt !== null &&
-      (normalizedPostedAt === null || normalizedEditedAt - normalizedPostedAt >= 60);
-
-    if (shouldShowEdited) {
-      const abs = formatAbsoluteDateWithOrdinalUtil(normalizedEditedAt);
-      const rel = this.formatTimeAgo(normalizedEditedAt);
-      payload.edited = `Last edited: ${abs} (${rel})`;
-    }
-
-    return payload;
+  buildModalTimestampPayload(...args) {
+    this._initCoordinators();
+    return this._playback.buildModalTimestampPayload(...args);
   }
 
-  getKnownVideoPostedAt(video) {
-    if (!video || typeof video !== "object") {
-      return null;
-    }
-
-    const directValue = Number.isFinite(video.rootCreatedAt)
-      ? Math.floor(video.rootCreatedAt)
-      : null;
-    if (directValue !== null) {
-      return directValue;
-    }
-
-    if (video.id && this.videosMap instanceof Map) {
-      const stored = this.videosMap.get(video.id);
-      const storedValue = Number.isFinite(stored?.rootCreatedAt)
-        ? Math.floor(stored.rootCreatedAt)
-        : null;
-      if (storedValue !== null) {
-        video.rootCreatedAt = storedValue;
-        return storedValue;
-      }
-    }
-
-    const nip71Created = Number.isFinite(video?.nip71Source?.created_at)
-      ? Math.floor(video.nip71Source.created_at)
-      : null;
-
-    if (nip71Created !== null) {
-      return nip71Created;
-    }
-
-    return null;
+  getKnownVideoPostedAt(...args) {
+    this._initCoordinators();
+    return this._playback.getKnownVideoPostedAt(...args);
   }
 
-  cacheVideoRootCreatedAt(video, timestamp) {
-    if (!Number.isFinite(timestamp)) {
-      return;
-    }
-
-    const normalized = Math.floor(timestamp);
-    const rootId = getVideoRootIdentifier(video);
-
-    if (video && typeof video === "object") {
-      video.rootCreatedAt = normalized;
-    }
-
-    applyRootTimestampToVideosMap({
-      videosMap: this.videosMap,
-      video,
-      rootId,
-      timestamp: normalized,
-    });
-
-    syncActiveVideoRootTimestamp({
-      activeVideo: this.currentVideo,
-      rootId,
-      timestamp: normalized,
-      buildModalTimestampPayload: (payload) =>
-        this.buildModalTimestampPayload(payload),
-      videoModal: this.videoModal,
-    });
-
-    if (nostrClient && typeof nostrClient.applyRootCreatedAt === "function") {
-      try {
-        nostrClient.applyRootCreatedAt(video);
-      } catch (error) {
-        devLogger.warn(
-          "[Application] Failed to sync cached root timestamp with nostrClient:",
-          error
-        );
-      }
-    }
+  cacheVideoRootCreatedAt(...args) {
+    this._initCoordinators();
+    return this._playback.cacheVideoRootCreatedAt(...args);
   }
 
-  async resolveVideoPostedAt(video) {
-    if (!video || typeof video !== "object") {
-      return null;
-    }
-
-    // Prioritize NIP-71 published_at metadata if available
-    const rawNip71PublishedAt =
-      video?.nip71?.publishedAt ||
-      video?.nip71?.published_at ||
-      video?.nip71?.["published-at"];
-    const parsedNip71PublishedAt = Number(rawNip71PublishedAt);
-    const nip71PublishedAt = Number.isFinite(parsedNip71PublishedAt)
-      ? Math.floor(parsedNip71PublishedAt)
-      : null;
-
-    if (nip71PublishedAt !== null) {
-      this.cacheVideoRootCreatedAt(video, nip71PublishedAt);
-      return nip71PublishedAt;
-    }
-
-    const cached = this.getKnownVideoPostedAt(video);
-    if (cached !== null) {
-      return cached;
-    }
-
-    if (!nostrClient || typeof nostrClient.hydrateVideoHistory !== "function") {
-      const fallback = Number.isFinite(video.created_at)
-        ? Math.floor(video.created_at)
-        : null;
-      if (fallback !== null) {
-        this.cacheVideoRootCreatedAt(video, fallback);
-      }
-      return fallback;
-    }
-
-    try {
-      const history = await nostrClient.hydrateVideoHistory(video);
-      if (Array.isArray(history) && history.length) {
-        let earliest = null;
-        for (const entry of history) {
-          if (!entry || entry.deleted) {
-            continue;
-          }
-          const created = Number.isFinite(entry.created_at)
-            ? Math.floor(entry.created_at)
-            : null;
-          if (created === null) {
-            continue;
-          }
-          if (earliest === null || created < earliest) {
-            earliest = created;
-          }
-        }
-
-        if (earliest === null) {
-          const lastEntry = history[history.length - 1];
-          if (Number.isFinite(lastEntry?.created_at)) {
-            earliest = Math.floor(lastEntry.created_at);
-          }
-        }
-
-        if (earliest !== null) {
-          this.cacheVideoRootCreatedAt(video, earliest);
-          return earliest;
-        }
-      }
-    } catch (error) {
-      devLogger.warn(
-        "[Application] Failed to hydrate video history for timestamps:",
-        error
-      );
-    }
-
-    const fallback = Number.isFinite(video.created_at)
-      ? Math.floor(video.created_at)
-      : null;
-    if (fallback !== null) {
-      this.cacheVideoRootCreatedAt(video, fallback);
-    }
-    return fallback;
+  async resolveVideoPostedAt(...args) {
+    this._initCoordinators();
+    return this._playback.resolveVideoPostedAt(...args);
   }
 
-  async ensureModalPostedTimestamp(video) {
-    if (!video || !this.videoModal) {
-      return;
-    }
-
-    const postedAt = await this.resolveVideoPostedAt(video);
-    if (!this.videoModal || this.currentVideo !== video) {
-      return;
-    }
-
-    const editedAt = Number.isFinite(video.lastEditedAt)
-      ? Math.floor(video.lastEditedAt)
-      : Number.isFinite(video.created_at)
-        ? Math.floor(video.created_at)
-        : null;
-
-    const payload = this.buildModalTimestampPayload({
-      postedAt,
-      editedAt,
-    });
-
-    const modalTags = collectVideoTags(video);
-    video.displayTags = modalTags;
-    this.updateModalSimilarContent({ activeVideo: video });
-
-    this.videoModal.updateMetadata({ timestamps: payload, tags: modalTags });
+  async ensureModalPostedTimestamp(...args) {
+    this._initCoordinators();
+    return this._playback.ensureModalPostedTimestamp(...args);
   }
 
-  async playVideoWithoutEvent(options = {}) {
-    const {
-      url = "",
-      magnet = "",
-      title = "Untitled",
-      description = "",
-      trigger,
-      tags: rawTags,
-    } = options || {};
-    const hasTrigger = Object.prototype.hasOwnProperty.call(
-      options || {},
-      "trigger"
-    );
-    if (hasTrigger) {
-      this.setLastModalTrigger(trigger);
-    } else {
-      this.setLastModalTrigger(null);
-    }
-    this.currentVideoPointer = null;
-    this.currentVideoPointerKey = null;
-    this.subscribeModalViewCount(null, null);
-    this.reactionController.subscribe(null, null);
-    this.pendingModeratedPlayback = null;
-    const sanitizedUrl = typeof url === "string" ? url.trim() : "";
-    const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
-    const decodedMagnet = safeDecodeMagnet(trimmedMagnet);
-    const usableMagnet = decodedMagnet || trimmedMagnet;
-    const magnetSupported = isValidMagnetUri(usableMagnet);
-    const sanitizedMagnet = magnetSupported ? usableMagnet : "";
-
-    const modalTags = collectVideoTags({
-      nip71: { hashtags: rawTags },
-    });
-
-    this.zapController?.setVisibility(false);
-    this.zapController?.resetState();
-
-    if (!sanitizedUrl && !sanitizedMagnet) {
-      const message = trimmedMagnet && !magnetSupported
-        ? UNSUPPORTED_BTITH_MESSAGE
-        : "This video has no playable source.";
-      this.showError(message);
-      return;
-    }
-
-    this.currentVideo = {
-      id: null,
-      title,
-      description,
-      url: sanitizedUrl,
-      magnet: sanitizedMagnet,
-      originalMagnet: trimmedMagnet,
-      torrentSupported: magnetSupported,
-      lightningAddress: null,
-      pointer: null,
-      pointerKey: null,
-      displayTags: modalTags,
-    };
-
-    this.decorateVideoModeration(this.currentVideo);
-    this.updateModalSimilarContent({ activeVideo: this.currentVideo });
-
-    this.syncModalMoreMenuData();
-
-    this.currentMagnetUri = sanitizedMagnet || null;
-
-    // this.setCopyMagnetState(!!sanitizedMagnet);
-    // this.setShareButtonState(false);
-
-    if (this.videoModal) {
-      this.videoModal.updateMetadata({
-        title: title || "Untitled",
-        description: description || "No description available.",
-        timestamp: "",
-        tags: modalTags,
-        creator: {
-          name: "Unknown",
-          avatarUrl: "assets/svg/default-profile.svg",
-          npub: "",
-        },
-      });
-    }
-
-    await this.showModalWithPoster(this.currentVideo, hasTrigger ? { trigger } : {});
-
-    this.setShareButtonState(false);
-
-    this.commentController?.load(null);
-
-    const shareUrl = this.buildShareUrlFromEventId(this.currentVideo.id);
-    const urlObj = new URL(window.location.href);
-    urlObj.searchParams.delete("v");
-    const cleaned = `${urlObj.pathname}${urlObj.search}${urlObj.hash}`;
-    window.history.replaceState({}, "", cleaned);
-
-    return this.playVideoWithFallback({
-      url: sanitizedUrl,
-      magnet: usableMagnet,
-      trigger: hasTrigger ? this.lastModalTrigger : null,
-    });
+  async playVideoWithoutEvent(...args) {
+    this._initCoordinators();
+    return this._playback.playVideoWithoutEvent(...args);
   }
 
   /**

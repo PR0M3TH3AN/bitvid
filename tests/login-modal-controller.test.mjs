@@ -249,8 +249,7 @@ test('LoginModalController does not set required attribute when toggling modes',
     assert.equal(unlockPassphrase.required, false);
 });
 
-// flaky: JSDOM async activity leak (HTMLElement not defined)
-test.skip('LoginModalController shows NIP-46 handshake panel', async (t) => {
+test('LoginModalController shows NIP-46 handshake panel', async (t) => {
     const providers = [{ id: 'nip46', label: 'Remote Signer', login: async () => {} }];
     const authService = { requestLogin: async () => {} };
     controller = createController({ providers, services: { authService } });

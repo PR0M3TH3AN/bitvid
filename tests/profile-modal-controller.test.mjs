@@ -1026,6 +1026,7 @@ test('show()/hide() toggle panes, trap focus, and refresh the wallet pane', asyn
   focusBefore.focus();
 
   await controller.show('wallet');
+  await new Promise((resolve) => setTimeout(resolve, 0));
 
   assert.equal(adminRefreshes, 1);
   assert.equal(walletRefreshes, 2);
@@ -1258,6 +1259,7 @@ test('history pane lazily initializes the watch history renderer', async () => {
     // First show: Should call ensureInitialLoad but NOT refresh (optimized)
   controller.setActivePubkey(defaultActorHex);
   await controller.show('history');
+  await new Promise((resolve) => setTimeout(resolve, 0));
   await Promise.resolve();
 
   assert.ok(capturedConfig);
@@ -1286,6 +1288,7 @@ test('history pane lazily initializes the watch history renderer', async () => {
     // Switch back to history. Renderer is still alive and initialized.
     // Should call refresh + resume.
     controller.selectPane('history');
+    await new Promise((resolve) => setTimeout(resolve, 0));
     await Promise.resolve();
 
     assert.deepEqual(historyCalls, [
@@ -1303,4 +1306,27 @@ test('history pane lazily initializes the watch history renderer', async () => {
     );
     assert.equal(controller.profileHistoryRenderer, null);
     assert.equal(controller.boundProfileHistoryVisibility, null);
+});
+
+test('handleDirectMessagesRelayWarning throttles status updates', async (t) => {
+  const statusCalls = [];
+  const controller = createController({
+    showStatus: (message) => statusCalls.push(message),
+  });
+  await controller.load();
+
+  const detail = { warning: 'dm-relays-fallback' };
+
+  controller.handleDirectMessagesRelayWarning(detail);
+  assert.equal(statusCalls.length, 1);
+  assert.match(statusCalls[0], /Privacy warning/);
+
+  // Second call should be suppressed
+  controller.handleDirectMessagesRelayWarning(detail);
+  assert.equal(statusCalls.length, 1);
+
+  // Reset should allow it again
+  controller.handleActiveDmIdentityChanged('newpubkey');
+  controller.handleDirectMessagesRelayWarning(detail);
+  assert.equal(statusCalls.length, 2);
 });

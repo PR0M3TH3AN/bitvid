@@ -12,10 +12,11 @@ import {
   normalizeVideoModerationContext,
 } from "../moderationUiHelpers.js";
 import { buildModerationBadgeText } from "../moderationCopy.js";
+import { HEX64_REGEX } from "../../utils/hex.js";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const DEFAULT_PROFILE_AVATAR = "assets/svg/default-profile.svg";
-const HEX64_REGEX = /^[0-9a-f]{64}$/i;
+
 
 export class VideoCard {
   constructor({
@@ -904,7 +905,9 @@ export class VideoCard {
     const avatar = this.createElement("img", {
       attrs: {
         src: "assets/svg/default-profile.svg",
-        alt: "Placeholder"
+        alt: "Placeholder",
+        loading: "lazy",
+        decoding: "async",
       }
     });
     avatar.classList.add(
@@ -1768,12 +1771,20 @@ export class VideoCard {
 
     if (!badge) {
       const nextBadge = this.buildModerationBadge(context);
-      if (nextBadge && slot) {
+      if (nextBadge) {
         nextBadge.style.pointerEvents = "auto"; // Enable interaction on badge itself
         nextBadge.classList.add("opacity-95"); // Slight transparency
-        slot.appendChild(nextBadge);
-        slot.hidden = false;
-        slot.removeAttribute("aria-hidden");
+
+        const hiddenActive = context.activeHidden && !context.overrideActive;
+        const target = hiddenActive
+          ? this.ensureHiddenSummaryContainer()
+          : slot;
+
+        if (target) {
+          target.appendChild(nextBadge);
+          target.hidden = false;
+          target.removeAttribute("aria-hidden");
+        }
       }
       this.updateModerationAria();
       return;
@@ -1840,14 +1851,24 @@ export class VideoCard {
       badge.setAttribute("aria-label", `${textContent}.`);
     }
 
-    if (slot) {
-      slot.hidden = false;
-      slot.removeAttribute("aria-hidden");
-      if (badge.parentElement !== slot) {
+    const target = hiddenActive ? this.ensureHiddenSummaryContainer() : slot;
+
+    if (target) {
+      target.hidden = false;
+      target.removeAttribute("hidden");
+      target.removeAttribute("aria-hidden");
+      // If target is summary container, ensure it's displayed as flex (to match bv-stack)
+      if (target !== slot) {
+         target.style.setProperty("display", "flex", "important");
+      } else {
+         target.style.removeProperty("display");
+      }
+
+      if (badge.parentElement !== target) {
         if (badge.parentElement) {
           badge.parentElement.removeChild(badge);
         }
-        slot.appendChild(badge);
+        target.appendChild(badge);
       }
     }
 
@@ -1989,7 +2010,7 @@ export class VideoCard {
 
     if (!this.hiddenSummaryEl) {
       this.hiddenSummaryEl = this.createElement("div", {
-        classNames: ["p-md", "bv-stack", "bv-stack--tight"],
+        classNames: ["p-md", "bv-stack", "bv-stack--tight", "items-start"],
       });
       this.hiddenSummaryEl.dataset.moderationHiddenContainer = "true";
       this.hiddenSummaryEl.setAttribute("role", "group");

@@ -37,11 +37,19 @@ import {
   NIP07_PRIORITY,
 } from "./nostr/nip07Permissions.js";
 import { relaySubscriptionService } from "./services/relaySubscriptionService.js";
+import {
+  getLastSuccessfulScheme,
+  setLastSuccessfulScheme,
+} from "./nostr/decryptionSchemeCache.js";
 
 const SUBSCRIPTION_SET_KIND =
   getNostrEventSchema(NOTE_TYPES.SUBSCRIPTION_LIST)?.kind ?? 30000;
-const DECRYPT_TIMEOUT_MS = 90000;
-const DECRYPT_RETRY_DELAY_MS = 10000;
+const DECRYPT_TIMEOUT_MS = 20000;
+// PERF: Reduced from 10s to 3s — extensions that already granted permission
+// should recover quickly. The longer delay was causing unnecessary wait time
+// during the critical login path when the first decrypt attempt fails due to
+// the extension still initializing.
+const DECRYPT_RETRY_DELAY_MS = 3000;
 
 function normalizeHexPubkey(value) {
   if (typeof value !== "string") {
@@ -110,10 +118,15 @@ function extractEncryptionHints(event) {
   return hints;
 }
 
-function determineDecryptionOrder(event, availableSchemes) {
+function determineDecryptionOrder(event, availableSchemes, cachedScheme = null) {
   const available = Array.isArray(availableSchemes) ? availableSchemes : [];
   const availableSet = new Set(available);
   const prioritized = [];
+
+  if (cachedScheme && availableSet.has(cachedScheme)) {
+    prioritized.push(cachedScheme);
+  }
+
   const hasNip44 =
     availableSet.has("nip44_v2") || availableSet.has("nip44");
   const allowNip04 = !hasNip44 && availableSet.has("nip04");
@@ -502,14 +515,19 @@ class SubscriptionsManager {
       );
       const hadCachedSnapshot = cachedSnapshot.hasSnapshot;
       const shouldForceFullFetch = !cachedSnapshot.hasSnapshot;
-      let events = await nostrClient.fetchListIncrementally({
-        kind: SUBSCRIPTION_SET_KIND,
-        pubkey: normalizedUserPubkey,
-        dTag: SUBSCRIPTION_LIST_IDENTIFIER,
-        relayUrls,
-        since: shouldForceFullFetch ? 0 : (cachedSnapshot.createdAt || 0),
-        timeoutMs: 12000,
-      });
+
+      // Fetch user and session actor subscription lists in parallel to reduce
+      // total relay wait time during login.
+      const fetchPromises = [
+        nostrClient.fetchListIncrementally({
+          kind: SUBSCRIPTION_SET_KIND,
+          pubkey: normalizedUserPubkey,
+          dTag: SUBSCRIPTION_LIST_IDENTIFIER,
+          relayUrls,
+          since: shouldForceFullFetch ? 0 : (cachedSnapshot.createdAt || 0),
+          timeoutMs: 12000,
+        }),
+      ];
 
       const normalizedSessionActorPubkey = normalizeNostrPubkey(
         nostrClient?.sessionActor?.pubkey,
@@ -525,17 +543,22 @@ class SubscriptionsManager {
           ),
         );
         const shouldForceSessionFetch = !sessionCachedSnapshot.hasSnapshot;
-        const sessionEvents = await nostrClient.fetchListIncrementally({
-          kind: SUBSCRIPTION_SET_KIND,
-          pubkey: normalizedSessionActorPubkey,
-          dTag: SUBSCRIPTION_LIST_IDENTIFIER,
-          relayUrls,
-          since: shouldForceSessionFetch ? 0 : (sessionCachedSnapshot.createdAt || 0),
-          timeoutMs: 12000,
-        });
-        if (sessionEvents.length) {
-          events = events.concat(sessionEvents);
-        }
+        fetchPromises.push(
+          nostrClient.fetchListIncrementally({
+            kind: SUBSCRIPTION_SET_KIND,
+            pubkey: normalizedSessionActorPubkey,
+            dTag: SUBSCRIPTION_LIST_IDENTIFIER,
+            relayUrls,
+            since: shouldForceSessionFetch ? 0 : (sessionCachedSnapshot.createdAt || 0),
+            timeoutMs: 12000,
+          }),
+        );
+      }
+
+      const fetchResults = await Promise.all(fetchPromises);
+      let events = fetchResults[0] || [];
+      if (shouldFetchSessionActor && fetchResults[1]?.length) {
+        events = events.concat(fetchResults[1]);
       }
 
       const mergedEvents = [];
@@ -633,6 +656,21 @@ class SubscriptionsManager {
           !allowPermissionPrompt &&
           decryptResult.error?.code === "subscriptions-permission-required"
         ) {
+          if (!this.loaded && !cachedSnapshot.hasSnapshot) {
+            this.loaded = true;
+          }
+          // Retry with permission prompt enabled so the signer / window.nostr
+          // path is available once the extension has finished initializing.
+          this.scheduleDecryptRetry(normalizedUserPubkey, decryptResult.error, {
+            allowPermissionPrompt: true,
+          });
+          if (wasBackgroundLoading) {
+            this.backgroundLoading = false;
+            this.emitter.emit("change", {
+              action: "background-loaded",
+              subscribedPubkeys: Array.from(this.subscribedPubkeys),
+            });
+          }
           return;
         }
         userLogger.error(
@@ -650,6 +688,9 @@ class SubscriptionsManager {
           userLogger.warn(
             "[SubscriptionsManager] Preserving cached subscriptions despite decryption failure.",
           );
+          this.scheduleDecryptRetry(normalizedUserPubkey, decryptResult.error, {
+            allowPermissionPrompt,
+          });
           return;
         }
         if (!this.loaded) {
@@ -658,6 +699,9 @@ class SubscriptionsManager {
           this.subsEventCreatedAt = null;
           this.loaded = true;
         }
+        this.scheduleDecryptRetry(normalizedUserPubkey, decryptResult.error, {
+          allowPermissionPrompt,
+        });
         return;
       }
 
@@ -807,9 +851,21 @@ class SubscriptionsManager {
     const loader = this.loadSubscriptions(normalizedActor, options);
     this.loadingPromise = loader;
 
+    // Clean up loadingPromise when the actual loader completes rather than
+    // when the timeout fires.  This prevents a second ensureLoaded() call
+    // from starting a duplicate load while the first is still in-flight.
+    const cleanup = () => {
+      if (this.loadingPromise === loader) {
+        this.loadingPromise = null;
+      }
+    };
+    loader.then(cleanup, cleanup);
+
     try {
       // Race against a timeout so the UI doesn't hang indefinitely if relays stall.
-      const timeoutMs = 6000;
+      // The timeout must accommodate relay fetch (~12s) + decryption (~20s timeout
+      // with ~5s per scheme attempt × up to 3 schemes), so we use 45s.
+      const timeoutMs = 45000;
       await Promise.race([
         loader,
         new Promise((_, reject) =>
@@ -822,8 +878,11 @@ class SubscriptionsManager {
       devLogger.log("[SubscriptionsManager] ensureLoaded success");
     } catch (error) {
       userLogger.warn("[SubscriptionsManager] ensureLoaded timed out or failed:", error);
-    } finally {
-      this.loadingPromise = null;
+      // Mark as loaded so the UI can proceed.  The background loader will
+      // continue and emit a "change" event if it eventually succeeds.
+      if (!this.loaded) {
+        this.loaded = true;
+      }
     }
   }
 
@@ -945,31 +1004,36 @@ class SubscriptionsManager {
       decryptors.set(scheme, handler);
     };
 
+    // PERF: Previous 5s no-prompt timeout was too aggressive — extensions that
+    // have already granted permission still need time to decrypt. 8s gives a
+    // realistic window while still failing faster than the full 15s interactive
+    // timeout.
+    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 15000 : 8000;
+    const signerDecryptOptions = {
+      priority: NIP07_PRIORITY.NORMAL,
+      timeoutMs: nip07DecryptTimeoutMs,
+      retryMultiplier: 1,
+    };
+
     if (signerHasNip44) {
       registerDecryptor("nip44", (payload) =>
-        signer.nip44Decrypt(userPubkey, payload, {
-          priority: NIP07_PRIORITY.HIGH,
-        }),
+        signer.nip44Decrypt(userPubkey, payload, signerDecryptOptions),
       );
       registerDecryptor("nip44_v2", (payload) =>
-        signer.nip44Decrypt(userPubkey, payload, {
-          priority: NIP07_PRIORITY.HIGH,
-        }),
+        signer.nip44Decrypt(userPubkey, payload, signerDecryptOptions),
       );
     }
 
     if (signerHasNip04) {
       registerDecryptor("nip04", (payload) =>
-        signer.nip04Decrypt(userPubkey, payload, {
-          priority: NIP07_PRIORITY.HIGH,
-        }),
+        signer.nip04Decrypt(userPubkey, payload, signerDecryptOptions),
       );
     }
 
     if (nostrApi) {
       const decrypterOptions = {
-        priority: NIP07_PRIORITY.HIGH,
-        timeoutMs: 12000,
+        priority: NIP07_PRIORITY.NORMAL,
+        timeoutMs: nip07DecryptTimeoutMs,
         retryMultiplier: 1,
       };
 
@@ -1038,34 +1102,79 @@ class SubscriptionsManager {
     }
 
     const availableSchemes = Array.from(decryptors.keys());
-    const order = determineDecryptionOrder(event, availableSchemes);
-    const attemptErrors = [];
+    // Use the shared cross-service cache so all list services benefit from
+    // the first successful decrypt during login.
+    const cachedScheme = getLastSuccessfulScheme(userPubkey);
 
-    for (const scheme of order) {
-      const decryptFn = decryptors.get(scheme);
-      if (!decryptFn) {
-        continue;
-      }
+    const order = determineDecryptionOrder(
+      event,
+      availableSchemes,
+      cachedScheme,
+    );
+
+    // PERF: Fast path — if the shared cache already knows the correct scheme
+    // (e.g. blocks decrypted first), try ONLY that scheme before falling back
+    // to the full parallel probe. This avoids queuing redundant extension calls.
+    if (cachedScheme && decryptors.has(cachedScheme)) {
       try {
-        const plaintext = await decryptFn(ciphertext);
-        if (typeof plaintext !== "string") {
-          const error = new Error("Decryption returned a non-string payload.");
-          error.code = "subscriptions-invalid-plaintext";
-          attemptErrors.push({ scheme, error });
-          continue;
+        const plaintext = await decryptors.get(cachedScheme)(ciphertext);
+        if (typeof plaintext === "string") {
+          setLastSuccessfulScheme(userPubkey, cachedScheme);
+          return { ok: true, plaintext, scheme: cachedScheme };
         }
-        return { ok: true, plaintext, scheme };
-      } catch (error) {
-        attemptErrors.push({ scheme, error });
+      } catch (_fastPathError) {
+        // Cached scheme failed — fall through to parallel probe.
+      }
+    }
+
+    // PERF: Try all decryption schemes in parallel via Promise.any().
+    // The first scheme to succeed wins, avoiding sequential 3-15s timeouts
+    // per scheme that previously made worst-case decryption take 45s+.
+    // Deduplicate schemes in the same family (nip44/nip44_v2 both call
+    // the same underlying signer.nip44Decrypt) to avoid redundant calls.
+    const getSchemeFamily = (s) =>
+      s === "nip44" || s === "nip44_v2" ? "nip44" : s;
+    const seenFamilies = new Set();
+    const attemptSchemes = [];
+    const attempts = order
+      .map((scheme) => {
+        const family = getSchemeFamily(scheme);
+        if (seenFamilies.has(family)) return null;
+        seenFamilies.add(family);
+        const decryptFn = decryptors.get(scheme);
+        if (!decryptFn) return null;
+        attemptSchemes.push(scheme);
+        return decryptFn(ciphertext).then((plaintext) => {
+          if (typeof plaintext !== "string") {
+            throw new Error("Decryption returned a non-string payload.");
+          }
+          return { plaintext, scheme };
+        });
+      })
+      .filter(Boolean);
+
+    if (attempts.length) {
+      try {
+        const result = await Promise.any(attempts);
+        setLastSuccessfulScheme(userPubkey, result.scheme);
+        return { ok: true, plaintext: result.plaintext, scheme: result.scheme };
+      } catch (aggregateError) {
+        const attemptErrors = (aggregateError.errors || []).map((err, i) => ({
+          scheme: attemptSchemes[i] || "unknown",
+          error: err,
+        }));
+        const error = new Error("Failed to decrypt subscription list with available schemes.");
+        error.code = "subscriptions-decrypt-failed";
+        if (attemptErrors.length) {
+          error.cause = attemptErrors;
+        }
+        return { ok: false, error, errors: attemptErrors };
       }
     }
 
     const error = new Error("Failed to decrypt subscription list with available schemes.");
     error.code = "subscriptions-decrypt-failed";
-    if (attemptErrors.length) {
-      error.cause = attemptErrors;
-    }
-    return { ok: false, error, errors: attemptErrors };
+    return { ok: false, error, errors: [] };
   }
 
   async addChannel(channelHex, userPubkey) {
@@ -1133,7 +1242,7 @@ class SubscriptionsManager {
    * as kind=30000 with ["d", "subscriptions"] to be replaceable.
    * The published event includes an ["encrypted", "<scheme>"] tag.
    */
-  async publishSubscriptionList(userPubkey) {
+  async publishSubscriptionList(userPubkey, { isBackup = false } = {}) {
     if (!userPubkey) {
       throw new Error("No pubkey => cannot publish subscription list.");
     }
@@ -1257,6 +1366,17 @@ class SubscriptionsManager {
       content: cipherText,
       encryption: encryptionTagValue,
     });
+
+    if (isBackup) {
+      const backupId = `subscriptions-backup-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+      // Override d tag
+      const dTagIndex = evt.tags.findIndex(t => t[0] === 'd');
+      if (dTagIndex >= 0) {
+        evt.tags[dTagIndex][1] = backupId;
+      } else {
+        evt.tags.push(['d', backupId]);
+      }
+    }
 
     let signedEvent;
     try {
@@ -2063,6 +2183,90 @@ class SubscriptionsManager {
       limit,
       reason
     });
+  }
+
+  async createBackup(userPubkey) {
+    const backupEvent = await this.publishSubscriptionList(userPubkey, {
+      isBackup: true,
+    });
+    return backupEvent;
+  }
+
+  async fetchHistory(userPubkey) {
+    if (!userPubkey) return [];
+    const normalizedUserPubkey = normalizeHexPubkey(userPubkey);
+
+    // Fetch all kind 30000 events for this user to find backups and old versions
+    const events = await nostrClient.fetchEvents({
+      kinds: [SUBSCRIPTION_SET_KIND],
+      authors: [normalizedUserPubkey],
+      limit: 50, // Reasonable limit for history
+    });
+
+    return events
+      .filter((e) => {
+        const dTag = e.tags.find((t) => t[0] === "d")?.[1];
+        return (
+          dTag === SUBSCRIPTION_LIST_IDENTIFIER ||
+          (typeof dTag === "string" && dTag.startsWith("subscriptions-backup-"))
+        );
+      })
+      .sort((a, b) => b.created_at - a.created_at);
+  }
+
+  async restoreBackup(event, userPubkey) {
+    if (!event || !userPubkey) return;
+
+    const decryptResult = await this.decryptSubscriptionEvent(event, userPubkey);
+    if (!decryptResult.ok) {
+      throw decryptResult.error || new Error("Failed to decrypt backup");
+    }
+
+    const decryptedStr = decryptResult.plaintext;
+    const normalized = parseSubscriptionPlaintext(decryptedStr);
+
+    // Update local state
+    this.subscribedPubkeys = new Set(normalized);
+    this.saveToCache(userPubkey);
+
+    // Publish as current list
+    await this.publishSubscriptionList(userPubkey);
+
+    this.emitter.emit("change", {
+      action: "restore",
+      subscribedPubkeys: Array.from(this.subscribedPubkeys),
+    });
+
+    await this.refreshActiveFeed({ reason: "restore-backup" });
+  }
+
+  async rebroadcastBackup(event, userPubkey) {
+    if (!event || !userPubkey) return;
+
+    const dTag = event.tags.find(t => t[0] === 'd')?.[1];
+    if (!dTag) throw new Error("Invalid backup event: missing d tag");
+
+    let signer = getActiveSigner();
+    if (!signer) {
+      signer = await nostrClient.ensureActiveSignerForPubkey(userPubkey);
+    }
+
+    const newEvent = {
+      kind: event.kind,
+      created_at: Math.floor(Date.now() / 1000),
+      tags: event.tags,
+      content: event.content,
+      pubkey: userPubkey
+    };
+
+    const signedEvent = await signer.signEvent(newEvent);
+    await publishEventToRelays(
+      nostrClient.pool,
+      sanitizeRelayList(nostrClient.writeRelays),
+      signedEvent
+    );
+
+    return signedEvent;
   }
 
   convertEventToVideo(evt) {

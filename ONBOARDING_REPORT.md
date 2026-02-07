@@ -1,44 +1,29 @@
-# Onboarding Report
+# Developer Onboarding Audit - 2025-02-18
 
-## Execution Summary
+This document summarizes the findings from the developer onboarding audit.
 
-| Command | Status | Notes |
-| :--- | :--- | :--- |
-| `npm ci` | ✅ Passed | Installed 315 packages. |
-| `npm run build:css` | ✅ Passed | CSS built successfully. Warning: `Browserslist: caniuse-lite is outdated`. |
-| `npm run format` | ✅ Passed | No formatting changes needed. |
-| `npm run lint` | ✅ Passed | All lint checks passed. |
-| `npm run test:unit` | ✅ Fixed | `tests/hashtag-preferences.test.mjs` and `tests/nostr-login-permissions.test.mjs` failures were fixed in this PR. |
+## Steps Executed
 
-## Detailed Findings & Fixes
+1.  `npm ci`: Successful.
+2.  `npm run build:css`: Successful.
+3.  `npm run format`: Successful.
 
-### Unit Test Failures & Timeouts
+## Environment
 
-1.  **`tests/hashtag-preferences.test.mjs`**: Failed due to a race condition in the mock `fetchListIncrementally` implementation.
-    *   **Fix Applied**: Updated the mock to return the event consistently. Added `process.exit(0)` to prevent hanging.
+-   **Node.js Version:** v22.22.0
+-   **Dependencies:** Installed successfully via `npm ci`.
+-   **CSS Build:** Tailwind CSS bundle generated successfully.
 
-2.  **`tests/nostr-login-permissions.test.mjs`**: Failed due to incorrect permission request logic and timed out due to open handles.
-    *   **Fix Applied**: Updated `js/nostr/client.js` to request `DEFAULT_NIP07_PERMISSION_METHODS` instead of `CORE_METHODS`. Refactored test file to use `describe`/`it`/`after` with explicit `process.exit(0)`.
+## Findings
 
-3.  **`tests/nostr-private-key-signer.test.mjs`**: Timed out during CI.
-    *   **Fix Applied**: Added `after(() => setTimeout(() => process.exit(0), 100))` to force exit.
+-   **Setup Reliability:** The onboarding steps are robust and reliable. No errors were encountered.
+-   **Documentation:** `CONTRIBUTING.md` and `README.md` provide clear instructions.
+-   **Dev Container:** The project includes a valid `.devcontainer/devcontainer.json` which uses `mcr.microsoft.com/devcontainers/javascript-node:22`. This is recommended for a consistent development environment.
+-   **Node Version:** While `package.json` does not explicitly enforce a Node.js version, the `.devcontainer` configuration implies a dependency on Node 22. Adding an `engines` field to `package.json` would improve environment consistency.
+-   **Build Commands:** The README suggests `npm run build:css` for CSS verification, which works as expected. For full builds, `npm run build` or `npm start` should be used.
+-   **Warnings:** A warning about `browserslist` (`caniuse-lite is outdated`) was observed during `npm run build:css`. This is documented in `CONTRIBUTING.md` under Troubleshooting.
 
-4.  **`tests/nostr-send-direct-message.test.mjs`**: Susceptible to similar hangs.
-    *   **Fix Applied**: Added `after(() => setTimeout(() => process.exit(0), 100))` to force exit.
+## Recommendations implemented
 
-5.  **`tests/nostr-service-access-control.test.mjs`**: Caused hangs due to mock tool cleanup.
-    *   **Fix Applied**: Added `setTimeout(() => process.exit(0), 100)` in `after` hook.
-
-### Test Runner Robustness
-
-*   **`scripts/run-unit-tests.mjs`**: Updated to explicitly call `process.exit(0)` upon successful completion of all tests. This acts as a global safeguard against lingering open handles (e.g., from `nostr-tools` relays or timers) causing CI timeouts.
-
-### Browserslist Warning
-
-The build command emitted: `Browserslist: caniuse-lite is outdated`.
-*   **Action Taken**: Ran `npx update-browserslist-db@latest`.
-
-### Documentation
-
-*   Updated `CONTRIBUTING.md` to recommend sharded tests (`npm run test:unit:shard1`).
-*   Clarified in `CONTRIBUTING.md` that `npm run format` does not target JavaScript files.
+-   Added `"engines": { "node": ">=22" }` to `package.json` to align with `.devcontainer` and ensure environment consistency.
+-   Updated `CONTRIBUTING.md` to explicitly mention the Node.js version requirement and clarify build commands.

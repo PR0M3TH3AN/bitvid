@@ -41,7 +41,7 @@ Automated agents contributing to this repository should follow these rules:
 - **Commit Messages**: Use the convention `type(scope): description (agent)` (e.g., `fix(ai): formatting (agent)` or `docs(ai): update quickstart (agent)`).
 - **Reference Issues**: Link to relevant issues in the PR description.
 - **Review AGENTS.md**: Always consult `AGENTS.md` for specific architectural guidelines (like URL-first playback, token-first design system) and constraints before starting work.
-- **Efficiency**: Prefer running targeted or sharded tests (e.g., `npm run test:unit:shard1`) to conserve resources during iteration.
+- **Efficiency**: Prefer running targeted or sharded tests (e.g., `npm run test:unit:shard1`, `shard2`, or `shard3`) to conserve resources during iteration.
 
 ## Submitting a Pull Request
 
@@ -92,20 +92,24 @@ This workflow uses the `force-cancel` endpoint to ensure stalled runs are termin
 
 To set up the project locally:
 
-1. **Install Dependencies**:
+1. **Prerequisites**:
+   - **Node.js**: v22 or higher.
+   - **NPM**: v10 or higher (included with Node 22).
+
+2. **Install Dependencies**:
    Use `npm ci` to ensure you get the exact dependencies from `package-lock.json`.
 
    ```bash
    npm ci
    ```
 
-2. **Start the Application**:
+3. **Start the Application**:
 
    ```bash
    npm start
    ```
 
-   This builds the project and starts a local server.
+   This command runs a full production build (generating `dist/` and `css/tailwind.generated.css`) and starts a local server.
 
    **Or, build manually:**
 
@@ -116,19 +120,32 @@ To set up the project locally:
 
    (The build command populates the `dist/` directory, which you can then serve locally.)
 
-3. **Run Tests**:
+   **For CSS-only changes:**
+   If you are only iterating on styles, you can run the faster CSS build:
+
+   ```bash
+   npm run build:css
+   ```
+
+4. **Run Tests**:
 
    ```bash
    npm run test:unit
    ```
 
-   _Note: Running the full suite (`npm run test:unit`) is resource-intensive, runs sequentially, and may time out in some environments. We strongly recommend using sharded runs for local development to save time: `npm run test:unit:shard1`._
+   _Note: Running the full suite (`npm run test:unit`) is resource-intensive, runs sequentially, and may time out in some environments. We strongly recommend using sharded runs for local development to save time: `npm run test:unit:shard1`, `shard2`, or `shard3`._
 
    You can also run end-to-end and visual tests:
 
    ```bash
    npm run test:e2e
    npm run test:visual
+   ```
+
+   To update visual regression baselines:
+
+   ```bash
+   npm run test:visual:update
    ```
 
    For Direct Message features, run:
@@ -138,7 +155,13 @@ To set up the project locally:
    npm run test:dm:integration
    ```
 
-4. **Format & Lint**:
+   To aggregate telemetry from test logs:
+
+   ```bash
+   npm run telemetry:aggregate
+   ```
+
+5. **Format & Lint**:
 
    ```bash
    npm run format
@@ -146,9 +169,9 @@ To set up the project locally:
    ```
 
    - **Format**: Targets CSS, HTML, Markdown, and config files. (Note: JavaScript files are not currently auto-formatted by this command).
-   - **Lint**: Checks for CSS errors, hex color usage, inline styles, and design token compliance. (Note: There is no ESLint configuration for JavaScript logic; this step focuses on style and design system guards).
+   - **Lint**: Checks for CSS errors, hex color usage, inline styles, design tokens, and Tailwind guards. (Note: There is no ESLint configuration for JavaScript logic; this step focuses on style and design system guards).
 
-5. **Git Hooks (Optional)**:
+6. **Git Hooks (Optional)**:
    We provide a script to set up a git pre-commit hook that runs linting and CSS builds automatically before you commit.
    ```bash
    ./scripts/setup-pre-commit.sh

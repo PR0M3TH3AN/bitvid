@@ -156,9 +156,60 @@ export function publishEventToRelay(pool, url, event, options = {}) {
 
 export function publishEventToRelays(pool, urls, event, options = {}) {
   const list = Array.isArray(urls) ? urls : [];
-  return Promise.all(
-    list.map((url) => publishEventToRelay(pool, url, event, options)),
+
+  if (list.length === 0) {
+    return Promise.resolve([]);
+  }
+
+  const promises = list.map((url) =>
+    publishEventToRelay(pool, url, event, options),
   );
+
+  if (options.waitForAll === true) {
+    return Promise.all(promises);
+  }
+
+  return new Promise((resolve) => {
+    let resolved = false;
+    let pending = promises.length;
+    const results = [];
+
+    promises.forEach((p) => {
+      p.then(
+        (result) => {
+          // If we already resolved, we don't need to track further results
+          // for the return value, but the promises will still settle in background.
+          if (resolved) {
+            return;
+          }
+
+          results.push(result);
+          pending--;
+
+          if (result.success) {
+            resolved = true;
+            resolve(results);
+          } else if (pending === 0) {
+            resolved = true;
+            resolve(results);
+          }
+        },
+        (error) => {
+          if (resolved) {
+            return;
+          }
+          // Treat rejection as a failure result so we don't hang
+          results.push({ success: false, error });
+          pending--;
+
+          if (pending === 0) {
+            resolved = true;
+            resolve(results);
+          }
+        },
+      );
+    });
+  });
 }
 
 export function summarizePublishResults(results = []) {

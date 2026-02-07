@@ -26,13 +26,19 @@ import {
   NIP07_PRIORITY,
 } from "../nostr/nip07Permissions.js";
 import { relaySubscriptionService } from "./relaySubscriptionService.js";
+import {
+  getLastSuccessfulScheme,
+  setLastSuccessfulScheme,
+} from "../nostr/decryptionSchemeCache.js";
+import { HEX64_REGEX } from "../utils/hex.js";
 
 const LOG_PREFIX = "[HashtagPreferences]";
 const HASHTAG_IDENTIFIER = "bitvid:tag-preferences";
-const HEX64_REGEX = /^[0-9a-f]{64}$/i;
+
 const DEFAULT_VERSION = 1;
-const DECRYPT_TIMEOUT_MS = 90000;
-const DECRYPT_RETRY_DELAY_MS = 10000;
+const DECRYPT_TIMEOUT_MS = 20000;
+// PERF: Reduced from 10s to 3s for faster recovery during login.
+const DECRYPT_RETRY_DELAY_MS = 3000;
 
 class TinyEventEmitter {
   constructor() {
@@ -196,10 +202,14 @@ function extractEncryptionHints(event) {
   return hints;
 }
 
-function determineDecryptionOrder(event, availableSchemes) {
+function determineDecryptionOrder(event, availableSchemes, cachedScheme = null) {
   const available = Array.isArray(availableSchemes) ? availableSchemes : [];
   const availableSet = new Set(available);
   const prioritized = [];
+
+  if (cachedScheme && availableSet.has(cachedScheme)) {
+    prioritized.push(cachedScheme);
+  }
 
   const hints = extractEncryptionHints(event);
   const aliasMap = {
@@ -397,7 +407,7 @@ class HashtagPreferencesService {
     return Array.from(this.disinterests).sort((a, b) => a.localeCompare(b));
   }
 
-  addInterest(tag) {
+  async addInterest(tag) {
     const normalized = normalizeHashtag(tag);
     if (!normalized) {
       return false;
@@ -409,16 +419,18 @@ class HashtagPreferencesService {
 
     if (!hadInterest || removedFromDisinterests) {
       this.emitChange("interest-added", { tag: normalized });
-      this.publish().catch((err) =>
-        userLogger.warn(`${LOG_PREFIX} Auto-save failed`, err),
-      );
+      try {
+        await this.publish();
+      } catch (err) {
+        userLogger.warn(`${LOG_PREFIX} Auto-save failed`, err);
+      }
       return true;
     }
 
     return false;
   }
 
-  removeInterest(tag) {
+  async removeInterest(tag) {
     const normalized = normalizeHashtag(tag);
     if (!normalized || !this.interests.has(normalized)) {
       return false;
@@ -426,13 +438,15 @@ class HashtagPreferencesService {
 
     this.interests.delete(normalized);
     this.emitChange("interest-removed", { tag: normalized });
-    this.publish().catch((err) =>
-      userLogger.warn(`${LOG_PREFIX} Auto-save failed`, err),
-    );
+    try {
+      await this.publish();
+    } catch (err) {
+      userLogger.warn(`${LOG_PREFIX} Auto-save failed`, err);
+    }
     return true;
   }
 
-  addDisinterest(tag) {
+  async addDisinterest(tag) {
     const normalized = normalizeHashtag(tag);
     if (!normalized) {
       return false;
@@ -444,16 +458,18 @@ class HashtagPreferencesService {
 
     if (!hadDisinterest || removedFromInterests) {
       this.emitChange("disinterest-added", { tag: normalized });
-      this.publish().catch((err) =>
-        userLogger.warn(`${LOG_PREFIX} Auto-save failed`, err),
-      );
+      try {
+        await this.publish();
+      } catch (err) {
+        userLogger.warn(`${LOG_PREFIX} Auto-save failed`, err);
+      }
       return true;
     }
 
     return false;
   }
 
-  removeDisinterest(tag) {
+  async removeDisinterest(tag) {
     const normalized = normalizeHashtag(tag);
     if (!normalized || !this.disinterests.has(normalized)) {
       return false;
@@ -461,9 +477,11 @@ class HashtagPreferencesService {
 
     this.disinterests.delete(normalized);
     this.emitChange("disinterest-removed", { tag: normalized });
-    this.publish().catch((err) =>
-      userLogger.warn(`${LOG_PREFIX} Auto-save failed`, err),
-    );
+    try {
+      await this.publish();
+    } catch (err) {
+      userLogger.warn(`${LOG_PREFIX} Auto-save failed`, err);
+    }
     return true;
   }
 
@@ -814,6 +832,16 @@ class HashtagPreferencesService {
         !allowPermissionPrompt &&
         decryptResult.error?.code === "hashtag-preferences-permission-required"
       ) {
+        if (!wasLoadedForUser && !this.loaded) {
+          this.loaded = true;
+        }
+        this.scheduleDecryptRetry(normalized, decryptResult.error, {
+          allowPermissionPrompt: true,
+        });
+        if (wasBackgroundLoading) {
+          this.backgroundLoading = false;
+          this.emitChange("background-loaded", { background: false });
+        }
         return;
       }
 
@@ -931,21 +959,28 @@ class HashtagPreferencesService {
       sources.set(scheme, source);
     };
 
+    // PERF: Previous 5s no-prompt timeout was too aggressive — extensions that
+    // have already granted permission still need time to decrypt. 8s gives a
+    // realistic window while still failing faster than the full 15s interactive
+    // timeout.
+    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 15000 : 8000;
+    const signerDecryptOptions = {
+      priority: NIP07_PRIORITY.NORMAL,
+      timeoutMs: nip07DecryptTimeoutMs,
+      retryMultiplier: 1,
+    };
+
     if (signerHasNip44) {
       registerDecryptor(
         "nip44",
         (payload) =>
-          signer.nip44Decrypt(userPubkey, payload, {
-            priority: NIP07_PRIORITY.HIGH,
-          }),
+          signer.nip44Decrypt(userPubkey, payload, signerDecryptOptions),
         "active-signer",
       );
       registerDecryptor(
         "nip44_v2",
         (payload) =>
-          signer.nip44Decrypt(userPubkey, payload, {
-            priority: NIP07_PRIORITY.HIGH,
-          }),
+          signer.nip44Decrypt(userPubkey, payload, signerDecryptOptions),
         "active-signer",
       );
     }
@@ -954,13 +989,16 @@ class HashtagPreferencesService {
       registerDecryptor(
         "nip04",
         (payload) =>
-          signer.nip04Decrypt(userPubkey, payload, {
-            priority: NIP07_PRIORITY.HIGH,
-          }),
+          signer.nip04Decrypt(userPubkey, payload, signerDecryptOptions),
         "active-signer",
       );
     }
 
+    const extensionDecryptOptions = {
+      priority: NIP07_PRIORITY.NORMAL,
+      timeoutMs: nip07DecryptTimeoutMs,
+      retryMultiplier: 1,
+    };
     const nostrApi =
       typeof window !== "undefined" && window?.nostr
         ? window.nostr
@@ -974,7 +1012,7 @@ class HashtagPreferencesService {
           (payload) =>
             runNip07WithRetry(
               () => nostrApi.nip04.decrypt(userPubkey, payload),
-              { label: "nip04.decrypt", priority: NIP07_PRIORITY.HIGH },
+              { label: "nip04.decrypt", ...extensionDecryptOptions },
             ),
           "extension",
         );
@@ -993,7 +1031,7 @@ class HashtagPreferencesService {
                 () => nip44.decrypt(userPubkey, payload),
                 {
                   label: "nip44.decrypt",
-                  priority: NIP07_PRIORITY.HIGH,
+                  ...extensionDecryptOptions,
                 },
               ),
             "extension",
@@ -1010,7 +1048,7 @@ class HashtagPreferencesService {
                 () => nip44v2.decrypt(userPubkey, payload),
                 {
                   label: "nip44.v2.decrypt",
-                  priority: NIP07_PRIORITY.HIGH,
+                  ...extensionDecryptOptions,
                 },
               ),
             "extension",
@@ -1023,7 +1061,7 @@ class HashtagPreferencesService {
                   () => nip44v2.decrypt(userPubkey, payload),
                   {
                     label: "nip44.v2.decrypt",
-                    priority: NIP07_PRIORITY.HIGH,
+                    ...extensionDecryptOptions,
                   },
                 ),
               "extension",
@@ -1041,49 +1079,80 @@ class HashtagPreferencesService {
       return { ok: false, error };
     }
 
-    const order = determineDecryptionOrder(event, Array.from(decryptors.keys()));
-    const attemptErrors = [];
+    // Use the shared cross-service cache so all list services benefit from
+    // the first successful decrypt during login.
+    const cachedScheme = getLastSuccessfulScheme(userPubkey);
 
-    for (const scheme of order) {
-      const decryptFn = decryptors.get(scheme);
-      if (!decryptFn) {
-        continue;
-      }
-      const source = sources.get(scheme);
+    const order = determineDecryptionOrder(
+      event,
+      Array.from(decryptors.keys()),
+      cachedScheme,
+    );
 
-      if (source === "extension") {
-        userLogger.info(
-          `${LOG_PREFIX} Attempting decryption via window.nostr fallback (${scheme})`,
-        );
-      }
-
+    // PERF: Fast path — if the shared cache already knows the correct scheme
+    // (e.g. blocks or subscriptions decrypted first), try ONLY that scheme
+    // before falling back to the full parallel probe. This avoids queuing
+    // redundant NIP-07 extension calls.
+    if (cachedScheme && decryptors.has(cachedScheme)) {
       try {
-        const plaintext = await decryptFn(ciphertext);
-        if (typeof plaintext !== "string") {
-          attemptErrors.push({
-            scheme,
-            error: new Error("Decryption returned non-string payload."),
-          });
-          continue;
+        const plaintext = await decryptors.get(cachedScheme)(ciphertext);
+        if (typeof plaintext === "string") {
+          setLastSuccessfulScheme(userPubkey, cachedScheme);
+          return { ok: true, plaintext, scheme: cachedScheme };
         }
-        return { ok: true, plaintext, scheme };
-      } catch (error) {
-        if (source === "extension") {
-          userLogger.warn(
-            `${LOG_PREFIX} window.nostr fallback decryption failed (${scheme})`,
-            error,
-          );
+      } catch (_fastPathError) {
+        // Cached scheme failed — fall through to parallel probe.
+      }
+    }
+
+    // PERF: Try all decryption schemes in parallel via Promise.any().
+    // The first scheme to succeed wins, avoiding sequential 3-15s timeouts
+    // per scheme that previously made worst-case decryption take 45s+.
+    // Deduplicate schemes in the same family (nip44/nip44_v2 both call
+    // the same underlying signer.nip44Decrypt) to avoid redundant calls.
+    const getSchemeFamily = (s) =>
+      s === "nip44" || s === "nip44_v2" ? "nip44" : s;
+    const seenFamilies = new Set();
+    const attemptSchemes = [];
+    const attempts = order
+      .map((scheme) => {
+        const family = getSchemeFamily(scheme);
+        if (seenFamilies.has(family)) return null;
+        seenFamilies.add(family);
+        const decryptFn = decryptors.get(scheme);
+        if (!decryptFn) return null;
+        attemptSchemes.push(scheme);
+        return decryptFn(ciphertext).then((plaintext) => {
+          if (typeof plaintext !== "string") {
+            throw new Error("Decryption returned non-string payload.");
+          }
+          return { plaintext, scheme };
+        });
+      })
+      .filter(Boolean);
+
+    if (attempts.length) {
+      try {
+        const result = await Promise.any(attempts);
+        setLastSuccessfulScheme(userPubkey, result.scheme);
+        return { ok: true, plaintext: result.plaintext, scheme: result.scheme };
+      } catch (aggregateError) {
+        const attemptErrors = (aggregateError.errors || []).map((err, i) => ({
+          scheme: attemptSchemes[i] || "unknown",
+          error: err,
+        }));
+        const error = new Error("Failed to decrypt hashtag preferences.");
+        error.code = "hashtag-preferences-decrypt-failed";
+        if (attemptErrors.length) {
+          error.cause = attemptErrors;
         }
-        attemptErrors.push({ scheme, error });
+        return { ok: false, error, errors: attemptErrors };
       }
     }
 
     const error = new Error("Failed to decrypt hashtag preferences.");
     error.code = "hashtag-preferences-decrypt-failed";
-    if (attemptErrors.length) {
-      error.cause = attemptErrors;
-    }
-    return { ok: false, error, errors: attemptErrors };
+    return { ok: false, error, errors: [] };
   }
 
   async publish(options = {}) {

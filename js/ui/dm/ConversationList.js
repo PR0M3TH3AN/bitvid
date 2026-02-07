@@ -1,5 +1,7 @@
 import { ContactRow } from "./ContactRow.js";
 
+let hasPeekAnimationPlayed = false;
+
 function createElement(doc, tag, className, text) {
   const element = doc.createElement(tag);
   if (className) {
@@ -93,12 +95,13 @@ export function ConversationList({
     });
 
     // Peek animation
-    if (conversations.length > 0) {
+    if (conversations.length > 0 && !hasPeekAnimationPlayed) {
       if (typeof IntersectionObserver !== "undefined") {
         const observer = new IntersectionObserver((entries) => {
           const entry = entries[0];
           if (entry.isIntersecting) {
             observer.disconnect();
+            hasPeekAnimationPlayed = true;
             setTimeout(() => {
               if (list.scrollHeight > list.clientHeight) {
                 list.scrollTo({ top: 40, behavior: "smooth" });
@@ -112,6 +115,7 @@ export function ConversationList({
         observer.observe(list);
       } else {
         // Fallback for no IntersectionObserver (e.g. some tests or very old browsers)
+        hasPeekAnimationPlayed = true;
         setTimeout(() => {
           if (list.scrollHeight > list.clientHeight) {
             list.scrollTo({ top: 40, behavior: "smooth" });

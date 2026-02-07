@@ -1,29 +1,22 @@
 {
   "@playwright/test": {
-    "current": "1.58.0",
-    "wanted": "1.58.1",
-    "latest": "1.58.1",
+    "current": "1.58.1",
+    "wanted": "1.58.2",
+    "latest": "1.58.2",
     "dependent": "app",
     "location": "/app/node_modules/@playwright/test"
   },
-  "autoprefixer": {
-    "current": "10.4.23",
-    "wanted": "10.4.24",
-    "latest": "10.4.24",
-    "dependent": "app",
-    "location": "/app/node_modules/autoprefixer"
-  },
   "esbuild": {
-    "current": "0.25.12",
-    "wanted": "0.25.12",
-    "latest": "0.27.2",
+    "current": "0.27.2",
+    "wanted": "0.27.3",
+    "latest": "0.27.3",
     "dependent": "app",
     "location": "/app/node_modules/esbuild"
   },
   "nostr-tools": {
-    "current": "2.20.0",
-    "wanted": "2.22.1",
-    "latest": "2.22.1",
+    "current": "2.19.4",
+    "wanted": "2.19.4",
+    "latest": "2.23.0",
     "dependent": "app",
     "location": "/app/node_modules/nostr-tools"
   },
@@ -35,9 +28,9 @@
     "location": "/app/node_modules/pixelmatch"
   },
   "playwright": {
-    "current": "1.58.0",
-    "wanted": "1.58.1",
-    "latest": "1.58.1",
+    "current": "1.58.1",
+    "wanted": "1.58.2",
+    "latest": "1.58.2",
     "dependent": "app",
     "location": "/app/node_modules/playwright"
   },
@@ -49,11 +42,18 @@
     "location": "/app/node_modules/prettier-plugin-tailwindcss"
   },
   "stylelint": {
-    "current": "16.26.1",
+    "current": "16.12.0",
     "wanted": "16.26.1",
-    "latest": "17.1.0",
+    "latest": "17.1.1",
     "dependent": "app",
     "location": "/app/node_modules/stylelint"
+  },
+  "stylelint-config-standard": {
+    "current": "36.0.1",
+    "wanted": "36.0.1",
+    "latest": "40.0.0",
+    "dependent": "app",
+    "location": "/app/node_modules/stylelint-config-standard"
   },
   "tailwindcss": {
     "current": "3.4.19",

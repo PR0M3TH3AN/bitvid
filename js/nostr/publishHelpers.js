@@ -20,12 +20,13 @@ import { DEFAULT_NIP07_PERMISSION_METHODS } from "./nip07Permissions.js";
 import { devLogger, userLogger } from "../utils/logger.js";
 import { logRebroadcastCountFailure } from "./countDiagnostics.js";
 import { queueSignEvent } from "./signRequestQueue.js";
+import { HEX64_REGEX } from "../utils/hex.js";
 
 const REBROADCAST_GUARD_PREFIX = "bitvid:rebroadcast:v1";
 const rebroadcastAttemptMemory = new Map();
 
 const HEX_PRIVATE_KEY_REGEX = /^[0-9a-f]{64}$/i;
-const HEX64_REGEX = /^[0-9a-f]{64}$/i;
+
 
 function normalizeSha256TagValue(value) {
   if (value === undefined || value === null) {

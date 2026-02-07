@@ -59,6 +59,16 @@ can be injected at build time.
   - **Why change it:** Enable during an incident or maintenance to temporarily
     restrict behavior; keep `false` for normal operation.
 
+- **`LOCKDOWN_TITLE`**
+  - **What it does:** The title displayed in the header when the site is in lockdown mode.
+  - **Why change it:** Customize this to match the tone of your maintenance window or incident
+    response. Default is "Maintenance Mode".
+
+- **`LOCKDOWN_MESSAGE`**
+  - **What it does:** The primary message displayed to visitors when the site is in lockdown mode.
+  - **Why change it:** This text should explain why the site is unavailable and when users might
+    expect it to return. Default is generic maintenance copy.
+
 ### Instance identity + navigation links
 
 - **`ADMIN_SUPER_NPUB`**
@@ -256,3 +266,17 @@ can be injected at build time.
   - **What it does:** Cooldown between manual “Rebroadcast” attempts.
   - **Why change it:** Lengthen if relays are sensitive to repeated publishes;
     shorten if operators need a quicker retry loop.
+
+### Playback configuration
+
+- **`DEFAULT_PLAYBACK_SOURCE`**
+  - **What it does:** Preferred playback source strategy. Options:
+    - `"url"`: Try CDN/URL first, fall back to WebTorrent.
+    - `"torrent"`: Try WebTorrent first, fall back to CDN/URL.
+  - **Why change it:** Choose the strategy that best fits your hosting costs and user experience goals.
+
+- **`DEFAULT_PLAYBACK_START_TIMEOUT`**
+  - **What it does:** Timeout (in milliseconds) for the initial playback attempt.
+  - **Why change it:** If the preferred source does not reach the "playing" state within this
+    window, the player switches to the fallback source. This prevents users from staring at a
+    loading spinner indefinitely.

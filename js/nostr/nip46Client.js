@@ -26,15 +26,14 @@ import {
 } from "../nostrPublish.js";
 import { devLogger, userLogger } from "../utils/logger.js";
 import { Nip46RequestQueue, NIP46_PRIORITY } from "./nip46Queue.js";
-
-export const HEX64_REGEX = /^[0-9a-f]{64}$/i;
+import { HEX64_REGEX } from "../utils/hex.js";
 
 export const NIP46_RPC_KIND = 24_133;
-export const NIP46_SESSION_STORAGE_KEY = "bitvid:nip46:session:v1";
-export const NIP46_PUBLISH_TIMEOUT_MS = 8_000;
-export const NIP46_RESPONSE_TIMEOUT_MS = 15_000;
-export const NIP46_SIGN_EVENT_TIMEOUT_MS = 20_000;
-export const NIP46_MAX_RETRIES = 1;
+const NIP46_SESSION_STORAGE_KEY = "bitvid:nip46:session:v1";
+const NIP46_PUBLISH_TIMEOUT_MS = 8_000;
+const NIP46_RESPONSE_TIMEOUT_MS = 15_000;
+const NIP46_SIGN_EVENT_TIMEOUT_MS = 20_000;
+const NIP46_MAX_RETRIES = 1;
 export const NIP46_HANDSHAKE_TIMEOUT_MS = 60_000;
 export const NIP46_AUTH_CHALLENGE_MAX_ATTEMPTS = 5;
 export const NIP46_ENCRYPTION_ALGORITHMS = Object.freeze([
@@ -945,7 +944,7 @@ export function normalizeNip46CiphertextPayload(payload) {
         }
       }
 
-      if (scalarEntries.length >= 2) {
+      if (scalarEntries.length >= 2 && scalarEntries.length <= 16) {
         for (let i = 0; i < scalarEntries.length; i += 1) {
           for (let j = i + 1; j < scalarEntries.length; j += 1) {
             addCiphertextWithNonce(scalarEntries[i], scalarEntries[j]);

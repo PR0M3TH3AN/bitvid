@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 
 import { Application } from "../../js/app.js";
 import { nostrClient } from "../../js/nostrClientFacade.js";
+import { HEX64_REGEX } from "../../js/utils/hex.js";
 
-const HEX64_REGEX = /^[0-9a-f]{64}$/i;
+
 
 function createTestApp(pubkey) {
   const app = {

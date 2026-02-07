@@ -1,8 +1,9 @@
 // js/dmDecryptor.js
 
 import { normalizeActorKey } from "./nostr/watchHistory.js";
+import { HEX64_REGEX } from "./utils/hex.js";
 
-const HEX64_REGEX = /^[0-9a-f]{64}$/;
+
 
 const SUPPORTED_KINDS = new Set([4, 1059]);
 
@@ -388,7 +389,7 @@ async function decryptGiftWrap(event, decryptors, actorPubkey) {
 
   const errors = [];
 
-  for (const decryptor of decryptors) {
+  const attemptUnwrap = async (decryptor) => {
     try {
       const sealSerialized = await decryptor.decrypt(wrapPubkey, ciphertext, {
         event,
@@ -396,7 +397,8 @@ async function decryptGiftWrap(event, decryptors, actorPubkey) {
       });
       const seal = parseEventJson(sealSerialized, "wrap");
 
-      const sealCiphertext = typeof seal?.content === "string" ? seal.content : "";
+      const sealCiphertext =
+        typeof seal?.content === "string" ? seal.content : "";
       const sealPubkey = normalizeHex(seal?.pubkey);
       if (!sealCiphertext || !sealPubkey) {
         const error = new Error(
@@ -407,10 +409,14 @@ async function decryptGiftWrap(event, decryptors, actorPubkey) {
         throw error;
       }
 
-      const rumorSerialized = await decryptor.decrypt(sealPubkey, sealCiphertext, {
-        event: seal,
-        stage: "seal",
-      });
+      const rumorSerialized = await decryptor.decrypt(
+        sealPubkey,
+        sealCiphertext,
+        {
+          event: seal,
+          stage: "seal",
+        },
+      );
       const rumor = parseEventJson(rumorSerialized, "rumor");
       const normalizedRumor = normalizeInnerMessage(rumor);
 
@@ -437,13 +443,20 @@ async function decryptGiftWrap(event, decryptors, actorPubkey) {
         },
       });
     } catch (error) {
-      errors.push({
+      throw {
         scheme: decryptor.scheme || "",
         source: decryptor.source || "",
         stage: error?.stage || "wrap",
         error,
-      });
+      };
     }
+  };
+
+  try {
+    return await Promise.any(decryptors.map(attemptUnwrap));
+  } catch (aggregateError) {
+    const aggregatedErrors = aggregateError.errors || [];
+    errors.push(...aggregatedErrors);
   }
 
   return buildDecryptResult({
@@ -501,53 +514,68 @@ async function decryptLegacyDm(event, decryptors, actorPubkey) {
     registerRemote(recipient?.pubkey);
   }
 
-  for (const decryptor of ordered) {
-    for (const remotePubkey of remoteCandidates) {
-      try {
-        const plaintext = await decryptor.decrypt(remotePubkey, ciphertext, {
-          event,
-          stage: "content",
-          remotePubkey,
-        });
+  const attemptDecryption = async (decryptor, remotePubkey) => {
+    try {
+      const plaintext = await decryptor.decrypt(remotePubkey, ciphertext, {
+        event,
+        stage: "content",
+        remotePubkey,
+      });
 
-        if (typeof plaintext === "string") {
-          const resolvedScheme =
-            normalizeScheme(hints.algorithms?.[0]) ||
-            normalizeScheme(decryptor.scheme) ||
-            "";
-          return buildDecryptResult({
-            ok: true,
-            event,
-            message: {
-              ...cloneEvent(event),
-              content: plaintext,
-            },
-            plaintext,
-            recipients,
-            senderPubkey,
-            actorPubkey,
-            decryptor,
-            scheme: resolvedScheme,
-          });
-        }
-      } catch (error) {
-        errors.push({
-          scheme: decryptor.scheme || "",
-          source: decryptor.source || "",
-          stage: "content",
-          remotePubkey,
-          error,
+      if (typeof plaintext === "string") {
+        const resolvedScheme =
+          normalizeScheme(hints.algorithms?.[0]) ||
+          normalizeScheme(decryptor.scheme) ||
+          "";
+        return buildDecryptResult({
+          ok: true,
+          event,
+          message: {
+            ...cloneEvent(event),
+            content: plaintext,
+          },
+          plaintext,
+          recipients,
+          senderPubkey,
+          actorPubkey,
+          decryptor,
+          scheme: resolvedScheme,
         });
       }
+      throw new Error("Decrypted content was not a valid string.");
+    } catch (error) {
+      throw {
+        scheme: decryptor.scheme || "",
+        source: decryptor.source || "",
+        stage: "content",
+        remotePubkey,
+        error,
+      };
+    }
+  };
+
+  const attempts = [];
+  for (const decryptor of ordered) {
+    for (const remotePubkey of remoteCandidates) {
+      attempts.push(attemptDecryption(decryptor, remotePubkey));
     }
   }
 
-  return buildDecryptResult({
-    ok: false,
-    event,
-    actorPubkey,
-    errors,
-  });
+  // Race all decryption attempts to return the first successful result
+  // This significantly reduces latency compared to sequential attempts
+  try {
+    return await Promise.any(attempts);
+  } catch (aggregateError) {
+    const aggregatedErrors = aggregateError.errors || [];
+    errors.push(...aggregatedErrors);
+
+    return buildDecryptResult({
+      ok: false,
+      event,
+      actorPubkey,
+      errors,
+    });
+  }
 }
 
 export async function decryptDM(event, context = {}) {

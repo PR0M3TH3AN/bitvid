@@ -1,7 +1,7 @@
 // js/nostr/signerHelpers.js
 
 import { devLogger } from "../utils/logger.js";
-import { HEX64_REGEX } from "./nip46Client.js";
+import { HEX64_REGEX } from "../utils/hex.js";
 import { ensureNostrTools, getCachedNostrTools } from "./toolkit.js";
 import { normalizeActorKey } from "./watchHistory.js";
 

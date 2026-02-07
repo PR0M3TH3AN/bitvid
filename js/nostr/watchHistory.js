@@ -24,6 +24,16 @@ import { DEFAULT_NIP07_PERMISSION_METHODS } from "./nip07Permissions.js";
 import { devLogger, userLogger } from "../utils/logger.js";
 import { profileCache } from "../state/profileCache.js";
 import { queueSignEvent } from "./signRequestQueue.js";
+import {
+  normalizePointerInput,
+  normalizePointerTag,
+  pointerKey,
+  clonePointerItem,
+  mergePointerDetails,
+} from "../utils/pointerNormalization.js";
+import { pMap } from "../utils/asyncUtils.js";
+
+export { normalizePointerInput, pointerKey };
 
 /**
  * Domain utilities for watch-history interactions. This module owns pointer
@@ -40,166 +50,6 @@ const WATCH_HISTORY_ENCRYPTION_FALLBACK_ORDER = Object.freeze([
   "nip44",
   "nip04",
 ]);
-
-function mergePointerDetails(target, source) {
-  if (!target || typeof target !== "object" || !source || typeof source !== "object") {
-    return target;
-  }
-  if (source.session === true) {
-    target.session = true;
-  }
-  if (Number.isFinite(source.resumeAt)) {
-    target.resumeAt = Math.max(0, Math.floor(source.resumeAt));
-  }
-  if (source.completed === true) {
-    target.completed = true;
-  }
-  if (Number.isFinite(source.watchedAt)) {
-    target.watchedAt = Math.max(0, Math.floor(source.watchedAt));
-  }
-  if (typeof source.relay === "string" && source.relay.trim()) {
-    if (!target.relay || !target.relay.trim()) {
-      target.relay = source.relay.trim();
-    }
-  }
-  return target;
-}
-
-function clonePointerItem(pointer) {
-  if (!pointer || typeof pointer !== "object") {
-    return null;
-  }
-
-  const cloned = {
-    type: pointer.type === "a" ? "a" : "e",
-    value: typeof pointer.value === "string" ? pointer.value.trim() : "",
-  };
-
-  if (!cloned.value) {
-    return null;
-  }
-
-  if (typeof pointer.relay === "string" && pointer.relay.trim()) {
-    cloned.relay = pointer.relay.trim();
-  }
-
-  if (Number.isFinite(pointer.watchedAt)) {
-    cloned.watchedAt = Math.max(0, Math.floor(pointer.watchedAt));
-  }
-
-  if (Number.isFinite(pointer.resumeAt)) {
-    cloned.resumeAt = Math.max(0, Math.floor(pointer.resumeAt));
-  }
-
-  if (pointer.completed === true) {
-    cloned.completed = true;
-  }
-
-  if (pointer.session === true) {
-    cloned.session = true;
-  }
-
-  return cloned;
-}
-
-export function pointerKey(pointer) {
-  if (!pointer) {
-    return "";
-  }
-  const type = pointer.type === "a" ? "a" : "e";
-  const value = typeof pointer.value === "string" ? pointer.value.trim().toLowerCase() : "";
-  if (!type || !value) {
-    return "";
-  }
-  return `${type}:${value}`;
-}
-
-function normalizePointerTag(tag) {
-  if (!Array.isArray(tag) || tag.length < 2) {
-    return null;
-  }
-  const type = tag[0] === "a" ? "a" : tag[0] === "e" ? "e" : "";
-  if (!type) {
-    return null;
-  }
-  const value = typeof tag[1] === "string" ? tag[1].trim() : "";
-  if (!value) {
-    return null;
-  }
-  const relay =
-    tag.length > 2 && typeof tag[2] === "string" && tag[2].trim()
-      ? tag[2].trim()
-      : null;
-  return { type, value, relay };
-}
-
-export function normalizePointerInput(pointer) {
-  if (!pointer) {
-    return null;
-  }
-  if (Array.isArray(pointer)) {
-    return normalizePointerTag(pointer);
-  }
-  if (typeof pointer === "object") {
-    if (typeof pointer.type === "string" && typeof pointer.value === "string") {
-      return clonePointerItem(pointer);
-    }
-    if (Array.isArray(pointer.tag)) {
-      return normalizePointerTag(pointer.tag);
-    }
-  }
-  if (typeof pointer !== "string") {
-    return null;
-  }
-  const trimmed = pointer.trim();
-  if (!trimmed) {
-    return null;
-  }
-  if (trimmed.startsWith("naddr") || trimmed.startsWith("nevent")) {
-    try {
-      const decoder = getCachedNostrTools()?.nip19?.decode;
-      if (typeof decoder === "function") {
-        const decoded = decoder(trimmed);
-        if (decoded?.type === "naddr" && decoded.data) {
-          const { kind, pubkey, identifier, relays } = decoded.data;
-          if (
-            typeof kind === "number" &&
-            typeof pubkey === "string" &&
-            typeof identifier === "string"
-          ) {
-            const relay =
-              Array.isArray(relays) && relays.length && typeof relays[0] === "string"
-                ? relays[0]
-                : null;
-            return {
-              type: "a",
-              value: `${kind}:${pubkey}:${identifier}`,
-              relay,
-            };
-          }
-        }
-        if (decoded?.type === "nevent" && decoded.data) {
-          const { id, relays } = decoded.data;
-          if (typeof id === "string" && id.trim()) {
-            const relay =
-              Array.isArray(relays) && relays.length && typeof relays[0] === "string"
-                ? relays[0]
-                : null;
-            return {
-              type: "e",
-              value: id.trim(),
-              relay,
-            };
-          }
-        }
-      }
-    } catch (error) {
-      devLogger.warn(`[nostr] Failed to decode pointer ${trimmed}:`, error);
-    }
-  }
-  const type = trimmed.includes(":") ? "a" : "e";
-  return { type, value: trimmed, relay: null };
-}
 
 function extractPointerItemsFromEvent(event) {
   const items = [];
@@ -1283,23 +1133,29 @@ class WatchHistoryManager {
      // High level wrapper to publish multiple months
      // records is { "YYYY-MM": [items] }
 
-     const results = [];
      let allOk = true;
      let anyRetryable = false;
 
      const months = Object.keys(records).sort();
-     for (const month of months) {
+
+     const results = await pMap(
+       months,
+       async (month) => {
          const items = records[month];
          // Ideally we check if this month changed before publishing.
          // For now, we rely on the caller or just publish.
          // In a real optimized system we'd track dirty flags per month.
 
-         const res = await this.publishMonthRecord(month, items, options);
-         results.push(res);
-         if (!res.ok) {
-             allOk = false;
-             if (res.retryable) anyRetryable = true;
-         }
+         return this.publishMonthRecord(month, items, options);
+       },
+       { concurrency: 5 },
+     );
+
+     for (const res of results) {
+       if (!res.ok) {
+         allOk = false;
+         if (res.retryable) anyRetryable = true;
+       }
      }
 
      return {
@@ -1604,7 +1460,12 @@ class WatchHistoryManager {
       devLogger.warn("[nostr] Failed to sign watch history event:", error);
       return { ok: false, error: "signing-failed", retryable: false };
     }
-    const publishResults = await publishEventToRelays(pool, relays, signedEvent);
+    const publishResults = await publishEventToRelays(
+      pool,
+      relays,
+      signedEvent,
+      { waitForAll: true },
+    );
     const relayStatus = formatRelayStatus(publishResults);
     const acceptedCount = relayStatus.filter((entry) => entry.success).length;
     let anyRejected = false;
@@ -2052,27 +1913,33 @@ class WatchHistoryManager {
         const chunkEvents = Array.isArray(results)
           ? results.flat().filter((event) => event && typeof event === "object")
           : [];
-        for (const event of chunkEvents) {
-          const ciphertext = typeof event.content === "string" ? event.content : "";
-          if (!ciphertext) {
-            continue;
-          }
-          let plaintext = "";
-          if (typeof decryptSigner.nip04Decrypt === "function") {
-            try {
-              plaintext = await decryptSigner.nip04Decrypt(actorKey, ciphertext);
-            } catch (error) {
-              devLogger.warn("[nostr] Failed to decrypt watch history chunk:", error);
+        const chunkResults = await pMap(
+          chunkEvents,
+          async (event) => {
+            const ciphertext = typeof event.content === "string" ? event.content : "";
+            if (!ciphertext) {
+              return [];
             }
-          }
-          if (!plaintext) {
-            continue;
-          }
-          const parsed = parseWatchHistoryPayload(plaintext);
-          if (Array.isArray(parsed.items) && parsed.items.length) {
-            decryptedItems.push(...parsed.items);
-          }
-        }
+            let plaintext = "";
+            if (typeof decryptSigner.nip04Decrypt === "function") {
+              try {
+                plaintext = await decryptSigner.nip04Decrypt(actorKey, ciphertext);
+              } catch (error) {
+                devLogger.warn("[nostr] Failed to decrypt watch history chunk:", error);
+              }
+            }
+            if (!plaintext) {
+              return [];
+            }
+            const parsed = parseWatchHistoryPayload(plaintext);
+            if (Array.isArray(parsed.items) && parsed.items.length) {
+              return parsed.items;
+            }
+            return [];
+          },
+          { concurrency: 5 },
+        );
+        decryptedItems.push(...chunkResults.flat());
       } catch (error) {
         devLogger.warn("[nostr] Failed to fetch watch history chunks:", error);
       }

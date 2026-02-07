@@ -6,6 +6,7 @@ import { resolveVideoPointer } from "./utils/videoPointer.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import { nostrToolsReady } from "./nostrToolsBootstrap.js";
 import { THEME_ACCENT_OVERRIDES } from "../config/instance-config.js";
+import { HEX64_REGEX } from "./utils/hex.js";
 
 // Set accent color from instance config
 try {
@@ -51,7 +52,7 @@ const diagPromise = embedDebugEnabled
 
 const POINTER_PARAM = "pointer";
 const PLAYBACK_PARAM = "playback";
-const HEX64_REGEX = /^[0-9a-f]{64}$/i;
+
 
 const statusEl = document.getElementById("embedStatus");
 const videoEl = document.getElementById("embedVideo");

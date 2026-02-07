@@ -46,8 +46,9 @@ import {
   isLinkPreviewDomainAllowed,
   subscribeToLinkPreviewSettings,
 } from "../../utils/linkPreviewSettings.js";
+import { HEX64_REGEX } from "../../utils/hex.js";
 
-const HEX64_REGEX = /^[0-9a-f]{64}$/i;
+
 const SIMILAR_CONTENT_LIMIT = 10;
 
 export class VideoModal {

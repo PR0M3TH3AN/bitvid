@@ -1,57 +1,34 @@
 import { devLogger } from "../utils/logger.js";
-import { normalizeHashtag } from "../utils/hashtagNormalization.js";
-import { normalizePointerInput } from "../nostr/watchHistory.js";
-import { buildVideoAddressPointer } from "../utils/videoPointer.js";
 
 const DEFAULT_IDF_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const DEFAULT_HISTORY_REFRESH_INTERVAL_MS = 60 * 1000;
 const DEFAULT_REFRESH_DEBOUNCE_MS = 200;
-const YIELD_CHUNK_SIZE = 500;
 
-const yieldToMain = () => new Promise((resolve) => setTimeout(resolve, 0));
-
-function normalizeAddressKey(value) {
-  if (typeof value !== "string") {
-    return "";
+let workerInstance = null;
+function getWorker() {
+  if (!workerInstance) {
+    workerInstance = new Worker(new URL("../workers/exploreData.worker.js", import.meta.url), { type: "module" });
   }
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return "";
-  }
-  return trimmed.toLowerCase();
+  return workerInstance;
 }
 
-function collectVideoTags(video) {
-  const tags = new Set();
-
-  if (!video || typeof video !== "object") {
-    return tags;
-  }
-
-  if (Array.isArray(video.tags)) {
-    for (const tag of video.tags) {
-      if (Array.isArray(tag) && tag[0] === "t" && typeof tag[1] === "string") {
-        const normalized = normalizeHashtag(tag[1]);
-        if (normalized) {
-          tags.add(normalized);
+function runWorkerTask(type, payload) {
+  return new Promise((resolve, reject) => {
+    const worker = getWorker();
+    const id = crypto.randomUUID();
+    const handler = (e) => {
+      if (e.data.id === id) {
+        worker.removeEventListener("message", handler);
+        if (e.data.error) {
+          reject(new Error(e.data.error));
+        } else {
+          resolve(e.data.result);
         }
       }
-    }
-  }
-
-  if (Array.isArray(video.nip71?.hashtags)) {
-    for (const tag of video.nip71.hashtags) {
-      if (typeof tag !== "string") {
-        continue;
-      }
-      const normalized = normalizeHashtag(tag);
-      if (normalized) {
-        tags.add(normalized);
-      }
-    }
-  }
-
-  return tags;
+    };
+    worker.addEventListener("message", handler);
+    worker.postMessage({ type, id, payload });
+  });
 }
 
 export async function buildWatchHistoryTagCounts({
@@ -78,102 +55,28 @@ export async function buildWatchHistoryTagCounts({
       ? nostrService.getVideosMap()
       : new Map();
 
-  const needsAddressIndex = Array.isArray(items)
-    ? items.some((item) => {
-        const pointer = normalizePointerInput(item?.pointer || item);
-        return pointer?.type === "a";
-      })
-    : false;
-
-  let addressIndex = null;
-  if (needsAddressIndex) {
-    addressIndex = new Map();
-    for (const video of videosMap.values()) {
-      const address = buildVideoAddressPointer(video);
-      const key = normalizeAddressKey(address);
-      if (key) {
-        addressIndex.set(key, video);
-      }
-    }
+  try {
+    const counts = await runWorkerTask('CALC_HISTORY_COUNTS', { items, videosMap });
+    return counts instanceof Map ? counts : new Map();
+  } catch (error) {
+    devLogger.warn("[exploreData] Worker failed to calculate history counts:", error);
+    return new Map();
   }
-
-  const counts = new Map();
-  if (!Array.isArray(items)) {
-    return counts;
-  }
-
-  for (let i = 0; i < items.length; i++) {
-    const entry = items[i];
-    const pointer = normalizePointerInput(entry?.pointer || entry);
-    let video = entry?.video || entry?.metadata?.video || null;
-
-    if (pointer?.type === "e" && pointer.value) {
-      const eventId = typeof pointer.value === "string" ? pointer.value.trim() : "";
-      if (eventId) {
-        video = videosMap.get(eventId) || videosMap.get(eventId.toLowerCase()) || video;
-      }
-    } else if (pointer?.type === "a" && pointer.value && addressIndex) {
-      const key = normalizeAddressKey(pointer.value);
-      if (key && addressIndex.has(key)) {
-        video = addressIndex.get(key);
-      }
-    }
-
-    if (!video) {
-      continue;
-    }
-
-    const tags = collectVideoTags(video);
-    for (const tag of tags) {
-      counts.set(tag, (counts.get(tag) || 0) + 1);
-    }
-
-    if (i > 0 && i % YIELD_CHUNK_SIZE === 0) {
-      await yieldToMain();
-    }
-  }
-
-  return counts;
 }
 
 export async function buildTagIdf({ videos } = {}) {
-  const idf = new Map();
   const list = Array.isArray(videos) ? videos : [];
   if (!list.length) {
-    return idf;
+    return new Map();
   }
 
-  const docFrequency = new Map();
-  const totalDocs = list.length;
-
-  for (let i = 0; i < list.length; i++) {
-    const video = list[i];
-    const tags = collectVideoTags(video);
-    if (tags.size) {
-      for (const tag of tags) {
-        docFrequency.set(tag, (docFrequency.get(tag) || 0) + 1);
-      }
-    }
-
-    if (i > 0 && i % YIELD_CHUNK_SIZE === 0) {
-      await yieldToMain();
-    }
+  try {
+    const idf = await runWorkerTask('CALC_IDF', { videos: list });
+    return idf instanceof Map ? idf : new Map();
+  } catch (error) {
+    devLogger.warn("[exploreData] Worker failed to calculate IDF:", error);
+    return new Map();
   }
-
-  let processedCount = 0;
-  for (const [tag, df] of docFrequency.entries()) {
-    const ratio = (totalDocs + 1) / (df + 1);
-    const value = 1 + Math.log(ratio);
-    if (Number.isFinite(value) && value > 0) {
-      idf.set(tag, value);
-    }
-    processedCount++;
-    if (processedCount % YIELD_CHUNK_SIZE === 0) {
-      await yieldToMain();
-    }
-  }
-
-  return idf;
 }
 
 export default class ExploreDataService {
