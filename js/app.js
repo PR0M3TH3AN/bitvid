@@ -988,7 +988,7 @@ class Application {
         devLogger.warn("Failed to initialize view counter:", error);
       }
 
-      const accessControlPromise = accessControl
+      accessControl
         .refresh()
         .then(() => {
           if (
@@ -1008,18 +1008,16 @@ class Application {
           );
         });
 
-      const adminPanePromise = this.profileController
-        ? Promise.resolve()
-            .then(() => this.profileController.refreshAdminPaneState())
-            .catch((error) => {
-              devLogger.warn(
-                "Failed to update admin pane after connecting to Nostr:",
-                error,
-              );
-            })
-        : Promise.resolve(null);
-
-      // await Promise.all([accessControlPromise, adminPanePromise]);
+      if (this.profileController) {
+        Promise.resolve()
+          .then(() => this.profileController.refreshAdminPaneState())
+          .catch((error) => {
+            devLogger.warn(
+              "Failed to update admin pane after connecting to Nostr:",
+              error
+            );
+          });
+      }
 
       const syncSessionActorBlacklist = async (trigger) => {
         if (this.pubkey) {
