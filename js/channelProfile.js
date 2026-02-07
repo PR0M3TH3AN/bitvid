@@ -238,23 +238,26 @@ function decorateChannelVideo(video, app = getApp()) {
   return decoratedVideo;
 }
 
-function collectChannelVideos(pubkey, app = getApp()) {
+export async function collectChannelVideos(pubkey, app = getApp()) {
   const normalized = normalizeHex(pubkey);
   if (!normalized) {
     return [];
   }
 
-  try {
-    const index = nostrService.ensureVideosByAuthorIndex();
-    const matches = index.get(normalized);
-    if (Array.isArray(matches)) {
-      return [...matches];
+  const service = app?.nostrService || nostrService;
+  if (service && typeof service.ensureVideosByAuthorIndex === "function") {
+    try {
+      const index = service.ensureVideosByAuthorIndex();
+      const indexMatches = index.get(normalized);
+      if (indexMatches !== undefined) {
+        return Array.isArray(indexMatches) ? [...indexMatches] : [];
+      }
+    } catch (error) {
+      devLogger.warn(
+        "[ChannelProfile] Failed to lookup videos via author index:",
+        error,
+      );
     }
-  } catch (error) {
-    devLogger.warn(
-      "[ChannelProfile] Failed to use author video index; falling back to linear scan.",
-      error,
-    );
   }
 
   if (!app || !(app.videosMap instanceof Map)) {
@@ -1104,6 +1107,10 @@ function refreshChannelVideoCardModeration(
     sourceMap.set(videoId, nextVideo);
   }
 
+  if (nextVideo) {
+    nostrService.cacheVideos([nextVideo]);
+  }
+
   if (!card || !nextVideo) {
     return Boolean(nextVideo);
   }
@@ -1184,8 +1191,9 @@ function handleVideoModerationEvent(event) {
   const app = getApp();
   const decoratedVideo = decorateChannelVideo(video, app) || video;
   if (app?.videosMap instanceof Map) {
-    nostrService.cacheVideos([decoratedVideo]);
+    app.videosMap.set(videoId, decoratedVideo);
   }
+  nostrService.cacheVideos([decoratedVideo]);
 
   refreshChannelVideoCardModeration(videoId, {
     app,
@@ -4685,6 +4693,9 @@ export async function renderChannelVideosFromList({
       continue;
     }
 
+    if (app?.videosMap instanceof Map) {
+      app.videosMap.set(video.id, video);
+    }
     videosToCache.push(video);
 
     const index = renderIndex++;
