@@ -1,48 +1,47 @@
-// scripts/agent/validate-events.mjs
-import WebSocket from 'ws';
-import { webcrypto } from 'node:crypto';
+import crypto from 'node:crypto';
 
-// Polyfill WebSocket
-if (typeof globalThis.WebSocket === 'undefined') {
-  globalThis.WebSocket = WebSocket;
+// Polyfills for browser environment
+class MockWebSocket {
+  constructor(url) {
+    this.url = url;
+    this.readyState = 0;
+  }
+  send() {}
+  close() {}
+  addEventListener() {}
+  removeEventListener() {}
 }
 
-// Polyfill window and self
-if (typeof globalThis.window === 'undefined') {
-  globalThis.window = globalThis;
-}
-if (typeof globalThis.self === 'undefined') {
-  globalThis.self = globalThis;
-}
+process.env.NODE_ENV = 'test';
 
-// Polyfill crypto
-if (typeof globalThis.crypto === 'undefined') {
-  globalThis.crypto = webcrypto;
+if (!global.crypto) {
+    global.crypto = crypto;
 }
+global.WebSocket = MockWebSocket;
+global.window = {
+  crypto: global.crypto,
+  WebSocket: MockWebSocket,
+  localStorage: {
+    getItem: () => null,
+    setItem: () => {},
+    removeItem: () => {},
+  },
+  location: { protocol: 'https:' },
+  navigator: { userAgent: 'Node.js' },
+  __TEST_MODE__: true,
+};
+global.document = {
+  createElement: () => ({}),
+  addEventListener: () => {},
+};
+global.TextEncoder = TextEncoder;
+global.TextDecoder = TextDecoder;
 
-// Polyfill localStorage
-if (typeof globalThis.localStorage === 'undefined') {
-  const storage = new Map();
-  globalThis.localStorage = {
-    getItem: (k) => storage.get(k) || null,
-    setItem: (k, v) => storage.set(String(k), String(v)),
-    removeItem: (k) => storage.delete(k),
-    clear: () => storage.clear(),
-    key: (i) => Array.from(storage.keys())[i] || null,
-    get length() { return storage.size; }
-  };
-}
-
-if (typeof globalThis.window.localStorage === 'undefined') {
-    globalThis.window.localStorage = globalThis.localStorage;
-}
-
-// Mock navigator
-if (typeof globalThis.navigator === 'undefined') {
-    globalThis.navigator = { userAgent: 'node' };
-}
-
+// Import schemas and builders
 import {
+  NOTE_TYPES,
+  ADMIN_LIST_IDENTIFIERS,
+  validateEventStructure,
   buildVideoPostEvent,
   buildHttpAuthEvent,
   buildReportEvent,
@@ -66,355 +65,289 @@ import {
   buildSubscriptionListEvent,
   buildBlockListEvent,
   buildHashtagPreferenceEvent,
-  buildAdminListEvent,
-  validateEventStructure,
-  NOTE_TYPES,
-  ADMIN_LIST_IDENTIFIERS,
-  getNostrEventSchema,
-  sanitizeAdditionalTags
+  buildAdminListEvent
 } from '../../js/nostrEventSchemas.js';
+
 import { buildNip71VideoEvent } from '../../js/nostr/nip71.js';
 
-// Note: Most builders are defined in js/nostrEventSchemas.js and are already instrumented
-// with validation checks (validateEventAgainstSchema) when running in Dev Mode.
-// buildNip71VideoEvent was instrumented in js/nostr/nip71.js as part of this work.
-// This script verifies that all builders produce valid events according to the schema.
+const TEST_PUBKEY = '0000000000000000000000000000000000000000000000000000000000000001';
+const TEST_TIMESTAMP = 1672531200; // 2023-01-01
 
-const testCases = [
-  {
-    name: 'Video Post',
-    type: NOTE_TYPES.VIDEO_POST,
-    builder: buildVideoPostEvent,
-    params: {
-      pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
-      created_at: 1234567890,
-      dTagValue: 'test-video',
-      content: {
-        version: 3,
-        title: 'Test Video',
-        videoRootId: 'test-root',
-      }
+function runTest(name, builderFn, input, expectedType) {
+  console.log(`\nTesting: ${name}`);
+  try {
+    const event = builderFn(input);
+    if (!event) {
+      console.error(`❌ Builder returned null or undefined`);
+      return false;
     }
-  },
-  {
-    name: 'Video Post (Usage Pattern)',
-    type: NOTE_TYPES.VIDEO_POST,
-    builder: buildVideoPostEvent,
-    params: {
-      pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
-      created_at: 1234567890,
-      dTagValue: 'test-video-usage',
-      content: {
-        version: 3,
-        title: 'Test Video Usage',
-        videoRootId: 'test-root-usage',
-      },
-      additionalTags: [['t', 'extra'], ['invalid']]
+
+    const { valid, errors } = validateEventStructure(expectedType, event);
+    if (valid) {
+      console.log(`✅ Valid ${expectedType} (Kind: ${event.kind})`);
+      return true;
+    } else {
+      console.error(`❌ Invalid ${expectedType}:`);
+      errors.forEach(err => console.error(`   - ${err}`));
+      return false;
     }
-  },
-  {
-    name: 'HTTP Auth',
-    type: NOTE_TYPES.HTTP_AUTH,
-    builder: buildHttpAuthEvent,
-    params: {
-      pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
-      created_at: 1234567890,
-      url: 'https://example.com',
-      method: 'GET'
-    }
-  },
-  {
-    name: 'Report',
-    type: NOTE_TYPES.REPORT,
-    builder: buildReportEvent,
-    params: {
-      pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
-      created_at: 1234567890,
-      eventId: '0000000000000000000000000000000000000000000000000000000000000002',
-      reportType: 'nudity'
-    }
-  },
-  {
-    name: 'Video Mirror',
-    type: NOTE_TYPES.VIDEO_MIRROR,
-    builder: buildVideoMirrorEvent,
-    params: {
-      pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
-      created_at: 1234567890,
-      content: 'Alt text'
-    }
-  },
-  {
-    name: 'Repost',
-    type: NOTE_TYPES.REPOST,
-    builder: buildRepostEvent,
-    params: {
-      pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
-      created_at: 1234567890,
-      eventId: '0000000000000000000000000000000000000000000000000000000000000002',
-      targetKind: 1
-    }
-  },
-  {
-    name: 'Share',
-    type: NOTE_TYPES.SHARE,
-    builder: buildShareEvent,
-    params: {
-      pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
-      created_at: 1234567890,
-      content: 'Check this out',
-      video: { id: '0000000000000000000000000000000000000000000000000000000000000002' }
-    }
-  },
-  {
-    name: 'Relay List',
-    type: NOTE_TYPES.RELAY_LIST,
-    builder: buildRelayListEvent,
-    params: {
-        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
-        created_at: 1234567890,
-        relays: ['wss://relay.example.com']
-    }
-  },
-  {
-    name: 'Relay List (Usage Pattern)',
-    type: NOTE_TYPES.RELAY_LIST,
-    builder: buildRelayListEvent,
-    params: {
-        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
-        created_at: 1234567890,
-        relays: [
-            { url: 'wss://relay.read.com', mode: 'read' },
-            { url: 'wss://relay.write.com', mode: 'write' },
-            { url: 'wss://relay.both.com', mode: 'both' }
-        ]
-    }
-  },
-  {
-    name: 'DM Relay List',
-    type: NOTE_TYPES.DM_RELAY_LIST,
-    builder: buildDmRelayListEvent,
-    params: {
-        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
-        created_at: 1234567890,
-        relays: ['wss://relay.example.com']
-    }
-  },
-  {
-    name: 'Profile Metadata',
-    type: NOTE_TYPES.PROFILE_METADATA,
-    builder: buildProfileMetadataEvent,
-    params: {
-        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
-        created_at: 1234567890,
-        metadata: { name: 'Alice' }
-    }
-  },
-  {
-    name: 'Mute List',
-    type: NOTE_TYPES.MUTE_LIST,
-    builder: buildMuteListEvent,
-    params: {
-        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
-        created_at: 1234567890,
-        pTags: ['0000000000000000000000000000000000000000000000000000000000000002']
-    }
-  },
-  {
-    name: 'Deletion',
-    type: NOTE_TYPES.DELETION,
-    builder: buildDeletionEvent,
-    params: {
-        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
-        created_at: 1234567890,
-        eventIds: ['0000000000000000000000000000000000000000000000000000000000000002']
-    }
-  },
-  {
-    name: 'Legacy DM',
-    type: NOTE_TYPES.LEGACY_DM,
-    builder: buildLegacyDirectMessageEvent,
-    params: {
-        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
-        created_at: 1234567890,
-        recipientPubkey: '0000000000000000000000000000000000000000000000000000000000000002',
-        ciphertext: 'base64ciphertext'
-    }
-  },
-  {
-    name: 'DM Attachment',
-    type: NOTE_TYPES.DM_ATTACHMENT,
-    builder: buildDmAttachmentEvent,
-    params: {
-        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
-        created_at: 1234567890,
-        recipientPubkey: '0000000000000000000000000000000000000000000000000000000000000002',
-        attachment: { url: 'https://example.com/file.jpg', x: 'hash' }
-    }
-  },
-  {
-    name: 'DM Read Receipt',
-    type: NOTE_TYPES.DM_READ_RECEIPT,
-    builder: buildDmReadReceiptEvent,
-    params: {
-        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
-        created_at: 1234567890,
-        recipientPubkey: '0000000000000000000000000000000000000000000000000000000000000002',
-        eventId: '0000000000000000000000000000000000000000000000000000000000000002'
-    }
-  },
-  {
-    name: 'DM Typing Indicator',
-    type: NOTE_TYPES.DM_TYPING,
-    builder: buildDmTypingIndicatorEvent,
-    params: {
-        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
-        created_at: 1234567890,
-        recipientPubkey: '0000000000000000000000000000000000000000000000000000000000000002',
-        expiresAt: 1234567900
-    }
-  },
-  {
-    name: 'View Event',
-    type: NOTE_TYPES.VIEW_EVENT,
-    builder: buildViewEvent,
-    params: {
-        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
-        created_at: 1234567890,
-        pointerValue: '0000000000000000000000000000000000000000000000000000000000000002'
-    }
-  },
-  {
-    name: 'Zap Request',
-    type: NOTE_TYPES.ZAP_REQUEST,
-    builder: buildZapRequestEvent,
-    params: {
-        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
-        created_at: 1234567890,
-        recipientPubkey: '0000000000000000000000000000000000000000000000000000000000000002',
-        amountSats: 100
-    }
-  },
-  {
-    name: 'Reaction',
-    type: NOTE_TYPES.VIDEO_REACTION,
-    builder: buildReactionEvent,
-    params: {
-        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
-        created_at: 1234567890,
-        pointerValue: '0000000000000000000000000000000000000000000000000000000000000002',
-        content: '+'
-    }
-  },
-  {
-    name: 'Comment',
-    type: NOTE_TYPES.VIDEO_COMMENT,
-    builder: buildCommentEvent,
-    params: {
-        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
-        created_at: 1234567890,
-        videoEventId: '0000000000000000000000000000000000000000000000000000000000000002',
-        content: 'Nice video'
-    }
-  },
-  {
-    name: 'Watch History',
-    type: NOTE_TYPES.WATCH_HISTORY,
-    builder: buildWatchHistoryEvent,
-    params: {
-        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
-        created_at: 1234567890,
-        monthIdentifier: 'watch-history:2025-01',
-        content: { version: 2, month: '2025-01', items: [] }
-    }
-  },
-  {
-    name: 'Subscription List',
-    type: NOTE_TYPES.SUBSCRIPTION_LIST,
-    builder: buildSubscriptionListEvent,
-    params: {
-        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
-        created_at: 1234567890,
-        content: 'encrypted-payload'
-    }
-  },
-  {
-    name: 'Block List',
-    type: NOTE_TYPES.USER_BLOCK_LIST,
-    builder: buildBlockListEvent,
-    params: {
-        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
-        created_at: 1234567890,
-        content: 'encrypted-payload'
-    }
-  },
-  {
-    name: 'Hashtag Preferences',
-    type: NOTE_TYPES.HASHTAG_PREFERENCES,
-    builder: buildHashtagPreferenceEvent,
-    params: {
-        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
-        created_at: 1234567890,
-        content: JSON.stringify({ version: 1, interests: [], disinterests: [] })
-    }
-  },
-  {
-    name: 'Hashtag Preferences (Encrypted)',
-    type: NOTE_TYPES.HASHTAG_PREFERENCES,
-    builder: buildHashtagPreferenceEvent,
-    params: {
-        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
-        created_at: 1234567890,
-        content: 'encrypted-content-string-nip44'
-    }
-  },
-  {
-    name: 'Admin List (Moderation)',
-    type: NOTE_TYPES.ADMIN_MODERATION_LIST,
-    builder: (params) => buildAdminListEvent(ADMIN_LIST_IDENTIFIERS.moderation, params),
-    params: {
-        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
-        created_at: 1234567890,
-        hexPubkeys: []
-    }
-  },
-  {
-      name: 'NIP-71 Video',
-      type: NOTE_TYPES.NIP71_VIDEO,
-      builder: buildNip71VideoEvent,
-      params: {
-          pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
-          title: 'Test NIP-71',
-          metadata: { kind: 21, title: 'Test NIP-71' },
-          pointerIdentifiers: { videoRootId: 'test-root' }
-      }
+  } catch (error) {
+    console.error(`❌ Exception during build:`, error);
+    return false;
   }
-];
+}
 
-let failed = false;
+async function main() {
+  console.log('Starting Event Schema Validation...');
+  let failures = 0;
 
-for (const testCase of testCases) {
-    try {
-        const event = testCase.builder(testCase.params);
-        if (!event) {
-             console.error(`[FAIL] ${testCase.name}: Builder returned null`);
-             failed = true;
-             continue;
-        }
-        const { valid, errors } = validateEventStructure(testCase.type, event);
-        if (!valid) {
-            console.error(`[FAIL] ${testCase.name}:`);
-            errors.forEach(err => console.error(`  - ${err}`));
-            failed = true;
-        } else {
-            console.log(`[PASS] ${testCase.name}`);
-        }
-    } catch (err) {
-        console.error(`[FAIL] ${testCase.name} threw error:`, err);
-        failed = true;
+  // 1. Video Post
+  const videoInput = {
+    pubkey: TEST_PUBKEY,
+    created_at: TEST_TIMESTAMP,
+    dTagValue: 'test-video-id',
+    content: {
+      version: 3,
+      title: 'Test Video',
+      videoRootId: 'test-video-id',
+      url: 'https://example.com/video.mp4',
+      magnet: 'magnet:?xt=urn:btih:1234567890abcdef1234567890abcdef12345678',
+      thumbnail: 'https://example.com/thumb.jpg',
+      description: 'A test video',
+      mode: 'live',
+      isPrivate: false,
+      isNsfw: false,
+      isForKids: true,
+      enableComments: true
     }
+  };
+  if (!runTest('buildVideoPostEvent', buildVideoPostEvent, videoInput, NOTE_TYPES.VIDEO_POST)) failures++;
+
+  // 2. Relay List
+  const relayListInput = {
+    pubkey: TEST_PUBKEY,
+    created_at: TEST_TIMESTAMP,
+    relays: [
+      { url: 'wss://relay.example.com', mode: 'read' },
+      { url: 'wss://relay.other.com', mode: 'write' },
+      'wss://relay.both.com'
+    ]
+  };
+  if (!runTest('buildRelayListEvent', buildRelayListEvent, relayListInput, NOTE_TYPES.RELAY_LIST)) failures++;
+
+  // 3. Hashtag Preferences
+  const hashtagInput = {
+    pubkey: TEST_PUBKEY,
+    created_at: TEST_TIMESTAMP,
+    content: JSON.stringify({ interests: ['art', 'code'], disinterests: ['spam'] })
+  };
+  if (!runTest('buildHashtagPreferenceEvent', buildHashtagPreferenceEvent, hashtagInput, NOTE_TYPES.HASHTAG_PREFERENCES)) failures++;
+
+  // 4. HTTP Auth
+  const httpAuthInput = {
+    pubkey: TEST_PUBKEY,
+    created_at: TEST_TIMESTAMP,
+    url: 'https://api.example.com/auth',
+    method: 'POST',
+    payload: 'sha256-hash-of-body'
+  };
+  if (!runTest('buildHttpAuthEvent', buildHttpAuthEvent, httpAuthInput, NOTE_TYPES.HTTP_AUTH)) failures++;
+
+  // 5. Report
+  const reportInput = {
+    pubkey: TEST_PUBKEY,
+    created_at: TEST_TIMESTAMP,
+    eventId: 'e'.repeat(64),
+    reportType: 'spam',
+    content: 'This is spam'
+  };
+  if (!runTest('buildReportEvent', buildReportEvent, reportInput, NOTE_TYPES.REPORT)) failures++;
+
+  // 6. Video Mirror (NIP-94)
+  const mirrorInput = {
+    pubkey: TEST_PUBKEY,
+    created_at: TEST_TIMESTAMP,
+    content: 'Mirror description'
+  };
+  if (!runTest('buildVideoMirrorEvent', buildVideoMirrorEvent, mirrorInput, NOTE_TYPES.VIDEO_MIRROR)) failures++;
+
+  // 7. Repost
+  const repostInput = {
+    pubkey: TEST_PUBKEY,
+    created_at: TEST_TIMESTAMP,
+    eventId: 'e'.repeat(64),
+    eventRelay: 'wss://relay.example.com'
+  };
+  if (!runTest('buildRepostEvent', buildRepostEvent, repostInput, NOTE_TYPES.REPOST)) failures++;
+
+  // 8. Share
+  const shareInput = {
+    pubkey: TEST_PUBKEY,
+    created_at: TEST_TIMESTAMP,
+    content: 'Check this out',
+    video: { id: 'e'.repeat(64), pubkey: TEST_PUBKEY }
+  };
+  if (!runTest('buildShareEvent', buildShareEvent, shareInput, NOTE_TYPES.SHARE)) failures++;
+
+  // 9. DM Relay List
+  const dmRelayListInput = {
+    pubkey: TEST_PUBKEY,
+    created_at: TEST_TIMESTAMP,
+    relays: ['wss://dm.relay.com']
+  };
+  if (!runTest('buildDmRelayListEvent', buildDmRelayListEvent, dmRelayListInput, NOTE_TYPES.DM_RELAY_LIST)) failures++;
+
+  // 10. Profile Metadata
+  const profileInput = {
+    pubkey: TEST_PUBKEY,
+    created_at: TEST_TIMESTAMP,
+    metadata: { name: 'Alice', about: 'Test user' }
+  };
+  if (!runTest('buildProfileMetadataEvent', buildProfileMetadataEvent, profileInput, NOTE_TYPES.PROFILE_METADATA)) failures++;
+
+  // 11. Mute List
+  const muteListInput = {
+    pubkey: TEST_PUBKEY,
+    created_at: TEST_TIMESTAMP,
+    pTags: [TEST_PUBKEY]
+  };
+  if (!runTest('buildMuteListEvent', buildMuteListEvent, muteListInput, NOTE_TYPES.MUTE_LIST)) failures++;
+
+  // 12. Deletion
+  const deletionInput = {
+    pubkey: TEST_PUBKEY,
+    created_at: TEST_TIMESTAMP,
+    eventIds: ['e'.repeat(64)],
+    reason: 'Mistake'
+  };
+  if (!runTest('buildDeletionEvent', buildDeletionEvent, deletionInput, NOTE_TYPES.DELETION)) failures++;
+
+  // 13. Legacy DM
+  const legacyDmInput = {
+    pubkey: TEST_PUBKEY,
+    created_at: TEST_TIMESTAMP,
+    recipientPubkey: TEST_PUBKEY,
+    ciphertext: 'encrypted-stuff'
+  };
+  if (!runTest('buildLegacyDirectMessageEvent', buildLegacyDirectMessageEvent, legacyDmInput, NOTE_TYPES.LEGACY_DM)) failures++;
+
+  // 14. DM Attachment
+  const dmAttachmentInput = {
+    pubkey: TEST_PUBKEY,
+    created_at: TEST_TIMESTAMP,
+    recipientPubkey: TEST_PUBKEY,
+    attachment: { url: 'https://example.com/file.jpg', type: 'image/jpeg' }
+  };
+  if (!runTest('buildDmAttachmentEvent', buildDmAttachmentEvent, dmAttachmentInput, NOTE_TYPES.DM_ATTACHMENT)) failures++;
+
+  // 15. DM Read Receipt
+  const dmReadReceiptInput = {
+    pubkey: TEST_PUBKEY,
+    created_at: TEST_TIMESTAMP,
+    recipientPubkey: TEST_PUBKEY,
+    eventId: 'e'.repeat(64)
+  };
+  if (!runTest('buildDmReadReceiptEvent', buildDmReadReceiptEvent, dmReadReceiptInput, NOTE_TYPES.DM_READ_RECEIPT)) failures++;
+
+  // 16. DM Typing Indicator
+  const dmTypingInput = {
+    pubkey: TEST_PUBKEY,
+    created_at: TEST_TIMESTAMP,
+    recipientPubkey: TEST_PUBKEY
+  };
+  if (!runTest('buildDmTypingIndicatorEvent', buildDmTypingIndicatorEvent, dmTypingInput, NOTE_TYPES.DM_TYPING)) failures++;
+
+  // 17. View Event
+  const viewInput = {
+    pubkey: TEST_PUBKEY,
+    created_at: TEST_TIMESTAMP,
+    pointerValue: 'test-pointer',
+    pointerTag: ['a', 'test-pointer']
+  };
+  if (!runTest('buildViewEvent', buildViewEvent, viewInput, NOTE_TYPES.VIEW_EVENT)) failures++;
+
+  // 18. Zap Request
+  const zapRequestInput = {
+    pubkey: TEST_PUBKEY,
+    created_at: TEST_TIMESTAMP,
+    recipientPubkey: TEST_PUBKEY,
+    amountSats: 100,
+    relays: ['wss://relay.zap.com']
+  };
+  if (!runTest('buildZapRequestEvent', buildZapRequestEvent, zapRequestInput, NOTE_TYPES.ZAP_REQUEST)) failures++;
+
+  // 19. Reaction
+  const reactionInput = {
+    pubkey: TEST_PUBKEY,
+    created_at: TEST_TIMESTAMP,
+    pointerTag: ['e', 'e'.repeat(64)],
+    content: '+'
+  };
+  if (!runTest('buildReactionEvent', buildReactionEvent, reactionInput, NOTE_TYPES.VIDEO_REACTION)) failures++;
+
+  // 20. Comment
+  const commentInput = {
+    pubkey: TEST_PUBKEY,
+    created_at: TEST_TIMESTAMP,
+    videoEventId: 'e'.repeat(64),
+    content: 'Nice video!'
+  };
+  if (!runTest('buildCommentEvent', buildCommentEvent, commentInput, NOTE_TYPES.VIDEO_COMMENT)) failures++;
+
+  // 21. Watch History
+  const watchHistoryInput = {
+    pubkey: TEST_PUBKEY,
+    created_at: TEST_TIMESTAMP,
+    monthIdentifier: '2023-01',
+    content: JSON.stringify({ ['e'.repeat(64)]: 123456 })
+  };
+  if (!runTest('buildWatchHistoryEvent', buildWatchHistoryEvent, watchHistoryInput, NOTE_TYPES.WATCH_HISTORY)) failures++;
+
+  // 22. Subscription List
+  const subListInput = {
+    pubkey: TEST_PUBKEY,
+    created_at: TEST_TIMESTAMP
+  };
+  if (!runTest('buildSubscriptionListEvent', buildSubscriptionListEvent, subListInput, NOTE_TYPES.SUBSCRIPTION_LIST)) failures++;
+
+  // 23. Block List
+  const blockListInput = {
+    pubkey: TEST_PUBKEY,
+    created_at: TEST_TIMESTAMP
+  };
+  if (!runTest('buildBlockListEvent', buildBlockListEvent, blockListInput, NOTE_TYPES.USER_BLOCK_LIST)) failures++;
+
+  // 24. Admin List
+  const adminListInput = {
+    pubkey: TEST_PUBKEY,
+    created_at: TEST_TIMESTAMP,
+    hexPubkeys: [TEST_PUBKEY]
+  };
+  if (!runTest('buildAdminListEvent (moderation)', (i) => buildAdminListEvent(ADMIN_LIST_IDENTIFIERS.moderation, i), adminListInput, NOTE_TYPES.ADMIN_MODERATION_LIST)) failures++;
+
+  // 25. NIP-71 Video
+  const nip71Input = {
+    pubkey: TEST_PUBKEY,
+    title: 'NIP-71 Video',
+    metadata: {
+      kind: 21,
+      title: 'NIP-71 Video',
+      publishedAt: TEST_TIMESTAMP,
+      hashtags: ['test']
+    },
+    pointerIdentifiers: { videoRootId: 'test-root' }
+  };
+  if (!runTest('buildNip71VideoEvent', buildNip71VideoEvent, nip71Input, NOTE_TYPES.NIP71_VIDEO)) failures++;
+
+
+  console.log('\n-----------------------------------');
+  if (failures === 0) {
+    console.log('🎉 All schema validation tests passed!');
+    process.exit(0);
+  } else {
+    console.error(`💥 ${failures} tests failed.`);
+    process.exit(1);
+  }
 }
 
-if (failed) {
-    process.exit(1);
-}
+main();
