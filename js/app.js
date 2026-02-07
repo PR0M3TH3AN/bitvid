@@ -718,9 +718,7 @@ class Application {
     const uniqueAuthors = new Set(activeVideos.map((v) => v.pubkey));
 
     // 3) For each author, fetchAndRenderProfile with forceRefresh = true
-    for (const authorPubkey of uniqueAuthors) {
-      this.authService.fetchAndRenderProfile(authorPubkey, true);
-    }
+    this.batchFetchProfiles(uniqueAuthors, { forceRefresh: true });
   }
 
   getCurrentUserNpub() {
@@ -2661,9 +2659,10 @@ class Application {
     return this.authService.fetchAndRenderProfile(pubkey, forceRefresh);
   }
 
-  async batchFetchProfiles(authorSet) {
+  async batchFetchProfiles(authorSet, { forceRefresh = false } = {}) {
     return batchFetchProfilesFromRelays({
       authorSet,
+      forceRefresh,
       getProfileCacheEntry: (pubkey) => this.getProfileCacheEntry(pubkey),
       setProfileCacheEntry: (pubkey, profile) =>
         this.setProfileCacheEntry(pubkey, profile),
