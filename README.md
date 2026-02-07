@@ -171,7 +171,7 @@ To run **bitvid** locally:
 
 - **Run unit tests**: `npm run test:unit`
 - **Format code**: `npm run format` (CSS, HTML, MD, Config - no JS logic)
-- **Lint code**: `npm run lint` (Styles, Tokens, Hex, Tailwind guards - no JS logic)
+- **Lint code**: `npm run lint` (Styles, Tokens, Hex, Tailwind guards - no ESLint/logic linting)
 
 ### Dev Container
 
@@ -185,7 +185,7 @@ See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full developer guide.
 
 - **Run unit tests**: `npm run test:unit` (Required before PRs). _Tip: Use `npm run test:unit:shard1`, `shard2`, or `shard3` for faster local feedback._
 - **Format code**: `npm run format` (Required before PRs - only formats CSS, HTML, MD, and Config)
-- **Lint code**: `npm run lint` (Checks for CSS, hex colors, inline styles, design tokens, and Tailwind guards)
+- **Lint code**: `npm run lint` (Checks for CSS, hex colors, inline styles, design tokens, and Tailwind guards - no ESLint/logic linting)
 
 **Other commands:**
 
@@ -193,6 +193,8 @@ See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full developer guide.
 - **Run DM integration tests**: `npm run test:dm:integration`
 - **Run headless E2E tests**: `npm run test:e2e`
 - **Run visual regression tests**: `npm run test:visual`
+- **Update visual baselines**: `npm run test:visual:update`
+- **Aggregate telemetry**: `npm run telemetry:aggregate`
 - **Cancel CI runs**: See [`docs/cancelling-ci-runs.md`](docs/cancelling-ci-runs.md) for a script to clear pending workflows.
 
 ### Docs navigation & TOC updates
