@@ -1086,6 +1086,96 @@ export function createFeedCoordinator(deps) {
     },
 
     /**
+     * Unified loader for all feed types.
+     */
+    async loadFeedVideos(feedType, forceFetch = false) {
+      devLogger.log(`Starting loadFeedVideos(${feedType})... (forceFetch =`, forceFetch, ")");
+      this.setFeedTelemetryContext(feedType);
+
+      let includeTags = false;
+      let loadingMessage = "Fetching videos\u2026";
+      let refreshMethod = null;
+      let shouldCheckRelayHealth = false;
+
+      switch (feedType) {
+        case "recent":
+          includeTags = true;
+          loadingMessage = "Fetching recent videos\u2026";
+          refreshMethod = (opts) => this.refreshRecentFeed(opts);
+          shouldCheckRelayHealth = true;
+          break;
+        case FEED_TYPES.FOR_YOU:
+          includeTags = false;
+          loadingMessage = "Fetching for-you videos\u2026";
+          refreshMethod = (opts) => this.refreshForYouFeed(opts);
+          shouldCheckRelayHealth = true;
+          break;
+        case FEED_TYPES.KIDS:
+          includeTags = true;
+          loadingMessage = "Fetching kids videos\u2026";
+          refreshMethod = (opts) => this.refreshKidsFeed(opts);
+          shouldCheckRelayHealth = false;
+          break;
+        case FEED_TYPES.EXPLORE:
+          includeTags = false;
+          loadingMessage = "Fetching explore videos\u2026";
+          refreshMethod = (opts) => this.refreshExploreFeed(opts);
+          shouldCheckRelayHealth = false;
+          break;
+        default:
+          devLogger.warn(`[Application] Unknown feed type for loadFeedVideos: ${feedType}`);
+          return;
+      }
+
+      if (shouldCheckRelayHealth) {
+        this.checkRelayHealthWarning();
+      }
+
+      const container = this.mountVideoListView({ includeTags });
+      const hasCachedVideos =
+        this.nostrService &&
+        Array.isArray(this.nostrService.getFilteredActiveVideos()) &&
+        this.nostrService.getFilteredActiveVideos().length > 0;
+
+      if (!hasCachedVideos) {
+        if (this.videoListView && container) {
+          this.videoListView.showLoading(loadingMessage);
+        } else if (container) {
+          container.innerHTML = getSidebarLoadingMarkup(loadingMessage);
+        }
+      }
+
+      let initialRefreshPromise = null;
+
+      const videos = await this.nostrService.loadVideos({
+        forceFetch,
+        blacklistedEventIds: this.blacklistedEventIds,
+        isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
+        onVideos: (payload, detail = {}) => {
+          const promise = refreshMethod({
+            reason: detail?.reason,
+            fallbackVideos: payload,
+          });
+          if (!initialRefreshPromise) {
+            initialRefreshPromise = promise;
+          }
+        },
+      });
+
+      if (initialRefreshPromise) {
+        await initialRefreshPromise;
+      } else if (!Array.isArray(videos) || videos.length === 0) {
+        await refreshMethod({ reason: "initial", fallbackVideos: [] });
+      }
+
+      this.videoSubscription = this.nostrService.getVideoSubscription() || null;
+      this.videosMap = this.nostrService.getVideosMap();
+      if (this.videoListView) {
+        this.videoListView.state.videosMap = this.videosMap;
+      }
+    },
+
+    /**
      * Subscribe to videos (older + new) and render them as they come in.
      */
     async loadVideos(forceFetch = false) {
@@ -1102,52 +1192,7 @@ export function createFeedCoordinator(deps) {
       this.lastLoadVideosTime = now;
 
       this.loadVideosPromise = (async () => {
-        devLogger.log("Starting loadVideos... (forceFetch =", forceFetch, ")");
-        this.setFeedTelemetryContext("recent");
-        this.checkRelayHealthWarning();
-
-        const container = this.mountVideoListView();
-        const hasCachedVideos =
-          this.nostrService &&
-          Array.isArray(this.nostrService.getFilteredActiveVideos()) &&
-          this.nostrService.getFilteredActiveVideos().length > 0;
-
-        if (!hasCachedVideos) {
-          if (this.videoListView && container) {
-            this.videoListView.showLoading("Fetching recent videos\u2026");
-          } else if (container) {
-            container.innerHTML = getSidebarLoadingMarkup("Fetching recent videos\u2026");
-          }
-        }
-
-        let initialRefreshPromise = null;
-
-        const videos = await this.nostrService.loadVideos({
-          forceFetch,
-          blacklistedEventIds: this.blacklistedEventIds,
-          isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
-          onVideos: (payload, detail = {}) => {
-            const promise = this.refreshRecentFeed({
-              reason: detail?.reason,
-              fallbackVideos: payload,
-            });
-            if (!initialRefreshPromise) {
-              initialRefreshPromise = promise;
-            }
-          },
-        });
-
-        if (initialRefreshPromise) {
-          await initialRefreshPromise;
-        } else if (!Array.isArray(videos) || videos.length === 0) {
-          await this.refreshRecentFeed({ reason: "initial", fallbackVideos: [] });
-        }
-
-        this.videoSubscription = this.nostrService.getVideoSubscription() || null;
-        this.videosMap = this.nostrService.getVideosMap();
-        if (this.videoListView) {
-          this.videoListView.state.videosMap = this.videosMap;
-        }
+        await this.loadFeedVideos("recent", forceFetch);
       })();
 
       try {
@@ -1158,148 +1203,15 @@ export function createFeedCoordinator(deps) {
     },
 
     async loadForYouVideos(forceFetch = false) {
-      devLogger.log("Starting loadForYouVideos... (forceFetch =", forceFetch, ")");
-      this.setFeedTelemetryContext(FEED_TYPES.FOR_YOU);
-      this.checkRelayHealthWarning();
-
-      const container = this.mountVideoListView({ includeTags: false });
-      const hasCachedVideos =
-        this.nostrService &&
-        Array.isArray(this.nostrService.getFilteredActiveVideos()) &&
-        this.nostrService.getFilteredActiveVideos().length > 0;
-
-      if (!hasCachedVideos) {
-        if (this.videoListView && container) {
-          this.videoListView.showLoading("Fetching for-you videos\u2026");
-        } else if (container) {
-          container.innerHTML = getSidebarLoadingMarkup("Fetching for-you videos\u2026");
-        }
-      }
-
-      let initialRefreshPromise = null;
-
-      const videos = await this.nostrService.loadVideos({
-        forceFetch,
-        blacklistedEventIds: this.blacklistedEventIds,
-        isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
-        onVideos: (payload, detail = {}) => {
-          const promise = this.refreshForYouFeed({
-            reason: detail?.reason,
-            fallbackVideos: payload,
-          });
-          if (!initialRefreshPromise) {
-            initialRefreshPromise = promise;
-          }
-        },
-      });
-
-      if (initialRefreshPromise) {
-        await initialRefreshPromise;
-      } else if (!Array.isArray(videos) || videos.length === 0) {
-        await this.refreshForYouFeed({ reason: "initial", fallbackVideos: [] });
-      }
-
-      this.videoSubscription = this.nostrService.getVideoSubscription() || null;
-      this.videosMap = this.nostrService.getVideosMap();
-      if (this.videoListView) {
-        this.videoListView.state.videosMap = this.videosMap;
-      }
+      return this.loadFeedVideos(FEED_TYPES.FOR_YOU, forceFetch);
     },
 
     async loadKidsVideos(forceFetch = false) {
-      devLogger.log("Starting loadKidsVideos... (forceFetch =", forceFetch, ")");
-      this.setFeedTelemetryContext(FEED_TYPES.KIDS);
-
-      const container = this.mountVideoListView({ includeTags: true });
-      const hasCachedVideos =
-        this.nostrService &&
-        Array.isArray(this.nostrService.getFilteredActiveVideos()) &&
-        this.nostrService.getFilteredActiveVideos().length > 0;
-
-      if (!hasCachedVideos) {
-        if (this.videoListView && container) {
-          this.videoListView.showLoading("Fetching kids videos\u2026");
-        } else if (container) {
-          container.innerHTML = getSidebarLoadingMarkup("Fetching kids videos\u2026");
-        }
-      }
-
-      let initialRefreshPromise = null;
-
-      const videos = await this.nostrService.loadVideos({
-        forceFetch,
-        blacklistedEventIds: this.blacklistedEventIds,
-        isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
-        onVideos: (payload, detail = {}) => {
-          const promise = this.refreshKidsFeed({
-            reason: detail?.reason,
-            fallbackVideos: payload,
-          });
-          if (!initialRefreshPromise) {
-            initialRefreshPromise = promise;
-          }
-        },
-      });
-
-      if (initialRefreshPromise) {
-        await initialRefreshPromise;
-      } else if (!Array.isArray(videos) || videos.length === 0) {
-        await this.refreshKidsFeed({ reason: "initial", fallbackVideos: [] });
-      }
-
-      this.videoSubscription = this.nostrService.getVideoSubscription() || null;
-      this.videosMap = this.nostrService.getVideosMap();
-      if (this.videoListView) {
-        this.videoListView.state.videosMap = this.videosMap;
-      }
+      return this.loadFeedVideos(FEED_TYPES.KIDS, forceFetch);
     },
 
     async loadExploreVideos(forceFetch = false) {
-      devLogger.log("Starting loadExploreVideos... (forceFetch =", forceFetch, ")");
-      this.setFeedTelemetryContext(FEED_TYPES.EXPLORE);
-
-      const container = this.mountVideoListView({ includeTags: false });
-      const hasCachedVideos =
-        this.nostrService &&
-        Array.isArray(this.nostrService.getFilteredActiveVideos()) &&
-        this.nostrService.getFilteredActiveVideos().length > 0;
-
-      if (!hasCachedVideos) {
-        if (this.videoListView && container) {
-          this.videoListView.showLoading("Fetching explore videos\u2026");
-        } else if (container) {
-          container.innerHTML = getSidebarLoadingMarkup("Fetching explore videos\u2026");
-        }
-      }
-
-      let initialRefreshPromise = null;
-
-      const videos = await this.nostrService.loadVideos({
-        forceFetch,
-        blacklistedEventIds: this.blacklistedEventIds,
-        isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
-        onVideos: (payload, detail = {}) => {
-          const promise = this.refreshExploreFeed({
-            reason: detail?.reason,
-            fallbackVideos: payload,
-          });
-          if (!initialRefreshPromise) {
-            initialRefreshPromise = promise;
-          }
-        },
-      });
-
-      if (initialRefreshPromise) {
-        await initialRefreshPromise;
-      } else if (!Array.isArray(videos) || videos.length === 0) {
-        await this.refreshExploreFeed({ reason: "initial", fallbackVideos: [] });
-      }
-
-      this.videoSubscription = this.nostrService.getVideoSubscription() || null;
-      this.videosMap = this.nostrService.getVideosMap();
-      if (this.videoListView) {
-        this.videoListView.state.videosMap = this.videosMap;
-      }
+      return this.loadFeedVideos(FEED_TYPES.EXPLORE, forceFetch);
     },
 
     async loadOlderVideos(lastTimestamp) {
