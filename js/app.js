@@ -3969,6 +3969,11 @@ class Application {
     return this._feed.checkRelayHealthWarning(...args);
   }
 
+  async loadFeedVideos(...args) {
+    this._initCoordinators();
+    return this._feed.loadFeedVideos(...args);
+  }
+
   /**
    * Subscribe to videos (older + new) and render them as they come in.
    */
