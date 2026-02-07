@@ -1,6 +1,7 @@
 // js/channelProfile.js
 
 import { nostrClient } from "./nostrClientFacade.js";
+import nostrService from "./services/nostrService.js";
 import { convertEventToVideo as sharedConvertEventToVideo } from "./nostr/index.js";
 import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
 import { subscriptions } from "./subscriptions.js";
@@ -237,13 +238,29 @@ function decorateChannelVideo(video, app = getApp()) {
   return decoratedVideo;
 }
 
-function collectChannelVideos(pubkey, app = getApp()) {
-  if (!app || !(app.videosMap instanceof Map)) {
+export async function collectChannelVideos(pubkey, app = getApp()) {
+  const normalized = normalizeHex(pubkey);
+  if (!normalized) {
     return [];
   }
 
-  const normalized = normalizeHex(pubkey);
-  if (!normalized) {
+  const service = app?.nostrService || nostrService;
+  if (service && typeof service.ensureVideosByAuthorIndex === "function") {
+    try {
+      const index = service.ensureVideosByAuthorIndex();
+      const indexMatches = index.get(normalized);
+      if (indexMatches !== undefined) {
+        return Array.isArray(indexMatches) ? [...indexMatches] : [];
+      }
+    } catch (error) {
+      devLogger.warn(
+        "[ChannelProfile] Failed to lookup videos via author index:",
+        error,
+      );
+    }
+  }
+
+  if (!app || !(app.videosMap instanceof Map)) {
     return [];
   }
 
@@ -1090,6 +1107,10 @@ function refreshChannelVideoCardModeration(
     sourceMap.set(videoId, nextVideo);
   }
 
+  if (nextVideo) {
+    nostrService.cacheVideos([nextVideo]);
+  }
+
   if (!card || !nextVideo) {
     return Boolean(nextVideo);
   }
@@ -1172,6 +1193,7 @@ function handleVideoModerationEvent(event) {
   if (app?.videosMap instanceof Map) {
     app.videosMap.set(videoId, decoratedVideo);
   }
+  nostrService.cacheVideos([decoratedVideo]);
 
   refreshChannelVideoCardModeration(videoId, {
     app,
@@ -4645,6 +4667,8 @@ export async function renderChannelVideosFromList({
 
   const allowNsfw = ALLOW_NSFW_CONTENT === true;
 
+  const videosToCache = [];
+
   for (const originalVideo of renderableVideos) {
     if (!originalVideo || !originalVideo.id || !originalVideo.title) {
       continue;
@@ -4669,7 +4693,10 @@ export async function renderChannelVideosFromList({
       continue;
     }
 
-    app?.videosMap?.set(video.id, video);
+    if (app?.videosMap instanceof Map) {
+      app.videosMap.set(video.id, video);
+    }
+    videosToCache.push(video);
 
     const index = renderIndex++;
     let hasOlder = false;
@@ -4885,6 +4912,10 @@ export async function renderChannelVideosFromList({
     if (cardEl) {
       fragment.appendChild(cardEl);
     }
+  }
+
+  if (videosToCache.length > 0) {
+    nostrService.cacheVideos(videosToCache);
   }
 
   if (renderIndex === 0) {
