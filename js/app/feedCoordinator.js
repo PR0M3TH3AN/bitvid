@@ -9,6 +9,8 @@
  * Methods use `this` which is bound to the Application instance.
  */
 
+import { FEED_TYPES } from "../constants.js";
+
 /**
  * @param {object} deps - Injected dependencies.
  * @returns {object} Methods to be bound to the Application instance.
@@ -115,7 +117,7 @@ export function createFeedCoordinator(deps) {
     },
 
     /**
-     * Register the "for-you" feed pipeline.
+     * Register the FEED_TYPES.FOR_YOU feed pipeline.
      */
     registerForYouFeed() {
       if (!this.feedEngine || typeof this.feedEngine.registerFeed !== "function") {
@@ -124,7 +126,7 @@ export function createFeedCoordinator(deps) {
 
       const existingDefinition =
         typeof this.feedEngine.getFeedDefinition === "function"
-          ? this.feedEngine.getFeedDefinition("for-you")
+          ? this.feedEngine.getFeedDefinition(FEED_TYPES.FOR_YOU)
           : null;
       if (existingDefinition) {
         return existingDefinition;
@@ -153,7 +155,7 @@ export function createFeedCoordinator(deps) {
 
           return defaultValue;
         };
-        return this.feedEngine.registerFeed("for-you", {
+        return this.feedEngine.registerFeed(FEED_TYPES.FOR_YOU, {
           source: createActiveNostrSource({ service: this.nostrService }),
           stages: [
             // Note: Tag-preference filtering is consolidated in createTagPreferenceFilterStage
@@ -191,7 +193,7 @@ export function createFeedCoordinator(deps) {
     },
 
     /**
-     * Register the "kids" feed pipeline.
+     * Register the FEED_TYPES.KIDS feed pipeline.
      */
     registerKidsFeed() {
       if (!this.feedEngine || typeof this.feedEngine.registerFeed !== "function") {
@@ -200,7 +202,7 @@ export function createFeedCoordinator(deps) {
 
       const existingDefinition =
         typeof this.feedEngine.getFeedDefinition === "function"
-          ? this.feedEngine.getFeedDefinition("kids")
+          ? this.feedEngine.getFeedDefinition(FEED_TYPES.KIDS)
           : null;
       if (existingDefinition) {
         return existingDefinition;
@@ -276,7 +278,7 @@ export function createFeedCoordinator(deps) {
             }),
         );
 
-        return this.feedEngine.registerFeed("kids", {
+        return this.feedEngine.registerFeed(FEED_TYPES.KIDS, {
           source: createActiveNostrSource({ service: this.nostrService }),
           stages: [
             createBlacklistFilterStage({
@@ -332,7 +334,7 @@ export function createFeedCoordinator(deps) {
     },
 
     /**
-     * Register the "explore" feed pipeline.
+     * Register the FEED_TYPES.EXPLORE feed pipeline.
      */
     registerExploreFeed() {
       if (!this.feedEngine || typeof this.feedEngine.registerFeed !== "function") {
@@ -341,7 +343,7 @@ export function createFeedCoordinator(deps) {
 
       const existingDefinition =
         typeof this.feedEngine.getFeedDefinition === "function"
-          ? this.feedEngine.getFeedDefinition("explore")
+          ? this.feedEngine.getFeedDefinition(FEED_TYPES.EXPLORE)
           : null;
       if (existingDefinition) {
         return existingDefinition;
@@ -370,7 +372,7 @@ export function createFeedCoordinator(deps) {
 
           return defaultValue;
         };
-        return this.feedEngine.registerFeed("explore", {
+        return this.feedEngine.registerFeed(FEED_TYPES.EXPLORE, {
           source: createActiveNostrSource({ service: this.nostrService }),
           stages: [
             createDisinterestFilterStage(),
@@ -412,7 +414,7 @@ export function createFeedCoordinator(deps) {
 
       const existingDefinition =
         typeof this.feedEngine.getFeedDefinition === "function"
-          ? this.feedEngine.getFeedDefinition("subscriptions")
+          ? this.feedEngine.getFeedDefinition(FEED_TYPES.SUBSCRIPTIONS)
           : null;
       if (existingDefinition) {
         return existingDefinition;
@@ -441,7 +443,7 @@ export function createFeedCoordinator(deps) {
 
           return defaultValue;
         };
-        return this.feedEngine.registerFeed("subscriptions", {
+        return this.feedEngine.registerFeed(FEED_TYPES.SUBSCRIPTIONS, {
           source: createSubscriptionAuthorsSource({ service: this.nostrService }),
           stages: [
             // Note: Tag-preference filtering is consolidated in createTagPreferenceFilterStage
@@ -667,7 +669,7 @@ export function createFeedCoordinator(deps) {
 
       const feedDefinition =
         this.feedEngine && typeof this.feedEngine.getFeedDefinition === "function"
-          ? this.feedEngine.getFeedDefinition("kids")
+          ? this.feedEngine.getFeedDefinition(FEED_TYPES.KIDS)
           : null;
       const configDefaults =
         feedDefinition && typeof feedDefinition.configDefaults === "object"
@@ -816,7 +818,7 @@ export function createFeedCoordinator(deps) {
       }
 
       return this.feedEngine
-        .run("for-you", { runtime })
+        .run(FEED_TYPES.FOR_YOU, { runtime })
         .then((result) => {
           const videos = Array.isArray(result?.videos) ? result.videos : [];
           const metadata = {
@@ -875,13 +877,13 @@ export function createFeedCoordinator(deps) {
         if (this.videoListView) {
           this.videoListView.state.videosMap = this.videosMap;
         }
-        this.updateFeedTelemetryMetadata("kids", [], metadata);
+        this.updateFeedTelemetryMetadata(FEED_TYPES.KIDS, [], metadata);
         this.renderVideoList({ videos: fallback, metadata });
         return Promise.resolve({ videos: fallback, metadata });
       }
 
       return this.feedEngine
-        .run("kids", { runtime })
+        .run(FEED_TYPES.KIDS, { runtime })
         .then((result) => {
           const videos = Array.isArray(result?.videos) ? result.videos : [];
           const metadata = {
@@ -901,7 +903,7 @@ export function createFeedCoordinator(deps) {
           }
 
           const items = Array.isArray(result?.items) ? result.items : [];
-          this.updateFeedTelemetryMetadata("kids", items, metadata);
+          this.updateFeedTelemetryMetadata(FEED_TYPES.KIDS, items, metadata);
 
           const payload = { videos, metadata };
           this.renderVideoList(payload);
@@ -921,7 +923,7 @@ export function createFeedCoordinator(deps) {
           if (this.videoListView) {
             this.videoListView.state.videosMap = this.videosMap;
           }
-          this.updateFeedTelemetryMetadata("kids", [], metadata);
+          this.updateFeedTelemetryMetadata(FEED_TYPES.KIDS, [], metadata);
           const payload = { videos: fallback, metadata };
           this.renderVideoList(payload);
           return payload;
@@ -935,7 +937,7 @@ export function createFeedCoordinator(deps) {
       const applyExploreOrderingMetadata = (source) => {
         const next = source && typeof source === "object" ? { ...source } : {};
         if (!next.sortOrder) {
-          next.sortOrder = "explore";
+          next.sortOrder = FEED_TYPES.EXPLORE;
         }
         next.preserveOrder = true;
         return next;
@@ -956,7 +958,7 @@ export function createFeedCoordinator(deps) {
       }
 
       return this.feedEngine
-        .run("explore", { runtime })
+        .run(FEED_TYPES.EXPLORE, { runtime })
         .then((result) => {
           const videos = Array.isArray(result?.videos) ? result.videos : [];
           const metadata = applyExploreOrderingMetadata({
@@ -1157,7 +1159,7 @@ export function createFeedCoordinator(deps) {
 
     async loadForYouVideos(forceFetch = false) {
       devLogger.log("Starting loadForYouVideos... (forceFetch =", forceFetch, ")");
-      this.setFeedTelemetryContext("for-you");
+      this.setFeedTelemetryContext(FEED_TYPES.FOR_YOU);
       this.checkRelayHealthWarning();
 
       const container = this.mountVideoListView({ includeTags: false });
@@ -1206,7 +1208,7 @@ export function createFeedCoordinator(deps) {
 
     async loadKidsVideos(forceFetch = false) {
       devLogger.log("Starting loadKidsVideos... (forceFetch =", forceFetch, ")");
-      this.setFeedTelemetryContext("kids");
+      this.setFeedTelemetryContext(FEED_TYPES.KIDS);
 
       const container = this.mountVideoListView({ includeTags: true });
       const hasCachedVideos =
@@ -1254,7 +1256,7 @@ export function createFeedCoordinator(deps) {
 
     async loadExploreVideos(forceFetch = false) {
       devLogger.log("Starting loadExploreVideos... (forceFetch =", forceFetch, ")");
-      this.setFeedTelemetryContext("explore");
+      this.setFeedTelemetryContext(FEED_TYPES.EXPLORE);
 
       const container = this.mountVideoListView({ includeTags: false });
       const hasCachedVideos =
@@ -1483,7 +1485,7 @@ export function createFeedCoordinator(deps) {
     },
 
     isForYouFeedActive() {
-      return this.feedTelemetryState?.activeFeed === "for-you";
+      return this.feedTelemetryState?.activeFeed === FEED_TYPES.FOR_YOU;
     },
 
     updateFeedTelemetryMetadata(feedName = "", items = [], metadata = {}) {
@@ -1554,7 +1556,7 @@ export function createFeedCoordinator(deps) {
     },
 
     updateForYouTelemetryMetadata(items = [], metadata = {}) {
-      this.updateFeedTelemetryMetadata("for-you", items, metadata);
+      this.updateFeedTelemetryMetadata(FEED_TYPES.FOR_YOU, items, metadata);
     },
 
     resolveVideoForTelemetry(videoId) {
@@ -1640,7 +1642,7 @@ export function createFeedCoordinator(deps) {
         videoId: eventId,
       };
 
-      if (feedName === "for-you") {
+      if (feedName === FEED_TYPES.FOR_YOU) {
         const matchedTagsRaw = feedState.matchedTagsById?.get(eventId) || [];
         const matchedTags = Array.isArray(matchedTagsRaw)
           ? Array.from(
@@ -1701,7 +1703,7 @@ export function createFeedCoordinator(deps) {
     },
 
     buildForYouTelemetryPayload({ video, videoId, position } = {}) {
-      return this.buildFeedTelemetryPayload("for-you", {
+      return this.buildFeedTelemetryPayload(FEED_TYPES.FOR_YOU, {
         video,
         videoId,
         position,
@@ -1742,8 +1744,8 @@ export function createFeedCoordinator(deps) {
       }
 
       const prefixMap = new Map([
-        ["for-you", "for_you"],
-        ["kids", "kids_feed"],
+        [FEED_TYPES.FOR_YOU, "for_you"],
+        [FEED_TYPES.KIDS, "kids_feed"],
       ]);
 
       const prefix = prefixMap.get(normalized);
@@ -1824,7 +1826,7 @@ export function createFeedCoordinator(deps) {
     },
 
     emitForYouImpressions(videos = []) {
-      this.emitFeedImpressions(videos, { feedName: "for-you" });
+      this.emitFeedImpressions(videos, { feedName: FEED_TYPES.FOR_YOU });
     },
 
     recordFeedClick(videoId, { feedName } = {}) {
@@ -1862,7 +1864,7 @@ export function createFeedCoordinator(deps) {
     },
 
     recordForYouClick(videoId) {
-      this.recordFeedClick(videoId, { feedName: "for-you" });
+      this.recordFeedClick(videoId, { feedName: FEED_TYPES.FOR_YOU });
     },
 
     handleFeedViewTelemetry(detail = {}) {

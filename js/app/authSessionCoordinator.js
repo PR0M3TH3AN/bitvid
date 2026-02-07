@@ -10,6 +10,7 @@
  */
 
 import { clearDecryptionSchemeCache } from "../nostr/decryptionSchemeCache.js";
+import { FEED_TYPES } from "../constants.js";
 
 /**
  * @param {object} deps - Injected dependencies.
@@ -573,9 +574,9 @@ export function createAuthSessionCoordinator(deps) {
       const logoutView = getHashViewName();
       if (
         typeof logoutView === "string" &&
-        logoutView.trim().toLowerCase() === "for-you"
+        logoutView.trim().toLowerCase() === FEED_TYPES.FOR_YOU
       ) {
-        setHashView("most-recent-videos");
+        setHashView(FEED_TYPES.RECENT);
       }
 
       const activeModalVideo =

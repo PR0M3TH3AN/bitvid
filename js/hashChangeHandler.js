@@ -1,4 +1,5 @@
 import { devLogger as defaultDevLogger, userLogger as defaultUserLogger } from "./utils/logger.js";
+import { FEED_TYPES } from "./constants.js";
 
 const LEGACY_DOCS_VIEWS = {
   about: "about",
@@ -81,8 +82,8 @@ export function createHashChangeHandler({
       typeof window !== "undefined" && window.location && window.location.hash
         ? window.location.hash
         : "";
-    if (hash === "#kids") {
-      window.location.hash = "#view=kids";
+    if (hash === `#${FEED_TYPES.KIDS}`) {
+      window.location.hash = `#view=${FEED_TYPES.KIDS}`;
       return;
     }
     const match = hash.match(/^#view=([^&]+)/);
@@ -90,8 +91,8 @@ export function createHashChangeHandler({
     try {
       if (!match || !match[1]) {
         const defaultViewName = resolveIsLoggedIn()
-          ? "for-you"
-          : "most-recent-videos";
+          ? FEED_TYPES.FOR_YOU
+          : FEED_TYPES.RECENT;
 
         if (defaultViewName === currentViewName) {
           return;
@@ -119,7 +120,7 @@ export function createHashChangeHandler({
         return;
       }
 
-      if (typeof viewName === "string" && viewName.toLowerCase() === "history") {
+      if (typeof viewName === "string" && viewName.toLowerCase() === FEED_TYPES.HISTORY) {
       }
       const viewUrl = `views/${viewName}.html`;
 
