@@ -3,6 +3,9 @@
   "private": true,
   "type": "module",
   "version": "1.0.0",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "start": "npm run build && npx serve dist",
     "serve": "npx serve",
