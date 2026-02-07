@@ -1,8 +1,8 @@
 # Upgrade stylelint
 
 ## Status
-- **Current:** `16.26.1`
-- **Latest:** `17.0.0`
+- **Current:** `16.12.0`
+- **Latest:** `17.1.1`
 
 ## Details
 Major version upgrade.

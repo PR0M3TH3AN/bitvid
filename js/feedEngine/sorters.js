@@ -295,31 +295,51 @@ export function createExploreDiversitySorter({
 
     const vectors = new Map();
     const scores = new Map();
+    const invertedIndex = new Map();
+
     for (const item of candidates) {
       const vec = buildTagVector(item);
       normalizeVector(vec);
       vectors.set(item, vec);
       scores.set(item, normalizeScore(item?.metadata?.exploreScore));
+
+      for (const tag of vec.keys()) {
+        if (!invertedIndex.has(tag)) {
+          invertedIndex.set(tag, new Set());
+        }
+        invertedIndex.get(tag).add(item);
+      }
     }
 
     const selected = [];
-    const remaining = [...candidates];
     const candidateState = new Map();
 
-    for (const candidate of remaining) {
+    for (const candidate of candidates) {
       candidateState.set(candidate, {
         maxSimilarity: 0,
         similarItemId: "",
       });
     }
 
-    while (remaining.length > 0) {
+    while (candidateState.size > 0) {
       if (selected.length > 0) {
         const lastSelected = selected[selected.length - 1];
         const lastSelectedVector = vectors.get(lastSelected);
         const lastSelectedId = stableVideoId(lastSelected);
 
-        for (const candidate of remaining) {
+        const affectedCandidates = new Set();
+        for (const tag of lastSelectedVector.keys()) {
+          const tagCandidates = invertedIndex.get(tag);
+          if (tagCandidates) {
+            for (const candidate of tagCandidates) {
+              if (candidateState.has(candidate)) {
+                affectedCandidates.add(candidate);
+              }
+            }
+          }
+        }
+
+        for (const candidate of affectedCandidates) {
           const state = candidateState.get(candidate);
           const candidateVector = vectors.get(candidate);
           const similarity = cosineSimilarity(
@@ -343,7 +363,7 @@ export function createExploreDiversitySorter({
       let bestRawCandidate = null;
       let bestRawScore = Number.NEGATIVE_INFINITY;
 
-      for (const candidate of remaining) {
+      for (const candidate of candidateState.keys()) {
         const rawScore = scores.get(candidate);
 
         // Track best raw score candidate (for why logging)
@@ -419,11 +439,7 @@ export function createExploreDiversitySorter({
         }
       }
 
-      const index = remaining.indexOf(bestCandidate);
-      if (index >= 0) {
-        remaining.splice(index, 1);
-        candidateState.delete(bestCandidate);
-      }
+      candidateState.delete(bestCandidate);
     }
 
     const orderedRest = [...rest].sort(compareByTimestampId);
