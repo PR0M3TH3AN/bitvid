@@ -2051,19 +2051,38 @@ export class NostrClient {
     return { pubkey, signer: adapter };
   }
 
-  async connectRemoteSigner({
-    connectionString,
-    remember = true,
-    clientPrivateKey: providedClientPrivateKey = "",
-    clientPublicKey: providedClientPublicKey = "",
-    relays: providedRelays = [],
-    secret: providedSecret = "",
-    permissions: providedPermissions = "",
-    metadata: providedMetadata = {},
-    onAuthUrl,
-    onStatus,
-    handshakeTimeoutMs,
-  } = {}) {
+  /**
+   * Establishes a NIP-46 connection with a remote signer (e.g., Nostr Connect / Bunker).
+   *
+   * @param {object} [options]
+   * @param {string} options.connectionString - The URI.
+   * @param {boolean} [options.remember=true] - Persist the session.
+   * @param {string} [options.clientPrivateKey] - Local private key.
+   * @param {string} [options.clientPublicKey] - Local public key.
+   * @param {string[]} [options.relays] - Relay list.
+   * @param {string} [options.secret] - Handshake secret.
+   * @param {string} [options.permissions] - Requested permissions.
+   * @param {object} [options.metadata] - Application metadata.
+   * @param {function} [options.onAuthUrl] - Auth challenge callback.
+   * @param {function} [options.onStatus] - Status update callback.
+   * @param {number} [options.handshakeTimeoutMs] - Handshake timeout.
+   * @param {function} [options.validator] - User validation callback.
+   */
+  async connectRemoteSigner(options = {}) {
+    const {
+      connectionString,
+      remember = true,
+      clientPrivateKey: providedClientPrivateKey = "",
+      clientPublicKey: providedClientPublicKey = "",
+      relays: providedRelays = [],
+      secret: providedSecret = "",
+      permissions: providedPermissions = "",
+      metadata: providedMetadata = {},
+      onAuthUrl,
+      onStatus,
+      handshakeTimeoutMs,
+      validator,
+    } = options && typeof options === "object" ? options : {};
     const parsed = parseNip46ConnectionString(connectionString);
     if (!parsed) {
       const error = new Error(
@@ -2353,9 +2372,9 @@ export class NostrClient {
         userPubkey: summarizeHexForLog(userPubkey),
       });
 
-      if (typeof options?.validator === "function") {
+      if (typeof validator === "function") {
         try {
-          const isValid = await options.validator(userPubkey);
+          const isValid = await validator(userPubkey);
           if (!isValid) {
             throw new Error("Access denied.");
           }
@@ -2459,6 +2478,7 @@ export class NostrClient {
    * @param {object} [options]
    * @param {boolean} [options.silent=false] - Suppress error logs if restore fails.
    * @param {boolean} [options.forgetOnError=false] - Auto-delete session if invalid.
+   * @param {function} [options.validator] - Optional function to validate the user pubkey.
    * @returns {Promise<{pubkey: string, signer: object}>}
    */
   async useStoredRemoteSigner(options = {}) {
