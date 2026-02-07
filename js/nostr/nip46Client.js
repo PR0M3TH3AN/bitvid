@@ -26,8 +26,7 @@ import {
 } from "../nostrPublish.js";
 import { devLogger, userLogger } from "../utils/logger.js";
 import { Nip46RequestQueue, NIP46_PRIORITY } from "./nip46Queue.js";
-
-export const HEX64_REGEX = /^[0-9a-f]{64}$/i;
+import { HEX64_REGEX } from "../utils/hex.js";
 
 export const NIP46_RPC_KIND = 24_133;
 export const NIP46_SESSION_STORAGE_KEY = "bitvid:nip46:session:v1";

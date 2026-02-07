@@ -1,8 +1,9 @@
 import { ensureNostrTools, getCachedNostrTools } from "./toolkit.js";
 import { devLogger } from "../utils/logger.js";
+import { HEX64_REGEX } from "../utils/hex.js";
 
 const workerScope = typeof self !== "undefined" ? self : null;
-const HEX64_REGEX = /^[0-9a-f]{64}$/i;
+
 
 const postResponse = (payload) => {
   if (!workerScope || typeof workerScope.postMessage !== "function") {

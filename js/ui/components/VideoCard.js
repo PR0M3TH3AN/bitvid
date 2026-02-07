@@ -12,10 +12,11 @@ import {
   normalizeVideoModerationContext,
 } from "../moderationUiHelpers.js";
 import { buildModerationBadgeText } from "../moderationCopy.js";
+import { HEX64_REGEX } from "../../utils/hex.js";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const DEFAULT_PROFILE_AVATAR = "assets/svg/default-profile.svg";
-const HEX64_REGEX = /^[0-9a-f]{64}$/i;
+
 
 export class VideoCard {
   constructor({

@@ -30,10 +30,11 @@ import {
   getLastSuccessfulScheme,
   setLastSuccessfulScheme,
 } from "../nostr/decryptionSchemeCache.js";
+import { HEX64_REGEX } from "../utils/hex.js";
 
 const LOG_PREFIX = "[HashtagPreferences]";
 const HASHTAG_IDENTIFIER = "bitvid:tag-preferences";
-const HEX64_REGEX = /^[0-9a-f]{64}$/i;
+
 const DEFAULT_VERSION = 1;
 const DECRYPT_TIMEOUT_MS = 20000;
 // PERF: Reduced from 10s to 3s for faster recovery during login.

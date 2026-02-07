@@ -157,8 +157,8 @@ import {
   readStoredSessionActorEntry,
   isSessionActor,
 } from "./sessionActor.js";
+import { HEX64_REGEX } from "../utils/hex.js";
 import {
-  HEX64_REGEX,
   NIP46_RPC_KIND,
   NIP46_SESSION_STORAGE_KEY,
   NIP46_PUBLISH_TIMEOUT_MS,

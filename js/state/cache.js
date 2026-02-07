@@ -27,7 +27,7 @@ const URL_HEALTH_TIMEOUT_RETRY_MS = 5 * 60 * 1000; // 5 minutes
 export const URL_PROBE_TIMEOUT_MS = 8 * 1000; // 8 seconds
 const URL_PROBE_TIMEOUT_RETRY_MS = 15 * 1000; // 15 seconds
 
-const HEX64_REGEX = /^[0-9a-f]{64}$/i;
+
 
 const MODERATION_OVERRIDE_STORAGE_KEY = "bitvid:moderationOverrides:v2";
 const LEGACY_MODERATION_OVERRIDE_STORAGE_KEY = "bitvid:moderationOverrides:v1";
@@ -839,6 +839,7 @@ export function persistProfileCacheToStorage() {
 }
 
 import { profileCache as unifiedProfileCache } from "./profileCache.js";
+import { HEX64_REGEX } from "../utils/hex.js";
 
 export function getProfileCacheEntry(pubkey) {
   const profile = unifiedProfileCache.getProfile(pubkey);

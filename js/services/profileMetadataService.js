@@ -1,9 +1,10 @@
 import { nostrClient } from "../nostrClientFacade.js";
 import { devLogger } from "../utils/logger.js";
 import { relaySubscriptionService } from "./relaySubscriptionService.js";
+import { HEX64_REGEX } from "../utils/hex.js";
 
 const DEFAULT_PROFILE_IMAGE = "assets/svg/default-profile.svg";
-const HEX64_REGEX = /^[0-9a-f]{64}$/i;
+
 const inFlight = new Map();
 
 function normalizePubkey(pubkey) {

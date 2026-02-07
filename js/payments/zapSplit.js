@@ -20,8 +20,9 @@ import {
   parsePercentValue,
   resolvePlatformFeePercent,
 } from "./platformFee.js";
+import { HEX64_REGEX } from "../utils/hex.js";
 
-const HEX64_REGEX = /^[0-9a-f]{64}$/i;
+
 const ZAP_KIND = 9734;
 const DEFAULT_DEPS = Object.freeze({
   lnurl: Object.freeze({
