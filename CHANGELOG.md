@@ -9,10 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- New views for Kids, History, Search, Subscriptions, and Docs. (PR #2129, PR #2153 by PR0M3TH3AN)
+- Comprehensive test suite for Nostr features and UI components. (PR #2153 by PR0M3TH3AN)
 - Provider-agnostic S3 multipart upload helpers to support large file uploads and bucket management. (PR #1620 by PR0M3TH3AN)
 
 ### Changed
 
+- Performance improvements for documentation scroll spy. (PR #2129 by PR0M3TH3AN)
+- Optimized Nostr login speed. (PR #2153 by PR0M3TH3AN)
+- Updated `nostr-tools`, `floating-ui`, and `crypto-helpers` dependencies. (PR #2153 by PR0M3TH3AN)
 - Major repository update and synchronization (Commit `b429b1c` by thePR0M3TH3AN)
 
 ### Fixed
