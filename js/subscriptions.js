@@ -1116,6 +1116,7 @@ class SubscriptionsManager {
     const getSchemeFamily = (s) =>
       s === "nip44" || s === "nip44_v2" ? "nip44" : s;
     const seenFamilies = new Set();
+    const attemptSchemes = [];
     const attempts = order
       .map((scheme) => {
         const family = getSchemeFamily(scheme);
@@ -1123,6 +1124,7 @@ class SubscriptionsManager {
         seenFamilies.add(family);
         const decryptFn = decryptors.get(scheme);
         if (!decryptFn) return null;
+        attemptSchemes.push(scheme);
         return decryptFn(ciphertext).then((plaintext) => {
           if (typeof plaintext !== "string") {
             throw new Error("Decryption returned a non-string payload.");
@@ -1142,7 +1144,7 @@ class SubscriptionsManager {
         return { ok: true, plaintext: result.plaintext, scheme: result.scheme };
       } catch (aggregateError) {
         const attemptErrors = (aggregateError.errors || []).map((err, i) => ({
-          scheme: order[i] || "unknown",
+          scheme: attemptSchemes[i] || "unknown",
           error: err,
         }));
         const error = new Error("Failed to decrypt subscription list with available schemes.");
