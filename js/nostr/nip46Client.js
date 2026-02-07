@@ -30,11 +30,11 @@ import { Nip46RequestQueue, NIP46_PRIORITY } from "./nip46Queue.js";
 export const HEX64_REGEX = /^[0-9a-f]{64}$/i;
 
 export const NIP46_RPC_KIND = 24_133;
-export const NIP46_SESSION_STORAGE_KEY = "bitvid:nip46:session:v1";
-export const NIP46_PUBLISH_TIMEOUT_MS = 8_000;
-export const NIP46_RESPONSE_TIMEOUT_MS = 15_000;
-export const NIP46_SIGN_EVENT_TIMEOUT_MS = 20_000;
-export const NIP46_MAX_RETRIES = 1;
+const NIP46_SESSION_STORAGE_KEY = "bitvid:nip46:session:v1";
+const NIP46_PUBLISH_TIMEOUT_MS = 8_000;
+const NIP46_RESPONSE_TIMEOUT_MS = 15_000;
+const NIP46_SIGN_EVENT_TIMEOUT_MS = 20_000;
+const NIP46_MAX_RETRIES = 1;
 export const NIP46_HANDSHAKE_TIMEOUT_MS = 60_000;
 export const NIP46_AUTH_CHALLENGE_MAX_ATTEMPTS = 5;
 export const NIP46_ENCRYPTION_ALGORITHMS = Object.freeze([
