@@ -483,3 +483,15 @@ export function getTrustedMuteHideThreshold() {
 export function getTrustedSpamHideThreshold() {
   return TRUSTED_SPAM_HIDE_THRESHOLD;
 }
+
+export const FEED_TYPES = Object.freeze({
+  RECENT: "most-recent-videos",
+  FOR_YOU: "for-you",
+  KIDS: "kids",
+  EXPLORE: "explore",
+  SUBSCRIPTIONS: "subscriptions",
+  HISTORY: "history",
+  CHANNEL: "channel-profile",
+  DOCS: "docs",
+  SEARCH: "search",
+});
