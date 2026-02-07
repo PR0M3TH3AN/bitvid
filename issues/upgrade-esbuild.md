@@ -1,11 +1,11 @@
 # Upgrade esbuild
 
 ## Status
-- **Current:** `0.25.12`
-- **Latest:** `0.27.2`
+- **Current:** `0.27.2`
+- **Latest:** `0.27.3`
 
 ## Details
-`esbuild` 0.x versions may have breaking changes between minor versions.
+`esbuild` 0.x versions may have breaking changes between minor versions, but this is a patch.
 Used for build scripts (`scripts/build-dist.mjs`, `scripts/build-beacon.mjs`).
 
 ## Plan
