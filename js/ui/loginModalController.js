@@ -1561,6 +1561,23 @@ export default class LoginModalController {
           if (!pendingAuthUrl) {
             return;
           }
+
+          let isValid = false;
+          try {
+            const parsed = new URL(pendingAuthUrl);
+            isValid = parsed.protocol === "http:" || parsed.protocol === "https:";
+          } catch (error) {
+            isValid = false;
+          }
+
+          if (!isValid) {
+            devLogger.warn(
+              "[LoginModalController] Blocked unsafe authentication URL:",
+              pendingAuthUrl,
+            );
+            return;
+          }
+
           if (this.window && typeof this.window.open === "function") {
             this.window.open(pendingAuthUrl, "_blank", "noopener,noreferrer");
           } else if (this.document && this.document.location) {
