@@ -131,11 +131,23 @@ To set up the project locally:
    npm run test:visual
    ```
 
+   To update visual regression baselines:
+
+   ```bash
+   npm run test:visual:update
+   ```
+
    For Direct Message features, run:
 
    ```bash
    npm run test:dm:unit
    npm run test:dm:integration
+   ```
+
+   To aggregate telemetry from test logs:
+
+   ```bash
+   npm run telemetry:aggregate
    ```
 
 4. **Format & Lint**:
