@@ -1,6 +1,7 @@
 // js/channelProfile.js
 
 import { nostrClient } from "./nostrClientFacade.js";
+import nostrService from "./services/nostrService.js";
 import { convertEventToVideo as sharedConvertEventToVideo } from "./nostr/index.js";
 import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
 import { subscriptions } from "./subscriptions.js";
@@ -238,12 +239,25 @@ function decorateChannelVideo(video, app = getApp()) {
 }
 
 function collectChannelVideos(pubkey, app = getApp()) {
-  if (!app || !(app.videosMap instanceof Map)) {
+  const normalized = normalizeHex(pubkey);
+  if (!normalized) {
     return [];
   }
 
-  const normalized = normalizeHex(pubkey);
-  if (!normalized) {
+  try {
+    const index = nostrService.ensureVideosByAuthorIndex();
+    const matches = index.get(normalized);
+    if (Array.isArray(matches)) {
+      return [...matches];
+    }
+  } catch (error) {
+    devLogger.warn(
+      "[ChannelProfile] Failed to use author video index; falling back to linear scan.",
+      error,
+    );
+  }
+
+  if (!app || !(app.videosMap instanceof Map)) {
     return [];
   }
 
@@ -1170,7 +1184,7 @@ function handleVideoModerationEvent(event) {
   const app = getApp();
   const decoratedVideo = decorateChannelVideo(video, app) || video;
   if (app?.videosMap instanceof Map) {
-    app.videosMap.set(videoId, decoratedVideo);
+    nostrService.cacheVideos([decoratedVideo]);
   }
 
   refreshChannelVideoCardModeration(videoId, {
@@ -4645,6 +4659,8 @@ export async function renderChannelVideosFromList({
 
   const allowNsfw = ALLOW_NSFW_CONTENT === true;
 
+  const videosToCache = [];
+
   for (const originalVideo of renderableVideos) {
     if (!originalVideo || !originalVideo.id || !originalVideo.title) {
       continue;
@@ -4669,7 +4685,7 @@ export async function renderChannelVideosFromList({
       continue;
     }
 
-    app?.videosMap?.set(video.id, video);
+    videosToCache.push(video);
 
     const index = renderIndex++;
     let hasOlder = false;
@@ -4885,6 +4901,10 @@ export async function renderChannelVideosFromList({
     if (cardEl) {
       fragment.appendChild(cardEl);
     }
+  }
+
+  if (videosToCache.length > 0) {
+    nostrService.cacheVideos(videosToCache);
   }
 
   if (renderIndex === 0) {

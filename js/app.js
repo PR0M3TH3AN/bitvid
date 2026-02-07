@@ -3024,7 +3024,27 @@ class Application {
       this.decorateVideoCreatorIdentity(video);
     };
 
-    if (this.videosMap instanceof Map) {
+    if (this.nostrService && typeof this.nostrService.ensureVideosByAuthorIndex === "function") {
+      try {
+        const index = this.nostrService.ensureVideosByAuthorIndex();
+        const matches = index.get(normalizedPubkey);
+        if (Array.isArray(matches)) {
+          for (const video of matches) {
+            this.decorateVideoCreatorIdentity(video);
+          }
+        }
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to use author video index for profile update; falling back to linear scan.",
+          error,
+        );
+        if (this.videosMap instanceof Map) {
+          for (const video of this.videosMap.values()) {
+            maybeDecorateVideo(video);
+          }
+        }
+      }
+    } else if (this.videosMap instanceof Map) {
       for (const video of this.videosMap.values()) {
         maybeDecorateVideo(video);
       }
