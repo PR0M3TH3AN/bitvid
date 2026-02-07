@@ -10,6 +10,7 @@ const DEFAULT_PROFILE_IMAGE = "assets/svg/default-profile.svg";
 
 export async function batchFetchProfilesFromRelays({
   authorSet,
+  forceRefresh = false,
   getProfileCacheEntry,
   setProfileCacheEntry,
   updateProfileInDOM,
@@ -50,6 +51,9 @@ export async function batchFetchProfilesFromRelays({
     const cacheEntry = getProfileCacheEntry(normalizedPubkey);
     if (cacheEntry) {
       updateProfileInDOM(normalizedPubkey, cacheEntry.profile);
+      if (forceRefresh) {
+        toFetch.push(normalizedPubkey);
+      }
     } else {
       toFetch.push(normalizedPubkey);
     }

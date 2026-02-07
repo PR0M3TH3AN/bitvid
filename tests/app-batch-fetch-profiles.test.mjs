@@ -133,3 +133,79 @@ test("batchFetchProfiles handles fast and failing relays", async () => {
     { pubkey: VALID_PUBKEY, profile: { name: "Fast", picture: "fast.png" } },
   ]);
 });
+
+test("batchFetchProfiles respects forceRefresh", async () => {
+  const cache = new Map();
+  const updates = [];
+  const setCalls = [];
+  const authorSet = new Set([
+    CACHED_PUBKEY,
+  ]);
+
+  const getProfileCacheEntry = (pubkey) => {
+    if (pubkey === CACHED_PUBKEY) {
+      return { profile: { name: "Cached", picture: "cached.png" } };
+    }
+    return null;
+  };
+
+  const setProfileCacheEntry = (pubkey, profile) => {
+    cache.set(pubkey, { profile });
+    setCalls.push({ pubkey, profile });
+  };
+
+  const updateProfileInDOM = (pubkey, profile) => {
+    updates.push({ pubkey, profile });
+  };
+
+  const originalPool = nostrClient.pool;
+  const poolListCalls = [];
+
+  nostrClient.pool = {
+    list: (relays, filters) => {
+      poolListCalls.push({ relays, filters });
+      return Promise.resolve([
+        createProfileEvent({
+          pubkey: CACHED_PUBKEY,
+          createdAt: 300,
+          content: { name: "Refreshed", picture: "refreshed.png" },
+        }),
+      ]);
+    },
+  };
+
+  try {
+    await batchFetchProfilesFromRelays({
+      authorSet,
+      forceRefresh: true,
+      getProfileCacheEntry,
+      setProfileCacheEntry,
+      updateProfileInDOM,
+    });
+  } finally {
+    nostrClient.pool = originalPool;
+  }
+
+  // Should fetch despite cache presence
+  assert.ok(poolListCalls.length > 0, "should query relays when forceRefresh is true");
+  assert.deepEqual(
+    poolListCalls[0].filters[0].authors,
+    [CACHED_PUBKEY],
+    "should include cached pubkey in fetch list"
+  );
+
+  // Should still optimistic update from cache first
+  assert.deepEqual(
+    updates[0],
+    { pubkey: CACHED_PUBKEY, profile: { name: "Cached", picture: "cached.png" } },
+    "cached profiles should hydrate immediately even with forceRefresh"
+  );
+
+  // Then update with fresh data
+  const lastUpdate = updates[updates.length - 1];
+  assert.deepEqual(
+    lastUpdate,
+    { pubkey: CACHED_PUBKEY, profile: { name: "Refreshed", picture: "refreshed.png" } },
+    "should update with refreshed data"
+  );
+});
