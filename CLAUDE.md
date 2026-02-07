@@ -134,6 +134,7 @@ npm run test:visual
 | `npm run test:dm:integration` | DM integration tests |
 | `npm run test:e2e` | Headless E2E tests |
 | `npm run test:visual` | Visual regression tests |
+| `node scripts/agent/validate-events.mjs` | Validate Nostr event schemas |
 
 ---
 
