@@ -161,7 +161,7 @@ To set up the project locally:
    npm run telemetry:aggregate
    ```
 
-4. **Format & Lint**:
+5. **Format & Lint**:
 
    ```bash
    npm run format
