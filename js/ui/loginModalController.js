@@ -1571,7 +1571,9 @@ export default class LoginModalController {
       }
 
       // Kick off the handshake generation
-      this.nip46AutoStartTimer = setTimeout(autoStart, 0);
+      if (this.window && typeof this.window.setTimeout === "function") {
+        this.nip46AutoStartTimer = this.window.setTimeout(autoStart, 0);
+      }
     });
   }
 
