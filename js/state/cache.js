@@ -505,6 +505,133 @@ export function persistSavedProfiles({ persistActive = true } = {}) {
   writeSavedProfilesPayloadToStorage(payload);
 }
 
+function processSavedProfilesPayload(parsed) {
+  const result = {
+    profiles: [],
+    activePubkey: null,
+    hasExplicitActiveProfile: false,
+    needsRewrite: false,
+  };
+
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    parsed.version !== SAVED_PROFILES_STORAGE_VERSION
+  ) {
+    result.needsRewrite = true;
+    return result;
+  }
+
+  const entries = Array.isArray(parsed.entries) ? parsed.entries : [];
+  const seenPubkeys = new Set();
+  for (const candidate of entries) {
+    if (!candidate || typeof candidate !== "object") {
+      continue;
+    }
+
+    const normalizedPubkey = normalizeHexPubkey(candidate.pubkey);
+    if (!normalizedPubkey || seenPubkeys.has(normalizedPubkey)) {
+      result.needsRewrite = true;
+      continue;
+    }
+
+    seenPubkeys.add(normalizedPubkey);
+    const rawAuthType =
+      typeof candidate.authType === "string" ? candidate.authType : null;
+    let storedAuthType = null;
+    if (rawAuthType) {
+      const trimmedAuthType = rawAuthType.trim();
+      if (trimmedAuthType) {
+        storedAuthType = trimmedAuthType;
+        if (trimmedAuthType !== rawAuthType) {
+          result.needsRewrite = true;
+        }
+      }
+    }
+
+    if (!storedAuthType) {
+      storedAuthType = "nip07";
+      if (rawAuthType !== "nip07") {
+        result.needsRewrite = true;
+      }
+    }
+    const rawProviderId =
+      typeof candidate.providerId === "string" ? candidate.providerId : null;
+    let storedProviderId = null;
+    if (rawProviderId) {
+      const trimmedProviderId = rawProviderId.trim();
+      if (trimmedProviderId) {
+        storedProviderId = trimmedProviderId;
+        if (trimmedProviderId !== rawProviderId) {
+          result.needsRewrite = true;
+        }
+      }
+    }
+    if (!storedProviderId && storedAuthType) {
+      storedProviderId = storedAuthType;
+      if (rawProviderId !== storedProviderId) {
+        result.needsRewrite = true;
+      }
+    }
+    const npub =
+      typeof candidate.npub === "string" && candidate.npub.trim()
+        ? candidate.npub.trim()
+        : null;
+
+    const entry = {
+      pubkey: normalizedPubkey,
+      npub,
+      name: typeof candidate.name === "string" ? candidate.name : "",
+      picture: typeof candidate.picture === "string" ? candidate.picture : "",
+      authType: storedAuthType,
+      providerId: storedProviderId,
+    };
+
+    if (
+      typeof candidate.npub === "string" &&
+      candidate.npub.trim() !== candidate.npub
+    ) {
+      result.needsRewrite = true;
+    }
+
+    if (
+      entry.npub &&
+      typeof candidate.npub !== "string" &&
+      entry.npub !== candidate.npub
+    ) {
+      result.needsRewrite = true;
+    }
+
+    result.profiles.push(entry);
+  }
+
+  let hasActiveField = false;
+  let activeCandidate;
+  if (Object.prototype.hasOwnProperty.call(parsed, "activePubkey")) {
+    hasActiveField = true;
+    activeCandidate = parsed.activePubkey;
+  } else if (Object.prototype.hasOwnProperty.call(parsed, "activePubKey")) {
+    hasActiveField = true;
+    activeCandidate = parsed.activePubKey;
+  }
+
+  if (hasActiveField) {
+    result.hasExplicitActiveProfile = true;
+    if (typeof activeCandidate === "string") {
+      const normalizedActive = normalizeHexPubkey(activeCandidate);
+      if (normalizedActive && seenPubkeys.has(normalizedActive)) {
+        result.activePubkey = normalizedActive;
+      } else if (activeCandidate) {
+        result.needsRewrite = true;
+      }
+    } else if (activeCandidate !== null && activeCandidate !== undefined) {
+      result.needsRewrite = true;
+    }
+  }
+
+  return result;
+}
+
 export function loadSavedProfilesFromStorage() {
   savedProfiles = [];
   activeProfilePubkey = null;
@@ -530,117 +657,24 @@ export function loadSavedProfilesFromStorage() {
   let needsRewrite = false;
   try {
     const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object" && parsed.version === SAVED_PROFILES_STORAGE_VERSION) {
-      const entries = Array.isArray(parsed.entries) ? parsed.entries : [];
-      const seenPubkeys = new Set();
-      for (const candidate of entries) {
-        if (!candidate || typeof candidate !== "object") {
-          continue;
-        }
-
-        const normalizedPubkey = normalizeHexPubkey(candidate.pubkey);
-        if (!normalizedPubkey || seenPubkeys.has(normalizedPubkey)) {
-          needsRewrite = true;
-          continue;
-        }
-
-        seenPubkeys.add(normalizedPubkey);
-        const rawAuthType =
-          typeof candidate.authType === "string" ? candidate.authType : null;
-        let storedAuthType = null;
-        if (rawAuthType) {
-          const trimmedAuthType = rawAuthType.trim();
-          if (trimmedAuthType) {
-            storedAuthType = trimmedAuthType;
-            if (trimmedAuthType !== rawAuthType) {
-              needsRewrite = true;
-            }
-          }
-        }
-
-        if (!storedAuthType) {
-          storedAuthType = "nip07";
-          if (rawAuthType !== "nip07") {
-            needsRewrite = true;
-          }
-        }
-        const rawProviderId =
-          typeof candidate.providerId === "string" ? candidate.providerId : null;
-        let storedProviderId = null;
-        if (rawProviderId) {
-          const trimmedProviderId = rawProviderId.trim();
-          if (trimmedProviderId) {
-            storedProviderId = trimmedProviderId;
-            if (trimmedProviderId !== rawProviderId) {
-              needsRewrite = true;
-            }
-          }
-        }
-        if (!storedProviderId && storedAuthType) {
-          storedProviderId = storedAuthType;
-          if (rawProviderId !== storedProviderId) {
-            needsRewrite = true;
-          }
-        }
-        const npub =
-          typeof candidate.npub === "string" && candidate.npub.trim()
-            ? candidate.npub.trim()
-            : null;
-
-        const entry = {
-          pubkey: normalizedPubkey,
-          npub,
-          name: typeof candidate.name === "string" ? candidate.name : "",
-          picture: typeof candidate.picture === "string" ? candidate.picture : "",
-          authType: storedAuthType,
-          providerId: storedProviderId,
-        };
-
-        if (
-          typeof candidate.npub === "string" && candidate.npub.trim() !== candidate.npub
-        ) {
-          needsRewrite = true;
-        }
-
-        if (entry.npub && typeof candidate.npub !== "string" && entry.npub !== candidate.npub) {
-          needsRewrite = true;
-        }
-
-        savedProfiles.push(entry);
-      }
-
-      let hasActiveField = false;
-      let activeCandidate;
-      if (Object.prototype.hasOwnProperty.call(parsed, "activePubkey")) {
-        hasActiveField = true;
-        activeCandidate = parsed.activePubkey;
-      } else if (Object.prototype.hasOwnProperty.call(parsed, "activePubKey")) {
-        hasActiveField = true;
-        activeCandidate = parsed.activePubKey;
-      }
-
-      if (hasActiveField) {
-        hadExplicitActiveProfile = true;
-        if (typeof activeCandidate === "string") {
-          const normalizedActive = normalizeHexPubkey(activeCandidate);
-          if (normalizedActive && seenPubkeys.has(normalizedActive)) {
-            activeProfilePubkey = normalizedActive;
-          } else if (activeCandidate) {
-            needsRewrite = true;
-          }
-        } else if (activeCandidate !== null && activeCandidate !== undefined) {
-          needsRewrite = true;
-        }
-      }
-    } else if (raw) {
-      needsRewrite = true;
-    }
+    const result = processSavedProfilesPayload(parsed);
+    savedProfiles = result.profiles;
+    activeProfilePubkey = result.activePubkey;
+    hadExplicitActiveProfile = result.hasExplicitActiveProfile;
+    needsRewrite = result.needsRewrite;
   } catch (error) {
-    userLogger.warn("[cache.loadSavedProfilesFromStorage] Failed to parse payload:", error);
+    userLogger.warn(
+      "[cache.loadSavedProfilesFromStorage] Failed to parse payload:",
+      error,
+    );
     needsRewrite = true;
   }
 
-  if (!activeProfilePubkey && savedProfiles.length && !hadExplicitActiveProfile) {
+  if (
+    !activeProfilePubkey &&
+    savedProfiles.length &&
+    !hadExplicitActiveProfile
+  ) {
     activeProfilePubkey = savedProfiles[0].pubkey;
     needsRewrite = true;
   }
