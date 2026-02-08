@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 import { HashtagStripHelper } from "../../../js/ui/components/hashtagStripHelper.js";
 
+// Capture original global ResizeObserver in case it was polyfilled by setup scripts
+const originalGlobalResizeObserver = globalThis.ResizeObserver;
+
 function createDom(options = {}) {
   const dom = new JSDOM("<!DOCTYPE html><body><div id='container'></div></body>", {
     pretendToBeVisual: true,
@@ -81,6 +84,12 @@ function createDom(options = {}) {
     win.ResizeObserver = MockResizeObserver;
   } else {
     delete win.ResizeObserver;
+    // Important: HashtagStripHelper falls back to globalThis.ResizeObserver if window.ResizeObserver is missing.
+    // We must ensure globalThis.ResizeObserver is also hidden for the fallback tests.
+    // We rely on the test case to restore it using t.after().
+    if (globalThis.ResizeObserver) {
+        delete globalThis.ResizeObserver;
+    }
   }
 
   // Helper to trigger resize from observer
@@ -160,6 +169,12 @@ test("HashtagStripHelper uses ResizeObserver when available", (t) => {
 });
 
 test("HashtagStripHelper falls back to window resize with RAF", (t) => {
+  t.after(() => {
+    if (originalGlobalResizeObserver) {
+        globalThis.ResizeObserver = originalGlobalResizeObserver;
+    }
+  });
+
   const { window, document } = createDom({
     useResizeObserver: false,
     mockRaf: true,
@@ -196,6 +211,12 @@ test("HashtagStripHelper falls back to window resize with RAF", (t) => {
 });
 
 test("HashtagStripHelper falls back to window resize with setTimeout when RAF is missing", (t) => {
+  t.after(() => {
+      if (originalGlobalResizeObserver) {
+          globalThis.ResizeObserver = originalGlobalResizeObserver;
+      }
+  });
+
   const { window, document } = createDom({
     useResizeObserver: false,
     mockRaf: false, // Ensure RAF is missing/removed
