@@ -557,6 +557,8 @@ function getActiveKey(video) {
   return `LEGACY:${video.id}`;
 }
 
+import { getDTagValueFromTags as getDTagValueFromTagsHelper } from "./nip71.js";
+
 export {
   convertEventToVideo,
   Nip46RpcClient,
@@ -896,6 +898,18 @@ export class NostrClient {
 
   getActiveKey(video) {
     return getActiveKey(video);
+  }
+
+  resolveEventDTag(event, fallbackEvent = null) {
+    if (!event || typeof event !== "object") {
+      return fallbackEvent ? this.resolveEventDTag(fallbackEvent) : "";
+    }
+    const fromTags = getDTagValueFromTagsHelper(event.tags);
+    if (fromTags) {
+      return fromTags;
+    }
+    // Fallback logic for legacy events or unusual structures
+    return "";
   }
 
   /**

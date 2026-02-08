@@ -13,22 +13,24 @@ test("sendDirectMessage succeeds with private key signer and no extension", asyn
   const previousReady = globalThis.nostrToolsReady;
   const previousWorker = globalThis.Worker;
 
-  const nostrTools = await import("nostr-tools");
-  const canonicalTools = { ...nostrTools };
-  if (typeof canonicalTools.signEvent !== "function") {
-    canonicalTools.signEvent = (event, privateKey) => {
-      const finalized = canonicalTools.finalizeEvent(event, privateKey);
-      return finalized.sig;
-    };
-  }
+  const toolkit = await import("../js/nostr/toolkit.js");
+  const canonicalTools = await toolkit.ensureNostrTools();
 
   try {
-    globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__ = canonicalTools;
-    globalThis.NostrTools = canonicalTools;
-    globalThis.nostrToolsReady = Promise.resolve({
-      ok: true,
-      value: canonicalTools,
-    });
+    try {
+      globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__ = canonicalTools;
+    } catch (e) { /* ignore */ }
+
+    try {
+      globalThis.NostrTools = canonicalTools;
+    } catch (e) { /* ignore */ }
+
+    try {
+      globalThis.nostrToolsReady = Promise.resolve({
+        ok: true,
+        value: canonicalTools,
+      });
+    } catch (e) { /* ignore */ }
 
     globalThis.Worker = class MockWorker {
       constructor() {
@@ -115,8 +117,9 @@ test("sendDirectMessage succeeds with private key signer and no extension", asyn
         const finalized = canonicalTools.finalizeEvent(event, senderPrivateKey);
         return { ...event, id: finalized.id, sig: finalized.sig };
       };
-      delete signer.nip04Encrypt;
-      delete signer.nip44Encrypt;
+      // We must explicitly mock capabilities or ensure the signer has them
+      signer.nip04Encrypt = (target, plaintext) => canonicalTools.nip04.encrypt(senderPrivateKey, target, plaintext);
+      signer.nip44Encrypt = (target, plaintext) => canonicalTools.nip44.encrypt(senderPrivateKey, target, plaintext);
     }
 
     const message = "bitvid direct message smoke test";

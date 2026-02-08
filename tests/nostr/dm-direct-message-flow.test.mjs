@@ -115,30 +115,47 @@ async function configureNostrTools() {
   const previousNostrTools = globalThis.NostrTools;
   const previousReady = globalThis.nostrToolsReady;
 
-  const nostrTools = await import("nostr-tools");
+  const toolkit = await import("../../js/nostr/toolkit.js");
+  const nostrTools = await toolkit.ensureNostrTools();
 
-  globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__ = nostrTools;
-  globalThis.NostrTools = nostrTools;
-  globalThis.nostrToolsReady = Promise.resolve({ ok: true, value: nostrTools });
+  // Try setting properties, handling read-only case
+  try {
+    globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__ = nostrTools;
+  } catch (e) { /* ignore */ }
+
+  try {
+    globalThis.NostrTools = nostrTools;
+  } catch (e) { /* ignore */ }
+
+  try {
+    globalThis.nostrToolsReady = Promise.resolve({ ok: true, value: nostrTools });
+  } catch (e) { /* ignore */ }
+
 
   const restore = () => {
-    if (previousCanonical === undefined) {
-      delete globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__;
-    } else {
-      globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__ = previousCanonical;
-    }
+    try {
+      if (previousCanonical === undefined) {
+        delete globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__;
+      } else {
+        globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__ = previousCanonical;
+      }
+    } catch (e) { /* ignore */ }
 
-    if (previousNostrTools === undefined) {
-      delete globalThis.NostrTools;
-    } else {
-      globalThis.NostrTools = previousNostrTools;
-    }
+    try {
+      if (previousNostrTools === undefined) {
+        delete globalThis.NostrTools;
+      } else {
+        globalThis.NostrTools = previousNostrTools;
+      }
+    } catch (e) { /* ignore */ }
 
-    if (previousReady === undefined) {
-      delete globalThis.nostrToolsReady;
-    } else {
-      globalThis.nostrToolsReady = previousReady;
-    }
+    try {
+      if (previousReady === undefined) {
+        delete globalThis.nostrToolsReady;
+      } else {
+        globalThis.nostrToolsReady = previousReady;
+      }
+    } catch (e) { /* ignore */ }
   };
 
   return { nostrTools, restore };
