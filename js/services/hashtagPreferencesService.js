@@ -352,18 +352,15 @@ class HashtagPreferencesService {
       eventId: this.eventId,
       createdAt: this.eventCreatedAt,
     };
-    // Use the note type key directly, though "interests" maps to HASHTAG_PREFERENCES
-    // in profileCache. Using NOTE_TYPES.HASHTAG_PREFERENCES explicitly is safer if we import it,
-    // but relying on the mapped key "interests" is also consistent with current usage.
-    // However, the fix requires us to ensure we use the unified path.
-    // We'll stick to "interests" which maps to NOTE_TYPES.HASHTAG_PREFERENCES in profileCache.js
-    profileCache.set("interests", payload);
+    // Use the note type key directly. This maps to the same storage key as the legacy "interests"
+    // mapping in profileCache, ensuring backward compatibility while using the unified path.
+    profileCache.set(NOTE_TYPES.HASHTAG_PREFERENCES, payload);
   }
 
   loadFromCache(pubkey) {
     // profileCache internally uses activePubkey, but we should verify if it matches
     try {
-      let cached = profileCache.getProfileData(pubkey, "interests");
+      let cached = profileCache.getProfileData(pubkey, NOTE_TYPES.HASHTAG_PREFERENCES);
 
       // Legacy fallback migration
       if (!cached && typeof localStorage !== "undefined") {
@@ -372,7 +369,7 @@ class HashtagPreferencesService {
           if (legacy) {
             const parsed = JSON.parse(legacy);
             // Migrate to unified profile cache
-            profileCache.set("interests", parsed);
+            profileCache.set(NOTE_TYPES.HASHTAG_PREFERENCES, parsed);
             localStorage.removeItem(HASHTAG_IDENTIFIER);
             cached = parsed;
             devLogger.log(`${LOG_PREFIX} Migrated legacy preferences to profileCache.`);
