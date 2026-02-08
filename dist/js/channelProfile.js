@@ -911,6 +911,9 @@ function resolveChannelModeration(pubkey, app = getApp()) {
   }
 
   const matches = collectChannelVideos(normalized, app);
+  if (!Array.isArray(matches)) {
+    return null;
+  }
   let fallbackModeration = null;
   let fallbackVideo = null;
 
