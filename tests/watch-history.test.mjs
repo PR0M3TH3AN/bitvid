@@ -2392,6 +2392,66 @@ async function testWatchHistoryLocalFallbackWhenDisabled() {
   }
 }
 
+async function testWatchHistoryRendererFeedRegistrationFallback() {
+  console.log("Running watch history renderer feed registration fallback test...");
+
+  const actor = "watch-history-renderer-fallback";
+  const originalApp = getApplication();
+  const originalLoadLatest = watchHistoryService.loadLatest;
+  const originalDocument = globalThis.document;
+  const originalHTMLElement = globalThis.HTMLElement;
+
+  let runCalled = false;
+  let loadLatestCalls = 0;
+
+  try {
+    globalThis.document = { querySelector: () => null };
+    globalThis.HTMLElement = class HTMLElement {};
+
+    watchHistoryService.loadLatest = async (actorInput) => {
+      loadLatestCalls += 1;
+      assert.equal(actorInput, actor, "fallback loader should target provided actor");
+      return [{ type: "e", value: "service-fallback-entry", watchedAt: 1_700_700_000 }];
+    };
+
+    setApplication({
+      feedEngine: {
+        run() {
+          runCalled = true;
+          throw new Error("not registered");
+        },
+        getFeedDefinition() {
+          return null;
+        },
+      },
+      registerWatchHistoryFeed() {
+        throw new Error("registration failed");
+      },
+      isAuthorBlocked: () => false,
+      getHashtagPreferences: () => ({ interests: [], disinterests: [] }),
+    });
+
+    const renderer = createWatchHistoryRenderer({
+      container: { querySelector: () => null },
+      getActor: async () => actor,
+    });
+
+    await renderer.init({ actor, force: true });
+    const state = renderer.getState();
+
+    assert.equal(runCalled, false, "renderer should not run unregistered feed");
+    assert.equal(loadLatestCalls, 1, "renderer should use service fallback once");
+    assert.equal(state.lastError, null, "fallback path should avoid surfacing feed registration errors");
+    assert.equal(state.items.length, 1, "fallback path should populate items from service");
+    assert.equal(state.items[0]?.pointer?.value, "service-fallback-entry");
+  } finally {
+    watchHistoryService.loadLatest = originalLoadLatest;
+    globalThis.document = originalDocument;
+    globalThis.HTMLElement = originalHTMLElement;
+    setApplication(originalApp || null);
+  }
+}
+
 async function testWatchHistorySyncEnabledForLoggedInUsers() {
   console.log("Running watch history logged-in sync override test...");
 
@@ -2636,6 +2696,7 @@ await testWatchHistoryStaleCacheRefresh();
 await testWatchHistoryLocalFallbackWhenDisabled();
 await testWatchHistorySyncEnabledForLoggedInUsers();
 await testWatchHistoryAppLoginFallback();
+await testWatchHistoryRendererFeedRegistrationFallback();
 await testNormalizeActorKeyShortCircuit();
 // await testNormalizeActorKeyManualFallback(); // Flaky in env without robust nostr-tools
 
