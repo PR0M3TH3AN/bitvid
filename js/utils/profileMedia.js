@@ -33,7 +33,7 @@ export function sanitizeProfileMediaUrl(value) {
     return "";
   }
 
-  trimmed = trimmed.replace(/^['"]+|['"]+$/g, "");
+  trimmed = trimmed.replace(/^['"]+|['"]+$/g, "").trim();
   if (!trimmed) {
     return "";
   }
@@ -50,7 +50,7 @@ export function sanitizeProfileMediaUrl(value) {
     return "";
   }
 
-  if (/^ipfs:\/\//i.test(trimmed)) {
+  if (/^ipfs(\/|:\/\/)/i.test(trimmed)) {
     return normalizeIpfsGatewayUrl(trimmed);
   }
 
