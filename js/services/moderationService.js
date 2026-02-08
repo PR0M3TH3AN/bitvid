@@ -9,8 +9,22 @@ import { userBlocks, USER_BLOCK_EVENTS } from "../userBlocks.js";
 import { buildReportEvent } from "../nostrEventSchemas.js";
 import logger from "../utils/logger.js";
 
+/**
+ * Trust threshold for disabling autoplay on reported videos.
+ * If >= 1 trusted user reports content, autoplay is disabled.
+ */
 const AUTOPLAY_TRUST_THRESHOLD = 1;
+
+/**
+ * Trust threshold for blurring content.
+ * If >= 1 trusted user reports content, it is blurred.
+ */
 const BLUR_TRUST_THRESHOLD = 1;
+
+/**
+ * Time window for considering trusted mute list entries valid.
+ * Mutes older than 60 days are ignored to prevent stale lists from affecting scores.
+ */
 const TRUSTED_MUTE_WINDOW_DAYS = 60;
 const TRUSTED_MUTE_WINDOW_SECONDS = TRUSTED_MUTE_WINDOW_DAYS * 24 * 60 * 60;
 
@@ -198,6 +212,12 @@ function bytesToHex(bytes) {
   return hex;
 }
 
+/**
+ * @internal
+ * Internal implementation of bech32 encoding/decoding.
+ * This ensures the service can normalize `npub` inputs even if the global
+ * `NostrTools` object is unavailable or version-mismatched.
+ */
 const BECH32_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
 const BECH32_CHARSET_MAP = (() => {
   const map = new Map();
@@ -207,6 +227,7 @@ const BECH32_CHARSET_MAP = (() => {
   return map;
 })();
 
+/** @internal */
 function bech32Polymod(values) {
   let chk = 1;
   const generators = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
@@ -499,7 +520,30 @@ function resolveStorage() {
   return null;
 }
 
+/**
+ * ModerationService
+ *
+ * Central authority for Trust & Safety.
+ * Implements a "Web of Trust" model where content visibility and safety actions (blur, hide)
+ * are determined by aggregating reports (NIP-56) and mutes (NIP-51) from the user's
+ * trusted social graph (follows).
+ *
+ * Architecture:
+ * - **Viewer Context**: Tracks the currently logged-in user and their Kind 3 Contact List.
+ * - **Trust Graph**: Combines contacts + admin seeds + whitelists.
+ * - **Report Aggregation**: Counts reports only from trusted users.
+ * - **Thresholds**: Triggers actions (blur, block autoplay) when trusted report counts exceed limits.
+ */
 export class ModerationService {
+  /**
+   * @param {object} options
+   * @param {object} [options.nostrClient] - The Nostr client instance (dependency injection).
+   * @param {object} [options.logger] - System logger.
+   * @param {object} [options.userBlocks] - User block manager instance.
+   * @param {object} [options.accessControl] - Admin whitelist/blacklist controller.
+   * @param {object} [options.userLogger] - User-facing logger for notifications.
+   * @param {function} [options.requestExtensionPermissions] - Helper to request NIP-07 permissions.
+   */
   constructor({
     nostrClient: client = null,
     logger: log = null,
@@ -1700,6 +1744,14 @@ export class ModerationService {
     return this.setViewerPubkey(clientPubkey);
   }
 
+  /**
+   * Switches the active "Viewer" context.
+   * This reloads the trusted contact list (Kind 3) for the new user,
+   * effectively rebuilding the "Web of Trust" graph.
+   *
+   * @param {string} pubkey - The public key of the new viewer.
+   * @returns {Promise<string>} The normalized pubkey of the new viewer.
+   */
   async setViewerPubkey(pubkey) {
     const normalized = normalizeHex(pubkey);
     if (normalized === this.viewerPubkey && this.contactListPromise) {
@@ -2019,6 +2071,15 @@ export class ModerationService {
     }
   }
 
+  /**
+   * Ingests a NIP-56 Report event (Kind 1984).
+   *
+   * The report is indexed by `targetEventId` -> `reporter` -> `reportType`.
+   * Note: This method only stores the report. Trust filtering happens during
+   * `recomputeSummaryForEvent`.
+   *
+   * @param {object} event - The Kind 1984 event.
+   */
   ingestReportEvent(event) {
     if (!event || event.kind !== 1984) {
       return;
@@ -2071,6 +2132,17 @@ export class ModerationService {
     }
   }
 
+  /**
+   * Aggregates all reports for a specific event and calculates the "Trust Score".
+   *
+   * Algorithm:
+   * 1. Iterate over all reports for the event.
+   * 2. Check if the reporter is in the `trustedContacts` set (or Admin Whitelist).
+   * 3. If trusted, increment the count for that report type (e.g., "nudity").
+   * 4. Update the summary state and emit change events if thresholds are crossed.
+   *
+   * @param {string} eventId - The ID of the event to recompute.
+   */
   recomputeSummaryForEvent(eventId) {
     const normalized = normalizeEventId(eventId);
     if (!normalized) {
@@ -2296,6 +2368,17 @@ export class ModerationService {
     return Number.isFinite(entry.trusted) ? entry.trusted : 0;
   }
 
+  /**
+   * Publishes a NIP-56 Report (Kind 1984).
+   *
+   * @param {object} params
+   * @param {string} params.eventId - The ID of the content being reported.
+   * @param {string} params.type - The category (e.g., "nudity", "spam").
+   * @param {string} params.targetPubkey - The pubkey of the reported content's author.
+   * @param {string} [params.relayHint] - Optional relay URL hint.
+   * @param {string} [params.content] - Optional text description of the report.
+   * @returns {Promise<{ok: boolean, event: object, results: object[]}>}
+   */
   async submitReport({
     eventId,
     type,
