@@ -131,23 +131,16 @@ function determineDecryptionOrder(event, availableSchemes, cachedScheme = null) 
     prioritized.push(cachedScheme);
   }
 
-  const hasNip44 =
-    availableSet.has("nip44_v2") || availableSet.has("nip44");
-  const allowNip04 = !hasNip44 && availableSet.has("nip04");
-
   const hints = extractEncryptionHints(event);
   const aliasMap = {
     nip04: ["nip04"],
-    nip44: ["nip44_v2", "nip44"],
+    nip44: ["nip44", "nip44_v2"],
     nip44_v2: ["nip44_v2", "nip44"],
   };
 
   for (const hint of hints) {
     const candidates = Array.isArray(aliasMap[hint]) ? aliasMap[hint] : [hint];
     for (const candidate of candidates) {
-      if (candidate === "nip04" && !allowNip04) {
-        continue;
-      }
       if (availableSet.has(candidate) && !prioritized.includes(candidate)) {
         prioritized.push(candidate);
         break;
@@ -155,11 +148,7 @@ function determineDecryptionOrder(event, availableSchemes, cachedScheme = null) 
     }
   }
 
-  const fallbacks = ["nip44_v2", "nip44"];
-  if (allowNip04) {
-    fallbacks.push("nip04");
-  }
-  for (const fallback of fallbacks) {
+  for (const fallback of ["nip44_v2", "nip44", "nip04"]) {
     if (availableSet.has(fallback) && !prioritized.includes(fallback)) {
       prioritized.push(fallback);
     }

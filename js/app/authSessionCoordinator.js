@@ -196,6 +196,7 @@ export function createAuthSessionCoordinator(deps) {
       // PRE-AUTH: Request full permissions once so subsequent services don't
       // spam individual prompts. This runs immediately (not gated behind
       // relaysReadyPromise) so the user can approve while relays connect.
+      let preAuthSucceeded = false;
       const permissionPromise = activePubkey
         ? Promise.resolve()
             .then(async () => {
@@ -207,6 +208,7 @@ export function createAuthSessionCoordinator(deps) {
                   DEFAULT_NIP07_PERMISSION_METHODS,
                 );
               }
+              preAuthSucceeded = true;
             })
             .catch((error) => {
               devLogger.warn("[Application] Pre-authorization failed:", error);
@@ -231,7 +233,12 @@ export function createAuthSessionCoordinator(deps) {
       // signer is guaranteed to be available when decryption starts. This does
       // NOT slow down fresh logins because the pre-grant resolves immediately
       // when permissions were already granted during loginWithExtension().
+      //
+      // If pre-auth fails (e.g. extension was slow to inject), allow list
+      // services to request permissions themselves so they don't stall waiting
+      // for a retry timer.
       const listStatePromise = Promise.all([relaysReadyPromise, permissionPromise]).then(async () => {
+        const allowPermissionPrompt = !preAuthSucceeded;
         const parallelListTasks = [];
 
         if (
@@ -241,7 +248,7 @@ export function createAuthSessionCoordinator(deps) {
           parallelListTasks.push(
             this.authService
               .loadBlocksForPubkey(activePubkey, {
-                allowPermissionPrompt: false,
+                allowPermissionPrompt,
               })
               .catch((error) => {
                 devLogger.warn(
@@ -259,7 +266,7 @@ export function createAuthSessionCoordinator(deps) {
         ) {
           parallelListTasks.push(
             subscriptions
-              .ensureLoaded(activePubkey, { allowPermissionPrompt: false })
+              .ensureLoaded(activePubkey, { allowPermissionPrompt })
               .then(() => {
                 this.capturePermissionPromptFromError(
                   subscriptions?.lastLoadError,
@@ -282,7 +289,7 @@ export function createAuthSessionCoordinator(deps) {
         ) {
           parallelListTasks.push(
             this.hashtagPreferences
-              .load(activePubkey, { allowPermissionPrompt: false })
+              .load(activePubkey, { allowPermissionPrompt })
               .then(() => {
                 this.capturePermissionPromptFromError(
                   this.hashtagPreferences?.lastLoadError,

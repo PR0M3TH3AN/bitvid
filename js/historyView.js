@@ -1416,7 +1416,7 @@ export function createWatchHistoryRenderer(config = {}) {
             cursor,
             forceRefresh,
           });
-          return engine.run("watch-history", { runtime });
+          return await engine.run("watch-history", { runtime });
         } catch (feedError) {
           // Fall through to service fallback if feed is still not registered
         }
