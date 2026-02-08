@@ -6,6 +6,7 @@ import {
   listMessagesByConversation,
   updateConversationFromMessage,
   writeMessages,
+  closeDmDb,
 } from "../js/storage/dmDb.js";
 
 const { indexedDB, IDBKeyRange } = await import("fake-indexeddb");
@@ -25,6 +26,7 @@ async function deleteDatabase(name) {
 }
 
 afterEach(async () => {
+  await closeDmDb();
   await deleteDatabase("bitvidDm");
 });
 
