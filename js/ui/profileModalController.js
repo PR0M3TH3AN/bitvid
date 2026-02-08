@@ -13564,6 +13564,7 @@ export class ProfileModalController {
     this.populateProfileRelays();
     this.refreshWalletPaneState();
     this.populateHashtagPreferences();
+    void this.populateStoragePane();
     this.handleActiveDmIdentityChanged(activePubkey);
     void this.refreshDmRelayPreferences({ force: true });
 
@@ -13577,6 +13578,7 @@ export class ProfileModalController {
         this.populateProfileRelays();
         this.refreshWalletPaneState();
         this.populateHashtagPreferences();
+        void this.populateStoragePane();
         void this.refreshDmRelayPreferences({ force: true });
       })
       .catch((error) => {
@@ -13642,6 +13644,7 @@ export class ProfileModalController {
     this.populateProfileRelays();
     this.refreshWalletPaneState();
     this.populateHashtagPreferences();
+    void this.populateStoragePane();
     this.clearHashtagInputs();
     this.setHashtagStatus("", "muted");
     this.handleActiveDmIdentityChanged(null);
