@@ -215,7 +215,7 @@ import { EventsMap } from "./eventsMap.js";
 import { RelayBatchFetcher } from "./relayBatchFetcher.js";
 import { PersistenceManager } from "./managers/PersistenceManager.js";
 import { ConnectionManager } from "./managers/ConnectionManager.js";
-import { SignerManager } from "./managers/SignerManager.js";
+import { SignerManager, resolveSignerCapabilities } from "./managers/SignerManager.js";
 
 function normalizeProfileFromEvent(event) {
   if (!event || !event.content) return null;
@@ -2911,6 +2911,12 @@ export class NostrClient {
    */
   async ensureActiveSignerForPubkey(pubkey) {
     return this.signerManager.ensureActiveSignerForPubkey(pubkey);
+  }
+
+  async registerPrivateKeySigner({ privateKey, pubkey }) {
+    const adapter = await createNsecAdapter(privateKey, pubkey);
+    this.signerManager.setActiveSigner(adapter);
+    return { pubkey: adapter.pubkey, signer: adapter };
   }
 
   async loginWithExtension(options) {

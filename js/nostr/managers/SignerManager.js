@@ -53,7 +53,7 @@ import { queueSignEvent } from "../signRequestQueue.js";
 import { signEventWithPrivateKey } from "../publishHelpers.js";
 import { ensureNostrTools, getCachedNostrTools } from "../toolkit.js";
 
-function resolveSignerCapabilities(signer) {
+export function resolveSignerCapabilities(signer) {
   const fallback = {
     sign: false,
     nip44: false,
