@@ -1086,6 +1086,13 @@ class Application {
     });
   }
 
+  async _initSessionActor() {
+    // Session actor initialization logic is currently handled by
+    // _handleSessionActorReady which is triggered by auth events or init calls.
+    // This placeholder ensures await this._initSessionActor() in init() doesn't fail.
+    return Promise.resolve();
+  }
+
   _initAccessControlListeners() {
     if (typeof accessControl.onBlacklistChange === "function") {
       accessControl.onBlacklistChange(() => {
