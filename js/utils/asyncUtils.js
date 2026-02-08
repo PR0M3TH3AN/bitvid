@@ -51,3 +51,63 @@ export async function pMap(iterable, mapper, { concurrency = Infinity } = {}) {
     next();
   });
 }
+
+/**
+ * Wraps a promise with a timeout.
+ *
+ * @param {Promise} promise - The promise to wrap.
+ * @param {number} timeoutMs - The timeout in milliseconds.
+ * @param {Function} [onTimeout] - Optional callback to run on timeout.
+ * @param {string} [message="Request timed out"] - The error message.
+ * @returns {Promise} - The result of the promise or rejects with error.
+ */
+export function withRequestTimeout(promise, timeoutMs, onTimeout, message = "Request timed out") {
+  const resolvedTimeout = Number(timeoutMs);
+  const effectiveTimeout =
+    Number.isFinite(resolvedTimeout) && resolvedTimeout > 0
+      ? Math.floor(resolvedTimeout)
+      : 4000;
+
+  let timeoutId = null;
+  let settled = false;
+
+  return new Promise((resolve, reject) => {
+    timeoutId = setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (typeof onTimeout === "function") {
+        try {
+          onTimeout();
+        } catch (cleanupError) {
+          // Suppress cleanup errors in generic utility
+          console.warn("[asyncUtils] withRequestTimeout cleanup failed:", cleanupError);
+        }
+      }
+      reject(new Error(message));
+    }, effectiveTimeout);
+
+    Promise.resolve(promise)
+      .then((value) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+        resolve(value);
+      })
+      .catch((error) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+        reject(error);
+      });
+  });
+}
