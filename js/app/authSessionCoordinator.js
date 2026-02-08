@@ -516,10 +516,6 @@ export function createAuthSessionCoordinator(deps) {
       const detail = await this.authService.logout();
 
       if (detail && typeof detail === "object") {
-        if (detail.__handled === true) {
-          return detail;
-        }
-
         try {
           detail.__handled = true;
         } catch (error) {
@@ -532,6 +528,22 @@ export function createAuthSessionCoordinator(deps) {
     },
 
     async handleAuthLogout(detail = {}) {
+      // Deduplicate concurrent calls — the auth:logout event listener may
+      // fire-and-forget this method while requestLogout() also awaits it.
+      // Return the in-flight promise so both callers resolve together.
+      if (this._pendingLogoutPromise) {
+        return this._pendingLogoutPromise;
+      }
+
+      this._pendingLogoutPromise = this._executeAuthLogout(detail);
+      try {
+        return await this._pendingLogoutPromise;
+      } finally {
+        this._pendingLogoutPromise = null;
+      }
+    },
+
+    async _executeAuthLogout(detail = {}) {
       if (detail && typeof detail === "object") {
         try {
           detail.__handled = true;
