@@ -605,6 +605,7 @@ export default class ApplicationBootstrap {
           onPublishDmRelayPreferences: (payload) =>
             app.handleProfilePublishDmRelayPreferences(payload),
           onRequestPermissionPrompt: () => app.handlePermissionPromptRequest(),
+          onRetryAuthSync: () => app.handleAuthSyncRetryRequest(),
         };
 
         app.profileController = new ProfileModalController({

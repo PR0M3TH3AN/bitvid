@@ -1199,6 +1199,7 @@ export class ProfileModalController {
       onOpenRelays: callbacks.onOpenRelays || noop,
       onPublishDmRelayPreferences: callbacks.onPublishDmRelayPreferences || noop,
       onRequestPermissionPrompt: callbacks.onRequestPermissionPrompt || noop,
+      onRetryAuthSync: callbacks.onRetryAuthSync || noop,
     };
 
     this.profileModal = null;
@@ -1337,7 +1338,9 @@ export class ProfileModalController {
       message: "",
       buttonLabel: "Enable permissions",
       busy: false,
+      action: "permission",
     };
+    this.authLoadingStateListener = null;
     this.profileSubscriptionsRefreshBtn = null;
     this.profileFriendsRefreshBtn = null;
     this.profileBlockedRefreshBtn = null;
@@ -1501,6 +1504,15 @@ export class ProfileModalController {
     this.setupLayoutBreakpointObserver();
     this.applyModalStackingOverrides();
     this.registerEventListeners();
+    if (!this.authLoadingStateListener && typeof window !== "undefined") {
+      this.authLoadingStateListener = (event) => {
+        this.handleAuthLoadingStateChange(event?.detail || {});
+      };
+      window.addEventListener(
+        "bitvid:auth-loading-state",
+        this.authLoadingStateListener,
+      );
+    }
     this.populateHashtagPreferences();
     this.refreshModerationSettingsUi();
     const preserveMenu = this.isMobileLayoutActive();
@@ -5445,6 +5457,10 @@ export class ProfileModalController {
 
     if (this.permissionPromptCtaButton instanceof HTMLElement) {
       this.permissionPromptCtaButton.addEventListener("click", () => {
+        if (this.permissionPromptCtaButton?.dataset?.action === "retry-auth-sync") {
+          this.callbacks.onRetryAuthSync({ controller: this });
+          return;
+        }
         this.callbacks.onRequestPermissionPrompt({ controller: this });
       });
     }
@@ -8093,6 +8109,7 @@ export class ProfileModalController {
       message,
       buttonLabel,
       busy,
+      action,
     } = this.permissionPromptCtaState || {};
     const normalizedMessage =
       typeof message === "string" && message.trim()
@@ -8117,6 +8134,74 @@ export class ProfileModalController {
         "aria-busy",
         busy ? "true" : "false",
       );
+      this.permissionPromptCtaButton.dataset.action =
+        action === "retry-auth-sync" ? "retry-auth-sync" : "permission";
+    }
+  }
+
+  handleAuthLoadingStateChange(detail = {}) {
+    const listsState =
+      typeof detail?.lists === "string" ? detail.lists.trim().toLowerCase() : "";
+    const listsDetail = detail?.listsDetail && typeof detail.listsDetail === "object"
+      ? detail.listsDetail
+      : null;
+    if (!listsDetail || !listsState || listsState === "loading" || listsState === "idle") {
+      return;
+    }
+
+    const failedTasks = Array.isArray(listsDetail.tasks)
+      ? listsDetail.tasks.filter((task) => task && task.ok === false)
+      : [];
+    const loadedFromCacheTasks = failedTasks.filter((task) => task.fromCache === true);
+    const hardFailTasks = failedTasks.filter((task) => task.fromCache !== true);
+
+    if (loadedFromCacheTasks.length > 0 && hardFailTasks.length === 0) {
+      this.setSubscriptionsStatus(
+        "Subscriptions loaded from cache; sync is retrying in background.",
+        "warning",
+      );
+      this.setHashtagStatus(
+        "Hashtag preferences loaded from cache; sync is retrying in background.",
+        "warning",
+      );
+      this.setBlockListLoadingState("error", {
+        message: "Blocked creators loaded from cache; syncing latest in background.",
+      });
+    } else if (hardFailTasks.length > 0) {
+      this.setSubscriptionsStatus(
+        "Some profile lists failed to sync. Use Retry sync.",
+        "warning",
+      );
+      this.setHashtagStatus(
+        "Some profile lists failed to sync. Use Retry sync.",
+        "warning",
+      );
+      this.setBlockListLoadingState("error", {
+        message: "Blocked creators failed to sync. Retry to fetch latest lists.",
+      });
+    }
+
+    if (failedTasks.length > 0) {
+      this.setPermissionPromptCtaState({
+        visible: true,
+        message:
+          loadedFromCacheTasks.length > 0
+            ? "Some lists are currently from cache. Retry now to sync with relays."
+            : "Failed to sync required profile lists. Retry now.",
+        buttonLabel: "Retry list sync",
+        action: "retry-auth-sync",
+        busy: false,
+      });
+      return;
+    }
+
+    if (listsState === "ready") {
+      this.setPermissionPromptCtaState({
+        visible: false,
+        message: "",
+        action: "permission",
+        busy: false,
+      });
     }
   }
 

@@ -239,6 +239,51 @@ export function createAuthSessionCoordinator(deps) {
       // for a retry timer.
       const listStatePromise = Promise.all([relaysReadyPromise, permissionPromise]).then(async () => {
         const allowPermissionPrompt = !preAuthSucceeded;
+        const hasValidBlocksCache = () => {
+          if (!activePubkey || !userBlocks) {
+            return false;
+          }
+          const activeCachePubkey = this.normalizeHexPubkey(userBlocks.activePubkey);
+          return userBlocks.loaded === true && activeCachePubkey === activePubkey;
+        };
+        const hasValidSubscriptionsCache = () => {
+          if (!activePubkey || !subscriptions) {
+            return false;
+          }
+          const activeCachePubkey = this.normalizeHexPubkey(
+            subscriptions.currentUserPubkey,
+          );
+          return subscriptions.loaded === true && activeCachePubkey === activePubkey;
+        };
+        const hasValidHashtagCache = () => {
+          if (!activePubkey || !this.hashtagPreferences) {
+            return false;
+          }
+          const activeCachePubkey = this.normalizeHexPubkey(
+            this.hashtagPreferences.activePubkey,
+          );
+          return this.hashtagPreferences.loaded === true && activeCachePubkey === activePubkey;
+        };
+
+        const runListTask = async (name, task, { hasValidCache }) => {
+          try {
+            const result = await task();
+            return {
+              name,
+              ok: Boolean(result?.ok),
+              error: result?.error || null,
+              hasCache: hasValidCache(),
+            };
+          } catch (error) {
+            return {
+              name,
+              ok: false,
+              error,
+              hasCache: hasValidCache(),
+            };
+          }
+        };
+
         const parallelListTasks = [];
 
         if (
@@ -246,16 +291,22 @@ export function createAuthSessionCoordinator(deps) {
           typeof this.authService.loadBlocksForPubkey === "function"
         ) {
           parallelListTasks.push(
-            this.authService
-              .loadBlocksForPubkey(activePubkey, {
-                allowPermissionPrompt,
-              })
-              .catch((error) => {
-                devLogger.warn(
-                  "[Application] Failed to load blocks during login:",
-                  error,
-                );
-              }),
+            runListTask(
+              "blocks",
+              async () => {
+                const loaded = await this.authService.loadBlocksForPubkey(activePubkey, {
+                  allowPermissionPrompt,
+                });
+                const ok = loaded !== false;
+                if (!ok) {
+                  const error = new Error("Block list sync returned a failed status.");
+                  error.code = "blocks-sync-failed";
+                  return { ok: false, error };
+                }
+                return { ok: true, error: null };
+              },
+              { hasValidCache: hasValidBlocksCache },
+            ),
           );
         }
 
@@ -265,20 +316,18 @@ export function createAuthSessionCoordinator(deps) {
           typeof subscriptions.ensureLoaded === "function"
         ) {
           parallelListTasks.push(
-            subscriptions
-              .ensureLoaded(activePubkey, { allowPermissionPrompt })
-              .then(() => {
-                this.capturePermissionPromptFromError(
-                  subscriptions?.lastLoadError,
-                );
-              })
-              .catch((error) => {
-                devLogger.warn(
-                  "[Application] Failed to load subscriptions during login:",
-                  error,
-                );
+            runListTask(
+              "subscriptions",
+              async () => {
+                await subscriptions.ensureLoaded(activePubkey, {
+                  allowPermissionPrompt,
+                });
+                const error = subscriptions?.lastLoadError || null;
                 this.capturePermissionPromptFromError(error);
-              }),
+                return { ok: !error, error };
+              },
+              { hasValidCache: hasValidSubscriptionsCache },
+            ),
           );
         }
 
@@ -288,28 +337,130 @@ export function createAuthSessionCoordinator(deps) {
           typeof this.hashtagPreferences.load === "function"
         ) {
           parallelListTasks.push(
-            this.hashtagPreferences
-              .load(activePubkey, { allowPermissionPrompt })
-              .then(() => {
-                this.capturePermissionPromptFromError(
-                  this.hashtagPreferences?.lastLoadError,
-                );
-                this.updateCachedHashtagPreferences();
-              })
-              .catch((error) => {
-                devLogger.warn(
-                  "[Application] Failed to load hashtag preferences during login:",
-                  error,
-                );
+            runListTask(
+              "hashtags",
+              async () => {
+                await this.hashtagPreferences.load(activePubkey, {
+                  allowPermissionPrompt,
+                });
+                const error = this.hashtagPreferences?.lastLoadError || null;
                 this.capturePermissionPromptFromError(error);
-              }),
+                this.updateCachedHashtagPreferences();
+                return { ok: !error, error };
+              },
+              { hasValidCache: hasValidHashtagCache },
+            ),
           );
         }
 
-        await Promise.allSettled(parallelListTasks);
+        const taskOutcomes = await Promise.all(parallelListTasks);
+        const requiredTaskOutcomes = taskOutcomes.filter((outcome) =>
+          ["blocks", "subscriptions", "hashtags"].includes(outcome.name),
+        );
+        const failedRequiredOutcomes = requiredTaskOutcomes.filter(
+          (outcome) => !outcome.ok,
+        );
+        const ready = requiredTaskOutcomes.every(
+          (outcome) => outcome.ok || outcome.hasCache,
+        );
+        const degraded = failedRequiredOutcomes.length > 0;
+        const fatal = failedRequiredOutcomes.some((outcome) => !outcome.hasCache);
 
-        this.updateAuthLoadingState({ lists: "ready" });
-        return true;
+        const listSyncDetail = {
+          ready,
+          degraded,
+          error: fatal,
+          retryScheduled: false,
+          tasks: requiredTaskOutcomes.map((outcome) => ({
+            name: outcome.name,
+            ok: outcome.ok,
+            fromCache: outcome.hasCache && !outcome.ok,
+            error: outcome.error || null,
+          })),
+        };
+
+        if (degraded && activePubkey) {
+          listSyncDetail.retryScheduled = true;
+          Promise.resolve()
+            .then(() =>
+              Promise.all([
+                this.authService?.loadBlocksForPubkey?.(activePubkey, {
+                  allowPermissionPrompt: true,
+                }),
+                subscriptions?.ensureLoaded?.(activePubkey, {
+                  allowPermissionPrompt: true,
+                }),
+                this.hashtagPreferences?.load?.(activePubkey, {
+                  allowPermissionPrompt: true,
+                }),
+              ]),
+            )
+            .then(() => {
+              this.updateCachedHashtagPreferences();
+              const retryTasks = [
+                {
+                  name: "blocks",
+                  ok: hasValidBlocksCache(),
+                  fromCache: false,
+                  error: null,
+                },
+                {
+                  name: "subscriptions",
+                  ok:
+                    hasValidSubscriptionsCache() &&
+                    !subscriptions?.lastLoadError,
+                  fromCache: false,
+                  error: subscriptions?.lastLoadError || null,
+                },
+                {
+                  name: "hashtags",
+                  ok:
+                    hasValidHashtagCache() &&
+                    !this.hashtagPreferences?.lastLoadError,
+                  fromCache: false,
+                  error: this.hashtagPreferences?.lastLoadError || null,
+                },
+              ];
+              const retryReady = retryTasks.every((task) => task.ok);
+              const retryDegraded = retryTasks.some((task) => !task.ok);
+              this.updateAuthLoadingState({
+                lists: retryReady ? "ready" : "degraded",
+                listsDetail: {
+                  ready: retryReady,
+                  degraded: retryDegraded,
+                  error: retryDegraded,
+                  retryScheduled: false,
+                  retryCompleted: true,
+                  tasks: retryTasks,
+                },
+              });
+              this.dispatchAuthChange({
+                status: "login-lists-sync",
+                loggedIn: true,
+                pubkey: activePubkey,
+                authLoadingState: this.authLoadingState,
+              });
+            })
+            .catch((error) => {
+              devLogger.warn(
+                "[Application] Consolidated list sync retry failed after login:",
+                error,
+              );
+            });
+        }
+
+        const listsState = ready ? (degraded ? "degraded" : "ready") : "error";
+        this.updateAuthLoadingState({
+          lists: listsState,
+          listsDetail: listSyncDetail,
+        });
+        this.dispatchAuthChange({
+          status: "login-lists-sync",
+          loggedIn: true,
+          pubkey: activePubkey,
+          authLoadingState: this.authLoadingState,
+        });
+        return listSyncDetail;
       });
 
       // DMs can wait for profile since they need encryption context.
