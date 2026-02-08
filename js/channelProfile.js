@@ -238,7 +238,7 @@ function decorateChannelVideo(video, app = getApp()) {
   return decoratedVideo;
 }
 
-export async function collectChannelVideos(pubkey, app = getApp()) {
+export function collectChannelVideos(pubkey, app = getApp()) {
   const normalized = normalizeHex(pubkey);
   if (!normalized) {
     return [];
