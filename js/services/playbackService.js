@@ -1,4 +1,5 @@
 import { userLogger } from "../utils/logger.js";
+import { SimpleEventEmitter } from "../utils/eventEmitter.js";
 import { PLAYBACK_START_TIMEOUT } from "../constants.js";
 // js/services/playbackService.js
 
@@ -18,46 +19,6 @@ import { PLAYBACK_START_TIMEOUT } from "../constants.js";
  *   clicks "Play" on a new video while the previous one is still loading, the
  *   old session is cancelled and doesn't overwrite the new one.
  */
-
-class SimpleEventEmitter {
-  constructor(logger = null) {
-    this.logger = typeof logger === "function" ? logger : null;
-    this.listeners = new Map();
-  }
-
-  on(eventName, handler) {
-    if (typeof handler !== "function") {
-      return () => {};
-    }
-    if (!this.listeners.has(eventName)) {
-      this.listeners.set(eventName, new Set());
-    }
-    const handlers = this.listeners.get(eventName);
-    handlers.add(handler);
-    return () => {
-      handlers.delete(handler);
-      if (!handlers.size) {
-        this.listeners.delete(eventName);
-      }
-    };
-  }
-
-  emit(eventName, detail) {
-    const handlers = this.listeners.get(eventName);
-    if (!handlers || !handlers.size) {
-      return;
-    }
-    for (const handler of Array.from(handlers)) {
-      try {
-        handler(detail);
-      } catch (err) {
-        if (this.logger) {
-          this.logger("[PlaybackService] Listener error", err);
-        }
-      }
-    }
-  }
-}
 
 const HOSTED_URL_SUCCESS_MESSAGE = "✅ Streaming from hosted URL";
 const DEFAULT_UNSUPPORTED_BTITH_MESSAGE =
@@ -288,7 +249,7 @@ export class PlaybackService {
  */
 class PlaybackSession extends SimpleEventEmitter {
   constructor(service, options = {}) {
-    super((message, ...args) => service.log(message, ...args));
+    super((message, ...args) => service.log(message, ...args), "PlaybackService");
     this.service = service;
     this.options = options;
     this.watchdogCleanup = null;
