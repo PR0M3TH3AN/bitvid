@@ -22,6 +22,7 @@ import {
   DEFAULT_BLUR_THRESHOLD,
   DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
   DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
+  FEED_TYPES,
 } from "./constants.js";
 import { attachHealthBadges } from "./gridHealth.js";
 import { attachUrlHealthBadges } from "./urlHealthObserver.js";
@@ -3946,22 +3947,22 @@ class Application {
 
   async refreshForYouFeed(...args) {
     this._initCoordinators();
-    return this._feed.refreshForYouFeed(...args);
+    return this._feed.refreshFeed(FEED_TYPES.FOR_YOU, ...args);
   }
 
   refreshKidsFeed(...args) {
     this._initCoordinators();
-    return this._feed.refreshKidsFeed(...args);
+    return this._feed.refreshFeed(FEED_TYPES.KIDS, ...args);
   }
 
   refreshExploreFeed(...args) {
     this._initCoordinators();
-    return this._feed.refreshExploreFeed(...args);
+    return this._feed.refreshFeed(FEED_TYPES.EXPLORE, ...args);
   }
 
   refreshRecentFeed(...args) {
     this._initCoordinators();
-    return this._feed.refreshRecentFeed(...args);
+    return this._feed.refreshFeed("recent", ...args);
   }
 
   checkRelayHealthWarning(...args) {

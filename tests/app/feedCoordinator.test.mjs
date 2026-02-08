@@ -52,10 +52,7 @@ test('createFeedCoordinator - loadForYouVideos', async (t) => {
     checkRelayHealthWarning: mock.fn(),
     setFeedTelemetryContext: mock.fn(),
     isAuthorBlocked: mock.fn(() => false),
-    refreshForYouFeed: mock.fn(async () => {}),
-    refreshRecentFeed: mock.fn(async () => {}),
-    refreshKidsFeed: mock.fn(async () => {}),
-    refreshExploreFeed: mock.fn(async () => {}),
+    refreshFeed: mock.fn(async () => {}),
     blacklistedEventIds: new Set(),
   };
 
@@ -80,8 +77,9 @@ test('createFeedCoordinator - loadForYouVideos', async (t) => {
       // Verify nostrService.loadVideos called
       assert.strictEqual(app.nostrService.loadVideos.mock.callCount(), 1, 'Should call nostrService.loadVideos');
 
-      // Verify refreshForYouFeed called via callback
-      assert.strictEqual(app.refreshForYouFeed.mock.callCount(), 1, 'Should call refreshForYouFeed via callback');
+      // Verify refreshFeed called via callback
+      assert.strictEqual(app.refreshFeed.mock.callCount(), 1, 'Should call refreshFeed via callback');
+      assert.strictEqual(app.refreshFeed.mock.calls[0].arguments[0], FEED_TYPES.FOR_YOU, 'Should call refreshFeed with FOR_YOU');
 
       // Verify subscription updated
       assert.strictEqual(app.videoSubscription, 'mock-subscription', 'Should update videoSubscription');
