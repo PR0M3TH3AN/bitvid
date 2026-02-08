@@ -2,16 +2,15 @@
 
 let activeEmitter = null;
 
-export function initEmbedDiagnostics({ enabled = true } = {}) {
+export function initEmbedDiagnostics({ enabled = true, targetOrigin = "*" } = {}) {
   if (!enabled) {
     return { emit: () => {} };
   }
 
   function postToParent(type, payload) {
     try {
-      // NOTE: using "*" so tester receives messages; in a production build you may restrict origin.
       if (window.parent && window.parent !== window) {
-        window.parent.postMessage({ __bitvid_debug: true, type, payload }, "*");
+        window.parent.postMessage({ __bitvid_debug: true, type, payload }, targetOrigin);
       }
     } catch (e) {
       // ignore

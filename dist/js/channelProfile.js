@@ -914,7 +914,9 @@ function resolveChannelModeration(pubkey, app = getApp()) {
   let fallbackModeration = null;
   let fallbackVideo = null;
 
-  for (const candidate of matches) {
+  const safeMatches = Array.isArray(matches) ? matches : [];
+
+  for (const candidate of safeMatches) {
     const decorated = decorateChannelVideo(candidate, app);
     if (!decorated || typeof decorated !== "object") {
       continue;

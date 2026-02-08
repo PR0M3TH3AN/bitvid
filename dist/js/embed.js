@@ -19,11 +19,25 @@ try {
 const urlParams = new URLSearchParams(window.location.search);
 const embedDebugEnabled =
   urlParams.get("embed_debug") === "1" || urlParams.get("debug") === "embed";
+
+// Restrict postMessage to the parent's origin or a debug override.
+let targetOrigin = window.location.origin;
+try {
+  const debugOrigin = urlParams.get("debug_origin");
+  if (debugOrigin) {
+    targetOrigin = debugOrigin;
+  } else if (document.referrer) {
+    targetOrigin = new URL(document.referrer).origin;
+  }
+} catch (e) {
+  targetOrigin = window.location.origin;
+}
+
 let diag = null;
 const diagPromise = embedDebugEnabled
   ? import("./embedDiagnostics.js")
       .then((m) => {
-        diag = m.initEmbedDiagnostics({ enabled: true });
+        diag = m.initEmbedDiagnostics({ enabled: true, targetOrigin });
         // immediately signal startup
         diag.emit("embed-start", {
           url: location.href,
@@ -39,7 +53,7 @@ const diagPromise = embedDebugEnabled
                 type: "embed-diag-failed",
                 payload: { error: String(e) },
               },
-              "*"
+              targetOrigin
             );
           }
         } catch (e2) {
