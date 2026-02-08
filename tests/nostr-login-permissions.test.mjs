@@ -55,6 +55,7 @@ function setupLoginEnvironment({ enableImpl, getPublicKey = HEX_PUBKEY } = {}) {
       return Promise.resolve();
     },
     getPublicKey: () => Promise.resolve(getPublicKey),
+    signEvent: (event) => Promise.resolve(event),
   };
 
   windowRef.nostr = nostrStub;
@@ -97,10 +98,10 @@ function setupLoginEnvironment({ enableImpl, getPublicKey = HEX_PUBKEY } = {}) {
   accessControl.isBlacklisted = () => false;
 
   if (
-    nostrClient.extensionPermissionCache &&
-    typeof nostrClient.extensionPermissionCache.clear === "function"
+    nostrClient.signerManager.extensionPermissionCache &&
+    typeof nostrClient.signerManager.extensionPermissionCache.clear === "function"
   ) {
-    nostrClient.extensionPermissionCache.clear();
+    nostrClient.signerManager.extensionPermissionCache.clear();
   }
   clearStoredPermissions();
 
@@ -143,10 +144,10 @@ function setupLoginEnvironment({ enableImpl, getPublicKey = HEX_PUBKEY } = {}) {
       }
 
       if (
-        nostrClient.extensionPermissionCache &&
-        typeof nostrClient.extensionPermissionCache.clear === "function"
+        nostrClient.signerManager.extensionPermissionCache &&
+        typeof nostrClient.signerManager.extensionPermissionCache.clear === "function"
       ) {
-        nostrClient.extensionPermissionCache.clear();
+        nostrClient.signerManager.extensionPermissionCache.clear();
       }
       clearStoredPermissions();
     },
@@ -166,29 +167,29 @@ describe("NIP-07 Login Permissions", () => {
       assert.equal(pubkey, HEX_PUBKEY);
       assert.ok(env.enableCalls.length >= 1, "extension.enable should be invoked");
       assert.ok(
-        nostrClient.extensionPermissionCache.has("nip04.encrypt"),
+        nostrClient.signerManager.extensionPermissionCache.has("nip04.encrypt"),
         "nip04.encrypt permission should be tracked as granted",
       );
       assert.ok(
-        nostrClient.extensionPermissionCache.has("nip04.decrypt"),
+        nostrClient.signerManager.extensionPermissionCache.has("nip04.decrypt"),
         "nip04.decrypt permission should be tracked as granted",
       );
       assert.ok(
-        nostrClient.extensionPermissionCache.has("nip44.encrypt"),
+        nostrClient.signerManager.extensionPermissionCache.has("nip44.encrypt"),
         "nip44.encrypt permission should be tracked as granted",
       );
       assert.ok(
-        nostrClient.extensionPermissionCache.has("nip44.decrypt"),
+        nostrClient.signerManager.extensionPermissionCache.has("nip44.decrypt"),
         "nip44.decrypt permission should be tracked as granted",
       );
       for (const method of EXPECTED_ENCRYPTION_PERMISSIONS) {
         assert.ok(
-          nostrClient.extensionPermissionCache.has(method),
+          nostrClient.signerManager.extensionPermissionCache.has(method),
           `${method} permission should be tracked as granted`,
         );
       }
       assert.ok(
-        nostrClient.extensionPermissionCache.has("sign_event"),
+        nostrClient.signerManager.extensionPermissionCache.has("sign_event"),
         "sign_event permission should be tracked as granted",
       );
     } finally {
@@ -225,7 +226,7 @@ describe("NIP-07 Login Permissions", () => {
       assert.equal(pubkey, HEX_PUBKEY);
       for (const method of EXPECTED_ENCRYPTION_PERMISSIONS) {
         assert.ok(
-          nostrClient.extensionPermissionCache.has(method),
+          nostrClient.signerManager.extensionPermissionCache.has(method),
           `nostrClient should track ${method} after login`,
         );
       }
@@ -261,7 +262,7 @@ describe("NIP-07 Login Permissions", () => {
 
       for (const method of EXPECTED_ENCRYPTION_PERMISSIONS) {
         assert.ok(
-          freshClient.extensionPermissionCache.has(method),
+          freshClient.signerManager.extensionPermissionCache.has(method),
           `fresh client should hydrate ${method} from storage`,
         );
       }
@@ -456,10 +457,10 @@ describe("NIP-07 Login Permissions", () => {
   it("NIP-07 login does not wait for deferred permission grants", async () => {
     clearStoredPermissions();
     const env = setupLoginEnvironment();
-    const originalEnsurePermissions = nostrClient.ensureExtensionPermissions;
+    const originalEnsurePermissions = nostrClient.signerManager.ensureExtensionPermissions;
     let completionPromise;
 
-    nostrClient.ensureExtensionPermissions = async () => {
+    nostrClient.signerManager.ensureExtensionPermissions = async () => {
       completionPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error("permission denied")), 300);
       });
@@ -482,7 +483,7 @@ describe("NIP-07 Login Permissions", () => {
         "deferred permission grants should still reject",
       );
     } finally {
-      nostrClient.ensureExtensionPermissions = originalEnsurePermissions;
+      nostrClient.signerManager.ensureExtensionPermissions = originalEnsurePermissions;
       env.restore();
       nostrClient.logout();
       clearStoredPermissions();
