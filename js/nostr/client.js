@@ -205,6 +205,7 @@ import { createNip07Adapter } from "./adapters/nip07Adapter.js";
 import { createNsecAdapter } from "./adapters/nsecAdapter.js";
 import { createNip46Adapter } from "./adapters/nip46Adapter.js";
 import { queueSignEvent } from "./signRequestQueue.js";
+import { EventsMap } from "./eventsMap.js";
 
 function normalizeProfileFromEvent(event) {
   if (!event || !event.content) return null;
@@ -1273,7 +1274,7 @@ export class NostrClient {
      * Kept for signature verification and republishing (e.g. NIP-94 mirror).
      * @public
      */
-    this.rawEvents = new Map();
+    this.rawEvents = new EventsMap();
 
     /**
      * @type {Map<string, object>}
