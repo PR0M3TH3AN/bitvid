@@ -867,31 +867,6 @@ export default class ApplicationBootstrap {
       }
     };
     app.boundNwcSettingsToastHandler = null;
-    Object.defineProperty(app, "savedProfiles", {
-      configurable: false,
-      enumerable: false,
-      get() {
-        return getSavedProfiles();
-      },
-      set(next) {
-        setSavedProfiles(Array.isArray(next) ? next : [], {
-          persist: false,
-          persistActive: false,
-        });
-      },
-    });
-
-    Object.defineProperty(app, "activeProfilePubkey", {
-      configurable: false,
-      enumerable: false,
-      get() {
-        return getActiveProfilePubkey();
-      },
-      set(value) {
-        setStoredActiveProfilePubkey(value, { persist: false });
-      },
-    });
-
     Object.defineProperty(app, "profileCache", {
       configurable: false,
       enumerable: false,
