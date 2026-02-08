@@ -1159,9 +1159,26 @@ class Application {
   async _initAutoLogin() {
     const savedPubKey = this.activeProfilePubkey;
     if (savedPubKey) {
-      // Auto-login if a pubkey was saved
+      // Look up the saved profile entry to forward authType and providerId.
+      // Without this, the login flow defaults to "nip07" and the signer
+      // restoration path cannot distinguish NIP-07 from NIP-46 or nsec,
+      // which leads to incorrect signer setup on page refresh.
+      const savedProfiles = this.authService.cloneSavedProfiles();
+      const normalizedSaved = this.normalizeHexPubkey(savedPubKey) || savedPubKey;
+      const savedEntry = savedProfiles.find((entry) => {
+        const entryPubkey = this.normalizeHexPubkey(entry?.pubkey);
+        return entryPubkey && entryPubkey === normalizedSaved;
+      });
+      const loginOptions = { persistActive: false };
+      if (savedEntry?.authType) {
+        loginOptions.authType = savedEntry.authType;
+      }
+      if (savedEntry?.providerId) {
+        loginOptions.providerId = savedEntry.providerId;
+      }
+
       try {
-        await this.authService.login(savedPubKey, { persistActive: false });
+        await this.authService.login(savedPubKey, loginOptions);
       } catch (error) {
         devLogger.error("Auto-login failed:", error);
         if (error && error.code === "site-lockdown") {

@@ -222,13 +222,16 @@ export function createAuthSessionCoordinator(deps) {
       // render needs all three to be settled. Loading them concurrently shaves
       // 20-30 seconds off the critical login path.
       //
-      // PERF: Lists no longer wait for the permission pre-grant to complete.
-      // The NIP-07 extension already granted decrypt permissions during the
-      // login flow (ensureExtensionPermissions is called in loginWithExtension),
-      // so the signer adapter's decrypt functions work immediately. Waiting for
-      // the redundant pre-grant was adding 2-5 seconds of unnecessary latency
-      // before list loading could even begin.
-      const listStatePromise = relaysReadyPromise.then(async () => {
+      // Lists wait for the permission pre-grant to settle before attempting
+      // decryption. During auto-login (page refresh), the NIP-07 extension
+      // may not be ready yet — without waiting, all three services would fail
+      // with "permission-required" and schedule 3-second retry delays, adding
+      // 6-10 seconds to the critical login path. By waiting for the pre-grant
+      // (which itself waits for the extension and requests permissions), the
+      // signer is guaranteed to be available when decryption starts. This does
+      // NOT slow down fresh logins because the pre-grant resolves immediately
+      // when permissions were already granted during loginWithExtension().
+      const listStatePromise = Promise.all([relaysReadyPromise, permissionPromise]).then(async () => {
         const parallelListTasks = [];
 
         if (

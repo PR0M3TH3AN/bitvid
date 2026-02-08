@@ -484,6 +484,7 @@ export function createFeedCoordinator(deps) {
 
     registerWatchHistoryFeed() {
       if (!this.feedEngine || typeof this.feedEngine.registerFeed !== "function") {
+        devLogger.warn("[Application] Cannot register watch-history feed: feedEngine not available.");
         return null;
       }
 

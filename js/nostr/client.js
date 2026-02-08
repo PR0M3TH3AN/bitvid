@@ -3122,9 +3122,10 @@ export class NostrClient {
       // Even if permissions are cached, we must ensure the extension object is actually
       // injected and available on the window before returning success.
       // This prevents race conditions where the app loads faster than the extension.
+      // 5 seconds gives slower extensions (e.g. Alby) enough time to inject.
       if (typeof window !== "undefined" && !window.nostr) {
         try {
-          await waitForNip07Extension(3000);
+          await waitForNip07Extension(5000);
         } catch (error) {
           return { ok: false, error: new Error("extension-unavailable") };
         }
@@ -3137,7 +3138,17 @@ export class NostrClient {
       return { ok: true };
     }
 
-    const extension = typeof window !== "undefined" ? window.nostr : null;
+    let extension = typeof window !== "undefined" ? window.nostr : null;
+    // Wait for the extension to inject if it isn't available yet. The cached
+    // permission state implies a previous session with an extension, so it's
+    // likely to appear once the content script finishes loading.
+    if (!extension && this.extensionPermissionCache && this.extensionPermissionCache.size > 0) {
+      try {
+        extension = await waitForNip07Extension(5000);
+      } catch (error) {
+        // Fall through
+      }
+    }
     if (!extension) {
       this.extensionReady = false;
       return { ok: false, error: new Error("extension-unavailable") };
@@ -3237,11 +3248,12 @@ export class NostrClient {
       typeof window !== "undefined" && window && window.nostr ? window.nostr : null;
 
     // If the extension is missing but we have cached permissions, it implies the user
-    // previously logged in with an extension. We should wait briefly for injection
-    // to resolve the common race condition where the app loads faster than the extension.
+    // previously logged in with an extension. We should wait for injection to resolve
+    // the common race condition where the app loads faster than the extension. 5 seconds
+    // gives slower extensions (e.g. Alby) enough time to inject window.nostr.
     if (!extension && this.extensionPermissionCache && this.extensionPermissionCache.size > 0) {
       try {
-        extension = await waitForNip07Extension(3000);
+        extension = await waitForNip07Extension(5000);
       } catch (error) {
         // Fall through to existing signer check
       }
