@@ -7,6 +7,7 @@ import {
   getCurrentUserNpub,
 } from "../state/appState.js";
 import { userLogger } from "../utils/logger.js";
+import { SimpleEventEmitter } from "../utils/eventEmitter.js";
 import { requestDefaultExtensionPermissions } from "../nostr/defaultClient.js";
 import {
   getSavedProfiles,
@@ -26,47 +27,6 @@ import { profileCache } from "../state/profileCache.js";
 import getDefaultAuthProvider, {
   providers as defaultAuthProviders,
 } from "./authProviders/index.js";
-
-class SimpleEventEmitter {
-  constructor(logger = null) {
-    this.logger = typeof logger === "function" ? logger : null;
-    this.listeners = new Map();
-  }
-
-  on(eventName, handler) {
-    if (typeof handler !== "function") {
-      return () => {};
-    }
-    if (!this.listeners.has(eventName)) {
-      this.listeners.set(eventName, new Set());
-    }
-    const handlers = this.listeners.get(eventName);
-    handlers.add(handler);
-    return () => {
-      handlers.delete(handler);
-      if (!handlers.size) {
-        this.listeners.delete(eventName);
-      }
-    };
-  }
-
-  emit(eventName, detail) {
-    const handlers = this.listeners.get(eventName);
-    if (!handlers || !handlers.size) {
-      return;
-    }
-
-    for (const handler of Array.from(handlers)) {
-      try {
-        handler(detail);
-      } catch (error) {
-        if (this.logger) {
-          this.logger(`AuthService listener for "${eventName}" threw`, error);
-        }
-      }
-    }
-  }
-}
 
 const HEX64_REGEX = /^[0-9a-f]{64}$/i;
 const FALLBACK_PROFILE = {
@@ -116,7 +76,7 @@ export default class AuthService {
       } catch (logError) {
         userLogger.warn("[AuthService] logger threw", logError);
       }
-    });
+    }, "AuthService");
 
     if (typeof getAuthProvider === "function") {
       this.resolveAuthProvider = (providerId) => {

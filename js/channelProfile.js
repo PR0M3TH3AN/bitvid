@@ -238,7 +238,7 @@ function decorateChannelVideo(video, app = getApp()) {
   return decoratedVideo;
 }
 
-export async function collectChannelVideos(pubkey, app = getApp()) {
+export function collectChannelVideos(pubkey, app = getApp()) {
   const normalized = normalizeHex(pubkey);
   if (!normalized) {
     return [];
@@ -928,6 +928,10 @@ function resolveChannelModeration(pubkey, app = getApp()) {
   }
 
   const matches = collectChannelVideos(normalized, app);
+  if (!Array.isArray(matches)) {
+    return null;
+  }
+
   let fallbackModeration = null;
   let fallbackVideo = null;
 

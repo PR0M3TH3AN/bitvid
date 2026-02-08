@@ -3,6 +3,7 @@ import { convertEventToVideo } from "../nostr/index.js";
 import { accessControl } from "../accessControl.js";
 import { ALLOW_NSFW_CONTENT } from "../config.js";
 import { devLogger, userLogger } from "../utils/logger.js";
+import { SimpleEventEmitter } from "../utils/eventEmitter.js";
 import { LRUCache } from "../utils/lruCache.js";
 import { describeAttachment, extractAttachmentsFromMessage } from "../attachments/attachmentUtils.js";
 import moderationService from "./moderationService.js";
@@ -73,54 +74,6 @@ function persistFilteredVideos(videos) {
     window.localStorage.setItem(STORAGE_KEY_FILTERED_VIDEOS, serialized);
   } catch (error) {
     userLogger.warn("[nostrService] Failed to persist filtered videos", error);
-  }
-}
-
-class SimpleEventEmitter {
-  constructor(logger = null) {
-    this.logger = typeof logger === "function" ? logger : null;
-    this.listeners = new Map();
-  }
-
-  on(eventName, handler) {
-    if (typeof handler !== "function") {
-      return () => {};
-    }
-
-    if (!this.listeners.has(eventName)) {
-      this.listeners.set(eventName, new Set());
-    }
-
-    const handlers = this.listeners.get(eventName);
-    handlers.add(handler);
-
-    return () => {
-      handlers.delete(handler);
-      if (!handlers.size) {
-        this.listeners.delete(eventName);
-      }
-    };
-  }
-
-  emit(eventName, detail) {
-    const handlers = this.listeners.get(eventName);
-    if (!handlers || !handlers.size) {
-      return;
-    }
-
-    for (const handler of Array.from(handlers)) {
-      try {
-        handler(detail);
-      } catch (error) {
-        if (this.logger) {
-          try {
-            this.logger(`nostrService listener for "${eventName}" threw`, error);
-          } catch (logError) {
-            userLogger.warn("[nostrService] listener logger threw", logError);
-          }
-        }
-      }
-    }
   }
 }
 
@@ -547,7 +500,7 @@ export class NostrService {
       } catch (logError) {
         userLogger.warn("[nostrService] logger threw", logError);
       }
-    });
+    }, "nostrService");
     this.videosMap = null;
     this.videosByAuthorIndex = null;
     this.authorIndexDirty = false;

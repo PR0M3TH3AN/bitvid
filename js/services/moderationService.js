@@ -8,6 +8,7 @@ import { accessControl } from "../accessControl.js";
 import { userBlocks, USER_BLOCK_EVENTS } from "../userBlocks.js";
 import { buildReportEvent } from "../nostrEventSchemas.js";
 import logger from "../utils/logger.js";
+import { SimpleEventEmitter } from "../utils/eventEmitter.js";
 
 const AUTOPLAY_TRUST_THRESHOLD = 1;
 const BLUR_TRUST_THRESHOLD = 1;
@@ -23,54 +24,6 @@ function normalizeUserLogger(candidate) {
     return candidate;
   }
   return logger.user;
-}
-
-class SimpleEventEmitter {
-  constructor(logHandler = null) {
-    this.listeners = new Map();
-    this.logHandler = typeof logHandler === "function" ? logHandler : null;
-  }
-
-  on(eventName, handler) {
-    if (typeof eventName !== "string" || typeof handler !== "function") {
-      return () => {};
-    }
-
-    if (!this.listeners.has(eventName)) {
-      this.listeners.set(eventName, new Set());
-    }
-
-    const handlers = this.listeners.get(eventName);
-    handlers.add(handler);
-
-    return () => {
-      handlers.delete(handler);
-      if (!handlers.size) {
-        this.listeners.delete(eventName);
-      }
-    };
-  }
-
-  emit(eventName, detail) {
-    const handlers = this.listeners.get(eventName);
-    if (!handlers || !handlers.size) {
-      return;
-    }
-
-    for (const handler of Array.from(handlers)) {
-      try {
-        handler(detail);
-      } catch (error) {
-        if (this.logHandler) {
-          try {
-            this.logHandler(`moderationService listener for "${eventName}" threw`, error);
-          } catch (logError) {
-            logger.user.warn("[moderationService] listener logger threw", logError);
-          }
-        }
-      }
-    }
-  }
 }
 
 function normalizeLogger(candidate) {
@@ -549,7 +502,7 @@ export class ModerationService {
       } catch (logError) {
         logger.user.warn("[moderationService] logger threw", logError);
       }
-    });
+    }, "moderationService");
 
     this.userBlockUnsubscribe = null;
     this.userBlockRefreshQueue = Promise.resolve();
