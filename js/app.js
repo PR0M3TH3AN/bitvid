@@ -754,441 +754,491 @@ class Application {
     return false;
   }
 
-  async init() {
-    try {
-      if (typeof this.loadView !== "function") {
-        const module = await import("./viewManager.js");
-        this.loadView = module?.loadView || null;
-      }
+  async _initViewManager() {
+    if (typeof this.loadView !== "function") {
+      const module = await import("./viewManager.js");
+      this.loadView = module?.loadView || null;
+    }
+  }
 
-      if (nostrClient && typeof nostrClient.warmupExtension === "function") {
-        nostrClient.warmupExtension();
-      }
+  _warmupNostrExtension() {
+    if (nostrClient && typeof nostrClient.warmupExtension === "function") {
+      nostrClient.warmupExtension();
+    }
+  }
 
-      // Force update of any registered service workers to ensure latest code is used.
-      if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.getRegistrations().then((registrations) => {
-          registrations.forEach((registration) => registration.update());
-        });
-      }
+  _initServiceWorker() {
+    // Force update of any registered service workers to ensure latest code is used.
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        registrations.forEach((registration) => registration.update());
+      });
+    }
+  }
 
-      this.authService.hydrateFromStorage();
-      this.renderSavedProfiles();
+  _initAuthAndModeration() {
+    this.authService.hydrateFromStorage();
+    this.renderSavedProfiles();
 
-      if (
-        this.nostrService &&
-        typeof this.nostrService.setDmBlockChecker === "function"
-      ) {
-        this.nostrService.setDmBlockChecker((pubkey) =>
-          this.isAuthorBlocked(pubkey),
-        );
-      }
-
-      loadModerationOverridesFromStorage();
-      loadModerationSettingsFromStorage();
-      loadDmPrivacySettingsFromStorage();
-      this.moderationSettings = this.normalizeModerationSettings(
-        getModerationSettings(),
+    if (
+      this.nostrService &&
+      typeof this.nostrService.setDmBlockChecker === "function"
+    ) {
+      this.nostrService.setDmBlockChecker((pubkey) =>
+        this.isAuthorBlocked(pubkey),
       );
+    }
 
-      const videoModalPromise = this.videoModal.load().then(() => {
-        const modalRoot = this.videoModal.getRoot();
-        if (modalRoot) {
-          this.attachMoreMenuHandlers(modalRoot);
-        }
-        if (
-          this.videoModal &&
-          typeof this.videoModal.addEventListener === "function"
-        ) {
-          this.videoModal.addEventListener("video:share-nostr", (event) => {
-            this.openShareNostrModal({
-              video: event?.detail?.video || null,
-              triggerElement: event?.detail?.trigger || null,
-            });
-          });
+    loadModerationOverridesFromStorage();
+    loadModerationSettingsFromStorage();
+    loadDmPrivacySettingsFromStorage();
+    this.moderationSettings = this.normalizeModerationSettings(
+      getModerationSettings(),
+    );
+  }
 
-          this.videoModal.addEventListener("video:copy-cdn", (event) => {
-            const video = event?.detail?.video || this.currentVideo;
-            const url = video?.url || "";
-            if (!url) {
-              this.showError("No CDN link available to copy.");
-              return;
-            }
-            navigator.clipboard
-              .writeText(url)
-              .then(() => this.showSuccess("CDN link copied to clipboard!"))
-              .catch(() => this.showError("Failed to copy CDN link."));
-          });
-
-          this.videoModal.addEventListener("video:copy-magnet", () => {
-            this.handleCopyMagnet();
-          });
-
-          this.videoModal.addEventListener("playback:switch-source", (event) => {
-            const detail = event?.detail || {};
-            const { source } = detail;
-            if (!source) {
-              return;
-            }
-            const modalVideo = detail?.video || null;
-            const fallbackVideo = this.currentVideo || null;
-            const video = {
-              ...(fallbackVideo || {}),
-              ...(modalVideo || {}),
-            };
-            const urlCandidate =
-              typeof video.url === "string" ? video.url.trim() : "";
-            const magnetCandidate =
-              typeof video.magnet === "string" ? video.magnet.trim() : "";
-
-            if (!modalVideo && !fallbackVideo) {
-              devLogger.warn("[app] Playback source switch missing video data.");
-              return;
-            }
-
-            const magnetAvailable = Boolean(magnetCandidate);
-            const cachedStreamHealth =
-              video?.id && this.streamHealthSnapshots instanceof Map
-                ? this.streamHealthSnapshots.get(video.id)
-                : null;
-            const cachedPeers = Number.isFinite(cachedStreamHealth?.peers)
-              ? cachedStreamHealth.peers
-              : null;
-            const hasActivePeers =
-              cachedPeers === null ? null : cachedPeers > 0;
-            const cachedUrlHealth =
-              video?.id && urlCandidate
-                ? this.getCachedUrlHealth(video.id, urlCandidate)
-                : null;
-            const cdnUnavailable =
-              !urlCandidate ||
-              ["offline", "timeout"].includes(cachedUrlHealth?.status);
-
-            if (source === "torrent" && !magnetAvailable) {
-              userLogger.warn(
-                "[app] Unable to switch to torrent playback: missing magnet.",
-              );
-              this.showError(
-                "Torrent playback is unavailable for this video. No magnet was provided.",
-              );
-              return;
-            }
-
-            if (source === "torrent" && hasActivePeers === false) {
-              userLogger.warn(
-                "[app] Switching to torrent playback despite 0 active peers detected.",
-              );
-              this.showStatus(
-                "Warning: No peers detected. Playback may fail or stall.",
-                { autoHideMs: 5000 }
-              );
-              // Proceed anyway
-            }
-
-            if (source === "url" && cdnUnavailable) {
-              userLogger.warn(
-                "[app] Unable to switch to CDN playback: URL unavailable.",
-              );
-              this.showError(
-                "CDN playback is unavailable right now, staying on the torrent stream.",
-              );
-              return;
-            }
-
-            if (this.playSource && source === this.playSource) {
-              return;
-            }
-
-            this.playVideoWithFallback({
-              url: urlCandidate,
-              magnet: magnetCandidate,
-              forcedSource: source,
-            }).catch((error) => {
-              devLogger.warn(
-                "[app] Failed to switch playback source:",
-                error,
-              );
-            });
-          });
-        }
-      });
-
-      const uploadModalPromise = this.uploadModal.load().catch((error) => {
-        devLogger.error("initUploadModal failed:", error);
-        this.showError(`Failed to initialize upload modal: ${error.message}`);
-      });
-
-      const editModalPromise = this.editModal.load().catch((error) => {
-        devLogger.error("Failed to load edit modal:", error);
-        this.showError(`Failed to initialize edit modal: ${error.message}`);
-      });
-
-      const profileModalPromise = this.profileController
-        ? this.profileController
-            .load()
-            .then(() => {
-              try {
-                this.renderSavedProfiles();
-              } catch (error) {
-                devLogger.warn(
-                  "[profileModal] Failed to render saved profiles after load:",
-                  error,
-                );
-              }
-
-              try {
-                this.profileController.refreshWalletPaneState();
-              } catch (error) {
-                devLogger.warn(
-                  "[profileModal] Failed to refresh wallet pane after load:",
-                  error,
-                );
-              }
-              return true;
-            })
-            .catch((error) => {
-              devLogger.error("Failed to load profile modal:", error);
-              return false;
-            })
-        : Promise.resolve(false);
-
-      const modalBootstrapPromise = Promise.all([
-        videoModalPromise,
-        uploadModalPromise,
-        editModalPromise,
-        profileModalPromise,
-      ]);
-
-      // Initialize the pool early to unblock bootstrapTrustedSeeds,
-      // but do NOT await the full connection process here.
-      try {
-        await nostrClient.ensurePool();
-      } catch (poolError) {
-        devLogger.warn("[app.init()] Pool ensure failed:", poolError);
-      }
-
-      // Kick off relay connection in the background.
-      const nostrInitPromise = nostrClient.init().catch((err) => {
-        devLogger.warn("[app.init()] Background nostrClient.init failed:", err);
-      });
-
-      await modalBootstrapPromise;
-
-      try {
-        await bootstrapTrustedSeeds();
-      } catch (error) {
-        devLogger.warn("[app.init()] Trusted seed bootstrap failed:", error);
-      }
-
-      try {
-        initViewCounter({ nostrClient });
-      } catch (error) {
-        devLogger.warn("Failed to initialize view counter:", error);
-      }
-
-      const accessControlPromise = accessControl
-        .refresh()
-        .then(() => {
-          if (
-            accessControl.lastError &&
-            accessControl.lastError?.code === "nostr-unavailable"
-          ) {
-            devLogger.warn(
-              "[app.init()] Access control refresh should not run before nostrClient.init()",
-              accessControl.lastError
-            );
-          }
-        })
-        .catch((error) => {
-          devLogger.warn(
-            "Failed to refresh admin lists after connecting to Nostr:",
-            error
-          );
+  _bindVideoModalEvents() {
+    const modalRoot = this.videoModal.getRoot();
+    if (modalRoot) {
+      this.attachMoreMenuHandlers(modalRoot);
+    }
+    if (
+      this.videoModal &&
+      typeof this.videoModal.addEventListener === "function"
+    ) {
+      this.videoModal.addEventListener("video:share-nostr", (event) => {
+        this.openShareNostrModal({
+          video: event?.detail?.video || null,
+          triggerElement: event?.detail?.trigger || null,
         });
+      });
 
-      const adminPanePromise = this.profileController
-        ? Promise.resolve()
-            .then(() => this.profileController.refreshAdminPaneState())
-            .catch((error) => {
-              devLogger.warn(
-                "Failed to update admin pane after connecting to Nostr:",
-                error,
-              );
-            })
-        : Promise.resolve(null);
+      this.videoModal.addEventListener("video:copy-cdn", (event) => {
+        const video = event?.detail?.video || this.currentVideo;
+        const url = video?.url || "";
+        if (!url) {
+          this.showError("No CDN link available to copy.");
+          return;
+        }
+        navigator.clipboard
+          .writeText(url)
+          .then(() => this.showSuccess("CDN link copied to clipboard!"))
+          .catch(() => this.showError("Failed to copy CDN link."));
+      });
 
-      // await Promise.all([accessControlPromise, adminPanePromise]);
+      this.videoModal.addEventListener("video:copy-magnet", () => {
+        this.handleCopyMagnet();
+      });
 
-      const syncSessionActorBlacklist = async (trigger) => {
-        if (this.pubkey) {
+      this.videoModal.addEventListener("playback:switch-source", (event) => {
+        const detail = event?.detail || {};
+        const { source } = detail;
+        if (!source) {
+          return;
+        }
+        const modalVideo = detail?.video || null;
+        const fallbackVideo = this.currentVideo || null;
+        const video = {
+          ...(fallbackVideo || {}),
+          ...(modalVideo || {}),
+        };
+        const urlCandidate =
+          typeof video.url === "string" ? video.url.trim() : "";
+        const magnetCandidate =
+          typeof video.magnet === "string" ? video.magnet.trim() : "";
+
+        if (!modalVideo && !fallbackVideo) {
+          devLogger.warn("[app] Playback source switch missing video data.");
           return;
         }
 
-        const sessionActorPubkey = nostrClient.sessionActor?.pubkey;
-        if (!sessionActorPubkey) {
-          return;
-        }
+        const magnetAvailable = Boolean(magnetCandidate);
+        const cachedStreamHealth =
+          video?.id && this.streamHealthSnapshots instanceof Map
+            ? this.streamHealthSnapshots.get(video.id)
+            : null;
+        const cachedPeers = Number.isFinite(cachedStreamHealth?.peers)
+          ? cachedStreamHealth.peers
+          : null;
+        const hasActivePeers =
+          cachedPeers === null ? null : cachedPeers > 0;
+        const cachedUrlHealth =
+          video?.id && urlCandidate
+            ? this.getCachedUrlHealth(video.id, urlCandidate)
+            : null;
+        const cdnUnavailable =
+          !urlCandidate ||
+          ["offline", "timeout"].includes(cachedUrlHealth?.status);
 
-        const blacklist = accessControl.getBlacklist();
-        try {
-          await userBlocks.seedBaselineDelta(
-            sessionActorPubkey,
-            Array.from(blacklist || []),
+        if (source === "torrent" && !magnetAvailable) {
+          userLogger.warn(
+            "[app] Unable to switch to torrent playback: missing magnet.",
           );
-        } catch (error) {
+          this.showError(
+            "Torrent playback is unavailable for this video. No magnet was provided.",
+          );
+          return;
+        }
+
+        if (source === "torrent" && hasActivePeers === false) {
+          userLogger.warn(
+            "[app] Switching to torrent playback despite 0 active peers detected.",
+          );
+          this.showStatus(
+            "Warning: No peers detected. Playback may fail or stall.",
+            { autoHideMs: 5000 }
+          );
+          // Proceed anyway
+        }
+
+        if (source === "url" && cdnUnavailable) {
+          userLogger.warn(
+            "[app] Unable to switch to CDN playback: URL unavailable.",
+          );
+          this.showError(
+            "CDN playback is unavailable right now, staying on the torrent stream.",
+          );
+          return;
+        }
+
+        if (this.playSource && source === this.playSource) {
+          return;
+        }
+
+        this.playVideoWithFallback({
+          url: urlCandidate,
+          magnet: magnetCandidate,
+          forcedSource: source,
+        }).catch((error) => {
           devLogger.warn(
-            `[app.init()] Failed to sync session actor blacklist${
-              trigger ? ` (${trigger})` : ""
-            }:`,
+            "[app] Failed to switch playback source:",
             error,
           );
-        }
-      };
+        });
+      });
+    }
+  }
 
-      const handleSessionActorReady = async ({ pubkey, reason } = {}) => {
-        if (this.pubkey) {
+  _initModals() {
+    const videoModalPromise = this.videoModal.load().then(() => {
+      this._bindVideoModalEvents();
+    });
+
+    const uploadModalPromise = this.uploadModal.load().catch((error) => {
+      devLogger.error("initUploadModal failed:", error);
+      this.showError(`Failed to initialize upload modal: ${error.message}`);
+    });
+
+    const editModalPromise = this.editModal.load().catch((error) => {
+      devLogger.error("Failed to load edit modal:", error);
+      this.showError(`Failed to initialize edit modal: ${error.message}`);
+    });
+
+    const profileModalPromise = this.profileController
+      ? this.profileController
+          .load()
+          .then(() => {
+            try {
+              this.renderSavedProfiles();
+            } catch (error) {
+              devLogger.warn(
+                "[profileModal] Failed to render saved profiles after load:",
+                error,
+              );
+            }
+
+            try {
+              this.profileController.refreshWalletPaneState();
+            } catch (error) {
+              devLogger.warn(
+                "[profileModal] Failed to refresh wallet pane after load:",
+                error,
+              );
+            }
+            return true;
+          })
+          .catch((error) => {
+            devLogger.error("Failed to load profile modal:", error);
+            return false;
+          })
+      : Promise.resolve(false);
+
+    return Promise.all([
+      videoModalPromise,
+      uploadModalPromise,
+      editModalPromise,
+      profileModalPromise,
+    ]);
+  }
+
+  async _initTrustedSeeds() {
+    try {
+      await bootstrapTrustedSeeds();
+    } catch (error) {
+      devLogger.warn("[app.init()] Trusted seed bootstrap failed:", error);
+    }
+  }
+
+  _initViewCounter() {
+    try {
+      initViewCounter({ nostrClient });
+    } catch (error) {
+      devLogger.warn("Failed to initialize view counter:", error);
+    }
+  }
+
+  _initAccessControl() {
+    accessControl
+      .refresh()
+      .then(() => {
+        if (
+          accessControl.lastError &&
+          accessControl.lastError?.code === "nostr-unavailable"
+        ) {
+          devLogger.warn(
+            "[app.init()] Access control refresh should not run before nostrClient.init()",
+            accessControl.lastError
+          );
+        }
+      })
+      .catch((error) => {
+        devLogger.warn(
+          "Failed to refresh admin lists after connecting to Nostr:",
+          error
+        );
+      });
+
+    if (this.profileController) {
+      Promise.resolve()
+        .then(() => this.profileController.refreshAdminPaneState())
+        .catch((error) => {
+          devLogger.warn(
+            "Failed to update admin pane after connecting to Nostr:",
+            error,
+          );
+        });
+    }
+  }
+
+  async _syncSessionActorBlacklist(trigger) {
+    if (this.pubkey) {
+      return;
+    }
+
+    const sessionActorPubkey = nostrClient.sessionActor?.pubkey;
+    if (!sessionActorPubkey) {
+      return;
+    }
+
+    const blacklist = accessControl.getBlacklist();
+    try {
+      await userBlocks.seedBaselineDelta(
+        sessionActorPubkey,
+        Array.from(blacklist || []),
+      );
+    } catch (error) {
+      devLogger.warn(
+        `[app.init()] Failed to sync session actor blacklist${
+          trigger ? ` (${trigger})` : ""
+        }:`,
+        error,
+      );
+    }
+  }
+
+  async _handleSessionActorReady({ pubkey, reason } = {}) {
+    if (this.pubkey) {
+      return;
+    }
+
+    const normalizedPubkey = this.normalizeHexPubkey(pubkey);
+    if (!normalizedPubkey) {
+      return;
+    }
+
+    const triggerLabel = reason ? `session-actor-${reason}` : "session-actor";
+    await this._syncSessionActorBlacklist(triggerLabel);
+
+    const refreshReason = "session-actor-ready";
+    if (typeof this.refreshVisibleModerationUi === "function") {
+      try {
+        this.refreshVisibleModerationUi({ reason: refreshReason });
+      } catch (error) {
+        devLogger.warn(
+          "[app.init()] Failed to refresh moderation UI after session actor:",
+          error,
+        );
+      }
+    } else {
+      this.refreshAllVideoGrids({
+        reason: refreshReason,
+        forceMainReload: true,
+      }).catch((error) => {
+        devLogger.warn(
+          "[app.init()] Failed to refresh video grids after session actor:",
+          error,
+        );
+      });
+    }
+  }
+
+  async _initSessionActor() {
+    if (typeof nostrClient.onSessionActorChange === "function") {
+      nostrClient.onSessionActorChange((detail) => {
+        this._handleSessionActorReady(detail).catch((error) => {
+          devLogger.warn(
+            "[app.init()] Failed to process session actor change:",
+            error,
+          );
+        });
+      });
+    }
+
+    await this._syncSessionActorBlacklist("post-refresh");
+  }
+
+  async _initNostr() {
+    // Initialize the pool early to unblock bootstrapTrustedSeeds,
+    // but do NOT await the full connection process here.
+    try {
+      await nostrClient.ensurePool();
+    } catch (poolError) {
+      devLogger.warn("[app.init()] Pool ensure failed:", poolError);
+    }
+
+    // Kick off relay connection in the background.
+    nostrClient.init().catch((err) => {
+      devLogger.warn("[app.init()] Background nostrClient.init failed:", err);
+    });
+  }
+
+  _initAccessControlListeners() {
+    if (typeof accessControl.onBlacklistChange === "function") {
+      accessControl.onBlacklistChange(() => {
+        this._syncSessionActorBlacklist("blacklist-change");
+        if (this.isUserLoggedIn()) {
           return;
         }
 
-        const normalizedPubkey = this.normalizeHexPubkey(pubkey);
-        if (!normalizedPubkey) {
-          return;
-        }
+        const refreshReason = "admin-blacklist-change";
+        this.refreshAllVideoGrids({
+          reason: refreshReason,
+          forceMainReload: true,
+        }).catch((error) => {
+          devLogger.warn(
+            "[app.init()] Failed to refresh video grids after admin blacklist change:",
+            error,
+          );
+        });
 
-        const triggerLabel = reason ? `session-actor-${reason}` : "session-actor";
-        await syncSessionActorBlacklist(triggerLabel);
-
-        const refreshReason = "session-actor-ready";
         if (typeof this.refreshVisibleModerationUi === "function") {
           try {
             this.refreshVisibleModerationUi({ reason: refreshReason });
           } catch (error) {
             devLogger.warn(
-              "[app.init()] Failed to refresh moderation UI after session actor:",
+              "[app.init()] Failed to refresh moderation UI after admin blacklist change:",
               error,
             );
-          }
-        } else {
-          this.refreshAllVideoGrids({
-            reason: refreshReason,
-            forceMainReload: true,
-          }).catch((error) => {
-            devLogger.warn(
-              "[app.init()] Failed to refresh video grids after session actor:",
-              error,
-            );
-          });
-        }
-      };
-
-      if (typeof nostrClient.onSessionActorChange === "function") {
-        nostrClient.onSessionActorChange((detail) => {
-          handleSessionActorReady(detail).catch((error) => {
-            devLogger.warn(
-              "[app.init()] Failed to process session actor change:",
-              error,
-            );
-          });
-        });
-      }
-
-      await syncSessionActorBlacklist("post-refresh");
-
-      if (typeof accessControl.onBlacklistChange === "function") {
-        accessControl.onBlacklistChange(() => {
-          syncSessionActorBlacklist("blacklist-change");
-          if (this.isUserLoggedIn()) {
-            return;
-          }
-
-          const refreshReason = "admin-blacklist-change";
-          this.refreshAllVideoGrids({
-            reason: refreshReason,
-            forceMainReload: true,
-          }).catch((error) => {
-            devLogger.warn(
-              "[app.init()] Failed to refresh video grids after admin blacklist change:",
-              error,
-            );
-          });
-
-          if (typeof this.refreshVisibleModerationUi === "function") {
-            try {
-              this.refreshVisibleModerationUi({ reason: refreshReason });
-            } catch (error) {
-              devLogger.warn(
-                "[app.init()] Failed to refresh moderation UI after admin blacklist change:",
-                error,
-              );
-            }
-          }
-        });
-      }
-
-      if (typeof accessControl.onWhitelistChange === "function") {
-        accessControl.onWhitelistChange(() => {
-          const refreshReason = "admin-whitelist-change";
-          this.refreshAllVideoGrids({
-            reason: refreshReason,
-            forceMainReload: true,
-          }).catch((error) => {
-            devLogger.warn(
-              "[app.init()] Failed to refresh video grids after admin whitelist change:",
-              error,
-            );
-          });
-        });
-      }
-
-      // Grab the "Subscriptions" link by its id in the sidebar
-      this.subscriptionsLink = document.getElementById("subscriptionsLink");
-
-      this.syncAuthUiState();
-
-      if (typeof window !== "undefined") {
-        window.addEventListener("bitvid:auth-changed", (event) => {
-          const detail = event.detail || {};
-          const previousPubkey = detail.previousPubkey;
-
-          if (previousPubkey && typeof storageService !== "undefined" && typeof storageService.lock === "function") {
-            storageService.lock(previousPubkey);
-          }
-
-          if (this.uploadModal && typeof this.uploadModal.refreshState === "function") {
-            this.uploadModal.refreshState();
-          }
-        });
-      }
-
-      const savedPubKey = this.activeProfilePubkey;
-      if (savedPubKey) {
-        // Auto-login if a pubkey was saved
-        try {
-          await this.authService.login(savedPubKey, { persistActive: false });
-        } catch (error) {
-          devLogger.error("Auto-login failed:", error);
-          if (error && error.code === "site-lockdown") {
-            const message = this.describeLoginError(
-              error,
-              "Auto-login failed. Please sign in again once lockdown ends.",
-            );
-            this.showStatus(message, { autoHideMs: 12000 });
           }
         }
+      });
+    }
+
+    if (typeof accessControl.onWhitelistChange === "function") {
+      accessControl.onWhitelistChange(() => {
+        const refreshReason = "admin-whitelist-change";
+        this.refreshAllVideoGrids({
+          reason: refreshReason,
+          forceMainReload: true,
+        }).catch((error) => {
+          devLogger.warn(
+            "[app.init()] Failed to refresh video grids after admin whitelist change:",
+            error,
+          );
+        });
+      });
+    }
+  }
+
+  _initUI() {
+    // Grab the "Subscriptions" link by its id in the sidebar
+    this.subscriptionsLink = document.getElementById("subscriptionsLink");
+
+    this.syncAuthUiState();
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("bitvid:auth-changed", (event) => {
+        const detail = event.detail || {};
+        const previousPubkey = detail.previousPubkey;
+
+        if (previousPubkey && typeof storageService !== "undefined" && typeof storageService.lock === "function") {
+          storageService.lock(previousPubkey);
+        }
+
+        if (this.uploadModal && typeof this.uploadModal.refreshState === "function") {
+          this.uploadModal.refreshState();
+        }
+      });
+    }
+  }
+
+  async _initAutoLogin() {
+    const savedPubKey = this.activeProfilePubkey;
+    if (savedPubKey) {
+      // Auto-login if a pubkey was saved
+      try {
+        await this.authService.login(savedPubKey, { persistActive: false });
+      } catch (error) {
+        devLogger.error("Auto-login failed:", error);
+        if (error && error.code === "site-lockdown") {
+          const message = this.describeLoginError(
+            error,
+            "Auto-login failed. Please sign in again once lockdown ends.",
+          );
+          this.showStatus(message, { autoHideMs: 12000 });
+        }
       }
+    }
+  }
+
+  async _initWatchHistory() {
+    const watchHistoryInitPromise =
+      this.watchHistoryTelemetry?.initPreferenceSync?.().catch((error) => {
+        devLogger.warn(
+          "[app.init()] Failed to initialize watch history metadata sync:",
+          error
+        );
+      }) || Promise.resolve();
+
+    await watchHistoryInitPromise;
+  }
+
+  async init() {
+    try {
+      await this._initViewManager();
+      this._warmupNostrExtension();
+      this._initServiceWorker();
+      this._initAuthAndModeration();
+
+      const modalBootstrapPromise = this._initModals();
+
+      await this._initNostr();
+
+      await modalBootstrapPromise;
+
+      await this._initTrustedSeeds();
+      this._initViewCounter();
+      this._initAccessControl();
+
+      await this._initSessionActor();
+      this._initAccessControlListeners();
+      this._initUI();
+      await this._initAutoLogin();
 
       // 5. Setup general event listeners
       this.setupEventListeners();
 
-      const watchHistoryInitPromise =
-        this.watchHistoryTelemetry?.initPreferenceSync?.().catch((error) => {
-          devLogger.warn(
-            "[app.init()] Failed to initialize watch history metadata sync:",
-            error
-          );
-        }) || Promise.resolve();
-
-      await watchHistoryInitPromise;
+      await this._initWatchHistory();
 
       // 9. Check URL ?v= param
       this.checkUrlParams();
