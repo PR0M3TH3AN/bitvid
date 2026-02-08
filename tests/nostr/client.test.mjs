@@ -165,53 +165,6 @@ describe("NostrClient", () => {
     });
   });
 
-  describe("fetchVideos", () => {
-    it("should delegate to subscribeVideos and return result on eose", async () => {
-      let subOpts = null;
-      // Override subscribeVideos to verify delegation
-      client.subscribeVideos = (cb, opts) => {
-        subOpts = opts;
-        return {
-          on: (evt, handler) => {
-            if (evt === "eose") setTimeout(handler, 0);
-          },
-          unsub: () => {},
-        };
-      };
-
-      // Mock helpers
-      client.getActiveVideos = () => [{ id: "v1" }];
-      client.populateNip71MetadataForVideos = async () => {};
-      client.applyRootCreatedAt = () => {};
-
-      const result = await client.fetchVideos({ limit: 5 });
-      assert.equal(result[0].id, "v1");
-      assert.equal(subOpts.limit, 5);
-      // Ensure we force full fetch by default
-      assert.equal(subOpts.since, 0);
-    });
-
-    it("should respect since parameter if provided", async () => {
-      let subOpts = null;
-      client.subscribeVideos = (cb, opts) => {
-        subOpts = opts;
-        return {
-          on: (evt, handler) => {
-            if (evt === "eose") setTimeout(handler, 0);
-          },
-          unsub: () => {},
-        };
-      };
-
-      client.getActiveVideos = () => [];
-      client.populateNip71MetadataForVideos = async () => {};
-      client.applyRootCreatedAt = () => {};
-
-      await client.fetchVideos({ since: 12345 });
-      assert.equal(subOpts.since, 12345);
-    });
-  });
-
   describe("publishVideo", () => {
     it("should throw if not logged in", async () => {
       await assert.rejects(

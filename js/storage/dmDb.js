@@ -84,9 +84,6 @@ const MIGRATIONS = [
   },
 ];
 
-let dbInstance = null;
-let dbPromise = null;
-
 function isIndexedDbAvailable() {
   try {
     return typeof indexedDB !== "undefined";
@@ -104,15 +101,7 @@ function applyMigrations(db, oldVersion, newVersion, transaction) {
 }
 
 function openDmDb() {
-  if (dbInstance) {
-    return Promise.resolve(dbInstance);
-  }
-
-  if (dbPromise) {
-    return dbPromise;
-  }
-
-  dbPromise = new Promise((resolve, reject) => {
+  return new Promise((resolve, reject) => {
     if (!isIndexedDbAvailable()) {
       resolve(null);
       return;
@@ -129,39 +118,10 @@ function openDmDb() {
       applyMigrations(db, oldVersion, newVersion, upgradeTransaction);
     };
 
-    request.onsuccess = () => {
-      const db = request.result;
-      dbInstance = db;
-
-      db.onversionchange = () => {
-        db.close();
-        dbInstance = null;
-        dbPromise = null;
-      };
-
-      db.onclose = () => {
-        dbInstance = null;
-        dbPromise = null;
-      };
-
-      resolve(db);
-    };
-
-    request.onerror = () => {
-      dbPromise = null;
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () =>
       reject(request.error || new Error("Failed to open DM database."));
-    };
   });
-
-  return dbPromise;
-}
-
-export async function closeDmDb() {
-  if (dbInstance) {
-    dbInstance.close();
-    dbInstance = null;
-  }
-  dbPromise = null;
 }
 
 function sanitizeTimestamp(value) {
@@ -304,7 +264,7 @@ export async function writeConversationMetadata(conversation) {
     const tx = db.transaction(STORES.CONVERSATIONS, "readwrite");
     tx.objectStore(STORES.CONVERSATIONS).put(normalized);
     await finalizeTransaction(tx);
-    // db.close(); // Keep connection open
+    db.close();
     return normalized;
   } catch (error) {
     userLogger.warn("[dmDb] Failed to write conversation metadata", error);
@@ -336,7 +296,7 @@ export async function writeMessages(messages) {
     }
 
     await finalizeTransaction(tx);
-    // db.close(); // Keep connection open
+    db.close();
     return normalized;
   } catch (error) {
     userLogger.warn("[dmDb] Failed to persist messages", error);
@@ -359,7 +319,7 @@ export async function getConversation(conversationId) {
     const store = tx.objectStore(STORES.CONVERSATIONS);
     const result = await runRequest(store.get(conversationId.trim()));
     await finalizeTransaction(tx);
-    // db.close(); // Keep connection open
+    db.close();
     return result || null;
   } catch (error) {
     userLogger.warn("[dmDb] Failed to read conversation metadata", error);
@@ -409,7 +369,7 @@ export async function listMessagesByConversation(conversationId, options = {}) {
         userLogger.warn("[dmDb] Failed to list messages", request.error);
         resolve(results);
       };
-    }); // removed finally db.close()
+    }).finally(() => db.close());
   } catch (error) {
     userLogger.warn("[dmDb] Failed to list messages", error);
     return [];
@@ -469,7 +429,7 @@ export async function updateConversationFromMessage(message, options = {}) {
 
     store.put(next);
     await finalizeTransaction(tx);
-    // db.close(); // Keep connection open
+    db.close();
     return next;
   } catch (error) {
     userLogger.warn("[dmDb] Failed to update conversation metadata", error);
@@ -518,7 +478,7 @@ export async function updateConversationOpenState(
 
     store.put(next);
     await finalizeTransaction(tx);
-    // db.close(); // Keep connection open
+    db.close();
     return next;
   } catch (error) {
     userLogger.warn("[dmDb] Failed to update conversation open state", error);
@@ -552,7 +512,7 @@ export async function listConversations() {
         userLogger.warn("[dmDb] Failed to list conversations", request.error);
         resolve(results);
       };
-    }); // removed finally db.close()
+    }).finally(() => db.close());
   } catch (error) {
     userLogger.warn("[dmDb] Failed to list conversations", error);
     return [];
@@ -582,7 +542,7 @@ export async function clearDmDb() {
     }
 
     await finalizeTransaction(tx);
-    // db.close(); // Keep connection open
+    db.close();
     return true;
   } catch (error) {
     devLogger.warn("[dmDb] Failed to clear DM database", error);

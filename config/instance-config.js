@@ -33,8 +33,6 @@ export const IS_DEV_MODE = false;
  * a quieter dev mode without disabling other development helpers entirely.
  * Use the runtime override documented in `js/config.js` if you need to toggle
  * verbosity without editing this file.
- *
- * Security: This must be false in production.
  */
 export const IS_VERBOSE_DEV_MODE = false;
 
