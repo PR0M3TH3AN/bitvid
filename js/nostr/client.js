@@ -40,6 +40,7 @@ import {
   deriveStoragePointerFromUrl,
   getStoragePointerFromTags,
   normalizeStoragePointer,
+  resolveStoragePointerValue,
 } from "../utils/storagePointer.js";
 import {
   createWatchHistoryManager,
@@ -108,6 +109,7 @@ import {
   repostEvent as repostEventHelper,
   mirrorVideoEvent as mirrorVideoEventHelper,
   rebroadcastEvent as rebroadcastEventHelper,
+  buildRevertVideoPayload,
   summarizePublishResults,
 } from "./publishHelpers.js";
 import {
@@ -981,40 +983,6 @@ function normalizeHexHash(candidate) {
     return "";
   }
   return HEX64_REGEX.test(trimmed) ? trimmed : "";
-}
-
-function resolveStoragePointerValue({
-  storagePointer,
-  url,
-  infoHash,
-  fallbackId,
-  provider,
-} = {}) {
-  const normalized = normalizeStoragePointer(storagePointer);
-  if (normalized) {
-    return normalized;
-  }
-
-  const derivedFromUrl = deriveStoragePointerFromUrl(url, provider || "url");
-  if (derivedFromUrl) {
-    return derivedFromUrl;
-  }
-
-  if (typeof infoHash === "string" && infoHash.trim()) {
-    return buildStoragePointerValue({
-      provider: "btih",
-      prefix: infoHash.trim().toLowerCase(),
-    });
-  }
-
-  if (typeof fallbackId === "string" && fallbackId.trim()) {
-    return buildStoragePointerValue({
-      provider: "nostr",
-      prefix: fallbackId.trim(),
-    });
-  }
-
-  return "";
 }
 
 const BlobConstructor = typeof Blob !== "undefined" ? Blob : null;
@@ -7071,52 +7039,12 @@ export class NostrClient {
     const stableDTag =
       existingD || baseEvent?.id || originalEvent?.id || null;
 
-    let oldContent = {};
-    try {
-      oldContent = JSON.parse(baseEvent.content || "{}");
-    } catch (err) {
-      devLogger.warn("[nostr] Failed to parse baseEvent.content while reverting:", err);
-      oldContent = {};
-    }
-    const oldVersion = oldContent.version ?? 1;
-
-    const finalRootId =
-      oldContent.videoRootId ||
-      (existingD
-        ? `LEGACY:${baseEvent.pubkey}:${existingD}`
-        : stableDTag || baseEvent?.id || originalEvent?.id || "");
-
-    const oldIsNsfw = oldContent.isNsfw === true;
-    const oldIsForKids = oldContent.isForKids === true && !oldIsNsfw;
-
-    const contentObject = {
-      videoRootId: finalRootId,
-      version: oldVersion,
-      deleted: true,
-      isPrivate: oldContent.isPrivate ?? false,
-      isNsfw: oldIsNsfw,
-      isForKids: oldIsForKids,
-      title: oldContent.title || "",
-      url: "",
-      magnet: "",
-      thumbnail: "",
-      description: "This version was reverted by the creator.",
-      mode: oldContent.mode || "live",
-    };
-
-    const storagePointer = resolveStoragePointerValue({
-      storagePointer: getStoragePointerFromTags(baseEvent.tags),
-      url: oldContent.url,
-      infoHash: oldContent.infoHash,
-      fallbackId: finalRootId,
-    });
-    const additionalTags = storagePointer ? [["s", storagePointer]] : [];
-    const event = buildVideoPostEvent({
+    const event = buildRevertVideoPayload({
+      baseEvent,
+      originalEventId: originalEvent?.id,
       pubkey,
-      created_at: Math.floor(Date.now() / 1000),
-      dTagValue: stableDTag,
-      content: contentObject,
-      additionalTags,
+      existingD,
+      stableDTag,
     });
 
     await this.ensureActiveSignerForPubkey(pubkey);
