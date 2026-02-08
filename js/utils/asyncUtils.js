@@ -1,3 +1,5 @@
+import { devLogger } from "./logger.js";
+
 /**
  * Maps over an iterable with a concurrency limit.
  *
@@ -49,5 +51,55 @@ export async function pMap(iterable, mapper, { concurrency = Infinity } = {}) {
     }
 
     next();
+  });
+}
+
+export function withRequestTimeout(promise, timeoutMs, onTimeout, message = "Request timed out") {
+  const resolvedTimeout = Number(timeoutMs);
+  const effectiveTimeout =
+    Number.isFinite(resolvedTimeout) && resolvedTimeout > 0
+      ? Math.floor(resolvedTimeout)
+      : 4000;
+
+  let timeoutId = null;
+  let settled = false;
+
+  return new Promise((resolve, reject) => {
+    timeoutId = setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (typeof onTimeout === "function") {
+        try {
+          onTimeout();
+        } catch (cleanupError) {
+          devLogger.warn("[asyncUtils] Timeout cleanup failed:", cleanupError);
+        }
+      }
+      reject(new Error(message));
+    }, effectiveTimeout);
+
+    Promise.resolve(promise)
+      .then((value) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+        resolve(value);
+      })
+      .catch((error) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+        reject(error);
+      });
   });
 }
