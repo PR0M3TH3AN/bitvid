@@ -3988,6 +3988,11 @@ class Application {
     return this._feed.refreshFeed("recent", ...args);
   }
 
+  async refreshFeed(...args) {
+    this._initCoordinators();
+    return this._feed.refreshFeed(...args);
+  }
+
   checkRelayHealthWarning(...args) {
     this._initCoordinators();
     return this._feed.checkRelayHealthWarning(...args);
