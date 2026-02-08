@@ -240,7 +240,7 @@ class Application {
   }
 
   constructor({ services = {}, ui = {}, helpers = {}, loadView: viewLoader } = {}) {
-    this.loadView = typeof viewLoader === "function" ? viewLoader : null;
+    this.loadView = viewLoader || null;
 
     const bootstrapServices = {
       ...services,
