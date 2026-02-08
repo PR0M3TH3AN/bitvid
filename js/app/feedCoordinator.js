@@ -523,6 +523,7 @@ export function createFeedCoordinator(deps) {
           ? this.getHashtagPreferences()
           : {};
       const { interests = [], disinterests = [] } = preferenceSource || {};
+      const preferencesAvailable = preferenceSource?.dataReady === true;
       const moderationThresholds = this.getActiveModerationThresholds();
 
       const watchedKeys = new Set();
@@ -544,6 +545,7 @@ export function createFeedCoordinator(deps) {
         tagPreferences: {
           interests: Array.isArray(interests) ? [...interests] : [],
           disinterests: Array.isArray(disinterests) ? [...disinterests] : [],
+          available: preferencesAvailable,
         },
         moderationThresholds: moderationThresholds
           ? { ...moderationThresholds }
@@ -606,6 +608,7 @@ export function createFeedCoordinator(deps) {
           ? this.getHashtagPreferences()
           : {};
       const { interests = [], disinterests = [] } = preferenceSource || {};
+      const preferencesAvailable = preferenceSource?.dataReady === true;
       const moderationThresholds = this.getActiveModerationThresholds();
 
       const watchHistorySource =
@@ -636,6 +639,7 @@ export function createFeedCoordinator(deps) {
         tagPreferences: {
           interests: Array.isArray(interests) ? [...interests] : [],
           disinterests: Array.isArray(disinterests) ? [...disinterests] : [],
+          available: preferencesAvailable,
         },
         watchHistoryTagCounts,
         exploreTagIdf,

@@ -349,7 +349,12 @@ class SubscriptionsManager {
     this.subsEventId = null;
     this.subsEventCreatedAt = null;
     this.currentUserPubkey = null;
+    this.uiReady = false;
+    this.dataReady = false;
     this.loaded = false;
+    this.loadedFromCache = false;
+    this.lastSuccessfulSyncAt = null;
+    this.lastAttemptAt = null;
     this.loadingPromise = null;
     this.backgroundLoading = false;
     this.subscriptionListView = null;
@@ -394,6 +399,7 @@ class SubscriptionsManager {
 
     const allowPermissionPrompt = options?.allowPermissionPrompt !== false;
     const normalizedUserPubkey = normalizeHexPubkey(userPubkey) || userPubkey;
+    this.lastAttemptAt = Date.now();
 
     // 1. Attempt to load from cache first
     const cached = profileCache.getProfileData(normalizedUserPubkey, "subscriptions");
@@ -404,7 +410,10 @@ class SubscriptionsManager {
       this.subsEventId = cachedSnapshot.eventId;
       this.subsEventCreatedAt = cachedSnapshot.createdAt;
       this.currentUserPubkey = normalizedUserPubkey;
+      this.uiReady = true;
+      this.dataReady = true;
       this.loaded = true;
+      this.loadedFromCache = true;
 
       // Trigger background update
       if (!allowPermissionPrompt && !this.backgroundLoading) {
@@ -468,6 +477,7 @@ class SubscriptionsManager {
     if (!userPubkey) return;
 
     try {
+      this.lastAttemptAt = Date.now();
       const allowPermissionPrompt = options?.allowPermissionPrompt !== false;
       const wasBackgroundLoading = this.backgroundLoading;
       const normalizedUserPubkey = normalizeHexPubkey(userPubkey) || userPubkey;
@@ -481,6 +491,7 @@ class SubscriptionsManager {
         devLogger.warn(
           "[SubscriptionsManager] No relay URLs available while loading subscriptions.",
         );
+        this.uiReady = true;
         if (wasBackgroundLoading) {
           this.backgroundLoading = false;
           this.emitter.emit("change", {
@@ -583,11 +594,20 @@ class SubscriptionsManager {
           this.subscribedPubkeys.clear();
           this.subsEventId = null;
           this.subsEventCreatedAt = null;
+          this.uiReady = true;
+          this.dataReady = true;
           this.loaded = true;
+          this.loadedFromCache = false;
+          this.lastSuccessfulSyncAt = Date.now();
         } else {
            // We have data loaded, and relays returned nothing.
            // This means no updates. We keep what we have.
            devLogger.log("[SubscriptionsManager] No updates from relays.");
+           this.uiReady = true;
+           this.dataReady = true;
+           this.loaded = true;
+           this.loadedFromCache = false;
+           this.lastSuccessfulSyncAt = Date.now();
         }
         if (wasBackgroundLoading) {
           this.backgroundLoading = false;
@@ -636,10 +656,8 @@ class SubscriptionsManager {
 
       if (!decryptResult.ok) {
         this.lastLoadError = decryptResult.error || null;
+        this.uiReady = true;
         if (decryptResult.error?.code === "subscriptions-decrypt-timeout") {
-          if (!this.loaded && !cachedSnapshot.hasSnapshot) {
-            this.loaded = true;
-          }
           this.scheduleDecryptRetry(normalizedUserPubkey, decryptResult.error, {
             allowPermissionPrompt,
           });
@@ -649,9 +667,6 @@ class SubscriptionsManager {
           !allowPermissionPrompt &&
           decryptResult.error?.code === "subscriptions-permission-required"
         ) {
-          if (!this.loaded && !cachedSnapshot.hasSnapshot) {
-            this.loaded = true;
-          }
           // Retry with permission prompt enabled so the signer / window.nostr
           // path is available once the extension has finished initializing.
           this.scheduleDecryptRetry(normalizedUserPubkey, decryptResult.error, {
@@ -690,6 +705,7 @@ class SubscriptionsManager {
           this.subscribedPubkeys.clear();
           this.subsEventId = null;
           this.subsEventCreatedAt = null;
+          this.dataReady = false;
           this.loaded = true;
         }
         this.scheduleDecryptRetry(normalizedUserPubkey, decryptResult.error, {
@@ -707,7 +723,11 @@ class SubscriptionsManager {
       // Update state
       this.subscribedPubkeys = newSet;
       this.currentUserPubkey = normalizedUserPubkey;
+      this.uiReady = true;
+      this.dataReady = true;
       this.loaded = true;
+      this.loadedFromCache = false;
+      this.lastSuccessfulSyncAt = Date.now();
       if (wasBackgroundLoading) {
         this.backgroundLoading = false;
       }
@@ -747,6 +767,7 @@ class SubscriptionsManager {
 
     } catch (err) {
       this.lastLoadError = err || null;
+      this.uiReady = true;
       userLogger.error("[SubscriptionsManager] Failed to update subs from relays:", err);
     }
   }
@@ -757,7 +778,12 @@ class SubscriptionsManager {
     this.subsEventId = null;
     this.subsEventCreatedAt = null;
     this.currentUserPubkey = null;
+    this.uiReady = false;
+    this.dataReady = false;
     this.loaded = false;
+    this.loadedFromCache = false;
+    this.lastSuccessfulSyncAt = null;
+    this.lastAttemptAt = null;
     this.backgroundLoading = false;
     this.lastRunOptions = null;
     this.lastResult = null;
@@ -823,12 +849,12 @@ class SubscriptionsManager {
     devLogger.log("[SubscriptionsManager] ensureLoaded start", actorHex);
     const normalizedActor = normalizeHexPubkey(actorHex) || actorHex;
     if (!normalizedActor) {
-      return;
+      return { ok: false, error: new Error("Missing actor pubkey."), state: this.getLoadState() };
     }
 
-    if (this.loaded && this.currentUserPubkey === normalizedActor) {
+    if (this.dataReady && this.currentUserPubkey === normalizedActor) {
       devLogger.log("[SubscriptionsManager] ensureLoaded already loaded");
-      return;
+      return { ok: true, error: null, state: this.getLoadState() };
     }
 
     if (this.loadingPromise) {
@@ -836,9 +862,9 @@ class SubscriptionsManager {
         devLogger.log("[SubscriptionsManager] ensureLoaded awaiting existing promise");
         await this.loadingPromise;
       } catch (error) {
-        throw error;
+        return { ok: false, error, state: this.getLoadState() };
       }
-      return;
+      return { ok: this.dataReady === true, error: this.lastLoadError || null, state: this.getLoadState() };
     }
 
     const loader = this.loadSubscriptions(normalizedActor, options);
@@ -869,14 +895,28 @@ class SubscriptionsManager {
         ),
       ]);
       devLogger.log("[SubscriptionsManager] ensureLoaded success");
+      return { ok: this.dataReady === true, error: this.lastLoadError || null, state: this.getLoadState() };
     } catch (error) {
       userLogger.warn("[SubscriptionsManager] ensureLoaded timed out or failed:", error);
-      // Mark as loaded so the UI can proceed.  The background loader will
-      // continue and emit a "change" event if it eventually succeeds.
-      if (!this.loaded) {
-        this.loaded = true;
-      }
+      this.lastLoadError = this.lastLoadError || error;
+      this.uiReady = true;
+      return { ok: false, error: this.lastLoadError, state: this.getLoadState() };
     }
+  }
+
+  getLoadState() {
+    return {
+      uiReady: this.uiReady === true,
+      dataReady: this.dataReady === true,
+      lastLoadError: this.lastLoadError || null,
+      loadedFromCache: this.loadedFromCache === true,
+      lastSuccessfulSyncAt: Number.isFinite(this.lastSuccessfulSyncAt)
+        ? Number(this.lastSuccessfulSyncAt)
+        : null,
+      lastAttemptAt: Number.isFinite(this.lastAttemptAt)
+        ? Number(this.lastAttemptAt)
+        : null,
+    };
   }
 
   isSubscribed(channelHex) {
