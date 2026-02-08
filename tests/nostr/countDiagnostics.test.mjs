@@ -1,159 +1,182 @@
-import { describe, it, before, after, beforeEach } from "node:test";
+import { describe, it, before, after, afterEach, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import "../test-setup.mjs";
 
-// Setup globals before importing any module
-globalThis.__BITVID_DEV_MODE_OVERRIDE__ = true;
-globalThis.__BITVID_VERBOSE_DEV_MODE_OVERRIDE__ = false;
-
-// Mock console.warn BEFORE importing logger so consoleAdapter binds to our mock
-let warnCalls = [];
-const originalConsoleWarn = console.warn;
-console.warn = (...args) => {
-  warnCalls.push(args);
-};
-
-// Force initial import to ensure logger binds to our mock
-await import("../../js/nostr/countDiagnostics.js");
-
 describe("countDiagnostics", () => {
-  let countDiagnosticsModule;
+  let countDiagnostics;
+  let warnCalls = [];
+  let originalConsoleWarn;
 
-  after(() => {
-    console.warn = originalConsoleWarn;
+  before(async () => {
+    // Setup environment before importing modules
+    globalThis.__BITVID_DEV_MODE_OVERRIDE__ = true;
+    globalThis.__BITVID_VERBOSE_DEV_MODE_OVERRIDE__ = true;
+
+    // Mock console.warn
+    originalConsoleWarn = console.warn;
+    console.warn = (...args) => {
+      warnCalls.push(args);
+      // originalConsoleWarn(...args); // Uncomment to see logs
+    };
+
+    // Dynamic import to pick up the overrides
+    countDiagnostics = await import("../../js/nostr/countDiagnostics.js");
   });
 
-  beforeEach(async () => {
-    warnCalls = [];
-    window.__BITVID_VERBOSE_DEV_MODE__ = undefined;
+  after(() => {
+    if (originalConsoleWarn) {
+      console.warn = originalConsoleWarn;
+    }
+  });
 
-    // Reload module to get fresh state (empty seenWarningKeys)
-    // Use unique timestamp to bust module cache
-    // Note: This relies on Node.js module caching behavior where query params create new module instances
-    countDiagnosticsModule = await import(`../../js/nostr/countDiagnostics.js?t=${Date.now()}-${Math.random()}`);
+  afterEach(() => {
+    warnCalls = [];
+    // Reset window flags between tests if needed, though most tests set them explicitly
+    if (typeof window !== "undefined") {
+      delete window.__BITVID_VERBOSE_DEV_MODE__;
+    }
   });
 
   describe("isVerboseDiagnosticsEnabled", () => {
-    it("should return false by default (when override is false and window flag is undefined)", () => {
-      assert.equal(countDiagnosticsModule.isVerboseDiagnosticsEnabled(), false);
+    it("should return true by default (due to override)", () => {
+      assert.equal(countDiagnostics.isVerboseDiagnosticsEnabled(), true);
     });
 
-    it("should return true when window.__BITVID_VERBOSE_DEV_MODE__ is true", () => {
-      window.__BITVID_VERBOSE_DEV_MODE__ = true;
-      assert.equal(countDiagnosticsModule.isVerboseDiagnosticsEnabled(), true);
-    });
-
-    it("should return false when window.__BITVID_VERBOSE_DEV_MODE__ is false", () => {
+    it("should return false if window.__BITVID_VERBOSE_DEV_MODE__ is false", () => {
       window.__BITVID_VERBOSE_DEV_MODE__ = false;
-      assert.equal(countDiagnosticsModule.isVerboseDiagnosticsEnabled(), false);
+      assert.equal(countDiagnostics.isVerboseDiagnosticsEnabled(), false);
     });
 
-    it("should fallback to config default if window flag is not boolean", () => {
+    it("should return true if window.__BITVID_VERBOSE_DEV_MODE__ is true", () => {
+      window.__BITVID_VERBOSE_DEV_MODE__ = true;
+      assert.equal(countDiagnostics.isVerboseDiagnosticsEnabled(), true);
+    });
+
+    it("should fall back to isVerboseDevMode if window flag is not boolean", () => {
       window.__BITVID_VERBOSE_DEV_MODE__ = "invalid";
-      assert.equal(countDiagnosticsModule.isVerboseDiagnosticsEnabled(), false);
+      assert.equal(countDiagnostics.isVerboseDiagnosticsEnabled(), true);
+
+      window.__BITVID_VERBOSE_DEV_MODE__ = 123;
+      assert.equal(countDiagnostics.isVerboseDiagnosticsEnabled(), true);
     });
   });
 
-  describe("Logging Functions", () => {
-    it("should NOT log when verbose mode is disabled", () => {
-      window.__BITVID_VERBOSE_DEV_MODE__ = false;
-      const {
-        logCountTimeoutCleanupFailure,
-        logRelayCountFailure,
-        logRebroadcastCountFailure,
-        logViewCountFailure
-      } = countDiagnosticsModule;
+  describe("logRelayCountFailure", () => {
+    it("should log warning for new relay URL", () => {
+      const relayUrl = "wss://relay.example.com";
+      const error = new Error("Connection failed");
 
-      logCountTimeoutCleanupFailure(new Error("test error"));
-      logRelayCountFailure("wss://relay1.com", new Error("test error"));
-      logRebroadcastCountFailure(new Error("test error"));
-      logViewCountFailure(new Error("test error"));
+      countDiagnostics.logRelayCountFailure(relayUrl, error);
 
-      assert.equal(warnCalls.length, 0, "Should not log when verbose mode is disabled");
-    });
-
-    it("should log when verbose mode is enabled", () => {
-      window.__BITVID_VERBOSE_DEV_MODE__ = true;
-      const {
-        logCountTimeoutCleanupFailure,
-        logRelayCountFailure,
-        logRebroadcastCountFailure,
-        logViewCountFailure
-      } = countDiagnosticsModule;
-
-      // 1. logCountTimeoutCleanupFailure
-      logCountTimeoutCleanupFailure(new Error("cleanup error"));
       assert.equal(warnCalls.length, 1);
-      assert.match(warnCalls[0][0], /cleanup failed/);
-
-      // 2. logRelayCountFailure
-      logRelayCountFailure("wss://relay-enabled.com", new Error("relay error"));
-      assert.equal(warnCalls.length, 2);
-      assert.match(warnCalls[1][0], /request failed on wss:\/\/relay-enabled\.com/);
-
-      // 3. logRebroadcastCountFailure
-      logRebroadcastCountFailure(new Error("rebroadcast error"));
-      assert.equal(warnCalls.length, 3);
-      assert.match(warnCalls[2][0], /rebroadcast failed/);
-
-      // 4. logViewCountFailure
-      logViewCountFailure(new Error("view error"));
-      assert.equal(warnCalls.length, 4);
-      assert.match(warnCalls[3][0], /view request failed/);
-    });
-
-    it("should throttle repeated logs", () => {
-      window.__BITVID_VERBOSE_DEV_MODE__ = true;
-      const {
-        logCountTimeoutCleanupFailure,
-        logRelayCountFailure,
-        logRebroadcastCountFailure,
-        logViewCountFailure
-      } = countDiagnosticsModule;
-
-      // First calls should log
-      logCountTimeoutCleanupFailure(new Error("cleanup error"));
-      logRelayCountFailure("wss://relay-throttled.com", new Error("relay error"));
-      logRebroadcastCountFailure(new Error("rebroadcast error"));
-      logViewCountFailure(new Error("view error"));
-
-      assert.equal(warnCalls.length, 4, "Initial calls should log");
-      const initialLogs = [...warnCalls];
-      warnCalls = []; // Clear log buffer
-
-      // Repeated calls should throttle
-      logCountTimeoutCleanupFailure(new Error("cleanup error again"));
-      logRelayCountFailure("wss://relay-throttled.com", new Error("relay error again"));
-      logRebroadcastCountFailure(new Error("rebroadcast error again"));
-      logViewCountFailure(new Error("view error again"));
-
-      assert.equal(warnCalls.length, 0, "Repeated calls should be throttled");
-    });
-
-    it("should log distinct relay failures separately (different keys)", () => {
-      window.__BITVID_VERBOSE_DEV_MODE__ = true;
-      const { logRelayCountFailure } = countDiagnosticsModule;
-
-      logRelayCountFailure("wss://relay-1.com", new Error("relay error 1"));
-      assert.equal(warnCalls.length, 1);
-      assert.match(warnCalls[0][0], /wss:\/\/relay-1\.com/);
-
-      warnCalls = [];
-      logRelayCountFailure("wss://relay-2.com", new Error("relay error 2"));
-      assert.equal(warnCalls.length, 1);
-      assert.match(warnCalls[0][0], /wss:\/\/relay-2\.com/);
+      assert.match(warnCalls[0][0], /COUNT request failed on wss:\/\/relay.example.com/);
+      assert.deepEqual(warnCalls[0][1], error);
     });
 
     it("should suppress 'Failed to connect to relay' errors", () => {
+      const relayUrl = "wss://relay.bad.com";
+      const error = new Error("Failed to connect to relay wss://relay.bad.com");
+
+      countDiagnostics.logRelayCountFailure(relayUrl, error);
+
+      assert.equal(warnCalls.length, 0);
+    });
+
+    it("should throttle duplicate warnings for the same relay", () => {
+      const relayUrl = "wss://relay.throttled.com";
+      const error = new Error("Timeout");
+
+      // First call logs
+      countDiagnostics.logRelayCountFailure(relayUrl, error);
+      assert.equal(warnCalls.length, 1);
+
+      // Second call suppresses
+      countDiagnostics.logRelayCountFailure(relayUrl, error);
+      assert.equal(warnCalls.length, 1);
+    });
+
+    it("should handle empty or non-string relay URLs", () => {
+      const error = new Error("Unknown error");
+
+      countDiagnostics.logRelayCountFailure(null, error);
+      assert.equal(warnCalls.length, 1);
+      assert.match(warnCalls[0][0], /COUNT request failed on \(unknown relay\)/);
+
+      warnCalls = [];
+      // This call should be throttled because both null and "" map to "(unknown relay)"
+      countDiagnostics.logRelayCountFailure("", error);
+      assert.equal(warnCalls.length, 0);
+    });
+  });
+
+  describe("Other Loggers", () => {
+    // These use fixed keys so we can only test them once for "logging" behavior per process/suite run
+
+    it("should log timeout cleanup failure once", () => {
+      const error = new Error("Cleanup failed");
+      countDiagnostics.logCountTimeoutCleanupFailure(error);
+
+      assert.equal(warnCalls.length, 1);
+      assert.match(warnCalls[0][0], /COUNT timeout cleanup failed/);
+
+      // Verify throttling immediately
+      countDiagnostics.logCountTimeoutCleanupFailure(error);
+      assert.equal(warnCalls.length, 1);
+    });
+
+    it("should log rebroadcast failure once", () => {
+      const error = new Error("Rebroadcast failed");
+      countDiagnostics.logRebroadcastCountFailure(error);
+
+      assert.equal(warnCalls.length, 1);
+      assert.match(warnCalls[0][0], /COUNT request for rebroadcast failed/);
+
+      // Verify throttling
+      countDiagnostics.logRebroadcastCountFailure(error);
+      assert.equal(warnCalls.length, 1);
+    });
+
+    it("should log view count failure once", () => {
+      const error = new Error("View count failed");
+      countDiagnostics.logViewCountFailure(error);
+
+      assert.equal(warnCalls.length, 1);
+      assert.match(warnCalls[0][0], /COUNT view request failed/);
+
+      // Verify throttling
+      countDiagnostics.logViewCountFailure(error);
+      assert.equal(warnCalls.length, 1);
+    });
+  });
+
+  describe("Verbose Mode Disabled", () => {
+    beforeEach(() => {
+        window.__BITVID_VERBOSE_DEV_MODE__ = false;
+    });
+
+    it("should not log even for new keys when disabled", () => {
+      const relayUrl = "wss://relay.silent.com";
+      const error = new Error("Silent error");
+
+      countDiagnostics.logRelayCountFailure(relayUrl, error);
+      assert.equal(warnCalls.length, 0);
+    });
+
+    it("should not consume throttle key when disabled", () => {
+      const relayUrl = "wss://relay.delayed.com";
+      const error = new Error("Delayed error");
+
+      // Disabled: no log, key not added
+      countDiagnostics.logRelayCountFailure(relayUrl, error);
+      assert.equal(warnCalls.length, 0);
+
+      // Enable verbose mode
       window.__BITVID_VERBOSE_DEV_MODE__ = true;
-      const { logRelayCountFailure } = countDiagnosticsModule;
 
-      logRelayCountFailure("wss://relay-fail.com", new Error("Failed to connect to relay wss://relay-fail.com"));
-      assert.equal(warnCalls.length, 0, "Should suppress connection errors");
-
-      // Also test with object that has message
-      logRelayCountFailure("wss://relay-fail-obj.com", { message: "Failed to connect to relay wss://relay-fail-obj.com" });
-      assert.equal(warnCalls.length, 0, "Should suppress connection errors (object)");
+      // Should log now because previous call didn't register key
+      countDiagnostics.logRelayCountFailure(relayUrl, error);
+      assert.equal(warnCalls.length, 1);
+      assert.match(warnCalls[0][0], /COUNT request failed on wss:\/\/relay.delayed.com/);
     });
   });
 });
