@@ -30,7 +30,6 @@ const URL_PROBE_TIMEOUT_RETRY_MS = 15 * 1000; // 15 seconds
 
 
 const MODERATION_OVERRIDE_STORAGE_KEY = "bitvid:moderationOverrides:v2";
-const LEGACY_MODERATION_OVERRIDE_STORAGE_KEY = "bitvid:moderationOverrides:v1";
 const MODERATION_OVERRIDE_STORAGE_VERSION = 2;
 const MODERATION_SETTINGS_STORAGE_KEY = "bitvid:moderationSettings:v1";
 const MODERATION_SETTINGS_STORAGE_VERSION = 3;
@@ -1530,9 +1529,7 @@ export function loadModerationOverridesFromStorage() {
     return;
   }
 
-  const raw =
-    localStorage.getItem(MODERATION_OVERRIDE_STORAGE_KEY) ||
-    localStorage.getItem(LEGACY_MODERATION_OVERRIDE_STORAGE_KEY);
+  const raw = localStorage.getItem(MODERATION_OVERRIDE_STORAGE_KEY);
   if (!raw) {
     return;
   }
@@ -1553,20 +1550,6 @@ export function loadModerationOverridesFromStorage() {
       } else {
         shouldRewrite = true;
       }
-    } else if (payload.version === 1) {
-      const legacyEntries =
-        payload.entries && typeof payload.entries === "object"
-          ? payload.entries
-          : {};
-      Object.entries(legacyEntries).forEach(([eventId, entry]) => {
-        entries.push({
-          eventId,
-          authorPubkey: "",
-          showAnyway: entry?.showAnyway === true,
-          updatedAt: entry?.updatedAt,
-        });
-      });
-      shouldRewrite = true;
     } else {
       return;
     }
@@ -1633,7 +1616,6 @@ export function persistModerationOverridesToStorage() {
   if (entries.length === 0) {
     try {
       localStorage.removeItem(MODERATION_OVERRIDE_STORAGE_KEY);
-      localStorage.removeItem(LEGACY_MODERATION_OVERRIDE_STORAGE_KEY);
     } catch (error) {
       userLogger.warn(
         "[cache.persistModerationOverridesToStorage] Failed to clear overrides:",
@@ -1654,7 +1636,6 @@ export function persistModerationOverridesToStorage() {
       MODERATION_OVERRIDE_STORAGE_KEY,
       JSON.stringify(payload),
     );
-    localStorage.removeItem(LEGACY_MODERATION_OVERRIDE_STORAGE_KEY);
   } catch (error) {
     userLogger.warn(
       "[cache.persistModerationOverridesToStorage] Failed to persist overrides:",
