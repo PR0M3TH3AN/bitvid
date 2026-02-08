@@ -67,6 +67,9 @@ import {
   buildDmAttachmentEvent,
   buildDeletionEvent,
   buildLegacyDirectMessageEvent,
+  buildGiftWrapEvent,
+  buildSealEvent,
+  buildChatMessageEvent,
   getNostrEventSchema,
   NOTE_TYPES,
 } from "../nostrEventSchemas.js";
@@ -5876,13 +5879,12 @@ export class NostrClient {
       const createdAt = Math.floor(Date.now() / 1000);
 
       if (trimmedMessage) {
-        rumorEvents.push({
-          kind: 14,
-          created_at: createdAt,
-          tags: [["p", targetHex]],
-          content: trimmedMessage,
+        rumorEvents.push(buildChatMessageEvent({
           pubkey: actorHex,
-        });
+          created_at: createdAt,
+          recipientPubkey: targetHex,
+          content: trimmedMessage,
+        }));
       }
 
       if (hasAttachments) {
@@ -5921,16 +5923,14 @@ export class NostrClient {
         relayHint,
         rumorEvent,
       ) => {
-        const sealPayload = {
-          kind: 13,
+        const sealPayload = buildSealEvent({
+          pubkey: actorHex,
           created_at: randomPastTimestamp(),
-          tags: [],
-          content: await signer.nip44Encrypt(
+          ciphertext: await signer.nip44Encrypt(
             recipientPubkey,
             JSON.stringify(rumorEvent),
           ),
-          pubkey: actorHex,
-        };
+        });
 
         const signedSeal = await signingAdapter.signEvent(sealPayload);
         if (!signedSeal || typeof signedSeal.id !== "string") {
@@ -5953,17 +5953,14 @@ export class NostrClient {
           recipientPubkey,
           JSON.stringify(signedSeal),
         );
-        const wrapTags = relayHint
-          ? [["p", recipientPubkey, relayHint]]
-          : [["p", recipientPubkey]];
 
-        const wrapEvent = {
-          kind: 1059,
-          created_at: randomPastTimestamp(),
-          tags: wrapTags,
-          content: wrapCiphertext,
+        const wrapEvent = buildGiftWrapEvent({
           pubkey: wrapperKeys.pubkey,
-        };
+          created_at: randomPastTimestamp(),
+          recipientPubkey,
+          relayHint,
+          ciphertext: wrapCiphertext,
+        });
 
         return {
           wrap: signEventWithPrivateKey(wrapEvent, wrapperKeys.privateKey),
