@@ -2106,57 +2106,46 @@ export function buildReactionEvent(params) {
   return event;
 }
 
-export function buildCommentEvent(params) {
-  const {
-    pubkey,
-    created_at,
-    videoEventId = "",
-    videoEventRelay = "",
-    videoDefinitionAddress = "",
-    videoDefinitionRelay = "",
-    rootIdentifier = "",
-    rootIdentifierRelay = "",
-    parentCommentId = "",
-    parentCommentRelay = "",
-    threadParticipantPubkey = "",
-    threadParticipantRelay = "",
-    rootKind,
-    rootAuthorPubkey = "",
-    rootAuthorRelay = "",
-    parentKind,
-    parentAuthorPubkey = "",
-    parentAuthorRelay = "",
-    parentIdentifier = "",
-    parentIdentifierRelay = "",
-    additionalTags = [],
-    content = "",
-  } = params || {};
-  const schema = getNostrEventSchema(NOTE_TYPES.VIDEO_COMMENT);
-  const tags = [];
-
+function normalizeCommentInputs(params) {
   const normalizeString = (value) =>
     typeof value === "string" ? value.trim() : "";
 
-  const normalizedVideoEventId = normalizeString(videoEventId);
-  const normalizedVideoEventRelay = normalizeString(videoEventRelay);
-  const normalizedVideoDefinitionAddress = normalizeString(videoDefinitionAddress);
-  const normalizedVideoDefinitionRelay = normalizeString(videoDefinitionRelay);
-  const normalizedRootIdentifier = normalizeString(rootIdentifier);
-  const normalizedRootIdentifierRelay = normalizeString(rootIdentifierRelay);
-  const normalizedParentCommentId = normalizeString(parentCommentId);
-  const normalizedParentCommentRelay = normalizeString(parentCommentRelay);
-  const normalizedParentIdentifier = normalizeString(parentIdentifier);
-  const normalizedParentIdentifierRelay = normalizeString(parentIdentifierRelay);
-  const normalizedThreadParticipantPubkey = normalizeString(
-    threadParticipantPubkey,
-  );
-  const normalizedThreadParticipantRelay = normalizeString(
-    threadParticipantRelay,
-  );
+  return {
+    normalizedVideoEventId: normalizeString(params.videoEventId),
+    normalizedVideoEventRelay: normalizeString(params.videoEventRelay),
+    normalizedVideoDefinitionAddress: normalizeString(params.videoDefinitionAddress),
+    normalizedVideoDefinitionRelay: normalizeString(params.videoDefinitionRelay),
+    normalizedRootIdentifier: normalizeString(params.rootIdentifier),
+    normalizedRootIdentifierRelay: normalizeString(params.rootIdentifierRelay),
+    normalizedParentCommentId: normalizeString(params.parentCommentId),
+    normalizedParentCommentRelay: normalizeString(params.parentCommentRelay),
+    normalizedThreadParticipantPubkey: normalizeString(params.threadParticipantPubkey),
+    normalizedThreadParticipantRelay: normalizeString(params.threadParticipantRelay),
+    normalizedParentIdentifier: normalizeString(params.parentIdentifier),
+    normalizedParentIdentifierRelay: normalizeString(params.parentIdentifierRelay),
+    resolvedRootKind: normalizeString(params.rootKind),
+    resolvedRootAuthorPubkey: normalizeString(params.rootAuthorPubkey),
+    resolvedRootAuthorRelay: normalizeString(params.rootAuthorRelay),
+    resolvedParentAuthorPubkey: normalizeString(params.parentAuthorPubkey),
+    resolvedParentAuthorRelay: normalizeString(params.parentAuthorRelay),
+    resolvedParentKind: normalizeString(params.parentKind),
+  };
+}
 
-  let resolvedRootKind = normalizeString(rootKind);
-  let resolvedRootAuthorPubkey = normalizeString(rootAuthorPubkey);
-  let resolvedRootAuthorRelay = normalizeString(rootAuthorRelay);
+function resolveCommentContext(inputs, schema) {
+  let {
+    resolvedRootKind,
+    resolvedRootAuthorPubkey,
+    resolvedRootAuthorRelay,
+    resolvedParentAuthorPubkey,
+    resolvedParentAuthorRelay,
+    resolvedParentKind,
+    normalizedVideoDefinitionAddress,
+    normalizedVideoDefinitionRelay,
+    normalizedThreadParticipantPubkey,
+    normalizedThreadParticipantRelay,
+    normalizedParentCommentId,
+  } = inputs;
 
   if (normalizedVideoDefinitionAddress) {
     const definitionSegments = normalizedVideoDefinitionAddress.split(":");
@@ -2171,12 +2160,10 @@ export function buildCommentEvent(params) {
     }
   }
 
-  let resolvedParentAuthorPubkey = normalizeString(parentAuthorPubkey);
   if (!resolvedParentAuthorPubkey) {
     resolvedParentAuthorPubkey = normalizedThreadParticipantPubkey;
   }
 
-  let resolvedParentAuthorRelay = normalizeString(parentAuthorRelay);
   if (!resolvedParentAuthorRelay) {
     resolvedParentAuthorRelay = normalizedThreadParticipantRelay;
   }
@@ -2195,7 +2182,6 @@ export function buildCommentEvent(params) {
     resolvedParentAuthorRelay = resolvedRootAuthorRelay;
   }
 
-  let resolvedParentKind = normalizeString(parentKind);
   if (!resolvedParentKind) {
     if (normalizedParentCommentId) {
       resolvedParentKind = String(schema?.kind ?? 1111);
@@ -2207,6 +2193,41 @@ export function buildCommentEvent(params) {
   if (!resolvedRootKind) {
     resolvedRootKind = resolvedParentKind;
   }
+
+  return {
+    resolvedRootKind,
+    resolvedRootAuthorPubkey,
+    resolvedRootAuthorRelay,
+    resolvedParentAuthorPubkey,
+    resolvedParentAuthorRelay,
+    resolvedParentKind,
+  };
+}
+
+function buildCommentTags(schema, inputs, context) {
+  const {
+    normalizedVideoEventId,
+    normalizedVideoEventRelay,
+    normalizedVideoDefinitionAddress,
+    normalizedVideoDefinitionRelay,
+    normalizedRootIdentifier,
+    normalizedRootIdentifierRelay,
+    normalizedParentCommentId,
+    normalizedParentCommentRelay,
+    normalizedParentIdentifier,
+    normalizedParentIdentifierRelay,
+  } = inputs;
+
+  const {
+    resolvedRootKind,
+    resolvedRootAuthorPubkey,
+    resolvedRootAuthorRelay,
+    resolvedParentAuthorPubkey,
+    resolvedParentAuthorRelay,
+    resolvedParentKind,
+  } = context;
+
+  const tags = [];
 
   const rootDefinitionPointerTagName = schema?.rootDefinitionPointerTagName || "A";
   const rootEventPointerTagName = schema?.rootEventPointerTagName || "E";
@@ -2332,6 +2353,22 @@ export function buildCommentEvent(params) {
       }
     }
   }
+
+  return tags;
+}
+
+export function buildCommentEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    additionalTags = [],
+    content = "",
+  } = params || {};
+  const schema = getNostrEventSchema(NOTE_TYPES.VIDEO_COMMENT);
+
+  const inputs = normalizeCommentInputs(params || {});
+  const context = resolveCommentContext(inputs, schema);
+  const tags = buildCommentTags(schema, inputs, context);
 
   const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
   if (sanitizedAdditionalTags.length) {
