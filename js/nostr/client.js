@@ -181,6 +181,8 @@ import {
   decodeNpubToHex,
   encodeHexToNpub,
   normalizeNostrPubkey,
+} from "./nip46Client.js";
+import {
   summarizeHexForLog,
   summarizeSecretForLog,
   summarizeMetadataForLog,
@@ -189,7 +191,7 @@ import {
   summarizeRpcParamsForLog,
   summarizeRpcResultForLog,
   summarizeRelayPublishResultsForLog,
-} from "./nip46Client.js";
+} from "./nip46LoggingUtils.js";
 import { profileCache } from "../state/profileCache.js";
 import { createPrivateKeyCipherClosures } from "./signerHelpers.js";
 import {

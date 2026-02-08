@@ -1,27 +1,9 @@
 import { devLogger } from "../../utils/logger.js";
 import { accessControl } from "../../accessControl.js";
-
-function summarizeHexForLog(value) {
-  if (typeof value !== "string" || !value.trim()) {
-    return "";
-  }
-
-  const normalized = value.trim().toLowerCase();
-  if (normalized.length <= 12) {
-    return `${normalized} (len:${normalized.length})`;
-  }
-  return `${normalized.slice(0, 8)}…${normalized.slice(-4)} (len:${normalized.length})`;
-}
-
-function summarizeSecretForLog(value) {
-  if (typeof value !== "string" || !value.trim()) {
-    return "<empty>";
-  }
-
-  const trimmed = value.trim();
-  const visible = trimmed.length <= 4 ? "*".repeat(trimmed.length) : `${"*".repeat(3)}…`;
-  return `${visible} (len:${trimmed.length})`;
-}
+import {
+  summarizeHexForLog,
+  summarizeSecretForLog,
+} from "../../nostr/nip46LoggingUtils.js";
 
 function sanitizeNip46UriForLog(value) {
   if (typeof value !== "string" || !value) {
