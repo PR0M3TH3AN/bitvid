@@ -4366,10 +4366,23 @@ function getCachedChannelVideoEvents(pubkey) {
   };
 
   const rawMatches = collectMatches(nostrClient?.rawEvents, (callback) => {
-    if (
-      nostrClient?.rawEvents &&
-      typeof nostrClient.rawEvents.forEach === "function"
-    ) {
+    if (!nostrClient?.rawEvents) {
+      return;
+    }
+
+    if (typeof nostrClient.rawEvents.getEventsByAuthor === "function") {
+      const candidates = nostrClient.rawEvents.getEventsByAuthor(normalized);
+      if (Array.isArray(candidates)) {
+        candidates.forEach((event) => {
+          if (event?.kind === 30078) {
+            callback(event);
+          }
+        });
+        return;
+      }
+    }
+
+    if (typeof nostrClient.rawEvents.forEach === "function") {
       nostrClient.rawEvents.forEach((event) => {
         if (event?.kind === 30078) {
           callback(event);
