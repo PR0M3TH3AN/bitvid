@@ -45,6 +45,9 @@ export const NOTE_TYPES = Object.freeze({
   LEGACY_DM: "legacyDm",
   HTTP_AUTH: "httpAuth",
   REPORT: "report",
+  GIFT_WRAP: "giftWrap",
+  SEAL: "seal",
+  CHAT_MESSAGE: "chatMessage",
 });
 
 export const SUBSCRIPTION_LIST_IDENTIFIER = "subscriptions";
@@ -665,6 +668,38 @@ const BASE_SCHEMAS = {
       description: "Report reason.",
     },
   },
+  [NOTE_TYPES.GIFT_WRAP]: {
+    type: NOTE_TYPES.GIFT_WRAP,
+    label: "Gift Wrap",
+    kind: 1059,
+    recipientTagName: "p",
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "text",
+      description: "NIP-44 encrypted seal.",
+    },
+  },
+  [NOTE_TYPES.SEAL]: {
+    type: NOTE_TYPES.SEAL,
+    label: "Seal",
+    kind: 13,
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "text",
+      description: "NIP-44 encrypted rumor.",
+    },
+  },
+  [NOTE_TYPES.CHAT_MESSAGE]: {
+    type: NOTE_TYPES.CHAT_MESSAGE,
+    label: "Chat Message (Rumor)",
+    kind: 14,
+    participantTagName: "p",
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "text",
+      description: "Plain text chat message.",
+    },
+  },
 };
 
 let schemaOverrides = {};
@@ -1092,6 +1127,116 @@ export function buildReportEvent(params) {
 
   if (isDevMode) {
     validateEventAgainstSchema(NOTE_TYPES.REPORT, event);
+  }
+
+  return event;
+}
+
+export function buildGiftWrapEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    recipientPubkey,
+    ciphertext = "",
+    relayHint,
+    additionalTags = [],
+  } = params || {};
+  const schema = getNostrEventSchema(NOTE_TYPES.GIFT_WRAP);
+  const tags = [];
+
+  const recipient = normalizePointerIdentifier(recipientPubkey);
+  if (recipient) {
+    const pTag = [schema?.recipientTagName || "p", recipient];
+    if (typeof relayHint === "string" && relayHint.trim()) {
+      pTag.push(relayHint.trim());
+    }
+    tags.push(pTag);
+  }
+
+  appendSchemaTags(tags, schema);
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
+  }
+
+  const event = {
+    kind: schema?.kind ?? 1059,
+    pubkey,
+    created_at,
+    tags,
+    content: typeof ciphertext === "string" ? ciphertext : "",
+  };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.GIFT_WRAP, event);
+  }
+
+  return event;
+}
+
+export function buildSealEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    ciphertext = "",
+    additionalTags = [],
+  } = params || {};
+  const schema = getNostrEventSchema(NOTE_TYPES.SEAL);
+  const tags = [];
+
+  appendSchemaTags(tags, schema);
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
+  }
+
+  const event = {
+    kind: schema?.kind ?? 13,
+    pubkey,
+    created_at,
+    tags,
+    content: typeof ciphertext === "string" ? ciphertext : "",
+  };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.SEAL, event);
+  }
+
+  return event;
+}
+
+export function buildChatMessageEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    recipientPubkey,
+    content = "",
+    additionalTags = [],
+  } = params || {};
+  const schema = getNostrEventSchema(NOTE_TYPES.CHAT_MESSAGE);
+  const tags = [];
+
+  const participant = normalizePointerIdentifier(recipientPubkey);
+  if (participant) {
+    tags.push([schema?.participantTagName || "p", participant]);
+  }
+
+  appendSchemaTags(tags, schema);
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
+  }
+
+  const event = {
+    kind: schema?.kind ?? 14,
+    pubkey,
+    created_at,
+    tags,
+    content: typeof content === "string" ? content : "",
+  };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.CHAT_MESSAGE, event);
   }
 
   return event;

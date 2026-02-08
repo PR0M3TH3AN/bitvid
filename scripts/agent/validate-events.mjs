@@ -65,7 +65,12 @@ import {
   buildSubscriptionListEvent,
   buildBlockListEvent,
   buildHashtagPreferenceEvent,
-  buildAdminListEvent
+  buildAdminListEvent,
+  buildGiftWrapEvent,
+  buildSealEvent,
+  buildChatMessageEvent,
+  getNostrEventSchema,
+  sanitizeAdditionalTags
 } from '../../js/nostrEventSchemas.js';
 
 import { buildNip71VideoEvent } from '../../js/nostr/nip71.js';
@@ -73,7 +78,7 @@ import { buildNip71VideoEvent } from '../../js/nostr/nip71.js';
 const TEST_PUBKEY = '0000000000000000000000000000000000000000000000000000000000000001';
 const TEST_TIMESTAMP = 1672531200; // 2023-01-01
 
-function runTest(name, builderFn, input, expectedType) {
+function runTest(name, builderFn, input, expectedType, additionalCheck) {
   console.log(`\nTesting: ${name}`);
   try {
     const event = builderFn(input);
@@ -84,6 +89,14 @@ function runTest(name, builderFn, input, expectedType) {
 
     const { valid, errors } = validateEventStructure(expectedType, event);
     if (valid) {
+      if (additionalCheck) {
+        try {
+          additionalCheck(event);
+        } catch (checkError) {
+          console.error(`❌ Additional check failed: ${checkError.message}`);
+          return false;
+        }
+      }
       console.log(`✅ Valid ${expectedType} (Kind: ${event.kind})`);
       return true;
     } else {
@@ -101,47 +114,70 @@ async function main() {
   console.log('Starting Event Schema Validation...');
   let failures = 0;
 
-  // 1. Video Post
-  const videoInput = {
+  // --- Real-world usage patterns ---
+
+  // 1. Video Post (mimicking js/nostr/client.js publishVideo)
+  // Testing auto-generation of 's' tag from URL
+  const videoInputReal = {
     pubkey: TEST_PUBKEY,
     created_at: TEST_TIMESTAMP,
-    dTagValue: 'test-video-id',
+    dTagValue: 'test-video-id-123',
     content: {
       version: 3,
-      title: 'Test Video',
-      videoRootId: 'test-video-id',
+      title: 'Real World Video',
+      videoRootId: 'test-video-id-123',
       url: 'https://example.com/video.mp4',
-      magnet: 'magnet:?xt=urn:btih:1234567890abcdef1234567890abcdef12345678',
-      thumbnail: 'https://example.com/thumb.jpg',
-      description: 'A test video',
       mode: 'live',
+      deleted: false,
       isPrivate: false,
       isNsfw: false,
-      isForKids: true,
+      isForKids: false,
       enableComments: true
-    }
+    },
+    // No explicit 's' tag passed, should be generated
+    additionalTags: [['t', 'art']]
   };
-  if (!runTest('buildVideoPostEvent', buildVideoPostEvent, videoInput, NOTE_TYPES.VIDEO_POST)) failures++;
 
-  // 2. Relay List
-  const relayListInput = {
+  if (!runTest('buildVideoPostEvent (Real Usage - Auto Storage Pointer)', buildVideoPostEvent, videoInputReal, NOTE_TYPES.VIDEO_POST, (event) => {
+    const sTag = event.tags.find(t => t[0] === 's');
+    if (!sTag) throw new Error("Missing 's' tag (Storage Pointer) which should have been auto-generated from URL");
+    if (!sTag[1].startsWith('url:')) throw new Error(`'s' tag should start with 'url:', got ${sTag[1]}`);
+  })) failures++;
+
+  // 2. Relay List (mimicking js/relayManager.js)
+  const relayListInputReal = {
     pubkey: TEST_PUBKEY,
     created_at: TEST_TIMESTAMP,
     relays: [
-      { url: 'wss://relay.example.com', mode: 'read' },
-      { url: 'wss://relay.other.com', mode: 'write' },
-      'wss://relay.both.com'
+      { url: 'wss://relay.damus.io', mode: 'read' },
+      { url: 'wss://nos.lol', mode: 'write' },
+      { url: 'wss://relay.primal.net', mode: 'both' }
     ]
   };
-  if (!runTest('buildRelayListEvent', buildRelayListEvent, relayListInput, NOTE_TYPES.RELAY_LIST)) failures++;
+  if (!runTest('buildRelayListEvent (Real Usage)', buildRelayListEvent, relayListInputReal, NOTE_TYPES.RELAY_LIST, (event) => {
+    const rTags = event.tags.filter(t => t[0] === 'r');
+    if (rTags.length !== 3) throw new Error(`Expected 3 'r' tags, got ${rTags.length}`);
+    const damus = rTags.find(t => t[1] === 'wss://relay.damus.io');
+    if (!damus || damus[2] !== 'read') throw new Error("Damus relay missing or incorrect marker");
+  })) failures++;
 
-  // 3. Hashtag Preferences
-  const hashtagInput = {
+  // 3. Hashtag Preferences (mimicking js/services/hashtagPreferencesService.js)
+  // Content is encrypted string (ciphertext)
+  const hashtagInputReal = {
     pubkey: TEST_PUBKEY,
     created_at: TEST_TIMESTAMP,
-    content: JSON.stringify({ interests: ['art', 'code'], disinterests: ['spam'] })
+    content: "nip44:ciphertext-blob-simulated",
+    // Service adds encrypted tag
+    additionalTags: [['encrypted', 'nip44']]
   };
-  if (!runTest('buildHashtagPreferenceEvent', buildHashtagPreferenceEvent, hashtagInput, NOTE_TYPES.HASHTAG_PREFERENCES)) failures++;
+  if (!runTest('buildHashtagPreferenceEvent (Real Usage - Encrypted)', buildHashtagPreferenceEvent, hashtagInputReal, NOTE_TYPES.HASHTAG_PREFERENCES, (event) => {
+    if (event.content !== "nip44:ciphertext-blob-simulated") throw new Error("Content mismtach");
+    const dTag = event.tags.find(t => t[0] === 'd');
+    if (!dTag || dTag[1] !== 'bitvid:tag-preferences') throw new Error("Incorrect 'd' tag identifier");
+  })) failures++;
+
+
+  // --- Standard Checks ---
 
   // 4. HTTP Auth
   const httpAuthInput = {
@@ -338,6 +374,33 @@ async function main() {
     pointerIdentifiers: { videoRootId: 'test-root' }
   };
   if (!runTest('buildNip71VideoEvent', buildNip71VideoEvent, nip71Input, NOTE_TYPES.NIP71_VIDEO)) failures++;
+
+  // 26. NIP-17 Gift Wrap
+  const giftWrapInput = {
+    pubkey: TEST_PUBKEY,
+    created_at: TEST_TIMESTAMP,
+    recipientPubkey: TEST_PUBKEY,
+    ciphertext: 'encrypted-seal',
+    relayHint: 'wss://relay.example.com'
+  };
+  if (!runTest('buildGiftWrapEvent', buildGiftWrapEvent, giftWrapInput, NOTE_TYPES.GIFT_WRAP)) failures++;
+
+  // 27. NIP-17 Seal
+  const sealInput = {
+    pubkey: TEST_PUBKEY,
+    created_at: TEST_TIMESTAMP,
+    ciphertext: 'encrypted-rumor'
+  };
+  if (!runTest('buildSealEvent', buildSealEvent, sealInput, NOTE_TYPES.SEAL)) failures++;
+
+  // 28. NIP-17 Chat Message
+  const chatMessageInput = {
+    pubkey: TEST_PUBKEY,
+    created_at: TEST_TIMESTAMP,
+    recipientPubkey: TEST_PUBKEY,
+    content: 'Hello World'
+  };
+  if (!runTest('buildChatMessageEvent', buildChatMessageEvent, chatMessageInput, NOTE_TYPES.CHAT_MESSAGE)) failures++;
 
 
   console.log('\n-----------------------------------');
