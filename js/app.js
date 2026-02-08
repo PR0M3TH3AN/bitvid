@@ -1079,10 +1079,20 @@ class Application {
     }
   }
 
-  async _initSessionActor() {
-    if (typeof nostrClient.onSessionActorChange === "function") {
-      nostrClient.onSessionActorChange((detail) => {
-        this._handleSessionActorReady(detail).catch((error) => {
+      accessControl
+        .refresh()
+        .then(() => {
+          if (
+            accessControl.lastError &&
+            accessControl.lastError?.code === "nostr-unavailable"
+          ) {
+            devLogger.warn(
+              "[app.init()] Access control refresh should not run before nostrClient.init()",
+              accessControl.lastError
+            );
+          }
+        })
+        .catch((error) => {
           devLogger.warn(
             "[app.init()] Failed to process session actor change:",
             error,
@@ -1091,17 +1101,16 @@ class Application {
       });
     }
 
-    await this._syncSessionActorBlacklist("post-refresh");
-  }
-
-  async _initNostr() {
-    // Initialize the pool early to unblock bootstrapTrustedSeeds,
-    // but do NOT await the full connection process here.
-    try {
-      await nostrClient.ensurePool();
-    } catch (poolError) {
-      devLogger.warn("[app.init()] Pool ensure failed:", poolError);
-    }
+      if (this.profileController) {
+        Promise.resolve()
+          .then(() => this.profileController.refreshAdminPaneState())
+          .catch((error) => {
+            devLogger.warn(
+              "Failed to update admin pane after connecting to Nostr:",
+              error
+            );
+          });
+      }
 
     // Kick off relay connection in the background.
     nostrClient.init().catch((err) => {
