@@ -1208,36 +1208,58 @@ class Application {
     await watchHistoryInitPromise;
   }
 
+  async initializeServices() {
+    await this._initViewManager();
+    this._warmupNostrExtension();
+    this._initServiceWorker();
+    this._initAuthAndModeration();
+  }
+
+  initializeUIResources() {
+    return this._initModals();
+  }
+
+  async initializeNetwork() {
+    await this._initNostr();
+  }
+
+  async initializeDataAndSession() {
+    await this._initTrustedSeeds();
+    this._initViewCounter();
+    this._initAccessControl();
+
+    await this._initSessionActor();
+    this._initAccessControlListeners();
+  }
+
+  initializeUserInterface() {
+    this._initUI();
+  }
+
+  async performAutoLogin() {
+    await this._initAutoLogin();
+  }
+
+  async finalizeInitialization() {
+    this.setupEventListeners();
+    await this._initWatchHistory();
+    this.checkUrlParams();
+  }
+
   async init() {
     try {
-      await this._initViewManager();
-      this._warmupNostrExtension();
-      this._initServiceWorker();
-      this._initAuthAndModeration();
+      await this.initializeServices();
 
-      const modalBootstrapPromise = this._initModals();
+      const modalPromise = this.initializeUIResources();
+      await this.initializeNetwork();
+      await modalPromise;
 
-      await this._initNostr();
+      await this.initializeDataAndSession();
 
-      await modalBootstrapPromise;
+      this.initializeUserInterface();
+      await this.performAutoLogin();
 
-      await this._initTrustedSeeds();
-      this._initViewCounter();
-      this._initAccessControl();
-
-      await this._initSessionActor();
-      this._initAccessControlListeners();
-      this._initUI();
-      await this._initAutoLogin();
-
-      // 5. Setup general event listeners
-      this.setupEventListeners();
-
-      await this._initWatchHistory();
-
-      // 9. Check URL ?v= param
-      this.checkUrlParams();
-
+      await this.finalizeInitialization();
     } catch (error) {
       devLogger.error("Init failed:", error);
       this.showError("Failed to connect to Nostr relay");
