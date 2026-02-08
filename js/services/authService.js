@@ -1030,8 +1030,63 @@ export default class AuthService {
     return { switched: true, detail };
   }
 
+  async fetchProfileFromRelay(
+    relayUrl,
+    filter,
+    normalizedPubkey,
+    timeoutMs,
+    requireEvent,
+  ) {
+    const fetchPromise = this.nostrClient.pool.list([relayUrl], filter);
+    let timeoutId;
+
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => {
+        const timeoutError = new Error(
+          `Timed out fetching profile from ${relayUrl} after ${timeoutMs}ms`,
+        );
+        timeoutError.code = "timeout";
+        timeoutError.relay = relayUrl;
+        timeoutError.timeoutMs = timeoutMs;
+        reject(timeoutError);
+      }, timeoutMs);
+    });
+
+    try {
+      const result = await Promise.race([fetchPromise, timeoutPromise]);
+      clearTimeout(timeoutId);
+
+      const events = Array.isArray(result)
+        ? result.filter((event) => event && event.pubkey === normalizedPubkey)
+        : [];
+
+      if (requireEvent && !events.length) {
+        const emptyError = new Error(
+          `No profile events returned from ${relayUrl}`,
+        );
+        emptyError.code = "empty";
+        emptyError.relay = relayUrl;
+        throw emptyError;
+      }
+
+      return { relayUrl, events };
+    } catch (error) {
+      clearTimeout(timeoutId);
+      // Suppress unhandled rejection from fetchPromise if it's still running
+      fetchPromise.catch(() => {});
+
+      if (error.relay) {
+        throw error;
+      }
+      const wrapped = error instanceof Error ? error : new Error(String(error));
+      wrapped.relay = relayUrl;
+      throw wrapped;
+    }
+  }
+
   async loadOwnProfile(pubkey) {
-    const normalized = this.normalizeHexPubkey(pubkey) ||
+    const normalized =
+      this.normalizeHexPubkey(pubkey) ||
       (typeof pubkey === "string" ? pubkey.trim() : "");
     if (!normalized) {
       return FALLBACK_PROFILE;
@@ -1074,13 +1129,20 @@ export default class AuthService {
         return {
           name: data.display_name || data.name || FALLBACK_PROFILE.name,
           picture: data.picture || FALLBACK_PROFILE.picture,
-          about: typeof data.about === "string" ? data.about : FALLBACK_PROFILE.about,
+          about:
+            typeof data.about === "string" ? data.about : FALLBACK_PROFILE.about,
           website:
-            typeof data.website === "string" ? data.website : FALLBACK_PROFILE.website,
+            typeof data.website === "string"
+              ? data.website
+              : FALLBACK_PROFILE.website,
           banner:
-            typeof data.banner === "string" ? data.banner : FALLBACK_PROFILE.banner,
-          lud16: typeof data.lud16 === "string" ? data.lud16 : FALLBACK_PROFILE.lud16,
-          lud06: typeof data.lud06 === "string" ? data.lud06 : FALLBACK_PROFILE.lud06,
+            typeof data.banner === "string"
+              ? data.banner
+              : FALLBACK_PROFILE.banner,
+          lud16:
+            typeof data.lud16 === "string" ? data.lud16 : FALLBACK_PROFILE.lud16,
+          lud06:
+            typeof data.lud06 === "string" ? data.lud06 : FALLBACK_PROFILE.lud06,
         };
       } catch (error) {
         this.log("[AuthService] Failed to parse profile metadata", error);
@@ -1088,67 +1150,26 @@ export default class AuthService {
       }
     };
 
-    const fetchFromRelay = (relayUrl, timeoutMs, requireEvent) => {
-      return new Promise((resolve, reject) => {
-        let settled = false;
-        const timer = setTimeout(() => {
-          if (settled) {
-            return;
-          }
-          settled = true;
-          const timeoutError = new Error(
-            `Timed out fetching profile from ${relayUrl} after ${timeoutMs}ms`
-          );
-          timeoutError.code = "timeout";
-          timeoutError.relay = relayUrl;
-          timeoutError.timeoutMs = timeoutMs;
-          reject(timeoutError);
-        }, timeoutMs);
-
-        Promise.resolve()
-          .then(() => this.nostrClient.pool.list([relayUrl], filter))
-          .then((result) => {
-            if (settled) {
-              return;
-            }
-            settled = true;
-            clearTimeout(timer);
-            const events = Array.isArray(result)
-              ? result.filter((event) => event && event.pubkey === normalized)
-              : [];
-            if (requireEvent && !events.length) {
-              const emptyError = new Error(
-                `No profile events returned from ${relayUrl}`
-              );
-              emptyError.code = "empty";
-              emptyError.relay = relayUrl;
-              reject(emptyError);
-              return;
-            }
-            resolve({ relayUrl, events });
-          })
-          .catch((error) => {
-            if (settled) {
-              return;
-            }
-            settled = true;
-            clearTimeout(timer);
-            const wrapped =
-              error instanceof Error ? error : new Error(String(error));
-            wrapped.relay = relayUrl;
-            reject(wrapped);
-          });
-      });
-    };
-
     const fastRelays = relays.slice(0, FAST_PROFILE_RELAY_LIMIT);
     const backgroundRelays = relays.slice(fastRelays.length);
 
     const fastPromises = fastRelays.map((relayUrl) =>
-      fetchFromRelay(relayUrl, FAST_PROFILE_TIMEOUT_MS, true)
+      this.fetchProfileFromRelay(
+        relayUrl,
+        filter,
+        normalized,
+        FAST_PROFILE_TIMEOUT_MS,
+        true,
+      ),
     );
     const backgroundPromises = backgroundRelays.map((relayUrl) =>
-      fetchFromRelay(relayUrl, BACKGROUND_PROFILE_TIMEOUT_MS, false)
+      this.fetchProfileFromRelay(
+        relayUrl,
+        filter,
+        normalized,
+        BACKGROUND_PROFILE_TIMEOUT_MS,
+        false,
+      ),
     );
 
     const background = Promise.allSettled([
