@@ -8064,85 +8064,28 @@ export class NostrClient {
    * @deprecated Use `subscribeVideos` for the main feed to support buffering and streaming.
    */
   async fetchVideos(options = {}) {
-    const requestedLimit = Number(options?.limit);
-    const resolvedLimit = this.clampVideoRequestLimit(requestedLimit, DEFAULT_VIDEO_REQUEST_LIMIT);
-
-    const filter = {
-      kinds: [30078],
-      "#t": ["video"],
-      limit: resolvedLimit,
-      since: 0,
-    };
-
-    const localAll = new Map();
-    // NEW: track invalid
-    const invalidNotes = [];
-
-    try {
-      await Promise.all(
-        this.getHealthyRelays(this.relays).map(async (url) => {
-          const events = await this.pool.list([url], [filter]);
-          for (const evt of events) {
-            if (evt && evt.id) {
-              this.rawEvents.set(evt.id, evt);
-            }
-            const vid = convertEventToVideo(evt);
-            if (vid.invalid) {
-              // Accumulate if invalid
-              invalidNotes.push({ id: vid.id, reason: vid.reason });
-            } else {
-              // Only add if good
-              this.applyRootCreatedAt(vid);
-              const activeKey = getActiveKey(vid);
-              if (vid.deleted) {
-                this.recordTombstone(activeKey, vid.created_at);
-              } else {
-                this.applyTombstoneGuard(vid);
-              }
-              localAll.set(evt.id, vid);
-            }
-          }
-        })
-      );
-
-      // Merge into allEvents
-      for (const [id, vid] of localAll.entries()) {
-        this.allEvents.set(id, vid);
-        this.dirtyEventIds.add(id);
-        this.applyRootCreatedAt(vid);
+    return new Promise((resolve) => {
+      // Default to since: 0 to force full fetch if not specified
+      const effectiveOptions = { ...options };
+      if (effectiveOptions.since === undefined) {
+        effectiveOptions.since = 0;
       }
 
-      // Rebuild activeMap
-      this.activeMap.clear();
-      for (const [id, video] of this.allEvents.entries()) {
-        if (video.deleted) continue;
-        const activeKey = getActiveKey(video);
-        const existing = this.activeMap.get(activeKey);
+      const sub = this.subscribeVideos(() => {}, effectiveOptions);
 
-        if (!existing || video.created_at > existing.created_at) {
-          this.activeMap.set(activeKey, video);
-          this.applyRootCreatedAt(video);
+      sub.on("eose", async () => {
+        sub.unsub();
+        try {
+          const activeVideos = this.getActiveVideos();
+          await this.populateNip71MetadataForVideos(activeVideos);
+          activeVideos.forEach((video) => this.applyRootCreatedAt(video));
+          resolve(activeVideos);
+        } catch (err) {
+          userLogger.error("fetchVideos error:", err);
+          resolve([]);
         }
-      }
-
-      // OPTIONAL: Log invalid stats
-      if (invalidNotes.length > 0 && isDevMode) {
-        userLogger.warn(
-          `Skipped ${invalidNotes.length} invalid video notes:\n`,
-          invalidNotes.map((n) => `${n.id.slice(0, 8)}.. => ${n.reason}`)
-        );
-      }
-
-      const activeVideos = Array.from(this.activeMap.values()).sort(
-        (a, b) => b.created_at - a.created_at
-      );
-      await this.populateNip71MetadataForVideos(activeVideos);
-      activeVideos.forEach((video) => this.applyRootCreatedAt(video));
-      return activeVideos;
-    } catch (err) {
-      userLogger.error("fetchVideos error:", err);
-      return [];
-    }
+      });
+    });
   }
 
   /**
