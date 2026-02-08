@@ -479,6 +479,14 @@ class SubscriptionsManager {
     try {
       this.lastAttemptAt = Date.now();
       const allowPermissionPrompt = options?.allowPermissionPrompt !== false;
+      const signerReadinessGate =
+        options?.signerReadinessGate && typeof options.signerReadinessGate === "object"
+          ? options.signerReadinessGate
+          : null;
+      const shouldSuppressPermissionEscalation =
+        signerReadinessGate &&
+        (signerReadinessGate.status === "permission-denied" ||
+          signerReadinessGate.status === "extension-unavailable");
       const wasBackgroundLoading = this.backgroundLoading;
       const normalizedUserPubkey = normalizeHexPubkey(userPubkey) || userPubkey;
       const wasLoadedForUser =
@@ -636,6 +644,7 @@ class SubscriptionsManager {
       try {
         const decryptPromise = this.decryptSubscriptionEvent(newest, userPubkey, {
           allowPermissionPrompt,
+          signerReadinessGate,
         });
         const timeoutPromise = new Promise((_, reject) =>
           setTimeout(
@@ -660,6 +669,7 @@ class SubscriptionsManager {
         if (decryptResult.error?.code === "subscriptions-decrypt-timeout") {
           this.scheduleDecryptRetry(normalizedUserPubkey, decryptResult.error, {
             allowPermissionPrompt,
+            signerReadinessGate,
           });
           return;
         }
@@ -667,10 +677,25 @@ class SubscriptionsManager {
           !allowPermissionPrompt &&
           decryptResult.error?.code === "subscriptions-permission-required"
         ) {
+          if (shouldSuppressPermissionEscalation) {
+            userLogger.warn(
+              "[SubscriptionsManager] Skipping permission escalation due to shared signer gate outcome.",
+              signerReadinessGate,
+            );
+            if (wasBackgroundLoading) {
+              this.backgroundLoading = false;
+              this.emitter.emit("change", {
+                action: "background-loaded",
+                subscribedPubkeys: Array.from(this.subscribedPubkeys),
+              });
+            }
+            return;
+          }
           // Retry with permission prompt enabled so the signer / window.nostr
           // path is available once the extension has finished initializing.
           this.scheduleDecryptRetry(normalizedUserPubkey, decryptResult.error, {
             allowPermissionPrompt: true,
+            signerReadinessGate,
           });
           if (wasBackgroundLoading) {
             this.backgroundLoading = false;
@@ -698,6 +723,7 @@ class SubscriptionsManager {
           );
           this.scheduleDecryptRetry(normalizedUserPubkey, decryptResult.error, {
             allowPermissionPrompt,
+            signerReadinessGate,
           });
           return;
         }
@@ -710,6 +736,7 @@ class SubscriptionsManager {
         }
         this.scheduleDecryptRetry(normalizedUserPubkey, decryptResult.error, {
           allowPermissionPrompt,
+          signerReadinessGate,
         });
         return;
       }
@@ -959,6 +986,14 @@ class SubscriptionsManager {
     }
 
     const allowPermissionPrompt = options?.allowPermissionPrompt !== false;
+    const signerReadinessGate =
+      options?.signerReadinessGate && typeof options.signerReadinessGate === "object"
+        ? options.signerReadinessGate
+        : null;
+    const suppressPermissionPrompt =
+      signerReadinessGate &&
+      (signerReadinessGate.status === "permission-denied" ||
+        signerReadinessGate.status === "extension-unavailable");
     const hints = extractEncryptionHints(event);
     const requiresNip44 = hints.includes("nip44") || hints.includes("nip44_v2");
     const requiresNip04 = !hints.length || hints.includes("nip04") || !requiresNip44;
@@ -1004,6 +1039,13 @@ class SubscriptionsManager {
       if (!allowPermissionPrompt) {
         const error = new Error(
           "Decrypt permissions are required to read subscriptions."
+        );
+        error.code = "subscriptions-permission-required";
+        return { ok: false, error };
+      }
+      if (suppressPermissionPrompt) {
+        const error = new Error(
+          "Shared signer gate indicates extension permissions are unavailable.",
         );
         error.code = "subscriptions-permission-required";
         return { ok: false, error };
