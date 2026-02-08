@@ -3,6 +3,7 @@ import { devLogger, userLogger } from "../utils/logger.js";
 const TELEMETRY_STORAGE_KEY = "bitvid:relay-health-telemetry-opt-in";
 const PERSISTENT_FAILURE_THRESHOLD = 3;
 const USER_LOG_COOLDOWN_MS = 5 * 60 * 1000;
+const DEFAULT_TIMEOUT_MS = 5000;
 
 function resolveLogger(logger) {
   if (logger && logger.dev && logger.user) {
@@ -202,7 +203,16 @@ class RelayHealthService {
 
     const start = nowMs();
     try {
-      const relay = await this.nostrClient.pool.ensureRelay(relayUrl);
+      const relay = await Promise.race([
+        this.nostrClient.pool.ensureRelay(relayUrl),
+        new Promise((_, reject) =>
+          setTimeout(
+            () => reject(new Error("relay-connection-timeout")),
+            DEFAULT_TIMEOUT_MS,
+          ),
+        ),
+      ]);
+
       if (!relay) {
         throw new Error("relay-unavailable");
       }
