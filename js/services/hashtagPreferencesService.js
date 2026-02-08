@@ -578,6 +578,14 @@ class HashtagPreferencesService {
   async loadInternal(pubkey, options = {}) {
     const normalized = normalizeHexPubkey(pubkey);
     const allowPermissionPrompt = options?.allowPermissionPrompt !== false;
+    const signerReadinessGate =
+      options?.signerReadinessGate && typeof options.signerReadinessGate === "object"
+        ? options.signerReadinessGate
+        : null;
+    const shouldSuppressPermissionEscalation =
+      signerReadinessGate &&
+      (signerReadinessGate.status === "permission-denied" ||
+        signerReadinessGate.status === "extension-unavailable");
     this.lastAttemptAt = Date.now();
     this.lastLoadError = null;
     let wasLoadedForUser =
@@ -828,6 +836,7 @@ class HashtagPreferencesService {
     try {
       const decryptPromise = this.decryptEvent(latest, normalized, {
         allowPermissionPrompt,
+        signerReadinessGate,
       });
       let timeoutId;
       const timeoutPromise = new Promise((_, reject) => {
@@ -859,6 +868,7 @@ class HashtagPreferencesService {
       if (decryptResult.error?.code === "hashtag-preferences-decrypt-timeout") {
         this.scheduleDecryptRetry(normalized, decryptResult.error, {
           allowPermissionPrompt,
+          signerReadinessGate,
         });
         return;
       }
@@ -866,8 +876,20 @@ class HashtagPreferencesService {
         !allowPermissionPrompt &&
         decryptResult.error?.code === "hashtag-preferences-permission-required"
       ) {
+        if (shouldSuppressPermissionEscalation) {
+          userLogger.warn(
+            `${LOG_PREFIX} Skipping permission escalation due to shared signer gate outcome.`,
+            signerReadinessGate,
+          );
+          if (wasBackgroundLoading) {
+            this.backgroundLoading = false;
+            this.emitChange("background-loaded", { background: false });
+          }
+          return;
+        }
         this.scheduleDecryptRetry(normalized, decryptResult.error, {
           allowPermissionPrompt: true,
+          signerReadinessGate,
         });
         if (wasBackgroundLoading) {
           this.backgroundLoading = false;
@@ -953,6 +975,14 @@ class HashtagPreferencesService {
     }
 
     const allowPermissionPrompt = options?.allowPermissionPrompt !== false;
+    const signerReadinessGate =
+      options?.signerReadinessGate && typeof options.signerReadinessGate === "object"
+        ? options.signerReadinessGate
+        : null;
+    const suppressPermissionPrompt =
+      signerReadinessGate &&
+      (signerReadinessGate.status === "permission-denied" ||
+        signerReadinessGate.status === "extension-unavailable");
     let signer = getActiveSigner();
     if (
       !signer &&
@@ -975,6 +1005,13 @@ class HashtagPreferencesService {
       if (!allowPermissionPrompt) {
         const error = new Error(
           "Decrypt permissions are required to read hashtag preferences.",
+        );
+        error.code = "hashtag-preferences-permission-required";
+        return { ok: false, error };
+      }
+      if (suppressPermissionPrompt) {
+        const error = new Error(
+          "Shared signer gate indicates extension permissions are unavailable.",
         );
         error.code = "hashtag-preferences-permission-required";
         return { ok: false, error };
