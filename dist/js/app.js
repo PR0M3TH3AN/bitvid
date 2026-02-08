@@ -7213,7 +7213,12 @@ class Application {
   }
 
   getActiveModerationThresholds() {
-    this.moderationSettings = this.moderationDecorator.normalizeModerationSettings(this.moderationSettings);
+    if (this.moderationDecorator) {
+      this.moderationSettings =
+        this.moderationDecorator.normalizeModerationSettings(
+          this.moderationSettings,
+        );
+    }
     return { ...this.moderationSettings };
   }
 
