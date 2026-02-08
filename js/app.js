@@ -177,7 +177,14 @@ import { createPlaybackCoordinator } from "./app/playbackCoordinator.js";
 import { createAuthSessionCoordinator } from "./app/authSessionCoordinator.js";
 import { createModalCoordinator } from "./app/modalCoordinator.js";
 import { createModerationCoordinator } from "./app/moderationCoordinator.js";
+import { createRouterCoordinator } from "./app/routerCoordinator.js";
+import { createUiCoordinator } from "./app/uiCoordinator.js";
 import { HEX64_REGEX } from "./utils/hex.js";
+import {
+  safeEncodeNpub,
+  safeDecodeNpub,
+  normalizeHexPubkey,
+} from "./utils/nostrHelpers.js";
 
 const recordVideoViewApi = (...args) => recordVideoView(nostrClient, ...args);
 
@@ -241,6 +248,15 @@ class Application {
 
   constructor({ services = {}, ui = {}, helpers = {}, loadView: viewLoader } = {}) {
     this.loadView = typeof viewLoader === "function" ? viewLoader : null;
+    this._setupOptions = { services, ui, helpers };
+    this._isSetup = false;
+  }
+
+  setup() {
+    if (this._isSetup) return;
+    this._isSetup = true;
+
+    const { services = {}, ui = {}, helpers = {} } = this._setupOptions || {};
 
     const bootstrapServices = {
       ...services,
@@ -502,6 +518,8 @@ class Application {
     };
     onActiveSignerChanged(this.handleShareNostrSignerChange);
     this.updateShareNostrAuthState({ reason: "init" });
+
+    delete this._setupOptions;
   }
 
   /**
@@ -636,6 +654,22 @@ class Application {
         userBlocks,
         buildVideoAddressPointer,
         VIDEO_EVENT_KIND,
+      })),
+      writable: true,
+      configurable: true,
+    });
+
+    Object.defineProperty(this, "_router", {
+      value: bindCoordinator(this, createRouterCoordinator({
+        devLogger,
+      })),
+      writable: true,
+      configurable: true,
+    });
+
+    Object.defineProperty(this, "_ui", {
+      value: bindCoordinator(this, createUiCoordinator({
+        devLogger,
       })),
       writable: true,
       configurable: true,
@@ -1208,92 +1242,72 @@ class Application {
     await watchHistoryInitPromise;
   }
 
+  async initializeServices() {
+    await this._initViewManager();
+    this._warmupNostrExtension();
+    this._initServiceWorker();
+    this._initAuthAndModeration();
+  }
+
+  initializeUIResources() {
+    return this._initModals();
+  }
+
+  async initializeNetwork() {
+    await this._initNostr();
+  }
+
+  async initializeDataAndSession() {
+    await this._initTrustedSeeds();
+    this._initViewCounter();
+    this._initAccessControl();
+
+    await this._initSessionActor();
+    this._initAccessControlListeners();
+  }
+
+  initializeUserInterface() {
+    this._initUI();
+  }
+
+  async performAutoLogin() {
+    await this._initAutoLogin();
+  }
+
+  async finalizeInitialization() {
+    this.setupEventListeners();
+    await this._initWatchHistory();
+    this.checkUrlParams();
+  }
+
   async init() {
     try {
-      await this._initViewManager();
-      this._warmupNostrExtension();
-      this._initServiceWorker();
-      this._initAuthAndModeration();
+      await this.initializeServices();
 
-      const modalBootstrapPromise = this._initModals();
+      const modalPromise = this.initializeUIResources();
+      await this.initializeNetwork();
+      await modalPromise;
 
-      await this._initNostr();
+      await this.initializeDataAndSession();
 
-      await modalBootstrapPromise;
+      this.initializeUserInterface();
+      await this.performAutoLogin();
 
-      await this._initTrustedSeeds();
-      this._initViewCounter();
-      this._initAccessControl();
-
-      await this._initSessionActor();
-      this._initAccessControlListeners();
-      this._initUI();
-      await this._initAutoLogin();
-
-      // 5. Setup general event listeners
-      this.setupEventListeners();
-
-      await this._initWatchHistory();
-
-      // 9. Check URL ?v= param
-      this.checkUrlParams();
-
+      await this.finalizeInitialization();
     } catch (error) {
       devLogger.error("Init failed:", error);
       this.showError("Failed to connect to Nostr relay");
     }
   }
 
-  goToProfile(pubkey) {
-    if (typeof pubkey !== "string") {
-      this.showError("No creator info available.");
-      return;
-    }
-
-    let candidate = pubkey.trim();
-    if (!candidate) {
-      this.showError("No creator info available.");
-      return;
-    }
-
-    if (candidate.startsWith("nostr:")) {
-      candidate = candidate.slice("nostr:".length);
-    }
-
-    const normalizedHex = this.normalizeHexPubkey(candidate);
-    const npub = normalizedHex ? this.safeEncodeNpub(normalizedHex) : null;
-
-    if (!npub) {
-      devLogger.warn(
-        "[Application] Invalid pubkey for profile navigation:",
-        candidate,
-      );
-      this.showError("Invalid creator profile.");
-      return;
-    }
-
-    window.location.hash = `#view=channel-profile&npub=${npub}`;
+  goToProfile(...args) {
+    this._initCoordinators();
+    return this._router.goToProfile(...args);
   }
 
-  openCreatorChannel() {
-    if (!this.currentVideo || !this.currentVideo.pubkey) {
-      this.showError("No creator info available.");
-      return;
-    }
-
-    try {
-      // Encode the hex pubkey to npub
-      const npub = window.NostrTools.nip19.npubEncode(this.currentVideo.pubkey);
-
-      // Close the video modal
-      this.hideModal();
-
-      // Switch to channel profile view
-      window.location.hash = `#view=channel-profile&npub=${npub}`;
-    } catch (err) {
-      devLogger.error("Failed to open creator channel:", err);
-      this.showError("Could not open channel.");
-    }
+  openCreatorChannel(...args) {
+    this._initCoordinators();
+    return this._router.openCreatorChannel(...args);
   }
 
   openWalletPane() {
@@ -1337,41 +1351,14 @@ class Application {
     }
   }
 
-  dispatchAuthLoadingState(detail = {}) {
-    if (typeof window === "undefined" || typeof window.dispatchEvent !== "function") {
-      return false;
-    }
-
-    try {
-      const payload = { ...(typeof detail === "object" && detail ? detail : {}) };
-      window.dispatchEvent(new CustomEvent("bitvid:auth-loading-state", { detail: payload }));
-      return true;
-    } catch (error) {
-      devLogger.warn("[Application] Failed to dispatch auth loading state:", error);
-      return false;
-    }
+  dispatchAuthLoadingState(...args) {
+    this._initCoordinators();
+    return this._ui.dispatchAuthLoadingState(...args);
   }
 
-  updateAuthLoadingState(partial = {}) {
-    const baseState =
-      this.authLoadingState && typeof this.authLoadingState === "object"
-        ? this.authLoadingState
-        : { profile: "idle", lists: "idle", dms: "idle" };
-    const nextState = {
-      ...baseState,
-      ...(partial && typeof partial === "object" ? partial : {}),
-    };
-    this.authLoadingState = nextState;
-
-    const root = typeof document !== "undefined" ? document.documentElement : null;
-    if (root) {
-      root.dataset.authProfileLoading = nextState.profile || "idle";
-      root.dataset.authListsLoading = nextState.lists || "idle";
-      root.dataset.authDmsLoading = nextState.dms || "idle";
-    }
-
-    this.dispatchAuthLoadingState(nextState);
-    return nextState;
+  updateAuthLoadingState(...args) {
+    this._initCoordinators();
+    return this._ui.updateAuthLoadingState(...args);
   }
 
   normalizeModalTrigger(...args) {
@@ -1663,23 +1650,9 @@ class Application {
     this.closeAllMoreMenus();
   }
 
-  handleProfileChannelLink(element) {
-    if (!(element instanceof HTMLElement)) {
-      return;
-    }
-
-    const targetNpub =
-      typeof element.dataset.targetNpub === "string"
-        ? element.dataset.targetNpub
-        : "";
-    if (this.profileController) {
-      this.profileController.hide();
-    }
-    if (targetNpub) {
-      window.location.hash = `#view=channel-profile&npub=${encodeURIComponent(
-        targetNpub,
-      )}`;
-    }
+  handleProfileChannelLink(...args) {
+    this._initCoordinators();
+    return this._router.handleProfileChannelLink(...args);
   }
 
   async handleLoginModalSuccess(payload = {}) {
@@ -2250,6 +2223,22 @@ class Application {
       (detail?.loaded === false
         ? false
         : Boolean(service && service.loaded));
+    const uiReady =
+      detail?.uiReady === true ||
+      (detail?.uiReady === false
+        ? false
+        : Boolean(service && service.uiReady));
+    const dataReady =
+      detail?.dataReady === true ||
+      (detail?.dataReady === false
+        ? false
+        : Boolean(service && service.dataReady));
+    const loadedFromCache =
+      detail?.loadedFromCache === true ||
+      (detail?.loadedFromCache === false
+        ? false
+        : Boolean(service && service.loadedFromCache));
+    const lastLoadError = detail?.lastLoadError || service?.lastLoadError || null;
 
     return {
       interests: this.normalizeHashtagPreferenceList(sourceInterests),
@@ -2257,6 +2246,10 @@ class Application {
       eventId: rawEventId || null,
       createdAt,
       loaded,
+      uiReady,
+      dataReady,
+      loadedFromCache,
+      lastLoadError,
       action,
     };
   }
@@ -2276,8 +2269,22 @@ class Application {
       ? Number(snapshot.createdAt)
       : "";
     const loaded = snapshot.loaded === true ? "1" : "0";
+    const uiReady = snapshot.uiReady === true ? "1" : "0";
+    const dataReady = snapshot.dataReady === true ? "1" : "0";
+    const loadedFromCache = snapshot.loadedFromCache === true ? "1" : "0";
+    const lastLoadError = snapshot?.lastLoadError?.code || "";
 
-    return [interests, disinterests, eventId, createdAt, loaded].join("|");
+    return [
+      interests,
+      disinterests,
+      eventId,
+      createdAt,
+      loaded,
+      uiReady,
+      dataReady,
+      loadedFromCache,
+      lastLoadError,
+    ].join("|");
   }
 
   updateCachedHashtagPreferences(detail = {}) {
@@ -2291,6 +2298,10 @@ class Application {
       eventId: snapshot.eventId,
       createdAt: snapshot.createdAt,
       loaded: snapshot.loaded,
+      uiReady: snapshot.uiReady,
+      dataReady: snapshot.dataReady,
+      loadedFromCache: snapshot.loadedFromCache,
+      lastLoadError: snapshot.lastLoadError,
       action: snapshot.action,
     };
     this.hashtagPreferencesSnapshotSignature = signature;
@@ -2361,6 +2372,10 @@ class Application {
         ? Number(snapshot.createdAt)
         : null,
       loaded: snapshot.loaded === true,
+      uiReady: snapshot.uiReady === true,
+      dataReady: snapshot.dataReady === true,
+      loadedFromCache: snapshot.loadedFromCache === true,
+      lastLoadError: snapshot.lastLoadError || null,
     };
   }
 
@@ -3260,36 +3275,9 @@ class Application {
     return this._moderation.refreshVisibleModerationUi(...args);
   }
 
-  updateActiveProfileUI(pubkey, profile = {}) {
-    if (this.profileController) {
-      this.profileController.handleProfileUpdated({
-        pubkey,
-        profile,
-      });
-      return;
-    }
-
-    const picture = profile.picture || "assets/svg/default-profile.svg";
-
-    if (this.profileAvatar) {
-      this.profileAvatar.src = picture;
-    }
-
-    const channelLink = document.getElementById("profileChannelLink");
-    if (channelLink instanceof HTMLElement) {
-      const targetNpub = this.safeEncodeNpub(pubkey);
-      if (targetNpub) {
-        channelLink.href = `#view=channel-profile&npub=${targetNpub}`;
-        channelLink.dataset.targetNpub = targetNpub;
-        channelLink.classList.remove("hidden");
-      } else {
-        channelLink.removeAttribute("href");
-        if (channelLink.dataset) {
-          delete channelLink.dataset.targetNpub;
-        }
-        channelLink.classList.add("hidden");
-      }
-    }
+  updateActiveProfileUI(...args) {
+    this._initCoordinators();
+    return this._ui.updateActiveProfileUI(...args);
   }
 
   async hydrateNwcSettingsForPubkey(pubkey) {
@@ -3370,226 +3358,49 @@ class Application {
     return this.nwcSettingsService.clearStoredNwcSettings(pubkey, options);
   }
 
-  applyAuthenticatedUiState() {
-    if (this.loginButton) {
-      this.loginButton.classList.add("hidden");
-      this.loginButton.setAttribute("hidden", "");
-    }
-
-    if (this.logoutButton) {
-      this.logoutButton.classList.remove("hidden");
-    }
-
-    if (this.userStatus) {
-      this.userStatus.classList.add("hidden");
-    }
-
-    if (this.uploadButton) {
-      this.uploadButton.classList.remove("hidden");
-      this.uploadButton.removeAttribute("hidden");
-    }
-
-    if (this.profileButton) {
-      this.profileButton.classList.remove("hidden");
-      this.profileButton.removeAttribute("hidden");
-    }
-
-    const subscriptionsLink = this.resolveSubscriptionsLink();
-    if (subscriptionsLink) {
-      subscriptionsLink.classList.remove("hidden");
-    }
-
-    const forYouLink = this.resolveForYouLink();
-    if (forYouLink) {
-      forYouLink.classList.remove("hidden");
-    }
-
-    const exploreLink = this.resolveExploreLink();
-    if (exploreLink) {
-      exploreLink.classList.remove("hidden");
-    }
+  applyAuthenticatedUiState(...args) {
+    this._initCoordinators();
+    return this._ui.applyAuthenticatedUiState(...args);
   }
 
-  applyLoggedOutUiState() {
-    if (this.loginButton) {
-      this.loginButton.classList.remove("hidden");
-      this.loginButton.removeAttribute("hidden");
-    }
-
-    if (this.logoutButton) {
-      this.logoutButton.classList.add("hidden");
-    }
-
-    if (this.userStatus) {
-      this.userStatus.classList.add("hidden");
-    }
-
-    if (this.userPubKey) {
-      this.userPubKey.textContent = "";
-    }
-
-    if (this.uploadButton) {
-      this.uploadButton.classList.add("hidden");
-      this.uploadButton.setAttribute("hidden", "");
-    }
-
-    if (this.profileButton) {
-      this.profileButton.classList.add("hidden");
-      this.profileButton.setAttribute("hidden", "");
-    }
-
-    const subscriptionsLink = this.resolveSubscriptionsLink();
-    if (subscriptionsLink) {
-      subscriptionsLink.classList.add("hidden");
-    }
-
-    const forYouLink = this.resolveForYouLink();
-    if (forYouLink) {
-      forYouLink.classList.add("hidden");
-    }
-
-    const exploreLink = this.resolveExploreLink();
-    if (exploreLink) {
-      exploreLink.classList.add("hidden");
-    }
+  applyLoggedOutUiState(...args) {
+    this._initCoordinators();
+    return this._ui.applyLoggedOutUiState(...args);
   }
 
-  syncAuthUiState() {
-    if (this.isUserLoggedIn()) {
-      this.applyAuthenticatedUiState();
-    } else {
-      this.applyLoggedOutUiState();
-    }
+  syncAuthUiState(...args) {
+    this._initCoordinators();
+    return this._ui.syncAuthUiState(...args);
   }
 
-  refreshChromeElements() {
-    const doc = typeof document !== "undefined" ? document : null;
-    const findElement = (id) => {
-      if (!doc || typeof doc.getElementById !== "function") {
-        return null;
-      }
-      const element = doc.getElementById(id);
-      if (!element || typeof element.addEventListener !== "function") {
-        return null;
-      }
-      return element;
-    };
-
-    this.loginButton = findElement("loginButton");
-    this.logoutButton = findElement("logoutButton");
-    this.uploadButton = findElement("uploadButton");
-    this.profileButton = findElement("profileButton");
-    this.closeLoginModalBtn = findElement("closeLoginModal");
-
-    return {
-      loginButton: this.loginButton,
-      logoutButton: this.logoutButton,
-      uploadButton: this.uploadButton,
-      profileButton: this.profileButton,
-      closeLoginModalButton: this.closeLoginModalBtn,
-    };
+  refreshChromeElements(...args) {
+    this._initCoordinators();
+    return this._ui.refreshChromeElements(...args);
   }
 
-  resolveSubscriptionsLink() {
-    if (
-      this.subscriptionsLink instanceof HTMLElement &&
-      this.subscriptionsLink.isConnected
-    ) {
-      return this.subscriptionsLink;
-    }
-
-    const linkCandidate = document.getElementById("subscriptionsLink");
-    if (linkCandidate instanceof HTMLElement) {
-      this.subscriptionsLink = linkCandidate;
-      return this.subscriptionsLink;
-    }
-
-    this.subscriptionsLink = null;
-    return null;
+  resolveSubscriptionsLink(...args) {
+    this._initCoordinators();
+    return this._ui.resolveSubscriptionsLink(...args);
   }
 
-  resolveForYouLink() {
-    if (this.forYouLink instanceof HTMLElement && this.forYouLink.isConnected) {
-      return this.forYouLink;
-    }
-
-    const linkCandidate = document.getElementById("forYouLink");
-    if (linkCandidate instanceof HTMLElement) {
-      this.forYouLink = linkCandidate;
-      return this.forYouLink;
-    }
-
-    this.forYouLink = null;
-    return null;
+  resolveForYouLink(...args) {
+    this._initCoordinators();
+    return this._ui.resolveForYouLink(...args);
   }
 
-  resolveExploreLink() {
-    if (
-      this.exploreLink instanceof HTMLElement &&
-      this.exploreLink.isConnected
-    ) {
-      return this.exploreLink;
-    }
-
-    const linkCandidate = document.getElementById("exploreLink");
-    if (linkCandidate instanceof HTMLElement) {
-      this.exploreLink = linkCandidate;
-      return this.exploreLink;
-    }
-
-    this.exploreLink = null;
-    return null;
+  resolveExploreLink(...args) {
+    this._initCoordinators();
+    return this._ui.resolveExploreLink(...args);
   }
 
-  hydrateSidebarNavigation() {
-    const chromeElements = this.refreshChromeElements();
-    this.resolveSubscriptionsLink();
-    this.resolveForYouLink();
-    this.resolveExploreLink();
-
-    if (this.appChromeController) {
-      if (typeof this.appChromeController.setElements === "function") {
-        this.appChromeController.setElements(chromeElements);
-      } else {
-        if (this.appChromeController.elements) {
-          Object.assign(this.appChromeController.elements, chromeElements);
-        }
-        this.appChromeController.initialize();
-      }
-    }
-
-    this.syncAuthUiState();
+  hydrateSidebarNavigation(...args) {
+    this._initCoordinators();
+    return this._ui.hydrateSidebarNavigation(...args);
   }
 
-  maybeShowExperimentalLoginWarning(provider) {
-    const normalizedProvider =
-      typeof provider === "string" ? provider.trim().toLowerCase() : "";
-
-    if (normalizedProvider !== "nsec" && normalizedProvider !== "nip46") {
-      return;
-    }
-
-    const now = Date.now();
-    if (
-      this.lastExperimentalWarningKey === normalizedProvider &&
-      typeof this.lastExperimentalWarningAt === "number" &&
-      now - this.lastExperimentalWarningAt < 2000
-    ) {
-      return;
-    }
-
-    this.lastExperimentalWarningKey = normalizedProvider;
-    this.lastExperimentalWarningAt = now;
-
-    const providerLabel =
-      normalizedProvider === "nsec"
-        ? "Direct nsec or seed"
-        : "NIP-46 remote signer";
-
-    this.showStatus(
-      `${providerLabel} logins are still in development and may not work well yet. We recommend using a NIP-07 browser extension for the most reliable experience.`,
-      { showSpinner: false, autoHideMs: 5000 },
-    );
+  maybeShowExperimentalLoginWarning(...args) {
+    this._initCoordinators();
+    return this._ui.maybeShowExperimentalLoginWarning(...args);
   }
 
   async handlePermissionPromptRequest() {
@@ -3709,6 +3520,95 @@ class Application {
 
     this.permissionPromptInFlight = false;
     this.updatePermissionPromptCta();
+  }
+
+  async handleAuthSyncRetryRequest() {
+    const activePubkey = this.normalizeHexPubkey(this.pubkey);
+    if (!activePubkey) {
+      return;
+    }
+
+    this.updateAuthLoadingState({ lists: "loading" });
+
+    const taskResults = await Promise.allSettled([
+      Promise.resolve()
+        .then(() => this.authService?.loadBlocksForPubkey?.(activePubkey, {
+          allowPermissionPrompt: true,
+        }))
+        .then((loaded) => ({ name: "blocks", ok: loaded !== false }))
+        .catch((error) => ({ name: "blocks", ok: false, error })),
+      Promise.resolve()
+        .then(() => subscriptions?.ensureLoaded?.(activePubkey, {
+          allowPermissionPrompt: true,
+        }))
+        .then(() => ({
+          name: "subscriptions",
+          ok: !subscriptions?.lastLoadError,
+          error: subscriptions?.lastLoadError || null,
+        }))
+        .catch((error) => ({ name: "subscriptions", ok: false, error })),
+      Promise.resolve()
+        .then(() => this.hashtagPreferences?.load?.(activePubkey, {
+          allowPermissionPrompt: true,
+        }))
+        .then(() => {
+          const error = this.hashtagPreferences?.lastLoadError || null;
+          if (!error) {
+            this.updateCachedHashtagPreferences();
+          }
+          return {
+            name: "hashtags",
+            ok: !error,
+            error,
+          };
+        })
+        .catch((error) => ({ name: "hashtags", ok: false, error })),
+    ]);
+
+    const tasks = taskResults.map((result) =>
+      result.status === "fulfilled"
+        ? result.value
+        : {
+            name: "unknown",
+            ok: false,
+            error: result.reason || null,
+          },
+    );
+    const hasFailure = tasks.some((task) => !task.ok);
+
+    this.updateAuthLoadingState({
+      lists: hasFailure ? "error" : "ready",
+      listsDetail: {
+        ready: !hasFailure,
+        degraded: hasFailure,
+        error: hasFailure,
+        retryScheduled: false,
+        retryCompleted: true,
+        tasks: tasks.map((task) => ({
+          name: task.name,
+          ok: task.ok,
+          fromCache: false,
+          error: task.error || null,
+        })),
+      },
+    });
+
+    this.dispatchAuthChange({
+      status: "auth-sync-retry",
+      loggedIn: true,
+      pubkey: activePubkey,
+      authLoadingState: this.authLoadingState,
+    });
+
+    if (this.profileController) {
+      this.profileController.populateBlockedList();
+      void this.profileController.populateSubscriptionsList();
+      this.profileController.populateHashtagPreferences();
+    }
+
+    if (!hasFailure) {
+      await this.onVideosShouldRefresh({ reason: "auth-sync-retry-success" });
+    }
   }
 
   async handleAuthLogin(...args) {
@@ -4886,46 +4786,11 @@ class Application {
    * Simple helper to safely encode an npub.
    */
   safeEncodeNpub(pubkey) {
-    if (typeof pubkey !== "string") {
-      return null;
-    }
-
-    const trimmed = pubkey.trim();
-    if (!trimmed) {
-      return null;
-    }
-
-    if (trimmed.startsWith("npub1")) {
-      return trimmed;
-    }
-
-    try {
-      return window.NostrTools.nip19.npubEncode(trimmed);
-    } catch (err) {
-      return null;
-    }
+    return safeEncodeNpub(pubkey);
   }
 
   safeDecodeNpub(npub) {
-    if (typeof npub !== "string") {
-      return null;
-    }
-
-    const trimmed = npub.trim();
-    if (!trimmed) {
-      return null;
-    }
-
-    try {
-      const decoded = window.NostrTools.nip19.decode(trimmed);
-      if (decoded.type === "npub" && typeof decoded.data === "string") {
-        return decoded.data;
-      }
-    } catch (err) {
-      return null;
-    }
-
-    return null;
+    return safeDecodeNpub(npub);
   }
 
   selectPreferredCreatorName(candidates = []) {
@@ -5357,27 +5222,7 @@ class Application {
   }
 
   normalizeHexPubkey(pubkey) {
-    if (typeof pubkey !== "string") {
-      return null;
-    }
-
-    const trimmed = pubkey.trim();
-    if (!trimmed) {
-      return null;
-    }
-
-    if (HEX64_REGEX.test(trimmed)) {
-      return trimmed.toLowerCase();
-    }
-
-    if (trimmed.startsWith("npub1")) {
-      const decoded = this.safeDecodeNpub(trimmed);
-      if (decoded && HEX64_REGEX.test(decoded)) {
-        return decoded.toLowerCase();
-      }
-    }
-
-    return null;
+    return normalizeHexPubkey(pubkey);
   }
 
   /**

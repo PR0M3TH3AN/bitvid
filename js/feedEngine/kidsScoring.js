@@ -391,27 +391,32 @@ export function createKidsScorerStage({
       const videoId = typeof video.id === "string" ? video.id : null;
       const pubkey = typeof video.pubkey === "string" ? video.pubkey : null;
 
-      const positiveComponents = [
-        { key: "age-appropriateness", value: ageAppropriateness },
-        { key: "educational-boost", value: educationalBoost },
-        { key: "author-trust", value: authorTrust },
-        { key: "popularity", value: popularityWithinKids },
-        { key: "freshness", value: freshness },
-      ];
+      let maxKey = "age-appropriateness";
+      let maxValue = ageAppropriateness;
 
-      let dominantPositive = positiveComponents[0];
-      for (const component of positiveComponents) {
-        if (component.value > dominantPositive.value) {
-          dominantPositive = component;
-        }
+      if (educationalBoost > maxValue) {
+        maxKey = "educational-boost";
+        maxValue = educationalBoost;
+      }
+      if (authorTrust > maxValue) {
+        maxKey = "author-trust";
+        maxValue = authorTrust;
+      }
+      if (popularityWithinKids > maxValue) {
+        maxKey = "popularity";
+        maxValue = popularityWithinKids;
+      }
+      if (freshness > maxValue) {
+        maxKey = "freshness";
+        maxValue = freshness;
       }
 
-      if (dominantPositive.value > 0) {
+      if (maxValue > 0) {
         context?.addWhy?.({
           stage: stageName,
           type: "score",
-          reason: dominantPositive.key,
-          value: dominantPositive.value,
+          reason: maxKey,
+          value: maxValue,
           score: kidsScore,
           videoId,
           pubkey,

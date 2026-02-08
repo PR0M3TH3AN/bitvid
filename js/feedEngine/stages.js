@@ -341,6 +341,14 @@ function filterByTagPreferences({
   enforceInterests,
 }) {
   const tagPreferences = context?.runtime?.tagPreferences;
+  if (tagPreferences?.available === false) {
+    context?.addWhy?.({
+      stage: stageName,
+      type: "status",
+      reason: "preferences-unavailable",
+    });
+    return items;
+  }
   const interests = normalizeTagSet(tagPreferences?.interests);
   const disinterests = normalizeTagSet(tagPreferences?.disinterests);
   if (!interests.size && !disinterests.size) {

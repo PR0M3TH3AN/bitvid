@@ -23,6 +23,7 @@ import {
 } from "../utils/hashtagNormalization.js";
 import { formatTimeAgo } from "../utils/formatters.js";
 import { getActiveSigner } from "../nostr/client.js";
+import { DEFAULT_NIP07_ENCRYPTION_METHODS } from "../nostr/nip07Permissions.js";
 import { sanitizeRelayList } from "../nostr/nip46Client.js";
 import { buildPublicUrl, buildR2Key } from "../r2.js";
 import { buildProfileMetadataEvent } from "../nostrEventSchemas.js";
@@ -1199,6 +1200,7 @@ export class ProfileModalController {
       onOpenRelays: callbacks.onOpenRelays || noop,
       onPublishDmRelayPreferences: callbacks.onPublishDmRelayPreferences || noop,
       onRequestPermissionPrompt: callbacks.onRequestPermissionPrompt || noop,
+      onRetryAuthSync: callbacks.onRetryAuthSync || noop,
     };
 
     this.profileModal = null;
@@ -1337,7 +1339,9 @@ export class ProfileModalController {
       message: "",
       buttonLabel: "Enable permissions",
       busy: false,
+      action: "permission",
     };
+    this.authLoadingStateListener = null;
     this.profileSubscriptionsRefreshBtn = null;
     this.profileFriendsRefreshBtn = null;
     this.profileBlockedRefreshBtn = null;
@@ -1501,6 +1505,15 @@ export class ProfileModalController {
     this.setupLayoutBreakpointObserver();
     this.applyModalStackingOverrides();
     this.registerEventListeners();
+    if (!this.authLoadingStateListener && typeof window !== "undefined") {
+      this.authLoadingStateListener = (event) => {
+        this.handleAuthLoadingStateChange(event?.detail || {});
+      };
+      window.addEventListener(
+        "bitvid:auth-loading-state",
+        this.authLoadingStateListener,
+      );
+    }
     this.populateHashtagPreferences();
     this.refreshModerationSettingsUi();
     const preserveMenu = this.isMobileLayoutActive();
@@ -5445,6 +5458,10 @@ export class ProfileModalController {
 
     if (this.permissionPromptCtaButton instanceof HTMLElement) {
       this.permissionPromptCtaButton.addEventListener("click", () => {
+        if (this.permissionPromptCtaButton?.dataset?.action === "retry-auth-sync") {
+          this.callbacks.onRetryAuthSync({ controller: this });
+          return;
+        }
         this.callbacks.onRequestPermissionPrompt({ controller: this });
       });
     }
@@ -8050,6 +8067,8 @@ export class ProfileModalController {
     }
 
     const service = this.hashtagPreferencesService || {};
+    const loadState =
+      typeof service.getLoadState === "function" ? service.getLoadState() : null;
 
     const interestsSource = Array.isArray(snapshot?.interests)
       ? snapshot.interests
@@ -8065,6 +8084,17 @@ export class ProfileModalController {
     return {
       interests: this.sanitizeHashtagList(interestsSource),
       disinterests: this.sanitizeHashtagList(disinterestsSource),
+      uiReady:
+        loadState?.uiReady === true ||
+        service.uiReady === true ||
+        (!loadState && service.uiReady !== false),
+      dataReady:
+        loadState?.dataReady === true ||
+        service.dataReady === true ||
+        (!loadState && service.dataReady !== false),
+      lastLoadError: loadState?.lastLoadError || service.lastLoadError || null,
+      loadedFromCache:
+        loadState?.loadedFromCache === true || service.loadedFromCache === true,
     };
   }
 
@@ -8093,6 +8123,7 @@ export class ProfileModalController {
       message,
       buttonLabel,
       busy,
+      action,
     } = this.permissionPromptCtaState || {};
     const normalizedMessage =
       typeof message === "string" && message.trim()
@@ -8117,6 +8148,74 @@ export class ProfileModalController {
         "aria-busy",
         busy ? "true" : "false",
       );
+      this.permissionPromptCtaButton.dataset.action =
+        action === "retry-auth-sync" ? "retry-auth-sync" : "permission";
+    }
+  }
+
+  handleAuthLoadingStateChange(detail = {}) {
+    const listsState =
+      typeof detail?.lists === "string" ? detail.lists.trim().toLowerCase() : "";
+    const listsDetail = detail?.listsDetail && typeof detail.listsDetail === "object"
+      ? detail.listsDetail
+      : null;
+    if (!listsDetail || !listsState || listsState === "loading" || listsState === "idle") {
+      return;
+    }
+
+    const failedTasks = Array.isArray(listsDetail.tasks)
+      ? listsDetail.tasks.filter((task) => task && task.ok === false)
+      : [];
+    const loadedFromCacheTasks = failedTasks.filter((task) => task.fromCache === true);
+    const hardFailTasks = failedTasks.filter((task) => task.fromCache !== true);
+
+    if (loadedFromCacheTasks.length > 0 && hardFailTasks.length === 0) {
+      this.setSubscriptionsStatus(
+        "Subscriptions loaded from cache; sync is retrying in background.",
+        "warning",
+      );
+      this.setHashtagStatus(
+        "Hashtag preferences loaded from cache; sync is retrying in background.",
+        "warning",
+      );
+      this.setBlockListLoadingState("error", {
+        message: "Blocked creators loaded from cache; syncing latest in background.",
+      });
+    } else if (hardFailTasks.length > 0) {
+      this.setSubscriptionsStatus(
+        "Some profile lists failed to sync. Use Retry sync.",
+        "warning",
+      );
+      this.setHashtagStatus(
+        "Some profile lists failed to sync. Use Retry sync.",
+        "warning",
+      );
+      this.setBlockListLoadingState("error", {
+        message: "Blocked creators failed to sync. Retry to fetch latest lists.",
+      });
+    }
+
+    if (failedTasks.length > 0) {
+      this.setPermissionPromptCtaState({
+        visible: true,
+        message:
+          loadedFromCacheTasks.length > 0
+            ? "Some lists are currently from cache. Retry now to sync with relays."
+            : "Failed to sync required profile lists. Retry now.",
+        buttonLabel: "Retry list sync",
+        action: "retry-auth-sync",
+        busy: false,
+      });
+      return;
+    }
+
+    if (listsState === "ready") {
+      this.setPermissionPromptCtaState({
+        visible: false,
+        message: "",
+        action: "permission",
+        busy: false,
+      });
     }
   }
 
@@ -8258,11 +8357,37 @@ export class ProfileModalController {
   populateHashtagPreferences(preferences = null) {
     const snapshot = this.getResolvedHashtagPreferences(preferences);
 
+    if (!snapshot.uiReady) {
+      this.setHashtagStatus("Loading hashtag preferences…", "info");
+      this.renderHashtagList("interest", []);
+      this.renderHashtagList("disinterest", []);
+      this.refreshHashtagBackgroundStatus();
+      return;
+    }
+
+    if (!snapshot.dataReady) {
+      const message = snapshot.lastLoadError
+        ? "Couldn’t sync hashtag preferences. Retry to load your lists."
+        : "Hashtag preferences are unavailable right now. Retry to sync.";
+      this.setHashtagStatus(message, "warning");
+      this.renderHashtagList("interest", []);
+      this.renderHashtagList("disinterest", []);
+      this.refreshHashtagBackgroundStatus();
+      return;
+    }
+
     this.renderHashtagList("interest", snapshot.interests);
     this.renderHashtagList("disinterest", snapshot.disinterests);
 
     if (!snapshot.interests.length && !snapshot.disinterests.length) {
-      this.setHashtagStatus("", "muted");
+      if (snapshot.loadedFromCache) {
+        this.setHashtagStatus(
+          "No hashtag preferences yet (showing cached state).",
+          "info",
+        );
+      } else {
+        this.setHashtagStatus("", "muted");
+      }
     }
     this.refreshHashtagBackgroundStatus();
   }
@@ -8826,6 +8951,31 @@ export class ProfileModalController {
     }
 
     try {
+      const loadState =
+        typeof service.getLoadState === "function" ? service.getLoadState() : {};
+      const uiReady = loadState?.uiReady === true || service.uiReady === true;
+      const dataReady = loadState?.dataReady === true || service.dataReady === true;
+      const lastLoadError = loadState?.lastLoadError || service.lastLoadError || null;
+
+      if (!uiReady) {
+        this.clearSubscriptionsList("Loading subscriptions…");
+        this.setSubscriptionsStatus("Loading subscriptions…", "info");
+        this.refreshSubscriptionsBackgroundStatus();
+        return;
+      }
+
+      if (!dataReady) {
+        this.clearSubscriptionsList("Subscriptions unavailable. Retry to sync your list.");
+        this.setSubscriptionsStatus(
+          lastLoadError
+            ? "Couldn’t sync subscriptions. Retry to load your list."
+            : "Subscriptions unavailable right now. Retry to sync your list.",
+          "warning",
+        );
+        this.refreshSubscriptionsBackgroundStatus();
+        return;
+      }
+
       let sourceEntries = [];
 
       if (Array.isArray(subscriptions) && subscriptions.length) {
@@ -8918,6 +9068,7 @@ export class ProfileModalController {
       this.subscriptionList.innerHTML = "";
 
       if (!deduped.length) {
+        this.setSubscriptionsStatus("No subscriptions yet.", "muted");
         this.subscriptionListEmpty.classList.remove("hidden");
         this.subscriptionList.classList.add("hidden");
         this.refreshSubscriptionsBackgroundStatus();
@@ -9023,13 +9174,17 @@ export class ProfileModalController {
     }
   }
 
-  clearSubscriptionsList() {
+  clearSubscriptionsList(emptyMessage = "No subscriptions yet.") {
     if (this.subscriptionList instanceof HTMLElement) {
       this.subscriptionList.innerHTML = "";
       this.subscriptionList.classList.add("hidden");
     }
 
     if (this.subscriptionListEmpty instanceof HTMLElement) {
+      this.subscriptionListEmpty.textContent =
+        typeof emptyMessage === "string" && emptyMessage.trim()
+          ? emptyMessage.trim()
+          : "No subscriptions yet.";
       this.subscriptionListEmpty.classList.remove("hidden");
     }
   }
@@ -9830,8 +9985,16 @@ export class ProfileModalController {
     const isUnlocked = storageService && storageService.masterKeys.has(pubkey);
 
     if (this.storageStatusText) {
-      this.storageStatusText.textContent = isUnlocked ? "Unlocked" : "Locked";
-      this.storageStatusText.className = isUnlocked ? "text-xs text-status-success" : "text-xs text-status-warning";
+      if (isUnlocked) {
+        this.storageStatusText.textContent = "Unlocked";
+        this.storageStatusText.className = "text-xs text-status-success";
+      } else if (this.storageUnlockFailure?.message) {
+        this.storageStatusText.textContent = `Locked (${this.storageUnlockFailure.message})`;
+        this.storageStatusText.className = "text-xs text-status-danger";
+      } else {
+        this.storageStatusText.textContent = "Locked";
+        this.storageStatusText.className = "text-xs text-status-warning";
+      }
     }
 
     if (isUnlocked) {
@@ -9952,12 +10115,59 @@ export class ProfileModalController {
     }
   }
 
+  getStorageUnlockFailureMessage(error) {
+    const code = typeof error?.code === "string" ? error.code : "";
+
+    switch (code) {
+      case "storage-unlock-permission-denied":
+        return "Storage unlock requires extension encryption permission. Approve the prompt, then retry unlock.";
+      case "storage-unlock-no-decryptor":
+        return "Your signer cannot decrypt storage keys. Use a signer with NIP-44 or NIP-04 decrypt support.";
+      case "storage-unlock-decrypt-failed":
+        return "Unable to decrypt your saved storage key. Retry unlock and confirm the active account matches.";
+      default:
+        return typeof error?.message === "string" && error.message.trim()
+          ? error.message
+          : "Failed to unlock storage. Ensure your signer supports NIP-04/44.";
+    }
+  }
+
+  setStorageUnlockFailureState(error) {
+    const code = typeof error?.code === "string" ? error.code : "storage-unlock-decrypt-failed";
+    const message = this.getStorageUnlockFailureMessage(error);
+
+    this.storageUnlockFailure = { code, message };
+
+    if (this.storageStatusText) {
+      this.storageStatusText.textContent = `Locked (${message})`;
+      this.storageStatusText.className = "text-xs text-status-danger";
+    }
+
+    this.setStorageFormStatus(message, "error");
+  }
+
+  clearStorageUnlockFailureState() {
+    this.storageUnlockFailure = null;
+  }
+
+  async requestStorageUnlockPermissions() {
+    const client = this.services?.nostrClient;
+    if (!client || typeof client.ensureExtensionPermissions !== "function") {
+      return { ok: true };
+    }
+
+    return client.ensureExtensionPermissions(DEFAULT_NIP07_ENCRYPTION_METHODS, {
+      context: "storage-unlock",
+      statusMessage:
+        "Approve the extension prompt to allow storage encryption/decryption.",
+      showSpinner: true,
+    });
+  }
+
   async handleUnlockStorage() {
     const pubkey = this.normalizeHexPubkey(this.getActivePubkey());
     if (!pubkey) return;
 
-    // We need the active signer. Try the global first, then resolve via the
-    // nostr client which can detect/restore the NIP-07 extension signer.
     let signer = getActiveSigner();
     if (
       !signer &&
@@ -9998,6 +10208,55 @@ export class ProfileModalController {
       return;
     }
 
+    const signerType = typeof signer?.type === "string" ? signer.type.trim().toLowerCase() : "";
+    const isExtensionSigner = signerType === "extension" || signerType === "nip07";
+
+    const shouldForcePermissionRetry =
+      this.storageUnlockBtn?.dataset?.retryAction === "request-permissions";
+
+    if (shouldForcePermissionRetry) {
+      const extensionPermissionCache = this.services?.nostrClient?.extensionPermissionCache;
+      if (extensionPermissionCache instanceof Set) {
+        for (const method of DEFAULT_NIP07_ENCRYPTION_METHODS) {
+          extensionPermissionCache.delete(method);
+        }
+      }
+    }
+
+    if (isExtensionSigner) {
+      const permissionResult = await this.requestStorageUnlockPermissions();
+      if (!permissionResult?.ok) {
+        const permissionError = permissionResult?.error || new Error("Extension permissions denied.");
+        permissionError.code = "storage-unlock-permission-denied";
+        this.setStorageUnlockFailureState(permissionError);
+        this.showError(this.getStorageUnlockFailureMessage(permissionError));
+        if (this.storageUnlockBtn) {
+          this.storageUnlockBtn.dataset.retryAction = "request-permissions";
+          this.storageUnlockBtn.textContent = "Retry Permissions + Unlock";
+        }
+        return;
+      }
+    }
+
+    const caps = signer?.capabilities && typeof signer.capabilities === "object"
+      ? signer.capabilities
+      : null;
+    const hasNip44Decrypt =
+      caps?.nip44 !== false && typeof signer?.nip44Decrypt === "function";
+    const hasNip04Decrypt =
+      caps?.nip04 !== false &&
+      (typeof signer?.nip04Decrypt === "function" || typeof signer?.decrypt === "function");
+
+    if (!hasNip44Decrypt && !hasNip04Decrypt) {
+      const missingDecryptError = new Error(
+        "This signer cannot decrypt storage keys (NIP-44/NIP-04 missing).",
+      );
+      missingDecryptError.code = "storage-unlock-no-decryptor";
+      this.setStorageUnlockFailureState(missingDecryptError);
+      this.showError(this.getStorageUnlockFailureMessage(missingDecryptError));
+      return;
+    }
+
     if (this.storageUnlockBtn) {
       this.storageUnlockBtn.disabled = true;
       this.storageUnlockBtn.textContent = "Unlocking...";
@@ -10005,22 +10264,31 @@ export class ProfileModalController {
 
     try {
       await storageService.unlock(pubkey, { signer });
+      this.clearStorageUnlockFailureState();
       this.showSuccess("Storage unlocked.");
       this.populateStoragePane();
     } catch (error) {
       devLogger.error("Failed to unlock storage:", error);
-      const message =
-        error && typeof error.message === "string"
-          ? error.message
-          : "Failed to unlock storage. Ensure your signer supports NIP-04/44.";
-      this.showError(message);
+      this.setStorageUnlockFailureState(error);
+      this.showError(this.getStorageUnlockFailureMessage(error));
+      if (this.storageUnlockBtn) {
+        this.storageUnlockBtn.dataset.retryAction = "request-permissions";
+      }
     } finally {
       if (this.storageUnlockBtn) {
         this.storageUnlockBtn.disabled = false;
-        this.storageUnlockBtn.textContent = "Unlock Storage";
+        const shouldShowRetry = this.storageUnlockFailure?.code === "storage-unlock-permission-denied";
+        if (shouldShowRetry) {
+          this.storageUnlockBtn.textContent = "Retry Permissions + Unlock";
+          this.storageUnlockBtn.dataset.retryAction = "request-permissions";
+        } else {
+          this.storageUnlockBtn.textContent = "Unlock Storage";
+          delete this.storageUnlockBtn.dataset.retryAction;
+        }
       }
     }
   }
+
 
   async handleSaveStorage() {
     const pubkey = this.normalizeHexPubkey(this.getActivePubkey());
@@ -13564,6 +13832,7 @@ export class ProfileModalController {
     this.populateProfileRelays();
     this.refreshWalletPaneState();
     this.populateHashtagPreferences();
+    void this.populateStoragePane();
     this.handleActiveDmIdentityChanged(activePubkey);
     void this.refreshDmRelayPreferences({ force: true });
 
@@ -13577,6 +13846,7 @@ export class ProfileModalController {
         this.populateProfileRelays();
         this.refreshWalletPaneState();
         this.populateHashtagPreferences();
+        void this.populateStoragePane();
         void this.refreshDmRelayPreferences({ force: true });
       })
       .catch((error) => {
@@ -13642,6 +13912,7 @@ export class ProfileModalController {
     this.populateProfileRelays();
     this.refreshWalletPaneState();
     this.populateHashtagPreferences();
+    void this.populateStoragePane();
     this.clearHashtagInputs();
     this.setHashtagStatus("", "muted");
     this.handleActiveDmIdentityChanged(null);

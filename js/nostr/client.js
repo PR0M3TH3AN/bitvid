@@ -40,6 +40,7 @@ import {
   deriveStoragePointerFromUrl,
   getStoragePointerFromTags,
   normalizeStoragePointer,
+  resolveStoragePointerValue,
 } from "../utils/storagePointer.js";
 import {
   createWatchHistoryManager,
@@ -67,6 +68,9 @@ import {
   buildDmAttachmentEvent,
   buildDeletionEvent,
   buildLegacyDirectMessageEvent,
+  buildGiftWrapEvent,
+  buildSealEvent,
+  buildChatMessageEvent,
   getNostrEventSchema,
   NOTE_TYPES,
 } from "../nostrEventSchemas.js";
@@ -108,6 +112,7 @@ import {
   repostEvent as repostEventHelper,
   mirrorVideoEvent as mirrorVideoEventHelper,
   rebroadcastEvent as rebroadcastEventHelper,
+  buildRevertVideoPayload,
   summarizePublishResults,
 } from "./publishHelpers.js";
 import {
@@ -130,6 +135,7 @@ import {
   summarizeDmEventForLog,
 } from "./dmDecryptDiagnostics.js";
 import { devLogger, userLogger } from "../utils/logger.js";
+import { withRequestTimeout } from "../utils/asyncUtils.js";
 import { LRUCache } from "../utils/lruCache.js";
 import { updateConversationFromMessage, writeMessages } from "../storage/dmDb.js";
 import {
@@ -298,55 +304,6 @@ export const __testExports = {
   attemptDecryptNip46HandshakePayload,
 };
 
-function withRequestTimeout(promise, timeoutMs, onTimeout, message = "Request timed out") {
-  const resolvedTimeout = Number(timeoutMs);
-  const effectiveTimeout =
-    Number.isFinite(resolvedTimeout) && resolvedTimeout > 0
-      ? Math.floor(resolvedTimeout)
-      : 4000;
-
-  let timeoutId = null;
-  let settled = false;
-
-  return new Promise((resolve, reject) => {
-    timeoutId = setTimeout(() => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      if (typeof onTimeout === "function") {
-        try {
-          onTimeout();
-        } catch (cleanupError) {
-          logCountTimeoutCleanupFailure(cleanupError);
-        }
-      }
-      reject(new Error(message));
-    }, effectiveTimeout);
-
-    Promise.resolve(promise)
-      .then((value) => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-        }
-        resolve(value);
-      })
-      .catch((error) => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-        }
-        reject(error);
-      });
-  });
-}
 
 function extractVideoPublishPayload(rawPayload) {
   let videoData = rawPayload;
@@ -392,40 +349,6 @@ function normalizeHexHash(candidate) {
     return "";
   }
   return HEX64_REGEX.test(trimmed) ? trimmed : "";
-}
-
-function resolveStoragePointerValue({
-  storagePointer,
-  url,
-  infoHash,
-  fallbackId,
-  provider,
-} = {}) {
-  const normalized = normalizeStoragePointer(storagePointer);
-  if (normalized) {
-    return normalized;
-  }
-
-  const derivedFromUrl = deriveStoragePointerFromUrl(url, provider || "url");
-  if (derivedFromUrl) {
-    return derivedFromUrl;
-  }
-
-  if (typeof infoHash === "string" && infoHash.trim()) {
-    return buildStoragePointerValue({
-      provider: "btih",
-      prefix: infoHash.trim().toLowerCase(),
-    });
-  }
-
-  if (typeof fallbackId === "string" && fallbackId.trim()) {
-    return buildStoragePointerValue({
-      provider: "nostr",
-      prefix: fallbackId.trim(),
-    });
-  }
-
-  return "";
 }
 
 const BlobConstructor = typeof Blob !== "undefined" ? Blob : null;
@@ -1029,225 +952,15 @@ export class NostrClient {
     since,
     timeoutMs = 10000,
   } = {}) {
-    // Explanation:
-    // Optimizes network usage by only fetching "new" events from each relay.
-    // It uses `SyncMetadataStore` to track the `created_at` of the last seen event per relay.
-    // - If we have a `lastSeen` timestamp, we request `since: lastSeen + 1`.
-    // - If that returns nothing (or fails), we might fall back to a full fetch depending on context.
-    // - Updates the `lastSeen` timestamp upon success.
-    if (!kind || !pubkey) {
-      throw new Error("fetchListIncrementally requires kind and pubkey");
-    }
-
-    const normalizedPubkey = normalizeNostrPubkey(pubkey);
-    if (!normalizedPubkey) {
-      throw new Error("Invalid pubkey for fetchListIncrementally");
-    }
-
-    const relaysToUse = Array.isArray(relayUrls) && relayUrls.length
-      ? relayUrls
-      : this.relays;
-
-    const healthyCandidates = this.getHealthyRelays(relaysToUse);
-    let relayCandidates = healthyCandidates;
-    if (!healthyCandidates.length && relaysToUse.length) {
-      const sanitizedFallback = sanitizeRelayList(relaysToUse);
-      const defaultFallback = sanitizeRelayList(Array.from(DEFAULT_RELAY_URLS));
-      relayCandidates = sanitizedFallback.length
-        ? sanitizedFallback
-        : defaultFallback.length
-          ? defaultFallback
-          : sanitizeRelayList(Array.from(RELAY_URLS));
-      devLogger.warn(
-        "[fetchListIncrementally] Healthy relays exhausted; using fallback relay list for one-off fetch.",
-        {
-          requested: relaysToUse,
-          fallback: relayCandidates,
-        },
-      );
-    }
-    const readPreferences = new Set(Array.isArray(this.readRelays) ? this.readRelays : []);
-
-    // Sort relays: prefer user's read relays first
-    const sortedRelays = relayCandidates.sort((a, b) => {
-      const aPreferred = readPreferences.has(a);
-      const bPreferred = readPreferences.has(b);
-      if (aPreferred && !bPreferred) return -1;
-      if (!aPreferred && bPreferred) return 1;
-      return 0;
+    return this.relayBatchFetcher.fetchListIncrementally({
+      kind,
+      pubkey,
+      dTag,
+      relayUrls,
+      fetchFn,
+      since,
+      timeoutMs,
     });
-
-    // Cap the number of relays to avoid excessive requests
-    const cappedRelays = sortedRelays.slice(0, 8);
-    const normalizedRelays = sanitizeRelayList(cappedRelays);
-
-    if (isDevMode) {
-      devLogger.log("[fetchListIncrementally] Selected relays:", {
-        count: normalizedRelays.length,
-        relays: normalizedRelays,
-      });
-    }
-
-    const results = [];
-    const concurrencyLimit = 8;
-
-    // We'll use the pool's list method if fetchFn isn't provided,
-    // but we need to call it per-relay.
-    const pool = await this.ensurePool();
-    const actualFetchFn = typeof fetchFn === "function"
-      ? fetchFn
-      : (r, f, timeout) => pool.list([r], [f], { timeout });
-
-    const chunks = [];
-    for (let i = 0; i < normalizedRelays.length; i += concurrencyLimit) {
-      chunks.push(normalizedRelays.slice(i, i + concurrencyLimit));
-    }
-
-    let anySuccess = false;
-    const failures = [];
-
-    for (const chunk of chunks) {
-      const promises = chunk.map(async (relayUrl) => {
-        let lastSeen = this.getSyncLastSeen(
-          kind,
-          normalizedPubkey,
-          dTag,
-          relayUrl,
-        );
-
-        // If an explicit 'since' override is provided, use it instead of storage.
-        // This allows services to anchor fetching to their own known state.
-        if (since !== undefined) {
-          const overrideSince = Number(since);
-          lastSeen =
-            Number.isFinite(overrideSince) && overrideSince >= 0
-              ? Math.floor(overrideSince)
-              : 0;
-        }
-
-        const filter = {
-          kinds: [kind],
-          authors: [normalizedPubkey],
-        };
-
-        if (dTag) {
-          filter["#d"] = [dTag];
-        }
-
-        // Strategy:
-        // If we have a lastSeen, ask for since = lastSeen + 1.
-        // If that fails or returns nothing, we don't necessarily fall back
-        // unless there's an error.
-        // Wait, requirements say:
-        // "If metadata is missing for a relay → do a full fetch"
-        // "If a relay returns an error ... fall back to full fetch"
-
-        let doFullFetch = true;
-        if (lastSeen > 0) {
-          filter.since = lastSeen + 1;
-          doFullFetch = false;
-        }
-
-        // Allow callers to override list fetch timeouts without changing non-list query behavior.
-        const listTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 10000;
-
-        try {
-          // Wrap fetch with a timeout to prevent hanging on slow relays
-          let events = await withRequestTimeout(
-            actualFetchFn(relayUrl, filter, listTimeoutMs),
-            listTimeoutMs,
-            null,
-            `Fetch from ${relayUrl} timed out`
-          );
-
-          // If incremental returned empty, we assume no updates (success).
-          // But if we did a full fetch (no since), empty means empty.
-
-          if (!events || !Array.isArray(events)) {
-             events = [];
-          }
-
-          // On success, update lastSeen with max created_at
-          let maxCreated = 0;
-          for (const ev of events) {
-            if (ev.created_at > maxCreated) {
-              maxCreated = ev.created_at;
-            }
-          }
-
-          if (maxCreated > 0) {
-            // Only update if we found something newer or if we did a full fetch
-            // Actually, if we did incremental and found new stuff, maxCreated > lastSeen.
-            // If we did full fetch, maxCreated is the latest.
-            this.updateSyncLastSeen(kind, normalizedPubkey, dTag, relayUrl, maxCreated);
-          }
-
-          return { events, ok: true };
-        } catch (error) {
-          // Fallback to full fetch if incremental failed or if relay error
-          if (!doFullFetch) {
-            try {
-              delete filter.since;
-              const events = await withRequestTimeout(
-                actualFetchFn(relayUrl, filter, listTimeoutMs),
-                listTimeoutMs,
-                null,
-                `Full fetch fallback from ${relayUrl} timed out`
-              );
-              // Update lastSeen on success of fallback
-              let maxCreated = 0;
-              if (Array.isArray(events)) {
-                for (const ev of events) {
-                  if (ev.created_at > maxCreated) {
-                    maxCreated = ev.created_at;
-                  }
-                }
-              }
-              if (maxCreated > 0) {
-                 this.updateSyncLastSeen(kind, normalizedPubkey, dTag, relayUrl, maxCreated);
-              }
-              return { events: events || [], ok: true };
-            } catch (fallbackError) {
-              devLogger.warn(`[fetchListIncrementally] Full fetch fallback failed for ${relayUrl}`, fallbackError);
-              return { error: fallbackError, ok: false };
-            }
-          } else {
-             devLogger.warn(`[fetchListIncrementally] Fetch failed for ${relayUrl}`, error);
-             this.markRelayUnreachable(relayUrl);
-             return { error, ok: false };
-          }
-        }
-      });
-
-      const chunkResults = await Promise.all(promises);
-      for (const res of chunkResults) {
-        if (res.ok) {
-          anySuccess = true;
-          if (Array.isArray(res.events)) {
-            results.push(...res.events);
-          }
-        } else {
-          failures.push(res.error);
-        }
-      }
-    }
-
-    if (!anySuccess && normalizedRelays.length > 0) {
-      const error = new Error("All relays failed to fetch list.");
-      error.code = "fetch-failed";
-      error.failures = failures;
-      throw error;
-    }
-
-    // Deduplicate by ID
-    const uniqueEvents = new Map();
-    for (const ev of results) {
-      if (ev && ev.id) {
-        uniqueEvents.set(ev.id, ev);
-      }
-    }
-
-    return Array.from(uniqueEvents.values());
   }
 
   applyRelayPreferences(preferences = {}) {
@@ -2321,13 +2034,12 @@ export class NostrClient {
       const createdAt = Math.floor(Date.now() / 1000);
 
       if (trimmedMessage) {
-        rumorEvents.push({
-          kind: 14,
-          created_at: createdAt,
-          tags: [["p", targetHex]],
-          content: trimmedMessage,
+        rumorEvents.push(buildChatMessageEvent({
           pubkey: actorHex,
-        });
+          created_at: createdAt,
+          recipientPubkey: targetHex,
+          content: trimmedMessage,
+        }));
       }
 
       if (hasAttachments) {
@@ -2366,16 +2078,14 @@ export class NostrClient {
         relayHint,
         rumorEvent,
       ) => {
-        const sealPayload = {
-          kind: 13,
+        const sealPayload = buildSealEvent({
+          pubkey: actorHex,
           created_at: randomPastTimestamp(),
-          tags: [],
-          content: await signer.nip44Encrypt(
+          ciphertext: await signer.nip44Encrypt(
             recipientPubkey,
             JSON.stringify(rumorEvent),
           ),
-          pubkey: actorHex,
-        };
+        });
 
         const signedSeal = await signingAdapter.signEvent(sealPayload);
         if (!signedSeal || typeof signedSeal.id !== "string") {
@@ -2398,17 +2108,14 @@ export class NostrClient {
           recipientPubkey,
           JSON.stringify(signedSeal),
         );
-        const wrapTags = relayHint
-          ? [["p", recipientPubkey, relayHint]]
-          : [["p", recipientPubkey]];
 
-        const wrapEvent = {
-          kind: 1059,
-          created_at: randomPastTimestamp(),
-          tags: wrapTags,
-          content: wrapCiphertext,
+        const wrapEvent = buildGiftWrapEvent({
           pubkey: wrapperKeys.pubkey,
-        };
+          created_at: randomPastTimestamp(),
+          recipientPubkey,
+          relayHint,
+          ciphertext: wrapCiphertext,
+        });
 
         return {
           wrap: signEventWithPrivateKey(wrapEvent, wrapperKeys.privateKey),
@@ -3573,52 +3280,12 @@ export class NostrClient {
     const stableDTag =
       existingD || baseEvent?.id || originalEvent?.id || null;
 
-    let oldContent = {};
-    try {
-      oldContent = JSON.parse(baseEvent.content || "{}");
-    } catch (err) {
-      devLogger.warn("[nostr] Failed to parse baseEvent.content while reverting:", err);
-      oldContent = {};
-    }
-    const oldVersion = oldContent.version ?? 1;
-
-    const finalRootId =
-      oldContent.videoRootId ||
-      (existingD
-        ? `LEGACY:${baseEvent.pubkey}:${existingD}`
-        : stableDTag || baseEvent?.id || originalEvent?.id || "");
-
-    const oldIsNsfw = oldContent.isNsfw === true;
-    const oldIsForKids = oldContent.isForKids === true && !oldIsNsfw;
-
-    const contentObject = {
-      videoRootId: finalRootId,
-      version: oldVersion,
-      deleted: true,
-      isPrivate: oldContent.isPrivate ?? false,
-      isNsfw: oldIsNsfw,
-      isForKids: oldIsForKids,
-      title: oldContent.title || "",
-      url: "",
-      magnet: "",
-      thumbnail: "",
-      description: "This version was reverted by the creator.",
-      mode: oldContent.mode || "live",
-    };
-
-    const storagePointer = resolveStoragePointerValue({
-      storagePointer: getStoragePointerFromTags(baseEvent.tags),
-      url: oldContent.url,
-      infoHash: oldContent.infoHash,
-      fallbackId: finalRootId,
-    });
-    const additionalTags = storagePointer ? [["s", storagePointer]] : [];
-    const event = buildVideoPostEvent({
+    const event = buildRevertVideoPayload({
+      baseEvent,
+      originalEventId: originalEvent?.id,
       pubkey,
-      created_at: Math.floor(Date.now() / 1000),
-      dTagValue: stableDTag,
-      content: contentObject,
-      additionalTags,
+      existingD,
+      stableDTag,
     });
 
     await this.ensureActiveSignerForPubkey(pubkey);
@@ -4412,85 +4079,28 @@ export class NostrClient {
    * @deprecated Use `subscribeVideos` for the main feed to support buffering and streaming.
    */
   async fetchVideos(options = {}) {
-    const requestedLimit = Number(options?.limit);
-    const resolvedLimit = this.clampVideoRequestLimit(requestedLimit, DEFAULT_VIDEO_REQUEST_LIMIT);
-
-    const filter = {
-      kinds: [30078],
-      "#t": ["video"],
-      limit: resolvedLimit,
-      since: 0,
-    };
-
-    const localAll = new Map();
-    // NEW: track invalid
-    const invalidNotes = [];
-
-    try {
-      await Promise.all(
-        this.getHealthyRelays(this.relays).map(async (url) => {
-          const events = await this.pool.list([url], [filter]);
-          for (const evt of events) {
-            if (evt && evt.id) {
-              this.rawEvents.set(evt.id, evt);
-            }
-            const vid = convertEventToVideo(evt);
-            if (vid.invalid) {
-              // Accumulate if invalid
-              invalidNotes.push({ id: vid.id, reason: vid.reason });
-            } else {
-              // Only add if good
-              this.applyRootCreatedAt(vid);
-              const activeKey = getActiveKey(vid);
-              if (vid.deleted) {
-                this.recordTombstone(activeKey, vid.created_at);
-              } else {
-                this.applyTombstoneGuard(vid);
-              }
-              localAll.set(evt.id, vid);
-            }
-          }
-        })
-      );
-
-      // Merge into allEvents
-      for (const [id, vid] of localAll.entries()) {
-        this.allEvents.set(id, vid);
-        this.dirtyEventIds.add(id);
-        this.applyRootCreatedAt(vid);
+    return new Promise((resolve) => {
+      // Default to since: 0 to force full fetch if not specified
+      const effectiveOptions = { ...options };
+      if (effectiveOptions.since === undefined) {
+        effectiveOptions.since = 0;
       }
 
-      // Rebuild activeMap
-      this.activeMap.clear();
-      for (const [id, video] of this.allEvents.entries()) {
-        if (video.deleted) continue;
-        const activeKey = getActiveKey(video);
-        const existing = this.activeMap.get(activeKey);
+      const sub = this.subscribeVideos(() => {}, effectiveOptions);
 
-        if (!existing || video.created_at > existing.created_at) {
-          this.activeMap.set(activeKey, video);
-          this.applyRootCreatedAt(video);
+      sub.on("eose", async () => {
+        sub.unsub();
+        try {
+          const activeVideos = this.getActiveVideos();
+          await this.populateNip71MetadataForVideos(activeVideos);
+          activeVideos.forEach((video) => this.applyRootCreatedAt(video));
+          resolve(activeVideos);
+        } catch (err) {
+          userLogger.error("fetchVideos error:", err);
+          resolve([]);
         }
-      }
-
-      // OPTIONAL: Log invalid stats
-      if (invalidNotes.length > 0 && isDevMode) {
-        userLogger.warn(
-          `Skipped ${invalidNotes.length} invalid video notes:\n`,
-          invalidNotes.map((n) => `${n.id.slice(0, 8)}.. => ${n.reason}`)
-        );
-      }
-
-      const activeVideos = Array.from(this.activeMap.values()).sort(
-        (a, b) => b.created_at - a.created_at
-      );
-      await this.populateNip71MetadataForVideos(activeVideos);
-      activeVideos.forEach((video) => this.applyRootCreatedAt(video));
-      return activeVideos;
-    } catch (err) {
-      userLogger.error("fetchVideos error:", err);
-      return [];
-    }
+      });
+    });
   }
 
   /**

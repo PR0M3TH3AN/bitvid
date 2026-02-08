@@ -249,7 +249,12 @@ class HashtagPreferencesService {
     this.activePubkey = null;
     this.eventId = null;
     this.eventCreatedAt = null;
+    this.uiReady = false;
+    this.dataReady = false;
     this.loaded = false;
+    this.loadedFromCache = false;
+    this.lastSuccessfulSyncAt = null;
+    this.lastAttemptAt = null;
     this.backgroundLoading = false;
     this.preferencesVersion = DEFAULT_VERSION;
     this.decryptRetryTimeoutId = null;
@@ -283,7 +288,12 @@ class HashtagPreferencesService {
     this.disinterests = new Set();
     this.eventId = null;
     this.eventCreatedAt = null;
+    this.uiReady = false;
+    this.dataReady = false;
     this.loaded = false;
+    this.loadedFromCache = false;
+    this.lastSuccessfulSyncAt = null;
+    this.lastAttemptAt = null;
     this.backgroundLoading = false;
     this.preferencesVersion = DEFAULT_VERSION;
     this.lastLoadError = null;
@@ -390,7 +400,10 @@ class HashtagPreferencesService {
         this.eventId = cached.eventId || null;
         this.eventCreatedAt = cached.createdAt || null;
         this.preferencesVersion = cached.version || DEFAULT_VERSION;
+        this.uiReady = true;
+        this.dataReady = true;
         this.loaded = true;
+        this.loadedFromCache = true;
         this.emitChange("cache-load");
         return true;
       }
@@ -548,7 +561,12 @@ class HashtagPreferencesService {
     this.loadingPubkey = normalized;
 
     try {
-      return await loadPromise;
+      await loadPromise;
+      return {
+        ok: this.dataReady === true,
+        error: this.lastLoadError || null,
+        state: this.getLoadState(),
+      };
     } finally {
       if (this.loadPromise === loadPromise) {
         this.loadPromise = null;
@@ -560,6 +578,15 @@ class HashtagPreferencesService {
   async loadInternal(pubkey, options = {}) {
     const normalized = normalizeHexPubkey(pubkey);
     const allowPermissionPrompt = options?.allowPermissionPrompt !== false;
+    const signerReadinessGate =
+      options?.signerReadinessGate && typeof options.signerReadinessGate === "object"
+        ? options.signerReadinessGate
+        : null;
+    const shouldSuppressPermissionEscalation =
+      signerReadinessGate &&
+      (signerReadinessGate.status === "permission-denied" ||
+        signerReadinessGate.status === "extension-unavailable");
+    this.lastAttemptAt = Date.now();
     this.lastLoadError = null;
     let wasLoadedForUser =
       this.activePubkey &&
@@ -573,6 +600,8 @@ class HashtagPreferencesService {
 
     if (!normalized) {
       this.reset();
+      this.uiReady = true;
+      this.dataReady = true;
       this.loaded = true;
       return;
     }
@@ -606,8 +635,7 @@ class HashtagPreferencesService {
         }
         return;
       }
-      this.reset();
-      this.loaded = true;
+      this.uiReady = true;
       if (wasBackgroundLoading) {
         this.backgroundLoading = false;
         this.emitChange("background-loaded", { background: false });
@@ -628,8 +656,7 @@ class HashtagPreferencesService {
         }
         return;
       }
-      this.reset();
-      this.loaded = true;
+      this.uiReady = true;
       if (wasBackgroundLoading) {
         this.backgroundLoading = false;
         this.emitChange("background-loaded", { background: false });
@@ -720,8 +747,16 @@ class HashtagPreferencesService {
         return;
       }
 
-      this.reset();
+      this.interests = new Set();
+      this.disinterests = new Set();
+      this.eventId = null;
+      this.eventCreatedAt = null;
+      this.preferencesVersion = DEFAULT_VERSION;
+      this.uiReady = true;
+      this.dataReady = true;
       this.loaded = true;
+      this.loadedFromCache = false;
+      this.lastSuccessfulSyncAt = Date.now();
       if (wasBackgroundLoading) {
         this.backgroundLoading = false;
         this.emitChange("background-loaded", { background: false });
@@ -764,8 +799,16 @@ class HashtagPreferencesService {
         }
         return;
       }
-      this.reset();
+      this.interests = new Set();
+      this.disinterests = new Set();
+      this.eventId = null;
+      this.eventCreatedAt = null;
+      this.preferencesVersion = DEFAULT_VERSION;
+      this.uiReady = true;
+      this.dataReady = true;
       this.loaded = true;
+      this.loadedFromCache = false;
+      this.lastSuccessfulSyncAt = Date.now();
       if (wasBackgroundLoading) {
         this.backgroundLoading = false;
         this.emitChange("background-loaded", { background: false });
@@ -793,6 +836,7 @@ class HashtagPreferencesService {
     try {
       const decryptPromise = this.decryptEvent(latest, normalized, {
         allowPermissionPrompt,
+        signerReadinessGate,
       });
       let timeoutId;
       const timeoutPromise = new Promise((_, reject) => {
@@ -815,17 +859,16 @@ class HashtagPreferencesService {
 
     if (!decryptResult.ok) {
       this.lastLoadError = decryptResult.error || null;
+      this.uiReady = true;
       userLogger.warn(
         `${LOG_PREFIX} Failed to decrypt hashtag preferences`,
         decryptResult.error,
       );
 
       if (decryptResult.error?.code === "hashtag-preferences-decrypt-timeout") {
-        if (!wasLoadedForUser && !this.loaded) {
-          this.loaded = true;
-        }
         this.scheduleDecryptRetry(normalized, decryptResult.error, {
           allowPermissionPrompt,
+          signerReadinessGate,
         });
         return;
       }
@@ -833,11 +876,20 @@ class HashtagPreferencesService {
         !allowPermissionPrompt &&
         decryptResult.error?.code === "hashtag-preferences-permission-required"
       ) {
-        if (!wasLoadedForUser && !this.loaded) {
-          this.loaded = true;
+        if (shouldSuppressPermissionEscalation) {
+          userLogger.warn(
+            `${LOG_PREFIX} Skipping permission escalation due to shared signer gate outcome.`,
+            signerReadinessGate,
+          );
+          if (wasBackgroundLoading) {
+            this.backgroundLoading = false;
+            this.emitChange("background-loaded", { background: false });
+          }
+          return;
         }
         this.scheduleDecryptRetry(normalized, decryptResult.error, {
           allowPermissionPrompt: true,
+          signerReadinessGate,
         });
         if (wasBackgroundLoading) {
           this.backgroundLoading = false;
@@ -859,8 +911,7 @@ class HashtagPreferencesService {
         return;
       }
 
-      this.reset();
-      this.loaded = true;
+      this.uiReady = true;
       if (wasBackgroundLoading) {
         this.backgroundLoading = false;
         this.emitChange("background-loaded", { background: false });
@@ -881,7 +932,11 @@ class HashtagPreferencesService {
       this.eventCreatedAt = Number.isFinite(latest?.created_at)
         ? latest.created_at
         : null;
+      this.uiReady = true;
+      this.dataReady = true;
       this.loaded = true;
+      this.loadedFromCache = false;
+      this.lastSuccessfulSyncAt = Date.now();
       if (this.backgroundLoading) {
         this.backgroundLoading = false;
       }
@@ -892,9 +947,23 @@ class HashtagPreferencesService {
         `${LOG_PREFIX} Failed to parse decrypted hashtag preferences`,
         error,
       );
-      this.reset();
-      this.loaded = true;
+      this.uiReady = true;
     }
+  }
+
+  getLoadState() {
+    return {
+      uiReady: this.uiReady === true,
+      dataReady: this.dataReady === true,
+      lastLoadError: this.lastLoadError || null,
+      loadedFromCache: this.loadedFromCache === true,
+      lastSuccessfulSyncAt: Number.isFinite(this.lastSuccessfulSyncAt)
+        ? Number(this.lastSuccessfulSyncAt)
+        : null,
+      lastAttemptAt: Number.isFinite(this.lastAttemptAt)
+        ? Number(this.lastAttemptAt)
+        : null,
+    };
   }
 
   async decryptEvent(event, userPubkey, options = {}) {
@@ -906,6 +975,14 @@ class HashtagPreferencesService {
     }
 
     const allowPermissionPrompt = options?.allowPermissionPrompt !== false;
+    const signerReadinessGate =
+      options?.signerReadinessGate && typeof options.signerReadinessGate === "object"
+        ? options.signerReadinessGate
+        : null;
+    const suppressPermissionPrompt =
+      signerReadinessGate &&
+      (signerReadinessGate.status === "permission-denied" ||
+        signerReadinessGate.status === "extension-unavailable");
     let signer = getActiveSigner();
     if (
       !signer &&
@@ -928,6 +1005,13 @@ class HashtagPreferencesService {
       if (!allowPermissionPrompt) {
         const error = new Error(
           "Decrypt permissions are required to read hashtag preferences.",
+        );
+        error.code = "hashtag-preferences-permission-required";
+        return { ok: false, error };
+      }
+      if (suppressPermissionPrompt) {
+        const error = new Error(
+          "Shared signer gate indicates extension permissions are unavailable.",
         );
         error.code = "hashtag-preferences-permission-required";
         return { ok: false, error };
