@@ -15,7 +15,7 @@ const MAX_LISTENER_SNIPPETS = [
 
 const MAX_LISTENER_CODES = new Set(["MaxListenersExceededWarning"]);
 
-function collectCandidateStrings(value) {
+export function collectCandidateStrings(value) {
   const candidates = [];
 
   if (!value) {
@@ -40,7 +40,7 @@ function collectCandidateStrings(value) {
   return candidates;
 }
 
-function shouldSuppressWarning(...args) {
+export function shouldSuppressWarning(...args) {
   if (isVerboseDiagnosticsEnabled()) {
     return false;
   }

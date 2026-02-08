@@ -203,6 +203,47 @@ export async function createModerationAppHarness(options = {}) {
   const Application = await getApplicationClass();
   const app = Object.create(Application.prototype);
 
+  app.playbackService = {
+    _currentVideo: null,
+    get currentVideo() {
+      return this._currentVideo;
+    },
+    set currentVideo(value) {
+      this._currentVideo = value;
+    },
+  };
+
+  app.authService = {
+    _pubkey: null,
+    _currentUserNpub: null,
+    _activeProfilePubkey: null,
+    _savedProfiles: [],
+    get pubkey() {
+      return this._pubkey;
+    },
+    set pubkey(value) {
+      this._pubkey = value;
+    },
+    get currentUserNpub() {
+      return this._currentUserNpub;
+    },
+    set currentUserNpub(value) {
+      this._currentUserNpub = value;
+    },
+    get activeProfilePubkey() {
+      return this._activeProfilePubkey;
+    },
+    setActiveProfilePubkey(value) {
+      this._activeProfilePubkey = value;
+    },
+    get savedProfiles() {
+      return this._savedProfiles;
+    },
+    setSavedProfiles(value) {
+      this._savedProfiles = value;
+    },
+  };
+
   Object.defineProperty(app, "__profiles", {
     value: new Map(),
     writable: true,

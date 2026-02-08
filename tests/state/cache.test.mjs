@@ -12,6 +12,9 @@ import {
   getModerationSettings,
   setModerationSettings,
   urlHealthConstants,
+  loadModerationOverridesFromStorage,
+  getModerationOverridesList,
+  clearModerationOverride,
 } from "../../js/state/cache.js";
 
 // Ensure localStorage is mocked
@@ -101,5 +104,54 @@ test("js/state/cache.js", async (t) => {
     const updated = getModerationSettings();
     assert.strictEqual(updated.blurThreshold, 1);
     assert.strictEqual(updated.autoplayBlockThreshold, 2);
+  });
+
+  await t.test("Legacy Moderation Overrides Support", async (t) => {
+    // Reset internal state by clearing overrides
+    const current = getModerationOverridesList();
+    for (const entry of current) {
+      clearModerationOverride(entry, { persist: false });
+    }
+
+    const VALID_HEX_ID_1 = "0000000000000000000000000000000000000000000000000000000000000001";
+    const VALID_HEX_ID_2 = "0000000000000000000000000000000000000000000000000000000000000002";
+
+    await t.test("ignores legacy v1 overrides", () => {
+      const legacyData = {
+        version: 1,
+        entries: {
+          [VALID_HEX_ID_1]: { showAnyway: true, updatedAt: 1234567890 },
+        }
+      };
+      localStorage.setItem("bitvid:moderationOverrides:v1", JSON.stringify(legacyData));
+
+      loadModerationOverridesFromStorage();
+
+      const overrides = getModerationOverridesList();
+      assert.strictEqual(overrides.length, 0, "Should not load legacy overrides");
+
+      // Check if it migrated to v2 key
+      const v2Data = localStorage.getItem("bitvid:moderationOverrides:v2");
+      assert.strictEqual(v2Data, null, "Should not migrate/persist v2 data");
+
+      // Check if legacy key is NOT removed
+      assert.ok(localStorage.getItem("bitvid:moderationOverrides:v1"), "Should not remove legacy key");
+    });
+
+    await t.test("loads v2 overrides", () => {
+      const v2Data = {
+        version: 2,
+        entries: [
+          { eventId: VALID_HEX_ID_2, authorPubkey: "", showAnyway: true, updatedAt: 1234567890 }
+        ]
+      };
+      localStorage.setItem("bitvid:moderationOverrides:v2", JSON.stringify(v2Data));
+
+      loadModerationOverridesFromStorage();
+
+      const overrides = getModerationOverridesList();
+      assert.strictEqual(overrides.length, 1);
+      assert.strictEqual(overrides[0].eventId, VALID_HEX_ID_2);
+    });
   });
 });

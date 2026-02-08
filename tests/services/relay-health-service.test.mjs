@@ -2,7 +2,7 @@
 
 import "../test-helpers/setup-localstorage.mjs";
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { mock } from "node:test";
 import RelayHealthService from "../../js/services/relayHealthService.js";
 
 // Mock SimpleEventEmitter for tests
@@ -165,4 +165,146 @@ test("RelayHealthService: emits telemetry if opted in", async () => {
   assert.ok(telemetryPayload);
   assert.equal(telemetryPayload.relays.length, 1);
   assert.equal(telemetryPayload.relays[0].url, "wss://t1.com");
+});
+
+test("RelayHealthService: checkRelay times out after DEFAULT_TIMEOUT_MS", async () => {
+  const originalSetTimeout = globalThis.setTimeout;
+  let timeoutCallback;
+
+  // Manually mock setTimeout to capture callback
+  globalThis.setTimeout = (cb, delay) => {
+    if (delay === 5000) {
+        timeoutCallback = cb;
+        return 123; // dummy timer id
+    }
+    return originalSetTimeout(cb, delay);
+  };
+
+  try {
+    const nostrClient = {
+      ensurePool: async () => {},
+      pool: {
+        ensureRelay: () => new Promise(() => {}), // Never resolves
+      },
+    };
+
+    const service = new RelayHealthService({ nostrClient });
+    const checkPromise = service.checkRelay("wss://timeout.com");
+
+    // Wait for the promise race to register the timeout
+    await new Promise((resolve) => originalSetTimeout(resolve, 0));
+
+    // Trigger the timeout manually
+    if (timeoutCallback) {
+        timeoutCallback();
+    } else {
+        throw new Error("setTimeout was not called with 5000ms delay");
+    }
+
+    await checkPromise;
+
+    const state = service.ensureRelayState("wss://timeout.com");
+    assert.equal(state.connected, false);
+    assert.equal(state.errorCount, 1);
+    assert.equal(state.consecutiveFailures, 1);
+  } finally {
+    globalThis.setTimeout = originalSetTimeout;
+  }
+});
+
+test("RelayHealthService: failure threshold triggers user warning", () => {
+  const userLogger = { warn: mock.fn() };
+  const devLogger = { warn: mock.fn() };
+  const logger = { user: userLogger, dev: devLogger };
+
+  const service = new RelayHealthService({ logger });
+  const url = "wss://fail.com";
+
+  // 1st failure
+  service.recordRelayFailure(url, new Error("fail 1"));
+  assert.equal(userLogger.warn.mock.callCount(), 0);
+
+  // 2nd failure
+  service.recordRelayFailure(url, new Error("fail 2"));
+  assert.equal(userLogger.warn.mock.callCount(), 0);
+
+  // 3rd failure (Threshold is 3)
+  service.recordRelayFailure(url, new Error("fail 3"));
+  assert.equal(userLogger.warn.mock.callCount(), 1);
+});
+
+test("RelayHealthService: user warning respects cooldown", () => {
+  const originalDateNow = Date.now;
+  let currentTime = 1000000;
+  Date.now = () => currentTime;
+
+  try {
+    const userLogger = { warn: mock.fn() };
+    const devLogger = { warn: mock.fn() };
+    const logger = { user: userLogger, dev: devLogger };
+    const service = new RelayHealthService({ logger });
+    const url = "wss://cooldown.com";
+
+    // Trigger 3 failures to reach threshold and get first warning
+    service.recordRelayFailure(url, new Error("1"));
+    service.recordRelayFailure(url, new Error("2"));
+    service.recordRelayFailure(url, new Error("3"));
+    assert.equal(userLogger.warn.mock.callCount(), 1);
+
+    // Advance 1 minute (less than 5 mins cooldown)
+    currentTime += 60 * 1000;
+    service.recordRelayFailure(url, new Error("4"));
+    assert.equal(userLogger.warn.mock.callCount(), 1); // Still 1
+
+    // Advance 5 minutes (more than cooldown)
+    currentTime += 5 * 60 * 1000;
+    service.recordRelayFailure(url, new Error("5"));
+    assert.equal(userLogger.warn.mock.callCount(), 2); // Now 2
+  } finally {
+    Date.now = originalDateNow;
+  }
+});
+
+test("RelayHealthService: relay disconnect/error events trigger failure", () => {
+  const service = new RelayHealthService();
+  const url = "wss://events.com";
+
+  // Mock relay
+  const relay = new SimpleEventEmitter();
+
+  // Attach listeners manually for this test case (usually done via checkRelay)
+  service.attachRelayListeners(url, relay);
+
+  // Simulate connect
+  relay.emit("connect");
+  assert.equal(service.ensureRelayState(url).connected, true);
+
+  // Simulate disconnect
+  relay.emit("disconnect");
+  const stateDisconnect = service.ensureRelayState(url);
+  assert.equal(stateDisconnect.connected, false);
+  assert.equal(stateDisconnect.errorCount, 1);
+
+  // Simulate connect again
+  relay.emit("connect");
+  assert.equal(service.ensureRelayState(url).connected, true);
+
+  // Simulate error
+  relay.emit("error", new Error("boom"));
+  const stateError = service.ensureRelayState(url);
+  assert.equal(stateError.connected, false);
+  assert.equal(stateError.errorCount, 2);
+});
+
+test("RelayHealthService: integrates with nostrClient.markRelayUnreachable", () => {
+  const markRelayUnreachable = mock.fn();
+  const nostrClient = { markRelayUnreachable };
+  const service = new RelayHealthService({ nostrClient });
+
+  service.recordRelayFailure("wss://unreachable.com", new Error("fail"));
+
+  assert.equal(markRelayUnreachable.mock.callCount(), 1);
+  const args = markRelayUnreachable.mock.calls[0].arguments;
+  assert.equal(args[0], "wss://unreachable.com");
+  assert.equal(args[1], 60000); // Verify duration
 });

@@ -10,6 +10,7 @@ import { userLogger } from "../utils/logger.js";
 import { requestDefaultExtensionPermissions } from "../nostr/defaultClient.js";
 import {
   getSavedProfiles,
+  setSavedProfiles,
   getActiveProfilePubkey,
   setActiveProfilePubkey,
   mutateSavedProfiles,
@@ -415,6 +416,38 @@ export default class AuthService {
     }
 
     return publish(payload);
+  }
+
+  get pubkey() {
+    return getPubkey();
+  }
+
+  set pubkey(value) {
+    setPubkey(value ?? null);
+  }
+
+  get currentUserNpub() {
+    return getCurrentUserNpub();
+  }
+
+  set currentUserNpub(value) {
+    setCurrentUserNpub(value ?? null);
+  }
+
+  get activeProfilePubkey() {
+    return getActiveProfilePubkey();
+  }
+
+  setActiveProfilePubkey(pubkey, options = {}) {
+    return setActiveProfilePubkey(pubkey, options);
+  }
+
+  get savedProfiles() {
+    return getSavedProfiles();
+  }
+
+  setSavedProfiles(profiles, options = {}) {
+    return setSavedProfiles(profiles, options);
   }
 
   getActivePubkey() {
