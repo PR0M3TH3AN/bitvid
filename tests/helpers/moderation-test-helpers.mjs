@@ -8,6 +8,7 @@ import {
   clearModerationOverride,
 } from "../../js/state/cache.js";
 import { userBlocks } from "../../js/userBlocks.js";
+import { HEX64_REGEX } from "../../js/utils/hex.js";
 
 const DEFAULT_CONTACT_OWNER = "f".repeat(64);
 const DEFAULT_REPORT_TARGET = "e".repeat(64);
@@ -177,85 +178,271 @@ export function applyTrustedContacts(service, contacts = []) {
   return event;
 }
 
-let cachedApplicationClass = null;
+class MockApplication {
+  constructor() {
+    this.playbackService = {
+      _currentVideo: null,
+      get currentVideo() {
+        return this._currentVideo;
+      },
+      set currentVideo(value) {
+        this._currentVideo = value;
+      },
+    };
 
-async function getApplicationClass() {
-  if (!cachedApplicationClass) {
-    if (typeof globalThis.self === "undefined") {
-      globalThis.self = globalThis;
-    }
-    if (typeof globalThis.WebSocket === "undefined") {
-      globalThis.WebSocket = class {
-        constructor() {}
-        close() {}
-        addEventListener() {}
-        removeEventListener() {}
-        send() {}
-      };
-    }
-    const module = await import("../../js/app.js");
-    cachedApplicationClass = module.Application || module.default;
+    this.authService = {
+      _pubkey: null,
+      _currentUserNpub: null,
+      _activeProfilePubkey: null,
+      _savedProfiles: [],
+      get pubkey() {
+        return this._pubkey;
+      },
+      set pubkey(value) {
+        this._pubkey = value;
+      },
+      get currentUserNpub() {
+        return this._currentUserNpub;
+      },
+      set currentUserNpub(value) {
+        this._currentUserNpub = value;
+      },
+      get activeProfilePubkey() {
+        return this._activeProfilePubkey;
+      },
+      setActiveProfilePubkey(value) {
+        this._activeProfilePubkey = value;
+      },
+      get savedProfiles() {
+        return this._savedProfiles;
+      },
+      setSavedProfiles(value) {
+        this._savedProfiles = value;
+      },
+    };
+
+    Object.defineProperty(this, "__profiles", {
+      value: new Map(),
+      writable: true,
+      configurable: true,
+    });
+
+    this.defaultModerationSettings = getDefaultModerationSettings();
+    this.moderationSettings = { ...this.defaultModerationSettings };
+    this.videosMap = new Map();
+    this.currentVideo = null;
+    this.pendingModeratedPlayback = null;
   }
-  return cachedApplicationClass;
-}
 
-export async function createModerationAppHarness(options = {}) {
-  const Application = await getApplicationClass();
-  const app = Object.create(Application.prototype);
+  get pubkey() {
+    return this.authService.pubkey;
+  }
 
-  app.playbackService = {
-    _currentVideo: null,
-    get currentVideo() {
-      return this._currentVideo;
-    },
-    set currentVideo(value) {
-      this._currentVideo = value;
-    },
-  };
+  set pubkey(value) {
+    this.authService.pubkey = value;
+  }
 
-  app.authService = {
-    _pubkey: null,
-    _currentUserNpub: null,
-    _activeProfilePubkey: null,
-    _savedProfiles: [],
-    get pubkey() {
-      return this._pubkey;
-    },
-    set pubkey(value) {
-      this._pubkey = value;
-    },
-    get currentUserNpub() {
-      return this._currentUserNpub;
-    },
-    set currentUserNpub(value) {
-      this._currentUserNpub = value;
-    },
-    get activeProfilePubkey() {
-      return this._activeProfilePubkey;
-    },
-    setActiveProfilePubkey(value) {
-      this._activeProfilePubkey = value;
-    },
-    get savedProfiles() {
-      return this._savedProfiles;
-    },
-    setSavedProfiles(value) {
-      this._savedProfiles = value;
-    },
-  };
+  isUserLoggedIn() {
+    return !!this.pubkey;
+  }
 
-  Object.defineProperty(app, "__profiles", {
-    value: new Map(),
-    writable: true,
-    configurable: true,
-  });
-
-  app.getProfileCacheEntry = (pubkey) => {
+  getProfileCacheEntry(pubkey) {
     if (!pubkey || typeof pubkey !== "string") {
       return null;
     }
-    return app.__profiles.get(pubkey) || null;
-  };
+    return this.__profiles.get(pubkey) || null;
+  }
+
+  safeDecodeNpub(npub) {
+    if (typeof npub !== "string") {
+      return null;
+    }
+    const trimmed = npub.trim();
+    if (!trimmed) {
+      return null;
+    }
+    try {
+      const decoded = globalThis.NostrTools.nip19.decode(trimmed);
+      if (decoded.type === "npub" && typeof decoded.data === "string") {
+        return decoded.data;
+      }
+    } catch (err) {
+      return null;
+    }
+    return null;
+  }
+
+  normalizeHexPubkey(pubkey) {
+    if (typeof pubkey !== "string") {
+      return null;
+    }
+    const trimmed = pubkey.trim();
+    if (!trimmed) {
+      return null;
+    }
+    if (HEX64_REGEX.test(trimmed)) {
+      return trimmed.toLowerCase();
+    }
+    if (trimmed.startsWith("npub1")) {
+      const decoded = this.safeDecodeNpub(trimmed);
+      if (decoded && HEX64_REGEX.test(decoded)) {
+        return decoded.toLowerCase();
+      }
+    }
+    return null;
+  }
+
+  decorateVideoModeration(video, feedContext = {}) {
+    if (!this.moderationDecorator) return video;
+    const decorated = this.moderationDecorator.decorateVideo(video, feedContext);
+    if (
+      video &&
+      video.pubkey &&
+      this.isAuthorBlocked(video.pubkey) &&
+      decorated &&
+      decorated.moderation
+    ) {
+      decorated.moderation.viewerMuted = true;
+      decorated.moderation.hidden = true;
+      decorated.moderation.hideReason = "viewer-block";
+    }
+    return decorated;
+  }
+
+  isAuthorBlocked(pubkey) {
+    const normalized = this.normalizeHexPubkey(pubkey);
+    if (normalized && this.userBlocks && this.userBlocks.isBlocked(normalized)) {
+      return true;
+    }
+    return false;
+  }
+
+  resumePendingModeratedPlayback(video) {
+    if (this.pendingModeratedPlayback) {
+      const { url, magnet } = this.pendingModeratedPlayback;
+      this.pendingModeratedPlayback = null;
+      if (typeof this.playVideoWithFallback === "function") {
+        this.playVideoWithFallback({ url, magnet });
+      }
+    }
+  }
+
+  describeUserBlockActionError(error) {
+    return error?.message || "Block action failed";
+  }
+
+  deriveModerationReportType(summary) {
+    if (!this.moderationDecorator) return null;
+    return this.moderationDecorator.deriveModerationReportType(summary);
+  }
+
+  deriveModerationTrustedCount(summary, reportType) {
+    if (!this.moderationDecorator) return 0;
+    return this.moderationDecorator.deriveModerationTrustedCount(summary, reportType);
+  }
+
+  getReporterDisplayName(pubkey) {
+    if (!this.moderationDecorator) return "";
+    return this.moderationDecorator.getReporterDisplayName(pubkey);
+  }
+
+  handleModerationOverride(payload) {
+    if (!this.moderationActionController) return false;
+    return this.moderationActionController.handleOverride(payload);
+  }
+
+  handleModerationBlock(payload) {
+    if (!this.moderationActionController) return false;
+    return this.moderationActionController.handleBlock(payload);
+  }
+
+  handleModerationHide(payload) {
+    if (!this.moderationActionController) return false;
+    return this.moderationActionController.handleHide(payload);
+  }
+
+  handleModerationSettingsChange({ settings, skipRefresh }) {
+    if (!this.moderationDecorator) return;
+    const normalized = this.normalizeModerationSettings(settings);
+    this.moderationSettings = normalized;
+    this.moderationDecorator.updateSettings(normalized);
+
+    if (this.videosMap instanceof Map) {
+      for (const video of this.videosMap.values()) {
+        if (video && typeof video === "object") {
+          this.decorateVideoModeration(video);
+        }
+      }
+    }
+
+    if (
+      this.videoListView &&
+      Array.isArray(this.videoListView.videoCardInstances)
+    ) {
+      for (const card of this.videoListView.videoCardInstances) {
+        if (card?.video) {
+          this.decorateVideoModeration(card.video);
+          if (typeof card.refreshModerationUi === "function") {
+            card.refreshModerationUi();
+          }
+        }
+      }
+    }
+
+    if (this.videoListView && Array.isArray(this.videoListView.currentVideos)) {
+      for (const video of this.videoListView.currentVideos) {
+        this.decorateVideoModeration(video);
+      }
+    }
+
+    if (this.currentVideo) {
+      this.decorateVideoModeration(this.currentVideo);
+    }
+
+    if (!skipRefresh) {
+      this.onVideosShouldRefresh({ reason: "moderation-settings-change" });
+    }
+    return normalized;
+  }
+
+  normalizeModerationSettings(settings) {
+    if (!this.moderationDecorator) return settings;
+    return this.moderationDecorator.normalizeModerationSettings(settings);
+  }
+
+  getActiveModerationThresholds() {
+    if (!this.moderationSettings || typeof this.moderationSettings !== "object") {
+      this.moderationSettings = this.normalizeModerationSettings(this.moderationSettings);
+    }
+    return this.moderationSettings;
+  }
+
+  onVideosShouldRefresh(payload) {
+    // noop
+  }
+
+  showStatus(message, options) {}
+  showError(message) {}
+
+  refreshCardModerationUi(card, options) {
+    if (card && typeof card.refreshModerationUi === "function") {
+      card.refreshModerationUi();
+    }
+  }
+
+  dispatchModerationEvent(eventName, detail) {
+    if (typeof document !== "undefined") {
+      document.dispatchEvent(new CustomEvent(eventName, { detail }));
+      return true;
+    }
+    return false;
+  }
+}
+
+export async function createModerationAppHarness(options = {}) {
+  const app = new MockApplication();
+
+  app.userBlocks = options.userBlocks || userBlocks;
 
   app.moderationDecorator = new ModerationDecorator({
     getProfileCacheEntry: (pubkey) => app.getProfileCacheEntry(pubkey),
@@ -263,17 +450,14 @@ export async function createModerationAppHarness(options = {}) {
 
   app.moderationActionController = new ModerationActionController({
     services: {
-      userBlocks: options.userBlocks || userBlocks,
+      userBlocks: app.userBlocks,
       setModerationOverride,
       clearModerationOverride,
     },
     auth: {
       isLoggedIn: () => app.isUserLoggedIn(),
       getViewerPubkey: () => app.pubkey,
-      normalizePubkey: (value) =>
-        app.normalizeHexPubkey
-          ? app.normalizeHexPubkey(value)
-          : Application.prototype.normalizeHexPubkey.call(app, value),
+      normalizePubkey: (value) => app.normalizeHexPubkey(value),
     },
     actions: {
       refreshVideos: (payload) => app.onVideosShouldRefresh(payload),
@@ -294,42 +478,6 @@ export async function createModerationAppHarness(options = {}) {
         app.dispatchModerationEvent(eventName, detail),
     },
   });
-
-  app.decorateVideoModeration = Application.prototype.decorateVideoModeration;
-  app.resumePendingModeratedPlayback =
-    Application.prototype.resumePendingModeratedPlayback;
-  app.describeUserBlockActionError =
-    Application.prototype.describeUserBlockActionError;
-  app.deriveModerationReportType = Application.prototype.deriveModerationReportType;
-  app.deriveModerationTrustedCount = Application.prototype.deriveModerationTrustedCount;
-  app.getReporterDisplayName = Application.prototype.getReporterDisplayName;
-  app.handleModerationOverride = Application.prototype.handleModerationOverride;
-  app.handleModerationBlock = Application.prototype.handleModerationBlock;
-  app.handleModerationHide = Application.prototype.handleModerationHide;
-  app.handleModerationSettingsChange =
-    Application.prototype.handleModerationSettingsChange;
-  app.normalizeModerationSettings =
-    Application.prototype.normalizeModerationSettings;
-  app.getActiveModerationThresholds =
-    Application.prototype.getActiveModerationThresholds;
-  app.normalizeHexPubkey = Application.prototype.normalizeHexPubkey;
-
-  if (options.userBlocks) {
-    app.isAuthorBlocked = function (pubkey) {
-      const normalized = this.normalizeHexPubkey(pubkey);
-      if (normalized && options.userBlocks.isBlocked(normalized)) {
-        return true;
-      }
-      return Application.prototype.isAuthorBlocked.call(this, pubkey);
-    };
-  }
-
-  app.defaultModerationSettings = getDefaultModerationSettings();
-  app.moderationSettings = { ...app.defaultModerationSettings };
-
-  app.videosMap = new Map();
-  app.currentVideo = null;
-  app.pendingModeratedPlayback = null;
 
   return app;
 }
