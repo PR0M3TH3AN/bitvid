@@ -30,10 +30,12 @@ function mergeServices(overrides = {}) {
 }
 
 export async function createApplication({ services, loadView: loadViewOverride } = {}) {
-  return new Application({
+  const app = new Application({
     services: mergeServices(services),
     loadView: typeof loadViewOverride === "function" ? loadViewOverride : loadView,
   });
+  app.setup();
+  return app;
 }
 
 export default createApplication;

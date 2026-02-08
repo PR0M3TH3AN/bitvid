@@ -143,7 +143,15 @@ if (typeof globalThis.WebSocket === "undefined") {
 }
 
 globalThis.document = documentStub;
-globalThis.navigator = windowStub.navigator;
+try {
+  Object.defineProperty(globalThis, "navigator", {
+    value: windowStub.navigator,
+    writable: true,
+    configurable: true,
+  });
+} catch (e) {
+  // Fallback for environments where navigator is read-only
+}
 globalThis.location = windowStub.location;
 
 if (typeof globalThis.fetch === "undefined") {
@@ -302,6 +310,7 @@ async function createApp({ splitAndZap }) {
       videoModal: () => modalStub,
     },
   });
+  app.setup();
 
   app.boundVideoModalZapOpenHandler = (event = {}) => {
     const requiresLogin = Boolean(event?.detail?.requiresLogin);

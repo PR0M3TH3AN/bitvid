@@ -599,6 +599,7 @@ async function setupPlaybackHarness() {
     helpers,
     ui: { videoModal: () => modalStub },
   });
+  app.setup();
 
   app.showError = () => {};
   app.showSuccess = () => {};

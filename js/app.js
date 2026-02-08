@@ -241,6 +241,15 @@ class Application {
 
   constructor({ services = {}, ui = {}, helpers = {}, loadView: viewLoader } = {}) {
     this.loadView = typeof viewLoader === "function" ? viewLoader : null;
+    this._setupOptions = { services, ui, helpers };
+    this._isSetup = false;
+  }
+
+  setup() {
+    if (this._isSetup) return;
+    this._isSetup = true;
+
+    const { services = {}, ui = {}, helpers = {} } = this._setupOptions || {};
 
     const bootstrapServices = {
       ...services,
@@ -502,6 +511,8 @@ class Application {
     };
     onActiveSignerChanged(this.handleShareNostrSignerChange);
     this.updateShareNostrAuthState({ reason: "init" });
+
+    delete this._setupOptions;
   }
 
   /**
