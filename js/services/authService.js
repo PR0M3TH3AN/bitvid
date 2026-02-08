@@ -29,6 +29,11 @@ import getDefaultAuthProvider, {
 } from "./authProviders/index.js";
 import { fetchProfileMetadata } from "./profileMetadataService.js";
 import { HEX64_REGEX } from "../utils/hex.js";
+import {
+  safeEncodeNpub,
+  safeDecodeNpub,
+  normalizeHexPubkey,
+} from "../utils/nostrHelpers.js";
 
 class SimpleEventEmitter {
   constructor(logger = null) {
@@ -267,70 +272,15 @@ export default class AuthService {
   }
 
   safeEncodeNpub(pubkey) {
-    if (typeof pubkey !== "string") {
-      return null;
-    }
-
-    const trimmed = pubkey.trim();
-    if (!trimmed) {
-      return null;
-    }
-
-    if (trimmed.startsWith("npub1")) {
-      return trimmed;
-    }
-
-    try {
-      return window?.NostrTools?.nip19?.npubEncode(trimmed) || null;
-    } catch (error) {
-      return null;
-    }
+    return safeEncodeNpub(pubkey);
   }
 
   safeDecodeNpub(npub) {
-    if (typeof npub !== "string") {
-      return null;
-    }
-
-    const trimmed = npub.trim();
-    if (!trimmed) {
-      return null;
-    }
-
-    try {
-      const decoded = window?.NostrTools?.nip19?.decode(trimmed);
-      if (decoded?.type === "npub" && typeof decoded.data === "string") {
-        return decoded.data;
-      }
-    } catch (error) {
-      return null;
-    }
-
-    return null;
+    return safeDecodeNpub(npub);
   }
 
   normalizeHexPubkey(pubkey) {
-    if (typeof pubkey !== "string") {
-      return null;
-    }
-
-    const trimmed = pubkey.trim();
-    if (!trimmed) {
-      return null;
-    }
-
-    if (HEX64_REGEX.test(trimmed)) {
-      return trimmed.toLowerCase();
-    }
-
-    if (trimmed.startsWith("npub1")) {
-      const decoded = this.safeDecodeNpub(trimmed);
-      if (decoded && HEX64_REGEX.test(decoded)) {
-        return decoded.toLowerCase();
-      }
-    }
-
-    return null;
+    return normalizeHexPubkey(pubkey);
   }
 
   async requestLogin(rawOptions = {}) {
