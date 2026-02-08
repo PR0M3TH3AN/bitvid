@@ -44,7 +44,11 @@ import {
 
 const SUBSCRIPTION_SET_KIND =
   getNostrEventSchema(NOTE_TYPES.SUBSCRIPTION_LIST)?.kind ?? 30000;
-const DECRYPT_TIMEOUT_MS = 20000;
+// PERF: Reduced from 20s to 10s — the signer is now guaranteed to be ready
+// before list loading starts (authSessionCoordinator waits for the permission
+// pre-grant), so decryption should succeed quickly. 10s is a generous fallback
+// for slow relay responses while still failing fast enough to retry promptly.
+const DECRYPT_TIMEOUT_MS = 10000;
 // PERF: Reduced from 10s to 3s — extensions that already granted permission
 // should recover quickly. The longer delay was causing unnecessary wait time
 // during the critical login path when the first decrypt attempt fails due to

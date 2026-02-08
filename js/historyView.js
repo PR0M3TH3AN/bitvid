@@ -1400,12 +1400,26 @@ export function createWatchHistoryRenderer(config = {}) {
       const app = getAppInstance();
       const engine = app?.feedEngine;
       if (engine && typeof engine.run === "function") {
-        const runtime = buildWatchHistoryFeedRuntime({
-          actor: actorInput,
-          cursor,
-          forceRefresh,
-        });
-        return engine.run("watch-history", { runtime });
+        // Ensure the watch-history feed is registered. It may not be if the
+        // feed engine was ready but registration was silently skipped during
+        // bootstrap (e.g. timing edge cases).
+        if (
+          typeof engine.getFeedDefinition === "function" &&
+          !engine.getFeedDefinition("watch-history") &&
+          typeof app.registerWatchHistoryFeed === "function"
+        ) {
+          app.registerWatchHistoryFeed();
+        }
+        try {
+          const runtime = buildWatchHistoryFeedRuntime({
+            actor: actorInput,
+            cursor,
+            forceRefresh,
+          });
+          return engine.run("watch-history", { runtime });
+        } catch (feedError) {
+          // Fall through to service fallback if feed is still not registered
+        }
       }
       const items = await watchHistoryService.loadLatest(actorInput, {
         allowStale: !forceRefresh,

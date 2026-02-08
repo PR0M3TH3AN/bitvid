@@ -83,8 +83,11 @@ export const USER_BLOCK_EVENTS = Object.freeze({
 const FAST_BLOCKLIST_RELAY_LIMIT = 3;
 const FAST_BLOCKLIST_TIMEOUT_MS = 2500;
 const BACKGROUND_BLOCKLIST_TIMEOUT_MS = 6000;
-const DECRYPT_TIMEOUT_MS = 20000;
-const BACKGROUND_DECRYPT_TIMEOUT_MS = 15000;
+// PERF: Reduced from 20s/15s to 10s/8s — the signer is now guaranteed to be
+// ready before list loading starts (authSessionCoordinator waits for the
+// permission pre-grant), so decryption should succeed quickly.
+const DECRYPT_TIMEOUT_MS = 10000;
+const BACKGROUND_DECRYPT_TIMEOUT_MS = 8000;
 // PERF: Reduced from 10s to 3s for faster recovery during login.
 const DECRYPT_RETRY_DELAY_MS = 3000;
 const MAX_BLOCKLIST_ENTRIES = 5000;

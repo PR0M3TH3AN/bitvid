@@ -9956,10 +9956,20 @@ export class ProfileModalController {
     const pubkey = this.normalizeHexPubkey(this.getActivePubkey());
     if (!pubkey) return;
 
-    // We need the active signer.
-    const signer = getActiveSigner();
-    // Or try resolving via client if global one is missing?
-    // ProfileModalController imports getActiveSigner.
+    // We need the active signer. Try the global first, then resolve via the
+    // nostr client which can detect/restore the NIP-07 extension signer.
+    let signer = getActiveSigner();
+    if (
+      !signer &&
+      this.services.nostrClient &&
+      typeof this.services.nostrClient.ensureActiveSignerForPubkey === "function"
+    ) {
+      try {
+        signer = await this.services.nostrClient.ensureActiveSignerForPubkey(pubkey);
+      } catch (error) {
+        devLogger.warn("[ProfileModal] Failed to resolve signer for storage unlock:", error);
+      }
+    }
 
     if (!signer) {
       this.showError("No active signer found. Please login.");

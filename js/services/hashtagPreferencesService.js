@@ -36,7 +36,11 @@ const LOG_PREFIX = "[HashtagPreferences]";
 const HASHTAG_IDENTIFIER = "bitvid:tag-preferences";
 
 const DEFAULT_VERSION = 1;
-const DECRYPT_TIMEOUT_MS = 20000;
+// PERF: Reduced from 20s to 10s — the signer is now guaranteed to be ready
+// before list loading starts (authSessionCoordinator waits for the permission
+// pre-grant), so decryption should succeed quickly. 10s is a generous fallback
+// for slow relay responses while still failing fast enough to retry promptly.
+const DECRYPT_TIMEOUT_MS = 10000;
 // PERF: Reduced from 10s to 3s for faster recovery during login.
 const DECRYPT_RETRY_DELAY_MS = 3000;
 
