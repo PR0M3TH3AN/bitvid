@@ -153,6 +153,15 @@ function hexToBytes(hex) {
   return bytes;
 }
 
+function createStorageUnlockError(code, message, cause) {
+  const error = new Error(message);
+  error.code = code;
+  if (cause) {
+    error.cause = cause;
+  }
+  return error;
+}
+
 /**
  * Service to manage encrypted connection storage using IndexedDB.
  * Connections are encrypted with a random Master Key (AES-GCM),
@@ -336,6 +345,57 @@ export class StorageService {
     );
   }
 
+  _normalizeUnlockDecryptError(error) {
+    if (error?.code === "storage-unlock-permission-denied") {
+      return error;
+    }
+    if (error?.code === "storage-unlock-no-decryptor") {
+      return error;
+    }
+    if (error?.code === "storage-unlock-decrypt-failed") {
+      return error;
+    }
+
+    const rawCode =
+      typeof error?.code === "string" ? error.code.trim().toLowerCase() : "";
+    const rawMessage =
+      typeof error?.message === "string" ? error.message.toLowerCase() : "";
+
+    if (
+      rawCode === "extension-permission-denied" ||
+      rawCode === "extension-encryption-permission-denied" ||
+      rawCode.includes("permission-denied") ||
+      rawMessage.includes("permission denied") ||
+      rawMessage.includes("user rejected")
+    ) {
+      return createStorageUnlockError(
+        "storage-unlock-permission-denied",
+        "Signer permission denied while decrypting storage credentials.",
+        error,
+      );
+    }
+
+    if (
+      rawCode === "nip04-missing" ||
+      rawCode === "nip44-missing" ||
+      rawCode.includes("no-decrypt") ||
+      rawMessage.includes("does not support") ||
+      rawMessage.includes("failed to decrypt master key")
+    ) {
+      return createStorageUnlockError(
+        "storage-unlock-no-decryptor",
+        "Signer does not expose a compatible decrypt method (NIP-04/NIP-44).",
+        error,
+      );
+    }
+
+    return createStorageUnlockError(
+      "storage-unlock-decrypt-failed",
+      "Unable to decrypt the encrypted storage key.",
+      error,
+    );
+  }
+
   /**
    * Encrypts a connection payload (secrets) using the session's Master Key.
    * Uses AES-GCM with a random 12-byte IV.
@@ -404,7 +464,11 @@ export class StorageService {
 
     if (account && account.encryptedMasterKey) {
       // Decrypt existing key
-      masterKey = await this._decryptMasterKey(account.encryptedMasterKey, signer, pubkey);
+      try {
+        masterKey = await this._decryptMasterKey(account.encryptedMasterKey, signer, pubkey);
+      } catch (error) {
+        throw this._normalizeUnlockDecryptError(error);
+      }
     } else {
       // Create new key
       masterKey = await this._generateMasterKey();

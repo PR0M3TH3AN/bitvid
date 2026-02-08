@@ -23,6 +23,7 @@ import {
 } from "../utils/hashtagNormalization.js";
 import { formatTimeAgo } from "../utils/formatters.js";
 import { getActiveSigner } from "../nostr/client.js";
+import { DEFAULT_NIP07_ENCRYPTION_METHODS } from "../nostr/nip07Permissions.js";
 import { sanitizeRelayList } from "../nostr/nip46Client.js";
 import { buildPublicUrl, buildR2Key } from "../r2.js";
 import { buildProfileMetadataEvent } from "../nostrEventSchemas.js";
@@ -9984,8 +9985,16 @@ export class ProfileModalController {
     const isUnlocked = storageService && storageService.masterKeys.has(pubkey);
 
     if (this.storageStatusText) {
-      this.storageStatusText.textContent = isUnlocked ? "Unlocked" : "Locked";
-      this.storageStatusText.className = isUnlocked ? "text-xs text-status-success" : "text-xs text-status-warning";
+      if (isUnlocked) {
+        this.storageStatusText.textContent = "Unlocked";
+        this.storageStatusText.className = "text-xs text-status-success";
+      } else if (this.storageUnlockFailure?.message) {
+        this.storageStatusText.textContent = `Locked (${this.storageUnlockFailure.message})`;
+        this.storageStatusText.className = "text-xs text-status-danger";
+      } else {
+        this.storageStatusText.textContent = "Locked";
+        this.storageStatusText.className = "text-xs text-status-warning";
+      }
     }
 
     if (isUnlocked) {
@@ -10106,12 +10115,59 @@ export class ProfileModalController {
     }
   }
 
+  getStorageUnlockFailureMessage(error) {
+    const code = typeof error?.code === "string" ? error.code : "";
+
+    switch (code) {
+      case "storage-unlock-permission-denied":
+        return "Storage unlock requires extension encryption permission. Approve the prompt, then retry unlock.";
+      case "storage-unlock-no-decryptor":
+        return "Your signer cannot decrypt storage keys. Use a signer with NIP-44 or NIP-04 decrypt support.";
+      case "storage-unlock-decrypt-failed":
+        return "Unable to decrypt your saved storage key. Retry unlock and confirm the active account matches.";
+      default:
+        return typeof error?.message === "string" && error.message.trim()
+          ? error.message
+          : "Failed to unlock storage. Ensure your signer supports NIP-04/44.";
+    }
+  }
+
+  setStorageUnlockFailureState(error) {
+    const code = typeof error?.code === "string" ? error.code : "storage-unlock-decrypt-failed";
+    const message = this.getStorageUnlockFailureMessage(error);
+
+    this.storageUnlockFailure = { code, message };
+
+    if (this.storageStatusText) {
+      this.storageStatusText.textContent = `Locked (${message})`;
+      this.storageStatusText.className = "text-xs text-status-danger";
+    }
+
+    this.setStorageFormStatus(message, "error");
+  }
+
+  clearStorageUnlockFailureState() {
+    this.storageUnlockFailure = null;
+  }
+
+  async requestStorageUnlockPermissions() {
+    const client = this.services?.nostrClient;
+    if (!client || typeof client.ensureExtensionPermissions !== "function") {
+      return { ok: true };
+    }
+
+    return client.ensureExtensionPermissions(DEFAULT_NIP07_ENCRYPTION_METHODS, {
+      context: "storage-unlock",
+      statusMessage:
+        "Approve the extension prompt to allow storage encryption/decryption.",
+      showSpinner: true,
+    });
+  }
+
   async handleUnlockStorage() {
     const pubkey = this.normalizeHexPubkey(this.getActivePubkey());
     if (!pubkey) return;
 
-    // We need the active signer. Try the global first, then resolve via the
-    // nostr client which can detect/restore the NIP-07 extension signer.
     let signer = getActiveSigner();
     if (
       !signer &&
@@ -10152,6 +10208,55 @@ export class ProfileModalController {
       return;
     }
 
+    const signerType = typeof signer?.type === "string" ? signer.type.trim().toLowerCase() : "";
+    const isExtensionSigner = signerType === "extension" || signerType === "nip07";
+
+    const shouldForcePermissionRetry =
+      this.storageUnlockBtn?.dataset?.retryAction === "request-permissions";
+
+    if (shouldForcePermissionRetry) {
+      const extensionPermissionCache = this.services?.nostrClient?.extensionPermissionCache;
+      if (extensionPermissionCache instanceof Set) {
+        for (const method of DEFAULT_NIP07_ENCRYPTION_METHODS) {
+          extensionPermissionCache.delete(method);
+        }
+      }
+    }
+
+    if (isExtensionSigner) {
+      const permissionResult = await this.requestStorageUnlockPermissions();
+      if (!permissionResult?.ok) {
+        const permissionError = permissionResult?.error || new Error("Extension permissions denied.");
+        permissionError.code = "storage-unlock-permission-denied";
+        this.setStorageUnlockFailureState(permissionError);
+        this.showError(this.getStorageUnlockFailureMessage(permissionError));
+        if (this.storageUnlockBtn) {
+          this.storageUnlockBtn.dataset.retryAction = "request-permissions";
+          this.storageUnlockBtn.textContent = "Retry Permissions + Unlock";
+        }
+        return;
+      }
+    }
+
+    const caps = signer?.capabilities && typeof signer.capabilities === "object"
+      ? signer.capabilities
+      : null;
+    const hasNip44Decrypt =
+      caps?.nip44 !== false && typeof signer?.nip44Decrypt === "function";
+    const hasNip04Decrypt =
+      caps?.nip04 !== false &&
+      (typeof signer?.nip04Decrypt === "function" || typeof signer?.decrypt === "function");
+
+    if (!hasNip44Decrypt && !hasNip04Decrypt) {
+      const missingDecryptError = new Error(
+        "This signer cannot decrypt storage keys (NIP-44/NIP-04 missing).",
+      );
+      missingDecryptError.code = "storage-unlock-no-decryptor";
+      this.setStorageUnlockFailureState(missingDecryptError);
+      this.showError(this.getStorageUnlockFailureMessage(missingDecryptError));
+      return;
+    }
+
     if (this.storageUnlockBtn) {
       this.storageUnlockBtn.disabled = true;
       this.storageUnlockBtn.textContent = "Unlocking...";
@@ -10159,22 +10264,31 @@ export class ProfileModalController {
 
     try {
       await storageService.unlock(pubkey, { signer });
+      this.clearStorageUnlockFailureState();
       this.showSuccess("Storage unlocked.");
       this.populateStoragePane();
     } catch (error) {
       devLogger.error("Failed to unlock storage:", error);
-      const message =
-        error && typeof error.message === "string"
-          ? error.message
-          : "Failed to unlock storage. Ensure your signer supports NIP-04/44.";
-      this.showError(message);
+      this.setStorageUnlockFailureState(error);
+      this.showError(this.getStorageUnlockFailureMessage(error));
+      if (this.storageUnlockBtn) {
+        this.storageUnlockBtn.dataset.retryAction = "request-permissions";
+      }
     } finally {
       if (this.storageUnlockBtn) {
         this.storageUnlockBtn.disabled = false;
-        this.storageUnlockBtn.textContent = "Unlock Storage";
+        const shouldShowRetry = this.storageUnlockFailure?.code === "storage-unlock-permission-denied";
+        if (shouldShowRetry) {
+          this.storageUnlockBtn.textContent = "Retry Permissions + Unlock";
+          this.storageUnlockBtn.dataset.retryAction = "request-permissions";
+        } else {
+          this.storageUnlockBtn.textContent = "Unlock Storage";
+          delete this.storageUnlockBtn.dataset.retryAction;
+        }
       }
     }
   }
+
 
   async handleSaveStorage() {
     const pubkey = this.normalizeHexPubkey(this.getActivePubkey());
