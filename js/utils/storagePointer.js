@@ -121,3 +121,37 @@ export function resolveInfoJsonUrl({ storagePointer, url } = {}) {
 
   return normalizeInfoJsonBase(prefix);
 }
+
+export function resolveStoragePointerValue({
+  storagePointer,
+  url,
+  infoHash,
+  fallbackId,
+  provider,
+} = {}) {
+  const normalized = normalizeStoragePointer(storagePointer);
+  if (normalized) {
+    return normalized;
+  }
+
+  const derivedFromUrl = deriveStoragePointerFromUrl(url, provider || "url");
+  if (derivedFromUrl) {
+    return derivedFromUrl;
+  }
+
+  if (typeof infoHash === "string" && infoHash.trim()) {
+    return buildStoragePointerValue({
+      provider: "btih",
+      prefix: infoHash.trim().toLowerCase(),
+    });
+  }
+
+  if (typeof fallbackId === "string" && fallbackId.trim()) {
+    return buildStoragePointerValue({
+      provider: "nostr",
+      prefix: fallbackId.trim(),
+    });
+  }
+
+  return "";
+}
