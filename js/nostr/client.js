@@ -212,6 +212,7 @@ import { createNsecAdapter } from "./adapters/nsecAdapter.js";
 import { createNip46Adapter } from "./adapters/nip46Adapter.js";
 import { queueSignEvent } from "./signRequestQueue.js";
 import { EventsMap } from "./eventsMap.js";
+import { RelayBatchFetcher } from "./relayBatchFetcher.js";
 import { PersistenceManager } from "./managers/PersistenceManager.js";
 import { ConnectionManager } from "./managers/ConnectionManager.js";
 import { SignerManager } from "./managers/SignerManager.js";
@@ -579,6 +580,7 @@ export class NostrClient {
    */
   constructor() {
     this.connectionManager = new ConnectionManager(this);
+    this.relayBatchFetcher = new RelayBatchFetcher(this);
     this.signerManager = new SignerManager(this);
 
     /**
