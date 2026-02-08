@@ -1081,7 +1081,7 @@ class Application {
 
   async _initNostr() {
     // Kick off relay connection in the background.
-    nostrClient.init().catch((err) => {
+    return nostrClient.init().catch((err) => {
       devLogger.warn("[app.init()] Background nostrClient.init failed:", err);
     });
   }
