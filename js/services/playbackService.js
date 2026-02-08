@@ -1,6 +1,7 @@
 import { userLogger } from "../utils/logger.js";
 import { safeDecodeURIComponent } from "../utils/safeDecode.js";
 import { PLAYBACK_START_TIMEOUT } from "../constants.js";
+import { getCurrentVideo, setCurrentVideo } from "../state/appState.js";
 // js/services/playbackService.js
 
 /**
@@ -283,6 +284,14 @@ export class PlaybackService {
     this.probeCache = new Map();
     this.probeInFlight = new Map();
     this.probeCacheTtlMs = PROBE_CACHE_TTL_MS;
+  }
+
+  get currentVideo() {
+    return getCurrentVideo();
+  }
+
+  set currentVideo(value) {
+    setCurrentVideo(value);
   }
 
   log(...args) {

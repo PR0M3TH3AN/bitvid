@@ -139,22 +139,10 @@ import {
 import { getDesignSystemMode as getCanonicalDesignSystemMode } from "./designSystem.js";
 import { getHashViewName, setHashView } from "./hashView.js";
 import {
-  getPubkey as getStoredPubkey,
-  setPubkey as setStoredPubkey,
-  getCurrentUserNpub as getStoredCurrentUserNpub,
-  setCurrentUserNpub as setStoredCurrentUserNpub,
-  getCurrentVideo as getStoredCurrentVideo,
-  setCurrentVideo as setStoredCurrentVideo,
   setModalState as setGlobalModalState,
   subscribeToAppStateKey,
 } from "./state/appState.js";
 import {
-  getSavedProfiles,
-  getActiveProfilePubkey,
-  setActiveProfilePubkey as setStoredActiveProfilePubkey,
-  setSavedProfiles,
-  persistSavedProfiles,
-  getProfileCacheMap,
   getCachedUrlHealth as readCachedUrlHealth,
   storeUrlHealth as persistUrlHealth,
   setInFlightUrlProbe,
@@ -212,35 +200,43 @@ const RELAY_UI_BATCH_DELAY_MS = 250;
  */
 class Application {
   get pubkey() {
-    return getStoredPubkey();
+    return this.authService.pubkey;
   }
 
   set pubkey(value) {
-    setStoredPubkey(value ?? null);
+    this.authService.pubkey = value;
   }
 
   get currentUserNpub() {
-    return getStoredCurrentUserNpub();
+    return this.authService.currentUserNpub;
   }
 
   set currentUserNpub(value) {
-    setStoredCurrentUserNpub(value ?? null);
+    this.authService.currentUserNpub = value;
   }
 
   get currentVideo() {
-    return getStoredCurrentVideo();
+    return this.playbackService.currentVideo;
   }
 
   set currentVideo(value) {
-    setStoredCurrentVideo(value ?? null);
+    this.playbackService.currentVideo = value;
   }
 
   get activeProfilePubkey() {
-    return getActiveProfilePubkey();
+    return this.authService.activeProfilePubkey;
+  }
+
+  set activeProfilePubkey(value) {
+    this.authService.setActiveProfilePubkey(value, { persist: false });
   }
 
   get savedProfiles() {
-    return getSavedProfiles();
+    return this.authService.savedProfiles;
+  }
+
+  set savedProfiles(value) {
+    this.authService.setSavedProfiles(value, { persist: false, persistActive: false });
   }
 
   constructor({ services = {}, ui = {}, helpers = {}, loadView: viewLoader } = {}) {
@@ -604,7 +600,7 @@ class Application {
         queueSignEvent,
         bootstrapTrustedSeeds,
         getModerationSettings,
-        getActiveProfilePubkey,
+        getActiveProfilePubkey: () => this.authService.activeProfilePubkey,
       })),
       writable: true,
       configurable: true,
@@ -689,7 +685,7 @@ class Application {
   }
 
   persistActiveProfileSelection(pubkey, { persist = true } = {}) {
-    setStoredActiveProfilePubkey(pubkey, { persist });
+    this.authService.setActiveProfilePubkey(pubkey, { persist });
     this.renderSavedProfiles();
   }
 
