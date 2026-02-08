@@ -11,7 +11,7 @@ import {
   WATCH_HISTORY_BATCH_PAGE_SIZE
 } from "./config.js";
 import { getApplication } from "./applicationContext.js";
-import { userLogger } from "./utils/logger.js";
+import { devLogger, userLogger } from "./utils/logger.js";
 import {
   normalizeVideoModerationContext,
   applyModerationContextDatasets,
@@ -1391,6 +1391,7 @@ export function buildHistoryCard({ item, video, profile, variant }) {
 }
 
 export function createWatchHistoryRenderer(config = {}) {
+  let hasLoggedFeedRegistrationFallback = false;
   const {
     container = typeof document !== "undefined" ? document : null,
     fetchHistory = async (
@@ -1400,25 +1401,40 @@ export function createWatchHistoryRenderer(config = {}) {
       const app = getAppInstance();
       const engine = app?.feedEngine;
       if (engine && typeof engine.run === "function") {
+        let hasFeedDefinition =
+          typeof engine.getFeedDefinition === "function"
+            ? Boolean(engine.getFeedDefinition("watch-history"))
+            : true;
         // Ensure the watch-history feed is registered. It may not be if the
         // feed engine was ready but registration was silently skipped during
         // bootstrap (e.g. timing edge cases).
-        if (
-          typeof engine.getFeedDefinition === "function" &&
-          !engine.getFeedDefinition("watch-history") &&
-          typeof app.registerWatchHistoryFeed === "function"
-        ) {
-          app.registerWatchHistoryFeed();
+        if (!hasFeedDefinition && typeof app.registerWatchHistoryFeed === "function") {
+          try {
+            app.registerWatchHistoryFeed();
+          } catch (registerError) {
+            // Fall through to service fallback if registration fails.
+          }
+          hasFeedDefinition =
+            typeof engine.getFeedDefinition === "function"
+              ? Boolean(engine.getFeedDefinition("watch-history"))
+              : hasFeedDefinition;
         }
-        try {
-          const runtime = buildWatchHistoryFeedRuntime({
-            actor: actorInput,
-            cursor,
-            forceRefresh,
-          });
-          return await engine.run("watch-history", { runtime });
-        } catch (feedError) {
-          // Fall through to service fallback if feed is still not registered
+        if (hasFeedDefinition) {
+          try {
+            const runtime = buildWatchHistoryFeedRuntime({
+              actor: actorInput,
+              cursor,
+              forceRefresh,
+            });
+            return await engine.run("watch-history", { runtime });
+          } catch (feedError) {
+            // Fall through to service fallback if feed is still not registered
+          }
+        } else if (!hasLoggedFeedRegistrationFallback) {
+          hasLoggedFeedRegistrationFallback = true;
+          devLogger.info(
+            "[historyView] watch-history feed unavailable after registration attempt; using service fallback.",
+          );
         }
       }
       const items = await watchHistoryService.loadLatest(actorInput, {
