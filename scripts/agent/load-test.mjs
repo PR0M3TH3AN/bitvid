@@ -346,20 +346,36 @@ function generateReport() {
         max: Math.max(...stats.signingTimes, 0)
     },
     resources: stats.resourceUsage,
-    topBottlenecks: [],
+    topHotFunctions: [],
+    errors: stats.errors,
     proposedRemediation: []
   };
 
-  // Analysis
-  if (stats.errors > 0) {
-    report.topBottlenecks.push("High error rate detected");
+  // Analysis & Heuristics for "Hot Functions"
+  // Since we don't have a sampling profiler attached, we infer hotspots from timing data.
+
+  // Always report signing time as it's the primary CPU consumer
+  report.topHotFunctions.push({
+      function: "finalizeEvent (client signing)",
+      avgTime: `${avgSignTime.toFixed(2)}ms`,
+      impact: avgSignTime > 10 ? "High CPU usage" : "Moderate CPU usage"
+  });
+
+  if (avgSignTime > 10) {
+      report.proposedRemediation.push("Use optimized crypto library (e.g. secp256k1-wasm) or offload signing to a worker/signer.");
   }
+
   if (p99 > 1000) {
-    report.topBottlenecks.push("High p99 latency (>1s)");
+    report.topHotFunctions.push({
+        function: "Relay Processing / Network RTT",
+        avgTime: `${p99}ms (p99)`,
+        impact: "High latency for end users"
+    });
+    report.proposedRemediation.push("Investigate relay event processing loop or network bandwidth.");
   }
-  if (avgSignTime > 10) { // arbitrary threshold for JS signing
-      report.topBottlenecks.push(`Slow client-side signing (avg ${avgSignTime.toFixed(2)}ms)`);
-      report.proposedRemediation.push("Use optimized crypto library or offload signing.");
+
+  if (stats.errors > 0) {
+     report.proposedRemediation.push("Investigate error logs for connection drops or timeouts.");
   }
 
   // Output
