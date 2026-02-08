@@ -3480,6 +3480,95 @@ class Application {
     this.updatePermissionPromptCta();
   }
 
+  async handleAuthSyncRetryRequest() {
+    const activePubkey = this.normalizeHexPubkey(this.pubkey);
+    if (!activePubkey) {
+      return;
+    }
+
+    this.updateAuthLoadingState({ lists: "loading" });
+
+    const taskResults = await Promise.allSettled([
+      Promise.resolve()
+        .then(() => this.authService?.loadBlocksForPubkey?.(activePubkey, {
+          allowPermissionPrompt: true,
+        }))
+        .then((loaded) => ({ name: "blocks", ok: loaded !== false }))
+        .catch((error) => ({ name: "blocks", ok: false, error })),
+      Promise.resolve()
+        .then(() => subscriptions?.ensureLoaded?.(activePubkey, {
+          allowPermissionPrompt: true,
+        }))
+        .then(() => ({
+          name: "subscriptions",
+          ok: !subscriptions?.lastLoadError,
+          error: subscriptions?.lastLoadError || null,
+        }))
+        .catch((error) => ({ name: "subscriptions", ok: false, error })),
+      Promise.resolve()
+        .then(() => this.hashtagPreferences?.load?.(activePubkey, {
+          allowPermissionPrompt: true,
+        }))
+        .then(() => {
+          const error = this.hashtagPreferences?.lastLoadError || null;
+          if (!error) {
+            this.updateCachedHashtagPreferences();
+          }
+          return {
+            name: "hashtags",
+            ok: !error,
+            error,
+          };
+        })
+        .catch((error) => ({ name: "hashtags", ok: false, error })),
+    ]);
+
+    const tasks = taskResults.map((result) =>
+      result.status === "fulfilled"
+        ? result.value
+        : {
+            name: "unknown",
+            ok: false,
+            error: result.reason || null,
+          },
+    );
+    const hasFailure = tasks.some((task) => !task.ok);
+
+    this.updateAuthLoadingState({
+      lists: hasFailure ? "error" : "ready",
+      listsDetail: {
+        ready: !hasFailure,
+        degraded: hasFailure,
+        error: hasFailure,
+        retryScheduled: false,
+        retryCompleted: true,
+        tasks: tasks.map((task) => ({
+          name: task.name,
+          ok: task.ok,
+          fromCache: false,
+          error: task.error || null,
+        })),
+      },
+    });
+
+    this.dispatchAuthChange({
+      status: "auth-sync-retry",
+      loggedIn: true,
+      pubkey: activePubkey,
+      authLoadingState: this.authLoadingState,
+    });
+
+    if (this.profileController) {
+      this.profileController.populateBlockedList();
+      void this.profileController.populateSubscriptionsList();
+      this.profileController.populateHashtagPreferences();
+    }
+
+    if (!hasFailure) {
+      await this.onVideosShouldRefresh({ reason: "auth-sync-retry-success" });
+    }
+  }
+
   async handleAuthLogin(...args) {
     this._initCoordinators();
     return this._auth.handleAuthLogin(...args);
