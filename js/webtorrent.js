@@ -706,34 +706,44 @@ export class TorrentClient {
       });
   }
 
-  // Handle Chrome-based browsers
-  handleChromeTorrent(torrent, videoElement, resolve, reject) {
-    // Prune demo web seeds/trackers that chronically trip Chromium CORS and
-    // deliberately mutate `torrent._opts` as a sanctioned WebTorrent workaround.
-    torrent.on("warning", (err) => {
-      if (err && typeof err.message === "string") {
-        if (
-          err.message.includes("CORS") ||
-          err.message.includes("Access-Control-Allow-Origin")
-        ) {
-          userLogger.warn(
-            "CORS warning detected. Attempting to remove the failing webseed/tracker."
-          );
-          if (torrent._opts?.urlList?.length) {
-            torrent._opts.urlList = torrent._opts.urlList.filter((url) => {
-              return !url.includes("distribution.bbb3d.renderfarming.net");
-            });
-            userLogger.warn("Cleaned up webseeds =>", torrent._opts.urlList);
-          }
-          if (torrent._opts?.announce?.length) {
-            torrent._opts.announce = torrent._opts.announce.filter((url) => {
-              return !url.includes("fastcast.nz");
-            });
-            userLogger.warn("Cleaned up trackers =>", torrent._opts.announce);
+  handleTorrentStream(
+    torrent,
+    videoElement,
+    resolve,
+    reject,
+    context = "chrome"
+  ) {
+    const isChrome = context === "chrome";
+    const isFirefox = context === "firefox";
+
+    // Chrome-specific: Prune demo web seeds/trackers that chronically trip Chromium CORS
+    // and deliberately mutate `torrent._opts` as a sanctioned WebTorrent workaround.
+    if (isChrome) {
+      torrent.on("warning", (err) => {
+        if (err && typeof err.message === "string") {
+          if (
+            err.message.includes("CORS") ||
+            err.message.includes("Access-Control-Allow-Origin")
+          ) {
+            userLogger.warn(
+              "CORS warning detected. Attempting to remove the failing webseed/tracker."
+            );
+            if (torrent._opts?.urlList?.length) {
+              torrent._opts.urlList = torrent._opts.urlList.filter((url) => {
+                return !url.includes("distribution.bbb3d.renderfarming.net");
+              });
+              userLogger.warn("Cleaned up webseeds =>", torrent._opts.urlList);
+            }
+            if (torrent._opts?.announce?.length) {
+              torrent._opts.announce = torrent._opts.announce.filter((url) => {
+                return !url.includes("fastcast.nz");
+              });
+              userLogger.warn("Cleaned up trackers =>", torrent._opts.announce);
+            }
           }
         }
-      }
-    });
+      });
+    }
 
     const file = torrent.files.find((f) => /\.(mp4|webm|mkv)$/i.test(f.name));
     if (!file) {
@@ -744,18 +754,23 @@ export class TorrentClient {
     videoElement.crossOrigin = "anonymous";
 
     videoElement.addEventListener("error", (e) => {
-      this.log("Video error:", e.target.error);
+      this.log(`Video error (${context} path):`, e.target.error);
     });
 
     const tryStart = () => {
-      this.attemptAutoplay(videoElement, "chrome");
+      this.attemptAutoplay(videoElement, context);
     };
 
     videoElement.addEventListener("canplay", tryStart, { once: true });
     videoElement.addEventListener("loadeddata", tryStart, { once: true });
 
     try {
-      file.streamTo(videoElement);
+      const streamOptions = {};
+      if (isFirefox) {
+        streamOptions.highWaterMark = 256 * 1024;
+      }
+      file.streamTo(videoElement, streamOptions);
+
       // If the video is already ready (e.g. from cache or fast load), try starting immediately
       if (videoElement.readyState >= 3) {
         tryStart();
@@ -763,54 +778,12 @@ export class TorrentClient {
       this.currentTorrent = torrent;
       resolve(torrent);
     } catch (err) {
-      this.log("Streaming error (Chrome path):", err);
+      this.log(`Streaming error (${context} path):`, err);
       reject(err);
     }
 
     torrent.on("error", (err) => {
-      this.log("Torrent error (Chrome path):", err);
-      reject(err);
-    });
-  }
-
-  // Handle Firefox-based browsers
-  handleFirefoxTorrent(torrent, videoElement, resolve, reject) {
-    const file = torrent.files.find((f) =>
-      /\.(mp4|webm|mkv)$/.test(f.name.toLowerCase())
-    );
-    if (!file) {
-      return reject(new Error("No compatible video file found in torrent"));
-    }
-
-    // Satisfy autoplay requirements and keep cross-origin chunks usable (e.g., for snapshots).
-    videoElement.crossOrigin = "anonymous";
-
-    videoElement.addEventListener("error", (e) => {
-      this.log("Video error (Firefox path):", e.target.error);
-    });
-
-    const tryStart = () => {
-      this.attemptAutoplay(videoElement, "firefox");
-    };
-
-    videoElement.addEventListener("canplay", tryStart, { once: true });
-    videoElement.addEventListener("loadeddata", tryStart, { once: true });
-
-    try {
-      file.streamTo(videoElement, { highWaterMark: 256 * 1024 });
-      // If the video is already ready (e.g. from cache or fast load), try starting immediately
-      if (videoElement.readyState >= 3) {
-        tryStart();
-      }
-      this.currentTorrent = torrent;
-      resolve(torrent);
-    } catch (err) {
-      this.log("Streaming error (Firefox path):", err);
-      reject(err);
-    }
-
-    torrent.on("error", (err) => {
-      this.log("Torrent error (Firefox path):", err);
+      this.log(`Torrent error (${context} path):`, err);
       reject(err);
     });
   }
@@ -932,14 +905,14 @@ export class TorrentClient {
             { ...chromeOptions, maxWebConns: 4 },
             (torrent) => {
               this.log("Torrent added (Firefox path):", torrent.name);
-              this.handleFirefoxTorrent(torrent, videoElement, resolve, reject);
+              this.handleTorrentStream(torrent, videoElement, resolve, reject, "firefox");
             }
           );
         } else {
           this.log("Starting torrent download (Chrome path)");
           this.client.add(magnetURI, chromeOptions, (torrent) => {
             this.log("Torrent added (Chrome path):", torrent.name);
-            this.handleChromeTorrent(torrent, videoElement, resolve, reject);
+            this.handleTorrentStream(torrent, videoElement, resolve, reject, "chrome");
           });
         }
       });
