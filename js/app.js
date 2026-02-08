@@ -1079,41 +1079,9 @@ class Application {
     }
   }
 
-      accessControl
-        .refresh()
-        .then(() => {
-          if (
-            accessControl.lastError &&
-            accessControl.lastError?.code === "nostr-unavailable"
-          ) {
-            devLogger.warn(
-              "[app.init()] Access control refresh should not run before nostrClient.init()",
-              accessControl.lastError
-            );
-          }
-        })
-        .catch((error) => {
-          devLogger.warn(
-            "[app.init()] Failed to process session actor change:",
-            error,
-          );
-        });
-      });
-    }
-
-      if (this.profileController) {
-        Promise.resolve()
-          .then(() => this.profileController.refreshAdminPaneState())
-          .catch((error) => {
-            devLogger.warn(
-              "Failed to update admin pane after connecting to Nostr:",
-              error
-            );
-          });
-      }
-
+  async _initNostr() {
     // Kick off relay connection in the background.
-    nostrClient.init().catch((err) => {
+    return nostrClient.init().catch((err) => {
       devLogger.warn("[app.init()] Background nostrClient.init failed:", err);
     });
   }
