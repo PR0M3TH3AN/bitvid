@@ -122,7 +122,7 @@ describe('js/designSystem/dynamicStyles.js', () => {
        const checkSheet = (sheet) => {
         for (const rule of sheet.cssRules) {
              if (rule.selectorText.includes(scopeId)) {
-                 ruleStyle = rule.style;
+                 ruleStyle = rule['style'];
              }
         }
       };
@@ -147,7 +147,7 @@ describe('js/designSystem/dynamicStyles.js', () => {
        const checkSheet = (sheet) => {
         for (const rule of sheet.cssRules) {
              if (rule.selectorText.includes(scopeId)) {
-                 ruleStyle = rule.style;
+                 ruleStyle = rule['style'];
              }
         }
       };
