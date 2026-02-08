@@ -8066,6 +8066,8 @@ export class ProfileModalController {
     }
 
     const service = this.hashtagPreferencesService || {};
+    const loadState =
+      typeof service.getLoadState === "function" ? service.getLoadState() : null;
 
     const interestsSource = Array.isArray(snapshot?.interests)
       ? snapshot.interests
@@ -8081,6 +8083,17 @@ export class ProfileModalController {
     return {
       interests: this.sanitizeHashtagList(interestsSource),
       disinterests: this.sanitizeHashtagList(disinterestsSource),
+      uiReady:
+        loadState?.uiReady === true ||
+        service.uiReady === true ||
+        (!loadState && service.uiReady !== false),
+      dataReady:
+        loadState?.dataReady === true ||
+        service.dataReady === true ||
+        (!loadState && service.dataReady !== false),
+      lastLoadError: loadState?.lastLoadError || service.lastLoadError || null,
+      loadedFromCache:
+        loadState?.loadedFromCache === true || service.loadedFromCache === true,
     };
   }
 
@@ -8343,11 +8356,37 @@ export class ProfileModalController {
   populateHashtagPreferences(preferences = null) {
     const snapshot = this.getResolvedHashtagPreferences(preferences);
 
+    if (!snapshot.uiReady) {
+      this.setHashtagStatus("Loading hashtag preferences…", "info");
+      this.renderHashtagList("interest", []);
+      this.renderHashtagList("disinterest", []);
+      this.refreshHashtagBackgroundStatus();
+      return;
+    }
+
+    if (!snapshot.dataReady) {
+      const message = snapshot.lastLoadError
+        ? "Couldn’t sync hashtag preferences. Retry to load your lists."
+        : "Hashtag preferences are unavailable right now. Retry to sync.";
+      this.setHashtagStatus(message, "warning");
+      this.renderHashtagList("interest", []);
+      this.renderHashtagList("disinterest", []);
+      this.refreshHashtagBackgroundStatus();
+      return;
+    }
+
     this.renderHashtagList("interest", snapshot.interests);
     this.renderHashtagList("disinterest", snapshot.disinterests);
 
     if (!snapshot.interests.length && !snapshot.disinterests.length) {
-      this.setHashtagStatus("", "muted");
+      if (snapshot.loadedFromCache) {
+        this.setHashtagStatus(
+          "No hashtag preferences yet (showing cached state).",
+          "info",
+        );
+      } else {
+        this.setHashtagStatus("", "muted");
+      }
     }
     this.refreshHashtagBackgroundStatus();
   }
@@ -8911,6 +8950,31 @@ export class ProfileModalController {
     }
 
     try {
+      const loadState =
+        typeof service.getLoadState === "function" ? service.getLoadState() : {};
+      const uiReady = loadState?.uiReady === true || service.uiReady === true;
+      const dataReady = loadState?.dataReady === true || service.dataReady === true;
+      const lastLoadError = loadState?.lastLoadError || service.lastLoadError || null;
+
+      if (!uiReady) {
+        this.clearSubscriptionsList("Loading subscriptions…");
+        this.setSubscriptionsStatus("Loading subscriptions…", "info");
+        this.refreshSubscriptionsBackgroundStatus();
+        return;
+      }
+
+      if (!dataReady) {
+        this.clearSubscriptionsList("Subscriptions unavailable. Retry to sync your list.");
+        this.setSubscriptionsStatus(
+          lastLoadError
+            ? "Couldn’t sync subscriptions. Retry to load your list."
+            : "Subscriptions unavailable right now. Retry to sync your list.",
+          "warning",
+        );
+        this.refreshSubscriptionsBackgroundStatus();
+        return;
+      }
+
       let sourceEntries = [];
 
       if (Array.isArray(subscriptions) && subscriptions.length) {
@@ -9003,6 +9067,7 @@ export class ProfileModalController {
       this.subscriptionList.innerHTML = "";
 
       if (!deduped.length) {
+        this.setSubscriptionsStatus("No subscriptions yet.", "muted");
         this.subscriptionListEmpty.classList.remove("hidden");
         this.subscriptionList.classList.add("hidden");
         this.refreshSubscriptionsBackgroundStatus();
@@ -9108,13 +9173,17 @@ export class ProfileModalController {
     }
   }
 
-  clearSubscriptionsList() {
+  clearSubscriptionsList(emptyMessage = "No subscriptions yet.") {
     if (this.subscriptionList instanceof HTMLElement) {
       this.subscriptionList.innerHTML = "";
       this.subscriptionList.classList.add("hidden");
     }
 
     if (this.subscriptionListEmpty instanceof HTMLElement) {
+      this.subscriptionListEmpty.textContent =
+        typeof emptyMessage === "string" && emptyMessage.trim()
+          ? emptyMessage.trim()
+          : "No subscriptions yet.";
       this.subscriptionListEmpty.classList.remove("hidden");
     }
   }

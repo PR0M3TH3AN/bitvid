@@ -2223,6 +2223,22 @@ class Application {
       (detail?.loaded === false
         ? false
         : Boolean(service && service.loaded));
+    const uiReady =
+      detail?.uiReady === true ||
+      (detail?.uiReady === false
+        ? false
+        : Boolean(service && service.uiReady));
+    const dataReady =
+      detail?.dataReady === true ||
+      (detail?.dataReady === false
+        ? false
+        : Boolean(service && service.dataReady));
+    const loadedFromCache =
+      detail?.loadedFromCache === true ||
+      (detail?.loadedFromCache === false
+        ? false
+        : Boolean(service && service.loadedFromCache));
+    const lastLoadError = detail?.lastLoadError || service?.lastLoadError || null;
 
     return {
       interests: this.normalizeHashtagPreferenceList(sourceInterests),
@@ -2230,6 +2246,10 @@ class Application {
       eventId: rawEventId || null,
       createdAt,
       loaded,
+      uiReady,
+      dataReady,
+      loadedFromCache,
+      lastLoadError,
       action,
     };
   }
@@ -2249,8 +2269,22 @@ class Application {
       ? Number(snapshot.createdAt)
       : "";
     const loaded = snapshot.loaded === true ? "1" : "0";
+    const uiReady = snapshot.uiReady === true ? "1" : "0";
+    const dataReady = snapshot.dataReady === true ? "1" : "0";
+    const loadedFromCache = snapshot.loadedFromCache === true ? "1" : "0";
+    const lastLoadError = snapshot?.lastLoadError?.code || "";
 
-    return [interests, disinterests, eventId, createdAt, loaded].join("|");
+    return [
+      interests,
+      disinterests,
+      eventId,
+      createdAt,
+      loaded,
+      uiReady,
+      dataReady,
+      loadedFromCache,
+      lastLoadError,
+    ].join("|");
   }
 
   updateCachedHashtagPreferences(detail = {}) {
@@ -2264,6 +2298,10 @@ class Application {
       eventId: snapshot.eventId,
       createdAt: snapshot.createdAt,
       loaded: snapshot.loaded,
+      uiReady: snapshot.uiReady,
+      dataReady: snapshot.dataReady,
+      loadedFromCache: snapshot.loadedFromCache,
+      lastLoadError: snapshot.lastLoadError,
       action: snapshot.action,
     };
     this.hashtagPreferencesSnapshotSignature = signature;
@@ -2334,6 +2372,10 @@ class Application {
         ? Number(snapshot.createdAt)
         : null,
       loaded: snapshot.loaded === true,
+      uiReady: snapshot.uiReady === true,
+      dataReady: snapshot.dataReady === true,
+      loadedFromCache: snapshot.loadedFromCache === true,
+      lastLoadError: snapshot.lastLoadError || null,
     };
   }
 
