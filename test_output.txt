@@ -1,29 +1,46 @@
+
+→ Running tests/nostr/integration-remote-flow.test.mjs
+VIEW RESULT ERROR: { ok: false, error: 'missing-actor' }
 TAP version 13
-# Subtest: WebTorrent Regression Tests
-    # Subtest: probePeers should report healthy if webseed is present even with 0 peers
-    ok 1 - probePeers should report healthy if webseed is present even with 0 peers
-      ---
-      duration_ms: 204.415485
-      type: 'test'
-      ...
-    # Subtest: probePeers should report unhealthy if no webseed and 0 peers
-    ok 2 - probePeers should report unhealthy if no webseed and 0 peers
-      ---
-      duration_ms: 52.544489
-      type: 'test'
-      ...
-    1..2
-ok 1 - WebTorrent Regression Tests
+# Subtest: nostr login + remote signing + publish + watch history integration
+not ok 1 - nostr login + remote signing + publish + watch history integration
   ---
-  duration_ms: 259.856073
-  type: 'suite'
+  duration_ms: 60.800483
+  type: 'test'
+  location: '/app/tests/nostr/integration-remote-flow.test.mjs:52:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    false !== true
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///app/tests/nostr/integration-remote-flow.test.mjs:272:83)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
   ...
 1..1
-# tests 2
-# suites 1
-# pass 2
-# fail 0
+# tests 1
+# suites 0
+# pass 0
+# fail 1
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 269.477515
+# duration_ms 72.354406
+file:///app/scripts/run-targeted-tests.mjs:44
+        reject(new Error(`${relativePath} failed with exit code ${code}`));
+               ^
+
+Error: tests/nostr/integration-remote-flow.test.mjs failed with exit code 1
+    at ChildProcess.<anonymous> (file:///app/scripts/run-targeted-tests.mjs:44:16)
+    at ChildProcess.emit (node:events:519:28)
+    at maybeClose (node:internal/child_process:1101:16)
+    at ChildProcess._handle.onexit (node:internal/child_process:304:5)
+
+Node.js v22.22.0

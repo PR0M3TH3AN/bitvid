@@ -3057,8 +3057,8 @@ export class NostrClient {
     return this.signerManager.disconnectRemoteSigner(options);
   }
 
-  async ensureSessionActor() {
-    return this.signerManager.ensureSessionActor();
+  async ensureSessionActor(...args) {
+    return this.signerManager.ensureSessionActor(...args);
   }
 
   clearStoredSessionActor() {

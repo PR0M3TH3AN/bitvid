@@ -130,6 +130,7 @@ test("nostr login + remote signing + publish + watch history integration", async
 
   const toolkit = {
     finalizeEvent,
+    generateSecretKey,
     getEventHash,
     getPublicKey,
     nip04,
