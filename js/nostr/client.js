@@ -955,6 +955,17 @@ export class NostrClient {
     }
   }
 
+  resolveEventDTag(event, fallbackEvent = null) {
+    if (event && typeof event === "object") {
+      const dTag = getDTagValueFromTags(event.tags);
+      if (dTag) return dTag;
+    }
+    if (fallbackEvent && typeof fallbackEvent === "object") {
+      return getDTagValueFromTags(fallbackEvent.tags);
+    }
+    return null;
+  }
+
   getActiveKey(video) {
     return getActiveKey(video);
   }
@@ -2970,20 +2981,6 @@ export class NostrClient {
    * @returns {Promise<import("nostr-tools").Event>} The signed and published edit event.
    * @throws {Error} If permission denied, ownership mismatch, or publish failure.
    */
-  /**
-   * Registers a private key signer and sets it as active.
-   *
-   * @param {object} params
-   * @param {string} params.privateKey - Hex-encoded private key.
-   * @param {string} params.pubkey - Hex-encoded public key.
-   */
-  async registerPrivateKeySigner({ privateKey, pubkey }) {
-    const adapter = await createNsecAdapter({ privateKey, pubkey });
-    this.signerManager.setActiveSigner(adapter);
-    // Also set session actor for worker-based encryption
-    this.sessionActor = { privateKey, pubkey, source: "nsec" };
-  }
-
   async ensureActiveSignerForPubkey(pubkey) {
     return this.signerManager.ensureActiveSignerForPubkey(pubkey);
   }
@@ -3015,7 +3012,33 @@ export class NostrClient {
   }
 
   async registerPrivateKeySigner(params) {
-    return this.signerManager.registerPrivateKeySigner(params);
+    let { pubkey } = params || {};
+    const { privateKey } = params || {};
+
+    if (!pubkey && privateKey) {
+      try {
+        const tools = await ensureNostrTools();
+        if (tools && typeof tools.getPublicKey === "function") {
+          pubkey = tools.getPublicKey(privateKey);
+        }
+      } catch (err) {
+        devLogger.warn("[nostr] Failed to derive pubkey in registerPrivateKeySigner:", err);
+      }
+    }
+
+    const effectiveParams = { ...params, pubkey };
+    const resultPubkey = await this.signerManager.registerPrivateKeySigner(effectiveParams);
+
+    // Explicitly update the session actor so worker-based encryption can use the private key
+    // even if it wasn't persisted by the SignerManager.
+    if (privateKey) {
+      this.sessionActor = {
+        privateKey,
+        pubkey: resultPubkey,
+        source: "nsec",
+      };
+    }
+    return resultPubkey;
   }
 
   installNip46Client(rpcClient, options) {
