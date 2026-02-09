@@ -214,7 +214,8 @@ import { queueSignEvent } from "./signRequestQueue.js";
 import { EventsMap } from "./eventsMap.js";
 import { PersistenceManager } from "./managers/PersistenceManager.js";
 import { ConnectionManager } from "./managers/ConnectionManager.js";
-import { SignerManager } from "./managers/SignerManager.js";
+import { SignerManager, resolveSignerCapabilities } from "./managers/SignerManager.js";
+import { RelayBatchFetcher } from "./relayBatchFetcher.js";
 
 function normalizeProfileFromEvent(event) {
   if (!event || !event.content) return null;
@@ -580,6 +581,7 @@ export class NostrClient {
   constructor() {
     this.connectionManager = new ConnectionManager(this);
     this.signerManager = new SignerManager(this);
+    this.relayBatchFetcher = new RelayBatchFetcher(this);
 
     /**
      * @type {Map<string, object>}
@@ -2960,6 +2962,16 @@ export class NostrClient {
 
   logout() {
     return this.signerManager.logout();
+  }
+
+  async registerPrivateKeySigner({ privateKey, pubkey }) {
+    if (!privateKey) {
+      throw new Error("Private key required to register signer.");
+    }
+    const adapter = await createNsecAdapter({ privateKey, pubkey });
+    this.signerManager.setActiveSigner(adapter);
+    this.pubkey = adapter.pubkey;
+    return adapter;
   }
 
   async editVideo(originalEventStub, updatedData, userPubkey) {
