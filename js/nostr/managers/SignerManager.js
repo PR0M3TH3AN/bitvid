@@ -85,7 +85,7 @@ export function resolveSignerCapabilities(signer) {
   };
 }
 
-function hydrateExtensionSignerCapabilities(signer) {
+export function hydrateExtensionSignerCapabilities(signer) {
   if (!signer || typeof signer !== "object") {
     return;
   }
@@ -116,7 +116,7 @@ function hydrateExtensionSignerCapabilities(signer) {
   }
 }
 
-function attachNipMethodAliases(signer) {
+export function attachNipMethodAliases(signer) {
   if (!signer || typeof signer !== "object") {
     return;
   }
