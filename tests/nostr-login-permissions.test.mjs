@@ -55,6 +55,7 @@ function setupLoginEnvironment({ enableImpl, getPublicKey = HEX_PUBKEY } = {}) {
       return Promise.resolve();
     },
     getPublicKey: () => Promise.resolve(getPublicKey),
+    signEvent: () => Promise.resolve({ id: "mock_sig" }),
   };
 
   windowRef.nostr = nostrStub;
@@ -100,7 +101,7 @@ function setupLoginEnvironment({ enableImpl, getPublicKey = HEX_PUBKEY } = {}) {
     nostrClient.extensionPermissionCache &&
     typeof nostrClient.extensionPermissionCache.clear === "function"
   ) {
-    nostrClient.extensionPermissionCache.clear();
+      nostrClient.extensionPermissionCache.clear();
   }
   clearStoredPermissions();
 
@@ -160,6 +161,7 @@ describe("NIP-07 Login Permissions", () => {
 
   it("NIP-07 login requests decrypt permissions upfront", async () => {
     const env = setupLoginEnvironment();
+    if (nostrClient.extensionPermissionCache) nostrClient.extensionPermissionCache.clear();
     try {
       const result = await nip07Provider.login({ nostrClient });
       const pubkey = result.pubkey;

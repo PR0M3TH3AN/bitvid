@@ -7,20 +7,22 @@ bitvid is a decentralized platform that supports multiple ways to share video co
 bitvid offers three ways to publish content:
 
 1.  **Direct Upload:** Upload a video file from your device to your configured storage bucket (R2 or S3). The client handles the upload, generates a magnet link for WebTorrent, and publishes the metadata to Nostr.
-2.  **External Link:** Provide a direct URL to a video file hosted elsewhere (e.g., on a personal server or another CDN). This URL serves as the primary playback source.
-3.  **Magnet Link:** assist the network by providing a magnet link for an existing torrent. Note that magnet-only uploads require at least one active seeder to be playable.
+2.  **External Link:** Provide a direct URL to a video file hosted elsewhere (e.g., on a personal server or another CDN). This URL serves as the primary playback source. **Note:** External URLs must use **HTTPS**.
+3.  **Magnet Link:** Assist the network by providing a magnet link for an existing torrent. Note that magnet-only uploads require at least one active seeder to be playable.
 
 ## Supported Media & Limits
 
 Before you start, ensure your content meets the following requirements:
 
 ### Accepted File Types
-- **Video:** `.mp4`, `.webm`, `.mov`, `.mkv`, `.ts`, `.m3u8`, `.mpg`, `.mpeg`
-- **Thumbnail:** Any standard image format (`image/*`)
+- **Video:** `.mp4`, `.webm`, `.mov`, `.mkv`, `.ts`, `.m3u8`, `.mpg`, `.mpeg`.
+- **Thumbnail:** Any standard image format (`image/*`) supported by your browser.
+
+> **Note:** The file picker restricts selection to these formats, but the backend handles standard video MIME types (`video/*`). Ensure your container format is supported by modern browsers for playback.
 
 ### File Size
 - **Recommended:** Up to **2GB** per file.
-- **Why?** Browser-based uploads rely on your device's memory for hashing and chunk management. Files larger than 2GB may cause browser instability or crashes.
+- **Why?** Browser-based uploads rely on your device's memory for hashing (to generate the WebTorrent info hash). Files larger than 2GB may cause browser instability or crashes depending on your available RAM.
 
 ## Metadata & Options
 
@@ -79,7 +81,7 @@ bitvid will attempt to configure CORS automatically if your API keys have "Admin
   }
 ]
 ```
-> **Note:** Replace `AllowedOrigins` with your actual origins. If you are using the official site, keep `https://bitvid.network`. If you are running a local instance, use `http://localhost:5500`.
+> **Note:** Replace `AllowedOrigins` with your actual origins. If you are using the official site, keep `https://bitvid.network`. If you are running a local instance, use `http://localhost:5500` or your custom domain.
 
 **S3 Compatible Providers:**
 bitvid will attempt to configure CORS automatically for generic S3 providers if your credentials have sufficient permissions. However, if uploads fail with CORS errors, apply a similar policy manually in your provider's console.
@@ -115,22 +117,23 @@ bitvid will verify your credentials by attempting to list or upload a test file.
 
 ### Common Issues
 
-- **CORS Errors:** If you see "Network Error" or "CORS" in the console during upload, verify your bucket's CORS policy matches the JSON above. Ensure `AllowedHeaders` includes `*` or `amz-sdk-*`.
-- **Upload Fails Immediately:** Check your API credentials and ensure the bucket name is correct.
+- **CORS Errors ("Network Error"):** If uploads fail immediately or the console shows "CORS", verify your bucket's CORS policy matches the JSON above. Ensure `AllowedHeaders` includes `*` and `ExposeHeaders` lists `ETag`.
+- **Permission Errors ("Access Denied"):** Check your API credentials. Ensure the token has `Object Read & Write` permissions (specifically `s3:PutObject` and `s3:DeleteObject`).
 - **Browser Crashes / Slow Performance:** Large files (>2GB) can exhaust browser memory during the hashing process. Try using a smaller file or ensuring you have plenty of free RAM.
-- **Playback Issues:** If the video uploads but doesn't play, ensure the "Public Access URL" is correct and publicly reachable.
+- **Playback Issues:** If the video uploads but doesn't play, ensure the "Public Access URL" is correct and publicly reachable. Test the URL directly in a browser.
+- **Protocol Errors:** Ensure all external video URLs use `https://`. HTTP is not supported for security reasons.
 
 ## Upload Lifecycle & Moderation
 
 ### How Uploads Work
 1. **Direct Upload:** Your browser uploads the file directly to your storage bucket. No video data passes through a bitvid server.
-2. **Client-Side Hashing:** Your browser calculates a cryptographic hash (info hash) of the file to enable WebTorrent support.
-3. **Publication**: The video metadata (title, URL, hash, tags) is signed by your Nostr key and published to relays.
+2. **Client-Side Hashing:** Your browser calculates a cryptographic hash (info hash) of the file locally to enable WebTorrent support.
+3. **Publication:** The video metadata (title, URL, hash, tags) is signed by your Nostr key and published to relays.
 
 ### Moderation & Visibility
-While publication is decentralized and permissionless, the bitvid.network instance may enforce moderation policies:
-- **Whitelists**: If the instance is in "whitelist mode", you may need approval before your videos appear in public feeds.
-- **Blacklists**: Violating community guidelines may result in your account being hidden from this instance.
-- **User Blocks**: Viewers can mute or block your content individually.
+While publication is decentralized and permissionless, individual bitvid instances (clients) may enforce moderation policies:
+- **Whitelists ("Invite-only"):** If the instance is in "whitelist mode", your videos will only appear in public feeds if your account has been approved by an admin. You can still share direct links, but discovery is restricted.
+- **Blacklists:** Violating community guidelines may result in your account being hidden from this instance.
+- **User Blocks:** Viewers can mute or block your content individually.
 
 Check the [Community Guidelines](../community/community-guidelines.md) for more details.

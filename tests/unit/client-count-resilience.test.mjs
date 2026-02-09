@@ -39,7 +39,7 @@ test("NostrClient resilience to COUNT timeouts", async (t) => {
   client.getRequestTimeoutMs = () => 10; // 10ms timeout
 
   // Verify initial state
-  assert.strictEqual(client.unreachableRelays.has(relayUrl), false);
+  assert.strictEqual(client.connectionManager.unreachableRelays.has(relayUrl), false);
 
   // Trigger the count
   await client.countEventsAcrossRelays([{ kinds: [1] }]);
@@ -51,7 +51,7 @@ test("NostrClient resilience to COUNT timeouts", async (t) => {
   // 3. countEventsAcrossRelays catches 'count-timeout'
   // 4. currently calls markRelayUnreachable
 
-  const isUnreachable = client.unreachableRelays.has(relayUrl);
+  const isUnreachable = client.connectionManager.unreachableRelays.has(relayUrl);
 
   assert.strictEqual(isUnreachable, false, "Relay should NOT be marked unreachable after count timeout");
 });

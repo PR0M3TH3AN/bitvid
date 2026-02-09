@@ -452,6 +452,7 @@ export class SignerManager {
       return { ok: false, error: "extension-missing" };
     }
 
+    const extension = typeof window !== "undefined" ? window.nostr : null;
     const message = resolvePermissionStatusMessage(missing, context);
 
     try {
@@ -533,7 +534,7 @@ export class SignerManager {
       );
     }
 
-    const permissionResult = await this.ensureExtensionPermissions(
+    const permissionResult = await this.client.ensureExtensionPermissions(
       DEFAULT_NIP07_PERMISSION_METHODS,
       { context: "login", logMetrics: true, showStatus: false },
     );

@@ -236,7 +236,21 @@ function normalizeProfileFromEvent(event) {
 // We keep them as pass-throughs to the registry or utility logic where appropriate.
 
 function resolveActiveSigner(pubkey) {
-  return resolveActiveSignerFromRegistry(pubkey);
+  const signer = resolveActiveSignerFromRegistry(pubkey);
+  hydrateExtensionSignerCapabilities(signer);
+  attachNipMethodAliases(signer);
+  if (signer && typeof signer === "object") {
+    const capsDescriptor = Object.getOwnPropertyDescriptor(
+      signer,
+      "capabilities",
+    );
+    const isGetter = capsDescriptor && typeof capsDescriptor.get === "function";
+
+    if (!isGetter) {
+      signer.capabilities = resolveSignerCapabilities(signer);
+    }
+  }
+  return signer;
 }
 
 function setActiveSigner(signer) {
@@ -253,7 +267,21 @@ function setActiveSigner(signer) {
 }
 
 function getActiveSigner() {
-  return getActiveSignerFromRegistry();
+  const signer = getActiveSignerFromRegistry();
+  if (signer && typeof signer === "object") {
+    hydrateExtensionSignerCapabilities(signer);
+    attachNipMethodAliases(signer);
+    const capsDescriptor = Object.getOwnPropertyDescriptor(
+      signer,
+      "capabilities",
+    );
+    const isGetter = capsDescriptor && typeof capsDescriptor.get === "function";
+
+    if (!isGetter) {
+      signer.capabilities = resolveSignerCapabilities(signer);
+    }
+  }
+  return signer;
 }
 
 function clearActiveSigner() {
@@ -784,6 +812,11 @@ export class NostrClient {
 
   get writeRelays() { return this.connectionManager.writeRelays; }
   set writeRelays(val) { this.connectionManager.writeRelays = val; }
+
+  get unreachableRelays() { return this.connectionManager.unreachableRelays; }
+
+  get extensionPermissionCache() { return this.signerManager.extensionPermissionCache; }
+
   /**
    * Records a deletion timestamp for a video identifier (Tombstoning).
    *
@@ -2925,6 +2958,20 @@ export class NostrClient {
    * @returns {Promise<import("nostr-tools").Event>} The signed and published edit event.
    * @throws {Error} If permission denied, ownership mismatch, or publish failure.
    */
+  /**
+   * Registers a private key signer and sets it as active.
+   *
+   * @param {object} params
+   * @param {string} params.privateKey - Hex-encoded private key.
+   * @param {string} params.pubkey - Hex-encoded public key.
+   */
+  async registerPrivateKeySigner({ privateKey, pubkey }) {
+    const adapter = await createNsecAdapter({ privateKey, pubkey });
+    this.signerManager.setActiveSigner(adapter);
+    // Also set session actor for worker-based encryption
+    this.sessionActor = { privateKey, pubkey, source: "nsec" };
+  }
+
   async ensureActiveSignerForPubkey(pubkey) {
     return this.signerManager.ensureActiveSignerForPubkey(pubkey);
   }
