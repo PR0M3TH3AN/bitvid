@@ -17,8 +17,11 @@ describe("Nostr Private Key Signer", () => {
 
   // Override mocks to support roundtrip test
   if (canonicalTools.nip04) {
-      canonicalTools.nip04.encrypt = async (priv, pub, text) => `encrypted:${text}`;
-      canonicalTools.nip04.decrypt = async (priv, pub, cipher) => cipher.replace("encrypted:", "");
+      canonicalTools.nip04 = {
+          ...canonicalTools.nip04,
+          encrypt: async (priv, pub, text) => `encrypted:${text}`,
+          decrypt: async (priv, pub, cipher) => cipher.replace("encrypted:", "")
+      };
   }
 
     const bytesToHex = (bytes) => {

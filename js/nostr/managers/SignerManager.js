@@ -315,23 +315,56 @@ export class SignerManager {
     return resolveActiveSigner(pubkey);
   }
 
-  async ensureSessionActor() {
-    if (this.sessionActor) {
-      return this.sessionActor;
+  async ensureSessionActor(force = false) {
+    if (!force) {
+      if (this.sessionActor) {
+        return this.sessionActor.pubkey;
+      }
+      if (this.lockedSessionActor) {
+        return this.lockedSessionActor.pubkey;
+      }
+      const storedEntry = readStoredSessionActorEntry();
+      if (storedEntry) {
+        this.lockedSessionActor = storedEntry;
+        this.sessionActor = storedEntry;
+        return storedEntry.pubkey;
+      }
     }
 
-    if (this.lockedSessionActor) {
-      return this.lockedSessionActor;
+    const tools = await ensureNostrTools();
+    if (!tools) {
+      return null;
     }
 
-    const storedEntry = readStoredSessionActorEntry();
-    if (storedEntry) {
-      this.lockedSessionActor = storedEntry;
-      this.sessionActor = storedEntry;
-      return storedEntry;
+    let secret;
+    try {
+      if (typeof tools.generateSecretKey === "function") {
+        secret = tools.generateSecretKey();
+      } else if (typeof window !== "undefined" && window.crypto) {
+        secret = new Uint8Array(32);
+        window.crypto.getRandomValues(secret);
+      } else {
+        return null;
+      }
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to generate session actor key:", error);
+      return null;
     }
 
-    return null;
+    const hexKey = Array.from(secret)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    const pubkey = tools.getPublicKey(secret);
+
+    const newActor = {
+      pubkey,
+      privateKey: hexKey,
+      source: "session",
+      createdAt: Date.now(),
+    };
+
+    this.sessionActor = newActor;
+    return newActor.pubkey;
   }
 
   clearStoredSessionActor() {
@@ -555,6 +588,22 @@ export class SignerManager {
 
     this.setActiveSigner(adapter);
     return { pubkey: normalized, signer: adapter };
+  }
+
+  installNip46Client(nip46Client, { userPubkey } = {}) {
+    if (!nip46Client) {
+      return;
+    }
+    this.nip46Client = nip46Client;
+    if (userPubkey) {
+      this.pubkey = userPubkey;
+      this.setActiveSigner(nip46Client);
+    }
+    this.emitRemoteSignerChange({
+      state: "connected",
+      userPubkey: userPubkey || this.pubkey,
+      remotePubkey: nip46Client.remotePubkey,
+    });
   }
 
   async connectRemoteSigner({

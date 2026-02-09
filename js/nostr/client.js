@@ -2593,6 +2593,10 @@ export class NostrClient {
     return this.signerManager.loginWithExtension(options);
   }
 
+  installNip46Client(client, options) {
+    return this.signerManager.installNip46Client(client, options);
+  }
+
   async connectRemoteSigner(params) {
     return this.signerManager.connectRemoteSigner(params);
   }
@@ -2628,8 +2632,8 @@ export class NostrClient {
     return this.signerManager.disconnectRemoteSigner(options);
   }
 
-  async ensureSessionActor() {
-    return this.signerManager.ensureSessionActor();
+  async ensureSessionActor(force) {
+    return this.signerManager.ensureSessionActor(force);
   }
 
   clearStoredSessionActor() {
