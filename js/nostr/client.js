@@ -218,7 +218,7 @@ import {
   SignerManager,
   resolveSignerCapabilities,
   hydrateExtensionSignerCapabilities,
-  attachNipMethodAliases,
+  attachNipMethodAliases
 } from "./managers/SignerManager.js";
 import { RelayBatchFetcher } from "./relayBatchFetcher.js";
 
@@ -237,35 +237,55 @@ function normalizeProfileFromEvent(event) {
 
 function resolveActiveSigner(pubkey) {
   const signer = resolveActiveSignerFromRegistry(pubkey);
-  if (signer) {
-    hydrateExtensionSignerCapabilities(signer);
-    attachNipMethodAliases(signer);
-    if (!signer.capabilities && resolveSignerCapabilities) {
-      const capsDescriptor = Object.getOwnPropertyDescriptor(signer, "capabilities");
-      if (!capsDescriptor || typeof capsDescriptor.get !== "function") {
-        signer.capabilities = resolveSignerCapabilities(signer);
-      }
+  hydrateExtensionSignerCapabilities(signer);
+  attachNipMethodAliases(signer);
+  if (signer && typeof signer === "object") {
+    const capsDescriptor = Object.getOwnPropertyDescriptor(
+      signer,
+      "capabilities",
+    );
+    const isGetter = capsDescriptor && typeof capsDescriptor.get === "function";
+
+    if (!isGetter) {
+      signer.capabilities = resolveSignerCapabilities(signer);
     }
   }
   return signer;
 }
 
 function setActiveSigner(signer) {
-  if (signer) {
+  if (signer && typeof signer === "object") {
     hydrateExtensionSignerCapabilities(signer);
     attachNipMethodAliases(signer);
-    if (!signer.capabilities && resolveSignerCapabilities) {
-      const capsDescriptor = Object.getOwnPropertyDescriptor(signer, "capabilities");
-      if (!capsDescriptor || typeof capsDescriptor.get !== "function") {
-        signer.capabilities = resolveSignerCapabilities(signer);
-      }
+    const capsDescriptor = Object.getOwnPropertyDescriptor(
+      signer,
+      "capabilities",
+    );
+    const isGetter = capsDescriptor && typeof capsDescriptor.get === "function";
+
+    if (!isGetter) {
+      signer.capabilities = resolveSignerCapabilities(signer);
     }
   }
   setActiveSignerInRegistry(signer);
 }
 
 function getActiveSigner() {
-  return getActiveSignerFromRegistry();
+  const signer = getActiveSignerFromRegistry();
+  if (signer && typeof signer === "object") {
+    hydrateExtensionSignerCapabilities(signer);
+    attachNipMethodAliases(signer);
+    const capsDescriptor = Object.getOwnPropertyDescriptor(
+      signer,
+      "capabilities",
+    );
+    const isGetter = capsDescriptor && typeof capsDescriptor.get === "function";
+
+    if (!isGetter) {
+      signer.capabilities = resolveSignerCapabilities(signer);
+    }
+  }
+  return signer;
 }
 
 function clearActiveSigner() {
@@ -780,8 +800,6 @@ export class NostrClient {
   get sessionActorCipherClosuresPrivateKey() { return this.signerManager.sessionActorCipherClosuresPrivateKey; }
   set sessionActorCipherClosuresPrivateKey(val) { this.signerManager.sessionActorCipherClosuresPrivateKey = val; }
 
-  get extensionPermissionCache() { return this.signerManager.extensionPermissionCache; }
-
   get pool() { return this.connectionManager.pool; }
   set pool(val) { this.connectionManager.pool = val; }
 
@@ -796,6 +814,11 @@ export class NostrClient {
 
   get writeRelays() { return this.connectionManager.writeRelays; }
   set writeRelays(val) { this.connectionManager.writeRelays = val; }
+
+  get unreachableRelays() { return this.connectionManager.unreachableRelays; }
+
+  get extensionPermissionCache() { return this.signerManager.extensionPermissionCache; }
+
   /**
    * Records a deletion timestamp for a video identifier (Tombstoning).
    *
@@ -920,23 +943,6 @@ export class NostrClient {
     if (videoCreated < currentMin) {
       this.rootCreatedAtByRoot.set(rootId, videoCreated);
     }
-  }
-
-  resolveEventDTag(event, fallbackEvent = null) {
-    if (!event || typeof event !== "object") {
-      if (fallbackEvent) {
-        return this.resolveEventDTag(fallbackEvent);
-      }
-      return "";
-    }
-    const val = getDTagValueFromTags(event.tags);
-    if (val) {
-      return val;
-    }
-    if (fallbackEvent) {
-      return this.resolveEventDTag(fallbackEvent);
-    }
-    return "";
   }
 
   getActiveKey(video) {
@@ -2954,23 +2960,22 @@ export class NostrClient {
    * @returns {Promise<import("nostr-tools").Event>} The signed and published edit event.
    * @throws {Error} If permission denied, ownership mismatch, or publish failure.
    */
-  async ensureActiveSignerForPubkey(pubkey) {
-    return this.signerManager.ensureActiveSignerForPubkey(pubkey);
-  }
-
+  /**
+   * Registers a private key signer and sets it as active.
+   *
+   * @param {object} params
+   * @param {string} params.privateKey - Hex-encoded private key.
+   * @param {string} params.pubkey - Hex-encoded public key.
+   */
   async registerPrivateKeySigner({ privateKey, pubkey }) {
-    if (!privateKey) {
-      throw new Error("Private key is required.");
-    }
     const adapter = await createNsecAdapter({ privateKey, pubkey });
     this.signerManager.setActiveSigner(adapter);
-    this.sessionActor = {
-      pubkey: adapter.pubkey,
-      privateKey: privateKey,
-      source: "nsec",
-      createdAt: Date.now(),
-    };
-    return adapter;
+    // Also set session actor for worker-based encryption
+    this.sessionActor = { privateKey, pubkey, source: "nsec" };
+  }
+
+  async ensureActiveSignerForPubkey(pubkey) {
+    return this.signerManager.ensureActiveSignerForPubkey(pubkey);
   }
 
   async loginWithExtension(options) {
@@ -2979,10 +2984,6 @@ export class NostrClient {
 
   async connectRemoteSigner(params) {
     return this.signerManager.connectRemoteSigner(params);
-  }
-
-  installNip46Client(client) {
-    this.signerManager.installNip46Client(client);
   }
 
   async useStoredRemoteSigner(options) {
