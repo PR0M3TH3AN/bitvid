@@ -84,7 +84,7 @@ export function resolveSignerCapabilities(signer) {
   };
 }
 
-function hydrateExtensionSignerCapabilities(signer) {
+export function hydrateExtensionSignerCapabilities(signer) {
   if (!signer || typeof signer !== "object") {
     return;
   }
@@ -115,7 +115,7 @@ function hydrateExtensionSignerCapabilities(signer) {
   }
 }
 
-function attachNipMethodAliases(signer) {
+export function attachNipMethodAliases(signer) {
   if (!signer || typeof signer !== "object") {
     return;
   }
@@ -432,11 +432,12 @@ export class SignerManager {
       return { ok: false, error: "extension-missing" };
     }
 
+    const extension = typeof window !== "undefined" ? window.nostr : null;
     const message = resolvePermissionStatusMessage(missing, context);
 
     try {
-      const response = await requestEnablePermissions(missing);
-      if (response?.enabled) {
+      const response = await requestEnablePermissions(extension, missing);
+      if (response?.ok) {
         writeStoredNip07Permissions(missing);
         this.extensionPermissionsGranted = true;
         this.extensionPermissionCache.set(cacheKey, true);

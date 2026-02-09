@@ -7,20 +7,22 @@ bitvid is a decentralized platform that supports multiple ways to share video co
 bitvid offers three ways to publish content:
 
 1.  **Direct Upload:** Upload a video file from your device to your configured storage bucket (R2 or S3). The client handles the upload, generates a magnet link for WebTorrent, and publishes the metadata to Nostr.
-2.  **External Link:** Provide a direct URL to a video file hosted elsewhere (e.g., on a personal server or another CDN). This URL serves as the primary playback source.
-3.  **Magnet Link:** assist the network by providing a magnet link for an existing torrent. Note that magnet-only uploads require at least one active seeder to be playable.
+2.  **External Link:** Provide a direct URL to a video file hosted elsewhere (e.g., on a personal server or another CDN). This URL serves as the primary playback source. **Note:** External URLs must use **HTTPS**.
+3.  **Magnet Link:** Assist the network by providing a magnet link for an existing torrent. Note that magnet-only uploads require at least one active seeder to be playable.
 
 ## Supported Media & Limits
 
 Before you start, ensure your content meets the following requirements:
 
 ### Accepted File Types
-- **Video:** `.mp4`, `.webm`, `.mov`, `.mkv`, `.ts`, `.m3u8`, `.mpg`, `.mpeg`, and other standard video formats supported by your browser.
+- **Video:** `.mp4`, `.webm`, `.mov`, `.mkv`, `.ts`, `.m3u8`, `.mpg`, `.mpeg`.
 - **Thumbnail:** Any standard image format (`image/*`) supported by your browser.
+
+> **Note:** The file picker restricts selection to these formats, but the backend handles standard video MIME types (`video/*`). Ensure your container format is supported by modern browsers for playback.
 
 ### File Size
 - **Recommended:** Up to **2GB** per file.
-- **Why?** Browser-based uploads rely on your device's memory for hashing and chunk management. Files larger than 2GB may cause browser instability or crashes.
+- **Why?** Browser-based uploads rely on your device's memory for hashing (to generate the WebTorrent info hash). Files larger than 2GB may cause browser instability or crashes depending on your available RAM.
 
 ## Metadata & Options
 
@@ -119,12 +121,13 @@ bitvid will verify your credentials by attempting to list or upload a test file.
 - **Permission Errors ("Access Denied"):** Check your API credentials. Ensure the token has `Object Read & Write` permissions (specifically `s3:PutObject` and `s3:DeleteObject`).
 - **Browser Crashes / Slow Performance:** Large files (>2GB) can exhaust browser memory during the hashing process. Try using a smaller file or ensuring you have plenty of free RAM.
 - **Playback Issues:** If the video uploads but doesn't play, ensure the "Public Access URL" is correct and publicly reachable. Test the URL directly in a browser.
+- **Protocol Errors:** Ensure all external video URLs use `https://`. HTTP is not supported for security reasons.
 
 ## Upload Lifecycle & Moderation
 
 ### How Uploads Work
 1. **Direct Upload:** Your browser uploads the file directly to your storage bucket. No video data passes through a bitvid server.
-2. **Client-Side Hashing:** Your browser calculates a cryptographic hash (info hash) of the file to enable WebTorrent support.
+2. **Client-Side Hashing:** Your browser calculates a cryptographic hash (info hash) of the file locally to enable WebTorrent support.
 3. **Publication:** The video metadata (title, URL, hash, tags) is signed by your Nostr key and published to relays.
 
 ### Moderation & Visibility
