@@ -2,7 +2,7 @@ import { WebSocket } from 'ws';
 import { finalizeEvent as pureFinalize, generateSecretKey, getPublicKey as pureGetPublicKey } from 'nostr-tools';
 import { finalizeEvent as wasmFinalize, getPublicKey as wasmGetPublicKey, setNostrWasm } from 'nostr-tools/wasm';
 import { initNostrWasm } from 'nostr-wasm';
-import { startRelay } from './simple-relay.mjs';
+import { startRelay } from './load-test-relay.mjs';
 import { buildViewEvent, buildVideoPostEvent } from '../../js/nostrEventSchemas.js';
 import fs from 'fs';
 import path from 'path';
