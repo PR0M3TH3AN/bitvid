@@ -1,6 +1,6 @@
 import { test, describe, before, after, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert";
-import { generateSecretKey, getPublicKey } from "nostr-tools";
+import { ensureNostrTools } from "../../js/nostr/toolkit.js";
 import "../test-helpers/setup-localstorage.mjs";
 
 // Mock globals needed for nostr-tools or other libs
@@ -20,8 +20,19 @@ function bytesToHex(bytes) {
 }
 
 // Helper to generate 32-byte hex string
-function generateHexId() {
-    return bytesToHex(generateSecretKey());
+// Note: relies on global/closure tools if available, or just random bytes
+function generateHexId(tools) {
+    if (tools && typeof tools.generateSecretKey === 'function') {
+        return bytesToHex(tools.generateSecretKey());
+    }
+    const bytes = new Uint8Array(32);
+    if (globalThis.crypto && globalThis.crypto.getRandomValues) {
+        globalThis.crypto.getRandomValues(bytes);
+    } else {
+        // Simple fallback for mock
+        for(let i=0; i<32; i++) bytes[i] = Math.floor(Math.random() * 256);
+    }
+    return bytesToHex(bytes);
 }
 
 describe("dmSignalEvents", () => {
@@ -33,9 +44,11 @@ describe("dmSignalEvents", () => {
   let originalSessionActor;
   let signer;
   let getActiveSigner;
+  let tools;
 
   before(async () => {
     // Import modules
+    tools = await ensureNostrTools();
     const facadeModule = await import("../../js/nostrClientFacade.js");
     const registryModule = await import("../../js/nostrClientRegistry.js");
     dmSignalEvents = await import("../../js/nostr/dmSignalEvents.js");
@@ -44,9 +57,9 @@ describe("dmSignalEvents", () => {
     getActiveSigner = registryModule.getActiveSigner;
 
     // Generate keys
-    const secret = generateSecretKey();
+    const secret = tools.generateSecretKey();
     const privateKey = bytesToHex(secret);
-    const pubkey = getPublicKey(secret);
+    const pubkey = tools.getPublicKey(secret);
 
     // Register signer to ensure getActiveSigner returns something
     await nostrClient.registerPrivateKeySigner({ privateKey, pubkey });
@@ -93,8 +106,8 @@ describe("dmSignalEvents", () => {
   });
 
   test("publishDmReadReceipt should succeed", async () => {
-    const eventId = generateHexId();
-    const recipientPubkey = generateHexId();
+    const eventId = generateHexId(tools);
+    const recipientPubkey = generateHexId(tools);
     const payload = {
       eventId,
       recipientPubkey,
@@ -123,8 +136,8 @@ describe("dmSignalEvents", () => {
     nostrClient.sessionActor = { pubkey: nostrClient.pubkey };
 
     const payload = {
-        eventId: generateHexId(),
-        recipientPubkey: generateHexId(),
+        eventId: generateHexId(tools),
+        recipientPubkey: generateHexId(tools),
         messageKind: 4
     };
 
@@ -134,8 +147,8 @@ describe("dmSignalEvents", () => {
   });
 
   test("publishDmTypingIndicator should succeed", async () => {
-    const recipientPubkey = generateHexId();
-    const conversationEventId = generateHexId();
+    const recipientPubkey = generateHexId(tools);
+    const conversationEventId = generateHexId(tools);
     const payload = {
         recipientPubkey,
         conversationEventId
@@ -157,7 +170,7 @@ describe("dmSignalEvents", () => {
     const originalSignEvent = signer.signEvent;
     signer.signEvent = undefined;
 
-    const payload = { eventId: generateHexId(), recipientPubkey: generateHexId() };
+    const payload = { eventId: generateHexId(tools), recipientPubkey: generateHexId(tools) };
     const result = await dmSignalEvents.publishDmReadReceipt(nostrClient, payload);
 
     assert.strictEqual(result.ok, false);

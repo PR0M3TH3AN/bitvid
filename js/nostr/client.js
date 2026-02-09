@@ -213,7 +213,12 @@ import { queueSignEvent } from "./signRequestQueue.js";
 import { EventsMap } from "./eventsMap.js";
 import { PersistenceManager } from "./managers/PersistenceManager.js";
 import { ConnectionManager } from "./managers/ConnectionManager.js";
-import { SignerManager, resolveSignerCapabilities } from "./managers/SignerManager.js";
+import {
+  SignerManager,
+  resolveSignerCapabilities,
+  hydrateExtensionSignerCapabilities,
+  attachNipMethodAliases,
+} from "./managers/SignerManager.js";
 import { RelayBatchFetcher } from "./relayBatchFetcher.js";
 import {
   prepareVideoPublishPayload,
@@ -235,15 +240,23 @@ function normalizeProfileFromEvent(event) {
 // We keep them as pass-throughs to the registry or utility logic where appropriate.
 
 function resolveActiveSigner(pubkey) {
-  return resolveActiveSignerFromRegistry(pubkey);
+  const signer = resolveActiveSignerFromRegistry(pubkey);
+  hydrateExtensionSignerCapabilities(signer);
+  attachNipMethodAliases(signer);
+  return signer;
 }
 
 function setActiveSigner(signer) {
+  hydrateExtensionSignerCapabilities(signer);
+  attachNipMethodAliases(signer);
   setActiveSignerInRegistry(signer);
 }
 
 function getActiveSigner() {
-  return getActiveSignerFromRegistry();
+  const signer = getActiveSignerFromRegistry();
+  hydrateExtensionSignerCapabilities(signer);
+  attachNipMethodAliases(signer);
+  return signer;
 }
 
 function clearActiveSigner() {
@@ -593,6 +606,8 @@ export class NostrClient {
 
   get sessionActorCipherClosuresPrivateKey() { return this.signerManager.sessionActorCipherClosuresPrivateKey; }
   set sessionActorCipherClosuresPrivateKey(val) { this.signerManager.sessionActorCipherClosuresPrivateKey = val; }
+
+  get extensionPermissionCache() { return this.signerManager.extensionPermissionCache; }
 
   get pool() { return this.connectionManager.pool; }
   set pool(val) { this.connectionManager.pool = val; }
@@ -2308,6 +2323,21 @@ export class NostrClient {
       shouldRequestExtensionPermissions,
       signEventWithPrivateKey,
     });
+  }
+
+  /**
+   * Registers a local private key (nsec) as the active signer.
+   * Useful for tests or manual key management.
+   *
+   * @param {object} opts
+   * @param {string} opts.privateKey - The hex private key.
+   * @param {string} [opts.pubkey] - Optional hex public key.
+   * @returns {object} The created signer adapter.
+   */
+  async registerPrivateKeySigner(opts) {
+    const adapter = await createNsecAdapter(opts);
+    this.signerManager.setActiveSigner(adapter);
+    return adapter;
   }
 
   /**
