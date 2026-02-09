@@ -213,7 +213,8 @@ import { queueSignEvent } from "./signRequestQueue.js";
 import { EventsMap } from "./eventsMap.js";
 import { PersistenceManager } from "./managers/PersistenceManager.js";
 import { ConnectionManager } from "./managers/ConnectionManager.js";
-import { SignerManager } from "./managers/SignerManager.js";
+import { SignerManager, resolveSignerCapabilities } from "./managers/SignerManager.js";
+import { RelayBatchFetcher } from "./relayBatchFetcher.js";
 import {
   prepareVideoPublishPayload,
   prepareVideoMirrorOptions,
@@ -463,6 +464,7 @@ export class NostrClient {
     this.dirtyTombstones = new Set();
     this.persistenceManager = new PersistenceManager(this);
     this.syncMetadataStore = new SyncMetadataStore();
+    this.relayBatchFetcher = new RelayBatchFetcher(this);
 
     this.nip71Cache = new Map();
     this.watchHistory = createWatchHistoryManager({
