@@ -238,6 +238,7 @@ test("nostr login + remote signing + publish + watch history integration", async
   const mockRpcClient = Object.create(Nip46RpcClient.prototype);
   Object.assign(mockRpcClient, {
     userPubkey,
+    pubkey: userPubkey,
     async signEvent(event) {
       remoteSignCount += 1;
       return finalizeWithKey(event, userSecret, userPubkey);
@@ -251,6 +252,9 @@ test("nostr login + remote signing + publish + watch history integration", async
     },
     async getUserPubkey() {
       return userPubkey;
+    },
+    getActiveSigner() {
+      return this;
     },
     destroy() {},
     destroyed: false,
@@ -269,6 +273,9 @@ test("nostr login + remote signing + publish + watch history integration", async
   const viewResult = await nostrClient.recordVideoView(viewPointer, {
     created_at: 1_700_000_125,
   });
+  if (!viewResult.ok) {
+    console.error("View result failed:", viewResult);
+  }
   assert.equal(viewResult.ok, true);
 
   const publishResult = await nostrClient.publishVideo(

@@ -214,7 +214,12 @@ import { queueSignEvent } from "./signRequestQueue.js";
 import { EventsMap } from "./eventsMap.js";
 import { PersistenceManager } from "./managers/PersistenceManager.js";
 import { ConnectionManager } from "./managers/ConnectionManager.js";
-import { SignerManager, resolveSignerCapabilities } from "./managers/SignerManager.js";
+import {
+  SignerManager,
+  resolveSignerCapabilities,
+  hydrateExtensionSignerCapabilities,
+  attachNipMethodAliases
+} from "./managers/SignerManager.js";
 import { RelayBatchFetcher } from "./relayBatchFetcher.js";
 
 function normalizeProfileFromEvent(event) {
@@ -235,6 +240,18 @@ function resolveActiveSigner(pubkey) {
 }
 
 function setActiveSigner(signer) {
+  if (!signer || typeof signer !== "object") {
+    return;
+  }
+  hydrateExtensionSignerCapabilities(signer);
+  attachNipMethodAliases(signer);
+
+  const capsDescriptor = Object.getOwnPropertyDescriptor(signer, "capabilities");
+  const isGetter = capsDescriptor && typeof capsDescriptor.get === "function";
+
+  if (!isGetter) {
+    signer.capabilities = resolveSignerCapabilities(signer);
+  }
   setActiveSignerInRegistry(signer);
 }
 
@@ -894,6 +911,38 @@ export class NostrClient {
     if (videoCreated < currentMin) {
       this.rootCreatedAtByRoot.set(rootId, videoCreated);
     }
+  }
+
+  resolveEventDTag(event, fallbackEvent = null) {
+    const tags = Array.isArray(event?.tags) ? event.tags : [];
+    const primary = getDTagValueFromTags(tags);
+    if (primary) return primary;
+
+    if (fallbackEvent && Array.isArray(fallbackEvent.tags)) {
+      return getDTagValueFromTags(fallbackEvent.tags);
+    }
+    return "";
+  }
+
+  installNip46Client(client, { userPubkey } = {}) {
+    if (!client) return;
+    this.nip46Client = client;
+    if (userPubkey) {
+      this.pubkey = userPubkey;
+    } else if (client.userPubkey) {
+      this.pubkey = client.userPubkey;
+    }
+
+    // Explicitly set as active signer so it handles signing requests
+    const signer = client.getActiveSigner ? client.getActiveSigner() : client;
+    if (userPubkey && !signer.pubkey) {
+        signer.pubkey = userPubkey;
+    }
+    this.setActiveSigner(signer);
+  }
+
+  setActiveSigner(signer) {
+    this.signerManager.setActiveSigner(signer);
   }
 
   getActiveKey(video) {

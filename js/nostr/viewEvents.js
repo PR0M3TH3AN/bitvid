@@ -700,8 +700,9 @@ export async function publishViewEvent(
     return { ok: false, error: "invalid-pointer" };
   }
 
-  const actorPubkey = await client.ensureSessionActor();
-  // actorPubkey derived via client.ensureSessionActor()
+  const sessionActor = await client.ensureSessionActor();
+  const actorPubkey = sessionActor?.pubkey || client.pubkey;
+
   if (!actorPubkey) {
     return { ok: false, error: "missing-actor" };
   }
