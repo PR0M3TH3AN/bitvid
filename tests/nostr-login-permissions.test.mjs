@@ -458,11 +458,10 @@ describe("NIP-07 Login Permissions", () => {
   it("NIP-07 login does not wait for deferred permission grants", async () => {
     clearStoredPermissions();
     const env = setupLoginEnvironment();
-    const target = nostrClient.signerManager || nostrClient;
-    const originalEnsurePermissions = target.ensureExtensionPermissions;
+    const originalEnsurePermissions = nostrClient.ensureExtensionPermissions;
     let completionPromise;
 
-    target.ensureExtensionPermissions = async () => {
+    nostrClient.ensureExtensionPermissions = async () => {
       completionPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error("permission denied")), 300);
       });
@@ -485,7 +484,7 @@ describe("NIP-07 Login Permissions", () => {
         "deferred permission grants should still reject",
       );
     } finally {
-      target.ensureExtensionPermissions = originalEnsurePermissions;
+      nostrClient.ensureExtensionPermissions = originalEnsurePermissions;
       env.restore();
       nostrClient.logout();
       clearStoredPermissions();

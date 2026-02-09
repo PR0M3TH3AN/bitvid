@@ -800,8 +800,6 @@ export class NostrClient {
   get sessionActorCipherClosuresPrivateKey() { return this.signerManager.sessionActorCipherClosuresPrivateKey; }
   set sessionActorCipherClosuresPrivateKey(val) { this.signerManager.sessionActorCipherClosuresPrivateKey = val; }
 
-  get extensionPermissionCache() { return this.signerManager.extensionPermissionCache; }
-
   get pool() { return this.connectionManager.pool; }
   set pool(val) { this.connectionManager.pool = val; }
 
@@ -816,6 +814,11 @@ export class NostrClient {
 
   get writeRelays() { return this.connectionManager.writeRelays; }
   set writeRelays(val) { this.connectionManager.writeRelays = val; }
+
+  get unreachableRelays() { return this.connectionManager.unreachableRelays; }
+
+  get extensionPermissionCache() { return this.signerManager.extensionPermissionCache; }
+
   /**
    * Records a deletion timestamp for a video identifier (Tombstoning).
    *
@@ -940,23 +943,6 @@ export class NostrClient {
     if (videoCreated < currentMin) {
       this.rootCreatedAtByRoot.set(rootId, videoCreated);
     }
-  }
-
-  resolveEventDTag(event, fallbackEvent = null) {
-    if (!event || typeof event !== "object") {
-      if (fallbackEvent) {
-        return this.resolveEventDTag(fallbackEvent);
-      }
-      return "";
-    }
-    const val = getDTagValueFromTags(event.tags);
-    if (val) {
-      return val;
-    }
-    if (fallbackEvent) {
-      return this.resolveEventDTag(fallbackEvent);
-    }
-    return "";
   }
 
   getActiveKey(video) {
@@ -2992,31 +2978,12 @@ export class NostrClient {
     return this.signerManager.ensureActiveSignerForPubkey(pubkey);
   }
 
-  async registerPrivateKeySigner({ privateKey, pubkey }) {
-    if (!privateKey) {
-      throw new Error("Private key is required.");
-    }
-    const adapter = await createNsecAdapter({ privateKey, pubkey });
-    this.signerManager.setActiveSigner(adapter);
-    this.sessionActor = {
-      pubkey: adapter.pubkey,
-      privateKey: privateKey,
-      source: "nsec",
-      createdAt: Date.now(),
-    };
-    return adapter;
-  }
-
   async loginWithExtension(options) {
     return this.signerManager.loginWithExtension(options);
   }
 
   async connectRemoteSigner(params) {
     return this.signerManager.connectRemoteSigner(params);
-  }
-
-  installNip46Client(client) {
-    this.signerManager.installNip46Client(client);
   }
 
   async useStoredRemoteSigner(options) {

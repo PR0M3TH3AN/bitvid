@@ -47,7 +47,6 @@ import {
   summarizeUrlForLog,
 } from "../nip46LoggingUtils.js";
 
-import { bytesToHex } from "../../../vendor/crypto-helpers.bundle.min.js";
 import { devLogger, userLogger } from "../../utils/logger.js";
 import { createPrivateKeyCipherClosures } from "../signerHelpers.js";
 import { queueSignEvent } from "../signRequestQueue.js";
@@ -264,9 +263,12 @@ export class SignerManager {
     this.extensionReady = false;
     this.extensionPermissionsGranted = false;
     this.extensionPermissionCache = new Map();
-    const storedPermissions = readStoredNip07Permissions();
-    for (const method of storedPermissions) {
-      this.extensionPermissionCache.set(method, true);
+    const stored = readStoredNip07Permissions();
+    if (stored && stored.size > 0) {
+      this.extensionPermissionsGranted = true;
+      for (const method of stored) {
+        this.extensionPermissionCache.set(method, true);
+      }
     }
     this.sessionActorCipherClosures = null;
     this.sessionActorCipherClosuresPrivateKey = null;
@@ -316,45 +318,21 @@ export class SignerManager {
 
   async ensureSessionActor() {
     if (this.sessionActor) {
-      return this.sessionActor.pubkey;
+      return this.sessionActor;
     }
 
     if (this.lockedSessionActor) {
-      return this.lockedSessionActor.pubkey;
+      return this.lockedSessionActor;
     }
 
     const storedEntry = readStoredSessionActorEntry();
     if (storedEntry) {
       this.lockedSessionActor = storedEntry;
       this.sessionActor = storedEntry;
-      return storedEntry.pubkey;
+      return storedEntry;
     }
 
-    const tools = await ensureNostrTools();
-    let privateKey = "";
-    if (tools && typeof tools.generateSecretKey === "function") {
-      const secret = tools.generateSecretKey();
-      privateKey = bytesToHex(secret);
-    } else if (tools && typeof tools.generatePrivateKey === "function") {
-      privateKey = tools.generatePrivateKey();
-    } else {
-      throw new Error("Failed to generate session actor: nostr-tools missing key generation.");
-    }
-
-    let pubkey = "";
-    if (tools && typeof tools.getPublicKey === "function") {
-      pubkey = tools.getPublicKey(privateKey);
-    }
-
-    const newActor = {
-      pubkey,
-      privateKey,
-      source: "generated",
-      createdAt: Date.now(),
-    };
-
-    this.sessionActor = newActor;
-    return pubkey;
+    return null;
   }
 
   clearStoredSessionActor() {
@@ -473,7 +451,7 @@ export class SignerManager {
         writeStoredNip07Permissions(missing);
         this.extensionPermissionsGranted = true;
         this.extensionPermissionCache.set(cacheKey, true);
-        for (const method of missing) {
+        for (const method of methods) {
           this.extensionPermissionCache.set(method, true);
         }
         return { ok: true };
@@ -546,7 +524,7 @@ export class SignerManager {
       );
     }
 
-    const permissionResult = await this.ensureExtensionPermissions(
+    const permissionResult = await this.client.ensureExtensionPermissions(
       DEFAULT_NIP07_PERMISSION_METHODS,
       { context: "login", logMetrics: true, showStatus: false },
     );
@@ -581,16 +559,6 @@ export class SignerManager {
 
     this.setActiveSigner(adapter);
     return { pubkey: normalized, signer: adapter };
-  }
-
-  installNip46Client(client) {
-    if (!client) {
-      return;
-    }
-    this.nip46Client = client;
-    this.pubkey = client.userPubkey || client.remotePubkey; // Fallback
-    this.setActiveSigner(client.getActiveSigner());
-    this.emitRemoteSignerChange();
   }
 
   async connectRemoteSigner({
@@ -937,10 +905,6 @@ export class SignerManager {
     return () => {
       this.remoteSignerListeners.delete(listener);
     };
-  }
-
-  signEventWithPrivateKey(event, privateKey) {
-    return signEventWithPrivateKey(event, privateKey);
   }
 
   logout() {

@@ -5,9 +5,6 @@ import { normalizeNostrPubkey, sanitizeRelayList } from "./nip46Client.js";
 import { DEFAULT_RELAY_URLS, RELAY_URLS } from "./toolkit.js";
 
 export class RelayBatchFetcher {
-  /**
-   * @param {import("./client.js").NostrClient} client
-   */
   constructor(client) {
     this.client = client;
   }

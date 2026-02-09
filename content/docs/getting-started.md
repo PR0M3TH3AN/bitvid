@@ -22,7 +22,7 @@ Ready to jump in? Here's everything you need to know to start watching and shari
 
 ### Step 2: Prepare Your Video
 
-1. **Format:** We accept **.mp4, .webm, .mov, .mkv, .ts, .m3u8, .mpg, .mpeg** (Max 2GB recommended). For detailed requirements and troubleshooting, see our [Upload Guide](../guides/upload-content.md).
+1. **Format:** We accept **.mp4, .webm, .mov, .mkv, .ts, .m3u8, .mpg, .mpeg** (Max 2GB recommended). For detailed requirements and troubleshooting, see our [Upload Guide](guides/upload-content.md).
 2. **Hosting:** You can upload directly via bitvid (requires your own Cloudflare R2 or S3 bucket) or host your video elsewhere (CDN, Cloudflare Stream, etc.) and provide the HTTPS URL. For external hosting, ensure the format is streamable (MP4/WebM/HLS/DASH).
 3. **(Optional) WebTorrent:** If hosting externally, you can generate a WebTorrent magnet so viewers can fall back to peer-to-peer delivery.
 
