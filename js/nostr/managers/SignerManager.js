@@ -47,6 +47,7 @@ import {
   summarizeUrlForLog,
 } from "../nip46LoggingUtils.js";
 
+import { bytesToHex } from "../../../vendor/crypto-helpers.bundle.min.js";
 import { devLogger, userLogger } from "../../utils/logger.js";
 import { createPrivateKeyCipherClosures } from "../signerHelpers.js";
 import { queueSignEvent } from "../signRequestQueue.js";
@@ -315,21 +316,45 @@ export class SignerManager {
 
   async ensureSessionActor() {
     if (this.sessionActor) {
-      return this.sessionActor;
+      return this.sessionActor.pubkey;
     }
 
     if (this.lockedSessionActor) {
-      return this.lockedSessionActor;
+      return this.lockedSessionActor.pubkey;
     }
 
     const storedEntry = readStoredSessionActorEntry();
     if (storedEntry) {
       this.lockedSessionActor = storedEntry;
       this.sessionActor = storedEntry;
-      return storedEntry;
+      return storedEntry.pubkey;
     }
 
-    return null;
+    const tools = await ensureNostrTools();
+    let privateKey = "";
+    if (tools && typeof tools.generateSecretKey === "function") {
+      const secret = tools.generateSecretKey();
+      privateKey = bytesToHex(secret);
+    } else if (tools && typeof tools.generatePrivateKey === "function") {
+      privateKey = tools.generatePrivateKey();
+    } else {
+      throw new Error("Failed to generate session actor: nostr-tools missing key generation.");
+    }
+
+    let pubkey = "";
+    if (tools && typeof tools.getPublicKey === "function") {
+      pubkey = tools.getPublicKey(privateKey);
+    }
+
+    const newActor = {
+      pubkey,
+      privateKey,
+      source: "generated",
+      createdAt: Date.now(),
+    };
+
+    this.sessionActor = newActor;
+    return pubkey;
   }
 
   clearStoredSessionActor() {
@@ -555,6 +580,16 @@ export class SignerManager {
 
     this.setActiveSigner(adapter);
     return { pubkey: normalized, signer: adapter };
+  }
+
+  installNip46Client(client) {
+    if (!client) {
+      return;
+    }
+    this.nip46Client = client;
+    this.pubkey = client.userPubkey || client.remotePubkey; // Fallback
+    this.setActiveSigner(client.getActiveSigner());
+    this.emitRemoteSignerChange();
   }
 
   async connectRemoteSigner({
@@ -901,6 +936,10 @@ export class SignerManager {
     return () => {
       this.remoteSignerListeners.delete(listener);
     };
+  }
+
+  signEventWithPrivateKey(event, privateKey) {
+    return signEventWithPrivateKey(event, privateKey);
   }
 
   logout() {
