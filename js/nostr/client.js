@@ -29,6 +29,7 @@ import {
   convertEventToVideo,
   extractNip71MetadataFromTags,
   getDTagValueFromTags,
+  getDTagValueFromTags as getDTagValueFromTagsHelper,
   mergeNip71MetadataIntoVideo as mergeNip71MetadataIntoVideoHelper,
   populateNip71MetadataForVideos as populateNip71MetadataForVideosHelper,
   processNip71Events as processNip71EventsHelper,
@@ -556,8 +557,6 @@ function getActiveKey(video) {
   }
   return `LEGACY:${video.id}`;
 }
-
-import { getDTagValueFromTags as getDTagValueFromTagsHelper } from "./nip71.js";
 
 export {
   convertEventToVideo,
@@ -2928,7 +2927,7 @@ export class NostrClient {
   }
 
   async registerPrivateKeySigner({ privateKey, pubkey }) {
-    const adapter = await createNsecAdapter(privateKey, pubkey);
+    const adapter = await createNsecAdapter({ privateKey, pubkey });
     this.signerManager.setActiveSigner(adapter);
     return { pubkey: adapter.pubkey, signer: adapter };
   }
