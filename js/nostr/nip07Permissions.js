@@ -402,14 +402,42 @@ export function waitForNip07Extension(timeoutMs = 5000) {
     }
 
     const start = Date.now();
+    let resolved = false;
+
+    const finish = (ext) => {
+      if (resolved) return;
+      resolved = true;
+      clearInterval(interval);
+      resolve(ext);
+    };
+
+    const fail = () => {
+      if (resolved) return;
+      resolved = true;
+      clearInterval(interval);
+      reject(new Error("Nostr extension not found within timeout."));
+    };
+
+    // Poll every 50ms for window.nostr injection.
     const interval = setInterval(() => {
       if (window.nostr) {
-        clearInterval(interval);
-        resolve(window.nostr);
+        finish(window.nostr);
       } else if (Date.now() - start > timeoutMs) {
-        clearInterval(interval);
-        reject(new Error("Nostr extension not found within timeout."));
+        fail();
       }
     }, 50);
+
+    // Additionally listen for the DOMContentLoaded event — many extensions
+    // inject window.nostr during this phase, and detecting it via the event
+    // can be faster than waiting for the next poll tick.
+    if (typeof document !== "undefined" && document.readyState === "loading") {
+      const onReady = () => {
+        document.removeEventListener("DOMContentLoaded", onReady);
+        if (window.nostr) {
+          finish(window.nostr);
+        }
+      };
+      document.addEventListener("DOMContentLoaded", onReady);
+    }
   });
 }

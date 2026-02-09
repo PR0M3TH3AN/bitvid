@@ -44,16 +44,16 @@ import {
 
 const SUBSCRIPTION_SET_KIND =
   getNostrEventSchema(NOTE_TYPES.SUBSCRIPTION_LIST)?.kind ?? 30000;
-// PERF: Reduced from 20s to 10s — the signer is now guaranteed to be ready
-// before list loading starts (authSessionCoordinator waits for the permission
-// pre-grant), so decryption should succeed quickly. 10s is a generous fallback
-// for slow relay responses while still failing fast enough to retry promptly.
-const DECRYPT_TIMEOUT_MS = 10000;
-// PERF: Reduced from 10s to 3s — extensions that already granted permission
-// should recover quickly. The longer delay was causing unnecessary wait time
-// during the critical login path when the first decrypt attempt fails due to
-// the extension still initializing.
-const DECRYPT_RETRY_DELAY_MS = 3000;
+// PERF: Reduced from 10s to 6s — the signer is guaranteed ready before list
+// loading starts (authSessionCoordinator waits for the permission pre-grant),
+// so decryption should succeed within 2-3s. 6s is generous enough for slow
+// relays while still failing fast enough for the scheme fallback to try the
+// next decryption method without stalling the login path.
+const DECRYPT_TIMEOUT_MS = 6000;
+// PERF: Reduced from 3s to 1.5s — extensions that already granted permission
+// should recover near-instantly. The shorter delay prevents unnecessary wait
+// time during the critical login path when the first decrypt attempt fails.
+const DECRYPT_RETRY_DELAY_MS = 1500;
 
 function normalizeHexPubkey(value) {
   if (typeof value !== "string") {
@@ -909,9 +909,10 @@ class SubscriptionsManager {
 
     try {
       // Race against a timeout so the UI doesn't hang indefinitely if relays stall.
-      // The timeout must accommodate relay fetch (~12s) + decryption (~20s timeout
-      // with ~5s per scheme attempt × up to 3 schemes), so we use 45s.
-      const timeoutMs = 45000;
+      // The timeout accommodates relay fetch (~12s) + decryption (~6s timeout per
+      // scheme × up to 3 schemes = ~18s) = ~30s. Reduced from 45s to prevent
+      // blocking the login path for nearly a minute.
+      const timeoutMs = 25000;
       await Promise.race([
         loader,
         new Promise((_, reject) =>
@@ -1005,28 +1006,33 @@ class SubscriptionsManager {
     };
 
     let signer = getActiveSigner();
+    // FIX: Always attempt to resolve the signer if one isn't available,
+    // regardless of allowPermissionPrompt. The previous guard meant that
+    // background refreshes (allowPermissionPrompt=false) could never decrypt
+    // because they skipped signer resolution entirely. ensureActiveSignerForPubkey
+    // does not itself prompt the user — it only waits for an already-injected
+    // extension or returns the existing signer.
     if (
-      allowPermissionPrompt &&
-      (!signer ||
-        (!signerHasRequiredDecryptors(signer) &&
-          typeof nostrClient?.ensureActiveSignerForPubkey === "function"))
+      (!signer || !signerHasRequiredDecryptors(signer)) &&
+      typeof nostrClient?.ensureActiveSignerForPubkey === "function"
     ) {
       signer = await nostrClient.ensureActiveSignerForPubkey(userPubkey);
     }
 
-    const signerCapabilities = signer?.capabilities;
-    const signerHasNip04 =
-      typeof signer?.nip04Decrypt === "function" &&
-      (!signerCapabilities || signerCapabilities.nip04 !== false);
-    const signerHasNip44 =
-      typeof signer?.nip44Decrypt === "function" &&
-      (!signerCapabilities || signerCapabilities.nip44 !== false);
+    // FIX: Check method existence only, not capabilities. NIP-07 adapters
+    // always expose decrypt methods that check extension state at call time.
+    // The capabilities getter dynamically queries window.nostr which may not
+    // have injected nip04/nip44 modules yet (lazy injection), causing false
+    // negatives that block decryption even when methods will work at call time.
+    const signerHasNip04 = typeof signer?.nip04Decrypt === "function";
+    const signerHasNip44 = typeof signer?.nip44Decrypt === "function";
 
-    const nostrApi = allowPermissionPrompt
-      ? typeof window !== "undefined"
-        ? window?.nostr
-        : null
-      : null;
+    // FIX: Always check window.nostr for decrypt methods as a fallback,
+    // not only when allowPermissionPrompt is true. The extension may have
+    // already granted permissions from a previous session, and checking
+    // its methods doesn't trigger any user-visible prompts.
+    const nostrApi =
+      typeof window !== "undefined" ? window?.nostr : null;
     const windowHasNip04 = typeof nostrApi?.nip04?.decrypt === "function";
     const windowHasNip44 =
       (nostrApi?.nip44 && typeof nostrApi.nip44.decrypt === "function") ||
@@ -1079,11 +1085,11 @@ class SubscriptionsManager {
       decryptors.set(scheme, handler);
     };
 
-    // PERF: Previous 5s no-prompt timeout was too aggressive — extensions that
-    // have already granted permission still need time to decrypt. 8s gives a
-    // realistic window while still failing faster than the full 15s interactive
-    // timeout.
-    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 15000 : 8000;
+    // PERF: Reduced no-prompt timeout from 8s to 5s — the signer readiness
+    // gate now guarantees the extension is ready before decryption starts, so
+    // decrypt calls should complete within 1-2s. 5s accommodates slow
+    // extensions while still failing fast enough for scheme fallback.
+    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 12000 : 5000;
     const signerDecryptOptions = {
       priority: NIP07_PRIORITY.NORMAL,
       timeoutMs: nip07DecryptTimeoutMs,
@@ -1219,12 +1225,19 @@ class SubscriptionsManager {
         const decryptFn = decryptors.get(scheme);
         if (!decryptFn) return null;
         attemptSchemes.push(scheme);
-        return decryptFn(ciphertext).then((plaintext) => {
-          if (typeof plaintext !== "string") {
-            throw new Error("Decryption returned a non-string payload.");
-          }
-          return { plaintext, scheme };
-        });
+        // FIX: Wrap in Promise.resolve().then() to catch synchronous throws
+        // from decryptor functions (e.g. NIP-07 adapter nip44Decrypt throws
+        // immediately if the extension hasn't injected its nip44 module yet).
+        // Without this, a sync throw breaks the .map() chain and prevents
+        // Promise.any() from trying the remaining schemes.
+        return Promise.resolve()
+          .then(() => decryptFn(ciphertext))
+          .then((plaintext) => {
+            if (typeof plaintext !== "string") {
+              throw new Error("Decryption returned a non-string payload.");
+            }
+            return { plaintext, scheme };
+          });
       })
       .filter(Boolean);
 

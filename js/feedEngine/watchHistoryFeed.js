@@ -665,6 +665,27 @@ export function registerWatchHistoryFeed(engine, options = {}) {
     return null;
   }
 
+  // Check if already registered to avoid "already registered" throw from
+  // the engine when bootstrap and lazy registration race.
+  if (typeof engine.getFeedDefinition === "function") {
+    const existing = engine.getFeedDefinition("watch-history");
+    if (existing) {
+      return existing;
+    }
+  }
+
   const definition = createWatchHistoryFeedDefinition(options);
-  return engine.registerFeed("watch-history", definition);
+  try {
+    return engine.registerFeed("watch-history", definition);
+  } catch (error) {
+    // Handle race condition where another call registered between our
+    // check and the registration attempt.
+    if (typeof engine.getFeedDefinition === "function") {
+      const raceWinner = engine.getFeedDefinition("watch-history");
+      if (raceWinner) {
+        return raceWinner;
+      }
+    }
+    throw error;
+  }
 }
