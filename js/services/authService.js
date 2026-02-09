@@ -34,6 +34,7 @@ import {
   safeDecodeNpub,
   normalizeHexPubkey,
 } from "../utils/nostrHelpers.js";
+import { withRequestTimeout } from "../utils/asyncUtils.js";
 
 class SimpleEventEmitter {
   constructor(logger = null) {
@@ -988,23 +989,14 @@ export default class AuthService {
     requireEvent,
   ) {
     const fetchPromise = this.nostrClient.pool.list([relayUrl], filter);
-    let timeoutId;
-
-    const timeoutPromise = new Promise((_, reject) => {
-      timeoutId = setTimeout(() => {
-        const timeoutError = new Error(
-          `Timed out fetching profile from ${relayUrl} after ${timeoutMs}ms`,
-        );
-        timeoutError.code = "timeout";
-        timeoutError.relay = relayUrl;
-        timeoutError.timeoutMs = timeoutMs;
-        reject(timeoutError);
-      }, timeoutMs);
-    });
 
     try {
-      const result = await Promise.race([fetchPromise, timeoutPromise]);
-      clearTimeout(timeoutId);
+      const result = await withRequestTimeout(
+        fetchPromise,
+        timeoutMs,
+        undefined,
+        `Timed out fetching profile from ${relayUrl} after ${timeoutMs}ms`,
+      );
 
       const events = Array.isArray(result)
         ? result.filter((event) => event && event.pubkey === normalizedPubkey)
@@ -1021,9 +1013,14 @@ export default class AuthService {
 
       return { relayUrl, events };
     } catch (error) {
-      clearTimeout(timeoutId);
-      // Suppress unhandled rejection from fetchPromise if it's still running
-      fetchPromise.catch(() => {});
+      if (
+        error instanceof Error &&
+        error.message.includes("Timed out fetching profile")
+      ) {
+        error.code = "timeout";
+        error.timeoutMs = timeoutMs;
+        error.relay = relayUrl;
+      }
 
       if (error.relay) {
         throw error;

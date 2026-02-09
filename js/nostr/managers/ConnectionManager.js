@@ -13,6 +13,7 @@ import {
   logCountTimeoutCleanupFailure,
   logRelayCountFailure,
 } from "../countDiagnostics.js";
+import { withRequestTimeout } from "../../utils/asyncUtils.js";
 
 const RELAY_CONNECT_TIMEOUT_MS = 5000;
 const RELAY_RECONNECT_BASE_DELAY_MS = 2000;
@@ -25,56 +26,6 @@ const RELAY_CIRCUIT_BREAKER_COOLDOWN_MS = 10 * 60 * 1000;
 const RELAY_FAILURE_WINDOW_MS = 5 * 60 * 1000;
 const RELAY_FAILURE_WINDOW_THRESHOLD = 3;
 const RELAY_SUMMARY_LOG_INTERVAL_MS = 30000;
-
-function withRequestTimeout(promise, timeoutMs, onTimeout, message = "Request timed out") {
-  const resolvedTimeout = Number(timeoutMs);
-  const effectiveTimeout =
-    Number.isFinite(resolvedTimeout) && resolvedTimeout > 0
-      ? Math.floor(resolvedTimeout)
-      : 4000;
-
-  let timeoutId = null;
-  let settled = false;
-
-  return new Promise((resolve, reject) => {
-    timeoutId = setTimeout(() => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      if (typeof onTimeout === "function") {
-        try {
-          onTimeout();
-        } catch (cleanupError) {
-          logCountTimeoutCleanupFailure(cleanupError);
-        }
-      }
-      reject(new Error(message));
-    }, effectiveTimeout);
-
-    Promise.resolve(promise)
-      .then((value) => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-        }
-        resolve(value);
-      })
-      .catch((error) => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-        }
-        reject(error);
-      });
-  });
-}
 
 export class ConnectionManager {
   constructor() {
@@ -793,8 +744,12 @@ export class ConnectionManager {
         countPromise,
         timeoutMs,
         () => {
-          if (relay?.openCountRequests instanceof Map) {
-            relay.openCountRequests.delete(requestId);
+          try {
+            if (relay?.openCountRequests instanceof Map) {
+              relay.openCountRequests.delete(requestId);
+            }
+          } catch (error) {
+            logCountTimeoutCleanupFailure(error);
           }
         },
         `COUNT request timed out after ${timeoutMs}ms`
