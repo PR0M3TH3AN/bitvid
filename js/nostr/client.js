@@ -42,6 +42,7 @@ import {
   normalizeStoragePointer,
   resolveStoragePointerValue,
 } from "../utils/storagePointer.js";
+import { RelayBatchFetcher } from "./relayBatchFetcher.js";
 import {
   createWatchHistoryManager,
   normalizePointerInput,
@@ -580,6 +581,7 @@ export class NostrClient {
   constructor() {
     this.connectionManager = new ConnectionManager(this);
     this.signerManager = new SignerManager(this);
+    this.relayBatchFetcher = new RelayBatchFetcher(this);
 
     /**
      * @type {Map<string, object>}
