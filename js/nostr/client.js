@@ -2958,20 +2958,6 @@ export class NostrClient {
    * @returns {Promise<import("nostr-tools").Event>} The signed and published edit event.
    * @throws {Error} If permission denied, ownership mismatch, or publish failure.
    */
-  /**
-   * Registers a private key signer and sets it as active.
-   *
-   * @param {object} params
-   * @param {string} params.privateKey - Hex-encoded private key.
-   * @param {string} params.pubkey - Hex-encoded public key.
-   */
-  async registerPrivateKeySigner({ privateKey, pubkey }) {
-    const adapter = await createNsecAdapter({ privateKey, pubkey });
-    this.signerManager.setActiveSigner(adapter);
-    // Also set session actor for worker-based encryption
-    this.sessionActor = { privateKey, pubkey, source: "nsec" };
-  }
-
   async ensureActiveSignerForPubkey(pubkey) {
     return this.signerManager.ensureActiveSignerForPubkey(pubkey);
   }
@@ -3003,7 +2989,17 @@ export class NostrClient {
   }
 
   async registerPrivateKeySigner(params) {
-    return this.signerManager.registerPrivateKeySigner(params);
+    const pubkey = await this.signerManager.registerPrivateKeySigner(params);
+    // Explicitly update the session actor so worker-based encryption can use the private key
+    // even if it wasn't persisted by the SignerManager.
+    if (params && typeof params.privateKey === "string") {
+      this.sessionActor = {
+        privateKey: params.privateKey,
+        pubkey: pubkey,
+        source: "nsec",
+      };
+    }
+    return pubkey;
   }
 
   installNip46Client(rpcClient, options) {

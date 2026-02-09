@@ -452,7 +452,7 @@ export class SignerManager {
       return { ok: false, error: "extension-missing" };
     }
 
-    const extension = typeof window !== "undefined" ? window.nostr : null;
+    extension = typeof window !== "undefined" ? window.nostr : null;
     const message = resolvePermissionStatusMessage(missing, context);
 
     try {

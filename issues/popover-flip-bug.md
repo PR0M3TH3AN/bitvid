@@ -17,12 +17,13 @@ The popover (using Floating UI `flip` middleware) fails to respect viewport boun
 
 ## Test Case
 
-- `tests/e2e/popover.spec.ts`: "keeps the bottom-right grid menu inside the viewport" (skipped).
+- `tests/e2e/popover.spec.ts`: `keeps the bottom-right grid menu inside the viewport` (skipped).
 
 ## History
 
 - **2025-02-23**: Verification failed. Fix attempt failed.
 - **2026-02-08**: Verification attempted but failed due to missing environment dependencies (`@playwright/test`).
+- **2026-02-08**: Environment fixed. Test validated as still failing (skipped).
 
 ## Possible Causes
 
