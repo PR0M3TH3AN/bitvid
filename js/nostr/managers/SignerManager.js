@@ -48,6 +48,7 @@ import {
 } from "../nip46LoggingUtils.js";
 
 import { devLogger, userLogger } from "../../utils/logger.js";
+import { HEX64_REGEX } from "../../utils/hex.js";
 import { createPrivateKeyCipherClosures } from "../signerHelpers.js";
 import { queueSignEvent } from "../signRequestQueue.js";
 import { signEventWithPrivateKey } from "../publishHelpers.js";
@@ -263,13 +264,21 @@ export class SignerManager {
     this.extensionReady = false;
     this.extensionPermissionsGranted = false;
     this.extensionPermissionCache = new Map();
-    const stored = readStoredNip07Permissions();
-    if (stored && stored.size > 0) {
-      this.extensionPermissionsGranted = true;
-      for (const method of stored) {
-        this.extensionPermissionCache.set(method, true);
+
+    // Hydrate permission cache from localStorage so fresh instances
+    // recognise previously granted permissions without re-prompting.
+    try {
+      const storedPermissions = readStoredNip07Permissions();
+      if (storedPermissions.size > 0) {
+        for (const method of storedPermissions) {
+          this.extensionPermissionCache.set(method, true);
+        }
+        this.extensionPermissionsGranted = true;
       }
+    } catch (_) {
+      // Storage unavailable or corrupt — start with empty cache
     }
+
     this.sessionActorCipherClosures = null;
     this.sessionActorCipherClosuresPrivateKey = null;
     this.remoteSignerListeners = new Set();
@@ -436,8 +445,9 @@ export class SignerManager {
       return { ok: true };
     }
 
+    let extension;
     try {
-      await waitForNip07Extension();
+      extension = await waitForNip07Extension();
     } catch (error) {
       return { ok: false, error: "extension-missing" };
     }
@@ -552,7 +562,9 @@ export class SignerManager {
     const adapter = {
         type: "extension",
         pubkey: normalized,
-        signEvent: extension.signEvent.bind(extension),
+        signEvent: typeof extension.signEvent === "function"
+          ? extension.signEvent.bind(extension)
+          : undefined,
         nip04: extension.nip04,
         nip44: extension.nip44,
     };
@@ -940,5 +952,113 @@ export class SignerManager {
     this.extensionReady = false;
     this.extensionPermissionsGranted = false;
     this.emitRemoteSignerChange();
+  }
+
+  installNip46Client(rpcClient, { userPubkey } = {}) {
+    this.nip46Client = rpcClient;
+    if (userPubkey) {
+      this.pubkey = userPubkey;
+    }
+    if (rpcClient && typeof rpcClient.getActiveSigner === "function") {
+      const signer = rpcClient.getActiveSigner();
+      if (signer) {
+        this.setActiveSigner(signer);
+      }
+    }
+    this.emitRemoteSignerChange();
+  }
+
+  async derivePrivateKeyFromSecret(secret) {
+    if (!secret || typeof secret !== "string") {
+      throw new Error("A private key or nsec string is required.");
+    }
+
+    const trimmed = secret.trim();
+    const tools = (await ensureNostrTools()) || getCachedNostrTools();
+
+    // Handle hex private key
+    if (HEX64_REGEX.test(trimmed)) {
+      const privateKeyHex = trimmed.toLowerCase();
+      if (!tools || typeof tools.getPublicKey !== "function") {
+        throw new Error("Nostr tools unavailable for key derivation.");
+      }
+      const pubkey = tools.getPublicKey(privateKeyHex);
+      return { privateKey: privateKeyHex, pubkey };
+    }
+
+    // Handle nsec bech32 encoding
+    if (trimmed.startsWith("nsec1")) {
+      const nip19 = tools?.nip19;
+      if (!nip19 || typeof nip19.decode !== "function") {
+        throw new Error("Nostr tools unavailable for nsec decoding.");
+      }
+      const decoded = nip19.decode(trimmed);
+      if (!decoded || decoded.type !== "nsec" || !decoded.data) {
+        throw new Error("Invalid nsec key.");
+      }
+      const secretBytes = decoded.data;
+      const privateKeyHex =
+        typeof secretBytes === "string"
+          ? secretBytes
+          : Array.from(secretBytes)
+              .map((b) => b.toString(16).padStart(2, "0"))
+              .join("");
+      if (!HEX64_REGEX.test(privateKeyHex)) {
+        throw new Error("Decoded nsec key is invalid.");
+      }
+      const pubkey = tools.getPublicKey(privateKeyHex);
+      return { privateKey: privateKeyHex, pubkey };
+    }
+
+    throw new Error("Unrecognized key format. Provide a hex private key or nsec string.");
+  }
+
+  async registerPrivateKeySigner({ privateKey, pubkey, persist, passphrase, validator } = {}) {
+    if (!privateKey || typeof privateKey !== "string" || !HEX64_REGEX.test(privateKey)) {
+      throw new Error("A valid hex private key is required.");
+    }
+
+    const normalizedPrivateKey = privateKey.toLowerCase();
+    const normalizedPubkey =
+      typeof pubkey === "string" && pubkey.trim()
+        ? pubkey.trim().toLowerCase()
+        : null;
+
+    if (!normalizedPubkey || !HEX64_REGEX.test(normalizedPubkey)) {
+      throw new Error("A valid hex public key is required.");
+    }
+
+    if (typeof validator === "function") {
+      validator(normalizedPubkey);
+    }
+
+    const cipherClosures = await createPrivateKeyCipherClosures(normalizedPrivateKey);
+
+    const adapter = {
+      type: "nsec",
+      pubkey: normalizedPubkey,
+      signEvent: (event) => signEventWithPrivateKey(event, normalizedPrivateKey),
+      ...cipherClosures,
+    };
+
+    this.setActiveSigner(adapter);
+    this.pubkey = normalizedPubkey;
+
+    if (persist && passphrase) {
+      try {
+        const encrypted = await encryptSessionPrivateKey(normalizedPrivateKey, passphrase);
+        persistSessionActorEntry({
+          pubkey: normalizedPubkey,
+          encrypted,
+          source: "nsec",
+          persisted: true,
+        });
+        this.sessionActor = { pubkey: normalizedPubkey, source: "nsec", persisted: true };
+      } catch (error) {
+        devLogger.warn("[nostr] Failed to persist private key signer:", error);
+      }
+    }
+
+    return normalizedPubkey;
   }
 }

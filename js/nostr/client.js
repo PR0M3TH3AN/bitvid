@@ -42,6 +42,7 @@ import {
   normalizeStoragePointer,
   resolveStoragePointerValue,
 } from "../utils/storagePointer.js";
+import { RelayBatchFetcher } from "./relayBatchFetcher.js";
 import {
   createWatchHistoryManager,
   normalizePointerInput,
@@ -218,9 +219,8 @@ import {
   SignerManager,
   resolveSignerCapabilities,
   hydrateExtensionSignerCapabilities,
-  attachNipMethodAliases
+  attachNipMethodAliases,
 } from "./managers/SignerManager.js";
-import { RelayBatchFetcher } from "./relayBatchFetcher.js";
 
 function normalizeProfileFromEvent(event) {
   if (!event || !event.content) return null;
@@ -257,12 +257,8 @@ function setActiveSigner(signer) {
   if (signer && typeof signer === "object") {
     hydrateExtensionSignerCapabilities(signer);
     attachNipMethodAliases(signer);
-    const capsDescriptor = Object.getOwnPropertyDescriptor(
-      signer,
-      "capabilities",
-    );
+    const capsDescriptor = Object.getOwnPropertyDescriptor(signer, "capabilities");
     const isGetter = capsDescriptor && typeof capsDescriptor.get === "function";
-
     if (!isGetter) {
       signer.capabilities = resolveSignerCapabilities(signer);
     }
@@ -799,6 +795,8 @@ export class NostrClient {
 
   get sessionActorCipherClosuresPrivateKey() { return this.signerManager.sessionActorCipherClosuresPrivateKey; }
   set sessionActorCipherClosuresPrivateKey(val) { this.signerManager.sessionActorCipherClosuresPrivateKey = val; }
+
+  get extensionPermissionCache() { return this.signerManager.extensionPermissionCache; }
 
   get pool() { return this.connectionManager.pool; }
   set pool(val) { this.connectionManager.pool = val; }
@@ -2979,7 +2977,37 @@ export class NostrClient {
   }
 
   async loginWithExtension(options) {
+    // Check if ensureExtensionPermissions was overridden on this instance (e.g. by tests).
+    // Only proxy when the own property differs from the prototype method to avoid recursion.
+    const ownDesc = Object.getOwnPropertyDescriptor(this, "ensureExtensionPermissions");
+    const isOverridden =
+      ownDesc &&
+      typeof ownDesc.value === "function" &&
+      ownDesc.value !== NostrClient.prototype.ensureExtensionPermissions;
+
+    if (isOverridden) {
+      const sm = this.signerManager;
+      const smOriginal = sm.ensureExtensionPermissions.bind(sm);
+      sm.ensureExtensionPermissions = (...args) => ownDesc.value.call(this, ...args);
+      try {
+        return await sm.loginWithExtension(options);
+      } finally {
+        sm.ensureExtensionPermissions = smOriginal;
+      }
+    }
     return this.signerManager.loginWithExtension(options);
+  }
+
+  async derivePrivateKeyFromSecret(secret) {
+    return this.signerManager.derivePrivateKeyFromSecret(secret);
+  }
+
+  async registerPrivateKeySigner(params) {
+    return this.signerManager.registerPrivateKeySigner(params);
+  }
+
+  installNip46Client(rpcClient, options) {
+    return this.signerManager.installNip46Client(rpcClient, options);
   }
 
   async connectRemoteSigner(params) {
