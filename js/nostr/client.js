@@ -943,6 +943,17 @@ export class NostrClient {
     }
   }
 
+  resolveEventDTag(event, fallbackEvent = null) {
+    if (event && typeof event === "object") {
+      const dTag = getDTagValueFromTags(event.tags);
+      if (dTag) return dTag;
+    }
+    if (fallbackEvent && typeof fallbackEvent === "object") {
+      return getDTagValueFromTags(fallbackEvent.tags);
+    }
+    return null;
+  }
+
   getActiveKey(video) {
     return getActiveKey(video);
   }
@@ -2989,17 +3000,33 @@ export class NostrClient {
   }
 
   async registerPrivateKeySigner(params) {
-    const pubkey = await this.signerManager.registerPrivateKeySigner(params);
+    let { pubkey } = params || {};
+    const { privateKey } = params || {};
+
+    if (!pubkey && privateKey) {
+      try {
+        const tools = await ensureNostrTools();
+        if (tools && typeof tools.getPublicKey === "function") {
+          pubkey = tools.getPublicKey(privateKey);
+        }
+      } catch (err) {
+        devLogger.warn("[nostr] Failed to derive pubkey in registerPrivateKeySigner:", err);
+      }
+    }
+
+    const effectiveParams = { ...params, pubkey };
+    const resultPubkey = await this.signerManager.registerPrivateKeySigner(effectiveParams);
+
     // Explicitly update the session actor so worker-based encryption can use the private key
     // even if it wasn't persisted by the SignerManager.
-    if (params && typeof params.privateKey === "string") {
+    if (privateKey) {
       this.sessionActor = {
-        privateKey: params.privateKey,
-        pubkey: pubkey,
+        privateKey,
+        pubkey: resultPubkey,
         source: "nsec",
       };
     }
-    return pubkey;
+    return resultPubkey;
   }
 
   installNip46Client(rpcClient, options) {
