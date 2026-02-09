@@ -397,12 +397,13 @@ call the facade to keep API surfaces consistent.
 
 ### Nostr video fetch limits
 
-`nostrClient.fetchVideos(options)` now accepts an optional `options.limit` to
-control how many video events are requested per relay. The request size defaults
+The `nostrClient` uses `subscribeVideos(callback, options)` for the main feed to support buffering and streaming. It accepts an optional `options.limit` to control how many video events are requested per relay. The request size defaults
 to `DEFAULT_VIDEO_REQUEST_LIMIT` (150) and is clamped to
 `MAX_VIDEO_REQUEST_LIMIT` (500) to avoid accidental firehose requests as the
 network grows. Use a smaller limit for lightweight surfaces or a larger value
 when running batch jobs that can tolerate additional load.
+
+`nostrClient.fetchVideos(options)` is a legacy wrapper around subscription and is deprecated.
 
 The build command compiles Tailwind with `tailwind.config.cjs`, runs it through
 the PostCSS pipeline defined in `postcss.config.cjs` (for autoprefixing), and
