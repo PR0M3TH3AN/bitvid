@@ -288,22 +288,12 @@ export function createAuthSessionCoordinator(deps) {
         ? Promise.resolve()
             .then(async () => {
               const signerGateStart = now();
-              let outcome = await evaluateSignerReadinessGate(activePubkey);
-              if (!outcome.ready) {
-                outcome = {
-                  ...outcome,
-                  recoveryAttempted: true,
-                  initialStatus: outcome.status,
-                };
-                const recoveryOutcome = await evaluateSignerReadinessGate(
-                  activePubkey,
-                );
-                outcome = {
-                  ...recoveryOutcome,
-                  recoveryAttempted: true,
-                  initialStatus: outcome.initialStatus,
-                };
-              }
+              // PERF: Evaluate signer readiness once. The previous double-gate
+              // evaluation added 5-10s to the login path by repeating the same
+              // extension wait + permission request. A single evaluation is
+              // sufficient because ensureActiveSignerForPubkey already waits
+              // for extension injection internally.
+              const outcome = await evaluateSignerReadinessGate(activePubkey);
 
               const durationMs = Math.max(
                 0,
@@ -311,7 +301,7 @@ export function createAuthSessionCoordinator(deps) {
               );
               const finalOutcome = {
                 ...outcome,
-                recoveryAttempted: Boolean(outcome.recoveryAttempted),
+                recoveryAttempted: false,
                 durationMs,
               };
               userLogger.info("[signer-ready]", {
@@ -323,7 +313,7 @@ export function createAuthSessionCoordinator(deps) {
 
               if (!finalOutcome.ready && finalOutcome.error) {
                 devLogger.warn(
-                  "[Application] Signer readiness gate not ready after bounded recovery:",
+                  "[Application] Signer readiness gate not ready:",
                   finalOutcome.error,
                 );
               }
@@ -336,7 +326,7 @@ export function createAuthSessionCoordinator(deps) {
                 ready: false,
                 status: classifySignerGateError(error),
                 error,
-                recoveryAttempted: true,
+                recoveryAttempted: false,
                 durationMs: 0,
               };
             })
@@ -712,7 +702,10 @@ export function createAuthSessionCoordinator(deps) {
       // hashtag preferences) to settle before rendering the video grid. This
       // prevents the feed from briefly showing unfiltered content. We use a
       // time-boxed wait so the UI isn't blocked indefinitely if decryption stalls.
-      const FEED_SYNC_TIMEOUT_MS = 12000;
+      // PERF: Reduced from 12s to 8s — list decryption timeouts have been
+      // lowered so settled results arrive faster. 8s prevents the feed from
+      // being blocked while still giving most lists time to decrypt.
+      const FEED_SYNC_TIMEOUT_MS = 8000;
       const feedSyncPromise = Promise.race([
         Promise.allSettled([
           listStatePromise,

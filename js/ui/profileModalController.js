@@ -9982,7 +9982,23 @@ export class ProfileModalController {
       return;
     }
 
-    const isUnlocked = storageService && storageService.masterKeys.has(pubkey);
+    let isUnlocked = storageService && storageService.masterKeys.has(pubkey);
+
+    // Auto-unlock: If not already unlocked and a signer is available, attempt
+    // a silent unlock in the background. This eliminates the manual "Unlock"
+    // click for users whose extension has already granted permissions.
+    if (!isUnlocked && storageService && !this.storageUnlockFailure) {
+      const signer = getActiveSigner();
+      if (signer && (typeof signer.nip44Decrypt === "function" || typeof signer.nip04Decrypt === "function")) {
+        try {
+          await storageService.unlock(pubkey, { signer });
+          isUnlocked = storageService.masterKeys.has(pubkey);
+        } catch (autoUnlockError) {
+          // Silent failure — user can still manually unlock.
+          devLogger.log("[ProfileModal] Auto-unlock storage skipped:", autoUnlockError?.message || autoUnlockError);
+        }
+      }
+    }
 
     if (this.storageStatusText) {
       if (isUnlocked) {
@@ -10238,14 +10254,14 @@ export class ProfileModalController {
       }
     }
 
-    const caps = signer?.capabilities && typeof signer.capabilities === "object"
-      ? signer.capabilities
-      : null;
-    const hasNip44Decrypt =
-      caps?.nip44 !== false && typeof signer?.nip44Decrypt === "function";
+    // FIX: Check for method existence only, not capabilities. NIP-07 adapters
+    // always expose nip04Decrypt/nip44Decrypt methods that perform their own
+    // existence checks at call time. The capabilities getter dynamically queries
+    // the extension which may not have injected its NIP-44/04 modules yet
+    // (lazy injection), causing a false-negative that blocks the unlock flow.
+    const hasNip44Decrypt = typeof signer?.nip44Decrypt === "function";
     const hasNip04Decrypt =
-      caps?.nip04 !== false &&
-      (typeof signer?.nip04Decrypt === "function" || typeof signer?.decrypt === "function");
+      typeof signer?.nip04Decrypt === "function" || typeof signer?.decrypt === "function";
 
     if (!hasNip44Decrypt && !hasNip04Decrypt) {
       const missingDecryptError = new Error(

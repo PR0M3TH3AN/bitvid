@@ -36,13 +36,14 @@ const LOG_PREFIX = "[HashtagPreferences]";
 const HASHTAG_IDENTIFIER = "bitvid:tag-preferences";
 
 const DEFAULT_VERSION = 1;
-// PERF: Reduced from 20s to 10s — the signer is now guaranteed to be ready
-// before list loading starts (authSessionCoordinator waits for the permission
-// pre-grant), so decryption should succeed quickly. 10s is a generous fallback
-// for slow relay responses while still failing fast enough to retry promptly.
-const DECRYPT_TIMEOUT_MS = 10000;
-// PERF: Reduced from 10s to 3s for faster recovery during login.
-const DECRYPT_RETRY_DELAY_MS = 3000;
+// PERF: Reduced from 10s to 6s — the signer is guaranteed ready before list
+// loading starts (authSessionCoordinator waits for the permission pre-grant),
+// so decryption should succeed within 2-3s. 6s is generous enough for slow
+// relays while still failing fast for scheme fallback.
+const DECRYPT_TIMEOUT_MS = 6000;
+// PERF: Reduced from 3s to 1.5s — extensions that already granted permission
+// should recover near-instantly. Shorter delay speeds up the login path.
+const DECRYPT_RETRY_DELAY_MS = 1500;
 
 class TinyEventEmitter {
   constructor() {
@@ -984,10 +985,13 @@ class HashtagPreferencesService {
       (signerReadinessGate.status === "permission-denied" ||
         signerReadinessGate.status === "extension-unavailable");
     let signer = getActiveSigner();
+    // FIX: Always attempt to resolve the signer, not only when
+    // allowPermissionPrompt is true. ensureActiveSignerForPubkey does not
+    // prompt the user — it only waits for an already-injected extension.
+    // Without this, background refreshes can never decrypt.
     if (
       !signer &&
-      typeof nostrClient?.ensureActiveSignerForPubkey === "function" &&
-      allowPermissionPrompt
+      typeof nostrClient?.ensureActiveSignerForPubkey === "function"
     ) {
       signer = await nostrClient.ensureActiveSignerForPubkey(userPubkey);
     }
@@ -1044,11 +1048,11 @@ class HashtagPreferencesService {
       sources.set(scheme, source);
     };
 
-    // PERF: Previous 5s no-prompt timeout was too aggressive — extensions that
-    // have already granted permission still need time to decrypt. 8s gives a
-    // realistic window while still failing faster than the full 15s interactive
-    // timeout.
-    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 15000 : 8000;
+    // PERF: Reduced no-prompt timeout from 8s to 5s — the signer readiness
+    // gate guarantees the extension is ready before decryption starts, so
+    // decrypt calls should complete within 1-2s. 5s accommodates slow
+    // extensions while still failing fast for scheme fallback.
+    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 12000 : 5000;
     const signerDecryptOptions = {
       priority: NIP07_PRIORITY.NORMAL,
       timeoutMs: nip07DecryptTimeoutMs,
@@ -1207,12 +1211,17 @@ class HashtagPreferencesService {
         const decryptFn = decryptors.get(scheme);
         if (!decryptFn) return null;
         attemptSchemes.push(scheme);
-        return decryptFn(ciphertext).then((plaintext) => {
-          if (typeof plaintext !== "string") {
-            throw new Error("Decryption returned non-string payload.");
-          }
-          return { plaintext, scheme };
-        });
+        // FIX: Wrap in Promise.resolve().then() to catch synchronous throws
+        // from decryptor functions (e.g. NIP-07 adapter nip44Decrypt throws
+        // immediately if the extension hasn't injected its nip44 module yet).
+        return Promise.resolve()
+          .then(() => decryptFn(ciphertext))
+          .then((plaintext) => {
+            if (typeof plaintext !== "string") {
+              throw new Error("Decryption returned non-string payload.");
+            }
+            return { plaintext, scheme };
+          });
       })
       .filter(Boolean);
 
