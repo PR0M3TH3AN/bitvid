@@ -15,7 +15,11 @@ test("ensureActiveSignerForPubkey prefers concurrent login over late extension i
     const client = new NostrClient();
     client.pubkey = HEX_PUBKEY;
     // Pre-condition: Cache permissions to trigger the waitForNip07Extension logic
-    client.extensionPermissionCache.add("sign_event");
+    if (typeof client.extensionPermissionCache.add === 'function') {
+      client.extensionPermissionCache.add("sign_event");
+    } else if (typeof client.extensionPermissionCache.set === 'function') {
+      client.extensionPermissionCache.set("sign_event", true);
+    }
 
     // Mock a NIP-46 signer that might be set during the race
     const mockNip46Signer = {

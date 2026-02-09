@@ -214,7 +214,13 @@ import { queueSignEvent } from "./signRequestQueue.js";
 import { EventsMap } from "./eventsMap.js";
 import { PersistenceManager } from "./managers/PersistenceManager.js";
 import { ConnectionManager } from "./managers/ConnectionManager.js";
-import { SignerManager } from "./managers/SignerManager.js";
+import {
+  SignerManager,
+  resolveSignerCapabilities,
+  hydrateExtensionSignerCapabilities,
+  attachNipMethodAliases,
+} from "./managers/SignerManager.js";
+import { RelayBatchFetcher } from "./relayBatchFetcher.js";
 
 function normalizeProfileFromEvent(event) {
   if (!event || !event.content) return null;
@@ -230,10 +236,31 @@ function normalizeProfileFromEvent(event) {
 // We keep them as pass-throughs to the registry or utility logic where appropriate.
 
 function resolveActiveSigner(pubkey) {
-  return resolveActiveSignerFromRegistry(pubkey);
+  const signer = resolveActiveSignerFromRegistry(pubkey);
+  if (signer) {
+    hydrateExtensionSignerCapabilities(signer);
+    attachNipMethodAliases(signer);
+    if (!signer.capabilities && resolveSignerCapabilities) {
+      const capsDescriptor = Object.getOwnPropertyDescriptor(signer, "capabilities");
+      if (!capsDescriptor || typeof capsDescriptor.get !== "function") {
+        signer.capabilities = resolveSignerCapabilities(signer);
+      }
+    }
+  }
+  return signer;
 }
 
 function setActiveSigner(signer) {
+  if (signer) {
+    hydrateExtensionSignerCapabilities(signer);
+    attachNipMethodAliases(signer);
+    if (!signer.capabilities && resolveSignerCapabilities) {
+      const capsDescriptor = Object.getOwnPropertyDescriptor(signer, "capabilities");
+      if (!capsDescriptor || typeof capsDescriptor.get !== "function") {
+        signer.capabilities = resolveSignerCapabilities(signer);
+      }
+    }
+  }
   setActiveSignerInRegistry(signer);
 }
 
@@ -580,6 +607,7 @@ export class NostrClient {
   constructor() {
     this.connectionManager = new ConnectionManager(this);
     this.signerManager = new SignerManager(this);
+    this.relayBatchFetcher = new RelayBatchFetcher(this);
 
     /**
      * @type {Map<string, object>}
@@ -752,6 +780,8 @@ export class NostrClient {
   get sessionActorCipherClosuresPrivateKey() { return this.signerManager.sessionActorCipherClosuresPrivateKey; }
   set sessionActorCipherClosuresPrivateKey(val) { this.signerManager.sessionActorCipherClosuresPrivateKey = val; }
 
+  get extensionPermissionCache() { return this.signerManager.extensionPermissionCache; }
+
   get pool() { return this.connectionManager.pool; }
   set pool(val) { this.connectionManager.pool = val; }
 
@@ -890,6 +920,23 @@ export class NostrClient {
     if (videoCreated < currentMin) {
       this.rootCreatedAtByRoot.set(rootId, videoCreated);
     }
+  }
+
+  resolveEventDTag(event, fallbackEvent = null) {
+    if (!event || typeof event !== "object") {
+      if (fallbackEvent) {
+        return this.resolveEventDTag(fallbackEvent);
+      }
+      return "";
+    }
+    const val = getDTagValueFromTags(event.tags);
+    if (val) {
+      return val;
+    }
+    if (fallbackEvent) {
+      return this.resolveEventDTag(fallbackEvent);
+    }
+    return "";
   }
 
   getActiveKey(video) {
@@ -2911,12 +2958,31 @@ export class NostrClient {
     return this.signerManager.ensureActiveSignerForPubkey(pubkey);
   }
 
+  async registerPrivateKeySigner({ privateKey, pubkey }) {
+    if (!privateKey) {
+      throw new Error("Private key is required.");
+    }
+    const adapter = await createNsecAdapter({ privateKey, pubkey });
+    this.signerManager.setActiveSigner(adapter);
+    this.sessionActor = {
+      pubkey: adapter.pubkey,
+      privateKey: privateKey,
+      source: "nsec",
+      createdAt: Date.now(),
+    };
+    return adapter;
+  }
+
   async loginWithExtension(options) {
     return this.signerManager.loginWithExtension(options);
   }
 
   async connectRemoteSigner(params) {
     return this.signerManager.connectRemoteSigner(params);
+  }
+
+  installNip46Client(client) {
+    this.signerManager.installNip46Client(client);
   }
 
   async useStoredRemoteSigner(options) {
