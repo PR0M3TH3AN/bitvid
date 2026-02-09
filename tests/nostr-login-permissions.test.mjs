@@ -55,6 +55,7 @@ function setupLoginEnvironment({ enableImpl, getPublicKey = HEX_PUBKEY } = {}) {
       return Promise.resolve();
     },
     getPublicKey: () => Promise.resolve(getPublicKey),
+    signEvent: async (event) => event,
   };
 
   windowRef.nostr = nostrStub;
@@ -456,10 +457,10 @@ describe("NIP-07 Login Permissions", () => {
   it("NIP-07 login does not wait for deferred permission grants", async () => {
     clearStoredPermissions();
     const env = setupLoginEnvironment();
-    const originalEnsurePermissions = nostrClient.ensureExtensionPermissions;
+    const originalEnsurePermissions = nostrClient.signerManager.ensureExtensionPermissions;
     let completionPromise;
 
-    nostrClient.ensureExtensionPermissions = async () => {
+    nostrClient.signerManager.ensureExtensionPermissions = async () => {
       completionPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error("permission denied")), 300);
       });
@@ -482,7 +483,7 @@ describe("NIP-07 Login Permissions", () => {
         "deferred permission grants should still reject",
       );
     } finally {
-      nostrClient.ensureExtensionPermissions = originalEnsurePermissions;
+      nostrClient.signerManager.ensureExtensionPermissions = originalEnsurePermissions;
       env.restore();
       nostrClient.logout();
       clearStoredPermissions();

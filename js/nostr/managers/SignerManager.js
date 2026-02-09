@@ -53,7 +53,7 @@ import { queueSignEvent } from "../signRequestQueue.js";
 import { signEventWithPrivateKey } from "../publishHelpers.js";
 import { ensureNostrTools, getCachedNostrTools } from "../toolkit.js";
 
-function resolveSignerCapabilities(signer) {
+export function resolveSignerCapabilities(signer) {
   const fallback = {
     sign: false,
     nip44: false,
@@ -84,7 +84,7 @@ function resolveSignerCapabilities(signer) {
   };
 }
 
-function hydrateExtensionSignerCapabilities(signer) {
+export function hydrateExtensionSignerCapabilities(signer) {
   if (!signer || typeof signer !== "object") {
     return;
   }
@@ -115,7 +115,7 @@ function hydrateExtensionSignerCapabilities(signer) {
   }
 }
 
-function attachNipMethodAliases(signer) {
+export function attachNipMethodAliases(signer) {
   if (!signer || typeof signer !== "object") {
     return;
   }
@@ -263,6 +263,10 @@ export class SignerManager {
     this.extensionReady = false;
     this.extensionPermissionsGranted = false;
     this.extensionPermissionCache = new Map();
+    const storedPermissions = readStoredNip07Permissions();
+    for (const method of storedPermissions) {
+      this.extensionPermissionCache.set(method, true);
+    }
     this.sessionActorCipherClosures = null;
     this.sessionActorCipherClosuresPrivateKey = null;
     this.remoteSignerListeners = new Set();
@@ -426,8 +430,9 @@ export class SignerManager {
       return { ok: true };
     }
 
+    let extension = null;
     try {
-      await waitForNip07Extension();
+      extension = await waitForNip07Extension();
     } catch (error) {
       return { ok: false, error: "extension-missing" };
     }
@@ -435,11 +440,14 @@ export class SignerManager {
     const message = resolvePermissionStatusMessage(missing, context);
 
     try {
-      const response = await requestEnablePermissions(missing);
-      if (response?.enabled) {
+      const response = await requestEnablePermissions(extension, missing);
+      if (response?.ok) {
         writeStoredNip07Permissions(missing);
         this.extensionPermissionsGranted = true;
         this.extensionPermissionCache.set(cacheKey, true);
+        for (const method of missing) {
+          this.extensionPermissionCache.set(method, true);
+        }
         return { ok: true };
       }
       return { ok: false, error: "permission-denied" };

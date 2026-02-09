@@ -214,7 +214,8 @@ import { queueSignEvent } from "./signRequestQueue.js";
 import { EventsMap } from "./eventsMap.js";
 import { PersistenceManager } from "./managers/PersistenceManager.js";
 import { ConnectionManager } from "./managers/ConnectionManager.js";
-import { SignerManager } from "./managers/SignerManager.js";
+import { SignerManager, resolveSignerCapabilities } from "./managers/SignerManager.js";
+import { RelayBatchFetcher } from "./relayBatchFetcher.js";
 
 function normalizeProfileFromEvent(event) {
   if (!event || !event.content) return null;
@@ -580,6 +581,7 @@ export class NostrClient {
   constructor() {
     this.connectionManager = new ConnectionManager(this);
     this.signerManager = new SignerManager(this);
+    this.relayBatchFetcher = new RelayBatchFetcher(this);
 
     /**
      * @type {Map<string, object>}
@@ -745,6 +747,8 @@ export class NostrClient {
 
   get nip46Client() { return this.signerManager.nip46Client; }
   set nip46Client(val) { this.signerManager.nip46Client = val; }
+
+  get extensionPermissionCache() { return this.signerManager.extensionPermissionCache; }
 
   get sessionActorCipherClosures() { return this.signerManager.sessionActorCipherClosures; }
   set sessionActorCipherClosures(val) { this.signerManager.sessionActorCipherClosures = val; }
@@ -2960,6 +2964,43 @@ export class NostrClient {
 
   logout() {
     return this.signerManager.logout();
+  }
+
+  async registerPrivateKeySigner({ privateKey, pubkey }) {
+    let effectivePubkey = pubkey;
+    if (!effectivePubkey && privateKey) {
+      const tools = await ensureNostrTools();
+      if (typeof tools.getPublicKey === "function") {
+        try {
+          if (HEX64_REGEX.test(privateKey)) {
+             // Convert hex to bytes for nostr-tools v2 if needed, or rely on it handling hex
+             // Note: nostr-tools v2 getPublicKey expects bytes.
+             // We can do a quick conversion if we have a helper, or try/catch.
+             const bytes = new Uint8Array(
+               privateKey.match(/.{1,2}/g).map((byte) => parseInt(byte, 16))
+             );
+             effectivePubkey = tools.getPublicKey(bytes);
+          } else {
+             effectivePubkey = tools.getPublicKey(privateKey);
+          }
+        } catch (err) {
+          // ignore
+        }
+      }
+    }
+
+    if (!privateKey || !effectivePubkey) {
+      throw new Error("Private key and pubkey are required.");
+    }
+    const adapter = await createNsecAdapter({ privateKey, pubkey: effectivePubkey });
+    this.signerManager.setActiveSigner(adapter);
+    this.sessionActor = {
+      source: "nsec",
+      pubkey: effectivePubkey,
+      privateKey,
+      persisted: false,
+    };
+    return adapter;
   }
 
   async editVideo(originalEventStub, updatedData, userPubkey) {
