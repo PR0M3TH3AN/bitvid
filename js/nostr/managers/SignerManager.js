@@ -53,7 +53,7 @@ import { queueSignEvent } from "../signRequestQueue.js";
 import { signEventWithPrivateKey } from "../publishHelpers.js";
 import { ensureNostrTools, getCachedNostrTools } from "../toolkit.js";
 
-function resolveSignerCapabilities(signer) {
+export function resolveSignerCapabilities(signer) {
   const fallback = {
     sign: false,
     nip44: false,
@@ -263,6 +263,10 @@ export class SignerManager {
     this.extensionReady = false;
     this.extensionPermissionsGranted = false;
     this.extensionPermissionCache = new Map();
+    const storedPermissions = readStoredNip07Permissions();
+    for (const method of storedPermissions) {
+      this.extensionPermissionCache.set(method, true);
+    }
     this.sessionActorCipherClosures = null;
     this.sessionActorCipherClosuresPrivateKey = null;
     this.remoteSignerListeners = new Set();
@@ -423,6 +427,9 @@ export class SignerManager {
     if (missing.length === 0) {
       this.extensionPermissionsGranted = true;
       this.extensionPermissionCache.set(cacheKey, true);
+      for (const method of methods) {
+        this.extensionPermissionCache.set(method, true);
+      }
       return { ok: true };
     }
 
@@ -435,11 +442,14 @@ export class SignerManager {
     const message = resolvePermissionStatusMessage(missing, context);
 
     try {
-      const response = await requestEnablePermissions(missing);
-      if (response?.enabled) {
+      const response = await requestEnablePermissions(window.nostr, missing);
+      if (response?.ok) {
         writeStoredNip07Permissions(missing);
         this.extensionPermissionsGranted = true;
         this.extensionPermissionCache.set(cacheKey, true);
+        for (const method of missing) {
+          this.extensionPermissionCache.set(method, true);
+        }
         return { ok: true };
       }
       return { ok: false, error: "permission-denied" };

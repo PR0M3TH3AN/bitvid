@@ -214,7 +214,7 @@ import { queueSignEvent } from "./signRequestQueue.js";
 import { EventsMap } from "./eventsMap.js";
 import { PersistenceManager } from "./managers/PersistenceManager.js";
 import { ConnectionManager } from "./managers/ConnectionManager.js";
-import { SignerManager } from "./managers/SignerManager.js";
+import { SignerManager, resolveSignerCapabilities } from "./managers/SignerManager.js";
 import { RelayBatchFetcher } from "./relayBatchFetcher.js";
 
 function normalizeProfileFromEvent(event) {
@@ -753,6 +753,8 @@ export class NostrClient {
 
   get sessionActorCipherClosuresPrivateKey() { return this.signerManager.sessionActorCipherClosuresPrivateKey; }
   set sessionActorCipherClosuresPrivateKey(val) { this.signerManager.sessionActorCipherClosuresPrivateKey = val; }
+
+  get extensionPermissionCache() { return this.signerManager.extensionPermissionCache; }
 
   get pool() { return this.connectionManager.pool; }
   set pool(val) { this.connectionManager.pool = val; }
@@ -2911,6 +2913,15 @@ export class NostrClient {
    */
   async ensureActiveSignerForPubkey(pubkey) {
     return this.signerManager.ensureActiveSignerForPubkey(pubkey);
+  }
+
+  async registerPrivateKeySigner({ privateKey, pubkey }) {
+    if (!privateKey) {
+      throw new Error("Private key is required.");
+    }
+    const adapter = await createNsecAdapter({ privateKey, pubkey });
+    this.signerManager.setActiveSigner(adapter);
+    return adapter;
   }
 
   async loginWithExtension(options) {
