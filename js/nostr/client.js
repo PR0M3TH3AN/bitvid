@@ -215,6 +215,7 @@ import { EventsMap } from "./eventsMap.js";
 import { PersistenceManager } from "./managers/PersistenceManager.js";
 import { ConnectionManager } from "./managers/ConnectionManager.js";
 import { SignerManager } from "./managers/SignerManager.js";
+import { RelayBatchFetcher } from "./relayBatchFetcher.js";
 
 function normalizeProfileFromEvent(event) {
   if (!event || !event.content) return null;
@@ -580,6 +581,7 @@ export class NostrClient {
   constructor() {
     this.connectionManager = new ConnectionManager(this);
     this.signerManager = new SignerManager(this);
+    this.relayBatchFetcher = new RelayBatchFetcher(this);
 
     /**
      * @type {Map<string, object>}
