@@ -236,7 +236,18 @@ function normalizeProfileFromEvent(event) {
 // We keep them as pass-throughs to the registry or utility logic where appropriate.
 
 function resolveActiveSigner(pubkey) {
-  return resolveActiveSignerFromRegistry(pubkey);
+  const signer = resolveActiveSignerFromRegistry(pubkey);
+  if (signer) {
+    hydrateExtensionSignerCapabilities(signer);
+    attachNipMethodAliases(signer);
+    if (!signer.capabilities && resolveSignerCapabilities) {
+      const capsDescriptor = Object.getOwnPropertyDescriptor(signer, "capabilities");
+      if (!capsDescriptor || typeof capsDescriptor.get !== "function") {
+        signer.capabilities = resolveSignerCapabilities(signer);
+      }
+    }
+  }
+  return signer;
 }
 
 function setActiveSigner(signer) {
@@ -772,6 +783,8 @@ export class NostrClient {
 
   get sessionActorCipherClosuresPrivateKey() { return this.signerManager.sessionActorCipherClosuresPrivateKey; }
   set sessionActorCipherClosuresPrivateKey(val) { this.signerManager.sessionActorCipherClosuresPrivateKey = val; }
+
+  get extensionPermissionCache() { return this.signerManager.extensionPermissionCache; }
 
   get pool() { return this.connectionManager.pool; }
   set pool(val) { this.connectionManager.pool = val; }
@@ -2964,12 +2977,31 @@ export class NostrClient {
     return this.signerManager.ensureActiveSignerForPubkey(pubkey);
   }
 
+  async registerPrivateKeySigner({ privateKey, pubkey }) {
+    if (!privateKey) {
+      throw new Error("Private key is required.");
+    }
+    const adapter = await createNsecAdapter({ privateKey, pubkey });
+    this.signerManager.setActiveSigner(adapter);
+    this.sessionActor = {
+      pubkey: adapter.pubkey,
+      privateKey: privateKey,
+      source: "nsec",
+      createdAt: Date.now(),
+    };
+    return adapter;
+  }
+
   async loginWithExtension(options) {
     return this.signerManager.loginWithExtension(options);
   }
 
   async connectRemoteSigner(params) {
     return this.signerManager.connectRemoteSigner(params);
+  }
+
+  installNip46Client(client) {
+    this.signerManager.installNip46Client(client);
   }
 
   async useStoredRemoteSigner(options) {
