@@ -28,7 +28,7 @@ For any nostr related work, please review the nip documentation located in /docs
 * **Goal:** Always deliver smooth playback while keeping hosting costs low.
 * **Primary transport:** A hosted video URL (MP4/WebM/HLS/DASH) that the `<video>` element can stream directly.
 * **Fallback transport:** A WebTorrent magnet that includes browser‑safe trackers plus optional HTTP hints.
-* **Runtime behavior:** Call `bitvidApp.playVideoWithFallback({ url, magnet })` in `js/app.js`. This function orchestrates URL probing and magnet fallback, delegating low-level stream handling to `js/services/playbackService.js`. `js/playbackUtils.js` now provides magnet/session helper utilities rather than the playback entry point itself.
+* **Runtime behavior:** Call `bitvidApp.playVideoWithFallback({ url, magnet })` (implemented in `js/app/playbackCoordinator.js` and bound to the app instance in `js/app.js`). This function orchestrates URL probing and magnet fallback, delegating low-level stream handling to `js/services/playbackService.js`. `js/playbackUtils.js` now provides magnet/session helper utilities rather than the playback entry point itself.
 * **Content contract:** bitvid posts (Nostr kind `30078`) must include a `title` and at least one of `url` or `magnet`. Prefer to publish both along with optional `thumbnail`, `description`, and `mode` fields. When mirroring to NIP‑94 (`kind 1063`), copy the hosted URL and (optionally) the magnet so other clients can discover the same asset.
 
 ## Styling & Theming Rules (token-first)

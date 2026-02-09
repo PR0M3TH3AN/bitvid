@@ -140,7 +140,21 @@ export function signEventWithPrivateKey(event, privateKey) {
     throw new Error("Missing signing primitives");
   }
 
-  const finalized = finalizeFn(prepared, normalizedKey);
+  let secretKey = normalizedKey;
+  if (typeof Uint8Array !== "undefined") {
+    try {
+      const len = normalizedKey.length;
+      const bytes = new Uint8Array(len / 2);
+      for (let i = 0; i < len; i += 2) {
+        bytes[i / 2] = parseInt(normalizedKey.substring(i, i + 2), 16);
+      }
+      secretKey = bytes;
+    } catch (error) {
+      // Ignore conversion error, secretKey remains string
+    }
+  }
+
+  const finalized = finalizeFn(prepared, secretKey);
   if (
     !finalized ||
     typeof finalized.id !== "string" ||

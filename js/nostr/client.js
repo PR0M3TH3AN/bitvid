@@ -927,6 +927,18 @@ export class NostrClient {
     return this.connectionManager.makeCountUnsupportedError(relayUrl);
   }
 
+  resolveEventDTag(event, fallbackEvent = null) {
+    if (event && event.tags) {
+      const dTag = getDTagValueFromTags(event.tags);
+      if (dTag) return dTag;
+    }
+    if (fallbackEvent && fallbackEvent.tags) {
+      const dTag = getDTagValueFromTags(fallbackEvent.tags);
+      if (dTag) return dTag;
+    }
+    return "";
+  }
+
   applyRootCreatedAt(video) {
     if (!video || typeof video !== "object") return;
     const rootId = video.videoRootId;
@@ -3068,8 +3080,8 @@ export class NostrClient {
     return this.signerManager.disconnectRemoteSigner(options);
   }
 
-  async ensureSessionActor() {
-    return this.signerManager.ensureSessionActor();
+  async ensureSessionActor(...args) {
+    return this.signerManager.ensureSessionActor(...args);
   }
 
   clearStoredSessionActor() {

@@ -325,7 +325,7 @@ export class SignerManager {
     return resolveActiveSigner(pubkey);
   }
 
-  async ensureSessionActor() {
+  async ensureSessionActor(createIfMissing = false) {
     if (this.sessionActor) {
       return this.sessionActor;
     }
@@ -339,6 +339,40 @@ export class SignerManager {
       this.lockedSessionActor = storedEntry;
       this.sessionActor = storedEntry;
       return storedEntry;
+    }
+
+    if (createIfMissing) {
+      const tools = (await ensureNostrTools()) || getCachedNostrTools();
+      if (tools) {
+        let privateKey;
+        let pubkey;
+
+        if (typeof tools.generatePrivateKey === "function") {
+          const raw = tools.generatePrivateKey();
+          if (typeof raw === "string") {
+            privateKey = raw;
+            pubkey = tools.getPublicKey(privateKey);
+          } else {
+            pubkey = tools.getPublicKey(raw);
+            privateKey = Array.from(raw)
+              .map((b) => b.toString(16).padStart(2, "0"))
+              .join("");
+          }
+        } else if (typeof tools.generateSecretKey === "function") {
+          const secret = tools.generateSecretKey();
+          pubkey = tools.getPublicKey(secret);
+          privateKey = Array.from(secret)
+            .map((b) => b.toString(16).padStart(2, "0"))
+            .join("");
+        }
+
+        if (privateKey && pubkey) {
+          const newActor = { privateKey, pubkey };
+          this.sessionActor = newActor;
+          persistSessionActorEntry(newActor);
+          return newActor;
+        }
+      }
     }
 
     return null;
@@ -452,7 +486,10 @@ export class SignerManager {
       return { ok: false, error: "extension-missing" };
     }
 
-    extension = typeof window !== "undefined" ? window.nostr : null;
+    if (!extension && typeof window !== "undefined") {
+      extension = window.nostr;
+    }
+
     const message = resolvePermissionStatusMessage(missing, context);
 
     try {

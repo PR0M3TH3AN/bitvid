@@ -484,7 +484,17 @@ export function clearStoredSessionActor() {
 
 export function isSessionActor(nostrClient) {
   const sa = nostrClient?.sessionActor;
-  return !!sa && sa.source !== "nsec";
+  if (!sa || sa.source === "nsec") {
+    return false;
+  }
+  const clientPubkey =
+    typeof nostrClient?.pubkey === "string" ? nostrClient.pubkey : null;
+  const sessionPubkey = typeof sa.pubkey === "string" ? sa.pubkey : null;
+
+  if (clientPubkey && sessionPubkey && clientPubkey !== sessionPubkey) {
+    return false;
+  }
+  return true;
 }
 
 function _closeSessionActorDb() {
