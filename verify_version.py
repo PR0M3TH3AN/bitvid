@@ -1,29 +1,33 @@
 from playwright.sync_api import sync_playwright
+import re
 
 def run():
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page()
-        page.goto("http://localhost:3000")
+        try:
+            page.goto("http://localhost:8080")
 
-        # Locate the tagline
-        tagline = page.get_by_text("seed. zap. subscribe.")
+            # Pattern for version string
+            pattern = re.compile(r"v:\s+[a-f0-9]{8}\s+•\s+\d{4}-\d{2}-\d{2}")
 
-        # Locate the version info which should be nearby
-        # The tagline is an h2 inside a div.
-        container = tagline.locator("..")
+            locator = page.get_by_text(pattern)
+            locator.wait_for()
 
-        # Wait for fade-in to settle or just force visibility?
-        # The container has "fade-in" class. It might take time.
-        # I'll wait for the version text to be visible.
-        version_locator = container.locator("div.text-xs")
-        version_locator.wait_for()
+            # Scroll to element
+            locator.scroll_into_view_if_needed()
 
-        print("Version text found:", version_locator.inner_text())
+            # Take a screenshot of the element specifically, plus some context
+            # Or just the page after scrolling
+            page.screenshot(path="verification.png")
 
-        # Screenshot the container
-        container.screenshot(path="verification.png")
-        browser.close()
+            content = locator.text_content()
+            print(f"Found version string: '{content.strip()}'")
+
+        except Exception as e:
+            print(f"Error: {e}")
+        finally:
+            browser.close()
 
 if __name__ == "__main__":
     run()

@@ -171,14 +171,22 @@ function injectVersionInfo() {
         v: ${hash.slice(0, 8)} • ${date}
       </div>`;
 
-      // Fallback search if whitespace differs
-      const taglineRegex = /(seed\. zap\. subscribe\.\s*<\/h2>)/;
-      if (taglineRegex.test(content)) {
-        content = content.replace(taglineRegex, '$1' + versionHtml);
+      // Robust replacement using explicit comment placeholder
+      const placeholder = '<!-- VERSION_INFO -->';
+      if (content.includes(placeholder)) {
+        content = content.replace(placeholder, versionHtml);
         fs.writeFileSync(indexHtmlPath, content);
         console.log(`Injected version: ${hash.slice(0, 8)} • ${date}`);
       } else {
-        console.warn('Could not find tagline to inject version info.');
+        // Fallback search if placeholder is missing (legacy behavior)
+        const taglineRegex = /(seed\. zap\. subscribe\.\s*<\/h2>)/;
+        if (taglineRegex.test(content)) {
+          content = content.replace(taglineRegex, '$1' + versionHtml);
+          fs.writeFileSync(indexHtmlPath, content);
+          console.log(`Injected version (via fallback regex): ${hash.slice(0, 8)} • ${date}`);
+        } else {
+          console.warn('Could not find placeholder or tagline to inject version info.');
+        }
       }
     }
   } catch (error) {
