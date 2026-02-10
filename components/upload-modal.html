@@ -7,6 +7,7 @@
   aria-labelledby="uploadModalTitle"
   aria-describedby="uploadModalDescription"
   data-ds="new"
+  data-testid="upload-modal"
 >
   <div class="bv-modal-backdrop" data-dismiss></div>
 
@@ -192,12 +193,12 @@
             <div id="section-source-external" class="space-y-4 hidden">
                  <div class="space-y-2">
                     <label for="input-url" class="block text-sm font-medium text-text">Video URL</label>
-                    <input id="input-url" type="url" class="input" placeholder="https://example.com/video.mp4" />
+                    <input id="input-url" type="url" class="input" placeholder="https://example.com/video.mp4" data-testid="upload-url" />
                     <p class="text-xs text-muted">Primary hosted video source (URL-first playback).</p>
                 </div>
                  <div class="space-y-2">
                     <label for="input-magnet" class="block text-sm font-medium text-text">Magnet Link</label>
-                    <input id="input-magnet" type="text" class="input" placeholder="magnet:?xt=urn:btih:..." />
+                    <input id="input-magnet" type="text" class="input" placeholder="magnet:?xt=urn:btih:..." data-testid="upload-magnet" />
                     <p class="text-xs text-muted">Optional WebTorrent fallback when the URL is unavailable.</p>
                 </div>
             </div>
@@ -208,7 +209,7 @@
             <div class="space-y-4">
                 <div class="space-y-2">
                     <label for="input-title" class="block text-sm font-medium text-text">Title</label>
-                    <input id="input-title" type="text" required class="input" placeholder="Give your video a title" />
+                    <input id="input-title" type="text" required class="input" placeholder="Give your video a title" data-testid="upload-title" />
                 </div>
 
                 <div class="space-y-2">
@@ -388,7 +389,7 @@
 
             <!-- Submit -->
             <div class="pt-4">
-                <button type="submit" id="btn-submit" class="btn w-full py-3 text-base font-semibold shadow-md">
+                <button type="submit" id="btn-submit" class="btn w-full py-3 text-base font-semibold shadow-md" data-testid="upload-submit">
                     Publish Video
                 </button>
                 <p id="submit-status" class="text-center text-xs text-muted mt-2"></p>

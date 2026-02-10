@@ -6,6 +6,7 @@
   aria-labelledby="loginModalTitle"
   aria-describedby="loginModalDescription"
   data-ds="new"
+  data-testid="login-modal"
 >
   <div class="bv-modal-backdrop" data-dismiss></div>
 
@@ -91,6 +92,7 @@
           class="login-option"
           type="button"
           data-provider-button
+          data-testid="login-provider-button"
         >
           <span class="login-option__header">
             <span class="login-option__copy">
@@ -204,6 +206,7 @@
                 spellcheck="false"
                 autocomplete="off"
                 data-nsec-secret
+                data-testid="nsec-secret-input"
               ></textarea>
               <label class="inline-flex items-center gap-2 text-sm text-text">
                 <input type="checkbox" class="checkbox" data-nsec-remember />
@@ -235,7 +238,7 @@
           </fieldset>
           <div class="flex justify-end gap-2">
             <button type="button" class="btn-ghost" data-nsec-cancel>Cancel</button>
-            <button type="submit" class="btn" data-nsec-submit>Continue</button>
+            <button type="submit" class="btn" data-nsec-submit data-testid="nsec-submit">Continue</button>
           </div>
         </form>
       </template>
