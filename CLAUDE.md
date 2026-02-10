@@ -80,6 +80,9 @@ bitvid/
 | `js/nostrEventSchemas.js` | **Source of truth** for all Nostr event schemas |
 | `js/constants.js` | Feature flags and runtime configuration |
 | `config/instance-config.js` | Deployment-specific settings |
+| `js/testHarness.js` | Playwright test harness (`window.__bitvidTest__`) |
+| `tests/e2e/helpers/bitvidTestFixture.ts` | Reusable Playwright fixture for agent testing |
+| `scripts/agent/simple-relay.mjs` | Mock Nostr relay with HTTP seeding API |
 | `docs/nostr-event-schemas.md` | Event schema documentation |
 
 ---
@@ -329,6 +332,29 @@ Failed visual tests store artifacts in `artifacts/test-results/`:
 - Traces
 
 View with: `./scripts/show-artifacts.sh`
+
+### Agent E2E Testing (Playwright)
+
+bitvid includes a test harness for programmatic Playwright testing without browser extensions or real relays. See `AGENTS.md` Section 14 for the full reference. Quick start:
+
+```typescript
+import { test, expect } from "./helpers/bitvidTestFixture";
+
+test("my test", async ({ page, gotoApp, loginAs, seedEvent }) => {
+  await seedEvent({ title: "Test Video", url: "https://example.com/v.mp4" });
+  await gotoApp();
+  await loginAs(page);
+  // interact with the app using data-testid selectors
+  await expect(page.locator('[data-testid="upload-button"]')).toBeVisible();
+});
+```
+
+Key capabilities:
+- **Programmatic login**: `loginAs(page)` uses `window.__bitvidTest__.loginWithNsec()` — no modal interaction needed
+- **Mock relay**: Each test gets an isolated in-memory relay with HTTP seeding
+- **Relay override**: `?__test__=1&__testRelays__=ws://localhost:8877` redirects all connections
+- **State inspection**: `window.__bitvidTest__.getAppState()` returns login status, relays, etc.
+- **Stable selectors**: All key elements have `data-testid` attributes (see AGENTS.md Section 14)
 
 ---
 
