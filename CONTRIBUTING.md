@@ -201,6 +201,10 @@ This script checks that all event builders produce valid events according to the
 
 - **Linting Failures**: `npm run lint` includes checks for inline styles (e.g., `style="..."` or `.style.prop = ...`). Move these styles to CSS classes or design tokens to pass linting.
 
+- **File Size Violations**: `npm run lint` enforces a 1000-line limit for JavaScript files. If you hit this limit:
+  - **Refactor**: Extract logic into smaller, focused modules.
+  - **Grandfathering**: If modifying a legacy file that was already large, you may need to update its recorded size in `scripts/check-file-size.mjs` (but try to refactor first).
+
 ## Dev Container
 
 This project includes a `.devcontainer` configuration for VS Code. It provides a pre-configured environment with Node.js 22, the GitHub CLI, and necessary extensions.

@@ -13,10 +13,15 @@ const CRITICAL_PATH_PATTERNS = [
 ];
 
 function getChangedFilesAgainstHeadParent() {
-  const hasHeadParent = execSync('git rev-parse --verify --quiet HEAD^', {
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'ignore']
-  }).trim();
+  let hasHeadParent;
+  try {
+    hasHeadParent = execSync('git rev-parse --verify --quiet HEAD^', {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore']
+    }).trim();
+  } catch (error) {
+    return [];
+  }
 
   if (!hasHeadParent) {
     return [];
