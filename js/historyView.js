@@ -2154,7 +2154,7 @@ export function createWatchHistoryRenderer(config = {}) {
           if (typeof app?.showSuccess === "function") {
             app.showSuccess("Local watch history reset.");
           } else {
-            console.log("Local watch history reset.");
+            userLogger.info("[historyView] Local watch history reset.");
           }
         } catch (error) {
           const message =
@@ -2165,7 +2165,7 @@ export function createWatchHistoryRenderer(config = {}) {
           if (typeof app?.showError === "function") {
             app.showError(message);
           } else {
-            console.error(message);
+            userLogger.error("[historyView]", message);
           }
         }
       };

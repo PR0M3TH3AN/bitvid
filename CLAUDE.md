@@ -13,7 +13,7 @@ This document provides context and guidance for AI assistants working with the b
 - **WebTorrent**: P2P video streaming fallback
 - **Tailwind CSS**: Utility-first styling with custom design tokens
 - **Playwright**: E2E and visual regression testing
-- **Node.js 20+**: Development environment
+- **Node.js 22+**: Development environment
 
 ### License
 GPL-3.0-or-later (see `LICENSE`)
@@ -383,10 +383,25 @@ rm css/tailwind.generated.css && npm run build:css
 
 ---
 
-## Release Channels
+## Release Channels & Promotion Pipeline
 
-- **Main**: Production track — preserve UX, atomic commits, feature flags default off
-- **Unstable**: Experimentation — gate risky features behind flags
+Code flows through three branches with increasing stability:
+
+```
+unstable  →  beta  →  main
+ (dev)      (soak)   (prod)
+```
+
+| Branch | Purpose | CI Required | Manual QA |
+|--------|---------|-------------|-----------|
+| `unstable` | Active development, AI agent PRs land here | Yes | No |
+| `beta` | Stabilization soak (hosted for testing) | Yes | Yes — hosted domain |
+| `main` | Production | Yes | Verified via beta |
+
+**Promotion rules:**
+- `unstable → beta`: After a batch of improvements passes CI and local testing
+- `beta → main`: After weeks of soak time on the beta hosted domain with no regressions
+- Never push directly to `main` or `beta` — always promote from the previous stage
 
 ### Emergency Response
 
@@ -394,6 +409,32 @@ If a change breaks playback or magnet handling:
 1. Revert immediately
 2. Note rollback in PR
 3. Document in AGENTS.md
+
+---
+
+## Multi-Agent Development Workflow
+
+This project uses multiple AI coding agents working in parallel:
+- **Claude Code** — Refactoring, convention enforcement, codebase-wide changes
+- **OpenAI Codex** — Isolated feature implementation with clear specs
+- **Google Jules** — Issue triage and straightforward bug fixes
+
+### Coordination Rules
+
+All agents **must** follow the subsystem boundaries and PR discipline rules in `AGENTS.md` Section 12. The key principles:
+
+1. **Check before you start.** Look at open PRs (`gh pr list`) before beginning work. If another agent has an open PR touching the same files, stop and flag the conflict.
+2. **One subsystem per PR.** Don't mix unrelated changes. A lint fix and a feature addition are two separate PRs.
+3. **`js/app.js` is single-writer.** Only one PR at a time should modify the main orchestrator.
+4. **Merge fast, branch short.** Long-lived branches cause exponential merge pain with multiple agents. Keep PRs small and mergeable in one sitting.
+
+### For Human Maintainers
+
+When assigning work to agents:
+- Update the "Currently In-Flight Work" section in `AGENTS.md` to reserve subsystems
+- Avoid sending two agents at the same subsystem simultaneously
+- Review and merge agent PRs promptly to keep the queue short — stale PRs compound conflicts
+- Use PR title prefixes (`[nostr-core]`, `[ui]`, `[playback]`, etc.) to make scope visible
 
 ---
 
