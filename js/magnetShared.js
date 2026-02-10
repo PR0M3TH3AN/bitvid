@@ -223,7 +223,9 @@ export function normalizeMagnetInput(rawValue) {
 
   const params = [];
   for (const rawParam of rawParams) {
-    const [rawKey, rawVal = ""] = rawParam.split("=", 2);
+    const separatorIndex = rawParam.indexOf("=");
+    const rawKey = separatorIndex === -1 ? rawParam : rawParam.slice(0, separatorIndex);
+    const rawVal = separatorIndex === -1 ? "" : rawParam.slice(separatorIndex + 1);
     const key = rawKey.trim();
     if (!key) {
       continue;
