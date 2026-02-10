@@ -66,7 +66,13 @@ function readChangedPaths(args) {
 
   output.push(...args.changedPaths);
 
-  return [...new Set(output.map((value) => value.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const normalized = output.map((value) => value.trim()).filter(Boolean);
+
+  if (normalized.includes('index.html')) {
+    normalized.push('/');
+  }
+
+  return [...new Set(normalized)].sort((a, b) => a.localeCompare(b));
 }
 
 function toAbsoluteUrl(baseUrl, relativePath) {

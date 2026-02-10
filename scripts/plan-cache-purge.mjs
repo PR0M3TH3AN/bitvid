@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 
 const ALWAYS_PUBLISH_PATHS = new Set(['index.html', 'embed.html', 'sw.min.js', 'site.webmanifest']);
+const ALWAYS_PURGE_HTML_PATHS = ['index.html', 'embed.html'];
 const NON_ASSET_CHANGED_PATHS = new Set(['asset-manifest.json', '_headers', '_redirects']);
 
 function parseArgs(argv) {
@@ -82,8 +83,8 @@ function main() {
   const hashedModeFullyActive = unhashedAssetPaths.length === 0;
 
   const purgePaths = hashedModeFullyActive
-    ? changedPaths.filter(isHtmlOrServiceWorkerPath)
-    : changedPaths;
+    ? [...changedPaths.filter(isHtmlOrServiceWorkerPath), ...ALWAYS_PURGE_HTML_PATHS]
+    : [...changedPaths, ...ALWAYS_PURGE_HTML_PATHS];
 
   const uniquePurgePaths = uniqueSorted(purgePaths);
 
