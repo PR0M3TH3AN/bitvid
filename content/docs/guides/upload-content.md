@@ -15,7 +15,7 @@ bitvid offers three ways to publish content:
 Before you start, ensure your content meets the following requirements:
 
 ### Accepted File Types
-- **Video:** `.mp4`, `.webm`, `.mov`, `.mkv`, `.ts`, `.m3u8`, `.mpg`, `.mpeg`.
+- **Video:** `.mp4` (`video/mp4`), `.webm` (`video/webm`), `.mov` (`video/quicktime`), `.mkv` (`video/x-matroska`), `.ts` (`video/mp2t`), `.m3u8` (`application/x-mpegurl`), `.mpg` (`video/mpeg`), `.mpeg` (`video/mpeg`).
 - **Thumbnail:** Any standard image format (`image/*`) supported by your browser.
 
 > **Note:** The file picker restricts selection to these formats, but the backend handles standard video MIME types (`video/*`). Ensure your container format is supported by modern browsers for playback.
@@ -45,6 +45,10 @@ For power users and technical configurations:
 - **Duration:** Manually specify the video duration in seconds.
 - **Summary:** A short summary separate from the full description.
 - **IMETA (Video Variants):** Define alternative video sources, resolutions, or MIME types.
+    - **MIME:** (e.g., `video/mp4`)
+    - **Dimensions:** (e.g., `1920x1080`)
+    - **URL:** Direct link to the video file
+    - **Magnet:** Info hash or magnet link
 - **Web Seed (ws):** Manually provide a web seed URL for the torrent.
 - **Torrent File (xs):** Manually provide a URL to a `.torrent` file.
 
@@ -74,7 +78,7 @@ bitvid will attempt to configure CORS automatically if your API keys have "Admin
 [
   {
     "AllowedOrigins": ["http://localhost:5500", "https://bitvid.network"],
-    "AllowedMethods": ["GET", "PUT", "POST", "DELETE", "HEAD", "OPTIONS"],
+    "AllowedMethods": ["GET", "HEAD", "PUT", "POST", "DELETE", "OPTIONS"],
     "AllowedHeaders": ["*"],
     "ExposeHeaders": ["ETag", "Content-Length", "Content-Range", "Accept-Ranges"],
     "MaxAgeSeconds": 3600
@@ -117,7 +121,9 @@ bitvid will verify your credentials by attempting to list or upload a test file.
 
 ### Common Issues
 
-- **CORS Errors ("Network Error"):** If uploads fail immediately or the console shows "CORS", verify your bucket's CORS policy matches the JSON above. Ensure `AllowedHeaders` includes `*` and `ExposeHeaders` lists `ETag`.
+- **Missing Title:** A title is required to publish a video.
+- **Missing Source:** You must provide a hosted URL, magnet link, or upload a file.
+- **CORS Errors ("Network Error"):** If uploads fail immediately or the console shows "CORS", verify your bucket's CORS policy matches the JSON above. Ensure `AllowedHeaders` includes `*`, `AllowedMethods` includes `PUT`, and `ExposeHeaders` lists `ETag`.
 - **Permission Errors ("Access Denied"):** Check your API credentials. Ensure the token has `Object Read & Write` permissions (specifically `s3:PutObject` and `s3:DeleteObject`).
 - **Browser Crashes / Slow Performance:** Large files (>2GB) can exhaust browser memory during the hashing process. Try using a smaller file or ensuring you have plenty of free RAM.
 - **Playback Issues:** If the video uploads but doesn't play, ensure the "Public Access URL" is correct and publicly reachable. Test the URL directly in a browser.
