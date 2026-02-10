@@ -155,6 +155,14 @@ function rewriteEntryHtmlAssetPaths(manifest) {
 }
 
 function main() {
+  console.log('Validating service worker compatibility guard...');
+  try {
+    execSync('npm run lint:sw-compat', { stdio: 'inherit' });
+  } catch (error) {
+    console.error('Failed service worker compatibility guard.');
+    process.exit(1);
+  }
+
   console.log('Cleaning dist...');
   cleanDist();
 

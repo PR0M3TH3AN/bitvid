@@ -356,6 +356,17 @@ This split is required for safe fast rollouts: HTML needs rapid update pickup,
 while fingerprinted static assets should remain aggressively cacheable for
 performance and cost control.
 
+
+#### Service worker rollback playbook
+
+If a deploy regresses playback and you suspect `sw.min.js`, use this rollback runbook:
+
+1. **Freeze impact**: redeploy the last known-good commit so clients fetch the previous worker script immediately.
+2. **Invalidate active workers**: from DevTools > Application > Service Workers, click **Unregister** for `sw.min.js` and hard reload once to verify playback without stale worker state.
+3. **Confirm claim flow**: in the browser console, confirm worker lifecycle messages (`BITVID_SW_LIFECYCLE`) appear and that requests to `/webtorrent/*` carry the `X-Bitvid-SW-Version` response header.
+4. **Check compatibility guardrails**: run `npm run lint:sw-compat` before shipping the fix. This fails deploys when service-worker runtime paths/scope changes are not accompanied by `_headers`, `index.html`, and `embed.html` updates in the same commit.
+5. **Redeploy + monitor**: publish the fix, then replay the URL-first fallback QA script in `docs/qa.md` and capture logs/screenshots in the PR.
+
 Inline styles are intentionally blocked. `npm run lint:inline-styles` scans HTML
 and scripts for `style=` attributes, `element.style`, or `style.cssText` usage
 and will fail CI until offending markup is moved into the shared CSS/token

@@ -25,6 +25,22 @@ import { devLogger, userLogger } from "./utils/logger.js";
 import { emit } from "./embedDiagnostics.js";
 
 const DEFAULT_PROBE_TRACKERS = Object.freeze([...WSS_TRACKERS]);
+const SERVICE_WORKER_PATH = "/sw.min.js";
+const SERVICE_WORKER_SCOPE = "/";
+
+function compareServiceWorkerScripts(a = "", b = "") {
+  if (a === b) {
+    return true;
+  }
+
+  try {
+    const aUrl = new URL(a, window.location.origin);
+    const bUrl = new URL(b, window.location.origin);
+    return aUrl.pathname === bUrl.pathname;
+  } catch {
+    return false;
+  }
+}
 
 function normalizeTrackerList(trackers) {
   const normalized = [];
@@ -161,6 +177,7 @@ export class TorrentClient {
 
     // Timeout for SW operations
     this.TIMEOUT_DURATION = 60000;
+    this.swLifecycleListenerAttached = false;
   }
 
   ensureClientForProbe() {
@@ -467,6 +484,46 @@ export class TorrentClient {
     });
   }
 
+  attachServiceWorkerLifecycleListener() {
+    if (
+      this.swLifecycleListenerAttached ||
+      !("serviceWorker" in navigator) ||
+      !navigator.serviceWorker
+    ) {
+      return;
+    }
+
+    navigator.serviceWorker.addEventListener("message", (event) => {
+      const payload = event?.data;
+      if (payload?.type !== "BITVID_SW_LIFECYCLE") {
+        return;
+      }
+
+      this.log("[WebTorrent] Service worker lifecycle:", payload);
+    });
+    this.swLifecycleListenerAttached = true;
+  }
+
+  async activateWaitingWorker(registration) {
+    if (!registration?.waiting) {
+      return false;
+    }
+
+    const waitingWorker = registration.waiting;
+    const activeScript = registration.active?.scriptURL || "";
+    const waitingScript = waitingWorker.scriptURL || "";
+    if (compareServiceWorkerScripts(activeScript, waitingScript)) {
+      this.log("Activating waiting service worker", {
+        activeScript,
+        waitingScript,
+      });
+    }
+
+    waitingWorker.postMessage({ type: "SKIP_WAITING" });
+    await this.waitForActiveController(registration);
+    return true;
+  }
+
   /**
    * Ensure a live service worker is actively controlling the page before we
    * start WebTorrent streaming.
@@ -589,6 +646,8 @@ export class TorrentClient {
         throw new Error("Service Worker not supported or disabled");
       }
 
+      this.attachServiceWorkerLifecycleListener();
+
       // Brave-specific logic: Brave Shields has a long-standing bug where
       // stale service worker registrations linger even after we ship fixes.
       // When that happens, the outdated worker keeps intercepting requests
@@ -617,11 +676,11 @@ export class TorrentClient {
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
 
-      this.log("Registering service worker at /sw.min.js...");
+      this.log(`Registering service worker at ${SERVICE_WORKER_PATH}...`);
       const registration = await navigator.serviceWorker.register(
-        "/sw.min.js",
+        SERVICE_WORKER_PATH,
         {
-          scope: "/",
+          scope: SERVICE_WORKER_SCOPE,
           updateViaCache: "none",
         }
       );
@@ -647,6 +706,9 @@ export class TorrentClient {
           });
         });
       }
+
+      await registration.update();
+      await this.activateWaitingWorker(registration);
 
       await this.waitForServiceWorkerActivation(registration);
       this.log("Service worker activated");
@@ -675,8 +737,10 @@ export class TorrentClient {
       // newly installed worker claims the page before WebTorrent spins up.
       await this.waitForActiveController(registration);
 
-      // Force the SW to check for updates
-      registration.update();
+      // Force the SW to check for updates and immediately claim if a waiting
+      // worker appeared after activation.
+      await registration.update();
+      await this.activateWaitingWorker(registration);
       this.log("Service worker ready");
 
       return registration;
