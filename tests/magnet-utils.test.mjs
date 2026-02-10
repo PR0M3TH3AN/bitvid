@@ -6,7 +6,11 @@ import {
   normalizeAndAugmentMagnet as normalizeMagnetObject,
   safeDecodeMagnet,
 } from "../js/magnetUtils.js";
-import { extractMagnetHints } from "../js/magnetShared.js";
+import {
+  buildMagnetUri,
+  extractMagnetHints,
+  normalizeMagnetInput,
+} from "../js/magnetShared.js";
 
 function getParamValues(magnet, key) {
   const parsed = new URL(magnet);
@@ -184,4 +188,69 @@ test("normalizeAndAugmentMagnet filters out known broken trackers", () => {
   }
 
   assertDefaultTrackersPresent(result.magnet);
+});
+
+test("normalizeMagnetInput parses each inbound parameter exactly once", () => {
+  const infoHash = "0123456789abcdef0123456789abcdef01234567";
+  const rawMagnet =
+    `magnet:?xt=urn:btih:${infoHash}` +
+    "&tr=wss://tracker.example.com/announce" +
+    "&ws=https://cdn.example.com/files/" +
+    "&xs=https://cdn.example.com/file.torrent";
+
+  const normalized = normalizeMagnetInput(rawMagnet);
+
+  assert.equal(normalized.params.length, 4, "Expected one parsed entry per inbound param");
+  assert.deepEqual(
+    normalized.params.map((param) => param.lowerKey),
+    ["xt", "tr", "ws", "xs"],
+    "Parameter parsing order should match inbound order"
+  );
+
+  const rebuilt = buildMagnetUri(
+    normalized.normalizedScheme,
+    normalized.params,
+    normalized.fragment
+  );
+  assert.equal(
+    rebuilt,
+    rawMagnet,
+    "Rebuilding unchanged parsed params should not introduce duplicates"
+  );
+});
+
+test("normalizeAndAugmentMagnet keeps unchanged xt/tr/ws/xs params singular", () => {
+  const infoHash = "fedcba9876543210fedcba9876543210fedcba98";
+  const inboundTracker = "wss://tracker.example.com/announce";
+  const inboundWebSeed = "https://cdn.example.com/files/";
+  const inboundXs = "https://cdn.example.com/file.torrent";
+  const rawMagnet =
+    `magnet:?xt=urn:btih:${infoHash}` +
+    `&tr=${inboundTracker}` +
+    `&ws=${inboundWebSeed}` +
+    `&xs=${inboundXs}`;
+
+  const result = normalizeMagnetObject(rawMagnet);
+
+  const xtValues = getParamValues(result.magnet, "xt");
+  const trackers = getParamValues(result.magnet, "tr");
+  const webSeeds = getParamValues(result.magnet, "ws");
+  const xsValues = getParamValues(result.magnet, "xs");
+
+  assert.equal(xtValues.length, 1, "xt should remain singular");
+  assert.equal(
+    trackers.filter((value) => value === inboundTracker).length,
+    1,
+    "Inbound tracker should remain singular"
+  );
+  assert.equal(
+    webSeeds.filter((value) => value === inboundWebSeed).length,
+    1,
+    "Inbound web seed should remain singular"
+  );
+  assert.equal(
+    xsValues.filter((value) => value === inboundXs).length,
+    1,
+    "Inbound xs hint should remain singular"
+  );
 });
