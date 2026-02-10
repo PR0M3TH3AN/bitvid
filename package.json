@@ -42,7 +42,9 @@
     "lint:sw-compat": "node scripts/check-sw-compat.mjs",
     "hash:dist": "node scripts/hash-dist.mjs --dist dist --output artifacts/dist-hashes-current.json",
     "diff:dist-hashes": "node scripts/diff-dist-hashes.mjs",
-    "purge:cloudflare:changed": "node scripts/purge-cloudflare-changed.mjs"
+    "purge:cloudflare:changed": "node scripts/purge-cloudflare-changed.mjs",
+    "smoke:dist-assets": "node scripts/check-asset-references.mjs",
+    "test:e2e:cache-upgrade": "npx playwright test tests/e2e/cache-upgrade-smoke.spec.ts --project=e2e"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
