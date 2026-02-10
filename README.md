@@ -337,6 +337,25 @@ The generated `css/tailwind.generated.css` artifact is ignored in git. CI
 workflows and Netlify deploys run `npm run build` to produce the compiled
 stylesheet during deployment, so source changes are all you need to commit.
 
+#### Netlify cache policy for safe fast rollouts
+
+bitvid uses path-class cache rules so deployments propagate quickly without
+breaking long-term static asset caching:
+
+- `index.html`, `embed.html`, and other `*.html` shell pages are served with
+  `Cache-Control: no-cache, must-revalidate` so clients always revalidate the
+  app entry document before booting a new session.
+- Hashed bundles under `/css/*` and `/js/*` are served with
+  `Cache-Control: public, max-age=31536000, immutable` so browsers and CDNs can
+  keep them for a year with zero revalidation churn.
+- Service-worker-related files (`/sw.min.js`, `/site.webmanifest`) use short,
+  revalidation-friendly cache controls (`max-age=0, must-revalidate`) so rollout
+  metadata and worker updates are picked up promptly.
+
+This split is required for safe fast rollouts: HTML needs rapid update pickup,
+while fingerprinted static assets should remain aggressively cacheable for
+performance and cost control.
+
 Inline styles are intentionally blocked. `npm run lint:inline-styles` scans HTML
 and scripts for `style=` attributes, `element.style`, or `style.cssText` usage
 and will fail CI until offending markup is moved into the shared CSS/token
