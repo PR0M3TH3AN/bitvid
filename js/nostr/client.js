@@ -41,6 +41,7 @@ import {
   normalizeStoragePointer,
   resolveStoragePointerValue,
 } from "../utils/storagePointer.js";
+import { RelayBatchFetcher } from "./relayBatchFetcher.js";
 import {
   createWatchHistoryManager,
   normalizePointerInput,
@@ -434,6 +435,7 @@ export class NostrClient {
   constructor() {
     this.connectionManager = new ConnectionManager(this);
     this.signerManager = new SignerManager(this);
+    this.relayBatchFetcher = new RelayBatchFetcher(this);
 
     /**
      * @type {Map<string, object>}
@@ -623,6 +625,11 @@ export class NostrClient {
 
   get writeRelays() { return this.connectionManager.writeRelays; }
   set writeRelays(val) { this.connectionManager.writeRelays = val; }
+
+  get unreachableRelays() { return this.connectionManager.unreachableRelays; }
+
+  get extensionPermissionCache() { return this.signerManager.extensionPermissionCache; }
+
   /**
    * Records a deletion timestamp for a video identifier (Tombstoning).
    *
@@ -733,6 +740,18 @@ export class NostrClient {
     return this.connectionManager.makeCountUnsupportedError(relayUrl);
   }
 
+  resolveEventDTag(event, fallbackEvent = null) {
+    if (event && event.tags) {
+      const dTag = getDTagValueFromTags(event.tags);
+      if (dTag) return dTag;
+    }
+    if (fallbackEvent && fallbackEvent.tags) {
+      const dTag = getDTagValueFromTags(fallbackEvent.tags);
+      if (dTag) return dTag;
+    }
+    return "";
+  }
+
   applyRootCreatedAt(video) {
     if (!video || typeof video !== "object") return;
     const rootId = video.videoRootId;
@@ -747,6 +766,17 @@ export class NostrClient {
     if (videoCreated < currentMin) {
       this.rootCreatedAtByRoot.set(rootId, videoCreated);
     }
+  }
+
+  resolveEventDTag(event, fallbackEvent = null) {
+    if (event && typeof event === "object") {
+      const dTag = getDTagValueFromTags(event.tags);
+      if (dTag) return dTag;
+    }
+    if (fallbackEvent && typeof fallbackEvent === "object") {
+      return getDTagValueFromTags(fallbackEvent.tags);
+    }
+    return null;
   }
 
   getActiveKey(video) {
@@ -2590,6 +2620,24 @@ export class NostrClient {
   }
 
   async loginWithExtension(options) {
+    // Check if ensureExtensionPermissions was overridden on this instance (e.g. by tests).
+    // Only proxy when the own property differs from the prototype method to avoid recursion.
+    const ownDesc = Object.getOwnPropertyDescriptor(this, "ensureExtensionPermissions");
+    const isOverridden =
+      ownDesc &&
+      typeof ownDesc.value === "function" &&
+      ownDesc.value !== NostrClient.prototype.ensureExtensionPermissions;
+
+    if (isOverridden) {
+      const sm = this.signerManager;
+      const smOriginal = sm.ensureExtensionPermissions.bind(sm);
+      sm.ensureExtensionPermissions = (...args) => ownDesc.value.call(this, ...args);
+      try {
+        return await sm.loginWithExtension(options);
+      } finally {
+        sm.ensureExtensionPermissions = smOriginal;
+      }
+    }
     return this.signerManager.loginWithExtension(options);
   }
 

@@ -1,10 +1,15 @@
 import { WebSocket } from 'ws';
-import { finalizeEvent, generateSecretKey, getPublicKey } from 'nostr-tools';
-import { startRelay } from './simple-relay.mjs';
+import { finalizeEvent as pureFinalize, generateSecretKey, getPublicKey as pureGetPublicKey } from 'nostr-tools';
+import { finalizeEvent as wasmFinalize, getPublicKey as wasmGetPublicKey, setNostrWasm } from 'nostr-tools/wasm';
+import { initNostrWasm } from 'nostr-wasm';
+import { startRelay } from './load-test-relay.mjs';
 import { buildViewEvent, buildVideoPostEvent } from '../../js/nostrEventSchemas.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+
+let finalizeEvent = pureFinalize;
+let getPublicKey = pureGetPublicKey;
 
 // --- Polyfills and Environment Setup ---
 if (typeof global.window === 'undefined') {
@@ -223,6 +228,17 @@ class LoadClient {
 async function main() {
   console.log(`Starting load test with config:`, config);
 
+  try {
+      console.log('Initializing WASM crypto...');
+      const wasm = await initNostrWasm();
+      setNostrWasm(wasm);
+      finalizeEvent = wasmFinalize;
+      getPublicKey = wasmGetPublicKey;
+      console.log('WASM crypto initialized successfully.');
+  } catch (error) {
+      console.warn('Failed to initialize WASM crypto, falling back to pure JS:', error);
+  }
+
   let relayServer;
   let relayUrl = config.relay;
 
@@ -358,11 +374,13 @@ function generateReport() {
   report.topHotFunctions.push({
       function: "finalizeEvent (client signing)",
       avgTime: `${avgSignTime.toFixed(2)}ms`,
-      impact: avgSignTime > 10 ? "High CPU usage" : "Moderate CPU usage"
+      impact: avgSignTime > 10 ? "High CPU usage" : "Low/Moderate CPU usage"
   });
 
   if (avgSignTime > 10) {
       report.proposedRemediation.push("Use optimized crypto library (e.g. secp256k1-wasm) or offload signing to a worker/signer.");
+  } else {
+      report.proposedRemediation.push("Signing speed is good (<10ms). Focus on network I/O.");
   }
 
   if (p99 > 1000) {
@@ -393,6 +411,7 @@ function generateReport() {
   console.log(`  Latency p50: ${p50}ms`);
   console.log(`  Latency p95: ${p95}ms`);
   console.log(`  Errors: ${stats.errors}`);
+  console.log(`  Avg Signing Time: ${avgSignTime.toFixed(2)}ms`);
 }
 
 main().catch(console.error);

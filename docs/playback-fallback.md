@@ -1,10 +1,10 @@
 # URL-first playback fallback orchestration
 
-This document explains how `bitvidApp.playVideoWithFallback` in `js/app.js` coordinates hosted URL playback first and falls back to WebTorrent when needed. It also covers the supporting helpers in `js/services/playbackService.js`, `js/playbackUtils.js`, and `js/magnetUtils.js`, including how tracker lists and `ws=`/`xs=` hints are applied.
+This document explains how `bitvidApp.playVideoWithFallback` (implemented via `PlaybackCoordinator` in `js/app/playbackCoordinator.js` and bound to the application instance in `js/app.js`) coordinates hosted URL playback first and falls back to WebTorrent when needed. It also covers the supporting helpers in `js/services/playbackService.js`, `js/playbackUtils.js`, and `js/magnetUtils.js`, including how tracker lists and `ws=`/`xs=` hints are applied.
 
 ## High-level flow
 
-1. `bitvidApp.playVideoWithFallback({ url, magnet })` trims inputs, ensures the video modal is ready, and constructs a playback session via `playbackService.createSession(...)`.
+1. `bitvidApp.playVideoWithFallback({ url, magnet })` (via `PlaybackCoordinator`) trims inputs, ensures the video modal is ready, and constructs a playback session via `playbackService.createSession(...)`.
 2. The session (from `js/services/playbackService.js`) derives a canonical magnet payload using `deriveTorrentPlaybackConfig` (from `js/playbackUtils.js`).
 3. Playback starts with the hosted URL when `URL_FIRST_ENABLED` is true and a URL is available; otherwise, it goes directly to torrent playback.
 4. If URL playback stalls or errors, the session triggers `playViaWebTorrent` with the normalized magnet and optional web seed hints.
@@ -59,7 +59,7 @@ The fallback hand-off happens in these places inside `PlaybackSession.execute()`
 
 ```mermaid
 sequenceDiagram
-  participant App as bitvidApp (js/app.js)
+  participant App as App (Coordinator)
   participant Service as PlaybackService (js/services/playbackService.js)
   participant Session as PlaybackSession
   participant Video as HTMLVideoElement

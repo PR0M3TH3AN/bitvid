@@ -165,7 +165,16 @@ To run **bitvid** locally:
 
    _(Note: The default port is 3000, but `npx serve` may select a different port if 3000 is in use. Check your terminal output.)_
 
-   _Note: If you prefer manual steps, you can run `npm run build` followed by `npx serve dist`._
+   _Note: If you prefer manual steps, you can run `npm run build` followed by `npx serve dist` (or `cd dist && python3 -m http.server`)._
+
+5. Verify setup:
+
+   Run tests and linting to ensure everything is working correctly.
+
+   ```bash
+   npm run test:unit
+   npm run format
+   ```
 
 #### Quick Reference
 
@@ -257,7 +266,7 @@ const event = buildVideoPostEvent({
 
 console.log("Event constructed:", event);
 
-// 2. Publish using the high-level client (requires browser/extension or active signer)
+// 2. Publish the event (requires browser/extension or active signer)
 /*
 import { nostrClient } from "./js/nostrClientFacade.js";
 
@@ -265,14 +274,10 @@ import { nostrClient } from "./js/nostrClientFacade.js";
 await nostrClient.init();
 
 // Login (prompts NIP-07 extension)
-await nostrClient.login();
+await nostrClient.loginWithExtension();
 
-// Publish! (Handles signing and relay broadcasting)
-await nostrClient.publishVideo({
-  title: "My First Video",
-  url: "https://example.com/video.mp4",
-  description: "Published via bitvid SDK"
-}, nostrClient.pubkey);
+// Publish the built event
+await nostrClient.signAndPublishEvent(event);
 */
 ```
 
@@ -392,12 +397,13 @@ call the facade to keep API surfaces consistent.
 
 ### Nostr video fetch limits
 
-`nostrClient.fetchVideos(options)` now accepts an optional `options.limit` to
-control how many video events are requested per relay. The request size defaults
+The `nostrClient` uses `subscribeVideos(callback, options)` for the main feed to support buffering and streaming. It accepts an optional `options.limit` to control how many video events are requested per relay. The request size defaults
 to `DEFAULT_VIDEO_REQUEST_LIMIT` (150) and is clamped to
 `MAX_VIDEO_REQUEST_LIMIT` (500) to avoid accidental firehose requests as the
 network grows. Use a smaller limit for lightweight surfaces or a larger value
 when running batch jobs that can tolerate additional load.
+
+`nostrClient.fetchVideos(options)` is a legacy wrapper around subscription and is deprecated.
 
 The build command compiles Tailwind with `tailwind.config.cjs`, runs it through
 the PostCSS pipeline defined in `postcss.config.cjs` (for autoprefixing), and
