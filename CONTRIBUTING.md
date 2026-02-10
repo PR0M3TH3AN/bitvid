@@ -219,6 +219,7 @@ To use it:
 Before starting your work, please review these key documents:
 
 - **[AGENTS.md](./AGENTS.md)**: Architectural guidelines, mission statement, and troubleshooting tips.
+- **[Documentation Index](./docs/README.md)**: A complete list of system documentation, including architecture and feed logic.
 - **[Nostr Event Schemas](./docs/nostr-event-schemas.md)**: The source of truth for all Nostr events published by the application.
 - **[Playback Fallback](./docs/playback-fallback.md)**: Details on the URL-first playback strategy and WebTorrent fallback mechanism.
 
