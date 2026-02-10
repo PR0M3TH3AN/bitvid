@@ -58,6 +58,15 @@ jobs:
       - name: Build assets
         run: npm run build
 
+      - name: Smoke check hashed dist asset references
+        run: npm run smoke:dist-assets
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run cache-upgrade smoke test
+        if: github.event_name == 'push' && github.ref == 'refs/heads/unstable'
+        run: npm run test:e2e:cache-upgrade
 
       - name: Generate dist hash state
         if: github.event_name == 'push' && github.ref == 'refs/heads/unstable'
@@ -72,9 +81,6 @@ jobs:
           name: dist-hashes-current
           path: artifacts/dist-hashes-current.json
           if-no-files-found: error
-
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
 
       - name: Run visual regression tests
         id: visual
