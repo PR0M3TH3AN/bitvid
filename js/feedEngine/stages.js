@@ -11,7 +11,7 @@ import moderationService from "../services/moderationService.js";
 import logger from "../utils/logger.js";
 import { dedupeToNewestByRoot } from "../utils/videoDeduper.js";
 import { normalizeHashtag } from "../utils/hashtagNormalization.js";
-import { isPlainObject, toSet, markAsNormalized } from "./utils.js";
+import { isPlainObject, toSet, markAsNormalized, getVideoTags } from "./utils.js";
 
 const FEED_HIDE_BYPASS_NAMES = new Set(["home", "recent"]);
 
@@ -306,34 +306,6 @@ export function createDisinterestFilterStage({
   };
 }
 
-function collectVideoTags(video) {
-  const videoTags = new Set();
-
-  if (Array.isArray(video.tags)) {
-    for (const tag of video.tags) {
-      if (Array.isArray(tag) && tag[0] === "t" && typeof tag[1] === "string") {
-        const normalized = normalizeHashtag(tag[1]);
-        if (normalized) {
-          videoTags.add(normalized);
-        }
-      }
-    }
-  }
-
-  if (Array.isArray(video.nip71?.hashtags)) {
-    for (const tag of video.nip71.hashtags) {
-      if (typeof tag === "string") {
-        const normalized = normalizeHashtag(tag);
-        if (normalized) {
-          videoTags.add(normalized);
-        }
-      }
-    }
-  }
-
-  return videoTags;
-}
-
 function filterByTagPreferences({
   items = [],
   context = {},
@@ -364,7 +336,7 @@ function filterByTagPreferences({
       continue;
     }
 
-    const videoTags = collectVideoTags(video);
+    const videoTags = getVideoTags(video);
 
     let disinterested = false;
     if (disinterests.size) {

@@ -1,7 +1,7 @@
 // js/feedEngine/kidsScoring.js
 
 import { normalizeHashtag } from "../utils/hashtagNormalization.js";
-import { isPlainObject, toSet } from "./utils.js";
+import { isPlainObject, toSet, getVideoTags } from "./utils.js";
 
 const DEFAULT_WEIGHTS = Object.freeze({
   w_age: 0.35,
@@ -13,8 +13,6 @@ const DEFAULT_WEIGHTS = Object.freeze({
 });
 
 const DEFAULT_FRESHNESS_HALF_LIFE_DAYS = 14;
-
-const videoTagCache = new WeakMap();
 
 const AGE_GROUP_DEFAULTS = Object.freeze({
   toddler: {
@@ -50,45 +48,6 @@ function clamp01(value) {
     return 1;
   }
   return value;
-}
-
-function normalizeTagSetFromVideo(video) {
-  if (!video || typeof video !== "object") {
-    return new Set();
-  }
-
-  if (videoTagCache.has(video)) {
-    return videoTagCache.get(video);
-  }
-
-  const normalized = new Set();
-
-  const addTag = (rawTag) => {
-    if (typeof rawTag !== "string") {
-      return;
-    }
-    const tag = normalizeHashtag(rawTag);
-    if (tag) {
-      normalized.add(tag);
-    }
-  };
-
-  if (Array.isArray(video.tags)) {
-    for (const tag of video.tags) {
-      if (Array.isArray(tag) && tag[0] === "t") {
-        addTag(tag[1]);
-      }
-    }
-  }
-
-  if (Array.isArray(video.nip71?.hashtags)) {
-    for (const tag of video.nip71.hashtags) {
-      addTag(tag);
-    }
-  }
-
-  videoTagCache.set(video, normalized);
-  return normalized;
 }
 
 function normalizeTagSet(values) {
@@ -323,7 +282,7 @@ export function createKidsScorerStage({
         continue;
       }
 
-      const tags = normalizeTagSetFromVideo(video);
+      const tags = getVideoTags(video);
       const duration = resolveDuration(video);
       let durationScore = 0.5;
       if (Number.isFinite(duration) && duration > 0) {
