@@ -1,7 +1,6 @@
 // js/index.js
 
 import { validateInstanceConfig } from "../config/validate-config.js";
-import { ASSET_VERSION } from "../config/asset-version.js";
 import "./bufferPolyfill.js";
 import {
   getApplication,
@@ -548,17 +547,8 @@ document.addEventListener("animationend", handleFadeInAnimationComplete, true);
 document.addEventListener("animationcancel", handleFadeInAnimationComplete, true);
 
 // 1) Load modals (login, application, etc.)
-const withAssetVersion = (url) => {
-  if (typeof url !== "string" || url.length === 0) {
-    return url;
-  }
-
-  const separator = url.includes("?") ? "&" : "?";
-  return `${url}${separator}v=${encodeURIComponent(ASSET_VERSION)}`;
-};
-
 const fetchPartial = async (url) => {
-  const response = await fetch(withAssetVersion(url), { cache: "no-store" });
+  const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) {
     throw new Error("Failed to load " + url);
   }

@@ -356,6 +356,11 @@ This split is required for safe fast rollouts: HTML needs rapid update pickup,
 while fingerprinted static assets should remain aggressively cacheable for
 performance and cost control.
 
+> Migration note: runtime `ASSET_VERSION` query-parameter mutation has been
+> removed. Static asset freshness now comes from build-time hashed filenames
+> recorded in `dist/asset-manifest.json` and rewritten into `dist/index.html`
+> / `dist/embed.html` during `npm run build`.
+
 
 #### Service worker rollback playbook
 
