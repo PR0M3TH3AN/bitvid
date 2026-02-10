@@ -34,7 +34,8 @@ const IGNORED_GLOBS = [
   '**/*.ai',
   'releases/**',
   'bitvid-working-webtorrent/**',
-  'scripts/agent/**'
+  'scripts/agent/**',
+  'docs/capacitor-native-app-plan.md'
 ];
 
 const gitArgs = [
