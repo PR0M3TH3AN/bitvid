@@ -225,6 +225,7 @@ import {
   prepareVideoEditPayload,
 } from "./videoPayloadBuilder.js";
 import { inferMimeTypeFromUrl } from "../utils/mime.js";
+import { VideoEventBuffer } from "./videoEventBuffer.js";
 
 function normalizeProfileFromEvent(event) {
   if (!event || !event.content) return null;
@@ -3171,161 +3172,21 @@ export class NostrClient {
     devLogger.log("[subscribeVideos] Subscribing with filter:", filter);
 
     const sub = this.pool.sub(this.getHealthyRelays(this.relays), [filter]);
-    const invalidDuringSub = [];
 
     // BUFFERING STATE
     // We collect events here instead of processing them instantly to avoid
     // 1000s of React re-renders during the initial relay dump.
     // The buffer acts as a pressure valve between the network and the UI.
-    let eventBuffer = [];
-    const EVENT_FLUSH_DEBOUNCE_MS = 75;
-    let flushTimerId = null;
-
-    /**
-     * Flushes the pending event buffer.
-     *
-     * This batch processing is critical for performance during the initial
-     * relay dump (thousands of events). It prevents React from re-rendering
-     * for every single event.
-     *
-     * Algorithm:
-     * 1. Drain the buffer.
-     * 2. Validate & Convert events to Video objects.
-     * 3. Apply tombstones (filter out known deleted items).
-     * 4. Update `activeMap` (Last-Write-Wins based on created_at).
-     * 5. Persist the new state to cache.
-     */
-    const flushEventBuffer = () => {
-      if (!eventBuffer.length) {
-        return;
-      }
-
-      const toProcess = eventBuffer;
-      eventBuffer = [];
-      const updatedVideos = [];
-
-      for (const evt of toProcess) {
-        try {
-          if (evt && evt.id) {
-            this.rawEvents.set(evt.id, evt);
-          }
-          const video = convertEventToVideo(evt);
-
-          if (video.invalid) {
-            invalidDuringSub.push({ id: video.id, reason: video.reason });
-            continue;
-          }
-
-          // Merge any NIP-71 metadata we might already have cached for this video
-          this.mergeNip71MetadataIntoVideo(video);
-          // Determine the "true" creation time of the root video
-          this.applyRootCreatedAt(video);
-
-          const activeKey = getActiveKey(video);
-          const wasDeletedEvent = video.deleted === true;
-
-          // If this is a deletion event (Kind 5 or deletion marker), record a tombstone
-          // to prevent older versions from resurrecting.
-          if (wasDeletedEvent) {
-            this.recordTombstone(activeKey, video.created_at);
-          } else {
-            // Otherwise, check if this video is already known to be deleted
-            this.applyTombstoneGuard(video);
-          }
-
-          // Store in allEvents (history preservation)
-          this.allEvents.set(evt.id, video);
-          this.dirtyEventIds.add(evt.id);
-
-          // If it's a "deleted" note, remove from activeMap
-          if (video.deleted) {
-            if (activeKey) {
-              if (wasDeletedEvent) {
-                this.activeMap.delete(activeKey);
-              } else {
-                const currentActive = this.activeMap.get(activeKey);
-                if (currentActive?.id === video.id) {
-                  this.activeMap.delete(activeKey);
-                }
-              }
-            }
-            continue;
-          }
-
-          // LATEST-WINS LOGIC
-          // We only update the UI if the incoming video is newer than what we have.
-          // This handles the "Edit" case where multiple versions exist on relays.
-          const prevActive = this.activeMap.get(activeKey);
-          if (!prevActive || video.created_at > prevActive.created_at) {
-            this.activeMap.set(activeKey, video);
-            updatedVideos.push(video);
-          }
-        } catch (err) {
-          devLogger.error("[subscribeVideos] Error processing event:", err);
-        }
-      }
-
-      if (updatedVideos.length > 0) {
-        // Trigger the callback once per batch to avoid UI thrashing
-        onVideo(updatedVideos);
-
-        // Fetch NIP-71 metadata (categorization tags) in the background for the whole batch
-        this.populateNip71MetadataForVideos(updatedVideos)
-          .then(() => {
-            for (const video of updatedVideos) {
-              this.applyRootCreatedAt(video);
-            }
-          })
-          .catch((error) => {
-            devLogger.warn(
-              "[nostr] Failed to hydrate NIP-71 metadata for live video batch:",
-              error
-            );
-          });
-      }
-
-      // Persist processed events after each flush so reloads warm quickly.
-      this.saveLocalData("subscribeVideos:flush");
-    };
-
-    const scheduleFlush = (immediate = false) => {
-      if (flushTimerId) {
-        if (!immediate) {
-          return;
-        }
-        clearTimeout(flushTimerId);
-        flushTimerId = null;
-      }
-
-      if (immediate) {
-        flushEventBuffer();
-        return;
-      }
-
-      flushTimerId = setTimeout(() => {
-        flushTimerId = null;
-        flushEventBuffer();
-      }, EVENT_FLUSH_DEBOUNCE_MS);
-    };
+    const buffer = new VideoEventBuffer(this, onVideo);
 
     // 1) On each incoming event, just push to the buffer and schedule a flush
     sub.on("event", (event) => {
-      eventBuffer.push(event);
-      scheduleFlush(false);
+      buffer.push(event);
     });
 
     // You can still use sub.on("eose") if needed
     sub.on("eose", () => {
-      if (isDevMode && invalidDuringSub.length > 0) {
-        userLogger.warn(
-          `[subscribeVideos] found ${invalidDuringSub.length} invalid video notes (with reasons):`,
-          invalidDuringSub
-        );
-      }
-      devLogger.log(
-        "[subscribeVideos] Reached EOSE for all relays (historical load done)"
-      );
-      scheduleFlush(true);
+      buffer.handleEose();
     });
 
     // Return the subscription object if you need to unsub manually later
@@ -3337,12 +3198,7 @@ export class NostrClient {
         return;
       }
       unsubscribed = true;
-      if (flushTimerId) {
-        clearTimeout(flushTimerId);
-        flushTimerId = null;
-      }
-      // Ensure any straggling events are flushed before tearing down.
-      flushEventBuffer();
+      buffer.cleanup();
       try {
         return originalUnsub();
       } catch (err) {
