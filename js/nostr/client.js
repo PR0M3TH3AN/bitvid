@@ -3081,43 +3081,19 @@ export class NostrClient {
     };
   }
 
-  /**
-   * Deletes all versions of a video.
-   *
-   * **Process:**
-   * 1. **Hydration**: Ensures the full edit history is loaded so we know all `d` tags and Event IDs.
-   * 2. **Soft Delete (Revert)**: Publishes a new update with `deleted: true` for every unique `d` tag/root found.
-   *    This clears the content for clients that just resolve the "latest" version.
-   * 3. **Hard Delete (NIP-09)**: Publishes a Kind 5 event referencing ALL known Event IDs (`e` tags) and
-   *    NIP-33 addresses (`a` tags). Relays compliant with NIP-09 will physically remove the events.
-   * 4. **Tombstoning**: Updates local state to ensure the deleted video doesn't reappear from cache.
-   *
-   * @param {string} videoRootId - The root ID of the video series.
-   * @param {string} pubkey - The owner's public key.
-   * @param {{confirm?: boolean, video?: object}} [options] - Options (confirm dialog, target video hint).
-   * @returns {Promise<{reverts: object[], deletes: object[]}|null>} Summary of actions taken, or null if cancelled.
-   */
-  async deleteAllVersions(videoRootId, pubkey, options = {}) {
-    if (!pubkey) {
-      throw new Error("Not logged in to delete all versions.");
-    }
-
-    const shouldConfirm = options?.confirm !== false;
-    const targetVideo =
-      options && typeof options.video === "object" ? options.video : null;
-    let confirmed = true;
-
-    if (shouldConfirm && typeof window?.confirm === "function") {
-      confirmed = window.confirm(
-        "Are you sure you want to delete all versions of this video? This action cannot be undone."
+  async _hydrateHistoryForDelete(targetVideo) {
+    if (!targetVideo) return;
+    try {
+      await this.hydrateVideoHistory(targetVideo);
+    } catch (error) {
+      devLogger.warn(
+        "[nostr] Failed to hydrate video history before delete:",
+        error
       );
     }
+  }
 
-    if (!confirmed) {
-      devLogger.log("Deletion cancelled by user.");
-      return null; // Cancel deletion if user clicks "Cancel"
-    }
-
+  _getEventsToDelete(videoRootId, pubkey, targetVideo) {
     const normalizedPubkey = typeof pubkey === "string" ? pubkey.toLowerCase() : "";
     const normalizedRootInput =
       typeof videoRootId === "string" && videoRootId.trim().length
@@ -3129,17 +3105,6 @@ export class NostrClient {
         ? targetVideo.videoRootId.trim()
         : "");
     const targetDTag = this.resolveEventDTag(targetVideo);
-
-    if (targetVideo) {
-      try {
-        await this.hydrateVideoHistory(targetVideo);
-      } catch (error) {
-        devLogger.warn(
-          "[nostr] Failed to hydrate video history before delete:",
-          error
-        );
-      }
-    }
 
     const matchingEvents = new Map();
     for (const candidate of this.allEvents.values()) {
@@ -3183,6 +3148,10 @@ export class NostrClient {
       throw new Error("No existing events found for that root.");
     }
 
+    return { matchingEvents, inferredRoot };
+  }
+
+  async _softDeleteVersions(matchingEvents, inferredRoot, targetVideo, pubkey) {
     const revertSummaries = [];
     const revertEvents = [];
 
@@ -3261,6 +3230,10 @@ export class NostrClient {
       }
     }
 
+    return { revertSummaries, revertEvents };
+  }
+
+  async _hardDeleteVersions(matchingEvents, revertEvents, targetVideo, inferredRoot, pubkey) {
     const eventIdSet = new Set();
     const addressPointerSet = new Set();
 
@@ -3363,6 +3336,7 @@ export class NostrClient {
           this.pool,
           this.relays,
           signedDelete,
+          { waitForAll: true }
         );
         const publishSummary = summarizePublishResults(publishResults);
 
@@ -3404,6 +3378,69 @@ export class NostrClient {
         });
       }
     }
+
+    return deleteSummaries;
+  }
+
+  /**
+   * Deletes all versions of a video.
+   *
+   * **Process:**
+   * 1. **Hydration**: Ensures the full edit history is loaded so we know all `d` tags and Event IDs.
+   * 2. **Soft Delete (Revert)**: Publishes a new update with `deleted: true` for every unique `d` tag/root found.
+   *    This clears the content for clients that just resolve the "latest" version.
+   * 3. **Hard Delete (NIP-09)**: Publishes a Kind 5 event referencing ALL known Event IDs (`e` tags) and
+   *    NIP-33 addresses (`a` tags). Relays compliant with NIP-09 will physically remove the events.
+   * 4. **Tombstoning**: Updates local state to ensure the deleted video doesn't reappear from cache.
+   *
+   * @param {string} videoRootId - The root ID of the video series.
+   * @param {string} pubkey - The owner's public key.
+   * @param {{confirm?: boolean, video?: object}} [options] - Options (confirm dialog, target video hint).
+   * @returns {Promise<{reverts: object[], deletes: object[]}|null>} Summary of actions taken, or null if cancelled.
+   */
+  async deleteAllVersions(videoRootId, pubkey, options = {}) {
+    if (!pubkey) {
+      throw new Error("Not logged in to delete all versions.");
+    }
+
+    const shouldConfirm = options?.confirm !== false;
+    const targetVideo =
+      options && typeof options.video === "object" ? options.video : null;
+    let confirmed = true;
+
+    if (shouldConfirm && typeof window?.confirm === "function") {
+      confirmed = window.confirm(
+        "Are you sure you want to delete all versions of this video? This action cannot be undone."
+      );
+    }
+
+    if (!confirmed) {
+      devLogger.log("Deletion cancelled by user.");
+      return null; // Cancel deletion if user clicks "Cancel"
+    }
+
+    await this._hydrateHistoryForDelete(targetVideo);
+
+    const { matchingEvents, inferredRoot } = this._getEventsToDelete(
+      videoRootId,
+      pubkey,
+      targetVideo
+    );
+
+    const { revertSummaries, revertEvents } = await this._softDeleteVersions(
+      matchingEvents,
+      inferredRoot,
+      targetVideo,
+      pubkey
+    );
+
+    const deleteSummaries = await this._hardDeleteVersions(
+      matchingEvents,
+      revertEvents,
+      targetVideo,
+      inferredRoot,
+      pubkey
+    );
 
     this.saveLocalData("delete-events", { immediate: true });
 
