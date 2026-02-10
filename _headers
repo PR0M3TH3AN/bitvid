@@ -18,6 +18,7 @@
 
 /sw.min.js
   Cache-Control: public, max-age=0, must-revalidate
+  X-Bitvid-SW-Version: bitvid-sw-2026-02-10
 
 /site.webmanifest
   Cache-Control: public, max-age=0, must-revalidate
