@@ -1,45 +1,50 @@
-// Fuzz harness for js/magnetUtils.js
-import "./setup-test-env.js";
-import { Fuzzer } from "./fuzz-lib.mjs";
-import { normalizeAndAugmentMagnet } from "../../js/magnetUtils.js";
+import {
+  randomInt,
+  randomBoolean,
+  randomString,
+  randomHex,
+  randomArray,
+  randomValue,
+  randomObject,
+  runFuzzer,
+} from "./fuzz-utils.mjs";
+import {
+  normalizeAndAugmentMagnet,
+  safeDecodeMagnet,
+  extractBtihFromMagnet,
+  normalizeInfoHash,
+} from "../../js/magnetUtils.js";
 
-const fuzzer = new Fuzzer("magnetUtils");
+function genMagnetString() {
+  if (Math.random() < 0.2) return randomString(100); // Garbage
+  if (Math.random() < 0.2) return ""; // Empty
 
-async function fuzzTest(fuzzer, state) {
-  // Generate inputs
-  const rawValue = fuzzer.randBool() ? fuzzer.randString(100) : "magnet:?xt=urn:btih:" + fuzzer.randString(40, "0123456789abcdef");
-
-  // Inject garbage into magnet link
-  let malformedValue = rawValue;
-  if (fuzzer.randBool()) {
-      // url encode some chars
-      malformedValue = encodeURIComponent(rawValue);
+  let magnet = "magnet:?";
+  const params = [];
+  const count = randomInt(0, 5);
+  for (let i = 0; i < count; i++) {
+    const key = Math.random() < 0.5 ? (Math.random() < 0.5 ? "xt" : "tr") : randomString(2);
+    const value = randomString(20, true);
+    params.push(`${key}=${encodeURIComponent(value)}`);
   }
-
-  if (fuzzer.randBool()) {
-      // Inject huge string
-      malformedValue += fuzzer.randString(10000);
-  }
-
-  const options = {
-      webSeed: fuzzer.randBool() ? fuzzer.randString(50) : [fuzzer.randString(50)],
-      torrentUrl: fuzzer.randString(50),
-      xs: fuzzer.randString(50),
-      extraTrackers: fuzzer.randArray(() => fuzzer.randString(30), 0, 3),
-      appProtocol: fuzzer.randBool() ? "http:" : "https:",
-      logger: () => {}
-  };
-
-  state.input = {
-      rawValue: malformedValue,
-      options
-  };
-
-  try {
-      normalizeAndAugmentMagnet(malformedValue, options);
-  } catch (err) {
-      throw err;
-  }
+  return magnet + params.join("&");
 }
 
-fuzzer.runFuzzLoop(5000, fuzzTest).catch(console.error);
+function genOptions() {
+  return {
+    webSeed: Math.random() < 0.5 ? randomString(20) : [randomString(20), randomString(20)],
+    torrentUrl: Math.random() < 0.5 ? randomString(30) : undefined,
+    xs: Math.random() < 0.5 ? randomString(30) : undefined,
+    extraTrackers: Math.random() < 0.5 ? [randomString(30)] : undefined,
+    appProtocol: Math.random() < 0.5 ? "http:" : "https:",
+  };
+}
+
+async function main() {
+  await runFuzzer("safeDecodeMagnet", safeDecodeMagnet, () => [genMagnetString()]);
+  await runFuzzer("extractBtihFromMagnet", extractBtihFromMagnet, () => [genMagnetString()]);
+  await runFuzzer("normalizeInfoHash", normalizeInfoHash, () => [randomString(40)]);
+  await runFuzzer("normalizeAndAugmentMagnet", normalizeAndAugmentMagnet, () => [genMagnetString(), genOptions()]);
+}
+
+main().catch(console.error);
