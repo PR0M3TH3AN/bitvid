@@ -90,13 +90,15 @@ test.describe("Agent testability infrastructure", () => {
     });
 
     // Verify via HTTP API
-    const resp = await fetch("http://127.0.0.1:8878/events");
+    const httpUrl = (relay as any).httpUrl;
+    const resp = await fetch(`${httpUrl}/events`);
     const events = await resp.json();
     expect(events.length).toBe(2);
   });
 
   test("relay health endpoint works", async ({ relay }) => {
-    const resp = await fetch("http://127.0.0.1:8878/health");
+    const httpUrl = (relay as any).httpUrl;
+    const resp = await fetch(`${httpUrl}/health`);
     const health = await resp.json();
     expect(health.ok).toBe(true);
     expect(typeof health.eventCount).toBe("number");

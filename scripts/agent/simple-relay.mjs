@@ -194,6 +194,11 @@ export function startRelay(port = 8888, options = {}) {
   return {
     close: () => {
       return new Promise((resolve) => {
+        // Force close all connected clients
+        for (const client of wss.clients) {
+          client.terminate();
+        }
+
         const closeHttp = httpServer
           ? new Promise((r) => httpServer.close(r))
           : Promise.resolve();

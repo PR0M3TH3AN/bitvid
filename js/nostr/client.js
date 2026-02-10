@@ -2417,6 +2417,10 @@ export class NostrClient {
     return this.signerManager.ensureActiveSignerForPubkey(pubkey);
   }
 
+  async derivePrivateKeyFromSecret(secret) {
+    return this.signerManager.derivePrivateKeyFromSecret(secret);
+  }
+
   async loginWithExtension(options) {
     // Check if ensureExtensionPermissions was overridden on this instance (e.g. by tests).
     // Only proxy when the own property differs from the prototype method to avoid recursion.
@@ -3903,3 +3907,4 @@ export {
   resolveActiveSigner,
   shouldRequestExtensionPermissions,
 };
+const a = 1

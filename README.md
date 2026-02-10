@@ -361,7 +361,6 @@ performance and cost control.
 > recorded in `dist/asset-manifest.json` and rewritten into `dist/index.html`
 > / `dist/embed.html` during `npm run build`.
 
-
 #### Service worker rollback playbook
 
 If a deploy regresses playback and you suspect `sw.min.js`, use this rollback runbook:
