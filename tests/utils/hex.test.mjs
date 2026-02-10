@@ -4,6 +4,7 @@ import {
   normalizeHexString,
   normalizeHexId,
   normalizeHexPubkey,
+  normalizeHexHash,
   HEX64_REGEX,
 } from "../../js/utils/hex.js";
 
@@ -58,6 +59,25 @@ describe("hex utils", () => {
 
     it("should not match empty strings", () => {
       assert.doesNotMatch("", HEX64_REGEX);
+    });
+  });
+
+  describe("normalizeHexHash", () => {
+    it("should return empty string for non-string inputs", () => {
+      assert.equal(normalizeHexHash(null), "");
+      assert.equal(normalizeHexHash(undefined), "");
+      assert.equal(normalizeHexHash(123), "");
+    });
+
+    it("should return empty string for invalid hex", () => {
+      assert.equal(normalizeHexHash("invalid"), "");
+      assert.equal(normalizeHexHash("g".repeat(64)), "");
+    });
+
+    it("should return normalized hex for valid inputs", () => {
+      const valid = "A".repeat(64);
+      const expected = "a".repeat(64);
+      assert.equal(normalizeHexHash(valid), expected);
     });
   });
 });

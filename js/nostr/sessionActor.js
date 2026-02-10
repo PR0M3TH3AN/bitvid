@@ -488,13 +488,10 @@ export function isSessionActor(nostrClient) {
     return false;
   }
   const clientPubkey =
-    typeof nostrClient?.pubkey === "string" ? nostrClient.pubkey : null;
-  const sessionPubkey = typeof sa.pubkey === "string" ? sa.pubkey : null;
+    typeof nostrClient.pubkey === "string" ? nostrClient.pubkey : "";
+  const saPubkey = typeof sa.pubkey === "string" ? sa.pubkey : "";
 
-  if (clientPubkey && sessionPubkey && clientPubkey !== sessionPubkey) {
-    return false;
-  }
-  return true;
+  return clientPubkey === saPubkey;
 }
 
 function _closeSessionActorDb() {

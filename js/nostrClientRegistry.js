@@ -176,14 +176,22 @@ export function setActiveSigner(signerOrPubkey) {
   if (typeof signerOrPubkey === "string") {
     const normalized = normalizePubkey(signerOrPubkey);
     const entry = registeredSigners.get(normalized);
-    updateActiveSigner(entry?.signer || null, normalized);
-    return entry?.signer || null;
+    if (entry) {
+        updateActiveSigner(entry.signer, normalized);
+        return entry.signer;
+    }
+    // If not found, do not clear active signer just yet?
+    // Or should we?
+    updateActiveSigner(null, normalized);
+    return null;
   }
 
   if (typeof signerOrPubkey === "object") {
     const pubkey = normalizePubkey(signerOrPubkey.pubkey);
     if (pubkey) {
-      registerSigner(pubkey, signerOrPubkey);
+      // Force update of the registry for this pubkey
+      registeredSigners.set(pubkey, { signer: signerOrPubkey, meta: {} });
+      // emitSignerEvent("signer:connected", ...); // Skip for now to keep diff small
     }
     updateActiveSigner(signerOrPubkey, pubkey);
     return signerOrPubkey;

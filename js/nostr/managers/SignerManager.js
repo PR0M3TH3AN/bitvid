@@ -264,21 +264,12 @@ export class SignerManager {
     this.extensionReady = false;
     this.extensionPermissionsGranted = false;
     this.extensionPermissionCache = new Map();
-
-    // Hydrate permission cache from localStorage so fresh instances
-    // recognise previously granted permissions without re-prompting.
-    try {
-      const storedPermissions = readStoredNip07Permissions();
-      if (storedPermissions.size > 0) {
+    const storedPermissions = readStoredNip07Permissions();
+    if (storedPermissions && storedPermissions.size > 0) {
         for (const method of storedPermissions) {
-          this.extensionPermissionCache.set(method, true);
+            this.extensionPermissionCache.set(method, true);
         }
-        this.extensionPermissionsGranted = true;
-      }
-    } catch (_) {
-      // Storage unavailable or corrupt — start with empty cache
     }
-
     this.sessionActorCipherClosures = null;
     this.sessionActorCipherClosuresPrivateKey = null;
     this.remoteSignerListeners = new Set();
@@ -325,57 +316,56 @@ export class SignerManager {
     return resolveActiveSigner(pubkey);
   }
 
-  async ensureSessionActor(createIfMissing = false) {
-    if (this.sessionActor) {
-      return this.sessionActor;
-    }
-
-    if (this.lockedSessionActor) {
-      return this.lockedSessionActor;
-    }
-
-    const storedEntry = readStoredSessionActorEntry();
-    if (storedEntry) {
-      this.lockedSessionActor = storedEntry;
-      this.sessionActor = storedEntry;
-      return storedEntry;
-    }
-
-    if (createIfMissing) {
-      const tools = (await ensureNostrTools()) || getCachedNostrTools();
-      if (tools) {
-        let privateKey;
-        let pubkey;
-
-        if (typeof tools.generatePrivateKey === "function") {
-          const raw = tools.generatePrivateKey();
-          if (typeof raw === "string") {
-            privateKey = raw;
-            pubkey = tools.getPublicKey(privateKey);
-          } else {
-            pubkey = tools.getPublicKey(raw);
-            privateKey = Array.from(raw)
-              .map((b) => b.toString(16).padStart(2, "0"))
-              .join("");
-          }
-        } else if (typeof tools.generateSecretKey === "function") {
-          const secret = tools.generateSecretKey();
-          pubkey = tools.getPublicKey(secret);
-          privateKey = Array.from(secret)
-            .map((b) => b.toString(16).padStart(2, "0"))
-            .join("");
-        }
-
-        if (privateKey && pubkey) {
-          const newActor = { privateKey, pubkey };
-          this.sessionActor = newActor;
-          persistSessionActorEntry(newActor);
-          return newActor;
-        }
+  async ensureSessionActor(force = false) {
+    if (!force) {
+      if (this.sessionActor) {
+        return this.sessionActor.pubkey;
+      }
+      if (this.lockedSessionActor) {
+        return this.lockedSessionActor.pubkey;
+      }
+      const storedEntry = readStoredSessionActorEntry();
+      if (storedEntry) {
+        this.lockedSessionActor = storedEntry;
+        this.sessionActor = storedEntry;
+        return storedEntry.pubkey;
       }
     }
 
-    return null;
+    const tools = await ensureNostrTools();
+    if (!tools) {
+      return null;
+    }
+
+    let secret;
+    try {
+      if (typeof tools.generateSecretKey === "function") {
+        secret = tools.generateSecretKey();
+      } else if (typeof window !== "undefined" && window.crypto) {
+        secret = new Uint8Array(32);
+        window.crypto.getRandomValues(secret);
+      } else {
+        return null;
+      }
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to generate session actor key:", error);
+      return null;
+    }
+
+    const hexKey = Array.from(secret)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    const pubkey = tools.getPublicKey(secret);
+
+    const newActor = {
+      pubkey,
+      privateKey: hexKey,
+      source: "session",
+      createdAt: Date.now(),
+    };
+
+    this.sessionActor = newActor;
+    return newActor.pubkey;
   }
 
   clearStoredSessionActor() {
@@ -479,7 +469,7 @@ export class SignerManager {
       return { ok: true };
     }
 
-    let extension;
+    let extension = null;
     try {
       extension = await waitForNip07Extension();
     } catch (error) {
@@ -498,7 +488,7 @@ export class SignerManager {
         writeStoredNip07Permissions(missing);
         this.extensionPermissionsGranted = true;
         this.extensionPermissionCache.set(cacheKey, true);
-        for (const method of methods) {
+        for (const method of missing) {
           this.extensionPermissionCache.set(method, true);
         }
         return { ok: true };
@@ -599,15 +589,29 @@ export class SignerManager {
     const adapter = {
         type: "extension",
         pubkey: normalized,
-        signEvent: typeof extension.signEvent === "function"
-          ? extension.signEvent.bind(extension)
-          : undefined,
+        signEvent: typeof extension.signEvent === "function" ? extension.signEvent.bind(extension) : undefined,
         nip04: extension.nip04,
         nip44: extension.nip44,
     };
 
     this.setActiveSigner(adapter);
     return { pubkey: normalized, signer: adapter };
+  }
+
+  installNip46Client(nip46Client, { userPubkey } = {}) {
+    if (!nip46Client) {
+      return;
+    }
+    this.nip46Client = nip46Client;
+    if (userPubkey) {
+      this.pubkey = userPubkey;
+      this.setActiveSigner(nip46Client);
+    }
+    this.emitRemoteSignerChange({
+      state: "connected",
+      userPubkey: userPubkey || this.pubkey,
+      remotePubkey: nip46Client.remotePubkey,
+    });
   }
 
   async connectRemoteSigner({

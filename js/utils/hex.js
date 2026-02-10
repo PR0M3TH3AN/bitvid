@@ -11,3 +11,15 @@ export function normalizeHexString(value) {
 
 export const normalizeHexId = normalizeHexString;
 export const normalizeHexPubkey = normalizeHexString;
+
+export function normalizeHexHash(value) {
+  if (value === undefined || value === null) {
+    return "";
+  }
+  const stringValue = typeof value === "string" ? value : String(value);
+  const trimmed = stringValue.trim().toLowerCase();
+  if (!trimmed) {
+    return "";
+  }
+  return HEX64_REGEX.test(trimmed) ? trimmed : "";
+}

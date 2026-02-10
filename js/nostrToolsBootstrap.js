@@ -295,10 +295,10 @@ const createMockToolkit = () => ({
     encrypt: () => "mock_ciphertext",
     decrypt: () => "mock_plaintext",
   },
-  getPublicKey: () => "mock_pubkey",
+  getPublicKey: () => "f".repeat(64),
   generateSecretKey: () => new Uint8Array(32),
-  generatePrivateKey: () => "mock_private_key",
-  finalizeEvent: () => ({ id: "mock_id", sig: "mock_sig" }),
+  generatePrivateKey: () => "f".repeat(64),
+  finalizeEvent: () => ({ id: "f".repeat(64), sig: "f".repeat(128) }),
   verifyEvent: () => true,
 });
 
