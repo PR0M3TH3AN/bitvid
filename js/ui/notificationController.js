@@ -1,5 +1,3 @@
-import { userLogger as _fallbackUserLogger, devLogger as _fallbackDevLogger } from "../utils/logger.js";
-
 export default class NotificationController {
   constructor({
     portal,
@@ -18,8 +16,8 @@ export default class NotificationController {
       this.statusContainer?.querySelector("[data-status-message]") || null;
 
     // Fallback loggers if not provided
-    this.userLogger = loggers.userLogger || _fallbackUserLogger;
-    this.devLogger = loggers.devLogger || _fallbackDevLogger;
+    this.userLogger = loggers.userLogger || { error: console.error, warn: console.warn, log: console.log, info: console.info };
+    this.devLogger = loggers.devLogger || { error: console.error, warn: console.warn, log: console.log, info: console.info };
 
     this.document = documentRef;
     this.window = windowRef;

@@ -1,6 +1,5 @@
 import { ZapReceiptList } from "./ZapReceiptList.js";
 import { createAndPublishZapRequest, resolveZapRecipient } from "../../payments/zapRequests.js";
-import { userLogger } from "../../utils/logger.js";
 
 function createElement(doc, tag, className, text) {
   const element = doc.createElement(tag);
@@ -92,7 +91,7 @@ export function createZapInterface(doc, { contact, zapReceipts, onSendZap, zapCo
              throw new Error("No signer available");
         }
     } catch (err) {
-        userLogger.error("[ZapInterface] Failed to send zap:", err);
+        console.error(err);
         statusDiv.textContent = "Failed to send zap";
         statusDiv.className = "text-error text-xs text-center mt-1";
     } finally {

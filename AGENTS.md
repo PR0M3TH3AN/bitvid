@@ -199,56 +199,6 @@ When moving a feature to a controller, follow these steps:
 
 ---
 
-## 12. Multi-Agent Coordination
-
-This project uses multiple AI agents (Claude Code, OpenAI Codex, Google Jules) working in parallel. Without coordination, agents will create conflicting PRs, duplicate work, and cause painful merge conflicts. Follow these rules to keep things clean.
-
-### Before Starting Work
-
-1. **Check open PRs.** Run `gh pr list --state open` or check GitHub. If another agent already has a PR touching the same files or subsystem, do not create a competing PR. Instead, note the conflict and ask the maintainer how to proceed.
-2. **Check this section for in-flight work.** The maintainer may list active work areas below. Respect these reservations.
-3. **Read KNOWN_ISSUES.md.** Do not open PRs to fix issues already documented there unless explicitly asked.
-
-### Subsystem Boundaries
-
-To minimize merge conflicts, treat these as independent work zones. An agent should avoid touching files outside its assigned zone in a single PR:
-
-| Zone | Key Files | Description |
-|------|-----------|-------------|
-| **Nostr Core** | `js/nostr/client.js`, `js/nostr/adapters/`, `js/nostrClientFacade.js` | Protocol client, signers, relay management |
-| **Event Schemas** | `js/nostrEventSchemas.js`, `docs/nostr-event-schemas.md` | Event definitions and documentation |
-| **Playback** | `js/services/playbackService.js`, `js/playbackUtils.js`, `js/magnetUtils.js` | Video streaming, magnet handling |
-| **UI Controllers** | `js/ui/` | Modal controllers, notification, components |
-| **State** | `js/state/` | Profile cache, application state |
-| **DMs** | `js/ui/dm/`, `js/nostr/dm/` | Direct messaging subsystem |
-| **Moderation** | `js/moderation/`, `docs/moderation/` | Content moderation, reports, admin lists |
-| **Build & CI** | `.github/workflows/`, `scripts/`, `tailwind.config.cjs` | CI pipeline, lint scripts, build tooling |
-| **Styling** | `css/tokens.css`, `css/tailwind.source.css` | Design tokens and Tailwind source |
-| **App Orchestrator** | `js/app.js`, `js/app/` | Main app wiring (high conflict risk — only one PR at a time) |
-
-**`js/app.js` is the highest-risk file.** It wires everything together. Never have two agent PRs modifying it simultaneously.
-
-### PR Discipline
-
-- **One subsystem per PR.** A PR that touches Nostr Core and UI Controllers is two PRs. Split them.
-- **Small and mergeable.** Target PRs that can be reviewed in one sitting. If a refactor spans 10+ files, break it into sequential PRs.
-- **Merge before branching.** Before starting new work on a subsystem, ensure all open PRs for that subsystem are merged or closed.
-- **Rebase, don't stack.** Long-lived branches diverge fast with multiple agents. Rebase onto `unstable` frequently.
-
-### Signaling Work to Other Agents
-
-When you create a PR or start work, leave a clear signal:
-- **PR title prefix**: Use a descriptive prefix like `[nostr-core]`, `[playback]`, `[ui]`, `[ci]` so the scope is visible at a glance.
-- **PR description**: Include a "Files Modified" section listing the key files touched, so other agents can quickly detect conflicts.
-
-### Currently In-Flight Work
-
-<!-- Maintainer: update this list when assigning work to agents. Agents: check this before starting. -->
-
-_No reservations currently active._
-
----
-
 ## Next
 
 Please read these documents next.

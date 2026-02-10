@@ -16,7 +16,7 @@ jobs:
     timeout-minutes: 45
     strategy:
       matrix:
-        node-version: [22]
+        node-version: [20]
 
     steps:
       - name: Check out repository
@@ -85,7 +85,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: [22]
+        node-version: [20]
         shard: [1, 2, 3]
 
     steps:
@@ -128,7 +128,7 @@ jobs:
     timeout-minutes: 20
     strategy:
       matrix:
-        node-version: [22]
+        node-version: [20]
 
     steps:
       - name: Check out repository
@@ -168,7 +168,7 @@ jobs:
     timeout-minutes: 30
     strategy:
       matrix:
-        node-version: [22]
+        node-version: [20]
 
     steps:
       - name: Check out repository
@@ -208,7 +208,7 @@ jobs:
     timeout-minutes: 45
     strategy:
       matrix:
-        node-version: [22]
+        node-version: [20]
 
     steps:
       - name: Check out repository
