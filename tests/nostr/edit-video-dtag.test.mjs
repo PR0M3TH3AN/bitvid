@@ -83,9 +83,17 @@ test("editVideo preserves existing d tag", async (t) => {
   const result = await client.editVideo({ id: baseEvent.id }, { title: "Updated" }, pubkey);
 
   assert.ok(result, "editVideo should return the signed event");
-  assert.equal(signedEvents.length, 1, "editVideo should sign exactly one event");
+  // Now we expect at least 1 event (the video note), possibly more (NIP-94 mirror, NIP-71)
+  assert.ok(signedEvents.length >= 1, "editVideo should sign at least one event");
+
+  // The first event signed should be the video update (Kind 30078)
   const signedEvent = signedEvents[0];
   assert.ok(signedEvent, "signed event should be captured");
+
+  // Ensure we are testing the video update event (Kind 30078)
+  // Note: The mock signer assigns ID but doesn't set kind if not provided, but buildVideoPostEvent sets kind 30078
+  // We can verify it's the right event by checking content structure if needed, but for this test checking the first event is enough.
+
   const dTags = signedEvent.tags.filter((tag) => Array.isArray(tag) && tag[0] === "d");
   assert.deepEqual(dTags, [["d", existingD]], "editVideo should preserve the existing d tag");
 
@@ -147,7 +155,7 @@ test("editVideo falls back to base event id when d tag missing", async (t) => {
   const result = await client.editVideo({ id: baseEvent.id }, { title: "Updated" }, pubkey);
 
   assert.ok(result, "editVideo should return the signed event");
-  assert.equal(signedEvents.length, 1, "editVideo should sign exactly one event");
+  assert.ok(signedEvents.length >= 1, "editVideo should sign at least one event");
   const signedEvent = signedEvents[0];
   assert.ok(signedEvent, "signed event should be captured");
   const dTags = signedEvent.tags.filter((tag) => Array.isArray(tag) && tag[0] === "d");

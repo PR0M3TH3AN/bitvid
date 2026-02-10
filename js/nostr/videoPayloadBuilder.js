@@ -457,9 +457,10 @@ export function prepareVideoEditPayload(params) {
     ? [["s", storagePointer], ...nip71Tags]
     : nip71Tags;
 
+  const createdAt = Math.floor(Date.now() / 1000);
   const event = buildVideoPostEvent({
     pubkey: userPubkeyLower,
-    created_at: Math.floor(Date.now() / 1000),
+    created_at: createdAt,
     dTagValue: finalDTagValue,
     content: contentObject,
     additionalTags,
@@ -472,6 +473,19 @@ export function prepareVideoEditPayload(params) {
     wantPrivate,
     videoRootId: oldRootId,
     dTagValue: finalDTagValue,
-    userPubkeyLower
+    userPubkeyLower,
+    // Mapped fields for NIP-94/71 compatibility
+    normalizedPubkey: userPubkeyLower,
+    videoData: updatedData,
+    videoPayload: updatedData,
+    finalUrl,
+    finalMagnet,
+    finalThumbnail: contentObject.thumbnail,
+    finalDescription: contentObject.description,
+    finalTitle: contentObject.title,
+    mimeType: typeof updatedData.mimeType === "string" ? updatedData.mimeType : "",
+    fileSha256,
+    originalFileSha256,
+    createdAt,
   };
 }

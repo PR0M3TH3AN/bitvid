@@ -2519,10 +2519,7 @@ export class NostrClient {
       throw new Error("You do not own this video (pubkey mismatch).");
     }
 
-    const {
-      event,
-      videoRootId
-    } = prepareVideoEditPayload({
+    const context = prepareVideoEditPayload({
       baseEvent,
       originalEventStub,
       updatedData,
@@ -2530,85 +2527,21 @@ export class NostrClient {
       resolveEventDTag: (evt, stub) => this.resolveEventDTag(evt, stub)
     });
 
-    devLogger.log("Creating edited event with root ID:", videoRootId);
-    devLogger.log("Event content:", event.content);
+    devLogger.log("Creating edited event with root ID:", context.videoRootId);
+    devLogger.log("Event content:", context.event.content);
 
     await this.ensureActiveSignerForPubkey(userPubkeyLower);
 
-    const signer = this.signerManager.resolveActiveSigner(userPubkeyLower);
-    if (!signer || typeof signer.signEvent !== "function") {
-      const error = new Error(
-        "An active signer with signEvent support is required to edit videos.",
-      );
-      error.code = "nostr-extension-missing";
-      throw error;
-    }
-
-    if (shouldRequestExtensionPermissions(signer)) {
-      const permissionResult = await this.ensureExtensionPermissions(
-        DEFAULT_NIP07_CORE_METHODS,
-      );
-      if (!permissionResult.ok) {
-        userLogger.warn(
-          "[nostr] Signer permissions denied while editing a video.",
-          permissionResult.error,
-        );
-        const error = new Error(
-          "The active signer must allow signing before editing a video.",
-        );
-        error.code = "extension-permission-denied";
-        error.cause = permissionResult.error;
-        throw error;
-      }
-    }
-
     try {
-      const signedEvent = await queueSignEvent(signer, event);
-      devLogger.log("Signed edited event:", signedEvent);
+      const { signedEvent } = await this.signAndPublishEvent(context.event, {
+        context: "edited video note",
+        logName: "Video note",
+        devLogLabel: "edited video note",
+        resolveActiveSigner: (p) => this.signerManager.resolveActiveSigner(p),
+      });
 
-      const publishResults = await publishEventToRelays(
-        this.pool,
-        this.relays,
-        signedEvent
-      );
-
-      let publishSummary;
-      try {
-        publishSummary = assertAnyRelayAccepted(publishResults, {
-          context: "edited video note",
-        });
-      } catch (publishError) {
-        if (publishError?.relayFailures?.length) {
-          publishError.relayFailures.forEach(
-            ({ url, error: relayError, reason }) => {
-              userLogger.error(
-                `[nostr] Edited video rejected by ${url}: ${reason}`,
-                relayError || reason
-              );
-            }
-          );
-        }
-        throw publishError;
-      }
-
-      publishSummary.accepted.forEach(({ url }) =>
-        devLogger.log(`Edited video published to ${url}`)
-      );
-
-      if (publishSummary.failed.length) {
-        publishSummary.failed.forEach(({ url, error: relayError }) => {
-          const reason =
-            relayError instanceof Error
-              ? relayError.message
-              : relayError
-              ? String(relayError)
-              : "publish failed";
-          userLogger.warn(
-            `[nostr] Edited video not accepted by ${url}: ${reason}`,
-            relayError
-          );
-        });
-      }
+      await handlePublishNip94(this, signedEvent, context);
+      await handlePublishNip71(this, signedEvent, context);
 
       return signedEvent;
     } catch (err) {
