@@ -913,15 +913,20 @@ class SubscriptionsManager {
       // scheme × up to 3 schemes = ~18s) = ~30s. Reduced from 45s to prevent
       // blocking the login path for nearly a minute.
       const timeoutMs = 25000;
+      let timeoutId;
       await Promise.race([
         loader,
-        new Promise((_, reject) =>
-          setTimeout(
+        new Promise((_, reject) => {
+          timeoutId = setTimeout(
             () => reject(new Error("Timeout loading subscriptions")),
             timeoutMs
-          )
-        ),
-      ]);
+          );
+        }),
+      ]).finally(() => {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+      });
       devLogger.log("[SubscriptionsManager] ensureLoaded success");
       return { ok: this.dataReady === true, error: this.lastLoadError || null, state: this.getLoadState() };
     } catch (error) {

@@ -619,6 +619,7 @@ test(
         "retry with permission prompts should populate subscriptions",
       );
     } finally {
+      manager.reset();
       relayManager.setEntries(originalRelayEntries, { allowEmpty: false, updateClient: false });
       nostrClient.relays = originalRelays;
       nostrClient.writeRelays = originalWriteRelays;
