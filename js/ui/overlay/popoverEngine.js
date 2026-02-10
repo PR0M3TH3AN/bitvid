@@ -793,7 +793,7 @@ export function createPopover(trigger, render, options = {}) {
       const safePadding = Number.isFinite(viewportPadding) ? viewportPadding : 0;
       const middleware = [
         offset(effectiveGap),
-        flip({ padding: safePadding }),
+        flip({ padding: safePadding, fallbackStrategy: "bestFit" }),
         shift({ padding: safePadding }),
       ];
 
