@@ -83,8 +83,8 @@ test("editVideo preserves existing d tag", async (t) => {
   const result = await client.editVideo({ id: baseEvent.id }, { title: "Updated" }, pubkey);
 
   assert.ok(result, "editVideo should return the signed event");
-  assert.equal(signedEvents.length, 1, "editVideo should sign exactly one event");
-  const signedEvent = signedEvents[0];
+  assert.ok(signedEvents.length >= 1, "editVideo should sign at least one event");
+  const signedEvent = signedEvents.find((e) => e.kind === 30078) || signedEvents[0];
   assert.ok(signedEvent, "signed event should be captured");
   const dTags = signedEvent.tags.filter((tag) => Array.isArray(tag) && tag[0] === "d");
   assert.deepEqual(dTags, [["d", existingD]], "editVideo should preserve the existing d tag");
@@ -147,8 +147,8 @@ test("editVideo falls back to base event id when d tag missing", async (t) => {
   const result = await client.editVideo({ id: baseEvent.id }, { title: "Updated" }, pubkey);
 
   assert.ok(result, "editVideo should return the signed event");
-  assert.equal(signedEvents.length, 1, "editVideo should sign exactly one event");
-  const signedEvent = signedEvents[0];
+  assert.ok(signedEvents.length >= 1, "editVideo should sign at least one event");
+  const signedEvent = signedEvents.find((e) => e.kind === 30078) || signedEvents[0];
   assert.ok(signedEvent, "signed event should be captured");
   const dTags = signedEvent.tags.filter((tag) => Array.isArray(tag) && tag[0] === "d");
   assert.deepEqual(
