@@ -249,6 +249,58 @@ _No reservations currently active._
 
 ---
 
+## 13. Code Health Rules (CI-Enforced)
+
+Three automated lint checks protect the codebase from common growth problems. These run in CI via `npm run lint` and will block your PR if violated.
+
+### File Size Limits
+
+**Script:** `npm run lint:file-size` (`scripts/check-file-size.mjs`)
+
+- New `.js` files under `js/` must stay **under 1,000 lines**.
+- Existing oversized files are grandfathered with a recorded line count. They must **not grow** beyond their recorded count + 50 lines.
+- If your change would push a grandfathered file over its limit, **extract logic into a new module first**, then make your change.
+
+**Decomposition strategy for agents:**
+1. Identify a cohesive block of logic (e.g., a group of related methods, a subsection of a controller).
+2. Extract it into a new file in the same directory.
+3. Export the extracted functions/class.
+4. Import and re-wire from the original file.
+5. Run `npm run lint:file-size` to confirm the original file shrank.
+6. Update the grandfathered count if needed (the maintainer will handle this when merging).
+
+### innerHTML Baseline
+
+**Script:** `npm run lint:innerhtml` (`scripts/check-innerhtml.mjs`)
+
+- Every file has a **baseline** innerHTML assignment count. Adding new `innerHTML` usage beyond the baseline fails the lint.
+- For new UI code, use **safe DOM APIs** instead:
+  ```javascript
+  // PREFERRED: auto-escaped, no XSS risk
+  element.textContent = userProvidedString;
+  const el = document.createElement("div");
+  el.className = "card";
+  parent.appendChild(el);
+
+  // ACCEPTABLE: innerHTML with escapeHtml for all user data
+  import { escapeHtml } from "../utils/domUtils.js";
+  container.innerHTML = `<span>${escapeHtml(title)}</span>`;
+
+  // BLOCKED: innerHTML with unescaped user data
+  container.innerHTML = `<span>${title}</span>`; // XSS vulnerability
+  ```
+- If you must add innerHTML (e.g., loading a view template), update the baseline: `node scripts/check-innerhtml.mjs --update` and include the updated BASELINE in your PR.
+
+### Constants — No Duplication
+
+- Relay timing constants live in **`js/nostr/relayConstants.js`** — always import from there.
+- Before defining a new numeric constant, search for existing ones with the same value. If a match exists, import it.
+- Feature flags live in **`js/constants.js`**.
+- Cache policies live in **`js/nostr/cachePolicies.js`**.
+- Do not define the same constant in two files. If two modules need the same value, create a shared module and import from it.
+
+---
+
 ## Next
 
 Please read these documents next.
