@@ -54,8 +54,13 @@ import { userBlocks } from "./userBlocks.js";
 import { relayManager } from "./relayManager.js";
 import createApplication from "./bootstrap.js";
 import SearchFilterModal from "./ui/components/SearchFilterModal.js";
+import { installTestHarness } from "./testHarness.js";
 
 validateInstanceConfig();
+
+// Install test harness early so relay overrides apply before connections.
+// Only activates when ?__test__=1 or localStorage __bitvidTestMode__ is set.
+installTestHarness();
 
 applyDesignSystemAttributes();
 initThemeController();

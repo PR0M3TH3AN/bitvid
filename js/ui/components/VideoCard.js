@@ -393,6 +393,7 @@ export class VideoCard {
     VideoCard.observeViewport(this.root);
 
     this.root.dataset.component = "video-card";
+    this.root.dataset.testid = "video-card";
     this.syncCardState();
     this.syncMotionState();
     if (this.video?.id) {
