@@ -2,6 +2,15 @@
 
 import { normalizeHashtag } from "../utils/hashtagNormalization.js";
 
+export const NORMALIZED_ARRAY_MARKER = Symbol("FeedItemsNormalized");
+
+export function markAsNormalized(items) {
+  if (Array.isArray(items)) {
+    items[NORMALIZED_ARRAY_MARKER] = true;
+  }
+  return items;
+}
+
 export function isPlainObject(value) {
   if (value === null || typeof value !== "object") {
     return false;

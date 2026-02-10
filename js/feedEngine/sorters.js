@@ -1,6 +1,7 @@
 // js/feedEngine/sorters.js
 
 import { normalizeHashtag } from "../utils/hashtagNormalization.js";
+import { markAsNormalized } from "./utils.js";
 
 export function createChronologicalSorter({
   direction = "desc",
@@ -133,7 +134,7 @@ export function createChronologicalSorter({
         : bId.localeCompare(aId);
     });
 
-    return copy;
+    return markAsNormalized(copy);
   };
 }
 
@@ -455,7 +456,7 @@ export function createExploreDiversitySorter({
     }
 
     const orderedRest = [...rest].sort(compareByTimestampId);
-    return selected.concat(orderedRest);
+    return markAsNormalized(selected.concat(orderedRest));
   };
 }
 
@@ -502,6 +503,6 @@ export function createKidsScoreSorter({
       });
     }
 
-    return copy;
+    return markAsNormalized(copy);
   };
 }
