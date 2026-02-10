@@ -1,7 +1,7 @@
 import { HEX64_REGEX, normalizeHexHash } from "../utils/hex.js";
 import { infoHashFromMagnet } from "../magnets.js";
-import { resolveStoragePointerValue } from "../utils/storagePointer.js";
-import { buildNip71MetadataTags } from "./nip71.js";
+import { resolveStoragePointerValue, getStoragePointerFromTags } from "../utils/storagePointer.js";
+import { buildNip71MetadataTags, extractNip71MetadataFromTags } from "./nip71.js";
 import { buildVideoPostEvent } from "../nostrEventSchemas.js";
 import { computeSha256HexFromValue } from "../utils/cryptoUtils.js";
 import { inferMimeTypeFromUrl } from "../utils/mime.js";
@@ -301,4 +301,176 @@ export async function prepareVideoMirrorOptions(params) {
     }
 
     return mirrorOptions;
+}
+
+export function prepareVideoEditPayload(params) {
+  const {
+    baseEvent,
+    originalEventStub,
+    updatedData,
+    userPubkey,
+    resolveEventDTag // Injected dependency to resolve D tag
+  } = params;
+
+  const userPubkeyLower = userPubkey.toLowerCase();
+
+  const nip71Metadata =
+    updatedData && typeof updatedData === "object" ? updatedData.nip71 : null;
+
+  const oldMagnet =
+    typeof baseEvent.rawMagnet === "string" && baseEvent.rawMagnet.trim()
+      ? baseEvent.rawMagnet.trim()
+      : typeof baseEvent.magnet === "string"
+      ? baseEvent.magnet.trim()
+      : "";
+  const oldUrl = baseEvent.url || "";
+
+  // Determine if the updated note should be private
+  const wantPrivate = updatedData.isPrivate ?? baseEvent.isPrivate ?? false;
+  const wantNsfw = updatedData.isNsfw ?? baseEvent.isNsfw ?? false;
+  const wantForKids = updatedData.isForKids ?? baseEvent.isForKids ?? false;
+  const finalIsNsfw = wantNsfw === true;
+  const finalIsForKids = finalIsNsfw ? false : wantForKids === true;
+
+  // Use the new magnet if provided; otherwise, fall back to the decrypted old magnet
+  const magnetEdited = updatedData.magnetEdited === true;
+  const newMagnetValue =
+    typeof updatedData.magnet === "string" ? updatedData.magnet.trim() : "";
+  const finalMagnet = magnetEdited ? newMagnetValue : oldMagnet;
+
+  const urlEdited = updatedData.urlEdited === true;
+  const newUrlValue =
+    typeof updatedData.url === "string" ? updatedData.url.trim() : "";
+  const finalUrl = urlEdited ? newUrlValue : oldUrl;
+
+  const wsEdited = updatedData.wsEdited === true;
+  const xsEdited = updatedData.xsEdited === true;
+  const newWsValue =
+    typeof updatedData.ws === "string" ? updatedData.ws.trim() : "";
+  const newXsValue =
+    typeof updatedData.xs === "string" ? updatedData.xs.trim() : "";
+  const baseWs =
+    typeof baseEvent.ws === "string" ? baseEvent.ws.trim() : "";
+  const baseXs =
+    typeof baseEvent.xs === "string" ? baseEvent.xs.trim() : "";
+  const finalWs = wsEdited ? newWsValue : baseWs;
+  const finalXs = xsEdited ? newXsValue : baseXs;
+  const finalEnableComments =
+    typeof updatedData.enableComments === "boolean"
+      ? updatedData.enableComments
+      : baseEvent.enableComments === false
+        ? false
+        : true;
+
+  const updatedInfoHash = infoHashFromMagnet(updatedData?.infoHash || "");
+  let infoHash =
+    updatedInfoHash ||
+    infoHashFromMagnet(finalMagnet) ||
+    infoHashFromMagnet(baseEvent.infoHash) ||
+    "";
+  const fileSha256 =
+    normalizeHexHash(updatedData?.fileSha256) ||
+    normalizeHexHash(baseEvent.fileSha256);
+  const originalFileSha256 =
+    normalizeHexHash(updatedData?.originalFileSha256) ||
+    normalizeHexHash(baseEvent.originalFileSha256);
+
+  // Use the existing videoRootId (or fall back to the base event's ID)
+  const oldRootId = baseEvent.videoRootId || baseEvent.id;
+  const storagePointer = resolveStoragePointerValue({
+    storagePointer:
+      updatedData?.storagePointer ||
+      baseEvent.storagePointer ||
+      getStoragePointerFromTags(baseEvent.tags),
+    url: finalUrl,
+    infoHash,
+    fallbackId: oldRootId,
+    provider: updatedData?.storageProvider || baseEvent.storageProvider,
+  });
+
+  const preservedDTag = resolveEventDTag(baseEvent, originalEventStub);
+  const fallbackDTag =
+    (typeof baseEvent.id === "string" && baseEvent.id.trim()) ||
+    (typeof originalEventStub?.id === "string" && originalEventStub.id.trim()) ||
+    "";
+  const finalDTagValue =
+    (typeof preservedDTag === "string" && preservedDTag.trim()) || fallbackDTag;
+
+  if (!finalDTagValue) {
+    throw new Error("Unable to determine a stable d tag for this edit.");
+  }
+
+  // Build the updated content object
+  const contentObject = {
+    videoRootId: oldRootId,
+    version: updatedData.version ?? baseEvent.version ?? 2,
+    deleted: false,
+    isPrivate: wantPrivate,
+    isNsfw: finalIsNsfw,
+    isForKids: finalIsForKids,
+    title: updatedData.title ?? baseEvent.title,
+    url: finalUrl,
+    magnet: finalMagnet,
+    thumbnail: updatedData.thumbnail ?? baseEvent.thumbnail,
+    description: updatedData.description ?? baseEvent.description,
+    mode: updatedData.mode ?? baseEvent.mode ?? "live",
+    enableComments: finalEnableComments,
+  };
+
+  if (infoHash) {
+    contentObject.infoHash = infoHash;
+  }
+
+  if (fileSha256) {
+    contentObject.fileSha256 = fileSha256;
+  }
+
+  if (originalFileSha256) {
+    contentObject.originalFileSha256 = originalFileSha256;
+  }
+
+  if (finalWs) {
+    contentObject.ws = finalWs;
+  }
+
+  if (finalXs) {
+    contentObject.xs = finalXs;
+  }
+
+  let metadataForTags =
+    nip71Metadata && typeof nip71Metadata === "object" ? nip71Metadata : null;
+  if (!metadataForTags) {
+    if (baseEvent?.nip71 && typeof baseEvent.nip71 === "object") {
+      metadataForTags = baseEvent.nip71;
+    } else {
+      const extracted = extractNip71MetadataFromTags(baseEvent);
+      if (extracted?.metadata) {
+        metadataForTags = extracted.metadata;
+      }
+    }
+  }
+
+  const nip71Tags = buildNip71MetadataTags(metadataForTags);
+
+  const additionalTags = storagePointer
+    ? [["s", storagePointer], ...nip71Tags]
+    : nip71Tags;
+
+  const event = buildVideoPostEvent({
+    pubkey: userPubkeyLower,
+    created_at: Math.floor(Date.now() / 1000),
+    dTagValue: finalDTagValue,
+    content: contentObject,
+    additionalTags,
+  });
+
+  return {
+    event,
+    contentObject,
+    nip71Metadata,
+    wantPrivate,
+    videoRootId: oldRootId,
+    dTagValue: finalDTagValue,
+    userPubkeyLower
+  };
 }
