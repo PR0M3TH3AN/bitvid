@@ -57,6 +57,77 @@ jobs:
       - name: Build assets
         run: npm run build
 
+      - name: Generate dist hash state
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          mkdir -p artifacts
+          node scripts/hash-dist.mjs --dist dist --output artifacts/dist-hashes-current.json
+
+      - name: Fetch prior dist hash state
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          DIST_HASH_STATE_URL: ${{ secrets.DIST_HASH_STATE_URL }}
+        run: |
+          if [ -n "$DIST_HASH_STATE_URL" ]; then
+            curl --fail --silent --show-error "$DIST_HASH_STATE_URL" -o artifacts/dist-hashes-previous.json
+            echo "Loaded prior dist hash state from authoritative store."
+          else
+            echo '{"combined":"","files":[]}' > artifacts/dist-hashes-previous.json
+            echo "No DIST_HASH_STATE_URL configured; using empty baseline."
+          fi
+
+      - name: Diff dist hash states
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          node scripts/diff-dist-hashes.mjs \
+            --current artifacts/dist-hashes-current.json \
+            --previous artifacts/dist-hashes-previous.json > artifacts/dist-hashes-changed.txt
+          echo "Changed dist paths:"
+          cat artifacts/dist-hashes-changed.txt || true
+
+      - name: Plan cache purge scope
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          node scripts/plan-cache-purge.mjs \
+            --changed-file artifacts/dist-hashes-changed.txt \
+            --output-file artifacts/dist-purge-targets.txt > artifacts/dist-purge-plan.json
+          cat artifacts/dist-purge-plan.json
+
+      - name: Purge changed Cloudflare URLs
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_PURGE_BASE_URL: ${{ secrets.CLOUDFLARE_PURGE_BASE_URL }}
+        run: |
+          if [ ! -s artifacts/dist-purge-targets.txt ]; then
+            echo "No purge targets detected. Skipping purge."
+            exit 0
+          fi
+
+          if [ -z "$CLOUDFLARE_ZONE_ID" ] || [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_PURGE_BASE_URL" ]; then
+            echo "Cloudflare secrets not configured; skipping targeted purge."
+            exit 0
+          fi
+
+          node scripts/purge-cloudflare-changed.mjs \
+            --changed-file artifacts/dist-purge-targets.txt \
+            --base-url "$CLOUDFLARE_PURGE_BASE_URL"
+
+      - name: Record authoritative dist hash state (post-deploy)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          DIST_HASH_STATE_UPLOAD_URL: ${{ secrets.DIST_HASH_STATE_UPLOAD_URL }}
+        run: |
+          if [ -z "$DIST_HASH_STATE_UPLOAD_URL" ]; then
+            echo "No DIST_HASH_STATE_UPLOAD_URL configured; skipping authoritative hash-state update."
+            exit 0
+          fi
+
+          node scripts/store-dist-hash-state.mjs \
+            --input artifacts/dist-hashes-current.json \
+            --upload-url "$DIST_HASH_STATE_UPLOAD_URL"
+
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 

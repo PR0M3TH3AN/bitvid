@@ -39,7 +39,10 @@
     "test:unit:shard3": "cross-env UNIT_TEST_SHARD=3/3 node scripts/run-unit-tests.mjs",
     "telemetry:aggregate": "node scripts/agent/telemetry-aggregator.mjs",
     "lint:assets": "node scripts/check-asset-references.mjs",
-    "lint:sw-compat": "node scripts/check-sw-compat.mjs"
+    "lint:sw-compat": "node scripts/check-sw-compat.mjs",
+    "hash:dist": "node scripts/hash-dist.mjs --dist dist --output artifacts/dist-hashes-current.json",
+    "diff:dist-hashes": "node scripts/diff-dist-hashes.mjs",
+    "purge:cloudflare:changed": "node scripts/purge-cloudflare-changed.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
