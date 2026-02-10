@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 
 function parseArgs(argv) {
   const args = {
@@ -72,7 +73,7 @@ function hashBuffer(buffer) {
   return crypto.createHash('sha256').update(buffer).digest('hex');
 }
 
-function buildHashState(distDir) {
+export function buildHashState(distDir) {
   const resolvedDistDir = path.resolve(distDir);
   if (!fs.existsSync(resolvedDistDir)) {
     throw new Error(`Dist directory does not exist: ${resolvedDistDir}`);
@@ -112,4 +113,6 @@ function main() {
   console.log(serialized);
 }
 
-main();
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main();
+}

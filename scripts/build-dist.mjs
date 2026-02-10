@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
 import crypto from 'node:crypto';
+import { buildHashState } from './hash-dist.mjs';
 
 const DIST = 'dist';
 const FILES_TO_COPY = [
@@ -154,6 +155,38 @@ function rewriteEntryHtmlAssetPaths(manifest) {
   }
 }
 
+function injectVersionInfo() {
+  console.log('Injecting version hash and date...');
+  try {
+    const hashState = buildHashState(DIST);
+    const hash = hashState.combined;
+    const date = new Date().toISOString().split('T')[0];
+
+    const indexHtmlPath = path.join(DIST, 'index.html');
+    if (fs.existsSync(indexHtmlPath)) {
+      let content = fs.readFileSync(indexHtmlPath, 'utf8');
+
+      const versionHtml = `
+      <div class="mt-4 text-xs text-muted opacity-50 font-mono">
+        v: ${hash.slice(0, 8)} • ${date}
+      </div>`;
+
+      // Fallback search if whitespace differs
+      const taglineRegex = /(seed\. zap\. subscribe\.\s*<\/h2>)/;
+      if (taglineRegex.test(content)) {
+        content = content.replace(taglineRegex, '$1' + versionHtml);
+        fs.writeFileSync(indexHtmlPath, content);
+        console.log(`Injected version: ${hash.slice(0, 8)} • ${date}`);
+      } else {
+        console.warn('Could not find tagline to inject version info.');
+      }
+    }
+  } catch (error) {
+    console.error('Failed to inject version info:', error);
+    // Continue even if injection fails, as it's not critical for functionality
+  }
+}
+
 function main() {
   console.log('Validating service worker compatibility guard...');
   try {
@@ -208,6 +241,8 @@ function main() {
 
   console.log('Rewriting HTML entry points with hashed assets...');
   rewriteEntryHtmlAssetPaths(manifest);
+
+  injectVersionInfo();
 
   console.log('Build complete.');
 }
