@@ -3907,3 +3907,4 @@ export {
   resolveActiveSigner,
   shouldRequestExtensionPermissions,
 };
+const a = 1

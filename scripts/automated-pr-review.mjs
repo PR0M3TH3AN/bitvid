@@ -247,7 +247,9 @@ async function reviewPR(prNumber, baseRef) {
   console.log('---------------------------------------------------');
 
   if (hasFailures) {
-    throw new Error('Lint or Test failures detected.');
+    console.log('Lint or Test failures detected. Reported to PR.');
+    // Do not throw error here, as we want the workflow to "pass" so that the comment persists
+    // and the developer can see the feedback. The actual build job (separate) will fail the PR checks.
   }
 }
 
