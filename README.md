@@ -165,9 +165,9 @@ To run **bitvid** locally:
 
    _(Note: The default port is 3000, but `npx serve` may select a different port if 3000 is in use. Check your terminal output.)_
 
-   _Note: If you prefer manual steps, run `npm run build` followed by `npx serve dist`, then open the root URL printed by `serve` (for example `http://localhost:3000`)._
+   _Note: If you prefer manual steps, run `npm run build` followed by `npx serve dist`, then open the root URL printed by `serve` (for example `http://localhost:3000/`). Because `dist` is the document root in this mode, always open `/` rather than appending `/dist`._
 
-   _If you use a static server from the repository root (for example VS Code Live Server), open `http://127.0.0.1:5500/dist/` with the trailing slash. `http://127.0.0.1:5500/dist` can resolve incorrectly depending on server routing._
+   _If you use a static server from the repository root (for example VS Code Live Server), open `http://127.0.0.1:5500/dist/` with the trailing slash. `http://127.0.0.1:5500/dist` (no trailing slash) can resolve incorrectly depending on server routing._
 
    _Optional: Add a local rewrite/redirect rule from `/dist` → `/dist/` so manual local testing always lands on the correct path._
 
