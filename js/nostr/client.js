@@ -2443,6 +2443,10 @@ export class NostrClient {
     return this.signerManager.installNip46Client(client, options);
   }
 
+  async derivePrivateKeyFromSecret(secret) {
+    return this.signerManager.derivePrivateKeyFromSecret(secret);
+  }
+
   async connectRemoteSigner(params) {
     return this.signerManager.connectRemoteSigner(params);
   }
