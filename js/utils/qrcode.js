@@ -364,8 +364,8 @@ if (hasDocument) {
 			
 			// Fix the margin values as real size.
 			var elTable = _el.childNodes[0];
-			var nLeftMarginTable = (_htOption.width - elTable.offsetWidth) / 2;
-			var nTopMarginTable = (_htOption.height - elTable.offsetHeight) / 2;
+			var nLeftMarginTable = (_htOption.width - (nCount * nWidth)) / 2;
+			var nTopMarginTable = (_htOption.height - (nCount * nHeight)) / 2;
 			
 			if (nLeftMarginTable > 0 && nTopMarginTable > 0) {
 				updateQrCodeContainerStyles(_el, {
