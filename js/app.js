@@ -163,6 +163,7 @@ import {
 import ApplicationBootstrap from "./ui/applicationBootstrap.js";
 import EngagementController from "./ui/engagementController.js";
 import SimilarContentController from "./ui/similarContentController.js";
+import CreatorProfileController from "./ui/creatorProfileController.js";
 import UrlHealthController from "./ui/urlHealthController.js";
 import VideoModalCommentController from "./ui/videoModalCommentController.js";
 import VideoModalController from "./ui/videoModalController.js";
@@ -282,6 +283,26 @@ class Application {
 
     const { modalManager } = this.bootstrapper.initialize();
     this.modalManager = modalManager;
+
+    this.creatorProfileController = new CreatorProfileController({
+      services: { nostrClient },
+      ui: { zapController: this.zapController },
+      callbacks: {
+        getProfileCacheEntry: (pubkey) => this.getProfileCacheEntry(pubkey),
+        setProfileCacheEntry: (pubkey, profile, opts) =>
+          this.setProfileCacheEntry(pubkey, profile, opts),
+        getCurrentVideo: () => this.currentVideo,
+        getVideoModal: () => this.videoModal,
+      },
+      helpers: {
+        fetchProfileMetadata,
+        ensureProfileMetadataSubscription,
+        safeEncodeNpub: (val) => this.safeEncodeNpub(val),
+        formatShortNpub,
+        sanitizeProfileMediaUrl,
+      },
+      logger: devLogger,
+    });
 
     this.videoModalController = new VideoModalController({
       getVideoModal: () => this.videoModal,
@@ -4794,422 +4815,38 @@ class Application {
   }
 
   selectPreferredCreatorName(candidates = []) {
-    for (const candidate of candidates) {
-      if (typeof candidate !== "string") {
-        continue;
-      }
-      const trimmed = candidate.trim();
-      if (!trimmed) {
-        continue;
-      }
-      if (HEX64_REGEX.test(trimmed)) {
-        continue;
-      }
-      return trimmed;
-    }
-    return "";
+    return this.creatorProfileController
+      ? this.creatorProfileController.selectPreferredCreatorName(candidates)
+      : "";
   }
 
   selectPreferredCreatorPicture(candidates = []) {
-    for (const candidate of candidates) {
-      if (typeof candidate !== "string") {
-        continue;
-      }
-      const sanitized = sanitizeProfileMediaUrl(candidate);
-      if (sanitized) {
-        return sanitized;
-      }
-    }
-    return "";
+    return this.creatorProfileController
+      ? this.creatorProfileController.selectPreferredCreatorPicture(candidates)
+      : "";
   }
 
-  resolveCreatorProfileFromSources({
-    video,
-    pubkey,
-    cachedProfile = null,
-    fetchedProfile = null,
-    fallbackAvatar,
-  } = {}) {
-    const normalizedPubkey =
-      typeof pubkey === "string" && pubkey.trim() ? pubkey.trim() : "";
-    const fallbackAvatarCandidate =
-      typeof fallbackAvatar === "string" && fallbackAvatar.trim()
-        ? fallbackAvatar.trim()
-        : normalizedPubkey
-          ? `https://robohash.org/${normalizedPubkey}`
-          : "assets/svg/default-profile.svg";
-    const defaultAvatar =
-      sanitizeProfileMediaUrl(fallbackAvatarCandidate) ||
-      fallbackAvatarCandidate ||
-      "assets/svg/default-profile.svg";
-
-    const nameCandidates = [];
-    const pictureCandidates = [];
-
-    const collectFromSource = (source) => {
-      if (!source || typeof source !== "object") {
-        return;
-      }
-      const names = [
-        source.display_name,
-        source.displayName,
-        source.name,
-        source.username,
-      ];
-      names.forEach((value) => {
-        if (typeof value === "string") {
-          nameCandidates.push(value);
-        }
-      });
-      const pictures = [source.picture, source.image, source.photo];
-      pictures.forEach((value) => {
-        if (typeof value === "string") {
-          pictureCandidates.push(value);
-        }
-      });
-    };
-
-    collectFromSource(fetchedProfile);
-    collectFromSource(cachedProfile);
-
-    if (video && typeof video === "object") {
-      collectFromSource(video.creator);
-      if (typeof video.creatorName === "string") {
-        nameCandidates.push(video.creatorName);
-      }
-      if (typeof video.creatorPicture === "string") {
-        pictureCandidates.push(video.creatorPicture);
-      }
-      collectFromSource(video.author);
-      if (typeof video.authorName === "string") {
-        nameCandidates.push(video.authorName);
-      }
-      if (typeof video.authorPicture === "string") {
-        pictureCandidates.push(video.authorPicture);
-      }
-      collectFromSource(video.profile);
-      const extraNames = [
-        video.shortNpub,
-        video.creatorNpub,
-        video.npub,
-        video.authorNpub,
-      ];
-      extraNames.forEach((value) => {
-        if (typeof value === "string") {
-          nameCandidates.push(value);
-        }
-      });
-    }
-
-    const resolvedName =
-      this.selectPreferredCreatorName(nameCandidates) || "Unknown";
-    const resolvedPicture =
-      this.selectPreferredCreatorPicture(pictureCandidates) || defaultAvatar;
-
-    return { name: resolvedName, picture: resolvedPicture };
+  resolveCreatorProfileFromSources(options) {
+    return this.creatorProfileController
+      ? this.creatorProfileController.resolveCreatorProfileFromSources(options)
+      : { name: "Unknown", picture: "assets/svg/default-profile.svg" };
   }
 
-  resolveModalCreatorProfile({
-    video,
-    pubkey,
-    cachedProfile = null,
-    fetchedProfile = null,
-  } = {}) {
-    return this.resolveCreatorProfileFromSources({
-      video,
-      pubkey,
-      cachedProfile,
-      fetchedProfile,
-    });
+  resolveModalCreatorProfile(options) {
+    return this.creatorProfileController
+      ? this.creatorProfileController.resolveModalCreatorProfile(options)
+      : { name: "Unknown", picture: "assets/svg/default-profile.svg" };
   }
 
   decorateVideoCreatorIdentity(video) {
-    if (!video || typeof video !== "object") {
-      return video;
-    }
-
-    const normalizedPubkey =
-      this.normalizeHexPubkey(video.pubkey) ||
-      (typeof video.pubkey === "string" ? video.pubkey.trim() : "");
-    if (!normalizedPubkey) {
-      return video;
-    }
-
-    let cachedProfile = null;
-    if (typeof this.getProfileCacheEntry === "function") {
-      const cacheEntry = this.getProfileCacheEntry(normalizedPubkey);
-      if (cacheEntry && typeof cacheEntry === "object") {
-        cachedProfile = cacheEntry.profile || null;
-      }
-    }
-
-    const resolvedProfile = this.resolveCreatorProfileFromSources({
-      video,
-      pubkey: normalizedPubkey,
-      cachedProfile,
-    });
-
-    if (!video.creator || typeof video.creator !== "object") {
-      video.creator = {};
-    }
-
-    if (!video.creator.pubkey) {
-      video.creator.pubkey = normalizedPubkey;
-    }
-
-    if (resolvedProfile.name) {
-      video.creator.name = resolvedProfile.name;
-      if (
-        typeof video.creatorName !== "string" ||
-        !video.creatorName.trim() ||
-        video.creatorName === "Unknown"
-      ) {
-        video.creatorName = resolvedProfile.name;
-      }
-      if (
-        typeof video.authorName !== "string" ||
-        !video.authorName.trim() ||
-        video.authorName === "Unknown"
-      ) {
-        video.authorName = resolvedProfile.name;
-      }
-    }
-
-    if (resolvedProfile.picture) {
-      video.creator.picture = resolvedProfile.picture;
-      video.creatorPicture = resolvedProfile.picture;
-      if (
-        typeof video.authorPicture !== "string" ||
-        !video.authorPicture.trim()
-      ) {
-        video.authorPicture = resolvedProfile.picture;
-      }
-    }
-
-    const encodedNpub = this.safeEncodeNpub(normalizedPubkey);
-    if (encodedNpub) {
-      const shortNpub = formatShortNpub(encodedNpub) || encodedNpub;
-      if (typeof video.npub !== "string" || !video.npub.trim()) {
-        video.npub = encodedNpub;
-      }
-      if (typeof video.shortNpub !== "string" || !video.shortNpub.trim()) {
-        video.shortNpub = shortNpub;
-      }
-      if (
-        typeof video.creatorNpub !== "string" ||
-        !video.creatorNpub.trim()
-      ) {
-        video.creatorNpub = shortNpub;
-      }
-    }
-
-    return video;
+    return this.creatorProfileController
+      ? this.creatorProfileController.decorateVideoCreatorIdentity(video)
+      : video;
   }
 
-  async fetchModalCreatorProfile({
-    pubkey,
-    displayNpub = "",
-    cachedProfile = null,
-    requestToken = null,
-  } = {}) {
-    const normalized = this.normalizeHexPubkey(pubkey);
-    if (!normalized) {
-      return;
-    }
-
-    const relayList =
-      Array.isArray(nostrClient?.relays) && nostrClient.relays.length
-        ? nostrClient.relays
-        : null;
-    if (!relayList) {
-      return;
-    }
-
-    const profileEntry = await fetchProfileMetadata(normalized, {
-      nostr: nostrClient,
-      relays: relayList,
-      logger: devLogger,
-    });
-
-    if (this.modalCreatorProfileRequestToken !== requestToken) {
-      return;
-    }
-
-    if (!profileEntry?.event) {
-      if (this.modalCreatorProfileRequestToken === requestToken) {
-        this.modalCreatorProfileRequestToken = null;
-      }
-      return;
-    }
-
-    ensureProfileMetadataSubscription({
-      pubkey: normalized,
-      nostr: nostrClient,
-      relays: relayList,
-      onProfile: ({ profile }) => {
-        if (typeof this.setProfileCacheEntry === "function" && profile) {
-          this.setProfileCacheEntry(normalized, profile);
-        }
-      },
-    });
-
-    let parsed = null;
-    try {
-      parsed = profileEntry.event.content
-        ? JSON.parse(profileEntry.event.content)
-        : null;
-    } catch (error) {
-      devLogger.warn(
-        `[Application] Failed to parse creator profile content for ${normalized}:`,
-        error,
-      );
-      if (this.modalCreatorProfileRequestToken === requestToken) {
-        this.modalCreatorProfileRequestToken = null;
-      }
-      return;
-    }
-
-    if (this.modalCreatorProfileRequestToken !== requestToken) {
-      return;
-    }
-
-    const parsedLud16 =
-      typeof parsed?.lud16 === "string" ? parsed.lud16.trim() : "";
-    const parsedLud06 =
-      typeof parsed?.lud06 === "string" ? parsed.lud06.trim() : "";
-    const lightningAddressCandidate = (() => {
-      const fields = [parsedLud16, parsedLud06];
-      for (const field of fields) {
-        if (typeof field !== "string") {
-          continue;
-        }
-        const trimmed = field.trim();
-        if (trimmed) {
-          return trimmed;
-        }
-      }
-      return "";
-    })();
-
-    const fetchedProfile = {
-      display_name: parsed?.display_name,
-      name: parsed?.name,
-      username: parsed?.username,
-      picture: parsed?.picture,
-      image: parsed?.image,
-      photo: parsed?.photo,
-    };
-
-    const resolvedProfile = this.resolveModalCreatorProfile({
-      video: this.currentVideo,
-      pubkey: normalized,
-      cachedProfile,
-      fetchedProfile,
-    });
-
-    if (this.modalCreatorProfileRequestToken !== requestToken) {
-      return;
-    }
-
-    const activeVideoPubkey = this.normalizeHexPubkey(this.currentVideo?.pubkey);
-    if (activeVideoPubkey && activeVideoPubkey !== normalized) {
-      return;
-    }
-
-    const nextLightning = lightningAddressCandidate || "";
-    const previousLightning =
-      typeof this.currentVideo?.lightningAddress === "string"
-        ? this.currentVideo.lightningAddress
-        : "";
-
-    if (this.currentVideo) {
-      this.currentVideo.lightningAddress = nextLightning ? nextLightning : null;
-      this.currentVideo.creatorName = resolvedProfile.name;
-      this.currentVideo.creatorPicture = resolvedProfile.picture;
-      this.currentVideo.creatorNpub = displayNpub;
-      if (this.currentVideo.creator && typeof this.currentVideo.creator === "object") {
-        this.currentVideo.creator = {
-          ...this.currentVideo.creator,
-          name: resolvedProfile.name,
-          picture: resolvedProfile.picture,
-          pubkey: normalized,
-          lightningAddress: nextLightning ? nextLightning : null,
-        };
-      } else {
-        this.currentVideo.creator = {
-          name: resolvedProfile.name,
-          picture: resolvedProfile.picture,
-          pubkey: normalized,
-          lightningAddress: nextLightning ? nextLightning : null,
-        };
-      }
-    }
-
-    if (this.videoModal) {
-      this.videoModal.updateMetadata({
-        creator: {
-          name: resolvedProfile.name,
-          avatarUrl: resolvedProfile.picture,
-          npub: displayNpub,
-        },
-      });
-    }
-
-    this.zapController?.setVisibility(Boolean(this.currentVideo?.lightningAddress));
-
-    const sanitizedFetchedPicture = sanitizeProfileMediaUrl(
-      parsed?.picture || parsed?.image || parsed?.photo || "",
-    );
-    const fetchedNameCandidate = this.selectPreferredCreatorName([
-      parsed?.display_name,
-      parsed?.name,
-      parsed?.username,
-    ]);
-
-    const cachedLightning =
-      typeof cachedProfile?.lightningAddress === "string"
-        ? cachedProfile.lightningAddress.trim()
-        : "";
-    const shouldUpdateCache =
-      Boolean(fetchedNameCandidate) ||
-      Boolean(sanitizedFetchedPicture) ||
-      cachedLightning !== nextLightning ||
-      previousLightning !== nextLightning;
-
-    if (shouldUpdateCache) {
-      try {
-        const profileForCache = {
-          name: fetchedNameCandidate || resolvedProfile.name,
-          picture: sanitizedFetchedPicture || resolvedProfile.picture,
-        };
-
-        if (parsedLud16) {
-          profileForCache.lud16 = parsedLud16;
-        }
-
-        if (parsedLud06) {
-          profileForCache.lud06 = parsedLud06;
-        }
-
-        if (nextLightning) {
-          profileForCache.lightningAddress = nextLightning;
-        }
-
-        this.setProfileCacheEntry(
-          normalized,
-          profileForCache,
-          { persist: false, reason: "modal-profile-fetch" },
-        );
-      } catch (error) {
-        devLogger.warn(
-          `[Application] Failed to update profile cache for ${normalized}:`,
-          error,
-        );
-      }
-    }
-
-    if (this.modalCreatorProfileRequestToken === requestToken) {
-      this.modalCreatorProfileRequestToken = null;
+  async fetchModalCreatorProfile(options) {
+    if (this.creatorProfileController) {
+      return this.creatorProfileController.fetchModalCreatorProfile(options);
     }
   }
 
