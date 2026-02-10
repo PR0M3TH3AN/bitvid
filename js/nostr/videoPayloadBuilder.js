@@ -194,7 +194,8 @@ export async function prepareVideoPublishPayload(videoPayload, pubkey, { timesta
         createdAt,
         contentObject,
         wantPrivate,
-        normalizedPubkey
+        normalizedPubkey,
+        videoPayload
     };
 }
 

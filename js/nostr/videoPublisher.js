@@ -12,10 +12,11 @@ import {
  *
  * @param {import("./client.js").NostrClient} client - The client instance.
  * @param {import("nostr-tools").Event} signedEvent - The signed video event.
- * @param {string} finalUrl - The final URL of the video.
- * @param {object} mirrorParams - Parameters for the mirror.
+ * @param {object} context - The publish context returned by prepareVideoPublishPayload.
  */
-export async function handlePublishNip94(client, signedEvent, finalUrl, mirrorParams) {
+export async function handlePublishNip94(client, signedEvent, context) {
+    const { finalUrl } = context;
+
     if (!finalUrl) {
       devLogger.log("Skipping NIP-94 mirror: no hosted URL provided.");
       return;
@@ -31,10 +32,10 @@ export async function handlePublishNip94(client, signedEvent, finalUrl, mirrorPa
       mimeType,
       fileSha256,
       originalFileSha256,
-      pubkey,
+      normalizedPubkey,
       createdAt,
-      isPrivate,
-    } = mirrorParams;
+      contentObject,
+    } = context;
 
     const mirrorOptions = await prepareVideoMirrorOptions({
       videoData,
@@ -47,9 +48,9 @@ export async function handlePublishNip94(client, signedEvent, finalUrl, mirrorPa
       mimeType,
       fileSha256,
       originalFileSha256,
-      pubkey,
+      pubkey: normalizedPubkey,
       createdAt,
-      isPrivate,
+      isPrivate: contentObject.isPrivate,
     });
 
     try {
@@ -81,25 +82,21 @@ export async function handlePublishNip94(client, signedEvent, finalUrl, mirrorPa
  *
  * @param {import("./client.js").NostrClient} client - The client instance.
  * @param {import("nostr-tools").Event} signedEvent - The signed video event.
- * @param {object} videoPayload - The video payload.
- * @param {object} nip71Metadata - The NIP-71 metadata.
- * @param {object} contentObject - The content object.
- * @param {boolean} wantPrivate - Whether the video is private.
- * @param {string} userPubkeyLower - The lowercased user pubkey.
- * @param {string} videoRootId - The video root ID.
- * @param {string} dTagValue - The d tag value.
+ * @param {object} context - The publish context returned by prepareVideoPublishPayload.
  */
-export async function handlePublishNip71(
-    client,
-    signedEvent,
-    videoPayload,
-    nip71Metadata,
-    contentObject,
-    wantPrivate,
-    userPubkeyLower,
-    videoRootId,
-    dTagValue,
-  ) {
+export async function handlePublishNip71(client, signedEvent, context) {
+    const {
+      videoPayload,
+      nip71Metadata,
+      contentObject,
+      wantPrivate,
+      normalizedPubkey,
+      videoRootId,
+      dTagValue,
+    } = context;
+
+    const userPubkeyLower = normalizedPubkey.toLowerCase();
+
     const nip71EditedFlag =
       videoPayload && typeof videoPayload === "object"
         ? videoPayload.nip71Edited
