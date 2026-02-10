@@ -14,6 +14,8 @@ const DEFAULT_WEIGHTS = Object.freeze({
 
 const DEFAULT_FRESHNESS_HALF_LIFE_DAYS = 14;
 
+const videoTagCache = new WeakMap();
+
 const AGE_GROUP_DEFAULTS = Object.freeze({
   toddler: {
     maxDurationSeconds: 5 * 60,
@@ -51,10 +53,15 @@ function clamp01(value) {
 }
 
 function normalizeTagSetFromVideo(video) {
-  const normalized = new Set();
   if (!video || typeof video !== "object") {
-    return normalized;
+    return new Set();
   }
+
+  if (videoTagCache.has(video)) {
+    return videoTagCache.get(video);
+  }
+
+  const normalized = new Set();
 
   const addTag = (rawTag) => {
     if (typeof rawTag !== "string") {
@@ -80,6 +87,7 @@ function normalizeTagSetFromVideo(video) {
     }
   }
 
+  videoTagCache.set(video, normalized);
   return normalized;
 }
 
