@@ -230,7 +230,6 @@ describe("NostrClient", () => {
       const signedEvent = { id: "evt1", pubkey, sig: "sig" };
       client.signAndPublishEvent = mock.fn(async () => ({ signedEvent }));
       client.mirrorVideoEvent = mock.fn(async () => ({ ok: true }));
-      client.publishNip71Video = mock.fn(async () => null);
 
       const videoPayload = {
         title: "My Video",
