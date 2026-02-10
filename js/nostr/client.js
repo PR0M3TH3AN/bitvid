@@ -1380,6 +1380,26 @@ export class NostrClient {
     return result;
   }
 
+  /**
+   * Fetches and decrypts Direct Messages (DMs) for the active user.
+   * Handles both NIP-04 (Legacy) and NIP-17 (Gift Wrap) events transparently.
+   *
+   * **Process:**
+   * 1. **Filter Construction**: Builds filters for Kind 4 and Kind 1059 events.
+   * 2. **Relay Query**: Fetches events from read relays (or specified candidates).
+   * 3. **Decryption**: Attempts to decrypt each event using available strategies:
+   *    - NIP-04: Uses signer's `nip04.decrypt`.
+   *    - NIP-44/17: Uses signer's `nip44.decrypt` (or private key if local).
+   * 4. **Caching**: Decrypted results are cached in memory (`dmDecryptCache`) to avoid repeated decryption overhead.
+   *
+   * @param {string|null} [actorPubkeyInput] - The public key of the user viewing the DMs (defaults to logged-in user).
+   * @param {object} [options] - Filter options.
+   * @param {number} [options.limit] - Max events to fetch.
+   * @param {number} [options.since] - Start timestamp.
+   * @param {string[]} [options.relays] - Custom relay list.
+   * @param {number} [options.decryptLimit] - Max number of messages to attempt decrypting (optimization).
+   * @returns {Promise<object[]>} A list of decrypted message objects (text, timestamp, sender, etc.).
+   */
   async listDirectMessages(actorPubkeyInput = null, options = {}) {
     if (!this.pool) {
       await this.ensurePool();
@@ -1622,20 +1642,32 @@ export class NostrClient {
   }
 
   /**
-   * Sends a Direct Message (DM) to a target user.
+   * Sends a private Direct Message (DM) to a target user.
+   * Supports both legacy NIP-04 (simple encryption) and modern NIP-17 (sealed gift wraps).
    *
-   * Supports:
-   * - **Legacy (NIP-04)**: Simple base64 ciphertext (deprecated but widely supported).
-   * - **Wrapped (NIP-17)**: Sealed rumors inside gift wraps (private, metadata-leaking free).
-   * - **Attachments**: Handling file attachments via NIP-17 or fallback text.
+   * **Protocol Selection:**
+   * - Defaults to NIP-04 for maximum compatibility unless `options.useNip17` is explicitly true.
+   * - NIP-17 is required for sending rich attachments (images/videos) privately.
    *
-   * @param {string} targetNpub - The recipient's npub.
-   * @param {string} message - The text content to send.
-   * @param {string|null} [actorPubkeyOverride] - Optional sender pubkey override.
+   * **NIP-17 Flow (Sealed Rumor):**
+   * 1. **Rumor**: Create an unsigned Kind 14 (Chat Message) or Kind 1063 (Attachment).
+   * 2. **Seal**: Sign the rumor, encrypt it to the recipient, and wrap it in a Kind 13 (Seal).
+   * 3. **Wrap**: Generate an ephemeral keypair, encrypt the seal to the recipient, and wrap in a Kind 1059 (Gift Wrap).
+   *    This creates an "onion" where the outer layer leaks no metadata about the sender or content.
+   * 4. **Publish**: Send to the recipient's inbox relays (discovered via NIP-65).
+   *
+   * **NIP-04 Flow (Legacy):**
+   * 1. **Encrypt**: Encrypt the message content using the shared secret (sender priv + recipient pub).
+   * 2. **Publish**: Send a Kind 4 event with the ciphertext.
+   *    *Privacy Warning*: NIP-04 leaks metadata (sender, receiver, timestamp) to relays.
+   *
+   * @param {string} targetNpub - The recipient's public key (npub or hex).
+   * @param {string} message - The plaintext message to send.
+   * @param {string|null} [actorPubkeyOverride] - Optional sender pubkey (defaults to logged-in user).
    * @param {object} [options] - Configuration options.
-   * @param {boolean} [options.useNip17=false] - Whether to use the new NIP-17 protocol.
-   * @param {Array} [options.attachments] - File attachments (NIP-17 only).
-   * @returns {Promise<{ok: boolean, error?: string, details?: any}>} Result of the operation.
+   * @param {boolean} [options.useNip17=false] - If true, uses the NIP-17 sealing protocol.
+   * @param {Array<{url: string, type: string}>} [options.attachments] - File attachments (requires NIP-17).
+   * @returns {Promise<{ok: boolean, error?: string, details?: any}>} Result object. `ok: true` on success.
    */
   async sendDirectMessage(targetNpub, message, actorPubkeyOverride = null, options = {}) {
     let resolvedOptions = options;
@@ -2354,22 +2386,26 @@ export class NostrClient {
   }
 
   /**
-   * Publishes a new video event (Kind 30078) to the network.
+   * Publishes a fresh Video Series (Kind 30078) to the network.
+   * This is the entry point for creating new content.
    *
-   * **Payload Construction:**
-   * - Creates a V3 video note with `magnet`, `url` (WebSeed), and core metadata.
-   * - Generates a unique `d` tag and `videoRootId` for this new series unless
-   *   an explicit identifier is provided in the upload payload.
+   * **Protocol (V3):**
+   * - The main event is a Kind 30078 (Application-Specific Data) with `t=video`.
+   * - It includes both a WebTorrent `magnet` and a direct `url` (if hosted).
+   * - A unique `d` tag is generated to make the series addressable (NIP-33).
+   * - A `videoRootId` is assigned to track future edits.
    *
-   * **Side Effects (in order):**
-   * 1. **Primary Event**: Signs and publishes the Kind 30078 Video Note.
-   * 2. **NIP-94 Mirror**: If a hosted `url` is provided, publishes a Kind 1063 File Header event (for clients that only support NIP-94).
-   * 3. **NIP-71 Metadata**: If categories/tags are present, publishes a Kind 22 Video Wrapper event linked to the primary event.
+   * **Side Effects (Mirroring):**
+   * 1. **Primary Event**: Signs and broadcasts the Kind 30078 event.
+   * 2. **NIP-94 Mirror**: If a `url` exists, we *also* publish a Kind 1063 (File Header).
+   *    This allows clients that only support NIP-94 (like file browsers) to see the video.
+   * 3. **NIP-71 Metadata**: If the user added categories/tags, we publish a Kind 22 event
+   *    referencing the main video. This keeps the main event lightweight.
    *
-   * @param {object} videoPayload - The video metadata, form data, and NIP-71 attributes.
-   * @param {string} pubkey - The public key of the publisher.
-   * @returns {Promise<import("nostr-tools").Event>} The signed and published Kind 30078 event.
-   * @throws {Error} If not logged in or if the primary publish fails.
+   * @param {object} videoPayload - The normalized form data (title, magnet, thumbnail, etc.).
+   * @param {string} pubkey - The active user's public key.
+   * @returns {Promise<import("nostr-tools").Event>} The signed Kind 30078 event.
+   * @throws {Error} If signing fails or the primary event is rejected by all relays.
    */
   async publishVideo(videoPayload, pubkey) {
     const context = await prepareVideoPublishPayload(videoPayload, pubkey);
@@ -2400,19 +2436,88 @@ export class NostrClient {
   }
 
   /**
-   * Edits an existing video by publishing a new version (Kind 30078).
+   * Publishes a *new version* of an existing video series.
+   * Nostr events are immutable, so "editing" means creating a newer event that supersedes the old one.
    *
-   * **Mechanism:**
-   * - Reuses the original `d` tag to ensure NIP-33 addressability (clients see the edit as the "latest" version).
-   * - Preserves the `videoRootId` to maintain the history chain.
-   * - Enforces ownership (pubkey match).
+   * **Mechanism (NIP-33 Replacement):**
+   * 1. **Address Retention**: We reuse the original `d` tag. Relays will now serve *this* event
+   *    instead of the old one when queried by address.
+   * 2. **Root Preservation**: We copy the `videoRootId` from the original event. This links the
+   *    new event to the series history.
+   * 3. **Content Update**: The new payload (title, magnet, etc.) replaces the old content.
    *
-   * @param {object} originalEventStub - The original video event (must have `id`).
-   * @param {object} updatedData - The new metadata to apply (title, magnet, NIP-71, etc.).
-   * @param {string} userPubkey - The public key of the editor (must match owner).
-   * @returns {Promise<import("nostr-tools").Event>} The signed and published edit event.
-   * @throws {Error} If permission denied, ownership mismatch, or publish failure.
+   * **Constraints:**
+   * - The `userPubkey` must match the original event's author (only the creator can edit).
+   * - The original event must be V2 or newer (legacy V1 migration is not supported here).
+   *
+   * @param {object} originalEventStub - The video event being edited (requires `id` and `d` tag).
+   * @param {object} updatedData - The modified fields (title, thumbnail, etc.).
+   * @param {string} userPubkey - The active user's public key.
+   * @returns {Promise<import("nostr-tools").Event>} The newly published event.
+   * @throws {Error} If the user is not the owner or if the original event is too old.
    */
+  async editVideo(originalEventStub, updatedData, userPubkey) {
+    if (!userPubkey) {
+      throw new Error("Not logged in to edit.");
+    }
+
+    // NOTE: Keep the Upload, Edit, and Revert flows synchronized when
+    // adjusting validation or persisted fields.
+    // Convert the provided pubkey to lowercase
+    const userPubkeyLower = userPubkey.toLowerCase();
+
+    // Use getEventById to fetch the full original event details
+    const baseEvent = await this.getEventById(originalEventStub.id);
+    if (!baseEvent) {
+      throw new Error("Could not retrieve the original event to edit.");
+    }
+
+    // Check that the original event is version 2 or higher
+    if (baseEvent.version < 2) {
+      throw new Error(
+        "This video is not in the supported version for editing."
+      );
+    }
+
+    // Ownership check (compare lowercase hex public keys)
+    if (
+      !baseEvent.pubkey ||
+      baseEvent.pubkey.toLowerCase() !== userPubkeyLower
+    ) {
+      throw new Error("You do not own this video (pubkey mismatch).");
+    }
+
+    const context = prepareVideoEditPayload({
+      baseEvent,
+      originalEventStub,
+      updatedData,
+      userPubkey,
+      resolveEventDTag: (evt, stub) => this.resolveEventDTag(evt, stub),
+    });
+
+    devLogger.log("Creating edited event with root ID:", context.videoRootId);
+    devLogger.log("Event content:", context.event.content);
+
+    await this.ensureActiveSignerForPubkey(userPubkeyLower);
+
+    try {
+      const { signedEvent } = await this.signAndPublishEvent(context.event, {
+        context: "edited video note",
+        logName: "Edited video note",
+        devLogLabel: "edited video note",
+        resolveActiveSigner: (p) => this.signerManager.resolveActiveSigner(p),
+      });
+
+      await handlePublishNip94(this, signedEvent, context);
+      await handlePublishNip71(this, signedEvent, context);
+
+      return signedEvent;
+    } catch (err) {
+      userLogger.error("Edit failed:", err);
+      throw err;
+    }
+  }
+
   async ensureActiveSignerForPubkey(pubkey) {
     return this.signerManager.ensureActiveSignerForPubkey(pubkey);
   }
@@ -2494,76 +2599,19 @@ export class NostrClient {
     return this.signerManager.logout();
   }
 
-  async editVideo(originalEventStub, updatedData, userPubkey) {
-    if (!userPubkey) {
-      throw new Error("Not logged in to edit.");
-    }
-
-    // NOTE: Keep the Upload, Edit, and Revert flows synchronized when
-    // adjusting validation or persisted fields.
-    // Convert the provided pubkey to lowercase
-    const userPubkeyLower = userPubkey.toLowerCase();
-
-    // Use getEventById to fetch the full original event details
-    const baseEvent = await this.getEventById(originalEventStub.id);
-    if (!baseEvent) {
-      throw new Error("Could not retrieve the original event to edit.");
-    }
-
-    // Check that the original event is version 2 or higher
-    if (baseEvent.version < 2) {
-      throw new Error(
-        "This video is not in the supported version for editing."
-      );
-    }
-
-    // Ownership check (compare lowercase hex public keys)
-    if (
-      !baseEvent.pubkey ||
-      baseEvent.pubkey.toLowerCase() !== userPubkeyLower
-    ) {
-      throw new Error("You do not own this video (pubkey mismatch).");
-    }
-
-    const context = prepareVideoEditPayload({
-      baseEvent,
-      originalEventStub,
-      updatedData,
-      userPubkey,
-      resolveEventDTag: (evt, stub) => this.resolveEventDTag(evt, stub),
-    });
-
-    devLogger.log("Creating edited event with root ID:", context.videoRootId);
-    devLogger.log("Event content:", context.event.content);
-
-    await this.ensureActiveSignerForPubkey(userPubkeyLower);
-
-    try {
-      const { signedEvent } = await this.signAndPublishEvent(context.event, {
-        context: "edited video note",
-        logName: "Edited video note",
-        devLogLabel: "edited video note",
-        resolveActiveSigner: (p) => this.signerManager.resolveActiveSigner(p),
-      });
-
-      await handlePublishNip94(this, signedEvent, context);
-      await handlePublishNip71(this, signedEvent, context);
-
-      return signedEvent;
-    } catch (err) {
-      userLogger.error("Edit failed:", err);
-      throw err;
-    }
-  }
-
   /**
-   * Reverts a video (soft delete).
-   * Publishes a new version with the same `d` tag but `deleted: true`.
-   * The content is replaced with a placeholder.
+   * Performs a "Soft Delete" by publishing a new version marked as deleted.
    *
-   * @param {object} originalEvent - The video event to revert.
-   * @param {string} pubkey - The public key of the owner.
-   * @returns {Promise<{event: object, publishResults: object[], summary: object}>} Result of the operation.
+   * **Mechanism:**
+   * - Creates a new Kind 30078 event with the same `d` tag as the original.
+   * - The content is scrubbed and replaced with `{ deleted: true, ...placeholder }`.
+   * - Relays will overwrite the old event with this tombstone when resolving the address.
+   * - This is reversible (by publishing a new valid version later) and preserves the history chain.
+   *
+   * @param {object} originalEvent - The video event object to revert.
+   * @param {string} pubkey - The active user's public key (must match owner).
+   * @returns {Promise<{event: object, publishResults: object[], summary: object}>} The published tombstone event and relay results.
+   * @throws {Error} If the user is not the owner or signing fails.
    */
   async revertVideo(originalEvent, pubkey) {
     if (!pubkey) {
@@ -2994,20 +3042,32 @@ export class NostrClient {
   }
 
   /**
-   * Deletes all versions of a video.
+   * Permanently removes a video series from the network.
+   * This is a "Nuclear Option" that attempts to wipe all traces of the video.
    *
-   * **Process:**
-   * 1. **Hydration**: Ensures the full edit history is loaded so we know all `d` tags and Event IDs.
-   * 2. **Soft Delete (Revert)**: Publishes a new update with `deleted: true` for every unique `d` tag/root found.
-   *    This clears the content for clients that just resolve the "latest" version.
-   * 3. **Hard Delete (NIP-09)**: Publishes a Kind 5 event referencing ALL known Event IDs (`e` tags) and
-   *    NIP-33 addresses (`a` tags). Relays compliant with NIP-09 will physically remove the events.
-   * 4. **Tombstoning**: Updates local state to ensure the deleted video doesn't reappear from cache.
+   * **The Problem:**
+   * Because a video series might have 10 "edit" versions, deleting just the "latest" one isn't enough.
+   * Relays would just serve the *second-latest* version, resurrecting the video.
    *
-   * @param {string} videoRootId - The root ID of the video series.
-   * @param {string} pubkey - The owner's public key.
-   * @param {{confirm?: boolean, video?: object}} [options] - Options (confirm dialog, target video hint).
-   * @returns {Promise<{reverts: object[], deletes: object[]}|null>} Summary of actions taken, or null if cancelled.
+   * **The Protocol (Soft + Hard Delete):**
+   * 1. **History Hydration**: We first fetch *every* historical version of this video (by `rootId` and `d` tag).
+   * 2. **Soft Delete (Tombstoning)**: For every unique `d` tag found in the history, we publish a *new* version
+   *    with `content: { deleted: true }`. This ensures that even if NIP-09 fails, clients resolving "latest"
+   *    will see a tombstone.
+   * 3. **Hard Delete (NIP-09)**: We construct a Kind 5 event referencing:
+   *    - Every single Event ID (`e` tag) in the history.
+   *    - Every NIP-33 address (`a` tag) found.
+   *    - The video root ID.
+   *    Relays that respect Kind 5 will physically delete these rows.
+   * 4. **Local Tombstone**: We update `this.tombstones` and `this.activeMap` immediately to hide the video
+   *    from the UI without waiting for relay confirmation.
+   *
+   * @param {string} videoRootId - The unique root identifier of the video series.
+   * @param {string} pubkey - The owner's public key (must match event author).
+   * @param {object} [options] - Configuration.
+   * @param {boolean} [options.confirm=true] - Whether to show a browser confirmation dialog.
+   * @param {object} [options.video] - The current video object (optimization to skip initial fetch).
+   * @returns {Promise<{reverts: object[], deletes: object[]}|null>} A summary of the soft (revert) and hard (delete) events published. Returns null if user cancelled.
    */
   async deleteAllVersions(videoRootId, pubkey, options = {}) {
     if (!pubkey) {
@@ -3112,29 +3172,35 @@ export class NostrClient {
   }
 
   /**
-   * Subscribes to Kind 30078 video events from relays using a buffered stream.
+   * Subscribes to Kind 30078 video events (Series/Clips) from relays using a buffered stream.
+   * This is the primary feed ingestion engine for the application.
    *
    * **Why Buffer?**
-   * Relays often send bursts of events (e.g., historical dumps or new floods).
-   * Processing every single event immediately would cause layout thrashing and UI lag.
+   * Relays typically send events in high-speed bursts (historical dumps on connect).
+   * Processing every single event immediately (parsing -> hydrating -> React setState)
+   * causes massive layout thrashing and freezes the main thread.
    *
-   * **The Algorithm:**
-   * 1. **Buffer**: Push all incoming events into `eventBuffer`.
-   * 2. **Debounce**: Schedule `flushEventBuffer` to run after 75ms of silence or inactivity.
-   * 3. **Batch Process**:
-   *    - Convert events to internal Video objects.
-   *    - Filter out invalids or duplicates.
-   *    - Apply "Last-Write-Wins" logic against `activeMap`.
-   *    - Notify the UI (`onVideo`) once per batch.
-   * 4. **Persist**: Save the batch to IndexedDB to warm up the cache for next reload.
+   * **The Algorithm (Buffering Strategy):**
+   * 1. **Ingest**: Push every incoming raw event into a temporary `eventBuffer`.
+   * 2. **Debounce**: A 75ms timer ensures we only process the buffer when the stream pauses briefly.
+   * 3. **Batch Process (Flush)**:
+   *    - Validate & Parse: Convert raw JSON to internal `Video` objects.
+   *    - Tombstone Check: Discard any video that is older than a known deletion timestamp.
+   *    - **Latest-Wins Resolution**: Compare `created_at` against `activeMap`. Only update if newer.
+   *    - **Hydration**: Bulk-fetch NIP-71 category tags for the new items.
+   *    - **UI Update**: Fire `onVideo(batch)` *once* for the whole chunk.
+   * 4. **Persist**: Asynchronously save the new state to IndexedDB (Stale-While-Revalidate).
    *
    * **Invariants:**
-   * - `activeMap` always holds the latest valid version of a video.
-   * - Deleted events (Tombstones) are never surfaced to `onVideo`.
+   * - `activeMap` will *only* ever contain the newest valid version of a video series.
+   * - Deleted videos (Tombstones) are filtered out before reaching the UI callback.
    *
-   * @param {function(object): void} onVideo - Callback fired when new valid videos are processed. Receives the `Video` object.
-   * @param {{ since?: number, until?: number, limit?: number }} [options] - Filter options.
-   * @returns {import("nostr-tools").Sub} The subscription object. Call `unsub()` to stop.
+   * @param {function(object[]): void} onVideo - Callback fired with a BATCH of new/updated `Video` objects.
+   * @param {object} [options] - Filter options.
+   * @param {number} [options.since] - Unix timestamp to fetch events after (usually `latestCachedCreatedAt`).
+   * @param {number} [options.until] - Unix timestamp to fetch events before.
+   * @param {number} [options.limit] - Max number of events to request from relays.
+   * @returns {import("nostr-tools").Sub} The subscription object. Call `unsub()` to stop listening.
    */
   subscribeVideos(onVideo, options = {}) {
     // Explanation:
@@ -3668,31 +3734,33 @@ export class NostrClient {
    * Fetches and reconstructs the full edit history of a video.
    *
    * **The Problem:**
-   * Nostr events are immutable. "Editing" a video creates a NEW event.
-   * We need to find all previous versions to show a history log or allow reverting.
+   * Nostr events are immutable. "Editing" a video creates a NEW event with a new ID.
+   * We need to find all previous versions to show a history log or allow reverting to an older state.
    *
-   * **The Linking Logic:**
-   * 1. **Modern**: Versions share a `videoRootId` field in their content.
-   * 2. **NIP-33**: Versions share the same `d` tag.
-   * 3. **Legacy**: Older versions might only be linked by the `d` tag or lack a root pointer entirely.
+   * **The Linking Logic (Version Stitching):**
+   * 1. **Modern (V3+)**: Versions share a `videoRootId` field in their content, pointing to the *first* event in the series.
+   * 2. **NIP-33 Addressability**: Versions share the same `d` tag, allowing clients to find them by `kind:pubkey:dTag`.
+   * 3. **Legacy Fallback**: Older versions might only be linked by the `d` tag or lack a root pointer entirely.
    *
    * **Algorithm:**
-   * 1. **Local Scan**: Search `allEvents` for any event matching the target's `videoRootId` OR `d` tag.
-   * 2. **Root Recovery**: If the `videoRootId` refers to an event we don't have, fetch it specifically (to establish the timeline start).
-   * 3. **Relay Query**: If local history is sparse (<= 1 version), query relays for all events with the same `d` tag.
-   * 4. **Merge & Sort**: Combine all findings, filter out unrelated events, and sort by `created_at` descending.
+   * 1. **Local Scan**: Linearly search `this.allEvents` (memory cache) for any event matching the target's `videoRootId` OR `d` tag.
+   * 2. **Root Recovery**: If the `videoRootId` refers to an event ID we don't have in memory, fetch it specifically from relays.
+   *    This ensures we have the "genesis" block of the video history.
+   * 3. **Sparse History Check**: If we found <= 1 version locally, we assume our cache is incomplete.
+   * 4. **Relay Query**: If sparse, query relays for *all* events (Kind 30078) with the same `d` tag and author.
+   * 5. **Merge & Sort**: Combine local and network findings, deduplicate by ID, filter out unrelated events, and sort by `created_at` (Newest -> Oldest).
    *
-   * @param {object} video - The target video to find history for.
-   * @returns {Promise<object[]>} A promise resolving to an array of Video objects (Newest -> Oldest).
+   * @param {object} video - The target video object to find history for.
+   * @returns {Promise<object[]>} A promise resolving to an array of Video objects, sorted from newest to oldest.
    */
   async hydrateVideoHistory(video) {
     // Explanation:
     // This method reconstructs the edit history of a video series.
     // Since Nostr events are immutable, "editing" creates a new event.
     // We link these events together using:
-    // 1. `videoRootId` (V3 canonical ID)
-    // 2. `d` tag (NIP-33 addressability)
-    // 3. Fallback: Matching ID for legacy V1/V2 posts
+    // 1. `videoRootId` (V3 canonical ID) - The primary key for the series.
+    // 2. `d` tag (NIP-33 addressability) - The secondary key for lookups.
+    // 3. Fallback: Matching ID for legacy V1/V2 posts (where ID was the root).
     //
     // The method first checks local cache (`allEvents`), and if data is sparse,
     // queries relays for the specific `d` tag to find missing links.
