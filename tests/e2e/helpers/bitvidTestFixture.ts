@@ -33,10 +33,7 @@ const TEST_PRIVATE_KEY_HEX =
 const TEST_SK = Uint8Array.from(Buffer.from(TEST_PRIVATE_KEY_HEX, "hex"));
 const TEST_PK = getPublicKey(TEST_SK);
 
-const RELAY_PORT = 8877;
-const RELAY_HTTP_PORT = 8878;
-const RELAY_WS_URL = `ws://127.0.0.1:${RELAY_PORT}`;
-const RELAY_HTTP_URL = `http://127.0.0.1:${RELAY_HTTP_PORT}`;
+const BASE_RELAY_PORT = 8877;
 
 export interface TestVideoEvent {
   title: string;
@@ -85,8 +82,8 @@ function createVideoEvent(video: TestVideoEvent) {
 /**
  * Seed an event into the relay via HTTP API.
  */
-async function seedEventViaHttp(event: any) {
-  const resp = await fetch(`${RELAY_HTTP_URL}/seed`, {
+async function seedEventViaHttp(event: any, httpUrl: string) {
+  const resp = await fetch(`${httpUrl}/seed`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(event),
@@ -100,8 +97,8 @@ async function seedEventViaHttp(event: any) {
 /**
  * Clear all events from the relay.
  */
-async function clearRelayEvents() {
-  const resp = await fetch(`${RELAY_HTTP_URL}/events`, { method: "DELETE" });
+async function clearRelayEvents(httpUrl: string) {
+  const resp = await fetch(`${httpUrl}/events`, { method: "DELETE" });
   if (!resp.ok) {
     throw new Error(`Failed to clear events: ${resp.status}`);
   }
@@ -110,9 +107,9 @@ async function clearRelayEvents() {
 /**
  * Navigate to bitvid with test mode and relay overrides enabled.
  */
-async function gotoWithTestMode(page: Page, path = "/") {
+async function gotoWithTestMode(page: Page, relayUrl: string, path = "/") {
   const separator = path.includes("?") ? "&" : "?";
-  const testUrl = `${path}${separator}__test__=1&__testRelays__=${encodeURIComponent(RELAY_WS_URL)}`;
+  const testUrl = `${path}${separator}__test__=1&__testRelays__=${encodeURIComponent(relayUrl)}`;
 
   // Set up localStorage before navigation
   await page.addInitScript(() => {
@@ -163,8 +160,16 @@ type BitvidFixtures = {
 
 export const test = base.extend<BitvidFixtures>({
   relay: [
-    async ({}, use) => {
-      const relayInstance = startRelay(RELAY_PORT, { httpPort: RELAY_HTTP_PORT });
+    async ({}, use, testInfo) => {
+      // Avoid port collisions when running in parallel workers
+      const port = BASE_RELAY_PORT + (testInfo.workerIndex * 2);
+      const httpPort = port + 1;
+
+      const relayInstance = startRelay(port, { httpPort });
+      // Attach the dynamic URLs to the relay instance for downstream fixtures
+      (relayInstance as any).wsUrl = `ws://127.0.0.1:${port}`;
+      (relayInstance as any).httpUrl = `http://127.0.0.1:${httpPort}`;
+
       await use(relayInstance);
       await relayInstance.close();
     },
@@ -174,25 +179,25 @@ export const test = base.extend<BitvidFixtures>({
   seedEvent: async ({ relay }, use) => {
     await use(async (video: TestVideoEvent) => {
       const event = createVideoEvent(video);
-      return seedEventViaHttp(event);
+      return seedEventViaHttp(event, (relay as any).httpUrl);
     });
   },
 
   seedRawEvent: async ({ relay }, use) => {
     await use(async (event: any) => {
-      return seedEventViaHttp(event);
+      return seedEventViaHttp(event, (relay as any).httpUrl);
     });
   },
 
   clearRelay: async ({ relay }, use) => {
     await use(async () => {
-      await clearRelayEvents();
+      await clearRelayEvents((relay as any).httpUrl);
     });
   },
 
-  gotoApp: async ({ page }, use) => {
+  gotoApp: async ({ page, relay }, use) => {
     await use(async (path = "/") => {
-      await gotoWithTestMode(page, path);
+      await gotoWithTestMode(page, (relay as any).wsUrl, path);
     });
   },
 
@@ -204,7 +209,9 @@ export const test = base.extend<BitvidFixtures>({
 
   testPubkey: TEST_PK,
   testPrivateKey: TEST_PRIVATE_KEY_HEX,
-  relayUrl: RELAY_WS_URL,
+  relayUrl: async ({ relay }, use) => {
+    await use((relay as any).wsUrl);
+  },
 });
 
 export { expect };

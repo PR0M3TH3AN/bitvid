@@ -13,24 +13,29 @@ const CRITICAL_PATH_PATTERNS = [
 ];
 
 function getChangedFilesAgainstHeadParent() {
-  const hasHeadParent = execSync('git rev-parse --verify --quiet HEAD^', {
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'ignore']
-  }).trim();
+  try {
+    const hasHeadParent = execSync('git rev-parse --verify --quiet HEAD^', {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore']
+    }).trim();
 
-  if (!hasHeadParent) {
+    if (!hasHeadParent) {
+      return [];
+    }
+
+    const output = execSync('git diff-tree --no-commit-id --name-only -r HEAD', {
+      encoding: 'utf8'
+    }).trim();
+
+    if (!output) {
+      return [];
+    }
+
+    return output.split('\n').map((value) => value.trim()).filter(Boolean);
+  } catch (error) {
+    console.warn('[sw-compat] Skipping check: unable to determine HEAD^ or git history unavailable.');
     return [];
   }
-
-  const output = execSync('git diff-tree --no-commit-id --name-only -r HEAD', {
-    encoding: 'utf8'
-  }).trim();
-
-  if (!output) {
-    return [];
-  }
-
-  return output.split('\n').map((value) => value.trim()).filter(Boolean);
 }
 
 function getCriticalPathDiff() {
