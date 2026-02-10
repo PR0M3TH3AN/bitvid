@@ -43,6 +43,7 @@
     "hash:dist": "node scripts/hash-dist.mjs --dist dist --output artifacts/dist-hashes-current.json",
     "diff:dist-hashes": "node scripts/diff-dist-hashes.mjs",
     "verify:dist:deploy-artifact": "node scripts/verify-dist-deploy-artifact.mjs",
+    "verify:deployed:index-html": "node scripts/verify-deployed-index-html.mjs",
     "purge:cloudflare:changed": "node scripts/purge-cloudflare-changed.mjs",
     "smoke:dist-assets": "node scripts/check-asset-references.mjs",
     "test:e2e:cache-upgrade": "npx playwright test tests/e2e/cache-upgrade-smoke.spec.ts --project=e2e"
