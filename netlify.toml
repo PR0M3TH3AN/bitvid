@@ -1,5 +1,5 @@
 [build]
-  command = "npm run build"
+  command = "npm run build && npm run verify:dist:deploy-artifact"
   publish = "dist"
 
 [build.environment]
