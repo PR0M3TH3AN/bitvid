@@ -11,7 +11,7 @@ import moderationService from "../services/moderationService.js";
 import logger from "../utils/logger.js";
 import { dedupeToNewestByRoot } from "../utils/videoDeduper.js";
 import { normalizeHashtag } from "../utils/hashtagNormalization.js";
-import { isPlainObject, toSet } from "./utils.js";
+import { isPlainObject, toSet, markAsNormalized } from "./utils.js";
 
 const FEED_HIDE_BYPASS_NAMES = new Set(["home", "recent"]);
 
@@ -90,7 +90,7 @@ export function createDedupeByRootStage({
       });
     }
 
-    return keep;
+    return markAsNormalized(keep);
   };
 }
 
@@ -420,7 +420,7 @@ function filterByTagPreferences({
     results.push(item);
   }
 
-  return results;
+  return markAsNormalized(results);
 }
 
 export function createBlacklistFilterStage({
@@ -472,7 +472,7 @@ export function createBlacklistFilterStage({
       results.push(item);
     }
 
-    return results;
+    return markAsNormalized(results);
   };
 }
 
@@ -538,7 +538,7 @@ export function createWatchHistorySuppressionStage({
       results.push(item);
     }
 
-    return results;
+    return markAsNormalized(results);
   };
 }
 
@@ -1364,6 +1364,6 @@ export function createModerationStage({
       results.push(item);
     }
 
-    return results;
+    return markAsNormalized(results);
   };
 }

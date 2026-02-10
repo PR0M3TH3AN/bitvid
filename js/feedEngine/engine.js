@@ -1,6 +1,6 @@
 // js/feedEngine/engine.js
 
-import { isPlainObject } from "./utils.js";
+import { isPlainObject, markAsNormalized, NORMALIZED_ARRAY_MARKER } from "./utils.js";
 import { userLogger } from "../utils/logger.js";
 
 const NORMALIZED_MARKER = Symbol("FeedItemNormalized");
@@ -80,6 +80,10 @@ function normalizeItems(items) {
     return [];
   }
 
+  if (items[NORMALIZED_ARRAY_MARKER]) {
+    return items;
+  }
+
   let dirty = false;
   const len = items.length;
   for (let i = 0; i < len; i++) {
@@ -91,6 +95,7 @@ function normalizeItems(items) {
   }
 
   if (!dirty) {
+    markAsNormalized(items);
     return items;
   }
 
@@ -101,6 +106,8 @@ function normalizeItems(items) {
       normalized.push(dto);
     }
   }
+
+  markAsNormalized(normalized);
   return normalized;
 }
 
