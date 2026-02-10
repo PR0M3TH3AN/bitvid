@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
+import crypto from 'node:crypto';
 
 const DIST = 'dist';
 const FILES_TO_COPY = [
@@ -26,6 +27,15 @@ const DIRS_TO_COPY = [
   'vendor',
   'views'
 ];
+const HASHED_ENTRY_HTML_FILES = ['index.html', 'embed.html'];
+const HASHED_ASSET_PATHS = [
+  'css/docs.css',
+  'css/tailwind.generated.css',
+  'js/embed.js',
+  'js/index.js',
+  'js/nostrToolsBootstrap.js'
+];
+const ASSET_MANIFEST_PATH = 'asset-manifest.json';
 
 function cleanDist() {
   if (fs.existsSync(DIST)) {
@@ -74,6 +84,76 @@ function copyDir(src, dest) {
   }
 }
 
+function hashContent(content) {
+  return crypto.createHash('sha256').update(content).digest('hex');
+}
+
+function createHashedFilePath(assetPath, hash) {
+  const ext = path.extname(assetPath);
+  const baseName = path.basename(assetPath, ext);
+  const dirName = path.dirname(assetPath);
+  const shortHash = hash.slice(0, 16);
+  const hashedName = `${baseName}.${shortHash}${ext}`;
+  return dirName === '.' ? hashedName : path.posix.join(dirName, hashedName);
+}
+
+function escapeForRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function generateHashedAssetManifest() {
+  const sortedAssetPaths = [...HASHED_ASSET_PATHS].sort();
+  const manifest = {};
+
+  for (const logicalAssetPath of sortedAssetPaths) {
+    const sourcePath = path.join(DIST, logicalAssetPath);
+    if (!fs.existsSync(sourcePath)) {
+      throw new Error(`Missing required asset for hashing: ${logicalAssetPath}`);
+    }
+
+    const content = fs.readFileSync(sourcePath);
+    const hash = hashContent(content);
+    const hashedRelativePath = createHashedFilePath(logicalAssetPath, hash);
+    const hashedDistPath = path.join(DIST, hashedRelativePath);
+
+    fs.mkdirSync(path.dirname(hashedDistPath), { recursive: true });
+    fs.writeFileSync(hashedDistPath, content);
+    manifest[logicalAssetPath] = hashedRelativePath;
+  }
+
+  const sortedManifest = Object.fromEntries(
+    Object.entries(manifest).sort(([a], [b]) => a.localeCompare(b))
+  );
+  fs.writeFileSync(
+    path.join(DIST, ASSET_MANIFEST_PATH),
+    `${JSON.stringify(sortedManifest, null, 2)}\n`
+  );
+
+  return sortedManifest;
+}
+
+function rewriteEntryHtmlAssetPaths(manifest) {
+  for (const htmlFile of HASHED_ENTRY_HTML_FILES) {
+    const htmlPath = path.join(DIST, htmlFile);
+    if (!fs.existsSync(htmlPath)) {
+      continue;
+    }
+
+    let htmlContent = fs.readFileSync(htmlPath, 'utf8');
+
+    for (const [logicalPath, hashedPath] of Object.entries(manifest)) {
+      const escapedLogicalPath = escapeForRegExp(logicalPath);
+      const attributePattern = new RegExp(
+        `((?:src|href)=["'])${escapedLogicalPath}(?:\\?[^"']*)?(["'])`,
+        'g'
+      );
+      htmlContent = htmlContent.replace(attributePattern, `$1${hashedPath}$2`);
+    }
+
+    fs.writeFileSync(htmlPath, htmlContent);
+  }
+}
+
 function main() {
   console.log('Cleaning dist...');
   cleanDist();
@@ -114,6 +194,12 @@ function main() {
   for (const dir of DIRS_TO_COPY) {
     copyDir(dir, path.join(DIST, dir));
   }
+
+  console.log('Generating hashed asset manifest...');
+  const manifest = generateHashedAssetManifest();
+
+  console.log('Rewriting HTML entry points with hashed assets...');
+  rewriteEntryHtmlAssetPaths(manifest);
 
   console.log('Build complete.');
 }

@@ -107,12 +107,12 @@
 
     <!-- Styles -->
     <!--
-      Cache busting: keep these query strings in sync with config/asset-version.js
-      so browsers pick up the latest sidebar markup and styling without
-      hard-refreshing around CDN caches.
+      Build-time asset hashing rewrites these source paths to content-hashed
+      files in dist/, keeping source templates readable while preserving cache
+      busting semantics.
     -->
-    <link href="css/tailwind.generated.css?v=2024.11.09-2" rel="stylesheet" />
-    <link href="css/docs.css?v=2024.11.09-2" rel="stylesheet" />
+    <link href="css/tailwind.generated.css" rel="stylesheet" />
+    <link href="css/docs.css" rel="stylesheet" />
   </head>
   <body class="sidebar-collapsed" data-ds="new">
     <!--
@@ -423,7 +423,7 @@
     </div>
 
     <!-- Additional Scripts -->
-    <script type="module" src="js/index.js?v=2024.11.09"></script>
+    <script type="module" src="js/index.js"></script>
     <script src="vendor/marked.min.js"></script>
     <script src="vendor/highlight.min.js"></script>
     <div id="uiOverlay" data-overlay-root aria-hidden="true"></div>
