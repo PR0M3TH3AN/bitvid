@@ -58,6 +58,9 @@ jobs:
       - name: Build assets
         run: npm run build
 
+      - name: Verify deploy artifact markup and hashed references
+        run: npm run verify:dist:deploy-artifact
+
       - name: Smoke check hashed dist asset references
         run: npm run smoke:dist-assets
 
