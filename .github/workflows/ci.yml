@@ -253,6 +253,17 @@ jobs:
             --changed-file artifacts/dist-purge-targets.txt \
             --base-url "$CLOUDFLARE_PURGE_BASE_URL"
 
+      - name: Verify deployed index.html version markup
+        env:
+          CLOUDFLARE_PURGE_BASE_URL: ${{ secrets.CLOUDFLARE_PURGE_BASE_URL }}
+        run: |
+          if [ -z "$CLOUDFLARE_PURGE_BASE_URL" ]; then
+            echo "CLOUDFLARE_PURGE_BASE_URL is required to verify deployed index.html"
+            exit 1
+          fi
+
+          DEPLOY_INDEX_URL="${CLOUDFLARE_PURGE_BASE_URL%/}/index.html" npm run verify:deployed:index-html
+
   unit-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 30
