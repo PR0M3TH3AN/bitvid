@@ -2406,105 +2406,162 @@ export class NostrClient {
       });
 
       // 2. Publish NIP-94 Mirror (Kind 1063) if a hosted URL is present.
-      if (finalUrl) {
-        const mirrorOptions = await prepareVideoMirrorOptions({
-          videoData,
-          videoPayload,
-          finalUrl,
-          finalMagnet,
-          finalThumbnail,
-          finalDescription,
-          finalTitle,
-          mimeType,
-          fileSha256,
-          originalFileSha256,
-          pubkey: normalizedPubkey,
-          createdAt,
-          isPrivate: contentObject.isPrivate,
-        });
-
-        try {
-          const mirrorResult = await this.mirrorVideoEvent(
-            signedEvent.id,
-            mirrorOptions,
-          );
-
-          if (mirrorResult?.ok) {
-            devLogger.log("Prepared NIP-94 mirror event:", mirrorResult.event);
-            devLogger.log("NIP-94 mirror dispatched for hosted URL:", finalUrl);
-          } else if (mirrorResult) {
-            devLogger.warn(
-              "[nostr] NIP-94 mirror rejected:",
-              mirrorResult.error || "mirror-failed",
-              mirrorResult.details || null,
-            );
-          }
-        } catch (mirrorError) {
-          devLogger.warn(
-            "[nostr] Failed to publish NIP-94 mirror:",
-            mirrorError,
-          );
-        }
-      } else devLogger.log("Skipping NIP-94 mirror: no hosted URL provided.");
+      await this._handlePublishNip94(signedEvent, finalUrl, {
+        videoData,
+        videoPayload,
+        finalMagnet,
+        finalThumbnail,
+        finalDescription,
+        finalTitle,
+        mimeType,
+        fileSha256,
+        originalFileSha256,
+        pubkey: normalizedPubkey,
+        createdAt,
+        isPrivate: contentObject.isPrivate,
+      });
 
       // 3. Publish NIP-71 Metadata (Kind 22) if categories/tags were added.
-      const nip71EditedFlag =
-        videoPayload && typeof videoPayload === "object"
-          ? videoPayload.nip71Edited
-          : null;
-      const hasMetadataObject =
-        nip71Metadata && typeof nip71Metadata === "object";
-      const metadataWasEdited =
-        nip71EditedFlag === true ||
-        (nip71EditedFlag == null && hasMetadataObject);
-      const shouldAttemptNip71 = !wantPrivate && metadataWasEdited;
-
-      if (shouldAttemptNip71) {
-        const metadataLegacyFormData = {
-          title: contentObject.title,
-          description: contentObject.description,
-          url: contentObject.url,
-          magnet: contentObject.magnet,
-          thumbnail: contentObject.thumbnail,
-          mode: contentObject.mode,
-          isPrivate: wantPrivate,
-          isNsfw: contentObject.isNsfw,
-          isForKids: contentObject.isForKids,
-        };
-
-        if (contentObject.ws) {
-          metadataLegacyFormData.ws = contentObject.ws;
-        }
-
-        if (contentObject.xs) {
-          metadataLegacyFormData.xs = contentObject.xs;
-        }
-
-        try {
-          await this.publishNip71Video(
-            {
-              nip71: nip71Metadata,
-              legacyFormData: metadataLegacyFormData,
-            },
-            userPubkeyLower,
-            {
-              videoRootId,
-              dTag: dTagValue,
-              eventId: signedEvent.id,
-            },
-          );
-        } catch (nip71Error) {
-          userLogger.warn(
-            "[nostr] Failed to publish NIP-71 metadata for edit:",
-            nip71Error,
-          );
-        }
-      }
+      await this._handlePublishNip71(
+        signedEvent,
+        videoPayload,
+        nip71Metadata,
+        contentObject,
+        wantPrivate,
+        userPubkeyLower,
+        videoRootId,
+        dTagValue
+      );
 
       return signedEvent;
     } catch (err) {
       devLogger.error("Failed to sign/publish:", err);
       throw err;
+    }
+  }
+
+  async _handlePublishNip94(signedEvent, finalUrl, mirrorParams) {
+    if (!finalUrl) {
+      devLogger.log("Skipping NIP-94 mirror: no hosted URL provided.");
+      return;
+    }
+
+    const {
+      videoData,
+      videoPayload,
+      finalMagnet,
+      finalThumbnail,
+      finalDescription,
+      finalTitle,
+      mimeType,
+      fileSha256,
+      originalFileSha256,
+      pubkey,
+      createdAt,
+      isPrivate,
+    } = mirrorParams;
+
+    const mirrorOptions = await prepareVideoMirrorOptions({
+      videoData,
+      videoPayload,
+      finalUrl,
+      finalMagnet,
+      finalThumbnail,
+      finalDescription,
+      finalTitle,
+      mimeType,
+      fileSha256,
+      originalFileSha256,
+      pubkey,
+      createdAt,
+      isPrivate,
+    });
+
+    try {
+      const mirrorResult = await this.mirrorVideoEvent(
+        signedEvent.id,
+        mirrorOptions,
+      );
+
+      if (mirrorResult?.ok) {
+        devLogger.log("Prepared NIP-94 mirror event:", mirrorResult.event);
+        devLogger.log("NIP-94 mirror dispatched for hosted URL:", finalUrl);
+      } else if (mirrorResult) {
+        devLogger.warn(
+          "[nostr] NIP-94 mirror rejected:",
+          mirrorResult.error || "mirror-failed",
+          mirrorResult.details || null,
+        );
+      }
+    } catch (mirrorError) {
+      devLogger.warn(
+        "[nostr] Failed to publish NIP-94 mirror:",
+        mirrorError,
+      );
+    }
+  }
+
+  async _handlePublishNip71(
+    signedEvent,
+    videoPayload,
+    nip71Metadata,
+    contentObject,
+    wantPrivate,
+    userPubkeyLower,
+    videoRootId,
+    dTagValue,
+  ) {
+    const nip71EditedFlag =
+      videoPayload && typeof videoPayload === "object"
+        ? videoPayload.nip71Edited
+        : null;
+    const hasMetadataObject =
+      nip71Metadata && typeof nip71Metadata === "object";
+    const metadataWasEdited =
+      nip71EditedFlag === true ||
+      (nip71EditedFlag == null && hasMetadataObject);
+    const shouldAttemptNip71 = !wantPrivate && metadataWasEdited;
+
+    if (shouldAttemptNip71) {
+      const metadataLegacyFormData = {
+        title: contentObject.title,
+        description: contentObject.description,
+        url: contentObject.url,
+        magnet: contentObject.magnet,
+        thumbnail: contentObject.thumbnail,
+        mode: contentObject.mode,
+        isPrivate: wantPrivate,
+        isNsfw: contentObject.isNsfw,
+        isForKids: contentObject.isForKids,
+      };
+
+      if (contentObject.ws) {
+        metadataLegacyFormData.ws = contentObject.ws;
+      }
+
+      if (contentObject.xs) {
+        metadataLegacyFormData.xs = contentObject.xs;
+      }
+
+      try {
+        await this.publishNip71Video(
+          {
+            nip71: nip71Metadata,
+            legacyFormData: metadataLegacyFormData,
+          },
+          userPubkeyLower,
+          {
+            videoRootId,
+            dTag: dTagValue,
+            eventId: signedEvent.id,
+          },
+        );
+      } catch (nip71Error) {
+        userLogger.warn(
+          "[nostr] Failed to publish NIP-71 metadata for edit:",
+          nip71Error,
+        );
+      }
     }
   }
 
