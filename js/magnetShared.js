@@ -237,7 +237,8 @@ export function normalizeMagnetInput(rawValue) {
         didMutate = true;
       }
     }
-    params.push(createParam(key, value));
+    const parsedParam = createParam(key, value);
+    params.push(parsedParam);
   }
 
   return {
