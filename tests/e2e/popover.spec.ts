@@ -30,17 +30,18 @@ test.describe("popover layout scenarios", () => {
   });
 
   // flaky: Popover fails to flip to top in restricted viewport (floating-ui issue?)
-  test.skip("keeps the bottom-right grid menu inside the viewport", async ({ page }) => {
-    // Force a tall body to ensure there is space for the popover to flip to the top
-    await page.addStyleTag({ content: "body { min-height: 2000px !important; }" });
+  test("keeps the bottom-right grid menu inside the viewport", async ({ page }) => {
+    // Force a tall body with top padding to ensure there is space above for the popover to flip to
+    await page.addStyleTag({ content: "body { padding-top: 1000px !important; min-height: 3000px !important; }" });
     // Reduce viewport height to force the menu to flip to the top
     await page.setViewportSize({ width: 1280, height: 250 });
 
     const trigger = page.locator('[data-test-trigger="grid-bottom-right"]');
-    // Scroll to bottom to ensure the element is near the viewport edge
-    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    // Scroll the element to the bottom edge of the viewport
+    await trigger.evaluate((el) => el.scrollIntoView({ block: "end", inline: "nearest" }));
 
-    await trigger.click();
+    // Use force: true to prevent Playwright from attempting to scroll further
+    await trigger.click({ force: true });
     const panel = page.locator('[data-test-panel="grid-bottom-right"]');
     await expect(panel).toHaveAttribute("data-popover-state", "open");
 
