@@ -190,6 +190,8 @@ This project includes a `.devcontainer` configuration. If you use VS Code, you c
 
 See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full developer guide.
 
+For detailed architecture and system documentation, see the [Documentation Index](docs/README.md).
+
 **Verify your work:**
 
 - **Run unit tests**: `npm run test:unit` (Required before PRs). _Tip: Use `npm run test:unit:shard1`, `shard2`, or `shard3` for faster local feedback._
@@ -267,7 +269,7 @@ const event = buildVideoPostEvent({
 console.log("Event constructed:", event);
 
 // 2. Publish the event (requires browser/extension or active signer)
-/*
+// In an application context (e.g. browser console or module):
 import { nostrClient } from "./js/nostrClientFacade.js";
 
 // Ensure client is connected
@@ -278,7 +280,6 @@ await nostrClient.loginWithExtension();
 
 // Publish the built event
 await nostrClient.signAndPublishEvent(event);
-*/
 ```
 
 ### CSS build pipeline
