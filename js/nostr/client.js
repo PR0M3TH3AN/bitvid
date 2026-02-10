@@ -220,7 +220,6 @@ import {
   hydrateExtensionSignerCapabilities,
   attachNipMethodAliases,
 } from "./managers/SignerManager.js";
-import { RelayBatchFetcher } from "./relayBatchFetcher.js";
 import {
   prepareVideoPublishPayload,
   prepareVideoMirrorOptions,
@@ -475,11 +474,8 @@ export class NostrClient {
 
     this.rootCreatedAtByRoot = new Map();
 
-    this.dirtyEventIds = new Set();
-    this.dirtyTombstones = new Set();
     this.persistenceManager = new PersistenceManager(this);
     this.syncMetadataStore = new SyncMetadataStore();
-    this.relayBatchFetcher = new RelayBatchFetcher(this);
 
     this.nip71Cache = new Map();
     this.watchHistory = createWatchHistoryManager({
@@ -628,8 +624,6 @@ export class NostrClient {
 
   get unreachableRelays() { return this.connectionManager.unreachableRelays; }
 
-  get extensionPermissionCache() { return this.signerManager.extensionPermissionCache; }
-
   /**
    * Records a deletion timestamp for a video identifier (Tombstoning).
    *
@@ -766,17 +760,6 @@ export class NostrClient {
     if (videoCreated < currentMin) {
       this.rootCreatedAtByRoot.set(rootId, videoCreated);
     }
-  }
-
-  resolveEventDTag(event, fallbackEvent = null) {
-    if (event && typeof event === "object") {
-      const dTag = getDTagValueFromTags(event.tags);
-      if (dTag) return dTag;
-    }
-    if (fallbackEvent && typeof fallbackEvent === "object") {
-      return getDTagValueFromTags(fallbackEvent.tags);
-    }
-    return null;
   }
 
   getActiveKey(video) {
@@ -1047,16 +1030,6 @@ export class NostrClient {
    * 3. **Network Connect**: Initializes `SimplePool` and establishes WebSocket connections to relays.
    *
    * @returns {Promise<void>} Resolves when the relay pool is initialized and connections are attempted.
-   */
-  /**
-   * Main entry point for the client.
-   *
-   * 1. Restores local state from IndexedDB (Stale-While-Revalidate).
-   * 2. Initializes the relay connection pool.
-   * 3. Connects to configured relays.
-   * 4. Restores any persistent remote signer sessions.
-   *
-   * @returns {Promise<void>} Resolves after the initial relay connection attempt completes.
    */
   async init() {
     if (this.isInitialized) {
@@ -2367,6 +2340,15 @@ export class NostrClient {
   async registerPrivateKeySigner(opts) {
     const adapter = await createNsecAdapter(opts);
     this.signerManager.setActiveSigner(adapter);
+
+    if (opts.privateKey && typeof opts.privateKey === "string") {
+      this.sessionActor = {
+        pubkey: adapter.pubkey,
+        privateKey: opts.privateKey.trim().toLowerCase(),
+        source: "nsec",
+      };
+    }
+
     return adapter;
   }
 
