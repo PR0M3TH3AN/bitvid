@@ -2370,34 +2370,14 @@ export class NostrClient {
    * @throws {Error} If not logged in or if the primary publish fails.
    */
   async publishVideo(videoPayload, pubkey) {
-    const {
-      event,
-      videoData,
-      nip71Metadata,
-      finalUrl,
-      finalMagnet,
-      finalThumbnail,
-      finalDescription,
-      finalTitle,
-      mimeType,
-      fileSha256,
-      originalFileSha256,
-      videoRootId,
-      dTagValue,
-      createdAt,
-      contentObject,
-      wantPrivate,
-      normalizedPubkey,
-    } = await prepareVideoPublishPayload(videoPayload, pubkey);
+    const context = await prepareVideoPublishPayload(videoPayload, pubkey);
 
-    const userPubkeyLower = normalizedPubkey.toLowerCase();
-
-    devLogger.log("Publish event with series identifier:", videoRootId);
-    devLogger.log("Event content:", event.content);
+    devLogger.log("Publish event with series identifier:", context.videoRootId);
+    devLogger.log("Event content:", context.event.content);
 
     try {
       // 1. Publish the primary Video Note (Kind 30078)
-      const { signedEvent } = await this.signAndPublishEvent(event, {
+      const { signedEvent } = await this.signAndPublishEvent(context.event, {
         context: "video note",
         logName: "Video note",
         devLogLabel: "video note",
@@ -2405,33 +2385,10 @@ export class NostrClient {
       });
 
       // 2. Publish NIP-94 Mirror (Kind 1063) if a hosted URL is present.
-      await handlePublishNip94(this, signedEvent, finalUrl, {
-        videoData,
-        videoPayload,
-        finalMagnet,
-        finalThumbnail,
-        finalDescription,
-        finalTitle,
-        mimeType,
-        fileSha256,
-        originalFileSha256,
-        pubkey: normalizedPubkey,
-        createdAt,
-        isPrivate: contentObject.isPrivate,
-      });
+      await handlePublishNip94(this, signedEvent, context);
 
       // 3. Publish NIP-71 Metadata (Kind 22) if categories/tags were added.
-      await handlePublishNip71(
-        this,
-        signedEvent,
-        videoPayload,
-        nip71Metadata,
-        contentObject,
-        wantPrivate,
-        userPubkeyLower,
-        videoRootId,
-        dTagValue
-      );
+      await handlePublishNip71(this, signedEvent, context);
 
       return signedEvent;
     } catch (err) {
