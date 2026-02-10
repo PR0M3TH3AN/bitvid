@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Optimized Nostr login speed. (PR #2153 by PR0M3TH3AN)
 - Updated `nostr-tools`, `floating-ui`, and `crypto-helpers` dependencies. (PR #2153 by PR0M3TH3AN)
 - Major repository update and synchronization (Commit `b429b1c` by thePR0M3TH3AN)
+- Removed runtime `ASSET_VERSION` query-string cache busting for static assets. Deployment freshness is now driven by build-time hashed filenames and `asset-manifest.json` rewrites.
 
 ### Fixed
 
