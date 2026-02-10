@@ -448,290 +448,95 @@ export function createPlaybackCoordinator(deps) {
      * and falls back to WebTorrent when needed.
      */
     async playVideoWithFallback(options = {}) {
-      const { url = "", magnet = "", trigger, forcedSource } = options || {};
+      const playbackStrategyService = this.playbackStrategyService;
+      if (!playbackStrategyService) {
+        this.showError("Playback strategy service is not available.");
+        return { source: null, error: new Error("Service missing") };
+      }
 
-      emit("playback-decision", {
-        method: forcedSource || (magnet ? "webtorrent" : "url"), // heuristic
-        details: {
-          url: Boolean(url),
-          magnet: Boolean(magnet),
-          forcedSource,
+      return playbackStrategyService.play(options, {
+        getModalVideo: () => this.modalVideo,
+        setModalVideo: (videoElement) => {
+          this.modalVideo = videoElement;
         },
-      });
-
-      const hasTrigger = Object.prototype.hasOwnProperty.call(
-        options || {},
-        "trigger"
-      );
-      if (hasTrigger) {
-        this.setLastModalTrigger(trigger);
-      }
-      const sanitizedUrl = typeof url === "string" ? url.trim() : "";
-      const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
-      const previousSource = this.playSource || null;
-      const requestSignature = JSON.stringify({
-        url: sanitizedUrl,
-        magnet: trimmedMagnet,
-        forcedSource,
-      });
-
-      const modalVideoIsConnected = (() => {
-        if (!this.modalVideo) {
-          return false;
-        }
-        if (typeof this.modalVideo.isConnected === "boolean") {
-          return this.modalVideo.isConnected;
-        }
-        const ownerDocument = this.modalVideo.ownerDocument ||
-          (typeof document !== "undefined" ? document : null);
-        if (ownerDocument?.contains) {
-          try {
-            return ownerDocument.contains(this.modalVideo);
-          } catch (error) {
-            devLogger.warn(
-              "[playVideoWithFallback] Failed to determine modal video connection state",
-              error,
-            );
+        getVideoModalElement: () =>
+          this.videoModal && typeof this.videoModal.getVideoElement === "function"
+            ? this.videoModal.getVideoElement()
+            : null,
+        setVideoModalElement: (videoElement) => {
+          if (
+            this.videoModal &&
+            typeof this.videoModal.setVideoElement === "function"
+          ) {
+            this.videoModal.setVideoElement(videoElement);
           }
-        }
-        return true;
-      })();
+        },
+        cleanupVideoModalPoster: () => {
+          if (
+            this.videoModal &&
+            typeof this.videoModal.clearPosterCleanup === "function"
+          ) {
+            this.videoModal.clearPosterCleanup();
+          }
+        },
+        ensureVideoModalReady: (opts) => this.ensureVideoModalReady(opts),
+        teardownVideoElement: (videoEl, opts) =>
+          this.teardownVideoElement(videoEl, opts),
+        applyModalLoadingPoster: () => this.applyModalLoadingPoster(),
 
-      const shouldReuseActiveSession =
-        modalVideoIsConnected &&
-        this.activePlaybackSession &&
-        typeof this.activePlaybackSession.matchesRequestSignature === "function" &&
-        this.activePlaybackSession.matchesRequestSignature(requestSignature);
-
-      if (shouldReuseActiveSession) {
-        this.log(
-          "[playVideoWithFallback] Duplicate playback request detected; reusing active session."
-        );
-        if (this.activePlaybackResultPromise) {
-          return this.activePlaybackResultPromise;
-        }
-        if (typeof this.activePlaybackSession.getResult === "function") {
-          return this.activePlaybackSession.getResult();
-        }
-        return { source: null };
-      }
-
-      await this.waitForCleanup();
-      this.cancelPendingViewLogging();
-
-      if (
-        previousSource === "torrent" &&
-        sanitizedUrl &&
-        this.playbackService &&
-        this.playbackService.torrentClient &&
-        typeof this.playbackService.torrentClient.cleanup === "function"
-      ) {
-        try {
-          this.log(
-            "[playVideoWithFallback] Previous playback used WebTorrent; cleaning up before preparing hosted session.",
-          );
-          await this.playbackService.torrentClient.cleanup();
-        } catch (error) {
-          devLogger.warn(
-            "[playVideoWithFallback] Pre-playback torrent cleanup threw:",
-            error,
-          );
-        }
-      }
-
-      let modalVideoEl = this.modalVideo;
-      const modalVideoFromController =
-        this.videoModal && typeof this.videoModal.getVideoElement === "function"
-          ? this.videoModal.getVideoElement()
-          : null;
-      if (modalVideoFromController && modalVideoFromController !== modalVideoEl) {
-        modalVideoEl = modalVideoFromController;
-        this.modalVideo = modalVideoEl;
-      }
-      const modalVideoConnected = Boolean(
-        modalVideoEl && modalVideoEl.isConnected,
-      );
-      if (!modalVideoEl || !modalVideoConnected) {
-        try {
-          const { videoElement } = await this.ensureVideoModalReady({
-            ensureVideoElement: true,
-          });
-          modalVideoEl = videoElement;
-          this.modalVideo = modalVideoEl;
-        } catch (error) {
-          this.log(
-            "[playVideoWithFallback] Failed to load video modal before playback:",
-            error
-          );
-          this.showError("Could not prepare the video player. Please try again.");
-          return { source: null, error };
-        }
-      }
-
-      if (!modalVideoEl) {
-        const error = new Error("Video element is not ready for playback.");
-        this.log(
-          "[playVideoWithFallback] Video element missing after modal load attempt."
-        );
-        this.showError("Video player is not ready yet. Please try again.");
-        return { source: null, error };
-      }
-
-      if (
-        this.videoModal &&
-        typeof this.videoModal.clearPosterCleanup === "function"
-      ) {
-        try {
-          this.videoModal.clearPosterCleanup();
-        } catch (err) {
-          devLogger.warn(
-            "[playVideoWithFallback] video modal poster cleanup threw:",
-            err
-          );
-        }
-      }
-
-      const refreshedModal = this.teardownVideoElement(modalVideoEl, {
-        replaceNode: true,
-      });
-      if (refreshedModal) {
-        if (
-          this.videoModal &&
-          typeof this.videoModal.setVideoElement === "function"
-        ) {
-          this.videoModal.setVideoElement(refreshedModal);
-        }
-        this.modalVideo = refreshedModal;
-        modalVideoEl = this.modalVideo;
-        this.applyModalLoadingPoster();
-      } else {
-        this.applyModalLoadingPoster();
-      }
-
-      const session = this.playbackService.createSession({
-        url: sanitizedUrl,
-        magnet: trimmedMagnet,
-        requestSignature,
-        videoElement: this.modalVideo,
         waitForCleanup: () => this.waitForCleanup(),
         cancelPendingViewLogging: () => this.cancelPendingViewLogging(),
         clearActiveIntervals: () => this.clearActiveIntervals(),
         showModalWithPoster: () => this.showModalWithPoster(),
-        teardownVideoElement: (videoEl, options) =>
-          this.teardownVideoElement(videoEl, options),
         probeUrl: (candidateUrl) => this.probeUrl(candidateUrl),
-        playViaWebTorrent: (magnetUri, options) =>
-          this.playViaWebTorrent(magnetUri, options),
+        playViaWebTorrent: (magnetUri, opts) =>
+          this.playViaWebTorrent(magnetUri, opts),
         autoplay: () => this.autoplayModalVideo(),
+
         unsupportedBtihMessage: UNSUPPORTED_BTITH_MESSAGE,
-        forcedSource,
-      });
 
-      this.activePlaybackSession = session;
-      this.activePlaybackResultPromise = null;
+        showError: (msg) => this.showError(msg),
+        setLastModalTrigger: (trigger) => this.setLastModalTrigger(trigger),
 
-      this.resetTorrentStats();
-      this.playSource = null;
+        resetTorrentStats: () => this.resetTorrentStats(),
+        setPlaySource: (source) => {
+          this.playSource = source;
+        },
+        setActivePlaybackSession: (session) => {
+          this.activePlaybackSession = session;
+        },
+        setActivePlaybackResultPromise: (promise) => {
+          this.activePlaybackResultPromise = promise;
+        },
 
-      const playbackConfig = session.getPlaybackConfig();
-      const magnetForPlayback = session.getMagnetForPlayback();
-      const fallbackMagnet = session.getFallbackMagnet();
-      const magnetProvided = session.getMagnetProvided();
-
-      if (this.currentVideo) {
-        this.currentVideo.magnet = magnetForPlayback;
-        this.currentVideo.normalizedMagnet = magnetForPlayback;
-        this.currentVideo.normalizedMagnetFallback = fallbackMagnet;
-        if (playbackConfig?.infoHash && !this.currentVideo.legacyInfoHash) {
-          this.currentVideo.legacyInfoHash = playbackConfig.infoHash;
-        }
-        this.currentVideo.torrentSupported = !!magnetForPlayback;
-      }
-      this.currentMagnetUri = magnetForPlayback || null;
-      // this.setCopyMagnetState(!!magnetForPlayback); // Removed
-
-      const unsubscribers = [];
-      const subscribe = (eventName, handler) => {
-        const off = session.on(eventName, handler);
-        unsubscribers.push(off);
-      };
-
-      subscribe("status", ({ message } = {}) => {
-        if (this.videoModal) {
-          this.videoModal.updateStatus(
-            typeof message === "string" ? message : ""
-          );
-        }
-      });
-
-      subscribe("video-prepared", ({ videoElement } = {}) => {
-        if (videoElement && videoElement !== this.modalVideo) {
-          this.modalVideo = videoElement;
-        }
-      });
-
-      subscribe("view-logging-request", ({ videoElement } = {}) => {
-        if (videoElement) {
-          this.preparePlaybackLogging(videoElement);
-        }
-      });
-
-      subscribe("poster-remove", ({ reason } = {}) => {
-        this.forceRemoveModalPoster(reason || "playback");
-      });
-
-      subscribe("sourcechange", ({ source } = {}) => {
-        this.playSource = source || null;
-        const usingTorrent = source === "torrent";
-        if (this.videoModal) {
-          this.videoModal.setTorrentStatsVisibility?.(usingTorrent);
-        }
-      });
-
-      subscribe("error", ({ error, message } = {}) => {
-        const displayMessage =
-          typeof message === "string"
-            ? message
-            : error && error.message
-            ? `Playback error: ${error.message}`
-            : "Playback error";
-        this.showError(displayMessage);
-      });
-
-      subscribe("finished", () => {
-        if (this.activePlaybackSession === session) {
-          this.activePlaybackSession = null;
-          this.activePlaybackResultPromise = null;
-        }
-        while (unsubscribers.length) {
-          const off = unsubscribers.pop();
-          if (typeof off === "function") {
-            try {
-              off();
-            } catch (err) {
-              devLogger.warn(
-                "[playVideoWithFallback] Listener cleanup error:",
-                err
-              );
+        updateCurrentVideoMetadata: (metadata) => {
+          if (this.currentVideo) {
+            this.currentVideo.magnet = metadata.magnet;
+            this.currentVideo.normalizedMagnet = metadata.normalizedMagnet;
+            this.currentVideo.normalizedMagnetFallback =
+              metadata.normalizedMagnetFallback;
+            if (metadata.legacyInfoHash && !this.currentVideo.legacyInfoHash) {
+              this.currentVideo.legacyInfoHash = metadata.legacyInfoHash;
             }
+            this.currentVideo.torrentSupported = metadata.torrentSupported;
           }
-        }
+          this.currentMagnetUri = metadata.magnet || null;
+        },
+
+        updateVideoModalStatus: (message) => {
+          if (this.videoModal) {
+            this.videoModal.updateStatus(message);
+          }
+        },
+        preparePlaybackLogging: (videoElement) =>
+          this.preparePlaybackLogging(videoElement),
+        forceRemoveModalPoster: (reason) => this.forceRemoveModalPoster(reason),
+        setTorrentStatsVisibility: (visible) => {
+          if (this.videoModal) {
+            this.videoModal.setTorrentStatsVisibility?.(visible);
+          }
+        },
       });
-
-      const startPromise = session.start();
-      this.activePlaybackResultPromise = startPromise;
-      const result = await startPromise;
-
-      if (!result || result.error) {
-        return result;
-      }
-
-      emit("playback-started", {
-        method: result.source,
-        details: { startedAt: Date.now() },
-      });
-
-      return result;
     },
 
     async playVideoByEventId(eventId, playbackHint = {}) {

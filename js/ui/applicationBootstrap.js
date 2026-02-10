@@ -6,6 +6,7 @@ import { createWatchHistoryRenderer } from "../historyView.js";
 import WatchHistoryController from "./watchHistoryController.js";
 import WatchHistoryTelemetry from "../services/watchHistoryTelemetry.js";
 import PlaybackService from "../services/playbackService.js";
+import PlaybackStrategyService from "../services/playbackStrategyService.js";
 import AuthService from "../services/authService.js";
 import DiscussionCountService from "../services/discussionCountService.js";
 import CommentThreadService from "../services/commentThreadService.js";
@@ -350,6 +351,10 @@ export default class ApplicationBootstrap {
           },
         },
       });
+    app.playbackStrategyService = new PlaybackStrategyService({
+      playbackService: app.playbackService,
+      logger: devLogger,
+    });
     app.activePlaybackResultPromise = null;
     app.activePlaybackSession = null;
 
