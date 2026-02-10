@@ -342,6 +342,12 @@ The generated `css/tailwind.generated.css` artifact is ignored in git. CI
 workflows and Netlify deploys run `npm run build` to produce the compiled
 stylesheet during deployment, so source changes are all you need to commit.
 
+Deploy targets must publish the `dist/` directory as the web root (never the
+repository root). CI enforces deploy artifact integrity with
+`npm run verify:dist:deploy-artifact` immediately after `npm run build`, and
+hosts that support a publish/output directory (for example Netlify and Vercel)
+should be configured to use `dist`.
+
 #### Netlify cache policy for safe fast rollouts
 
 bitvid uses path-class cache rules so deployments propagate quickly without
