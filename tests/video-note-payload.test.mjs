@@ -60,8 +60,8 @@ test("augments magnets with ws/xs hints", () => {
   assert.deepEqual(errors, []);
   const { magnet, ws, xs } = payload.legacyFormData;
   assert.ok(
-    magnet.startsWith("magnet:?xt=urn%3Abtih%3A") || magnet.startsWith("magnet:?xt=urn:btih:"),
-    "Magnet should start with xt parameter",
+    magnet.startsWith("magnet:?xt=urn%3Abtih%3A"),
+    "Magnet should start with xt parameter (encoded)",
   );
   assert.ok(
     magnet.includes("ws=https%3A%2F%2Fcdn.example.com%2Fvideo.mp4") ||
