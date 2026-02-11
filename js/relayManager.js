@@ -665,7 +665,7 @@ class RelayPreferencesManager {
       throw error;
     }
 
-    if (signer.type === "extension") {
+    if (signer.type === "extension" || signer.type === "nip07") {
       const permissionResult = await requestDefaultExtensionPermissions();
       if (!permissionResult.ok) {
         userLogger.warn(

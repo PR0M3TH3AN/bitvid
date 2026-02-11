@@ -2818,7 +2818,7 @@ class Application {
       throw error;
     }
 
-    if (signer.type === "extension" && nostrClient.ensureExtensionPermissions) {
+    if ((signer.type === "extension" || signer.type === "nip07") && nostrClient.ensureExtensionPermissions) {
       const permissionResult = await nostrClient.ensureExtensionPermissions(
         DEFAULT_NIP07_CORE_METHODS,
       );

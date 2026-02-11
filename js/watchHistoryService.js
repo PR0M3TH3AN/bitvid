@@ -88,10 +88,12 @@ async function ensureWatchHistoryExtensionPermissions(actorKey, options = {}) {
 
   const allowPermissionPrompt = options?.allowPermissionPrompt !== false;
 
+  // FIX: Always attempt to resolve the signer regardless of allowPermissionPrompt.
+  // ensureActiveSignerForPubkey does not prompt the user — it only resolves an
+  // already-injected extension or returns the existing signer.
   let signer = getActiveSigner();
   if (
-    allowPermissionPrompt &&
-    (!signer && typeof nostrClient?.ensureActiveSignerForPubkey === "function")
+    !signer && typeof nostrClient?.ensureActiveSignerForPubkey === "function"
   ) {
     signer = await nostrClient.ensureActiveSignerForPubkey(normalizedActor);
   }
@@ -99,7 +101,9 @@ async function ensureWatchHistoryExtensionPermissions(actorKey, options = {}) {
   const canSign = typeof signer?.canSign === "function"
     ? signer.canSign()
     : typeof signer?.signEvent === "function";
-  if (!canSign || signer?.type !== "extension") {
+  // FIX: NIP-07 adapters use type "nip07", not "extension". Both types
+  // represent browser extension signers that need permission pre-granting.
+  if (!canSign || (signer?.type !== "extension" && signer?.type !== "nip07")) {
     return { ok: true };
   }
 

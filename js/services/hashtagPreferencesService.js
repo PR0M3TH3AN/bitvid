@@ -1282,7 +1282,7 @@ class HashtagPreferencesService {
       throw error;
     }
 
-    if (signer.type === "extension") {
+    if (signer.type === "extension" || signer.type === "nip07") {
       const permissionResult = await requestDefaultExtensionPermissions(
         DEFAULT_NIP07_ENCRYPTION_METHODS,
       );

@@ -2427,7 +2427,7 @@ export class ModerationService {
     }
 
     if (
-      signer.type === "extension" &&
+      (signer.type === "extension" || signer.type === "nip07") &&
       typeof this.nostrClient?.ensureExtensionPermissions === "function"
     ) {
       const permissionResult = await this.nostrClient.ensureExtensionPermissions([
