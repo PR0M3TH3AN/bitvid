@@ -18,7 +18,6 @@ import {
   ensureInternalWalletSettings,
   buildServicesContract,
   buildStateContract,
-  NWC_URI_SCHEME
 } from "./profileModalContract.js";
 import { getBreakpointLg } from "../designSystem/metrics.js";
 import { getProviderMetadata } from "../services/authProviders/index.js";
@@ -29,8 +28,6 @@ import {
   formatHashtag,
 } from "../utils/hashtagNormalization.js";
 import { formatTimeAgo } from "../utils/formatters.js";
-import { getActiveSigner } from "../nostr/client.js";
-import { DEFAULT_NIP07_ENCRYPTION_METHODS } from "../nostr/nip07Permissions.js";
 import { sanitizeRelayList } from "../nostr/nip46Client.js";
 import { buildPublicUrl, buildR2Key } from "../r2.js";
 import { buildProfileMetadataEvent } from "../nostrEventSchemas.js";
@@ -39,20 +36,20 @@ import {
   extractAttachmentsFromMessage,
   formatAttachmentSize,
 } from "../attachments/attachmentUtils.js";
-import { getCorsOrigins, prepareS3Connection } from "../services/s3Service.js";
 import {
   clearAttachmentCache,
   downloadAttachment,
   uploadAttachment,
   getAttachmentCacheStats,
 } from "../services/attachmentService.js";
-import { PROVIDERS } from "../services/storageService.js";
 import {
   getLinkPreviewSettings,
   setLinkPreviewAutoFetch,
 } from "../utils/linkPreviewSettings.js";
 import { SubscriptionHistoryController } from "./subscriptionHistoryController.js";
 import { DMSettingsModalController } from "./dm/DMSettingsModalController.js";
+import { ProfileWalletController } from "./profileModal/ProfileWalletController.js";
+import { ProfileStorageController } from "./profileModal/ProfileStorageController.js";
 
 const noop = () => {};
 
@@ -546,10 +543,12 @@ export class ProfileModalController {
     this.largeLayoutQuery = null;
     this.largeLayoutQueryListener = null;
     this.isLargeLayoutActiveFlag = false;
+    this.walletController = new ProfileWalletController(this);
+    this.storageController = new ProfileStorageController(this);
     this.mobileViewState = "menu";
     this.lastMobileViewState = "menu";
     this.setActivePane(this.getActivePane());
-    this.setWalletPaneBusy(this.isWalletBusy());
+    this.walletController.setWalletPaneBusy(this.walletController.isWalletBusy());
     this.addAccountButtonState = null;
     this.adminEmptyMessages = new Map();
     this.hashtagPreferencesUnsubscribe = null;
@@ -806,6 +805,9 @@ export class ProfileModalController {
     this.profileLinkPreviewAutoToggle =
       document.getElementById("profileLinkPreviewAutoToggle") || null;
 
+    this.walletController.cacheDomReferences();
+    this.storageController.cacheDomReferences();
+
     if (this.pendingMessagesRender) {
       const { messages, actorPubkey } = this.pendingMessagesRender;
       this.pendingMessagesRender = null;
@@ -835,18 +837,6 @@ export class ProfileModalController {
     this.updateMessagePrivacyModeDisplay();
     this.populateDmRelayPreferences();
     this.syncDmPrivacySettingsUi();
-
-    this.walletUriInput = document.getElementById("profileWalletUri") || null;
-    this.walletDefaultZapInput =
-      document.getElementById("profileWalletDefaultZap") || null;
-    this.walletSaveButton =
-      document.getElementById("profileWalletSave") || null;
-    this.walletTestButton =
-      document.getElementById("profileWalletTest") || null;
-    this.walletDisconnectButton =
-      document.getElementById("profileWalletDisconnect") || null;
-    this.walletStatusText =
-      document.getElementById("profileWalletStatus") || null;
 
     this.hashtagStatusText =
       document.getElementById("profileHashtagStatus") || null;
@@ -891,7 +881,6 @@ export class ProfileModalController {
     this.blockListStatus =
       this.panes.blocked?.querySelector("[data-role=\"blocked-list-status\"]") ||
       null;
-    this.profileWalletStatusText = this.walletStatusText;
     this.moderationSettingsCard =
       document.getElementById("profileModerationSettings") || null;
     this.moderationBlurInput =
@@ -943,29 +932,6 @@ export class ProfileModalController {
       document.getElementById("adminModeratorInput") || null;
     this.adminModeratorsRefreshBtn =
       document.getElementById("adminModeratorsRefreshBtn") || null;
-
-    this.storageUnlockBtn = document.getElementById("profileStorageUnlockBtn") || null;
-    this.storageSaveBtn = document.getElementById("storageSaveBtn") || null;
-    this.storageTestBtn = document.getElementById("storageTestBtn") || null;
-    this.storageClearBtn = document.getElementById("storageClearBtn") || null;
-    this.storageUnlockSection = document.getElementById("profileStorageUnlock") || null;
-    this.storageFormSection = document.getElementById("profileStorageForm") || null;
-    this.storageStatusText = document.getElementById("profileStorageStatus") || null;
-    this.storageFormStatus = document.getElementById("storageFormStatus") || null;
-
-    this.storageProviderInput = document.getElementById("storageProvider") || null;
-    this.storageEndpointInput = document.getElementById("storageEndpoint") || null;
-    this.storageRegionInput = document.getElementById("storageRegion") || null;
-    this.storageAccessKeyInput = document.getElementById("storageAccessKey") || null;
-    this.storageSecretKeyInput = document.getElementById("storageSecretKey") || null;
-    this.storageBucketInput = document.getElementById("storageBucket") || null;
-    this.storagePrefixInput = document.getElementById("storagePrefix") || null;
-    this.storagePrefixWarning = document.getElementById("storagePrefixWarning") || null;
-    this.storageDefaultInput = document.getElementById("storageDefault") || null;
-    this.storageR2Helper = document.getElementById("storageR2Helper") || null;
-    this.storageS3Helper = document.getElementById("storageS3Helper") || null;
-    this.storageForcePathStyleInput = document.getElementById("storageForcePathStyle") || null;
-    this.storageForcePathStyleLabel = document.getElementById("storageForcePathStyleLabel") || null;
 
     // Backwards-compatible aliases retained for application code that still
     // mirrors DOM references from the controller. These should be removed once
@@ -4821,6 +4787,8 @@ export class ProfileModalController {
     }
 
     this.bindDmRelayControls();
+    this.walletController.registerEventListeners();
+    this.storageController.registerEventListeners();
 
     if (this.profileMessageSendButton instanceof HTMLElement) {
       this.profileMessageSendButton.addEventListener("click", () => {
@@ -4887,44 +4855,6 @@ export class ProfileModalController {
         } else {
           this.showError("Please log in to backup subscriptions.");
         }
-      });
-    }
-
-    if (this.walletUriInput instanceof HTMLElement) {
-      this.walletUriInput.addEventListener("focus", () => {
-        this.revealSecretInputValue(this.walletUriInput);
-      });
-      this.walletUriInput.addEventListener("blur", () => {
-        this.handleSecretInputBlur(this.walletUriInput);
-        this.applyWalletControlState();
-      });
-      this.walletUriInput.addEventListener("input", () => {
-        this.handleSecretInputChange(this.walletUriInput);
-        this.applyWalletControlState();
-      });
-    }
-
-    if (this.walletDefaultZapInput instanceof HTMLElement) {
-      this.walletDefaultZapInput.addEventListener("input", () => {
-        this.applyWalletControlState();
-      });
-    }
-
-    if (this.walletSaveButton instanceof HTMLElement) {
-      this.walletSaveButton.addEventListener("click", () => {
-        void this.handleWalletSave();
-      });
-    }
-
-    if (this.walletTestButton instanceof HTMLElement) {
-      this.walletTestButton.addEventListener("click", () => {
-        void this.handleWalletTest();
-      });
-    }
-
-    if (this.walletDisconnectButton instanceof HTMLElement) {
-      this.walletDisconnectButton.addEventListener("click", () => {
-        void this.handleWalletDisconnect();
       });
     }
 
@@ -5069,42 +4999,6 @@ export class ProfileModalController {
           event.preventDefault();
           void this.handleAdminListMutation("blacklist", "add");
         }
-      });
-    }
-
-    if (this.storageUnlockBtn instanceof HTMLElement) {
-      this.storageUnlockBtn.addEventListener("click", () => {
-        void this.handleUnlockStorage();
-      });
-    }
-
-    if (this.storageSaveBtn instanceof HTMLElement) {
-      this.storageSaveBtn.addEventListener("click", () => {
-        void this.handleSaveStorage();
-      });
-    }
-
-    if (this.storageTestBtn instanceof HTMLElement) {
-      this.storageTestBtn.addEventListener("click", () => {
-        void this.handleTestStorage();
-      });
-    }
-
-    if (this.storageClearBtn instanceof HTMLElement) {
-      this.storageClearBtn.addEventListener("click", () => {
-        void this.handleClearStorage();
-      });
-    }
-
-    if (this.storageProviderInput instanceof HTMLElement) {
-      this.storageProviderInput.addEventListener("change", () => {
-        this.updateStorageFormVisibility();
-      });
-    }
-
-    if (this.storagePrefixInput instanceof HTMLElement) {
-      this.storagePrefixInput.addEventListener("input", () => {
-        this.handlePublicUrlInput();
       });
     }
 
@@ -6567,9 +6461,9 @@ export class ProfileModalController {
         void this.populateProfileMessages({ reason: "pane-select" });
         void this.refreshDmRelayPreferences();
       } else if (target === "wallet") {
-        this.refreshWalletPaneState();
+        this.walletController.refreshWalletPaneState();
       } else if (target === "storage") {
-        this.populateStoragePane();
+        this.storageController.populateStoragePane();
       } else if (target === "hashtags") {
         this.populateHashtagPreferences();
         if (activeHex && this.hashtagPreferencesService) {
@@ -9081,556 +8975,6 @@ export class ProfileModalController {
     }
   }
 
-  async populateStoragePane() {
-    const storageService = this.services.storageService;
-    const pubkey = this.normalizeHexPubkey(this.getActivePubkey());
-
-    this.handleClearStorage();
-
-    if (!pubkey) {
-      // Not logged in
-      if (this.storageUnlockSection) this.storageUnlockSection.classList.add("hidden");
-      if (this.storageFormSection) this.storageFormSection.classList.add("hidden");
-      if (this.storageStatusText) {
-        this.storageStatusText.textContent = "Please login to manage storage.";
-        this.storageStatusText.className = "text-xs text-status-danger";
-      }
-      return;
-    }
-
-    let isUnlocked = storageService && storageService.masterKeys.has(pubkey);
-
-    // Auto-unlock: If not already unlocked and a signer is available, attempt
-    // a silent unlock in the background. This eliminates the manual "Unlock"
-    // click for users whose extension has already granted permissions.
-    if (!isUnlocked && storageService && !this.storageUnlockFailure) {
-      const signer = getActiveSigner();
-      if (signer && (typeof signer.nip44Decrypt === "function" || typeof signer.nip04Decrypt === "function")) {
-        try {
-          await storageService.unlock(pubkey, { signer });
-          isUnlocked = storageService.masterKeys.has(pubkey);
-        } catch (autoUnlockError) {
-          // Silent failure — user can still manually unlock.
-          devLogger.log("[ProfileModal] Auto-unlock storage skipped:", autoUnlockError?.message || autoUnlockError);
-        }
-      }
-    }
-
-    if (this.storageStatusText) {
-      if (isUnlocked) {
-        this.storageStatusText.textContent = "Unlocked";
-        this.storageStatusText.className = "text-xs text-status-success";
-      } else if (this.storageUnlockFailure?.message) {
-        this.storageStatusText.textContent = `Locked (${this.storageUnlockFailure.message})`;
-        this.storageStatusText.className = "text-xs text-status-danger";
-      } else {
-        this.storageStatusText.textContent = "Locked";
-        this.storageStatusText.className = "text-xs text-status-warning";
-      }
-    }
-
-    if (isUnlocked) {
-      if (this.storageUnlockSection) this.storageUnlockSection.classList.add("hidden");
-      if (this.storageFormSection) this.storageFormSection.classList.remove("hidden");
-
-      // Load existing connection if form is empty or needs refresh
-      // For now, we assume managing a 'default' connection or the first one found.
-      try {
-        const connections = await storageService.listConnections(pubkey);
-        // Prioritize default for uploads
-        const defaultConn = connections.find(c => c.meta?.defaultForUploads);
-        const targetConn = defaultConn || connections[0];
-
-        if (targetConn) {
-          const conn = await storageService.getConnection(pubkey, targetConn.id);
-          if (conn) {
-            this.fillStorageForm(conn);
-            if (this.storageStatusText) {
-              const label = conn.meta?.label || conn.provider || "S3";
-              this.storageStatusText.textContent = `Unlocked (${label})`;
-            }
-          }
-        }
-      } catch (error) {
-        devLogger.error("Failed to load storage connections:", error);
-      }
-    } else {
-      if (this.storageUnlockSection) this.storageUnlockSection.classList.remove("hidden");
-      if (this.storageFormSection) this.storageFormSection.classList.add("hidden");
-    }
-
-    this.updateStorageFormVisibility();
-  }
-
-  fillStorageForm(conn) {
-    if (!conn) return;
-    const { provider, accessKeyId, secretAccessKey, accountId: payloadAccountId, endpoint: payloadEndpoint, forcePathStyle: payloadForcePathStyle } = conn;
-    const { endpoint, region, bucket, prefix, defaultForUploads, accountId, forcePathStyle: metaForcePathStyle } = conn.meta || {};
-
-    if (this.storageProviderInput) this.storageProviderInput.value = provider || "cloudflare_r2";
-
-    // For R2, accountId is critical.
-    const resolvedEndpoint = endpoint || accountId || payloadAccountId || payloadEndpoint || "";
-
-    if (this.storageEndpointInput) this.storageEndpointInput.value = resolvedEndpoint;
-    if (this.storageRegionInput) this.storageRegionInput.value = region || "auto";
-    if (this.storageAccessKeyInput) this.storageAccessKeyInput.value = accessKeyId || "";
-    if (this.storageSecretKeyInput) this.storageSecretKeyInput.value = secretAccessKey || "";
-    if (this.storageBucketInput) this.storageBucketInput.value = bucket || "";
-    if (this.storagePrefixInput) this.storagePrefixInput.value = prefix || "";
-    if (this.storageDefaultInput) this.storageDefaultInput.checked = !!defaultForUploads;
-
-    if (this.storageForcePathStyleInput) {
-      if (typeof payloadForcePathStyle === "boolean") {
-        this.storageForcePathStyleInput.checked = payloadForcePathStyle;
-      } else if (typeof metaForcePathStyle === "boolean") {
-        this.storageForcePathStyleInput.checked = metaForcePathStyle;
-      } else {
-        // Default to true for S3 if unspecified
-        this.storageForcePathStyleInput.checked = true;
-      }
-    }
-
-    this.updateStorageFormVisibility();
-    this.handlePublicUrlInput();
-  }
-
-  handlePublicUrlInput() {
-    if (!this.storagePrefixInput || !this.storagePrefixWarning) return;
-    this.storagePrefixWarning.textContent = "";
-    this.storagePrefixWarning.classList.add("hidden");
-  }
-
-  updateStorageFormVisibility() {
-    const provider = this.storageProviderInput?.value || "cloudflare_r2";
-    const isR2 = provider === "cloudflare_r2";
-
-    if (this.storageEndpointInput) {
-      const label = this.storageEndpointInput.parentElement.querySelector("span");
-      if (isR2) {
-        if (label) label.textContent = "Cloudflare Account ID";
-        this.storageEndpointInput.placeholder =
-          "Account ID from Cloudflare dashboard";
-        this.storageEndpointInput.parentElement.classList.remove("hidden");
-        this.storageEndpointInput.type = "text";
-        if (this.storagePrefixInput) {
-          this.storagePrefixInput.placeholder = "https://pub-xxx.r2.dev";
-        }
-      } else {
-        if (label) label.textContent = "Endpoint URL";
-        this.storageEndpointInput.placeholder = "https://s3.example.com";
-        this.storageEndpointInput.parentElement.classList.remove("hidden");
-        this.storageEndpointInput.type = "url";
-        if (this.storagePrefixInput) {
-          this.storagePrefixInput.placeholder = "https://cdn.example.com";
-        }
-      }
-    }
-
-    if (this.storageR2Helper) {
-      if (isR2) this.storageR2Helper.classList.remove("hidden");
-      else this.storageR2Helper.classList.add("hidden");
-    }
-
-    if (this.storageS3Helper) {
-      if (!isR2) this.storageS3Helper.classList.remove("hidden");
-      else this.storageS3Helper.classList.add("hidden");
-    }
-
-    if (this.storageForcePathStyleLabel) {
-      if (!isR2) this.storageForcePathStyleLabel.classList.remove("hidden", "flex");
-      else this.storageForcePathStyleLabel.classList.add("hidden");
-
-      if (!isR2) {
-        this.storageForcePathStyleLabel.classList.add("flex");
-      }
-    }
-  }
-
-  getStorageUnlockFailureMessage(error) {
-    const code = typeof error?.code === "string" ? error.code : "";
-
-    switch (code) {
-      case "storage-unlock-permission-denied":
-        return "Storage unlock requires extension encryption permission. Approve the prompt, then retry unlock.";
-      case "storage-unlock-no-decryptor":
-        return "Your signer cannot decrypt storage keys. Use a signer with NIP-44 or NIP-04 decrypt support.";
-      case "storage-unlock-decrypt-failed":
-        return "Unable to decrypt your saved storage key. Retry unlock and confirm the active account matches.";
-      default:
-        return typeof error?.message === "string" && error.message.trim()
-          ? error.message
-          : "Failed to unlock storage. Ensure your signer supports NIP-04/44.";
-    }
-  }
-
-  setStorageUnlockFailureState(error) {
-    const code = typeof error?.code === "string" ? error.code : "storage-unlock-decrypt-failed";
-    const message = this.getStorageUnlockFailureMessage(error);
-
-    this.storageUnlockFailure = { code, message };
-
-    if (this.storageStatusText) {
-      this.storageStatusText.textContent = `Locked (${message})`;
-      this.storageStatusText.className = "text-xs text-status-danger";
-    }
-
-    this.setStorageFormStatus(message, "error");
-  }
-
-  clearStorageUnlockFailureState() {
-    this.storageUnlockFailure = null;
-  }
-
-  async requestStorageUnlockPermissions() {
-    const client = this.services?.nostrClient;
-    if (!client || typeof client.ensureExtensionPermissions !== "function") {
-      return { ok: true };
-    }
-
-    return client.ensureExtensionPermissions(DEFAULT_NIP07_ENCRYPTION_METHODS, {
-      context: "storage-unlock",
-      statusMessage:
-        "Approve the extension prompt to allow storage encryption/decryption.",
-      showSpinner: true,
-    });
-  }
-
-  async handleUnlockStorage() {
-    const pubkey = this.normalizeHexPubkey(this.getActivePubkey());
-    if (!pubkey) return;
-
-    let signer = getActiveSigner();
-    if (
-      !signer &&
-      this.services.nostrClient &&
-      typeof this.services.nostrClient.ensureActiveSignerForPubkey === "function"
-    ) {
-      try {
-        signer = await this.services.nostrClient.ensureActiveSignerForPubkey(pubkey);
-      } catch (error) {
-        devLogger.warn("[ProfileModal] Failed to resolve signer for storage unlock:", error);
-      }
-    }
-
-    if (!signer) {
-      this.showError("No active signer found. Please login.");
-      return;
-    }
-
-    if (
-      signer.pubkey &&
-      this.normalizeHexPubkey(signer.pubkey) !== pubkey
-    ) {
-      this.showError(
-        `Signer account (${signer.pubkey.slice(
-          0,
-          8,
-        )}...) does not match profile (${pubkey.slice(
-          0,
-          8,
-        )}...). Please switch accounts in your extension.`,
-      );
-      return;
-    }
-
-    const storageService = this.services.storageService;
-    if (!storageService) {
-      this.showError("Storage service unavailable.");
-      return;
-    }
-
-    const signerType = typeof signer?.type === "string" ? signer.type.trim().toLowerCase() : "";
-    const isExtensionSigner = signerType === "extension" || signerType === "nip07";
-
-    const shouldForcePermissionRetry =
-      this.storageUnlockBtn?.dataset?.retryAction === "request-permissions";
-
-    if (shouldForcePermissionRetry) {
-      const extensionPermissionCache = this.services?.nostrClient?.extensionPermissionCache;
-      if (extensionPermissionCache instanceof Set) {
-        for (const method of DEFAULT_NIP07_ENCRYPTION_METHODS) {
-          extensionPermissionCache.delete(method);
-        }
-      }
-    }
-
-    if (isExtensionSigner) {
-      const permissionResult = await this.requestStorageUnlockPermissions();
-      if (!permissionResult?.ok) {
-        const permissionError = permissionResult?.error || new Error("Extension permissions denied.");
-        permissionError.code = "storage-unlock-permission-denied";
-        this.setStorageUnlockFailureState(permissionError);
-        this.showError(this.getStorageUnlockFailureMessage(permissionError));
-        if (this.storageUnlockBtn) {
-          this.storageUnlockBtn.dataset.retryAction = "request-permissions";
-          this.storageUnlockBtn.textContent = "Retry Permissions + Unlock";
-        }
-        return;
-      }
-    }
-
-    // FIX: Check for method existence only, not capabilities. NIP-07 adapters
-    // always expose nip04Decrypt/nip44Decrypt methods that perform their own
-    // existence checks at call time. The capabilities getter dynamically queries
-    // the extension which may not have injected its NIP-44/04 modules yet
-    // (lazy injection), causing a false-negative that blocks the unlock flow.
-    const hasNip44Decrypt = typeof signer?.nip44Decrypt === "function";
-    const hasNip04Decrypt =
-      typeof signer?.nip04Decrypt === "function" || typeof signer?.decrypt === "function";
-
-    if (!hasNip44Decrypt && !hasNip04Decrypt) {
-      const missingDecryptError = new Error(
-        "This signer cannot decrypt storage keys (NIP-44/NIP-04 missing).",
-      );
-      missingDecryptError.code = "storage-unlock-no-decryptor";
-      this.setStorageUnlockFailureState(missingDecryptError);
-      this.showError(this.getStorageUnlockFailureMessage(missingDecryptError));
-      return;
-    }
-
-    if (this.storageUnlockBtn) {
-      this.storageUnlockBtn.disabled = true;
-      this.storageUnlockBtn.textContent = "Unlocking...";
-    }
-
-    try {
-      await storageService.unlock(pubkey, { signer });
-      this.clearStorageUnlockFailureState();
-      this.showSuccess("Storage unlocked.");
-      this.populateStoragePane();
-    } catch (error) {
-      devLogger.error("Failed to unlock storage:", error);
-      this.setStorageUnlockFailureState(error);
-      this.showError(this.getStorageUnlockFailureMessage(error));
-      if (this.storageUnlockBtn) {
-        this.storageUnlockBtn.dataset.retryAction = "request-permissions";
-      }
-    } finally {
-      if (this.storageUnlockBtn) {
-        this.storageUnlockBtn.disabled = false;
-        const shouldShowRetry = this.storageUnlockFailure?.code === "storage-unlock-permission-denied";
-        if (shouldShowRetry) {
-          this.storageUnlockBtn.textContent = "Retry Permissions + Unlock";
-          this.storageUnlockBtn.dataset.retryAction = "request-permissions";
-        } else {
-          this.storageUnlockBtn.textContent = "Unlock Storage";
-          delete this.storageUnlockBtn.dataset.retryAction;
-        }
-      }
-    }
-  }
-
-
-  async handleSaveStorage() {
-    const pubkey = this.normalizeHexPubkey(this.getActivePubkey());
-    if (!pubkey) return;
-
-    const storageService = this.services.storageService;
-    if (!storageService) return;
-
-    const provider = this.storageProviderInput?.value || "cloudflare_r2";
-    let endpointOrAccount = this.storageEndpointInput?.value?.trim() || "";
-    const region = this.storageRegionInput?.value?.trim() || "auto";
-    const accessKeyId = this.storageAccessKeyInput?.value?.trim() || "";
-    const secretAccessKey = this.storageSecretKeyInput?.value?.trim() || "";
-    const bucket = this.storageBucketInput?.value?.trim() || "";
-    const prefix = this.storagePrefixInput?.value?.trim() || "";
-    const isDefault = this.storageDefaultInput?.checked || false;
-
-    if (!accessKeyId || !secretAccessKey || !bucket || !endpointOrAccount) {
-        this.setStorageFormStatus("Please fill in all required fields.", "error");
-        return;
-    }
-
-    if (
-      provider === "cloudflare_r2" &&
-      (prefix.includes(".r2.cloudflarestorage.com") ||
-        prefix.includes(".s3.") ||
-        prefix.includes(".amazonaws.com"))
-    ) {
-      this.setStorageFormStatus(
-        "Invalid Public URL. Please use your R2.dev or custom domain.",
-        "error",
-      );
-      return;
-    }
-
-    let publicBaseUrl = "";
-    // For Generic S3, respect the user's checkbox selection.
-    let forcePathStyle = false;
-    if (provider === PROVIDERS.GENERIC) {
-      forcePathStyle = this.storageForcePathStyleInput?.checked ?? true;
-    }
-
-    const payload = {
-        provider,
-        accessKeyId,
-        secretAccessKey,
-    };
-
-    // For R2, endpoint input is Account ID.
-    // For Generic S3, it's the full endpoint URL.
-    if (provider === "cloudflare_r2") {
-        payload.accountId = endpointOrAccount;
-    } else {
-        try {
-          const normalized = await prepareS3Connection({
-            endpoint: endpointOrAccount,
-            region,
-            accessKeyId,
-            secretAccessKey,
-            bucket,
-            forcePathStyle,
-            origins: getCorsOrigins(),
-          });
-          endpointOrAccount = normalized.endpoint;
-          publicBaseUrl = normalized.publicBaseUrl;
-          forcePathStyle = normalized.forcePathStyle;
-        } catch (error) {
-          devLogger.error("Failed to validate S3 connection:", error);
-          this.setStorageFormStatus(
-            error?.message || "Invalid S3 configuration.",
-            "error"
-          );
-          return;
-        }
-
-        payload.endpoint = endpointOrAccount;
-        payload.forcePathStyle = forcePathStyle;
-    }
-
-    const meta = {
-        provider,
-        region,
-        bucket,
-        prefix,
-        defaultForUploads: isDefault,
-        label: `${provider} - ${bucket}`,
-        // Duplicate non-sensitive info for easier listing
-        endpoint: provider === "cloudflare_r2" ? undefined : endpointOrAccount,
-    };
-
-    // If R2, we also need accountId in meta? No, keep it private if possible, but R2Service needs it.
-    // Actually R2 account ID is not strictly secret, but payload is encrypted.
-    // We can store it in meta if we want to show it in UI without decrypting.
-    if (provider === "cloudflare_r2") {
-        meta.accountId = endpointOrAccount;
-        // For R2, the "Prefix" input serves as the Public Base URL (e.g. https://pub-xxx.r2.dev)
-        meta.publicBaseUrl = prefix;
-        meta.baseDomain = prefix;
-    } else {
-        meta.publicBaseUrl = publicBaseUrl;
-        meta.baseDomain = publicBaseUrl;
-        meta.forcePathStyle = forcePathStyle;
-    }
-
-    this.setStorageFormStatus("Saving...", "info");
-
-    try {
-        await storageService.saveConnection(pubkey, "default", payload, meta);
-        this.setStorageFormStatus("Connection saved.", "success");
-        this.showSuccess("Storage connection saved.");
-    } catch (error) {
-        devLogger.error("Failed to save connection:", error);
-        this.setStorageFormStatus("Failed to save connection.", "error");
-    }
-  }
-
-  async handleTestStorage() {
-    const pubkey = this.normalizeHexPubkey(this.getActivePubkey());
-    if (!pubkey) return;
-
-    const storageService = this.services.storageService;
-    if (!storageService) {
-        this.setStorageFormStatus("Storage service unavailable.", "error");
-        return;
-    }
-
-    const provider = this.storageProviderInput?.value || "cloudflare_r2";
-    const endpointOrAccount = this.storageEndpointInput?.value?.trim() || "";
-    const region = this.storageRegionInput?.value?.trim() || "auto";
-    const accessKeyId = this.storageAccessKeyInput?.value?.trim() || "";
-    const secretAccessKey = this.storageSecretKeyInput?.value?.trim() || "";
-    const bucket = this.storageBucketInput?.value?.trim() || "";
-
-    // Checkbox is only relevant for Generic S3
-    const forcePathStyle = provider === PROVIDERS.GENERIC
-      ? (this.storageForcePathStyleInput?.checked ?? true)
-      : false;
-
-    const publicBaseUrl = this.storagePrefixInput?.value?.trim() || "";
-
-    if (!accessKeyId || !secretAccessKey || !endpointOrAccount) {
-        this.setStorageFormStatus("Missing credentials for test.", "error");
-        return;
-    }
-
-    if (
-      provider === "cloudflare_r2" &&
-      (publicBaseUrl.includes(".r2.cloudflarestorage.com") ||
-        publicBaseUrl.includes(".s3.") ||
-        publicBaseUrl.includes(".amazonaws.com"))
-    ) {
-      this.setStorageFormStatus(
-        "Invalid Public URL. Please use your R2.dev or custom domain.",
-        "error",
-      );
-      return;
-    }
-
-    this.setStorageFormStatus("Testing connection...", "info");
-
-    const config = {
-      provider,
-      accessKeyId,
-      secretAccessKey,
-      region,
-      bucket,
-    };
-
-    if (provider === "cloudflare_r2") {
-      config.accountId = endpointOrAccount;
-      config.publicBaseUrl = publicBaseUrl;
-      config.baseDomain = publicBaseUrl;
-    } else {
-      config.endpoint = endpointOrAccount;
-      config.forcePathStyle = forcePathStyle;
-    }
-
-    try {
-        const result = await storageService.testAccess(provider, config);
-        if (result.success) {
-            this.setStorageFormStatus(result.message || "Connection Verified!", "success");
-        } else {
-            this.setStorageFormStatus(`Test Failed: ${result.error}`, "error");
-        }
-    } catch (error) {
-        this.setStorageFormStatus(`Test Error: ${error.message}`, "error");
-    }
-  }
-
-  handleClearStorage() {
-    this.storageEndpointInput.value = "";
-    this.storageRegionInput.value = "auto";
-    this.storageAccessKeyInput.value = "";
-    this.storageSecretKeyInput.value = "";
-    this.storageBucketInput.value = "";
-    this.storagePrefixInput.value = "";
-    this.storageDefaultInput.checked = false;
-    this.storageProviderInput.value = "cloudflare_r2";
-    if (this.storageForcePathStyleInput) {
-      this.storageForcePathStyleInput.checked = true;
-    }
-    this.updateStorageFormVisibility();
-    this.setStorageFormStatus("", "info");
-  }
-
-  setStorageFormStatus(message, variant = "info") {
-    if (!this.storageFormStatus) return;
-    this.storageFormStatus.textContent = message;
-    this.storageFormStatus.className = `text-sm text-status-${variant}`;
-  }
 
   async populateProfileWatchHistory() {
     const renderer = this.ensureProfileHistoryRenderer();
@@ -9684,589 +9028,6 @@ export class ProfileModalController {
     }
   }
 
-  applyWalletControlState() {
-    const hasActive = Boolean(this.normalizeHexPubkey(this.getActivePubkey()));
-    const busy = this.isWalletBusy();
-    const uriValue = this.getSecretInputValue(this.walletUriInput);
-    const hasUri = uriValue.length > 0;
-
-    const applyDisabledState = (element, disabled) => {
-      if (!(element instanceof HTMLElement)) {
-        return;
-      }
-      if ("disabled" in element) {
-        element.disabled = disabled;
-      }
-      if (disabled) {
-        element.setAttribute("aria-disabled", "true");
-      } else {
-        element.removeAttribute("aria-disabled");
-      }
-    };
-
-    applyDisabledState(this.walletUriInput, busy || !hasActive);
-    applyDisabledState(this.walletDefaultZapInput, busy || !hasActive);
-    applyDisabledState(this.walletSaveButton, busy || !hasActive);
-
-    const testDisabled = busy || !hasActive || !hasUri;
-    applyDisabledState(this.walletTestButton, testDisabled);
-
-    const disconnectDisabled = busy || !hasActive || !hasUri;
-    applyDisabledState(this.walletDisconnectButton, disconnectDisabled);
-    if (this.walletDisconnectButton instanceof HTMLElement) {
-      this.walletDisconnectButton.classList.toggle("hidden", !hasUri);
-      if (!hasUri) {
-        this.walletDisconnectButton.setAttribute("aria-hidden", "true");
-      } else {
-        this.walletDisconnectButton.removeAttribute("aria-hidden");
-      }
-    }
-  }
-
-  updateWalletStatus(message, variant = "info") {
-    if (!(this.walletStatusText instanceof HTMLElement)) {
-      return;
-    }
-
-    const element = this.walletStatusText;
-    const variants = {
-      success: "text-status-success",
-      error: "text-status-danger",
-      info: "text-status-info",
-      neutral: "text-status-neutral",
-    };
-
-    element.classList.remove(
-      "text-status-info",
-      "text-status-success",
-      "text-status-danger",
-      "text-status-neutral",
-    );
-    const variantClass = variants[variant] || variants.neutral;
-    element.classList.add(variantClass);
-    element.textContent = message || "";
-  }
-
-  refreshWalletPaneState() {
-    const hasActive = Boolean(this.normalizeHexPubkey(this.getActivePubkey()));
-    if (!hasActive) {
-      this.setSecretInputValue(this.walletUriInput, "");
-      if (this.walletDefaultZapInput && "value" in this.walletDefaultZapInput) {
-        try {
-          this.walletDefaultZapInput.value = "";
-        } catch (error) {
-          if (this.walletDefaultZapInput instanceof HTMLElement) {
-            this.walletDefaultZapInput.setAttribute("data-value", "");
-          }
-        }
-      }
-      this.updateWalletStatus("Sign in to connect a wallet.", "info");
-      this.applyWalletControlState();
-      return;
-    }
-
-    let settings = this.services.nwcSettings.getActiveNwcSettings();
-    if (!settings || typeof settings !== "object") {
-      settings = this.services.nwcSettings.createDefaultNwcSettings();
-    }
-    this.setSecretInputValue(this.walletUriInput, settings.nwcUri || "");
-    if (this.walletDefaultZapInput && "value" in this.walletDefaultZapInput) {
-      const defaultZapValue =
-        settings.defaultZap === null || settings.defaultZap === undefined
-          ? ""
-          : String(settings.defaultZap);
-      try {
-        this.walletDefaultZapInput.value = defaultZapValue;
-      } catch (error) {
-        if (this.walletDefaultZapInput instanceof HTMLElement) {
-          this.walletDefaultZapInput.setAttribute("data-value", defaultZapValue);
-        }
-      }
-    }
-
-    if (settings.nwcUri) {
-      this.updateWalletStatus(
-        "Wallet connected via Nostr Wallet Connect.",
-        "success",
-      );
-    } else {
-      this.updateWalletStatus("No wallet connected yet.", "info");
-    }
-
-    this.applyWalletControlState();
-  }
-
-  isSecretInputElement(element) {
-    if (!element || typeof element !== "object") {
-      return false;
-    }
-    if (typeof HTMLInputElement !== "undefined" && element instanceof HTMLInputElement) {
-      return true;
-    }
-    return typeof element.value === "string";
-  }
-
-  sanitizeSecretValue(value) {
-    return typeof value === "string" ? value.trim() : "";
-  }
-
-  getSecretInputValue(element) {
-    if (!this.isSecretInputElement(element)) {
-      return "";
-    }
-
-    const placeholder =
-      typeof element.dataset?.secretPlaceholder === "string"
-        ? element.dataset.secretPlaceholder
-        : SECRET_PLACEHOLDER;
-    const stored = this.sanitizeSecretValue(
-      typeof element.dataset?.secretValue === "string"
-        ? element.dataset.secretValue
-        : "",
-    );
-    const raw = this.sanitizeSecretValue(element.value);
-    const isMasked = element.dataset?.secretMasked === "true";
-
-    if (isMasked && placeholder && raw === placeholder) {
-      return stored;
-    }
-
-    if (!raw && isMasked) {
-      return stored;
-    }
-
-    return raw;
-  }
-
-  setSecretInputValue(element, value) {
-    if (!this.isSecretInputElement(element)) {
-      return;
-    }
-
-    const sanitized = this.sanitizeSecretValue(value);
-    if (!sanitized) {
-      if (element.dataset) {
-        delete element.dataset.secretValue;
-        delete element.dataset.secretMasked;
-        delete element.dataset.secretPlaceholder;
-      }
-      element.value = "";
-      return;
-    }
-
-    const placeholder = SECRET_PLACEHOLDER;
-    if (element.dataset) {
-      element.dataset.secretValue = sanitized;
-      element.dataset.secretPlaceholder = placeholder;
-      element.dataset.secretMasked = "true";
-    }
-    element.value = placeholder;
-  }
-
-  revealSecretInputValue(element) {
-    if (!this.isSecretInputElement(element)) {
-      return;
-    }
-
-    const stored = this.sanitizeSecretValue(
-      typeof element.dataset?.secretValue === "string"
-        ? element.dataset.secretValue
-        : "",
-    );
-
-    if (!stored) {
-      if (element.dataset) {
-        delete element.dataset.secretMasked;
-      }
-      return;
-    }
-
-    if (element.dataset) {
-      element.dataset.secretMasked = "false";
-    }
-    element.value = stored;
-    try {
-      if (typeof element.setSelectionRange === "function") {
-        const length = stored.length;
-        element.setSelectionRange(length, length);
-      }
-    } catch (error) {
-      // Ignore selection errors on unsupported input types.
-    }
-  }
-
-  handleSecretInputChange(element) {
-    if (!this.isSecretInputElement(element)) {
-      return;
-    }
-
-    const value = this.sanitizeSecretValue(element.value);
-    if (!value) {
-      if (element.dataset) {
-        element.dataset.secretMasked = "false";
-        delete element.dataset.secretValue;
-      }
-      return;
-    }
-
-    if (element.dataset) {
-      element.dataset.secretValue = value;
-      element.dataset.secretMasked = "false";
-      if (!element.dataset.secretPlaceholder) {
-        element.dataset.secretPlaceholder = SECRET_PLACEHOLDER;
-      }
-    }
-  }
-
-  handleSecretInputBlur(element) {
-    if (!this.isSecretInputElement(element)) {
-      return;
-    }
-
-    const value = this.sanitizeSecretValue(this.getSecretInputValue(element));
-    if (!value) {
-      if (element.dataset) {
-        delete element.dataset.secretValue;
-        delete element.dataset.secretMasked;
-        delete element.dataset.secretPlaceholder;
-      }
-      element.value = "";
-      return;
-    }
-
-    if (element.dataset) {
-      element.dataset.secretValue = value;
-      element.dataset.secretPlaceholder =
-        element.dataset.secretPlaceholder || SECRET_PLACEHOLDER;
-      element.dataset.secretMasked = "true";
-    }
-    element.value = element.dataset?.secretPlaceholder || SECRET_PLACEHOLDER;
-  }
-
-  getWalletFormValues() {
-    const uri = this.getSecretInputValue(this.walletUriInput);
-    const defaultZapRaw =
-      typeof this.walletDefaultZapInput?.value === "string"
-        ? this.walletDefaultZapInput.value.trim()
-        : "";
-
-    if (defaultZapRaw) {
-      const numeric = Number(defaultZapRaw);
-      if (!Number.isFinite(numeric)) {
-        return { uri, error: "Default zap amount must be a number." };
-      }
-      const rounded = Math.round(numeric);
-      if (!Number.isFinite(rounded) || rounded < 0) {
-        return {
-          uri,
-          error: "Default zap amount must be a positive whole number.",
-        };
-      }
-      const clamped = Math.min(this.maxWalletDefaultZap, rounded);
-      return { uri, defaultZap: clamped };
-    }
-
-    return { uri, defaultZap: null };
-  }
-
-  validateWalletUri(uri, { requireValue = false } = {}) {
-    const value = typeof uri === "string" ? uri.trim() : "";
-    if (!value) {
-      if (requireValue) {
-        return {
-          valid: false,
-          sanitized: "",
-          message: "Enter a wallet connect URI before continuing.",
-        };
-      }
-      return { valid: true, sanitized: "" };
-    }
-
-    if (!value.toLowerCase().startsWith(NWC_URI_SCHEME)) {
-      return {
-        valid: false,
-        sanitized: value,
-        message: `Wallet URI must start with ${NWC_URI_SCHEME}.`,
-      };
-    }
-
-    return { valid: true, sanitized: value };
-  }
-
-  async handleWalletSave() {
-    const { uri, defaultZap, error } = this.getWalletFormValues();
-    const context = {
-      uri,
-      defaultZap: defaultZap ?? null,
-      sanitizedUri: null,
-      success: false,
-      reason: null,
-      error: error || null,
-      status: null,
-      variant: null,
-    };
-
-    if (this.isWalletBusy()) {
-      context.reason = "busy";
-      this.callbacks.onWalletSave(context, this);
-      return context;
-    }
-
-    if (error) {
-      this.updateWalletStatus(error, "error");
-      this.showError(error);
-      context.reason = "invalid-default-zap";
-      if (this.walletDefaultZapInput instanceof HTMLElement) {
-        this.walletDefaultZapInput.focus();
-      }
-      this.callbacks.onWalletSave(context, this);
-      return context;
-    }
-
-    const { valid, sanitized, message } = this.validateWalletUri(uri);
-    context.sanitizedUri = sanitized;
-    if (!valid) {
-      this.updateWalletStatus(message, "error");
-      this.showError(message);
-      context.reason = "invalid-uri";
-      context.error = message;
-      if (this.walletUriInput instanceof HTMLElement) {
-        this.walletUriInput.focus();
-      }
-      this.callbacks.onWalletSave(context, this);
-      return context;
-    }
-
-    const normalizedActive = this.normalizeHexPubkey(this.getActivePubkey());
-    if (!normalizedActive) {
-      const loginMessage = "Sign in to save wallet settings.";
-      this.updateWalletStatus(loginMessage, "error");
-      this.showError(loginMessage);
-      context.reason = "no-active-pubkey";
-      context.error = loginMessage;
-      this.callbacks.onWalletSave(context, this);
-      return context;
-    }
-
-    this.setWalletPaneBusy(true);
-    let finalStatus = null;
-    let finalVariant = "info";
-    try {
-      const persistResult = await this.persistWalletSettings({
-        nwcUri: sanitized,
-        defaultZap,
-        activePubkey: normalizedActive,
-      });
-      context.persistResult = persistResult || null;
-
-      if (sanitized) {
-        finalStatus = "Wallet settings saved.";
-        finalVariant = "success";
-        this.showSuccess("Wallet settings saved.");
-        context.reason = "saved";
-      } else {
-        finalStatus = "Wallet connection removed.";
-        finalVariant = "info";
-        this.showStatus("Wallet connection removed.");
-        context.reason = "cleared";
-      }
-      context.success = true;
-    } catch (error) {
-      const fallbackMessage = "Failed to save wallet settings.";
-      const detail =
-        error && typeof error.message === "string" && error.message.trim()
-          ? error.message.trim()
-          : fallbackMessage;
-      finalStatus = detail;
-      finalVariant = "error";
-      context.error = detail;
-      context.reason = error?.code || "service-error";
-      this.showError(detail);
-    } finally {
-      this.setWalletPaneBusy(false);
-      this.refreshWalletPaneState();
-      if (finalStatus) {
-        this.updateWalletStatus(finalStatus, finalVariant);
-      }
-      context.status = finalStatus;
-      context.variant = finalVariant;
-      this.callbacks.onWalletSave(context, this);
-    }
-
-    return context;
-  }
-
-  async handleWalletTest() {
-    const { uri, defaultZap, error } = this.getWalletFormValues();
-    const context = {
-      uri,
-      defaultZap: defaultZap ?? null,
-      sanitizedUri: null,
-      success: false,
-      reason: null,
-      error: error || null,
-      status: null,
-      variant: null,
-      result: null,
-    };
-
-    if (this.isWalletBusy()) {
-      context.reason = "busy";
-      this.callbacks.onWalletTest(context, this);
-      return context.result;
-    }
-
-    if (error) {
-      this.updateWalletStatus(error, "error");
-      this.showError(error);
-      context.reason = "invalid-default-zap";
-      if (this.walletDefaultZapInput instanceof HTMLElement) {
-        this.walletDefaultZapInput.focus();
-      }
-      this.callbacks.onWalletTest(context, this);
-      return context.result;
-    }
-
-    const { valid, sanitized, message } = this.validateWalletUri(uri, {
-      requireValue: true,
-    });
-    context.sanitizedUri = sanitized;
-    if (!valid) {
-      this.updateWalletStatus(message, "error");
-      this.showError(message);
-      context.reason = "invalid-uri";
-      context.error = message;
-      if (this.walletUriInput instanceof HTMLElement) {
-        this.walletUriInput.focus();
-      }
-      this.callbacks.onWalletTest(context, this);
-      return context.result;
-    }
-
-    const normalizedActive = this.normalizeHexPubkey(this.getActivePubkey());
-    if (!normalizedActive) {
-      const loginMessage = "Sign in to test your wallet connection.";
-      this.updateWalletStatus(loginMessage, "error");
-      this.showError(loginMessage);
-      context.reason = "no-active-pubkey";
-      context.error = loginMessage;
-      this.callbacks.onWalletTest(context, this);
-      return context.result;
-    }
-
-    this.setWalletPaneBusy(true);
-    let finalStatus = null;
-    let finalVariant = "info";
-    try {
-      const result = await this.testWalletConnection({
-        nwcUri: sanitized,
-        defaultZap,
-        activePubkey: normalizedActive,
-      });
-      finalStatus = "Wallet connection confirmed.";
-      finalVariant = "success";
-      this.showSuccess("Wallet connection confirmed.");
-      context.result = result;
-      context.success = true;
-      context.reason = "tested";
-
-      let currentSettings = this.services.nwcSettings.getActiveNwcSettings();
-      if (!currentSettings || typeof currentSettings !== "object") {
-        currentSettings = this.services.nwcSettings.createDefaultNwcSettings();
-      }
-      if (currentSettings.nwcUri === sanitized) {
-        await this.persistWalletSettings({
-          lastChecked: Date.now(),
-          activePubkey: normalizedActive,
-        });
-      }
-    } catch (error) {
-      const fallbackMessage = "Failed to reach wallet.";
-      const detail =
-        error && typeof error.message === "string" && error.message.trim()
-          ? error.message.trim()
-          : fallbackMessage;
-      finalStatus = detail;
-      finalVariant = "error";
-      context.error = detail;
-      context.reason = error?.code || "service-error";
-      this.showError(detail);
-    } finally {
-      this.setWalletPaneBusy(false);
-      this.refreshWalletPaneState();
-      if (finalStatus) {
-        this.updateWalletStatus(finalStatus, finalVariant);
-      }
-      context.status = finalStatus;
-      context.variant = finalVariant;
-      this.callbacks.onWalletTest(context, this);
-    }
-
-    return context.result;
-  }
-
-  async handleWalletDisconnect() {
-    const context = {
-      success: false,
-      reason: null,
-      error: null,
-      status: null,
-      variant: null,
-    };
-
-    if (this.isWalletBusy()) {
-      context.reason = "busy";
-      this.callbacks.onWalletDisconnect(context, this);
-      return context;
-    }
-
-    const normalizedActive = this.normalizeHexPubkey(this.getActivePubkey());
-    if (!normalizedActive) {
-      const loginMessage = "Sign in to disconnect your wallet.";
-      this.updateWalletStatus(loginMessage, "error");
-      this.showError(loginMessage);
-      context.reason = "no-active-pubkey";
-      context.error = loginMessage;
-      this.callbacks.onWalletDisconnect(context, this);
-      return context;
-    }
-
-    this.setWalletPaneBusy(true);
-    let finalStatus = null;
-    let finalVariant = "info";
-    try {
-      const disconnectResult = await this.disconnectWallet({
-        activePubkey: normalizedActive,
-      });
-      context.result = disconnectResult || null;
-      finalStatus = "Wallet disconnected.";
-      this.showStatus("Wallet disconnected.");
-      context.success = true;
-      context.reason = "disconnected";
-    } catch (error) {
-      const fallbackMessage = "Failed to disconnect wallet.";
-      const detail =
-        error && typeof error.message === "string" && error.message.trim()
-          ? error.message.trim()
-          : fallbackMessage;
-      finalStatus = detail;
-      finalVariant = "error";
-      context.error = detail;
-      context.reason = error?.code || "service-error";
-      this.showError(detail);
-    } finally {
-      this.setWalletPaneBusy(false);
-      this.refreshWalletPaneState();
-      if (finalStatus) {
-        this.updateWalletStatus(finalStatus, finalVariant);
-      }
-      context.status = finalStatus;
-      context.variant = finalVariant;
-      this.callbacks.onWalletDisconnect(context, this);
-    }
-
-    return context;
-  }
 
   getModerationSettingsService() {
     const service = this.services.moderationSettings;
@@ -12171,63 +10932,6 @@ export class ProfileModalController {
     }
   }
 
-  async persistWalletSettings({
-    nwcUri,
-    defaultZap,
-    lastChecked,
-    activePubkey,
-  } = {}) {
-    const callback = this.callbacks.onWalletPersist;
-    if (callback && callback !== noop) {
-      const result = await callback({
-        controller: this,
-        nwcUri,
-        defaultZap,
-        lastChecked,
-        activePubkey,
-      });
-      if (result !== undefined) {
-        return result;
-      }
-    }
-
-    return this.services.nwcSettings.handleProfileWalletPersist({
-      nwcUri,
-      defaultZap,
-      lastChecked,
-    });
-  }
-
-  async testWalletConnection({ nwcUri, defaultZap, activePubkey } = {}) {
-    const callback = this.callbacks.onWalletTestRequest;
-    if (callback && callback !== noop) {
-      const result = await callback({
-        controller: this,
-        nwcUri,
-        defaultZap,
-        activePubkey,
-      });
-      if (result !== undefined) {
-        return result;
-      }
-    }
-
-    return this.services.nwcSettings.ensureWallet({ nwcUri, defaultZap });
-  }
-
-  async disconnectWallet({ activePubkey } = {}) {
-    const callback = this.callbacks.onWalletDisconnectRequest;
-    if (callback && callback !== noop) {
-      const result = await callback({ controller: this, activePubkey });
-      if (result !== undefined) {
-        return result;
-      }
-    }
-
-    return this.services.nwcSettings.updateActiveNwcSettings(
-      this.services.nwcSettings.createDefaultNwcSettings(),
-    );
-  }
 
   async runAdminMutation(payload = {}) {
     const callback = this.callbacks.onAdminMutation;
@@ -12671,7 +11375,7 @@ export class ProfileModalController {
 
     // Defer expensive operations to the next animation frame to allow the modal to paint.
     requestAnimationFrame(() => {
-      this.refreshWalletPaneState();
+      this.walletController.refreshWalletPaneState();
       this.refreshModerationSettingsUi();
       this.syncLinkPreviewSettingsUi();
 
@@ -12872,7 +11576,7 @@ export class ProfileModalController {
     }
 
     this.setActivePane(null);
-    this.setWalletPaneBusy(false);
+    this.walletController.setWalletPaneBusy(false);
 
     const previous = this.previouslyFocusedElement;
     this.previouslyFocusedElement = null;
@@ -12962,9 +11666,9 @@ export class ProfileModalController {
     void this.populateSubscriptionsList();
     void this.populateFriendsList();
     this.populateProfileRelays();
-    this.refreshWalletPaneState();
+    this.walletController.refreshWalletPaneState();
     this.populateHashtagPreferences();
-    void this.populateStoragePane();
+    void this.storageController.populateStoragePane();
     this.handleActiveDmIdentityChanged(activePubkey);
     void this.refreshDmRelayPreferences({ force: true });
 
@@ -12976,9 +11680,9 @@ export class ProfileModalController {
         void this.populateSubscriptionsList();
         void this.populateFriendsList();
         this.populateProfileRelays();
-        this.refreshWalletPaneState();
+        this.walletController.refreshWalletPaneState();
         this.populateHashtagPreferences();
-        void this.populateStoragePane();
+        void this.storageController.populateStoragePane();
         void this.refreshDmRelayPreferences({ force: true });
       })
       .catch((error) => {
@@ -13042,9 +11746,9 @@ export class ProfileModalController {
     this.clearSubscriptionsList();
     this.clearFriendsList();
     this.populateProfileRelays();
-    this.refreshWalletPaneState();
+    this.walletController.refreshWalletPaneState();
     this.populateHashtagPreferences();
-    void this.populateStoragePane();
+    void this.storageController.populateStoragePane();
     this.clearHashtagInputs();
     this.setHashtagStatus("", "muted");
     this.handleActiveDmIdentityChanged(null);
@@ -13254,21 +11958,6 @@ export class ProfileModalController {
     return this.state.setActivePane(...args);
   }
 
-  isWalletBusy() {
-    return Boolean(this.state.getWalletBusy());
-  }
-
-  setWalletPaneBusy(isBusy) {
-    const result = this.state.setWalletBusy(Boolean(isBusy));
-    if (this.panes.wallet instanceof HTMLElement) {
-      this.panes.wallet.setAttribute(
-        "aria-busy",
-        this.isWalletBusy() ? "true" : "false",
-      );
-    }
-    this.applyWalletControlState();
-    return result;
-  }
 }
 
 export default ProfileModalController;

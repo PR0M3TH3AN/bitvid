@@ -634,46 +634,46 @@ for (const _ of [0]) {
       defaultZap: 21,
     });
 
-    controller.refreshWalletPaneState();
+    controller.walletController.refreshWalletPaneState();
 
     assert.ok(
-      controller.walletUriInput instanceof window.HTMLElement,
+      controller.walletController.walletUriInput instanceof window.HTMLElement,
       'wallet URI input should exist',
     );
-    assert.equal(controller.walletUriInput.value, '*****');
-    assert.equal(controller.walletUriInput.dataset.secretValue, sampleUri);
+    assert.equal(controller.walletController.walletUriInput.value, '*****');
+    assert.equal(controller.walletController.walletUriInput.dataset.secretValue, sampleUri);
     assert.equal(
-      controller.walletDisconnectButton?.classList.contains('hidden'),
+      controller.walletController.walletDisconnectButton?.classList.contains('hidden'),
       false,
       'disconnect button should remain visible when a URI exists',
     );
 
-    const formValues = controller.getWalletFormValues();
+    const formValues = controller.walletController.getWalletFormValues();
     assert.equal(formValues.uri, sampleUri);
 
-    controller.walletUriInput.dispatchEvent(new window.Event('focus'));
-    assert.equal(controller.walletUriInput.value, sampleUri);
+    controller.walletController.walletUriInput.dispatchEvent(new window.Event('focus'));
+    assert.equal(controller.walletController.walletUriInput.value, sampleUri);
 
-    controller.walletUriInput.dispatchEvent(new window.Event('blur'));
-    assert.equal(controller.walletUriInput.value, '*****');
+    controller.walletController.walletUriInput.dispatchEvent(new window.Event('blur'));
+    assert.equal(controller.walletController.walletUriInput.value, '*****');
 
-    controller.walletUriInput.dispatchEvent(new window.Event('focus'));
+    controller.walletController.walletUriInput.dispatchEvent(new window.Event('focus'));
     const updatedUri = `${sampleUri}&name=bitvid`;
-    controller.walletUriInput.value = updatedUri;
-    controller.walletUriInput.dispatchEvent(new window.Event('input'));
-    controller.walletUriInput.dispatchEvent(new window.Event('blur'));
+    controller.walletController.walletUriInput.value = updatedUri;
+    controller.walletController.walletUriInput.dispatchEvent(new window.Event('input'));
+    controller.walletController.walletUriInput.dispatchEvent(new window.Event('blur'));
 
-    const updatedValues = controller.getWalletFormValues();
+    const updatedValues = controller.walletController.getWalletFormValues();
     assert.equal(updatedValues.uri, updatedUri);
-    assert.equal(controller.walletUriInput.value, '*****');
+    assert.equal(controller.walletController.walletUriInput.value, '*****');
 
-    controller.walletUriInput.dispatchEvent(new window.Event('focus'));
-    controller.walletUriInput.value = '';
-    controller.walletUriInput.dispatchEvent(new window.Event('input'));
-    controller.walletUriInput.dispatchEvent(new window.Event('blur'));
+    controller.walletController.walletUriInput.dispatchEvent(new window.Event('focus'));
+    controller.walletController.walletUriInput.value = '';
+    controller.walletController.walletUriInput.dispatchEvent(new window.Event('input'));
+    controller.walletController.walletUriInput.dispatchEvent(new window.Event('blur'));
 
-    assert.equal(controller.walletUriInput.value, '');
-    assert.equal(controller.walletUriInput.dataset.secretValue, undefined);
+    assert.equal(controller.walletController.walletUriInput.value, '');
+    assert.equal(controller.walletController.walletUriInput.dataset.secretValue, undefined);
 
     t.after(() => {
       try {
@@ -996,7 +996,7 @@ test('load() injects markup and caches expected elements', async () => {
   assert.ok(controller.panes.account instanceof window.HTMLElement);
   assert.ok(controller.relayList instanceof window.HTMLElement);
   assert.ok(controller.blockList instanceof window.HTMLElement);
-  assert.ok(controller.walletStatusText instanceof window.HTMLElement);
+  assert.ok(controller.walletController.walletStatusText instanceof window.HTMLElement);
 });
 
 test('show()/hide() toggle panes, trap focus, and refresh the wallet pane', async () => {
@@ -1009,7 +1009,7 @@ test('show()/hide() toggle panes, trap focus, and refresh the wallet pane', asyn
   };
 
   let walletRefreshes = 0;
-  controller.refreshWalletPaneState = () => {
+  controller.walletController.refreshWalletPaneState = () => {
     walletRefreshes += 1;
   };
 
