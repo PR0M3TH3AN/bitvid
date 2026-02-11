@@ -51,6 +51,8 @@ import { SubscriptionHistoryController } from "./subscriptionHistoryController.j
 import { DMSettingsModalController } from "./dm/DMSettingsModalController.js";
 import { ProfileWalletController } from "./profileModal/ProfileWalletController.js";
 import { ProfileStorageController } from "./profileModal/ProfileStorageController.js";
+import { ProfileDirectMessageController } from "./profileModal/ProfileDirectMessageController.js";
+import { ProfileRelayController } from "./profileModal/ProfileRelayController.js";
 
 const noop = () => {};
 
@@ -98,6 +100,9 @@ export class ProfileModalController {
     this.showSuccess = showSuccess;
     this.showStatus = showStatus;
     this.designSystem = normalizeDesignSystemContext(designSystem);
+
+    this.dmController = new ProfileDirectMessageController(this);
+    this.relayController = new ProfileRelayController(this);
 
     const resolvedMaxWalletDefaultZap =
       typeof providedConstants.MAX_WALLET_DEFAULT_ZAP === "number" &&
@@ -166,8 +171,8 @@ export class ProfileModalController {
     this.adminSuperNpub = resolvedAdminSuperNpub;
     this.adminDmImageUrl = resolvedAdminDmImageUrl;
     this.bitvidWebsiteUrl = resolvedbitvidWebsiteUrl;
-    this.enableNip17RelayWarning = resolvedEnableNip17RelayWarning;
-    this.hasShownRelayWarning = false;
+    this.dmController.enableNip17RelayWarning = resolvedEnableNip17RelayWarning;
+    this.dmController.hasShownRelayWarning = false;
 
     this.internalState = {
       savedProfiles: [],
@@ -181,7 +186,7 @@ export class ProfileModalController {
       dmRelayHints: new Map(),
     };
 
-    this.dmMobileView = "list";
+    this.dmController.dmMobileView = "list";
 
     this.services = buildServicesContract(services, this.internalState);
     this.state = buildStateContract(state, this.internalState);
@@ -283,7 +288,7 @@ export class ProfileModalController {
       );
     }
 
-    this.initializeDirectMessagesService();
+    this.dmController.initializeDirectMessagesService();
 
     this.callbacks = {
       onClose: callbacks.onClose || noop,
@@ -377,17 +382,17 @@ export class ProfileModalController {
       admin: null,
       safety: null,
     };
-    this.relayList = null;
-    this.relayInput = null;
-    this.addRelayButton = null;
-    this.restoreRelaysButton = null;
-    this.relayHealthStatus = null;
-    this.relayHealthTelemetryToggle = null;
+    this.relayController.relayList = null;
+    this.relayController.relayInput = null;
+    this.relayController.addRelayButton = null;
+    this.relayController.restoreRelaysButton = null;
+    this.relayController.relayHealthStatus = null;
+    this.relayController.relayHealthTelemetryToggle = null;
     this.relayHealthRefreshPromise = null;
     this.profileRelayList = null;
     this.profileRelayInput = null;
-    this.profileAddRelayBtn = null;
-    this.profileRestoreRelaysBtn = null;
+    this.relayController.profileAddRelayBtn = null;
+    this.relayController.profileRestoreRelaysBtn = null;
     this.subscriptionList = null;
     this.subscriptionListEmpty = null;
     this.friendList = null;
@@ -404,36 +409,36 @@ export class ProfileModalController {
     this.profileBlockedEmpty = null;
     this.profileBlockedInput = null;
     this.profileAddBlockedBtn = null;
-    this.profileMessagesList = null;
-    this.profileMessagesEmpty = null;
-    this.profileMessagesLoading = null;
-    this.profileMessagesError = null;
-    this.profileMessagesStatus = null;
-    this.profileMessagesReloadButton = null;
-    this.profileMessagesPane = null;
-    this.profileMessagesConversation = null;
-    this.profileMessagesConversationEmpty = null;
-    this.profileMessageInput = null;
-    this.profileMessageSendButton = null;
-    this.profileMessageAttachmentInput = null;
-    this.profileMessageAttachmentButton = null;
-    this.profileMessageAttachmentEncrypt = null;
-    this.profileMessageAttachmentList = null;
-    this.profileMessageAttachmentClearCache = null;
-    this.profileMessagesComposerHelper = null;
-    this.profileMessagesSendDmButton = null;
-    this.profileMessagesOpenRelaysButton = null;
-    this.profileMessagesPrivacyToggle = null;
-    this.profileMessagesPrivacyMode = null;
-    this.profileMessagesRelayList = null;
-    this.profileMessagesRelayInput = null;
-    this.profileMessagesRelayAddButton = null;
-    this.profileMessagesRelayPublishButton = null;
-    this.profileMessagesRelayStatus = null;
-    this.profileMessagesUnreadDot = null;
-    this.dmAppShellContainer = null;
-    this.dmAppShell = null;
-    this.profileLinkPreviewAutoToggle = null;
+    this.dmController.profileMessagesList = null;
+    this.dmController.profileMessagesEmpty = null;
+    this.dmController.profileMessagesLoading = null;
+    this.dmController.profileMessagesError = null;
+    this.dmController.profileMessagesStatus = null;
+    this.dmController.profileMessagesReloadButton = null;
+    this.dmController.profileMessagesPane = null;
+    this.dmController.profileMessagesConversation = null;
+    this.dmController.profileMessagesConversationEmpty = null;
+    this.dmController.profileMessageInput = null;
+    this.dmController.profileMessageSendButton = null;
+    this.dmController.profileMessageAttachmentInput = null;
+    this.dmController.profileMessageAttachmentButton = null;
+    this.dmController.profileMessageAttachmentEncrypt = null;
+    this.dmController.profileMessageAttachmentList = null;
+    this.dmController.profileMessageAttachmentClearCache = null;
+    this.dmController.profileMessagesComposerHelper = null;
+    this.dmController.profileMessagesSendDmButton = null;
+    this.dmController.profileMessagesOpenRelaysButton = null;
+    this.dmController.profileMessagesPrivacyToggle = null;
+    this.dmController.profileMessagesPrivacyMode = null;
+    this.dmController.profileMessagesRelayList = null;
+    this.dmController.profileMessagesRelayInput = null;
+    this.dmController.profileMessagesRelayAddButton = null;
+    this.dmController.profileMessagesRelayPublishButton = null;
+    this.dmController.profileMessagesRelayStatus = null;
+    this.dmController.profileMessagesUnreadDot = null;
+    this.dmController.dmAppShellContainer = null;
+    this.dmController.dmAppShell = null;
+    this.dmController.profileLinkPreviewAutoToggle = null;
     this.walletUriInput = null;
     this.walletDefaultZapInput = null;
     this.walletSaveButton = null;
@@ -469,7 +474,7 @@ export class ProfileModalController {
     this.profileSubscriptionsRefreshBtn = null;
     this.profileFriendsRefreshBtn = null;
     this.profileBlockedRefreshBtn = null;
-    this.profileRelayRefreshBtn = null;
+    this.relayController.profileRelayRefreshBtn = null;
     this.moderationSettingsCard = null;
     this.moderationBlurInput = null;
     this.moderationAutoplayInput = null;
@@ -516,27 +521,27 @@ export class ProfileModalController {
     this.adminAddBlacklistButton = null;
     this.adminBlacklistInput = null;
 
-    this.messagesLoadingState = "idle";
-    this.messagesInitialLoadPending = true;
-    this.messagesViewActive = false;
-    this.activeMessagesRequest = null;
-    this.directMessagesCache = [];
-    this.directMessagesLastActor = null;
-    this.directMessagesSubscription = null;
-    this.directMessagesUnsubscribes = [];
-    this.directMessagesRenderTimeout = null;
-    this.pendingDirectMessagesUpdate = null;
-    this.pendingMessagesRender = null;
-    this.messagesStatusClearTimeout = null;
-    this.profileMessagesRenderToken = 0;
-    this.dmPrivacyToggleTouched = false;
-    this.dmReadReceiptCache = new Set();
-    this.dmTypingLastSentAt = 0;
-    this.dmAttachmentQueue = [];
-    this.dmAttachmentUploads = new Map();
-    this.activeDmConversationId = "";
-    this.focusedDmConversationId = "";
-    this.dmComposerState = "idle";
+    this.dmController.messagesLoadingState = "idle";
+    this.dmController.messagesInitialLoadPending = true;
+    this.dmController.messagesViewActive = false;
+    this.dmController.activeMessagesRequest = null;
+    this.dmController.directMessagesCache = [];
+    this.dmController.directMessagesLastActor = null;
+    this.dmController.directMessagesSubscription = null;
+    this.dmController.directMessagesUnsubscribes = [];
+    this.dmController.directMessagesRenderTimeout = null;
+    this.dmController.pendingDirectMessagesUpdate = null;
+    this.dmController.pendingMessagesRender = null;
+    this.dmController.messagesStatusClearTimeout = null;
+    this.dmController.profileMessagesRenderToken = 0;
+    this.dmController.dmPrivacyToggleTouched = false;
+    this.dmController.dmReadReceiptCache = new Set();
+    this.dmController.dmTypingLastSentAt = 0;
+    this.dmController.dmAttachmentQueue = [];
+    this.dmController.dmAttachmentUploads = new Map();
+    this.dmController.activeDmConversationId = "";
+    this.dmController.focusedDmConversationId = "";
+    this.dmController.dmComposerState = "idle";
 
     this.profileHistoryRenderer = null;
     this.profileHistoryRendererConfig = null;
@@ -564,7 +569,7 @@ export class ProfileModalController {
     this.adminEmptyMessages = new Map();
     this.hashtagPreferencesUnsubscribe = null;
     this.subscriptionHistoryController = new SubscriptionHistoryController();
-    this.dmSettingsModalController = new DMSettingsModalController();
+    this.dmController.dmSettingsModalController = new DMSettingsModalController();
 
     if (
       this.subscriptionsService &&
@@ -730,16 +735,16 @@ export class ProfileModalController {
     this.panes.admin = document.getElementById("profilePaneAdmin") || null;
     this.panes.safety = document.getElementById("profilePaneSafety") || null;
 
-    this.relayList = document.getElementById("relayList") || null;
-    this.relayInput = document.getElementById("relayInput") || null;
-    this.addRelayButton = document.getElementById("addRelayBtn") || null;
-    this.restoreRelaysButton =
+    this.relayController.relayList = document.getElementById("relayList") || null;
+    this.relayController.relayInput = document.getElementById("relayInput") || null;
+    this.relayController.addRelayButton = document.getElementById("addRelayBtn") || null;
+    this.relayController.restoreRelaysButton =
       document.getElementById("restoreRelaysBtn") || null;
-    this.relayHealthStatus =
+    this.relayController.relayHealthStatus =
       document.getElementById("relayHealthStatus") || null;
-    this.relayHealthTelemetryToggle =
+    this.relayController.relayHealthTelemetryToggle =
       document.getElementById("relayHealthTelemetryOptIn") || null;
-    this.profileRelayRefreshBtn =
+    this.relayController.profileRelayRefreshBtn =
       document.getElementById("relayListRefreshBtn") || null;
 
     this.subscriptionList =
@@ -766,76 +771,76 @@ export class ProfileModalController {
     this.profileBlockedRefreshBtn =
       document.getElementById("blockedRefreshBtn") || null;
 
-    this.profileMessagesPane =
+    this.dmController.profileMessagesPane =
       document.getElementById("profilePaneMessages") || null;
-    this.profileMessagesList =
+    this.dmController.profileMessagesList =
       document.getElementById("profileMessagesList") || null;
-    this.profileMessagesEmpty =
+    this.dmController.profileMessagesEmpty =
       document.getElementById("profileMessagesEmpty") || null;
-    this.profileMessagesLoading =
+    this.dmController.profileMessagesLoading =
       document.getElementById("profileMessagesLoading") || null;
-    this.profileMessagesError =
+    this.dmController.profileMessagesError =
       document.getElementById("profileMessagesError") || null;
-    this.profileMessagesStatus =
+    this.dmController.profileMessagesStatus =
       document.getElementById("profileMessagesStatus") || null;
-    this.profileMessagesReloadButton =
+    this.dmController.profileMessagesReloadButton =
       document.getElementById("profileMessagesReload") || null;
-    this.profileMessagesConversation =
+    this.dmController.profileMessagesConversation =
       document.getElementById("profileMessagesConversation") || null;
-    this.profileMessagesConversationEmpty =
+    this.dmController.profileMessagesConversationEmpty =
       document.getElementById("profileMessagesConversationEmpty") || null;
-    this.profileMessageInput =
+    this.dmController.profileMessageInput =
       document.getElementById("profileMessageInput") || null;
-    this.profileMessageSendButton =
+    this.dmController.profileMessageSendButton =
       document.getElementById("profileMessageSendBtn") || null;
-    this.profileMessageAttachmentInput =
+    this.dmController.profileMessageAttachmentInput =
       document.getElementById("profileMessageAttachmentInput") || null;
-    this.profileMessageAttachmentButton =
+    this.dmController.profileMessageAttachmentButton =
       document.getElementById("profileMessageAttachmentButton") || null;
-    this.profileMessageAttachmentEncrypt =
+    this.dmController.profileMessageAttachmentEncrypt =
       document.getElementById("profileMessageAttachmentEncrypt") || null;
-    this.profileMessageAttachmentList =
+    this.dmController.profileMessageAttachmentList =
       document.getElementById("profileMessageAttachmentList") || null;
-    this.profileMessageAttachmentClearCache =
+    this.dmController.profileMessageAttachmentClearCache =
       document.getElementById("profileMessageAttachmentClearCache") || null;
-    this.profileMessagesComposerHelper =
+    this.dmController.profileMessagesComposerHelper =
       document.getElementById("profileMessagesComposerHelper") || null;
-    this.profileMessagesSendDmButton =
+    this.dmController.profileMessagesSendDmButton =
       document.getElementById("profileMessagesSendDm") || null;
-    this.profileMessagesOpenRelaysButton =
+    this.dmController.profileMessagesOpenRelaysButton =
       document.getElementById("profileMessagesOpenRelays") || null;
-    this.profileMessagesPrivacyToggle =
+    this.dmController.profileMessagesPrivacyToggle =
       document.getElementById("profileMessagesPrivacyToggle") || null;
-    this.profileMessagesPrivacyMode =
+    this.dmController.profileMessagesPrivacyMode =
       document.getElementById("profileMessagesPrivacyMode") || null;
     this.cacheDmRelayElements();
-    this.profileMessagesUnreadDot =
+    this.dmController.profileMessagesUnreadDot =
       document.getElementById("profileMessagesUnreadDot") || null;
-    this.dmAppShellContainer =
+    this.dmController.dmAppShellContainer =
       document.getElementById("dmAppShellMount") || null;
-    this.profileLinkPreviewAutoToggle =
+    this.dmController.profileLinkPreviewAutoToggle =
       document.getElementById("profileLinkPreviewAutoToggle") || null;
 
     this.walletController.cacheDomReferences();
     this.storageController.cacheDomReferences();
 
-    if (this.pendingMessagesRender) {
-      const { messages, actorPubkey } = this.pendingMessagesRender;
-      this.pendingMessagesRender = null;
-      void this.renderProfileMessages(messages, { actorPubkey }).catch((error) => {
+    if (this.dmController.pendingMessagesRender) {
+      const { messages, actorPubkey } = this.dmController.pendingMessagesRender;
+      this.dmController.pendingMessagesRender = null;
+      void this.dmController.renderProfileMessages(messages, { actorPubkey }).catch((error) => {
         devLogger.warn(
           "[profileModal] Failed to render pending direct messages:",
           error,
         );
       });
     } else if (
-      (this.profileMessagesList instanceof HTMLElement ||
-        this.dmAppShellContainer instanceof HTMLElement) &&
-      Array.isArray(this.directMessagesCache) &&
-      this.directMessagesCache.length
+      (this.dmController.profileMessagesList instanceof HTMLElement ||
+        this.dmController.dmAppShellContainer instanceof HTMLElement) &&
+      Array.isArray(this.dmController.directMessagesCache) &&
+      this.dmController.directMessagesCache.length
     ) {
-      void this.renderProfileMessages(this.directMessagesCache, {
-        actorPubkey: this.directMessagesLastActor,
+      void this.dmController.renderProfileMessages(this.dmController.directMessagesCache, {
+        actorPubkey: this.dmController.directMessagesLastActor,
       }).catch((error) => {
         devLogger.warn(
           "[profileModal] Failed to render cached direct messages:",
@@ -844,10 +849,10 @@ export class ProfileModalController {
       });
     }
 
-    this.setMessagesLoadingState(this.messagesLoadingState || "idle");
-    this.updateMessagePrivacyModeDisplay();
-    this.populateDmRelayPreferences();
-    this.syncDmPrivacySettingsUi();
+    this.dmController.setMessagesLoadingState(this.dmController.messagesLoadingState || "idle");
+    this.dmController.updateMessagePrivacyModeDisplay();
+    this.dmController.populateDmRelayPreferences();
+    this.dmController.syncDmPrivacySettingsUi();
 
     this.hashtagStatusText =
       document.getElementById("profileHashtagStatus") || null;
@@ -875,10 +880,10 @@ export class ProfileModalController {
       document.getElementById("subscriptionsStatus") || null;
     this.applyPermissionPromptCtaState();
 
-    this.profileRelayList = this.relayList;
-    this.profileRelayInput = this.relayInput;
-    this.profileAddRelayBtn = this.addRelayButton;
-    this.profileRestoreRelaysBtn = this.restoreRelaysButton;
+    this.profileRelayList = this.relayController.relayList;
+    this.profileRelayInput = this.relayController.relayInput;
+    this.relayController.profileAddRelayBtn = this.relayController.addRelayButton;
+    this.relayController.profileRestoreRelaysBtn = this.relayController.restoreRelaysButton;
     this.profileSubscriptionsList = this.subscriptionList;
     this.profileSubscriptionsEmpty = this.subscriptionListEmpty;
     this.profileFriendsList = this.friendList;
@@ -985,7 +990,7 @@ export class ProfileModalController {
       }
     };
 
-    ensureAriaLabel(this.profileRelayRefreshBtn, "Refresh relay list");
+    ensureAriaLabel(this.relayController.profileRelayRefreshBtn, "Refresh relay list");
     ensureAriaLabel(
       this.profileHashtagInterestRefreshBtn,
       "Refresh interest hashtags",
@@ -1103,287 +1108,41 @@ export class ProfileModalController {
     return this.profileHistoryRendererConfig;
   }
 
-  initializeDirectMessagesService() {
-    this.teardownDirectMessagesService();
 
-    if (!this.nostrService || typeof this.nostrService.on !== "function") {
-      return;
-    }
 
-    const unsubscribes = [];
-    const subscribe = (eventName, handler) => {
-      try {
-        const unsubscribe = this.nostrService.on(eventName, handler);
-        if (typeof unsubscribe === "function") {
-          unsubscribes.push(unsubscribe);
-        }
-      } catch (error) {
-        devLogger.warn(
-          `[profileModal] Failed to subscribe to ${eventName} direct message events:`,
-          error,
-        );
-      }
-    };
 
-    subscribe("directMessages:updated", (detail) => {
-      this.handleDirectMessagesUpdated(detail);
-    });
-    subscribe("directMessages:cleared", () => {
-      this.handleDirectMessagesCleared();
-    });
-    subscribe("directMessages:error", (detail) => {
-      this.handleDirectMessagesError(detail);
-    });
-    subscribe("directMessages:failure", (detail) => {
-      this.handleDirectMessagesError(detail);
-    });
-    subscribe("directMessages:relayWarning", (detail) => {
-      this.handleDirectMessagesRelayWarning(detail);
-    });
 
-    this.directMessagesUnsubscribes = unsubscribes;
 
-    const actor = this.resolveActiveDmActor();
-    if (actor) {
-      this.directMessagesLastActor = actor;
-    }
 
-    if (
-      this.nostrService &&
-      typeof this.nostrService.hydrateDirectMessagesFromStore === "function"
-    ) {
-      void this.nostrService
-        .hydrateDirectMessagesFromStore({ emit: true })
-        .then((messages) => {
-          if (Array.isArray(messages)) {
-            this.directMessagesCache = messages;
-            const active = this.resolveActiveDmActor();
-            if (active) {
-              this.directMessagesLastActor = active;
-            }
-          }
-        })
-        .catch((error) => {
-          devLogger.warn(
-            "[profileModal] Failed to hydrate cached direct messages:",
-            error,
-          );
-        });
-    }
-  }
 
-  teardownDirectMessagesService() {
-    if (!Array.isArray(this.directMessagesUnsubscribes)) {
-      this.directMessagesUnsubscribes = [];
-      return;
-    }
 
-    while (this.directMessagesUnsubscribes.length) {
-      const unsubscribe = this.directMessagesUnsubscribes.pop();
-      if (typeof unsubscribe === "function") {
-        try {
-          unsubscribe();
-        } catch (error) {
-          devLogger.warn(
-            "[profileModal] Failed to remove direct message event listener:",
-            error,
-          );
-        }
-      }
-    }
-  }
 
-  resolveActiveDmActor() {
-    const active = this.normalizeHexPubkey(this.getActivePubkey());
-    if (active) {
-      return active;
-    }
 
-    const client = this.services.nostrClient || null;
-    if (client) {
-      if (typeof client.pubkey === "string" && client.pubkey.trim()) {
-        const normalizedClient = this.normalizeHexPubkey(client.pubkey);
-        if (normalizedClient) {
-          return normalizedClient;
-        }
-      }
 
-      if (
-        client.sessionActor &&
-        typeof client.sessionActor.pubkey === "string" &&
-        client.sessionActor.pubkey.trim()
-      ) {
-        const session = this.normalizeHexPubkey(client.sessionActor.pubkey);
-        if (session) {
-          return session;
-        }
-      }
-    }
 
-    return null;
-  }
 
-  resolveActiveDmRecipient() {
-    const candidate =
-      typeof this.state.getDmRecipient === "function"
-        ? this.state.getDmRecipient()
-        : null;
-    const normalized = this.normalizeHexPubkey(candidate);
-    if (normalized) {
-      return normalized;
-    }
-    return null;
-  }
-
-  resolveActiveDmRelayOwner() {
-    const active = this.normalizeHexPubkey(this.getActivePubkey());
-    if (active) {
-      return active;
-    }
-
-    return this.resolveActiveDmActor();
-  }
-
-  getActiveDmRelayPreferences() {
-    const owner = this.resolveActiveDmRelayOwner();
-    if (!owner || typeof this.state.getDmRelayPreferences !== "function") {
-      return [];
-    }
-
-    const relays = this.state.getDmRelayPreferences(owner);
-    return Array.isArray(relays) ? relays.slice() : [];
-  }
-
-  setActiveDmRelayPreferences(relays = []) {
-    const owner = this.resolveActiveDmRelayOwner();
-    if (!owner || typeof this.state.setDmRelayPreferences !== "function") {
-      return [];
-    }
-
-    return this.state.setDmRelayPreferences(owner, relays);
-  }
-
-  setDmRelayPreferencesStatus(message = "") {
-    if (!(this.profileMessagesRelayStatus instanceof HTMLElement)) {
-      return;
-    }
-
-    const text = typeof message === "string" ? message.trim() : "";
-    this.profileMessagesRelayStatus.textContent = text;
-  }
-
-  updateMessagePrivacyModeDisplay() {
-    if (!(this.profileMessagesPrivacyMode instanceof HTMLElement)) {
-      return;
-    }
-
-    const isNip17 =
-      this.profileMessagesPrivacyToggle instanceof HTMLInputElement
-        ? this.profileMessagesPrivacyToggle.checked
-        : false;
-    const label = isNip17 ? "NIP-17" : "NIP-04";
-    this.profileMessagesPrivacyMode.textContent = `Privacy: ${label}`;
-    this.profileMessagesPrivacyMode.title = isNip17
-      ? "NIP-17 gift-wraps your DM so relays only see the wrapper and relay hints."
-      : "NIP-04 sends a direct encrypted DM; relays can still see sender and recipient metadata.";
-  }
-
-  getDmPrivacySettingsSnapshot() {
-    const fallback = createInternalDefaultDmPrivacySettings();
-    if (typeof this.state.getDmPrivacySettings !== "function") {
-      return { ...fallback };
-    }
-
-    const settings = this.state.getDmPrivacySettings();
-    return {
-      readReceiptsEnabled:
-        typeof settings?.readReceiptsEnabled === "boolean"
-          ? settings.readReceiptsEnabled
-          : fallback.readReceiptsEnabled,
-      typingIndicatorsEnabled:
-        typeof settings?.typingIndicatorsEnabled === "boolean"
-          ? settings.typingIndicatorsEnabled
-          : fallback.typingIndicatorsEnabled,
-    };
-  }
-
-  persistDmPrivacySettings(partial = {}) {
-    if (typeof this.state.setDmPrivacySettings !== "function") {
-      return this.getDmPrivacySettingsSnapshot();
-    }
-
-    const resolved =
-      partial && typeof partial === "object" ? partial : {};
-
-    const current = this.getDmPrivacySettingsSnapshot();
-    const merged = {
-      readReceiptsEnabled:
-        typeof resolved.readReceiptsEnabled === "boolean"
-          ? resolved.readReceiptsEnabled
-          : current.readReceiptsEnabled,
-      typingIndicatorsEnabled:
-        typeof resolved.typingIndicatorsEnabled === "boolean"
-          ? resolved.typingIndicatorsEnabled
-          : current.typingIndicatorsEnabled,
-    };
-
-    return this.state.setDmPrivacySettings(merged);
-  }
-
-  syncDmPrivacySettingsUi() {
-    // Legacy UI toggles removed.
-    // This method is kept for backwards compatibility with call sites that might expect it,
-    // though the settings are now managed via AppShell.
-  }
-
-  handleReadReceiptsToggle(enabled) {
-    this.persistDmPrivacySettings({
-      readReceiptsEnabled: Boolean(enabled),
-    });
-    this.syncDmPrivacySettingsUi();
-    this.showStatus(
-      enabled
-        ? "Read receipts enabled for direct messages."
-        : "Read receipts disabled.",
-    );
-  }
-
-  handleTypingIndicatorsToggle(enabled) {
-    this.persistDmPrivacySettings({
-      typingIndicatorsEnabled: Boolean(enabled),
-    });
-    this.syncDmPrivacySettingsUi();
-    this.showStatus(
-      enabled
-        ? "Typing indicators enabled for direct messages."
-        : "Typing indicators disabled.",
-    );
-  }
 
   syncLinkPreviewSettingsUi() {
-    if (!(this.profileLinkPreviewAutoToggle instanceof HTMLInputElement)) {
+    if (!(this.dmController.profileLinkPreviewAutoToggle instanceof HTMLInputElement)) {
       return;
     }
     const settings = getLinkPreviewSettings();
-    this.profileLinkPreviewAutoToggle.checked = Boolean(
+    this.dmController.profileLinkPreviewAutoToggle.checked = Boolean(
       settings?.autoFetchUnknownDomains,
     );
   }
 
-  handleLinkPreviewToggle(enabled) {
-    setLinkPreviewAutoFetch(Boolean(enabled));
-  }
 
   cacheDmRelayElements() {
-    this.profileMessagesRelayList =
+    this.dmController.profileMessagesRelayList =
       document.getElementById("profileMessagesRelayList") || null;
-    this.profileMessagesRelayInput =
+    this.dmController.profileMessagesRelayInput =
       document.getElementById("profileMessagesRelayInput") || null;
-    this.profileMessagesRelayAddButton =
+    this.dmController.profileMessagesRelayAddButton =
       document.getElementById("profileMessagesRelayAdd") || null;
-    this.profileMessagesRelayPublishButton =
+    this.dmController.profileMessagesRelayPublishButton =
       document.getElementById("profileMessagesRelayPublish") || null;
-    this.profileMessagesRelayStatus =
+    this.dmController.profileMessagesRelayStatus =
       document.getElementById("profileMessagesRelayStatus") || null;
   }
 
@@ -1401,28 +1160,28 @@ export class ProfileModalController {
     };
 
     bindOnce(
-      this.profileMessagesRelayAddButton,
+      this.dmController.profileMessagesRelayAddButton,
       "click",
       () => {
-        void this.handleAddDmRelayPreference();
+        void this.dmController.handleAddDmRelayPreference();
       },
       "dmRelayAddBound",
     );
 
     bindOnce(
-      this.profileMessagesRelayInput,
+      this.dmController.profileMessagesRelayInput,
       "keydown",
       (event) => {
         if (event.key === "Enter") {
           event.preventDefault();
-          void this.handleAddDmRelayPreference();
+          void this.dmController.handleAddDmRelayPreference();
         }
       },
       "dmRelayInputBound",
     );
 
     bindOnce(
-      this.profileMessagesRelayPublishButton,
+      this.dmController.profileMessagesRelayPublishButton,
       "click",
       () => {
         void this.handlePublishDmRelayPreferences();
@@ -1432,13 +1191,13 @@ export class ProfileModalController {
   }
 
   async refreshDmRelayPreferences({ force = false } = {}) {
-    const owner = this.resolveActiveDmRelayOwner();
+    const owner = this.dmController.resolveActiveDmRelayOwner();
     if (!owner) {
-      this.populateDmRelayPreferences();
+      this.dmController.populateDmRelayPreferences();
       return;
     }
 
-    const existing = this.getActiveDmRelayPreferences();
+    const existing = this.dmController.getActiveDmRelayPreferences();
     if (!existing.length || force) {
       if (typeof this.services.fetchDmRelayHints === "function") {
         try {
@@ -1455,116 +1214,20 @@ export class ProfileModalController {
       }
     }
 
-    this.populateDmRelayPreferences();
+    this.dmController.populateDmRelayPreferences();
   }
 
-  populateDmRelayPreferences() {
-    if (!(this.profileMessagesRelayList instanceof HTMLElement)) {
-      return;
-    }
 
-    const owner = this.resolveActiveDmRelayOwner();
-    const relays = this.getActiveDmRelayPreferences();
 
-    this.profileMessagesRelayList.textContent = "";
-
-    if (!owner) {
-      const emptyState = document.createElement("li");
-      emptyState.className =
-        "card border border-dashed border-border/60 p-4 text-center text-xs text-muted";
-      emptyState.textContent = "Sign in to add DM relay hints.";
-      this.profileMessagesRelayList.appendChild(emptyState);
-      this.setDmRelayPreferencesStatus("");
-      return;
-    }
-
-    if (!relays.length) {
-      const emptyState = document.createElement("li");
-      emptyState.className =
-        "card border border-dashed border-border/60 p-4 text-center text-xs text-muted";
-      emptyState.textContent = "No DM relay hints yet.";
-      this.profileMessagesRelayList.appendChild(emptyState);
-      return;
-    }
-
-    relays.forEach((url) => {
-      const item = document.createElement("li");
-      item.className = "card flex items-center justify-between gap-3 p-3";
-
-      const label = document.createElement("p");
-      label.className = "text-xs font-medium text-text break-all";
-      label.textContent = url;
-
-      const removeBtn = document.createElement("button");
-      removeBtn.type = "button";
-      removeBtn.className = "btn-ghost focus-ring text-xs";
-      removeBtn.dataset.variant = "danger";
-      removeBtn.textContent = "Remove";
-      removeBtn.addEventListener("click", () => {
-        void this.handleRemoveDmRelayPreference(url);
-      });
-
-      item.appendChild(label);
-      item.appendChild(removeBtn);
-      this.profileMessagesRelayList.appendChild(item);
-    });
-  }
-
-  async handleAddDmRelayPreference() {
-    const input = this.profileMessagesRelayInput;
-    if (!(input instanceof HTMLInputElement)) {
-      return;
-    }
-
-    const owner = this.resolveActiveDmRelayOwner();
-    if (!owner) {
-      this.showError("Please sign in to save DM relay hints.");
-      return;
-    }
-
-    const rawValue = typeof input.value === "string" ? input.value.trim() : "";
-    const sanitized = sanitizeRelayList([rawValue]);
-    const relayUrl = sanitized[0];
-    if (!relayUrl) {
-      this.showError("Enter a valid WSS relay URL.");
-      return;
-    }
-
-    const current = this.getActiveDmRelayPreferences();
-    const next = sanitizeRelayList([...current, relayUrl]);
-    this.setActiveDmRelayPreferences(next);
-    input.value = "";
-    this.populateDmRelayPreferences();
-    this.setDmRelayPreferencesStatus("DM relay hint added.");
-  }
-
-  async handleRemoveDmRelayPreference(url) {
-    const owner = this.resolveActiveDmRelayOwner();
-    if (!owner) {
-      this.showError("Please sign in to update DM relay hints.");
-      return;
-    }
-
-    const target = typeof url === "string" ? url.trim() : "";
-    if (!target) {
-      return;
-    }
-
-    const current = this.getActiveDmRelayPreferences();
-    const next = current.filter((entry) => entry !== target);
-    this.setActiveDmRelayPreferences(next);
-    this.populateDmRelayPreferences();
-    this.setDmRelayPreferencesStatus("DM relay hint removed.");
-  }
 
   async handlePublishDmRelayPreferences() {
-    const owner = this.resolveActiveDmRelayOwner();
+    const owner = this.dmController.resolveActiveDmRelayOwner();
     if (!owner) {
       this.showError("Please sign in to publish DM relay hints.");
       return;
     }
 
-    const relays = this.getActiveDmRelayPreferences();
+    const relays = this.dmController.getActiveDmRelayPreferences();
     if (!relays.length) {
       this.showError("Add at least one DM relay before publishing.");
       return;
@@ -1576,7 +1239,7 @@ export class ProfileModalController {
       return;
     }
 
-    this.setDmRelayPreferencesStatus("Publishing DM relay hints…");
+    this.dmController.setDmRelayPreferencesStatus("Publishing DM relay hints…");
 
     try {
       const result = await callback({
@@ -1592,161 +1255,24 @@ export class ProfileModalController {
           ? `Published to ${acceptedCount} relay${acceptedCount === 1 ? "" : "s"}.`
           : "DM relay hints published.";
         this.showSuccess("DM relay hints published.");
-        this.setDmRelayPreferencesStatus(summary);
+        this.dmController.setDmRelayPreferencesStatus(summary);
         return;
       }
       this.showError("Failed to publish DM relay hints.");
-      this.setDmRelayPreferencesStatus("DM relay hints publish failed.");
+      this.dmController.setDmRelayPreferencesStatus("DM relay hints publish failed.");
     } catch (error) {
       const message =
         error && typeof error.message === "string" && error.message.trim()
           ? error.message.trim()
           : "Failed to publish DM relay hints.";
       this.showError(message);
-      this.setDmRelayPreferencesStatus(message);
+      this.dmController.setDmRelayPreferencesStatus(message);
     }
   }
 
-  openDmSettingsModal() {
-    const owner = this.resolveActiveDmRelayOwner();
-    if (!owner) {
-      this.showError("Please sign in to manage DM settings.");
-      return;
-    }
 
-    const privacySettings = this.getDmPrivacySettingsSnapshot();
-    const relayHints = this.getActiveDmRelayPreferences();
 
-    this.dmSettingsModalController.show({
-      privacySettings,
-      relayHints,
-      onPrivacyChange: (key, value) => {
-        this.persistDmPrivacySettings({ [key]: value });
-        if (key === "readReceiptsEnabled") {
-          this.showStatus(
-            value ? "Read receipts enabled." : "Read receipts disabled.",
-          );
-        } else if (key === "typingIndicatorsEnabled") {
-          this.showStatus(
-            value ? "Typing indicators enabled." : "Typing indicators disabled.",
-          );
-        }
-      },
-      onPublishRelays: async (urls) => {
-        return this.handleDmSettingsPublish(urls);
-      },
-    });
-  }
 
-  async handleDmSettingsPublish(relays) {
-    const owner = this.resolveActiveDmRelayOwner();
-    if (!owner) {
-      return { ok: false, error: "not-logged-in" };
-    }
-
-    // Update local state first
-    this.setActiveDmRelayPreferences(relays);
-
-    // Publish using existing logic
-    const callback = this.callbacks.onPublishDmRelayPreferences;
-    if (!callback || callback === noop) {
-      return { ok: false, error: "unavailable" };
-    }
-
-    try {
-      const result = await callback({
-        pubkey: owner,
-        relays,
-        controller: this,
-      });
-
-      if (result?.ok) {
-        this.populateDmRelayPreferences(); // Refresh old UI just in case
-        return result;
-      }
-      return { ok: false, error: result?.error || "failed" };
-    } catch (error) {
-      return { ok: false, error: error };
-    }
-  }
-
-  buildDmRecipientContext(pubkey) {
-    const normalized = this.normalizeHexPubkey(pubkey);
-    if (!normalized) {
-      return null;
-    }
-
-    const npub =
-      typeof this.safeEncodeNpub === "function"
-        ? this.safeEncodeNpub(normalized)
-        : null;
-
-    const cacheEntry =
-      typeof this.services.getProfileCacheEntry === "function"
-        ? this.services.getProfileCacheEntry(normalized)
-        : null;
-    const profile = cacheEntry?.profile || null;
-
-    const displayName =
-      profile?.display_name?.trim?.() ||
-      profile?.name?.trim?.() ||
-      (typeof this.formatShortNpub === "function"
-        ? this.formatShortNpub(npub)
-        : npub) ||
-      npub ||
-      "Unknown profile";
-
-    const relayHints =
-      typeof this.state.getDmRelayHints === "function"
-        ? this.state.getDmRelayHints(normalized)
-        : [];
-
-    return {
-      pubkey: normalized,
-      npub,
-      profile,
-      displayName,
-      relayHints: Array.isArray(relayHints) ? relayHints.slice() : [],
-    };
-  }
-
-  async ensureDmRecipientData(pubkey) {
-    const normalized = this.normalizeHexPubkey(pubkey);
-    if (!normalized) {
-      return null;
-    }
-
-    if (
-      typeof this.services.batchFetchProfiles === "function"
-    ) {
-      try {
-        await this.services.batchFetchProfiles([normalized]);
-      } catch (error) {
-        devLogger.warn(
-          "[profileModal] Failed to fetch DM recipient metadata:",
-          error,
-        );
-      }
-    }
-
-    if (typeof this.services.fetchDmRelayHints === "function") {
-      try {
-        const hints = await this.services.fetchDmRelayHints(normalized);
-        if (typeof this.state.setDmRelayHints === "function") {
-          this.state.setDmRelayHints(normalized, hints);
-        }
-      } catch (error) {
-        devLogger.warn(
-          "[profileModal] Failed to fetch DM relay hints:",
-          error,
-        );
-      }
-    }
-
-    const context = this.buildDmRecipientContext(normalized);
-    this.updateDmPrivacyToggleForRecipient(context);
-    return context;
-  }
 
   updateDmPrivacyToggleForRecipient(recipientContext, { force = false } = {}) {
     if (!recipientContext) {
@@ -1758,199 +1284,77 @@ export class ProfileModalController {
       : [];
     const hasHints = relayHints.length > 0;
 
-    if (!this.dmPrivacyToggleTouched || force) {
+    if (!this.dmController.dmPrivacyToggleTouched || force) {
       this.setPrivacyToggleState(hasHints);
     }
   }
 
-  setDirectMessageRecipient(pubkey, { reason = "manual" } = {}) {
-    const normalized = this.normalizeHexPubkey(pubkey);
-    const nextRecipient = normalized || null;
 
-    if (typeof this.state.setDmRecipient === "function") {
-      this.state.setDmRecipient(nextRecipient);
-    }
 
-    this.dmPrivacyToggleTouched = false;
-    this.updateMessageThreadSelection(nextRecipient);
-
-    if (nextRecipient) {
-      void this.ensureDmRecipientData(nextRecipient);
-      this.setMessagesAnnouncement("Ready to message this recipient.");
-    } else if (reason === "clear") {
-      this.setMessagesAnnouncement("Message recipient cleared.");
-      this.setFocusedDmConversation("");
-    }
-
-    void this.renderDirectMessageConversation();
-    if (this.dmAppShellContainer instanceof HTMLElement) {
-      void this.renderDmAppShell(this.directMessagesCache, {
-        actorPubkey: this.resolveActiveDmActor(),
-      });
-    }
-    return nextRecipient;
-  }
-
-  updateMessageThreadSelection(activeRecipient) {
-    if (!(this.profileMessagesList instanceof HTMLElement)) {
-      return;
-    }
-
-    const normalized = this.normalizeHexPubkey(activeRecipient);
-    const items = Array.from(
-      this.profileMessagesList.querySelectorAll("[data-remote-pubkey]"),
-    );
-
-    items.forEach((item) => {
-      if (!(item instanceof HTMLElement)) {
-        return;
-      }
-      const remote = this.normalizeHexPubkey(item.dataset.remotePubkey);
-      const isActive = normalized && remote === normalized;
-      item.dataset.state = isActive ? "active" : "inactive";
-    });
-  }
-
-  focusMessageComposer() {
-    const input = this.profileMessageInput;
-    if (input instanceof HTMLTextAreaElement) {
-      input.focus();
-      input.select();
-    }
-  }
 
   setPrivacyToggleState(enabled) {
-    if (this.profileMessagesPrivacyToggle instanceof HTMLInputElement) {
-      this.profileMessagesPrivacyToggle.checked = Boolean(enabled);
+    if (this.dmController.profileMessagesPrivacyToggle instanceof HTMLInputElement) {
+      this.dmController.profileMessagesPrivacyToggle.checked = Boolean(enabled);
     }
-    this.updateMessagePrivacyModeDisplay();
+    this.dmController.updateMessagePrivacyModeDisplay();
   }
 
-  async ensureDirectMessageSubscription(actorPubkey = null) {
-    if (
-      !this.nostrService ||
-      typeof this.nostrService.ensureDirectMessageSubscription !== "function"
-    ) {
-      return null;
-    }
 
-    const normalizedActor = actorPubkey
-      ? this.normalizeHexPubkey(actorPubkey)
-      : this.resolveActiveDmActor();
-
-    if (!normalizedActor) {
-      return null;
-    }
-
-    if (
-      this.directMessagesSubscription &&
-      this.directMessagesSubscription.actor === normalizedActor
-    ) {
-      return this.directMessagesSubscription.subscription || null;
-    }
-
-    if (
-      this.directMessagesSubscription &&
-      this.directMessagesSubscription.actor &&
-      this.directMessagesSubscription.actor !== normalizedActor
-    ) {
-      this.resetDirectMessageSubscription();
-    }
-
-    let subscription = null;
-    try {
-      subscription = await this.nostrService.ensureDirectMessageSubscription({
-        actorPubkey: normalizedActor,
-      });
-    } catch (error) {
-      userLogger.warn(
-        "[profileModal] Failed to subscribe to direct messages:",
-        error,
-      );
-      return null;
-    }
-
-    this.directMessagesSubscription = {
-      actor: normalizedActor,
-      subscription,
-    };
-
-    return subscription;
-  }
-
-  resetDirectMessageSubscription() {
-    if (
-      this.directMessagesSubscription &&
-      this.nostrService &&
-      typeof this.nostrService.stopDirectMessageSubscription === "function"
-    ) {
-      try {
-        this.nostrService.stopDirectMessageSubscription();
-      } catch (error) {
-        devLogger.warn(
-          "[profileModal] Failed to stop direct message subscription:",
-          error,
-        );
-      }
-    }
-
-    this.directMessagesSubscription = null;
-  }
 
   handleActiveDmIdentityChanged(actorPubkey = null) {
     const normalized = actorPubkey
       ? this.normalizeHexPubkey(actorPubkey)
-      : this.resolveActiveDmActor();
+      : this.dmController.resolveActiveDmActor();
 
-    this.hasShownRelayWarning = false;
-    this.setDirectMessageRecipient(null, { reason: "clear" });
+    this.dmController.hasShownRelayWarning = false;
+    this.dmController.setDirectMessageRecipient(null, { reason: "clear" });
     this.resetAttachmentQueue({ clearInput: true });
-    this.dmReadReceiptCache.clear();
-    this.dmTypingLastSentAt = 0;
-    this.syncDmPrivacySettingsUi();
+    this.dmController.dmReadReceiptCache.clear();
+    this.dmController.dmTypingLastSentAt = 0;
+    this.dmController.syncDmPrivacySettingsUi();
 
     if (
-      this.directMessagesSubscription &&
-      this.directMessagesSubscription.actor &&
-      normalized !== this.directMessagesSubscription.actor
+      this.dmController.directMessagesSubscription &&
+      this.dmController.directMessagesSubscription.actor &&
+      normalized !== this.dmController.directMessagesSubscription.actor
     ) {
-      this.resetDirectMessageSubscription();
+      this.dmController.resetDirectMessageSubscription();
     }
 
-    this.directMessagesLastActor = normalized || null;
-    this.directMessagesCache = [];
-    this.messagesInitialLoadPending = true;
-    this.pendingMessagesRender = null;
+    this.dmController.directMessagesLastActor = normalized || null;
+    this.dmController.directMessagesCache = [];
+    this.dmController.messagesInitialLoadPending = true;
+    this.dmController.pendingMessagesRender = null;
 
-    if (this.profileMessagesList instanceof HTMLElement) {
-      this.profileMessagesList.textContent = "";
-      this.profileMessagesList.classList.add("hidden");
-      this.profileMessagesList.setAttribute("hidden", "");
+    if (this.dmController.profileMessagesList instanceof HTMLElement) {
+      this.dmController.profileMessagesList.textContent = "";
+      this.dmController.profileMessagesList.classList.add("hidden");
+      this.dmController.profileMessagesList.setAttribute("hidden", "");
     }
-    if (this.profileMessagesConversation instanceof HTMLElement) {
-      this.profileMessagesConversation.textContent = "";
-      this.profileMessagesConversation.classList.add("hidden");
-      this.profileMessagesConversation.setAttribute("hidden", "");
+    if (this.dmController.profileMessagesConversation instanceof HTMLElement) {
+      this.dmController.profileMessagesConversation.textContent = "";
+      this.dmController.profileMessagesConversation.classList.add("hidden");
+      this.dmController.profileMessagesConversation.setAttribute("hidden", "");
     }
-    if (this.profileMessagesConversationEmpty instanceof HTMLElement) {
-      this.profileMessagesConversationEmpty.classList.remove("hidden");
-      this.profileMessagesConversationEmpty.removeAttribute("hidden");
+    if (this.dmController.profileMessagesConversationEmpty instanceof HTMLElement) {
+      this.dmController.profileMessagesConversationEmpty.classList.remove("hidden");
+      this.dmController.profileMessagesConversationEmpty.removeAttribute("hidden");
     }
 
     if (!normalized) {
-      this.setMessagesLoadingState("unauthenticated");
-      this.updateMessagesReloadState();
-      this.populateDmRelayPreferences();
-      this.setDmRelayPreferencesStatus("");
+      this.dmController.setMessagesLoadingState("unauthenticated");
+      this.dmController.updateMessagesReloadState();
+      this.dmController.populateDmRelayPreferences();
+      this.dmController.setDmRelayPreferencesStatus("");
       return;
     }
 
-    this.setMessagesLoadingState("loading");
-    void this.ensureDirectMessageSubscription(normalized);
-    this.updateMessagesReloadState();
+    this.dmController.setMessagesLoadingState("loading");
+    void this.dmController.ensureDirectMessageSubscription(normalized);
+    this.dmController.updateMessagesReloadState();
 
     if (this.getActivePane() === "messages") {
-      void this.populateProfileMessages({
+      void this.dmController.populateProfileMessages({
         force: true,
         reason: "identity-change",
       });
@@ -1959,125 +1363,10 @@ export class ProfileModalController {
     void this.refreshDmRelayPreferences({ force: true });
   }
 
-  setMessagesLoadingState(state, options = {}) {
-    const normalized = typeof state === "string" ? state : "idle";
-    const defaults = {
-      idle: "",
-      loading: "Fetching direct messages from relays…",
-      ready: "",
-      empty: "No direct messages yet.",
-      unauthenticated: "Sign in to view your direct messages.",
-      error: "Failed to load direct messages. Try again later.",
-    };
 
-    const providedMessage =
-      typeof options.message === "string" && options.message.trim()
-        ? options.message.trim()
-        : "";
-    const message = providedMessage || defaults[normalized] || "";
-
-    this.messagesLoadingState = normalized;
-
-    if (this.profileMessagesPane instanceof HTMLElement) {
-      this.profileMessagesPane.setAttribute("data-messages-state", normalized);
-    }
-
-    const toggleVisibility = (element, shouldShow) => {
-      if (!(element instanceof HTMLElement)) {
-        return;
-      }
-      if (shouldShow) {
-        element.classList.remove("hidden");
-        element.removeAttribute("hidden");
-      } else {
-        element.classList.add("hidden");
-        element.setAttribute("hidden", "");
-      }
-    };
-
-    toggleVisibility(
-      this.profileMessagesLoading,
-      normalized === "loading",
-    );
-
-    if (this.profileMessagesError instanceof HTMLElement) {
-      if (normalized === "error") {
-        this.profileMessagesError.textContent = message;
-        toggleVisibility(this.profileMessagesError, true);
-      } else {
-        this.profileMessagesError.textContent = "";
-        toggleVisibility(this.profileMessagesError, false);
-      }
-    }
-
-    if (this.profileMessagesEmpty instanceof HTMLElement) {
-      if (normalized === "empty" || normalized === "unauthenticated") {
-        this.profileMessagesEmpty.textContent = message || defaults[normalized];
-        toggleVisibility(this.profileMessagesEmpty, true);
-      } else {
-        toggleVisibility(this.profileMessagesEmpty, false);
-      }
-    }
-
-    const hasMessages =
-      Array.isArray(this.directMessagesCache) &&
-      this.directMessagesCache.length > 0;
-
-    if (this.profileMessagesList instanceof HTMLElement) {
-      if (normalized === "loading" || normalized === "unauthenticated") {
-        toggleVisibility(this.profileMessagesList, false);
-      } else if (hasMessages) {
-        toggleVisibility(this.profileMessagesList, true);
-      }
-    }
-
-    if (this.profileMessagesStatus instanceof HTMLElement) {
-      if (message && normalized !== "error") {
-        this.profileMessagesStatus.textContent = message;
-      } else if (normalized === "error") {
-        this.profileMessagesStatus.textContent = "";
-      } else if (providedMessage) {
-        this.profileMessagesStatus.textContent = providedMessage;
-      } else {
-        this.profileMessagesStatus.textContent = "";
-      }
-    }
-
-    this.updateMessagesReloadState();
-    this.updateMessageComposerState();
-
-    if (this.dmAppShellContainer instanceof HTMLElement) {
-      void this.renderDmAppShell(this.directMessagesCache, {
-        actorPubkey: this.resolveActiveDmActor(),
-      });
-    }
-  }
-
-  updateMessagesReloadState() {
-    const button = this.profileMessagesReloadButton;
-    if (!(button instanceof HTMLElement)) {
-      return;
-    }
-
-    const actor = this.resolveActiveDmActor();
-    const disabled =
-      !actor ||
-      this.messagesLoadingState === "loading" ||
-      this.activeMessagesRequest !== null;
-
-    if ("disabled" in button) {
-      button.disabled = disabled;
-    }
-
-    if (disabled) {
-      button.setAttribute("aria-disabled", "true");
-    } else {
-      button.removeAttribute("aria-disabled");
-    }
-  }
 
   setMessagesUnreadIndicator(visible) {
-    if (!(this.profileMessagesUnreadDot instanceof HTMLElement)) {
+    if (!(this.dmController.profileMessagesUnreadDot instanceof HTMLElement)) {
       return;
     }
 
@@ -2087,147 +1376,16 @@ export class ProfileModalController {
       !button.classList.contains("hidden") &&
       !button.hasAttribute("hidden");
 
-    this.profileMessagesUnreadDot.classList.toggle(
+    this.dmController.profileMessagesUnreadDot.classList.toggle(
       "is-visible",
       Boolean(visible) && isVisible,
     );
   }
 
-  updateMessageComposerState() {
-    const input = this.profileMessageInput;
-    const button = this.profileMessageSendButton;
-    const helper = this.profileMessagesComposerHelper;
-    const attachmentInput = this.profileMessageAttachmentInput;
-    const attachmentButton = this.profileMessageAttachmentButton;
-    const attachmentEncrypt = this.profileMessageAttachmentEncrypt;
-    const attachmentClearCache = this.profileMessageAttachmentClearCache;
-    const shouldDisable = this.messagesLoadingState === "unauthenticated";
 
-    const applyDisabledState = (element) => {
-      if (!(element instanceof HTMLElement) || !("disabled" in element)) {
-        return;
-      }
 
-      element.disabled = shouldDisable;
-      if (shouldDisable) {
-        element.setAttribute("aria-disabled", "true");
-      } else {
-        element.removeAttribute("aria-disabled");
-      }
-    };
 
-    applyDisabledState(input);
-    applyDisabledState(button);
-    applyDisabledState(attachmentInput);
-    applyDisabledState(attachmentButton);
-    applyDisabledState(attachmentEncrypt);
-    applyDisabledState(attachmentClearCache);
 
-    if (helper instanceof HTMLElement) {
-      if (shouldDisable) {
-        helper.textContent = "Sign in to send messages.";
-        helper.classList.remove("hidden");
-        helper.removeAttribute("hidden");
-      } else {
-        helper.classList.add("hidden");
-        helper.setAttribute("hidden", "");
-      }
-    }
-
-    this.updateMessagePrivacyModeDisplay();
-  }
-
-  setMessagesAnnouncement(message) {
-    if (!(this.profileMessagesStatus instanceof HTMLElement)) {
-      return;
-    }
-
-    const content = typeof message === "string" ? message.trim() : "";
-    if (!content) {
-      this.profileMessagesStatus.textContent = "";
-      if (this.messagesStatusClearTimeout) {
-        clearTimeout(this.messagesStatusClearTimeout);
-        this.messagesStatusClearTimeout = null;
-      }
-      return;
-    }
-
-    this.profileMessagesStatus.textContent = content;
-
-    if (typeof window !== "undefined" && window && window.setTimeout) {
-      if (this.messagesStatusClearTimeout) {
-        clearTimeout(this.messagesStatusClearTimeout);
-      }
-      this.messagesStatusClearTimeout = window.setTimeout(() => {
-        if (this.profileMessagesStatus) {
-          this.profileMessagesStatus.textContent = "";
-        }
-        this.messagesStatusClearTimeout = null;
-      }, 2500);
-    }
-  }
-
-  async handleSendDmRequest() {
-    const recipient = this.resolveActiveDmRecipient();
-    if (!recipient) {
-      this.showError("Please select a message recipient.");
-      return;
-    }
-
-    const context = await this.ensureDmRecipientData(recipient);
-    this.focusMessageComposer();
-
-    const callback = this.callbacks.onSendDm;
-    if (callback && callback !== noop) {
-      callback({
-        actorPubkey: this.resolveActiveDmActor(),
-        recipient: context,
-        controller: this,
-      });
-    }
-  }
-
-  async handleOpenDmRelaysRequest() {
-    const recipient = this.resolveActiveDmRecipient();
-    if (!recipient) {
-      this.showError("Please select a message recipient.");
-      return;
-    }
-
-    const context = await this.ensureDmRecipientData(recipient);
-
-    const callback = this.callbacks.onOpenRelays;
-    if (callback && callback !== noop) {
-      callback({ controller: this, recipient: context });
-    }
-  }
-
-  handlePrivacyToggle(enabled) {
-    const recipientContext = this.buildDmRecipientContext(
-      this.resolveActiveDmRecipient(),
-    );
-    const relayHints = Array.isArray(recipientContext?.relayHints)
-      ? recipientContext.relayHints
-      : [];
-
-    if (this.enableNip17RelayWarning && enabled && !relayHints.length) {
-      this.showStatus(
-        "Privacy warning: this recipient has not shared NIP-17 relays, so we'll use your default relays.",
-        { autoHideMs: 5000 },
-      );
-    }
-
-    this.dmPrivacyToggleTouched = true;
-    this.updateMessagePrivacyModeDisplay();
-    const callback = this.callbacks.onTogglePrivacy;
-    if (callback && callback !== noop) {
-      callback({
-        controller: this,
-        enabled: Boolean(enabled),
-        recipient: recipientContext,
-      });
-    }
-  }
 
   generateAttachmentId(file) {
     if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -2239,7 +1397,7 @@ export class ProfileModalController {
   }
 
   resetAttachmentQueue({ clearInput = false } = {}) {
-    this.dmAttachmentQueue.forEach((entry) => {
+    this.dmController.dmAttachmentQueue.forEach((entry) => {
       if (entry?.previewUrl && typeof URL !== "undefined") {
         try {
           URL.revokeObjectURL(entry.previewUrl);
@@ -2248,59 +1406,30 @@ export class ProfileModalController {
         }
       }
     });
-    this.dmAttachmentQueue = [];
-    this.dmAttachmentUploads.clear();
+    this.dmController.dmAttachmentQueue = [];
+    this.dmController.dmAttachmentUploads.clear();
 
-    if (clearInput && this.profileMessageAttachmentInput) {
-      this.profileMessageAttachmentInput.value = "";
+    if (clearInput && this.dmController.profileMessageAttachmentInput) {
+      this.dmController.profileMessageAttachmentInput.value = "";
     }
 
     this.renderAttachmentQueue();
   }
 
-  handleAttachmentSelection() {
-    const input = this.profileMessageAttachmentInput;
-    if (!(input instanceof HTMLInputElement) || !input.files) {
-      return;
-    }
-
-    const files = Array.from(input.files);
-    if (!files.length) {
-      return;
-    }
-
-    files.forEach((file) => {
-      const previewUrl =
-        typeof URL !== "undefined" ? URL.createObjectURL(file) : "";
-      this.dmAttachmentQueue.push({
-        id: this.generateAttachmentId(file),
-        file,
-        name: file.name,
-        type: file.type || "application/octet-stream",
-        size: file.size,
-        previewUrl,
-        status: "pending",
-        progress: 0,
-      });
-    });
-
-    input.value = "";
-    this.renderAttachmentQueue();
-  }
 
   renderAttachmentQueue() {
-    const list = this.profileMessageAttachmentList;
+    const list = this.dmController.profileMessageAttachmentList;
     if (!(list instanceof HTMLElement)) {
       return;
     }
 
     list.textContent = "";
 
-    if (!this.dmAttachmentQueue.length) {
+    if (!this.dmController.dmAttachmentQueue.length) {
       return;
     }
 
-    this.dmAttachmentQueue.forEach((entry) => {
+    this.dmController.dmAttachmentQueue.forEach((entry) => {
       const item = document.createElement("div");
       item.className = "card flex flex-col gap-2 p-3";
       item.dataset.attachmentId = entry.id;
@@ -2318,7 +1447,7 @@ export class ProfileModalController {
       removeButton.dataset.size = "sm";
       removeButton.textContent = "Remove";
       removeButton.addEventListener("click", () => {
-        this.dmAttachmentQueue = this.dmAttachmentQueue.filter(
+        this.dmController.dmAttachmentQueue = this.dmController.dmAttachmentQueue.filter(
           (queued) => queued.id !== entry.id,
         );
         if (entry.previewUrl && typeof URL !== "undefined") {
@@ -2373,13 +1502,13 @@ export class ProfileModalController {
     }
 
     const encrypt =
-      this.profileMessageAttachmentEncrypt instanceof HTMLInputElement
-        ? this.profileMessageAttachmentEncrypt.checked
+      this.dmController.profileMessageAttachmentEncrypt instanceof HTMLInputElement
+        ? this.dmController.profileMessageAttachmentEncrypt.checked
         : false;
 
     const payloads = [];
 
-    for (const entry of this.dmAttachmentQueue) {
+    for (const entry of this.dmController.dmAttachmentQueue) {
       entry.status = "uploading";
       entry.progress = 0;
       this.renderAttachmentQueue();
@@ -2414,190 +1543,26 @@ export class ProfileModalController {
     return payloads;
   }
 
-  async renderDirectMessageConversation() {
-    const container = this.profileMessagesConversation;
-    const emptyState = this.profileMessagesConversationEmpty;
-    const actor = this.resolveActiveDmActor();
-    const recipient = this.resolveActiveDmRecipient();
 
-    if (!(container instanceof HTMLElement)) {
-      return;
-    }
-
-    container.textContent = "";
-
-    if (!actor || !recipient || !this.directMessagesCache.length) {
-      container.classList.add("hidden");
-      container.setAttribute("hidden", "");
-      if (emptyState instanceof HTMLElement) {
-        emptyState.classList.remove("hidden");
-        emptyState.removeAttribute("hidden");
-      }
-      return;
-    }
-
-    const messages = this.directMessagesCache
-      .filter((entry) => this.resolveDirectMessageRemote(entry, actor) === recipient)
-      .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-
-    if (!messages.length) {
-      container.classList.add("hidden");
-      container.setAttribute("hidden", "");
-      if (emptyState instanceof HTMLElement) {
-        emptyState.classList.remove("hidden");
-        emptyState.removeAttribute("hidden");
-      }
-      return;
-    }
-
-    if (emptyState instanceof HTMLElement) {
-      emptyState.classList.add("hidden");
-      emptyState.setAttribute("hidden", "");
-    }
-
-    void this.maybePublishReadReceipt(messages, {
-      recipientPubkey: recipient,
-    });
-
-    messages.forEach((message) => {
-      const item = document.createElement("div");
-      item.className = "card flex flex-col gap-2 p-3";
-
-      const body = document.createElement("div");
-      body.className = "text-sm text-text whitespace-pre-line";
-      const text = typeof message.plaintext === "string" ? message.plaintext.trim() : "";
-      body.textContent = text || "Attachment";
-      item.appendChild(body);
-
-      const attachments = extractAttachmentsFromMessage(message);
-      attachments.forEach((attachment) => {
-        const attachmentCard = document.createElement("div");
-        attachmentCard.className = "flex flex-col gap-2 rounded-lg border border-border/60 p-3";
-
-        const title = document.createElement("div");
-        title.className = "text-xs font-semibold text-text";
-        title.textContent = describeAttachment(attachment);
-        attachmentCard.appendChild(title);
-
-        const meta = document.createElement("div");
-        meta.className = "text-3xs text-muted";
-        const sizeLabel = formatAttachmentSize(attachment.size);
-        const typeLabel = attachment.type || "file";
-        meta.textContent = sizeLabel ? `${typeLabel} · ${sizeLabel}` : typeLabel;
-        attachmentCard.appendChild(meta);
-
-        const progress = document.createElement("progress");
-        progress.className = "progress";
-        progress.value = 0;
-        progress.max = 1;
-        progress.dataset.variant = "surface";
-        attachmentCard.appendChild(progress);
-
-        const status = document.createElement("div");
-        status.className = "text-3xs text-muted";
-        status.textContent = attachment.encrypted
-          ? "Decrypting attachment…"
-          : "Downloading attachment…";
-        attachmentCard.appendChild(status);
-
-        item.appendChild(attachmentCard);
-
-        downloadAttachment({
-          url: attachment.url,
-          expectedHash: attachment.x,
-          key: attachment.key,
-          mimeType: attachment.type,
-          onProgress: (fraction) => {
-            progress.value = Number.isFinite(fraction) ? fraction : progress.value;
-          },
-        })
-          .then((result) => {
-            progress.value = 1;
-            progress.classList.add("hidden");
-            progress.setAttribute("hidden", "");
-            status.textContent = attachment.encrypted ? "Decrypted." : "Ready.";
-
-            if (!result?.objectUrl) {
-              return;
-            }
-
-            if (attachment.type?.startsWith("image/")) {
-              const img = document.createElement("img");
-              img.src = result.objectUrl;
-              img.alt = attachment.name || "Attachment preview";
-              img.className = "h-40 w-full rounded-lg object-cover";
-              attachmentCard.appendChild(img);
-            } else if (attachment.type?.startsWith("video/")) {
-              const video = document.createElement("video");
-              video.src = result.objectUrl;
-              video.controls = true;
-              video.className = "w-full rounded-lg";
-              attachmentCard.appendChild(video);
-            } else if (attachment.type?.startsWith("audio/")) {
-              const audio = document.createElement("audio");
-              audio.src = result.objectUrl;
-              audio.controls = true;
-              audio.className = "w-full";
-              attachmentCard.appendChild(audio);
-            } else {
-              const link = document.createElement("a");
-              link.href = result.objectUrl;
-              link.textContent = "Download attachment";
-              link.className = "text-xs text-accent underline-offset-2 hover:underline";
-              link.download = attachment.name || "attachment";
-              attachmentCard.appendChild(link);
-            }
-          })
-          .catch((error) => {
-            status.textContent =
-              error && typeof error.message === "string"
-                ? error.message
-                : "Attachment download failed.";
-            status.classList.add("text-critical");
-          });
-      });
-
-      container.appendChild(item);
-    });
-
-    container.classList.remove("hidden");
-    container.removeAttribute("hidden");
-  }
-
-  resolveDirectMessageEventId(message) {
-    if (!message || typeof message !== "object") {
-      return "";
-    }
-
-    const eventId =
-      typeof message.event?.id === "string" ? message.event.id.trim() : "";
-    if (eventId) {
-      return eventId;
-    }
-
-    const innerId =
-      typeof message.message?.id === "string" ? message.message.id.trim() : "";
-    return innerId;
-  }
 
   resolveLatestDirectMessageForRecipient(recipientPubkey, actorPubkey = null) {
     const normalizedRecipient =
       typeof recipientPubkey === "string"
         ? this.normalizeHexPubkey(recipientPubkey)
         : "";
-    if (!normalizedRecipient || !Array.isArray(this.directMessagesCache)) {
+    if (!normalizedRecipient || !Array.isArray(this.dmController.directMessagesCache)) {
       return null;
     }
 
     const resolvedActor = actorPubkey
       ? this.normalizeHexPubkey(actorPubkey)
-      : this.resolveActiveDmActor();
+      : this.dmController.resolveActiveDmActor();
 
     let latest = null;
     let latestTimestamp = 0;
 
-    for (const entry of this.directMessagesCache) {
-      if (this.resolveDirectMessageRemote(entry, resolvedActor) !== normalizedRecipient) {
+    for (const entry of this.dmController.directMessagesCache) {
+      if (this.dmController.resolveDirectMessageRemote(entry, resolvedActor) !== normalizedRecipient) {
         continue;
       }
       const timestamp = Number(entry?.timestamp) || 0;
@@ -2610,98 +1575,10 @@ export class ProfileModalController {
     return latest;
   }
 
-  resolveDirectMessageKind(message) {
-    if (!message || typeof message !== "object") {
-      return null;
-    }
 
-    if (Number.isFinite(message?.event?.kind)) {
-      return Number(message.event.kind);
-    }
-
-    if (Number.isFinite(message?.message?.kind)) {
-      return Number(message.message.kind);
-    }
-
-    return null;
-  }
-
-  async maybePublishReadReceipt(messages, { recipientPubkey } = {}) {
-    if (!Array.isArray(messages) || !messages.length) {
-      return;
-    }
-
-    const settings = this.getDmPrivacySettingsSnapshot();
-    if (!settings.readReceiptsEnabled) {
-      return;
-    }
-
-    if (
-      !this.services.nostrClient ||
-      typeof this.services.nostrClient.publishDmReadReceipt !== "function"
-    ) {
-      return;
-    }
-
-    const normalizedRecipient =
-      typeof recipientPubkey === "string"
-        ? this.normalizeHexPubkey(recipientPubkey)
-        : "";
-    if (!normalizedRecipient) {
-      return;
-    }
-
-    let latestMessage = null;
-    for (let index = messages.length - 1; index >= 0; index -= 1) {
-      const entry = messages[index];
-      if (
-        entry &&
-        typeof entry === "object" &&
-        entry.direction === "incoming"
-      ) {
-        const eventId = this.resolveDirectMessageEventId(entry);
-        if (eventId) {
-          latestMessage = entry;
-          break;
-        }
-      }
-    }
-
-    if (!latestMessage) {
-      return;
-    }
-
-    const eventId = this.resolveDirectMessageEventId(latestMessage);
-    if (!eventId) {
-      return;
-    }
-
-    const cacheKey = `${normalizedRecipient}:${eventId}`;
-    if (this.dmReadReceiptCache.has(cacheKey)) {
-      return;
-    }
-
-    const relayHints = this.buildDmRecipientContext(normalizedRecipient)?.relayHints || [];
-    const messageKind = this.resolveDirectMessageKind(latestMessage);
-
-    try {
-      const result = await this.services.nostrClient.publishDmReadReceipt({
-        eventId,
-        recipientPubkey: normalizedRecipient,
-        messageKind,
-        relays: relayHints,
-      });
-
-      if (result?.ok) {
-        this.dmReadReceiptCache.add(cacheKey);
-      }
-    } catch (error) {
-      devLogger.warn("[profileModal] Failed to publish read receipt:", error);
-    }
-  }
 
   async maybePublishTypingIndicator() {
-    const settings = this.getDmPrivacySettingsSnapshot();
+    const settings = this.dmController.getDmPrivacySettingsSnapshot();
     if (!settings.typingIndicatorsEnabled) {
       return;
     }
@@ -2713,31 +1590,31 @@ export class ProfileModalController {
       return;
     }
 
-    const input = this.profileMessageInput;
+    const input = this.dmController.profileMessageInput;
     const messageText =
       input instanceof HTMLTextAreaElement ? input.value.trim() : "";
     if (!messageText) {
       return;
     }
 
-    const recipient = this.resolveActiveDmRecipient();
+    const recipient = this.dmController.resolveActiveDmRecipient();
     if (!recipient) {
       return;
     }
 
     const now = Date.now();
-    if (now - this.dmTypingLastSentAt < TYPING_INDICATOR_COOLDOWN_MS) {
+    if (now - this.dmController.dmTypingLastSentAt < TYPING_INDICATOR_COOLDOWN_MS) {
       return;
     }
 
-    this.dmTypingLastSentAt = now;
+    this.dmController.dmTypingLastSentAt = now;
 
-    const relayHints = this.buildDmRecipientContext(recipient)?.relayHints || [];
+    const relayHints = this.dmController.buildDmRecipientContext(recipient)?.relayHints || [];
     const latestMessage = this.resolveLatestDirectMessageForRecipient(
       recipient,
-      this.resolveActiveDmActor(),
+      this.dmController.resolveActiveDmActor(),
     );
-    const latestEventId = this.resolveDirectMessageEventId(latestMessage);
+    const latestEventId = this.dmController.resolveDirectMessageEventId(latestMessage);
 
     try {
       await this.services.nostrClient.publishDmTypingIndicator({
@@ -2751,368 +1628,38 @@ export class ProfileModalController {
     }
   }
 
-  describeDirectMessageSendError(code) {
-    switch (code) {
-      case "sign-event-unavailable":
-        return "Connect a Nostr signer to send messages.";
-      case "encryption-unsupported":
-        return "Your signer does not support NIP-04 encryption.";
-      case "nip44-unsupported":
-        return "Your signer does not support NIP-44 encryption required for NIP-17.";
-      case "nip17-relays-missing":
-        return "Recipient has not shared NIP-17 relay hints yet.";
-      case "nip17-relays-unavailable":
-        return "No DM relays are available to deliver this message.";
-      case "nip17-keygen-failed":
-        return "We couldn’t create secure wrapper keys for NIP-17 delivery.";
-      case "extension-permission-denied":
-        return "Please grant your Nostr extension permission to send messages.";
-      case "extension-encryption-permission-denied":
-        return "Please grant your Nostr extension encryption permission to send messages.";
-      case "missing-actor-pubkey":
-        return "We couldn’t determine your public key to send this message.";
-      case "nostr-uninitialized":
-        return "Direct messages are still connecting to relays. Please try again.";
-      case "signature-failed":
-        return "We couldn’t sign the message. Please reconnect your signer and try again.";
-      case "encryption-failed":
-        return "We couldn’t encrypt the message. Please try again.";
-      case "publish-failed":
-        return "Failed to deliver this message to any relay. Please try again.";
-      case "invalid-target":
-        return "Select a valid recipient before sending.";
-      case "empty-message":
-        return "Please enter a message or attach a file.";
-      case "attachments-unsupported":
-        return "Attachments require NIP-17 delivery. Enable the privacy toggle to send files.";
-      default:
-        return "Unable to send message. Please try again.";
-    }
-  }
 
-  async handleSendProfileMessage() {
-    const input = this.profileMessageInput;
-    if (!(input instanceof HTMLTextAreaElement)) {
-      return;
-    }
-
-    const message = typeof input.value === "string" ? input.value.trim() : "";
-    const hasAttachments = this.dmAttachmentQueue.length > 0;
-    if (!message && !hasAttachments) {
-      this.showError("Please enter a message or attach a file.");
-      return;
-    }
-
-    const targetHex = this.resolveActiveDmRecipient();
-    const target =
-      typeof targetHex === "string" && typeof this.safeEncodeNpub === "function"
-        ? this.safeEncodeNpub(targetHex)
-        : "";
-    if (!target) {
-      this.showError("Please select a message recipient.");
-      return;
-    }
-
-    const recipientContext = this.buildDmRecipientContext(targetHex);
-    const recipientRelayHints = Array.isArray(recipientContext?.relayHints)
-      ? recipientContext.relayHints
-      : [];
-    const useNip17 =
-      this.profileMessagesPrivacyToggle instanceof HTMLInputElement
-        ? this.profileMessagesPrivacyToggle.checked
-        : false;
-    const senderRelayHints = this.getActiveDmRelayPreferences();
-
-    if (hasAttachments && !useNip17) {
-      this.showError(
-        "Attachments require NIP-17 delivery. Enable the privacy toggle to send files.",
-      );
-      return;
-    }
-
-    if (this.enableNip17RelayWarning && useNip17 && !recipientRelayHints.length) {
-      this.showStatus(
-        "Privacy warning: this recipient has not shared NIP-17 relays, so we'll use your default relays.",
-        { autoHideMs: 5000 },
-      );
-    }
-
-    if (
-      !this.services.nostrClient ||
-      typeof this.services.nostrClient.sendDirectMessage !== "function"
-    ) {
-      this.showError("Direct message service unavailable.");
-      return;
-    }
-
-    const sendButton = this.profileMessageSendButton;
-    if (sendButton instanceof HTMLElement && "disabled" in sendButton) {
-      sendButton.disabled = true;
-      sendButton.setAttribute("aria-disabled", "true");
-    }
-
-    try {
-      let attachmentPayloads = [];
-      if (hasAttachments) {
-        try {
-          attachmentPayloads = await this.uploadAttachmentQueue(
-            this.resolveActiveDmActor(),
-          );
-        } catch (error) {
-          const messageText =
-            error && typeof error.message === "string"
-              ? error.message
-              : "Attachment upload failed.";
-          this.showError(messageText);
-          return;
-        }
-      }
-
-      const result = await this.services.nostrClient.sendDirectMessage(
-        target,
-        message,
-        null,
-        useNip17
-          ? {
-              useNip17: true,
-              recipientRelayHints,
-              senderRelayHints,
-              attachments: attachmentPayloads,
-            }
-          : {},
-      );
-
-      if (result?.ok) {
-        input.value = "";
-        this.resetAttachmentQueue({ clearInput: true });
-        this.showSuccess("Message sent.");
-        if (this.enableNip17RelayWarning && result?.warning === "dm-relays-fallback") {
-          this.showStatus(
-            "Privacy warning: this message used default relays because no NIP-17 relay list was found.",
-            { autoHideMs: 5000 },
-          );
-        }
-        void this.populateProfileMessages({ force: true, reason: "send-message" });
-        return;
-      }
-
-      const errorCode =
-        typeof result?.error === "string" ? result.error : "unknown";
-      userLogger.warn("[profileModal] Failed to send direct message:", errorCode);
-      this.showError(this.describeDirectMessageSendError(errorCode));
-    } catch (error) {
-      userLogger.error("[profileModal] Unexpected DM send failure:", error);
-      this.showError("Unable to send message. Please try again.");
-    } finally {
-      this.updateMessageComposerState();
-    }
-  }
 
   clearProfileMessages({ message } = {}) {
-    this.directMessagesCache = [];
-    this.directMessagesLastActor = this.resolveActiveDmActor();
-    this.messagesInitialLoadPending = true;
-    this.setDirectMessageRecipient(null, { reason: "clear" });
+    this.dmController.directMessagesCache = [];
+    this.dmController.directMessagesLastActor = this.dmController.resolveActiveDmActor();
+    this.dmController.messagesInitialLoadPending = true;
+    this.dmController.setDirectMessageRecipient(null, { reason: "clear" });
 
-    if (this.profileMessagesList instanceof HTMLElement) {
-      this.profileMessagesList.textContent = "";
-      this.profileMessagesList.classList.add("hidden");
-      this.profileMessagesList.setAttribute("hidden", "");
+    if (this.dmController.profileMessagesList instanceof HTMLElement) {
+      this.dmController.profileMessagesList.textContent = "";
+      this.dmController.profileMessagesList.classList.add("hidden");
+      this.dmController.profileMessagesList.setAttribute("hidden", "");
     }
 
-    const actor = this.directMessagesLastActor;
-    this.setMessagesLoadingState(actor ? "empty" : "unauthenticated", {
+    const actor = this.dmController.directMessagesLastActor;
+    this.dmController.setMessagesLoadingState(actor ? "empty" : "unauthenticated", {
       message,
     });
 
-    if (this.dmAppShellContainer instanceof HTMLElement) {
-      void this.renderDmAppShell(this.directMessagesCache, {
+    if (this.dmController.dmAppShellContainer instanceof HTMLElement) {
+      void this.dmController.renderDmAppShell(this.dmController.directMessagesCache, {
         actorPubkey: actor,
       });
     }
   }
 
-  extractDirectMessagePreview(entry) {
-    if (!entry || typeof entry !== "object") {
-      return "";
-    }
 
-    const candidates = [];
-    if (typeof entry.plaintext === "string") {
-      candidates.push(entry.plaintext);
-    }
-    if (typeof entry.preview === "string") {
-      candidates.push(entry.preview);
-    }
-    if (
-      entry.snapshot &&
-      typeof entry.snapshot.preview === "string" &&
-      entry.snapshot.preview.trim()
-    ) {
-      candidates.push(entry.snapshot.preview);
-    }
-    if (entry.message && typeof entry.message.content === "string") {
-      candidates.push(entry.message.content);
-    }
 
-    const preview = candidates.find((value) => value && value.trim());
-    return preview ? preview.trim() : "";
-  }
 
-  resolveProfileSummaryForPubkey(pubkey) {
-    const normalized = this.normalizeHexPubkey(pubkey);
-    const fallbackNpub =
-      normalized && typeof this.safeEncodeNpub === "function"
-        ? this.safeEncodeNpub(normalized)
-        : null;
-    const formattedNpub =
-      typeof this.formatShortNpub === "function"
-        ? this.formatShortNpub(fallbackNpub)
-        : fallbackNpub;
 
-    let displayName = formattedNpub || fallbackNpub || "Unknown profile";
-    let avatarSrc = FALLBACK_PROFILE_AVATAR;
-    let lightningAddress = "";
-    let status = "";
 
-    if (normalized && typeof this.services.getProfileCacheEntry === "function") {
-      const cacheEntry = this.services.getProfileCacheEntry(normalized);
-      const profile = cacheEntry?.profile || null;
-      if (profile) {
-        if (typeof profile.display_name === "string" && profile.display_name.trim()) {
-          displayName = profile.display_name.trim();
-        } else if (typeof profile.name === "string" && profile.name.trim()) {
-          displayName = profile.name.trim();
-        }
 
-        if (typeof profile.picture === "string" && profile.picture.trim()) {
-          avatarSrc = profile.picture.trim();
-        }
-
-        if (typeof profile.lud16 === "string" && profile.lud16.trim()) {
-          lightningAddress = profile.lud16.trim();
-        } else if (typeof profile.lud06 === "string" && profile.lud06.trim()) {
-          lightningAddress = profile.lud06.trim();
-        }
-
-        if (typeof profile.status === "string" && profile.status.trim()) {
-          status = profile.status.trim();
-        }
-      }
-    }
-
-    return {
-      displayName,
-      displayNpub: formattedNpub || fallbackNpub || "npub unavailable",
-      avatarSrc,
-      lightningAddress,
-      status,
-    };
-  }
-
-  formatMessageTimestamp(timestamp) {
-    const numeric = Number(timestamp);
-    if (!Number.isFinite(numeric) || numeric <= 0) {
-      return { display: "", iso: "" };
-    }
-
-    try {
-      const date = new Date(numeric * 1000);
-      return {
-        display: date.toLocaleString(undefined, {
-          year: "numeric",
-          month: "short",
-          day: "numeric",
-          hour: "numeric",
-          minute: "2-digit",
-        }),
-        iso: date.toISOString(),
-      };
-    } catch (error) {
-      return { display: "", iso: "" };
-    }
-  }
-
-  buildDmConversationId(actorPubkey, remotePubkey) {
-    const normalizedActor = this.normalizeHexPubkey(actorPubkey);
-    const normalizedRemote = this.normalizeHexPubkey(remotePubkey);
-
-    if (!normalizedActor || !normalizedRemote) {
-      return "";
-    }
-
-    return `dm:${[normalizedActor, normalizedRemote].sort().join(":")}`;
-  }
-
-  formatConversationTimestamp(timestamp) {
-    const numeric = Number(timestamp);
-    if (!Number.isFinite(numeric) || numeric <= 0) {
-      return "";
-    }
-
-    try {
-      return formatTimeAgo(numeric);
-    } catch (error) {
-      return "";
-    }
-  }
-
-  formatMessageClockTime(timestamp) {
-    const numeric = Number(timestamp);
-    if (!Number.isFinite(numeric) || numeric <= 0) {
-      return "";
-    }
-
-    try {
-      const date = new Date(numeric * 1000);
-      return date.toLocaleTimeString(undefined, {
-        hour: "numeric",
-        minute: "2-digit",
-      });
-    } catch (error) {
-      return "";
-    }
-  }
-
-  formatMessageDayLabel(timestamp) {
-    const numeric = Number(timestamp);
-    if (!Number.isFinite(numeric) || numeric <= 0) {
-      return "";
-    }
-
-    try {
-      const date = new Date(numeric * 1000);
-      const today = new Date();
-      const startOfToday = new Date(
-        today.getFullYear(),
-        today.getMonth(),
-        today.getDate(),
-      );
-      const startOfMessageDay = new Date(
-        date.getFullYear(),
-        date.getMonth(),
-        date.getDate(),
-      );
-      const diffDays = Math.round(
-        (startOfToday - startOfMessageDay) / (1000 * 60 * 60 * 24),
-      );
-
-      if (diffDays === 0) {
-        return "Today";
-      }
-      if (diffDays === 1) {
-        return "Yesterday";
-      }
-
-      return date.toLocaleDateString(undefined, {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      });
-    } catch (error) {
-      return "";
-    }
-  }
 
   resolveDirectMessageScheme(message) {
     if (!message || typeof message !== "object") {
@@ -3131,1379 +1678,36 @@ export class ProfileModalController {
     return typeof scheme === "string" ? scheme.trim().toLowerCase() : "";
   }
 
-  resolveDirectMessageStatus(message) {
-    if (!message || typeof message !== "object") {
-      return "sent";
-    }
 
-    const status =
-      typeof message.status === "string"
-        ? message.status
-        : typeof message.deliveryStatus === "string"
-        ? message.deliveryStatus
-        : typeof message.state === "string"
-        ? message.state
-        : "";
 
-    return status ? status.trim() : "sent";
-  }
 
-  resolveDirectMessageBody(message) {
-    if (!message || typeof message !== "object") {
-      return "";
-    }
 
-    if (typeof message.plaintext === "string" && message.plaintext.trim()) {
-      return message.plaintext.trim();
-    }
 
-    const preview = this.extractDirectMessagePreview(message);
-    if (preview) {
-      return preview;
-    }
 
-    const attachments = extractAttachmentsFromMessage(message);
-    if (attachments.length) {
-      return describeAttachment(attachments[0]);
-    }
 
-    return "";
-  }
 
-  resolveDirectMessagePreviewForConversation(message) {
-    if (!message || typeof message !== "object") {
-      return "";
-    }
 
-    const preview = this.extractDirectMessagePreview(message);
-    if (preview) {
-      return preview;
-    }
 
-    const attachments = extractAttachmentsFromMessage(message);
-    if (attachments.length) {
-      return describeAttachment(attachments[0]);
-    }
 
-    return "";
-  }
 
-  resolveRemoteForConversationId(conversationId, actorPubkey) {
-    const actor = this.normalizeHexPubkey(actorPubkey || this.resolveActiveDmActor());
-    const normalizedConversationId =
-      typeof conversationId === "string" ? conversationId.trim() : "";
 
-    if (!actor || !normalizedConversationId) {
-      return null;
-    }
 
-    for (const entry of Array.isArray(this.directMessagesCache) ? this.directMessagesCache : []) {
-      const remote = this.resolveDirectMessageRemote(entry, actor);
-      if (!remote) {
-        continue;
-      }
-      const resolvedId = this.buildDmConversationId(actor, remote);
-      if (resolvedId && resolvedId === normalizedConversationId) {
-        return remote;
-      }
-    }
 
-    return null;
-  }
 
-  resolveConversationPrivacyMode(latestMessage) {
-    const scheme = this.resolveDirectMessageScheme(latestMessage);
-    if (scheme.includes("nip17") || scheme.includes("nip44")) {
-      return "nip17";
-    }
-    return "nip04";
-  }
 
-  getDirectMessagesForConversation(conversationId, actorPubkey = null) {
-    const actor = this.normalizeHexPubkey(actorPubkey || this.resolveActiveDmActor());
-    if (!actor || !conversationId) {
-      return [];
-    }
 
-    const remote = this.resolveRemoteForConversationId(conversationId, actor);
-    if (!remote) {
-      return [];
-    }
 
-    return (Array.isArray(this.directMessagesCache) ? this.directMessagesCache : [])
-      .filter(
-        (entry) =>
-          entry &&
-          entry.ok === true &&
-          this.resolveDirectMessageRemote(entry, actor) === remote,
-      )
-      .sort((a, b) => (a?.timestamp || 0) - (b?.timestamp || 0));
-  }
 
-  getLatestDirectMessageTimestampForConversation(conversationId, actorPubkey = null) {
-    const messages = this.getDirectMessagesForConversation(
-      conversationId,
-      actorPubkey,
-    );
-    if (!messages.length) {
-      return 0;
-    }
 
-    const last = messages[messages.length - 1];
-    return Number(last?.timestamp) || 0;
-  }
 
-  buildDmMessageTimeline(messages, { actorPubkey, remotePubkey } = {}) {
-    const actor = this.normalizeHexPubkey(actorPubkey);
-    const remote = this.normalizeHexPubkey(remotePubkey);
-    if (!actor || !remote) {
-      return [];
-    }
 
-    const threadMessages = Array.isArray(messages)
-      ? messages.filter((entry) => this.resolveDirectMessageRemote(entry, actor) === remote)
-      : [];
 
-    threadMessages.sort((a, b) => (a?.timestamp || 0) - (b?.timestamp || 0));
 
-    const timeline = [];
-    let lastDayLabel = "";
 
-    threadMessages.forEach((message) => {
-      const dayLabel = this.formatMessageDayLabel(message?.timestamp);
-      if (dayLabel && dayLabel !== lastDayLabel) {
-        timeline.push({ type: "day", label: dayLabel });
-        lastDayLabel = dayLabel;
-      }
 
-      timeline.push({
-        id: this.resolveDirectMessageEventId(message) || "",
-        direction: message?.direction || "incoming",
-        body: this.resolveDirectMessageBody(message) || "Encrypted message",
-        timestamp: this.formatMessageClockTime(message?.timestamp),
-        status: this.resolveDirectMessageStatus(message),
-      });
-    });
 
-    return timeline;
-  }
 
-  async buildDmConversationData(messages, { actorPubkey } = {}) {
-    const actor = this.normalizeHexPubkey(
-      actorPubkey || this.resolveActiveDmActor(),
-    );
-    if (!actor) {
-      return {
-        actor: "",
-        conversations: [],
-        activeConversationId: "",
-        activeThread: null,
-        activeRemotePubkey: null,
-        timeline: [],
-      };
-    }
 
-    const allThreads = this.groupDirectMessages(messages, actor);
-    const blocksService = this.services.userBlocks;
-    const isRemoteBlocked =
-      blocksService && typeof blocksService.isBlocked === "function"
-        ? (pubkey) => blocksService.isBlocked(pubkey)
-        : () => false;
-    const threads = allThreads.filter(
-      (thread) => !thread.remoteHex || !isRemoteBlocked(thread.remoteHex),
-    );
-    const remoteKeys = new Set();
-    threads.forEach((thread) => {
-      if (thread.remoteHex) {
-        remoteKeys.add(thread.remoteHex);
-      }
-    });
-
-    if (
-      remoteKeys.size &&
-      this.services.batchFetchProfiles &&
-      typeof this.services.batchFetchProfiles === "function"
-    ) {
-      try {
-        await this.services.batchFetchProfiles(remoteKeys);
-      } catch (error) {
-        devLogger.warn(
-          "[profileModal] Failed to fetch DM profile metadata:",
-          error,
-        );
-      }
-    }
-
-    const conversations = threads.map((thread) => {
-      const conversationId = this.buildDmConversationId(actor, thread.remoteHex);
-      const summary = this.resolveProfileSummaryForPubkey(thread.remoteHex);
-      const preview = this.resolveDirectMessagePreviewForConversation(thread.latestMessage);
-      const unreadCount =
-        this.nostrService &&
-        typeof this.nostrService.getDirectMessageUnseenCount === "function" &&
-        conversationId
-          ? this.nostrService.getDirectMessageUnseenCount(conversationId)
-          : 0;
-      const recipientContext = this.buildDmRecipientContext(thread.remoteHex);
-
-      return {
-        id: conversationId,
-        name: summary.displayName,
-        preview: preview || "Encrypted message",
-        timestamp: this.formatConversationTimestamp(thread.latestTimestamp),
-        unreadCount,
-        avatarSrc: summary.avatarSrc,
-        status: summary.status,
-        pubkey: thread.remoteHex,
-        lightningAddress: summary.lightningAddress,
-        relayHints: Array.isArray(recipientContext?.relayHints)
-          ? recipientContext.relayHints
-          : [],
-      };
-    });
-
-    const conversationMap = new Map();
-    threads.forEach((thread) => {
-      const conversationId = this.buildDmConversationId(actor, thread.remoteHex);
-      if (conversationId) {
-        conversationMap.set(conversationId, thread);
-      }
-    });
-
-    const storedRecipient = this.resolveActiveDmRecipient();
-    const storedConversationId =
-      storedRecipient && actor
-        ? this.buildDmConversationId(actor, storedRecipient)
-        : "";
-    const preferredConversationId =
-      this.activeDmConversationId || storedConversationId;
-    const fallbackConversationId = conversations[0]?.id || "";
-    const activeConversationId =
-      preferredConversationId && conversationMap.has(preferredConversationId)
-        ? preferredConversationId
-        : fallbackConversationId;
-    const activeThread = activeConversationId
-      ? conversationMap.get(activeConversationId)
-      : null;
-    const activeRemotePubkey =
-      activeThread?.remoteHex ||
-      (activeConversationId
-        ? this.resolveRemoteForConversationId(activeConversationId, actor)
-        : storedRecipient) ||
-      null;
-
-    if (activeConversationId && this.activeDmConversationId !== activeConversationId) {
-      this.activeDmConversationId = activeConversationId;
-    }
-
-    return {
-      actor,
-      conversations,
-      activeConversationId,
-      activeThread,
-      activeRemotePubkey,
-      timeline:
-        activeRemotePubkey && actor
-          ? this.buildDmMessageTimeline(messages, {
-              actorPubkey: actor,
-              remotePubkey: activeRemotePubkey,
-            })
-          : [],
-    };
-  }
-
-  groupDirectMessages(messages, actorPubkey) {
-    const normalizedActor = actorPubkey
-      ? this.normalizeHexPubkey(actorPubkey)
-      : this.resolveActiveDmActor();
-
-    const threadMap = new Map();
-    for (const entry of Array.isArray(messages) ? messages : []) {
-      if (!entry || entry.ok !== true) {
-        continue;
-      }
-
-      const remoteHex = this.resolveDirectMessageRemote(entry, normalizedActor);
-      if (!remoteHex) {
-        continue;
-      }
-
-      const thread = threadMap.get(remoteHex) || {
-        remoteHex,
-        messages: [],
-        latestTimestamp: 0,
-        latestMessage: null,
-      };
-
-      thread.messages.push(entry);
-
-      const ts = Number(entry.timestamp) || 0;
-      if (!thread.latestMessage || ts > thread.latestTimestamp) {
-        thread.latestTimestamp = ts;
-        thread.latestMessage = entry;
-      }
-
-      threadMap.set(remoteHex, thread);
-    }
-
-    const threads = Array.from(threadMap.values());
-    threads.sort((a, b) => (b.latestTimestamp || 0) - (a.latestTimestamp || 0));
-    return threads;
-  }
-
-  resolveDirectMessageRemote(entry, actorPubkey = null) {
-    if (!entry || entry.ok !== true) {
-      return null;
-    }
-
-    const normalizedActor = actorPubkey
-      ? this.normalizeHexPubkey(actorPubkey)
-      : this.resolveActiveDmActor();
-
-    if (typeof entry.remotePubkey === "string") {
-      const directRemote = this.normalizeHexPubkey(entry.remotePubkey);
-      if (directRemote && directRemote !== normalizedActor) {
-        return directRemote;
-      }
-    }
-
-    if (entry.snapshot && typeof entry.snapshot.remotePubkey === "string") {
-      const snapshotRemote = this.normalizeHexPubkey(entry.snapshot.remotePubkey);
-      if (snapshotRemote && snapshotRemote !== normalizedActor) {
-        return snapshotRemote;
-      }
-    }
-
-    const direction =
-      typeof entry.direction === "string" ? entry.direction.toLowerCase() : "";
-
-    const senderHex =
-      entry.sender && typeof entry.sender.pubkey === "string"
-        ? this.normalizeHexPubkey(entry.sender.pubkey)
-        : null;
-
-    if (direction === "incoming" && senderHex && senderHex !== normalizedActor) {
-      return senderHex;
-    }
-
-    if (Array.isArray(entry.recipients)) {
-      for (const recipient of entry.recipients) {
-        const candidate =
-          recipient && typeof recipient.pubkey === "string"
-            ? this.normalizeHexPubkey(recipient.pubkey)
-            : null;
-        if (candidate && candidate !== normalizedActor) {
-          return candidate;
-        }
-      }
-    }
-
-    if (direction === "outgoing" && senderHex && senderHex !== normalizedActor) {
-      return senderHex;
-    }
-
-    if (entry.message && typeof entry.message.pubkey === "string") {
-      const messagePubkey = this.normalizeHexPubkey(entry.message.pubkey);
-      if (messagePubkey && messagePubkey !== normalizedActor) {
-        return messagePubkey;
-      }
-    }
-
-    if (entry.event && typeof entry.event.pubkey === "string") {
-      const eventPubkey = this.normalizeHexPubkey(entry.event.pubkey);
-      if (eventPubkey && eventPubkey !== normalizedActor) {
-        return eventPubkey;
-      }
-    }
-
-    if (senderHex && senderHex !== normalizedActor) {
-      return senderHex;
-    }
-
-    return null;
-  }
-
-  createDirectMessageThreadItem(thread) {
-    if (!thread || !thread.remoteHex) {
-      return null;
-    }
-
-    const item = document.createElement("li");
-    item.className = "card flex flex-col gap-3 p-4";
-    item.setAttribute("data-remote-pubkey", thread.remoteHex);
-    item.dataset.state = "inactive";
-
-    const header = document.createElement("div");
-    header.className = "flex items-start justify-between gap-3";
-
-    const summary = this.resolveProfileSummaryForPubkey(thread.remoteHex);
-    const summaryNode = this.createCompactProfileSummary({
-      displayName: summary.displayName,
-      displayNpub: summary.displayNpub,
-      avatarSrc: summary.avatarSrc,
-      size: "sm",
-    });
-    header.appendChild(summaryNode);
-
-    const timestampMeta = this.formatMessageTimestamp(thread.latestTimestamp);
-    if (timestampMeta.display) {
-      const timeEl = document.createElement("time");
-      timeEl.className =
-        "text-3xs font-semibold uppercase tracking-extra-wide text-muted";
-      if (timestampMeta.iso) {
-        timeEl.setAttribute("datetime", timestampMeta.iso);
-      }
-      timeEl.textContent = timestampMeta.display;
-      header.appendChild(timeEl);
-    }
-
-    item.appendChild(header);
-
-    const previewText = this.extractDirectMessagePreview(thread.latestMessage);
-    const previewEl = document.createElement("p");
-    previewEl.className = "text-sm text-text whitespace-pre-line";
-    previewEl.textContent = previewText || "Encrypted message";
-    item.appendChild(previewEl);
-
-    const meta = document.createElement("div");
-    meta.className = "flex flex-wrap items-center gap-2";
-
-    const direction =
-      typeof thread.latestMessage?.direction === "string"
-        ? thread.latestMessage.direction.toLowerCase()
-        : "";
-    if (direction) {
-      const directionPill = document.createElement("span");
-      directionPill.className = "pill";
-      directionPill.dataset.variant = direction === "incoming" ? "info" : "muted";
-      directionPill.textContent =
-        direction === "incoming"
-          ? "Incoming message"
-          : direction === "outgoing"
-          ? "Sent message"
-          : "Message";
-      meta.appendChild(directionPill);
-    }
-
-    const countPill = document.createElement("span");
-    countPill.className = "pill";
-    countPill.dataset.variant = "muted";
-    const messageCount = Array.isArray(thread.messages)
-      ? thread.messages.length
-      : 0;
-    countPill.textContent =
-      messageCount === 1 ? "1 message" : `${messageCount} messages`;
-    meta.appendChild(countPill);
-
-    const scheme =
-      typeof thread.latestMessage?.scheme === "string"
-        ? thread.latestMessage.scheme.toUpperCase()
-        : "";
-    if (scheme) {
-      const schemePill = document.createElement("span");
-      schemePill.className = "pill";
-      schemePill.dataset.variant = "muted";
-      schemePill.textContent = scheme;
-      meta.appendChild(schemePill);
-    }
-
-    item.appendChild(meta);
-
-    item.addEventListener("click", () => {
-      this.setDirectMessageRecipient(thread.remoteHex, {
-        reason: "thread-select",
-      });
-      this.focusMessageComposer();
-    });
-
-    return item;
-  }
-
-  async renderProfileMessages(messages, { actorPubkey = null } = {}) {
-    if (this.dmAppShellContainer instanceof HTMLElement) {
-      await this.renderDmAppShell(messages, { actorPubkey });
-    }
-
-    if (!(this.profileMessagesList instanceof HTMLElement)) {
-      if (!(this.dmAppShellContainer instanceof HTMLElement)) {
-        this.pendingMessagesRender = {
-          messages: Array.isArray(messages) ? messages : [],
-          actorPubkey,
-        };
-      }
-      return;
-    }
-
-    this.pendingMessagesRender = null;
-
-    const normalizedActor = actorPubkey
-      ? this.normalizeHexPubkey(actorPubkey)
-      : this.resolveActiveDmActor();
-
-    const renderToken = (this.profileMessagesRenderToken += 1);
-    const renderThreads = (threadsToRender) => {
-      this.profileMessagesList.textContent = "";
-
-      if (!threadsToRender.length) {
-        this.profileMessagesList.classList.add("hidden");
-        this.profileMessagesList.setAttribute("hidden", "");
-        void this.renderDirectMessageConversation();
-        return;
-      }
-
-      for (const thread of threadsToRender) {
-        const item = this.createDirectMessageThreadItem(thread);
-        if (item) {
-          this.profileMessagesList.appendChild(item);
-        }
-      }
-
-      const activeRecipient = this.resolveActiveDmRecipient();
-      const hasActiveRecipient =
-        activeRecipient &&
-        threadsToRender.some((thread) => thread.remoteHex === activeRecipient);
-
-      if (threadsToRender.length && !hasActiveRecipient) {
-        this.setDirectMessageRecipient(threadsToRender[0].remoteHex, {
-          reason: "thread-default",
-        });
-        const conversationId = this.buildDmConversationId(
-          normalizedActor,
-          threadsToRender[0].remoteHex,
-        );
-        this.setFocusedDmConversation(conversationId);
-      } else if (hasActiveRecipient) {
-        this.updateMessageThreadSelection(activeRecipient);
-      }
-
-      this.profileMessagesList.classList.remove("hidden");
-      this.profileMessagesList.removeAttribute("hidden");
-      void this.renderDirectMessageConversation();
-    };
-
-    const threads = this.groupDirectMessages(messages, normalizedActor);
-    renderThreads(threads);
-
-    const remoteKeys = new Set();
-    for (const thread of threads) {
-      if (thread.remoteHex) {
-        remoteKeys.add(thread.remoteHex);
-      }
-    }
-
-    if (
-      remoteKeys.size &&
-      this.services.batchFetchProfiles &&
-      typeof this.services.batchFetchProfiles === "function"
-    ) {
-      Promise.resolve(this.services.batchFetchProfiles(remoteKeys))
-        .then(() => {
-          if (this.profileMessagesRenderToken !== renderToken) {
-            return;
-          }
-          const latestMessages = Array.isArray(this.directMessagesCache)
-            ? this.directMessagesCache
-            : messages;
-          const latestActor = this.resolveActiveDmActor() || normalizedActor;
-          const refreshedThreads = this.groupDirectMessages(
-            latestMessages,
-            latestActor,
-          );
-          renderThreads(refreshedThreads);
-        })
-        .catch((error) => {
-          devLogger.warn(
-            "[profileModal] Failed to fetch DM profile metadata:",
-            error,
-          );
-        });
-    }
-  }
-
-  async renderDmAppShell(messages, { actorPubkey = null } = {}) {
-    const container =
-      this.dmAppShellContainer instanceof HTMLElement
-        ? this.dmAppShellContainer
-        : null;
-    if (!container) {
-      return;
-    }
-
-    const snapshot = Array.isArray(messages) ? messages : this.directMessagesCache;
-    const {
-      actor,
-      conversations,
-      activeConversationId,
-      activeThread,
-      timeline,
-    } = await this.buildDmConversationData(snapshot, { actorPubkey });
-
-    this.setFocusedDmConversation(activeConversationId);
-
-    const currentRecipient = this.resolveActiveDmRecipient();
-    if (!currentRecipient && activeThread?.remoteHex) {
-      this.setDirectMessageRecipient(activeThread.remoteHex, {
-        reason: "thread-default",
-      });
-    }
-
-    const loadingState = this.messagesLoadingState || "idle";
-    const conversationState =
-      loadingState === "loading"
-        ? "loading"
-        : loadingState === "error"
-        ? "error"
-        : loadingState === "empty" || loadingState === "unauthenticated"
-        ? "empty"
-        : "idle";
-
-    const hasActiveConversation = Boolean(activeConversationId);
-    const threadState =
-      conversationState === "loading"
-        ? "loading"
-        : !hasActiveConversation
-        ? "empty"
-        : timeline.length
-        ? "idle"
-        : "empty";
-
-    const privacyMode = this.resolveConversationPrivacyMode(
-      activeThread?.latestMessage,
-    );
-
-    const currentUserSummary = this.resolveProfileSummaryForPubkey(
-      this.resolveActiveDmActor(),
-    );
-    const currentUserAvatarUrl = currentUserSummary?.avatarSrc || "";
-
-    container.textContent = "";
-
-    try {
-      const dmPrivacySettings = this.getDmPrivacySettingsSnapshot();
-
-      this.dmAppShell = new AppShell({
-        document,
-        currentUserAvatarUrl,
-        conversations,
-        activeConversationId,
-        conversationState,
-        messages: timeline,
-        threadState,
-        privacyMode,
-        dmPrivacySettings,
-        composerState: this.dmComposerState || "idle",
-        notifications: [],
-        zapConfig: {
-            signer: this.services.nostrClient,
-        },
-        mobileView: this.dmMobileView || "list",
-        onSelectConversation: (conversation) => {
-          void this.handleDmConversationSelect(conversation);
-        },
-        onRefreshConversations: () => {
-          this.populateProfileMessages({ force: true });
-        },
-        onBack: () => {
-          this.dmMobileView = "list";
-          void this.renderDmAppShell(this.directMessagesCache, {
-            actorPubkey: this.resolveActiveDmActor(),
-          });
-        },
-        onSendMessage: (messageText, payload) => {
-          void this.handleDmAppShellSendMessage(messageText, payload);
-        },
-        onMarkConversationRead: (conversation) => {
-          void this.handleDmConversationMarkRead(conversation);
-        },
-        onMarkAllRead: () => {
-          void this.handleDmMarkAllConversationsRead();
-        },
-        onToggleReadReceipts: (enabled) => {
-          this.handleReadReceiptsToggle(enabled);
-        },
-        onToggleTypingIndicators: (enabled) => {
-          this.handleTypingIndicatorsToggle(enabled);
-        },
-        onOpenSettings: () => {
-          this.openDmSettingsModal();
-        },
-      });
-    } catch (error) {
-      this.dmAppShell = null;
-      devLogger.warn("[profileModal] Failed to render DM app shell:", error);
-      return;
-    }
-
-    const root =
-      this.dmAppShell &&
-      typeof this.dmAppShell.getRoot === "function"
-        ? this.dmAppShell.getRoot()
-        : null;
-    if (!(root instanceof HTMLElement)) {
-      devLogger.warn("[profileModal] DM app shell root missing.");
-      return;
-    }
-
-    root.classList.add("bg-transparent");
-    container.appendChild(root);
-
-    if (actor && activeConversationId) {
-      const renderedUntil =
-        this.getLatestDirectMessageTimestampForConversation(
-          activeConversationId,
-          actor,
-        ) || Date.now() / 1000;
-      void this.nostrService?.acknowledgeRenderedDirectMessages?.(
-        activeConversationId,
-        renderedUntil,
-      );
-    }
-  }
-
-  setFocusedDmConversation(conversationId) {
-    if (
-      !this.nostrService ||
-      typeof this.nostrService.setFocusedDirectMessageConversation !== "function"
-    ) {
-      return;
-    }
-
-    if (
-      this.focusedDmConversationId &&
-      this.focusedDmConversationId !== conversationId
-    ) {
-      this.nostrService.setFocusedDirectMessageConversation(
-        this.focusedDmConversationId,
-        false,
-      );
-    }
-
-    if (conversationId) {
-      this.nostrService.setFocusedDirectMessageConversation(conversationId, true);
-      this.focusedDmConversationId = conversationId;
-    } else {
-      this.focusedDmConversationId = "";
-    }
-  }
-
-  async handleDmConversationSelect(conversation) {
-    const conversationId =
-      conversation && typeof conversation.id === "string"
-        ? conversation.id.trim()
-        : "";
-    if (!conversationId) {
-      return;
-    }
-
-    this.dmMobileView = "thread";
-
-    const actor = this.resolveActiveDmActor();
-    const remote = this.resolveRemoteForConversationId(conversationId, actor);
-
-    this.activeDmConversationId = conversationId;
-    if (remote) {
-      this.setDirectMessageRecipient(remote, { reason: "thread-select" });
-    }
-
-    this.setFocusedDmConversation(conversationId);
-
-    await this.renderDmAppShell(this.directMessagesCache, {
-      actorPubkey: actor,
-    });
-  }
-
-  async handleDmConversationMarkRead(conversation) {
-    const conversationId =
-      conversation && typeof conversation.id === "string"
-        ? conversation.id.trim()
-        : this.activeDmConversationId;
-    if (!conversationId) {
-      return;
-    }
-
-    const actor = this.resolveActiveDmActor();
-    if (
-      !actor ||
-      !this.nostrService ||
-      typeof this.nostrService.acknowledgeRenderedDirectMessages !== "function"
-    ) {
-      return;
-    }
-
-    const renderedUntil = this.getLatestDirectMessageTimestampForConversation(
-      conversationId,
-      actor,
-    );
-
-    try {
-      await this.nostrService.acknowledgeRenderedDirectMessages(
-        conversationId,
-        renderedUntil,
-      );
-    } catch (error) {
-      devLogger.warn("[profileModal] Failed to mark conversation read:", error);
-    }
-
-    const recipient = this.resolveRemoteForConversationId(conversationId, actor);
-    const messages = this.getDirectMessagesForConversation(conversationId, actor);
-    if (recipient && messages.length) {
-      void this.maybePublishReadReceipt(messages, {
-        recipientPubkey: recipient,
-      });
-    }
-
-    await this.renderDmAppShell(this.directMessagesCache, {
-      actorPubkey: actor,
-    });
-  }
-
-  async handleDmMarkAllConversationsRead() {
-    if (
-      !this.nostrService ||
-      typeof this.nostrService.acknowledgeRenderedDirectMessages !== "function"
-    ) {
-      return;
-    }
-
-    const actor = this.resolveActiveDmActor();
-    if (!actor) {
-      return;
-    }
-
-    const summaries =
-      typeof this.nostrService.listDirectMessageConversationSummaries === "function"
-        ? await this.nostrService.listDirectMessageConversationSummaries()
-        : [];
-    const list = Array.isArray(summaries) ? summaries : [];
-
-    for (const summary of list) {
-      const conversationId =
-        typeof summary?.conversation_id === "string"
-          ? summary.conversation_id.trim()
-          : typeof summary?.conversationId === "string"
-            ? summary.conversationId.trim()
-            : "";
-      if (!conversationId) {
-        continue;
-      }
-
-      const renderedUntil =
-        Number(summary?.last_message_at) ||
-        Number(summary?.downloaded_until) ||
-        Number(summary?.opened_until) ||
-        this.getLatestDirectMessageTimestampForConversation(conversationId, actor);
-
-      try {
-        await this.nostrService.acknowledgeRenderedDirectMessages(
-          conversationId,
-          renderedUntil,
-        );
-      } catch (error) {
-        devLogger.warn(
-          "[profileModal] Failed to mark conversation read:",
-          error,
-        );
-      }
-
-      const recipient = this.resolveRemoteForConversationId(conversationId, actor);
-      const messages = this.getDirectMessagesForConversation(conversationId, actor);
-      if (recipient && messages.length) {
-        void this.maybePublishReadReceipt(messages, {
-          recipientPubkey: recipient,
-        });
-      }
-    }
-
-    await this.renderDmAppShell(this.directMessagesCache, {
-      actorPubkey: actor,
-    });
-  }
-
-  async handleDmAppShellSendMessage(messageText, payload = {}) {
-    const normalizedPayload =
-      payload && typeof payload === "object" ? payload : {};
-    const message =
-      typeof messageText === "string" ? messageText.trim() : "";
-    const attachments = Array.isArray(normalizedPayload.attachments)
-      ? normalizedPayload.attachments
-      : [];
-
-    if (!message && !attachments.length) {
-      this.showError("Please enter a message or attach a file.");
-      this.dmComposerState = "error";
-      await this.renderDmAppShell(this.directMessagesCache, {
-        actorPubkey: this.resolveActiveDmActor(),
-      });
-      return;
-    }
-
-    const actor = this.resolveActiveDmActor();
-    const activeConversationId =
-      this.activeDmConversationId ||
-      (actor && this.resolveActiveDmRecipient()
-        ? this.buildDmConversationId(actor, this.resolveActiveDmRecipient())
-        : "");
-    const targetHex =
-      this.resolveRemoteForConversationId(activeConversationId, actor) ||
-      this.resolveActiveDmRecipient();
-
-    const target =
-      typeof targetHex === "string" && typeof this.safeEncodeNpub === "function"
-        ? this.safeEncodeNpub(targetHex)
-        : "";
-    if (!target) {
-      this.showError("Please select a message recipient.");
-      this.dmComposerState = "error";
-      await this.renderDmAppShell(this.directMessagesCache, {
-        actorPubkey: actor,
-      });
-      return;
-    }
-
-    if (
-      !this.services.nostrClient ||
-      typeof this.services.nostrClient.sendDirectMessage !== "function"
-    ) {
-      this.showError("Direct message service unavailable.");
-      this.dmComposerState = "error";
-      await this.renderDmAppShell(this.directMessagesCache, {
-        actorPubkey: actor,
-      });
-      return;
-    }
-
-    const privacyMode =
-      typeof normalizedPayload.privacyMode === "string"
-        ? normalizedPayload.privacyMode.trim().toLowerCase()
-        : "nip04";
-    const useNip17 = privacyMode === "nip17" || privacyMode === "private";
-
-    if (attachments.length && !useNip17) {
-      this.showError(
-        "Attachments require NIP-17 delivery. Enable the privacy toggle to send files.",
-      );
-      this.dmComposerState = "error";
-      await this.renderDmAppShell(this.directMessagesCache, {
-        actorPubkey: actor,
-      });
-      return;
-    }
-
-    const recipientContext = this.buildDmRecipientContext(targetHex);
-    const recipientRelayHints = Array.isArray(recipientContext?.relayHints)
-      ? recipientContext.relayHints
-      : [];
-    const senderRelayHints = this.getActiveDmRelayPreferences();
-
-    if (useNip17 && !recipientRelayHints.length) {
-      this.showStatus(
-        "Privacy warning: this recipient has not shared NIP-17 relays, so we'll use your default relays.",
-        { autoHideMs: 5000 },
-      );
-    }
-
-    this.dmComposerState = "sending";
-    await this.renderDmAppShell(this.directMessagesCache, {
-      actorPubkey: actor,
-    });
-
-    try {
-      const result = await this.services.nostrClient.sendDirectMessage(
-        target,
-        message,
-        null,
-        useNip17
-          ? {
-              useNip17: true,
-              recipientRelayHints,
-              senderRelayHints,
-              attachments,
-            }
-          : {},
-      );
-
-      if (result?.ok) {
-        this.showSuccess("Message sent.");
-        if (result?.warning === "dm-relays-fallback") {
-          this.showStatus(
-            "Privacy warning: this message used default relays because no NIP-17 relay list was found.",
-            { autoHideMs: 5000 },
-          );
-        }
-        if (
-          this.nostrService &&
-          typeof this.nostrService.loadDirectMessages === "function"
-        ) {
-          await this.nostrService.loadDirectMessages({
-            actorPubkey: actor,
-            initialLoad: false,
-          });
-        }
-        this.dmComposerState = "idle";
-      } else {
-        const errorCode =
-          typeof result?.error === "string" ? result.error : "unknown";
-        userLogger.warn("[profileModal] Failed to send direct message:", errorCode);
-        this.showError(this.describeDirectMessageSendError(errorCode));
-        this.dmComposerState = "error";
-      }
-    } catch (error) {
-      userLogger.error("[profileModal] Unexpected DM send failure:", error);
-      this.showError("Unable to send message. Please try again.");
-      this.dmComposerState = "error";
-    } finally {
-      await this.renderDmAppShell(this.directMessagesCache, {
-        actorPubkey: actor,
-      });
-    }
-  }
-
-  async populateProfileMessages(options = {}) {
-    const settings =
-      options && typeof options === "object" ? options : { force: false };
-    const { force = false } = settings;
-
-    const actor = this.resolveActiveDmActor();
-    if (!actor) {
-      this.clearProfileMessages();
-      return;
-    }
-
-    if (
-      !this.nostrService ||
-      typeof this.nostrService.loadDirectMessages !== "function"
-    ) {
-      this.setMessagesLoadingState("error", {
-        message: "Direct message service unavailable.",
-      });
-      return;
-    }
-
-    if (
-      !force &&
-      !this.messagesInitialLoadPending &&
-      Array.isArray(this.directMessagesCache) &&
-      this.directMessagesCache.length
-    ) {
-      await this.renderProfileMessages(this.directMessagesCache, {
-        actorPubkey: actor,
-      });
-      this.setMessagesLoadingState("ready");
-      return;
-    }
-
-    const requestId = Symbol("messagesLoad");
-    this.activeMessagesRequest = requestId;
-    this.messagesInitialLoadPending = false;
-    this.setMessagesLoadingState("loading");
-
-    if (
-      this.directMessagesLastActor &&
-      this.directMessagesLastActor !== actor
-    ) {
-      this.resetDirectMessageSubscription();
-      if (
-        typeof this.nostrService.clearDirectMessages === "function"
-      ) {
-        try {
-          this.nostrService.clearDirectMessages({ emit: true });
-        } catch (error) {
-          devLogger.warn(
-            "[profileModal] Failed to clear direct messages cache before reload:",
-            error,
-          );
-        }
-      }
-    }
-
-    try {
-      let snapshot = await this.nostrService.loadDirectMessages({
-        actorPubkey: actor,
-        initialLoad: true,
-      });
-      if (!Array.isArray(snapshot)) {
-        snapshot = [];
-      }
-
-      if (this.activeMessagesRequest !== requestId) {
-        return;
-      }
-
-      this.directMessagesCache = snapshot;
-      this.directMessagesLastActor = actor;
-
-      await this.renderProfileMessages(snapshot, { actorPubkey: actor });
-
-      if (!snapshot.length) {
-        this.setMessagesLoadingState("empty");
-      } else {
-        this.setMessagesLoadingState("ready", {
-          message:
-            snapshot.length === 1
-              ? "1 direct message thread loaded."
-              : `${snapshot.length} direct message threads loaded.`,
-        });
-      }
-    } catch (error) {
-      if (this.activeMessagesRequest === requestId) {
-        userLogger.error(
-          "[profileModal] Failed to load direct messages:",
-          error,
-        );
-        this.setMessagesLoadingState("error", {
-          message: "Failed to load direct messages. Try again later.",
-        });
-        this.messagesInitialLoadPending = true;
-      }
-      return;
-    } finally {
-      if (this.activeMessagesRequest === requestId) {
-        this.activeMessagesRequest = null;
-        this.updateMessagesReloadState();
-      }
-    }
-
-    void this.ensureDirectMessageSubscription(actor);
-  }
-
-  mountDmAppShell() {
-    const container =
-      this.dmAppShellContainer instanceof HTMLElement
-        ? this.dmAppShellContainer
-        : null;
-    if (!container) {
-      return;
-    }
-    void this.renderDmAppShell(this.directMessagesCache, {
-      actorPubkey: this.directMessagesLastActor,
-    });
-  }
-
-  unmountDmAppShell() {
-    const container =
-      this.dmAppShellContainer instanceof HTMLElement
-        ? this.dmAppShellContainer
-        : null;
-    if (container) {
-      container.textContent = "";
-    }
-
-    this.dmAppShell = null;
-  }
-
-  resumeProfileMessages() {
-    this.messagesViewActive = true;
-    this.mountDmAppShell();
-    this.updateMessagesReloadState();
-  }
-
-  pauseProfileMessages() {
-    this.messagesViewActive = false;
-    this.unmountDmAppShell();
-    this.updateMessagesReloadState();
-  }
-
-  clearDirectMessagesUpdateQueue() {
-    if (this.directMessagesRenderTimeout) {
-      const clearTimeoutFn =
-        typeof window !== "undefined" && typeof window.clearTimeout === "function"
-          ? window.clearTimeout.bind(window)
-          : clearTimeout;
-      clearTimeoutFn(this.directMessagesRenderTimeout);
-      this.directMessagesRenderTimeout = null;
-    }
-    this.pendingDirectMessagesUpdate = null;
-  }
-
-  scheduleDirectMessagesRender(payload = null) {
-    if (!payload) {
-      return;
-    }
-
-    this.pendingDirectMessagesUpdate = payload;
-
-    if (this.directMessagesRenderTimeout) {
-      return;
-    }
-
-    const scheduleTimeout =
-      typeof window !== "undefined" && typeof window.setTimeout === "function"
-        ? window.setTimeout.bind(window)
-        : setTimeout;
-
-    this.directMessagesRenderTimeout = scheduleTimeout(() => {
-      this.directMessagesRenderTimeout = null;
-      this.flushDirectMessagesRender();
-    }, DIRECT_MESSAGES_BATCH_DELAY_MS);
-  }
-
-  flushDirectMessagesRender() {
-    const pending = this.pendingDirectMessagesUpdate;
-    this.pendingDirectMessagesUpdate = null;
-    if (!pending) {
-      return;
-    }
-
-    const { messages, actorPubkey, reason } = pending;
-    void this.renderProfileMessages(messages, { actorPubkey })
-      .then(() => {
-        if (!messages.length) {
-          this.setMessagesLoadingState("empty");
-        } else {
-          this.setMessagesLoadingState("ready");
-        }
-
-        if (reason === "subscription") {
-          this.setMessagesAnnouncement("New direct message received.");
-        } else if (reason === "load") {
-          this.setMessagesAnnouncement(
-            messages.length === 1
-              ? "1 direct message thread synced."
-              : `${messages.length} direct message threads synced.`,
-          );
-        }
-      })
-      .catch((error) => {
-        devLogger.warn(
-          "[profileModal] Failed to render direct messages after update:",
-          error,
-        );
-      });
-  }
-
-  handleDirectMessagesUpdated(detail = {}) {
-    if (
-      this.activeMessagesRequest &&
-      detail?.reason !== "load-incremental"
-    ) {
-      return;
-    }
-
-    const messages = Array.isArray(detail?.messages)
-      ? detail.messages
-      : [];
-    this.directMessagesCache = messages;
-
-    const actor = this.resolveActiveDmActor();
-    if (!actor) {
-      this.setMessagesLoadingState("unauthenticated");
-      this.clearDirectMessagesUpdateQueue();
-      return;
-    }
-
-    this.directMessagesLastActor = actor;
-    this.scheduleDirectMessagesRender({
-      messages,
-      actorPubkey: actor,
-      reason: typeof detail?.reason === "string" ? detail.reason : "",
-    });
-  }
-
-  handleDirectMessagesCleared() {
-    if (this.activeMessagesRequest) {
-      return;
-    }
-
-    this.clearDirectMessagesUpdateQueue();
-    this.directMessagesCache = [];
-    this.setDirectMessageRecipient(null, { reason: "clear" });
-    if (this.profileMessagesList instanceof HTMLElement) {
-      this.profileMessagesList.textContent = "";
-      this.profileMessagesList.classList.add("hidden");
-      this.profileMessagesList.setAttribute("hidden", "");
-    }
-
-    const actor = this.resolveActiveDmActor();
-    if (!actor) {
-      this.setMessagesLoadingState("unauthenticated");
-    } else {
-      this.setMessagesLoadingState("empty");
-    }
-
-    if (this.dmAppShellContainer instanceof HTMLElement) {
-      void this.renderDmAppShell(this.directMessagesCache, {
-        actorPubkey: actor,
-      });
-    }
-  }
-
-  handleDirectMessagesError(detail = {}) {
-    const error = detail?.error || detail?.failure || detail;
-    const reason = detail?.context?.reason || "";
-    const errorCode = error?.code || "";
-    const errorMessage =
-      typeof error === "string"
-        ? error
-        : typeof error?.message === "string"
-          ? error.message
-          : "";
-    const requiresNip44Decryptor =
-      typeof errorMessage === "string" &&
-      errorMessage.includes("Gift wrap events require a NIP-44 decryptor");
-
-    const isBenign =
-      reason === "no-decryptors" ||
-      errorCode === "decryption-failed" ||
-      (typeof error === "string" && error.includes("no-decryptors"));
-
-    if (isBenign) {
-      devLogger.info("[profileModal] Direct message sync info:", error);
-    } else {
-      userLogger.warn(
-        "[profileModal] Direct message sync issue detected:",
-        error,
-      );
-    }
-
-    if (this.activeMessagesRequest) {
-      return;
-    }
-
-    if (requiresNip44Decryptor) {
-      const nip44Message =
-        "NIP-17 direct messages require a NIP-44-capable signer or extension. Unlock or update your extension to continue.";
-      if (!this.directMessagesCache.length) {
-        this.setMessagesLoadingState("error", {
-          message: nip44Message,
-        });
-        return;
-      }
-
-      this.setMessagesAnnouncement(nip44Message);
-      this.updateMessagesReloadState();
-      return;
-    }
-
-    if (!this.directMessagesCache.length) {
-      this.setMessagesLoadingState("error", {
-        message: "Unable to sync direct messages right now.",
-      });
-      return;
-    }
-
-    this.setMessagesAnnouncement("Unable to sync direct messages right now.");
-    this.updateMessagesReloadState();
-  }
-
-  handleDirectMessagesRelayWarning(detail = {}) {
-    if (!this.enableNip17RelayWarning) {
-      return;
-    }
-
-    if (detail?.warning !== "dm-relays-fallback") {
-      return;
-    }
-
-    if (this.hasShownRelayWarning) {
-      return;
-    }
-    this.hasShownRelayWarning = true;
-
-    this.showStatus(
-      "Privacy warning: direct messages are using your default relays because no NIP-17 relay list is available.",
-      { autoHideMs: 5000 },
-    );
-  }
 
   registerEventListeners() {
     if (this.closeButton instanceof HTMLElement) {
@@ -4571,20 +1775,20 @@ export class ProfileModalController {
       }
     });
 
-    if (this.addRelayButton instanceof HTMLElement) {
-      this.addRelayButton.addEventListener("click", () => {
-        void this.handleAddRelay();
+    if (this.relayController.addRelayButton instanceof HTMLElement) {
+      this.relayController.addRelayButton.addEventListener("click", () => {
+        void this.relayController.handleAddRelay();
       });
     }
 
-    if (this.restoreRelaysButton instanceof HTMLElement) {
-      this.restoreRelaysButton.addEventListener("click", () => {
-        void this.handleRestoreRelays();
+    if (this.relayController.restoreRelaysButton instanceof HTMLElement) {
+      this.relayController.restoreRelaysButton.addEventListener("click", () => {
+        void this.relayController.handleRestoreRelays();
       });
     }
 
-    if (this.profileRelayRefreshBtn instanceof HTMLElement) {
-      this.profileRelayRefreshBtn.addEventListener("click", () => {
+    if (this.relayController.profileRelayRefreshBtn instanceof HTMLElement) {
+      this.relayController.profileRelayRefreshBtn.addEventListener("click", () => {
         const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
         if (!activeHex) {
           return;
@@ -4596,8 +1800,8 @@ export class ProfileModalController {
         void service
           .loadRelayList(activeHex)
           .then(() => {
-            this.populateProfileRelays();
-            void this.refreshRelayHealthPanel({
+            this.relayController.populateProfileRelays();
+            void this.relayController.refreshRelayHealthPanel({
               forceRefresh: true,
               reason: "relay-update",
             });
@@ -4608,9 +1812,9 @@ export class ProfileModalController {
       });
     }
 
-    if (this.relayHealthTelemetryToggle instanceof HTMLInputElement) {
-      this.relayHealthTelemetryToggle.addEventListener("change", () => {
-        this.handleRelayHealthTelemetryToggle();
+    if (this.relayController.relayHealthTelemetryToggle instanceof HTMLInputElement) {
+      this.relayController.relayHealthTelemetryToggle.addEventListener("change", () => {
+        this.relayController.handleRelayHealthTelemetryToggle();
       });
     }
 
@@ -4763,40 +1967,40 @@ export class ProfileModalController {
       });
     }
 
-    if (this.profileMessagesReloadButton instanceof HTMLElement) {
-      this.profileMessagesReloadButton.addEventListener("click", () => {
-        void this.populateProfileMessages({ force: true, reason: "manual" });
+    if (this.dmController.profileMessagesReloadButton instanceof HTMLElement) {
+      this.dmController.profileMessagesReloadButton.addEventListener("click", () => {
+        void this.dmController.populateProfileMessages({ force: true, reason: "manual" });
       });
     }
 
-    if (this.profileMessagesSendDmButton instanceof HTMLElement) {
-      this.profileMessagesSendDmButton.addEventListener("click", () => {
-        void this.handleSendDmRequest();
+    if (this.dmController.profileMessagesSendDmButton instanceof HTMLElement) {
+      this.dmController.profileMessagesSendDmButton.addEventListener("click", () => {
+        void this.dmController.handleSendDmRequest();
       });
     }
 
-    if (this.profileMessagesOpenRelaysButton instanceof HTMLElement) {
-      this.profileMessagesOpenRelaysButton.addEventListener("click", () => {
-        void this.handleOpenDmRelaysRequest();
+    if (this.dmController.profileMessagesOpenRelaysButton instanceof HTMLElement) {
+      this.dmController.profileMessagesOpenRelaysButton.addEventListener("click", () => {
+        void this.dmController.handleOpenDmRelaysRequest();
       });
     }
 
-    if (this.profileMessagesPrivacyToggle instanceof HTMLElement) {
-      this.profileMessagesPrivacyToggle.addEventListener("change", (event) => {
+    if (this.dmController.profileMessagesPrivacyToggle instanceof HTMLElement) {
+      this.dmController.profileMessagesPrivacyToggle.addEventListener("change", (event) => {
         const toggle = event.currentTarget;
         if (toggle instanceof HTMLInputElement) {
-          this.handlePrivacyToggle(toggle.checked);
+          this.dmController.handlePrivacyToggle(toggle.checked);
         }
       });
     }
 
     // Legacy toggles removed - handled by DMPrivacySettings in AppShell
 
-    if (this.profileLinkPreviewAutoToggle instanceof HTMLElement) {
-      this.profileLinkPreviewAutoToggle.addEventListener("change", (event) => {
+    if (this.dmController.profileLinkPreviewAutoToggle instanceof HTMLElement) {
+      this.dmController.profileLinkPreviewAutoToggle.addEventListener("change", (event) => {
         const toggle = event.currentTarget;
         if (toggle instanceof HTMLInputElement) {
-          this.handleLinkPreviewToggle(toggle.checked);
+          this.dmController.handleLinkPreviewToggle(toggle.checked);
         }
       });
     }
@@ -4805,28 +2009,28 @@ export class ProfileModalController {
     this.walletController.registerEventListeners();
     this.storageController.registerEventListeners();
 
-    if (this.profileMessageSendButton instanceof HTMLElement) {
-      this.profileMessageSendButton.addEventListener("click", () => {
-        void this.handleSendProfileMessage();
+    if (this.dmController.profileMessageSendButton instanceof HTMLElement) {
+      this.dmController.profileMessageSendButton.addEventListener("click", () => {
+        void this.dmController.handleSendProfileMessage();
       });
     }
 
-    if (this.profileMessageAttachmentButton instanceof HTMLElement) {
-      this.profileMessageAttachmentButton.addEventListener("click", () => {
-        if (this.profileMessageAttachmentInput instanceof HTMLInputElement) {
-          this.profileMessageAttachmentInput.click();
+    if (this.dmController.profileMessageAttachmentButton instanceof HTMLElement) {
+      this.dmController.profileMessageAttachmentButton.addEventListener("click", () => {
+        if (this.dmController.profileMessageAttachmentInput instanceof HTMLInputElement) {
+          this.dmController.profileMessageAttachmentInput.click();
         }
       });
     }
 
-    if (this.profileMessageAttachmentInput instanceof HTMLElement) {
-      this.profileMessageAttachmentInput.addEventListener("change", () => {
-        this.handleAttachmentSelection();
+    if (this.dmController.profileMessageAttachmentInput instanceof HTMLElement) {
+      this.dmController.profileMessageAttachmentInput.addEventListener("change", () => {
+        this.dmController.handleAttachmentSelection();
       });
     }
 
-    if (this.profileMessageAttachmentClearCache instanceof HTMLElement) {
-      this.profileMessageAttachmentClearCache.addEventListener("click", () => {
+    if (this.dmController.profileMessageAttachmentClearCache instanceof HTMLElement) {
+      this.dmController.profileMessageAttachmentClearCache.addEventListener("click", () => {
         clearAttachmentCache();
         const stats = getAttachmentCacheStats();
         this.showStatus(
@@ -4835,14 +2039,14 @@ export class ProfileModalController {
       });
     }
 
-    if (this.profileMessageInput instanceof HTMLElement) {
-      this.profileMessageInput.addEventListener("keydown", (event) => {
+    if (this.dmController.profileMessageInput instanceof HTMLElement) {
+      this.dmController.profileMessageInput.addEventListener("keydown", (event) => {
         if (event.key === "Enter" && !event.shiftKey) {
           event.preventDefault();
-          void this.handleSendProfileMessage();
+          void this.dmController.handleSendProfileMessage();
         }
       });
-      this.profileMessageInput.addEventListener("input", () => {
+      this.dmController.profileMessageInput.addEventListener("input", () => {
         void this.maybePublishTypingIndicator();
       });
     }
@@ -5079,7 +2283,7 @@ export class ProfileModalController {
       });
     }
 
-    this.updateMessagesReloadState();
+    this.dmController.updateMessagesReloadState();
   }
 
   resolveAddAccountLoginError(error, fallbackMessage = "") {
@@ -5933,51 +3137,6 @@ export class ProfileModalController {
     return result;
   }
 
-  createCompactProfileSummary({
-    displayName,
-    displayNpub,
-    avatarSrc,
-    size = "sm",
-  } = {}) {
-    const sizeClassMap = {
-      xs: "h-8 w-8",
-      sm: "h-10 w-10",
-      md: "h-12 w-12",
-    };
-    const avatarSize = sizeClassMap[size] || sizeClassMap.sm;
-    const safeName = displayName?.trim() || "Unknown profile";
-    const safeNpub = displayNpub?.trim() || "npub unavailable";
-    const avatarUrl = avatarSrc || FALLBACK_PROFILE_AVATAR;
-
-    const container = document.createElement("div");
-    container.className = "min-w-0 flex flex-1 items-center gap-2";
-
-    const avatarWrapper = document.createElement("span");
-    avatarWrapper.className = `flex ${avatarSize} flex-shrink-0 items-center justify-center overflow-hidden rounded-full border border-overlay-strong bg-overlay-panel-soft`;
-
-    const avatarImg = document.createElement("img");
-    avatarImg.className = "h-full w-full object-cover";
-    avatarImg.src = avatarUrl;
-    avatarImg.alt = `${safeName} avatar`;
-    avatarWrapper.appendChild(avatarImg);
-
-    const textStack = document.createElement("div");
-    textStack.className = "min-w-0 flex flex-col";
-
-    const nameEl = document.createElement("p");
-    nameEl.className = "truncate text-xs font-semibold text-primary";
-    nameEl.textContent = safeName;
-
-    const npubEl = document.createElement("p");
-    npubEl.className = "break-all font-mono text-2xs text-muted";
-    npubEl.textContent = safeNpub;
-
-    textStack.append(nameEl, npubEl);
-
-    container.append(avatarWrapper, textStack);
-
-    return container;
-  }
 
   createViewChannelButton({ targetNpub, displayNpub } = {}) {
     const normalizedTarget =
@@ -6430,7 +3589,7 @@ export class ProfileModalController {
     }
 
     if (previous === "messages" && target !== "messages") {
-      this.pauseProfileMessages();
+      this.dmController.pauseProfileMessages();
     }
 
     Object.entries(this.panes).forEach(([key, pane]) => {
@@ -6466,14 +3625,14 @@ export class ProfileModalController {
       if (target === "history") {
         void this.populateProfileWatchHistory();
       } else if (target === "relays") {
-        this.populateProfileRelays();
-        void this.refreshRelayHealthPanel({
+        this.relayController.populateProfileRelays();
+        void this.relayController.refreshRelayHealthPanel({
           forceRefresh: true,
           reason: "pane-select",
         });
       } else if (target === "messages") {
-        this.resumeProfileMessages();
-        void this.populateProfileMessages({ reason: "pane-select" });
+        this.dmController.resumeProfileMessages();
+        void this.dmController.populateProfileMessages({ reason: "pane-select" });
         void this.refreshDmRelayPreferences();
       } else if (target === "wallet") {
         this.walletController.refreshWalletPaneState();
@@ -6510,439 +3669,15 @@ export class ProfileModalController {
     }, 0);
   }
 
-  populateProfileRelays(relayEntries = null) {
-    if (!this.relayList) {
-      return;
-    }
 
-    const sourceEntries = Array.isArray(relayEntries)
-      ? relayEntries
-      : this.services.relayManager.getEntries();
 
-    const relays = sourceEntries
-      .map((entry) => {
-        if (typeof entry === "string") {
-          const trimmed = entry.trim();
-          return trimmed ? { url: trimmed, mode: "both" } : null;
-        }
-        if (entry && typeof entry === "object") {
-          const url = typeof entry.url === "string" ? entry.url.trim() : "";
-          if (!url) {
-            return null;
-          }
-          const mode = typeof entry.mode === "string" ? entry.mode : "both";
-          const normalizedMode =
-            mode === "read" || mode === "write" ? mode : "both";
-          return {
-            url,
-            mode: normalizedMode,
-            read: entry.read !== false,
-            write: entry.write !== false,
-          };
-        }
-        return null;
-      })
-      .filter((entry) => entry && typeof entry.url === "string");
 
-    this.relayList.textContent = "";
 
-    if (!relays.length) {
-      const emptyState = document.createElement("li");
-      emptyState.className =
-        "card border border-dashed border-surface-strong p-4 text-center text-sm text-muted";
-      emptyState.textContent = "No relays configured.";
-      this.relayList.appendChild(emptyState);
-      return;
-    }
 
-    relays.forEach((entry) => {
-      const item = document.createElement("li");
-      item.className = "card flex items-start justify-between gap-4 p-4";
-      item.dataset.relayUrl = entry.url;
 
-      const info = document.createElement("div");
-      info.className = "flex-1 min-w-0";
 
-      const urlEl = document.createElement("p");
-      urlEl.className = "text-sm font-medium text-primary break-all";
-      urlEl.textContent = entry.url;
 
-      const statusEl = document.createElement("p");
-      statusEl.className = "mt-1 text-xs text-muted";
-      let modeLabel = "Read & write";
-      if (entry.mode === "read") {
-        modeLabel = "Read only";
-      } else if (entry.mode === "write") {
-        modeLabel = "Write only";
-      }
-      statusEl.textContent = modeLabel;
 
-      const health = document.createElement("div");
-      health.className = "flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-2xs text-muted empty:hidden";
-      health.dataset.role = "relay-health";
-
-      info.appendChild(urlEl);
-      info.appendChild(statusEl);
-      info.appendChild(health);
-
-      const actions = document.createElement("div");
-      actions.className = "flex items-center gap-2";
-
-      const editBtn = document.createElement("button");
-      editBtn.type = "button";
-      editBtn.className = "btn-ghost focus-ring text-xs";
-      editBtn.textContent = "Change mode";
-      editBtn.title = "Cycle between read-only, write-only, or read/write modes.";
-      editBtn.addEventListener("click", () => {
-        void this.handleRelayModeToggle(entry.url);
-      });
-
-      const removeBtn = document.createElement("button");
-      removeBtn.type = "button";
-      removeBtn.className = "btn-ghost focus-ring text-xs";
-      removeBtn.dataset.variant = "danger";
-      removeBtn.textContent = "Remove";
-      removeBtn.addEventListener("click", () => {
-        void this.handleRemoveRelay(entry.url);
-      });
-
-      actions.appendChild(editBtn);
-      actions.appendChild(removeBtn);
-
-      item.appendChild(info);
-      item.appendChild(actions);
-
-      this.relayList.appendChild(item);
-    });
-  }
-
-  updateRelayHealthStatus(message = "") {
-    if (!this.relayHealthStatus) {
-      return;
-    }
-
-    const text = typeof message === "string" ? message.trim() : "";
-    this.relayHealthStatus.textContent = text;
-  }
-
-  updateRelayHealthIndicators(snapshot = []) {
-    if (!this.relayList) {
-      return;
-    }
-
-    if (!Array.isArray(snapshot)) {
-      return;
-    }
-
-    snapshot.forEach((entry) => {
-      const url = entry.url;
-      const item = this.relayList.querySelector(
-        `li[data-relay-url="${CSS.escape(url)}"]`,
-      );
-      if (!item) {
-        return;
-      }
-
-      const healthContainer = item.querySelector('[data-role="relay-health"]');
-      if (!healthContainer) {
-        return;
-      }
-
-      healthContainer.textContent = "";
-
-      const createBadge = (label, value, colorClass) => {
-        const span = document.createElement("span");
-        span.className = "inline-flex items-center gap-1 bg-surface-strong/30 px-1.5 py-0.5 rounded";
-        const l = document.createElement("span");
-        l.textContent = label;
-        const v = document.createElement("span");
-        v.className = colorClass || "text-text";
-        v.textContent = value;
-        span.appendChild(l);
-        span.appendChild(v);
-        return span;
-      };
-
-      if (Number.isFinite(entry.lastLatencyMs)) {
-        let color = "text-status-success";
-        if (entry.lastLatencyMs > 1000) color = "text-status-danger";
-        else if (entry.lastLatencyMs > 300) color = "text-status-warning";
-        healthContainer.appendChild(
-          createBadge("Ping:", `${entry.lastLatencyMs}ms`, color),
-        );
-      }
-
-      if (entry.errorCount > 0) {
-        healthContainer.appendChild(
-          createBadge("Errors:", `${entry.errorCount}`, "text-status-danger"),
-        );
-      }
-    });
-  }
-
-  handleRelayHealthTelemetryToggle() {
-    const service = this.services?.relayHealthService;
-    if (!service || !(this.relayHealthTelemetryToggle instanceof HTMLInputElement)) {
-      return;
-    }
-
-    const enabled = service.setTelemetryOptIn(
-      this.relayHealthTelemetryToggle.checked,
-    );
-    this.relayHealthTelemetryToggle.checked = enabled;
-    this.updateRelayHealthStatus(
-      enabled ? "Relay health telemetry enabled." : "Relay health telemetry disabled.",
-    );
-  }
-
-  async refreshRelayHealthPanel({ forceRefresh = false, reason = "" } = {}) {
-    const service = this.services?.relayHealthService;
-    if (!service) {
-      return [];
-    }
-
-    if (this.relayHealthTelemetryToggle instanceof HTMLInputElement) {
-      this.relayHealthTelemetryToggle.checked = service.getTelemetryOptIn();
-    }
-
-    const snapshot = service.getSnapshot();
-    this.updateRelayHealthIndicators(snapshot);
-
-    if (!forceRefresh) {
-      return snapshot;
-    }
-
-    if (this.relayHealthRefreshPromise) {
-      return this.relayHealthRefreshPromise;
-    }
-
-    const statusMessage =
-      reason === "manual" ? "Refreshing relay health…" : "Checking relays…";
-    this.updateRelayHealthStatus(statusMessage);
-
-    const refreshPromise = service
-      .refresh()
-      .then((latest) => {
-        this.updateRelayHealthIndicators(latest);
-        this.updateRelayHealthStatus("Relay health updated.");
-        return latest;
-      })
-      .catch((error) => {
-        this.updateRelayHealthStatus("Failed to refresh relay health.");
-        this.showError("Failed to refresh relay health.");
-        devLogger.warn("[profileModal] Relay health refresh failed:", error);
-        return [];
-      })
-      .finally(() => {
-        if (this.relayHealthRefreshPromise === refreshPromise) {
-          this.relayHealthRefreshPromise = null;
-        }
-      });
-
-    this.relayHealthRefreshPromise = refreshPromise;
-    return refreshPromise;
-  }
-
-  async handleRelayOperation(meta = {}, {
-    successMessage = "Relay preferences updated.",
-    skipPublishIfUnchanged = true,
-    unchangedMessage = null,
-  } = {}) {
-    const operationContext = {
-      ...meta,
-      ok: false,
-      changed: false,
-      reason: null,
-      error: null,
-      publishResult: null,
-      operationResult: null,
-    };
-
-    const activePubkey = this.normalizeHexPubkey(this.getActivePubkey());
-    if (!activePubkey) {
-      this.showError("Please login to manage your relays.");
-      operationContext.reason = "no-active-pubkey";
-      return operationContext;
-    }
-
-    let result;
-    try {
-      result = await this.runRelayOperation({
-        ...meta,
-        activePubkey,
-        skipPublishIfUnchanged,
-      });
-    } catch (error) {
-      const message =
-        error && typeof error.message === "string" && error.message.trim()
-          ? error.message.trim()
-          : "Failed to update relay preferences.";
-      operationContext.reason = error?.code || "callback-error";
-      operationContext.error = error;
-      this.showError(message);
-      return operationContext;
-    }
-
-    if (result && typeof result === "object") {
-      operationContext.ok = Boolean(result.ok);
-      operationContext.changed = Boolean(result.changed);
-      operationContext.reason =
-        typeof result.reason === "string" ? result.reason : operationContext.reason;
-      operationContext.error = result.error ?? operationContext.error;
-      operationContext.publishResult =
-        result.publishResult ?? operationContext.publishResult;
-      operationContext.operationResult =
-        result.operationResult ?? operationContext.operationResult;
-    }
-
-    if (!operationContext.changed && skipPublishIfUnchanged) {
-      const reason = operationContext.reason || "unchanged";
-      operationContext.reason = reason;
-      if (reason === "duplicate") {
-        this.showSuccess("Relay is already configured.");
-      } else if (typeof unchangedMessage === "string" && unchangedMessage) {
-        this.showSuccess(unchangedMessage);
-      }
-      this.populateProfileRelays();
-      void this.refreshRelayHealthPanel({ forceRefresh: true, reason: "relay-update" });
-      return operationContext;
-    }
-
-    this.populateProfileRelays();
-    void this.refreshRelayHealthPanel({ forceRefresh: true, reason: "relay-update" });
-
-    if (operationContext.ok) {
-      if (successMessage) {
-        this.showSuccess(successMessage);
-      }
-      return operationContext;
-    }
-
-    const message =
-      operationContext.error &&
-      typeof operationContext.error.message === "string" &&
-      operationContext.error.message.trim()
-        ? operationContext.error.message.trim()
-        : "Failed to publish relay configuration. Please try again.";
-
-    if (operationContext.reason !== "no-active-pubkey") {
-      this.showError(message);
-    }
-
-    return operationContext;
-  }
-
-  async handleAddRelay() {
-    const rawValue =
-      typeof this.relayInput?.value === "string"
-        ? this.relayInput.value
-        : "";
-    const trimmed = rawValue.trim();
-
-    const context = {
-      input: this.relayInput,
-      rawValue,
-      url: trimmed,
-      result: null,
-      success: false,
-      reason: null,
-    };
-
-    if (!trimmed) {
-      this.showError("Enter a relay URL to add.");
-      context.reason = "empty";
-      this.callbacks.onAddRelay(context, this);
-      return context;
-    }
-
-    const operationResult = await this.handleRelayOperation(
-      { action: "add", url: trimmed },
-      {
-        successMessage: "Relay saved.",
-        unchangedMessage: "Relay is already configured.",
-      },
-    );
-
-    if (this.relayInput) {
-      this.relayInput.value = "";
-    }
-
-    context.result = operationResult;
-    context.success = !!operationResult?.ok;
-    context.reason = operationResult?.reason || null;
-
-    this.callbacks.onAddRelay(context, this);
-    return context;
-  }
-
-  async handleRestoreRelays() {
-    const context = {
-      confirmed: false,
-      result: null,
-      success: false,
-      reason: null,
-    };
-
-    const confirmed = window.confirm("Restore the recommended relay defaults?");
-    context.confirmed = confirmed;
-    if (!confirmed) {
-      context.reason = "cancelled";
-      this.callbacks.onRestoreRelays(context, this);
-      return context;
-    }
-
-    const operationResult = await this.handleRelayOperation(
-      { action: "restore" },
-      {
-        successMessage: "Relay defaults restored.",
-        unchangedMessage: "Relay defaults are already in use.",
-      },
-    );
-
-    context.result = operationResult;
-    context.success = !!operationResult?.ok;
-    context.reason = operationResult?.reason || null;
-
-    this.callbacks.onRestoreRelays(context, this);
-    this.callbacks.onRelayRestore({
-      controller: this,
-      context,
-    });
-    return context;
-  }
-
-  async handleRelayModeToggle(url) {
-    if (!url) {
-      return;
-    }
-    const context = await this.handleRelayOperation(
-      { action: "mode-toggle", url },
-      { successMessage: "Relay mode updated." },
-    );
-    this.callbacks.onRelayModeToggle({
-      controller: this,
-      url,
-      context,
-    });
-  }
-
-  async handleRemoveRelay(url) {
-    if (!url) {
-      return;
-    }
-
-    const confirmed = window.confirm(
-      `Remove ${url} from your relay list?`,
-    );
-    if (!confirmed) {
-      return;
-    }
-
-    await this.handleRelayOperation(
-      { action: "remove", url },
-      { successMessage: "Relay removed." },
-    );
-  }
 
   ensureBlockListStatusElement() {
     if (this.blockListStatus instanceof HTMLElement) {
@@ -7902,7 +4637,7 @@ export class ProfileModalController {
       const avatarSrc =
         cachedProfile?.picture || FALLBACK_PROFILE_AVATAR;
 
-      const summary = this.createCompactProfileSummary({
+      const summary = this.dmController.createCompactProfileSummary({
         displayName,
         displayNpub,
         avatarSrc,
@@ -8139,7 +4874,7 @@ export class ProfileModalController {
           "Subscription";
         const avatarSrc = cachedProfile?.picture || FALLBACK_PROFILE_AVATAR;
 
-        const summary = this.createCompactProfileSummary({
+        const summary = this.dmController.createCompactProfileSummary({
           displayName,
           displayNpub,
           avatarSrc,
@@ -8458,7 +5193,7 @@ export class ProfileModalController {
           "Friend";
         const avatarSrc = cachedProfile?.picture || FALLBACK_PROFILE_AVATAR;
 
-        const summary = this.createCompactProfileSummary({
+        const summary = this.dmController.createCompactProfileSummary({
           displayName,
           displayNpub,
           avatarSrc,
@@ -9438,8 +6173,8 @@ export class ProfileModalController {
         }
       }
 
-      const summaryData = this.resolveProfileSummaryForPubkey(authorKey);
-      profileSummary = this.createCompactProfileSummary(summaryData);
+      const summaryData = this.dmController.resolveProfileSummaryForPubkey(authorKey);
+      profileSummary = this.dmController.createCompactProfileSummary(summaryData);
 
       const actions = document.createElement("div");
       actions.className = "flex flex-wrap items-center justify-end gap-2";
@@ -10044,7 +6779,7 @@ export class ProfileModalController {
       const avatarSrc =
         cachedProfile?.picture || FALLBACK_PROFILE_AVATAR;
 
-      const summary = this.createCompactProfileSummary({
+      const summary = this.dmController.createCompactProfileSummary({
         displayName,
         displayNpub,
         avatarSrc,
@@ -11417,7 +8152,7 @@ export class ProfileModalController {
       backgroundTasks.push(
         Promise.resolve().then(() => {
           try {
-            this.populateProfileRelays();
+            this.relayController.populateProfileRelays();
           } catch (error) {
             userLogger.warn(
               "Failed to populate relay list while opening profile modal:",
@@ -11519,7 +8254,7 @@ export class ProfileModalController {
     const { silent = false } =
       options && typeof options === "object" ? options : {};
 
-    this.pauseProfileMessages();
+    this.dmController.pauseProfileMessages();
 
     const modalElement =
       this.profileModalRoot instanceof HTMLElement
@@ -11683,7 +8418,7 @@ export class ProfileModalController {
     this.populateBlockedList();
     void this.populateSubscriptionsList();
     void this.populateFriendsList();
-    this.populateProfileRelays();
+    this.relayController.populateProfileRelays();
     this.walletController.refreshWalletPaneState();
     this.populateHashtagPreferences();
     void this.storageController.populateStoragePane();
@@ -11697,7 +8432,7 @@ export class ProfileModalController {
         this.populateBlockedList();
         void this.populateSubscriptionsList();
         void this.populateFriendsList();
-        this.populateProfileRelays();
+        this.relayController.populateProfileRelays();
         this.walletController.refreshWalletPaneState();
         this.populateHashtagPreferences();
         void this.storageController.populateStoragePane();
@@ -11763,7 +8498,7 @@ export class ProfileModalController {
     this.populateBlockedList();
     this.clearSubscriptionsList();
     this.clearFriendsList();
-    this.populateProfileRelays();
+    this.relayController.populateProfileRelays();
     this.walletController.refreshWalletPaneState();
     this.populateHashtagPreferences();
     void this.storageController.populateStoragePane();
@@ -11771,8 +8506,8 @@ export class ProfileModalController {
     this.setHashtagStatus("", "muted");
     this.handleActiveDmIdentityChanged(null);
     this.setMessagesUnreadIndicator(false);
-    this.populateDmRelayPreferences();
-    this.setDmRelayPreferencesStatus("");
+    this.dmController.populateDmRelayPreferences();
+    this.dmController.setDmRelayPreferencesStatus("");
 
     return true;
   }
@@ -11976,6 +8711,42 @@ export class ProfileModalController {
     return this.state.setActivePane(...args);
   }
 
+
+  populateProfileRelays(...args) {
+    return this.relayController.populateProfileRelays(...args);
+  }
+
+  handleDirectMessagesRelayWarning(...args) {
+    return this.dmController.handleDirectMessagesRelayWarning(...args);
+  }
+
+  get relayList() {
+    return this.relayController.relayList;
+  }
+
+  get relayInput() {
+    return this.relayController.relayInput;
+  }
+
+  get addRelayButton() {
+    return this.relayController.addRelayButton;
+  }
+
+  get restoreRelaysButton() {
+    return this.relayController.restoreRelaysButton;
+  }
+
+  get relayHealthStatus() {
+    return this.relayController.relayHealthStatus;
+  }
+
+  get relayHealthTelemetryToggle() {
+    return this.relayController.relayHealthTelemetryToggle;
+  }
+
+  get profileRelayRefreshBtn() {
+    return this.relayController.profileRelayRefreshBtn;
+  }
 }
 
 export default ProfileModalController;
