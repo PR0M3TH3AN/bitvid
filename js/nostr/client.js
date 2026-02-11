@@ -297,24 +297,6 @@ const EVENTS_CACHE_DB_VERSION = 1;
 const DEFAULT_VIDEO_REQUEST_LIMIT = 150;
 const MAX_VIDEO_REQUEST_LIMIT = 500;
 
-// To limit error spam
-let errorLogCount = 0;
-const MAX_ERROR_LOGS = 100;
-function logErrorOnce(message, eventContent = null) {
-  if (errorLogCount < MAX_ERROR_LOGS) {
-    userLogger.error(message);
-    if (eventContent) {
-      devLogger.log(`Event Content: ${eventContent}`);
-    }
-    errorLogCount++;
-  }
-  if (errorLogCount === MAX_ERROR_LOGS) {
-    userLogger.error(
-      "Maximum error log limit reached. Further errors will be suppressed."
-    );
-  }
-}
-
 export const __testExports = {
   runNip07WithRetry,
   DEFAULT_NIP07_ENCRYPTION_METHODS,
