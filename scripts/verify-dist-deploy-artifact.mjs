@@ -5,7 +5,7 @@ import path from 'node:path';
 const DIST_DIR = 'dist';
 const INDEX_PATH = path.join(DIST_DIR, 'index.html');
 const MANIFEST_PATH = path.join(DIST_DIR, 'asset-manifest.json');
-const VERSION_MARKUP_PATTERN = /seed\.\s*zap\.\s*subscribe\.\s*<\/h2>\s*<div[^>]*>\s*v:\s*[a-f0-9]{8}\s*•\s*\d{4}-\d{2}-\d{2}\s*<\/div>/i;
+const VERSION_MARKUP_PATTERN = /seed\.\s*zap\.\s*subscribe\.\s*<\/h2>[\s\S]*?v:\s*[a-f0-9]{8}\s*•\s*\d{4}-\d{2}-\d{2}/i;
 
 function readUtf8(filePath) {
   if (!fs.existsSync(filePath)) {

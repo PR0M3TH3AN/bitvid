@@ -178,6 +178,7 @@ function injectVersionInfo() {
         fs.writeFileSync(indexHtmlPath, content);
         console.log(`Injected version: ${hash.slice(0, 8)} • ${date}`);
       } else {
+        console.warn('Warning: <!-- VERSION_INFO --> placeholder not found. Attempting regex fallback...');
         // Fallback search if placeholder is missing (legacy behavior)
         const taglineRegex = /(seed\. zap\. subscribe\.\s*<\/h2>)/;
         if (taglineRegex.test(content)) {
@@ -242,6 +243,12 @@ function main() {
   console.log('Copying directories...');
   for (const dir of DIRS_TO_COPY) {
     copyDir(dir, path.join(DIST, dir));
+  }
+
+  // Verify components were copied (critical for client-side injection)
+  const componentsDist = path.join(DIST, 'components');
+  if (!fs.existsSync(componentsDist) || fs.readdirSync(componentsDist).length === 0) {
+    throw new Error('Critical Error: dist/components directory is missing or empty.');
   }
 
   console.log('Generating hashed asset manifest...');
