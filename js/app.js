@@ -10,6 +10,7 @@ import {
   ADMIN_DM_IMAGE_URL,
   BITVID_WEBSITE_URL,
   ALLOW_NSFW_CONTENT,
+  ENABLE_NIP17_RELAY_WARNING,
 } from "./config.js";
 import { accessControl } from "./accessControl.js";
 import { extractBtihFromMagnet, safeDecodeMagnet } from "./magnetUtils.js";
@@ -3042,7 +3043,7 @@ class Application {
       ? recipient.relayHints
       : [];
 
-    if (enabled && !relayHints.length) {
+    if (ENABLE_NIP17_RELAY_WARNING && enabled && !relayHints.length) {
       this.showStatus(
         "Privacy warning: this recipient has not shared NIP-17 relays, so we'll use your default relays.",
       );

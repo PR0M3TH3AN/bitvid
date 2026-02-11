@@ -1312,6 +1312,9 @@ test('handleDirectMessagesRelayWarning throttles status updates', async (t) => {
   const statusCalls = [];
   const controller = createController({
     showStatus: (message) => statusCalls.push(message),
+    constants: {
+      ENABLE_NIP17_RELAY_WARNING: true,
+    },
   });
   await controller.load();
 
@@ -1329,4 +1332,20 @@ test('handleDirectMessagesRelayWarning throttles status updates', async (t) => {
   controller.handleActiveDmIdentityChanged('newpubkey');
   controller.handleDirectMessagesRelayWarning(detail);
   assert.equal(statusCalls.length, 2);
+});
+
+test('handleDirectMessagesRelayWarning suppresses status updates when disabled', async (t) => {
+  const statusCalls = [];
+  const controller = createController({
+    showStatus: (message) => statusCalls.push(message),
+    constants: {
+      ENABLE_NIP17_RELAY_WARNING: false,
+    },
+  });
+  await controller.load();
+
+  const detail = { warning: 'dm-relays-fallback' };
+
+  controller.handleDirectMessagesRelayWarning(detail);
+  assert.equal(statusCalls.length, 0);
 });
