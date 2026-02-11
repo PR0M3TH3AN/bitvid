@@ -42,6 +42,10 @@ function waitForTransaction(tx) {
  * - "Fingerprints" (hashes/stringified) are tracked in memory to minimize I/O.
  * - Only changed items (where fingerprint differs) are written to IDB.
  * - If the TTL expires, the cache is cleared on restore to force a fresh fetch.
+ *
+ * **Concurrency Note:**
+ * This class assumes single-threaded access (JavaScript main thread).
+ * It relies on `dirtyKeys` for optimization but falls back to full scans if needed.
  */
 export class EventsCacheStore {
   /**
@@ -59,6 +63,10 @@ export class EventsCacheStore {
     this.hasLoadedFingerprints = false;
   }
 
+  /**
+   * Checks if IndexedDB is available in the current environment.
+   * @returns {boolean} True if IndexedDB is supported.
+   */
   isSupported() {
     return typeof indexedDB !== "undefined";
   }
@@ -101,6 +109,13 @@ export class EventsCacheStore {
     return this.dbPromise;
   }
 
+  /**
+   * Computes a unique fingerprint for a video object.
+   * Used to detect changes without deep comparison.
+   *
+   * @param {object} video - The video object to fingerprint.
+   * @returns {string} The computed fingerprint (JSON string).
+   */
   computeEventFingerprint(video) {
     try {
       return JSON.stringify(video);
@@ -110,6 +125,12 @@ export class EventsCacheStore {
     }
   }
 
+  /**
+   * Computes a fingerprint for a tombstone timestamp.
+   *
+   * @param {number} timestamp - The timestamp.
+   * @returns {string} The fingerprint.
+   */
   computeTombstoneFingerprint(timestamp) {
     return `ts:${timestamp}`;
   }
@@ -152,6 +173,11 @@ export class EventsCacheStore {
     this.hasLoadedFingerprints = true;
   }
 
+  /**
+   * Reads metadata from the store (version, savedAt).
+   * @param {IDBDatabase} db - The database instance.
+   * @returns {Promise<object|undefined>} The metadata object.
+   */
   async readMeta(db) {
     const tx = db.transaction(["meta"], "readonly");
     const metaStore = tx.objectStore("meta");
@@ -228,6 +254,30 @@ export class EventsCacheStore {
     };
   }
 
+  /**
+   * Core logic for incremental persistence.
+   * Compares items against `fingerprintsMap` to decide what to write/delete.
+   *
+   * **Optimization Logic:**
+   * 1. Iterates only `dirtyKeys` (if provided) or all `items`.
+   * 2. Computes current fingerprint.
+   * 3. Updates IDB only if fingerprint differs from `fingerprintsMap`.
+   * 4. Updates `fingerprintsMap` with the new fingerprint.
+   * 5. Checks if deletions are needed (if `items.size < fingerprintsMap.size`).
+   *    - Note: `fingerprintsMap` grows during the loop as new items are added.
+   *    - This ensures that if we deleted items from `items`, `items.size` will be smaller
+   *      than `fingerprintsMap.size`, triggering the deletion scan.
+   *
+   * @param {object} params
+   * @param {IDBObjectStore} params.store - The IDB store to write to.
+   * @param {Map} params.items - The current state (Map of items).
+   * @param {Map} params.fingerprintsMap - The map of persisted fingerprints.
+   * @param {function} params.computeFingerprint - Helper to compute fingerprint.
+   * @param {Set<string>|null} params.dirtyKeys - Optional set of keys that changed.
+   * @param {function} params.isValid - Validator for items.
+   * @param {function} params.createRecord - Helper to create IDB record object.
+   * @returns {{writes: number, deletes: number, skipped: number}} Stats.
+   */
   _diffAndStore({
     store,
     items,
@@ -267,6 +317,12 @@ export class EventsCacheStore {
       writes++;
     }
 
+    // Deletion detection strategy:
+    // If dirtyKeys is null, we are doing a full scan, so check everything.
+    // If dirtyKeys is provided, we only check deletions if 'items' is smaller than our known persisted set.
+    // NOTE: fingerprintsMap is mutated in the loop above (adding new/updated items).
+    // So if items were removed from 'items' map, fingerprintsMap.size (which includes the removed ones)
+    // will be larger than items.size, correctly triggering the scan.
     const shouldScanDeletions = !dirtyKeys || items.size < fingerprintsMap.size;
 
     if (shouldScanDeletions) {
