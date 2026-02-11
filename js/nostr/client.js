@@ -2458,6 +2458,26 @@ export class NostrClient {
    * @throws {Error} If the user is not the owner or if the original event is too old.
    */
   async editVideo(originalEventStub, updatedData, userPubkey) {
+    const { baseEvent, userPubkeyLower } = await this._validateEditPrerequisites(
+      originalEventStub,
+      userPubkey,
+    );
+
+    const context = prepareVideoEditPayload({
+      baseEvent,
+      originalEventStub,
+      updatedData,
+      userPubkey,
+      resolveEventDTag: (evt, stub) => this.resolveEventDTag(evt, stub),
+    });
+
+    devLogger.log("Creating edited event with root ID:", context.videoRootId);
+    devLogger.log("Event content:", context.event.content);
+
+    return this._signAndPublishEdit(context, userPubkeyLower);
+  }
+
+  async _validateEditPrerequisites(originalEventStub, userPubkey) {
     if (!userPubkey) {
       throw new Error("Not logged in to edit.");
     }
@@ -2475,9 +2495,7 @@ export class NostrClient {
 
     // Check that the original event is version 2 or higher
     if (baseEvent.version < 2) {
-      throw new Error(
-        "This video is not in the supported version for editing."
-      );
+      throw new Error("This video is not in the supported version for editing.");
     }
 
     // Ownership check (compare lowercase hex public keys)
@@ -2488,17 +2506,10 @@ export class NostrClient {
       throw new Error("You do not own this video (pubkey mismatch).");
     }
 
-    const context = prepareVideoEditPayload({
-      baseEvent,
-      originalEventStub,
-      updatedData,
-      userPubkey,
-      resolveEventDTag: (evt, stub) => this.resolveEventDTag(evt, stub),
-    });
+    return { baseEvent, userPubkeyLower };
+  }
 
-    devLogger.log("Creating edited event with root ID:", context.videoRootId);
-    devLogger.log("Event content:", context.event.content);
-
+  async _signAndPublishEdit(context, userPubkeyLower) {
     await this.ensureActiveSignerForPubkey(userPubkeyLower);
 
     try {
