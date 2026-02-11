@@ -185,7 +185,7 @@ function injectVersionInfo() {
           fs.writeFileSync(indexHtmlPath, content);
           console.log(`Injected version (via fallback regex): ${hash.slice(0, 8)} • ${date}`);
         } else {
-          console.warn('Could not find placeholder or tagline to inject version info.');
+          throw new Error('Could not find placeholder or tagline to inject version info.');
         }
       }
     }
