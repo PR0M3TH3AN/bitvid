@@ -1014,7 +1014,7 @@ test('show()/hide() toggle panes, trap focus, and refresh the wallet pane', asyn
   };
 
   let relaysPopulated = 0;
-  controller.populateProfileRelays = () => {
+  controller.relayController.populateProfileRelays = () => {
     relaysPopulated += 1;
   };
 
@@ -1074,10 +1074,10 @@ test('populateProfileRelays renders entries and wires action buttons', async () 
 
   const modeCalls = [];
   const removeCalls = [];
-  controller.handleRelayModeToggle = (url) => {
+  controller.relayController.handleRelayModeToggle = (url) => {
     modeCalls.push(url);
   };
-  controller.handleRemoveRelay = (url) => {
+  controller.relayController.handleRemoveRelay = (url) => {
     removeCalls.push(url);
   };
 
