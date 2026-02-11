@@ -965,6 +965,42 @@ export function createPlaybackCoordinator(deps) {
       }
     },
 
+  async resolveVideoPostedAtBatch(videos) {
+    if (!Array.isArray(videos) || !videos.length) {
+      return new Map();
+    }
+
+    if (nostrClient && typeof nostrClient.hydrateVideoHistoryBatch === "function") {
+      try {
+        await nostrClient.hydrateVideoHistoryBatch(videos);
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to batch hydrate video histories:",
+          error
+        );
+      }
+    }
+
+    const results = new Map();
+    // Since history is hydrated, sequential processing is fast and safe
+    for (const video of videos) {
+      if (!video || !video.id) continue;
+      try {
+        const postedAt = await this.resolveVideoPostedAt(video);
+        if (Number.isFinite(postedAt)) {
+          results.set(video.id, postedAt);
+        }
+      } catch (error) {
+        devLogger.warn(
+          `[Application] Failed to resolve timestamp for video ${video.id}:`,
+          error
+        );
+      }
+    }
+
+    return results;
+  },
+
     async resolveVideoPostedAt(video) {
       if (!video || typeof video !== "object") {
         return null;
