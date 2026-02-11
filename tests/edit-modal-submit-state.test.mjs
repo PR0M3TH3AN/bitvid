@@ -254,19 +254,19 @@ test('editing the magnet refreshes torrent hints when ws/xs remain locked', asyn
   );
   assert.ok(
     submission.updatedData.magnet.includes(
-      'urn:btih:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      'urn%3Abtih%3Abbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
     ),
-    'normalized magnet should contain the updated info hash',
+    'normalized magnet should contain the updated info hash (encoded)',
   );
   assert.ok(
-    submission.updatedData.magnet.includes('ws=https://new.example/video.mp4'),
-    'normalized magnet should include the refreshed ws hint',
+    submission.updatedData.magnet.includes('ws=https%3A%2F%2Fnew.example%2Fvideo.mp4'),
+    'normalized magnet should include the refreshed ws hint (encoded)',
   );
   assert.ok(
     submission.updatedData.magnet.includes(
-      'xs=https://new.example/video.torrent',
+      'xs=https%3A%2F%2Fnew.example%2Fvideo.torrent',
     ),
-    'normalized magnet should include the refreshed xs hint',
+    'normalized magnet should include the refreshed xs hint (encoded)',
   );
 
   modal.setSubmitState({ pending: false });
