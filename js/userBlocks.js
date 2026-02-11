@@ -993,20 +993,26 @@ class UserBlockListManager {
         return (!requiresNip44 || hasNip44) && (!requiresNip04 || hasNip04);
       };
 
+      // FIX: Always attempt to resolve the signer if one isn't available,
+      // regardless of allowPermissionPrompt. The previous guard meant that
+      // background refreshes (allowPermissionPrompt=false) could never decrypt
+      // because they skipped signer resolution entirely. ensureActiveSignerForPubkey
+      // does not itself prompt the user — it only waits for an already-injected
+      // extension or returns the existing signer.
       if (
-        allowPermissionPrompt &&
-        (!signer ||
-          (!signerHasRequiredDecryptors(signer) &&
-            typeof nostrClient?.ensureActiveSignerForPubkey === "function"))
+        (!signer || !signerHasRequiredDecryptors(signer)) &&
+        typeof nostrClient?.ensureActiveSignerForPubkey === "function"
       ) {
         signer = await nostrClient.ensureActiveSignerForPubkey(normalized);
       }
 
-      const caps = signer?.capabilities || {};
-      const signerHasNip04 =
-        caps.nip04 !== false && typeof signer?.nip04Decrypt === "function";
-      const signerHasNip44 =
-        caps.nip44 !== false && typeof signer?.nip44Decrypt === "function";
+      // FIX: Check method existence only, not capabilities. NIP-07 adapters
+      // always expose decrypt methods that check extension state at call time.
+      // The capabilities getter dynamically queries window.nostr which may not
+      // have injected nip04/nip44 modules yet (lazy injection), causing false
+      // negatives that block decryption even when methods will work at call time.
+      const signerHasNip04 = typeof signer?.nip04Decrypt === "function";
+      const signerHasNip44 = typeof signer?.nip44Decrypt === "function";
       const signerAvailable = Boolean(signer);
       const signerHasDecryptors = signerHasNip04 || signerHasNip44;
       const signerStatus = signerAvailable
@@ -1553,7 +1559,7 @@ class UserBlockListManager {
         pubkey: normalized,
         relayUrls: relays,
         since: fetchSince,
-        timeoutMs: 6000,
+        timeoutMs: 10000,
       });
 
       const legacyFetchPromise = Promise.all([
@@ -2106,7 +2112,7 @@ class UserBlockListManager {
       throw err;
     }
 
-    if (signer.type === "extension") {
+    if (signer.type === "extension" || signer.type === "nip07") {
       const permissionResult = await requestDefaultExtensionPermissions(
         DEFAULT_NIP07_ENCRYPTION_METHODS,
       );

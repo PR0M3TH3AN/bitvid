@@ -272,7 +272,7 @@ function shouldRequestExtensionPermissions(signer) {
   if (!signer || typeof signer !== "object") {
     return false;
   }
-  return signer.type === "extension";
+  return signer.type === "extension" || signer.type === "nip07";
 }
 
 import {
@@ -1223,7 +1223,7 @@ export class NostrClient {
 
     let extensionPermissionResult = null;
     if (
-      activeSigner?.type === "extension" &&
+      (activeSigner?.type === "extension" || activeSigner?.type === "nip07") &&
       typeof this.ensureExtensionPermissions === "function"
     ) {
       extensionPermissionResult = await this.ensureExtensionPermissions(
