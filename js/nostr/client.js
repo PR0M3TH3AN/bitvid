@@ -1624,6 +1624,528 @@ export class NostrClient {
     return newPromise;
   }
 
+  async _sendNip17DirectMessage({
+    signer,
+    signingAdapter,
+    actorHex,
+    targetHex,
+    message,
+    attachments,
+    resolvedOptions,
+    recipientSelection,
+    senderSelection,
+    relayWarning,
+  }) {
+    const tools = await ensureNostrTools();
+    const getPublicKey =
+      tools && typeof tools.getPublicKey === "function" ? tools.getPublicKey : null;
+    if (!getPublicKey) {
+      return { ok: false, error: "nip17-keygen-failed" };
+    }
+
+    const senderRelayTargets = senderSelection.relays;
+
+    const randomPastTimestamp = () => {
+      const now = Math.floor(Date.now() / 1000);
+      const offset = Math.floor(Math.random() * 172800);
+      return now - offset;
+    };
+
+    const generateEphemeralKeypair = () => {
+      let privateKey = "";
+      try {
+        if (typeof tools.generateSecretKey === "function") {
+          const secret = tools.generateSecretKey();
+          if (secret instanceof Uint8Array) {
+            privateKey = bytesToHex(secret);
+          }
+        }
+        if (!privateKey) {
+          if (typeof tools.generatePrivateKey === "function") {
+            privateKey = tools.generatePrivateKey();
+          } else if (window?.crypto?.getRandomValues) {
+            const randomBytes = new Uint8Array(32);
+            window.crypto.getRandomValues(randomBytes);
+            privateKey = Array.from(randomBytes)
+              .map((byte) => byte.toString(16).padStart(2, "0"))
+              .join("");
+          }
+        }
+      } catch (error) {
+        devLogger.warn("[nostr] Failed to generate NIP-17 wrapper key.", error);
+        privateKey = "";
+      }
+
+      const normalizedPrivateKey =
+        typeof privateKey === "string" ? privateKey.trim() : "";
+      if (!normalizedPrivateKey) {
+        return null;
+      }
+
+      let pubkey = "";
+      try {
+        pubkey = getPublicKey(normalizedPrivateKey);
+      } catch (error) {
+        let retrySuccess = false;
+        try {
+          if (HEX64_REGEX.test(normalizedPrivateKey)) {
+            const bytes = new Uint8Array(normalizedPrivateKey.length / 2);
+            for (let i = 0; i < normalizedPrivateKey.length; i += 2) {
+              bytes[i / 2] = parseInt(
+                normalizedPrivateKey.substring(i, i + 2),
+                16,
+              );
+            }
+            pubkey = getPublicKey(bytes);
+            retrySuccess = true;
+          }
+        } catch (retryError) {
+          // Fall back to error handling below
+        }
+        if (!retrySuccess) {
+          devLogger.warn(
+            "[nostr] Failed to derive NIP-17 wrapper pubkey.",
+            error,
+          );
+          return null;
+        }
+      }
+
+      return { privateKey: normalizedPrivateKey, pubkey };
+    };
+
+    const rumorEvents = [];
+    const createdAt = Math.floor(Date.now() / 1000);
+
+    if (message) {
+      rumorEvents.push(buildChatMessageEvent({
+        pubkey: actorHex,
+        created_at: createdAt,
+        recipientPubkey: targetHex,
+        content: message,
+      }));
+    }
+
+    if (attachments.length > 0) {
+      attachments.forEach((attachment) => {
+        const normalizedAttachment = {
+          x:
+            typeof attachment.x === "string"
+              ? attachment.x.trim().toLowerCase()
+              : "",
+          url: typeof attachment.url === "string" ? attachment.url.trim() : "",
+          name:
+            typeof attachment.name === "string" ? attachment.name.trim() : "",
+          type:
+            typeof attachment.type === "string" ? attachment.type.trim() : "",
+          size: Number.isFinite(attachment.size) ? Math.floor(attachment.size) : null,
+          key: typeof attachment.key === "string" ? attachment.key.trim() : "",
+        };
+
+        rumorEvents.push(
+          buildDmAttachmentEvent({
+            pubkey: actorHex,
+            created_at: createdAt,
+            recipientPubkey: targetHex,
+            attachment: normalizedAttachment,
+          }),
+        );
+      });
+    }
+
+    if (!rumorEvents.length) {
+      return { ok: false, error: "empty-message" };
+    }
+
+    const buildGiftWrapForRecipient = async (
+      recipientPubkey,
+      relayHint,
+      rumorEvent,
+    ) => {
+      const sealPayload = buildSealEvent({
+        pubkey: actorHex,
+        created_at: randomPastTimestamp(),
+        ciphertext: await signer.nip44Encrypt(
+          recipientPubkey,
+          JSON.stringify(rumorEvent),
+        ),
+      });
+
+      const signedSeal = await signingAdapter.signEvent(sealPayload);
+      if (!signedSeal || typeof signedSeal.id !== "string") {
+        throw new Error("seal-signature-failed");
+      }
+
+      const wrapperKeys = generateEphemeralKeypair();
+      if (!wrapperKeys) {
+        throw new Error("wrapper-keygen-failed");
+      }
+
+      const cipherClosures = await createPrivateKeyCipherClosures(
+        wrapperKeys.privateKey,
+      );
+      if (typeof cipherClosures.nip44Encrypt !== "function") {
+        throw new Error("wrapper-encryption-unavailable");
+      }
+
+      const wrapCiphertext = await cipherClosures.nip44Encrypt(
+        recipientPubkey,
+        JSON.stringify(signedSeal),
+      );
+
+      const wrapEvent = buildGiftWrapEvent({
+        pubkey: wrapperKeys.pubkey,
+        created_at: randomPastTimestamp(),
+        recipientPubkey,
+        relayHint,
+        ciphertext: wrapCiphertext,
+      });
+
+      return {
+        wrap: signEventWithPrivateKey(wrapEvent, wrapperKeys.privateKey),
+        seal: signedSeal,
+      };
+    };
+
+    const resolveRumorPreview = (rumorEvent) => {
+      const content =
+        typeof rumorEvent?.content === "string" ? rumorEvent.content.trim() : "";
+      if (content) {
+        return content;
+      }
+
+      const tags = Array.isArray(rumorEvent?.tags) ? rumorEvent.tags : [];
+      const nameTag = tags.find(
+        (tag) => Array.isArray(tag) && tag[0] === "name" && tag[1],
+      );
+      if (nameTag) {
+        return `Attachment: ${nameTag[1]}`;
+      }
+
+      return "Attachment";
+    };
+
+    const publishRumorEvent = async (rumorEvent) => {
+      let recipientGiftWrap;
+      try {
+        recipientGiftWrap = await buildGiftWrapForRecipient(
+          targetHex,
+          recipientSelection.relays[0] || "",
+          rumorEvent,
+        );
+      } catch (error) {
+        devLogger.warn("[nostr] Failed to build NIP-17 recipient wrap.", error);
+        const errorCode =
+          error?.message === "wrapper-keygen-failed"
+            ? "nip17-keygen-failed"
+            : "encryption-failed";
+        return { ok: false, error: errorCode, details: error };
+      }
+
+      const conversationId = `dm:${[actorHex, targetHex].sort().join(":")}`;
+      const preview = resolveRumorPreview(rumorEvent);
+      const dmRecord = {
+        id: recipientGiftWrap.wrap.id,
+        conversation_id: conversationId,
+        sender_pubkey: actorHex,
+        receiver_pubkey: targetHex,
+        created_at: rumorEvent.created_at,
+        kind: rumorEvent.kind,
+        content: typeof rumorEvent.content === "string" ? rumorEvent.content : "",
+        tags: rumorEvent.tags,
+        status: "pending",
+        seen: true,
+      };
+
+      try {
+        await writeMessages(dmRecord);
+        await updateConversationFromMessage(dmRecord, {
+          preview,
+          unseenDelta: 0,
+        });
+      } catch (error) {
+        devLogger.warn("[nostr] Failed to persist outgoing DM.", error);
+      }
+
+      const recipientPublishResults = await Promise.all(
+        recipientSelection.relays.map((url) =>
+          publishEventToRelay(this.pool, url, recipientGiftWrap.wrap),
+        ),
+      );
+
+      const recipientSuccess = recipientPublishResults.some(
+        (result) => result.success,
+      );
+      if (!recipientSuccess) {
+        try {
+          await writeMessages({ ...dmRecord, status: "failed" });
+        } catch (error) {
+          devLogger.warn("[nostr] Failed to persist DM failure state.", error);
+        }
+        return {
+          ok: false,
+          error: "publish-failed",
+          details: recipientPublishResults.filter((result) => !result.success),
+        };
+      }
+
+      let senderGiftWrap = null;
+      try {
+        senderGiftWrap = await buildGiftWrapForRecipient(
+          actorHex,
+          senderRelayTargets[0] || "",
+          rumorEvent,
+        );
+      } catch (error) {
+        devLogger.warn("[nostr] Failed to build NIP-17 sender copy.", error);
+      }
+
+      if (senderGiftWrap && senderRelayTargets.length) {
+        const senderPublishResults = await Promise.all(
+          senderRelayTargets.map((url) =>
+            publishEventToRelay(this.pool, url, senderGiftWrap.wrap),
+          ),
+        );
+        if (!senderPublishResults.some((result) => result.success)) {
+          devLogger.warn("[nostr] Failed to publish sender copy of NIP-17 DM.", {
+            relays: senderRelayTargets,
+          });
+        }
+      }
+
+      try {
+        await writeMessages({ ...dmRecord, status: "published" });
+      } catch (error) {
+        devLogger.warn("[nostr] Failed to persist DM publish state.", error);
+      }
+
+      return { ok: true };
+    };
+
+    const failures = [];
+    for (const rumorEvent of rumorEvents) {
+      const result = await publishRumorEvent(rumorEvent);
+      if (!result?.ok) {
+        failures.push(result);
+      }
+    }
+
+    if (failures.length) {
+      return {
+        ok: false,
+        error: failures[0]?.error || "publish-failed",
+        details: failures,
+      };
+    }
+
+    return relayWarning ? { ok: true, warning: relayWarning } : { ok: true };
+  }
+
+  async _sendNip04DirectMessage({
+    signer,
+    signingAdapter,
+    actorHex,
+    targetHex,
+    message,
+    signerCapabilities,
+  }) {
+    const encryptionErrors = [];
+    let ciphertext = "";
+
+    const normalizedActorHex = normalizeActorKey(actorHex);
+    const sessionActor = this.sessionActor;
+    const sessionPrivateKey =
+      sessionActor &&
+      typeof sessionActor.pubkey === "string" &&
+      sessionActor.pubkey.toLowerCase() === normalizedActorHex &&
+      typeof sessionActor.privateKey === "string"
+        ? sessionActor.privateKey
+        : "";
+
+    if (sessionPrivateKey) {
+      try {
+        ciphertext = await encryptNip04InWorker({
+          privateKey: sessionPrivateKey,
+          targetPubkey: targetHex,
+          plaintext: message,
+        });
+      } catch (error) {
+        encryptionErrors.push({ scheme: "nip04-worker", error });
+      }
+    }
+
+    if (
+      !ciphertext &&
+      signerCapabilities.nip04 &&
+      typeof signer.nip04Encrypt === "function"
+    ) {
+      try {
+        const encrypted = await signer.nip04Encrypt(targetHex, message);
+        if (typeof encrypted === "string" && encrypted) {
+          ciphertext = encrypted;
+        }
+      } catch (error) {
+        encryptionErrors.push({ scheme: "nip04", error });
+      }
+    }
+
+    if (!ciphertext) {
+      if (!sessionPrivateKey && !signerCapabilities.nip04) {
+        const error = new Error(
+          "Your signer does not support NIP-04 encryption.",
+        );
+        userLogger.warn("[nostr] Encryption unsupported for DM send.", error);
+        return {
+          ok: false,
+          error: "encryption-unsupported",
+          details: error,
+        };
+      }
+
+      const details =
+        encryptionErrors.length === 1
+          ? encryptionErrors[0].error
+          : encryptionErrors.map((entry) => ({
+              scheme: entry.scheme,
+              error: entry.error,
+            }));
+      return { ok: false, error: "encryption-failed", details };
+    }
+
+    const event = buildLegacyDirectMessageEvent({
+      pubkey: actorHex,
+      created_at: Math.floor(Date.now() / 1000),
+      recipientPubkey: targetHex,
+      ciphertext,
+    });
+
+    let signedEvent;
+    try {
+      signedEvent = await signingAdapter.signEvent(event);
+    } catch (error) {
+      return { ok: false, error: "signature-failed", details: error };
+    }
+
+    if (!signedEvent || typeof signedEvent.id !== "string") {
+      return { ok: false, error: "signature-failed" };
+    }
+
+    const conversationId = `dm:${[actorHex, targetHex].sort().join(":")}`;
+    const dmRecord = {
+      id: signedEvent.id,
+      conversation_id: conversationId,
+      sender_pubkey: actorHex,
+      receiver_pubkey: targetHex,
+      created_at: event.created_at,
+      kind: event.kind,
+      content: message,
+      tags: event.tags,
+      status: "pending",
+      seen: true,
+    };
+
+    try {
+      await writeMessages(dmRecord);
+      await updateConversationFromMessage(dmRecord, {
+        preview: message,
+        unseenDelta: 0,
+      });
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to persist outgoing DM.", error);
+    }
+
+    const relayListCandidates = sanitizeRelayList(
+      Array.isArray(this.readRelays) && this.readRelays.length
+        ? this.readRelays
+        : Array.isArray(this.relays) && this.relays.length
+        ? this.relays
+        : RELAY_URLS,
+    );
+
+    const parseRecipientRelays = (relayEvent) => {
+      const tags = Array.isArray(relayEvent?.tags) ? relayEvent.tags : [];
+      const seen = new Set();
+      const candidates = [];
+
+      tags.forEach((tag) => {
+        if (!Array.isArray(tag) || tag[0] !== "r") {
+          return;
+        }
+        const url = typeof tag[1] === "string" ? tag[1].trim() : "";
+        if (!url) {
+          return;
+        }
+        const marker =
+          typeof tag[2] === "string" ? tag[2].trim().toLowerCase() : "";
+        if (marker === "write") {
+          return;
+        }
+        if (!seen.has(url)) {
+          seen.add(url);
+          candidates.push(url);
+        }
+      });
+
+      return sanitizeRelayList(candidates);
+    };
+
+    let recipientRelays = [];
+    if (relayListCandidates.length) {
+      try {
+        await this.ensurePool();
+        const events = await this.pool.list(relayListCandidates, [
+          { kinds: [10002], authors: [targetHex], limit: 1 },
+        ]);
+        const sorted = Array.isArray(events)
+          ? events
+              .filter((entry) => entry && entry.pubkey === targetHex)
+              .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0))
+          : [];
+        if (sorted.length) {
+          recipientRelays = parseRecipientRelays(sorted[0]);
+        }
+      } catch (error) {
+        devLogger.warn("[nostr] Failed to load recipient relay list.", error);
+      }
+    }
+
+    const fallbackRelays = sanitizeRelayList(
+      Array.isArray(this.writeRelays) && this.writeRelays.length
+        ? this.writeRelays
+        : Array.isArray(this.relays) && this.relays.length
+        ? this.relays
+        : RELAY_URLS,
+    );
+
+    const relays = recipientRelays.length ? recipientRelays : fallbackRelays;
+
+    const publishResults = await Promise.all(
+      relays.map((url) => publishEventToRelay(this.pool, url, signedEvent))
+    );
+
+    const success = publishResults.some((result) => result.success);
+    if (!success) {
+      try {
+        await writeMessages({ ...dmRecord, status: "failed" });
+      } catch (error) {
+        devLogger.warn("[nostr] Failed to persist DM failure state.", error);
+      }
+      return {
+        ok: false,
+        error: "publish-failed",
+        details: publishResults.filter((result) => !result.success),
+      };
+    }
+
+    try {
+      await writeMessages({ ...dmRecord, status: "published" });
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to persist DM publish state.", error);
+    }
+
+    return { ok: true };
+  }
+
   /**
    * Sends a private Direct Message (DM) to a target user.
    * Supports both legacy NIP-04 (simple encryption) and modern NIP-17 (sealed gift wraps).
@@ -1823,511 +2345,35 @@ export class NostrClient {
         actorHex,
         resolvedOptions.senderRelayHints,
       );
-      const senderRelayTargets = senderSelection.relays;
+
       const relayWarning =
         recipientSelection.warning === DM_RELAY_WARNING_FALLBACK ||
         senderSelection.warning === DM_RELAY_WARNING_FALLBACK
           ? DM_RELAY_WARNING_FALLBACK
           : null;
 
-      const tools = await ensureNostrTools();
-      const getPublicKey =
-        tools && typeof tools.getPublicKey === "function" ? tools.getPublicKey : null;
-      if (!getPublicKey) {
-        return { ok: false, error: "nip17-keygen-failed" };
-      }
-
-      const randomPastTimestamp = () => {
-        const now = Math.floor(Date.now() / 1000);
-        const offset = Math.floor(Math.random() * 172800);
-        return now - offset;
-      };
-
-      const generateEphemeralKeypair = () => {
-        let privateKey = "";
-        try {
-          if (typeof tools.generateSecretKey === "function") {
-            const secret = tools.generateSecretKey();
-            if (secret instanceof Uint8Array) {
-              privateKey = bytesToHex(secret);
-            }
-          }
-          if (!privateKey) {
-            if (typeof tools.generatePrivateKey === "function") {
-              privateKey = tools.generatePrivateKey();
-            } else if (window?.crypto?.getRandomValues) {
-              const randomBytes = new Uint8Array(32);
-              window.crypto.getRandomValues(randomBytes);
-              privateKey = Array.from(randomBytes)
-                .map((byte) => byte.toString(16).padStart(2, "0"))
-                .join("");
-            }
-          }
-        } catch (error) {
-          devLogger.warn("[nostr] Failed to generate NIP-17 wrapper key.", error);
-          privateKey = "";
-        }
-
-        const normalizedPrivateKey =
-          typeof privateKey === "string" ? privateKey.trim() : "";
-        if (!normalizedPrivateKey) {
-          return null;
-        }
-
-        let pubkey = "";
-        try {
-          pubkey = getPublicKey(normalizedPrivateKey);
-        } catch (error) {
-          let retrySuccess = false;
-          try {
-            if (HEX64_REGEX.test(normalizedPrivateKey)) {
-              const bytes = new Uint8Array(normalizedPrivateKey.length / 2);
-              for (let i = 0; i < normalizedPrivateKey.length; i += 2) {
-                bytes[i / 2] = parseInt(
-                  normalizedPrivateKey.substring(i, i + 2),
-                  16,
-                );
-              }
-              pubkey = getPublicKey(bytes);
-              retrySuccess = true;
-            }
-          } catch (retryError) {
-            // Fall back to error handling below
-          }
-          if (!retrySuccess) {
-            devLogger.warn(
-              "[nostr] Failed to derive NIP-17 wrapper pubkey.",
-              error,
-            );
-            return null;
-          }
-        }
-
-        return { privateKey: normalizedPrivateKey, pubkey };
-      };
-
-      const rumorEvents = [];
-      const createdAt = Math.floor(Date.now() / 1000);
-
-      if (trimmedMessage) {
-        rumorEvents.push(buildChatMessageEvent({
-          pubkey: actorHex,
-          created_at: createdAt,
-          recipientPubkey: targetHex,
-          content: trimmedMessage,
-        }));
-      }
-
-      if (hasAttachments) {
-        attachments.forEach((attachment) => {
-          const normalizedAttachment = {
-            x:
-              typeof attachment.x === "string"
-                ? attachment.x.trim().toLowerCase()
-                : "",
-            url: typeof attachment.url === "string" ? attachment.url.trim() : "",
-            name:
-              typeof attachment.name === "string" ? attachment.name.trim() : "",
-            type:
-              typeof attachment.type === "string" ? attachment.type.trim() : "",
-            size: Number.isFinite(attachment.size) ? Math.floor(attachment.size) : null,
-            key: typeof attachment.key === "string" ? attachment.key.trim() : "",
-          };
-
-          rumorEvents.push(
-            buildDmAttachmentEvent({
-              pubkey: actorHex,
-              created_at: createdAt,
-              recipientPubkey: targetHex,
-              attachment: normalizedAttachment,
-            }),
-          );
-        });
-      }
-
-      if (!rumorEvents.length) {
-        return { ok: false, error: "empty-message" };
-      }
-
-      const buildGiftWrapForRecipient = async (
-        recipientPubkey,
-        relayHint,
-        rumorEvent,
-      ) => {
-        const sealPayload = buildSealEvent({
-          pubkey: actorHex,
-          created_at: randomPastTimestamp(),
-          ciphertext: await signer.nip44Encrypt(
-            recipientPubkey,
-            JSON.stringify(rumorEvent),
-          ),
-        });
-
-        const signedSeal = await signingAdapter.signEvent(sealPayload);
-        if (!signedSeal || typeof signedSeal.id !== "string") {
-          throw new Error("seal-signature-failed");
-        }
-
-        const wrapperKeys = generateEphemeralKeypair();
-        if (!wrapperKeys) {
-          throw new Error("wrapper-keygen-failed");
-        }
-
-        const cipherClosures = await createPrivateKeyCipherClosures(
-          wrapperKeys.privateKey,
-        );
-        if (typeof cipherClosures.nip44Encrypt !== "function") {
-          throw new Error("wrapper-encryption-unavailable");
-        }
-
-        const wrapCiphertext = await cipherClosures.nip44Encrypt(
-          recipientPubkey,
-          JSON.stringify(signedSeal),
-        );
-
-        const wrapEvent = buildGiftWrapEvent({
-          pubkey: wrapperKeys.pubkey,
-          created_at: randomPastTimestamp(),
-          recipientPubkey,
-          relayHint,
-          ciphertext: wrapCiphertext,
-        });
-
-        return {
-          wrap: signEventWithPrivateKey(wrapEvent, wrapperKeys.privateKey),
-          seal: signedSeal,
-        };
-      };
-
-      const resolveRumorPreview = (rumorEvent) => {
-        const content =
-          typeof rumorEvent?.content === "string" ? rumorEvent.content.trim() : "";
-        if (content) {
-          return content;
-        }
-
-        const tags = Array.isArray(rumorEvent?.tags) ? rumorEvent.tags : [];
-        const nameTag = tags.find(
-          (tag) => Array.isArray(tag) && tag[0] === "name" && tag[1],
-        );
-        if (nameTag) {
-          return `Attachment: ${nameTag[1]}`;
-        }
-
-        return "Attachment";
-      };
-
-      const publishRumorEvent = async (rumorEvent) => {
-        let recipientGiftWrap;
-        try {
-          recipientGiftWrap = await buildGiftWrapForRecipient(
-            targetHex,
-            recipientSelection.relays[0] || "",
-            rumorEvent,
-          );
-        } catch (error) {
-          devLogger.warn("[nostr] Failed to build NIP-17 recipient wrap.", error);
-          const errorCode =
-            error?.message === "wrapper-keygen-failed"
-              ? "nip17-keygen-failed"
-              : "encryption-failed";
-          return { ok: false, error: errorCode, details: error };
-        }
-
-        const conversationId = `dm:${[actorHex, targetHex].sort().join(":")}`;
-        const preview = resolveRumorPreview(rumorEvent);
-        const dmRecord = {
-          id: recipientGiftWrap.wrap.id,
-          conversation_id: conversationId,
-          sender_pubkey: actorHex,
-          receiver_pubkey: targetHex,
-          created_at: rumorEvent.created_at,
-          kind: rumorEvent.kind,
-          content: typeof rumorEvent.content === "string" ? rumorEvent.content : "",
-          tags: rumorEvent.tags,
-          status: "pending",
-          seen: true,
-        };
-
-        try {
-          await writeMessages(dmRecord);
-          await updateConversationFromMessage(dmRecord, {
-            preview,
-            unseenDelta: 0,
-          });
-        } catch (error) {
-          devLogger.warn("[nostr] Failed to persist outgoing DM.", error);
-        }
-
-        const recipientPublishResults = await Promise.all(
-          recipientSelection.relays.map((url) =>
-            publishEventToRelay(this.pool, url, recipientGiftWrap.wrap),
-          ),
-        );
-
-        const recipientSuccess = recipientPublishResults.some(
-          (result) => result.success,
-        );
-        if (!recipientSuccess) {
-          try {
-            await writeMessages({ ...dmRecord, status: "failed" });
-          } catch (error) {
-            devLogger.warn("[nostr] Failed to persist DM failure state.", error);
-          }
-          return {
-            ok: false,
-            error: "publish-failed",
-            details: recipientPublishResults.filter((result) => !result.success),
-          };
-        }
-
-        let senderGiftWrap = null;
-        try {
-          senderGiftWrap = await buildGiftWrapForRecipient(
-            actorHex,
-            senderRelayTargets[0] || "",
-            rumorEvent,
-          );
-        } catch (error) {
-          devLogger.warn("[nostr] Failed to build NIP-17 sender copy.", error);
-        }
-
-        if (senderGiftWrap && senderRelayTargets.length) {
-          const senderPublishResults = await Promise.all(
-            senderRelayTargets.map((url) =>
-              publishEventToRelay(this.pool, url, senderGiftWrap.wrap),
-            ),
-          );
-          if (!senderPublishResults.some((result) => result.success)) {
-            devLogger.warn("[nostr] Failed to publish sender copy of NIP-17 DM.", {
-              relays: senderRelayTargets,
-            });
-          }
-        }
-
-        try {
-          await writeMessages({ ...dmRecord, status: "published" });
-        } catch (error) {
-          devLogger.warn("[nostr] Failed to persist DM publish state.", error);
-        }
-
-        return { ok: true };
-      };
-
-      const failures = [];
-      for (const rumorEvent of rumorEvents) {
-        const result = await publishRumorEvent(rumorEvent);
-        if (!result?.ok) {
-          failures.push(result);
-        }
-      }
-
-      if (failures.length) {
-        return {
-          ok: false,
-          error: failures[0]?.error || "publish-failed",
-          details: failures,
-        };
-      }
-
-      return relayWarning ? { ok: true, warning: relayWarning } : { ok: true };
+      return this._sendNip17DirectMessage({
+        signer,
+        signingAdapter,
+        actorHex,
+        targetHex,
+        message: trimmedMessage,
+        attachments,
+        resolvedOptions,
+        recipientSelection,
+        senderSelection,
+        relayWarning,
+      });
     }
 
-    const encryptionErrors = [];
-    let ciphertext = "";
-
-    const normalizedActorHex = normalizeActorKey(actorHex);
-    const sessionActor = this.sessionActor;
-    const sessionPrivateKey =
-      sessionActor &&
-      typeof sessionActor.pubkey === "string" &&
-      sessionActor.pubkey.toLowerCase() === normalizedActorHex &&
-      typeof sessionActor.privateKey === "string"
-        ? sessionActor.privateKey
-        : "";
-
-    if (sessionPrivateKey) {
-      try {
-        ciphertext = await encryptNip04InWorker({
-          privateKey: sessionPrivateKey,
-          targetPubkey: targetHex,
-          plaintext: trimmedMessage,
-        });
-      } catch (error) {
-        encryptionErrors.push({ scheme: "nip04-worker", error });
-      }
-    }
-
-    if (
-      !ciphertext &&
-      signerCapabilities.nip04 &&
-      typeof signer.nip04Encrypt === "function"
-    ) {
-      try {
-        const encrypted = await signer.nip04Encrypt(targetHex, trimmedMessage);
-        if (typeof encrypted === "string" && encrypted) {
-          ciphertext = encrypted;
-        }
-      } catch (error) {
-        encryptionErrors.push({ scheme: "nip04", error });
-      }
-    }
-
-    if (!ciphertext) {
-      if (!sessionPrivateKey && !signerCapabilities.nip04) {
-        const error = new Error(
-          "Your signer does not support NIP-04 encryption.",
-        );
-        userLogger.warn("[nostr] Encryption unsupported for DM send.", error);
-        return {
-          ok: false,
-          error: "encryption-unsupported",
-          details: error,
-        };
-      }
-
-      const details =
-        encryptionErrors.length === 1
-          ? encryptionErrors[0].error
-          : encryptionErrors.map((entry) => ({
-              scheme: entry.scheme,
-              error: entry.error,
-            }));
-      return { ok: false, error: "encryption-failed", details };
-    }
-
-    const event = buildLegacyDirectMessageEvent({
-      pubkey: actorHex,
-      created_at: Math.floor(Date.now() / 1000),
-      recipientPubkey: targetHex,
-      ciphertext,
+    return this._sendNip04DirectMessage({
+      signer,
+      signingAdapter,
+      actorHex,
+      targetHex,
+      message: trimmedMessage,
+      signerCapabilities,
     });
-
-    let signedEvent;
-    try {
-      signedEvent = await signingAdapter.signEvent(event);
-    } catch (error) {
-      return { ok: false, error: "signature-failed", details: error };
-    }
-
-    if (!signedEvent || typeof signedEvent.id !== "string") {
-      return { ok: false, error: "signature-failed" };
-    }
-
-    const conversationId = `dm:${[actorHex, targetHex].sort().join(":")}`;
-    const dmRecord = {
-      id: signedEvent.id,
-      conversation_id: conversationId,
-      sender_pubkey: actorHex,
-      receiver_pubkey: targetHex,
-      created_at: event.created_at,
-      kind: event.kind,
-      content: trimmedMessage,
-      tags: event.tags,
-      status: "pending",
-      seen: true,
-    };
-
-    try {
-      await writeMessages(dmRecord);
-      await updateConversationFromMessage(dmRecord, {
-        preview: trimmedMessage,
-        unseenDelta: 0,
-      });
-    } catch (error) {
-      devLogger.warn("[nostr] Failed to persist outgoing DM.", error);
-    }
-
-    const relayListCandidates = sanitizeRelayList(
-      Array.isArray(this.readRelays) && this.readRelays.length
-        ? this.readRelays
-        : Array.isArray(this.relays) && this.relays.length
-        ? this.relays
-        : RELAY_URLS,
-    );
-
-    const parseRecipientRelays = (relayEvent) => {
-      const tags = Array.isArray(relayEvent?.tags) ? relayEvent.tags : [];
-      const seen = new Set();
-      const candidates = [];
-
-      tags.forEach((tag) => {
-        if (!Array.isArray(tag) || tag[0] !== "r") {
-          return;
-        }
-        const url = typeof tag[1] === "string" ? tag[1].trim() : "";
-        if (!url) {
-          return;
-        }
-        const marker =
-          typeof tag[2] === "string" ? tag[2].trim().toLowerCase() : "";
-        if (marker === "write") {
-          return;
-        }
-        if (!seen.has(url)) {
-          seen.add(url);
-          candidates.push(url);
-        }
-      });
-
-      return sanitizeRelayList(candidates);
-    };
-
-    let recipientRelays = [];
-    if (relayListCandidates.length) {
-      try {
-        await this.ensurePool();
-        const events = await this.pool.list(relayListCandidates, [
-          { kinds: [10002], authors: [targetHex], limit: 1 },
-        ]);
-        const sorted = Array.isArray(events)
-          ? events
-              .filter((entry) => entry && entry.pubkey === targetHex)
-              .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0))
-          : [];
-        if (sorted.length) {
-          recipientRelays = parseRecipientRelays(sorted[0]);
-        }
-      } catch (error) {
-        devLogger.warn("[nostr] Failed to load recipient relay list.", error);
-      }
-    }
-
-    const fallbackRelays = sanitizeRelayList(
-      Array.isArray(this.writeRelays) && this.writeRelays.length
-        ? this.writeRelays
-        : Array.isArray(this.relays) && this.relays.length
-        ? this.relays
-        : RELAY_URLS,
-    );
-
-    const relays = recipientRelays.length ? recipientRelays : fallbackRelays;
-
-    const publishResults = await Promise.all(
-      relays.map((url) => publishEventToRelay(this.pool, url, signedEvent))
-    );
-
-    const success = publishResults.some((result) => result.success);
-    if (!success) {
-      try {
-        await writeMessages({ ...dmRecord, status: "failed" });
-      } catch (error) {
-        devLogger.warn("[nostr] Failed to persist DM failure state.", error);
-      }
-      return {
-        ok: false,
-        error: "publish-failed",
-        details: publishResults.filter((result) => !result.success),
-      };
-    }
-
-    try {
-      await writeMessages({ ...dmRecord, status: "published" });
-    } catch (error) {
-      devLogger.warn("[nostr] Failed to persist DM publish state.", error);
-    }
-
-    return { ok: true };
   }
 
   /**
