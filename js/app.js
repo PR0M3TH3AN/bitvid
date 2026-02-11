@@ -4794,6 +4794,11 @@ class Application {
     return this._playback.resolveVideoPostedAt(...args);
   }
 
+  async resolveVideoPostedAtBatch(...args) {
+    this._initCoordinators();
+    return this._playback.resolveVideoPostedAtBatch(...args);
+  }
+
   async ensureModalPostedTimestamp(...args) {
     this._initCoordinators();
     return this._playback.ensureModalPostedTimestamp(...args);

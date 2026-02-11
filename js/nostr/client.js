@@ -3625,6 +3625,156 @@ export class NostrClient {
     return this.connectionManager.countEventsAcrossRelays(filters, options);
   }
 
+  _processAndCacheEvent(evt) {
+    if (!evt || !evt.id) return null;
+    try {
+      this.rawEvents.set(evt.id, evt);
+      const parsed = convertEventToVideo(evt);
+      if (parsed.invalid) return null;
+
+      this.mergeNip71MetadataIntoVideo(parsed);
+      this.applyRootCreatedAt(parsed);
+      const activeKey = getActiveKey(parsed);
+      if (parsed.deleted) {
+        this.recordTombstone(activeKey, parsed.created_at);
+      } else {
+        this.applyTombstoneGuard(parsed);
+      }
+      this.allEvents.set(evt.id, parsed);
+      this.dirtyEventIds.add(evt.id);
+      return parsed;
+    } catch (err) {
+      devLogger.warn("[nostr] Failed to process incoming event:", err);
+      return null;
+    }
+  }
+
+  getLocalVideoHistory(video) {
+    if (!video || typeof video !== "object") return [];
+
+    const targetRoot = typeof video.videoRootId === "string" ? video.videoRootId : "";
+    const targetPubkey = typeof video.pubkey === "string" ? video.pubkey.toLowerCase() : "";
+    const targetDTag = this.resolveEventDTag(video);
+
+    const matches = [];
+    const seen = new Set();
+
+    for (const candidate of this.allEvents.values()) {
+      if (!candidate || typeof candidate !== "object") continue;
+
+      if (targetPubkey) {
+        const candidatePubkey = typeof candidate.pubkey === "string"
+          ? candidate.pubkey.toLowerCase()
+          : "";
+        if (candidatePubkey !== targetPubkey) continue;
+      }
+
+      const candidateRoot = typeof candidate.videoRootId === "string" ? candidate.videoRootId : "";
+      const candidateDTag = this.resolveEventDTag(candidate, video);
+
+      const sameRoot = targetRoot && candidateRoot === targetRoot;
+      const sameD = targetDTag && candidateDTag === targetDTag;
+      const sameLegacyRoot = !targetRoot && candidateRoot && candidateRoot === video.id;
+
+      if (sameRoot || sameD || sameLegacyRoot || candidate.id === video.id) {
+        if (!seen.has(candidate.id)) {
+          seen.add(candidate.id);
+          if (!candidate.deleted) {
+            this.applyTombstoneGuard(candidate);
+          }
+          matches.push(candidate);
+        }
+      }
+    }
+    return matches;
+  }
+
+  /**
+   * Batch fetches and reconstructs the full edit history for multiple videos.
+   *
+   * @param {object[]} videos - The list of video objects to process.
+   * @returns {Promise<void>} Resolves when all histories have been hydrated into the cache.
+   */
+  async hydrateVideoHistoryBatch(videos) {
+    if (!Array.isArray(videos) || videos.length === 0) return;
+
+    const missingRoots = new Set();
+    const dTagsToFetch = new Set();
+    const authorsForHistory = new Set();
+
+    // 1. Identify what to fetch
+    for (const video of videos) {
+      if (!video || typeof video !== "object") continue;
+      this.applyRootCreatedAt(video);
+
+      const targetRoot = typeof video.videoRootId === "string" ? video.videoRootId : "";
+      if (targetRoot && targetRoot !== video.id) {
+        if (!this.allEvents.has(targetRoot)) {
+          missingRoots.add(targetRoot);
+        }
+      }
+
+      const localMatches = this.getLocalVideoHistory(video);
+      const targetDTag = this.resolveEventDTag(video);
+      const shouldFetchHistory = localMatches.filter((entry) => !entry.deleted).length <= 1 && targetDTag;
+
+      if (shouldFetchHistory) {
+        dTagsToFetch.add(targetDTag);
+        if (video.pubkey) {
+          authorsForHistory.add(video.pubkey);
+        }
+      }
+    }
+
+    if (!this.pool || !Array.isArray(this.relays) || !this.relays.length) return;
+    const relays = this.getHealthyRelays(this.relays);
+
+    // 2. Fetch missing roots
+    if (missingRoots.size > 0) {
+      try {
+        const events = await this.pool.list(relays, [{ ids: Array.from(missingRoots) }]);
+        if (Array.isArray(events)) {
+          events.forEach(evt => this._processAndCacheEvent(evt));
+        }
+      } catch (err) {
+        devLogger.warn("[nostr] Batch root fetch failed:", err);
+      }
+    }
+
+    // 3. Fetch histories
+    if (dTagsToFetch.size > 0) {
+      const filter = {
+        kinds: [30078],
+        "#t": ["video"],
+        "#d": Array.from(dTagsToFetch),
+        limit: 500,
+      };
+      if (authorsForHistory.size > 0) {
+        filter.authors = Array.from(authorsForHistory);
+      }
+
+      try {
+        const events = await this.pool.list(relays, [filter]);
+        if (Array.isArray(events)) {
+          events.forEach(evt => this._processAndCacheEvent(evt));
+        }
+      } catch (err) {
+        devLogger.warn("[nostr] Batch history fetch failed:", err);
+      }
+    }
+
+    // 4. Update NIP-71 metadata for all touched videos
+    const allMatches = new Set();
+    for (const video of videos) {
+      if (!video || typeof video !== "object") continue;
+      const matches = this.getLocalVideoHistory(video);
+      matches.forEach(m => allMatches.add(m));
+    }
+    const uniqueMatches = Array.from(allMatches);
+    await this.populateNip71MetadataForVideos(uniqueMatches);
+    uniqueMatches.forEach(entry => this.applyRootCreatedAt(entry));
+  }
+
   /**
    * Fetches and reconstructs the full edit history of a video.
    *
@@ -3668,56 +3818,9 @@ export class NostrClient {
 
     const targetRoot = typeof video.videoRootId === "string" ? video.videoRootId : "";
     const targetPubkey = typeof video.pubkey === "string" ? video.pubkey.toLowerCase() : "";
-
     const targetDTag = this.resolveEventDTag(video);
 
-    const collectLocalMatches = () => {
-      const seen = new Set();
-      const matches = [];
-      for (const candidate of this.allEvents.values()) {
-        if (!candidate || typeof candidate !== "object") {
-          continue;
-        }
-        if (targetPubkey) {
-          const candidatePubkey = typeof candidate.pubkey === "string"
-            ? candidate.pubkey.toLowerCase()
-            : "";
-          if (candidatePubkey !== targetPubkey) {
-            continue;
-          }
-        }
-
-        const candidateRoot =
-          typeof candidate.videoRootId === "string" ? candidate.videoRootId : "";
-        const candidateDTag = this.resolveEventDTag(candidate, video);
-
-        // HISTORY MATCHING LOGIC
-        // A video is part of the same history if:
-        // 1. It shares the same V3 `videoRootId`.
-        // 2. It shares the same NIP-33 `d` tag (addressable events).
-        const sameRoot = targetRoot && candidateRoot === targetRoot;
-        const sameD = targetDTag && candidateDTag === targetDTag;
-
-        // Legacy fallbacks: some old posts reused only the "d" tag without a
-        // canonical videoRootId. If neither identifier exists we at least keep
-        // the active event so the caller can surface an informative message.
-        const sameLegacyRoot =
-          !targetRoot && candidateRoot && candidateRoot === video.id;
-
-        if (sameRoot || sameD || sameLegacyRoot || candidate.id === video.id) {
-          if (!seen.has(candidate.id)) {
-            seen.add(candidate.id);
-            if (!candidate.deleted) {
-              this.applyTombstoneGuard(candidate);
-            }
-            matches.push(candidate);
-          }
-        }
-      }
-      return matches;
-    };
-
-    let localMatches = collectLocalMatches();
+    let localMatches = this.getLocalVideoHistory(video);
 
     const ensureRootPresence = async () => {
       const normalizedRoot = targetRoot && typeof targetRoot === "string"
@@ -3751,26 +3854,13 @@ export class NostrClient {
       try {
         const rootEvent = await this.pool.get(this.getHealthyRelays(this.relays), { ids: [normalizedRoot] });
         if (rootEvent && rootEvent.id === normalizedRoot) {
-          this.rawEvents.set(rootEvent.id, rootEvent);
-          const parsed = convertEventToVideo(rootEvent);
-          if (!parsed.invalid) {
-            this.mergeNip71MetadataIntoVideo(parsed);
-            this.applyRootCreatedAt(parsed);
-            const activeKey = getActiveKey(parsed);
-            if (parsed.deleted) {
-              this.recordTombstone(activeKey, parsed.created_at);
-            } else {
-              this.applyTombstoneGuard(parsed);
-            }
-            this.allEvents.set(rootEvent.id, parsed);
-            this.dirtyEventIds.add(rootEvent.id);
-            localMatches.push(parsed);
-          }
+          const processed = this._processAndCacheEvent(rootEvent);
+          if (processed) localMatches.push(processed);
         }
       } catch (error) {
         devLogger.warn(
-        `[nostr] Failed to fetch root event ${normalizedRoot} for history:`,
-        error
+          `[nostr] Failed to fetch root event ${normalizedRoot} for history:`,
+          error
         );
       }
     };
@@ -3793,48 +3883,29 @@ export class NostrClient {
 
       try {
         const perRelay = await Promise.all(
-            this.getHealthyRelays(this.relays).map(async (url) => {
-              try {
-                const events = await this.pool.list([url], [filter]);
-                return events || [];
-              } catch (err) {
-                devLogger.warn(
-                  `[nostr] History fetch failed on ${url}:`,
-                  err,
-                );
-                return [];
-              }
-            })
+          this.getHealthyRelays(this.relays).map(async (url) => {
+            try {
+              const events = await this.pool.list([url], [filter]);
+              return events || [];
+            } catch (err) {
+              devLogger.warn(
+                `[nostr] History fetch failed on ${url}:`,
+                err,
+              );
+              return [];
+            }
+          })
         );
 
         const merged = perRelay.flat();
         for (const evt of merged) {
-          try {
-            if (evt && evt.id) {
-              this.rawEvents.set(evt.id, evt);
-            }
-            const parsed = convertEventToVideo(evt);
-            if (!parsed.invalid) {
-              this.mergeNip71MetadataIntoVideo(parsed);
-              this.applyRootCreatedAt(parsed);
-              const activeKey = getActiveKey(parsed);
-              if (parsed.deleted) {
-                this.recordTombstone(activeKey, parsed.created_at);
-              } else {
-                this.applyTombstoneGuard(parsed);
-              }
-              this.allEvents.set(evt.id, parsed);
-              this.dirtyEventIds.add(evt.id);
-            }
-          } catch (err) {
-            devLogger.warn("[nostr] Failed to convert historical event:", err);
-          }
+          this._processAndCacheEvent(evt);
         }
       } catch (err) {
         devLogger.warn("[nostr] hydrateVideoHistory relay fetch error:", err);
       }
 
-      localMatches = collectLocalMatches();
+      localMatches = this.getLocalVideoHistory(video);
       await ensureRootPresence();
     }
 

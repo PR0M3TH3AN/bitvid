@@ -950,6 +950,7 @@ export default class ApplicationBootstrap {
         buildShareUrlFromEventId: (eventId) => app.buildShareUrlFromEventId(eventId),
         getKnownVideoPostedAt: (video) => app.getKnownVideoPostedAt(video),
         resolveVideoPostedAt: (video) => app.resolveVideoPostedAt(video),
+        batchResolveVideoPostedAt: (videos) => app.resolveVideoPostedAtBatch(videos),
         canManageBlacklist: () => app.canCurrentUserManageBlacklist(),
         canEditVideo: (video) => video?.pubkey === app.pubkey,
         canDeleteVideo: (video) => video?.pubkey === app.pubkey,
