@@ -279,520 +279,570 @@ function findTagByName(tags, ...names) {
   return null;
 }
 
-function normalizeCommentTarget(targetInput = {}, overrides = {}) {
-  const target = targetInput && typeof targetInput === "object" ? targetInput : {};
-  const options = overrides && typeof overrides === "object" ? overrides : {};
+class CommentTargetNormalizer {
+  constructor(targetInput, overrides) {
+    this.target = targetInput && typeof targetInput === "object" ? targetInput : {};
+    this.options = overrides && typeof overrides === "object" ? overrides : {};
 
-  const videoEventPointer =
-    normalizePointerCandidate(options.videoEventPointer, "e") ||
-    normalizePointerCandidate(options.videoEvent, "e") ||
-    normalizePointerCandidate(target.videoEventPointer, "e") ||
-    normalizePointerCandidate(target.videoEvent, "e") ||
-    normalizePointerCandidate(target.eventPointer, "e") ||
-    normalizePointerCandidate(target.event, "e");
+    // Pointers
+    this.videoEventPointer = null;
+    this.videoDefinitionPointer = null;
+    this.rootDefinitionPointer = null;
+    this.rootEventPointer = null;
+    this.parentCommentPointer = null;
 
-  const videoDefinitionPointer =
-    normalizePointerCandidate(options.videoDefinitionPointer, "a") ||
-    normalizePointerCandidate(options.videoDefinition, "a") ||
-    normalizePointerCandidate(target.videoDefinitionPointer, "a") ||
-    normalizePointerCandidate(target.videoDefinition, "a") ||
-    normalizePointerCandidate(target.definitionPointer, "a") ||
-    normalizePointerCandidate(target.definition, "a");
+    // Events
+    this.videoEventObject = null;
+    this.parentCommentEvent = null;
 
-  const rootDefinitionPointer =
-    normalizePointerCandidate(options.rootDefinitionPointer, "a") ||
-    normalizePointerCandidate(options.rootPointer, "a") ||
-    normalizePointerCandidate(target.rootDefinitionPointer, "a") ||
-    normalizePointerCandidate(target.rootPointer, "a");
+    // Tags
+    this.rootEventTags = [];
+    this.parentEventTags = [];
+    this.combinedTags = [];
 
-  const rootEventPointer =
-    normalizePointerCandidate(options.rootEventPointer, "e") ||
-    normalizePointerCandidate(options.rootPointer, "e") ||
-    normalizePointerCandidate(target.rootEventPointer, "e") ||
-    normalizePointerCandidate(target.rootPointer, "e");
+    // Normalized Values
+    this.normalizedVideoEventId = "";
+    this.normalizedVideoEventRelay = "";
+    this.normalizedVideoDefinitionAddress = "";
+    this.normalizedVideoDefinitionRelay = "";
+    this.normalizedParentCommentId = "";
+    this.normalizedParentCommentRelay = "";
+    this.normalizedThreadParticipantPubkey = "";
+    this.normalizedThreadParticipantRelay = "";
+    this.normalizedRootIdentifier = "";
+    this.normalizedRootIdentifierRelay = "";
+    this.normalizedParentIdentifier = "";
+    this.normalizedParentIdentifierRelay = "";
+    this.normalizedVideoKind = "";
+    this.normalizedVideoAuthorPubkey = "";
+    this.derivedDefinitionKind = "";
+    this.derivedDefinitionPubkey = "";
+    this.normalizedRootKind = "";
+    this.normalizedParentKind = "";
+    this.normalizedRootAuthorPubkey = "";
+    this.normalizedParentAuthorPubkey = "";
+    this.normalizedRootAuthorRelay = "";
+    this.normalizedParentAuthorRelay = "";
+  }
 
-  const parentCommentPointer =
-    normalizePointerCandidate(options.parentCommentPointer, "e") ||
-    normalizePointerCandidate(options.parentComment, "e") ||
-    normalizePointerCandidate(target.parentCommentPointer, "e") ||
-    normalizePointerCandidate(target.parentComment, "e") ||
-    normalizePointerCandidate(target.parentPointer, "e");
+  normalize() {
+    this.extractPointers();
+    this.resolveEventsAndTags();
+    this.extractInitialValues();
+    this.enrichFromTags();
+    this.applyDefaults();
+    return this.getDescriptor();
+  }
 
-  const videoEventObject = resolveEventCandidate(
-    options.videoEvent,
-    options.rootEvent,
-    target.videoEvent,
-    target.rootEvent,
-  );
+  extractPointers() {
+    const { target, options } = this;
+    this.videoEventPointer =
+      normalizePointerCandidate(options.videoEventPointer, "e") ||
+      normalizePointerCandidate(options.videoEvent, "e") ||
+      normalizePointerCandidate(target.videoEventPointer, "e") ||
+      normalizePointerCandidate(target.videoEvent, "e") ||
+      normalizePointerCandidate(target.eventPointer, "e") ||
+      normalizePointerCandidate(target.event, "e");
 
-  const parentCommentEvent = resolveEventCandidate(
-    options.parentCommentEvent,
-    options.parentComment,
-    target.parentCommentEvent,
-    target.parentComment,
-  );
+    this.videoDefinitionPointer =
+      normalizePointerCandidate(options.videoDefinitionPointer, "a") ||
+      normalizePointerCandidate(options.videoDefinition, "a") ||
+      normalizePointerCandidate(target.videoDefinitionPointer, "a") ||
+      normalizePointerCandidate(target.videoDefinition, "a") ||
+      normalizePointerCandidate(target.definitionPointer, "a") ||
+      normalizePointerCandidate(target.definition, "a");
 
-  const rootEventTags = collectTagsFromEvent(videoEventObject);
-  const parentEventTags = collectTagsFromEvent(parentCommentEvent);
-  const combinedTags = [...parentEventTags, ...rootEventTags];
-  const getTagField = (tag, index) =>
-    Array.isArray(tag) && typeof tag[index] === "string"
-      ? tag[index].trim()
-      : "";
+    this.rootDefinitionPointer =
+      normalizePointerCandidate(options.rootDefinitionPointer, "a") ||
+      normalizePointerCandidate(options.rootPointer, "a") ||
+      normalizePointerCandidate(target.rootDefinitionPointer, "a") ||
+      normalizePointerCandidate(target.rootPointer, "a");
 
-  const videoEventId = pickString(
-    options.videoEventId,
-    target.videoEventId,
-    target.eventId,
-    videoEventPointer?.value,
-    rootEventPointer?.value,
-  );
-  const videoEventRelay = pickString(
-    options.videoEventRelay,
-    target.videoEventRelay,
-    target.eventRelay,
-    videoEventPointer?.relay,
-    rootEventPointer?.relay,
-  );
+    this.rootEventPointer =
+      normalizePointerCandidate(options.rootEventPointer, "e") ||
+      normalizePointerCandidate(options.rootPointer, "e") ||
+      normalizePointerCandidate(target.rootEventPointer, "e") ||
+      normalizePointerCandidate(target.rootPointer, "e");
 
-  const videoDefinitionAddress = pickString(
-    options.videoDefinitionAddress,
-    target.videoDefinitionAddress,
-    target.definitionAddress,
-    videoDefinitionPointer?.value,
-    rootDefinitionPointer?.value,
-  );
-  const videoDefinitionRelay = pickString(
-    options.videoDefinitionRelay,
-    target.videoDefinitionRelay,
-    target.definitionRelay,
-    videoDefinitionPointer?.relay,
-    rootDefinitionPointer?.relay,
-  );
+    this.parentCommentPointer =
+      normalizePointerCandidate(options.parentCommentPointer, "e") ||
+      normalizePointerCandidate(options.parentComment, "e") ||
+      normalizePointerCandidate(target.parentCommentPointer, "e") ||
+      normalizePointerCandidate(target.parentComment, "e") ||
+      normalizePointerCandidate(target.parentPointer, "e");
+  }
 
-  const parentCommentId = pickString(
-    options.parentCommentId,
-    target.parentCommentId,
-    target.parentId,
-    parentCommentPointer?.value,
-  );
-  const parentCommentRelay = pickString(
-    options.parentCommentRelay,
-    target.parentCommentRelay,
-    target.parentRelay,
-    parentCommentPointer?.relay,
-  );
+  resolveEventsAndTags() {
+    const { target, options } = this;
+    this.videoEventObject = resolveEventCandidate(
+      options.videoEvent,
+      options.rootEvent,
+      target.videoEvent,
+      target.rootEvent,
+    );
 
-  const threadParticipantPubkey = pickString(
-    options.threadParticipantPubkey,
-    target.threadParticipantPubkey,
-    target.participantPubkey,
-    target.authorPubkey,
-  );
-  const threadParticipantRelay = pickString(
-    options.threadParticipantRelay,
-    target.threadParticipantRelay,
-    target.participantRelay,
-  );
+    this.parentCommentEvent = resolveEventCandidate(
+      options.parentCommentEvent,
+      options.parentComment,
+      target.parentCommentEvent,
+      target.parentComment,
+    );
 
-  let normalizedVideoEventId =
-    typeof videoEventId === "string" ? videoEventId.trim() : "";
-  let normalizedVideoDefinitionAddress =
-    typeof videoDefinitionAddress === "string" ? videoDefinitionAddress.trim() : "";
-  let normalizedVideoEventRelay =
-    typeof videoEventRelay === "string" ? videoEventRelay.trim() : "";
-  let normalizedVideoDefinitionRelay =
-    typeof videoDefinitionRelay === "string" ? videoDefinitionRelay.trim() : "";
-  let normalizedParentCommentId =
-    typeof parentCommentId === "string" ? parentCommentId.trim() : "";
-  let normalizedParentCommentRelay =
-    typeof parentCommentRelay === "string" ? parentCommentRelay.trim() : "";
-  const normalizedThreadParticipantPubkey =
-    typeof threadParticipantPubkey === "string" ? threadParticipantPubkey.trim() : "";
-  const normalizedThreadParticipantRelay =
-    typeof threadParticipantRelay === "string"
-      ? threadParticipantRelay.trim()
-      : "";
+    this.rootEventTags = collectTagsFromEvent(this.videoEventObject);
+    this.parentEventTags = collectTagsFromEvent(this.parentCommentEvent);
+    this.combinedTags = [...this.parentEventTags, ...this.rootEventTags];
+  }
 
-  const rootIdentifier = pickString(
-    options.rootIdentifier,
-    target.rootIdentifier,
-    options.rootPointer,
-    target.rootPointer,
-  );
-  const rootIdentifierRelay = pickString(
-    options.rootIdentifierRelay,
-    target.rootIdentifierRelay,
-  );
+  extractInitialValues() {
+    const { target, options } = this;
 
-  const parentIdentifier = pickString(
-    options.parentIdentifier,
-    target.parentIdentifier,
-  );
-  const parentIdentifierRelay = pickString(
-    options.parentIdentifierRelay,
-    target.parentIdentifierRelay,
-  );
+    const normalize = (val) => (typeof val === "string" ? val.trim() : "");
 
-  const normalizedRootIdentifier =
-    typeof rootIdentifier === "string" ? rootIdentifier.trim() : "";
-  let normalizedRootIdentifierRelay =
-    typeof rootIdentifierRelay === "string" ? rootIdentifierRelay.trim() : "";
-  const normalizedParentIdentifier =
-    typeof parentIdentifier === "string" ? parentIdentifier.trim() : "";
-  let normalizedParentIdentifierRelay =
-    typeof parentIdentifierRelay === "string"
-      ? parentIdentifierRelay.trim()
-      : "";
+    this.normalizedVideoEventId = normalize(pickString(
+      options.videoEventId,
+      target.videoEventId,
+      target.eventId,
+      this.videoEventPointer?.value,
+      this.rootEventPointer?.value,
+    ));
 
-  let normalizedVideoKind = pickKind(
-    options.videoKind,
-    target.videoKind,
-    videoEventObject?.kind,
-  );
+    this.normalizedVideoEventRelay = normalize(pickString(
+      options.videoEventRelay,
+      target.videoEventRelay,
+      target.eventRelay,
+      this.videoEventPointer?.relay,
+      this.rootEventPointer?.relay,
+    ));
 
-  let normalizedVideoAuthorPubkey = pickString(
-    options.videoAuthorPubkey,
-    target.videoAuthorPubkey,
-    videoEventObject?.pubkey,
-  );
+    this.normalizedVideoDefinitionAddress = normalize(pickString(
+      options.videoDefinitionAddress,
+      target.videoDefinitionAddress,
+      target.definitionAddress,
+      this.videoDefinitionPointer?.value,
+      this.rootDefinitionPointer?.value,
+    ));
 
-  const definitionSegments = normalizedVideoDefinitionAddress
-    ? normalizedVideoDefinitionAddress.split(":")
-    : [];
-  const derivedDefinitionKind = definitionSegments[0] || "";
-  const derivedDefinitionPubkey = definitionSegments[1] || "";
+    this.normalizedVideoDefinitionRelay = normalize(pickString(
+      options.videoDefinitionRelay,
+      target.videoDefinitionRelay,
+      target.definitionRelay,
+      this.videoDefinitionPointer?.relay,
+      this.rootDefinitionPointer?.relay,
+    ));
 
-  const rootKindCandidate = pickString(
-    options.rootKind,
-    target.rootKind,
-    options.videoKind,
-    target.videoKind,
-    normalizedVideoKind,
-    derivedDefinitionKind,
-  );
-  let normalizedRootKind =
-    typeof rootKindCandidate === "string" ? rootKindCandidate.trim() : "";
+    this.normalizedParentCommentId = normalize(pickString(
+      options.parentCommentId,
+      target.parentCommentId,
+      target.parentId,
+      this.parentCommentPointer?.value,
+    ));
 
-  const parentKindCandidate = pickString(
-    options.parentKind,
-    target.parentKind,
-    options.parentCommentKind,
-    target.parentCommentKind,
-    pickKind(parentCommentEvent?.kind),
-  );
-  let normalizedParentKind =
-    typeof parentKindCandidate === "string" ? parentKindCandidate.trim() : "";
+    this.normalizedParentCommentRelay = normalize(pickString(
+      options.parentCommentRelay,
+      target.parentCommentRelay,
+      target.parentRelay,
+      this.parentCommentPointer?.relay,
+    ));
 
-  let normalizedRootAuthorPubkey = pickString(
-    options.rootAuthorPubkey,
-    target.rootAuthorPubkey,
-    options.videoAuthorPubkey,
-    target.videoAuthorPubkey,
-    normalizedVideoAuthorPubkey,
-    derivedDefinitionPubkey,
-  );
-  normalizedRootAuthorPubkey =
-    typeof normalizedRootAuthorPubkey === "string"
-      ? normalizedRootAuthorPubkey.trim()
-      : "";
+    this.normalizedThreadParticipantPubkey = normalize(pickString(
+      options.threadParticipantPubkey,
+      target.threadParticipantPubkey,
+      target.participantPubkey,
+      target.authorPubkey,
+    ));
 
-  let normalizedParentAuthorPubkey = pickString(
-    options.parentAuthorPubkey,
-    target.parentAuthorPubkey,
-    options.parentCommentPubkey,
-    target.parentCommentPubkey,
-    parentCommentEvent?.pubkey,
-  );
-  normalizedParentAuthorPubkey =
-    typeof normalizedParentAuthorPubkey === "string"
-      ? normalizedParentAuthorPubkey.trim()
-      : "";
+    this.normalizedThreadParticipantRelay = normalize(pickString(
+      options.threadParticipantRelay,
+      target.threadParticipantRelay,
+      target.participantRelay,
+    ));
 
-  let normalizedRootAuthorRelay = pickString(
-    options.rootAuthorRelay,
-    target.rootAuthorRelay,
-  );
-  normalizedRootAuthorRelay =
-    typeof normalizedRootAuthorRelay === "string"
-      ? normalizedRootAuthorRelay.trim()
-      : "";
+    this.normalizedRootIdentifier = normalize(pickString(
+      options.rootIdentifier,
+      target.rootIdentifier,
+      options.rootPointer,
+      target.rootPointer,
+    ));
 
-  let normalizedParentAuthorRelay = pickString(
-    options.parentAuthorRelay,
-    target.parentAuthorRelay,
-  );
-  normalizedParentAuthorRelay =
-    typeof normalizedParentAuthorRelay === "string"
-      ? normalizedParentAuthorRelay.trim()
-      : "";
+    this.normalizedRootIdentifierRelay = normalize(pickString(
+      options.rootIdentifierRelay,
+      target.rootIdentifierRelay,
+    ));
 
-  if (!normalizedRootIdentifier) {
-    const tag = findTagByName(combinedTags, "I");
-    const value = getTagField(tag, 1);
-    if (value) {
-      normalizedRootIdentifier = value;
+    this.normalizedParentIdentifier = normalize(pickString(
+      options.parentIdentifier,
+      target.parentIdentifier,
+    ));
+
+    this.normalizedParentIdentifierRelay = normalize(pickString(
+      options.parentIdentifierRelay,
+      target.parentIdentifierRelay,
+    ));
+
+    this.normalizedVideoKind = pickKind(
+      options.videoKind,
+      target.videoKind,
+      this.videoEventObject?.kind,
+    );
+
+    this.normalizedVideoAuthorPubkey = pickString(
+      options.videoAuthorPubkey,
+      target.videoAuthorPubkey,
+      this.videoEventObject?.pubkey,
+    );
+
+    const definitionSegments = this.normalizedVideoDefinitionAddress
+      ? this.normalizedVideoDefinitionAddress.split(":")
+      : [];
+    this.derivedDefinitionKind = definitionSegments[0] || "";
+    this.derivedDefinitionPubkey = definitionSegments[1] || "";
+
+    const rootKindCandidate = pickString(
+      options.rootKind,
+      target.rootKind,
+      options.videoKind,
+      target.videoKind,
+      this.normalizedVideoKind,
+      this.derivedDefinitionKind,
+    );
+    this.normalizedRootKind =
+      typeof rootKindCandidate === "string" ? rootKindCandidate.trim() : "";
+
+    const parentKindCandidate = pickString(
+      options.parentKind,
+      target.parentKind,
+      options.parentCommentKind,
+      target.parentCommentKind,
+      pickKind(this.parentCommentEvent?.kind),
+    );
+    this.normalizedParentKind =
+      typeof parentKindCandidate === "string" ? parentKindCandidate.trim() : "";
+
+    let normalizedRootAuthorPubkey = pickString(
+      options.rootAuthorPubkey,
+      target.rootAuthorPubkey,
+      options.videoAuthorPubkey,
+      target.videoAuthorPubkey,
+      this.normalizedVideoAuthorPubkey,
+      this.derivedDefinitionPubkey,
+    );
+    this.normalizedRootAuthorPubkey =
+      typeof normalizedRootAuthorPubkey === "string"
+        ? normalizedRootAuthorPubkey.trim()
+        : "";
+
+    let normalizedParentAuthorPubkey = pickString(
+      options.parentAuthorPubkey,
+      target.parentAuthorPubkey,
+      options.parentCommentPubkey,
+      target.parentCommentPubkey,
+      this.parentCommentEvent?.pubkey,
+    );
+    this.normalizedParentAuthorPubkey =
+      typeof normalizedParentAuthorPubkey === "string"
+        ? normalizedParentAuthorPubkey.trim()
+        : "";
+
+    let normalizedRootAuthorRelay = pickString(
+      options.rootAuthorRelay,
+      target.rootAuthorRelay,
+    );
+    this.normalizedRootAuthorRelay =
+      typeof normalizedRootAuthorRelay === "string"
+        ? normalizedRootAuthorRelay.trim()
+        : "";
+
+    let normalizedParentAuthorRelay = pickString(
+      options.parentAuthorRelay,
+      target.parentAuthorRelay,
+    );
+    this.normalizedParentAuthorRelay =
+      typeof normalizedParentAuthorRelay === "string"
+        ? normalizedParentAuthorRelay.trim()
+        : "";
+  }
+
+  enrichFromTags() {
+    const getTagField = (tag, index) =>
+      Array.isArray(tag) && typeof tag[index] === "string"
+        ? tag[index].trim()
+        : "";
+
+    if (!this.normalizedRootIdentifier) {
+      const tag = findTagByName(this.combinedTags, "I");
+      const value = getTagField(tag, 1);
+      if (value) {
+        this.normalizedRootIdentifier = value;
+        const relay = getTagField(tag, 2);
+        if (relay) {
+          this.normalizedRootIdentifierRelay = relay;
+        }
+      }
+    } else if (!this.normalizedRootIdentifierRelay) {
+      const tag = findTagByName(this.combinedTags, "I");
       const relay = getTagField(tag, 2);
       if (relay) {
-        normalizedRootIdentifierRelay = relay;
+        this.normalizedRootIdentifierRelay = relay;
       }
     }
-  } else if (!normalizedRootIdentifierRelay) {
-    const tag = findTagByName(combinedTags, "I");
-    const relay = getTagField(tag, 2);
-    if (relay) {
-      normalizedRootIdentifierRelay = relay;
-    }
-  }
 
-  if (!normalizedVideoDefinitionAddress) {
-    const tag = findTagByName(combinedTags, "A", "a");
-    const value = getTagField(tag, 1);
-    if (value) {
-      normalizedVideoDefinitionAddress = value;
+    if (!this.normalizedVideoDefinitionAddress) {
+      const tag = findTagByName(this.combinedTags, "A", "a");
+      const value = getTagField(tag, 1);
+      if (value) {
+        this.normalizedVideoDefinitionAddress = value;
+        const relay = getTagField(tag, 2);
+        if (relay) {
+          this.normalizedVideoDefinitionRelay = relay;
+        }
+      }
+    } else if (!this.normalizedVideoDefinitionRelay) {
+      const tag = findTagByName(this.combinedTags, "A", "a");
       const relay = getTagField(tag, 2);
       if (relay) {
-        normalizedVideoDefinitionRelay = relay;
+        this.normalizedVideoDefinitionRelay = relay;
       }
     }
-  } else if (!normalizedVideoDefinitionRelay) {
-    const tag = findTagByName(combinedTags, "A", "a");
-    const relay = getTagField(tag, 2);
-    if (relay) {
-      normalizedVideoDefinitionRelay = relay;
-    }
-  }
 
-  const rootEventTag = findTagByName(combinedTags, "E");
-  if (rootEventTag) {
-    const value = getTagField(rootEventTag, 1);
-    if (value && !normalizedVideoEventId) {
-      normalizedVideoEventId = value;
-    }
-    const relay = getTagField(rootEventTag, 2);
-    if (relay && !normalizedVideoEventRelay) {
-      normalizedVideoEventRelay = relay;
-    }
-    const authorHint = getTagField(rootEventTag, 3);
-    if (authorHint && !normalizedRootAuthorPubkey) {
-      normalizedRootAuthorPubkey = authorHint;
-    }
-  }
-
-  if (!normalizedVideoEventId || !normalizedParentCommentId) {
-    const eventValues = [];
-    for (const tag of combinedTags) {
-      if (!Array.isArray(tag) || tag.length < 2) {
-        continue;
+    const rootEventTag = findTagByName(this.combinedTags, "E");
+    if (rootEventTag) {
+      const value = getTagField(rootEventTag, 1);
+      if (value && !this.normalizedVideoEventId) {
+        this.normalizedVideoEventId = value;
       }
-      if (typeof tag[0] === "string" && tag[0].trim().toLowerCase() === "e") {
+      const relay = getTagField(rootEventTag, 2);
+      if (relay && !this.normalizedVideoEventRelay) {
+        this.normalizedVideoEventRelay = relay;
+      }
+      const authorHint = getTagField(rootEventTag, 3);
+      if (authorHint && !this.normalizedRootAuthorPubkey) {
+        this.normalizedRootAuthorPubkey = authorHint;
+      }
+    }
+
+    if (!this.normalizedVideoEventId || !this.normalizedParentCommentId) {
+      const eventValues = [];
+      for (const tag of this.combinedTags) {
+        if (!Array.isArray(tag) || tag.length < 2) {
+          continue;
+        }
+        if (typeof tag[0] === "string" && tag[0].trim().toLowerCase() === "e") {
+          const value = getTagField(tag, 1);
+          if (value) {
+            eventValues.push({ tag, value });
+          }
+        }
+      }
+      if (!this.normalizedVideoEventId && eventValues.length) {
+        this.normalizedVideoEventId = eventValues[0].value;
+        const relay = getTagField(eventValues[0].tag, 2);
+        if (relay && !this.normalizedVideoEventRelay) {
+          this.normalizedVideoEventRelay = relay;
+        }
+      }
+      if (!this.normalizedParentCommentId && eventValues.length) {
+        for (let index = eventValues.length - 1; index >= 0; index -= 1) {
+          const candidate = eventValues[index];
+          if (
+            candidate.value &&
+            candidate.value !== this.normalizedVideoEventId
+          ) {
+            this.normalizedParentCommentId = candidate.value;
+            const relay = getTagField(candidate.tag, 2);
+            if (relay) {
+              this.normalizedParentCommentRelay = relay;
+            }
+            const authorHint = getTagField(candidate.tag, 3);
+            if (authorHint && !this.normalizedParentAuthorPubkey) {
+              this.normalizedParentAuthorPubkey = authorHint;
+            }
+            break;
+          }
+        }
+      }
+    }
+
+    if (this.normalizedParentCommentId && !this.normalizedParentCommentRelay) {
+      const parentTag = this.parentEventTags.find(
+        (tag) =>
+          Array.isArray(tag) &&
+          tag.length >= 2 &&
+          typeof tag[0] === "string" &&
+          tag[0].trim().toLowerCase() === "e" &&
+          getTagField(tag, 1) === this.normalizedParentCommentId,
+      );
+      if (parentTag) {
+        const relay = getTagField(parentTag, 2);
+        if (relay) {
+          this.normalizedParentCommentRelay = relay;
+        }
+        const authorHint = getTagField(parentTag, 3);
+        if (authorHint && !this.normalizedParentAuthorPubkey) {
+          this.normalizedParentAuthorPubkey = authorHint;
+        }
+      }
+    }
+
+    if (!this.normalizedParentIdentifierRelay) {
+      const tag = findTagByName(this.parentEventTags, "i");
+      const relay = getTagField(tag, 2);
+      if (relay) {
+        this.normalizedParentIdentifierRelay = relay;
+      }
+    }
+
+    if (!this.normalizedRootKind) {
+      const tag = findTagByName(this.combinedTags, "K");
+      const value = getTagField(tag, 1);
+      if (value) {
+        this.normalizedRootKind = value;
+      }
+    }
+    if (!this.normalizedVideoKind && this.normalizedRootKind) {
+      this.normalizedVideoKind = this.normalizedRootKind;
+    }
+
+    if (!this.normalizedRootAuthorPubkey || !this.normalizedRootAuthorRelay) {
+      const tag = findTagByName(this.combinedTags, "P");
+      if (tag) {
         const value = getTagField(tag, 1);
-        if (value) {
-          eventValues.push({ tag, value });
+        if (value && !this.normalizedRootAuthorPubkey) {
+          this.normalizedRootAuthorPubkey = value;
+        }
+        const relay = getTagField(tag, 2);
+        if (relay && !this.normalizedRootAuthorRelay) {
+          this.normalizedRootAuthorRelay = relay;
         }
       }
     }
-    if (!normalizedVideoEventId && eventValues.length) {
-      normalizedVideoEventId = eventValues[0].value;
-      const relay = getTagField(eventValues[0].tag, 2);
-      if (relay && !normalizedVideoEventRelay) {
-        normalizedVideoEventRelay = relay;
+    if (!this.normalizedVideoAuthorPubkey && this.normalizedRootAuthorPubkey) {
+      this.normalizedVideoAuthorPubkey = this.normalizedRootAuthorPubkey;
+    }
+
+    if (!this.normalizedParentKind) {
+      const tag = findTagByName(this.parentEventTags, "k");
+      const value = getTagField(tag, 1);
+      if (value) {
+        this.normalizedParentKind = value;
       }
     }
-    if (!normalizedParentCommentId && eventValues.length) {
-      for (let index = eventValues.length - 1; index >= 0; index -= 1) {
-        const candidate = eventValues[index];
-        if (
-          candidate.value &&
-          candidate.value !== normalizedVideoEventId
-        ) {
-          normalizedParentCommentId = candidate.value;
-          const relay = getTagField(candidate.tag, 2);
-          if (relay) {
-            normalizedParentCommentRelay = relay;
-          }
-          const authorHint = getTagField(candidate.tag, 3);
-          if (authorHint && !normalizedParentAuthorPubkey) {
-            normalizedParentAuthorPubkey = authorHint;
-          }
-          break;
+
+    if (!this.normalizedParentAuthorRelay && this.normalizedParentAuthorPubkey) {
+      const parentTag = this.parentEventTags.find(
+        (tag) =>
+          Array.isArray(tag) &&
+          tag.length >= 2 &&
+          typeof tag[0] === "string" &&
+          tag[0].trim().toLowerCase() === "p" &&
+          normalizeTagValue(tag[1]) === normalizeTagValue(this.normalizedParentAuthorPubkey),
+      );
+      if (parentTag) {
+        const relay = getTagField(parentTag, 2);
+        if (relay) {
+          this.normalizedParentAuthorRelay = relay;
+        }
+      }
+    }
+
+    if (!this.normalizedParentAuthorPubkey || !this.normalizedParentAuthorRelay) {
+      const tag = findTagByName(this.parentEventTags, "p");
+      if (tag) {
+        const value = getTagField(tag, 1);
+        if (value && !this.normalizedParentAuthorPubkey) {
+          this.normalizedParentAuthorPubkey = value;
+        }
+        const relay = getTagField(tag, 2);
+        if (relay && !this.normalizedParentAuthorRelay) {
+          this.normalizedParentAuthorRelay = relay;
         }
       }
     }
   }
 
-  if (normalizedParentCommentId && !normalizedParentCommentRelay) {
-    const parentTag = parentEventTags.find(
-      (tag) =>
-        Array.isArray(tag) &&
-        tag.length >= 2 &&
-        typeof tag[0] === "string" &&
-        tag[0].trim().toLowerCase() === "e" &&
-        getTagField(tag, 1) === normalizedParentCommentId,
-    );
-    if (parentTag) {
-      const relay = getTagField(parentTag, 2);
-      if (relay) {
-        normalizedParentCommentRelay = relay;
-      }
-      const authorHint = getTagField(parentTag, 3);
-      if (authorHint && !normalizedParentAuthorPubkey) {
-        normalizedParentAuthorPubkey = authorHint;
+  applyDefaults() {
+    if (!this.normalizedParentKind) {
+      if (this.normalizedParentCommentId) {
+        this.normalizedParentKind = String(COMMENT_EVENT_KIND);
+      } else if (this.normalizedRootKind) {
+        this.normalizedParentKind = this.normalizedRootKind;
+      } else if (this.derivedDefinitionKind) {
+        this.normalizedParentKind = this.derivedDefinitionKind;
       }
     }
-  }
 
-  if (!normalizedParentIdentifierRelay) {
-    const tag = findTagByName(parentEventTags, "i");
-    const relay = getTagField(tag, 2);
-    if (relay) {
-      normalizedParentIdentifierRelay = relay;
+    if (!this.normalizedRootKind) {
+      this.normalizedRootKind = this.normalizedParentKind;
     }
-  }
 
-  if (!normalizedRootKind) {
-    const tag = findTagByName(combinedTags, "K");
-    const value = getTagField(tag, 1);
-    if (value) {
-      normalizedRootKind = value;
+    if (!this.normalizedParentAuthorPubkey) {
+      this.normalizedParentAuthorPubkey = this.normalizedThreadParticipantPubkey;
     }
-  }
-  if (!normalizedVideoKind && normalizedRootKind) {
-    normalizedVideoKind = normalizedRootKind;
-  }
 
-  if (!normalizedRootAuthorPubkey || !normalizedRootAuthorRelay) {
-    const tag = findTagByName(combinedTags, "P");
-    if (tag) {
-      const value = getTagField(tag, 1);
-      if (value && !normalizedRootAuthorPubkey) {
-        normalizedRootAuthorPubkey = value;
-      }
-      const relay = getTagField(tag, 2);
-      if (relay && !normalizedRootAuthorRelay) {
-        normalizedRootAuthorRelay = relay;
+    if (!this.normalizedRootAuthorPubkey) {
+      if (!this.normalizedParentCommentId && this.normalizedParentAuthorPubkey) {
+        this.normalizedRootAuthorPubkey = this.normalizedParentAuthorPubkey;
       }
     }
-  }
-  if (!normalizedVideoAuthorPubkey && normalizedRootAuthorPubkey) {
-    normalizedVideoAuthorPubkey = normalizedRootAuthorPubkey;
-  }
 
-  if (!normalizedParentKind) {
-    const tag = findTagByName(parentEventTags, "k");
-    const value = getTagField(tag, 1);
-    if (value) {
-      normalizedParentKind = value;
+    if (!this.normalizedRootAuthorRelay && this.normalizedVideoDefinitionRelay) {
+      this.normalizedRootAuthorRelay = this.normalizedVideoDefinitionRelay;
+    }
+
+    if (!this.normalizedParentAuthorRelay) {
+      this.normalizedParentAuthorRelay = this.normalizedThreadParticipantRelay;
+    }
+
+    if (!this.normalizedRootAuthorRelay && !this.normalizedParentCommentId) {
+      this.normalizedRootAuthorRelay = this.normalizedParentAuthorRelay;
+    }
+
+    if (!this.normalizedRootAuthorPubkey && this.derivedDefinitionPubkey) {
+      this.normalizedRootAuthorPubkey = this.derivedDefinitionPubkey;
+    }
+
+    if (!this.normalizedParentAuthorPubkey && !this.normalizedParentCommentId) {
+      this.normalizedParentAuthorPubkey = this.normalizedRootAuthorPubkey;
+    }
+
+    if (!this.normalizedParentAuthorRelay && !this.normalizedParentCommentId) {
+      this.normalizedParentAuthorRelay = this.normalizedRootAuthorRelay;
     }
   }
 
-  if (!normalizedParentAuthorRelay && normalizedParentAuthorPubkey) {
-    const parentTag = parentEventTags.find(
-      (tag) =>
-        Array.isArray(tag) &&
-        tag.length >= 2 &&
-        typeof tag[0] === "string" &&
-        tag[0].trim().toLowerCase() === "p" &&
-        normalizeTagValue(tag[1]) === normalizeTagValue(normalizedParentAuthorPubkey),
-    );
-    if (parentTag) {
-      const relay = getTagField(parentTag, 2);
-      if (relay) {
-        normalizedParentAuthorRelay = relay;
-      }
+  getDescriptor() {
+    const descriptor = {
+      videoEventId: normalizeDescriptorString(this.normalizedVideoEventId),
+      videoEventRelay: normalizeDescriptorRelay(this.normalizedVideoEventRelay),
+      videoDefinitionAddress: normalizeDescriptorString(this.normalizedVideoDefinitionAddress),
+      videoDefinitionRelay: normalizeDescriptorRelay(this.normalizedVideoDefinitionRelay),
+      videoKind: normalizeDescriptorString(this.normalizedVideoKind),
+      videoAuthorPubkey: normalizeDescriptorString(this.normalizedVideoAuthorPubkey),
+      parentCommentId: normalizeDescriptorString(this.normalizedParentCommentId),
+      parentCommentRelay: normalizeDescriptorRelay(this.normalizedParentCommentRelay),
+      threadParticipantPubkey: normalizeDescriptorString(this.normalizedThreadParticipantPubkey),
+      threadParticipantRelay: normalizeDescriptorRelay(this.normalizedThreadParticipantRelay),
+      rootIdentifier: normalizeDescriptorString(this.normalizedRootIdentifier),
+      rootIdentifierRelay: normalizeDescriptorRelay(this.normalizedRootIdentifierRelay),
+      parentIdentifier: normalizeDescriptorString(this.normalizedParentIdentifier),
+      parentIdentifierRelay: normalizeDescriptorRelay(this.normalizedParentIdentifierRelay),
+      rootKind: normalizeDescriptorString(this.normalizedRootKind),
+      rootAuthorPubkey: normalizeDescriptorString(this.normalizedRootAuthorPubkey),
+      rootAuthorRelay: normalizeDescriptorRelay(this.normalizedRootAuthorRelay),
+      parentKind: normalizeDescriptorString(this.normalizedParentKind),
+      parentAuthorPubkey: normalizeDescriptorString(this.normalizedParentAuthorPubkey),
+      parentAuthorRelay: normalizeDescriptorRelay(this.normalizedParentAuthorRelay),
+    };
+
+    if (!descriptor.videoEventId) {
+      return null;
     }
+
+    return descriptor;
   }
+}
 
-  if (!normalizedParentAuthorPubkey || !normalizedParentAuthorRelay) {
-    const tag = findTagByName(parentEventTags, "p");
-    if (tag) {
-      const value = getTagField(tag, 1);
-      if (value && !normalizedParentAuthorPubkey) {
-        normalizedParentAuthorPubkey = value;
-      }
-      const relay = getTagField(tag, 2);
-      if (relay && !normalizedParentAuthorRelay) {
-        normalizedParentAuthorRelay = relay;
-      }
-    }
-  }
-
-  if (!normalizedParentKind) {
-    if (normalizedParentCommentId) {
-      normalizedParentKind = String(COMMENT_EVENT_KIND);
-    } else if (normalizedRootKind) {
-      normalizedParentKind = normalizedRootKind;
-    } else if (derivedDefinitionKind) {
-      normalizedParentKind = derivedDefinitionKind;
-    }
-  }
-
-  if (!normalizedRootKind) {
-    normalizedRootKind = normalizedParentKind;
-  }
-
-  if (!normalizedParentAuthorPubkey) {
-    normalizedParentAuthorPubkey = normalizedThreadParticipantPubkey;
-  }
-
-  if (!normalizedRootAuthorPubkey) {
-    if (!normalizedParentCommentId && normalizedParentAuthorPubkey) {
-      normalizedRootAuthorPubkey = normalizedParentAuthorPubkey;
-    }
-  }
-
-  if (!normalizedRootAuthorRelay && normalizedVideoDefinitionRelay) {
-    normalizedRootAuthorRelay = normalizedVideoDefinitionRelay;
-  }
-
-  if (!normalizedParentAuthorRelay) {
-    normalizedParentAuthorRelay = normalizedThreadParticipantRelay;
-  }
-
-  if (!normalizedRootAuthorRelay && !normalizedParentCommentId) {
-    normalizedRootAuthorRelay = normalizedParentAuthorRelay;
-  }
-
-  if (!normalizedRootAuthorPubkey && derivedDefinitionPubkey) {
-    normalizedRootAuthorPubkey = derivedDefinitionPubkey;
-  }
-
-  if (!normalizedParentAuthorPubkey && !normalizedParentCommentId) {
-    normalizedParentAuthorPubkey = normalizedRootAuthorPubkey;
-  }
-
-  if (!normalizedParentAuthorRelay && !normalizedParentCommentId) {
-    normalizedParentAuthorRelay = normalizedRootAuthorRelay;
-  }
-
-  const descriptor = {
-    videoEventId: normalizeDescriptorString(normalizedVideoEventId),
-    videoEventRelay: normalizeDescriptorRelay(normalizedVideoEventRelay),
-    videoDefinitionAddress: normalizeDescriptorString(normalizedVideoDefinitionAddress),
-    videoDefinitionRelay: normalizeDescriptorRelay(normalizedVideoDefinitionRelay),
-    videoKind: normalizeDescriptorString(normalizedVideoKind),
-    videoAuthorPubkey: normalizeDescriptorString(normalizedVideoAuthorPubkey),
-    parentCommentId: normalizeDescriptorString(normalizedParentCommentId),
-    parentCommentRelay: normalizeDescriptorRelay(normalizedParentCommentRelay),
-    threadParticipantPubkey: normalizeDescriptorString(normalizedThreadParticipantPubkey),
-    threadParticipantRelay: normalizeDescriptorRelay(normalizedThreadParticipantRelay),
-    rootIdentifier: normalizeDescriptorString(normalizedRootIdentifier),
-    rootIdentifierRelay: normalizeDescriptorRelay(normalizedRootIdentifierRelay),
-    parentIdentifier: normalizeDescriptorString(normalizedParentIdentifier),
-    parentIdentifierRelay: normalizeDescriptorRelay(normalizedParentIdentifierRelay),
-    rootKind: normalizeDescriptorString(normalizedRootKind),
-    rootAuthorPubkey: normalizeDescriptorString(normalizedRootAuthorPubkey),
-    rootAuthorRelay: normalizeDescriptorRelay(normalizedRootAuthorRelay),
-    parentKind: normalizeDescriptorString(normalizedParentKind),
-    parentAuthorPubkey: normalizeDescriptorString(normalizedParentAuthorPubkey),
-    parentAuthorRelay: normalizeDescriptorRelay(normalizedParentAuthorRelay),
-  };
-
-  if (!descriptor.videoEventId) {
-    return null;
-  }
-
-  return descriptor;
+function normalizeCommentTarget(targetInput = {}, overrides = {}) {
+  return new CommentTargetNormalizer(targetInput, overrides).normalize();
 }
 
 function applyFilterOptions(filter, options = {}) {
