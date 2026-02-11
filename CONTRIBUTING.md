@@ -93,7 +93,7 @@ This workflow uses the `force-cancel` endpoint to ensure stalled runs are termin
 To set up the project locally:
 
 1. **Prerequisites**:
-   - **Node.js**: v22 or higher.
+   - **Node.js**: v22 or higher (enforced by `.npmrc`).
    - **NPM**: v10 or higher (included with Node 22).
 
 2. **Install Dependencies**:
