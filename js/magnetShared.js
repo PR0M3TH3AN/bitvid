@@ -223,19 +223,25 @@ export function normalizeMagnetInput(rawValue) {
 
   const params = [];
   for (const rawParam of rawParams) {
-    const [rawKey, rawVal = ""] = rawParam.split("=", 2);
-    const key = rawKey.trim();
+    const eqIndex = rawParam.indexOf("=");
+    let key, rawVal;
+    if (eqIndex === -1) {
+      key = rawParam;
+      rawVal = "";
+    } else {
+      key = rawParam.slice(0, eqIndex);
+      rawVal = rawParam.slice(eqIndex + 1);
+    }
+
+    key = key.trim();
     if (!key) {
       continue;
     }
-    const lowerKey = key.toLowerCase();
-    let value = rawVal.trim();
-    if (lowerKey === "xt" && value) {
-      const decoded = safeDecodeURIComponentLoose(value);
-      if (decoded && decoded !== value) {
-        value = decoded;
-        didMutate = true;
-      }
+
+    const trimmedRawVal = rawVal.trim();
+    const value = safeDecodeURIComponentLoose(trimmedRawVal);
+    if (value !== trimmedRawVal) {
+      didMutate = true;
     }
     params.push(createParam(key, value));
   }
@@ -253,7 +259,7 @@ export function normalizeMagnetInput(rawValue) {
 
 export function buildMagnetUri(normalizedScheme, params, fragment) {
   const queryString = params
-    .map(({ key, value }) => (value ? `${key}=${value}` : key))
+    .map(({ key, value }) => (value ? `${key}=${encodeURIComponent(value)}` : key))
     .join("&");
   return `${normalizedScheme}${queryString ? `?${queryString}` : ""}${fragment || ""}`;
 }
