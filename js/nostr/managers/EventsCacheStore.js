@@ -228,6 +228,61 @@ export class EventsCacheStore {
     };
   }
 
+  _diffAndStore({
+    store,
+    items,
+    fingerprintsMap,
+    computeFingerprint,
+    dirtyKeys,
+    isValid,
+    createRecord,
+  }) {
+    let writes = 0;
+    let deletes = 0;
+    let skipped = 0;
+
+    const iterable =
+      dirtyKeys instanceof Set
+        ? Array.from(dirtyKeys).map((key) => [key, items.get(key)])
+        : items.entries();
+
+    for (const [key, value] of iterable) {
+      if (!isValid(key, value)) {
+        continue;
+      }
+
+      if (dirtyKeys && !dirtyKeys.has(key) && fingerprintsMap.has(key)) {
+        skipped++;
+        continue;
+      }
+
+      const fingerprint = computeFingerprint(value);
+      const prevFingerprint = fingerprintsMap.get(key);
+      if (prevFingerprint === fingerprint) {
+        continue;
+      }
+
+      store.put(createRecord(key, value, fingerprint));
+      fingerprintsMap.set(key, fingerprint);
+      writes++;
+    }
+
+    const shouldScanDeletions = !dirtyKeys || items.size < fingerprintsMap.size;
+
+    if (shouldScanDeletions) {
+      for (const persistedKey of Array.from(fingerprintsMap.keys())) {
+        if (items.has(persistedKey)) {
+          continue;
+        }
+        store.delete(persistedKey);
+        fingerprintsMap.delete(persistedKey);
+        deletes++;
+      }
+    }
+
+    return { writes, deletes, skipped };
+  }
+
   /**
    * Persists the current state to IndexedDB.
    * Only writes changes (diffs against fingerprints).
@@ -238,7 +293,11 @@ export class EventsCacheStore {
    * @returns {Promise<{persisted: boolean, eventWrites: number, eventDeletes: number, tombstoneWrites: number, tombstoneDeletes: number}>}
    * Stats about the persistence operation.
    */
-  async persistSnapshot(payload, dirtyEventIds = null, dirtyTombstoneKeys = null) {
+  async persistSnapshot(
+    payload,
+    dirtyEventIds = null,
+    dirtyTombstoneKeys = null
+  ) {
     const db = await this.getDb();
     if (!db) {
       return { persisted: false };
@@ -252,107 +311,30 @@ export class EventsCacheStore {
     const metaStore = tx.objectStore("meta");
 
     const { events, tombstones, savedAt } = payload;
-    let eventWrites = 0;
-    let eventDeletes = 0;
-    let tombstoneWrites = 0;
-    let tombstoneDeletes = 0;
-    let skipped = 0;
 
-    // Optimization: If dirtyEventIds is provided, only check those events.
-    // Otherwise, iterate over all events in the payload.
-    const eventsIterable =
-      dirtyEventIds instanceof Set
-        ? Array.from(dirtyEventIds).map((id) => [id, events.get(id)])
-        : events.entries();
+    const eventsResult = this._diffAndStore({
+      store: eventsStore,
+      items: events,
+      fingerprintsMap: this.persistedEventFingerprints,
+      computeFingerprint: (v) => this.computeEventFingerprint(v),
+      dirtyKeys: dirtyEventIds,
+      isValid: (id, video) => id && video,
+      createRecord: (id, video, fingerprint) => ({ id, video, fingerprint }),
+    });
 
-    for (const [id, video] of eventsIterable) {
-      if (!id || !video) {
-        continue;
-      }
-
-      if (
-        dirtyEventIds &&
-        !dirtyEventIds.has(id) &&
-        this.persistedEventFingerprints.has(id)
-      ) {
-        skipped++;
-        continue;
-      }
-
-      const fingerprint = this.computeEventFingerprint(video);
-      const prevFingerprint = this.persistedEventFingerprints.get(id);
-      if (prevFingerprint === fingerprint) {
-        continue;
-      }
-      eventsStore.put({ id, video, fingerprint });
-      this.persistedEventFingerprints.set(id, fingerprint);
-      eventWrites++;
-    }
-
-    // Optimization: Skip deletion scan if we are processing partial updates (dirtyEventIds)
-    // AND the total number of events hasn't decreased. This avoids checking 'has()' on thousands of items.
-    const shouldScanEventDeletions =
-      !dirtyEventIds || events.size < this.persistedEventFingerprints.size;
-
-    if (shouldScanEventDeletions) {
-      for (const persistedId of Array.from(
-        this.persistedEventFingerprints.keys()
-      )) {
-        if (events.has(persistedId)) {
-          continue;
-        }
-        eventsStore.delete(persistedId);
-        this.persistedEventFingerprints.delete(persistedId);
-        eventDeletes++;
-      }
-    }
-
-    // Optimization: If dirtyTombstoneKeys is provided, only check those.
-    const tombstonesIterable =
-      dirtyTombstoneKeys instanceof Set
-        ? Array.from(dirtyTombstoneKeys).map((key) => [key, tombstones.get(key)])
-        : tombstones.entries();
-
-    for (const [key, timestamp] of tombstonesIterable) {
-      if (!key || !Number.isFinite(timestamp)) {
-        continue;
-      }
-
-      if (
-        dirtyTombstoneKeys &&
-        !dirtyTombstoneKeys.has(key) &&
-        this.persistedTombstoneFingerprints.has(key)
-      ) {
-        skipped++;
-        continue;
-      }
-
-      const fingerprint = this.computeTombstoneFingerprint(timestamp);
-      const prevFingerprint = this.persistedTombstoneFingerprints.get(key);
-      if (prevFingerprint === fingerprint) {
-        continue;
-      }
-      tombstoneStore.put({ key, timestamp, fingerprint });
-      this.persistedTombstoneFingerprints.set(key, fingerprint);
-      tombstoneWrites++;
-    }
-
-    const shouldScanTombstoneDeletions =
-      !dirtyTombstoneKeys ||
-      tombstones.size < this.persistedTombstoneFingerprints.size;
-
-    if (shouldScanTombstoneDeletions) {
-      for (const persistedKey of Array.from(
-        this.persistedTombstoneFingerprints.keys()
-      )) {
-        if (tombstones.has(persistedKey)) {
-          continue;
-        }
-        tombstoneStore.delete(persistedKey);
-        this.persistedTombstoneFingerprints.delete(persistedKey);
-        tombstoneDeletes++;
-      }
-    }
+    const tombstonesResult = this._diffAndStore({
+      store: tombstoneStore,
+      items: tombstones,
+      fingerprintsMap: this.persistedTombstoneFingerprints,
+      computeFingerprint: (v) => this.computeTombstoneFingerprint(v),
+      dirtyKeys: dirtyTombstoneKeys,
+      isValid: (key, timestamp) => key && Number.isFinite(timestamp),
+      createRecord: (key, timestamp, fingerprint) => ({
+        key,
+        timestamp,
+        fingerprint,
+      }),
+    });
 
     metaStore.put({ key: "meta", savedAt, version: 1 });
 
@@ -360,11 +342,11 @@ export class EventsCacheStore {
 
     return {
       persisted: true,
-      eventWrites,
-      eventDeletes,
-      tombstoneWrites,
-      tombstoneDeletes,
-      skipped,
+      eventWrites: eventsResult.writes,
+      eventDeletes: eventsResult.deletes,
+      tombstoneWrites: tombstonesResult.writes,
+      tombstoneDeletes: tombstonesResult.deletes,
+      skipped: eventsResult.skipped + tombstonesResult.skipped,
     };
   }
 }
