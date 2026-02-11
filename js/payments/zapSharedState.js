@@ -4,8 +4,9 @@ import {
   fetchPayServiceData as defaultFetchPayServiceData,
   validateInvoiceAmount,
 } from "./lnurl.js";
+import { FIVE_MINUTES_MS } from "../constants.js";
 
-const METADATA_CACHE_TTL_MS = 5 * 60 * 1000;
+const METADATA_CACHE_TTL_MS = FIVE_MINUTES_MS;
 
 const lightningMetadataCache = new Map();
 const lightningMetadataByUrl = new Map();

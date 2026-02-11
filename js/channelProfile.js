@@ -26,6 +26,7 @@ import {
   DEFAULT_BLUR_THRESHOLD,
   DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
   DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
+  FIVE_MINUTES_MS,
 } from "./constants.js";
 import {
   applyModerationContextDatasets,
@@ -1310,7 +1311,7 @@ let currentProfileLoadToken = 0;
 
 const FALLBACK_CHANNEL_BANNER = "assets/jpg/bitvid.jpg";
 const FALLBACK_CHANNEL_AVATAR = "assets/svg/default-profile.svg";
-const PROFILE_EVENT_CACHE_TTL_MS = 5 * 60 * 1000;
+const PROFILE_EVENT_CACHE_TTL_MS = FIVE_MINUTES_MS;
 
 const channelProfileMetadataCache = new Map();
 

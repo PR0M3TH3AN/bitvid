@@ -9,6 +9,27 @@ import {
   IS_DEV_MODE,
 } from "./config.js";
 
+// Time constants in milliseconds
+export const ONE_SECOND_MS = 1000;
+export const ONE_MINUTE_MS = 60 * ONE_SECOND_MS;
+export const FIVE_MINUTES_MS = 5 * ONE_MINUTE_MS;
+export const TEN_MINUTES_MS = 10 * ONE_MINUTE_MS;
+export const FORTY_FIVE_MINUTES_MS = 45 * ONE_MINUTE_MS;
+export const ONE_HOUR_MS = 60 * ONE_MINUTE_MS;
+export const ONE_DAY_MS = 24 * ONE_HOUR_MS;
+
+// Specific timeouts and TTLs
+export const SHORT_TIMEOUT_MS = 5000;
+export const STANDARD_TIMEOUT_MS = 10000;
+export const MEDIUM_TIMEOUT_MS = 30000;
+export const LONG_TIMEOUT_MS = 60000;
+
+export const DEFAULT_CACHE_TTL_MS = FIVE_MINUTES_MS;
+export const PROFILE_CACHE_TTL_MS = TEN_MINUTES_MS;
+export const URL_HEALTH_TTL_MS = FORTY_FIVE_MINUTES_MS;
+export const URL_HEALTH_RETRY_MS = FIVE_MINUTES_MS;
+export const URL_PROBE_TIMEOUT_MS = 8 * ONE_SECOND_MS;
+
 function coerceNonNegativeInteger(value, fallback) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) {

@@ -1,7 +1,8 @@
 import { devLogger } from "../utils/logger.js";
+import { FIVE_MINUTES_MS, ONE_MINUTE_MS } from "../constants.js";
 
-const DEFAULT_IDF_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
-const DEFAULT_HISTORY_REFRESH_INTERVAL_MS = 60 * 1000;
+const DEFAULT_IDF_REFRESH_INTERVAL_MS = FIVE_MINUTES_MS;
+const DEFAULT_HISTORY_REFRESH_INTERVAL_MS = ONE_MINUTE_MS;
 const DEFAULT_REFRESH_DEBOUNCE_MS = 200;
 
 let workerInstance = null;

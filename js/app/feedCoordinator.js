@@ -9,7 +9,7 @@
  * Methods use `this` which is bound to the Application instance.
  */
 
-import { FEED_TYPES } from "../constants.js";
+import { FEED_TYPES, STANDARD_TIMEOUT_MS, MEDIUM_TIMEOUT_MS } from "../constants.js";
 
 /**
  * @param {object} deps - Injected dependencies.
@@ -926,7 +926,7 @@ export function createFeedCoordinator(deps) {
 
       // Give the app a grace period to establish initial connections before complaining.
       const now = Date.now();
-      const GRACE_PERIOD_MS = 10000;
+      const GRACE_PERIOD_MS = STANDARD_TIMEOUT_MS;
       if (now - (this.appStartedAt || now) < GRACE_PERIOD_MS) {
         return false;
       }
@@ -941,7 +941,7 @@ export function createFeedCoordinator(deps) {
         return false;
       }
 
-      const cooldownMs = 30000;
+      const cooldownMs = MEDIUM_TIMEOUT_MS;
       if (now - (this.lastRelayHealthWarningAt || 0) < cooldownMs) {
         return true;
       }

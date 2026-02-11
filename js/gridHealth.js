@@ -13,6 +13,7 @@ import {
   getViewportCenter,
   PRIORITY_BASELINE,
 } from "./gridHealthLogic.js";
+import { FIVE_MINUTES_MS } from "./constants.js";
 
 const badgeUpdateListeners = new Set();
 
@@ -227,7 +228,7 @@ function queueProbe(magnet, cacheKey, priority = 0, webSeeds = []) {
   return job;
 }
 
-const PROBE_CACHE_TTL_MS = 5 * 60 * 1000;
+const PROBE_CACHE_TTL_MS = FIVE_MINUTES_MS;
 const PROBE_TIMEOUT_MS = 20000;
 const PROBE_CONCURRENCY = 96;
 const PROBE_POLL_COUNT = 3;

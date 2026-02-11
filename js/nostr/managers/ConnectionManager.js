@@ -26,6 +26,7 @@ import {
   RELAY_FAILURE_WINDOW_THRESHOLD,
   RELAY_SUMMARY_LOG_INTERVAL_MS,
 } from "../relayConstants.js";
+import { LONG_TIMEOUT_MS } from "../../constants.js";
 
 function withRequestTimeout(promise, timeoutMs, onTimeout, message = "Request timed out") {
   const resolvedTimeout = Number(timeoutMs);
@@ -210,7 +211,7 @@ export class ConnectionManager {
       if (result.success) {
         this.clearRelayBackoff(result.url);
       } else {
-        this.markRelayUnreachable(result.url, 60000, {
+        this.markRelayUnreachable(result.url, LONG_TIMEOUT_MS, {
           reason: "connect-timeout",
         });
         if (isDevMode) {
@@ -367,7 +368,7 @@ export class ConnectionManager {
     return filtered.length;
   }
 
-  markRelayUnreachable(url, ttlMs = 60000, { reason = null } = {}) {
+  markRelayUnreachable(url, ttlMs = LONG_TIMEOUT_MS, { reason = null } = {}) {
     if (!url || typeof url !== "string") {
       return;
     }
@@ -722,7 +723,7 @@ export class ConnectionManager {
         `Failed to connect to relay ${normalizedUrl}`
       );
       connectError.code = "relay-connect-failed";
-      this.markRelayUnreachable(normalizedUrl, 60000, {
+      this.markRelayUnreachable(normalizedUrl, LONG_TIMEOUT_MS, {
         reason: "connect-failed",
       });
       throw connectError;
@@ -733,7 +734,7 @@ export class ConnectionManager {
         `Relay ${normalizedUrl} is unavailable for COUNT requests.`
       );
       relayError.code = "relay-unavailable";
-      this.markRelayUnreachable(normalizedUrl, 60000, {
+      this.markRelayUnreachable(normalizedUrl, LONG_TIMEOUT_MS, {
         reason: "relay-unavailable",
       });
       throw relayError;
@@ -880,7 +881,7 @@ export class ConnectionManager {
             // because it might still be good for subscriptions.
             // We only trip the circuit breaker for hard errors.
             if (!isTimeout) {
-              this.markRelayUnreachable(url, 60000, {
+              this.markRelayUnreachable(url, LONG_TIMEOUT_MS, {
                 reason: "count-error",
               });
             } else if (isDevMode) {

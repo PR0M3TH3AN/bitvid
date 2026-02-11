@@ -50,6 +50,8 @@ export const NOTE_TYPES = Object.freeze({
   CHAT_MESSAGE: "chatMessage",
 });
 
+export const KIND_MUTE_LIST = 10000;
+
 export const SUBSCRIPTION_LIST_IDENTIFIER = "subscriptions";
 export const BLOCK_LIST_IDENTIFIER = "user-blocks";
 export const ADMIN_LIST_IDENTIFIERS = Object.freeze({
@@ -540,7 +542,7 @@ const BASE_SCHEMAS = {
   [NOTE_TYPES.USER_BLOCK_LIST]: {
     type: NOTE_TYPES.USER_BLOCK_LIST,
     label: "User block list (legacy)",
-    kind: 10000,
+    kind: KIND_MUTE_LIST,
     identifierTag: {
       name: "d",
       value: BLOCK_LIST_IDENTIFIER,
@@ -616,7 +618,7 @@ const BASE_SCHEMAS = {
   [NOTE_TYPES.MUTE_LIST]: {
     type: NOTE_TYPES.MUTE_LIST,
     label: "Mute list",
-    kind: 10000,
+    kind: KIND_MUTE_LIST,
     participantTagName: "p",
     appendTags: DEFAULT_APPEND_TAGS,
     content: {
@@ -1704,7 +1706,7 @@ export function buildMuteListEvent(params) {
   }
 
   const event = {
-    kind: schema?.kind ?? 10000,
+    kind: schema?.kind ?? KIND_MUTE_LIST,
     pubkey,
     created_at,
     tags,
