@@ -1,5 +1,6 @@
 import { NOTE_TYPES } from "../nostrEventSchemas.js";
 import { WATCH_HISTORY_LIST_IDENTIFIER } from "../config.js";
+import { FIVE_MINUTES_MS, TEN_MINUTES_MS, ONE_DAY_MS } from "../constants.js";
 
 export const STORAGE_TIERS = Object.freeze({
   MEMORY: "memory",
@@ -15,13 +16,13 @@ export const MERGE_STRATEGIES = Object.freeze({
 export const CACHE_POLICIES = Object.freeze({
   [NOTE_TYPES.VIDEO_POST]: {
     storage: STORAGE_TIERS.INDEXED_DB,
-    ttl: 10 * 60 * 1000, // 10 minutes
+    ttl: TEN_MINUTES_MS,
     addressing: "kind:pubkey:d",
     merge: MERGE_STRATEGIES.REPLACEABLE,
   },
   [NOTE_TYPES.WATCH_HISTORY]: {
     storage: STORAGE_TIERS.LOCAL_STORAGE,
-    ttl: 24 * 60 * 60 * 1000, // 24 hours
+    ttl: ONE_DAY_MS,
     addressing: "kind:pubkey:d",
     defaultDTag: WATCH_HISTORY_LIST_IDENTIFIER,
     merge: MERGE_STRATEGIES.APPEND_ONLY, // Bucketed append
@@ -64,13 +65,13 @@ export const CACHE_POLICIES = Object.freeze({
   },
   [NOTE_TYPES.VIDEO_COMMENT]: {
     storage: STORAGE_TIERS.MEMORY,
-    ttl: 5 * 60 * 1000, // 5 minutes
+    ttl: FIVE_MINUTES_MS,
     addressing: "id",
     merge: MERGE_STRATEGIES.APPEND_ONLY,
   },
   [NOTE_TYPES.VIDEO_REACTION]: {
     storage: STORAGE_TIERS.MEMORY,
-    ttl: 5 * 60 * 1000, // 5 minutes
+    ttl: FIVE_MINUTES_MS,
     addressing: "id",
     merge: MERGE_STRATEGIES.APPEND_ONLY,
   },

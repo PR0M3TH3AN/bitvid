@@ -6,9 +6,10 @@ import { setProfileCacheEntry } from "../state/cache.js";
 import { nostrToolsReady } from "../nostrToolsBootstrap.js";
 import { userLogger } from "../utils/logger.js";
 import { HEX64_REGEX } from "../utils/hex.js";
+import { TEN_MINUTES_MS } from "../constants.js";
 
 
-const CACHE_TTL_MS = 10 * 60 * 1000;
+const CACHE_TTL_MS = TEN_MINUTES_MS;
 
 let cachedAddress = null;
 

@@ -1,9 +1,10 @@
 import { devLogger, userLogger } from "../utils/logger.js";
+import { FIVE_MINUTES_MS, SHORT_TIMEOUT_MS, LONG_TIMEOUT_MS } from "../constants.js";
 
 const TELEMETRY_STORAGE_KEY = "bitvid:relay-health-telemetry-opt-in";
 const PERSISTENT_FAILURE_THRESHOLD = 3;
-const USER_LOG_COOLDOWN_MS = 5 * 60 * 1000;
-const DEFAULT_TIMEOUT_MS = 5000;
+const USER_LOG_COOLDOWN_MS = FIVE_MINUTES_MS;
+const DEFAULT_TIMEOUT_MS = SHORT_TIMEOUT_MS;
 
 function resolveLogger(logger) {
   if (logger && logger.dev && logger.user) {
@@ -154,7 +155,7 @@ class RelayHealthService {
     state.lastErrorAt = now;
 
     if (this.nostrClient && typeof this.nostrClient.markRelayUnreachable === "function") {
-      this.nostrClient.markRelayUnreachable(relayUrl, 60000, {
+      this.nostrClient.markRelayUnreachable(relayUrl, LONG_TIMEOUT_MS, {
         reason: "relay-health-failed",
       });
     }

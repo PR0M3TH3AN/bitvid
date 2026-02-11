@@ -6,7 +6,7 @@ import {
 import { publishEventToRelays, assertAnyRelayAccepted } from "../nostrPublish.js";
 import { accessControl } from "../accessControl.js";
 import { userBlocks, USER_BLOCK_EVENTS } from "../userBlocks.js";
-import { buildReportEvent } from "../nostrEventSchemas.js";
+import { buildReportEvent, KIND_MUTE_LIST } from "../nostrEventSchemas.js";
 import logger from "../utils/logger.js";
 
 /**
@@ -1182,7 +1182,7 @@ export class ModerationService {
     this.log(`[moderationService] Refreshing mute subscriptions for ${authors.length} authors in ${chunks.length} batches`);
 
     for (const chunk of chunks) {
-      const filter = { kinds: [10000], authors: chunk };
+      const filter = { kinds: [KIND_MUTE_LIST], authors: chunk };
       try {
         const sub = this.nostrClient.pool.sub(relays, [filter]);
         sub.on("event", (event) => {
@@ -1347,7 +1347,7 @@ export class ModerationService {
       return;
     }
 
-    if (!event || event.kind !== 10000) {
+    if (!event || event.kind !== KIND_MUTE_LIST) {
       this.replaceTrustedMuteList(owner, new Set(), { createdAt: 0, eventId: "" });
       return;
     }
@@ -1387,7 +1387,7 @@ export class ModerationService {
   }
 
   ingestTrustedMuteEvent(event) {
-    if (!event || event.kind !== 10000) {
+    if (!event || event.kind !== KIND_MUTE_LIST) {
       return;
     }
 

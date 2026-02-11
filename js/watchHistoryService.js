@@ -16,10 +16,11 @@ import {
 } from "./config.js";
 import { getApplication } from "./applicationContext.js";
 import { devLogger, userLogger } from "./utils/logger.js";
+import { ONE_MINUTE_MS } from "./constants.js";
 
 const LOCAL_STORAGE_QUEUE_KEY = "bitvid:watch-history:queue:v1";
 const SESSION_STORAGE_VERSION = 1;
-const POINTER_THROTTLE_MS = 60 * 1000;
+const POINTER_THROTTLE_MS = ONE_MINUTE_MS;
 const state = {
   restored: false,
   queues: new Map(),

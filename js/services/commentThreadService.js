@@ -4,7 +4,7 @@ import logger, { devLogger, userLogger } from "../utils/logger.js";
 import { normalizeHexId, normalizeHexPubkey } from "../utils/hex.js";
 import { buildVideoAddressPointer } from "../utils/videoPointer.js";
 import { COMMENT_EVENT_KIND } from "../nostr/commentEvents.js";
-import { FEATURE_IMPROVED_COMMENT_FETCHING } from "../constants.js";
+import { FEATURE_IMPROVED_COMMENT_FETCHING, FIVE_MINUTES_MS } from "../constants.js";
 
 const ROOT_PARENT_KEY = "__root__";
 const DEFAULT_INITIAL_LIMIT = 40;
@@ -12,7 +12,7 @@ const DEFAULT_HYDRATION_DEBOUNCE_MS = 25;
 const PROFILE_FETCH_MAX_ATTEMPTS = 3;
 const PROFILE_FETCH_BACKOFF_MS = 50;
 const COMMENT_CACHE_PREFIX = "bitvid:comments:";
-const COMMENT_CACHE_TTL_MS = 5 * 60 * 1000;
+const COMMENT_CACHE_TTL_MS = FIVE_MINUTES_MS;
 const COMMENT_CACHE_VERSION = 2;
 
 function toPositiveInteger(value, fallback) {

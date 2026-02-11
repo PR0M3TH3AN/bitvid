@@ -10,9 +10,11 @@ import {
   buildBlockListEvent,
   buildMuteListEvent,
   BLOCK_LIST_IDENTIFIER,
+  KIND_MUTE_LIST,
 } from "./nostrEventSchemas.js";
 import { CACHE_POLICIES, STORAGE_TIERS } from "./nostr/cachePolicies.js";
 import { devLogger, userLogger } from "./utils/logger.js";
+import { STANDARD_TIMEOUT_MS } from "./constants.js";
 import {
   publishEventToRelays,
   assertAnyRelayAccepted,
@@ -86,7 +88,7 @@ const BACKGROUND_BLOCKLIST_TIMEOUT_MS = 6000;
 // PERF: Reduced from 20s/15s to 10s/8s — the signer is now guaranteed to be
 // ready before list loading starts (authSessionCoordinator waits for the
 // permission pre-grant), so decryption should succeed quickly.
-const DECRYPT_TIMEOUT_MS = 10000;
+const DECRYPT_TIMEOUT_MS = STANDARD_TIMEOUT_MS;
 const BACKGROUND_DECRYPT_TIMEOUT_MS = 8000;
 // PERF: Reduced from 10s to 3s for faster recovery during login.
 const DECRYPT_RETRY_DELAY_MS = 3000;
@@ -420,7 +422,7 @@ function isUserBlockListEvent(event) {
     return false;
   }
 
-  if (event.kind === 10000) {
+  if (event.kind === KIND_MUTE_LIST) {
     return true;
   }
 
@@ -755,7 +757,7 @@ class UserBlockListManager {
     this.blockListSubscriptionKey = key;
 
     const filters = [
-      { kinds: [10000], authors: [normalized] },
+      { kinds: [KIND_MUTE_LIST], authors: [normalized] },
       { kinds: [30002], authors: [normalized], "#d": [BLOCK_LIST_IDENTIFIER] },
     ];
 
@@ -1261,7 +1263,7 @@ class UserBlockListManager {
 
         // Standard Mute: Kind 10000 WITHOUT d=user-blocks
         const standardMuteEvents = validEvents
-          .filter((e) => e.kind === 10000 && !isTaggedBlockListEvent(e))
+          .filter((e) => e.kind === KIND_MUTE_LIST && !isTaggedBlockListEvent(e))
           .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
 
         const newestLegacy = legacyBlockEvents[0] || null;
@@ -1549,7 +1551,7 @@ class UserBlockListManager {
       // Legacy variants are fetched in parallel but processed separately to avoid blocking.
 
       const standardFetchPromise = nostrClient.fetchListIncrementally({
-        kind: 10000,
+        kind: KIND_MUTE_LIST,
         pubkey: normalized,
         relayUrls: relays,
         since: fetchSince,
@@ -1558,7 +1560,7 @@ class UserBlockListManager {
 
       const legacyFetchPromise = Promise.all([
         nostrClient.fetchListIncrementally({
-          kind: 10000,
+          kind: KIND_MUTE_LIST,
           pubkey: normalized,
           dTag: BLOCK_LIST_IDENTIFIER,
           relayUrls: relays,

@@ -5,6 +5,10 @@ import {
   DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
   getTrustedMuteHideThreshold,
   getTrustedSpamHideThreshold,
+  PROFILE_CACHE_TTL_MS,
+  URL_HEALTH_TTL_MS,
+  URL_HEALTH_RETRY_MS,
+  URL_PROBE_TIMEOUT_MS,
 } from "../constants.js";
 import { userLogger } from "../utils/logger.js";
 import { sanitizeProfileMediaUrl } from "../utils/profileMedia.js";
@@ -17,14 +21,12 @@ import createProfileSettingsStore from "./profileSettingsStore.js";
 
 const PROFILE_CACHE_STORAGE_KEY = "bitvid:profileCache:v1";
 const PROFILE_CACHE_VERSION = 1;
-const PROFILE_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 const SAVED_PROFILES_STORAGE_KEY = "bitvid:savedProfiles:v1";
 const SAVED_PROFILES_STORAGE_VERSION = 1;
 
-const URL_HEALTH_TTL_MS = 45 * 60 * 1000; // 45 minutes
-const URL_HEALTH_TIMEOUT_RETRY_MS = 5 * 60 * 1000; // 5 minutes
-export const URL_PROBE_TIMEOUT_MS = 8 * 1000; // 8 seconds
+const URL_HEALTH_TIMEOUT_RETRY_MS = URL_HEALTH_RETRY_MS;
+export { URL_PROBE_TIMEOUT_MS };
 const URL_PROBE_TIMEOUT_RETRY_MS = 15 * 1000; // 15 seconds
 
 
