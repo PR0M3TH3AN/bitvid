@@ -191,7 +191,7 @@ function injectVersionInfo() {
     }
   } catch (error) {
     console.error('Failed to inject version info:', error);
-    // Continue even if injection fails, as it's not critical for functionality
+    process.exit(1);
   }
 }
 
