@@ -1,28 +1,18 @@
 # Test Log
 
 ## Environment
-- Branch: unstable
-- Node version: v22.22.0
+- **Node Version:** v22.22.0
+- **NPM Version:** 11.10.0
+- **OS:** Linux
 
-## Manual Verification
+## Automated Tests
+| Date | Test Suite | Result | Notes |
+|------|------------|--------|-------|
+| 2025-02-12 | tests/compliance/nip04_44_compliance.test.mjs | PASS | Verified NIP-04/44 encryption preference and fallback. |
+| 2025-02-12 | tests/compliance/nip65_compliance.test.mjs | PASS | Verified NIP-65 Relay List loading and parsing. |
+| 2025-02-12 | tests/compliance/video_note_compliance.test.mjs | PASS | Verified Kind 30078 creation and NIP-71 tagging. **Note:** Requires `magnet-uri` package (currently extraneous). |
 
-### Benchmark: Relay Concurrency
-- Script: `benchmarks/relay_concurrency_repro.mjs`
-- Before: Unbounded (20 requests)
-- After: Bounded (3 requests)
-- Result: PASS
-
-### Unit Tests
-- Command: `npm run test:unit`
-- Result: PASS (13 tests passed in app-batch-fetch-profiles, etc., 12 tests passed in NostrClient)
-- Note: `nostr-tools` warning in benchmark is expected in Node env.
-
-## Docs Audit
-- Page: `content/docs/guides/upload-content.md`
-- Claims Verified:
-  - File types: Matches HTML accept attribute.
-  - Size limits: 2GB recommendation matches browser RAM constraints.
-  - Upload methods: Direct, External, Magnet supported.
-  - CORS: Automatic configuration verified in `js/services/s3Service.js`.
-  - HTTPS: Enforced in `js/services/videoNotePayload.js` and docs.
-- Result: No discrepancies found.
+## Manual Tests
+| Date | Test Case | Command | Result | Notes |
+|------|-----------|---------|--------|-------|
+| 2025-02-12 | NIP-07 Auth | Code Review | PASS | Verified async permission request logic in `nip07Permissions.js`. |

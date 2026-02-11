@@ -1,29 +1,20 @@
-# Context
+# NIP Compliance Audit Context
 
 ## Goal
-Improve app responsiveness by identifying and remediating background CPU/network work that degrades UX, while ensuring user-facing docs (/content) reflect the actual runtime behavior of upload/contribution flows.
+Build a rigorous, repo-tethered NIP & note-kind compliance program. Inventory NIPs & kinds relevant to the client, extract authoritative specifications and best practices, map each to the client code, and produce verification steps + small fixes/PRs or issues to bring the client into compliance.
 
 ## Scope
-- Repository: `PR0M3TH3AN/bitvid` (unstable branch)
-- Focus Areas:
-    - P0: Login/auth, relay initialization & profile hydration, decryption of user lists.
-    - P1: Initial UI responsiveness (profile cache, relay load).
-    - P2: Background features (WebTorrent).
-    - Docs: `/content` (upload/contribution flows).
+- **Primary NIPs:** NIP-07, NIP-04/44, NIP-33, NIP-46, NIP-51/56, NIP-59, NIP-94.
+- **Note Kinds:** 30078 (video), 10000 (mute), 30002 (block list), 10002 (relay list), Watch History.
+- **Cross-cutting:** Tag semantics, Event validation, Relay behavior, Encryption/Decryption, Addressing, Moderation.
 
-## Assumptions
-- The codebase uses vanilla JS/ES modules.
-- `js/utils/logger.js` is the standard logging mechanism.
-- `js/constants.js` contains feature flags.
-- `config/instance-config.js` contains instance-specific config.
+## Definition of Done (DoD)
+1. A per-NIP / per-kind checklist exists in `NIP_INVENTORY.md` with compliance status.
+2. All P0 NIPs/kinds have concrete testable validation steps and at least one small PR or issue created.
+3. Documentation (`CONTEXT.md`, `TODO.md`, `DECISIONS.md`, `TEST_LOG.md`) created/updated.
+4. `nip-report-YYYY-MM-DD.md` produced.
 
-## Constraints
-- Never invent files, APIs, libraries, or behaviors.
-- Prefer minimal incremental changes.
-- Keep build/tests green.
-- Security-critical changes require human signoff.
-
-## Definition of Done
-- Performance improvements are verified with metrics or manual tests.
-- Documentation updates are verified against code and runtime behavior.
-- PRs include `CONTEXT.md`, `TODO.md`, `DECISIONS.md`, `TEST_LOG.md`.
+## Timeline
+- **Day 1:** Inventory complete, P0 items listed.
+- **Day 2:** Research + specs; tests for NIP-04/44/07.
+- **Day 3:** PRs for P0 fixes; update docs.
