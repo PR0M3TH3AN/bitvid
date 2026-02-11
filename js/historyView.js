@@ -2,9 +2,7 @@
 
 import watchHistoryService from "./watchHistoryService.js";
 import { nostrClient } from "./nostrClientFacade.js";
-import {
-  updateWatchHistoryListWithDefaultClient as updateWatchHistoryList,
-} from "./nostrWatchHistoryFacade.js";
+import { updateWatchHistoryListWithDefaultClient as updateWatchHistoryList } from "./nostrWatchHistoryFacade.js";
 import { pointerKey, normalizePointerInput } from "./nostr/watchHistory.js";
 import {
   WATCH_HISTORY_BATCH_RESOLVE,
@@ -15,7 +13,7 @@ import { userLogger } from "./utils/logger.js";
 import {
   normalizeVideoModerationContext,
   applyModerationContextDatasets,
-  getModerationOverrideActionLabels,
+  getModerationOverrideActionLabels
 } from "./ui/moderationUiHelpers.js";
 import { buildModerationBadgeText } from "./ui/moderationCopy.js";
 import { formatShortNpub } from "./utils/formatters.js";
@@ -54,7 +52,8 @@ function resolveElement(selector, root = document) {
   if (!selector || typeof selector !== "string") {
     return null;
   }
-  const scope = root && typeof root.querySelector === "function" ? root : document;
+  const scope =
+    root && typeof root.querySelector === "function" ? root : document;
   try {
     return scope.querySelector(selector);
   } catch (error) {
@@ -89,7 +88,7 @@ function getAppInstance() {
 function buildWatchHistoryFeedRuntime({
   actor,
   cursor = 0,
-  forceRefresh = false,
+  forceRefresh = false
 } = {}) {
   const app = getAppInstance();
   const normalizedActor =
@@ -109,8 +108,8 @@ function buildWatchHistoryFeedRuntime({
     watchHistory: {
       actor: normalizedActor,
       cursor: Number.isFinite(cursor) ? cursor : 0,
-      forceRefresh: forceRefresh === true,
-    },
+      forceRefresh: forceRefresh === true
+    }
   };
 
   const preferenceSource =
@@ -298,7 +297,10 @@ async function defaultRemoveHandler({
     }
   } catch (error) {
     if (isDevEnv) {
-      userLogger.warn("[historyView] Failed to update watch history list:", error);
+      userLogger.warn(
+        "[historyView] Failed to update watch history list:",
+        error
+      );
     }
     throw error;
   }
@@ -479,10 +481,18 @@ function cleanupHistoryCard(pointerKey) {
   if (!ref || typeof ref !== "object") {
     return;
   }
-  if (ref.overrideButton && typeof ref.overrideButton.removeEventListener === "function" && typeof ref.boundOverride === "function") {
+  if (
+    ref.overrideButton &&
+    typeof ref.overrideButton.removeEventListener === "function" &&
+    typeof ref.boundOverride === "function"
+  ) {
     ref.overrideButton.removeEventListener("click", ref.boundOverride);
   }
-  if (ref.blockButton && typeof ref.blockButton.removeEventListener === "function" && typeof ref.boundBlock === "function") {
+  if (
+    ref.blockButton &&
+    typeof ref.blockButton.removeEventListener === "function" &&
+    typeof ref.boundBlock === "function"
+  ) {
     ref.blockButton.removeEventListener("click", ref.boundBlock);
   }
   if (ref.badgeEl && ref.badgeEl.parentNode) {
@@ -518,7 +528,8 @@ function ensureHiddenSummaryContainer(ref) {
   const doc = article.ownerDocument || document;
   if (!container) {
     container = doc.createElement("div");
-    container.className = "watch-history-card__hidden bv-stack bv-stack--tight p-md";
+    container.className =
+      "watch-history-card__hidden bv-stack bv-stack--tight p-md";
     container.dataset.moderationHiddenContainer = "true";
     container.setAttribute("role", "group");
     container.setAttribute("aria-live", "polite");
@@ -533,7 +544,9 @@ function ensureHiddenSummaryContainer(ref) {
 }
 
 function updateHistoryCardHiddenState(ref, context) {
-  const hiddenActive = Boolean(context?.activeHidden && !context?.overrideActive);
+  const hiddenActive = Boolean(
+    context?.activeHidden && !context?.overrideActive
+  );
   const primary = ref.primary;
   const meta = ref.meta;
 
@@ -548,7 +561,9 @@ function updateHistoryCardHiddenState(ref, context) {
     }
     const container = ensureHiddenSummaryContainer(ref);
     if (container) {
-      const description = buildModerationBadgeText(context, { variant: "card" });
+      const description = buildModerationBadgeText(context, {
+        variant: "card"
+      });
       if (description) {
         container.setAttribute("aria-label", description);
       } else {
@@ -580,7 +595,9 @@ function updateHistoryCardHiddenState(ref, context) {
 
 function createHistoryCardBadge(ref, context) {
   const article = ref?.article;
-  const doc = (article && article.ownerDocument) || (typeof document !== "undefined" ? document : null);
+  const doc =
+    (article && article.ownerDocument) ||
+    (typeof document !== "undefined" ? document : null);
   if (!doc) {
     return null;
   }
@@ -589,7 +606,10 @@ function createHistoryCardBadge(ref, context) {
   badge.dataset.moderationBadge = "true";
   const label = doc.createElement("span");
   label.className = "moderation-badge__label inline-flex items-center gap-xs";
-  const { wrapper, svg } = createHistoryCardBadgeIcon(doc, getHistoryCardModerationState(context));
+  const { wrapper, svg } = createHistoryCardBadgeIcon(
+    doc,
+    getHistoryCardModerationState(context)
+  );
   label.appendChild(wrapper);
   const text = doc.createElement("span");
   text.className = "moderation-badge__text";
@@ -601,7 +621,8 @@ function createHistoryCardBadge(ref, context) {
   ref.badgeIconSvg = svg;
   ref.badgeIconWrapper = wrapper;
   if (typeof ref.boundOverride !== "function") {
-    ref.boundOverride = (event) => handleHistoryCardModerationOverride(event, ref);
+    ref.boundOverride = (event) =>
+      handleHistoryCardModerationOverride(event, ref);
   }
   if (typeof ref.boundHide !== "function") {
     ref.boundHide = (event) => handleHistoryCardModerationHide(event, ref);
@@ -646,15 +667,29 @@ function createHistoryCardBadge(ref, context) {
 }
 
 function updateHistoryCardBadge(ref, context) {
-  const hiddenActive = Boolean(context?.activeHidden && !context?.overrideActive);
+  const hiddenActive = Boolean(
+    context?.activeHidden && !context?.overrideActive
+  );
   if (!context?.shouldShow) {
-    if (ref.overrideButton && typeof ref.overrideButton.removeEventListener === "function" && typeof ref.boundOverride === "function") {
+    if (
+      ref.overrideButton &&
+      typeof ref.overrideButton.removeEventListener === "function" &&
+      typeof ref.boundOverride === "function"
+    ) {
       ref.overrideButton.removeEventListener("click", ref.boundOverride);
     }
-    if (ref.hideButton && typeof ref.hideButton.removeEventListener === "function" && typeof ref.boundHide === "function") {
+    if (
+      ref.hideButton &&
+      typeof ref.hideButton.removeEventListener === "function" &&
+      typeof ref.boundHide === "function"
+    ) {
       ref.hideButton.removeEventListener("click", ref.boundHide);
     }
-    if (ref.blockButton && typeof ref.blockButton.removeEventListener === "function" && typeof ref.boundBlock === "function") {
+    if (
+      ref.blockButton &&
+      typeof ref.blockButton.removeEventListener === "function" &&
+      typeof ref.boundBlock === "function"
+    ) {
       ref.blockButton.removeEventListener("click", ref.boundBlock);
     }
     if (ref.badgeEl && ref.badgeEl.parentNode) {
@@ -681,7 +716,9 @@ function updateHistoryCardBadge(ref, context) {
   }
 
   badge.dataset.variant = context.overrideActive ? "neutral" : "warning";
-  const state = context.overrideActive ? "override" : getHistoryCardModerationState(context);
+  const state = context.overrideActive
+    ? "override"
+    : getHistoryCardModerationState(context);
   badge.dataset.moderationState = state;
   if (hiddenActive && context.effectiveHideReason) {
     badge.dataset.moderationHideReason = context.effectiveHideReason;
@@ -727,11 +764,12 @@ function updateHistoryCardBadge(ref, context) {
   if (uniqueNames.length) {
     const hasMuted = muteNames.length > 0;
     const hasReporters = reporterNames.length > 0;
-    const prefix = hasMuted && hasReporters
-      ? "Muted/Reported by"
-      : hasMuted
-        ? "Muted by"
-        : "Reported by";
+    const prefix =
+      hasMuted && hasReporters
+        ? "Muted/Reported by"
+        : hasMuted
+          ? "Muted by"
+          : "Reported by";
     const joined = uniqueNames.join(", ");
     badge.title = `${prefix} ${joined}`;
     badge.setAttribute("aria-label", `${textContent}. ${prefix} ${joined}.`);
@@ -743,7 +781,9 @@ function updateHistoryCardBadge(ref, context) {
     badge.removeAttribute("aria-label");
   }
 
-  const parent = hiddenActive ? ensureHiddenSummaryContainer(ref) : ref.badgeMount;
+  const parent = hiddenActive
+    ? ensureHiddenSummaryContainer(ref)
+    : ref.badgeMount;
   if (parent && badge.parentNode !== parent) {
     if (badge.parentNode) {
       badge.parentNode.removeChild(badge);
@@ -824,7 +864,10 @@ function updateHistoryCardAria(ref) {
       tokens.push(badgeId);
     }
     if (tokens.length) {
-      el.setAttribute("aria-describedby", Array.from(new Set(tokens)).join(" "));
+      el.setAttribute(
+        "aria-describedby",
+        Array.from(new Set(tokens)).join(" ")
+      );
     } else {
       el.removeAttribute("aria-describedby");
     }
@@ -869,7 +912,8 @@ function applyHistoryCardModeration(ref, context) {
   if (!ref) {
     return;
   }
-  const normalizedContext = context || normalizeVideoModerationContext(ref.video?.moderation);
+  const normalizedContext =
+    context || normalizeVideoModerationContext(ref.video?.moderation);
   applyModerationContextDatasets(normalizedContext, {
     root: ref.article,
     thumbnail: ref.thumbnailInner || ref.thumbnailLink,
@@ -911,7 +955,9 @@ function handleHistoryCardModerationOverride(event, ref) {
     if (typeof app?.handleModerationOverride === "function") {
       result = app.handleModerationOverride({ video });
     } else {
-      const doc = (ref.article && ref.article.ownerDocument) || (typeof document !== "undefined" ? document : null);
+      const doc =
+        (ref.article && ref.article.ownerDocument) ||
+        (typeof document !== "undefined" ? document : null);
       if (doc && typeof doc.dispatchEvent === "function") {
         doc.dispatchEvent(
           new CustomEvent("video:moderation-override", { detail: { video } })
@@ -925,7 +971,10 @@ function handleHistoryCardModerationOverride(event, ref) {
       button.removeAttribute("aria-busy");
     }
     if (isDevEnv) {
-      userLogger.warn("[historyView] Moderation override handler threw:", error);
+      userLogger.warn(
+        "[historyView] Moderation override handler threw:",
+        error
+      );
     }
     return;
   }
@@ -988,7 +1037,9 @@ function handleHistoryCardModerationHide(event, ref) {
         (ref.article && ref.article.ownerDocument) ||
         (typeof document !== "undefined" ? document : null);
       if (doc && typeof doc.dispatchEvent === "function") {
-        doc.dispatchEvent(new CustomEvent("video:moderation-hide", { detail: { video } }));
+        doc.dispatchEvent(
+          new CustomEvent("video:moderation-hide", { detail: { video } })
+        );
       }
       result = true;
     }
@@ -1057,7 +1108,9 @@ function handleHistoryCardModerationBlock(event, ref) {
     if (typeof app?.handleModerationBlock === "function") {
       result = app.handleModerationBlock({ video });
     } else {
-      const doc = (ref.article && ref.article.ownerDocument) || (typeof document !== "undefined" ? document : null);
+      const doc =
+        (ref.article && ref.article.ownerDocument) ||
+        (typeof document !== "undefined" ? document : null);
       if (doc && typeof doc.dispatchEvent === "function") {
         doc.dispatchEvent(
           new CustomEvent("video:moderation-block", { detail: { video } })
@@ -1103,7 +1156,10 @@ function handleHistoryCardModerationBlock(event, ref) {
 }
 
 function refreshRegisteredHistoryCards(video, context, pointerKeys = null) {
-  const filterSet = Array.isArray(pointerKeys) && pointerKeys.length ? new Set(pointerKeys) : null;
+  const filterSet =
+    Array.isArray(pointerKeys) && pointerKeys.length
+      ? new Set(pointerKeys)
+      : null;
   const videoId = video && typeof video.id === "string" ? video.id : "";
   historyCardRegistry.forEach((ref, pointerKey) => {
     if (!ref) {
@@ -1259,7 +1315,9 @@ export function buildHistoryCard({ item, video, profile, variant }) {
   if ((!creatorLabel || creatorLabel === "Unknown") && video?.pubkey) {
     const encoded = app?.safeEncodeNpub?.(video.pubkey) || "";
     creatorLabel =
-      formatShortNpub(encoded) || encoded || video.pubkey.slice(0, 8).concat("…");
+      formatShortNpub(encoded) ||
+      encoded ||
+      video.pubkey.slice(0, 8).concat("…");
   }
   authorNameBtn.textContent = creatorLabel;
 
@@ -1322,8 +1380,7 @@ export function buildHistoryCard({ item, video, profile, variant }) {
       if (pointerVideoId) btn.dataset.videoId = pointerVideoId;
       if (playbackData.url)
         btn.dataset.playUrl = encodeURIComponent(playbackData.url);
-      if (playbackData.magnet)
-        btn.dataset.playMagnet = playbackData.magnet;
+      if (playbackData.magnet) btn.dataset.playMagnet = playbackData.magnet;
     } else if (action === "channel" && video?.pubkey) {
       btn.dataset.author = video.pubkey;
     } else if (action === "remove") {
@@ -1332,8 +1389,7 @@ export function buildHistoryCard({ item, video, profile, variant }) {
       if (item.pointer?.relay) btn.dataset.pointerRelay = item.pointer.relay;
       if (Number.isFinite(item.watchedAt))
         btn.dataset.pointerWatchedAt = String(item.watchedAt);
-      if (item.pointer?.session === true)
-        btn.dataset.pointerSession = "true";
+      if (item.pointer?.session === true) btn.dataset.pointerSession = "true";
       btn.title = "Remove from history";
     }
     return btn;
@@ -1403,13 +1459,13 @@ export function createWatchHistoryRenderer(config = {}) {
         const runtime = buildWatchHistoryFeedRuntime({
           actor: actorInput,
           cursor,
-          forceRefresh,
+          forceRefresh
         });
         return engine.run("watch-history", { runtime });
       }
       const items = await watchHistoryService.loadLatest(actorInput, {
         allowStale: !forceRefresh,
-        forceRefresh,
+        forceRefresh
       });
       const normalized = normalizeHistoryItems(items);
       return { items: normalized, metadata: { engine: "service-fallback" } };
@@ -1704,7 +1760,10 @@ export function createWatchHistoryRenderer(config = {}) {
   }
 
   function subscribeToModerationEvents() {
-    if (typeof document === "undefined" || typeof document.addEventListener !== "function") {
+    if (
+      typeof document === "undefined" ||
+      typeof document.addEventListener !== "function"
+    ) {
       return;
     }
     const handler = (event) => {
@@ -2124,7 +2183,7 @@ export function createWatchHistoryRenderer(config = {}) {
           if (typeof app?.showSuccess === "function") {
             app.showSuccess("Local watch history reset.");
           } else {
-            console.log("Local watch history reset.");
+            userLogger.info("Local watch history reset.");
           }
         } catch (error) {
           const message =
@@ -2135,7 +2194,7 @@ export function createWatchHistoryRenderer(config = {}) {
           if (typeof app?.showError === "function") {
             app.showError(message);
           } else {
-            console.error(message);
+            userLogger.error(message);
           }
         }
       };
@@ -2144,7 +2203,10 @@ export function createWatchHistoryRenderer(config = {}) {
 
     if (elements.refreshButton) {
       if (boundRefreshHandler) {
-        elements.refreshButton.removeEventListener("click", boundRefreshHandler);
+        elements.refreshButton.removeEventListener(
+          "click",
+          boundRefreshHandler
+        );
       }
       boundRefreshHandler = async (event) => {
         event.preventDefault();
@@ -2185,7 +2247,7 @@ export function createWatchHistoryRenderer(config = {}) {
     try {
       result = await fetchHistory(actor, {
         cursor: 0,
-        forceRefresh: force === true,
+        forceRefresh: force === true
       });
       state.lastError = null;
       hideErrorBanner();
@@ -2390,7 +2452,10 @@ export function createWatchHistoryRenderer(config = {}) {
         boundClearHandler = null;
       }
       if (elements.refreshButton && boundRefreshHandler) {
-        elements.refreshButton.removeEventListener("click", boundRefreshHandler);
+        elements.refreshButton.removeEventListener(
+          "click",
+          boundRefreshHandler
+        );
         boundRefreshHandler = null;
       }
       clearSubscriptions();
