@@ -1489,7 +1489,7 @@ export class ProfileModalController {
     const owner = this.resolveActiveDmRelayOwner();
     const relays = this.getActiveDmRelayPreferences();
 
-    this.profileMessagesRelayList.innerHTML = "";
+    this.profileMessagesRelayList.textContent = "";
 
     if (!owner) {
       const emptyState = document.createElement("li");
@@ -1946,12 +1946,12 @@ export class ProfileModalController {
     this.pendingMessagesRender = null;
 
     if (this.profileMessagesList instanceof HTMLElement) {
-      this.profileMessagesList.innerHTML = "";
+      this.profileMessagesList.textContent = "";
       this.profileMessagesList.classList.add("hidden");
       this.profileMessagesList.setAttribute("hidden", "");
     }
     if (this.profileMessagesConversation instanceof HTMLElement) {
-      this.profileMessagesConversation.innerHTML = "";
+      this.profileMessagesConversation.textContent = "";
       this.profileMessagesConversation.classList.add("hidden");
       this.profileMessagesConversation.setAttribute("hidden", "");
     }
@@ -2317,7 +2317,7 @@ export class ProfileModalController {
       return;
     }
 
-    list.innerHTML = "";
+    list.textContent = "";
 
     if (!this.dmAttachmentQueue.length) {
       return;
@@ -2447,7 +2447,7 @@ export class ProfileModalController {
       return;
     }
 
-    container.innerHTML = "";
+    container.textContent = "";
 
     if (!actor || !recipient || !this.directMessagesCache.length) {
       container.classList.add("hidden");
@@ -2938,7 +2938,7 @@ export class ProfileModalController {
     this.setDirectMessageRecipient(null, { reason: "clear" });
 
     if (this.profileMessagesList instanceof HTMLElement) {
-      this.profileMessagesList.innerHTML = "";
+      this.profileMessagesList.textContent = "";
       this.profileMessagesList.classList.add("hidden");
       this.profileMessagesList.setAttribute("hidden", "");
     }
@@ -3665,7 +3665,7 @@ export class ProfileModalController {
 
     const renderToken = (this.profileMessagesRenderToken += 1);
     const renderThreads = (threadsToRender) => {
-      this.profileMessagesList.innerHTML = "";
+      this.profileMessagesList.textContent = "";
 
       if (!threadsToRender.length) {
         this.profileMessagesList.classList.add("hidden");
@@ -3799,7 +3799,7 @@ export class ProfileModalController {
     );
     const currentUserAvatarUrl = currentUserSummary?.avatarSrc || "";
 
-    container.innerHTML = "";
+    container.textContent = "";
 
     try {
       const dmPrivacySettings = this.getDmPrivacySettingsSnapshot();
@@ -4308,7 +4308,7 @@ export class ProfileModalController {
         ? this.dmAppShellContainer
         : null;
     if (container) {
-      container.innerHTML = "";
+      container.textContent = "";
     }
 
     this.dmAppShell = null;
@@ -4431,7 +4431,7 @@ export class ProfileModalController {
     this.directMessagesCache = [];
     this.setDirectMessageRecipient(null, { reason: "clear" });
     if (this.profileMessagesList instanceof HTMLElement) {
-      this.profileMessagesList.innerHTML = "";
+      this.profileMessagesList.textContent = "";
       this.profileMessagesList.classList.add("hidden");
       this.profileMessagesList.setAttribute("hidden", "");
     }
@@ -5714,7 +5714,7 @@ export class ProfileModalController {
 
     const listEl = this.switcherList;
     if (listEl instanceof HTMLElement) {
-      listEl.innerHTML = "";
+      listEl.textContent = "";
       let normalizedSelection = this.normalizeHexPubkey(
         this.profileSwitcherSelectionPubkey,
       );
@@ -6635,7 +6635,7 @@ export class ProfileModalController {
       })
       .filter((entry) => entry && typeof entry.url === "string");
 
-    this.relayList.innerHTML = "";
+    this.relayList.textContent = "";
 
     if (!relays.length) {
       const emptyState = document.createElement("li");
@@ -6739,7 +6739,7 @@ export class ProfileModalController {
         return;
       }
 
-      healthContainer.innerHTML = "";
+      healthContainer.textContent = "";
 
       const createBadge = (label, value, colorClass) => {
         const span = document.createElement("span");
@@ -7087,7 +7087,7 @@ export class ProfileModalController {
         ? options.message.trim()
         : "";
 
-    statusEl.innerHTML = "";
+    statusEl.textContent = "";
     statusEl.classList.remove("text-status-warning");
     statusEl.classList.add("text-muted");
     statusEl.classList.add("hidden");
@@ -7518,7 +7518,7 @@ export class ProfileModalController {
       return;
     }
 
-    list.innerHTML = "";
+    list.textContent = "";
 
     const normalized = this.sanitizeHashtagList(tags);
     if (!normalized.length) {
@@ -7564,7 +7564,10 @@ export class ProfileModalController {
         ? `Remove ${this.formatHashtagTag(normalized)} from interests`
         : `Remove ${this.formatHashtagTag(normalized)} from disinterests`,
     );
-    removeButton.innerHTML = "<span aria-hidden=\"true\">&times;</span>";
+    const icon = document.createElement("span");
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = "\u00D7";
+    removeButton.appendChild(icon);
     removeButton.addEventListener("click", () => {
       void this.handleRemoveHashtagPreference(type, normalized);
     });
@@ -7946,7 +7949,7 @@ export class ProfileModalController {
       }
     });
 
-    this.blockList.innerHTML = "";
+    this.blockList.textContent = "";
 
     if (!deduped.length) {
       this.blockListEmpty.classList.remove("hidden");
@@ -8181,7 +8184,7 @@ export class ProfileModalController {
         }
       });
 
-      this.subscriptionList.innerHTML = "";
+      this.subscriptionList.textContent = "";
 
       if (!deduped.length) {
         this.setSubscriptionsStatus("No subscriptions yet.", "muted");
@@ -8292,7 +8295,7 @@ export class ProfileModalController {
 
   clearSubscriptionsList(emptyMessage = "No subscriptions yet.") {
     if (this.subscriptionList instanceof HTMLElement) {
-      this.subscriptionList.innerHTML = "";
+      this.subscriptionList.textContent = "";
       this.subscriptionList.classList.add("hidden");
     }
 
@@ -8500,7 +8503,7 @@ export class ProfileModalController {
         }
       });
 
-      this.friendList.innerHTML = "";
+      this.friendList.textContent = "";
 
       if (!deduped.length) {
         this.friendListEmpty.classList.remove("hidden");
@@ -8625,7 +8628,7 @@ export class ProfileModalController {
 
   clearFriendsList() {
     if (this.friendList instanceof HTMLElement) {
-      this.friendList.innerHTML = "";
+      this.friendList.textContent = "";
       this.friendList.classList.add("hidden");
     }
 
@@ -10630,7 +10633,7 @@ export class ProfileModalController {
       this.getModerationOverrideEntries(),
     );
 
-    this.moderationOverridesList.innerHTML = "";
+    this.moderationOverridesList.textContent = "";
 
     if (!entries.length) {
       this.moderationOverridesEmpty.classList.remove("hidden");
@@ -11115,13 +11118,13 @@ export class ProfileModalController {
   clearAdminLists() {
     this.storeAdminEmptyMessages();
     if (this.adminModeratorList) {
-      this.adminModeratorList.innerHTML = "";
+      this.adminModeratorList.textContent = "";
     }
     if (this.whitelistList) {
-      this.whitelistList.innerHTML = "";
+      this.whitelistList.textContent = "";
     }
     if (this.blacklistList) {
-      this.blacklistList.innerHTML = "";
+      this.blacklistList.textContent = "";
     }
     if (this.moderatorEmpty instanceof HTMLElement) {
       this.moderatorEmpty.textContent =
@@ -11202,7 +11205,7 @@ export class ProfileModalController {
 
     const entriesNeedingFetch = new Set();
 
-    listEl.innerHTML = "";
+    listEl.textContent = "";
 
     const values = this.normalizeAdminListEntries(entries);
 
