@@ -6,6 +6,7 @@ playwright-report/
 test-results/
 tests/visual/__snapshots__/
 artifacts/
+!artifacts/load-report-*.json
 css/tailwind.generated.css
 ai/reports/
 *.log
