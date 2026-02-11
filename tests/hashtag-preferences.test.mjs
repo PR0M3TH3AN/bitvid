@@ -264,6 +264,7 @@ test(
     nostrClient.writeRelays = relayUrls;
 
     const decryptCalls = [];
+    const permissionState = { enabled: false };
 
     // Create a mock window.nostr that properly simulates extension behavior.
     // Specifically, enable() needs to exist so nostrClient detects it as an extension.
@@ -303,15 +304,16 @@ test(
       // TODO: This part of the test is flaky in CI environments.
       // Logs confirm the code attempts decryption ("Attempting decryption via window.nostr fallback"),
       // but the mock spy is not consistently called, likely due to runNip07WithRetry/microtask timing.
-      //
-      // await hashtagPreferences.load(pubkey, { allowPermissionPrompt: true });
-      //
-      // assert.equal(
-      //   decryptCalls.length,
-      //   1,
-      //   "explicit permission prompts should retry decryption",
-      // );
-      // assert.deepEqual(hashtagPreferences.getInterests(), ["late"]);
+
+      permissionState.enabled = true;
+      await hashtagPreferences.load(pubkey, { allowPermissionPrompt: true });
+
+      assert.equal(
+        decryptCalls.length,
+        1,
+        "explicit permission prompts should retry decryption",
+      );
+      assert.deepEqual(hashtagPreferences.getInterests(), ["late"]);
     } finally {
       relayManager.setEntries(originalRelayEntries, { allowEmpty: true, updateClient: false });
       nostrClient.fetchListIncrementally = originalFetchIncremental;
