@@ -4,6 +4,7 @@ import {
   ADMIN_DM_IMAGE_URL as CONFIG_ADMIN_DM_IMAGE_URL,
   BITVID_WEBSITE_URL as CONFIG_BITVID_WEBSITE_URL,
   MAX_WALLET_DEFAULT_ZAP as CONFIG_MAX_WALLET_DEFAULT_ZAP,
+  ENABLE_NIP17_RELAY_WARNING as CONFIG_ENABLE_NIP17_RELAY_WARNING,
 } from "../config.js";
 import { normalizeDesignSystemContext } from "../designSystem.js";
 import { RUNTIME_FLAGS } from "../constants.js";
@@ -152,10 +153,20 @@ export class ProfileModalController {
       return fromConfig || DEFAULT_BITVID_WEBSITE_URL;
     })();
 
+    const resolvedEnableNip17RelayWarning = (() => {
+      if (typeof providedConstants.ENABLE_NIP17_RELAY_WARNING === "boolean") {
+        return providedConstants.ENABLE_NIP17_RELAY_WARNING;
+      }
+      return typeof CONFIG_ENABLE_NIP17_RELAY_WARNING === "boolean"
+        ? CONFIG_ENABLE_NIP17_RELAY_WARNING
+        : true;
+    })();
+
     this.maxWalletDefaultZap = resolvedMaxWalletDefaultZap;
     this.adminSuperNpub = resolvedAdminSuperNpub;
     this.adminDmImageUrl = resolvedAdminDmImageUrl;
     this.bitvidWebsiteUrl = resolvedbitvidWebsiteUrl;
+    this.enableNip17RelayWarning = resolvedEnableNip17RelayWarning;
     this.hasShownRelayWarning = false;
 
     this.internalState = {
@@ -2199,7 +2210,7 @@ export class ProfileModalController {
       ? recipientContext.relayHints
       : [];
 
-    if (enabled && !relayHints.length) {
+    if (this.enableNip17RelayWarning && enabled && !relayHints.length) {
       this.showStatus(
         "Privacy warning: this recipient has not shared NIP-17 relays, so we'll use your default relays.",
         { autoHideMs: 5000 },
@@ -2819,7 +2830,7 @@ export class ProfileModalController {
       return;
     }
 
-    if (useNip17 && !recipientRelayHints.length) {
+    if (this.enableNip17RelayWarning && useNip17 && !recipientRelayHints.length) {
       this.showStatus(
         "Privacy warning: this recipient has not shared NIP-17 relays, so we'll use your default relays.",
         { autoHideMs: 5000 },
@@ -2875,7 +2886,7 @@ export class ProfileModalController {
         input.value = "";
         this.resetAttachmentQueue({ clearInput: true });
         this.showSuccess("Message sent.");
-        if (result?.warning === "dm-relays-fallback") {
+        if (this.enableNip17RelayWarning && result?.warning === "dm-relays-fallback") {
           this.showStatus(
             "Privacy warning: this message used default relays because no NIP-17 relay list was found.",
             { autoHideMs: 5000 },
@@ -4475,6 +4486,10 @@ export class ProfileModalController {
   }
 
   handleDirectMessagesRelayWarning(detail = {}) {
+    if (!this.enableNip17RelayWarning) {
+      return;
+    }
+
     if (detail?.warning !== "dm-relays-fallback") {
       return;
     }
