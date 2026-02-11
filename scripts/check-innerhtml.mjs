@@ -51,7 +51,7 @@ const BASELINE = {
   "js/ui/dm/NotificationCenter.js": 1,
   "js/ui/loginModalController.js": 3,
   "js/ui/moreMenuController.js": 1,
-  "js/ui/profileModalController.js": 27,
+  "js/ui/profileModalController.js": 1,
   "js/ui/subscriptionHistoryController.js": 7,
   "js/ui/videoListViewController.js": 1,
   "js/ui/views/VideoListView.js": 3,
