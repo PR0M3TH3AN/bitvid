@@ -4,12 +4,12 @@
   "type": "module",
   "version": "1.0.0",
   "engines": {
-    "node": ">=22"
+    "node": ">=20"
   },
   "scripts": {
     "start": "npm run build && npx serve dist",
     "serve": "npx serve",
-    "build": "node scripts/build-dist.mjs",
+    "build": "node scripts/build-dist.mjs && npm run verify:dist:deploy-artifact",
     "build:css": "postcss css/tailwind.source.css -o css/tailwind.generated.css",
     "build:beacon:bundle": "node scripts/build-beacon.mjs",
     "build:beacon": "npm run build:beacon:bundle && npm run lint:inline-styles",
