@@ -8242,11 +8242,13 @@ export class NostrClient {
     await fetchSparseHistoriesBatch();
     await ensureRootsBatch();
 
-    const allMatches = [];
+    const allMatches = new Set();
     for (const t of targets) {
-      allMatches.push(...t.matches.values());
+      for (const m of t.matches.values()) {
+        allMatches.add(m);
+      }
     }
-    await this.populateNip71MetadataForVideos(allMatches);
+    await this.populateNip71MetadataForVideos(Array.from(allMatches));
 
     const resultMap = new Map();
     for (const t of targets) {
