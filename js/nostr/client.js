@@ -135,7 +135,7 @@ import {
   summarizeDmEventForLog,
 } from "./dmDecryptDiagnostics.js";
 import { devLogger, userLogger } from "../utils/logger.js";
-import { withRequestTimeout } from "../utils/asyncUtils.js";
+import { withRequestTimeout, pMap } from "../utils/asyncUtils.js";
 import { LRUCache } from "../utils/lruCache.js";
 import { updateConversationFromMessage, writeMessages } from "../storage/dmDb.js";
 import {
@@ -287,6 +287,7 @@ import {
   RELAY_FAILURE_WINDOW_MS,
   RELAY_FAILURE_WINDOW_THRESHOLD,
   RELAY_SUMMARY_LOG_INTERVAL_MS,
+  RELAY_BACKGROUND_CONCURRENCY,
 } from "./relayConstants.js";
 const EVENTS_CACHE_STORAGE_KEY = "bitvid:eventsCache:v1";
 // We use the policy TTL, but currently the storage backend is hardcoded to IDB (with localStorage fallback).
@@ -1867,10 +1868,10 @@ export class NostrClient {
         devLogger.warn("[nostr] Failed to persist outgoing DM.", error);
       }
 
-      const recipientPublishResults = await Promise.all(
-        recipientSelection.relays.map((url) =>
-          publishEventToRelay(this.pool, url, recipientGiftWrap.wrap),
-        ),
+      const recipientPublishResults = await pMap(
+        recipientSelection.relays,
+        (url) => publishEventToRelay(this.pool, url, recipientGiftWrap.wrap),
+        { concurrency: RELAY_BACKGROUND_CONCURRENCY },
       );
 
       const recipientSuccess = recipientPublishResults.some(
@@ -1901,10 +1902,10 @@ export class NostrClient {
       }
 
       if (senderGiftWrap && senderRelayTargets.length) {
-        const senderPublishResults = await Promise.all(
-          senderRelayTargets.map((url) =>
-            publishEventToRelay(this.pool, url, senderGiftWrap.wrap),
-          ),
+        const senderPublishResults = await pMap(
+          senderRelayTargets,
+          (url) => publishEventToRelay(this.pool, url, senderGiftWrap.wrap),
+          { concurrency: RELAY_BACKGROUND_CONCURRENCY },
         );
         if (!senderPublishResults.some((result) => result.success)) {
           devLogger.warn("[nostr] Failed to publish sender copy of NIP-17 DM.", {
@@ -2119,8 +2120,10 @@ export class NostrClient {
 
     const relays = recipientRelays.length ? recipientRelays : fallbackRelays;
 
-    const publishResults = await Promise.all(
-      relays.map((url) => publishEventToRelay(this.pool, url, signedEvent))
+    const publishResults = await pMap(
+      relays,
+      (url) => publishEventToRelay(this.pool, url, signedEvent),
+      { concurrency: RELAY_BACKGROUND_CONCURRENCY },
     );
 
     const success = publishResults.some((result) => result.success);
@@ -3358,8 +3361,9 @@ export class NostrClient {
     };
 
     try {
-      const responses = await Promise.all(
-        this.relays.map(async (url) => {
+      const responses = await pMap(
+        this.relays,
+        async (url) => {
           try {
             const events = await this.pool.list([url], [filter]);
             return Array.isArray(events) ? events : [];
@@ -3370,7 +3374,8 @@ export class NostrClient {
             );
             return [];
           }
-        }),
+        },
+        { concurrency: RELAY_BACKGROUND_CONCURRENCY },
       );
 
       const deduped = new Map();
@@ -3882,8 +3887,9 @@ export class NostrClient {
       }
 
       try {
-        const perRelay = await Promise.all(
-          this.getHealthyRelays(this.relays).map(async (url) => {
+        const perRelay = await pMap(
+          this.getHealthyRelays(this.relays),
+          async (url) => {
             try {
               const events = await this.pool.list([url], [filter]);
               return events || [];
@@ -3894,7 +3900,8 @@ export class NostrClient {
               );
               return [];
             }
-          })
+          },
+          { concurrency: RELAY_BACKGROUND_CONCURRENCY },
         );
 
         const merged = perRelay.flat();
