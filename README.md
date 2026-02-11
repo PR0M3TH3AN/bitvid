@@ -80,8 +80,8 @@ Info JSON:               https://cdn.example.com/uploads/demo/video.info.json
 
 ### How playback works
 
-1. **URL-first**: `playVideoWithFallback({ url, magnet })` attempts the hosted URL immediately. Healthy URLs deliver the full experience without touching P2P resources.
-2. **WebTorrent fallback**: If the URL probe fails or returns an error status, bitvid falls back to WebTorrent using the raw magnet. The helpers append HTTPS `ws=`/`xs=` hints so peers seed quickly.
+1. **Configurable Priority**: `playVideoWithFallback({ url, magnet })` attempts the preferred source (URL or WebTorrent) based on the `DEFAULT_PLAYBACK_SOURCE` configuration.
+2. **Seamless Fallback**: If the preferred source fails, stalls, or is unavailable, bitvid automatically switches to the alternative source.
 3. **Safety checks**: Magnets are decoded with `safeDecodeMagnet()` and normalized via `normalizeAndAugmentMagnet()` before reaching WebTorrent. Trackers remain WSS-only to satisfy browser constraints.
 4. **Operator playbook**: If a deployment causes playback regressions, flip the relevant feature flags back to their default values in `js/constants.js` and redeploy. Capture the rollback steps in AGENTS.md and the PR description so the Main channel stays stable.
 5. **Deep dive**: See [`docs/playback-fallback.md`](docs/playback-fallback.md) for the call flow into `playbackService`, magnet normalization details, and fallback hand-off points.

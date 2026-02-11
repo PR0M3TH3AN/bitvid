@@ -14,7 +14,7 @@ For any nostr related work, please review the nip documentation located in /docs
 
 * **Main** is the production track. Anything merged here must preserve today’s UX and magnet safety guarantees. Rollbacks should be painless: keep commits atomic, avoid destructive migrations, and leave feature flags in a known-good default (`false` unless product explicitly flips them).
 * **Unstable** is our experimentation lane. Gate risky behavior behind feature flags defined in `js/constants.js` and document the toggle/rollback plan in PR descriptions.
-* **Emergency response:** If a change regresses URL-first playback or breaks magnet parsing, revert immediately, call this out in the PR, and annotate the AGENTS.md changelog with remediation tips. **Note:** These regressions usually surface in dev logs and tests around playback/magnet helpers—reference them when triaging so future agents don’t repeat the mistake.
+* **Emergency response:** If a change regresses playback or breaks magnet parsing, revert immediately, call this out in the PR, and annotate the AGENTS.md changelog with remediation tips. **Note:** These regressions usually surface in dev logs and tests around playback/magnet helpers—reference them when triaging so future agents don’t repeat the mistake.
 
 ### Browser logging policy
 
@@ -23,12 +23,11 @@ For any nostr related work, please review the nip documentation located in /docs
 * Before promoting a build, flip `IS_DEV_MODE` in `config/instance-config.js` to match the target environment so `window.__BITVID_DEV_MODE__` and the logger channels behave correctly.
 * Review and follow [`docs/logging.md`](docs/logging.md) whenever you add new logging or touch inline scripts.
 
-## 2. Mission: URL‑First Playback with WebTorrent Fallback
+## 2. Mission: Hybrid Playback Strategy
 
-* **Goal:** Always deliver smooth playback while keeping hosting costs low.
-* **Primary transport:** A hosted video URL (MP4/WebM/HLS/DASH) that the `<video>` element can stream directly.
-* **Fallback transport:** A WebTorrent magnet that includes browser‑safe trackers plus optional HTTP hints.
-* **Runtime behavior:** Call `bitvidApp.playVideoWithFallback({ url, magnet })` (implemented in `js/app/playbackCoordinator.js` and bound to the app instance in `js/app.js`). This function orchestrates URL probing and magnet fallback, delegating low-level stream handling to `js/services/playbackService.js`. `js/playbackUtils.js` now provides magnet/session helper utilities rather than the playback entry point itself.
+* **Goal:** Always deliver smooth playback while optimizing for the configured priority (hosted URL or P2P).
+* **Configuration:** `DEFAULT_PLAYBACK_SOURCE` in `config/instance-config.js` determines whether `url` or `torrent` is attempted first.
+* **Runtime behavior:** Call `bitvidApp.playVideoWithFallback({ url, magnet })` (implemented in `js/app/playbackCoordinator.js` and bound to the app instance in `js/app.js`). This function attempts the preferred source first and falls back to the alternative if the primary fails or stalls. `js/playbackUtils.js` now provides magnet/session helper utilities rather than the playback entry point itself.
 * **Content contract:** bitvid posts (Nostr kind `30078`) must include a `title` and at least one of `url` or `magnet`. Prefer to publish both along with optional `thumbnail`, `description`, and `mode` fields. When mirroring to NIP‑94 (`kind 1063`), copy the hosted URL and (optionally) the magnet so other clients can discover the same asset.
 
 ## Styling & Theming Rules (token-first)
@@ -59,7 +58,7 @@ For any nostr related work, please review the nip documentation located in /docs
 
 1. **Required fields:** Validation must ensure a title exists and that either a hosted URL or a magnet (or both) is supplied. Optional `ws` / `xs` inputs should be appended only when a magnet is present.
 2. **Magnet parsing errors:** When a user pastes encoded magnets, run `safeDecodeMagnet()` before normalizing. Show inline errors if decoding fails and confirm the raw `magnet:?xt=` string survives the round trip.
-3. **URL-first promise:** After submission, confirm the resulting feed item carries `data-play-url` and `data-play-magnet` attributes so playback utilities can attempt the URL first.
+3. **Playback source promise:** After submission, confirm the resulting feed item carries `data-play-url` and `data-play-magnet` attributes so playback utilities can attempt the configured source first.
 4. **Mixed-content warnings:** If the page is served over HTTPS, reject `ws=` or `xs=` hints that begin with `http://` and show guidance to upgrade to HTTPS. Document the copy in README/UX strings so operators can align messaging.
 5. **Telemetry hooks:** Keep existing analytics/logging untouched unless instructed. If you add new modal states, annotate them clearly in code comments.
 6. **Modal regressions:** If validation or helper wiring breaks in Main, disable new feature flags and ship a revert PR immediately. Note the rollback steps in AGENTS.md for posterity.
@@ -74,10 +73,10 @@ Run this script before shipping notable UI changes, especially around upload/pla
 
    * Launch the site, open the Upload modal, and confirm required-field validation (title + one of URL/magnet).
    * Submit with URL only, magnet only, and both; ensure success states are clear.
-2. **URL-first playback**
+2. **Hybrid playback**
 
-   * Publish a post with both URL and magnet. Load the card and verify the player fetches the hosted URL first (check network tab or logs).
-   * Temporarily block the URL (e.g., devtools throttling or offline). Confirm playback seamlessly falls back to the magnet.
+   * Publish a post with both URL and magnet. Load the card and verify the player fetches the configured preferred source first (check network tab or logs).
+   * Temporarily block the primary source (e.g., devtools throttling or offline). Confirm playback seamlessly falls back to the secondary source.
 3. **Magnet hygiene**
 
    * Paste an encoded magnet; ensure `safeDecodeMagnet()` returns the raw value and the final string still includes the original `xt` hash.
