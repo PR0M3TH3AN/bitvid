@@ -32,6 +32,33 @@ function runWorkerTask(type, payload) {
   });
 }
 
+export function toLightweightVideo(video) {
+  if (!video || typeof video !== "object") {
+    return null;
+  }
+
+  const lightweight = {
+    id: video.id,
+    kind: video.kind,
+    pubkey: video.pubkey,
+    nip71: video.nip71,
+    tags: [],
+  };
+
+  if (Array.isArray(video.tags)) {
+    for (const t of video.tags) {
+      if (Array.isArray(t) && t.length >= 2) {
+        const type = t[0];
+        if (type === "d" || type === "t") {
+          lightweight.tags.push(t);
+        }
+      }
+    }
+  }
+
+  return lightweight;
+}
+
 export async function buildWatchHistoryTagCounts({
   watchHistoryService,
   nostrService,
@@ -51,10 +78,15 @@ export async function buildWatchHistoryTagCounts({
     items = [];
   }
 
-  const videosMap =
+  const sourceMap =
     nostrService && typeof nostrService.getVideosMap === "function"
       ? nostrService.getVideosMap()
       : new Map();
+
+  const videosMap = new Map();
+  for (const [id, video] of sourceMap) {
+    videosMap.set(id, toLightweightVideo(video));
+  }
 
   try {
     const counts = await runWorkerTask('CALC_HISTORY_COUNTS', { items, videosMap });
@@ -71,8 +103,10 @@ export async function buildTagIdf({ videos } = {}) {
     return new Map();
   }
 
+  const lightweightVideos = list.map(toLightweightVideo);
+
   try {
-    const idf = await runWorkerTask('CALC_IDF', { videos: list });
+    const idf = await runWorkerTask('CALC_IDF', { videos: lightweightVideos });
     return idf instanceof Map ? idf : new Map();
   } catch (error) {
     devLogger.warn("[exploreData] Worker failed to calculate IDF:", error);
