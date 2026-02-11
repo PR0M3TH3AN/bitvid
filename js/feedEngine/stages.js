@@ -173,9 +173,9 @@ async function resolveTimestampWithResolvers({
     return null;
   }
 
-  for (const resolver of resolvers) {
+  const promises = resolvers.map(async (resolver) => {
     if (typeof resolver !== "function") {
-      continue;
+      throw new Error("Resolver is not a function");
     }
 
     try {
@@ -183,12 +183,20 @@ async function resolveTimestampWithResolvers({
       if (Number.isFinite(value)) {
         return Math.floor(value);
       }
+      throw new Error("Invalid timestamp value");
     } catch (error) {
-      context?.log?.(`[${stageName}] resolve timestamp hook threw`, error);
+      if (error.message !== "Invalid timestamp value") {
+        context?.log?.(`[${stageName}] resolve timestamp hook threw`, error);
+      }
+      throw error;
     }
-  }
+  });
 
-  return null;
+  try {
+    return await Promise.any(promises);
+  } catch (error) {
+    return null;
+  }
 }
 
 export function createResolvePostedAtStage({
