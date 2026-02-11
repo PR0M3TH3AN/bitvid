@@ -143,7 +143,7 @@ To run **bitvid** locally:
 
 2. Install dependencies:
 
-   Use `npm ci` to install dependencies exactly as specified in `package-lock.json`. This ensures `npx` finds the correct local `tailwindcss` version.
+   The project requires Node.js v22 or higher. Use `npm ci` to install dependencies exactly as specified in `package-lock.json`.
 
    ```bash
    npm ci
