@@ -47,9 +47,10 @@ Read both `AGENTS.md` and `CLAUDE.md` before executing any task.
 | 15 | onboarding-audit-agent | `bitvid-onboarding-audit-agent.md` |
 | 16 | perf-agent | `bitvid-perf-agent.md` |
 | 17 | prompt-curator-agent | `bitvid-prompt-curator-agent.md` |
-| 18 | style-agent | `bitvid-style-agent.md` |
-| 19 | test-audit-agent | `bitvid-test-audit-agent.md` |
-| 20 | todo-triage-agent | `bitvid-todo-triage-agent.md` |
+| 18 | scheduler-update-agent | `bitvid-scheduler-update-agent.md` |
+| 19 | style-agent | `bitvid-style-agent.md` |
+| 20 | test-audit-agent | `bitvid-test-audit-agent.md` |
+| 21 | todo-triage-agent | `bitvid-todo-triage-agent.md` |
 
 ---
 
