@@ -84,6 +84,10 @@ bitvid/
 | `tests/e2e/helpers/bitvidTestFixture.ts` | Reusable Playwright fixture for agent testing |
 | `scripts/agent/simple-relay.mjs` | Mock Nostr relay with HTTP seeding API |
 | `docs/nostr-event-schemas.md` | Event schema documentation |
+| `CONTEXT.md` | Agent working state: current goal, scope, assumptions (see AGENTS.md §15) |
+| `TODO.md` | Agent task checklist with done/blocked sections (see AGENTS.md §15) |
+| `DECISIONS.md` | Agent decision log: choices, alternatives, rationale (see AGENTS.md §15) |
+| `TEST_LOG.md` | Agent verification log: commands run and results (see AGENTS.md §15) |
 
 ---
 
@@ -475,6 +479,7 @@ When assigning work to agents:
 | `docs/playback-fallback.md` | URL-first strategy |
 | `docs/moderation/README.md` | Moderation system |
 | `docs/logging.md` | Logger usage |
+| `CONTEXT.md` / `TODO.md` / `DECISIONS.md` / `TEST_LOG.md` | Agent persistent state files (see AGENTS.md §15) |
 
 ---
 
@@ -525,7 +530,7 @@ Validation: Must have `title` + at least one of `url` or `magnet`.
 
 ## Final Notes
 
-1. **Read AGENTS.md first** — it contains mission-critical architectural decisions
+1. **Read AGENTS.md first** — it contains mission-critical architectural decisions and the Agent Execution Protocol (§15)
 2. **Check KNOWN_ISSUES.md** — avoid investigating pre-existing failures
 3. **Use sharded tests** — faster feedback during development
 4. **Never commit generated CSS** — `css/tailwind.generated.css` is gitignored
