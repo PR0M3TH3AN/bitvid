@@ -1,19 +1,11 @@
-# CONTEXT - bitvid-audit-agent
+# Context
 
-## Goal
-Run the daily/weekly static audit scripts (file size, innerHTML, lint) to detect regressions and generate a report.
-
-## Scope
-- Repo: `PR0M3TH3AN/bitvid` (unstable branch).
-- Focus: Static analysis reports.
-
-## Constraints
-- Read-only job (do not modify source files).
-- Reproducible reports.
-- Confidentiality (redact secrets).
-
-## Definition of Done
-- Audit scripts run successfully.
-- Artifacts (`raw-*.log`, `*-report.json`) generated.
-- `summary.md` created.
-- `AGENT_TASK_LOG.csv` updated.
+**Goal:** Execute the `bitvid-ci-health-agent` task.
+**Scope:** Fix flaky tests.
+**Status:** Fixed `tests/watch-history.test.mjs` using `waitFor`.
+**Definition of Done:**
+- [x] Inspect CI config and package.json.
+- [x] Run unit tests locally to detect flakes.
+- [x] Fix identified flakes or document them.
+- [x] Generate a CI health report (captured in PR description/DECISIONS.md).
+- [x] Update AGENT_TASK_LOG.csv.

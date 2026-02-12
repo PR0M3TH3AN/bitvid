@@ -43,3 +43,14 @@ Ran a daily dependency audit. Found `esbuild` (0.27.2 -> 0.27.3) as a safe candi
 - **Outcome:** IMPLEMENTED.
 - **Reason:** To prevent network saturation and UI freeze.
 - **Details:** Used `RELAY_BACKGROUND_CONCURRENCY` (3) to limit concurrent background requests. Fast relays (top 3) are still fetched in parallel (unbounded, but small set).
+
+## 2026-02-12: CI Health - Fix Flaky Watch History Test
+
+### Context
+`testWatchHistoryFeedHydration` in `tests/watch-history.test.mjs` was identified as flaky (explicit "Retry mechanism" comment) and swallowed assertions.
+
+### Decision: Replace Loop with `waitFor`
+- **Problem:** Manual `setTimeout` loop + `try/catch` masked errors and was fragile.
+- **Decision:** Use `waitFor` utility to poll for state change and throw proper error on timeout.
+- **Rationale:** Aligns with `ci-health-agent` prompt ("Add deterministic waits", "Fix safely").
+- **Notes:** Test is not currently part of CI `npm run test:unit` (skipped by runner), but fixing the code improves health for future inclusion/manual runs.
