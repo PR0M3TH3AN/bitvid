@@ -33,6 +33,7 @@ Read both `AGENTS.md` and `CLAUDE.md` before executing any task.
 | 1 | changelog-agent | `bitvid-changelog-agent.md` |
 | 2 | frontend-console-debug-agent | `bitvid-frontend-console-debug-agent.md` |
 | 3 | perf-deepdive-agent | `bitvid-perf-deepdive-agent.md` |
+| 4 | race-condition-agent | `bitvid-race-condition-agent.md` |
 
 ---
 
