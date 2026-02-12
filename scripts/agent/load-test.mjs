@@ -378,7 +378,7 @@ function generateReport() {
   });
 
   if (avgSignTime > 10) {
-      report.proposedRemediation.push("Use optimized crypto library (e.g. secp256k1-wasm) or offload signing to a worker/signer.");
+      report.proposedRemediation.push("Use optimized crypto library (e.g. secp256k1-wasm) or offload signing to a worker/signer. ACTION REQUIRED: Open issue and mark 'requires-security-review'.");
   } else {
       report.proposedRemediation.push("Signing speed is good (<10ms). Focus on network I/O.");
   }
