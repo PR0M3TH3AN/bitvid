@@ -1,17 +1,23 @@
-# Upgrade esbuild
+# Upgrade Attempt: esbuild (v0.27.2 -> v0.27.3)
 
-## Status
-- **Current:** `0.27.2`
-- **Latest:** `0.27.3`
+**Status:** FAILED (Reverted)
+**Date:** 2026-02-17
 
 ## Details
-`esbuild` 0.x versions may have breaking changes between minor versions, but this is a patch.
-Used for build scripts (`scripts/build-dist.mjs`, `scripts/build-beacon.mjs`).
+Attempted to upgrade `esbuild` from `0.27.2` to `0.27.3`.
 
-## Plan
-1. Update `esbuild`.
-2. Run build scripts: `npm run build`, `npm run build:beacon`.
-3. Verify output bundles work correctly.
+## Test Results
+- `npm run build`: **PASSED**
+- `npm run test:unit`: **PASSED**
+- `npm run test:dm:integration`: **PASSED**
+- `npm run test:e2e`: **FAILED** (Environment Issue)
 
-## Guardrails
-- Build tool upgrade.
+## Failure Analysis
+The E2E tests failed because the Playwright browser binaries were not found in the CI environment:
+```
+Error: browserType.launch: Executable doesn't exist at /home/jules/.cache/ms-playwright/chromium_headless_shell-1208/chrome-headless-shell-linux64/chrome-headless-shell
+```
+
+## Next Steps
+- Ensure the CI/Agent environment has `npx playwright install` run before attempting upgrades that require E2E verification.
+- Once browsers are available, retry the upgrade.
