@@ -1,4 +1,5 @@
 import { userLogger as _fallbackUserLogger, devLogger as _fallbackDevLogger } from "../utils/logger.js";
+import { SHORT_TIMEOUT_MS } from "../constants.js";
 
 export default class NotificationController {
   constructor({
@@ -98,7 +99,7 @@ export default class NotificationController {
         container.textContent = "";
         container.classList.add("hidden");
         this.updateNotificationPortalVisibility();
-      }, 5000);
+      }, SHORT_TIMEOUT_MS);
     }
   }
 
@@ -236,7 +237,7 @@ export default class NotificationController {
         container.textContent = "";
         container.classList.add("hidden");
         this.updateNotificationPortalVisibility();
-      }, 5000);
+      }, SHORT_TIMEOUT_MS);
     }
   }
 
