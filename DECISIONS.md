@@ -1,5 +1,14 @@
 # Decisions Log
 
+## 2026-02-12: Audit Run
+
+### Context
+Running the scheduled `audit-agent` task.
+
+### Decision: Initial Run
+- **Action:** Created initial audit report artifacts.
+- **Rationale:** No previous reports found, so no delta comparison performed.
+
 ## 2026-02-17: Dependency Audit & Upgrade
 
 ### Context
