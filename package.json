@@ -8,6 +8,7 @@
   },
   "scripts": {
     "start": "npm run build && npx serve dist",
+    "prepare": "npm run build:css",
     "serve": "npx serve",
     "build": "node scripts/build-dist.mjs && npm run verify:dist:deploy-artifact",
     "build:css": "postcss css/tailwind.source.css -o css/tailwind.generated.css",
