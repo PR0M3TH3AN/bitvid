@@ -54,3 +54,15 @@ Ran a daily dependency audit. Found `esbuild` (0.27.2 -> 0.27.3) as a safe candi
 - **Decision:** Use `waitFor` utility to poll for state change and throw proper error on timeout.
 - **Rationale:** Aligns with `ci-health-agent` prompt ("Add deterministic waits", "Fix safely").
 - **Notes:** Test is not currently part of CI `npm run test:unit` (skipped by runner), but fixing the code improves health for future inclusion/manual runs.
+
+## 2026-02-18: Constants Refactor
+
+### Decision: Use `STANDARD_TIMEOUT_MS` for 10000
+- **Proposal:** Replace literal `10000` with `STANDARD_TIMEOUT_MS`.
+- **Outcome:** IMPLEMENTED.
+- **Reason:** Canonicalize timeout values in `js/nostr/client.js`, `js/nostr/relayBatchFetcher.js`, `js/userBlocks.js`.
+
+### Decision: Use `SHORT_TIMEOUT_MS` for 5000
+- **Proposal:** Replace literal `5000` with `SHORT_TIMEOUT_MS`.
+- **Outcome:** IMPLEMENTED.
+- **Reason:** Canonicalize timeout values in `js/nostr/managers/SignerManager.js`, `js/nostr/nip07Permissions.js`, `js/nostr/nip46Client.js`, `js/ui/engagementController.js`, `js/ui/applicationBootstrap.js`.

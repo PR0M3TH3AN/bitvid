@@ -125,6 +125,7 @@ import {
   resolveSimplePoolConstructor,
   shimLegacySimplePoolMethods,
 } from "./toolkit.js";
+import { STANDARD_TIMEOUT_MS } from "../constants.js";
 import { encryptNip04InWorker } from "./nip04WorkerClient.js";
 import {
   decryptDmInWorker,
@@ -808,7 +809,7 @@ export class NostrClient {
     relayUrls,
     fetchFn,
     since,
-    timeoutMs = 10000,
+    timeoutMs = STANDARD_TIMEOUT_MS,
   } = {}) {
     return this.relayBatchFetcher.fetchListIncrementally({
       kind,
@@ -1415,7 +1416,7 @@ export class NostrClient {
 
     return new Promise((resolve) => {
       const sub = this.pool.sub(relaysToUse, filters);
-      const timeoutMs = options.timeoutMs || 10000;
+      const timeoutMs = options.timeoutMs || STANDARD_TIMEOUT_MS;
       let settled = false;
       let timeoutId = null;
 

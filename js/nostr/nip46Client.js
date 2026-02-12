@@ -42,6 +42,7 @@ import {
   summarizeRpcResultForLog,
   summarizeRelayPublishResultsForLog,
 } from "./nip46LoggingUtils.js";
+import { SHORT_TIMEOUT_MS } from "../constants.js";
 
 export const NIP46_RPC_KIND = 24_133;
 const NIP46_SESSION_STORAGE_KEY = "bitvid:nip46:session:v1";
@@ -1877,7 +1878,7 @@ export class Nip46RpcClient {
   async ping() {
     try {
       const result = await this.sendRpc("ping", [], {
-        timeoutMs: 5000,
+        timeoutMs: SHORT_TIMEOUT_MS,
         retries: 0,
         priority: NIP46_PRIORITY.HIGH,
       });

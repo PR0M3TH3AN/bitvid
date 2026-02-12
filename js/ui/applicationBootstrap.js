@@ -82,6 +82,7 @@ import {
   closeStaticModal,
 } from "./components/staticModalAccessibility.js";
 import ModalManager from "./ModalManager.js";
+import { SHORT_TIMEOUT_MS } from "../constants.js";
 
 export default class ApplicationBootstrap {
   constructor({
@@ -899,7 +900,7 @@ export default class ApplicationBootstrap {
           if (this.window && typeof this.window.setTimeout === "function") {
             this.window.setTimeout(() => {
               app.showStatus("");
-            }, 5000);
+            }, SHORT_TIMEOUT_MS);
           }
         } else {
           app.showError(message);

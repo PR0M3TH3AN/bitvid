@@ -53,6 +53,7 @@ import { createPrivateKeyCipherClosures } from "../signerHelpers.js";
 import { queueSignEvent } from "../signRequestQueue.js";
 import { signEventWithPrivateKey } from "../publishHelpers.js";
 import { ensureNostrTools, getCachedNostrTools } from "../toolkit.js";
+import { SHORT_TIMEOUT_MS } from "../../constants.js";
 
 export function resolveSignerCapabilities(signer) {
   const fallback = {
@@ -390,7 +391,7 @@ export class SignerManager {
 
     if (!extension && this.extensionPermissionCache && this.extensionPermissionCache.size > 0) {
       try {
-        await waitForNip07Extension(5000);
+        await waitForNip07Extension(SHORT_TIMEOUT_MS);
         extension = window.nostr;
       } catch (error) {
         // Fall through to existing signer check

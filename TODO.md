@@ -3,3 +3,5 @@
 - [x] Fix flaky `tests/watch-history.test.mjs`
 - [x] Update `AGENT_TASK_LOG.csv`
 - [ ] Submit PR
+- [x] Refactor Standard Timeouts (10000 -> STANDARD_TIMEOUT_MS)
+- [x] Refactor Short Timeouts (5000 -> SHORT_TIMEOUT_MS)
