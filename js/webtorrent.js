@@ -19,7 +19,7 @@
  */
 
 import WebTorrent from "./webtorrent.min.js";
-import { WSS_TRACKERS } from "./constants.js";
+import { WSS_TRACKERS, LONG_TIMEOUT_MS } from "./constants.js";
 import { safeDecodeURIComponent } from "./utils/safeDecode.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import { emit } from "./embedDiagnostics.js";
@@ -176,7 +176,7 @@ export class TorrentClient {
     this.serviceWorkerError = null;
 
     // Timeout for SW operations
-    this.TIMEOUT_DURATION = 60000;
+    this.TIMEOUT_DURATION = LONG_TIMEOUT_MS;
     this.swLifecycleListenerAttached = false;
   }
 

@@ -1,4 +1,5 @@
 import { devLogger } from "../utils/logger.js";
+import { SHORT_TIMEOUT_MS } from "../constants.js";
 
 export default class EngagementController {
   constructor({ services = {}, ui = {}, state = {} } = {}) {
@@ -382,7 +383,7 @@ export default class EngagementController {
         ) {
           window.setTimeout(() => {
             this.ui.showStatus("");
-          }, 5000);
+          }, SHORT_TIMEOUT_MS);
         }
         return;
       }

@@ -22,7 +22,7 @@ import r2Service from "../services/r2Service.js";
 import s3UploadService from "../services/s3UploadService.js";
 import RelayHealthService from "../services/relayHealthService.js";
 import { createFeedEngine } from "../feedEngine/index.js";
-import { URL_FIRST_ENABLED } from "../constants.js";
+import { URL_FIRST_ENABLED, SHORT_TIMEOUT_MS } from "../constants.js";
 import { ALLOW_NSFW_CONTENT } from "../config.js";
 import { relayManager } from "../relayManager.js";
 import { userBlocks } from "../userBlocks.js";
@@ -899,7 +899,7 @@ export default class ApplicationBootstrap {
           if (this.window && typeof this.window.setTimeout === "function") {
             this.window.setTimeout(() => {
               app.showStatus("");
-            }, 5000);
+            }, SHORT_TIMEOUT_MS);
           }
         } else {
           app.showError(message);
