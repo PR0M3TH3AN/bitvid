@@ -133,13 +133,12 @@ Deliverable:
 
 5) DELIVER — PR + summary
   - Open a PR with:
-      - Title: `📘 Align development docs with codebase behavior`
-        (Use repo PR title conventions if emojis are disallowed by policy.)
+      - Title: `docs: align development docs with codebase behavior`
       - Description must include:
-          - 💡 What changed
-          - 🎯 Why (what mismatch/confusion it fixed)
-          - ✅ Validation (commands/tests run or why not)
-          - 📌 Notes (remaining gaps + follow-ups + issues opened)
+          - What changed
+          - Why (what mismatch/confusion it fixed)
+          - Validation (commands/tests run or why not)
+          - Notes (remaining gaps + follow-ups + issues opened)
 
 ───────────────────────────────────────────────────────────────────────────────
 FAILURE MODES (default: stop, document, open issue)

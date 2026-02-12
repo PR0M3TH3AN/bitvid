@@ -92,11 +92,11 @@ WORKFLOW (MANDATORY)
 
 5) PRESENT — create the PR and document the work
    - Branch name: `ai/perf-<short>-vX.Y` (follow `AGENTS.md` conventions).
-   - PR title: `⚡ perf: <short description>` (or `perf:` if emojis not allowed).
+   - PR title: `perf: <short description>`
    - PR body must include:
-     - 💡 What: brief change summary
-     - 🎯 Why: bottleneck being addressed
-     - 📊 Measured improvement: baseline vs after (+% change)
+     - What: brief change summary
+     - Why: bottleneck being addressed
+     - Measured improvement: baseline vs after (+% change)
      - Method: commands, harness, env notes, run counts
      - Tests & verification steps run
      - Risk/rollback plan
@@ -140,7 +140,7 @@ OUTPUTS PER RUN
 - `BASELINE.md` — commands, environment, and baseline numbers
 - 0–1 PR with the optimization, tests, and documentation:
   - branch: `ai/perf-<short>-vX.Y`
-  - PR title: `⚡ perf: <short description>`
+  - PR title: `perf: <short description>`
   - PR body with baseline/after comparisons and verification steps
 - `AFTER.md` — after-measurement and comparison
 - 0–N issues for follow-up or risky items
