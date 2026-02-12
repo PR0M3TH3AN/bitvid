@@ -30,10 +30,22 @@ Read both `AGENTS.md` and `CLAUDE.md` before executing any task.
 
 | # | Agent Name | Prompt File |
 |---|-----------|-------------|
-| 1 | changelog-agent | `bitvid-changelog-agent.md` |
-| 2 | frontend-console-debug-agent | `bitvid-frontend-console-debug-agent.md` |
-| 3 | perf-deepdive-agent | `bitvid-perf-deepdive-agent.md` |
-| 4 | race-condition-agent | `bitvid-race-condition-agent.md` |
+| 1 | bug-reproducer-agent | `bitvid-bug-reproducer-agent.md` |
+| 2 | changelog-agent | `bitvid-changelog-agent.md` |
+| 3 | dead-code-agent | `bitvid-dead-code-agent.md` |
+| 4 | event-schema-agent | `bitvid-event-schema-agent.md` |
+| 5 | frontend-console-debug-agent | `bitvid-frontend-console-debug-agent.md` |
+| 6 | fuzz-agent | `bitvid-fuzz-agent.md` |
+| 7 | interop-agent | `bitvid-interop-agent.md` |
+| 8 | perf-deepdive-agent | `bitvid-perf-deepdive-agent.md` |
+| 9 | perf-optimization-agent | `bitvid-perf-optimization-agent.md` |
+| 10 | pr-review-agent | `bitvid-pr-review-agent.md` |
+| 11 | race-condition-agent | `bitvid-race-condition-agent.md` |
+| 12 | refactor-agent | `bitvid-refactor-agent.md` |
+| 13 | smoke-agent | `bitvid-smoke-agent.md` |
+| 14 | telemetry-agent | `bitvid-telemetry-agent.md` |
+| 15 | test-coverage-agent | `bitvid-test-coverage-agent.md` |
+| 16 | weekly-synthesis-agent | `bitvid-weekly-synthesis-agent.md` |
 
 ---
 
