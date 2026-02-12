@@ -755,6 +755,9 @@ export class NostrClient {
    * Restores application state from the best available local cache.
    * Delegates to PersistenceManager.
    *
+   * This method ensures the UI can render immediately (Stale-While-Revalidate)
+   * by loading `activeMap`, `allEvents`, and `tombstones` from IndexedDB.
+   *
    * @returns {Promise<boolean>} True if data was successfully restored.
    */
   async restoreLocalData() {
@@ -1065,6 +1068,11 @@ export class NostrClient {
     return this.connectionManager.ensurePool();
   }
 
+  /**
+   * Delegates to `ConnectionManager` to connect to all configured relays.
+   *
+   * @returns {Promise<Array<{url: string, success: boolean}>>} Connection results for each relay.
+   */
   async connectToRelays() {
     return this.connectionManager.connectToRelays();
   }
@@ -1104,17 +1112,6 @@ export class NostrClient {
   getHealthyRelays(candidates) {
     return this.connectionManager.getHealthyRelays(candidates);
   }
-
-  /**
-   * Logs out the current user and clears all session state.
-   *
-   * **Cleanup:**
-   * - Clears `this.pubkey` and notifies the global signer registry.
-   * - Wipes session actor (ephemeral keys).
-   * - Disconnects NIP-46 remote signer (if active).
-   * - Clears Watch History cache.
-   * - Resets permissions cache.
-   */
 
   getDmDecryptCacheLimit() {
     return DM_DECRYPT_CACHE_LIMIT;
@@ -2300,6 +2297,8 @@ export class NostrClient {
     const signerCapabilities = resolveSignerCapabilities(signer);
     const useNip17 = Boolean(resolvedOptions.useNip17);
 
+    // Heuristic: If attachments are present, we MUST use NIP-17 because
+    // NIP-04 does not support rich metadata or multiple recipients securely.
     if (hasAttachments && !useNip17) {
       return { ok: false, error: "attachments-unsupported" };
     }
@@ -2331,6 +2330,8 @@ export class NostrClient {
     };
 
     if (useNip17) {
+      // Protocol: NIP-17 (Sealed Rumor)
+      // Requires NIP-44 encryption and NIP-65 relay discovery.
       if (!signerCapabilities.nip44 || typeof signer.nip44Encrypt !== "function") {
         return { ok: false, error: "nip44-unsupported" };
       }
@@ -2369,6 +2370,8 @@ export class NostrClient {
       });
     }
 
+    // Protocol: NIP-04 (Legacy)
+    // Fallback for older clients. Simple ECDH encryption.
     return this._sendNip04DirectMessage({
       signer,
       signingAdapter,
@@ -2638,6 +2641,16 @@ export class NostrClient {
     return this.signerManager.clearStoredSessionActor();
   }
 
+  /**
+   * Logs out the current user and clears all session state.
+   *
+   * **Cleanup:**
+   * - Clears `this.pubkey` and notifies the global signer registry.
+   * - Wipes session actor (ephemeral keys).
+   * - Disconnects NIP-46 remote signer (if active).
+   * - Clears Watch History cache.
+   * - Resets permissions cache.
+   */
   logout() {
     return this.signerManager.logout();
   }
@@ -2853,6 +2866,16 @@ export class NostrClient {
     return { matchingEvents, inferredRoot };
   }
 
+  /**
+   * Helper to perform a soft delete (revert) on a set of video events.
+   * Publishes a new version with `deleted: true` for each unique d-tag found.
+   *
+   * @param {Map} matchingEvents - The events to delete.
+   * @param {string} inferredRoot - The root ID of the series.
+   * @param {object} targetVideo - The main video object being deleted.
+   * @param {string} pubkey - The active user's pubkey.
+   * @returns {Promise<{revertSummaries: object[], revertEvents: object[]}>}
+   */
   async _softDeleteVersions(matchingEvents, inferredRoot, targetVideo, pubkey) {
     const revertSummaries = [];
     const revertEvents = [];
@@ -2935,6 +2958,17 @@ export class NostrClient {
     return { revertSummaries, revertEvents };
   }
 
+  /**
+   * Helper to perform a hard delete (Kind 5) on a set of video events.
+   * Collects all event IDs (`e` tags) and addresses (`a` tags) and publishes a deletion request.
+   *
+   * @param {Map} matchingEvents - The original events to delete.
+   * @param {object[]} revertEvents - The soft-delete events created in the previous step (also deleted).
+   * @param {object} targetVideo - The main video object.
+   * @param {string} inferredRoot - The root ID.
+   * @param {string} pubkey - The active user's pubkey.
+   * @returns {Promise<object[]>} Summary of deletion results.
+   */
   async _hardDeleteVersions(matchingEvents, revertEvents, targetVideo, inferredRoot, pubkey) {
     const eventIdSet = new Set();
     const addressPointerSet = new Set();
@@ -3246,12 +3280,6 @@ export class NostrClient {
    * @returns {import("nostr-tools").Sub} The subscription object. Call `unsub()` to stop listening.
    */
   subscribeVideos(onVideo, options = {}) {
-    // Explanation:
-    // This method handles the primary video feed. It uses a buffering strategy to
-    // prevent UI thrashing when thousands of events arrive at once (e.g. initial load).
-    // Incoming events are pushed to `eventBuffer` and processed in batches
-    // via `flushEventBuffer` which is debounced.
-
     const { since, until, limit } = options;
     const latestCachedCreatedAt = this.getLatestCachedCreatedAt();
 
@@ -3318,6 +3346,12 @@ export class NostrClient {
     return sub;
   }
 
+  /**
+   * Delegates to `processNip71EventsHelper` to parse and cache NIP-71 metadata from events.
+   *
+   * @param {import("nostr-tools").Event[]} events - The raw events to process.
+   * @param {Map} [pointerMap] - Optional optimization map.
+   */
   processNip71Events(events, pointerMap = null) {
     processNip71EventsHelper(events, {
       nip71Cache: this.nip71Cache,
@@ -3325,12 +3359,24 @@ export class NostrClient {
     });
   }
 
+  /**
+   * Delegates to `mergeNip71MetadataIntoVideoHelper` to apply cached NIP-71 metadata to a video.
+   *
+   * @param {object} video - The video object to mutate.
+   * @returns {object} The mutated video object.
+   */
   mergeNip71MetadataIntoVideo(video) {
     return mergeNip71MetadataIntoVideoHelper(video, {
       nip71Cache: this.nip71Cache,
     });
   }
 
+  /**
+   * Delegates to `populateNip71MetadataForVideosHelper` to fetch missing NIP-71 metadata.
+   *
+   * @param {object[]} videos - The list of video objects to hydrate.
+   * @returns {Promise<void>}
+   */
   async populateNip71MetadataForVideos(videos = []) {
     if (!Array.isArray(videos) || !videos.length) {
       return;
@@ -3804,17 +3850,6 @@ export class NostrClient {
    * @returns {Promise<object[]>} A promise resolving to an array of Video objects, sorted from newest to oldest.
    */
   async hydrateVideoHistory(video) {
-    // Explanation:
-    // This method reconstructs the edit history of a video series.
-    // Since Nostr events are immutable, "editing" creates a new event.
-    // We link these events together using:
-    // 1. `videoRootId` (V3 canonical ID) - The primary key for the series.
-    // 2. `d` tag (NIP-33 addressability) - The secondary key for lookups.
-    // 3. Fallback: Matching ID for legacy V1/V2 posts (where ID was the root).
-    //
-    // The method first checks local cache (`allEvents`), and if data is sparse,
-    // queries relays for the specific `d` tag to find missing links.
-
     if (!video || typeof video !== "object") {
       return [];
     }
@@ -3827,6 +3862,7 @@ export class NostrClient {
 
     let localMatches = this.getLocalVideoHistory(video);
 
+    // Ensure we have the "Root" event (genesis block) even if we didn't start with it.
     const ensureRootPresence = async () => {
       const normalizedRoot = targetRoot && typeof targetRoot === "string"
         ? targetRoot
@@ -3872,6 +3908,8 @@ export class NostrClient {
 
     await ensureRootPresence();
 
+    // Heuristic: If we only have 1 version (the current one) and it's addressable (d-tag),
+    // we likely missed history. Query relays for all events with the same d-tag to fill gaps.
     const shouldFetchFromRelays =
       localMatches.filter((entry) => !entry.deleted).length <= 1 && targetDTag;
 
