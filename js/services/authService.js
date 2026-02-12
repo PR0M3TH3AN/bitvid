@@ -43,6 +43,8 @@ import {
   normalizeProviderId,
   normalizeAuthType,
 } from "./authUtils.js";
+import { pMap } from "../utils/asyncUtils.js";
+import { RELAY_BACKGROUND_CONCURRENCY } from "../nostr/relayConstants.js";
 
 export default class AuthService {
   constructor({
@@ -1146,21 +1148,30 @@ export default class AuthService {
         true,
       ),
     );
-    const backgroundPromises = backgroundRelays.map((relayUrl) =>
-      this.fetchProfileFromRelay(
-        relayUrl,
-        filter,
-        normalized,
-        BACKGROUND_PROFILE_TIMEOUT_MS,
-        false,
-      ),
-    );
 
-    const background = Promise.allSettled([
-      ...fastPromises,
-      ...backgroundPromises,
+    const background = Promise.all([
+      Promise.allSettled(fastPromises),
+      pMap(
+        backgroundRelays,
+        async (relayUrl) => {
+          try {
+            const value = await this.fetchProfileFromRelay(
+              relayUrl,
+              filter,
+              normalized,
+              BACKGROUND_PROFILE_TIMEOUT_MS,
+              false,
+            );
+            return { status: "fulfilled", value };
+          } catch (reason) {
+            return { status: "rejected", reason };
+          }
+        },
+        { concurrency: RELAY_BACKGROUND_CONCURRENCY },
+      ),
     ])
-      .then((outcomes) => {
+      .then(([fastOutcomes, backgroundOutcomes]) => {
+        const outcomes = [...fastOutcomes, ...backgroundOutcomes];
         const aggregated = [];
         outcomes.forEach((outcome) => {
           if (outcome.status === "fulfilled") {
