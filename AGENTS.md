@@ -240,6 +240,42 @@ When you create a PR or start work, leave a clear signal:
 - **PR title prefix**: Use a descriptive prefix like `[nostr-core]`, `[playback]`, `[ui]`, `[ci]` so the scope is visible at a glance.
 - **PR description**: Include a "Files Modified" section listing the key files touched, so other agents can quickly detect conflicts.
 
+### Task Claiming Protocol (Draft PR Lock)
+
+To prevent multiple agents from working on the same task simultaneously, every agent must **check for and create a draft PR** before starting work. The draft PR acts as a distributed lock visible to all agents across all platforms (Claude Code, Codex, Jules).
+
+**Before starting any task:**
+
+1. **Check for existing claims.** Search for open or draft PRs matching the task:
+   ```
+   gh pr list --state open --search "<agent-name-or-task-identifier>"
+   ```
+   If a matching PR exists (open or draft), **skip the task** — another agent is already working on it.
+
+2. **Claim the task.** If no matching PR exists:
+   a. Create your working branch.
+   b. Make a minimal initial commit (e.g., update `CONTEXT.md` with the task scope).
+   c. Push the branch and immediately open a **draft PR**:
+      ```
+      gh pr create --draft \
+        --title "[<zone>] <agent-name>: <brief description>" \
+        --body "Claimed by <agent-name> at <timestamp>. Work in progress."
+      ```
+   d. Only after the draft PR is successfully created, begin the actual work.
+
+3. **Handle race conditions.** After creating your draft PR, re-check for duplicates:
+   ```
+   gh pr list --state open --search "<agent-name-or-task-identifier>"
+   ```
+   If you find another agent's PR for the same task that was created **before** yours, close your PR with `gh pr close <your-pr-number>` and skip the task.
+
+4. **Convert to ready when done.** When the task is complete and verified, mark the draft PR as ready for review:
+   ```
+   gh pr ready
+   ```
+
+**Scheduler agents:** Daily and weekly scheduler agents must follow this protocol in addition to their CSV-based rotation logic. The draft PR check happens _after_ determining the next task but _before_ executing it. See the scheduler prompts for the specific implementation steps.
+
 ### Currently In-Flight Work
 
 <!-- Maintainer: update this list when assigning work to agents. Agents: check this before starting. -->

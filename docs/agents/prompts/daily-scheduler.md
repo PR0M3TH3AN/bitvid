@@ -54,6 +54,43 @@ Read both `AGENTS.md` and `CLAUDE.md` before executing any task.
 
 ---
 
+## Step 1.5 — Claim the Task (Prevent Duplicate Work)
+
+Before executing the selected task, verify that no other agent is already working on it. Multiple agents may be running simultaneously across different platforms (Claude Code, Codex, Jules), so this check is **mandatory**.
+
+1. **Check for existing claims.** Search for open or draft PRs matching this agent:
+   ```
+   gh pr list --state open --search "<agent-name>"
+   ```
+   For example, if the selected agent is `audit-agent`, run:
+   ```
+   gh pr list --state open --search "audit-agent"
+   ```
+   If any matching PR exists (open or draft), this task is **already claimed**.
+
+2. **If already claimed:** Skip to the **next agent** in the roster (following the same alphabetical wrap-around rule from Step 1). Repeat this claim check for the new agent. If you cycle through the entire roster and all agents are claimed, log as `failed` with summary `"All roster tasks currently claimed by other agents"` and stop.
+
+3. **If unclaimed:** Claim the task immediately by creating a draft PR:
+   a. Create your working branch.
+   b. Make a minimal initial commit (e.g., update `CONTEXT.md` with the task scope).
+   c. Push the branch and open a **draft PR**:
+      ```
+      gh pr create --draft \
+        --title "[daily] <agent-name>: <brief task description>" \
+        --body "Claimed by daily scheduler at $(date -u +%Y-%m-%dT%H:%M:%SZ). Work in progress."
+      ```
+   d. Verify the draft PR was created successfully before proceeding to Step 2.
+
+4. **Race condition check:** After creating the draft PR, re-check:
+   ```
+   gh pr list --state open --search "<agent-name>"
+   ```
+   If you see another PR for this agent that was created *before* yours (by a different agent instance), close your PR with `gh pr close <your-pr-number>` and skip to the next agent.
+
+**Important:** The draft PR is your lock. Do not skip this step. It prevents other agents on different platforms from picking up the same task.
+
+---
+
 ## Step 2 — Execute the Task
 
 1. Read the selected agent's prompt file from `/docs/agents/prompts/daily/<filename>`.
