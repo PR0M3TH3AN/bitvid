@@ -24,3 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Reverted webseed regression fix (PR #2002 by thePR0M3TH3AN)
+
+### Security
+
+- Fixed magnet parameter injection vulnerability via `xt` parameter decoding. (PR #2345 by PR0M3TH3AN)
