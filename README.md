@@ -163,7 +163,7 @@ To run **bitvid** locally:
    http://localhost:3000
    ```
 
-   _(Note: The default port is 3000, but `npx serve` may select a different port if 3000 is in use. Check your terminal output.)_
+   _(Note: The application runs via `npx serve`. The default port is 3000, but it may select a different port if 3000 is occupied. Check your terminal output for the correct URL.)_
 
    _Note: If you prefer manual steps, run `npm run build` followed by `npx serve dist` (or `cd dist && python3 -m http.server 3000`), then open the root URL printed by the server (for example `http://localhost:3000/`). Because `dist` is the document root in this mode, always open `/` rather than appending `/dist`._
 
@@ -187,7 +187,7 @@ To run **bitvid** locally:
 
 - **Run unit tests**: `npm run test:unit`
 - **Format code**: `npm run format` (CSS, HTML, MD, Config - no JS logic)
-- **Lint code**: `npm run lint` (Styles, Tokens, Hex, Tailwind guards - no ESLint/logic linting)
+- **Lint code**: `npm run lint` (Styles, Tokens, Hex, Tailwind guards, file size, innerHTML, assets, SW compat - no ESLint/logic linting)
 
 ### Dev Container
 
@@ -203,7 +203,7 @@ For detailed architecture and system documentation, see the [Documentation Index
 
 - **Run unit tests**: `npm run test:unit` (Required before PRs). _Tip: Use `npm run test:unit:shard1`, `shard2`, or `shard3` for faster local feedback._
 - **Format code**: `npm run format` (Required before PRs - only formats CSS, HTML, MD, and Config)
-- **Lint code**: `npm run lint` (Checks for CSS, hex colors, inline styles, design tokens, and Tailwind guards - no ESLint/logic linting)
+- **Lint code**: `npm run lint` (Checks for CSS, hex colors, inline styles, design tokens, Tailwind guards, file size, innerHTML, assets, and SW compat - no ESLint/logic linting)
 
 **Other commands:**
 
@@ -315,7 +315,7 @@ package scripts to keep formatting, linting, and generated output consistent:
 ```bash
 npm install               # install Prettier, Stylelint, and Tailwind toolchain
 npm run format            # format CSS/HTML/MD with Prettier + tailwindcss plugin
-npm run lint              # run CSS, hex color, inline-style, design-token, and Tailwind color/bracket guards in one pass
+npm run lint              # run CSS, hex, inline-style, tokens, Tailwind, file-size, innerHTML, assets, and SW compat guards
 npm run lint:css          # enforce token usage and forbid raw hex colors
 npm run lint:inline-styles # fail CI if inline style attributes or element.style usage slip in
 npm run build             # run the full production build (cleans dist/, runs build:css, and copies assets)
@@ -554,16 +554,20 @@ Please see [`CONTRIBUTING.md`](./CONTRIBUTING.md) for detailed setup instruction
 ## Testing
 
 Continuous integration runs CSS linting/builds, the DM unit/integration suites, the Playwright kitchen-sink snapshots, headless E2E flows, and the Node-based unit tests on every push.
+
 Before pushing, run `npm run build` locally so the Tailwind bundle regenerates.
-Pair that with `npm run test:unit` for application logic changes, or a shard
-(`npm run test:unit:shard1`, `test:unit:shard2`, `test:unit:shard3`) when you want to
-split the suite. You can also set `UNIT_TEST_SHARD=1/3` or pass `--shard=1/3`
-to `scripts/run-unit-tests.mjs` for custom shard splits, and use
-`UNIT_TEST_TIMEOUT_MS=120000` to abort a single stalled test file without
-blocking the entire run. `npm run test:visual` covers presentation updates to mirror the CI surface area.
-For DM-specific changes, also run `npm run test:dm:unit` and
-`npm run test:dm:integration` to cover the direct message flows.
-Use `npm run test:e2e` to execute the headless Playwright journeys in `tests/e2e`.
+
+- **Unit Tests**: Run `npm run test:unit` for application logic changes.
+  - _Tip_: Use `npm run test:unit:shard1`, `shard2`, or `shard3` for faster local feedback.
+  - Custom shards: `cross-env UNIT_TEST_SHARD=1/3 node scripts/run-unit-tests.mjs` or pass `--shard=1/3`.
+  - Timeout override: `cross-env UNIT_TEST_TIMEOUT_MS=120000` to abort stalled files.
+
+- **Visual Regression**: Run `npm run test:visual` to verify UI presentation against baselines.
+  - Update baselines: `npm run test:visual:update`.
+
+- **Direct Messages**: Run `npm run test:dm:unit` and `npm run test:dm:integration` for DM flows.
+
+- **End-to-End**: Run `npm run test:e2e` for headless Playwright journeys.
 
 ### Manual QA checklist
 

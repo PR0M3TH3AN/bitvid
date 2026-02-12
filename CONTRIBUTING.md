@@ -171,7 +171,7 @@ To set up the project locally:
    ```
 
    - **Format**: Targets CSS, HTML, Markdown, and config files. (Note: JavaScript files are not currently auto-formatted by this command).
-   - **Lint**: Checks for CSS errors, hex color usage, inline styles, design tokens, and Tailwind guards. (Note: There is no ESLint configuration for JavaScript logic; this step focuses on style and design system guards).
+   - **Lint**: Checks for CSS errors, hex color usage, inline styles, design tokens, Tailwind guards, file size limits, innerHTML usage, asset references, and Service Worker compatibility. (Note: There is no ESLint configuration for JavaScript logic; this step focuses on style and design system guards).
    - **Note**: `npm run lint` includes an asset verification step (`lint:assets`) which checks the `dist/` directory. For full coverage, run `npm run build` before linting.
 
 6. **Git Hooks (Optional)**:
