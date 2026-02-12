@@ -85,7 +85,7 @@ In your bucket settings, add the following CORS policy. You **must** allow heade
 ```json
 [
   {
-    "AllowedOrigins": ["http://localhost:5500", "https://bitvid.network"],
+    "AllowedOrigins": ["http://localhost:3000", "https://bitvid.network"],
     "AllowedMethods": ["GET", "HEAD", "PUT", "POST", "DELETE", "OPTIONS"],
     "AllowedHeaders": ["*"],
     "ExposeHeaders": [
@@ -99,7 +99,7 @@ In your bucket settings, add the following CORS policy. You **must** allow heade
 ]
 ```
 
-> **Note:** Replace `AllowedOrigins` with your actual origins. If you are using the official site, keep `https://bitvid.network`. If you are running a local instance, you **must** update this list to include your instance's URL (e.g., `http://localhost:5500` or `https://my-bitvid-instance.com`).
+> **Note:** Replace `AllowedOrigins` with your actual origins. If you are using the official site, keep `https://bitvid.network`. If you are running a local instance, use `http://localhost:3000` or your custom domain.
 
 ### 3. Create API Credentials
 
