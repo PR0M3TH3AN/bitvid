@@ -1,19 +1,18 @@
-# Upgrade tailwindcss
+# Upgrade: tailwindcss
+
+**Current Version:** 3.4.19
+**Target Version:** 4.1.18
+**Risk Level:** Major
 
 ## Status
-- **Current:** `3.4.19`
-- **Latest:** `4.1.18`
-
-## Details
-Major version upgrade from v3 to v4.
-This likely includes breaking changes in configuration, class names, or build process.
+Major version upgrade available.
 
 ## Plan
-1. Review Tailwind CSS v4 migration guide.
-2. Update `tailwindcss`, `postcss`, `autoprefixer`.
-3. Check `tailwind.config.cjs` compatibility.
-4. Run `npm run build:css` and verify output.
-5. Visual regression testing (`npm run test:visual`).
+1.  Read Tailwind CSS v4 migration guide.
+2.  Update `package.json` and install new version.
+3.  Update configuration files (`tailwind.config.cjs` -> CSS-based config if needed).
+4.  Verify all styles, especially custom tokens and plugins.
+5.  Check `postcss` compatibility.
 
-## Guardrails
-- Major upgrade: Requires separate PR and thorough testing.
+## Action Required
+Schedule upgrade for a dedicated PR.

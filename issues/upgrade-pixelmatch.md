@@ -1,17 +1,16 @@
-# Upgrade pixelmatch
+# Upgrade: pixelmatch
+
+**Current Version:** 5.3.0
+**Target Version:** 7.1.0
+**Risk Level:** Major
 
 ## Status
-- **Current:** `5.3.0`
-- **Latest:** `7.1.0`
-
-## Details
-Major version upgrade.
-Used in visual tests.
+Major version upgrade available.
 
 ## Plan
-1. Update `pixelmatch`.
-2. Run `npm run test:visual`.
-3. Check if image comparison logic needs adjustment (sensitivity, anti-aliasing handling).
+1.  Review changelog.
+2.  Update package.
+3.  Run visual regression tests (`npm run test:visual`) to ensure image comparison logic hasn't changed in a way that breaks existing baselines.
 
-## Guardrails
-- Major upgrade.
+## Action Required
+Schedule upgrade for a dedicated PR.

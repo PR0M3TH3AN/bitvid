@@ -1,15 +1,17 @@
-# Upgrade nostr-tools
+# Upgrade: nostr-tools
 
-**Package:** `nostr-tools`
-**Current Version:** `2.19.4`
-**Wanted Version:** `2.23.0`
-**Latest Version:** `2.23.0`
+**Current Version:** 2.19.4
+**Target Version:** 2.23.0
+**Risk Level:** High (Protocol/Crypto)
 
-## Details
-This package was identified as a critical dependency (cryptographic/protocol library). Automatic upgrade was skipped.
+## Status
+Blocked by policy: "Do not upgrade cryptographic or protocol libraries without manual review".
 
-## Action Items
-- [ ] Review changelog for `nostr-tools` between 2.19.4 and 2.23.0.
-- [ ] Verify no breaking changes in NIP implementations.
-- [ ] Test cryptographic functions manually or via specific test suite.
-- [ ] Apply upgrade manually.
+## Plan
+1.  Review changelog for breaking changes between 2.19.4 and 2.23.0.
+2.  Verify NIP implementation compatibility.
+3.  Test heavily against all Nostr interactions (signing, publishing, relay pools).
+4.  Check for any API changes in `SimplePool` or `finalizeEvent`.
+
+## Action Required
+Manual review and testing required before upgrade.
