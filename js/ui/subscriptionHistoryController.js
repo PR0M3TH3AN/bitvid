@@ -255,6 +255,8 @@ export class SubscriptionHistoryController {
 
       const img = document.createElement("img");
       img.src = avatar;
+      img.loading = "lazy";
+      img.decoding = "async";
       img.className = "w-8 h-8 rounded-full object-cover bg-surface-2";
       img.onerror = function () {
         this.src = "assets/svg/default-profile.svg";

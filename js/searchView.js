@@ -127,6 +127,7 @@ function renderProfileCards(profiles, container) {
     img.alt = name;
     img.className = "w-full h-full object-cover";
     img.loading = "lazy";
+    img.decoding = "async";
     img.addEventListener("error", (e) => {
         e.target.src = FALLBACK_AVATAR;
     });

@@ -1471,6 +1471,8 @@ export class ProfileModalController {
         img.src = entry.previewUrl;
         img.alt = entry.name || "Attachment preview";
         img.className = "h-24 w-24 rounded-lg object-cover";
+        img.loading = "lazy";
+        img.decoding = "async";
         item.appendChild(img);
       }
 
@@ -2892,6 +2894,8 @@ export class ProfileModalController {
               ? formatNpub(meta.npub) || DEFAULT_SAVED_PROFILE_LABEL
               : DEFAULT_SAVED_PROFILE_LABEL);
           avatarImg.alt = `${cardDisplayName} avatar`;
+          avatarImg.loading = "lazy";
+          avatarImg.decoding = "async";
           avatarSpan.appendChild(avatarImg);
 
           const metaSpan = document.createElement("div");

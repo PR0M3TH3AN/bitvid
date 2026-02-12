@@ -390,6 +390,8 @@ export class ProfileDirectMessageRenderer {
               img.src = result.objectUrl;
               img.alt = attachment.name || "Attachment preview";
               img.className = "h-40 w-full rounded-lg object-cover";
+              img.loading = "lazy";
+              img.decoding = "async";
               attachmentCard.appendChild(img);
             } else if (attachment.type?.startsWith("video/")) {
               const video = document.createElement("video");
@@ -884,6 +886,8 @@ export class ProfileDirectMessageRenderer {
     avatarImg.className = "h-full w-full object-cover";
     avatarImg.src = avatarUrl;
     avatarImg.alt = `${safeName} avatar`;
+    avatarImg.loading = "lazy";
+    avatarImg.decoding = "async";
     avatarWrapper.appendChild(avatarImg);
 
     const textStack = document.createElement("div");
