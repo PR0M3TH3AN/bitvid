@@ -26,6 +26,7 @@ const { createWatchHistoryFeedDefinition } = await import(
   "../js/feedEngine/watchHistoryFeed.js"
 );
 const { createFeedEngine } = await import("../js/feedEngine/engine.js");
+const { waitFor } = await import("./test-helpers/wait-for.mjs");
 
 if (typeof globalThis.window === "undefined") {
   globalThis.window = {};
@@ -2559,15 +2560,9 @@ async function testWatchHistoryFeedHydration() {
 
     await renderer.init({ actor, force: true });
 
-    let state = renderer.getState();
     // Retry mechanism for flaky CI
-    for (let i = 0; i < 60; i++) {
-      if (state.items.length > 0) break;
-      await new Promise(r => setTimeout(r, 50));
-      state = renderer.getState();
-    }
-
-    try {
+    await waitFor(() => {
+      const state = renderer.getState();
       assert.equal(state.items.length, 1, "Should have 1 item");
       const item = state.items[0];
 
@@ -2575,9 +2570,7 @@ async function testWatchHistoryFeedHydration() {
       assert.ok(item.video, "Item should have video object populated");
       assert.equal(item.video.title, videoTitle, "Video title should be hydrated from relay event");
       assert.equal(item.video.id, videoId, "Video ID should match");
-    } catch (error) {
-      console.warn("WARN: testWatchHistoryFeedHydration assertion failed (flaky in CI environment):", error.message);
-    }
+    }, { timeout: 3000, interval: 50 });
 
   } finally {
     nostrClient.pubkey = originalPubkey;
