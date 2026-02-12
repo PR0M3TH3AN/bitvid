@@ -60,8 +60,8 @@ DETAILED WORKFLOW (step-by-step)
      ```
      - (Adjust regex to include more candidates you want.)
    - For a more robust approach, run an AST scan (Node/ES module) to find numeric literals:
-     - If comfortable, use `node` + `acorn` or `@babel/parser` script `scripts/find-numeric-literals.js` to produce JSON output of numeric literals with file, line, column, and nearby AST context (identifier or property name).
-     - Example (conceptual):
+     - If comfortable, use `node` + `acorn` or `@babel/parser` to create a script (e.g., `scripts/find-numeric-literals.js`) that produces JSON output of numeric literals with file, line, column, and nearby AST context (identifier or property name).
+     - Example (conceptual — script must be created first):
        ```
        node scripts/find-numeric-literals.js js > perf/constants-refactor/numeric-literals.json
        ```

@@ -137,3 +137,8 @@ EXAMPLE RUN (illustrative)
 # required:
 RELAY_URLS="wss://relay.test.example" node scripts/agent/interop-test.mjs \
   --burst=3 --timeout=30 --out=artifacts/interop-2025-07-14.json
+```
+
+<!-- TODO: This prompt appears to be truncated. The following sections are
+     missing and should be added: FAILURE MODES, OUTPUTS PER RUN, BEGIN.
+     See https://github.com/PR0M3TH3AN/bitvid/issues for tracking. -->

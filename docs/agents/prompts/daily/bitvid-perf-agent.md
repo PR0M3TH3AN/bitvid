@@ -119,7 +119,7 @@ DOCS AUDIT (integrated sub-workflow — mandatory when doc/code touched)
 2. VERIFY: confirm claims against frontend components, API handlers, storage/processing pipelines, and build/deploy. Pay attention to MIME lists, size limits, resumability, error messages, moderation.
 3. UPDATE: make `/content` exact and copy-pastable. If code is wrong, either fix code (small) or document divergence and open issue.
 4. VALIDATE: run end-to-end uploads where possible; capture terminal logs, curl responses, screenshots (redact secrets).
-5. DELIVER: open PR titled `"🌐 Align /content user docs with actual upload & contribution behavior"` with validation artifacts and a contributor-facing note.
+5. DELIVER: open PR titled `"docs: align /content user docs with actual upload & contribution behavior"` with validation artifacts and a contributor-facing note.
 
 -------------------------------------------------------------------------------
 WORK LOOP & VERIFICATION (for code changes)

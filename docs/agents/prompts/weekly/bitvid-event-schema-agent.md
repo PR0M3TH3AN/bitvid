@@ -68,7 +68,7 @@ WORKFLOW
    - Responsibilities:
      - Import canonical APIs:
        ```js
-       const { getNostrEventSchema, buildVideoPostEvent, sanitizeAdditionalTags, /* ... */ } = require('../../js/nostrEventSchemas.js');
+       import { getNostrEventSchema, buildVideoPostEvent, sanitizeAdditionalTags, /* ... */ } from '../../js/nostrEventSchemas.js';
        ```
      - Provide a configurable set of example inputs for each builder.
      - For each builder:
