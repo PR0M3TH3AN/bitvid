@@ -31,6 +31,7 @@ import {
   setLastSuccessfulScheme,
 } from "../nostr/decryptionSchemeCache.js";
 import { HEX64_REGEX } from "../utils/hex.js";
+import { SHORT_TIMEOUT_MS, NETWORK_RETRY_DELAY_MS } from "../constants.js";
 
 const LOG_PREFIX = "[HashtagPreferences]";
 const HASHTAG_IDENTIFIER = "bitvid:tag-preferences";
@@ -43,7 +44,7 @@ const DEFAULT_VERSION = 1;
 const DECRYPT_TIMEOUT_MS = 6000;
 // PERF: Reduced from 3s to 1.5s — extensions that already granted permission
 // should recover near-instantly. Shorter delay speeds up the login path.
-const DECRYPT_RETRY_DELAY_MS = 1500;
+const DECRYPT_RETRY_DELAY_MS = NETWORK_RETRY_DELAY_MS;
 
 class TinyEventEmitter {
   constructor() {
@@ -1052,7 +1053,7 @@ class HashtagPreferencesService {
     // gate guarantees the extension is ready before decryption starts, so
     // decrypt calls should complete within 1-2s. 5s accommodates slow
     // extensions while still failing fast for scheme fallback.
-    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 12000 : 5000;
+    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 12000 : SHORT_TIMEOUT_MS;
     const signerDecryptOptions = {
       priority: NIP07_PRIORITY.NORMAL,
       timeoutMs: nip07DecryptTimeoutMs,

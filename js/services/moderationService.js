@@ -8,6 +8,7 @@ import { accessControl } from "../accessControl.js";
 import { userBlocks, USER_BLOCK_EVENTS } from "../userBlocks.js";
 import { buildReportEvent, KIND_MUTE_LIST } from "../nostrEventSchemas.js";
 import logger from "../utils/logger.js";
+import { DEBOUNCE_DELAY_MS } from "../constants.js";
 
 /**
  * Trust threshold for disabling autoplay on reported videos.
@@ -1135,7 +1136,7 @@ export class ModerationService {
       this.refreshTrustedMuteSubscriptions().catch((error) => {
         this.log("[moderationService] refreshTrustedMuteSubscriptions failed", error);
       });
-    }, 2000);
+    }, DEBOUNCE_DELAY_MS);
   }
 
   async refreshTrustedMuteSubscriptions() {

@@ -9,7 +9,7 @@
  * Methods use `this` which is bound to the Application instance.
  */
 
-import { FEED_TYPES, STANDARD_TIMEOUT_MS, MEDIUM_TIMEOUT_MS } from "../constants.js";
+import { FEED_TYPES, STANDARD_TIMEOUT_MS, MEDIUM_TIMEOUT_MS, DEBOUNCE_DELAY_MS } from "../constants.js";
 
 /**
  * @param {object} deps - Injected dependencies.
@@ -1056,7 +1056,7 @@ export function createFeedCoordinator(deps) {
       }
 
       const now = Date.now();
-      if (this.lastLoadVideosTime && (now - this.lastLoadVideosTime < 2000) && !forceFetch) {
+      if (this.lastLoadVideosTime && (now - this.lastLoadVideosTime < DEBOUNCE_DELAY_MS) && !forceFetch) {
         devLogger.log("Skipping redundant loadVideos request (cooldown).");
         return Promise.resolve();
       }

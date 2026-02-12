@@ -3,6 +3,7 @@ import { extractAttachmentsFromMessage, formatAttachmentSize, describeAttachment
 import { downloadAttachment, clearAttachmentCache, getAttachmentCacheStats } from "../../services/attachmentService.js";
 import { getLinkPreviewSettings, setLinkPreviewAutoFetch } from "../../utils/linkPreviewSettings.js";
 import { sanitizeRelayList } from "../../nostr/nip46Client.js";
+import { SHORT_TIMEOUT_MS } from "../../constants.js";
 
 const TYPING_INDICATOR_TTL_SECONDS = 15;
 const TYPING_INDICATOR_COOLDOWN_MS = 4000;
@@ -118,7 +119,7 @@ export class ProfileDirectMessageActions {
     if (this.controller.enableNip17RelayWarning && enabled && !relayHints.length) {
       this.mainController.showStatus(
         "Privacy warning: this recipient has not shared NIP-17 relays, so we'll use your default relays.",
-        { autoHideMs: 5000 },
+        { autoHideMs: SHORT_TIMEOUT_MS },
       );
     }
 
@@ -207,7 +208,7 @@ export class ProfileDirectMessageActions {
     if (this.controller.enableNip17RelayWarning && useNip17 && !recipientRelayHints.length) {
       this.mainController.showStatus(
         "Privacy warning: this recipient has not shared NIP-17 relays, so we'll use your default relays.",
-        { autoHideMs: 5000 },
+        { autoHideMs: SHORT_TIMEOUT_MS },
       );
     }
 
@@ -263,7 +264,7 @@ export class ProfileDirectMessageActions {
         if (this.controller.enableNip17RelayWarning && result?.warning === "dm-relays-fallback") {
           this.mainController.showStatus(
             "Privacy warning: this message used default relays because no NIP-17 relay list was found.",
-            { autoHideMs: 5000 },
+            { autoHideMs: SHORT_TIMEOUT_MS },
           );
         }
         void this.populateProfileMessages({ force: true, reason: "send-message" });
@@ -494,7 +495,7 @@ export class ProfileDirectMessageActions {
     if (useNip17 && !recipientRelayHints.length) {
       this.mainController.showStatus(
         "Privacy warning: this recipient has not shared NIP-17 relays, so we'll use your default relays.",
-        { autoHideMs: 5000 },
+        { autoHideMs: SHORT_TIMEOUT_MS },
       );
     }
 
@@ -523,7 +524,7 @@ export class ProfileDirectMessageActions {
         if (result?.warning === "dm-relays-fallback") {
           this.mainController.showStatus(
             "Privacy warning: this message used default relays because no NIP-17 relay list was found.",
-            { autoHideMs: 5000 },
+            { autoHideMs: SHORT_TIMEOUT_MS },
           );
         }
         if (
@@ -804,7 +805,7 @@ export class ProfileDirectMessageActions {
 
     this.mainController.showStatus(
       "Privacy warning: direct messages are using your default relays because no NIP-17 relay list is available.",
-      { autoHideMs: 5000 },
+      { autoHideMs: SHORT_TIMEOUT_MS },
     );
   }
 

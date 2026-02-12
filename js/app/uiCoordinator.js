@@ -8,6 +8,8 @@
  *
  * Methods use `this` which is bound to the Application instance.
  */
+import { SHORT_TIMEOUT_MS, DEBOUNCE_DELAY_MS } from "../constants.js";
+
 export function createUiCoordinator(deps) {
   const {
     devLogger,
@@ -286,7 +288,7 @@ export function createUiCoordinator(deps) {
       if (
         this.lastExperimentalWarningKey === normalizedProvider &&
         typeof this.lastExperimentalWarningAt === "number" &&
-        now - this.lastExperimentalWarningAt < 2000
+        now - this.lastExperimentalWarningAt < DEBOUNCE_DELAY_MS
       ) {
         return;
       }
@@ -301,7 +303,7 @@ export function createUiCoordinator(deps) {
 
       this.showStatus(
         `${providerLabel} logins are still in development and may not work well yet. We recommend using a NIP-07 browser extension for the most reliable experience.`,
-        { showSpinner: false, autoHideMs: 5000 },
+        { showSpinner: false, autoHideMs: SHORT_TIMEOUT_MS },
       );
     }
   };
