@@ -7,5 +7,5 @@
 
 - **Refactor `60000` in `js/webtorrent.js` to `LONG_TIMEOUT_MS`**:
   - **Context**: Used as `TIMEOUT_DURATION` for service worker operations.
-  - **Decision**: Use `LONG_TIMEOUT_MS` from `js/constants.js` which is already defined as 60000.
-  - **Rationale**: Aligns with the project's standard long timeout constant.
+  - **Decision**: **REVERTED** to `60000`.
+  - **Rationale**: CI checks failed with timeouts. Reverting `webtorrent.js` to hardcoded value to rule out import/module initialization issues in the critical path.
