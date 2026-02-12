@@ -10,6 +10,10 @@ import { devLogger, userLogger } from "../utils/logger.js";
 import { convertEventToVideo } from "./nip71.js";
 
 export class VideoEventBuffer {
+  /**
+   * @param {import("./client.js").NostrClient} client - The parent client instance (for state access).
+   * @param {function(object[]): void} onVideo - The UI callback to fire with batched updates.
+   */
   constructor(client, onVideo) {
     this.client = client;
     this.onVideo = onVideo;
@@ -19,11 +23,21 @@ export class VideoEventBuffer {
     this.FLUSH_DEBOUNCE_MS = 75;
   }
 
+  /**
+   * Pushes a raw event into the buffer and schedules a debounced flush.
+   * @param {import("nostr-tools").Event} event - The incoming Nostr event.
+   */
   push(event) {
     this.buffer.push(event);
     this.scheduleFlush(false);
   }
 
+  /**
+   * Schedules processing of the buffer.
+   * Uses a debounce timer to wait for the stream to pause (pressure valve).
+   *
+   * @param {boolean} [immediate=false] - If true, flushes immediately (e.g. on EOSE).
+   */
   scheduleFlush(immediate = false) {
     if (this.flushTimerId) {
       if (!immediate) {
@@ -44,6 +58,17 @@ export class VideoEventBuffer {
     }, this.FLUSH_DEBOUNCE_MS);
   }
 
+  /**
+   * Processes all buffered events in a single batch.
+   *
+   * **Steps:**
+   * 1. Validates and converts raw events to Video objects.
+   * 2. Checks for tombstones (deleted videos).
+   * 3. Updates the client's `activeMap` (Latest Wins).
+   * 4. Triggers the UI callback *once*.
+   * 5. Triggers background hydration of NIP-71 metadata.
+   * 6. Persists state to IndexedDB.
+   */
   flush() {
     if (!this.buffer.length) {
       return;
@@ -137,6 +162,10 @@ export class VideoEventBuffer {
     this.client.saveLocalData("subscribeVideos:flush");
   }
 
+  /**
+   * Called when the subscription reaches End-of-Stored-Events (EOSE).
+   * Triggers an immediate flush to ensure the UI is fully up-to-date.
+   */
   handleEose() {
     if (isDevMode && this.invalidEvents.length > 0) {
       userLogger.warn(
@@ -150,6 +179,10 @@ export class VideoEventBuffer {
     this.scheduleFlush(true);
   }
 
+  /**
+   * Cleans up timers and flushes any remaining events.
+   * Call when unsubscribing.
+   */
   cleanup() {
     if (this.flushTimerId) {
       clearTimeout(this.flushTimerId);

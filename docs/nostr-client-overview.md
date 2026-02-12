@@ -119,3 +119,26 @@ The client abstracts the signing mechanism, allowing the user to switch between 
 3.  **Local (NIP-01)**: Uses a local private key (nsec) stored in `sessionStorage` (encrypted).
 
 The `activeSigner` object is normalized to expose a standard interface (`signEvent`, `nip04Encrypt`, `nip44Encrypt`), regardless of the underlying implementation.
+
+## Implicit Invariants
+
+Maintaining these invariants is critical for the stability of the application:
+
+1.  **Active Map Consistency**: `activeMap` must *only* contain the single latest version of a video series.
+    *   *Violation*: If two versions of the same video exist in `activeMap`, the UI will duplicate the card or flicker.
+2.  **Tombstone Authority**: Any event, regardless of its source (relay or cache), MUST be discarded if its `created_at` is older than the timestamp in `tombstones.get(activeKey)`.
+    *   *Violation*: Deleted videos will reappear ("zombie events").
+3.  **History Integrity**: All versions in a history chain must share the same `videoRootId` (V3) or `d` tag (V2).
+    *   *Violation*: The history log will be fragmented or incomplete.
+
+## Common Pitfalls
+
+1.  **Direct State Mutation**:
+    *   *Don't*: `client.activeMap.set(key, video)` manually.
+    *   *Do*: Use `_processAndCacheEvent(evt)` or let `VideoEventBuffer` handle it. The client needs to run deduplication and tombstone checks.
+2.  **Stable ID Assumption**:
+    *   *Don't*: Rely on `event.id` as a permanent reference to a video.
+    *   *Do*: Use `videoRootId` or the `d` tag. `event.id` changes every time the user edits the title/thumbnail.
+3.  **Sync vs Async State**:
+    *   *Don't*: Expect `client.allEvents` to be populated immediately after `init()`.
+    *   *Do*: Use `restoreLocalData()` (awaited in `init`) which loads the cache, but network updates arrive asynchronously via subscriptions.
