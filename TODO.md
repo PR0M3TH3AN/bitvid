@@ -10,18 +10,19 @@
 - [x] Research NIP-04 & NIP-44 (Encryption) - check `dmDecryptWorker.js`.
 - [x] Research NIP-65 (Relay Lists) - check `relayManager.js`.
 - [x] Research Kind 30078 (Video Notes) - check `client.js` & `videoPayloadBuilder.js`.
+- [x] Research Kind 30079 (Watch History) - check `watchHistory.js`.
 
 ## Map-to-Code & Verify
-- [x] **NIP-04/44 Verification**: Create `tests/compliance/nip04_44_compliance.test.mjs` to verify fallback order and vector compliance.
-- [x] **NIP-07 Verification**: Audit `runNip07WithRetry` for correct timeout/permission handling.
-- [x] **Relay List Verification**: Create `tests/compliance/nip65_compliance.test.mjs` to verify Kind 10002 handling.
-- [x] **Video Note Verification**: Create `tests/compliance/video_note_compliance.test.mjs` to verify Kind 30078 structure and NIP-71/94 mirroring.
+- [x] **NIP-04/44 Verification**: Verified `tests/compliance/nip04_44_compliance.test.mjs` passes.
+- [x] **NIP-07 Verification**: Created `tests/compliance/nip07_compliance.test.mjs` to verify retry logic.
+- [x] **Relay List Verification**: Verified `tests/compliance/nip65_compliance.test.mjs` passes.
+- [x] **Video Note Verification**: Verified `tests/compliance/video_note_compliance.test.mjs` passes.
 
 ## Remediation
-- [x] Create PR/Issue for NIP-07 gaps. (None found)
+- [x] Create PR/Issue for NIP-07 gaps. (Added test for retry/timeout)
 - [x] Create PR/Issue for NIP-04/44 gaps. (None found)
 - [x] Create PR/Issue for NIP-65 gaps. (None found)
 - [x] Create PR/Issue for Kind 30078 gaps. (None found)
 
 ## Reporting
-- [x] Generate `nip-report-YYYY-MM-DD.md`.
+- [x] Generate `nip-report-2026-02-12.md`.

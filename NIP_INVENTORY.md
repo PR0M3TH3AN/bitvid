@@ -4,7 +4,7 @@
 |------------|-------------|----------------|--------|-------|
 | **NIP-01** | Basic Protocol Flow | `js/nostr/client.js`, `docs/nips/01.md` | Compliant | Base implementation verified via `client.js`. |
 | **NIP-04** | Encrypted Direct Message | `js/nostr/dmDecryptWorker.js`, `js/nostr/client.js` | Compliant | Fallback verified in `nip04_44_compliance.test.mjs`. |
-| **NIP-07** | `window.nostr` Capability | `js/nostr/nip07Permissions.js`, `js/nostr/adapters/nip07Adapter.js` | Compliant | Reviewed `nip07Permissions.js` and `nip07Adapter.js`. Handles async loading and timeouts correctly. |
+| **NIP-07** | `window.nostr` Capability | `js/nostr/nip07Permissions.js`, `js/nostr/adapters/nip07Adapter.js` | Compliant | Retry logic and timeouts verified in `nip07_compliance.test.mjs`. |
 | **NIP-09** | Event Deletion | `js/nostr/client.js`, `docs/nips/09.md` | Partial | `deleteAllVersions` implements Kind 5 logic. |
 | **NIP-10** | Text Notes & Threads | `js/nostr/commentEvents.js`, `docs/nips/10.md` | Compliant | `buildCommentEvent` implements NIP-10 threading markers (E, P, K tags). |
 | **NIP-17** | Private Direct Messages | `js/nostr/client.js`, `js/ui/profileModal/ProfileDirectMessageRenderer.js` | Compliant | Explicit support for Gift Wraps (Kind 1059) and Seals (Kind 13). |
@@ -29,3 +29,4 @@
 | **Kind 30000** | Subscription List | `js/subscriptions.js` | Compliant | Implements NIP-51 follow sets. |
 | **Kind 30015** | Hashtag Preferences | `js/services/hashtagPreferencesService.js` | Compliant | Implemented. |
 | **Kind 30078** | App Data | `js/nostr/client.js`, `js/nostr/videoPayloadBuilder.js` | Compliant | Core video note kind. Verified structure. |
+| **Kind 30079** | Watch History | `js/nostr/watchHistory.js`, `config/instance-config.js` | Compliant | Parameterized replaceable list (custom kind). Implements bucketing and encryption. |
