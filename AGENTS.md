@@ -407,6 +407,105 @@ Use these for stable element targeting:
 
 ---
 
+## 15. Agent Execution Protocol
+
+This section defines the meta-workflow that **every AI agent** must follow when executing tasks in this codebase. It ensures safe, incremental changes, a clear decision trail, and continuity across context resets or agent hand-offs.
+
+### Mindset
+
+- Implement changes safely. Match existing conventions. Leave a clear trail of decisions.
+- Correctness > cleverness. Consistent conventions > personal preference. Explicit tradeoffs > "should work."
+- Prefer minimal, incremental changes over rewrites. Keep the build and tests green.
+- Do not invent files, APIs, libraries, or behaviors. If unsure, inspect the codebase first.
+
+### Scoping the Work
+
+Before writing any code, establish clarity on three things:
+
+1. **Primary goal** — What is being built or fixed?
+2. **Success criteria** — How will we know it's done? (e.g., tests pass, feature visible in UI, lint clean)
+3. **Non-goals** — What is explicitly out of scope? (Prevents scope creep across agent sessions.)
+
+### External Notes (Persistent State Files)
+
+Agents lose context across sessions. These files in the repo root act as persistent memory that any agent (or human) can read to resume work or understand project status. **Update them before any likely context reset.**
+
+| File | Purpose | When to Update |
+|------|---------|----------------|
+| `CONTEXT.md` | Current goal, scope, assumptions, constraints, and a "Definition of Done" checklist | At the start of a task; when scope changes |
+| `TODO.md` | Checkbox task list with "Done" and "Blocked/Questions" sections | After planning; after completing or discovering tasks |
+| `DECISIONS.md` | Key choices made, alternatives considered, and rationale | When making tradeoffs or architectural decisions |
+| `TEST_LOG.md` | Commands run and their results (including failures) | After every lint/test/build run |
+
+**Rules for external notes:**
+- These files are working documents, not permanent artifacts. They should reflect the *current* state of work.
+- When starting a fresh task, clear stale content and re-scope. Don't let old context mislead the next agent.
+- Keep entries concise — bullet points and checklists, not prose.
+- `DECISIONS.md` is especially important: when you make a tradeoff (e.g., "used innerHTML here because the template is static HTML, updated the baseline"), write it down so the next agent doesn't undo it.
+
+### Work Loop
+
+For each task item, repeat this cycle:
+
+#### A) Locate
+
+- Identify the relevant code and existing patterns. Find the "right place" to make the change.
+- Write a short plan (3–7 bullets) before editing. If the task touches multiple subsystem zones (see Section 12), flag this — it may need to be split into separate PRs.
+
+#### B) Implement
+
+- Make the smallest change that satisfies the requirement.
+- Keep edits cohesive. Avoid unrelated refactors in the same commit.
+- Follow all conventions already documented in this file (logging via `logger`, token-first styling, magnet safety, schema definitions in `nostrEventSchemas.js`, etc.).
+
+#### C) Verify
+
+- Run the most relevant lint/test commands (see CLAUDE.md "Available Scripts" for the full list):
+  ```bash
+  npm run lint              # Required
+  npm run test:unit:shard1  # Fast feedback; run full suite before PR
+  ```
+- If there's no test coverage for your change, add focused tests or document in `DECISIONS.md` why tests aren't feasible.
+- Log all commands and results in `TEST_LOG.md`.
+
+#### D) Update Notes
+
+- Check off completed items in `TODO.md`.
+- Record decisions in `DECISIONS.md`.
+- Log verification results in `TEST_LOG.md`.
+- **Do this before any likely context/memory reset** — if you're about to hit a token limit, finish a long session, or hand off to another agent, update notes first.
+
+### Context Recovery
+
+If an agent starts a session and finds existing work-in-progress:
+
+1. **Immediately read** `CONTEXT.md`, `TODO.md`, `DECISIONS.md`, and `TEST_LOG.md`.
+2. Resume from the next unchecked item in `TODO.md`.
+3. Verify the current state by running `git status`, `git log --oneline -10`, and a quick lint/test pass.
+4. Do not re-do work that `TEST_LOG.md` shows already passed — unless the code has changed since.
+
+### Output Requirements
+
+When finishing a task or handing off, provide:
+
+- **Summary** of what changed and why.
+- **Files changed** (list).
+- **Verification results** (from `TEST_LOG.md`).
+- **Follow-ups / risks / remaining TODOs**.
+- **If blocked:** Ask specific questions and propose 1–2 options.
+
+### Quality Bar
+
+| Principle | Meaning |
+|-----------|---------|
+| Correctness over cleverness | Simple, working code beats elegant abstractions |
+| Conventions over preference | Match what's already in the repo, even if you'd do it differently |
+| Explicit tradeoffs | Write down *why* in `DECISIONS.md`, don't leave the next agent guessing |
+| Logged verification | Every claim of "tests pass" must have a `TEST_LOG.md` entry to back it up |
+| Incremental over sweeping | Small, reviewable changes that keep the build green at every step |
+
+---
+
 ## Next
 
 Please read these documents next.
