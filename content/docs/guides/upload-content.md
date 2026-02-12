@@ -7,7 +7,7 @@ bitvid is a decentralized platform that supports multiple ways to share video co
 bitvid offers three ways to publish content:
 
 1.  **Direct Upload:** Upload a video file from your device to your configured storage bucket (R2 or S3). The client handles the upload, generates a magnet link for WebTorrent, and publishes the metadata to Nostr.
-2.  **External Link:** Provide a direct URL to a video file hosted elsewhere (e.g., on a personal server or another CDN). This URL serves as the primary playback source. **Note:** External URLs must use **HTTPS**.
+2.  **External Link:** Provide a direct URL to a video file hosted elsewhere (e.g., on a personal server or another CDN). This URL serves as a playback source (and usually the primary one, depending on instance settings). **Note:** External URLs must use **HTTPS**.
 3.  **Magnet Link:** Assist the network by providing a magnet link for an existing torrent. Note that magnet-only uploads require at least one active seeder to be playable.
 
 ## Supported Media & Limits
@@ -24,7 +24,7 @@ Before you start, ensure your content meets the following requirements:
 ### File Size
 
 - **Recommended:** Up to **2GB** per file.
-- **Why?** Browser-based uploads rely on your device's memory for hashing (to generate the WebTorrent info hash). Files larger than 2GB may cause browser instability or crashes depending on your available RAM.
+- **Why?** Browser-based uploads rely on your device's memory for hashing (to generate the WebTorrent info hash). Files larger than 2GB may cause browser instability or crashes during the hashing process, which happens entirely in your browser's memory. This is a client-side limitation, not a server limit.
 
 ## Metadata & Options
 
@@ -50,7 +50,7 @@ For power users and technical configurations, toggle the "Advanced Options" sect
 - **Content Warning:** A text label for sensitive content (automatically set to "NSFW" if the NSFW toggle is on).
 - **Duration:** Manually specify the video duration in seconds.
 - **Summary:** A short summary separate from the full description.
-- **IMETA (Video Variants):** Define alternative video sources, resolutions, or MIME types.
+- **IMETA (Video Variants):** Define alternative video sources, resolutions, or MIME types. You can add multiple variants if you have different resolutions or formats available.
   - **MIME:** (e.g., `video/mp4`)
   - **Dimensions:** (e.g., `1920x1080`)
   - **URL:** Direct link to the video file
@@ -99,7 +99,7 @@ In your bucket settings, add the following CORS policy. You **must** allow heade
 ]
 ```
 
-> **Note:** Replace `AllowedOrigins` with your actual origins. If you are using the official site, keep `https://bitvid.network`. If you are running a local instance, use `http://localhost:5500` or your custom domain.
+> **Note:** Replace `AllowedOrigins` with your actual origins. If you are using the official site, keep `https://bitvid.network`. If you are running a local instance, you **must** update this list to include your instance's URL (e.g., `http://localhost:5500` or `https://my-bitvid-instance.com`).
 
 ### 3. Create API Credentials
 
@@ -148,8 +148,9 @@ bitvid will verify your credentials by attempting to list or upload a test file.
 ### How Uploads Work
 
 1. **Direct Upload:** Your browser uploads the file directly to your storage bucket. No video data passes through a bitvid server.
-2. **Client-Side Hashing:** Your browser calculates a cryptographic hash (info hash) of the file locally to enable WebTorrent support. This happens in memory, so large files require sufficient RAM.
-3. **Publication:** The video metadata (title, URL, hash, tags) is signed by your Nostr key and published to relays.
+2. **External Link:** Your browser streams directly from the provided URL (or via WebTorrent if a magnet is also provided). No video data passes through the bitvid server.
+3. **Client-Side Hashing:** Your browser calculates a cryptographic hash (info hash) of the file locally to enable WebTorrent support. This happens in memory, so large files require sufficient RAM.
+4. **Publication:** The video metadata (title, URL, hash, tags) is signed by your Nostr key and published to relays.
 
 ### Moderation & Visibility
 
