@@ -157,7 +157,38 @@ RELAY_URLS="wss://relay.example" node scripts/agent/smoke-test.mjs \
   --confirm-public --burst=1 --timeout=30 --out=artifacts/
 ```
 
-<!-- TODO: This prompt appears to be truncated. The following sections are
-     missing and should be added: FAILURE MODES, PR & COMMIT CONVENTIONS,
-     OUTPUTS PER RUN, BEGIN.
-     See https://github.com/PR0M3TH3AN/bitvid/issues for tracking. -->
+───────────────────────────────────────────────────────────────────────────────
+FAILURE MODES
+
+- **Startup Failure:** If the application fails to start (e.g., port in use, build error), log the stderr output and abort.
+- **Relay Connection Failure:** If the client cannot connect to the specified relay, retry with backoff. If it still fails, abort and report "Relay Unreachable".
+- **Element Not Found (UI):** If Playwright cannot find a required UI element (e.g., login button, post input), capture a screenshot and dump the DOM state to `artifacts/`. Fail the test step.
+- **Verification Failure:** If the read-back event does not match the published event (content mismatch, signature error), log the diff and fail the test.
+- **Timeout:** If any step exceeds the configured timeout, abort the run and capture a screenshot/log of the current state.
+
+───────────────────────────────────────────────────────────────────────────────
+PR & COMMIT CONVENTIONS
+
+- **Branch Name:** `test/smoke-harness-YYYYMMDD` or `chore/smoke-test-update`
+- **Commit Message:**
+  - `test(smoke): add login and publish flow verification`
+  - `chore(smoke): update relay config for local testing`
+- **PR Title:** `test: smoke harness updates` or `chore: add smoke test for [feature]`
+- **PR Description:**
+  - Clearly state what flows are covered.
+  - Include a summary of the test results (Pass/Fail).
+  - Link to any artifacts or logs (if uploaded).
+  - Mention if any manual steps are required to run the test (e.g., specific relay setup).
+
+───────────────────────────────────────────────────────────────────────────────
+OUTPUTS PER RUN
+
+- **Artifacts:**
+  - `artifacts/smoke-YYYYMMDD.log`: Detailed execution log.
+  - `artifacts/smoke-YYYYMMDD.json`: Structured summary of the test run (steps, duration, result).
+  - `artifacts/smoke-YYYYMMDD-screenshots/`: Directory containing screenshots of failures (and success states if configured).
+- **Pull Request:** A PR containing the new or updated smoke test script and any necessary documentation changes.
+- **Console Output:** Real-time progress updates and a final summary (Pass/Fail) printed to stdout.
+
+───────────────────────────────────────────────────────────────────────────────
+BEGIN

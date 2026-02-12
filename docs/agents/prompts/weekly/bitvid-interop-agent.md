@@ -139,6 +139,30 @@ RELAY_URLS="wss://relay.test.example" node scripts/agent/interop-test.mjs \
   --burst=3 --timeout=30 --out=artifacts/interop-2025-07-14.json
 ```
 
-<!-- TODO: This prompt appears to be truncated. The following sections are
-     missing and should be added: FAILURE MODES, OUTPUTS PER RUN, BEGIN.
-     See https://github.com/PR0M3TH3AN/bitvid/issues for tracking. -->
+───────────────────────────────────────────────────────────────────────────────
+FAILURE MODES
+
+- **Protocol Mismatch:** If a roundtrip fails due to schema validation (e.g., missing required tags, invalid content format), generate a detailed log in `artifacts/` identifying the specific field mismatch. Do not attempt to auto-patch the schema unless the fix is trivial and obvious (e.g., typo). Instead, open an issue labeled `bug` or `interop-failure` with the reproduction steps.
+- **Crypto/Signature Failure:** If signature verification fails or event IDs do not match the computed values, **STOP**. Do not attempt to modify the crypto logic. Open a high-priority issue labeled `requires-security-review` with the specific inputs that caused the failure.
+- **Relay Connectivity Issues:** If the specified relays are unreachable or time out, log the failure and abort the run. Do not retry indefinitely. Ensure the error message clearly distinguishes between network errors and protocol errors.
+- **Timeout:** If the operation exceeds the specified timeout, abort and log the last known state.
+
+───────────────────────────────────────────────────────────────────────────────
+OUTPUTS PER RUN
+
+- **Artifacts:**
+  - `artifacts/interop-YYYYMMDD.json`: A structured summary of the test run, including:
+    - Timestamp
+    - Relays used
+    - Events published (ID, type)
+    - Verification results (Pass/Fail)
+    - Latency metrics
+  - `artifacts/interop-YYYYMMDD.log`: A human-readable log of the execution flow, including debug information and error stack traces.
+- **Pull Request (if applicable):**
+  - A PR containing the test harness improvements, new regression tests, or documentation updates.
+  - The PR description must link to the generated artifacts and summarize the test results.
+- **Issues:**
+  - New GitHub issues for any discovered bugs or protocol mismatches, complete with reproduction steps and references to the artifacts.
+
+───────────────────────────────────────────────────────────────────────────────
+BEGIN
