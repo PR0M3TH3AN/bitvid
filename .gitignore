@@ -12,3 +12,4 @@ ai/reports/
 *.log
 coverage/
 dist/
+TEST_LOG.md

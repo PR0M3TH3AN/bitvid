@@ -221,4 +221,3 @@ await testPreparePlaybackLoggingPublishesOnce();
 await testPreparePlaybackLoggingIgnoresMetadata();
 await testCancelPlaybackLoggingFlushes();
 
-console.log("watch-history-telemetry tests passed");
