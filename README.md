@@ -181,6 +181,8 @@ To run **bitvid** locally:
    npm run lint
    ```
 
+   _Tip: Use `npm run test:unit:shard1` (or `shard2`/`shard3`) for faster local feedback._
+
 #### Quick Reference
 
 - **Run unit tests**: `npm run test:unit`
