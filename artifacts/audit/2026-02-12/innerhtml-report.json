@@ -1,0 +1,177 @@
+{
+  "total_assignments": 87,
+  "files_count": 34,
+  "top_offenders": [
+    {
+      "path": "js/channelProfile.js",
+      "count": 10,
+      "is_new": false
+    },
+    {
+      "path": "js/ui/components/RevertModal.js",
+      "count": 10,
+      "is_new": false
+    },
+    {
+      "path": "js/docsView.js",
+      "count": 8,
+      "is_new": false
+    },
+    {
+      "path": "js/subscriptions.js",
+      "count": 7,
+      "is_new": false
+    },
+    {
+      "path": "js/ui/subscriptionHistoryController.js",
+      "count": 7,
+      "is_new": false
+    },
+    {
+      "path": "js/historyView.js",
+      "count": 4,
+      "is_new": false
+    },
+    {
+      "path": "js/ui/components/DeleteModal.js",
+      "count": 3,
+      "is_new": false
+    },
+    {
+      "path": "js/ui/components/ShareNostrModal.js",
+      "count": 3,
+      "is_new": false
+    },
+    {
+      "path": "js/ui/dm/DMSettingsModalController.js",
+      "count": 3,
+      "is_new": false
+    },
+    {
+      "path": "js/ui/loginModalController.js",
+      "count": 3,
+      "is_new": false
+    },
+    {
+      "path": "js/ui/views/VideoListView.js",
+      "count": 3,
+      "is_new": false
+    },
+    {
+      "path": "js/viewManager.js",
+      "count": 3,
+      "is_new": false
+    },
+    {
+      "path": "js/utils/qrcode.js",
+      "count": 2,
+      "is_new": false
+    },
+    {
+      "path": "js/app/feedCoordinator.js",
+      "count": 1,
+      "is_new": false
+    },
+    {
+      "path": "js/app.js",
+      "count": 1,
+      "is_new": false
+    },
+    {
+      "path": "js/exploreView.js",
+      "count": 1,
+      "is_new": false
+    },
+    {
+      "path": "js/forYouView.js",
+      "count": 1,
+      "is_new": false
+    },
+    {
+      "path": "js/index.js",
+      "count": 1,
+      "is_new": false
+    },
+    {
+      "path": "js/kidsView.js",
+      "count": 1,
+      "is_new": false
+    },
+    {
+      "path": "js/ui/components/EditModal.js",
+      "count": 1,
+      "is_new": false
+    },
+    {
+      "path": "js/ui/components/EmbedVideoModal.js",
+      "count": 1,
+      "is_new": false
+    },
+    {
+      "path": "js/ui/components/EventDetailsModal.js",
+      "count": 1,
+      "is_new": false
+    },
+    {
+      "path": "js/ui/components/UploadModal.js",
+      "count": 1,
+      "is_new": false
+    },
+    {
+      "path": "js/ui/components/VideoModal.js",
+      "count": 1,
+      "is_new": false
+    },
+    {
+      "path": "js/ui/components/nip71FormManager.js",
+      "count": 1,
+      "is_new": false
+    },
+    {
+      "path": "js/ui/dm/AppShell.js",
+      "count": 1,
+      "is_new": false
+    },
+    {
+      "path": "js/ui/dm/Composer.js",
+      "count": 1,
+      "is_new": false
+    },
+    {
+      "path": "js/ui/dm/ConversationList.js",
+      "count": 1,
+      "is_new": false
+    },
+    {
+      "path": "js/ui/dm/DMRelaySettings.js",
+      "count": 1,
+      "is_new": false
+    },
+    {
+      "path": "js/ui/dm/MessageThread.js",
+      "count": 1,
+      "is_new": false
+    },
+    {
+      "path": "js/ui/dm/NotificationCenter.js",
+      "count": 1,
+      "is_new": false
+    },
+    {
+      "path": "js/ui/moreMenuController.js",
+      "count": 1,
+      "is_new": false
+    },
+    {
+      "path": "js/ui/profileModalController.js",
+      "count": 1,
+      "is_new": false
+    },
+    {
+      "path": "js/ui/videoListViewController.js",
+      "count": 1,
+      "is_new": false
+    }
+  ],
+  "violations": []
+}

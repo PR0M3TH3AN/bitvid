@@ -1,0 +1,224 @@
+{
+  "grandfathered_files": 43,
+  "grandfathered_excess_lines": 49463,
+  "new_oversized_files": 0,
+  "new_excess_lines": 0,
+  "grandfathered_list": [
+    {
+      "path": "js/adminListStore.js",
+      "lines": 1033,
+      "excess": 33
+    },
+    {
+      "path": "js/app/authSessionCoordinator.js",
+      "lines": 1743,
+      "excess": 743
+    },
+    {
+      "path": "js/app/feedCoordinator.js",
+      "lines": 1767,
+      "excess": 767
+    },
+    {
+      "path": "js/app/playbackCoordinator.js",
+      "lines": 1217,
+      "excess": 217
+    },
+    {
+      "path": "js/app.js",
+      "lines": 5245,
+      "excess": 4245
+    },
+    {
+      "path": "js/channelProfile.js",
+      "lines": 5530,
+      "excess": 4530
+    },
+    {
+      "path": "js/feedEngine/stages.js",
+      "lines": 1350,
+      "excess": 350
+    },
+    {
+      "path": "js/historyView.js",
+      "lines": 2547,
+      "excess": 1547
+    },
+    {
+      "path": "js/index.js",
+      "lines": 1407,
+      "excess": 407
+    },
+    {
+      "path": "js/nostr/client.js",
+      "lines": 3990,
+      "excess": 2990
+    },
+    {
+      "path": "js/nostr/managers/SignerManager.js",
+      "lines": 1106,
+      "excess": 106
+    },
+    {
+      "path": "js/nostr/nip46Client.js",
+      "lines": 2102,
+      "excess": 1102
+    },
+    {
+      "path": "js/nostr/nip46Connector.js",
+      "lines": 1094,
+      "excess": 94
+    },
+    {
+      "path": "js/nostr/nip71.js",
+      "lines": 1531,
+      "excess": 531
+    },
+    {
+      "path": "js/nostr/publishHelpers.js",
+      "lines": 1415,
+      "excess": 415
+    },
+    {
+      "path": "js/nostr/watchHistory.js",
+      "lines": 2211,
+      "excess": 1211
+    },
+    {
+      "path": "js/nostrEventSchemas.js",
+      "lines": 2908,
+      "excess": 1908
+    },
+    {
+      "path": "js/payments/nwcClient.js",
+      "lines": 1642,
+      "excess": 642
+    },
+    {
+      "path": "js/services/authService.js",
+      "lines": 1321,
+      "excess": 321
+    },
+    {
+      "path": "js/services/commentThreadService.js",
+      "lines": 1122,
+      "excess": 122
+    },
+    {
+      "path": "js/services/hashtagPreferencesService.js",
+      "lines": 1435,
+      "excess": 435
+    },
+    {
+      "path": "js/services/moderationService.js",
+      "lines": 2513,
+      "excess": 1513
+    },
+    {
+      "path": "js/services/nostrService.js",
+      "lines": 2227,
+      "excess": 1227
+    },
+    {
+      "path": "js/services/playbackService.js",
+      "lines": 1289,
+      "excess": 289
+    },
+    {
+      "path": "js/services/r2Service.js",
+      "lines": 1194,
+      "excess": 194
+    },
+    {
+      "path": "js/state/cache.js",
+      "lines": 1829,
+      "excess": 829
+    },
+    {
+      "path": "js/subscriptions.js",
+      "lines": 2374,
+      "excess": 1374
+    },
+    {
+      "path": "js/ui/applicationBootstrap.js",
+      "lines": 1169,
+      "excess": 169
+    },
+    {
+      "path": "js/ui/components/EditModal.js",
+      "lines": 1130,
+      "excess": 130
+    },
+    {
+      "path": "js/ui/components/RevertModal.js",
+      "lines": 1663,
+      "excess": 663
+    },
+    {
+      "path": "js/ui/components/SimilarContentCard.js",
+      "lines": 1303,
+      "excess": 303
+    },
+    {
+      "path": "js/ui/components/UploadModal.js",
+      "lines": 1320,
+      "excess": 320
+    },
+    {
+      "path": "js/ui/components/VideoCard.js",
+      "lines": 3130,
+      "excess": 2130
+    },
+    {
+      "path": "js/ui/components/VideoModal.js",
+      "lines": 6285,
+      "excess": 5285
+    },
+    {
+      "path": "js/ui/loginModalController.js",
+      "lines": 2552,
+      "excess": 1552
+    },
+    {
+      "path": "js/ui/moreMenuController.js",
+      "lines": 1601,
+      "excess": 601
+    },
+    {
+      "path": "js/ui/overlay/popoverEngine.js",
+      "lines": 1070,
+      "excess": 70
+    },
+    {
+      "path": "js/ui/profileModalController.js",
+      "lines": 8757,
+      "excess": 7757
+    },
+    {
+      "path": "js/ui/views/VideoListView.js",
+      "lines": 1392,
+      "excess": 392
+    },
+    {
+      "path": "js/ui/zapController.js",
+      "lines": 1206,
+      "excess": 206
+    },
+    {
+      "path": "js/userBlocks.js",
+      "lines": 2305,
+      "excess": 1305
+    },
+    {
+      "path": "js/watchHistoryService.js",
+      "lines": 1400,
+      "excess": 400
+    },
+    {
+      "path": "js/webtorrent.js",
+      "lines": 1038,
+      "excess": 38
+    }
+  ],
+  "new_list": []
+}
