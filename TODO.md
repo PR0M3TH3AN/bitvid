@@ -1,5 +1,7 @@
-# TODO
+# Test Audit To-Do
+- [ ] Run initial test suite
+- [ ] Collect coverage
+- [ ] Identify flaky tests
+- [ ] Audit critical files
+- [ ] Fix P0 issues
 
-- [ ] Fix unbounded concurrency in `js/nostr/commentEvents.js` using `pMap`.
-- [ ] Update CORS port in `content/docs/guides/upload-content.md` to 3000.
-- [ ] Run `npm run lint` and `npm run test:unit` to verify.
