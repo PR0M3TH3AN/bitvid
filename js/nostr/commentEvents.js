@@ -14,6 +14,8 @@ import { isSessionActor } from "./sessionActor.js";
 import { queueSignEvent } from "./signRequestQueue.js";
 import { getActiveSigner } from "../nostrClientRegistry.js";
 import { sanitizeRelayList as sanitizeRelayUrls } from "./nip46Client.js";
+import { pMap } from "../utils/asyncUtils.js";
+import { RELAY_BACKGROUND_CONCURRENCY } from "./relayConstants.js";
 
 const COMMENT_EVENT_SCHEMA = getNostrEventSchema(NOTE_TYPES.VIDEO_COMMENT);
 const CACHE_POLICY = CACHE_POLICIES[NOTE_TYPES.VIDEO_COMMENT];
@@ -1298,8 +1300,10 @@ export async function publishComment(
 
   const relayList = sanitizeRelayList(options.relays, client.relays);
 
-  const publishResults = await Promise.all(
-    relayList.map((url) => publishEventToRelay(client.pool, url, signedEvent)),
+  const publishResults = await pMap(
+    relayList,
+    (url) => publishEventToRelay(client.pool, url, signedEvent),
+    { concurrency: RELAY_BACKGROUND_CONCURRENCY },
   );
 
   const acceptedRelays = publishResults
@@ -1392,8 +1396,9 @@ export async function listVideoComments(client, targetInput, options = {}) {
   const rawResults = [];
 
   // Parallel fetch from relays with incremental logic
-  await Promise.all(
-    relayList.map(async (url) => {
+  await pMap(
+    relayList,
+    async (url) => {
       if (!url) return;
       const lastSeen = lastSeens[url] || 0;
       // Deep clone filters to apply 'since' safely per relay
@@ -1422,7 +1427,8 @@ export async function listVideoComments(client, targetInput, options = {}) {
       } catch (err) {
         devLogger.warn(`[nostr] Failed to fetch comments from ${url}:`, err);
       }
-    })
+    },
+    { concurrency: RELAY_BACKGROUND_CONCURRENCY },
   );
 
   // If we have cached items, add them to the raw list for deduplication/merging
