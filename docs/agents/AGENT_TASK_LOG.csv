@@ -2,3 +2,4 @@ date,agent_name,prompt_file,status,branch,summary
 2026-02-12,audit-agent,bitvid-audit-agent.md,completed,unstable,"Ran audit scripts, created initial reports"
 2026-02-12,ci-health-agent,bitvid-ci-health-agent.md,completed,ai/ci-health-fix-watch-history-flake,"Fixed flaky test in watch-history.test.mjs using waitFor"
 2026-02-12,const-refactor-agent,bitvid-const-refactor-agent.md,completed,ai/constants-refactor/daily-run,"Refactored timeouts in UI controllers and webtorrent.js to use canonical constants"
+2026-02-12,content-audit-agent,bitvid-content-audit-agent.md,completed,content-audit/fix-upload-docs,"Audited upload docs, verified claims against code, updated details on .torrent generation"
