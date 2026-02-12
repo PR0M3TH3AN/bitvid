@@ -155,3 +155,9 @@ RELAY_URLS="ws://localhost:8080" node scripts/agent/smoke-test.mjs \
 # public relays only with explicit confirmation and extreme throttle
 RELAY_URLS="wss://relay.example" node scripts/agent/smoke-test.mjs \
   --confirm-public --burst=1 --timeout=30 --out=artifacts/
+```
+
+<!-- TODO: This prompt appears to be truncated. The following sections are
+     missing and should be added: FAILURE MODES, PR & COMMIT CONVENTIONS,
+     OUTPUTS PER RUN, BEGIN.
+     See https://github.com/PR0M3TH3AN/bitvid/issues for tracking. -->

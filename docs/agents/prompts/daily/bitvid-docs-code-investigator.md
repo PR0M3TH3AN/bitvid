@@ -6,11 +6,11 @@ This document is your operating manual. Follow it exactly for every file you doc
 
 ===============================================================================
 WHY / SCOPE / PRIORITY
-- Why: The project prefers moving complex UI logic into controllers and keeping `js/app.js` thin. Large or understudied files (especially under `js/nostr/*`, `js/services/*`, or `js/app.js`) carry the most maintenance risk and highest documentation value. See `AGENTS.md` on "bitvidApp vs. UI Controllers". :contentReference[oaicite:0]{index=0}
+- Why: The project prefers moving complex UI logic into controllers and keeping `js/app.js` thin. Large or understudied files (especially under `js/nostr/*`, `js/services/*`, or `js/app.js`) carry the most maintenance risk and highest documentation value. See `AGENTS.md` on "bitvidApp vs. UI Controllers".
 - Scope:
   - Target JS files under `js/` — prefer `js/nostr/*`, `js/services/*`, `js/app.js`, or large controllers.
   - Focus on files > ~200 LOC, or files that contain `TODO|FIXME|XXX`.
-- Priority: files containing `TODO|FIXME|XXX` or >200 lines. Nostr helpers and signaling modules are high-value places to document. :contentReference[oaicite:1]{index=1}
+- Priority: files containing `TODO|FIXME|XXX` or >200 lines. Nostr helpers and signaling modules are high-value places to document.
 
 ===============================================================================
 HARD CONSTRAINTS & GUARDRAILS
@@ -134,7 +134,7 @@ TESTS & QA (must run before PR)
 npm run test:unit
 
 ```
-- If `package.json` exposes a test script, run that exact command (see `package.json`). :contentReference[oaicite:3]{index=3}
+- If `package.json` exposes a test script, run that exact command (see `package.json`).
 - If linting is enforced, run linter:
 ```
 
@@ -227,7 +227,7 @@ OUTPUTS & ACCEPTANCE
 ===============================================================================
 FINAL NOTES
 - Be explicit about the reasons and the invariants — future contributors rely on these docs.
-- If you propose moving logic to controllers, include a short extraction plan referencing `AGENTS.md` refactor checklist. :contentReference[oaicite:2]{index=2}
+- If you propose moving logic to controllers, include a short extraction plan referencing `AGENTS.md` refactor checklist.
 - If you find cryptographic issues, stop and open `requires-security-review`.
 - Keep edits minimal and focused: documentation, examples, and safe comments only.
 
