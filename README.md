@@ -178,6 +178,7 @@ To run **bitvid** locally:
    ```bash
    npm run test:unit
    npm run format
+   npm run lint
    ```
 
 #### Quick Reference

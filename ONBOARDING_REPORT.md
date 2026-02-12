@@ -1,29 +1,32 @@
-# Developer Onboarding Audit - 2025-02-18
+# Developer Onboarding Audit
 
-This document summarizes the findings from the developer onboarding audit.
+**Date:** 2026-02-12
+**Environment:** Linux (x64) | Node.js v22
 
 ## Steps Executed
 
 1.  `npm ci`: Successful.
 2.  `npm run build:css`: Successful.
 3.  `npm run format`: Successful.
-
-## Environment
-
--   **Node.js Version:** v22.22.0
--   **Dependencies:** Installed successfully via `npm ci`.
--   **CSS Build:** Tailwind CSS bundle generated successfully.
+4.  `npm run build`: Successful (required for full lint coverage).
+5.  `npm run lint`: Successful.
+    -   `lint:assets` skipped initially when `dist/` was missing, then passed after `npm run build`.
+    -   `lint:sw-compat` skipped due to missing git history (expected in shallow clones).
+6.  `npm run test:unit`: Successful (13 tests passed).
 
 ## Findings
 
--   **Setup Reliability:** The onboarding steps are robust and reliable. No errors were encountered.
--   **Documentation:** `CONTRIBUTING.md` and `README.md` provide clear instructions.
--   **Dev Container:** The project includes a valid `.devcontainer/devcontainer.json` which uses `mcr.microsoft.com/devcontainers/javascript-node:22`. This is recommended for a consistent development environment.
--   **Node Version:** While `package.json` does not explicitly enforce a Node.js version, the `.devcontainer` configuration implies a dependency on Node 22. Adding an `engines` field to `package.json` would improve environment consistency.
--   **Build Commands:** The README suggests `npm run build:css` for CSS verification, which works as expected. For full builds, `npm run build` or `npm start` should be used.
--   **Warnings:** A warning about `browserslist` (`caniuse-lite is outdated`) was observed during `npm run build:css`. This is documented in `CONTRIBUTING.md` under Troubleshooting.
+-   **Reliability:** The onboarding steps are robust. Dependencies installed correctly, and build/test scripts executed without error.
+-   **Documentation:**
+    -   `README.md` correctly lists `npm ci`, `npm start` (which builds), and `npm run test:unit`. It was missing `npm run lint` in the "Verify setup" checklist.
+    -   `CONTRIBUTING.md` correctly lists `npm run format` and `npm run lint`. It did not explicitly mention that `npm run build` is a prerequisite for `lint:assets` (though the lint script handles the missing build gracefully).
+-   **Dev Container:** The `.devcontainer/devcontainer.json` uses `mcr.microsoft.com/devcontainers/javascript-node:22` which aligns with the project's requirement. However, `postCreateCommand` uses `npx playwright install` without `--with-deps`, which might fail if system dependencies are missing in the base image.
+-   **Node Version:** `package.json` correctly enforces `"engines": { "node": ">=22" }`.
 
-## Recommendations implemented
+## Recommendations Implemented
 
--   Added `"engines": { "node": ">=22" }` to `package.json` to align with `.devcontainer` and ensure environment consistency.
--   Updated `CONTRIBUTING.md` to explicitly mention the Node.js version requirement and clarify build commands.
+1.  **Documentation Updates:**
+    -   Added `npm run lint` to `README.md` verification steps.
+    -   Clarified build prerequisites for linting in `CONTRIBUTING.md`.
+2.  **Dev Container Robustness:**
+    -   Updated `.devcontainer/devcontainer.json` to use `npx playwright install --with-deps`.
