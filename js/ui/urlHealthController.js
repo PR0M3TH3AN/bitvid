@@ -1,3 +1,5 @@
+import { SHORT_TIMEOUT_MS } from "../constants.js";
+
 export default class UrlHealthController {
   constructor({
     state = {},
@@ -249,7 +251,7 @@ export default class UrlHealthController {
   }
 
   async probeUrlWithVideoElement(url, timeoutMs) {
-    const defaultTimeout = this.constants.URL_PROBE_TIMEOUT_MS || 5000;
+    const defaultTimeout = this.constants.URL_PROBE_TIMEOUT_MS || SHORT_TIMEOUT_MS;
     const effectiveTimeout =
       Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : defaultTimeout;
 
@@ -346,7 +348,7 @@ export default class UrlHealthController {
     }
 
     const confirmPlayable = options?.confirmPlayable === true;
-    const defaultTimeout = this.constants.URL_PROBE_TIMEOUT_MS || 5000;
+    const defaultTimeout = this.constants.URL_PROBE_TIMEOUT_MS || SHORT_TIMEOUT_MS;
     const urlHealthConstants = this.constants.urlHealthConstants || {};
 
     const confirmWithVideoElement = async () => {

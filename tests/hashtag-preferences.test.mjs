@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { waitFor } from "./test-helpers/wait-for.mjs";
 
 const hashtagPreferencesModule = await import(
   "../js/services/hashtagPreferencesService.js"
@@ -301,19 +302,17 @@ test(
       );
       assert.deepEqual(hashtagPreferences.getInterests(), []);
 
-      // TODO: This part of the test is flaky in CI environments.
-      // Logs confirm the code attempts decryption ("Attempting decryption via window.nostr fallback"),
-      // but the mock spy is not consistently called, likely due to runNip07WithRetry/microtask timing.
-
       permissionState.enabled = true;
       await hashtagPreferences.load(pubkey, { allowPermissionPrompt: true });
 
-      assert.equal(
-        decryptCalls.length,
-        1,
-        "explicit permission prompts should retry decryption",
-      );
-      assert.deepEqual(hashtagPreferences.getInterests(), ["late"]);
+      await waitFor(() => {
+        assert.equal(
+          decryptCalls.length,
+          1,
+          "explicit permission prompts should retry decryption",
+        );
+        assert.deepEqual(hashtagPreferences.getInterests(), ["late"]);
+      });
     } finally {
       relayManager.setEntries(originalRelayEntries, { allowEmpty: true, updateClient: false });
       nostrClient.fetchListIncrementally = originalFetchIncremental;

@@ -47,6 +47,7 @@ import {
   subscribeToLinkPreviewSettings,
 } from "../../utils/linkPreviewSettings.js";
 import { HEX64_REGEX } from "../../utils/hex.js";
+import { UI_FEEDBACK_DELAY_MS } from "../../constants.js";
 
 
 const SIMILAR_CONTENT_LIMIT = 10;
@@ -1534,7 +1535,7 @@ export class VideoModal {
       if (button.dataset.feedbackTimeoutId) {
         delete button.dataset.feedbackTimeoutId;
       }
-    }, 2000);
+    }, UI_FEEDBACK_DELAY_MS);
 
     button.dataset.feedbackTimeoutId = String(nextId);
   }
