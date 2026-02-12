@@ -55,11 +55,11 @@ Before executing the selected task, verify that no other agent is already workin
 
 1. **Check for existing claims.** Search for open or draft PRs matching this agent:
    ```
-   gh pr list --state open --search "<agent-name>"
+   gh pr list --state open --search "\"[weekly] <agent-name>\" in:title"
    ```
    For example, if the selected agent is `changelog-agent`, run:
    ```
-   gh pr list --state open --search "changelog-agent"
+   gh pr list --state open --search "\"[weekly] changelog-agent\" in:title"
    ```
    If any matching PR exists (open or draft), this task is **already claimed**.
 
@@ -78,7 +78,7 @@ Before executing the selected task, verify that no other agent is already workin
 
 4. **Race condition check:** After creating the draft PR, re-check:
    ```
-   gh pr list --state open --search "<agent-name>"
+   gh pr list --state open --search "\"[weekly] <agent-name>\" in:title"
    ```
    If you see another PR for this agent that was created *before* yours (by a different agent instance), close your PR with `gh pr close <your-pr-number>` and skip to the next agent.
 
