@@ -9,3 +9,6 @@
 
 ## Priority: Low (Maintenance)
 - [ ] Batch upgrade dev dependencies (`stylelint`, `postcss-import`).
+
+## Priority: High (Performance)
+- [x] Bound concurrency in `authService.js` for profile hydration (P0).
