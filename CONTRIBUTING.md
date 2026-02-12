@@ -41,6 +41,8 @@ Automated agents contributing to this repository should follow these rules:
 - **Commit Messages**: Use the convention `type(scope): description (agent)` (e.g., `fix(ai): formatting (agent)` or `docs(ai): update quickstart (agent)`).
 - **Reference Issues**: Link to relevant issues in the PR description.
 - **Review AGENTS.md**: Always consult `AGENTS.md` for specific architectural guidelines (like URL-first playback, token-first design system) and constraints before starting work.
+- **Review KNOWN_ISSUES.md**: Before starting development or debugging, review `KNOWN_ISSUES.md` to avoid investigating pre-existing failures or limitations.
+- **Dependency Upgrades**: Major or risky dependency upgrades must be documented by creating a Markdown file in the `issues/` directory (e.g., `issues/upgrade-<pkg>.md`) with a plan and risk assessment, rather than opening an immediate PR.
 - **Efficiency**: Prefer running targeted or sharded tests (e.g., `npm run test:unit:shard1`, `shard2`, or `shard3`) to conserve resources during iteration.
 
 ## Submitting a Pull Request
