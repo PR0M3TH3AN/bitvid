@@ -25,8 +25,6 @@ export const DEFAULT_NIP07_CORE_METHODS = Object.freeze([
   // Core auth + relay metadata
   "get_public_key",
   "sign_event",
-  "read_relays",
-  "write_relays",
 ]);
 
 export const DEFAULT_NIP07_PERMISSION_METHODS = Object.freeze([
