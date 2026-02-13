@@ -18,10 +18,10 @@ HIGH-LEVEL RULES & SAFETY
 -------------------------------------------------------------------------------
 REPO PREP — artifacts to create/update
 Create or update these artifacts and include them in your PR branch:
-- `CONTEXT.md` — the chosen file, reason for selection, commit SHA, Node/npm versions, extraction plan (blocks to extract).
-- `TODO.md` — checklist of extraction items (2–3 blocks) and status.
-- `DECISIONS.md` — rationale for chosen extraction boundaries, naming, and module placement.
-- `TEST_LOG.md` — exact commands run with outputs (lint/tests/manual checks).
+- `context/CONTEXT_<timestamp>.md` — the chosen file, reason for selection, commit SHA, Node/npm versions, extraction plan (blocks to extract).
+- `todo/TODO_<timestamp>.md` — checklist of extraction items (2–3 blocks) and status.
+- `decisions/DECISIONS_<timestamp>.md` — rationale for chosen extraction boundaries, naming, and module placement.
+- `test_logs/TEST_LOG_<timestamp>.md` — exact commands run with outputs (lint/tests/manual checks).
 - `perf/decompose/` — optional helpers, raw `node scripts/check-file-size.mjs --report` output, and before/after line counts.
 
 -------------------------------------------------------------------------------
@@ -39,7 +39,7 @@ node scripts/check-file-size.mjs --report | tee perf/decompose/raw-file-size-rep
   git log --since="8 weeks ago" --pretty=oneline -- js/path/to/file.js
   ```
 - If significant refactor commits exist, skip and pick the next largest.
-4. Choose the single largest file **without** a recent decomposition commit and document the choice in `CONTEXT.md`.
+4. Choose the single largest file **without** a recent decomposition commit and document the choice in `context/CONTEXT_<timestamp>.md`.
 
 -------------------------------------------------------------------------------
 IDENTIFY COHESIVE BLOCKS (2–3) — what to look for
@@ -62,7 +62,7 @@ For each candidate block, document:
 - Reason it’s cohesive
 - Proposed new module file path and export names
 
-Add these items to `TODO.md`.
+Add these items to `todo/TODO_<timestamp>.md`.
 
 -------------------------------------------------------------------------------
 DECOMPOSITION GUIDELINES — implement safely
@@ -162,7 +162,7 @@ TESTING & VERIFICATION (mandatory)
    * Start dev server if applicable and exercise flows that the original file affects.
    * Verify console has no errors and runtime behavior is unchanged.
 
-4. **Record all commands & outputs** in `TEST_LOG.md`.
+4. **Record all commands & outputs** in `test_logs/TEST_LOG_<timestamp>.md`.
 
 ---
 
@@ -179,7 +179,7 @@ UPDATE BASELINE (scripts/check-file-size.mjs)
   node scripts/check-file-size.mjs --update
   ```
 * The script will print the new `BASELINE` object. **Copy the new `BASELINE`** into `scripts/check-file-size.mjs` (replace old baseline object).
-* Add a note to `DECISIONS.md` explaining why the baseline changed (file reduced, new counts).
+* Add a note to `decisions/DECISIONS_<timestamp>.md` explaining why the baseline changed (file reduced, new counts).
 
 **Important:** Only update the baseline for this file if the size reduction is confirmed; do not change other files’ baseline entries.
 
@@ -205,7 +205,7 @@ COMMIT & PR GUIDELINES
    * PR title: `[decompose] extract helpers from js/path/to/chosenFile.js`
    * PR body must include:
 
-     * `CONTEXT.md`, `TODO.md`, `DECISIONS.md`, `TEST_LOG.md`
+     * files in `context/`, `todo/`, `decisions/`, `test_logs/`
      * Before/after line count for the file (run `wc -l` or the script).
      * Lint & unit test outputs.
      * Manual QA steps & observations.
@@ -221,7 +221,7 @@ ACCEPTANCE CRITERIA (must be true before merge)
 * `npm run test:unit` passes.
 * The updated `BASELINE` object in `scripts/check-file-size.mjs` reflects the new smaller size.
 * No behavioral changes observed in smoke tests.
-* PR contains required artifacts (`CONTEXT.md`, `TODO.md`, `DECISIONS.md`, `TEST_LOG.md`) and clear QA instructions.
+* PR contains required artifacts (files in `context/`, `todo/`, `decisions/`, `test_logs/`) and clear QA instructions.
 
 ---
 
@@ -252,7 +252,7 @@ FIRST-RUN CHECKLIST (execute now)
    ```
 2. Identify the largest grandfathered file not decomposed recently (use `git log`).
 3. Create branch `ai/decompose/<short-file-name>-v1`.
-4. Read file, identify 2–3 cohesive blocks, document in `CONTEXT.md` and `TODO.md`.
+4. Read file, identify 2–3 cohesive blocks, document in `context/CONTEXT_<timestamp>.md` and `todo/TODO_<timestamp>.md`.
 5. Extract blocks to new files, import in original file.
 6. Run `npm run lint` and `npm run test:unit`. Fix issues.
 7. Update `scripts/check-file-size.mjs` baseline via `--update`; copy new `BASELINE`.
@@ -273,4 +273,4 @@ EXTRA TIPS & STYLE NOTES
 FINAL NOTE
 This is a conservative, incremental refactor: extract, test, baseline, PR. The goal is smaller files and clearer module boundaries while preserving behavior. Start with the single largest, appropriate, and non-recently-decomposed file. Make 2–3 clean extractions, test thoroughly, update baseline, and open one `[decompose]` PR targeting `unstable`.
 
-Begin now: run the file-size report, pick the file, and document the plan in `CONTEXT.md`.
+Begin now: run the file-size report, pick the file, and document the plan in `context/CONTEXT_<timestamp>.md`.

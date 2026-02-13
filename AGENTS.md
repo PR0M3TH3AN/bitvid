@@ -464,20 +464,24 @@ Before writing any code, establish clarity on three things:
 
 ### External Notes (Persistent State Files)
 
-Agents lose context across sessions. These files in the repo root act as persistent memory that any agent (or human) can read to resume work or understand project status. **Update them before any likely context reset.**
+Agents lose context across sessions. These files act as persistent memory that any agent (or human) can read to resume work or understand project status. **Update them before any likely context reset.**
 
-| File | Purpose | When to Update |
-|------|---------|----------------|
-| `CONTEXT.md` | Current goal, scope, assumptions, constraints, and a "Definition of Done" checklist | At the start of a task; when scope changes |
-| `TODO.md` | Checkbox task list with "Done" and "Blocked/Questions" sections | After planning; after completing or discovering tasks |
-| `DECISIONS.md` | Key choices made, alternatives considered, and rationale | When making tradeoffs or architectural decisions |
-| `TEST_LOG.md` | Commands run and their results (including failures) | After every lint/test/build run |
+**Storage Rule:** To prevent conflicts, these files are stored in dedicated directories with timestamps.
+- **Read:** Always look for the **latest** timestamped file in the directory (e.g., `ls context/ | sort | tail -n 1`).
+- **Write:** Never overwrite an existing file. Create a **new** file with a new timestamp (e.g., `context/CONTEXT_YYYY-MM-DD_HH-MM-SS.md`).
+
+| Directory | File Pattern | Purpose | When to Update |
+|-----------|--------------|---------|----------------|
+| `context/` | `CONTEXT_<timestamp>.md` | Current goal, scope, assumptions, constraints, and "Definition of Done" | At start; when scope changes |
+| `todo/` | `TODO_<timestamp>.md` | Checkbox task list with "Done" and "Blocked/Questions" sections | After planning; after tasks |
+| `decisions/` | `DECISIONS_<timestamp>.md` | Key choices made, alternatives considered, and rationale | When making tradeoffs |
+| `test_logs/` | `TEST_LOG_<timestamp>.md` | Commands run and their results (including failures) | After every lint/test/build run |
 
 **Rules for external notes:**
-- These files are working documents, not permanent artifacts. They should reflect the *current* state of work.
-- When starting a fresh task, clear stale content and re-scope. Don't let old context mislead the next agent.
+- These files are working documents. They should reflect the *current* state of work.
+- When starting a fresh task, clear stale content (by writing a fresh file) and re-scope.
 - Keep entries concise — bullet points and checklists, not prose.
-- `DECISIONS.md` is especially important: when you make a tradeoff (e.g., "used innerHTML here because the template is static HTML, updated the baseline"), write it down so the next agent doesn't undo it.
+- `decisions/` is especially important: when you make a tradeoff, write it down so the next agent doesn't undo it.
 
 ### Work Loop
 
@@ -501,24 +505,24 @@ For each task item, repeat this cycle:
   npm run lint              # Required
   npm run test:unit:shard1  # Fast feedback; run full suite before PR
   ```
-- If there's no test coverage for your change, add focused tests or document in `DECISIONS.md` why tests aren't feasible.
-- Log all commands and results in `TEST_LOG.md`.
+- If there's no test coverage for your change, add focused tests or document in `decisions/` why tests aren't feasible.
+- Log all commands and results in a new `test_logs/TEST_LOG_<timestamp>.md` file.
 
 #### D) Update Notes
 
-- Check off completed items in `TODO.md`.
-- Record decisions in `DECISIONS.md`.
-- Log verification results in `TEST_LOG.md`.
+- Check off completed items in the latest `todo/` file (by creating a new one).
+- Record decisions in a new `decisions/` file.
+- Log verification results in a new `test_logs/` file.
 - **Do this before any likely context/memory reset** — if you're about to hit a token limit, finish a long session, or hand off to another agent, update notes first.
 
 ### Context Recovery
 
 If an agent starts a session and finds existing work-in-progress:
 
-1. **Immediately read** `CONTEXT.md`, `TODO.md`, `DECISIONS.md`, and `TEST_LOG.md`.
-2. Resume from the next unchecked item in `TODO.md`.
+1. **Immediately read the latest files** in `context/`, `todo/`, `decisions/`, and `test_logs/`.
+2. Resume from the next unchecked item in the latest `todo/` file.
 3. Verify the current state by running `git status`, `git log --oneline -10`, and a quick lint/test pass.
-4. Do not re-do work that `TEST_LOG.md` shows already passed — unless the code has changed since.
+4. Do not re-do work that the latest `test_logs/` shows already passed — unless the code has changed since.
 
 ### Output Requirements
 
@@ -526,7 +530,7 @@ When finishing a task or handing off, provide:
 
 - **Summary** of what changed and why.
 - **Files changed** (list).
-- **Verification results** (from `TEST_LOG.md`).
+- **Verification results** (from the latest `test_logs/` file).
 - **Follow-ups / risks / remaining TODOs**.
 - **If blocked:** Ask specific questions and propose 1–2 options.
 
@@ -536,8 +540,8 @@ When finishing a task or handing off, provide:
 |-----------|---------|
 | Correctness over cleverness | Simple, working code beats elegant abstractions |
 | Conventions over preference | Match what's already in the repo, even if you'd do it differently |
-| Explicit tradeoffs | Write down *why* in `DECISIONS.md`, don't leave the next agent guessing |
-| Logged verification | Every claim of "tests pass" must have a `TEST_LOG.md` entry to back it up |
+| Explicit tradeoffs | Write down *why* in `decisions/`, don't leave the next agent guessing |
+| Logged verification | Every claim of "tests pass" must have a `test_logs/` entry to back it up |
 | Incremental over sweeping | Small, reviewable changes that keep the build green at every step |
 
 ---

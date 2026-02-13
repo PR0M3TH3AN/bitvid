@@ -84,10 +84,10 @@ bitvid/
 | `tests/e2e/helpers/bitvidTestFixture.ts` | Reusable Playwright fixture for agent testing |
 | `scripts/agent/simple-relay.mjs` | Mock Nostr relay with HTTP seeding API |
 | `docs/nostr-event-schemas.md` | Event schema documentation |
-| `CONTEXT.md` | Agent working state: current goal, scope, assumptions (see AGENTS.md §15) |
-| `TODO.md` | Agent task checklist with done/blocked sections (see AGENTS.md §15) |
-| `DECISIONS.md` | Agent decision log: choices, alternatives, rationale (see AGENTS.md §15) |
-| `TEST_LOG.md` | Agent verification log: commands run and results (see AGENTS.md §15) |
+| `context/` | Agent working state: current goal, scope, assumptions (see AGENTS.md §15) |
+| `todo/` | Agent task checklist with done/blocked sections (see AGENTS.md §15) |
+| `decisions/` | Agent decision log: choices, alternatives, rationale (see AGENTS.md §15) |
+| `test_logs/` | Agent verification log: commands run and results (see AGENTS.md §15) |
 
 ---
 
@@ -479,7 +479,7 @@ When assigning work to agents:
 | `docs/playback-fallback.md` | URL-first strategy |
 | `docs/moderation/README.md` | Moderation system |
 | `docs/logging.md` | Logger usage |
-| `CONTEXT.md` / `TODO.md` / `DECISIONS.md` / `TEST_LOG.md` | Agent persistent state files (see AGENTS.md §15) |
+| `context/` / `todo/` / `decisions/` / `test_logs/` | Agent persistent state files (see AGENTS.md §15) |
 
 ---
 

@@ -98,7 +98,7 @@ You must create a visible claim before doing any work. This claim is a **distrib
 ### 2a. Create your working branch and claim via draft PR
 
 1. Create your working branch.
-2. Make a minimal initial commit (e.g., update `CONTEXT.md` with the task scope).
+2. Make a minimal initial commit (e.g., create a new `context/CONTEXT_<timestamp>.md` with the task scope).
 3. Push the branch and open a **draft PR**:
    ```bash
    gh pr create --draft \
@@ -135,7 +135,7 @@ Commit and push this CSV update to your branch. This `started` entry serves as a
 1. Read the selected agent's prompt file from `docs/agents/prompts/daily/<filename>`.
 2. Adopt that prompt as your operating instructions for this session.
 3. Follow the agent prompt's workflow end-to-end, including:
-   - Updating the persistent state files (`CONTEXT.md`, `TODO.md`, `DECISIONS.md`, `TEST_LOG.md`) per AGENTS.md Section 15.
+   - Updating the persistent state files (in `context/`, `todo/`, `decisions/`, `test_logs/`) per AGENTS.md Section 15.
    - Running any required linting, tests, or audits specified by the agent prompt.
    - Creating artifacts, reports, or PRs as the agent prompt directs.
 

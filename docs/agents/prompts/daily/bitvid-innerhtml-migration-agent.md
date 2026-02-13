@@ -16,10 +16,10 @@ HARD CONSTRAINTS & SAFETY
 
 ===============================================================================
 REPO PREP (create/update these artifacts)
-- `CONTEXT.md` — file chosen, reason, date/commit SHA, Node/npm versions, short plan.
-- `TODO.md` — checklist of assignments in the file and status.
-- `DECISIONS.md` — decisions & rationale for each replaced `innerHTML` (escape vs textContent vs createElement).
-- `TEST_LOG.md` — commands executed and outputs (lint/tests/manual checks).
+- `context/CONTEXT_<timestamp>.md` — file chosen, reason, date/commit SHA, Node/npm versions, short plan.
+- `todo/TODO_<timestamp>.md` — checklist of assignments in the file and status.
+- `decisions/DECISIONS_<timestamp>.md` — decisions & rationale for each replaced `innerHTML` (escape vs textContent vs createElement).
+- `test_logs/TEST_LOG_<timestamp>.md` — commands executed and outputs (lint/tests/manual checks).
 - `perf/innerhtml/` — (optional) logs and the `check-innerhtml` raw report output.
 
 Commit these artifacts in the PR branch so reviewers can reproduce.
@@ -28,7 +28,7 @@ Commit these artifacts in the PR branch so reviewers can reproduce.
 WORKFLOW — top-level steps (one file only)
 1. **Preflight**
    - `git checkout unstable && git pull --ff-only`
-   - `node -v` and `npm -v` recorded in `CONTEXT.md`
+   - `node -v` and `npm -v` recorded in `context/CONTEXT_<timestamp>.md`
    - Run the innerHTML report:
      ```
      node scripts/check-innerhtml.mjs --report | tee perf/innerhtml/raw-report-$(date +%F).log
@@ -37,7 +37,7 @@ WORKFLOW — top-level steps (one file only)
      - Files labeled `RISKY` in the audit (user data without escaping).
      - Files with the highest innerHTML counts (profileModalController, searchView, channelProfile).
      - Avoid low-traffic or generated/minified files (they’re lower risk or irrelevant).
-   - Document the chosen file and reason in `CONTEXT.md`.
+   - Document the chosen file and reason in `context/CONTEXT_<timestamp>.md`.
 
 2. **Read the chosen file**
    - Open the file and locate **every** `innerHTML` assignment (search for `.innerHTML` and `element.innerHTML =`).
@@ -51,7 +51,7 @@ WORKFLOW — top-level steps (one file only)
        - **User-derived** (comes from `profile`, `user input`, event data, server payload)
      - If templated, note which interpolations are user-sourced vs trusted.
 
-   Add this list to `TODO.md` as items to migrate.
+   Add this list to `todo/TODO_<timestamp>.md` as items to migrate.
 
 3. **Decide replacement strategy (per assignment)**
    - **Static text**: replace with `element.textContent = "..."`.
@@ -68,7 +68,7 @@ WORKFLOW — top-level steps (one file only)
    - **Event handlers**:
      - If handlers were embedded in HTML markup (e.g., `onclick="..."`) remove and use `element.addEventListener()` when reconstructing nodes.
 
-   Record the strategy per assignment in `DECISIONS.md`.
+   Record the strategy per assignment in `decisions/DECISIONS_<timestamp>.md`.
 
 4. **Perform replacements (one-by-one)**
    - For each assignment:
@@ -90,14 +90,14 @@ WORKFLOW — top-level steps (one file only)
      ```
      npm run test:unit
      ```
-     If tests fail, revert offending change(s) or adjust tests accordingly. Document failures in `TEST_LOG.md`; if the change is correct but tests need updating, update tests (prefer minimal changes).
+     If tests fail, revert offending change(s) or adjust tests accordingly. Document failures in `test_logs/TEST_LOG_<timestamp>.md`; if the change is correct but tests need updating, update tests (prefer minimal changes).
 
 6. **Manual verification**
    - If the file affects UI, run a smoke test:
      - Start dev server: `npm run dev` (or repo-specific dev command).
      - Perform the user flows that exercise replaced code (profile modal open, search results, channel profile).
      - Verify DOM is correct, text visible, events still fire, no console errors.
-   - Record steps and observations in `TEST_LOG.md`.
+   - Record steps and observations in `test_logs/TEST_LOG_<timestamp>.md`.
 
 7. **Update baseline**
    - After verifying, update the baseline counts so the `check-innerhtml` script knows this file was addressed:
@@ -105,7 +105,7 @@ WORKFLOW — top-level steps (one file only)
      node scripts/check-innerhtml.mjs --update
      ```
    - The script prints a new `BASELINE` object. **Copy** the updated `BASELINE` object into `scripts/check-innerhtml.mjs` (replace existing `BASELINE`).
-   - Commit the updated script with a note in `DECISIONS.md` explaining the baseline change.
+   - Commit the updated script with a note in `decisions/DECISIONS_<timestamp>.md` explaining the baseline change.
 
    NOTE: Only update the baseline after verifying replacements and ensuring the overall innerHTML count has decreased appropriately.
 
@@ -121,7 +121,7 @@ WORKFLOW — top-level steps (one file only)
      git commit -m "[security] replace innerHTML usages in js/path/to/chosenFile.js — convert to safe DOM APIs"
      ```
    - Push and open a PR targeting `unstable`. PR body must include:
-     - `CONTEXT.md`, `TODO.md`, `DECISIONS.md`, `TEST_LOG.md`
+     - files in `context/`, `todo/`, `decisions/`, `test_logs/`
      - A short summary of the file and changes:
        - List of assignments replaced and strategy for each.
        - Before/after innerHTML counts (run `node scripts/check-innerhtml.mjs --report` before and after and paste results).
@@ -221,7 +221,7 @@ TESTING / QA CHECKS (must run before PR)
 * Optional: `npm run test:integration` if available and relevant.
 * Manual smoke test of UI flows touched. Record steps + screenshots (redact sensitive info).
 
-Record all commands and outputs in `TEST_LOG.md`.
+Record all commands and outputs in `test_logs/TEST_LOG_<timestamp>.md`.
 
 ===============================================================================
 ACCEPTANCE CRITERIA (before merging)
@@ -230,7 +230,7 @@ ACCEPTANCE CRITERIA (before merging)
 * Lint passes and unit tests pass locally and in CI.
 * `scripts/check-innerhtml.mjs --report` shows reduced count for the chosen file.
 * Updated `BASELINE` object copied into `scripts/check-innerhtml.mjs`.
-* PR contains `CONTEXT.md`, `TODO.md`, `DECISIONS.md`, `TEST_LOG.md`, summary of before/after, and QA steps.
+* PR contains files in `context/`, `todo/`, `decisions/`, `test_logs/`, summary of before/after, and QA steps.
 * Commit message prefix is `[security]`.
 
 ===============================================================================
@@ -247,7 +247,7 @@ FINAL NOTES & Etiquette
 * Do not attempt to be clever: prioritize safety and clarity.
 * Keep changes small and reversible.
 * If you have doubts about the nature of an `innerHTML`, stop and ask a maintainer.
-* Document everything in `DECISIONS.md` so reviewers can understand assumptions.
+* Document everything in `decisions/DECISIONS_<timestamp>.md` so reviewers can understand assumptions.
 
 Begin now:
 

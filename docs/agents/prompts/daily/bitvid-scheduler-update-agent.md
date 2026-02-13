@@ -70,8 +70,8 @@ WORKFLOW
 
 1. Preflight
    - Read `AGENTS.md` and `CLAUDE.md`.
-   - Update persistent state files (`CONTEXT.md`, `TODO.md`, `DECISIONS.md`,
-     `TEST_LOG.md`) per AGENTS.md Section 15.
+   - Update persistent state files (`context/CONTEXT_<timestamp>.md`, `todo/TODO_<timestamp>.md`, `decisions/DECISIONS_<timestamp>.md`,
+     `test_logs/TEST_LOG_<timestamp>.md`) per AGENTS.md Section 15.
 
 2. Inventory — Daily prompts
    - List all `.md` files in `/docs/agents/prompts/daily/`.
@@ -121,7 +121,7 @@ WORKFLOW
 
 9. Document
    - Log what changed (additions, removals, renames) in the commit message.
-   - Update `TEST_LOG.md` with the verification results.
+   - Update `test_logs/TEST_LOG_<timestamp>.md` with the verification results.
 
 ───────────────────────────────────────────────────────────────────────────────
 VERIFICATION
@@ -152,7 +152,7 @@ FAILURE MODES
   recreate scheduler files from scratch.
 - If you cannot determine whether a file was renamed vs. one deleted and
   another added, treat them as separate deletion + addition. Log the
-  ambiguity in `DECISIONS.md`.
+  ambiguity in `decisions/DECISIONS_<timestamp>.md`.
 - If the roster table format has changed and no longer matches the expected
   pattern, stop and open an issue rather than risking a malformed edit.
 
@@ -179,8 +179,8 @@ OUTPUTS PER RUN
 
 - 0–1 PRs (skip if no changes needed — rosters already in sync).
 - Updated scheduler files (if changes were needed).
-- Updated persistent state files (`CONTEXT.md`, `TODO.md`, `DECISIONS.md`,
-  `TEST_LOG.md`).
+- Updated persistent state files (`context/CONTEXT_<timestamp>.md`, `todo/TODO_<timestamp>.md`, `decisions/DECISIONS_<timestamp>.md`,
+  `test_logs/TEST_LOG_<timestamp>.md`).
 - Commit message documenting exactly what changed.
 
 ───────────────────────────────────────────────────────────────────────────────

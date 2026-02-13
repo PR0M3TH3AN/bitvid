@@ -23,23 +23,23 @@ PRIMARY GOALS & SUCCESS CRITERIA
   - Login/auth & profile hydration not blocked by background tasks.
   - Decryption/list loads off-main-thread or bounded; measurable user delay reduction.
   - `/content` accurately documents upload endpoints, types, limits, resumability, moderation.
-  - Every fix is a small PR with `CONTEXT.md`, `TODO.md`, `DECISIONS.md`, `TEST_LOG.md` and tests/QA steps.
+  - Every fix is a small PR with files in `context/`, `todo/`, `decisions/`, `test_logs/` and tests/QA steps.
 
 -------------------------------------------------------------------------------
 HARD CONSTRAINTS (must-follow)
 - Never invent files, APIs, libraries, or behaviors — inspect code first.
 - Prefer minimal incremental changes over rewrites.
-- Keep builds/tests green. If tests fail, either fix or document failures in `TEST_LOG.md`.
-- Preserve repo style & architecture; record tradeoffs in `DECISIONS.md`.
+- Keep builds/tests green. If tests fail, either fix or document failures in `test_logs/TEST_LOG_<timestamp>.md`.
+- Preserve repo style & architecture; record tradeoffs in `decisions/DECISIONS_<timestamp>.md`.
 - Security-sensitive changes (crypto, moderation) require human signoff — do not merge automatically.
 
 -------------------------------------------------------------------------------
 REPOSITORY PREP (create/update immediately)
 Commit early and often:
-- `CONTEXT.md` — goal, scope, assumptions, DoD.
-- `TODO.md` — tasks (Done / Blocked).
-- `DECISIONS.md` — design choices & rationale.
-- `TEST_LOG.md` — commands, env, outputs, failures.
+- `context/CONTEXT_<timestamp>.md` — goal, scope, assumptions, DoD.
+- `todo/TODO_<timestamp>.md` — tasks (Done / Blocked).
+- `decisions/DECISIONS_<timestamp>.md` — design choices & rationale.
+- `test_logs/TEST_LOG_<timestamp>.md` — commands, env, outputs, failures.
 - `INITIAL_BASELINE.md` — baseline metrics (login time, decrypt queue size, relay latencies, webtorrent count).
 - `perf/` (optional) — scripts and small helpers.
 
@@ -111,7 +111,7 @@ SMALL SAFE FIX EXAMPLES (PRs)
 - **docs: `/content` upload alignment**
   - Audit `/content`, update exact accepted types, size limits, endpoints, resumability examples (curl/JS).
 
-All PRs: small, feature-flagged if risky, include `CONTEXT.md`, `TEST_LOG.md`, `DECISIONS.md`.
+All PRs: small, feature-flagged if risky, include `context/CONTEXT_<timestamp>.md`, `test_logs/TEST_LOG_<timestamp>.md`, `decisions/DECISIONS_<timestamp>.md`.
 
 -------------------------------------------------------------------------------
 DOCS AUDIT (integrated sub-workflow — mandatory when doc/code touched)
@@ -125,9 +125,9 @@ DOCS AUDIT (integrated sub-workflow — mandatory when doc/code touched)
 WORK LOOP & VERIFICATION (for code changes)
 A) PLAN: 3–7 bullet plan before coding.
 B) IMPLEMENT: smallest change satisfying requirement.
-C) VERIFY: run linters & tests; log to `TEST_LOG.md`.
-D) DOCUMENT: update `DECISIONS.md` with rationale.
-E) PR: include `CONTEXT.md`, `TODO.md`, `DECISIONS.md`, `TEST_LOG.md` and QA steps.
+C) VERIFY: run linters & tests; log to `test_logs/TEST_LOG_<timestamp>.md`.
+D) DOCUMENT: update `decisions/DECISIONS_<timestamp>.md` with rationale.
+E) PR: include files in `context/`, `todo/`, `decisions/`, `test_logs/` and QA steps.
 
 If blocked: open issue with reproduction & 1–2 options.
 
@@ -147,7 +147,7 @@ PR & ISSUE GUIDELINES (what to include)
 - PR body:
   - Summary of change & why.
   - Plan bullets (3–7).
-  - Commands run & `TEST_LOG.md` excerpt.
+  - Commands run & `test_logs/TEST_LOG_<timestamp>.md` excerpt.
   - QA steps & manual validation instructions.
   - Risk assessment, rollback plan, and labels: `perf`, `requires-review`, `security` when relevant.
 
@@ -163,7 +163,7 @@ ESCALATION & RISK POLICY
 
 -------------------------------------------------------------------------------
 FIRST-RUN CHECKLIST (execute now)
-1. Commit `CONTEXT.md`, `TODO.md`, `DECISIONS.md`, `TEST_LOG.md`, `INITIAL_BASELINE.md`.
+1. Commit files in `context/`, `todo/`, `decisions/`, `test_logs/`, `INITIAL_BASELINE.md`.
 2. Run Search Patterns across repo and save `perf/hits-YYYY-MM-DD.json`.
 3. Prioritize P0 findings, open at most 1–3 small PRs (bounded concurrency, worker queue limits, visibility gating).
 4. Audit `/content` upload pages: inventory claims → map to code → verify → open docs PR or issue.
@@ -177,7 +177,7 @@ OUTPUTS (per run)
   - Metrics (login-time, queue sizes).
   - PRs opened / Issues opened.
   - Blockers & human decisions requested.
-- For every PR: branch contains `CONTEXT.md`, `TODO.md`, `DECISIONS.md`, `TEST_LOG.md`.
+- For every PR: branch contains files in `context/`, `todo/`, `decisions/`, `test_logs/`.
 - For docs PR: verification artifacts attached.
 
 -------------------------------------------------------------------------------
@@ -186,7 +186,7 @@ BEHAVIORAL GUARDRAILS & QUALITY BAR
 - Keep changes small and consistent with conventions.
 - Log decisions and tests. Add comments near non-obvious tradeoffs.
 - Do not merge crypto/moderation changes without human review.
-- If context is lost: read `CONTEXT.md`, `TODO.md`, `DECISIONS.md`, `TEST_LOG.md`.
+- If context is lost: read files in `context/`, `todo/`, `decisions/`, `test_logs/`.
 
 -------------------------------------------------------------------------------
 FINAL NOTE
