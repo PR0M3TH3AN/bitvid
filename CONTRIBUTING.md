@@ -157,6 +157,12 @@ To set up the project locally:
    npm run test:dm:integration
    ```
 
+   To run smoke tests (critical path verification):
+
+   ```bash
+   npm run test:smoke
+   ```
+
    To aggregate telemetry from test logs:
 
    ```bash
@@ -173,6 +179,7 @@ To set up the project locally:
    - **Format**: Targets CSS, HTML, Markdown, and config files. (Note: JavaScript files are not currently auto-formatted by this command).
    - **Lint**: Checks for CSS errors, hex color usage, inline styles, design tokens, Tailwind guards, file size limits, innerHTML usage, asset references, and Service Worker compatibility. (Note: There is no ESLint configuration for JavaScript logic; this step focuses on style and design system guards).
    - **Note**: `npm run lint` includes an asset verification step (`lint:assets`) which checks the `dist/` directory. For full coverage, run `npm run build` before linting.
+   - **Audit**: `npm run audit` runs a design system audit and generates `REMEDIATION_REPORT.md` with auto-fix suggestions.
 
 6. **Git Hooks (Optional)**:
    We provide a script to set up a git pre-commit hook that runs linting and CSS builds automatically before you commit.
