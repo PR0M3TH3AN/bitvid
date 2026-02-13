@@ -21,6 +21,13 @@ export class VideoEventBuffer {
     this.invalidEvents = [];
     this.flushTimerId = null;
     this.FLUSH_DEBOUNCE_MS = 75;
+
+    // Buffer updates while hidden to avoid UI thrashing
+    this.pendingVideos = [];
+    this.handleVisibilityChange = this.handleVisibilityChange.bind(this);
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", this.handleVisibilityChange);
+    }
   }
 
   /**
@@ -140,8 +147,12 @@ export class VideoEventBuffer {
     }
 
     if (updatedVideos.length > 0) {
-      // Trigger the callback once per batch to avoid UI thrashing
-      this.onVideo(updatedVideos);
+      if (typeof document !== "undefined" && document.hidden) {
+        this.pendingVideos.push(...updatedVideos);
+      } else {
+        // Trigger the callback once per batch to avoid UI thrashing
+        this.onVideo(updatedVideos);
+      }
 
       // Fetch NIP-71 metadata (categorization tags) in the background for the whole batch
       this.client.populateNip71MetadataForVideos(updatedVideos)
@@ -160,6 +171,16 @@ export class VideoEventBuffer {
 
     // Persist processed events after each flush so reloads warm quickly.
     this.client.saveLocalData("subscribeVideos:flush");
+  }
+
+  handleVisibilityChange() {
+    if (typeof document !== "undefined" && !document.hidden) {
+      if (this.pendingVideos.length > 0) {
+        const batch = this.pendingVideos;
+        this.pendingVideos = [];
+        this.onVideo(batch);
+      }
+    }
   }
 
   /**
@@ -187,6 +208,9 @@ export class VideoEventBuffer {
     if (this.flushTimerId) {
       clearTimeout(this.flushTimerId);
       this.flushTimerId = null;
+    }
+    if (typeof document !== "undefined") {
+      document.removeEventListener("visibilitychange", this.handleVisibilityChange);
     }
     // Ensure any straggling events are flushed before tearing down.
     this.flush();

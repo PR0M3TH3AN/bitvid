@@ -151,4 +151,43 @@ test('VideoEventBuffer', async (t) => {
     assert.equal(buffer.buffer.length, 0); // Should have flushed
     assert.equal(client.allEvents.size, 1);
   });
+
+  await t.test('Visibility Gating', () => {
+    // Mock document
+    const originalDocument = global.document;
+    let visibilityHandler = null;
+    global.document = {
+      hidden: true,
+      addEventListener: (type, handler) => {
+        if (type === 'visibilitychange') visibilityHandler = handler;
+      },
+      removeEventListener: () => {}
+    };
+
+    const client = new MockClient();
+    let onVideoCalls = [];
+    const onVideo = (videos) => onVideoCalls.push(videos);
+    const buffer = new VideoEventBuffer(client, onVideo);
+
+    // Push event while hidden
+    buffer.push(validEvent);
+    buffer.scheduleFlush(true);
+
+    // Should NOT have called onVideo yet
+    assert.equal(onVideoCalls.length, 0);
+    // Should have buffered pending videos
+    assert.equal(buffer.pendingVideos.length, 1);
+
+    // Simulate visibility change
+    global.document.hidden = false;
+    assert.ok(visibilityHandler, "Listener attached");
+    visibilityHandler();
+
+    // Should flush now
+    assert.equal(onVideoCalls.length, 1);
+    assert.equal(buffer.pendingVideos.length, 0);
+
+    // Cleanup mock
+    global.document = originalDocument;
+  });
 });
