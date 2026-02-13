@@ -252,6 +252,8 @@ Feature flags in `js/constants.js` gate experimental behavior:
 | `FEATURE_PUBLISH_NIP71` | false | NIP-71 video publishing |
 | `FEATURE_SEARCH_FILTERS` | Dev mode only | Advanced search |
 | `FEATURE_TRUST_SEEDS` | true | Baseline trust seeds |
+| `FEATURE_TRUSTED_HIDE_CONTROLS` | true | Trusted mute/spam hide controls |
+| `FEATURE_IMPROVED_COMMENT_FETCHING` | true | Improved comment fetching logic |
 
 Toggle at runtime:
 ```javascript

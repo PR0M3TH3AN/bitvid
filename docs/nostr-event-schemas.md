@@ -249,6 +249,23 @@ If you introduce a new Nostr feature, add its schema to
 `js/nostrEventSchemas.js` so that the catalogue stays complete and so existing
 builders inherit the same debugging knobs.
 
+### NIP-17 & Gift Wrap (Kinds 1059, 13, 14)
+
+Modern direct messages use the NIP-17 "gift wrap" structure to maximize metadata privacy. The visible event on relays is the **Gift Wrap** (kind 1059), which encrypts a **Seal** (kind 13) for the recipient. The Seal in turn encrypts the actual **Chat Message** (kind 14) or other rumor types (like attachments), ensuring that only the sender and recipient can read the content or see the author/kind of the inner message.
+
+- **Gift Wrap (`1059`)**: Visible tags are limited to `['p', <recipient>]`. The content is a NIP-44 encrypted seal.
+- **Seal (`13`)**: The content is a NIP-44 encrypted rumor.
+- **Chat Message (`14`)**: The inner rumor containing the plaintext message.
+
+### DM Attachments & Receipts (Kinds 15, 20001, 20002, 10050)
+
+bitvid supports rich DM interactions via specialized kinds wrapped in NIP-17 seals (or legacy kind 4 for backward compatibility where applicable):
+
+- **DM Attachment (`15`)**: Represents a file transfer. Metadata lives in tags (`url`, `x` hash, `size`, `type`, `name`, `k` key) while the content field remains empty.
+- **DM Read Receipt (`20001`)**: Ephemeral signal that a message was viewed. Tags include `['e', <messageId>]` and optional `['k', <messageKind>]`.
+- **DM Typing Indicator (`20002`)**: Ephemeral signal with an `['expiration']` tag to show active typing state without persisting history.
+- **DM Relay Hints (`10050`)**: A discoverable list of relays where a user accepts NIP-17 gift wraps, allowing senders to route messages correctly.
+
 ### Hashtag preference lists
 
 Hashtag preference events (`NOTE_TYPES.HASHTAG_PREFERENCES`) now publish as a
