@@ -70,7 +70,19 @@ const ADD_PROFILE_CANCELLATION_CODES = new Set([
   "modal-dismissed",
 ]);
 
+/**
+ * Manages the user profile modal, including authentication, wallet, settings, and direct messages.
+ * Delegates specific logic to sub-controllers (e.g., wallet, DMs).
+ */
 export class ProfileModalController {
+  /**
+   * Initializes the controller with dependencies and state.
+   * @param {Object} options - Configuration options
+   * @param {HTMLElement} [options.modalContainer] - The root container for the modal
+   * @param {Object} [options.services] - Application services (auth, playback, etc.)
+   * @param {Object} [options.state] - Application state (cache, profiles)
+   * @param {Object} [options.callbacks] - Callbacks for app-level actions (e.g., login, logout)
+   */
   constructor(options = {}) {
     const {
       modalContainer = null,
@@ -7466,6 +7478,12 @@ export class ProfileModalController {
     }
   }
 
+  /**
+   * Primary entry point to open the profile modal.
+   * Refreshes data (saved profiles, wallet state) and displays the specified pane.
+   * @param {string} [targetPane="account"] - The pane to display initially (e.g., "account", "wallet", "settings")
+   * @returns {Promise<void>}
+   */
   async show(targetPane = "account") {
     const pane =
       typeof targetPane === "string" && targetPane.trim()
@@ -7586,10 +7604,19 @@ export class ProfileModalController {
     return true;
   }
 
+  /**
+   * Convenience method to open the wallet pane directly.
+   * @returns {Promise<void>}
+   */
   showWalletPane() {
     return this.show("wallet");
   }
 
+  /**
+   * Internal helper to make the modal visible and focus the pane.
+   * Do not call directly; use show() instead.
+   * @param {string} [pane="account"] - The pane to display
+   */
   open(pane = "account") {
     const modalRoot =
       this.profileModalRoot instanceof HTMLElement
@@ -7628,6 +7655,11 @@ export class ProfileModalController {
     });
   }
 
+  /**
+   * Closes the modal and resets UI state.
+   * @param {Object} [options] - Configuration options
+   * @param {boolean} [options.silent=false] - Whether to suppress UI/status messages
+   */
   hide(options = {}) {
     const { silent = false } =
       options && typeof options === "object" ? options : {};
@@ -7745,6 +7777,13 @@ export class ProfileModalController {
     }
   }
 
+  /**
+   * Callbacks from the app when a user successfully logs in.
+   * Updates internal state, refreshes the UI, and fetches user data (profile, relays, follows).
+   * @param {Object} detail - Login event detail
+   * @param {string} detail.pubkey - The hex pubkey of the logged-in user
+   * @param {string} [detail.mode] - The login mode (e.g., "nip07", "nsec")
+   */
   async handleAuthLogin(detail = {}) {
     const postLoginPromise =
       detail && typeof detail.postLoginPromise?.then === "function"
