@@ -52,7 +52,29 @@ import { UI_FEEDBACK_DELAY_MS } from "../../constants.js";
 
 const SIMILAR_CONTENT_LIMIT = 10;
 
+/**
+ * Main UI controller for the full-screen video playback modal.
+ * Manages the modal lifecycle (load, open, close), orchestrates playback,
+ * and coordinates sub-controllers for comments, reactions, and moderation.
+ *
+ * @see {@link docs/VideoModal-overview.md} for architectural details.
+ */
 export class VideoModal {
+  /**
+   * Initializes the video modal controller.
+   * Note: Does not touch the DOM or load HTML until `load()` is called.
+   *
+   * @param {Object} options - Configuration options
+   * @param {Function} [options.removeTrackingScripts] - Helper to sanitize HTML
+   * @param {Function} options.setGlobalModalState - Callback to update app-wide modal state
+   * @param {Document} options.document - The document instance (for DOM access)
+   * @param {Object} [options.logger] - Logger instance (defaults to devLogger)
+   * @param {Object} [options.mediaLoader] - Service for media resolution
+   * @param {Object} [options.assets] - Asset configuration (e.g., fallback thumbnails)
+   * @param {Object} [options.state] - Initial state (e.g., thumbnail cache)
+   * @param {Object} [options.helpers] - Utility helpers (e.g., npub encoding)
+   * @throws {Error} If document or setGlobalModalState is missing
+   */
   constructor({
     removeTrackingScripts,
     setGlobalModalState,
@@ -475,6 +497,13 @@ export class VideoModal {
     return this.modalVideo;
   }
 
+  /**
+   * Lazy-loads the video modal HTML and injects it into the DOM.
+   * Ensures idempotency: if already loaded and connected, returns immediately.
+   *
+   * @returns {Promise<HTMLElement>} The root element of the video modal
+   * @throws {Error} If fetching the template fails or container is missing
+   */
   async load() {
     if (this.loaded) {
       const root = this.playerModal;
@@ -546,12 +575,20 @@ export class VideoModal {
     return this.playerModal;
   }
 
+  /**
+   * Binds the controller to the DOM elements within the modal.
+   * Initializes sub-controllers and sets up event listeners.
+   *
+   * @param {HTMLElement} playerModal - The root modal element
+   */
   hydrate(playerModal) {
+    // 1. Cleanup existing accessibility traps and sub-controllers
     if (this.modalAccessibility?.destroy) {
       this.modalAccessibility.destroy();
     }
     this.modalAccessibility = null;
 
+    // 2. Cleanup existing popovers (Zap, More Menu)
     if (this.modalZapPopover?.destroy) {
       this.modalZapPopover.destroy();
     }
@@ -3021,6 +3058,14 @@ export class VideoModal {
     });
   }
 
+  /**
+   * Resets the modal state, populates it with the provided video data, and makes it visible.
+   * Also initializes moderation, comments, and accessibility traps.
+   *
+   * @param {Object} video - The video object to display (title, description, tags, etc.)
+   * @param {Object} [options] - Display options
+   * @param {HTMLElement} [options.triggerElement] - The element that triggered the modal (for focus restoration)
+   */
   open(video, options = {}) {
     this.activeVideo = video || null;
     this.moderationBadgeId = "";
@@ -3069,6 +3114,10 @@ export class VideoModal {
     this.refreshActiveVideoModeration({ video: this.activeVideo });
   }
 
+  /**
+   * Closes the modal, pauses playback, clears active state, and restores focus.
+   * This is the primary cleanup method when dismissing the modal.
+   */
   close() {
     this.activeVideo = null;
     this.applyModerationOverlay(null);
