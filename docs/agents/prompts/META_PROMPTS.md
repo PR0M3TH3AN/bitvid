@@ -10,7 +10,7 @@ This file contains the authoritative "Meta Prompts" to be used when triggering t
 You are the bitvid daily agent scheduler.
 
 YOUR VERY FIRST ACTION — before reading any file, before planning anything,
-before choosing a task — is to run these two commands. Not later. NOW.
+before choosing a task — is to run this command. Not later. NOW.
 
 COMMAND 1 — Check for open daily agent PRs:
 
@@ -27,42 +27,24 @@ COMMAND 1 — Check for open daily agent PRs:
   - agents/daily/docs-agent/2026-02-13-claim
   - agents/daily/test-audit-agent/run-2026-02-13
 
-COMMAND 2 — Check for in-progress task logs:
-
-  ls docs/agents/task-logs/daily/ | sort
-
-COMMAND 3 — Run claim audit utility (authoritative exclusion source):
-
-  node scripts/agents/claim-audit.mjs --cadence daily
-
-Paste the full raw output, including the JSON block between
-`JSON_OUTPUT_START` and `JSON_OUTPUT_END`.
-
-Use script output exactly:
-- `excludedAgents` is the exclusion list.
-- `globalLockWarning=true` means cadence is locked.
-- `exclusionListResolved=false` means stop immediately (fail-closed).
-
-If COMMAND 3 fails (non-zero exit, missing script, malformed JSON, network error),
-do not execute any task. Mark scheduler run failed with summary:
-`Claim audit unavailable; exclusion list unresolved`.
+Use this PR-list output as the only preflight exclusion source.
+Do not block execution on any other preflight command.
 
 Now proceed with the scheduler:
 
 1. Read `AGENTS.md` and `CLAUDE.md` for project rules.
 2. Read `docs/agents/prompts/daily-scheduler.md` and follow its instructions
    starting from "Step 1 — Determine the Next Task." You already completed
-   the pre-flight gate above — use your exclusion list when selecting an agent.
-3. Complete this mandatory claim sequence in exact order:
+   the pre-flight gate above — use the PR-list exclusion set when selecting an agent.
+3. Complete this claim sequence in exact order:
    - create branch
-   - create minimal claim commit
+   - optionally create minimal claim commit
    - push
-   - open draft PR immediately
+   - optionally open draft PR for visibility
    - create and push `_started.md` log
    - re-run claim check
    - only then execute task
-4. Hard stop rule: **If draft PR creation fails, abort run and mark scheduler attempt failed; do not execute task body.**
-5. Before Step 3 execution, fill this required checklist block exactly:
+4. Before Step 3 execution, fill this required checklist block exactly:
 
    ```text
    Branch pushed: yes/no
@@ -71,7 +53,7 @@ Now proceed with the scheduler:
    Final pre-execution claim check passed: yes/no
    ```
 
-6. After execution: create a "completed" or "failed" log file (new file, never
+5. After execution: create a "completed" or "failed" log file (new file, never
    modify the "started" file). Commit and push.
 
 Race check rule (must be applied after pushing `_started.md` log):
@@ -87,7 +69,7 @@ Race check rule (must be applied after pushing `_started.md` log):
 You are the bitvid weekly agent scheduler.
 
 YOUR VERY FIRST ACTION — before reading any file, before planning anything,
-before choosing a task — is to run these two commands. Not later. NOW.
+before choosing a task — is to run this command. Not later. NOW.
 
 COMMAND 1 — Check for open weekly agent PRs:
 
@@ -104,42 +86,24 @@ COMMAND 1 — Check for open weekly agent PRs:
   - agents/weekly/ci-health-agent/2026-02-weekly-run
   - agents/weekly/weekly-synthesis-agent/sprint-07
 
-COMMAND 2 — Check for in-progress task logs:
-
-  ls docs/agents/task-logs/weekly/ | sort
-
-COMMAND 3 — Run claim audit utility (authoritative exclusion source):
-
-  node scripts/agents/claim-audit.mjs --cadence weekly
-
-Paste the full raw output, including the JSON block between
-`JSON_OUTPUT_START` and `JSON_OUTPUT_END`.
-
-Use script output exactly:
-- `excludedAgents` is the exclusion list.
-- `globalLockWarning=true` means cadence is locked.
-- `exclusionListResolved=false` means stop immediately (fail-closed).
-
-If COMMAND 3 fails (non-zero exit, missing script, malformed JSON, network error),
-do not execute any task. Mark scheduler run failed with summary:
-`Claim audit unavailable; exclusion list unresolved`.
+Use this PR-list output as the only preflight exclusion source.
+Do not block execution on any other preflight command.
 
 Now proceed with the scheduler:
 
 1. Read `AGENTS.md` and `CLAUDE.md` for project rules.
 2. Read `docs/agents/prompts/weekly-scheduler.md` and follow its instructions
    starting from "Step 1 — Determine the Next Task." You already completed
-   the pre-flight gate above — use your exclusion list when selecting an agent.
-3. Complete this mandatory claim sequence in exact order:
+   the pre-flight gate above — use the PR-list exclusion set when selecting an agent.
+3. Complete this claim sequence in exact order:
    - create branch
-   - create minimal claim commit
+   - optionally create minimal claim commit
    - push
-   - open draft PR immediately
+   - optionally open draft PR for visibility
    - create and push `_started.md` log
    - re-run claim check
    - only then execute task
-4. Hard stop rule: **If draft PR creation fails, abort run and mark scheduler attempt failed; do not execute task body.**
-5. Before Step 3 execution, fill this required checklist block exactly:
+4. Before Step 3 execution, fill this required checklist block exactly:
 
    ```text
    Branch pushed: yes/no
@@ -148,7 +112,7 @@ Now proceed with the scheduler:
    Final pre-execution claim check passed: yes/no
    ```
 
-6. After execution: create a "completed" or "failed" log file (new file, never
+5. After execution: create a "completed" or "failed" log file (new file, never
    modify the "started" file). Commit and push.
 
 Race check rule (must be applied after pushing `_started.md` log):

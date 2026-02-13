@@ -13,24 +13,22 @@ Use this document for **all scheduler runs**. Do not redefine preflight or claim
    - `branch_prefix`: `agents/<cadence>/`
    - `prompt_dir`: `docs/agents/prompts/<cadence>/`
 
-3. **Run preflight claim audit (required, fail-closed)**
+3. **Run preflight PR-list check (required)**
    - `curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, prs: [.[] | {number, created_at, draft, head: {ref: .head.ref}, agent: ((.head.ref | capture("^agents/<cadence>/(?<agent>[^/]+)/")?.agent) // (.title | capture("(?<agent>[A-Za-z0-9-]+-agent)")?.agent // null))}] | sort_by(.created_at, .number)}'`
-   - `ls <log_dir> | sort`
-   - `node scripts/agents/claim-audit.mjs --cadence <cadence>`
-   - Use `excludedAgents` from claim-audit output as the only exclusion list.
-   - If claim-audit fails, `globalLockWarning=true`, or `exclusionListResolved=false`, stop and log `failed`.
+   - Use this PR list output as the preflight exclusion source for already-claimed agents.
+   - **Do not block execution on any other preflight command.**
 
 4. **Select next agent from cadence roster**
    - Read latest file in `<log_dir>` (alphabetical sort).
    - Advance to next agent in that cadence's roster.
-   - Skip excluded agents.
+   - Skip agents already claimed in the preflight PR-list output.
    - If all are excluded, log `failed` with `All roster tasks currently claimed by other agents` and stop.
 
-5. **Claim task before execution (required sequence)**
+5. **Claim task before execution (recommended sequence)**
    1. Create branch.
-   2. Create minimal claim commit.
+   2. Optionally create a minimal claim commit.
    3. Push branch.
-   4. Attempt draft PR.
+   4. Optionally open a draft PR for visibility.
    5. Create and push `<timestamp>_<agent>_started.md` in `<log_dir>`.
    6. Re-run open PR check.
    7. Race decision:
@@ -55,6 +53,6 @@ Use this document for **all scheduler runs**. Do not redefine preflight or claim
 - File format for each log entry:
   - `YYYY-MM-DD_HH-MM-SS_<agent-name>_<status>.md`
   - Include: Date, Agent, Prompt, Status, Branch, Summary.
-- Draft PR creation is recommended for visibility; if unavailable, branch + started log still act as lock.
+- Draft PR creation is optional and recommended for visibility; branch + started log still act as lock.
 - `started` + final status files provide crash recovery and clean chronological rotation.
 - Directory-based logs avoid CSV merge conflicts during concurrent scheduler runs.
