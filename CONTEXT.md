@@ -1,14 +1,13 @@
-# Context
+# Context: Content Audit 2026-02-13
 
-**Goal:** Execute the `bitvid-const-refactor-agent` task (daily scheduler).
-**Scope:** Identify and refactor duplicated numeric constants in `js/` to use canonical named constants.
-**Focus:** Refactor `5000` (timeout) to `SHORT_TIMEOUT_MS` and `60000` (timeout) to `LONG_TIMEOUT_MS` in selected files.
+## Goal
+Audit public-facing documentation in `/content` against the codebase to ensuring accuracy of claims regarding uploading, contribution, and media limits.
 
-**Definition of Done:**
-- [ ] Identify candidate duplicates.
-- [ ] Refactor `js/ui/engagementController.js` (5000 -> SHORT_TIMEOUT_MS).
-- [ ] Refactor `js/ui/applicationBootstrap.js` (5000 -> SHORT_TIMEOUT_MS).
-- [ ] Refactor `js/webtorrent.js` (60000 -> LONG_TIMEOUT_MS).
-- [ ] Verify changes with `npm run lint` and `npm run test:unit`.
-- [ ] Update documentation (`DECISIONS.md`, `TEST_LOG.md`).
-- [ ] Update `docs/agents/AGENT_TASK_LOG.csv`.
+## Scope
+- Docs: `/content` directory.
+- Code: `js/` directory (upload logic, validation, constants).
+
+## Metadata
+- Date: 2026-02-13
+- Agent: bitvid-content-audit-agent
+- Branch: daily/content-audit-agent
