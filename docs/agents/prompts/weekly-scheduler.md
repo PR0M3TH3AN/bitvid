@@ -165,30 +165,23 @@ EXCLUDED AGENTS: (none)
 
 You must create a visible claim before doing any work. This claim is a **distributed lock** that prevents agents on other platforms (Claude Code, Codex, Jules) from picking up the same task.
 
-### 2a. Create your working branch and push a claim
+### 2a. Mandatory claim sequence (exact order)
+
+Complete the following in this exact order. Do not reorder or skip steps:
 
 1. Create your working branch.
-2. Make a minimal initial commit (e.g., create a new `context/CONTEXT_<timestamp>.md` with the task scope).
-3. Push the branch immediately to make it visible to other agents.
+2. Create a minimal claim commit (for example, a new `context/CONTEXT_<timestamp>.md` with task scope).
+3. Push the branch immediately.
+4. Open a **draft PR immediately** after the push.
+5. Create and push the `_started.md` log file.
+6. Re-run the claim check command.
+7. Only then proceed to Step 3 (task execution).
 
-### 2b. Race condition check
+### 2b. Draft PR requirement (hard stop)
 
-After pushing, re-check for competing claims:
-```bash
-curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, prs: [.[] | {number, created_at, draft, head: {ref: .head.ref}, agent: ((.head.ref | capture("^agents/weekly/(?<agent>[^/]+)/")?.agent) // (.title | capture("(?<agent>[A-Za-z0-9-]+-agent)")?.agent // null))}] | sort_by(.created_at, .number)}'
-```
-Decision logic (must be explicit):
-1. Compare only open/draft PRs whose derived `agent` matches the agent you just claimed.
-2. If another matching PR has an earlier `created_at`, abort this run and pick the next agent.
-3. If `created_at` values are equal or ambiguous, use the lower `number` as the tie-breaker (lower number wins).
+If draft PR creation fails for any reason, **abort the run immediately**, mark the scheduler attempt as failed, and **do not execute the task body**.
 
-Before proceeding, print exactly one race verdict line:
-- `RACE CHECK: won`
-- `RACE CHECK: lost (agent already claimed by PR #<number>)`
-
-If the verdict is lost, abandon your branch and go back to Step 1 to select the next agent.
-
-### 2c. Log "started" in the task log immediately
+### 2c. Create and push `_started.md` log file
 
 > **Create a `started` log file NOW, before executing the task. This ensures the rotation advances even if you crash during execution.**
 
@@ -213,7 +206,33 @@ Use the current UTC timestamp. The file content should be:
 
 Commit and push this log file to your branch. This `started` entry serves as a secondary lock: other scheduler instances will see it and skip this agent.
 
-**The `started` log file is your primary claim mechanism.** Push it immediately so other agents can see it.
+### 2d. Final pre-execution claim check (race condition check)
+
+After pushing the started log, re-check for competing claims:
+```bash
+curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, prs: [.[] | {number, created_at, draft, head: {ref: .head.ref}, agent: ((.head.ref | capture("^agents/weekly/(?<agent>[^/]+)/")?.agent) // (.title | capture("(?<agent>[A-Za-z0-9-]+-agent)")?.agent // null))}] | sort_by(.created_at, .number)}'
+```
+Decision logic (must be explicit):
+1. Compare only open/draft PRs whose derived `agent` matches the agent you just claimed.
+2. If another matching PR has an earlier `created_at`, abort this run and pick the next agent.
+3. If `created_at` values are equal or ambiguous, use the lower `number` as the tie-breaker (lower number wins).
+
+Before proceeding, print exactly one race verdict line:
+- `RACE CHECK: won`
+- `RACE CHECK: lost (agent already claimed by PR #<number>)`
+
+If the verdict is lost, abandon your branch and go back to Step 1 to select the next agent.
+
+### 2e. Required output checklist (must be filled before Step 3)
+
+```text
+Branch pushed: yes/no
+Draft PR #: ...
+Started log filename: ...
+Final pre-execution claim check passed: yes/no
+```
+
+Do not begin Step 3 until all checklist fields are filled.
 
 ---
 
@@ -295,9 +314,9 @@ Use the current UTC timestamp (which will be later than the `started` file). The
 |-------|-----------|---------|
 | **Pre-flight gate** | Scan ALL open PR metadata via `curl` + deterministic agent mapping | Agents claimed by any platform |
 | **Pre-flight gate** | Check task log dir for `started` files | Agents in progress (even without PR) |
-| **Step 2a** | Push branch with claim commit | Cross-platform visibility |
-| **Step 2b** | Race condition re-check | Simultaneous claims |
+| **Step 2a** | Branch + claim commit + push + draft PR | Cross-platform visibility and explicit lock |
 | **Step 2c** | Create `started` log file immediately | Crash recovery — rotation advances |
+| **Step 2d** | Final race condition re-check | Simultaneous claims |
 
 All five layers must be executed. No single layer is sufficient on its own.
 

@@ -56,12 +56,28 @@ Now proceed with the scheduler:
 2. Read `docs/agents/prompts/daily-scheduler.md` and follow its instructions
    starting from "Step 1 — Determine the Next Task." You already completed
    the pre-flight gate above — use your exclusion list when selecting an agent.
-3. Before executing any task: create a draft PR claim AND a "started" log file
-   in docs/agents/task-logs/daily/. Both MUST exist before task execution begins.
-4. After execution: create a "completed" or "failed" log file (new file, never
+3. Complete this mandatory claim sequence in exact order:
+   - create branch
+   - create minimal claim commit
+   - push
+   - open draft PR immediately
+   - create and push `_started.md` log
+   - re-run claim check
+   - only then execute task
+4. Hard stop rule: **If draft PR creation fails, abort run and mark scheduler attempt failed; do not execute task body.**
+5. Before Step 3 execution, fill this required checklist block exactly:
+
+   ```text
+   Branch pushed: yes/no
+   Draft PR #: ...
+   Started log filename: ...
+   Final pre-execution claim check passed: yes/no
+   ```
+
+6. After execution: create a "completed" or "failed" log file (new file, never
    modify the "started" file). Commit and push.
 
-Race check rule (must be applied after pushing your claim branch):
+Race check rule (must be applied after pushing `_started.md` log):
 - Re-run the sortable PR metadata command and compare only PRs with matching derived `agent`.
 - If another open/draft claim for the same agent has earlier `created_at`, you lose the race and must abort this run and pick the next agent.
 - If timestamps are equal or ambiguous, lower PR `number` wins.
@@ -120,12 +136,28 @@ Now proceed with the scheduler:
 2. Read `docs/agents/prompts/weekly-scheduler.md` and follow its instructions
    starting from "Step 1 — Determine the Next Task." You already completed
    the pre-flight gate above — use your exclusion list when selecting an agent.
-3. Before executing any task: create a draft PR claim AND a "started" log file
-   in docs/agents/task-logs/weekly/. Both MUST exist before task execution begins.
-4. After execution: create a "completed" or "failed" log file (new file, never
+3. Complete this mandatory claim sequence in exact order:
+   - create branch
+   - create minimal claim commit
+   - push
+   - open draft PR immediately
+   - create and push `_started.md` log
+   - re-run claim check
+   - only then execute task
+4. Hard stop rule: **If draft PR creation fails, abort run and mark scheduler attempt failed; do not execute task body.**
+5. Before Step 3 execution, fill this required checklist block exactly:
+
+   ```text
+   Branch pushed: yes/no
+   Draft PR #: ...
+   Started log filename: ...
+   Final pre-execution claim check passed: yes/no
+   ```
+
+6. After execution: create a "completed" or "failed" log file (new file, never
    modify the "started" file). Commit and push.
 
-Race check rule (must be applied after pushing your claim branch):
+Race check rule (must be applied after pushing `_started.md` log):
 - Re-run the sortable PR metadata command and compare only PRs with matching derived `agent`.
 - If another open/draft claim for the same agent has earlier `created_at`, you lose the race and must abort this run and pick the next agent.
 - If timestamps are equal or ambiguous, lower PR `number` wins.
