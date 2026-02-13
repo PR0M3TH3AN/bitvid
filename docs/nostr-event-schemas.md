@@ -325,11 +325,10 @@ experimentation.
 ### Watch history identifiers
 
 The watch history pipeline is always enabled and publishes encrypted monthly
-records to the canonical `WATCH_HISTORY_KIND` stream. Clients rely on the
-default `WATCH_HISTORY_LIST_IDENTIFIER` (`"watch-history"`) and store each
-month as a replaceable record keyed by `['d', `${identifier}:${YYYY-MM}`]`,
-optionally echoed in a `['month', <YYYY-MM>]` tag for readability. The content
-contains a compact JSON body such as:
+records to the canonical `WATCH_HISTORY_KIND` stream. Clients store each
+month as a replaceable record keyed by `['d', '<YYYY-MM>']`, optionally echoed
+in a `['month', <YYYY-MM>]` tag for readability. The content contains a compact
+JSON body such as:
 
 ```json
 {
