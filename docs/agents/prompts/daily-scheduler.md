@@ -76,7 +76,7 @@ If you arrived here from the meta prompt and already ran these commands and past
 
 Run this command:
 ```bash
-curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, prs: [.[] | {number, title, draft, created_at, head: {ref: .head.ref}, labels: [.labels[].name]}]}'
+curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, prs: [.[] | {number, created_at, draft, head: {ref: .head.ref}, agent: ((.head.ref | capture("^agents/daily/(?<agent>[^/]+)/")?.agent) // (.title | capture("(?<agent>[A-Za-z0-9-]+-agent)")?.agent // null))}] | sort_by(.created_at, .number)}'
 ```
 
 **Paste the complete raw output.** If the command returns nothing or errors, write: `OUTPUT: (empty — no results)`
@@ -180,9 +180,18 @@ You must create a visible claim before doing any work. This claim is a **distrib
 
 After pushing, re-check for competing claims:
 ```bash
-curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, prs: [.[] | {number, title, draft, created_at, head: {ref: .head.ref}, labels: [.labels[].name]}]}'
+curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, prs: [.[] | {number, created_at, draft, head: {ref: .head.ref}, agent: ((.head.ref | capture("^agents/daily/(?<agent>[^/]+)/")?.agent) // (.title | capture("(?<agent>[A-Za-z0-9-]+-agent)")?.agent // null))}] | sort_by(.created_at, .number)}'
 ```
-If you see another PR for this agent that was created *before* yours, abandon your branch and go back to Step 1 to select the next agent.
+Decision logic (must be explicit):
+1. Compare only open/draft PRs whose derived `agent` matches the agent you just claimed.
+2. If another matching PR has an earlier `created_at`, abort this run and pick the next agent.
+3. If `created_at` values are equal or ambiguous, use the lower `number` as the tie-breaker (lower number wins).
+
+Before proceeding, print exactly one race verdict line:
+- `RACE CHECK: won`
+- `RACE CHECK: lost (agent already claimed by PR #<number>)`
+
+If the verdict is lost, abandon your branch and go back to Step 1 to select the next agent.
 
 ### 2c. Log "started" in the task log immediately
 
