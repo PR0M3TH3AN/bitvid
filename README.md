@@ -215,6 +215,8 @@ For detailed architecture and system documentation, see the [Documentation Index
 - **Run headless E2E tests**: `npm run test:e2e`
 - **Run visual regression tests**: `npm run test:visual`
 - **Update visual baselines**: `npm run test:visual:update`
+- **Run smoke tests**: `npm run test:smoke` (Critical path verification)
+- **Run design system audit**: `npm run audit` (Generates remediation report)
 - **Aggregate telemetry**: `npm run telemetry:aggregate`
 - **Cancel CI runs**: See [`docs/cancelling-ci-runs.md`](docs/cancelling-ci-runs.md) for a script to clear pending workflows.
 
