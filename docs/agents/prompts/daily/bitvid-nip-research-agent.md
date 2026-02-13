@@ -14,7 +14,7 @@ QUICK SUMMARY / PRIMARY GOALS
 SUCCESS CRITERIA:
 1. Per-NIP / per-kind checklist with status, exact code pointers, and concrete fixes/tests.
 2. P0 NIPs/kinds have explicit validation steps and at least one test/PR or a tracked issue.
-3. Audit artifacts and documentation (`CONTEXT.md`, `TODO.md`, `DECISIONS.md`, `TEST_LOG.md`) are created/updated.
+3. Audit artifacts and documentation (files in `context/`, `todo/`, `decisions/`, `test_logs/`) are created/updated.
 
 NON-GOALS:
 - Redesigning Nostr or inventing new NIPs.
@@ -23,17 +23,17 @@ NON-GOALS:
 ===============================================================================
 HARD CONSTRAINTS & SAFETY
 - Always consult authoritative sources (nostr-protocol/nips). Don’t assume a NIP behavior without reading its markdown and related PRs/notes.
-- Tests and validations must be reproducible — record commands and environment in `TEST_LOG.md`.
+- Tests and validations must be reproducible — record commands and environment in `test_logs/TEST_LOG_<timestamp>.md`.
 - Prefer tiny, incremental changes and test-only PRs. Large refactors must be proposed as issues with a staged plan.
 - Security-sensitive work (signing, key handling, moderation logic) must be flagged and require maintainer approval before merging.
-- Preserve project style/conventions. Record tradeoffs in `DECISIONS.md`.
+- Preserve project style/conventions. Record tradeoffs in `decisions/DECISIONS_<timestamp>.md`.
 
 ===============================================================================
 REPO PREP (create these artifacts immediately)
-- `CONTEXT.md` — Goal, scope, timeline, and Definition of Done.
-- `TODO.md` — Checklist: NIPs/kinds to research and next actions (tests/PRs/issues).
-- `DECISIONS.md` — Rationale for choices and tradeoffs.
-- `TEST_LOG.md` — Commands, environment, outputs, and manual test evidence.
+- `context/CONTEXT_<timestamp>.md` — Goal, scope, timeline, and Definition of Done.
+- `todo/TODO_<timestamp>.md` — Checklist: NIPs/kinds to research and next actions (tests/PRs/issues).
+- `decisions/DECISIONS_<timestamp>.md` — Rationale for choices and tradeoffs.
+- `test_logs/TEST_LOG_<timestamp>.md` — Commands, environment, outputs, and manual test evidence.
 - `NIP_INVENTORY.md` — blank template for per-NIP entries.
 - `artifacts/nips/` — local copies of fetched NIP markdowns and related docs.
 - `test/nostr-specs/` — (optional) test fixtures & spec regression tests.
@@ -82,7 +82,7 @@ WORKFLOW — daily operating steps (detailed)
      - `NIP`, `spec_url`, `short_description`, `repo_locations` (file:lines), `status` (Unknown).
 
 2) **Fetch canonical specs**
-   - For each NIP found, download the canonical markdown from `nostr-protocol/nips` to `artifacts/nips/`. Record fetch command and timestamp in `TEST_LOG.md`.
+   - For each NIP found, download the canonical markdown from `nostr-protocol/nips` to `artifacts/nips/`. Record fetch command and timestamp in `test_logs/TEST_LOG_<timestamp>.md`.
    - Summarize required fields, tag recommendations, canonical serialization, encryption notes, and best practices into the inventory entry.
 
 3) **Map-to-code**
@@ -99,7 +99,7 @@ WORKFLOW — daily operating steps (detailed)
      - Validate tag parsing/normalization (`parseRelayTags`, `sanitizeMuteTags`) with spec-conformant and malformed examples.
      - Validate decryption flow in `dmDecryptWorker`: feed known nip44_v2/nip44/nip04 ciphertext fixtures and assert fallback order and plaintext.
      - Validate relay list load/publish: simulate `nostrClient.pool.list` responses and ensure `relayManager.loadRelayList` behaves per spec (fast vs background, timeouts).
-   - Record commands and outputs to `TEST_LOG.md`. Save fixtures to `test/nostr-specs/fixtures/`.
+   - Record commands and outputs to `test_logs/TEST_LOG_<timestamp>.md`. Save fixtures to `test/nostr-specs/fixtures/`.
 
 5) **Compliance verdict**
    - For each NIP/kind, set `status` to: `Compliant`, `Partial`, `Non-compliant`, or `Unknown`.
@@ -173,7 +173,7 @@ TESTS & AUTOMATION (what to add)
 ===============================================================================
 PR & ISSUE GUIDELINES (what your remediation PRs/issues must include)
 - PRs for fixes should include:
-  - `CONTEXT.md`, `TODO.md`, `DECISIONS.md`, `TEST_LOG.md`.
+  - files in `context/`, `todo/`, `decisions/`, `test_logs/`.
   - Minimal code changes with tests that assert spec compliance.
   - Clear manual QA steps and rollback instructions.
   - Label: `nip-compliance`, `chore`, `requires-review`, and `security` if relevant.
@@ -198,13 +198,13 @@ DELIVERABLES & TIMELINE
 
 ===============================================================================
 BEHAVIORAL & REVIEW RULES
-- Always log decisions in `DECISIONS.md` and link to spec markdowns used.
+- Always log decisions in `decisions/DECISIONS_<timestamp>.md` and link to spec markdowns used.
 - If a change touches security (signing, key handling, moderation), **do not merge** — open PR and request maintainer review.
 - Keep changes minimal and well-documented. If in doubt, open an issue and propose two remediation options.
 
 ===============================================================================
 FIRST-RUN CHECKLIST (do this now)
-1. Create and commit `CONTEXT.md`, `TODO.md`, `DECISIONS.md`, `TEST_LOG.md`, and `NIP_INVENTORY.md`.
+1. Create and commit files in `context/`, `todo/`, `decisions/`, `test_logs/`, and `NIP_INVENTORY.md`.
 2. Run: `rg "nip[0-9]+|kind\\s*[:=]|nip04|nip44|nip07|nip46|naddr|nevent|BLOCK_LIST_IDENTIFIER" -n > test-audit/nip-hits.txt`
 3. For each unique NIP number found, fetch the canonical spec into `artifacts/nips/` and summarize it.
 4. Map each NIP to code pointers (use `rg` and open files to find functions).
@@ -216,7 +216,7 @@ OUTPUTS (what you must produce each run)
 - `NIP_INVENTORY.md` — full per-NIP/kind table with code pointers, status, and test plan.
 - `artifacts/nips/*.md` — canonical NIP markdowns fetched.
 - `nip-report-YYYY-MM-DD.md` — high-level run report with P0/P1 items and PRs/issues links.
-- Tests/PRs/Issues for remediation, with `CONTEXT.md`, `TODO.md`, `DECISIONS.md` and `TEST_LOG.md`.
+- Tests/PRs/Issues for remediation, with `context/CONTEXT_<timestamp>.md`, `todo/TODO_<timestamp>.md`, `decisions/DECISIONS_<timestamp>.md` and `test_logs/TEST_LOG_<timestamp>.md`.
 - `test/nostr-specs/fixtures/` — representative events/ciphertexts used for validation.
 
 ===============================================================================

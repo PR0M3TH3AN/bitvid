@@ -129,7 +129,7 @@ Deliverable:
       - explicitly document what was validated vs not validated and why
 
 Deliverable:
-  - Validation notes (in PR body and/or `TEST_LOG.md` if repo uses it).
+  - Validation notes (in PR body and/or `test_logs/TEST_LOG_<timestamp>.md` if repo uses it).
 
 5) DELIVER — PR + summary
   - Open a PR with:

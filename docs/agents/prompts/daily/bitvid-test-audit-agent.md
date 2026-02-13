@@ -14,24 +14,24 @@ PRIMARY GOALS / SUCCESS CRITERIA
 - Success criteria:
   - A `test-audit-report-YYYY-MM-DD.md` with failing/flaky tests, suspicious tests, coverage map, and prioritized remediation.
   - Each P0 test problem (login/auth, decryption, relay prefs, moderation lists, watch history) has a PR or an actionable issue.
-  - Reproducible `TEST_LOG.md` entries detailing test runs and flakiness runs.
+  - Reproducible `test_logs/TEST_LOG_<timestamp>.md` entries detailing test runs and flakiness runs.
 
 ===============================================================================
 HARD CONSTRAINTS
 - Detect the real test runner from `package.json` and use it. Don’t assume Jest if the project uses Vitest, Mocha, etc.
 - Prefer incremental test-only changes. Do not rewrite large test suites in one PR.
 - Keep CI green: every PR must include rollback instructions. Mark security/moderation test changes for maintainer review.
-- Do not change production code solely to satisfy tests unless the change is tiny, safe, well-justified, and recorded in `DECISIONS.md`.
+- Do not change production code solely to satisfy tests unless the change is tiny, safe, well-justified, and recorded in `decisions/DECISIONS_<timestamp>.md`.
 - Make all results reproducible: include exact commands, env, timestamps, node/npm versions.
 
 ===============================================================================
 REPO PREP (create/ensure these artifacts)
 Create or update these files and folders in the repo before making changes:
 
-- `CONTEXT.md` — reason for the audit run, scope, DoD (definition of done).
-- `TODO.md` — checklist of specific tests/issues to investigate/fix.
-- `DECISIONS.md` — decisions, tradeoffs, and approval notes for any changes.
-- `TEST_LOG.md` — timestamped commands executed and raw outputs (test runs, flakiness reruns, coverage).
+- `context/CONTEXT_<timestamp>.md` — reason for the audit run, scope, DoD (definition of done).
+- `todo/TODO_<timestamp>.md` — checklist of specific tests/issues to investigate/fix.
+- `decisions/DECISIONS_<timestamp>.md` — decisions, tradeoffs, and approval notes for any changes.
+- `test_logs/TEST_LOG_<timestamp>.md` — timestamped commands executed and raw outputs (test runs, flakiness reruns, coverage).
 - `test-audit/` — store artifacts and helper scripts (optional). Example contents:
   - `test-audit/run-flaky-check.sh`
   - `test-audit/coverage-summary.json`
@@ -46,7 +46,7 @@ DAILY WORKFLOW (run every day or as scheduled)
    - Inspect `package.json`:
      - `test` script (e.g., `jest`, `vitest`, `mocha`, `cypress`, `playwright`).
      - Test-related devDependencies.
-   - Record the canonical test command in `TEST_LOG.md`. Example commands:
+   - Record the canonical test command in `test_logs/TEST_LOG_<timestamp>.md`. Example commands:
      - Jest: `npm test -- --coverage` or `npx jest --coverage`
      - Vitest: `npx vitest run --coverage`
      - Mocha + nyc: `npx nyc --reporter=lcov npm test`
@@ -60,7 +60,7 @@ DAILY WORKFLOW (run every day or as scheduled)
      - If the repo has unit/integration/e2e separations, run them individually and capture outputs.
    - Collect coverage artifacts:
      - Common outputs: `coverage/lcov.info`, `coverage/coverage-final.json`, `coverage/coverage-summary.json`.
-   - Save all logs and coverage files into `test-audit/` and note commands in `TEST_LOG.md`.
+   - Save all logs and coverage files into `test-audit/` and note commands in `test_logs/TEST_LOG_<timestamp>.md`.
 
 3) **Flakiness detection**
    - Re-run the whole test suite N times (default `N=5` or `N=10`) and produce a run matrix:
@@ -125,7 +125,7 @@ DAILY WORKFLOW (run every day or as scheduled)
 10) **Daily report**
    - Produce `test-audit-report-YYYY-MM-DD.md` containing:
      - One-line summary and run metadata (node/npm/runner versions).
-     - Test command(s) used and snippet of `TEST_LOG.md`.
+     - Test command(s) used and snippet of `test_logs/TEST_LOG_<timestamp>.md`.
      - List of failing tests and stack traces.
      - Flaky tests with run matrix (which runs passed/failed).
      - Suspicious tests (zero assertions, heavy mocking, real network calls).
@@ -157,12 +157,12 @@ Adapt regexes to repo conventions and test frameworks.
 ===============================================================================
 PR & ISSUE GUIDELINES (what to include)
 - PR types:
-  1. **Test-fix PR** — add missing assertions, replace `setTimeout` sleeps with `waitFor`, or mock timers. Include `CONTEXT.md`, `TODO.md`, `TEST_LOG.md`.
+  1. **Test-fix PR** — add missing assertions, replace `setTimeout` sleeps with `waitFor`, or mock timers. Include `context/CONTEXT_<timestamp>.md`, `todo/TODO_<timestamp>.md`, `test_logs/TEST_LOG_<timestamp>.md`.
   2. **Test-add PR** — add tests for missing critical behavior. Keep them small and deterministic.
   3. **Test-refactor PR** — convert overly-mocked tests into higher-level tests that assert observable outcomes.
 - PR body must include:
   - Why the change is needed (link to audit).
-  - Commands run and output snippet (`TEST_LOG.md`).
+  - Commands run and output snippet (`test_logs/TEST_LOG_<timestamp>.md`).
   - Manual QA steps to reproduce flaky behavior and validate fix.
   - Risk assessment and rollback steps.
   - Labels: `test`, `chore`, `requires-review` (if needed), `security` (if test touches security).
@@ -216,14 +216,14 @@ EXAMPLE REMEDIATIONS (what PRs should do)
 
 ===============================================================================
 BEHAVIORAL GUIDELINES & SAFETY
-- Do not change production logic just to satisfy tests; update tests instead. If production change is required, document and put in `DECISIONS.md`.
+- Do not change production logic just to satisfy tests; update tests instead. If production change is required, document and put in `decisions/DECISIONS_<timestamp>.md`.
 - For security/moderation tests, create PRs and request explicit maintainer review before merging.
 - Prefer small, focused PRs. Each change must be reviewable and reversible.
 - When uncertain, perform the minimal remediation to make failures reproducible and open an issue describing further work.
 
 ===============================================================================
 FIRST-RUN CHECKLIST (execute now)
-1. Create `CONTEXT.md`, `TODO.md`, `DECISIONS.md`, `TEST_LOG.md`, and `test-audit/`.
+1. Create files in `context/`, `todo/`, `decisions/`, `test_logs/`, and `test-audit/`.
 2. Detect test runner from `package.json`.
 3. Run the primary test command with coverage and capture logs.
    - Example: `npm test -- --coverage 2>&1 | tee test-audit/coverage-run.log`
@@ -238,7 +238,7 @@ OUTPUTS (what you must produce each run)
 - `test-audit/coverage-*` artifacts and `coverage-summary.json`.
 - `test-audit/flakiness-matrix.json`.
 - `test-audit/suspicious-tests.json`.
-- Updated `TEST_LOG.md` with full commands and outputs (timestamped).
+- Updated `test_logs/TEST_LOG_<timestamp>.md` with full commands and outputs (timestamped).
 - PRs for test fixes and Issues for larger/risky work.
 
 ===============================================================================

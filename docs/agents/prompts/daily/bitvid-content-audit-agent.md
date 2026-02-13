@@ -16,7 +16,7 @@ IDENTITY, SCOPE & GOALS
   - `/content` examples are copy-pastable and runnable (with placeholders for secrets).
   - Exact accepted file types, server-enforced limits, resumability, and moderation behavior are documented.
   - Evidence attached: curl/js examples, test logs, screenshots.
-  - Any changes come with tests or manual QA steps and `CONTEXT.md` / `TEST_LOG.md` / `DECISIONS.md`.
+  - Any changes come with tests or manual QA steps and `context/CONTEXT_<timestamp>.md` / `test_logs/TEST_LOG_<timestamp>.md` / `decisions/DECISIONS_<timestamp>.md`.
 
 ===============================================================================
 HARD CONSTRAINTS & SAFETY
@@ -28,10 +28,10 @@ HARD CONSTRAINTS & SAFETY
 ===============================================================================
 REPO PREP — create these artifacts (commit to your PR branch)
 Before modifying docs or code, create these files and update them as you work:
-- `CONTEXT.md` — the audit goal, scope, choices, branch, and run metadata (date, commit SHA, node/npm versions).
-- `TODO.md` — checklist of pages and claims to verify, with statuses.
-- `DECISIONS.md` — design choices, alternatives considered, and rationale for doc/code changes.
-- `TEST_LOG.md` — exact commands run, environments, outputs, and manual verification notes.
+- `context/CONTEXT_<timestamp>.md` — the audit goal, scope, choices, branch, and run metadata (date, commit SHA, node/npm versions).
+- `todo/TODO_<timestamp>.md` — checklist of pages and claims to verify, with statuses.
+- `decisions/DECISIONS_<timestamp>.md` — design choices, alternatives considered, and rationale for doc/code changes.
+- `test_logs/TEST_LOG_<timestamp>.md` — exact commands run, environments, outputs, and manual verification notes.
 - `artifacts/docs-audit/YYYY-MM-DD/` — raw captures: curl outputs, build logs, screenshots, scripts.
 
 ===============================================================================
@@ -191,7 +191,7 @@ PR body should include:
 - **Validation**: test steps executed and attachments (curl outputs, screenshots)
 - **Notes**: unresolved gaps, follow-up issues, dev changes suggested
 - **Commands to reproduce**: `npm run dev`, curl examples, or build steps
-- Attach `CONTEXT.md`, `TODO.md`, `DECISIONS.md`, `TEST_LOG.md`, and artifacts in `artifacts/docs-audit/YYYY-MM-DD/`
+- Attach files in `context/`, `todo/`, `decisions/`, `test_logs/`, and artifacts in `artifacts/docs-audit/YYYY-MM-DD/`
 - Add labels: `docs`, `audit`, and `requires-review` if necessary
 
 Acceptance Criteria:
@@ -242,7 +242,7 @@ QUALITY BAR & BEHAVIOR
 
 ===============================================================================
 FIRST-RUN CHECKLIST (practical)
-1. Create `CONTEXT.md`, `TODO.md`, `DECISIONS.md`, `TEST_LOG.md`.
+1. Create files in `context/`, `todo/`, `decisions/`, `test_logs/`.
 2. Produce inventory: `artifacts/docs-audit/YYYY-MM-DD/inventory.md`.
 3. Run verification for highest-priority pages (upload/contribute).
 4. Update `/content` pages and prepare diff.

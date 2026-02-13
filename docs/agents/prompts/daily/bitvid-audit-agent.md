@@ -8,17 +8,17 @@ Run this every scheduled run (daily or weekly as the team prefers); treat the jo
 HARD CONSTRAINTS (must follow)
 - Target branch: **`unstable`**. Do not operate on other branches unless instructed.
 - Do **not** edit source files as part of this audit. This job runs checks and reports only.
-- Work must be reproducible: record exact commands, environment, timestamps, and outputs in `TEST_LOG.md`.
+- Work must be reproducible: record exact commands, environment, timestamps, and outputs in `test_logs/TEST_LOG_<timestamp>.md`.
 - Preserve confidentiality: redact any secrets in logs/screenshots before posting.
 - When posting to GitHub, follow repo conventions for issues/PR comments and labels (use `audit-report` label if available).
 - If anything in the audit touches security-sensitive areas, flag maintainers and stop automated fixes — only create issues.
 
 ===============================================================================
 REPO PREP (create/update these artifacts)
-- `CONTEXT.md` — run metadata: target branch, date/time, node version, OS, purpose.
-- `TODO.md` — checklist for the audit run and follow-ups.
-- `DECISIONS.md` — any decisions or tradeoffs (e.g., what qualifies as grandfathered).
-- `TEST_LOG.md` — exact commands run + raw outputs (timestamped).
+- `context/CONTEXT_<timestamp>.md` — run metadata: target branch, date/time, node version, OS, purpose.
+- `todo/TODO_<timestamp>.md` — checklist for the audit run and follow-ups.
+- `decisions/DECISIONS_<timestamp>.md` — any decisions or tradeoffs (e.g., what qualifies as grandfathered).
+- `test_logs/TEST_LOG_<timestamp>.md` — exact commands run + raw outputs (timestamped).
 - `artifacts/audit/YYYY-MM-DD/` — store raw reports and parsed summaries:
   - `file-size-report.json` (script raw output + parsed)
   - `innerhtml-report.json`
@@ -107,7 +107,7 @@ PRIMARY WORKFLOW (end-to-end)
 
 7. **Track and link**
    - Link this report issue/comment to the previous report (if any), so maintainers can easily see history.
-   - If automated, add a follow-up task in `TODO.md` or open issues for high-priority items with labels `perf`, `lint`, or `security` as appropriate.
+   - If automated, add a follow-up task in `todo/TODO_<timestamp>.md` or open issues for high-priority items with labels `perf`, `lint`, or `security` as appropriate.
 
 ===============================================================================
 ADDITIONAL GUIDANCE & BEST PRACTICES
@@ -215,7 +215,7 @@ FIRST-RUN CHECKLIST (do this now)
    - `node scripts/check-innerhtml.mjs --report`
    - `npm run lint`
    - Save raw outputs to `artifacts/audit/$(date +%F)/`
-   - Record commands & outputs in `TEST_LOG.md`
+   - Record commands & outputs in `test_logs/TEST_LOG_<timestamp>.md`
 4. Parse outputs into JSON (use existing script or small Node parser).
 5. Compute metrics and compare with the last report (search issues/PRs).
 6. Create `artifacts/audit/$(date +%F)/summary.md`.
@@ -232,7 +232,7 @@ OUTPUTS (what you must produce each run)
   - `innerhtml-report.json`
   - `lint-report.json`
   - `summary.md`
-- `TEST_LOG.md` updated with commands, environment, and outputs.
+- `test_logs/TEST_LOG_<timestamp>.md` updated with commands, environment, and outputs.
 - GitHub: comment on existing audit issue/PR or new issue `Audit Report — YYYY-MM-DD` with the summary and artifacts.
 - If thresholds exceeded: new issues for regressions (label `perf`, `security`, or `lint`).
 
@@ -240,7 +240,7 @@ OUTPUTS (what you must produce each run)
 QUALITY BAR & BEHAVIORAL GUIDELINES
 - Keep the job read-only; do not modify source files.
 - Keep reports clear, actionable, and prioritized.
-- If uncertain about parsing or script semantics, add a note in `DECISIONS.md` describing assumptions.
+- If uncertain about parsing or script semantics, add a note in `decisions/DECISIONS_<timestamp>.md` describing assumptions.
 - Keep the maintainers informed: link to previous reports and show deltas.
 
 ===============================================================================

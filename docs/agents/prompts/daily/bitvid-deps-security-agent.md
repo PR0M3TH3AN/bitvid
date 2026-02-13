@@ -29,10 +29,10 @@ HARD CONSTRAINTS & GUARDRAILS
 REPO PREP — artifacts you must create/maintain
 Create/update these files/folders (commit them in the branch when PRing):
 - `artifacts/` — hold all audit/outdated/json/report outputs.
-- `CONTEXT.md` — run metadata: date, package manager, Node version, CI matrix.
-- `TODO.md` — upgrade tasks and statuses.
-- `DECISIONS.md` — rationale for upgrade choices and tradeoffs.
-- `TEST_LOG.md` — exact commands run and their outputs (timestamped).
+- `context/CONTEXT_<timestamp>.md` — run metadata: date, package manager, Node version, CI matrix.
+- `todo/TODO_<timestamp>.md` — upgrade tasks and statuses.
+- `decisions/DECISIONS_<timestamp>.md` — rationale for upgrade choices and tradeoffs.
+- `test_logs/TEST_LOG_<timestamp>.md` — exact commands run and their outputs (timestamped).
 - Optionally: `scripts/deps-audit.sh` for reproducible automation.
 
 Also read `AGENTS.md` and `KNOWN_ISSUES.md` for project-specific caveats (e.g., the repo uses `nostr-tools`, `webtorrent`, `Playwright`, `Tailwind`). Tag these libraries for special handling.
@@ -42,7 +42,7 @@ PACKAGE MANAGER DETECTION
 1. If `package-lock.json` present → `npm`.
 2. Else if `pnpm-lock.yaml` present → `pnpm`.
 3. Else if `yarn.lock` present → `yarn`.
-Record chosen manager and versions (`node -v`, `npm -v` / `pnpm -v` / `yarn -v`) in `TEST_LOG.md`.
+Record chosen manager and versions (`node -v`, `npm -v` / `pnpm -v` / `yarn -v`) in `test_logs/TEST_LOG_<timestamp>.md`.
 
 --------------------------------------------------------------------------------
 DAILY WORKFLOW (run every day / scheduled)
@@ -55,7 +55,7 @@ B. Clean install
   - npm: `npm ci`
   - pnpm: `pnpm install --frozen-lockfile`
   - yarn: `yarn install --frozen-lockfile`
-  - Save outputs to `TEST_LOG.md`.
+  - Save outputs to `test_logs/TEST_LOG_<timestamp>.md`.
 
 C. Run audits & outdated scans
   - `npm audit --json > artifacts/npm-audit.json` (or `pnpm audit --json` / `yarn audit --json`)
@@ -96,11 +96,11 @@ F. Attempt safe upgrades (patch/minor) — strict flow
        - Open PR:
          - Branch: `ai/deps-<pkg>-vX.Y.Z`
          - Title: `chore(deps): bump <pkg> to vX.Y.Z`
-         - Body: include `artifacts/npm-audit.json`, `artifacts/npm-outdated.json`, `TEST_LOG.md` snippets, `DECISIONS.md` rationale, QA steps, and rollback plan.
+         - Body: include `artifacts/npm-audit.json`, `artifacts/npm-outdated.json`, `test_logs/TEST_LOG_<timestamp>.md` snippets, `decisions/DECISIONS_<timestamp>.md` rationale, QA steps, and rollback plan.
          - Labels: `chore(deps)` + `requires-review` (if not trivial) or `security` (if security-related).
     6. If tests **FAIL**:
        - Revert local changes.
-       - Record failure details in `TEST_LOG.md`.
+       - Record failure details in `test_logs/TEST_LOG_<timestamp>.md`.
        - Open issue `upgrade-<pkg>` with failure reproduction steps & suggested remediation.
 
 G. DevDependency rules (special care)
@@ -115,7 +115,7 @@ H. Major / risky upgrades (manual path)
   - Create `upgrade-<pkg>` issue with:
     - Why upgrade is needed.
     - Impact analysis: direct & transitive dependents.
-    - Tests & reproduction steps (attach `TEST_LOG.md`).
+    - Tests & reproduction steps (attach `test_logs/TEST_LOG_<timestamp>.md`).
     - Suggested remediation plan (staged PRs, feature flags, compatibility tests).
   - Optionally propose a staged approach (test-only PRs, integration tests, staged rollout).
 
@@ -154,7 +154,7 @@ REPORTING — artifacts you must produce
 - `artifacts/npm-outdated.json` — raw outdated output.
 - `artifacts/ncu.json` (optional) — output from `npm-check-updates`.
 - `artifacts/deps-report.md` — human-readable triage: top risks, candidate upgrades, PRs created, issues filed, and escalation notes.
-- `TEST_LOG.md` — commands executed and test outputs for each attempted upgrade.
+- `test_logs/TEST_LOG_<timestamp>.md` — commands executed and test outputs for each attempted upgrade.
 - PRs for safe upgrades and issues for risky/major/security upgrades.
 
 --------------------------------------------------------------------------------
@@ -163,7 +163,7 @@ PR & ISSUE TEMPLATE GUIDANCE
 - PR title: `chore(deps): bump <pkg> to vX.Y.Z`
 - PR body:
   - Why: security/bug/maintenance reason.
-  - Commands run + test outputs (snippets), link to `TEST_LOG.md`.
+  - Commands run + test outputs (snippets), link to `test_logs/TEST_LOG_<timestamp>.md`.
   - Artifacts: attach `artifacts/npm-audit.json` and `artifacts/npm-outdated.json`.
   - Risk assessment, manual QA steps, rollback plan.
   - Labels: `chore(deps)`, `requires-review` / `security` as appropriate.
@@ -173,7 +173,7 @@ PR & ISSUE TEMPLATE GUIDANCE
 QUALITY & SAFETY CHECKS BEFORE OPENING A PR
 - Unit, integration, e2e, and `npm run build` succeed locally and match CI.
 - Lockfile updated and committed.
-- PR includes `TEST_LOG.md` snippets.
+- PR includes `test_logs/TEST_LOG_<timestamp>.md` snippets.
 - For runtime-sensitive packages (Playwright, browsers): verify browser binaries and smoke tests.
 - For any package touching crypto/protocol/native bindings: **do not PR** — open issue and request reviewer.
 
