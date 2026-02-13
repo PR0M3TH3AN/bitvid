@@ -17,14 +17,49 @@ Read both `AGENTS.md` and `CLAUDE.md` before executing any task.
 
 ---
 
+## Step 0 — Pre-Flight: Scan ALL In-Flight Work (MANDATORY)
+
+> **DO NOT SKIP THIS STEP. This is the single most important step in the entire scheduler. If you skip this, you will cause duplicate work and waste an entire agent run.**
+
+Before determining which agent to run, you MUST build situational awareness of what is already in progress. Run these commands and record the results:
+
+### 0a. List ALL open weekly agent PRs
+
+```bash
+gh pr list --state open --search "\"[weekly]\" in:title" --json number,title,createdAt,author
+```
+
+Record every open PR. These represent **active claims by other agents**. Any agent whose name appears in these PR titles is OFF LIMITS.
+
+### 0b. Check the task log for incomplete runs
+
+```bash
+cat docs/agents/WEEKLY_AGENT_TASK_LOG.csv
+```
+
+Look for any rows with status `started` — these represent agents that began work but haven't finished. Treat them the same as open PRs: those agents are OFF LIMITS unless the `started` entry is **older than 24 hours** (stale/abandoned).
+
+### 0c. Build your exclusion list
+
+Combine the results from 0a and 0b into an explicit exclusion list:
+- Agents with open/draft PRs → EXCLUDED
+- Agents with `started` status less than 24 hours old → EXCLUDED
+
+Write this exclusion list down before proceeding. You will reference it in Step 1.
+
+**If you cannot run `gh pr list`** (e.g., `gh` not available, auth failure, network error): You MUST still check the CSV for `started` entries. Log a warning in your summary that PR-based claim checking was unavailable.
+
+---
+
 ## Step 1 — Determine the Next Task
 
-1. Read the weekly task log at `/docs/agents/WEEKLY_AGENT_TASK_LOG.csv`.
+1. Read the weekly task log at `docs/agents/WEEKLY_AGENT_TASK_LOG.csv`.
 2. Find the **most recent entry** (last non-header row).
 3. Identify the `agent_name` from that entry.
 4. Look up that agent in the alphabetical roster below and select the **next agent** in the list.
 5. If the most recent agent is the **last** in the roster, wrap around to the **first**.
 6. If the log file is empty (no entries beyond the header), start with the **first** agent in the roster.
+7. **CHECK YOUR EXCLUSION LIST FROM STEP 0.** If the selected agent is on the exclusion list, skip to the next agent in the roster. Repeat until you find an agent that is NOT excluded. If you cycle through the entire roster and ALL agents are excluded, log as `failed` with summary `"All roster tasks currently claimed by other agents"` and stop.
 
 ### Agent Roster (alphabetical order)
 
@@ -49,46 +84,50 @@ Read both `AGENTS.md` and `CLAUDE.md` before executing any task.
 
 ---
 
-## Step 1.5 — Claim the Task (Prevent Duplicate Work)
+## Step 2 — Claim the Task (Prevent Duplicate Work)
 
-Before executing the selected task, verify that no other agent is already working on it. Multiple agents may be running simultaneously across different platforms (Claude Code, Codex, Jules), so this check is **mandatory**.
+> **This step is MANDATORY. Do not proceed to execution without completing it.**
 
-1. **Check for existing claims.** Search for open or draft PRs matching this agent:
-   ```
-   gh pr list --state open --search "\"[weekly] <agent-name>\" in:title"
-   ```
-   For example, if the selected agent is `changelog-agent`, run:
-   ```
-   gh pr list --state open --search "\"[weekly] changelog-agent\" in:title"
-   ```
-   If any matching PR exists (open or draft), this task is **already claimed**.
+You must create a visible claim before doing any work. This claim is a **distributed lock** that prevents agents on other platforms (Claude Code, Codex, Jules) from picking up the same task.
 
-2. **If already claimed:** Skip to the **next agent** in the roster (following the same alphabetical wrap-around rule from Step 1). Repeat this claim check for the new agent. If you cycle through the entire roster and all agents are claimed, log as `failed` with summary `"All roster tasks currently claimed by other agents"` and stop.
+### 2a. Create your working branch and claim via draft PR
 
-3. **If unclaimed:** Claim the task immediately by creating a draft PR:
-   a. Create your working branch.
-   b. Make a minimal initial commit (e.g., update `CONTEXT.md` with the task scope).
-   c. Push the branch and open a **draft PR**:
-      ```
-      gh pr create --draft \
-        --title "[weekly] <agent-name>: <brief task description>" \
-        --body "Claimed by weekly scheduler at $(date -u +%Y-%m-%dT%H:%M:%SZ). Work in progress."
-      ```
-   d. Verify the draft PR was created successfully before proceeding to Step 2.
-
-4. **Race condition check:** After creating the draft PR, re-check:
+1. Create your working branch.
+2. Make a minimal initial commit (e.g., update `CONTEXT.md` with the task scope).
+3. Push the branch and open a **draft PR**:
+   ```bash
+   gh pr create --draft \
+     --title "[weekly] <agent-name>: <brief task description>" \
+     --body "Claimed by weekly scheduler at $(date -u +%Y-%m-%dT%H:%M:%SZ). Work in progress."
    ```
-   gh pr list --state open --search "\"[weekly] <agent-name>\" in:title"
-   ```
-   If you see another PR for this agent that was created *before* yours (by a different agent instance), close your PR with `gh pr close <your-pr-number>` and skip to the next agent.
+4. Verify the draft PR was created successfully before proceeding.
 
-**Important:** The draft PR is your lock. Do not skip this step. It prevents other agents on different platforms from picking up the same task.
+### 2b. Race condition check
+
+After creating the draft PR, immediately re-check:
+```bash
+gh pr list --state open --search "\"[weekly] <agent-name>\" in:title" --json number,title,createdAt
+```
+If you see another PR for this agent that was created *before* yours (by a different agent instance), close your PR with `gh pr close <your-pr-number>` and go back to Step 1 to select the next agent.
+
+### 2c. Log "started" in the CSV immediately
+
+> **This is critical.** Append a `started` row to the CSV NOW, before executing the task. This ensures the rotation advances even if you crash during execution.
+
+Append this row to `docs/agents/WEEKLY_AGENT_TASK_LOG.csv`:
+```
+<date>,<agent-name>,<prompt-file>,started,<branch>,"Task claimed — execution beginning"
+```
+
+Commit and push this CSV update to your branch. This `started` entry serves as a secondary lock: other scheduler instances that cannot reach `gh` will still see it and skip this agent.
+
+**If `gh` is unavailable:** You MUST still log the `started` entry and push it. The CSV `started` row is your minimum viable claim.
 
 ---
 
-## Step 2 — Execute the Task
+## Step 3 — Execute the Task
 
-1. Read the selected agent's prompt file from `/docs/agents/prompts/weekly/<filename>`.
+1. Read the selected agent's prompt file from `docs/agents/prompts/weekly/<filename>`.
 2. Adopt that prompt as your operating instructions for this session.
 3. Follow the agent prompt's workflow end-to-end, including:
    - Updating the persistent state files (`CONTEXT.md`, `TODO.md`, `DECISIONS.md`, `TEST_LOG.md`) per AGENTS.md Section 15.
@@ -97,9 +136,21 @@ Before executing the selected task, verify that no other agent is already workin
 
 ---
 
-## Step 3 — Update the Task Log
+## Step 4 — Update the Task Log (Final Status)
 
-After completing the task (or if the task fails), append a new row to `/docs/agents/WEEKLY_AGENT_TASK_LOG.csv`.
+After completing the task (or if the task fails), **update** the CSV entry you wrote in Step 2c. Find the `started` row you appended and add a new row with the final status:
+
+Append a new row to `docs/agents/WEEKLY_AGENT_TASK_LOG.csv`:
+
+```
+<date>,<agent-name>,<prompt-file>,completed,<branch>,"<summary of what was done>"
+```
+
+Or if the task failed:
+
+```
+<date>,<agent-name>,<prompt-file>,failed,<branch>,"<summary of why it failed>"
+```
 
 ### CSV Format
 
@@ -112,14 +163,14 @@ date,agent_name,prompt_file,status,branch,summary
 | `date` | `YYYY-MM-DD` | Date the task was executed |
 | `agent_name` | string | Agent name from the roster (e.g., `changelog-agent`) |
 | `prompt_file` | string | Filename executed (e.g., `bitvid-changelog-agent.md`) |
-| `status` | `completed` or `failed` | Whether the task finished successfully |
-| `branch` | string | Git branch where work was committed (e.g., `unstable`) |
+| `status` | `started`, `completed`, or `failed` | Current status of the task |
+| `branch` | string | Git branch where work was committed |
 | `summary` | quoted string | One-line summary of what was done or why it failed |
 
 ### Rules for the Log
 
 - **Always append** — never delete or modify existing rows.
-- **One row per run** — each scheduler invocation adds exactly one row.
+- **One `started` + one final row per run** — each scheduler invocation adds exactly two rows (started, then completed/failed).
 - **Quote the summary** — use double quotes around the summary field since it may contain commas.
 - **Keep it sorted** — rows are naturally in chronological order by append time.
 
@@ -127,9 +178,9 @@ date,agent_name,prompt_file,status,branch,summary
 
 ---
 
-## Step 4 — Verify and Submit
+## Step 5 — Verify and Submit
 
-1. **Verify the log**: Re-read `/docs/agents/WEEKLY_AGENT_TASK_LOG.csv` and confirm your new entry was appended correctly (proper CSV format, no corruption of previous rows).
+1. **Verify the log**: Re-read `docs/agents/WEEKLY_AGENT_TASK_LOG.csv` and confirm your entries were appended correctly (proper CSV format, no corruption of previous rows).
 2. **Run a final check**: Execute `npm run lint` to confirm no lint regressions were introduced.
 3. **Commit your changes** with a descriptive message following this pattern:
    ```
@@ -144,3 +195,18 @@ date,agent_name,prompt_file,status,branch,summary
 - If the agent prompt file is **empty or missing**, skip it, log the run as `failed` with summary `"Prompt file empty or missing"`, and proceed to the **next agent** in the roster.
 - If a task **fails mid-execution** (test failures, build errors), log the run as `failed` with a summary describing the failure. Still commit the log update and any partial artifacts.
 - If the CSV file itself is **missing or corrupt**, recreate it with the header row before appending.
+- If `gh` is **unavailable or errors**, fall back to CSV-only claiming (the `started` row). Log a warning in your summary that PR-based claim checking was degraded.
+
+---
+
+## Quick Reference: What Prevents Duplicate Work
+
+| Layer | Mechanism | Catches |
+|-------|-----------|---------|
+| **Step 0** | Scan ALL open `[weekly]` PRs | Agents claimed by any platform |
+| **Step 0** | Check CSV for `started` rows | Agents in progress (even without PR) |
+| **Step 2a** | Create draft PR as lock | Cross-platform visibility |
+| **Step 2b** | Race condition re-check | Simultaneous claims |
+| **Step 2c** | Log `started` to CSV immediately | Crash recovery — rotation advances |
+
+All five layers must be executed. No single layer is sufficient on its own.
