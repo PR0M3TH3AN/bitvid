@@ -274,7 +274,7 @@ To prevent multiple agents from working on the same task simultaneously, every a
    gh pr ready
    ```
 
-**Scheduler agents:** Daily and weekly scheduler agents must follow this protocol in addition to their CSV-based rotation logic. The draft PR check happens _after_ determining the next task but _before_ executing it. See the scheduler prompts for the specific implementation steps.
+**Scheduler agents:** Daily and weekly scheduler agents must follow this protocol in addition to their directory-based rotation logic (`docs/agents/task-logs/daily/` and `docs/agents/task-logs/weekly/`). The draft PR check happens _after_ determining the next task but _before_ executing it. See the scheduler prompts for the specific implementation steps.
 
 ### Currently In-Flight Work
 

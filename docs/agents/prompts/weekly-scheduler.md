@@ -17,6 +17,61 @@ Read both `AGENTS.md` and `CLAUDE.md` before executing any task.
 
 ---
 
+## Task Log Format
+
+Task logs use a **directory-based format** where each log entry is a separate file. This prevents git merge conflicts when multiple agents run concurrently.
+
+### Directory
+
+```
+docs/agents/task-logs/weekly/
+```
+
+### File Naming Convention
+
+```
+YYYY-MM-DD_HH-MM-SS_<agent-name>_<status>.md
+```
+
+Examples:
+- `2026-02-13_14-30-00_changelog-agent_started.md`
+- `2026-02-13_15-45-22_changelog-agent_completed.md`
+
+### File Content Template
+
+Each log file contains:
+
+```markdown
+# Agent Task Log Entry
+
+- **Date:** YYYY-MM-DD
+- **Agent:** <agent-name>
+- **Prompt:** <prompt-file>
+- **Status:** started | completed | failed
+- **Branch:** <branch-name>
+- **Summary:** <one-line summary>
+```
+
+### Reading the Log
+
+To find the most recent entry:
+```bash
+ls docs/agents/task-logs/weekly/ | sort | tail -n 1
+```
+
+To find all entries for a specific agent:
+```bash
+ls docs/agents/task-logs/weekly/ | grep "<agent-name>"
+```
+
+To check for in-progress (`started`) entries without a matching `completed`/`failed`:
+```bash
+ls docs/agents/task-logs/weekly/ | grep "_started.md"
+```
+Then verify each `started` file has a corresponding `completed` or `failed` file from the same agent at a later timestamp. If not, that agent is still in progress.
+
+---
+
 ## Step 0 — Pre-Flight: Scan ALL In-Flight Work (MANDATORY)
 
 > **DO NOT SKIP THIS STEP. This is the single most important step in the entire scheduler. If you skip this, you will cause duplicate work and waste an entire agent run.**
@@ -34,31 +89,31 @@ Record every open PR. These represent **active claims by other agents**. Any age
 ### 0b. Check the task log for incomplete runs
 
 ```bash
-cat docs/agents/WEEKLY_AGENT_TASK_LOG.csv
+ls docs/agents/task-logs/weekly/ | sort
 ```
 
-Look for any rows with status `started` — these represent agents that began work but haven't finished. Treat them the same as open PRs: those agents are OFF LIMITS unless the `started` entry is **older than 24 hours** (stale/abandoned).
+Look for any `_started.md` files that do NOT have a corresponding `_completed.md` or `_failed.md` file from the same agent at a later timestamp. These represent agents that began work but haven't finished. Treat them the same as open PRs: those agents are OFF LIMITS unless the `started` entry is **older than 24 hours** (stale/abandoned — check the date in the filename).
 
 ### 0c. Build your exclusion list
 
 Combine the results from 0a and 0b into an explicit exclusion list:
 - Agents with open/draft PRs → EXCLUDED
-- Agents with `started` status less than 24 hours old → EXCLUDED
+- Agents with `started` status less than 24 hours old (no matching `completed`/`failed`) → EXCLUDED
 
 Write this exclusion list down before proceeding. You will reference it in Step 1.
 
-**If the `curl` command fails** (e.g., network error, API limit): You MUST still check the CSV for `started` entries. Log a warning in your summary that PR-based claim checking was unavailable.
+**If the `curl` command fails** (e.g., network error, API limit): You MUST still check the task log directory for `started` entries. Log a warning in your summary that PR-based claim checking was unavailable.
 
 ---
 
 ## Step 1 — Determine the Next Task
 
-1. Read the weekly task log at `docs/agents/WEEKLY_AGENT_TASK_LOG.csv`.
-2. Find the **most recent entry** (last non-header row).
-3. Identify the `agent_name` from that entry.
+1. List the task log directory: `ls docs/agents/task-logs/weekly/ | sort`
+2. Find the **most recent entry** (last file alphabetically — filenames sort chronologically).
+3. Identify the `agent-name` from the filename (the third segment, between the second `_` and the status).
 4. Look up that agent in the alphabetical roster below and select the **next agent** in the list.
 5. If the most recent agent is the **last** in the roster, wrap around to the **first**.
-6. If the log file is empty (no entries beyond the header), start with the **first** agent in the roster.
+6. If the directory is empty, start with the **first** agent in the roster.
 7. **CHECK YOUR EXCLUSION LIST FROM STEP 0.** If the selected agent is on the exclusion list, skip to the next agent in the roster. Repeat until you find an agent that is NOT excluded. If you cycle through the entire roster and ALL agents are excluded, log as `failed` with summary `"All roster tasks currently claimed by other agents"` and stop.
 
 ### Agent Roster (alphabetical order)
@@ -110,18 +165,32 @@ curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_pag
 ```
 If you see another PR for this agent that was created *before* yours (by a different agent instance), close your PR with `gh pr close <your-pr-number>` (if `gh` works) and go back to Step 1 to select the next agent.
 
-### 2c. Log "started" in the CSV immediately
+### 2c. Log "started" in the task log immediately
 
-> **This is critical.** Append a `started` row to the CSV NOW, before executing the task. This ensures the rotation advances even if you crash during execution.
+> **This is critical.** Create a `started` log file NOW, before executing the task. This ensures the rotation advances even if you crash during execution.
 
-Append this row to `docs/agents/WEEKLY_AGENT_TASK_LOG.csv`:
+Create a new file in `docs/agents/task-logs/weekly/` with this naming pattern:
+
 ```
-<date>,<agent-name>,<prompt-file>,started,<branch>,"Task claimed — execution beginning"
+YYYY-MM-DD_HH-MM-SS_<agent-name>_started.md
 ```
 
-Commit and push this CSV update to your branch. This `started` entry serves as a secondary lock: other scheduler instances that cannot reach `gh` will still see it and skip this agent.
+Use the current UTC timestamp. The file content should be:
 
-**If `gh` is unavailable:** You MUST still log the `started` entry and push it. The CSV `started` row is your minimum viable claim.
+```markdown
+# Agent Task Log Entry
+
+- **Date:** <YYYY-MM-DD>
+- **Agent:** <agent-name>
+- **Prompt:** <prompt-file>
+- **Status:** started
+- **Branch:** <branch-name>
+- **Summary:** Task claimed — execution beginning
+```
+
+Commit and push this log file to your branch. This `started` entry serves as a secondary lock: other scheduler instances will see it and skip this agent.
+
+**If `gh` is unavailable:** You MUST still create the `started` log file and push it. The log file is your minimum viable claim.
 
 ---
 
@@ -138,49 +207,47 @@ Commit and push this CSV update to your branch. This `started` entry serves as a
 
 ## Step 4 — Update the Task Log (Final Status)
 
-After completing the task (or if the task fails), **update** the CSV entry you wrote in Step 2c. Find the `started` row you appended and add a new row with the final status:
+After completing the task (or if the task fails), create a **new** log file with the final status. Do NOT modify the `started` file.
 
-Append a new row to `docs/agents/WEEKLY_AGENT_TASK_LOG.csv`:
+Create a new file in `docs/agents/task-logs/weekly/`:
 
+For completed tasks:
 ```
-<date>,<agent-name>,<prompt-file>,completed,<branch>,"<summary of what was done>"
-```
-
-Or if the task failed:
-
-```
-<date>,<agent-name>,<prompt-file>,failed,<branch>,"<summary of why it failed>"
+YYYY-MM-DD_HH-MM-SS_<agent-name>_completed.md
 ```
 
-### CSV Format
-
+For failed tasks:
 ```
-date,agent_name,prompt_file,status,branch,summary
+YYYY-MM-DD_HH-MM-SS_<agent-name>_failed.md
 ```
 
-| Column | Format | Description |
-|--------|--------|-------------|
-| `date` | `YYYY-MM-DD` | Date the task was executed |
-| `agent_name` | string | Agent name from the roster (e.g., `changelog-agent`) |
-| `prompt_file` | string | Filename executed (e.g., `bitvid-changelog-agent.md`) |
-| `status` | `started`, `completed`, or `failed` | Current status of the task |
-| `branch` | string | Git branch where work was committed |
-| `summary` | quoted string | One-line summary of what was done or why it failed |
+Use the current UTC timestamp (which will be later than the `started` file). The file content should be:
+
+```markdown
+# Agent Task Log Entry
+
+- **Date:** <YYYY-MM-DD>
+- **Agent:** <agent-name>
+- **Prompt:** <prompt-file>
+- **Status:** completed (or failed)
+- **Branch:** <branch-name>
+- **Summary:** <one-line summary of what was done or why it failed>
+```
 
 ### Rules for the Log
 
-- **Always append** — never delete or modify existing rows.
-- **One `started` + one final row per run** — each scheduler invocation adds exactly two rows (started, then completed/failed).
-- **Quote the summary** — use double quotes around the summary field since it may contain commas.
-- **Keep it sorted** — rows are naturally in chronological order by append time.
+- **Never modify existing files** — always create new files. This eliminates merge conflicts.
+- **One `started` + one final file per run** — each scheduler invocation creates exactly two files (started, then completed/failed).
+- **Use UTC timestamps** — ensures consistent chronological sorting across time zones.
+- **Files sort chronologically** — the filename format ensures `ls | sort` produces a timeline.
 
-**Important:** Weekly agents use their own log file (`WEEKLY_AGENT_TASK_LOG.csv`), separate from the daily log (`AGENT_TASK_LOG.csv`). This keeps weekly and daily rotations independent and avoids one cadence interfering with the other's position tracking.
+**Important:** Weekly agents use their own log directory (`docs/agents/task-logs/weekly/`), separate from the daily log (`docs/agents/task-logs/daily/`). This keeps weekly and daily rotations independent and avoids one cadence interfering with the other's position tracking.
 
 ---
 
 ## Step 5 — Verify and Submit
 
-1. **Verify the log**: Re-read `docs/agents/WEEKLY_AGENT_TASK_LOG.csv` and confirm your entries were appended correctly (proper CSV format, no corruption of previous rows).
+1. **Verify the log**: List `docs/agents/task-logs/weekly/` and confirm your entries were created correctly (proper filename format, valid content).
 2. **Run a final check**: Execute `npm run lint` to confirm no lint regressions were introduced.
 3. **Commit your changes** with a descriptive message following this pattern:
    ```
@@ -193,9 +260,9 @@ date,agent_name,prompt_file,status,branch,summary
 ## Error Handling
 
 - If the agent prompt file is **empty or missing**, skip it, log the run as `failed` with summary `"Prompt file empty or missing"`, and proceed to the **next agent** in the roster.
-- If a task **fails mid-execution** (test failures, build errors), log the run as `failed` with a summary describing the failure. Still commit the log update and any partial artifacts.
-- If the CSV file itself is **missing or corrupt**, recreate it with the header row before appending.
-- If `gh` or `curl` is **unavailable or errors**, fall back to CSV-only claiming (the `started` row). Log a warning in your summary that PR-based claim checking was degraded.
+- If a task **fails mid-execution** (test failures, build errors), log the run as `failed` with a summary describing the failure. Still commit the log file and any partial artifacts.
+- If the task log directory is **missing**, create it: `mkdir -p docs/agents/task-logs/weekly/`.
+- If `gh` or `curl` is **unavailable or errors**, fall back to log-file-only claiming (the `started` file). Log a warning in your summary that PR-based claim checking was degraded.
 
 ---
 
@@ -204,9 +271,11 @@ date,agent_name,prompt_file,status,branch,summary
 | Layer | Mechanism | Catches |
 |-------|-----------|---------|
 | **Step 0** | Scan ALL open `[weekly]` PRs | Agents claimed by any platform |
-| **Step 0** | Check CSV for `started` rows | Agents in progress (even without PR) |
+| **Step 0** | Check task log dir for `started` files | Agents in progress (even without PR) |
 | **Step 2a** | Create draft PR as lock | Cross-platform visibility |
 | **Step 2b** | Race condition re-check | Simultaneous claims |
-| **Step 2c** | Log `started` to CSV immediately | Crash recovery — rotation advances |
+| **Step 2c** | Create `started` log file immediately | Crash recovery — rotation advances |
 
 All five layers must be executed. No single layer is sufficient on its own.
+
+**Why directories instead of CSV?** Each agent creates its own uniquely-named file, so concurrent agents never touch the same file. This eliminates the git merge conflicts and race conditions that occurred when multiple agents appended to a shared CSV.
