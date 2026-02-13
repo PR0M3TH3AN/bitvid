@@ -5,6 +5,23 @@ import { getCurrentVideo, setCurrentVideo } from "../state/appState.js";
 // js/services/playbackService.js
 
 /**
+ * @fileoverview PlaybackService.js
+ *
+ * Flow:
+ * 1. UI calls `bitvidApp.playVideoWithFallback(...)`.
+ * 2. App delegates to `playbackService.createSession(...)` and `session.start()`.
+ * 3. Session determines priority (URL vs Torrent) based on config and availability.
+ * 4. If URL-first:
+ *    a. Probes URL (HEAD request).
+ *    b. Attempts playback on <video> element.
+ *    c. Monitors for stalls/errors (Watchdogs).
+ *    d. If stall/error, switches to WebTorrent.
+ * 5. If Torrent-first (or fallback):
+ *    a. Starts WebTorrent engine with magnet + webseeds.
+ *    b. Streams to <video>.
+ */
+
+/**
  * PlaybackService acts as the central conductor for video playback.
  * It manages the lifecycle of a "PlaybackSession", which encapsulates the complex
  * logic of attempting to play a video from a direct URL (HTTP/CDN) first, and
@@ -70,6 +87,11 @@ const CORS_ERROR_PATTERN = /cors/i;
 const PROBE_CACHE_TTL_MS = 45000;
 const WEBSEED_PARAM_KEYS = new Set(["ws", "webseed"]);
 
+/**
+ * Parses a magnet URI to extract web seed (ws) parameters.
+ * @param {string} magnetUri - The magnet link.
+ * @returns {string[]} Array of web seed URLs.
+ */
 const extractWebSeedsFromMagnet = (magnetUri) => {
   if (typeof magnetUri !== "string") {
     return [];
@@ -106,6 +128,11 @@ const extractWebSeedsFromMagnet = (magnetUri) => {
   return webSeeds;
 };
 
+/**
+ * Translates a hosted URL probe result into a user-friendly error details object.
+ * @param {object} probeResult - Result from probeHostedUrl.
+ * @returns {object} { category, message, status }
+ */
 const getHostedUrlFailureDetails = (probeResult = {}) => {
   const outcome = probeResult?.outcome || "error";
   const status = Number.isFinite(probeResult?.status)
@@ -208,6 +235,11 @@ const getHostedUrlFailureDetails = (probeResult = {}) => {
   };
 };
 
+/**
+ * Extracts a user-friendly error message from a failed HTMLVideoElement.
+ * @param {HTMLVideoElement} videoElement
+ * @returns {string} Error message.
+ */
 const getHostedVideoErrorMessage = (videoElement) => {
   if (!videoElement?.error) {
     return "";
@@ -239,6 +271,11 @@ const getHostedVideoErrorMessage = (videoElement) => {
   }
 };
 
+/**
+ * Translates WebTorrent errors into user-friendly messages.
+ * @param {Error} error
+ * @returns {string} User-facing error message.
+ */
 const getTorrentErrorMessage = (error) => {
   if (!error) {
     return "WebTorrent could not start. Please try again.";
@@ -257,6 +294,16 @@ const getTorrentErrorMessage = (error) => {
 };
 
 export class PlaybackService {
+  /**
+   * @param {object} options
+   * @param {object} [options.logger] - Logger instance.
+   * @param {object} [options.torrentClient] - WebTorrent client instance.
+   * @param {Function} [options.deriveTorrentPlaybackConfig] - Config generator.
+   * @param {Function} [options.isValidMagnetUri] - Validator.
+   * @param {boolean} [options.urlFirstEnabled=true] - Whether to prioritize URL over Magnet.
+   * @param {object} [options.analyticsCallbacks] - Callbacks for events.
+   * @param {number} [options.playbackStartTimeout] - Timeout in ms.
+   */
   constructor({
     logger,
     torrentClient,
@@ -294,6 +341,9 @@ export class PlaybackService {
     setCurrentVideo(value);
   }
 
+  /**
+   * Internal logger wrapper.
+   */
   log(...args) {
     try {
       this.logger(...args);
@@ -302,6 +352,11 @@ export class PlaybackService {
     }
   }
 
+  /**
+   * Emits analytics events via callbacks.
+   * @param {string} eventName
+   * @param {object} detail
+   */
   handleAnalyticsEvent(eventName, detail) {
     const callbacks = this.analyticsCallbacks || {};
     if (typeof callbacks.onEvent === "function") {
@@ -321,12 +376,18 @@ export class PlaybackService {
     }
   }
 
+  /**
+   * Generates a cache key for probe results.
+   */
   getProbeCacheKey({ url, magnet }) {
     const trimmedUrl = typeof url === "string" ? url.trim() : "";
     const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
     return `${trimmedUrl}::${trimmedMagnet}`;
   }
 
+  /**
+   * Removes expired entries from the probe cache.
+   */
   pruneProbeCache(now = Date.now()) {
     for (const [key, entry] of this.probeCache.entries()) {
       if (!entry || !Number.isFinite(entry.expiresAt) || entry.expiresAt <= now) {
@@ -335,6 +396,9 @@ export class PlaybackService {
     }
   }
 
+  /**
+   * Retrieves a valid cached probe result.
+   */
   getCachedProbeResult(cacheKey, now = Date.now()) {
     this.pruneProbeCache(now);
     const entry = this.probeCache.get(cacheKey);
@@ -344,6 +408,9 @@ export class PlaybackService {
     return entry.result;
   }
 
+  /**
+   * Caches a probe result.
+   */
   storeProbeResult(cacheKey, result, now = Date.now()) {
     const ttl =
       Number.isFinite(this.probeCacheTtlMs) && this.probeCacheTtlMs > 0
@@ -352,6 +419,15 @@ export class PlaybackService {
     this.probeCache.set(cacheKey, { result, expiresAt: now + ttl });
   }
 
+  /**
+   * Probes a hosted URL to check availability (HEAD request).
+   * Caches results and deduplicates in-flight requests.
+   * @param {object} params
+   * @param {string} params.url
+   * @param {string} params.magnet
+   * @param {Function} params.probeUrl - Function to perform the actual HTTP probe.
+   * @returns {Promise<object>} Probe result.
+   */
   async probeHostedUrl({ url, magnet, probeUrl } = {}) {
     const sanitizedUrl = typeof url === "string" ? url.trim() : "";
     if (!sanitizedUrl) {
@@ -391,6 +467,10 @@ export class PlaybackService {
     return probePromise;
   }
 
+  /**
+   * Sets up the video element state (mute/unmute based on user pref).
+   * @param {HTMLVideoElement} videoElement
+   */
   prepareVideoElement(videoElement) {
     if (!videoElement) {
       return;
@@ -531,12 +611,20 @@ export class PlaybackService {
     };
   }
 
+  /**
+   * Cleans up the active session's watchdog if present.
+   */
   cleanupWatchdog() {
     if (this.currentSession) {
       this.currentSession.cleanupWatchdog();
     }
   }
 
+  /**
+   * Creates a new playback session.
+   * @param {object} options
+   * @returns {PlaybackSession}
+   */
   createSession(options = {}) {
     const session = new PlaybackSession(this, {
       ...options,
@@ -561,6 +649,10 @@ export class PlaybackService {
  * or if it needs to spin up a new one.
  */
 class PlaybackSession extends SimpleEventEmitter {
+  /**
+   * @param {PlaybackService} service
+   * @param {object} options
+   */
   constructor(service, options = {}) {
     super((message, ...args) => service.log(message, ...args));
     this.service = service;
@@ -618,10 +710,20 @@ class PlaybackSession extends SimpleEventEmitter {
     this.magnetProvided = !!this.playbackConfig.provided;
   }
 
+  /**
+   * Checks if the session is still active (not finished).
+   * @returns {boolean}
+   */
   isActive() {
     return !this.finished;
   }
 
+  /**
+   * Checks if the session matches the provided request signature.
+   * Used to detect if a new request is for the same video.
+   * @param {string} signature
+   * @returns {boolean}
+   */
   matchesRequestSignature(signature) {
     if (!this.isActive()) {
       return false;
@@ -652,6 +754,9 @@ class PlaybackSession extends SimpleEventEmitter {
     return this.magnetProvided;
   }
 
+  /**
+   * Cleans up any active watchdog listener.
+   */
   cleanupWatchdog() {
     if (typeof this.watchdogCleanup === "function") {
       try {
@@ -664,6 +769,9 @@ class PlaybackSession extends SimpleEventEmitter {
     }
   }
 
+  /**
+   * Registers watchdogs for the current session.
+   */
   registerWatchdogs(videoElement, options) {
     this.cleanupWatchdog();
     this.watchdogCleanup = this.service.registerUrlPlaybackWatchdogs(
@@ -672,6 +780,9 @@ class PlaybackSession extends SimpleEventEmitter {
     );
   }
 
+  /**
+   * Attaches debug listeners to log video events.
+   */
   attachDebugListeners(videoElement) {
     if (!videoElement) {
       return () => {};
@@ -727,6 +838,7 @@ class PlaybackSession extends SimpleEventEmitter {
   /**
    * Begins the playback flow. Returns a promise that resolves when playback
    * has either successfully started (URL or Torrent) or fatally failed.
+   * @returns {Promise<object>} Result object { source: "url"|"torrent"|null, error? }
    */
   async start() {
     if (this.startPromise) {
