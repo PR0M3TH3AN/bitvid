@@ -68,15 +68,29 @@ ls docs/agents/task-logs/weekly/ | grep "<agent-name>"
 
 ## PRE-FLIGHT GATE — Run These Commands NOW
 
-> **This gate is NOT optional. You MUST run both commands below and paste their raw output before doing anything else. If you skip this, you will duplicate another agent's work and waste the entire run. This has happened repeatedly.**
+> **This gate is NOT optional. You MUST run all commands below and paste their raw output before doing anything else. If you skip this, you will duplicate another agent's work and waste the entire run. This has happened repeatedly.**
 
 If you arrived here from the meta prompt and already ran these commands and pasted the output, you may skip ahead to Step 1. Otherwise:
+
+### COMMAND 0 — Verify GitHub API write access (run FIRST)
+
+Run this command before anything else:
+```bash
+curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/user
+```
+
+- **200** → Token is valid. Proceed.
+- **401 or empty** → No write access. **Stop immediately.** Log as `failed` with summary: `GitHub API token missing or invalid; cannot create draft PRs`. Do not continue to Command 1.
+
+If `GITHUB_TOKEN` is not set in your environment, check for alternatives: `GH_TOKEN`, `GITHUB_API_TOKEN`. Use whichever is available. If none are set, stop immediately with the same failure message.
+
+**Why this check exists:** Draft PR creation (Step 2) requires authenticated GitHub API access. Without it, the scheduler will waste time selecting an agent and pushing a branch only to fail at the PR creation hard stop. This check catches the problem in seconds instead of minutes.
 
 ### COMMAND 1 — Check for open weekly agent PRs
 
 Run this command:
 ```bash
-curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, prs: [.[] | {number, created_at, draft, head: {ref: .head.ref}, agent: ((.head.ref | capture("^agents/weekly/(?<agent>[^/]+)/")?.agent) // (.title | capture("(?<agent>[A-Za-z0-9-]+-agent)")?.agent // null))}] | sort_by(.created_at, .number)}'
+curl -s -H "Authorization: Bearer $GITHUB_TOKEN" "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, prs: [.[] | {number, created_at, draft, head: {ref: .head.ref}, agent: ((.head.ref | capture("^agents/weekly/(?<agent>[^/]+)/")?.agent) // (.title | capture("(?<agent>[A-Za-z0-9-]+-agent)")?.agent // null))}] | sort_by(.created_at, .number)}'
 ```
 
 **Paste the complete raw output.** If the command returns nothing or errors, write: `OUTPUT: (empty — no results)`
@@ -169,17 +183,40 @@ You must create a visible claim before doing any work. This claim is a **distrib
 
 Complete the following in this exact order. Do not reorder or skip steps:
 
-1. Create your working branch.
+1. Create your working branch: `agents/weekly/<agent-name>/<suffix>`
 2. Create a minimal claim commit (for example, a new `context/CONTEXT_<timestamp>.md` with task scope).
 3. Push the branch immediately.
-4. Open a **draft PR immediately** after the push.
+4. Open a **draft PR immediately** after the push using the `curl` command below.
 5. Create and push the `_started.md` log file.
 6. Re-run the claim check command.
 7. Only then proceed to Step 3 (task execution).
 
+**Draft PR creation command** (use `curl`, never `gh`):
+
+```bash
+curl -s -X POST \
+  -H "Authorization: Bearer $GITHUB_TOKEN" \
+  -H "Accept: application/vnd.github+json" \
+  https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls \
+  -d "$(cat <<'PREOF'
+{
+  "title": "[weekly] <agent-name> — weekly task run",
+  "head": "<your-branch-name>",
+  "base": "unstable",
+  "draft": true,
+  "body": "Automated weekly agent task run.\n\nAgent: <agent-name>\nCadence: weekly\nScheduler claim — do not merge until task completes."
+}
+PREOF
+)"
+```
+
+Replace `<agent-name>` and `<your-branch-name>` with actual values. Parse the response JSON for `"number"` to get the PR number. If the response contains `"message"` instead of `"number"`, the PR creation failed.
+
+> **Note:** Agents do not have access to `gh`. Always use `curl` for GitHub API operations.
+
 ### 2b. Draft PR requirement (hard stop)
 
-If draft PR creation fails for any reason, **abort the run immediately**, mark the scheduler attempt as failed, and **do not execute the task body**.
+If draft PR creation fails for any reason (HTTP error, missing token, network failure), **abort the run immediately**, mark the scheduler attempt as failed, and **do not execute the task body**. The Command 0 pre-flight check should catch token issues early, but this is the definitive gate.
 
 ### 2c. Create and push `_started.md` log file
 
@@ -210,7 +247,7 @@ Commit and push this log file to your branch. This `started` entry serves as a s
 
 After pushing the started log, re-check for competing claims:
 ```bash
-curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, prs: [.[] | {number, created_at, draft, head: {ref: .head.ref}, agent: ((.head.ref | capture("^agents/weekly/(?<agent>[^/]+)/")?.agent) // (.title | capture("(?<agent>[A-Za-z0-9-]+-agent)")?.agent // null))}] | sort_by(.created_at, .number)}'
+curl -s -H "Authorization: Bearer $GITHUB_TOKEN" "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, prs: [.[] | {number, created_at, draft, head: {ref: .head.ref}, agent: ((.head.ref | capture("^agents/weekly/(?<agent>[^/]+)/")?.agent) // (.title | capture("(?<agent>[A-Za-z0-9-]+-agent)")?.agent // null))}] | sort_by(.created_at, .number)}'
 ```
 Decision logic (must be explicit):
 1. Compare only open/draft PRs whose derived `agent` matches the agent you just claimed.

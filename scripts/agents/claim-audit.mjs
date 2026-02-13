@@ -97,16 +97,23 @@ function parseTaskLogFilename(fileName) {
 
 const execFile = promisify(execFileCb);
 
+function getGithubToken() {
+  return process.env.GITHUB_TOKEN || process.env.GH_TOKEN || process.env.GITHUB_API_TOKEN || '';
+}
+
 async function fetchOpenPrs() {
   const url = 'https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100';
+  const token = getGithubToken();
+  const headers = {
+    Accept: 'application/vnd.github+json',
+    'User-Agent': 'bitvid-claim-audit-script',
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
 
   try {
-    const response = await fetch(url, {
-      headers: {
-        Accept: 'application/vnd.github+json',
-        'User-Agent': 'bitvid-claim-audit-script',
-      },
-    });
+    const response = await fetch(url, { headers });
 
     if (!response.ok) {
       throw new Error(`GitHub API request failed: HTTP ${response.status}`);
@@ -115,7 +122,12 @@ async function fetchOpenPrs() {
     const data = await response.json();
     return Array.isArray(data) ? data : [];
   } catch (fetchError) {
-    const { stdout } = await execFile('curl', ['-s', url]);
+    const curlArgs = ['-s'];
+    if (token) {
+      curlArgs.push('-H', `Authorization: Bearer ${token}`);
+    }
+    curlArgs.push(url);
+    const { stdout } = await execFile('curl', curlArgs);
     let parsed;
     try {
       parsed = JSON.parse(stdout);
