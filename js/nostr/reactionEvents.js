@@ -8,6 +8,8 @@ import { CACHE_POLICIES } from "./cachePolicies.js";
 import { NOTE_TYPES } from "../nostrEventSchemas.js";
 import { queueSignEvent } from "./signRequestQueue.js";
 import { sanitizeRelayList as sanitizeRelayUrls } from "./nip46Client.js";
+import { pMap } from "../utils/asyncUtils.js";
+import { RELAY_BACKGROUND_CONCURRENCY } from "./relayConstants.js";
 
 const CACHE_POLICY = CACHE_POLICIES[NOTE_TYPES.VIDEO_REACTION];
 const reactionCache = new LRUCache({ maxSize: 100 });
@@ -205,12 +207,13 @@ export async function listVideoReactions(client, targetInput, options = {}) {
   const filters = [{ kinds: [7], "#e": [videoEventId] }];
 
   // Parallel fetch from relays with incremental logic
-  await Promise.all(
-    relayList.map(async (url) => {
+  await pMap(
+    relayList,
+    async (url) => {
       if (!url) return;
       const lastSeen = lastSeens[url] || 0;
       // Deep clone filters to apply 'since' safely per relay
-      const relayFilters = filters.map(f => {
+      const relayFilters = filters.map((f) => {
         const copy = { ...f };
         if (lastSeen > 0) {
           copy.since = lastSeen + 1;
@@ -235,7 +238,8 @@ export async function listVideoReactions(client, targetInput, options = {}) {
       } catch (err) {
         devLogger.warn(`[nostr] Failed to fetch reactions from ${url}:`, err);
       }
-    })
+    },
+    { concurrency: RELAY_BACKGROUND_CONCURRENCY },
   );
 
   // Merge with cached items
@@ -481,8 +485,10 @@ export async function publishVideoReaction(
 
   const relayList = sanitizeRelayList(options.relays, client.relays);
 
-  const publishResults = await Promise.all(
-    relayList.map((url) => publishEventToRelay(client.pool, url, signedEvent))
+  const publishResults = await pMap(
+    relayList,
+    (url) => publishEventToRelay(client.pool, url, signedEvent),
+    { concurrency: RELAY_BACKGROUND_CONCURRENCY },
   );
 
   const acceptedRelays = publishResults
