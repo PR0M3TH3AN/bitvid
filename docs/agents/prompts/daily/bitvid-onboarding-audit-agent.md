@@ -176,3 +176,19 @@ OUTPUTS PER RUN
 - Updates to `README.md` and/or `CONTRIBUTING.md` when needed
 - Optional devcontainer/Docker suggestion (and implementation only if justified)
 - 0–1 PR + 0–N issues for non-trivial blockers
+
+## TASK COMPLETION & SELF-CORRECTION
+
+If you are unsure what to do next, complete what you have and commit after the initial goal is completed and tests are successful.
+
+**Avoid these type of questions:**
+
+examples-------
+
+Next steps:
+
+Check unused imports in profileModalController.js.
+Run unit tests npm run test:unit.
+Update file size baseline.
+Commit and complete the work.
+Do you have any specific advice or checks before I proceed?

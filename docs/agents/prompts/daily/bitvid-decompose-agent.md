@@ -270,6 +270,23 @@ EXTRA TIPS & STYLE NOTES
 
 ---
 
+
+## TASK COMPLETION & SELF-CORRECTION
+
+If you are unsure what to do next, complete what you have and commit after the initial goal is completed and tests are successful.
+
+**Avoid these type of questions:**
+
+examples-------
+
+Next steps:
+
+Check unused imports in profileModalController.js.
+Run unit tests npm run test:unit.
+Update file size baseline.
+Commit and complete the work.
+Do you have any specific advice or checks before I proceed?
+
 FINAL NOTE
 This is a conservative, incremental refactor: extract, test, baseline, PR. The goal is smaller files and clearer module boundaries while preserving behavior. Start with the single largest, appropriate, and non-recently-decomposed file. Make 2–3 clean extractions, test thoroughly, update baseline, and open one `[decompose]` PR targeting `unstable`.
 

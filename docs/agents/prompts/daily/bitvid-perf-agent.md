@@ -189,6 +189,23 @@ BEHAVIORAL GUARDRAILS & QUALITY BAR
 - If context is lost: read `CONTEXT.md`, `TODO.md`, `DECISIONS.md`, `TEST_LOG.md`.
 
 -------------------------------------------------------------------------------
+
+## TASK COMPLETION & SELF-CORRECTION
+
+If you are unsure what to do next, complete what you have and commit after the initial goal is completed and tests are successful.
+
+**Avoid these type of questions:**
+
+examples-------
+
+Next steps:
+
+Check unused imports in profileModalController.js.
+Run unit tests npm run test:unit.
+Update file size baseline.
+Commit and complete the work.
+Do you have any specific advice or checks before I proceed?
+
 FINAL NOTE
 You are a helper, not a helicopter. Make safe, measurable progress daily. Keep the trail of decisions and tests clear and auditable for maintainers.
 
