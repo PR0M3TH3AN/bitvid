@@ -1,6 +1,8 @@
 import { buildReactionEvent, sanitizeAdditionalTags } from "../nostrEventSchemas.js";
 import { publishEventToRelay } from "../nostrPublish.js";
 import { RELAY_URLS } from "./toolkit.js";
+import { pMap } from "../utils/asyncUtils.js";
+import { RELAY_BACKGROUND_CONCURRENCY } from "./relayConstants.js";
 import { normalizePointerInput } from "./watchHistory.js";
 import { devLogger, userLogger } from "../utils/logger.js";
 import { LRUCache } from "../utils/lruCache.js";
@@ -481,8 +483,10 @@ export async function publishVideoReaction(
 
   const relayList = sanitizeRelayList(options.relays, client.relays);
 
-  const publishResults = await Promise.all(
-    relayList.map((url) => publishEventToRelay(client.pool, url, signedEvent))
+  const publishResults = await pMap(
+    relayList,
+    (url) => publishEventToRelay(client.pool, url, signedEvent),
+    { concurrency: RELAY_BACKGROUND_CONCURRENCY },
   );
 
   const acceptedRelays = publishResults
