@@ -177,9 +177,11 @@ Complete the following in this exact order. Do not reorder or skip steps:
 6. Re-run the claim check command.
 7. Only then proceed to Step 3 (task execution).
 
-### 2b. Draft PR requirement (hard stop)
+### 2b. Draft PR requirement (soft fail)
 
-If draft PR creation fails for any reason, **abort the run immediately**, mark the scheduler attempt as failed, and **do not execute the task body**.
+Try to open a draft PR immediately after the push.
+- If successful: Record the PR number.
+- If failed (e.g., missing `GH_TOKEN`): **Do not abort.** Log the failure in the `started` file summary (e.g., "Task claimed (PR creation skipped) — execution beginning") and proceed. The pushed branch and `started` log file serve as the primary distributed lock.
 
 ### 2c. Create and push `_started.md` log file
 
@@ -227,7 +229,7 @@ If the verdict is lost, abandon your branch and go back to Step 1 to select the 
 
 ```text
 Branch pushed: yes/no
-Draft PR #: ...
+Draft PR #: ... (or "FAILED/SKIPPED")
 Started log filename: ...
 Final pre-execution claim check passed: yes/no
 ```
@@ -304,6 +306,7 @@ Use the current UTC timestamp (which will be later than the `started` file). The
 - If the agent prompt file is **empty or missing**, skip it, log the run as `failed` with summary `"Prompt file empty or missing"`, and proceed to the **next agent** in the roster.
 - If a task **fails mid-execution** (test failures, build errors), log the run as `failed` with a summary describing the failure. Still commit the log file and any partial artifacts.
 - If the task log directory is **missing**, create it: `mkdir -p docs/agents/task-logs/weekly/`.
+- If **Draft PR creation fails**, fall back to log-file-only claiming (the branch + `started` file).
 - If `curl` or `jq` is **unavailable or errors**, fall back to log-file-only claiming (the `started` file). Log a warning in your summary that PR-based claim checking was degraded.
 
 ---
