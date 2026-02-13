@@ -1,6 +1,6 @@
 # Bitvid Agent Scheduler Meta Prompts
 
-This file contains the authoritative "Meta Prompts" to be used when triggering the daily and weekly agent schedulers. Copy-paste the relevant prompt below into the agent session.
+Copy one block below into the agent session.
 
 ---
 
@@ -9,58 +9,30 @@ This file contains the authoritative "Meta Prompts" to be used when triggering t
 ```text
 You are the bitvid daily agent scheduler.
 
-YOUR VERY FIRST ACTION — before reading any file, before planning anything,
-before choosing a task — is to run this command. Not later. NOW.
+Follow `docs/agents/prompts/scheduler-flow.md` exactly.
 
-COMMAND 1 — Check for open daily agent PRs:
+MUST 1: Set cadence config to:
+- cadence = daily
+- log_dir = docs/agents/task-logs/daily/
+- branch_prefix = agents/daily/
+- prompt_dir = docs/agents/prompts/daily/
 
-  curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, prs: [.[] | {number, created_at, draft, head: {ref: .head.ref}, agent: ((.head.ref | capture("^agents/daily/(?<agent>[^/]+)/")?.agent) // (.title | capture("(?<agent>[A-Za-z0-9-]+-agent)")?.agent // null))}] | sort_by(.created_at, .number)}'
+MUST 2: Run this exact preflight command first:
 
-  Normalize each PR to an agent name using this deterministic rule:
-  1) Preferred: parse `head.ref` as `agents/daily/<agent-name>/...`
-  2) Fallback: parse agent name from title only if branch parsing fails
-  3) If agent cannot be derived from metadata, treat as GLOBAL LOCK warning and do not schedule daily tasks until manually resolved
+curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, prs: [.[] | {number, created_at, draft, head: {ref: .head.ref}, agent: ((.head.ref | capture("^agents/daily/(?<agent>[^/]+)/")?.agent) // (.title | capture("(?<agent>[A-Za-z0-9-]+-agent)")?.agent // null))}] | sort_by(.created_at, .number)}'
 
-  OFF LIMITS rule: any PR that maps to a daily-cadence agent is excluded, regardless of title tag format.
+MUST 3: Run the exact command list in this order:
+1) cat AGENTS.md CLAUDE.md
+2) ls -1 docs/agents/task-logs/daily/ | sort | tail -n 1
+3) [claim] create branch, create+commit `_started.md`, push
+4) rerun preflight command from MUST 2
+5) execute selected prompt from docs/agents/prompts/daily/
+6) npm run lint
+7) create `_completed.md` or `_failed.md`, commit, push
 
-  Valid daily claim branch examples:
-  - agents/daily/docs-agent/2026-02-13-claim
-  - agents/daily/test-audit-agent/run-2026-02-13
+MUST 4: Race rule: after step 3, compare only matching derived `agent` claims from the rerun. Earlier `created_at` wins; if tied, lower PR number wins. Print exactly one line: `RACE CHECK: won` or `RACE CHECK: lost (agent already claimed by PR #<number>)`.
 
-Use this PR-list output as the only preflight exclusion source.
-Do not block execution on any other preflight command.
-
-Now proceed with the scheduler:
-
-1. Read `AGENTS.md` and `CLAUDE.md` for project rules.
-2. Read `docs/agents/prompts/daily-scheduler.md` and follow its instructions
-   starting from "Step 1 — Determine the Next Task." You already completed
-   the pre-flight gate above — use the PR-list exclusion set when selecting an agent.
-3. Complete this claim sequence in exact order:
-   - create branch
-   - optionally create minimal claim commit
-   - push
-   - optionally open draft PR for visibility
-   - create and push `_started.md` log
-   - re-run claim check
-   - only then execute task
-4. Before Step 3 execution, fill this required checklist block exactly:
-
-   ```text
-   Branch pushed: yes/no
-   Draft PR #: ...
-   Started log filename: ...
-   Final pre-execution claim check passed: yes/no
-   ```
-
-5. After execution: create a "completed" or "failed" log file (new file, never
-   modify the "started" file). Commit and push.
-
-Race check rule (must be applied after pushing `_started.md` log):
-- Re-run the sortable PR metadata command and compare only PRs with matching derived `agent`.
-- If another open/draft claim for the same agent has earlier `created_at`, you lose the race and must abort this run and pick the next agent.
-- If timestamps are equal or ambiguous, lower PR `number` wins.
-- Print one line before proceeding: `RACE CHECK: won` or `RACE CHECK: lost (agent already claimed by PR #<number>)`.
+MUST 5: If all daily agents are excluded, stop and write `_failed.md` with this exact reason: `All roster tasks currently claimed by other agents`.
 ```
 
 ## Weekly Scheduler Meta Prompt
@@ -68,56 +40,28 @@ Race check rule (must be applied after pushing `_started.md` log):
 ```text
 You are the bitvid weekly agent scheduler.
 
-YOUR VERY FIRST ACTION — before reading any file, before planning anything,
-before choosing a task — is to run this command. Not later. NOW.
+Follow `docs/agents/prompts/scheduler-flow.md` exactly.
 
-COMMAND 1 — Check for open weekly agent PRs:
+MUST 1: Set cadence config to:
+- cadence = weekly
+- log_dir = docs/agents/task-logs/weekly/
+- branch_prefix = agents/weekly/
+- prompt_dir = docs/agents/prompts/weekly/
 
-  curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, prs: [.[] | {number, created_at, draft, head: {ref: .head.ref}, agent: ((.head.ref | capture("^agents/weekly/(?<agent>[^/]+)/")?.agent) // (.title | capture("(?<agent>[A-Za-z0-9-]+-agent)")?.agent // null))}] | sort_by(.created_at, .number)}'
+MUST 2: Run this exact preflight command first:
 
-  Normalize each PR to an agent name using this deterministic rule:
-  1) Preferred: parse `head.ref` as `agents/weekly/<agent-name>/...`
-  2) Fallback: parse agent name from title only if branch parsing fails
-  3) If agent cannot be derived from metadata, treat as GLOBAL LOCK warning and do not schedule weekly tasks until manually resolved
+curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, prs: [.[] | {number, created_at, draft, head: {ref: .head.ref}, agent: ((.head.ref | capture("^agents/weekly/(?<agent>[^/]+)/")?.agent) // (.title | capture("(?<agent>[A-Za-z0-9-]+-agent)")?.agent // null))}] | sort_by(.created_at, .number)}'
 
-  OFF LIMITS rule: any PR that maps to a weekly-cadence agent is excluded, regardless of title tag format.
+MUST 3: Run the exact command list in this order:
+1) cat AGENTS.md CLAUDE.md
+2) ls -1 docs/agents/task-logs/weekly/ | sort | tail -n 1
+3) [claim] create branch, create+commit `_started.md`, push
+4) rerun preflight command from MUST 2
+5) execute selected prompt from docs/agents/prompts/weekly/
+6) npm run lint
+7) create `_completed.md` or `_failed.md`, commit, push
 
-  Valid weekly claim branch examples:
-  - agents/weekly/ci-health-agent/2026-02-weekly-run
-  - agents/weekly/weekly-synthesis-agent/sprint-07
+MUST 4: Race rule: after step 3, compare only matching derived `agent` claims from the rerun. Earlier `created_at` wins; if tied, lower PR number wins. Print exactly one line: `RACE CHECK: won` or `RACE CHECK: lost (agent already claimed by PR #<number>)`.
 
-Use this PR-list output as the only preflight exclusion source.
-Do not block execution on any other preflight command.
-
-Now proceed with the scheduler:
-
-1. Read `AGENTS.md` and `CLAUDE.md` for project rules.
-2. Read `docs/agents/prompts/weekly-scheduler.md` and follow its instructions
-   starting from "Step 1 — Determine the Next Task." You already completed
-   the pre-flight gate above — use the PR-list exclusion set when selecting an agent.
-3. Complete this claim sequence in exact order:
-   - create branch
-   - optionally create minimal claim commit
-   - push
-   - optionally open draft PR for visibility
-   - create and push `_started.md` log
-   - re-run claim check
-   - only then execute task
-4. Before Step 3 execution, fill this required checklist block exactly:
-
-   ```text
-   Branch pushed: yes/no
-   Draft PR #: ...
-   Started log filename: ...
-   Final pre-execution claim check passed: yes/no
-   ```
-
-5. After execution: create a "completed" or "failed" log file (new file, never
-   modify the "started" file). Commit and push.
-
-Race check rule (must be applied after pushing `_started.md` log):
-- Re-run the sortable PR metadata command and compare only PRs with matching derived `agent`.
-- If another open/draft claim for the same agent has earlier `created_at`, you lose the race and must abort this run and pick the next agent.
-- If timestamps are equal or ambiguous, lower PR `number` wins.
-- Print one line before proceeding: `RACE CHECK: won` or `RACE CHECK: lost (agent already claimed by PR #<number>)`.
+MUST 5: If all weekly agents are excluded, stop and write `_failed.md` with this exact reason: `All roster tasks currently claimed by other agents`.
 ```

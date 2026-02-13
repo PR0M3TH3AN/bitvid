@@ -1,58 +1,72 @@
 # Scheduler Flow (Single Source of Truth)
 
-Use this document for **all scheduler runs**. Do not redefine preflight or claim logic in other scheduler prompts.
+Use this document for **all scheduler runs**.
 
-## Required Steps (Strict Order)
+## Numbered MUST Procedure
 
-1. **Load policy files first**
-   - Read `AGENTS.md` and `CLAUDE.md`.
+1. **MUST** set cadence variables before any command:
+   - `cadence` = `daily` or `weekly`
+   - `log_dir` = `docs/agents/task-logs/<cadence>/`
+   - `branch_prefix` = `agents/<cadence>/`
+   - `prompt_dir` = `docs/agents/prompts/<cadence>/`
 
-2. **Set cadence config**
-   - `cadence`: `daily` or `weekly`
-   - `log_dir`: `docs/agents/task-logs/<cadence>/`
-   - `branch_prefix`: `agents/<cadence>/`
-   - `prompt_dir`: `docs/agents/prompts/<cadence>/`
+2. **MUST** run this command first and save the JSON output as the preflight exclusion set:
 
-3. **Run preflight PR-list check (required)**
-   - `curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, prs: [.[] | {number, created_at, draft, head: {ref: .head.ref}, agent: ((.head.ref | capture("^agents/<cadence>/(?<agent>[^/]+)/")?.agent) // (.title | capture("(?<agent>[A-Za-z0-9-]+-agent)")?.agent // null))}] | sort_by(.created_at, .number)}'`
-   - Use this PR list output as the preflight exclusion source for already-claimed agents.
-   - **Do not block execution on any other preflight command.**
+   ```bash
+   curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, prs: [.[] | {number, created_at, draft, head: {ref: .head.ref}, agent: ((.head.ref | capture("^agents/<cadence>/(?<agent>[^/]+)/")?.agent) // (.title | capture("(?<agent>[A-Za-z0-9-]+-agent)")?.agent // null))}] | sort_by(.created_at, .number)}'
+   ```
 
-4. **Select next agent from cadence roster**
-   - Read latest file in `<log_dir>` (alphabetical sort).
-   - Advance to next agent in that cadence's roster.
-   - Skip agents already claimed in the preflight PR-list output.
-   - If all are excluded, log `failed` with `All roster tasks currently claimed by other agents` and stop.
+3. **MUST** derive excluded agents from command output using this order only:
+   1) parse `head.ref` as `agents/<cadence>/<agent-name>/...`; 2) fallback to title regex; 3) if still unknown, stop with a global lock message.
 
-5. **Claim task before execution (recommended sequence)**
-   1. Create branch.
-   2. Optionally create a minimal claim commit.
-   3. Push branch.
-   4. Optionally open a draft PR for visibility.
-   5. Create and push `<timestamp>_<agent>_started.md` in `<log_dir>`.
-   6. Re-run open PR check.
-   7. Race decision:
-      - If earlier matching PR exists: `RACE CHECK: lost (agent already claimed by PR #<number>)`, abandon branch, go back to Step 4.
-      - Otherwise: `RACE CHECK: won`, continue.
+4. **MUST** run this command and read both policy files before selecting an agent:
 
-6. **Execute selected agent prompt**
-   - Open `<prompt_dir>/<prompt-file>`.
-   - Run required workflow end-to-end.
+   ```bash
+   cat AGENTS.md CLAUDE.md
+   ```
 
-7. **Write final status log**
-   - Create `<timestamp>_<agent>_completed.md` or `_failed.md` in `<log_dir>`.
-   - Never edit existing log files.
+5. **MUST** run this command to identify the latest cadence log file, then choose the next roster agent not excluded by Step 2:
 
-8. **Validate and submit**
-   - Verify log files exist and are correctly named.
-   - Run required checks (default: `npm run lint`).
-   - Commit and push changes.
+   ```bash
+   ls -1 <log_dir> | sort | tail -n 1
+   ```
 
-## Reference (Optional / Explanatory)
+6. **MUST** stop and write a `_failed.md` log with `All roster tasks currently claimed by other agents` when every roster agent is excluded.
 
-- File format for each log entry:
-  - `YYYY-MM-DD_HH-MM-SS_<agent-name>_<status>.md`
-  - Include: Date, Agent, Prompt, Status, Branch, Summary.
-- Draft PR creation is optional and recommended for visibility; branch + started log still act as lock.
-- `started` + final status files provide crash recovery and clean chronological rotation.
-- Directory-based logs avoid CSV merge conflicts during concurrent scheduler runs.
+7. **MUST** claim the selected agent in this exact order:
+   1) create branch,
+   2) create and commit `<timestamp>_<agent>_started.md` in `<log_dir>`,
+   3) push branch and commit.
+
+8. **MUST** re-run the same PR preflight command from Step 2 immediately after push. If an earlier claim exists for the same derived agent, print `RACE CHECK: lost (agent already claimed by PR #<number>)`, abandon the run, and return to Step 5. Otherwise print `RACE CHECK: won`.
+
+9. **MUST** execute `<prompt_dir>/<prompt-file>` end-to-end.
+
+10. **MUST** create exactly one final status file (`_completed.md` or `_failed.md`), run `npm run lint`, then commit and push.
+
+## Canonical Example Run Output
+
+```text
+$ curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, prs: [.[] | {number, created_at, draft, head: {ref: .head.ref}, agent: ((.head.ref | capture("^agents/daily/(?<agent>[^/]+)/")?.agent) // (.title | capture("(?<agent>[A-Za-z0-9-]+-agent)")?.agent // null))}] | sort_by(.created_at, .number)}'
+{ "count": 12, "prs": [ ... ] }
+
+$ cat AGENTS.md CLAUDE.md
+# bitvid — AI Agent Guide
+...
+
+$ ls -1 docs/agents/task-logs/daily/ | sort | tail -n 1
+2026-02-13_18-40-00_load-test-agent_completed.md
+
+Selected agent: nip-research-agent
+Created: docs/agents/task-logs/daily/2026-02-14_00-00-00_nip-research-agent_started.md
+Pushed branch: agents/daily/nip-research-agent/2026-02-14-run
+
+$ curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, prs: [.[] | {number, created_at, draft, head: {ref: .head.ref}, agent: ((.head.ref | capture("^agents/daily/(?<agent>[^/]+)/")?.agent) // (.title | capture("(?<agent>[A-Za-z0-9-]+-agent)")?.agent // null))}] | sort_by(.created_at, .number)}'
+{ "count": 13, "prs": [ ... ] }
+RACE CHECK: won
+
+$ npm run lint
+> lint passed
+
+Wrote: docs/agents/task-logs/daily/2026-02-14_00-12-00_nip-research-agent_completed.md
+```
