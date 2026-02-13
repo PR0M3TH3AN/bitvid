@@ -96,11 +96,6 @@ export class ProfileModalController {
     this.showStatus = showStatus;
     this.designSystem = normalizeDesignSystemContext(designSystem);
 
-    this.dmController = new ProfileDirectMessageController(this);
-    this.relayController = new ProfileRelayController(this);
-    this.hashtagController = new ProfileHashtagController(this);
-    this.hashtagController.initialize();
-
     const resolvedMaxWalletDefaultZap =
       typeof providedConstants.MAX_WALLET_DEFAULT_ZAP === "number" &&
       Number.isFinite(providedConstants.MAX_WALLET_DEFAULT_ZAP)
@@ -168,8 +163,6 @@ export class ProfileModalController {
     this.adminSuperNpub = resolvedAdminSuperNpub;
     this.adminDmImageUrl = resolvedAdminDmImageUrl;
     this.bitvidWebsiteUrl = resolvedbitvidWebsiteUrl;
-    this.dmController.enableNip17RelayWarning = resolvedEnableNip17RelayWarning;
-    this.dmController.hasShownRelayWarning = false;
 
     this.internalState = {
       savedProfiles: [],
@@ -183,10 +176,17 @@ export class ProfileModalController {
       dmRelayHints: new Map(),
     };
 
-    this.dmController.dmMobileView = "list";
-
     this.services = buildServicesContract(services, this.internalState);
     this.state = buildStateContract(state, this.internalState);
+
+    this.dmController = new ProfileDirectMessageController(this);
+    this.relayController = new ProfileRelayController(this);
+    this.hashtagController = new ProfileHashtagController(this);
+    this.hashtagController.initialize();
+
+    this.dmController.enableNip17RelayWarning = resolvedEnableNip17RelayWarning;
+    this.dmController.hasShownRelayWarning = false;
+    this.dmController.dmMobileView = "list";
 
     this.normalizeHexPubkey = this.services.normalizeHexPubkey;
     this.safeEncodeNpub = this.services.safeEncodeNpub;
