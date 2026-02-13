@@ -2,6 +2,23 @@
 
 Use this document for **all scheduler runs**.
 
+## Scheduler Override (Top-Line Rule)
+
+During scheduler execution, the scheduler-specific instructions in this document and the cadence prompt (`daily-scheduler.md` or `weekly-scheduler.md`) **supersede generic AGENTS workflow details** when they conflict.
+
+### Global rules that still apply
+
+- Follow core safety and policy constraints (no harmful behavior, no secret exfiltration, no policy violations).
+- Do not perform destructive or irreversible actions unless explicitly required by the scheduler task definition.
+- Keep repository integrity checks (e.g., required lint/test commands in the scheduler flow) and leave an auditable log trail.
+- Respect non-interactive execution constraints and do not pause for manual approvals.
+
+### Generic AGENTS workflow details intentionally ignored for scheduler runs
+
+- The normal "one subsystem per PR" restriction, because scheduler operations are orchestration/meta-work that may touch scheduler logs, prompts, and coordination docs together.
+- The standard task-claim sequence described for general agents when it conflicts with the stricter, numbered MUST sequence below.
+- Generic start-of-task bookkeeping patterns not referenced by scheduler prompts (for example, creating extra context/todo artifacts) when they would add noise to automated scheduler runs.
+
 ## Numbered MUST Procedure
 
 1. **MUST** set cadence variables before any command:
