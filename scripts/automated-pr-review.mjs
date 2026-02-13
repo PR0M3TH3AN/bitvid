@@ -258,16 +258,20 @@ async function main() {
     const isAll = process.argv.includes('--all');
 
     if (isAll) {
-      console.log('Fetching all open PRs...');
-      // Get list of open PRs
-      const listCmd = ['pr', 'list', '--state', 'open', '--json', 'number,baseRefName,headRefName'];
-      const result = spawnSync('gh', listCmd, { encoding: 'utf-8' });
+      console.log('Fetching all open PRs via GitHub API...');
+      // Get list of open PRs via curl (no gh dependency)
+      const result = spawnSync('curl', ['-s', 'https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100'], { encoding: 'utf-8' });
 
       if (result.error || result.status !== 0) {
         throw new Error(`Failed to list PRs: ${result.stderr || result.error?.message}`);
       }
 
-      const prs = JSON.parse(result.stdout);
+      const apiPRs = JSON.parse(result.stdout);
+      const prs = apiPRs.map(pr => ({
+        number: pr.number,
+        baseRefName: pr.base.ref,
+        headRefName: pr.head.ref
+      }));
       console.log(`Found ${prs.length} open PRs.`);
 
       let hasGlobalFailures = false;
@@ -284,8 +288,9 @@ async function main() {
         try {
           console.log(`\n=== Processing PR #${pr.number} ===`);
 
-          // Checkout PR
-          runCommand('gh', ['pr', 'checkout', pr.number]);
+          // Checkout PR via git fetch
+          runCommand('git', ['fetch', 'origin', `pull/${pr.number}/head:pr-${pr.number}`]);
+          runCommand('git', ['checkout', `pr-${pr.number}`]);
 
           // Run Review
           await reviewPR(pr.number, pr.baseRefName);
@@ -296,7 +301,7 @@ async function main() {
           // Continue to next PR
         } finally {
             // Clean up or reset if needed?
-            // Since we use gh pr checkout, we are on a different branch.
+            // Since we fetch and checkout each PR branch, we are on a different branch.
             // Next iteration will checkout another branch.
         }
       }

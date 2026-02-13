@@ -128,7 +128,7 @@ PR METADATA (PR number, author) — RULES
 
 Only include PR number and author if you can **verify** them via:
   - merge commit messages that include PR numbers, OR
-  - an available local tool/config that exposes PR metadata (e.g., `gh`)
+  - the GitHub API via `curl` (e.g., `curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=closed&per_page=50" | jq '[.[] | {number, title, merged_at: .merged_at}]'`)
 If not verifiable:
   - omit PR numbers/authors and keep bullets keyed to commit subjects/hashes.
 

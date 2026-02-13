@@ -73,21 +73,22 @@ WORKFLOW
       - security-sensitive boundaries and logging policy
   - Confirm tooling availability:
       - `npm` available
-      - PR checkout method available (`gh` CLI or equivalent)
-    If `gh` is not available, fall back to manual instructions in the audit log.
+      - `curl` and `jq` available for GitHub API queries
+    If `curl` is not available, document that PR enumeration was not possible in the audit log.
 
 2) Enumerate open PRs
   - Preferred: `curl` command (works without gh auth):
     ```bash
     curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq -c '.[] | {number: .number, title: .title, created_at: .created_at, author: .user.login}'
     ```
-  - Alternative: `gh pr list` (if available/configured).
   - Otherwise: document that PR enumeration was not possible in this environment.
 
 3) For each PR: checkout and run verification
   Checkout:
-  - Preferred: `gh pr checkout <num>`
-  - Otherwise: fetch the PR branch via git remote refs (only if you can verify).
+  - Fetch the PR branch via git remote refs:
+    ```bash
+    git fetch origin pull/<num>/head:pr-<num> && git checkout pr-<num>
+    ```
 
   Install + checks (verify the script names first):
   - `npm ci` (preferred) or `npm install` if CI install is not supported

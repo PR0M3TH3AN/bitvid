@@ -77,7 +77,7 @@ WORKFLOW
 2) CI health check (evidence gathering)
   - Gather recent CI run results using one of:
       - GitHub Actions UI/manual inspection, OR
-      - GitHub API / `gh` CLI (only if available; do not assume).
+      - GitHub API via `curl` (e.g., `curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/actions/runs?per_page=20"`).
   - Identify candidate flakes:
       - same test fails on one run but passes on another with no relevant code change
       - failures are timing-related, network-mocking-related, ordering-related

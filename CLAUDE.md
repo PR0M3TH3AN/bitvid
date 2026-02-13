@@ -458,7 +458,11 @@ This project uses multiple AI coding agents working in parallel:
 
 All agents **must** follow the subsystem boundaries and PR discipline rules in `AGENTS.md` Section 12. The key principles:
 
-1. **Check before you start.** Look at open PRs (`gh pr list`) before beginning work. If another agent has an open PR touching the same files, stop and flag the conflict.
+1. **Check before you start.** Look at open PRs before beginning work by running:
+   ```
+   curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, titles: [.[].title]}'
+   ```
+   If another agent has an open PR touching the same files, stop and flag the conflict.
 2. **One subsystem per PR.** Don't mix unrelated changes. A lint fix and a feature addition are two separate PRs.
 3. **`js/app.js` is single-writer.** Only one PR at a time should modify the main orchestrator.
 4. **Merge fast, branch short.** Long-lived branches cause exponential merge pain with multiple agents. Keep PRs small and mergeable in one sitting.

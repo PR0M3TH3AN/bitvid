@@ -204,7 +204,11 @@ This project uses multiple AI agents (Claude Code, OpenAI Codex, Google Jules) w
 
 ### Before Starting Work
 
-1. **Check open PRs.** Run `gh pr list --state open` or check GitHub. If another agent already has a PR touching the same files or subsystem, do not create a competing PR. Instead, note the conflict and ask the maintainer how to proceed.
+1. **Check open PRs.** Run the following command to list all open PRs:
+   ```
+   curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, titles: [.[].title]}'
+   ```
+   If another agent already has a PR touching the same files or subsystem, do not create a competing PR. Instead, note the conflict and ask the maintainer how to proceed.
 2. **Check this section for in-flight work.** The maintainer may list active work areas below. Respect these reservations.
 3. **Read KNOWN_ISSUES.md.** Do not open PRs to fix issues already documented there unless explicitly asked.
 
@@ -242,37 +246,28 @@ When you create a PR or start work, leave a clear signal:
 
 ### Task Claiming Protocol (Draft PR Lock)
 
-To prevent multiple agents from working on the same task simultaneously, every agent must **check for and create a draft PR** before starting work. The draft PR acts as a distributed lock visible to all agents across all platforms (Claude Code, Codex, Jules).
+To prevent multiple agents from working on the same task simultaneously, every agent must **check open PRs and create a claim** before starting work. The claim (pushed branch + `started` log file) acts as a distributed lock visible to all agents across all platforms (Claude Code, Codex, Jules).
 
 **Before starting any task:**
 
-1. **Check for existing claims.** Search for open or draft PRs matching the task:
+1. **Check for existing claims.** Search for open PRs matching the task:
    ```
-   gh pr list --state open --search "<agent-name-or-task-identifier>"
+   curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, titles: [.[].title]}'
    ```
-   If a matching PR exists (open or draft), **skip the task** — another agent is already working on it.
+   If a matching PR exists (open or draft) for the same agent or subsystem, **skip the task** — another agent is already working on it.
 
 2. **Claim the task.** If no matching PR exists:
    a. Create your working branch.
-   b. Make a minimal initial commit (e.g., update `CONTEXT.md` with the task scope).
-   c. Push the branch and immediately open a **draft PR**:
-      ```
-      gh pr create --draft \
-        --title "[<zone>] <agent-name>: <brief description>" \
-        --body "Claimed by <agent-name> at <timestamp>. Work in progress."
-      ```
-   d. Only after the draft PR is successfully created, begin the actual work.
+   b. Make a minimal initial commit (e.g., create a `context/CONTEXT_<timestamp>.md` with the task scope).
+   c. Create a `started` log file in the appropriate task-log directory.
+   d. Push the branch immediately to make the claim visible.
+   e. Only after the branch is pushed and the claim is visible, begin the actual work.
 
-3. **Handle race conditions.** After creating your draft PR, re-check for duplicates:
+3. **Handle race conditions.** After pushing your claim, re-check for duplicates:
    ```
-   gh pr list --state open --search "<agent-name-or-task-identifier>"
+   curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, titles: [.[].title]}'
    ```
-   If you find another agent's PR for the same task that was created **before** yours, close your PR with `gh pr close <your-pr-number>` and skip the task.
-
-4. **Convert to ready when done.** When the task is complete and verified, mark the draft PR as ready for review:
-   ```
-   gh pr ready
-   ```
+   If you find another agent's PR for the same task that was created **before** yours, abandon your branch and skip the task.
 
 **Scheduler agents:** Daily and weekly scheduler agents must follow this protocol in addition to their directory-based rotation logic (`docs/agents/task-logs/daily/` and `docs/agents/task-logs/weekly/`). The draft PR check happens _after_ determining the next task but _before_ executing it. See the scheduler prompts for the specific implementation steps.
 
