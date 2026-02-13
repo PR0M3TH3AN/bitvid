@@ -244,58 +244,35 @@ When you create a PR or start work, leave a clear signal:
 - **PR title prefix**: Use a descriptive prefix like `[nostr-core]`, `[playback]`, `[ui]`, `[ci]` so the scope is visible at a glance.
 - **PR description**: Include a "Files Modified" section listing the key files touched, so other agents can quickly detect conflicts.
 
-### Task Claiming Protocol (Distributed Lock)
+### Task Claiming Protocol (Nostr Distributed Lock)
 
-To prevent multiple agents from working on the same task simultaneously, every agent must **check for existing locks and create a claim** before starting work. The lock is broadcast via Nostr relays (primary) or GitHub PRs (fallback), making it visible to all agents across all platforms (Claude Code, Codex, Jules).
+To prevent multiple agents from working on the same task simultaneously, every agent must **check for existing locks and create a claim** before starting work. Locks are broadcast via Nostr relays using NIP-78 events with NIP-40 auto-expiration, making them visible to all agents across all platforms (Claude Code, Codex, Jules). No tokens or secrets are needed.
 
 **Before starting any task:**
 
-1. **Check for existing claims.** Run both checks and merge the exclusion sets:
-
-   **Nostr lock check (primary):**
+1. **Check for existing claims:**
    ```bash
    node scripts/agent/nostr-lock.mjs check --cadence <daily|weekly>
    ```
-   Returns JSON with `locked` (claimed agents) and `available` (free agents) arrays.
+   Returns JSON with `locked` (claimed agents) and `available` (free agents) arrays. If an agent appears in the `locked` list, **skip it**.
 
-   **GitHub PR check (supplemental):**
-   ```
-   curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, titles: [.[].title]}'
-   ```
-   If an agent appears in either the Nostr lock list or has an open PR, **skip that agent**.
-
-2. **Claim the task.** Use one of these methods (try in order):
-
-   **Method A — Nostr lock (preferred, works everywhere Node.js is available):**
+2. **Claim the task:**
    ```bash
    AGENT_PLATFORM=<jules|claude-code|codex> \
    node scripts/agent/nostr-lock.mjs lock \
      --agent <agent-name> \
      --cadence <daily|weekly>
    ```
-   Generates an ephemeral keypair, publishes a NIP-78 lock event with NIP-40 auto-expiration (2 hours) to public Nostr relays. No tokens or secrets needed — the key is used once and discarded. The script includes a built-in race check: exit code 0 = lock acquired, exit code 3 = lost race (another agent claimed first).
+   The script generates an ephemeral keypair, publishes a lock event to public Nostr relays, and performs a built-in race check. The key is used once and discarded. Locks auto-expire after 2 hours (configurable via `NOSTR_LOCK_TTL`).
 
-   **Method B — git push (fallback when relays are unreachable):**
-   a. Create your working branch.
-   b. Make a minimal initial commit (e.g., create a `context/CONTEXT_<timestamp>.md` with the task scope).
-   c. Create a `started` log file in the appropriate task-log directory.
-   d. Push the branch immediately to make the claim visible.
-   e. Only after the branch is pushed and the claim is visible, begin the actual work.
+   - **Exit 0** = lock acquired, begin work.
+   - **Exit 3** = race lost, another agent claimed first. Go back to step 1.
+   - **Exit 2** = relay error. Write a `_failed.md` log and stop.
 
-   **Method C — GitHub API (fallback when git push is also blocked):**
+3. **View all active locks** (optional, for debugging):
    ```bash
-   bash scripts/agent/claim-task-api.sh \
-     --agent <agent-name> \
-     --cadence <daily|weekly> \
-     --base unstable
+   node scripts/agent/nostr-lock.mjs list
    ```
-   Creates the remote branch, `_started.md` log file, and draft PR via `curl` and the GitHub REST API. Requires `GITHUB_TOKEN` or `GH_TOKEN` in the environment.
-
-   If **no method** works, do not proceed — write a `_failed.md` log and stop.
-
-3. **Handle race conditions.**
-   - If Method A (Nostr) was used, the race check is automatic (built into the script).
-   - If Method B or C was used, re-check for duplicates via the GitHub PR preflight. If you find another agent's claim that was created **before** yours, abandon your branch and skip the task.
 
 **Scheduler agents:** Daily and weekly scheduler agents must follow this protocol in addition to their directory-based rotation logic (`docs/agents/task-logs/daily/` and `docs/agents/task-logs/weekly/`). The lock check happens _after_ determining the next task but _before_ executing it. See the scheduler prompts for the specific implementation steps.
 
