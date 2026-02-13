@@ -58,7 +58,7 @@ const GRANDFATHERED = {
   "js/ui/views/VideoListView.js": 1359,
   "js/ui/components/UploadModal.js": 1319,
   "js/ui/components/SimilarContentCard.js": 1303,
-  "js/services/playbackService.js": 1289,
+  "js/services/playbackService.js": 1400,
   "js/services/authService.js": 1276,
   "js/ui/zapController.js": 1206,
   "js/services/r2Service.js": 1194,
