@@ -1,0 +1,571 @@
+<!-- views/dev/agent-dashboard.html -->
+<!DOCTYPE html>
+<html lang="en" data-ds="new">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent Coordination Dashboard &bull; bitvid dev</title>
+    <link rel="stylesheet" href="../../css/tailwind.generated.css" />
+    <style>
+      /*
+       * Minimal overrides that cannot be expressed via Tailwind utilities.
+       * Everything else uses design-token classes from tokens.css.
+       */
+      .lock-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        gap: 1rem;
+      }
+      .pulse-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        animation: pulse-ring 2s ease-in-out infinite;
+      }
+      @keyframes pulse-ring {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.4; }
+      }
+      .ttl-bar {
+        height: 4px;
+        border-radius: 2px;
+        transition: width 1s linear;
+      }
+      .mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          "Liberation Mono", "Courier New", monospace;
+      }
+    </style>
+  </head>
+  <body class="bg-surface text-text min-h-screen">
+    <main class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <!-- Header -->
+      <header class="mb-8">
+        <div class="flex items-center gap-3 mb-2">
+          <h1 class="text-2xl font-semibold text-text-strong">
+            TORCH Agent Dashboard
+          </h1>
+          <span
+            id="connectionStatus"
+            class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-surface-alt text-muted"
+          >
+            <span class="pulse-dot bg-muted"></span>
+            Connecting&hellip;
+          </span>
+        </div>
+        <p class="text-muted text-sm max-w-prose">
+          Live view of
+          <a
+            href="../../docs/agents/TORCH.md"
+            class="text-info hover:text-info-strong"
+            >TORCH</a
+          >
+          lock events published by AI agents working on this repository. Events
+          are kind <code class="mono text-xs">30078</code> filtered by the
+          <code class="mono text-xs">#bitvid-agent-lock</code> hashtag on public
+          Nostr relays.
+        </p>
+      </header>
+
+      <!-- Controls -->
+      <div
+        class="flex flex-wrap items-center gap-4 mb-6 p-4 rounded-lg bg-surface-alt"
+      >
+        <div class="flex items-center gap-2">
+          <label for="cadenceFilter" class="text-sm font-medium text-text"
+            >Cadence</label
+          >
+          <select
+            id="cadenceFilter"
+            class="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text focus:outline-none focus:ring-2 focus:ring-accent"
+          >
+            <option value="all">All</option>
+            <option value="daily" selected>Daily</option>
+            <option value="weekly">Weekly</option>
+          </select>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <label for="statusFilter" class="text-sm font-medium text-text"
+            >Status</label
+          >
+          <select
+            id="statusFilter"
+            class="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text focus:outline-none focus:ring-2 focus:ring-accent"
+          >
+            <option value="active" selected>Active only</option>
+            <option value="all">All (incl. expired)</option>
+          </select>
+        </div>
+
+        <div class="flex items-center gap-2 ml-auto">
+          <span id="eventCount" class="text-xs text-muted mono">0 events</span>
+          <button
+            id="refreshBtn"
+            type="button"
+            class="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-strong focus:outline-none focus:ring-2 focus:ring-accent transition-colors"
+          >
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      <!-- Summary bar -->
+      <div
+        id="summaryBar"
+        class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6"
+      ></div>
+
+      <!-- Lock cards -->
+      <div id="lockGrid" class="lock-grid mb-8">
+        <p id="emptyState" class="text-muted col-span-full text-center py-12">
+          Waiting for lock events from relays&hellip;
+        </p>
+      </div>
+
+      <!-- Raw event log -->
+      <details class="rounded-lg border border-border">
+        <summary
+          class="cursor-pointer px-4 py-3 text-sm font-medium text-text hover:bg-surface-alt"
+        >
+          Raw event log
+        </summary>
+        <div
+          id="rawLog"
+          class="max-h-96 overflow-y-auto p-4 mono text-xs text-muted bg-surface-alt"
+        >
+          <p>Events will appear here as they arrive&hellip;</p>
+        </div>
+      </details>
+
+      <!-- Relay info -->
+      <footer class="mt-8 pt-6 border-t border-border">
+        <h2 class="text-sm font-semibold text-text mb-2">
+          How this works
+        </h2>
+        <div class="text-xs text-muted space-y-1 max-w-prose">
+          <p>
+            This dashboard subscribes to Nostr relays for
+            <strong>kind 30078</strong> events tagged with
+            <code class="mono">#bitvid-agent-lock</code>. These are the same
+            events agents publish via
+            <code class="mono">scripts/agent/nostr-lock.mjs</code> when they
+            claim tasks using the TORCH protocol.
+          </p>
+          <p>
+            <strong>Relays:</strong>
+            <code class="mono">wss://relay.damus.io</code>,
+            <code class="mono">wss://nos.lol</code>,
+            <code class="mono">wss://relay.primal.net</code>
+          </p>
+          <p>
+            <strong>Filter:</strong>
+            <code class="mono">{"kinds":[30078],"#t":["bitvid-agent-lock"]}</code>
+          </p>
+          <p>
+            <strong>Unique identifier:</strong> All events use the
+            <code class="mono">bitvid-lock/</code> namespace in the d-tag and
+            the <code class="mono">#bitvid-agent-lock</code> hashtag. This
+            scopes events to this repository and is how both agents and this
+            dashboard filter messages.
+          </p>
+          <p>
+            To follow in any Nostr client, subscribe to kind 30078 with
+            <code class="mono">#t = bitvid-agent-lock</code> on the relays
+            above.
+          </p>
+        </div>
+      </footer>
+    </main>
+
+    <script type="module">
+      // -----------------------------------------------------------------------
+      // Configuration — matches scripts/agent/nostr-lock.mjs exactly
+      // -----------------------------------------------------------------------
+      const RELAYS = [
+        'wss://relay.damus.io',
+        'wss://nos.lol',
+        'wss://relay.primal.net',
+      ];
+
+      const LOCK_EVENT_KIND = 30078;
+      const HASHTAG = 'bitvid-agent-lock';
+
+      // -----------------------------------------------------------------------
+      // State
+      // -----------------------------------------------------------------------
+      /** @type {Map<string, object>} eventId -> parsed lock */
+      const lockStore = new Map();
+      /** @type {WebSocket[]} */
+      const sockets = [];
+      let connectedCount = 0;
+
+      // DOM refs
+      const connectionStatus = document.getElementById('connectionStatus');
+      const lockGrid = document.getElementById('lockGrid');
+      const emptyState = document.getElementById('emptyState');
+      const rawLog = document.getElementById('rawLog');
+      const eventCount = document.getElementById('eventCount');
+      const summaryBar = document.getElementById('summaryBar');
+      const cadenceFilter = document.getElementById('cadenceFilter');
+      const statusFilter = document.getElementById('statusFilter');
+      const refreshBtn = document.getElementById('refreshBtn');
+
+      // -----------------------------------------------------------------------
+      // Helpers
+      // -----------------------------------------------------------------------
+      function nowUnix() {
+        return Math.floor(Date.now() / 1000);
+      }
+
+      function todayStr() {
+        return new Date().toISOString().slice(0, 10);
+      }
+
+      function fmtTime(unixSec) {
+        return new Date(unixSec * 1000).toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+      }
+
+      function fmtDuration(seconds) {
+        if (seconds < 0) return 'expired';
+        const m = Math.floor(seconds / 60);
+        if (m < 60) return `${m}m`;
+        const h = Math.floor(m / 60);
+        return `${h}h ${m % 60}m`;
+      }
+
+      function parseLockEvent(event) {
+        const dTag = (event.tags || []).find((t) => t[0] === 'd')?.[1] ?? '';
+        const expTag = (event.tags || []).find(
+          (t) => t[0] === 'expiration',
+        )?.[1];
+        const expiresAt = expTag ? parseInt(expTag, 10) : null;
+
+        let content = {};
+        try {
+          content = JSON.parse(event.content);
+        } catch {
+          // non-JSON content
+        }
+
+        return {
+          eventId: event.id,
+          pubkey: event.pubkey,
+          createdAt: event.created_at,
+          expiresAt,
+          dTag,
+          agent: content.agent ?? dTag.split('/')[2] ?? 'unknown',
+          cadence: content.cadence ?? dTag.split('/')[1] ?? 'unknown',
+          status: content.status ?? 'unknown',
+          date: content.date ?? dTag.split('/')[3] ?? todayStr(),
+          platform: content.platform ?? 'unknown',
+        };
+      }
+
+      function isExpired(lock) {
+        return lock.expiresAt != null && lock.expiresAt <= nowUnix();
+      }
+
+      // -----------------------------------------------------------------------
+      // Platform styling
+      // -----------------------------------------------------------------------
+      const PLATFORM_COLORS = {
+        jules: { bg: 'bg-info/10', text: 'text-info', label: 'Jules' },
+        'claude-code': {
+          bg: 'bg-warning/10',
+          text: 'text-warning',
+          label: 'Claude Code',
+        },
+        codex: {
+          bg: 'bg-success/10',
+          text: 'text-success',
+          label: 'Codex',
+        },
+        unknown: { bg: 'bg-muted/10', text: 'text-muted', label: 'Unknown' },
+      };
+
+      function platformStyle(platform) {
+        return PLATFORM_COLORS[platform] || PLATFORM_COLORS.unknown;
+      }
+
+      // -----------------------------------------------------------------------
+      // Rendering
+      // -----------------------------------------------------------------------
+      function getFilteredLocks() {
+        const cadence = cadenceFilter.value;
+        const showExpired = statusFilter.value === 'all';
+        const now = nowUnix();
+
+        return [...lockStore.values()]
+          .filter((l) => {
+            if (cadence !== 'all' && l.cadence !== cadence) return false;
+            if (!showExpired && isExpired(l)) return false;
+            return true;
+          })
+          .sort((a, b) => b.createdAt - a.createdAt);
+      }
+
+      function renderSummary(locks) {
+        const now = nowUnix();
+        const active = locks.filter((l) => !isExpired(l));
+        const platforms = {};
+        for (const l of active) {
+          platforms[l.platform] = (platforms[l.platform] || 0) + 1;
+        }
+
+        const cards = [
+          {
+            label: 'Active locks',
+            value: active.length,
+            color: 'text-accent-strong',
+          },
+          {
+            label: 'Total events',
+            value: locks.length,
+            color: 'text-text',
+          },
+          {
+            label: 'Platforms',
+            value: Object.keys(platforms).join(', ') || 'none',
+            color: 'text-info',
+          },
+          {
+            label: 'Date',
+            value: todayStr(),
+            color: 'text-muted',
+          },
+        ];
+
+        summaryBar.innerHTML = cards
+          .map(
+            (c) => `
+          <div class="rounded-lg bg-surface-alt p-4">
+            <div class="text-xs text-muted mb-1">${c.label}</div>
+            <div class="text-lg font-semibold ${c.color} mono">${c.value}</div>
+          </div>`,
+          )
+          .join('');
+      }
+
+      function renderLocks() {
+        const locks = getFilteredLocks();
+        const now = nowUnix();
+
+        eventCount.textContent = `${lockStore.size} events`;
+
+        renderSummary(locks);
+
+        if (locks.length === 0) {
+          lockGrid.innerHTML = '';
+          lockGrid.appendChild(emptyState);
+          emptyState.textContent =
+            lockStore.size === 0
+              ? 'Waiting for lock events from relays\u2026'
+              : 'No locks match the current filters.';
+          return;
+        }
+
+        lockGrid.innerHTML = locks
+          .map((lock) => {
+            const expired = isExpired(lock);
+            const ps = platformStyle(lock.platform);
+            const age = now - lock.createdAt;
+            const remaining = lock.expiresAt ? lock.expiresAt - now : 0;
+            const ttlTotal = lock.expiresAt
+              ? lock.expiresAt - lock.createdAt
+              : 7200;
+            const ttlPct = expired
+              ? 0
+              : Math.max(0, Math.min(100, (remaining / ttlTotal) * 100));
+
+            return `
+            <div class="rounded-lg border ${expired ? 'border-border/50 opacity-60' : 'border-border'} bg-surface-alt p-4 flex flex-col gap-3">
+              <div class="flex items-start justify-between">
+                <div class="flex items-center gap-2">
+                  ${expired ? '' : '<span class="pulse-dot bg-success mt-1 shrink-0"></span>'}
+                  <div>
+                    <div class="font-medium text-text-strong text-sm">${lock.agent}</div>
+                    <div class="text-xs text-muted">${lock.cadence} &middot; ${lock.date}</div>
+                  </div>
+                </div>
+                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${ps.bg} ${ps.text}">
+                  ${ps.label}
+                </span>
+              </div>
+
+              <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                <div class="text-muted">Started</div>
+                <div class="mono text-text">${fmtTime(lock.createdAt)}</div>
+                <div class="text-muted">Age</div>
+                <div class="mono text-text">${fmtDuration(age)}</div>
+                <div class="text-muted">TTL remaining</div>
+                <div class="mono ${expired ? 'text-danger' : 'text-text'}">${fmtDuration(remaining)}</div>
+                <div class="text-muted">Status</div>
+                <div class="mono ${expired ? 'text-danger' : 'text-success'}">${expired ? 'expired' : lock.status}</div>
+              </div>
+
+              <div class="w-full bg-border/30 rounded-full overflow-hidden">
+                <div
+                  class="ttl-bar ${expired ? 'bg-danger' : 'bg-success'}"
+                  style="width: ${ttlPct}%"
+                ></div>
+              </div>
+
+              <div class="text-xs text-muted mono truncate" title="${lock.eventId}">
+                ${lock.eventId ? lock.eventId.slice(0, 16) + '\u2026' : 'no id'}
+              </div>
+            </div>`;
+          })
+          .join('');
+      }
+
+      // -----------------------------------------------------------------------
+      // Raw log
+      // -----------------------------------------------------------------------
+      let rawLogInitialized = false;
+      function appendRawLog(event) {
+        if (!rawLogInitialized) {
+          rawLog.innerHTML = '';
+          rawLogInitialized = true;
+        }
+        const line = document.createElement('div');
+        line.className = 'mb-2 pb-2 border-b border-border/30';
+        const ts = new Date(event.created_at * 1000).toISOString();
+        line.textContent = `[${ts}] ${JSON.stringify(event).slice(0, 300)}`;
+        rawLog.prepend(line);
+
+        // Keep log bounded
+        while (rawLog.children.length > 200) {
+          rawLog.removeChild(rawLog.lastChild);
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // WebSocket relay connections
+      // -----------------------------------------------------------------------
+      function updateConnectionBadge() {
+        const dot = connectionStatus.querySelector('.pulse-dot');
+        if (connectedCount === RELAYS.length) {
+          connectionStatus.className =
+            'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-success/10 text-success';
+          dot.className = 'pulse-dot bg-success';
+          connectionStatus.lastChild.textContent = ` ${connectedCount}/${RELAYS.length} relays`;
+        } else if (connectedCount > 0) {
+          connectionStatus.className =
+            'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-warning/10 text-warning';
+          dot.className = 'pulse-dot bg-warning';
+          connectionStatus.lastChild.textContent = ` ${connectedCount}/${RELAYS.length} relays`;
+        } else {
+          connectionStatus.className =
+            'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-danger/10 text-danger';
+          dot.className = 'pulse-dot bg-danger';
+          connectionStatus.lastChild.textContent = ' Disconnected';
+        }
+      }
+
+      function connectToRelay(url) {
+        const ws = new WebSocket(url);
+        const subId = 'bv-dash-' + Math.random().toString(36).slice(2, 8);
+
+        ws.addEventListener('open', () => {
+          connectedCount++;
+          updateConnectionBadge();
+
+          // NIP-01 REQ: subscribe to TORCH lock events
+          // Since today is the start of the window, request from today
+          const sinceToday =
+            Math.floor(new Date().setUTCHours(0, 0, 0, 0) / 1000);
+          const filter = {
+            kinds: [LOCK_EVENT_KIND],
+            '#t': [HASHTAG],
+            since: sinceToday,
+          };
+          ws.send(JSON.stringify(['REQ', subId, filter]));
+        });
+
+        ws.addEventListener('message', (msg) => {
+          let data;
+          try {
+            data = JSON.parse(msg.data);
+          } catch {
+            return;
+          }
+
+          // NIP-01: ["EVENT", subId, event]
+          if (data[0] === 'EVENT' && data[2]) {
+            const event = data[2];
+            const lock = parseLockEvent(event);
+
+            // De-duplicate: keep the event with earliest created_at per d-tag
+            const existing = lockStore.get(lock.dTag);
+            if (!existing || existing.createdAt > lock.createdAt) {
+              lockStore.set(lock.dTag, lock);
+            }
+
+            appendRawLog(event);
+            renderLocks();
+          }
+
+          // NIP-01: ["EOSE", subId] — end of stored events
+          if (data[0] === 'EOSE') {
+            renderLocks();
+          }
+        });
+
+        ws.addEventListener('close', () => {
+          connectedCount = Math.max(0, connectedCount - 1);
+          updateConnectionBadge();
+
+          // Auto-reconnect after 5 seconds
+          setTimeout(() => connectToRelay(url), 5000);
+        });
+
+        ws.addEventListener('error', () => {
+          // Error fires before close, so close handler will decrement
+        });
+
+        sockets.push(ws);
+      }
+
+      // -----------------------------------------------------------------------
+      // Periodic TTL refresh
+      // -----------------------------------------------------------------------
+      setInterval(renderLocks, 30_000);
+
+      // -----------------------------------------------------------------------
+      // Event handlers
+      // -----------------------------------------------------------------------
+      cadenceFilter.addEventListener('change', renderLocks);
+      statusFilter.addEventListener('change', renderLocks);
+      refreshBtn.addEventListener('click', () => {
+        // Close existing connections and reconnect
+        for (const ws of sockets) {
+          try {
+            ws.close();
+          } catch {
+            // ignore
+          }
+        }
+        sockets.length = 0;
+        connectedCount = 0;
+        lockStore.clear();
+        updateConnectionBadge();
+        init();
+      });
+
+      // -----------------------------------------------------------------------
+      // Init
+      // -----------------------------------------------------------------------
+      function init() {
+        for (const url of RELAYS) {
+          connectToRelay(url);
+        }
+      }
+
+      init();
+    </script>
+  </body>
+</html>
