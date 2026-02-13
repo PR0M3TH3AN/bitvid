@@ -2,11 +2,13 @@
 
 // scripts/agent/nostr-lock.mjs
 //
-// Nostr-based distributed task locking for multi-agent coordination.
+// TORCH — Task Orchestration via Relay-Coordinated Handoff
 //
+// Decentralized task locking for multi-agent development using Nostr.
 // Each lock generates a fresh ephemeral keypair and discards it.
-// Locks auto-expire via NIP-40 — no cleanup needed.
-// Other agents discover locks by querying relays for bitvid lock events.
+// Locks auto-expire via NIP-40 — no cleanup, no tokens, no secrets.
+//
+// See docs/agents/TORCH.md for the full protocol documentation.
 //
 // Commands:
 //   check  --cadence <daily|weekly>                  JSON list of locked agents

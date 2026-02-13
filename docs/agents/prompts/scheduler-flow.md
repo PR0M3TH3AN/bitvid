@@ -1,6 +1,6 @@
 # Scheduler Flow (Single Source of Truth)
 
-Use this document for **all scheduler runs**.
+Use this document for **all scheduler runs**. Task locking uses the **TORCH** protocol (see `docs/agents/TORCH.md`).
 
 ## Scheduler Override (Top-Line Rule)
 

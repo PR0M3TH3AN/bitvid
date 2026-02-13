@@ -244,9 +244,9 @@ When you create a PR or start work, leave a clear signal:
 - **PR title prefix**: Use a descriptive prefix like `[nostr-core]`, `[playback]`, `[ui]`, `[ci]` so the scope is visible at a glance.
 - **PR description**: Include a "Files Modified" section listing the key files touched, so other agents can quickly detect conflicts.
 
-### Task Claiming Protocol (Nostr Distributed Lock)
+### Task Claiming Protocol (TORCH)
 
-To prevent multiple agents from working on the same task simultaneously, every agent must **check for existing locks and create a claim** before starting work. Locks are broadcast via Nostr relays using NIP-78 events with NIP-40 auto-expiration, making them visible to all agents across all platforms (Claude Code, Codex, Jules). No tokens or secrets are needed.
+Task coordination uses **TORCH** (Task Orchestration via Relay-Coordinated Handoff) — a decentralized locking protocol built on Nostr. Agents publish ephemeral lock events to public relays; locks auto-expire via NIP-40. No tokens, no secrets, no git push required. Works across all platforms (Claude Code, Codex, Jules). See `docs/agents/TORCH.md` for the full protocol documentation.
 
 **Before starting any task:**
 
