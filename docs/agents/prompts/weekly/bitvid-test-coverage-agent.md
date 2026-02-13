@@ -187,19 +187,3 @@ BEGIN
 3. Produce coverage report and identify low-coverage modules (priority: `js/nostr/*`, `js/services/*`, `js/state/*`).
 4. Add focused tests using existing devDependencies and mocks. Keep PRs small and verifiable.
 5. Re-run coverage and open PR(s) with artifacts and coverage improvements.
-
-## TASK COMPLETION & SELF-CORRECTION
-
-If you are unsure what to do next, complete what you have and commit after the initial goal is completed and tests are successful.
-
-**Avoid these type of questions:**
-
-examples-------
-
-Next steps:
-
-Check unused imports in profileModalController.js.
-Run unit tests npm run test:unit.
-Update file size baseline.
-Commit and complete the work.
-Do you have any specific advice or checks before I proceed?
