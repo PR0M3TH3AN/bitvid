@@ -19,6 +19,8 @@ import { getCurrentVideo, setCurrentVideo } from "../state/appState.js";
  * - Race Condition Management: Uses "request signatures" to ensure that if the user
  *   clicks "Play" on a new video while the previous one is still loading, the
  *   old session is cancelled and doesn't overwrite the new one.
+ *
+ * @see {@link docs/playbackService-overview.md} for detailed architecture and flow.
  */
 
 class SimpleEventEmitter {
@@ -256,7 +258,20 @@ const getTorrentErrorMessage = (error) => {
   return "WebTorrent could not start. Please try again.";
 };
 
+/**
+ * Service to manage video playback, handling fallback between direct URL and WebTorrent.
+ */
 export class PlaybackService {
+  /**
+   * @param {Object} options
+   * @param {Function|Object} [options.logger] - Logger instance or function
+   * @param {Object} [options.torrentClient] - WebTorrent client instance
+   * @param {Function} [options.deriveTorrentPlaybackConfig] - Config generator for torrents
+   * @param {Function} [options.isValidMagnetUri] - Validator for magnets
+   * @param {boolean} [options.urlFirstEnabled=true] - Whether to try HTTP URL before P2P
+   * @param {Object} [options.analyticsCallbacks] - Hooks for telemetry
+   * @param {number} [options.playbackStartTimeout=PLAYBACK_START_TIMEOUT] - ms to wait for initial playback
+   */
   constructor({
     logger,
     torrentClient,
@@ -352,6 +367,16 @@ export class PlaybackService {
     this.probeCache.set(cacheKey, { result, expiresAt: now + ttl });
   }
 
+  /**
+   * Checks if a hosted URL is reachable via a HEAD request (or custom probe function).
+   * Caches results to avoid redundant network calls.
+   *
+   * @param {Object} params
+   * @param {string} params.url - The URL to probe
+   * @param {string} [params.magnet] - Associated magnet (used for cache key)
+   * @param {Function} [params.probeUrl] - Optional override for the probing logic
+   * @returns {Promise<{outcome: string, status?: number, error?: Error}>}
+   */
   async probeHostedUrl({ url, magnet, probeUrl } = {}) {
     const sanitizedUrl = typeof url === "string" ? url.trim() : "";
     if (!sanitizedUrl) {
@@ -537,6 +562,19 @@ export class PlaybackService {
     }
   }
 
+  /**
+   * Creates a new playback session for a specific video request.
+   *
+   * @param {Object} options
+   * @param {string} [options.url] - Direct HTTP(S) URL
+   * @param {string} [options.magnet] - Magnet URI
+   * @param {string} [options.requestSignature] - Unique ID for this request (prevents race conditions)
+   * @param {HTMLVideoElement} [options.videoElement] - Target <video> element
+   * @param {Function} [options.probeUrl] - Custom probe function (for testing)
+   * @param {Function} [options.playViaWebTorrent] - Torrent handler
+   * @param {string} [options.forcedSource] - Force 'url' or 'torrent'
+   * @returns {PlaybackSession} The new session instance
+   */
   createSession(options = {}) {
     const session = new PlaybackSession(this, {
       ...options,
@@ -548,17 +586,23 @@ export class PlaybackService {
 }
 
 /**
- * PlaybackSession represents a single attempt to play a specific video.
- * It manages the state machine of:
- * 1. Probing the direct URL.
- * 2. Attempting to play the URL.
- * 3. Monitoring for stalls.
- * 4. Falling back to WebTorrent if needed.
+ * Represents a single playback attempt state machine.
  *
- * It uses a `requestSignature` (JSON of url+magnet) to uniquely identify the request.
- * This is used by the UI layer to prevent race conditions: if the user clicks a new video,
- * the UI can check `matchesRequestSignature` to see if it can reuse the active session
- * or if it needs to spin up a new one.
+ * Flow:
+ * 1. Validate inputs and calculate `requestSignature`.
+ * 2. `start()` triggers `execute()`.
+ * 3. `execute()` checks `forcedSource` override.
+ * 4. If URL-first enabled:
+ *    - Probe URL (HEAD request).
+ *    - If valid, set video.src and play.
+ *    - Attach watchdogs to detect stalls/errors.
+ *    - If watchdog fires, proceed to Fallback.
+ * 5. If URL failed or unavailable:
+ *    - Initialize WebTorrent client.
+ *    - Use URL as WebSeed if available.
+ *    - Stream via P2P.
+ *
+ * @internal This class is not exported directly; use `service.createSession()`.
  */
 class PlaybackSession extends SimpleEventEmitter {
   constructor(service, options = {}) {
@@ -725,8 +769,9 @@ class PlaybackSession extends SimpleEventEmitter {
   }
 
   /**
-   * Begins the playback flow. Returns a promise that resolves when playback
-   * has either successfully started (URL or Torrent) or fatally failed.
+   * Begins the playback flow (idempotent).
+   *
+   * @returns {Promise<{source: string|null, error?: Error}>} Result of the attempt
    */
   async start() {
     if (this.startPromise) {
@@ -738,16 +783,25 @@ class PlaybackSession extends SimpleEventEmitter {
 
   /**
    * The core execution loop for the session.
-   * Flow:
-   * 1. Check if forced source (e.g. user manually switched to "Torrent")
-   * 2. If URL available & URL-first enabled:
-   *    a. Probe the URL (HEAD request) to see if it's reachable.
-   *    b. If probe succeeds, attempt to play.
-   *    c. Attach watchdogs.
-   *    d. If watchdog triggers (stall/error), trigger `startTorrentFallback`.
-   * 3. If URL fails or not available, call `startTorrentFallback`.
+   *
+   * @internal This method implements the "Hybrid Playback" decision tree.
+   *
+   * Logic:
+   * 1. Prepare Environment: Clean up old clients, resolve WebSeeds.
+   * 2. Determine Strategy: Check `forcedSource` and `urlFirstEnabled`.
+   * 3. Primary Attempt (URL):
+   *    - Probe URL via HEAD request.
+   *    - Play via `video.src = url`.
+   *    - Attach watchdogs (stall detection).
+   * 4. Fallback (Torrent):
+   *    - If URL fails/stalls, switch to WebTorrent.
+   *    - Use URL as WebSeed.
+   * 5. Result: Resolves with `{ source: "url" | "torrent" }` or rejects.
    */
   async execute() {
+    // ---------------------------------------------------------
+    // 1. Preparation & Validation
+    // ---------------------------------------------------------
     const {
       videoElement,
       waitForCleanup,
@@ -857,6 +911,7 @@ class PlaybackSession extends SimpleEventEmitter {
         );
       }
 
+      // Helper to reset video state between attempts
       const resetVideoElement = () => {
         if (!activeVideoEl) return;
         try {
@@ -878,7 +933,9 @@ class PlaybackSession extends SimpleEventEmitter {
         }
       };
 
-      // --- Attempt Torrent Logic ---
+      // ---------------------------------------------------------
+      // 2. Define Torrent Strategy (Fallback/Secondary)
+      // ---------------------------------------------------------
       let torrentAttempted = false;
       const attemptTorrentPlayback = async (reason) => {
         if (torrentAttempted) return null;
@@ -927,7 +984,9 @@ class PlaybackSession extends SimpleEventEmitter {
         return result;
       };
 
-      // --- Attempt URL Logic ---
+      // ---------------------------------------------------------
+      // 3. Define URL Strategy (Primary)
+      // ---------------------------------------------------------
       const attemptHostedPlayback = async () => {
         if (!httpsUrl) return null;
 
@@ -1150,7 +1209,9 @@ class PlaybackSession extends SimpleEventEmitter {
         });
       };
 
-      // --- Execution Flow ---
+      // ---------------------------------------------------------
+      // 4. Execution (Decision Tree)
+      // ---------------------------------------------------------
 
       let tryUrlFirst = this.service.urlFirstEnabled;
       if (forcedSource === "url") tryUrlFirst = true;
