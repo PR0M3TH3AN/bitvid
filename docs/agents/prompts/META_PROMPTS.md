@@ -31,24 +31,21 @@ COMMAND 2 — Check for in-progress task logs:
 
   ls docs/agents/task-logs/daily/ | sort
 
-Run both commands and PASTE THE COMPLETE RAW OUTPUT of each command into your
-response. Do not summarize. Do not paraphrase. Paste the actual terminal output.
-If a command returns nothing, write: "OUTPUT: (empty — no results)"
+COMMAND 3 — Run claim audit utility (authoritative exclusion source):
 
-STOP HERE. Do not proceed until both outputs are pasted.
+  node scripts/agents/claim-audit.mjs --cadence daily
 
----
+Paste the full raw output, including the JSON block between
+`JSON_OUTPUT_START` and `JSON_OUTPUT_END`.
 
-Now analyze the output:
-- Any PR that maps to a daily-cadence agent is EXCLUDED (branch parsing first, title fallback second).
-- If any PR agent cannot be derived from metadata, treat as GLOBAL LOCK warning and do not schedule this cadence.
-- Any agent with a "_started.md" log file that has no matching "_completed.md"
-  or "_failed.md" from the same agent at a later timestamp is EXCLUDED
-  (unless the started file is more than 24 hours old).
-- Write your exclusion list. Format: "EXCLUDED AGENTS: agent-a, agent-b"
-  or "EXCLUDED AGENTS: (none)"
+Use script output exactly:
+- `excludedAgents` is the exclusion list.
+- `globalLockWarning=true` means cadence is locked.
+- `exclusionListResolved=false` means stop immediately (fail-closed).
 
----
+If COMMAND 3 fails (non-zero exit, missing script, malformed JSON, network error),
+do not execute any task. Mark scheduler run failed with summary:
+`Claim audit unavailable; exclusion list unresolved`.
 
 Now proceed with the scheduler:
 
@@ -111,24 +108,21 @@ COMMAND 2 — Check for in-progress task logs:
 
   ls docs/agents/task-logs/weekly/ | sort
 
-Run both commands and PASTE THE COMPLETE RAW OUTPUT of each command into your
-response. Do not summarize. Do not paraphrase. Paste the actual terminal output.
-If a command returns nothing, write: "OUTPUT: (empty — no results)"
+COMMAND 3 — Run claim audit utility (authoritative exclusion source):
 
-STOP HERE. Do not proceed until both outputs are pasted.
+  node scripts/agents/claim-audit.mjs --cadence weekly
 
----
+Paste the full raw output, including the JSON block between
+`JSON_OUTPUT_START` and `JSON_OUTPUT_END`.
 
-Now analyze the output:
-- Any PR that maps to a weekly-cadence agent is EXCLUDED (branch parsing first, title fallback second).
-- If any PR agent cannot be derived from metadata, treat as GLOBAL LOCK warning and do not schedule this cadence.
-- Any agent with a "_started.md" log file that has no matching "_completed.md"
-  or "_failed.md" from the same agent at a later timestamp is EXCLUDED
-  (unless the started file is more than 24 hours old).
-- Write your exclusion list. Format: "EXCLUDED AGENTS: agent-a, agent-b"
-  or "EXCLUDED AGENTS: (none)"
+Use script output exactly:
+- `excludedAgents` is the exclusion list.
+- `globalLockWarning=true` means cadence is locked.
+- `exclusionListResolved=false` means stop immediately (fail-closed).
 
----
+If COMMAND 3 fails (non-zero exit, missing script, malformed JSON, network error),
+do not execute any task. Mark scheduler run failed with summary:
+`Claim audit unavailable; exclusion list unresolved`.
 
 Now proceed with the scheduler:
 

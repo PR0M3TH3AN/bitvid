@@ -104,25 +104,25 @@ ls docs/agents/task-logs/daily/ | sort
 
 Look for any `_started.md` files that do NOT have a corresponding `_completed.md` or `_failed.md` file from the same agent at a later timestamp. Those agents are **OFF LIMITS** (unless the started file is more than 24 hours old — check the date in the filename).
 
-### Build your exclusion list
+### COMMAND 3 — Run claim audit (authoritative exclusion source)
 
-Combine results from Commands 1 and 2:
-- Agents with open/draft PRs → EXCLUDED
-- PRs whose agent cannot be derived from metadata → GLOBAL LOCK (stop scheduling this cadence)
-- Agents with `started` status less than 24 hours old (no matching `completed`/`failed`) → EXCLUDED
-
-Write your exclusion list explicitly:
-```
-EXCLUDED AGENTS: agent-a, agent-b
-```
-or:
-```
-EXCLUDED AGENTS: (none)
+Run this command:
+```bash
+node scripts/agents/claim-audit.mjs --cadence daily
 ```
 
-**If Command 1 failed** (network error, API rate limit, `curl`/`jq` unavailable): you MUST still check the task log directory (Command 2). Log a warning in your summary that PR-based claim checking was unavailable.
+**Paste the complete raw output.** This script is now the authoritative source for exclusions.
 
-**Do not proceed to Step 1 until you have pasted command outputs and written your exclusion list.**
+Use the script output exactly:
+- `excludedAgents` (JSON field) is the only valid exclusion list.
+- If `globalLockWarning` is `true`, treat cadence as locked.
+- If `exclusionListResolved` is `false`, stop immediately (fail-closed).
+
+Do not manually rebuild or edit the exclusion list after the script runs.
+
+**Fail-closed fallback:** If Command 3 fails for any reason (non-zero exit, missing script, malformed JSON, network error), do not execute any daily task. Create a `failed` scheduler log entry with summary: `Claim audit unavailable; exclusion list unresolved`.
+
+**Do not proceed to Step 1 until you have pasted outputs for Commands 1, 2, and 3 and confirmed exclusion resolution.**
 
 ---
 
