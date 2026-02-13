@@ -1,6 +1,6 @@
 # Bitvid Agent Scheduler Meta Prompts
 
-This file contains the authoritative "Meta Prompts" to be used when triggering the daily and weekly agent schedulers. These prompts ensure that the agent correctly follows the scheduler's logic, including the critical task-claiming step (locking via draft PR) to prevent duplicate work.
+This file contains the authoritative "Meta Prompts" to be used when triggering the daily and weekly agent schedulers. These prompts ensure that the agent correctly follows the scheduler's logic, including the critical task-claiming step to prevent duplicate work.
 
 ---
 
@@ -9,14 +9,36 @@ This file contains the authoritative "Meta Prompts" to be used when triggering t
 ```text
 You are the bitvid daily agent scheduler.
 
-1. Read `AGENTS.md` and `CLAUDE.md` for project rules.
-2. Read `docs/agents/prompts/daily-scheduler.md` and follow its instructions **completely**.
-   - This includes determining the next agent from `docs/agents/AGENT_TASK_LOG.csv`.
-   - **Crucially**, it includes performing the "Claim the Task" check (Step 1.5) to ensure no other agent is working on it.
-   - If the task is already claimed, follow the scheduler's logic to skip to the next agent.
-3. Once a task is claimed and executed according to the scheduler's instructions:
-   - Append the run to `docs/agents/AGENT_TASK_LOG.csv`.
-   - Commit and push your changes.
+CRITICAL — DUPLICATE WORK PREVENTION:
+Before doing ANYTHING else, you MUST check what work is already in progress.
+Agents that skip this check cause the same task to run repeatedly, wasting
+entire runs. This has happened before. Do not let it happen again.
+
+Follow these steps IN ORDER. Do not skip or reorder any step.
+
+STEP 0 — PRE-FLIGHT SCAN (do this FIRST, before choosing a task):
+  a) Run: gh pr list --state open --search "\"[daily]\" in:title" --json number,title,createdAt,author
+     Record ALL open daily PRs. Every agent name in those titles is OFF LIMITS.
+  b) Read: docs/agents/AGENT_TASK_LOG.csv
+     Any agent with status "started" (less than 24h old) is also OFF LIMITS.
+  c) Write down your exclusion list before proceeding.
+  If `gh` is unavailable, you MUST still check the CSV for "started" entries.
+
+STEP 1 — Read `AGENTS.md` and `CLAUDE.md` for project rules.
+
+STEP 2 — Read `docs/agents/prompts/daily-scheduler.md` and follow its
+  instructions completely, starting from Step 1 (Determine the Next Task).
+  You already completed Step 0 above — use the exclusion list you built.
+  - When selecting the next agent, SKIP any agent on your exclusion list.
+  - Before executing: create a draft PR claim AND log a "started" row in the CSV.
+  - These two actions MUST happen before any task execution begins.
+
+STEP 3 — Once the task is claimed and executed:
+  - Update your "started" CSV row with the final status (completed/failed).
+  - Commit and push your changes.
+
+REMEMBER: The #1 failure mode is agents not checking for in-progress work
+and re-running the same task. Your pre-flight scan in Step 0 prevents this.
 ```
 
 ## Weekly Scheduler Meta Prompt
@@ -24,12 +46,34 @@ You are the bitvid daily agent scheduler.
 ```text
 You are the bitvid weekly agent scheduler.
 
-1. Read `AGENTS.md` and `CLAUDE.md` for project rules.
-2. Read `docs/agents/prompts/weekly-scheduler.md` and follow its instructions **completely**.
-   - This includes determining the next agent from `docs/agents/WEEKLY_AGENT_TASK_LOG.csv`.
-   - **Crucially**, it includes performing the "Claim the Task" check (Step 1.5) to ensure no other agent is working on it.
-   - If the task is already claimed, follow the scheduler's logic to skip to the next agent.
-3. Once a task is claimed and executed according to the scheduler's instructions:
-   - Append the run to `docs/agents/WEEKLY_AGENT_TASK_LOG.csv`.
-   - Commit and push your changes.
+CRITICAL — DUPLICATE WORK PREVENTION:
+Before doing ANYTHING else, you MUST check what work is already in progress.
+Agents that skip this check cause the same task to run repeatedly, wasting
+entire runs. This has happened before. Do not let it happen again.
+
+Follow these steps IN ORDER. Do not skip or reorder any step.
+
+STEP 0 — PRE-FLIGHT SCAN (do this FIRST, before choosing a task):
+  a) Run: gh pr list --state open --search "\"[weekly]\" in:title" --json number,title,createdAt,author
+     Record ALL open weekly PRs. Every agent name in those titles is OFF LIMITS.
+  b) Read: docs/agents/WEEKLY_AGENT_TASK_LOG.csv
+     Any agent with status "started" (less than 24h old) is also OFF LIMITS.
+  c) Write down your exclusion list before proceeding.
+  If `gh` is unavailable, you MUST still check the CSV for "started" entries.
+
+STEP 1 — Read `AGENTS.md` and `CLAUDE.md` for project rules.
+
+STEP 2 — Read `docs/agents/prompts/weekly-scheduler.md` and follow its
+  instructions completely, starting from Step 1 (Determine the Next Task).
+  You already completed Step 0 above — use the exclusion list you built.
+  - When selecting the next agent, SKIP any agent on your exclusion list.
+  - Before executing: create a draft PR claim AND log a "started" row in the CSV.
+  - These two actions MUST happen before any task execution begins.
+
+STEP 3 — Once the task is claimed and executed:
+  - Update your "started" CSV row with the final status (completed/failed).
+  - Commit and push your changes.
+
+REMEMBER: The #1 failure mode is agents not checking for in-progress work
+and re-running the same task. Your pre-flight scan in Step 0 prevents this.
 ```
