@@ -69,6 +69,10 @@ const VIOLATION_ALLOWLIST = new Map([
     "js/ui/components/VideoModal.js",
     new Set(["Direct .style usage"]),
   ],
+  [
+    "views/dev/agent-dashboard.html",
+    new Set(["Inline style attribute"]),
+  ],
 ]);
 
 const TEXT_EXTENSIONS = new Set([
