@@ -256,14 +256,28 @@ To prevent multiple agents from working on the same task simultaneously, every a
    ```
    If a matching PR exists (open or draft) for the same agent or subsystem, **skip the task** — another agent is already working on it.
 
-2. **Claim the task.** If no matching PR exists:
+2. **Claim the task.** If no matching PR exists, use one of these methods:
+
+   **Method A — git push (preferred when available):**
    a. Create your working branch.
    b. Make a minimal initial commit (e.g., create a `context/CONTEXT_<timestamp>.md` with the task scope).
    c. Create a `started` log file in the appropriate task-log directory.
    d. Push the branch immediately to make the claim visible.
    e. Only after the branch is pushed and the claim is visible, begin the actual work.
 
-3. **Handle race conditions.** After pushing your claim, re-check for duplicates:
+   **Method B — GitHub API fallback (when git push is blocked):**
+   If `git push` is unavailable (e.g., Jules sandbox), use the API claim script:
+   ```bash
+   bash scripts/agent/claim-task-api.sh \
+     --agent <agent-name> \
+     --cadence <daily|weekly> \
+     --base unstable
+   ```
+   This creates the remote branch, `_started.md` log file, and draft PR entirely via `curl` and the GitHub REST API. Requires `GITHUB_TOKEN` or `GH_TOKEN` in the environment. The script outputs `CLAIM_BRANCH`, `CLAIM_PR_NUMBER`, and `CLAIM_PR_URL` for use in subsequent steps.
+
+   If **neither method** works, do not proceed — write a `_failed.md` log and stop.
+
+3. **Handle race conditions.** After your claim is visible remotely, re-check for duplicates:
    ```
    curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, titles: [.[].title]}'
    ```

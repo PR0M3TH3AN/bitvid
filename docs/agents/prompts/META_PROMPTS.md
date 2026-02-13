@@ -24,11 +24,16 @@ curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_pag
 MUST 3: Run the exact command list in this order:
 1) cat AGENTS.md CLAUDE.md
 2) ls -1 docs/agents/task-logs/daily/ | sort | tail -n 1
-3) [claim] create branch, create+commit `_started.md`, push
+3) [claim] Try: create branch, create+commit `_started.md`, push.
+   IF git push fails or is blocked, use the API fallback instead:
+   bash scripts/agent/claim-task-api.sh --agent <agent-name> --cadence daily --base unstable
+   This creates the remote branch, started.md, and draft PR via curl.
+   Requires GITHUB_TOKEN or GH_TOKEN in environment.
+   IF both methods fail, write `_failed.md` and stop.
 4) rerun preflight command from MUST 2
 5) execute selected prompt from docs/agents/prompts/daily/
 6) npm run lint
-7) create `_completed.md` or `_failed.md`, commit, push
+7) create `_completed.md` or `_failed.md`, commit, push (or API update)
 
 MUST 4: Race rule: after step 3, compare only matching derived `agent` claims from the rerun. Earlier `created_at` wins; if tied, lower PR number wins. Print exactly one line: `RACE CHECK: won` or `RACE CHECK: lost (agent already claimed by PR #<number>)`.
 
@@ -55,11 +60,16 @@ curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_pag
 MUST 3: Run the exact command list in this order:
 1) cat AGENTS.md CLAUDE.md
 2) ls -1 docs/agents/task-logs/weekly/ | sort | tail -n 1
-3) [claim] create branch, create+commit `_started.md`, push
+3) [claim] Try: create branch, create+commit `_started.md`, push.
+   IF git push fails or is blocked, use the API fallback instead:
+   bash scripts/agent/claim-task-api.sh --agent <agent-name> --cadence weekly --base unstable
+   This creates the remote branch, started.md, and draft PR via curl.
+   Requires GITHUB_TOKEN or GH_TOKEN in environment.
+   IF both methods fail, write `_failed.md` and stop.
 4) rerun preflight command from MUST 2
 5) execute selected prompt from docs/agents/prompts/weekly/
 6) npm run lint
-7) create `_completed.md` or `_failed.md`, commit, push
+7) create `_completed.md` or `_failed.md`, commit, push (or API update)
 
 MUST 4: Race rule: after step 3, compare only matching derived `agent` claims from the rerun. Earlier `created_at` wins; if tied, lower PR number wins. Print exactly one line: `RACE CHECK: won` or `RACE CHECK: lost (agent already claimed by PR #<number>)`.
 
