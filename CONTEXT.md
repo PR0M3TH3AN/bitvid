@@ -1,13 +1,11 @@
 # Context
 
-**Goal:** Execute the `bitvid-decompose-agent` task (daily scheduler).
-**Scope:** Decompose `js/ui/profileModalController.js` by extracting hashtag preference logic into `js/ui/profileModal/ProfileHashtagController.js`.
-**Focus:** Reduce file size by moving cohesive hashtag-related methods and state.
+**Goal:** Execute the `bitvid-deps-security-agent` daily task.
+**Scope:** Run dependency security checks and update agent state/log artifacts per the prompt.
+**Focus:** Produce a current vulnerability report and track execution in agent logs.
 
 **Definition of Done:**
-- [ ] Create `js/ui/profileModal/ProfileHashtagController.js`.
-- [ ] Move methods: `normalizeHashtagTag`, `formatHashtagTag`, `getResolvedHashtagPreferences`, `setHashtagStatus`, `refreshHashtagBackgroundStatus`, `populateHashtagPreferences`, `renderHashtagList`, `sanitizeHashtagList`, `createHashtagListItem`, `persistHashtagPreferences`, `handleAddHashtagPreference`, `handleRemoveHashtagPreference`, `handleHashtagPreferencesChange`, `describeHashtagPreferencesError`.
-- [ ] Integrate into `js/ui/profileModalController.js`.
-- [ ] Verify changes with `npm run lint` and `npm run test:unit`.
-- [ ] Update `scripts/check-file-size.mjs` baseline.
-- [ ] Update `docs/agents/AGENT_TASK_LOG.csv`.
+- [ ] Claim task with draft PR and CSV `started` entry.
+- [ ] Follow `docs/agents/prompts/daily/bitvid-deps-security-agent.md` end-to-end.
+- [ ] Update `CONTEXT.md`, `TODO.md`, `DECISIONS.md`, and `TEST_LOG.md`.
+- [ ] Append final `completed`/`failed` status row in `docs/agents/AGENT_TASK_LOG.csv`.
