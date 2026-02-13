@@ -26,7 +26,7 @@ Before determining which agent to run, you MUST build situational awareness of w
 ### 0a. List ALL open daily agent PRs
 
 ```bash
-gh pr list --state open --search "\"[daily]\" in:title" --json number,title,createdAt,author
+curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq -c '.[] | select(.title | contains("[daily]")) | {number: .number, title: .title, created_at: .created_at, author: .user.login}'
 ```
 
 Record every open PR. These represent **active claims by other agents**. Any agent whose name appears in these PR titles is OFF LIMITS.
@@ -47,7 +47,7 @@ Combine the results from 0a and 0b into an explicit exclusion list:
 
 Write this exclusion list down before proceeding. You will reference it in Step 1.
 
-**If you cannot run `gh pr list`** (e.g., `gh` not available, auth failure, network error): You MUST still check the CSV for `started` entries. Log a warning in your summary that PR-based claim checking was unavailable.
+**If the `curl` command fails** (e.g., network error, API limit): You MUST still check the CSV for `started` entries. Log a warning in your summary that PR-based claim checking was unavailable.
 
 ---
 
@@ -111,9 +111,9 @@ You must create a visible claim before doing any work. This claim is a **distrib
 
 After creating the draft PR, immediately re-check:
 ```bash
-gh pr list --state open --search "\"[daily] <agent-name>\" in:title" --json number,title,createdAt
+curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq -c '.[] | select(.title | contains("[daily] <agent-name>")) | {number: .number, title: .title, created_at: .created_at}'
 ```
-If you see another PR for this agent that was created *before* yours (by a different agent instance), close your PR with `gh pr close <your-pr-number>` and go back to Step 1 to select the next agent.
+If you see another PR for this agent that was created *before* yours (by a different agent instance), close your PR with `gh pr close <your-pr-number>` (if `gh` works) and go back to Step 1 to select the next agent.
 
 ### 2c. Log "started" in the CSV immediately
 
@@ -198,7 +198,7 @@ date,agent_name,prompt_file,status,branch,summary
 - If the agent prompt file is **empty or missing**, skip it, log the run as `failed` with summary `"Prompt file empty or missing"`, and proceed to the **next agent** in the roster.
 - If a task **fails mid-execution** (test failures, build errors), log the run as `failed` with a summary describing the failure. Still commit the log update and any partial artifacts.
 - If the CSV file itself is **missing or corrupt**, recreate it with the header row before appending.
-- If `gh` is **unavailable or errors**, fall back to CSV-only claiming (the `started` row). Log a warning in your summary that PR-based claim checking was degraded.
+- If `gh` or `curl` is **unavailable or errors**, fall back to CSV-only claiming (the `started` row). Log a warning in your summary that PR-based claim checking was degraded.
 
 ---
 

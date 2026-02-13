@@ -17,12 +17,12 @@ entire runs. This has happened before. Do not let it happen again.
 Follow these steps IN ORDER. Do not skip or reorder any step.
 
 STEP 0 — PRE-FLIGHT SCAN (do this FIRST, before choosing a task):
-  a) Run: gh pr list --state open --search "\"[daily]\" in:title" --json number,title,createdAt,author
+  a) Run: curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq -c '.[] | select(.title | contains("[daily]")) | {number: .number, title: .title, created_at: .created_at, author: .user.login, url: .html_url}'
      Record ALL open daily PRs. Every agent name in those titles is OFF LIMITS.
   b) Read: docs/agents/AGENT_TASK_LOG.csv
      Any agent with status "started" (less than 24h old) is also OFF LIMITS.
   c) Write down your exclusion list before proceeding.
-  If `gh` is unavailable, you MUST still check the CSV for "started" entries.
+  If the `curl` command fails, you MUST still check the CSV for "started" entries.
 
 STEP 1 — Read `AGENTS.md` and `CLAUDE.md` for project rules.
 
@@ -54,12 +54,12 @@ entire runs. This has happened before. Do not let it happen again.
 Follow these steps IN ORDER. Do not skip or reorder any step.
 
 STEP 0 — PRE-FLIGHT SCAN (do this FIRST, before choosing a task):
-  a) Run: gh pr list --state open --search "\"[weekly]\" in:title" --json number,title,createdAt,author
+  a) Run: curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq -c '.[] | select(.title | contains("[weekly]")) | {number: .number, title: .title, created_at: .created_at, author: .user.login, url: .html_url}'
      Record ALL open weekly PRs. Every agent name in those titles is OFF LIMITS.
   b) Read: docs/agents/WEEKLY_AGENT_TASK_LOG.csv
      Any agent with status "started" (less than 24h old) is also OFF LIMITS.
   c) Write down your exclusion list before proceeding.
-  If `gh` is unavailable, you MUST still check the CSV for "started" entries.
+  If the `curl` command fails, you MUST still check the CSV for "started" entries.
 
 STEP 1 — Read `AGENTS.md` and `CLAUDE.md` for project rules.
 

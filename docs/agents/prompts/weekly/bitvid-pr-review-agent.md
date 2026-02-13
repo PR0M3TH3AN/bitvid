@@ -77,7 +77,11 @@ WORKFLOW
     If `gh` is not available, fall back to manual instructions in the audit log.
 
 2) Enumerate open PRs
-  - Preferred: `gh pr list` (if available/configured).
+  - Preferred: `curl` command (works without gh auth):
+    ```bash
+    curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq -c '.[] | {number: .number, title: .title, created_at: .created_at, author: .user.login}'
+    ```
+  - Alternative: `gh pr list` (if available/configured).
   - Otherwise: document that PR enumeration was not possible in this environment.
 
 3) For each PR: checkout and run verification
