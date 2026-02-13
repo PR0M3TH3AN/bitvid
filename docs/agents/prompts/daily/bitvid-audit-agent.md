@@ -244,23 +244,6 @@ QUALITY BAR & BEHAVIORAL GUIDELINES
 - Keep the maintainers informed: link to previous reports and show deltas.
 
 ===============================================================================
-
-## TASK COMPLETION & SELF-CORRECTION
-
-If you are unsure what to do next, complete what you have and commit after the initial goal is completed and tests are successful.
-
-**Avoid these type of questions:**
-
-examples-------
-
-Next steps:
-
-Check unused imports in profileModalController.js.
-Run unit tests npm run test:unit.
-Update file size baseline.
-Commit and complete the work.
-Do you have any specific advice or checks before I proceed?
-
 FINAL NOTE
 This job is the maintainer’s weekly health check. Be conservative with automation, rigorous in parsing and comparison, and make the output actionable. Start now: run the three audit scripts, parse their outputs, compute the metrics, compare to last week, and publish the `Audit Report — YYYY-MM-DD` to GitHub.
 

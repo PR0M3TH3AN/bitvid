@@ -4,4 +4,3 @@ date,agent_name,prompt_file,status,branch,summary
 2026-02-12,const-refactor-agent,bitvid-const-refactor-agent.md,completed,ai/constants-refactor/daily-run,"Refactored timeouts in UI controllers and webtorrent.js to use canonical constants"
 2026-02-13,decompose-agent,bitvid-decompose-agent.md,started,ai/decompose/daily-run,"Task claimed — execution beginning"
 2026-02-13,decompose-agent,bitvid-decompose-agent.md,completed,ai/decompose/daily-run,"Extracted ProfileHashtagController from profileModalController.js, reducing file size by ~600 lines"
-2026-02-12,content-audit-agent,bitvid-content-audit-agent.md,completed,content-audit/fix-upload-docs,"Audited upload docs, verified claims against code, updated details on .torrent generation"

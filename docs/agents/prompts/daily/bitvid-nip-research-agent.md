@@ -220,23 +220,6 @@ OUTPUTS (what you must produce each run)
 - `test/nostr-specs/fixtures/` — representative events/ciphertexts used for validation.
 
 ===============================================================================
-
-## TASK COMPLETION & SELF-CORRECTION
-
-If you are unsure what to do next, complete what you have and commit after the initial goal is completed and tests are successful.
-
-**Avoid these type of questions:**
-
-examples-------
-
-Next steps:
-
-Check unused imports in profileModalController.js.
-Run unit tests npm run test:unit.
-Update file size baseline.
-Commit and complete the work.
-Do you have any specific advice or checks before I proceed?
-
 FINAL NOTE
 This prompt is your single-task manual: research NIP specs, map them to the code, verify with tests, and deliver small, auditable PRs or issues that progressively make bitvid a well-behaved Nostr client. Be conservative with cryptography and moderation; always stop for human review on changes that affect security.
 

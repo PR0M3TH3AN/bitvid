@@ -147,9 +147,9 @@ bitvid will verify your credentials by attempting to list or upload a test file.
 
 ### How Uploads Work
 
-1. **Direct Upload:** Your browser uploads the file directly to your storage bucket. The client also automatically generates and uploads a `.torrent` file to enable P2P swarming. No video data passes through a bitvid server.
+1. **Direct Upload:** Your browser uploads the file directly to your storage bucket. No video data passes through a bitvid server.
 2. **External Link:** Your browser streams directly from the provided URL (or via WebTorrent if a magnet is also provided). No video data passes through the bitvid server.
-3. **Client-Side Hashing:** Your browser calculates a cryptographic hash (info hash) of the file locally to enable WebTorrent support. This happens in memory, so large files (>2GB) may require significant RAM and can cause browser instability.
+3. **Client-Side Hashing:** Your browser calculates a cryptographic hash (info hash) of the file locally to enable WebTorrent support. This happens in memory, so large files require sufficient RAM.
 4. **Publication:** The video metadata (title, URL, hash, tags) is signed by your Nostr key and published to relays.
 
 ### Moderation & Visibility

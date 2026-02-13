@@ -8125,6 +8125,34 @@ export class ProfileModalController {
   get profileRelayRefreshBtn() {
     return this.relayController.profileRelayRefreshBtn;
   }
+
+  // Hashtag Controller Delegates
+  get hashtagStatusText() { return this.hashtagController.hashtagStatusText; }
+  get hashtagBackgroundLoading() { return this.hashtagController.hashtagBackgroundLoading; }
+  set hashtagBackgroundLoading(val) { this.hashtagController.hashtagBackgroundLoading = val; }
+  get hashtagInterestList() { return this.hashtagController.hashtagInterestList; }
+  get hashtagInterestEmpty() { return this.hashtagController.hashtagInterestEmpty; }
+  get hashtagInterestInput() { return this.hashtagController.hashtagInterestInput; }
+  get addHashtagInterestButton() { return this.hashtagController.addHashtagInterestButton; }
+  get profileHashtagInterestRefreshBtn() { return this.hashtagController.profileHashtagInterestRefreshBtn; }
+  get hashtagDisinterestList() { return this.hashtagController.hashtagDisinterestList; }
+  get hashtagDisinterestEmpty() { return this.hashtagController.hashtagDisinterestEmpty; }
+  get hashtagDisinterestInput() { return this.hashtagController.hashtagDisinterestInput; }
+  get addHashtagDisinterestButton() { return this.hashtagController.addHashtagDisinterestButton; }
+  get profileHashtagDisinterestRefreshBtn() { return this.hashtagController.profileHashtagDisinterestRefreshBtn; }
+
+  populateHashtagPreferences(...args) { return this.hashtagController.populateHashtagPreferences(...args); }
+  handleAddHashtagPreference(...args) { return this.hashtagController.handleAddHashtagPreference(...args); }
+  handleRemoveHashtagPreference(...args) { return this.hashtagController.handleRemoveHashtagPreference(...args); }
+  handleHashtagPreferencesChange(...args) { return this.hashtagController.handleHashtagPreferencesChange(...args); }
+  normalizeHashtagTag(...args) { return this.hashtagController.normalizeHashtagTag(...args); }
+  formatHashtagTag(...args) { return this.hashtagController.formatHashtagTag(...args); }
+  sanitizeHashtagList(...args) { return this.hashtagController.sanitizeHashtagList(...args); }
+  getResolvedHashtagPreferences(...args) { return this.hashtagController.getResolvedHashtagPreferences(...args); }
+  setHashtagStatus(...args) { return this.hashtagController.setHashtagStatus(...args); }
+  refreshHashtagBackgroundStatus(...args) { return this.hashtagController.refreshHashtagBackgroundStatus(...args); }
+  clearHashtagInputs(...args) { return this.hashtagController.clearHashtagInputs(...args); }
+  describeHashtagPreferencesError(...args) { return this.hashtagController.describeHashtagPreferencesError(...args); }
 }
 
 export default ProfileModalController;

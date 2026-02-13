@@ -230,19 +230,3 @@ BEGIN
 6. If artifacts are permitted to be committed, open `ai/telemetry-YYYYMMDD` PR with the report. Otherwise, attach in PR body and open issue(s) for human triage.
 
 **Privacy-first rule:** If you cannot guarantee all PII/keys are redacted from every artifact, stop and request maintainer review — do not commit or publish raw logs.
-
-## TASK COMPLETION & SELF-CORRECTION
-
-If you are unsure what to do next, complete what you have and commit after the initial goal is completed and tests are successful.
-
-**Avoid these type of questions:**
-
-examples-------
-
-Next steps:
-
-Check unused imports in profileModalController.js.
-Run unit tests npm run test:unit.
-Update file size baseline.
-Commit and complete the work.
-Do you have any specific advice or checks before I proceed?

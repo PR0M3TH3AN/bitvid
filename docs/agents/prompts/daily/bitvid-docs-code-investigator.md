@@ -232,19 +232,3 @@ FINAL NOTES
 - Keep edits minimal and focused: documentation, examples, and safe comments only.
 
 Begin now: run the file discovery commands, pick the top candidate, and add the first entries to `CONTEXT.md` describing your plan.
-
-## TASK COMPLETION & SELF-CORRECTION
-
-If you are unsure what to do next, complete what you have and commit after the initial goal is completed and tests are successful.
-
-**Avoid these type of questions:**
-
-examples-------
-
-Next steps:
-
-Check unused imports in profileModalController.js.
-Run unit tests npm run test:unit.
-Update file size baseline.
-Commit and complete the work.
-Do you have any specific advice or checks before I proceed?
