@@ -2338,7 +2338,7 @@ function clearZapReceipts() {
   if (!list) {
     return;
   }
-  list.innerHTML = "";
+  list.textContent = "";
 }
 
 function renderZapReceipts(receipts, { partial = false } = {}) {
@@ -2347,7 +2347,7 @@ function renderZapReceipts(receipts, { partial = false } = {}) {
     return;
   }
 
-  list.innerHTML = "";
+  list.textContent = "";
 
   const doc = list.ownerDocument || (typeof document !== "undefined" ? document : null);
 
@@ -3895,87 +3895,94 @@ function setupZapButton({ force = false } = {}) {
     panel.dataset.state = panel.dataset.state || "closed";
     panel.hidden = true;
 
-    panel.innerHTML = `
-      <div class="grid gap-4">
-        <div class="flex items-center justify-between gap-4">
-          <h3 class="text-xs font-semibold uppercase tracking-wide text-muted-strong">
-            Send a zap
-          </h3>
-          <button
-            type="button"
-            id="zapCloseBtn"
-            class="btn-ghost px-2 py-1 text-xs"
-            aria-label="Close zap dialog"
-          >
-            ✕
-          </button>
-        </div>
-        <p
-          id="zapWalletPrompt"
-          class="text-sm text-muted"
-          aria-hidden="true"
-          hidden
-        >
-          Connect a wallet in
-          <button
-            type="button"
-            id="zapWalletLink"
-            class="btn-ghost px-2 py-1 text-xs"
-          >
-            Wallet Connect settings
-          </button>
-          to send zaps.
-        </p>
-        <form id="zapForm" class="bv-stack bv-stack--tight">
-          <div>
-            <label
-              for="zapAmountInput"
-              id="zapAmountLabel"
-              class="mb-2 block text-xs font-semibold uppercase tracking-wide text-muted-strong"
-            >
-              Zap amount (sats)
-            </label>
-            <input
-              id="zapAmountInput"
-              type="number"
-              min="1"
-              step="1"
-              inputmode="numeric"
-              class="input"
-              placeholder="Enter sats"
-              aria-labelledby="zapAmountLabel"
-            />
-          </div>
-          <p
-            id="zapSplitSummary"
-            class="text-sm text-muted"
-            aria-live="polite"
-          >
-            Enter an amount to view the split.
-          </p>
-          <p
-            id="zapStatus"
-            class="text-xs text-muted"
-            role="status"
-            aria-live="polite"
-          ></p>
-          <ul
-            id="zapReceipts"
-            class="space-y-2 text-xs text-muted"
-          ></ul>
-          <div class="flex items-center justify-end gap-2">
-            <button
-              type="submit"
-              id="zapSendBtn"
-              class="btn"
-              aria-label="Send a zap"
-            >
-              Send
-            </button>
-          </div>
-        </form>
-      </div>
-    `;
+    const grid = doc.createElement("div");
+    grid.className = "grid gap-4";
+
+    const header = doc.createElement("div");
+    header.className = "flex items-center justify-between gap-4";
+    const h3 = doc.createElement("h3");
+    h3.className = "text-xs font-semibold uppercase tracking-wide text-muted-strong";
+    h3.textContent = "Send a zap";
+    const closeBtn = doc.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.id = "zapCloseBtn";
+    closeBtn.className = "btn-ghost px-2 py-1 text-xs";
+    closeBtn.setAttribute("aria-label", "Close zap dialog");
+    closeBtn.textContent = "✕";
+    header.appendChild(h3);
+    header.appendChild(closeBtn);
+    grid.appendChild(header);
+
+    const walletPrompt = doc.createElement("p");
+    walletPrompt.id = "zapWalletPrompt";
+    walletPrompt.className = "text-sm text-muted";
+    walletPrompt.setAttribute("aria-hidden", "true");
+    walletPrompt.hidden = true;
+    walletPrompt.appendChild(doc.createTextNode("Connect a wallet in "));
+    const walletLink = doc.createElement("button");
+    walletLink.type = "button";
+    walletLink.id = "zapWalletLink";
+    walletLink.className = "btn-ghost px-2 py-1 text-xs";
+    walletLink.textContent = "Wallet Connect settings";
+    walletPrompt.appendChild(walletLink);
+    walletPrompt.appendChild(doc.createTextNode(" to send zaps."));
+    grid.appendChild(walletPrompt);
+
+    const form = doc.createElement("form");
+    form.id = "zapForm";
+    form.className = "bv-stack bv-stack--tight";
+
+    const inputGroup = doc.createElement("div");
+    const label = doc.createElement("label");
+    label.htmlFor = "zapAmountInput";
+    label.id = "zapAmountLabel";
+    label.className = "mb-2 block text-xs font-semibold uppercase tracking-wide text-muted-strong";
+    label.textContent = "Zap amount (sats)";
+    const input = doc.createElement("input");
+    input.id = "zapAmountInput";
+    input.type = "number";
+    input.min = "1";
+    input.step = "1";
+    input.inputMode = "numeric";
+    input.className = "input";
+    input.placeholder = "Enter sats";
+    input.setAttribute("aria-labelledby", "zapAmountLabel");
+    inputGroup.appendChild(label);
+    inputGroup.appendChild(input);
+    form.appendChild(inputGroup);
+
+    const splitSummary = doc.createElement("p");
+    splitSummary.id = "zapSplitSummary";
+    splitSummary.className = "text-sm text-muted";
+    splitSummary.setAttribute("aria-live", "polite");
+    splitSummary.textContent = "Enter an amount to view the split.";
+    form.appendChild(splitSummary);
+
+    const status = doc.createElement("p");
+    status.id = "zapStatus";
+    status.className = "text-xs text-muted";
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+    form.appendChild(status);
+
+    const receipts = doc.createElement("ul");
+    receipts.id = "zapReceipts";
+    receipts.className = "space-y-2 text-xs text-muted";
+    form.appendChild(receipts);
+
+    const actions = doc.createElement("div");
+    actions.className = "flex items-center justify-end gap-2";
+    const sendBtn = doc.createElement("button");
+    sendBtn.type = "submit";
+    sendBtn.id = "zapSendBtn";
+    sendBtn.className = "btn";
+    sendBtn.setAttribute("aria-label", "Send a zap");
+    sendBtn.textContent = "Send";
+    actions.appendChild(sendBtn);
+    form.appendChild(actions);
+
+    grid.appendChild(form);
+    panel.appendChild(grid);
 
     cacheZapPanelElements(panel);
     initializeZapPanel();
@@ -4131,23 +4138,25 @@ function renderSubscribeButton(channelHex) {
 
   // Both subscribe/unsubscribe states share the primary styling and icon.
   // If you prefer separate logic for unsub, you can do it here.
-  container.innerHTML = `
-    <button
-      id="subscribeToggleBtn"
-      type="button"
-      class="btn normal-case rounded hover:opacity-90 focus-visible:bg-primary"
-      data-state="${alreadySubscribed ? "subscribed" : "unsubscribed"}"
-    >
-      <img
-        src="assets/svg/subscribe-button-icon.svg"
-        alt="Subscribe Icon"
-        class="w-5 h-5"
-      />
-      <span>${alreadySubscribed ? "Unsubscribe" : "Subscribe"}</span>
-    </button>
-  `;
+  container.textContent = "";
+  const toggleBtn = document.createElement("button");
+  toggleBtn.id = "subscribeToggleBtn";
+  toggleBtn.type = "button";
+  toggleBtn.className = "btn normal-case rounded hover:opacity-90 focus-visible:bg-primary";
+  toggleBtn.dataset.state = alreadySubscribed ? "subscribed" : "unsubscribed";
 
-  const toggleBtn = document.getElementById("subscribeToggleBtn");
+  const icon = document.createElement("img");
+  icon.src = "assets/svg/subscribe-button-icon.svg";
+  icon.alt = "Subscribe Icon";
+  icon.className = "w-5 h-5";
+
+  const label = document.createElement("span");
+  label.textContent = alreadySubscribed ? "Unsubscribe" : "Subscribe";
+
+  toggleBtn.appendChild(icon);
+  toggleBtn.appendChild(label);
+  container.appendChild(toggleBtn);
+
   if (toggleBtn) {
     toggleBtn.addEventListener("click", async () => {
       const currentApp = getApp();
@@ -4523,7 +4532,11 @@ export async function renderChannelVideosFromList({
   if (!Array.isArray(videos) || videos.length === 0) {
     if (allowEmptyMessage) {
       container.dataset.hasChannelVideos = "false";
-      container.innerHTML = `<p class="text-muted-strong">No videos to display.</p>`;
+      container.textContent = "";
+      const p = document.createElement("p");
+      p.className = "text-muted-strong";
+      p.textContent = "No videos to display.";
+      container.appendChild(p);
       return true;
     }
     return false;
@@ -4551,14 +4564,18 @@ export async function renderChannelVideosFromList({
   if (!renderableVideos.length) {
     if (allowEmptyMessage) {
       container.dataset.hasChannelVideos = "false";
-      container.innerHTML = `<p class="text-muted-strong">No videos to display.</p>`;
+      container.textContent = "";
+      const p = document.createElement("p");
+      p.className = "text-muted-strong";
+      p.textContent = "No videos to display.";
+      container.appendChild(p);
       return true;
     }
     return false;
   }
 
   container.dataset.hasChannelVideos = "true";
-  container.innerHTML = "";
+  container.textContent = "";
 
   const fragment = document.createDocumentFragment();
   const allKnownEventsArray = Array.from(nostrClient.allEvents.values());
@@ -4907,7 +4924,11 @@ export async function renderChannelVideosFromList({
   if (renderIndex === 0) {
     if (allowEmptyMessage) {
       container.dataset.hasChannelVideos = "false";
-      container.innerHTML = `<p class="text-muted-strong">No videos to display.</p>`;
+      container.textContent = "";
+      const p = document.createElement("p");
+      p.className = "text-muted-strong";
+      p.textContent = "No videos to display.";
+      container.appendChild(p);
       return true;
     }
     return false;
@@ -5294,11 +5315,14 @@ async function loadUserVideos(pubkey) {
   if (container) {
     container.dataset.loading = "true";
     if (!hadExistingContent) {
-      container.innerHTML = `
-        <div class="py-16 flex justify-center">
-        <span class="text-muted animate-pulse">Loading videos…</span>
-        </div>
-      `;
+      container.textContent = "";
+      const wrapper = document.createElement("div");
+      wrapper.className = "py-16 flex justify-center";
+      const span = document.createElement("span");
+      span.className = "text-muted animate-pulse";
+      span.textContent = "Loading videos…";
+      wrapper.appendChild(span);
+      container.appendChild(wrapper);
     }
   }
 
@@ -5415,9 +5439,11 @@ async function loadUserVideos(pubkey) {
       !hasVisibleContent
     ) {
       container.dataset.hasChannelVideos = "false";
-      container.innerHTML = `
-        <p class="text-critical">Failed to load videos. Please try again.</p>
-      `;
+      container.textContent = "";
+      const p = document.createElement("p");
+      p.className = "text-critical";
+      p.textContent = "Failed to load videos. Please try again.";
+      container.appendChild(p);
     }
     userLogger.error("Error loading user videos:", err);
   } finally {
