@@ -1,6 +1,6 @@
 # Bitvid Agent Scheduler Meta Prompts
 
-This file contains the authoritative "Meta Prompts" to be used when triggering the daily and weekly agent schedulers. These prompts ensure that the agent correctly follows the scheduler's logic, including the critical task-claiming step to prevent duplicate work.
+This file contains the authoritative "Meta Prompts" to be used when triggering the daily and weekly agent schedulers. Copy-paste the relevant prompt below into the agent session.
 
 ---
 
@@ -9,42 +9,48 @@ This file contains the authoritative "Meta Prompts" to be used when triggering t
 ```text
 You are the bitvid daily agent scheduler.
 
-CRITICAL — DUPLICATE WORK PREVENTION:
-Before doing ANYTHING else, you MUST check what work is already in progress.
-Agents that skip this check cause the same task to run repeatedly, wasting
-entire runs. This has happened before. Do not let it happen again.
+YOUR VERY FIRST ACTION — before reading any file, before planning anything,
+before choosing a task — is to run these two commands. Not later. NOW.
 
-Follow these steps IN ORDER. Do not skip or reorder any step.
+COMMAND 1 — Check for open daily agent PRs:
 
-STEP 0 — PRE-FLIGHT SCAN (do this FIRST, before choosing a task):
-  a) Run: curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq -c '.[] | select(.title | contains("[daily]")) | {number: .number, title: .title, created_at: .created_at, author: .user.login, url: .html_url}'
-     Record ALL open daily PRs. Every agent name in those titles is OFF LIMITS.
-     IMPORTANT: this query intentionally filters to titles containing "[daily]". It will NOT list unrelated open PRs.
-     (Optional visibility check) If you need total open PR context, run a second command without the filter.
-  b) Run: ls docs/agents/task-logs/daily/ | sort
-     Look for any "_started.md" files that do NOT have a corresponding
-     "_completed.md" or "_failed.md" file from the same agent at a later
-     timestamp. Those agents are OFF LIMITS (unless the started file is >24h old).
-  c) Write down your exclusion list before proceeding.
-  If the `curl` command fails, you MUST still check the task log directory.
+  gh pr list --repo PR0M3TH3AN/bitvid --state open --json number,title,createdAt,author --limit 100 | grep -i "\[daily\]"
 
-STEP 1 — Read `AGENTS.md` and `CLAUDE.md` for project rules.
+  If `gh` is not available, use this fallback:
+  curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | grep -o '"title":"[^"]*\[daily\][^"]*"'
 
-STEP 2 — Read `docs/agents/prompts/daily-scheduler.md` and follow its
-  instructions completely, starting from Step 1 (Determine the Next Task).
-  You already completed Step 0 above — use the exclusion list you built.
-  - When selecting the next agent, SKIP any agent on your exclusion list.
-  - Before executing: create a draft PR claim AND create a "started" log file
-    in docs/agents/task-logs/daily/.
-  - These two actions MUST happen before any task execution begins.
+COMMAND 2 — Check for in-progress task logs:
 
-STEP 3 — Once the task is claimed and executed:
-  - Create a new "completed" or "failed" log file in docs/agents/task-logs/daily/.
-  - Do NOT modify the "started" file — always create a new file.
-  - Commit and push your changes.
+  ls docs/agents/task-logs/daily/ | sort
 
-REMEMBER: The #1 failure mode is agents not checking for in-progress work
-and re-running the same task. Your pre-flight scan in Step 0 prevents this.
+Run both commands and PASTE THE COMPLETE RAW OUTPUT of each command into your
+response. Do not summarize. Do not paraphrase. Paste the actual terminal output.
+If a command returns nothing, write: "OUTPUT: (empty — no results)"
+
+STOP HERE. Do not proceed until both outputs are pasted.
+
+---
+
+Now analyze the output:
+- Any agent name that appears in an open PR title is EXCLUDED.
+- Any agent with a "_started.md" log file that has no matching "_completed.md"
+  or "_failed.md" from the same agent at a later timestamp is EXCLUDED
+  (unless the started file is more than 24 hours old).
+- Write your exclusion list. Format: "EXCLUDED AGENTS: agent-a, agent-b"
+  or "EXCLUDED AGENTS: (none)"
+
+---
+
+Now proceed with the scheduler:
+
+1. Read `AGENTS.md` and `CLAUDE.md` for project rules.
+2. Read `docs/agents/prompts/daily-scheduler.md` and follow its instructions
+   starting from "Step 1 — Determine the Next Task." You already completed
+   the pre-flight gate above — use your exclusion list when selecting an agent.
+3. Before executing any task: create a draft PR claim AND a "started" log file
+   in docs/agents/task-logs/daily/. Both MUST exist before task execution begins.
+4. After execution: create a "completed" or "failed" log file (new file, never
+   modify the "started" file). Commit and push.
 ```
 
 ## Weekly Scheduler Meta Prompt
@@ -52,40 +58,46 @@ and re-running the same task. Your pre-flight scan in Step 0 prevents this.
 ```text
 You are the bitvid weekly agent scheduler.
 
-CRITICAL — DUPLICATE WORK PREVENTION:
-Before doing ANYTHING else, you MUST check what work is already in progress.
-Agents that skip this check cause the same task to run repeatedly, wasting
-entire runs. This has happened before. Do not let it happen again.
+YOUR VERY FIRST ACTION — before reading any file, before planning anything,
+before choosing a task — is to run these two commands. Not later. NOW.
 
-Follow these steps IN ORDER. Do not skip or reorder any step.
+COMMAND 1 — Check for open weekly agent PRs:
 
-STEP 0 — PRE-FLIGHT SCAN (do this FIRST, before choosing a task):
-  a) Run: curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq -c '.[] | select(.title | contains("[weekly]")) | {number: .number, title: .title, created_at: .created_at, author: .user.login, url: .html_url}'
-     Record ALL open weekly PRs. Every agent name in those titles is OFF LIMITS.
-     IMPORTANT: this query intentionally filters to titles containing "[weekly]". It will NOT list unrelated open PRs.
-     (Optional visibility check) If you need total open PR context, run a second command without the filter.
-  b) Run: ls docs/agents/task-logs/weekly/ | sort
-     Look for any "_started.md" files that do NOT have a corresponding
-     "_completed.md" or "_failed.md" file from the same agent at a later
-     timestamp. Those agents are OFF LIMITS (unless the started file is >24h old).
-  c) Write down your exclusion list before proceeding.
-  If the `curl` command fails, you MUST still check the task log directory.
+  gh pr list --repo PR0M3TH3AN/bitvid --state open --json number,title,createdAt,author --limit 100 | grep -i "\[weekly\]"
 
-STEP 1 — Read `AGENTS.md` and `CLAUDE.md` for project rules.
+  If `gh` is not available, use this fallback:
+  curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | grep -o '"title":"[^"]*\[weekly\][^"]*"'
 
-STEP 2 — Read `docs/agents/prompts/weekly-scheduler.md` and follow its
-  instructions completely, starting from Step 1 (Determine the Next Task).
-  You already completed Step 0 above — use the exclusion list you built.
-  - When selecting the next agent, SKIP any agent on your exclusion list.
-  - Before executing: create a draft PR claim AND create a "started" log file
-    in docs/agents/task-logs/weekly/.
-  - These two actions MUST happen before any task execution begins.
+COMMAND 2 — Check for in-progress task logs:
 
-STEP 3 — Once the task is claimed and executed:
-  - Create a new "completed" or "failed" log file in docs/agents/task-logs/weekly/.
-  - Do NOT modify the "started" file — always create a new file.
-  - Commit and push your changes.
+  ls docs/agents/task-logs/weekly/ | sort
 
-REMEMBER: The #1 failure mode is agents not checking for in-progress work
-and re-running the same task. Your pre-flight scan in Step 0 prevents this.
+Run both commands and PASTE THE COMPLETE RAW OUTPUT of each command into your
+response. Do not summarize. Do not paraphrase. Paste the actual terminal output.
+If a command returns nothing, write: "OUTPUT: (empty — no results)"
+
+STOP HERE. Do not proceed until both outputs are pasted.
+
+---
+
+Now analyze the output:
+- Any agent name that appears in an open PR title is EXCLUDED.
+- Any agent with a "_started.md" log file that has no matching "_completed.md"
+  or "_failed.md" from the same agent at a later timestamp is EXCLUDED
+  (unless the started file is more than 24 hours old).
+- Write your exclusion list. Format: "EXCLUDED AGENTS: agent-a, agent-b"
+  or "EXCLUDED AGENTS: (none)"
+
+---
+
+Now proceed with the scheduler:
+
+1. Read `AGENTS.md` and `CLAUDE.md` for project rules.
+2. Read `docs/agents/prompts/weekly-scheduler.md` and follow its instructions
+   starting from "Step 1 — Determine the Next Task." You already completed
+   the pre-flight gate above — use your exclusion list when selecting an agent.
+3. Before executing any task: create a draft PR claim AND a "started" log file
+   in docs/agents/task-logs/weekly/. Both MUST exist before task execution begins.
+4. After execution: create a "completed" or "failed" log file (new file, never
+   modify the "started" file). Commit and push.
 ```
