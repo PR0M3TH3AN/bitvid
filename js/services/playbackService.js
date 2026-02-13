@@ -352,6 +352,16 @@ export class PlaybackService {
     this.probeCache.set(cacheKey, { result, expiresAt: now + ttl });
   }
 
+  /**
+   * Probes a hosted URL via a HEAD request (or provided probe function) to determine
+   * reachability before attempting playback. Results are cached.
+   *
+   * @param {object} options
+   * @param {string} options.url - The HTTP URL to probe.
+   * @param {string} [options.magnet] - Optional magnet URI (part of cache key).
+   * @param {Function} [options.probeUrl] - Custom probe function (returns Promise<{outcome, status, error}>).
+   * @returns {Promise<{outcome: string, status?: number, error?: Error}>}
+   */
   async probeHostedUrl({ url, magnet, probeUrl } = {}) {
     const sanitizedUrl = typeof url === "string" ? url.trim() : "";
     if (!sanitizedUrl) {
@@ -622,6 +632,13 @@ class PlaybackSession extends SimpleEventEmitter {
     return !this.finished;
   }
 
+  /**
+   * Checks if this session matches a given request signature.
+   * Used by consumers to prevent starting duplicate sessions for the same content.
+   *
+   * @param {string} signature - The JSON signature of the requested content.
+   * @returns {boolean} True if the session matches and is still active.
+   */
   matchesRequestSignature(signature) {
     if (!this.isActive()) {
       return false;
@@ -727,6 +744,8 @@ class PlaybackSession extends SimpleEventEmitter {
   /**
    * Begins the playback flow. Returns a promise that resolves when playback
    * has either successfully started (URL or Torrent) or fatally failed.
+   *
+   * @returns {Promise<{source: string|null, error?: Error}>}
    */
   async start() {
     if (this.startPromise) {
@@ -738,14 +757,21 @@ class PlaybackSession extends SimpleEventEmitter {
 
   /**
    * The core execution loop for the session.
+   *
    * Flow:
-   * 1. Check if forced source (e.g. user manually switched to "Torrent")
-   * 2. If URL available & URL-first enabled:
-   *    a. Probe the URL (HEAD request) to see if it's reachable.
-   *    b. If probe succeeds, attempt to play.
-   *    c. Attach watchdogs.
-   *    d. If watchdog triggers (stall/error), trigger `startTorrentFallback`.
-   * 3. If URL fails or not available, call `startTorrentFallback`.
+   * 1. **Init**: Prepare video element, un-mute, and clear previous sessions.
+   * 2. **Decision**: Check `urlFirstEnabled` and `forcedSource`.
+   * 3. **Attempt URL (HTTP)**:
+   *    - Probe the URL (HEAD request).
+   *    - If probe succeeds, attempt playback.
+   *    - Register watchdogs to detect stalls/hangs.
+   *    - If stalls -> Trigger Fallback.
+   * 4. **Attempt Torrent (P2P)**:
+   *    - Only if URL fails, stalls, or is disabled.
+   *    - Feeds the failed URL to WebTorrent as a webseed (hybrid power!).
+   * 5. **Finalize**: Emit events and cleanup.
+   *
+   * @returns {Promise<{source: string|null, error?: Error, torrentInstance?: any}>}
    */
   async execute() {
     const {
