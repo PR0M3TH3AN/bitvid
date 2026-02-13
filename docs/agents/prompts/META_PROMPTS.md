@@ -14,9 +14,18 @@ before choosing a task — is to run these two commands. Not later. NOW.
 
 COMMAND 1 — Check for open daily agent PRs:
 
-  curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, titles: [.[].title]}'
+  curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, prs: [.[] | {number, title, draft, created_at, head: {ref: .head.ref}, labels: [.labels[].name]}]}'
 
-  Review the output. Any title containing "[daily]" means that agent is OFF LIMITS.
+  Normalize each PR to an agent name using this deterministic rule:
+  1) Preferred: parse `head.ref` as `agents/daily/<agent-name>/...`
+  2) Fallback: parse agent name from title only if branch parsing fails
+  3) If agent cannot be derived from metadata, treat as GLOBAL LOCK warning and do not schedule daily tasks until manually resolved
+
+  OFF LIMITS rule: any PR that maps to a daily-cadence agent is excluded, regardless of title tag format.
+
+  Valid daily claim branch examples:
+  - agents/daily/docs-agent/2026-02-13-claim
+  - agents/daily/test-audit-agent/run-2026-02-13
 
 COMMAND 2 — Check for in-progress task logs:
 
@@ -31,7 +40,8 @@ STOP HERE. Do not proceed until both outputs are pasted.
 ---
 
 Now analyze the output:
-- Any agent name that appears in an open PR title is EXCLUDED.
+- Any PR that maps to a daily-cadence agent is EXCLUDED (branch parsing first, title fallback second).
+- If any PR agent cannot be derived from metadata, treat as GLOBAL LOCK warning and do not schedule this cadence.
 - Any agent with a "_started.md" log file that has no matching "_completed.md"
   or "_failed.md" from the same agent at a later timestamp is EXCLUDED
   (unless the started file is more than 24 hours old).
@@ -62,9 +72,18 @@ before choosing a task — is to run these two commands. Not later. NOW.
 
 COMMAND 1 — Check for open weekly agent PRs:
 
-  curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, titles: [.[].title]}'
+  curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, prs: [.[] | {number, title, draft, created_at, head: {ref: .head.ref}, labels: [.labels[].name]}]}'
 
-  Review the output. Any title containing "[weekly]" means that agent is OFF LIMITS.
+  Normalize each PR to an agent name using this deterministic rule:
+  1) Preferred: parse `head.ref` as `agents/weekly/<agent-name>/...`
+  2) Fallback: parse agent name from title only if branch parsing fails
+  3) If agent cannot be derived from metadata, treat as GLOBAL LOCK warning and do not schedule weekly tasks until manually resolved
+
+  OFF LIMITS rule: any PR that maps to a weekly-cadence agent is excluded, regardless of title tag format.
+
+  Valid weekly claim branch examples:
+  - agents/weekly/ci-health-agent/2026-02-weekly-run
+  - agents/weekly/weekly-synthesis-agent/sprint-07
 
 COMMAND 2 — Check for in-progress task logs:
 
@@ -79,7 +98,8 @@ STOP HERE. Do not proceed until both outputs are pasted.
 ---
 
 Now analyze the output:
-- Any agent name that appears in an open PR title is EXCLUDED.
+- Any PR that maps to a weekly-cadence agent is EXCLUDED (branch parsing first, title fallback second).
+- If any PR agent cannot be derived from metadata, treat as GLOBAL LOCK warning and do not schedule this cadence.
 - Any agent with a "_started.md" log file that has no matching "_completed.md"
   or "_failed.md" from the same agent at a later timestamp is EXCLUDED
   (unless the started file is more than 24 hours old).
