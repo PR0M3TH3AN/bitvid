@@ -1,0 +1,71 @@
+Navigating to http://localhost:8000...
+CONSOLE [info]: [bitvid] [accessControl] refresh started
+CONSOLE [info]: [bitvid] [accessControl] _applyState called
+CONSOLE [info]: [bitvid] [accessControl] refresh started
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [info]: [bitvid] [accessControl] _applyState called
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: bad msg: unknown cmd
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [error]: Access to fetch at 'https://pub-421447228d6c4aa5a229e894c97db6a2.r2.dev/u/npub1qxduthz4p8v5zsux524df569pt7lj0d36dyqadnta2val64dtnhsr50h64/2026/01/steamboat-willie-1928-by-walt-disney.torrent' from origin 'http://localhost:8000' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+REQUEST FAILED: https://pub-421447228d6c4aa5a229e894c97db6a2.r2.dev/u/npub1qxduthz4p8v5zsux524df569pt7lj0d36dyqadnta2val64dtnhsr50h64/2026/01/steamboat-willie-1928-by-walt-disney.torrent net::ERR_FAILED
+CONSOLE [error]: Failed to load resource: net::ERR_FAILED
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://nos.lol/: ERROR: too many concurrent REQs
+REQUEST FAILED: https://pub-421447228d6c4aa5a229e894c97db6a2.r2.dev/u/npub1qxduthz4p8v5zsux524df569pt7lj0d36dyqadnta2val64dtnhsr50h64/2026/01/steamboat-willie-1928-by-walt-disney.webm net::ERR_ABORTED
+CONSOLE [debug]: NOTICE from wss://nos.lol/: ERROR: too many concurrent REQs
+CONSOLE [error]: Failed to load resource: the server responded with a status of 404 (Not Found)
+CONSOLE [debug]: NOTICE from wss://relay.snort.social/: ERROR: bad msg: unknown cmd
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.damus.io/: ERROR: bad msg: unknown cmd
+CONSOLE [debug]: NOTICE from wss://nos.lol/: ERROR: too many concurrent REQs
+REQUEST FAILED: https://pub-0928ec7c4bf24fb89ce3aa1fec8a265b.r2.dev/u/npub15jnttpymeytm80hatjqcvhhqhzrhx6gxp8pq0wn93rhnu8s9h9dsha32lx/2026/01/lost-world-512kb.mp4 net::ERR_ABORTED
+REQUEST FAILED: https://pub-ca50f43da1364bf6a552b90443fcdc64.r2.dev/bitvid-logo-loop.mp4 net::ERR_ABORTED
+REQUEST FAILED: https://pub-ca50f43da1364bf6a552b90443fcdc64.r2.dev/Mocha-Cola%20Package%20Design%20Cinema%204D.mp4 net::ERR_ABORTED
+REQUEST FAILED: https://pub-ca50f43da1364bf6a552b90443fcdc64.r2.dev/The%20Grid%20(Cinema%204D%20Mograph).mp4 net::ERR_ABORTED
+REQUEST FAILED: https://pub-ca50f43da1364bf6a552b90443fcdc64.r2.dev/bitvid-logo-loop.mp4 net::ERR_BLOCKED_BY_ORB
+REQUEST FAILED: https://ia600204.us.archive.org/19/items/pdcartooncollection/ComiColor_%20Simple%20Simon.mp4 net::ERR_ABORTED
+REQUEST FAILED: https://ia600204.us.archive.org/19/items/pdcartooncollection/COMICOLOR%20-%201935%20-%20_Old%20Mother%20Hubbard_.mp4 net::ERR_ABORTED
+REQUEST FAILED: https://ia800205.us.archive.org/2/items/PopeyeTheSailor-AncientFistory/PopeyeTheSailor-AncientFistory_512kb.mp4 net::ERR_ABORTED
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: bad msg: unknown cmd
+CONSOLE [debug]: NOTICE from wss://nos.lol/: ERROR: too many concurrent REQs
+REQUEST FAILED: https://pub-ca50f43da1364bf6a552b90443fcdc64.r2.dev/_the%20Oven%20Balls_%20Cinema%204D%20Camera%20Projection%20Mapping.mp4 net::ERR_ABORTED
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+REQUEST FAILED: https://pub-ca50f43da1364bf6a552b90443fcdc64.r2.dev/3D%20Animated%20Planet%20Cloud%20with%20Cinema%204D%20(no%20plugins).mp4 net::ERR_ABORTED
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://nos.lol/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: bad msg: unknown cmd
+CONSOLE [debug]: NOTICE from wss://nos.lol/: ERROR: too many concurrent REQs
+CONSOLE [debug]: NOTICE from wss://relay.primal.net/: ERROR: too many concurrent REQs

@@ -20,7 +20,7 @@ export class VideoEventBuffer {
     this.buffer = [];
     this.invalidEvents = [];
     this.flushTimerId = null;
-    this.FLUSH_DEBOUNCE_MS = 75;
+    this.FLUSH_DEBOUNCE_MS = 1000;
   }
 
   /**
