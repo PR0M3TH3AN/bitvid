@@ -14,7 +14,7 @@ before choosing a task — is to run these two commands. Not later. NOW.
 
 COMMAND 1 — Check for open daily agent PRs:
 
-  curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, prs: [.[] | {number, title, draft, created_at, head: {ref: .head.ref}, labels: [.labels[].name]}]}'
+  curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, prs: [.[] | {number, created_at, draft, head: {ref: .head.ref}, agent: ((.head.ref | capture("^agents/daily/(?<agent>[^/]+)/")?.agent) // (.title | capture("(?<agent>[A-Za-z0-9-]+-agent)")?.agent // null))}] | sort_by(.created_at, .number)}'
 
   Normalize each PR to an agent name using this deterministic rule:
   1) Preferred: parse `head.ref` as `agents/daily/<agent-name>/...`
@@ -60,6 +60,12 @@ Now proceed with the scheduler:
    in docs/agents/task-logs/daily/. Both MUST exist before task execution begins.
 4. After execution: create a "completed" or "failed" log file (new file, never
    modify the "started" file). Commit and push.
+
+Race check rule (must be applied after pushing your claim branch):
+- Re-run the sortable PR metadata command and compare only PRs with matching derived `agent`.
+- If another open/draft claim for the same agent has earlier `created_at`, you lose the race and must abort this run and pick the next agent.
+- If timestamps are equal or ambiguous, lower PR `number` wins.
+- Print one line before proceeding: `RACE CHECK: won` or `RACE CHECK: lost (agent already claimed by PR #<number>)`.
 ```
 
 ## Weekly Scheduler Meta Prompt
@@ -72,7 +78,7 @@ before choosing a task — is to run these two commands. Not later. NOW.
 
 COMMAND 1 — Check for open weekly agent PRs:
 
-  curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, prs: [.[] | {number, title, draft, created_at, head: {ref: .head.ref}, labels: [.labels[].name]}]}'
+  curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, prs: [.[] | {number, created_at, draft, head: {ref: .head.ref}, agent: ((.head.ref | capture("^agents/weekly/(?<agent>[^/]+)/")?.agent) // (.title | capture("(?<agent>[A-Za-z0-9-]+-agent)")?.agent // null))}] | sort_by(.created_at, .number)}'
 
   Normalize each PR to an agent name using this deterministic rule:
   1) Preferred: parse `head.ref` as `agents/weekly/<agent-name>/...`
@@ -118,4 +124,10 @@ Now proceed with the scheduler:
    in docs/agents/task-logs/weekly/. Both MUST exist before task execution begins.
 4. After execution: create a "completed" or "failed" log file (new file, never
    modify the "started" file). Commit and push.
+
+Race check rule (must be applied after pushing your claim branch):
+- Re-run the sortable PR metadata command and compare only PRs with matching derived `agent`.
+- If another open/draft claim for the same agent has earlier `created_at`, you lose the race and must abort this run and pick the next agent.
+- If timestamps are equal or ambiguous, lower PR `number` wins.
+- Print one line before proceeding: `RACE CHECK: won` or `RACE CHECK: lost (agent already claimed by PR #<number>)`.
 ```
