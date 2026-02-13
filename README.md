@@ -604,4 +604,3 @@ See [`docs/qa.md`](docs/qa.md) for the copy/paste-friendly checklist we share wi
 ## License
 
 GPL-3.0-or-later. See [LICENSE](./LICENSE).
-
