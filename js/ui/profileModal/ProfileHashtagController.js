@@ -185,10 +185,10 @@ export class ProfileHashtagController {
   }
 
   clearHashtagInputs() {
-    if (this.hashtagInterestInput instanceof HTMLInputElement) {
+    if (this.hashtagInterestInput && typeof this.hashtagInterestInput.value === "string") {
       this.hashtagInterestInput.value = "";
     }
-    if (this.hashtagDisinterestInput instanceof HTMLInputElement) {
+    if (this.hashtagDisinterestInput && typeof this.hashtagDisinterestInput.value === "string") {
       this.hashtagDisinterestInput.value = "";
     }
   }
@@ -385,10 +385,10 @@ export class ProfileHashtagController {
       : this.hashtagDisinterestInput;
 
     const rawValue =
-      input instanceof HTMLInputElement ? input.value || "" : "";
+      input && typeof input.value === "string" ? input.value || "" : "";
     const normalized = this.normalizeHashtagTag(rawValue);
 
-    if (!(input instanceof HTMLInputElement)) {
+    if (!(input && typeof input.value === "string")) {
       return { success: false, reason: "missing-input" };
     }
 
