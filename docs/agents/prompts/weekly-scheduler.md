@@ -76,12 +76,22 @@ If you arrived here from the meta prompt and already ran these commands and past
 
 Run this command:
 ```bash
-curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, titles: [.[].title]}'
+curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, prs: [.[] | {number, title, draft, created_at, head: {ref: .head.ref}, labels: [.labels[].name]}]}'
 ```
 
 **Paste the complete raw output.** If the command returns nothing or errors, write: `OUTPUT: (empty — no results)`
 
-Review the titles in the output. Every agent name that appears in a PR title containing `[weekly]` is **OFF LIMITS** — do not select it.
+Normalize each PR to an agent name using this deterministic rule:
+1. **Preferred:** parse the branch name from `head.ref` with the convention `agents/weekly/<agent-name>/...`.
+2. **Fallback:** only if branch parsing fails, parse `<agent-name>` from the PR title.
+3. If an agent cannot be derived from PR metadata, treat that PR as a **global lock warning** and do not schedule any weekly agent until manually resolved.
+
+Examples of valid weekly claim branch names (all parseable):
+- `agents/weekly/ci-health-agent/2026-02-weekly-run`
+- `agents/weekly/telemetry-agent/report-refresh`
+- `agents/weekly/weekly-synthesis-agent/sprint-07`
+
+**OFF LIMITS rule:** any PR that maps to an agent in the **weekly cadence** is excluded, regardless of title tag format.
 
 ### COMMAND 2 — Check the task log for incomplete runs
 
@@ -98,6 +108,7 @@ Look for any `_started.md` files that do NOT have a corresponding `_completed.md
 
 Combine results from Commands 1 and 2:
 - Agents with open/draft PRs → EXCLUDED
+- PRs whose agent cannot be derived from metadata → GLOBAL LOCK (stop scheduling this cadence)
 - Agents with `started` status less than 24 hours old (no matching `completed`/`failed`) → EXCLUDED
 
 Write your exclusion list explicitly:
@@ -164,7 +175,7 @@ You must create a visible claim before doing any work. This claim is a **distrib
 
 After pushing, re-check for competing claims:
 ```bash
-curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, titles: [.[].title]}'
+curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, prs: [.[] | {number, title, draft, created_at, head: {ref: .head.ref}, labels: [.labels[].name]}]}'
 ```
 If you see another PR for this agent that was created *before* yours, abandon your branch and go back to Step 1 to select the next agent.
 
@@ -273,7 +284,7 @@ Use the current UTC timestamp (which will be later than the `started` file). The
 
 | Layer | Mechanism | Catches |
 |-------|-----------|---------|
-| **Pre-flight gate** | Scan ALL open `[weekly]` PRs via `curl` | Agents claimed by any platform |
+| **Pre-flight gate** | Scan ALL open PR metadata via `curl` + deterministic agent mapping | Agents claimed by any platform |
 | **Pre-flight gate** | Check task log dir for `started` files | Agents in progress (even without PR) |
 | **Step 2a** | Push branch with claim commit | Cross-platform visibility |
 | **Step 2b** | Race condition re-check | Simultaneous claims |
