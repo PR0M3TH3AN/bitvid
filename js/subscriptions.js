@@ -19,7 +19,6 @@ import {
   NOTE_TYPES,
 } from "./nostrEventSchemas.js";
 import { CACHE_POLICIES, STORAGE_TIERS } from "./nostr/cachePolicies.js";
-import { getSidebarLoadingMarkup } from "./sidebarLoading.js";
 import {
   publishEventToRelays,
   assertAnyRelayAccepted
@@ -1563,8 +1562,7 @@ class SubscriptionsManager {
     const container = document.getElementById(containerId);
     if (!userPubkey) {
       if (container) {
-        container.innerHTML =
-          "<p class='text-muted-strong'>Please log in first.</p>";
+        this._renderStatusMessage(container, "Please log in first.");
       }
       this.lastRunOptions = null;
       this.lastResult = null;
@@ -1593,8 +1591,7 @@ class SubscriptionsManager {
     }
 
     if (!channelHexes.length) {
-      container.innerHTML =
-        "<p class='text-muted-strong'>No subscriptions found.</p>";
+      this._renderStatusMessage(container, "No subscriptions found.");
       this.lastRunOptions = {
         actorPubkey: userPubkey,
         limit,
@@ -1606,7 +1603,7 @@ class SubscriptionsManager {
     }
 
     if (!this.hasRenderedOnce) {
-      container.innerHTML = getSidebarLoadingMarkup("Fetching subscriptions…");
+      this._renderLoading(container, "Fetching subscriptions…");
     }
 
     this.lastRunOptions = {
@@ -1634,8 +1631,7 @@ class SubscriptionsManager {
 
     const engine = this.getFeedEngine();
     if (!engine || typeof engine.run !== "function") {
-      container.innerHTML =
-        "<p class='text-muted-strong'>Subscriptions are unavailable right now.</p>";
+      this._renderStatusMessage(container, "Subscriptions are unavailable right now.");
       this.hasRenderedOnce = true;
       return null;
     }
@@ -1714,8 +1710,7 @@ class SubscriptionsManager {
           reason: fallbackReason,
         });
       } else if (container) {
-        container.innerHTML =
-          "<p class='text-muted-strong'>Unable to load subscriptions right now.</p>";
+        this._renderStatusMessage(container, "Unable to load subscriptions right now.");
       }
       this.hasRenderedOnce = Boolean(container);
       return this.lastResult;
@@ -1904,10 +1899,11 @@ class SubscriptionsManager {
 
     const listView = this.getListView(container, app);
     if (!listView) {
-      container.innerHTML = `
-        <p class="flex justify-center items-center h-full w-full text-center text-muted-strong">
-          Unable to render subscriptions feed.
-        </p>`;
+      this._renderStatusMessage(
+        container,
+        "Unable to render subscriptions feed.",
+        "flex justify-center items-center h-full w-full text-center"
+      );
       return;
     }
 
@@ -1942,7 +1938,7 @@ class SubscriptionsManager {
         ? message.trim()
         : "No playable subscription videos found yet. We'll keep watching for new posts.";
 
-    container.innerHTML = getSidebarLoadingMarkup(copy, { showSpinner: false });
+    this._renderLoading(container, copy, false);
 
     if (this.subscriptionListView && this.subscriptionListView.state) {
       const currentMetadata =
@@ -2364,6 +2360,43 @@ class SubscriptionsManager {
 
   convertEventToVideo(evt) {
     return sharedConvertEventToVideo(evt);
+  }
+
+  _renderStatusMessage(container, message, extraClasses = "") {
+    if (!container) return;
+    container.replaceChildren();
+    const p = document.createElement("p");
+    p.className = `text-muted-strong ${extraClasses}`.trim();
+    p.textContent = message;
+    container.appendChild(p);
+  }
+
+  _renderLoading(container, message, showSpinner = true) {
+    if (!container) return;
+    container.replaceChildren();
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "sidebar-loading-wrapper";
+    wrapper.setAttribute("role", "status");
+    wrapper.setAttribute("aria-live", "polite");
+
+    const indicator = document.createElement("div");
+    indicator.className = "sidebar-loading-indicator";
+
+    if (showSpinner) {
+      const spinner = document.createElement("span");
+      spinner.className = "status-spinner status-spinner--inline";
+      spinner.setAttribute("aria-hidden", "true");
+      indicator.appendChild(spinner);
+    }
+
+    const text = document.createElement("span");
+    text.className = "sidebar-loading-text";
+    text.textContent = message;
+    indicator.appendChild(text);
+
+    wrapper.appendChild(indicator);
+    container.appendChild(wrapper);
   }
 }
 
