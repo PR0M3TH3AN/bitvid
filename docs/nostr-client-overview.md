@@ -142,3 +142,68 @@ Maintaining these invariants is critical for the stability of the application:
 3.  **Sync vs Async State**:
     *   *Don't*: Expect `client.allEvents` to be populated immediately after `init()`.
     *   *Do*: Use `restoreLocalData()` (awaited in `init`) which loads the cache, but network updates arrive asynchronously via subscriptions.
+
+## Usage Reference
+
+### Initialization
+```javascript
+import { nostrClient } from "./nostrClientFacade.js";
+
+async function boot() {
+  await nostrClient.init(); // Loads cache, then connects to relays
+}
+```
+
+### Publishing a Video
+```javascript
+const payload = {
+  title: "My Video",
+  magnet: "magnet:?xt=urn:btih:...",
+  thumbnail: "https://example.com/thumb.jpg"
+};
+
+await nostrClient.publishVideo(payload, myPubkey);
+```
+
+### Sending a DM
+```javascript
+// Auto-selects NIP-17 if attachments are present
+await nostrClient.sendDirectMessage(recipientNpub, "Check this out!", null, {
+  attachments: [{ url: "https://...", type: "image/jpeg" }]
+});
+```
+
+### Subscribing to Feed
+```javascript
+const sub = nostrClient.subscribeVideos((batch) => {
+  console.log("Received new videos:", batch.length);
+});
+
+// Later
+sub.unsub();
+```
+
+## API Summary
+
+| Category | Method | Description |
+|----------|--------|-------------|
+| **Lifecycle** | `init()` | Bootstraps cache and network connection. |
+| **Lifecycle** | `restoreLocalData()` | Loads state from IndexedDB (Stale-While-Revalidate). |
+| **Feed** | `subscribeVideos(cb)` | Streams new videos via a buffered pipeline. |
+| **Feed** | `fetchVideos(opts)` | (Legacy) One-off fetch of video list. |
+| **Publishing** | `publishVideo(payload)` | Creates a new V3 video series. |
+| **Publishing** | `editVideo(stub, data)` | Publishes a new version of an existing video. |
+| **Publishing** | `revertVideo(event)` | Soft-deletes a video (tombstone). |
+| **Publishing** | `deleteAllVersions(root)` | Hard-deletes all history (NIP-09). |
+| **DMs** | `sendDirectMessage(...)` | Sends encrypted DM (NIP-04 or NIP-17). |
+| **DMs** | `subscribeDirectMessages()` | Listens for incoming DMs. |
+| **Auth** | `loginWithExtension()` | Connects to NIP-07 extension. |
+| **Auth** | `connectRemoteSigner()` | Connects to NIP-46 bunker. |
+| **Auth** | `logout()` | Clears session and keys. |
+
+## When to Change
+
+Refactor this module when:
+*   **Protocol Upgrade**: New NIPs require changes to event kinds, tags, or signing flows.
+*   **Performance Bottlenecks**: The `activeMap` or `eventBuffer` logic becomes too slow for 10k+ events. Consider moving to a Worker or specialized store.
+*   **State Split**: If `watchHistory` or `DMs` grow too large, extract them into dedicated Managers (like `SignerManager`) to keep `NostrClient` focused on orchestration.

@@ -672,6 +672,11 @@ export class NostrClient {
     }
   }
 
+  /**
+   * Checks if the video is older than the recorded tombstone for its key.
+   * @param {object} video - The video object to check.
+   * @returns {boolean} True if the video is older than the tombstone.
+   */
   isOlderThanTombstone(video) {
     if (!video || typeof video !== "object") {
       return false;
@@ -715,10 +720,21 @@ export class NostrClient {
   }
 
 
+  /**
+   * Creates a standardized error for relays that don't support NIP-45 counts.
+   * @param {string} relayUrl - The URL of the relay.
+   * @returns {Error} The formatted error object.
+   */
   makeCountUnsupportedError(relayUrl) {
     return this.connectionManager.makeCountUnsupportedError(relayUrl);
   }
 
+  /**
+   * Resolves the "d" tag (NIP-33 identifier) for an event or video.
+   * @param {object} event - The event or video object.
+   * @param {object} [fallbackEvent] - Optional fallback event to check.
+   * @returns {string} The d-tag value or empty string.
+   */
   resolveEventDTag(event, fallbackEvent = null) {
     if (event && event.tags) {
       const dTag = getDTagValueFromTags(event.tags);
@@ -731,6 +747,11 @@ export class NostrClient {
     return "";
   }
 
+  /**
+   * Tracks the earliest creation time seen for a given video root ID.
+   * Used to establish the "genesis" timestamp of a series.
+   * @param {object} video - The video object to process.
+   */
   applyRootCreatedAt(video) {
     if (!video || typeof video !== "object") return;
     const rootId = video.videoRootId;
@@ -747,6 +768,11 @@ export class NostrClient {
     }
   }
 
+  /**
+   * Resolves the unique active key for a video (Root ID or Pubkey:DTag).
+   * @param {object} video - The video object.
+   * @returns {string} The active key.
+   */
   getActiveKey(video) {
     return getActiveKey(video);
   }
@@ -764,16 +790,39 @@ export class NostrClient {
     return this.persistenceManager.restoreLocalData();
   }
 
+  /**
+   * Gets the last seen timestamp for a syncable kind/pubkey/dTag from storage.
+   * @param {number} kind - Event kind.
+   * @param {string} pubkey - Author public key.
+   * @param {string} dTag - NIP-33 d-tag.
+   * @param {string} relayUrl - Relay URL.
+   * @returns {number} Timestamp or 0.
+   */
   getSyncLastSeen(kind, pubkey, dTag, relayUrl) {
     const effectivePubkey = pubkey || this.pubkey;
     return this.syncMetadataStore.getLastSeen(kind, effectivePubkey, dTag, relayUrl);
   }
 
+  /**
+   * Updates the last seen timestamp for a syncable item.
+   * @param {number} kind - Event kind.
+   * @param {string} pubkey - Author public key.
+   * @param {string} dTag - NIP-33 d-tag.
+   * @param {string} relayUrl - Relay URL.
+   * @param {number} createdAt - New timestamp.
+   */
   updateSyncLastSeen(kind, pubkey, dTag, relayUrl, createdAt) {
     const effectivePubkey = pubkey || this.pubkey;
     this.syncMetadataStore.updateLastSeen(kind, effectivePubkey, dTag, relayUrl, createdAt);
   }
 
+  /**
+   * Gets a map of relay URLs to timestamps for a syncable item.
+   * @param {number} kind - Event kind.
+   * @param {string} pubkey - Author public key.
+   * @param {string} dTag - NIP-33 d-tag.
+   * @returns {Object<string, number>} Map of relay URL to last seen timestamp.
+   */
   getPerRelaySyncLastSeen(kind, pubkey, dTag) {
     const effectivePubkey = pubkey || this.pubkey;
     return this.syncMetadataStore.getPerRelayLastSeen(kind, effectivePubkey, dTag);
@@ -821,6 +870,14 @@ export class NostrClient {
     });
   }
 
+  /**
+   * Updates internal relay lists based on user preferences.
+   * Sanitizes inputs and ensures default relays are present if lists are empty.
+   * @param {object} preferences - The relay preferences object.
+   * @param {string[]} [preferences.all] - All preferred relays.
+   * @param {string[]} [preferences.read] - Read relays.
+   * @param {string[]} [preferences.write] - Write relays.
+   */
   applyRelayPreferences(preferences = {}) {
     const normalizedPrefs =
       preferences && typeof preferences === "object" ? preferences : {};
@@ -1113,10 +1170,18 @@ export class NostrClient {
     return this.connectionManager.getHealthyRelays(candidates);
   }
 
+  /**
+   * Returns the max size of the DM decryption cache.
+   * @returns {number}
+   */
   getDmDecryptCacheLimit() {
     return DM_DECRYPT_CACHE_LIMIT;
   }
 
+  /**
+   * Returns stats for the DM decryption cache (size, hits, misses).
+   * @returns {object|null}
+   */
   getDmDecryptCacheStats() {
     if (!this.dmDecryptCache || typeof this.dmDecryptCache.getStats !== "function") {
       return null;
@@ -1124,12 +1189,19 @@ export class NostrClient {
     return this.dmDecryptCache.getStats();
   }
 
+  /**
+   * Clears the DM decryption cache.
+   */
   clearDmDecryptCache() {
     if (this.dmDecryptCache) {
       this.dmDecryptCache.clear();
     }
   }
 
+  /**
+   * Lazily loads the DM decryptor module.
+   * @returns {Promise<function>} The `decryptDM` function.
+   */
   async ensureDmDecryptor() {
     if (this.dmDecryptor) {
       return this.dmDecryptor;
@@ -1153,6 +1225,13 @@ export class NostrClient {
     return this.dmDecryptorPromise;
   }
 
+  /**
+   * Builds the decryption context (strategies) for a user.
+   * Resolves NIP-04/NIP-44 capabilities from signers, extensions, or workers.
+   *
+   * @param {string|null} [actorPubkeyInput] - The user viewing the DMs.
+   * @returns {Promise<{actorPubkey: string, decryptors: object[]}>}
+   */
   async buildDmDecryptContext(actorPubkeyInput = null) {
     let normalizedActor = normalizeActorKey(actorPubkeyInput);
     if (!normalizedActor && typeof this.pubkey === "string" && this.pubkey) {
@@ -1331,6 +1410,14 @@ export class NostrClient {
     return { actorPubkey: normalizedActor, decryptors };
   }
 
+  /**
+   * Decrypts a single DM event using the best available strategy.
+   *
+   * @param {object} event - The DM event (Kind 4 or 1059).
+   * @param {object} [options]
+   * @param {string} [options.actorPubkey] - The viewer's pubkey.
+   * @returns {Promise<object>} Decryption result (ok, content, etc.).
+   */
   async decryptDirectMessageEvent(event, { actorPubkey } = {}) {
     const eventId = typeof event?.id === "string" ? event.id : "";
     if (eventId) {
@@ -1478,6 +1565,17 @@ export class NostrClient {
     });
   }
 
+  /**
+   * Subscribes to Direct Messages (NIP-04 and NIP-17) for the active user.
+   * Handles decryption automatically.
+   *
+   * @param {string|null} [actorPubkeyInput] - The public key of the user (defaults to logged-in).
+   * @param {object} [options] - Subscription options.
+   * @param {function} [options.onEvent] - Raw event callback.
+   * @param {function} [options.onMessage] - Decrypted message callback.
+   * @param {function} [options.onFailure] - Decryption failure callback.
+   * @returns {import("nostr-tools").Sub} The subscription object.
+   */
   subscribeDirectMessages(actorPubkeyInput = null, options = {}) {
     if (!this.pool) {
       throw new Error("nostr pool is not initialized");
@@ -2572,6 +2670,11 @@ export class NostrClient {
     return this.signerManager.derivePrivateKeyFromSecret(secret);
   }
 
+  /**
+   * Initiates a login flow using a browser extension (NIP-07).
+   * @param {object} options - Login options.
+   * @returns {Promise<object>} The active signer instance.
+   */
   async loginWithExtension(options) {
     // Check if ensureExtensionPermissions was overridden on this instance (e.g. by tests).
     // Only proxy when the own property differs from the prototype method to avoid recursion.
@@ -2594,30 +2697,64 @@ export class NostrClient {
     return this.signerManager.loginWithExtension(options);
   }
 
+  /**
+   * Installs a NIP-46 client instance (for remote signing).
+   * @param {object} client - The NIP-46 client.
+   * @param {object} options - Install options.
+   */
   installNip46Client(client, options) {
     return this.signerManager.installNip46Client(client, options);
   }
 
+  /**
+   * Connects to a NIP-46 remote signer (Bunker).
+   * @param {object} params - Connection params (bunker URL, secret, etc.).
+   * @returns {Promise<object>} The connected signer.
+   */
   async connectRemoteSigner(params) {
     return this.signerManager.connectRemoteSigner(params);
   }
 
+  /**
+   * Attempts to restore a previously connected NIP-46 session.
+   * @param {object} options
+   * @returns {Promise<boolean>} True if restored.
+   */
   async useStoredRemoteSigner(options) {
     return this.signerManager.useStoredRemoteSigner(options);
   }
 
+  /**
+   * Gets the current status of the NIP-46 connection.
+   * @returns {object} Status object.
+   */
   getRemoteSignerStatus() {
     return this.signerManager.getRemoteSignerStatus();
   }
 
+  /**
+   * Subscribes to changes in the remote signer connection status.
+   * @param {function} listener - The callback function.
+   * @returns {function} Unsubscribe function.
+   */
   onRemoteSignerChange(listener) {
     return this.signerManager.onRemoteSignerChange(listener);
   }
 
+  /**
+   * Reads stored NIP-46 metadata (relays, pubkey) from local storage.
+   * @returns {object|null}
+   */
   getStoredNip46Metadata() {
     return this.signerManager.getStoredNip46Metadata();
   }
 
+  /**
+   * Requests specific NIP-07 permissions from the browser extension.
+   * @param {string[]} requiredMethods - List of methods (e.g., "sign_event").
+   * @param {object} options - Request options.
+   * @returns {Promise<{ok: boolean, error?: string}>}
+   */
   async ensureExtensionPermissions(
     requiredMethods,
     options,
@@ -2625,18 +2762,35 @@ export class NostrClient {
     return this.signerManager.ensureExtensionPermissions(requiredMethods, options);
   }
 
+  /**
+   * Schedules a background check to restore a remote signer session.
+   * @returns {Promise<void>}
+   */
   async scheduleStoredRemoteSignerRestore() {
     return this.signerManager.scheduleStoredRemoteSignerRestore();
   }
 
+  /**
+   * Disconnects the current NIP-46 remote signer.
+   * @param {object} options
+   */
   async disconnectRemoteSigner(options) {
     return this.signerManager.disconnectRemoteSigner(options);
   }
 
+  /**
+   * Ensures an ephemeral session actor (keypair) exists for the current session.
+   * Used for read receipts and other non-critical events when not logged in.
+   * @param {boolean} force - Force regeneration.
+   * @returns {Promise<object>} The session actor.
+   */
   async ensureSessionActor(force) {
     return this.signerManager.ensureSessionActor(force);
   }
 
+  /**
+   * Clears the stored session actor from local storage.
+   */
   clearStoredSessionActor() {
     return this.signerManager.clearStoredSessionActor();
   }
@@ -3210,6 +3364,13 @@ export class NostrClient {
     return this.persistenceManager.saveLocalData(reason, options);
   }
 
+  /**
+   * Normalizes the limit for video requests to prevent over-fetching.
+   * Clamps between 1 and MAX_VIDEO_REQUEST_LIMIT.
+   * @param {number} limit - Requested limit.
+   * @param {number} [fallback] - Default if limit is invalid.
+   * @returns {number} The clamped limit.
+   */
   clampVideoRequestLimit(limit, fallback = DEFAULT_VIDEO_REQUEST_LIMIT) {
     const normalizedFallback =
       Number.isFinite(fallback) && fallback > 0
@@ -3232,6 +3393,11 @@ export class NostrClient {
     return clamped;
   }
 
+  /**
+   * Finds the timestamp of the most recent video event in the local cache.
+   * Used for "since" filters when reconnecting to relays.
+   * @returns {number} Timestamp or 0.
+   */
   getLatestCachedCreatedAt() {
     let latest = 0;
     const now = Math.floor(Date.now() / 1000);
@@ -3636,6 +3802,12 @@ export class NostrClient {
     return video;
   }
 
+  /**
+   * Publishes a Kind 6 Repost event for the given event ID.
+   * @param {string} eventId - The ID of the event to repost.
+   * @param {object} options
+   * @returns {Promise<object>} The published event.
+   */
   async repostEvent(eventId, options = {}) {
     return repostEventHelper({
       client: this,
@@ -3648,6 +3820,12 @@ export class NostrClient {
     });
   }
 
+  /**
+   * Mirrors a video event to a NIP-94 (File Header) event.
+   * @param {string} eventId - The ID of the source video event.
+   * @param {object} options
+   * @returns {Promise<object>} The published mirror event.
+   */
   async mirrorVideoEvent(eventId, options = {}) {
     return mirrorVideoEventHelper({
       client: this,
@@ -3660,22 +3838,53 @@ export class NostrClient {
     });
   }
 
+  /**
+   * Re-broadcasts an existing raw event to all connected relays.
+   * @param {string} eventId
+   * @param {object} options
+   * @returns {Promise<object>} Publish results.
+   */
   async rebroadcastEvent(eventId, options = {}) {
     return rebroadcastEventHelper({ client: this, eventId, options });
   }
 
+  /**
+   * Resolves the effective timeout for relay requests.
+   * @param {number} timeoutMs
+   * @returns {number}
+   */
   getRequestTimeoutMs(timeoutMs) {
     return this.connectionManager.getRequestTimeoutMs(timeoutMs);
   }
 
+  /**
+   * Sends a raw NIP-45 COUNT request to a specific relay.
+   * @param {string} relayUrl
+   * @param {object[]} filters
+   * @param {object} options
+   * @returns {Promise<number>} The count result.
+   */
   async sendRawCountFrame(relayUrl, filters, options = {}) {
     return this.connectionManager.sendRawCountFrame(relayUrl, filters, options);
   }
 
+  /**
+   * Aggregates NIP-45 counts from multiple relays.
+   * @param {object[]} filters
+   * @param {object} options
+   * @returns {Promise<number>} The max count found.
+   */
   async countEventsAcrossRelays(filters, options = {}) {
     return this.connectionManager.countEventsAcrossRelays(filters, options);
   }
 
+  /**
+   * Internal helper to validate, parse, and cache a raw event.
+   * Handles tombstone checks, root ID resolution, and NIP-71 merging.
+   * @param {object} evt - The raw Nostr event.
+   * @returns {object|null} The parsed video object or null if invalid/deleted.
+   * @private
+   */
   _processAndCacheEvent(evt) {
     if (!evt || !evt.id) return null;
     try {
@@ -3700,6 +3909,12 @@ export class NostrClient {
     }
   }
 
+  /**
+   * Scans the local `allEvents` cache for versions of the given video.
+   * Matches by Root ID or D-Tag.
+   * @param {object} video - The target video.
+   * @returns {object[]} List of matching video objects found in memory.
+   */
   getLocalVideoHistory(video) {
     if (!video || typeof video !== "object") return [];
 
@@ -3960,12 +4175,20 @@ export class NostrClient {
     return localMatches;
   }
 
+  /**
+   * Returns a sorted list of all active (non-deleted, latest-version) videos.
+   * @returns {object[]} Sorted by created_at (desc).
+   */
   getActiveVideos() {
     return Array.from(this.activeMap.values()).sort(
       (a, b) => b.created_at - a.created_at
     );
   }
 
+  /**
+   * Global event handler for non-video events (e.g. Kind 0 profiles).
+   * @param {object} event
+   */
   handleEvent(event) {
     if (!event || typeof event !== "object") return;
 
