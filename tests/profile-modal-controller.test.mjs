@@ -312,6 +312,8 @@ function createController(options = {}) {
       eventId: null,
       createdAt: null,
       loaded: true,
+      uiReady: true,
+      dataReady: true,
     }),
     describeHashtagPreferencesError: () => '',
     onAccessControlUpdated: async () => {},
@@ -961,7 +963,7 @@ for (const _ of [0]) {
       const interestList = document.getElementById('profileHashtagInterestList');
       assert.equal(interestList?.querySelectorAll('li').length, 1);
 
-      controller.hashtagPreferencesService.removeInterest('art');
+      controller.services.hashtagPreferences.removeInterest('art');
       await controller.handleAuthLogout({});
       await waitForAnimationFrame(window, 2);
 
