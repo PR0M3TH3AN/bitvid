@@ -5,178 +5,180 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Agent Coordination Dashboard &bull; bitvid dev</title>
-    <link rel="stylesheet" href="../../css/tailwind.generated.css" />
-    <style>
-      /*
-       * Minimal overrides that cannot be expressed via Tailwind utilities.
-       * Everything else uses design-token classes from tokens.css.
-       */
-      .lock-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-        gap: 1rem;
-      }
-      .pulse-dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        animation: pulse-ring 2s ease-in-out infinite;
-      }
-      @keyframes pulse-ring {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.4; }
-      }
-      .ttl-bar {
-        height: 4px;
-        border-radius: 2px;
-        transition: width 1s linear;
-      }
-      .mono {
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-          "Liberation Mono", "Courier New", monospace;
-      }
-    </style>
   </head>
-  <body class="bg-surface text-text min-h-screen">
-    <main class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <!-- Header -->
-      <header class="mb-8">
-        <div class="flex items-center gap-3 mb-2">
-          <h1 class="text-2xl font-semibold text-text-strong">
-            TORCH Agent Dashboard
-          </h1>
-          <span
-            id="connectionStatus"
-            class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-surface-alt text-muted"
-          >
-            <span class="pulse-dot bg-muted"></span>
-            Connecting&hellip;
-          </span>
-        </div>
-        <p class="text-muted text-sm max-w-prose">
-          Live view of
-          <a
-            href="../../docs/agents/TORCH.md"
-            class="text-info hover:text-info-strong"
-            >TORCH</a
-          >
-          lock events published by AI agents working on this repository. Events
-          are kind <code class="mono text-xs">30078</code> filtered by the
-          <code class="mono text-xs">#bitvid-agent-lock</code> hashtag on public
-          Nostr relays.
-        </p>
-      </header>
+  <body>
+    <div class="bg-surface text-text min-h-screen">
+      <style>
+        /*
+         * Minimal overrides that cannot be expressed via Tailwind utilities.
+         * Everything else uses design-token classes from tokens.css.
+         */
+        .lock-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+          gap: 1rem;
+        }
+        .pulse-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          animation: pulse-ring 2s ease-in-out infinite;
+        }
+        @keyframes pulse-ring {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.4; }
+        }
+        .ttl-bar {
+          height: 4px;
+          border-radius: 2px;
+          transition: width 1s linear;
+        }
+        .mono {
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+            "Liberation Mono", "Courier New", monospace;
+        }
+      </style>
 
-      <!-- Controls -->
-      <div
-        class="flex flex-wrap items-center gap-4 mb-6 p-4 rounded-lg bg-surface-alt"
-      >
-        <div class="flex items-center gap-2">
-          <label for="cadenceFilter" class="text-sm font-medium text-text"
-            >Cadence</label
-          >
-          <select
-            id="cadenceFilter"
-            class="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text focus:outline-none focus:ring-2 focus:ring-accent"
-          >
-            <option value="all">All</option>
-            <option value="daily" selected>Daily</option>
-            <option value="weekly">Weekly</option>
-          </select>
-        </div>
+      <div role="main" class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <!-- Header -->
+        <header class="mb-8">
+          <div class="flex items-center gap-3 mb-2">
+            <h1 class="text-2xl font-semibold text-text-strong">
+              TORCH Agent Dashboard
+            </h1>
+            <span
+              id="connectionStatus"
+              class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-surface-alt text-muted"
+            >
+              <span class="pulse-dot bg-muted"></span>
+              Connecting&hellip;
+            </span>
+          </div>
+          <p class="text-muted text-sm max-w-prose">
+            Live view of
+            <a
+              href="docs/agents/TORCH.md"
+              class="text-info hover:text-info-strong"
+              >TORCH</a
+            >
+            lock events published by AI agents working on this repository. Events
+            are kind <code class="mono text-xs">30078</code> filtered by the
+            <code class="mono text-xs">#bitvid-agent-lock</code> hashtag on public
+            Nostr relays.
+          </p>
+        </header>
 
-        <div class="flex items-center gap-2">
-          <label for="statusFilter" class="text-sm font-medium text-text"
-            >Status</label
-          >
-          <select
-            id="statusFilter"
-            class="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text focus:outline-none focus:ring-2 focus:ring-accent"
-          >
-            <option value="active" selected>Active only</option>
-            <option value="all">All (incl. expired)</option>
-          </select>
-        </div>
-
-        <div class="flex items-center gap-2 ml-auto">
-          <span id="eventCount" class="text-xs text-muted mono">0 events</span>
-          <button
-            id="refreshBtn"
-            type="button"
-            class="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-strong focus:outline-none focus:ring-2 focus:ring-accent transition-colors"
-          >
-            Refresh
-          </button>
-        </div>
-      </div>
-
-      <!-- Summary bar -->
-      <div
-        id="summaryBar"
-        class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6"
-      ></div>
-
-      <!-- Lock cards -->
-      <div id="lockGrid" class="lock-grid mb-8">
-        <p id="emptyState" class="text-muted col-span-full text-center py-12">
-          Waiting for lock events from relays&hellip;
-        </p>
-      </div>
-
-      <!-- Raw event log -->
-      <details class="rounded-lg border border-border">
-        <summary
-          class="cursor-pointer px-4 py-3 text-sm font-medium text-text hover:bg-surface-alt"
-        >
-          Raw event log
-        </summary>
+        <!-- Controls -->
         <div
-          id="rawLog"
-          class="max-h-96 overflow-y-auto p-4 mono text-xs text-muted bg-surface-alt"
+          class="flex flex-wrap items-center gap-4 mb-6 p-4 rounded-lg bg-surface-alt"
         >
-          <p>Events will appear here as they arrive&hellip;</p>
-        </div>
-      </details>
+          <div class="flex items-center gap-2">
+            <label for="cadenceFilter" class="text-sm font-medium text-text"
+              >Cadence</label
+            >
+            <select
+              id="cadenceFilter"
+              class="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text focus:outline-none focus:ring-2 focus:ring-accent"
+            >
+              <option value="all">All</option>
+              <option value="daily" selected>Daily</option>
+              <option value="weekly">Weekly</option>
+            </select>
+          </div>
 
-      <!-- Relay info -->
-      <footer class="mt-8 pt-6 border-t border-border">
-        <h2 class="text-sm font-semibold text-text mb-2">
-          How this works
-        </h2>
-        <div class="text-xs text-muted space-y-1 max-w-prose">
-          <p>
-            This dashboard subscribes to Nostr relays for
-            <strong>kind 30078</strong> events tagged with
-            <code class="mono">#bitvid-agent-lock</code>. These are the same
-            events agents publish via
-            <code class="mono">scripts/agent/nostr-lock.mjs</code> when they
-            claim tasks using the TORCH protocol.
-          </p>
-          <p>
-            <strong>Relays:</strong>
-            <code class="mono">wss://relay.damus.io</code>,
-            <code class="mono">wss://nos.lol</code>,
-            <code class="mono">wss://relay.primal.net</code>
-          </p>
-          <p>
-            <strong>Filter:</strong>
-            <code class="mono">{"kinds":[30078],"#t":["bitvid-agent-lock"]}</code>
-          </p>
-          <p>
-            <strong>Unique identifier:</strong> All events use the
-            <code class="mono">bitvid-lock/</code> namespace in the d-tag and
-            the <code class="mono">#bitvid-agent-lock</code> hashtag. This
-            scopes events to this repository and is how both agents and this
-            dashboard filter messages.
-          </p>
-          <p>
-            To follow in any Nostr client, subscribe to kind 30078 with
-            <code class="mono">#t = bitvid-agent-lock</code> on the relays
-            above.
+          <div class="flex items-center gap-2">
+            <label for="statusFilter" class="text-sm font-medium text-text"
+              >Status</label
+            >
+            <select
+              id="statusFilter"
+              class="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text focus:outline-none focus:ring-2 focus:ring-accent"
+            >
+              <option value="active" selected>Active only</option>
+              <option value="all">All (incl. expired)</option>
+            </select>
+          </div>
+
+          <div class="flex items-center gap-2 ml-auto">
+            <span id="eventCount" class="text-xs text-muted mono">0 events</span>
+            <button
+              id="refreshBtn"
+              type="button"
+              class="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-strong focus:outline-none focus:ring-2 focus:ring-accent transition-colors"
+            >
+              Refresh
+            </button>
+          </div>
+        </div>
+
+        <!-- Summary bar -->
+        <div
+          id="summaryBar"
+          class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6"
+        ></div>
+
+        <!-- Lock cards -->
+        <div id="lockGrid" class="lock-grid mb-8">
+          <p id="emptyState" class="text-muted col-span-full text-center py-12">
+            Waiting for lock events from relays&hellip;
           </p>
         </div>
-      </footer>
-    </main>
+
+        <!-- Raw event log -->
+        <details class="rounded-lg border border-border">
+          <summary
+            class="cursor-pointer px-4 py-3 text-sm font-medium text-text hover:bg-surface-alt"
+          >
+            Raw event log
+          </summary>
+          <div
+            id="rawLog"
+            class="max-h-96 overflow-y-auto p-4 mono text-xs text-muted bg-surface-alt"
+          >
+            <p>Events will appear here as they arrive&hellip;</p>
+          </div>
+        </details>
+
+        <!-- Relay info -->
+        <footer class="mt-8 pt-6 border-t border-border">
+          <h2 class="text-sm font-semibold text-text mb-2">
+            How this works
+          </h2>
+          <div class="text-xs text-muted space-y-1 max-w-prose">
+            <p>
+              This dashboard subscribes to Nostr relays for
+              <strong>kind 30078</strong> events tagged with
+              <code class="mono">#bitvid-agent-lock</code>. These are the same
+              events agents publish via
+              <code class="mono">scripts/agent/nostr-lock.mjs</code> when they
+              claim tasks using the TORCH protocol.
+            </p>
+            <p>
+              <strong>Relays:</strong>
+              <code class="mono">wss://relay.damus.io</code>,
+              <code class="mono">wss://nos.lol</code>,
+              <code class="mono">wss://relay.primal.net</code>
+            </p>
+            <p>
+              <strong>Filter:</strong>
+              <code class="mono">{"kinds":[30078],"#t":["bitvid-agent-lock"]}</code>
+            </p>
+            <p>
+              <strong>Unique identifier:</strong> All events use the
+              <code class="mono">bitvid-lock/</code> namespace in the d-tag and
+              the <code class="mono">#bitvid-agent-lock</code> hashtag. This
+              scopes events to this repository and is how both agents and this
+              dashboard filter messages.
+            </p>
+            <p>
+              To follow in any Nostr client, subscribe to kind 30078 with
+              <code class="mono">#t = bitvid-agent-lock</code> on the relays
+              above.
+            </p>
+          </div>
+        </footer>
+      </div>
+    </div>
 
     <script type="module">
       // -----------------------------------------------------------------------
@@ -199,6 +201,8 @@
       /** @type {WebSocket[]} */
       const sockets = [];
       let connectedCount = 0;
+      let refreshIntervalId = null;
+      let isTeardown = false;
 
       // DOM refs
       const connectionStatus = document.getElementById('connectionStatus');
@@ -210,6 +214,39 @@
       const cadenceFilter = document.getElementById('cadenceFilter');
       const statusFilter = document.getElementById('statusFilter');
       const refreshBtn = document.getElementById('refreshBtn');
+
+      // -----------------------------------------------------------------------
+      // Cleanup check
+      // -----------------------------------------------------------------------
+      function isAlive() {
+        if (isTeardown) return false;
+        // Check if our root element is still in the DOM
+        const stillInDom = document.body.contains(lockGrid);
+        if (!stillInDom) {
+          teardown();
+          return false;
+        }
+        return true;
+      }
+
+      function teardown() {
+        if (isTeardown) return;
+        isTeardown = true;
+
+        if (refreshIntervalId) {
+          clearInterval(refreshIntervalId);
+          refreshIntervalId = null;
+        }
+
+        for (const ws of sockets) {
+          try {
+            ws.close();
+          } catch {
+            // ignore
+          }
+        }
+        sockets.length = 0;
+      }
 
       // -----------------------------------------------------------------------
       // Helpers
@@ -351,6 +388,8 @@
       }
 
       function renderLocks() {
+        if (!isAlive()) return;
+
         const locks = getFilteredLocks();
         const now = nowUnix();
 
@@ -427,6 +466,8 @@
       // -----------------------------------------------------------------------
       let rawLogInitialized = false;
       function appendRawLog(event) {
+        if (!isAlive()) return;
+
         if (!rawLogInitialized) {
           rawLog.innerHTML = '';
           rawLogInitialized = true;
@@ -447,6 +488,7 @@
       // WebSocket relay connections
       // -----------------------------------------------------------------------
       function updateConnectionBadge() {
+        if (!connectionStatus) return;
         const dot = connectionStatus.querySelector('.pulse-dot');
         if (connectedCount === RELAYS.length) {
           connectionStatus.className =
@@ -467,10 +509,13 @@
       }
 
       function connectToRelay(url) {
+        if (!isAlive()) return;
+
         const ws = new WebSocket(url);
         const subId = 'bv-dash-' + Math.random().toString(36).slice(2, 8);
 
         ws.addEventListener('open', () => {
+          if (!isAlive()) return;
           connectedCount++;
           updateConnectionBadge();
 
@@ -487,6 +532,8 @@
         });
 
         ws.addEventListener('message', (msg) => {
+          if (!isAlive()) return;
+
           let data;
           try {
             data = JSON.parse(msg.data);
@@ -516,11 +563,17 @@
         });
 
         ws.addEventListener('close', () => {
+          if (isTeardown) return;
+
           connectedCount = Math.max(0, connectedCount - 1);
           updateConnectionBadge();
 
-          // Auto-reconnect after 5 seconds
-          setTimeout(() => connectToRelay(url), 5000);
+          // Auto-reconnect after 5 seconds if still alive
+          setTimeout(() => {
+            if (isAlive()) {
+              connectToRelay(url);
+            }
+          }, 5000);
         });
 
         ws.addEventListener('error', () => {
@@ -533,14 +586,18 @@
       // -----------------------------------------------------------------------
       // Periodic TTL refresh
       // -----------------------------------------------------------------------
-      setInterval(renderLocks, 30_000);
+      refreshIntervalId = setInterval(() => {
+        if (isAlive()) {
+          renderLocks();
+        }
+      }, 30_000);
 
       // -----------------------------------------------------------------------
       // Event handlers
       // -----------------------------------------------------------------------
-      cadenceFilter.addEventListener('change', renderLocks);
-      statusFilter.addEventListener('change', renderLocks);
-      refreshBtn.addEventListener('click', () => {
+      if (cadenceFilter) cadenceFilter.addEventListener('change', renderLocks);
+      if (statusFilter) statusFilter.addEventListener('change', renderLocks);
+      if (refreshBtn) refreshBtn.addEventListener('click', () => {
         // Close existing connections and reconnect
         for (const ws of sockets) {
           try {
@@ -560,6 +617,8 @@
       // Init
       // -----------------------------------------------------------------------
       function init() {
+        if (!isAlive()) return;
+
         for (const url of RELAYS) {
           connectToRelay(url);
         }

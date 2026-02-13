@@ -519,4 +519,5 @@ export const FEED_TYPES = Object.freeze({
   CHANNEL: "channel-profile",
   DOCS: "docs",
   SEARCH: "search",
+  DEV_DASHBOARD: "dev/agent-dashboard",
 });
