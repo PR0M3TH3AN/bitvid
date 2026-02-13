@@ -10,8 +10,6 @@ import { CACHE_POLICIES } from "./cachePolicies.js";
 import { NOTE_TYPES } from "../nostrEventSchemas.js";
 import { queueSignEvent } from "./signRequestQueue.js";
 import { sanitizeRelayList as sanitizeRelayUrls } from "./nip46Client.js";
-import { pMap } from "../utils/asyncUtils.js";
-import { RELAY_BACKGROUND_CONCURRENCY } from "./relayConstants.js";
 
 const CACHE_POLICY = CACHE_POLICIES[NOTE_TYPES.VIDEO_REACTION];
 const reactionCache = new LRUCache({ maxSize: 100 });
