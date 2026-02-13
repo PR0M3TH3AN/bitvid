@@ -312,6 +312,8 @@ function createController(options = {}) {
       eventId: null,
       createdAt: null,
       loaded: true,
+      uiReady: true,
+      dataReady: true,
     }),
     describeHashtagPreferencesError: () => '',
     onAccessControlUpdated: async () => {},

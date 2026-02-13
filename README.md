@@ -165,11 +165,9 @@ To run **bitvid** locally:
 
    _(Note: The application runs via `npx serve`. The default port is 3000, but it may select a different port if 3000 is occupied. Check your terminal output for the correct URL.)_
 
-   _Note: If you prefer manual steps, run `npm run build` followed by `npx serve dist` (or `cd dist && python3 -m http.server 3000`), then open the root URL printed by the server (for example `http://localhost:3000/`). Because `dist` is the document root in this mode, always open `/` rather than appending `/dist`._
+   _Note: If you prefer manual steps, run `npm run build` followed by `npx serve dist`. Because `dist` is the document root in this mode, always open `/` rather than appending `/dist`._
 
-   _If you use a static server from the repository root (for example VS Code Live Server or `python3 -m http.server`), open `http://127.0.0.1:8000/dist/` with the trailing slash. `http://127.0.0.1:8000/dist` (no trailing slash) can resolve incorrectly depending on server routing._
-
-   _Optional: Add a local rewrite/redirect rule from `/dist` → `/dist/` so manual local testing always lands on the correct path._
+   _If you use a static server from the repository root (for example VS Code Live Server or `python3 -m http.server`), open `http://127.0.0.1:8000/dist/` with the trailing slash._
 
 5. Verify setup:
 
@@ -188,6 +186,7 @@ To run **bitvid** locally:
 - **Run unit tests**: `npm run test:unit`
 - **Format code**: `npm run format` (CSS, HTML, MD, Config - no JS logic)
 - **Lint code**: `npm run lint` (Styles, Tokens, Hex, Tailwind guards, file size, innerHTML, assets, SW compat - no ESLint/logic linting)
+- **Visual tests**: `npm run test:visual` (Playwright snapshots)
 
 ### Dev Container
 
