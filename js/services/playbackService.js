@@ -257,6 +257,10 @@ const getTorrentErrorMessage = (error) => {
 };
 
 export class PlaybackService {
+  /**
+   * Creates a new PlaybackService instance.
+   * @param {Object} config - Configuration options (logger, torrentClient, callbacks, etc.)
+   */
   constructor({
     logger,
     torrentClient,
@@ -352,6 +356,16 @@ export class PlaybackService {
     this.probeCache.set(cacheKey, { result, expiresAt: now + ttl });
   }
 
+  /**
+   * Probes a hosted URL via a HEAD request to check availability.
+   * Caches results to avoid redundant network calls.
+   *
+   * @param {Object} params
+   * @param {string} params.url - The URL to probe
+   * @param {string} [params.magnet] - Optional magnet URI (part of cache key)
+   * @param {Function} [params.probeUrl] - Function to perform the actual HEAD request
+   * @returns {Promise<{outcome: string, status?: number, error?: Error}>}
+   */
   async probeHostedUrl({ url, magnet, probeUrl } = {}) {
     const sanitizedUrl = typeof url === "string" ? url.trim() : "";
     if (!sanitizedUrl) {
@@ -537,6 +551,17 @@ export class PlaybackService {
     }
   }
 
+  /**
+   * Creates a new playback session for a specific video request.
+   * Sets the new session as the `currentSession`.
+   *
+   * @param {Object} options - Session options
+   * @param {string} [options.url] - Direct playback URL
+   * @param {string} [options.magnet] - Magnet URI
+   * @param {string} [options.requestSignature] - Unique ID for this request (to prevent races)
+   * @param {HTMLVideoElement} [options.videoElement] - Target video element
+   * @returns {PlaybackSession} The new active session
+   */
   createSession(options = {}) {
     const session = new PlaybackSession(this, {
       ...options,
@@ -561,6 +586,11 @@ export class PlaybackService {
  * or if it needs to spin up a new one.
  */
 class PlaybackSession extends SimpleEventEmitter {
+  /**
+   * Represents a single video playback attempt.
+   * @param {PlaybackService} service - Parent service
+   * @param {Object} options - Configuration for this session
+   */
   constructor(service, options = {}) {
     super((message, ...args) => service.log(message, ...args));
     this.service = service;
@@ -727,6 +757,7 @@ class PlaybackSession extends SimpleEventEmitter {
   /**
    * Begins the playback flow. Returns a promise that resolves when playback
    * has either successfully started (URL or Torrent) or fatally failed.
+   * @returns {Promise<{source: string, error?: Error}>}
    */
   async start() {
     if (this.startPromise) {
@@ -738,14 +769,14 @@ class PlaybackSession extends SimpleEventEmitter {
 
   /**
    * The core execution loop for the session.
+   *
    * Flow:
-   * 1. Check if forced source (e.g. user manually switched to "Torrent")
-   * 2. If URL available & URL-first enabled:
-   *    a. Probe the URL (HEAD request) to see if it's reachable.
-   *    b. If probe succeeds, attempt to play.
-   *    c. Attach watchdogs.
-   *    d. If watchdog triggers (stall/error), trigger `startTorrentFallback`.
-   * 3. If URL fails or not available, call `startTorrentFallback`.
+   * 1. **Preparation**: Clean up old sessions, unmute video, parse webseeds.
+   * 2. **Decision**: Check `forcedSource` or `urlFirstEnabled` config.
+   * 3. **Primary Attempt**: Try URL (probe -> play -> watchdog).
+   * 4. **Fallback Attempt**: Try Torrent if URL fails or stalls.
+   *
+   * @returns {Promise<{source: string, error?: Error, reason?: string}>}
    */
   async execute() {
     const {
@@ -775,6 +806,7 @@ class PlaybackSession extends SimpleEventEmitter {
     this.emit("session-start", detail);
 
     try {
+      // Step 1: Clean up previous session artifacts
       if (typeof waitForCleanup === "function") {
         await waitForCleanup();
       }
@@ -792,6 +824,7 @@ class PlaybackSession extends SimpleEventEmitter {
 
       this.emit("status", { message: "Preparing video..." });
 
+      // Step 2: Prepare Video Element
       if (typeof clearActiveIntervals === "function") {
         clearActiveIntervals();
       }
@@ -878,8 +911,14 @@ class PlaybackSession extends SimpleEventEmitter {
         }
       };
 
+      // Step 3: Define Strategies
+
       // --- Attempt Torrent Logic ---
       let torrentAttempted = false;
+      /**
+       * Strategy: Try to play via WebTorrent (P2P).
+       * @param {string} reason - Why we are falling back to torrent (e.g., "stall", "url-missing")
+       */
       const attemptTorrentPlayback = async (reason) => {
         if (torrentAttempted) return null;
         torrentAttempted = true;
@@ -928,6 +967,10 @@ class PlaybackSession extends SimpleEventEmitter {
       };
 
       // --- Attempt URL Logic ---
+      /**
+       * Strategy: Try to play via direct URL (HTTP/HTTPS).
+       * Includes probing and watchdog monitoring.
+       */
       const attemptHostedPlayback = async () => {
         if (!httpsUrl) return null;
 
@@ -1149,6 +1192,8 @@ class PlaybackSession extends SimpleEventEmitter {
             });
         });
       };
+
+      // Step 4: Execute Strategy (The Decision Matrix)
 
       // --- Execution Flow ---
 
