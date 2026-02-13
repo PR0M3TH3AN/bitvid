@@ -244,32 +244,37 @@ When you create a PR or start work, leave a clear signal:
 - **PR title prefix**: Use a descriptive prefix like `[nostr-core]`, `[playback]`, `[ui]`, `[ci]` so the scope is visible at a glance.
 - **PR description**: Include a "Files Modified" section listing the key files touched, so other agents can quickly detect conflicts.
 
-### Task Claiming Protocol (Draft PR Lock)
+### Task Claiming Protocol (TORCH)
 
-To prevent multiple agents from working on the same task simultaneously, every agent must **check open PRs and create a claim** before starting work. The claim (pushed branch + `started` log file) acts as a distributed lock visible to all agents across all platforms (Claude Code, Codex, Jules).
+Task coordination uses **TORCH** (Task Orchestration via Relay-Coordinated Handoff) — a decentralized locking protocol built on Nostr. Agents publish ephemeral lock events to public relays; locks auto-expire via NIP-40. No tokens, no secrets, no git push required. Works across all platforms (Claude Code, Codex, Jules). See `docs/agents/TORCH.md` for the full protocol documentation.
 
 **Before starting any task:**
 
-1. **Check for existing claims.** Search for open PRs matching the task:
+1. **Check for existing claims:**
+   ```bash
+   node scripts/agent/nostr-lock.mjs check --cadence <daily|weekly>
    ```
-   curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, titles: [.[].title]}'
-   ```
-   If a matching PR exists (open or draft) for the same agent or subsystem, **skip the task** — another agent is already working on it.
+   Returns JSON with `locked` (claimed agents) and `available` (free agents) arrays. If an agent appears in the `locked` list, **skip it**.
 
-2. **Claim the task.** If no matching PR exists:
-   a. Create your working branch.
-   b. Make a minimal initial commit (e.g., create a `context/CONTEXT_<timestamp>.md` with the task scope).
-   c. Create a `started` log file in the appropriate task-log directory.
-   d. Push the branch immediately to make the claim visible.
-   e. Only after the branch is pushed and the claim is visible, begin the actual work.
-
-3. **Handle race conditions.** After pushing your claim, re-check for duplicates:
+2. **Claim the task:**
+   ```bash
+   AGENT_PLATFORM=<jules|claude-code|codex> \
+   node scripts/agent/nostr-lock.mjs lock \
+     --agent <agent-name> \
+     --cadence <daily|weekly>
    ```
-   curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, titles: [.[].title]}'
-   ```
-   If you find another agent's PR for the same task that was created **before** yours, abandon your branch and skip the task.
+   The script generates an ephemeral keypair, publishes a lock event to public Nostr relays, and performs a built-in race check. The key is used once and discarded. Locks auto-expire after 2 hours (configurable via `NOSTR_LOCK_TTL`).
 
-**Scheduler agents:** Daily and weekly scheduler agents must follow this protocol in addition to their directory-based rotation logic (`docs/agents/task-logs/daily/` and `docs/agents/task-logs/weekly/`). The draft PR check happens _after_ determining the next task but _before_ executing it. See the scheduler prompts for the specific implementation steps.
+   - **Exit 0** = lock acquired, begin work.
+   - **Exit 3** = race lost, another agent claimed first. Go back to step 1.
+   - **Exit 2** = relay error. Write a `_failed.md` log and stop.
+
+3. **View all active locks** (optional, for debugging):
+   ```bash
+   node scripts/agent/nostr-lock.mjs list
+   ```
+
+**Scheduler agents:** Daily and weekly scheduler agents must follow this protocol in addition to their directory-based rotation logic (`docs/agents/task-logs/daily/` and `docs/agents/task-logs/weekly/`). The lock check happens _after_ determining the next task but _before_ executing it. See the scheduler prompts for the specific implementation steps.
 
 ### Currently In-Flight Work
 

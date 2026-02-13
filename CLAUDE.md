@@ -488,6 +488,7 @@ When assigning work to agents:
 | `docs/playback-fallback.md` | URL-first strategy |
 | `docs/moderation/README.md` | Moderation system |
 | `docs/logging.md` | Logger usage |
+| `docs/agents/TORCH.md` | TORCH distributed task locking protocol |
 | `context/` / `todo/` / `decisions/` / `test_logs/` | Agent persistent state files (see AGENTS.md §15) |
 
 ---

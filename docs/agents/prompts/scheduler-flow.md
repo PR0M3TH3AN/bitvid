@@ -1,6 +1,6 @@
 # Scheduler Flow (Single Source of Truth)
 
-Use this document for **all scheduler runs**.
+Use this document for **all scheduler runs**. Task locking uses the **TORCH** protocol (see `docs/agents/TORCH.md`).
 
 ## Scheduler Override (Top-Line Rule)
 
@@ -27,61 +27,94 @@ During scheduler execution, the scheduler-specific instructions in this document
    - `branch_prefix` = `agents/<cadence>/`
    - `prompt_dir` = `docs/agents/prompts/<cadence>/`
 
-2. **MUST** run this command first and save the JSON output as the preflight exclusion set:
+2. **MUST** run the preflight check to build the exclusion set:
 
    ```bash
-   curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, prs: [.[] | {number, created_at, draft, head: {ref: .head.ref}, agent: ((.head.ref | capture("^agents/<cadence>/(?<agent>[^/]+)/")?.agent) // (.title | capture("(?<agent>[A-Za-z0-9-]+-agent)")?.agent // null))}] | sort_by(.created_at, .number)}'
+   node scripts/agent/nostr-lock.mjs check --cadence <cadence>
    ```
 
-3. **MUST** derive excluded agents from command output using this order only:
-   1) parse `head.ref` as `agents/<cadence>/<agent-name>/...`; 2) fallback to title regex; 3) if still unknown, stop with a global lock message.
+   This queries Nostr relays for active lock events and returns JSON with `locked` and `available` agent lists. Use the `locked` array as the exclusion set.
 
-4. **MUST** run this command and read both policy files before selecting an agent:
+3. **MUST** read both policy files before selecting an agent:
 
    ```bash
    cat AGENTS.md CLAUDE.md
    ```
 
-5. **MUST** run this command to identify the latest cadence log file, then choose the next roster agent not excluded by Step 2:
+4. **MUST** run this command to identify the latest cadence log file, then choose the next roster agent not in the exclusion set:
 
    ```bash
    ls -1 <log_dir> | sort | tail -n 1
    ```
 
-6. **MUST** stop and write a `_failed.md` log with `All roster tasks currently claimed by other agents` when every roster agent is excluded.
+5. **MUST** stop and write a `_failed.md` log with `All roster tasks currently claimed by other agents` when every roster agent is excluded.
 
-7. **MUST** claim the selected agent in this exact order:
-   1) create branch,
-   2) create and commit `<timestamp>_<agent>_started.md` in `<log_dir>`,
-   3) push branch and commit.
+6. **MUST** claim the selected agent:
 
-8. **MUST** re-run the same PR preflight command from Step 2 immediately after push. If an earlier claim exists for the same derived agent, print `RACE CHECK: lost (agent already claimed by PR #<number>)`, abandon the run, and return to Step 5. Otherwise print `RACE CHECK: won`.
+   ```bash
+   AGENT_PLATFORM=<jules|claude-code|codex> \
+   node scripts/agent/nostr-lock.mjs lock \
+     --agent <agent-name> \
+     --cadence <cadence>
+   ```
 
-9. **MUST** execute `<prompt_dir>/<prompt-file>` end-to-end.
+   The script generates an ephemeral keypair, publishes a NIP-78 lock event to Nostr relays with NIP-40 auto-expiration (2 hours), and performs a built-in race check. No tokens or secrets needed.
 
-10. **MUST** create exactly one final status file (`_completed.md` or `_failed.md`), run `npm run lint`, then commit and push.
+   - **Exit code 0** = lock acquired, proceed to Step 7.
+   - **Exit code 3** = race lost (another agent claimed first). Return to Step 2.
+   - **Exit code 2** = relay error. Write a `_failed.md` log with reason `Nostr relay error` and stop.
 
-## Canonical Example Run Output
+7. **MUST** execute `<prompt_dir>/<prompt-file>` end-to-end.
+
+8. **MUST** create exactly one final status file (`_completed.md` or `_failed.md`), run `npm run lint`, then commit and push.
+
+## Canonical Example Run
 
 ```text
-$ curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, prs: [.[] | {number, created_at, draft, head: {ref: .head.ref}, agent: ((.head.ref | capture("^agents/daily/(?<agent>[^/]+)/")?.agent) // (.title | capture("(?<agent>[A-Za-z0-9-]+-agent)")?.agent // null))}] | sort_by(.created_at, .number)}'
-{ "count": 12, "prs": [ ... ] }
+# Step 1: Set cadence
+cadence=daily
 
+# Step 2: Preflight — check Nostr locks
+$ node scripts/agent/nostr-lock.mjs check --cadence daily
+{
+  "cadence": "daily",
+  "date": "2026-02-14",
+  "locked": ["audit-agent"],
+  "available": ["ci-health-agent", "const-refactor-agent", ...],
+  "lockCount": 1,
+  "locks": [...]
+}
+
+# Step 3: Read policies
 $ cat AGENTS.md CLAUDE.md
-# bitvid — AI Agent Guide
 ...
 
+# Step 4: Check logs, select next agent
 $ ls -1 docs/agents/task-logs/daily/ | sort | tail -n 1
 2026-02-13_18-40-00_load-test-agent_completed.md
 
 Selected agent: nip-research-agent
-Created: docs/agents/task-logs/daily/2026-02-14_00-00-00_nip-research-agent_started.md
-Pushed branch: agents/daily/nip-research-agent/2026-02-14-run
 
-$ curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, prs: [.[] | {number, created_at, draft, head: {ref: .head.ref}, agent: ((.head.ref | capture("^agents/daily/(?<agent>[^/]+)/")?.agent) // (.title | capture("(?<agent>[A-Za-z0-9-]+-agent)")?.agent // null))}] | sort_by(.created_at, .number)}'
-{ "count": 13, "prs": [ ... ] }
+# Step 6: Claim via Nostr lock
+$ AGENT_PLATFORM=jules node scripts/agent/nostr-lock.mjs lock --agent nip-research-agent --cadence daily
+Locking: agent=nip-research-agent, cadence=daily, date=2026-02-14
+Step 1: Checking for existing locks...
+Step 2: Generating ephemeral keypair...
+Step 3: Building lock event...
+Step 4: Publishing to relays...
+  Published to 3/3 relays
+Step 5: Race check...
 RACE CHECK: won
+LOCK_STATUS=ok
+LOCK_EVENT_ID=ea2724c76d2bd707...
+LOCK_AGENT=nip-research-agent
+LOCK_CADENCE=daily
+LOCK_EXPIRES_ISO=2026-02-14T02:00:00.000Z
 
+# Step 7: Execute agent prompt
+(agent runs nip-research-agent prompt...)
+
+# Step 8: Finalize
 $ npm run lint
 > lint passed
 
