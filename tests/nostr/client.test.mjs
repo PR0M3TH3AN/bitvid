@@ -156,8 +156,8 @@ describe("NostrClient", () => {
       });
       assert.ok(sub);
 
-      // Wait for buffer flush (75ms debounce)
-      await new Promise(r => setTimeout(r, 300));
+      // Wait for buffer flush (1000ms debounce)
+      await new Promise(r => setTimeout(r, 1200));
 
       assert.ok(capturedVideo, "Video should be captured after flush");
       assert.equal(capturedVideo.id, "v1");
