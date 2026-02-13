@@ -70,7 +70,47 @@ const ADD_PROFILE_CANCELLATION_CODES = new Set([
   "modal-dismissed",
 ]);
 
+/**
+ * ProfileModalController
+ *
+ * Manages the multi-tab user profile interface, including:
+ * - Login/Logout and account switching
+ * - Profile editing (metadata, avatar)
+ * - Wallet configuration (NWC)
+ * - Relay management (read/write/DM)
+ * - Moderation settings (mutes, blocks, content warnings)
+ * - Direct Messages (NIP-04/NIP-44)
+ * - Storage management (R2, attachments)
+ *
+ * This controller acts as the orchestrator for several sub-controllers:
+ * - ProfileWalletController
+ * - ProfileStorageController
+ * - ProfileDirectMessageController
+ * - ProfileRelayController
+ * - ProfileHashtagController
+ *
+ * Flow:
+ * 1. `open(pane)` initializes the modal and selects the requested tab.
+ * 2. `selectPane(pane)` handles tab switching and lazy-loading of sub-views.
+ * 3. Interactions delegate to sub-controllers (e.g., wallet settings) or
+ *    trigger app-level callbacks (e.g., `callbacks.onRequestSwitchProfile`).
+ */
 export class ProfileModalController {
+  /**
+   * @param {Object} options - Configuration options
+   * @param {HTMLElement} [options.modalContainer] - DOM container for the modal
+   * @param {Function} [options.removeTrackingScripts] - Callback to clean up tracking scripts on logout
+   * @param {Function} [options.createWatchHistoryRenderer] - Factory for watch history UI
+   * @param {Function} [options.setGlobalModalState] - Callback to update global modal state
+   * @param {Function} [options.showError] - Global error toaster
+   * @param {Function} [options.showSuccess] - Global success toaster
+   * @param {Function} [options.showStatus] - Global status indicator
+   * @param {Object} [options.callbacks] - Application callbacks (e.g., onRequestLogin, onRequestSwitchProfile)
+   * @param {Object} [options.services] - Service instances (e.g., nostrService, relayManager)
+   * @param {Object} [options.state] - Application state getters (e.g., getActivePubkey, getSavedProfiles)
+   * @param {Object} [options.constants] - Configuration constants override
+   * @param {Object} [options.designSystem] - Design system context
+   */
   constructor(options = {}) {
     const {
       modalContainer = null,
@@ -2600,6 +2640,9 @@ export class ProfileModalController {
     return this.handleAddProfile({ loginResult });
   }
 
+  /**
+   * Renders the list of saved accounts in the "Switch account" or "Login" views.
+   */
   renderSavedProfiles() {
     const normalizedActive = this.normalizeHexPubkey(this.getActivePubkey());
     const entriesNeedingFetch = new Set();
@@ -3375,6 +3418,13 @@ export class ProfileModalController {
     });
   }
 
+  /**
+   * Updates the mobile view state (menu vs pane).
+   *
+   * @param {string} [view="menu"] - "menu" or "pane"
+   * @param {Object} [options] - View options
+   * @param {boolean} [options.skipFocusTrap=false] - If true, skips focus trap logic
+   */
   setMobileView(view = "menu", options = {}) {
     const normalizedView = view === "pane" ? "pane" : "menu";
     const settings =
@@ -3467,6 +3517,13 @@ export class ProfileModalController {
     return normalizedView;
   }
 
+  /**
+   * Switches the active tab/pane within the modal.
+   *
+   * @param {string} [name="account"] - Pane identifier (account, wallet, relays, etc.)
+   * @param {Object} [options] - Selection options
+   * @param {boolean} [options.keepMenuView=false] - If true, stays on menu view (mobile)
+   */
   selectPane(name = "account", options = {}) {
     const { keepMenuView = false } =
       options && typeof options === "object" ? options : {};
@@ -3739,6 +3796,11 @@ export class ProfileModalController {
     }
   }
 
+  /**
+   * Updates the UI to reflect the current authentication loading state.
+   *
+   * @param {Object} [detail] - Event detail
+   */
   handleAuthLoadingStateChange(detail = {}) {
     const listsState =
       typeof detail?.lists === "string" ? detail.lists.trim().toLowerCase() : "";
@@ -7590,6 +7652,11 @@ export class ProfileModalController {
     return this.show("wallet");
   }
 
+  /**
+   * Opens the profile modal and focuses the specified pane.
+   *
+   * @param {string} [pane="account"] - The initial pane to display (account, wallet, relays, moderation, storage, hashtags, dm).
+   */
   open(pane = "account") {
     const modalRoot =
       this.profileModalRoot instanceof HTMLElement
@@ -7628,6 +7695,12 @@ export class ProfileModalController {
     });
   }
 
+  /**
+   * Closes the profile modal.
+   *
+   * @param {Object} [options] - Options for closing
+   * @param {boolean} [options.silent=false] - If true, suppresses side effects like focus management
+   */
   hide(options = {}) {
     const { silent = false } =
       options && typeof options === "object" ? options : {};
