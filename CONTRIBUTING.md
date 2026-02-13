@@ -137,11 +137,18 @@ To set up the project locally:
 
    _Note: Running the full suite (`npm run test:unit`) is resource-intensive, runs sequentially, and may time out in some environments. We strongly recommend using sharded runs for local development to save time: `npm run test:unit:shard1`, `shard2`, or `shard3`._
 
-   You can also run end-to-end and visual tests:
+   You can also run end-to-end, smoke, and visual tests:
 
    ```bash
    npm run test:e2e
+   npm run test:smoke
    npm run test:visual
+   ```
+
+   To run load tests (agent-driven):
+
+   ```bash
+   npm run test:load
    ```
 
    To update visual regression baselines:

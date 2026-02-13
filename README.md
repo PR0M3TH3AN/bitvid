@@ -175,6 +175,7 @@ To run **bitvid** locally:
 
    ```bash
    npm run test:unit
+   npm run test:smoke
    npm run format
    npm run lint
    ```
@@ -184,6 +185,7 @@ To run **bitvid** locally:
 #### Quick Reference
 
 - **Run unit tests**: `npm run test:unit`
+- **Run smoke tests**: `npm run test:smoke`
 - **Format code**: `npm run format` (CSS, HTML, MD, Config - no JS logic)
 - **Lint code**: `npm run lint` (Styles, Tokens, Hex, Tailwind guards, file size, innerHTML, assets, SW compat - no ESLint/logic linting)
 - **Visual tests**: `npm run test:visual` (Playwright snapshots)
@@ -206,6 +208,8 @@ For detailed architecture and system documentation, see the [Documentation Index
 
 **Other commands:**
 
+- **Run smoke tests**: `npm run test:smoke`
+- **Run load tests**: `npm run test:load`
 - **Run DM unit tests**: `npm run test:dm:unit`
 - **Run DM integration tests**: `npm run test:dm:integration`
 - **Run headless E2E tests**: `npm run test:e2e`
