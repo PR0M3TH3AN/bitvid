@@ -126,17 +126,20 @@ npm run test:visual
 
 | Script | Purpose |
 |--------|---------|
-| `npm run build` | Full build (Tailwind + dist) |
+| `npm run build` | Full build (Tailwind + dist + verify) |
 | `npm run build:css` | Regenerate Tailwind only |
 | `npm run format` | Format with Prettier |
 | `npm run lint` | Run all linting checks |
 | `npm run lint:css` | CSS token validation |
 | `npm run lint:inline-styles` | Block inline styles |
 | `npm run lint:tokens` | Design token enforcement |
+| `npm run lint:file-size` | Enforce file size limits |
+| `npm run lint:innerhtml` | Enforce innerHTML baseline |
 | `npm run test:unit` | Full unit test suite |
 | `npm run test:unit:shard1` | Shard 1/3 (faster local dev) |
 | `npm run test:unit:shard2` | Shard 2/3 |
 | `npm run test:unit:shard3` | Shard 3/3 |
+| `npm run test:smoke` | Run critical path smoke tests |
 | `npm run test:dm:unit` | Direct message unit tests |
 | `npm run test:dm:integration` | DM integration tests |
 | `npm run test:e2e` | Headless E2E tests |
