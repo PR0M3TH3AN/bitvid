@@ -1,3 +1,2 @@
 # Test Log
 
-- Initialized environment.
