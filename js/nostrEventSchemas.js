@@ -2553,9 +2553,14 @@ export function buildWatchHistoryEvent(params) {
   const tags = [];
   const identifierName = schema?.identifierTag?.name || "d";
 
+  const defaultMonth = Number.isFinite(created_at)
+    ? new Date(created_at * 1000).toISOString().slice(0, 7)
+    : new Date().toISOString().slice(0, 7);
+
   const identifierValue =
     (typeof monthIdentifier === "string" && monthIdentifier.trim()) ||
-    schema?.identifierTag?.value;
+    schema?.identifierTag?.value ||
+    defaultMonth;
 
   if (identifierName && identifierValue) {
     tags.push([identifierName, identifierValue]);
