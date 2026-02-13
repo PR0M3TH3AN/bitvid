@@ -1,7 +1,17 @@
 import { userLogger } from "../utils/logger.js";
-import { safeDecodeURIComponent } from "../utils/safeDecode.js";
 import { PLAYBACK_START_TIMEOUT } from "../constants.js";
 import { getCurrentVideo, setCurrentVideo } from "../state/appState.js";
+import {
+  SimpleEventEmitter,
+  HOSTED_URL_SUCCESS_MESSAGE,
+  DEFAULT_UNSUPPORTED_BTITH_MESSAGE,
+  PROBE_CACHE_TTL_MS,
+  extractWebSeedsFromMagnet,
+  getHostedUrlFailureDetails,
+  getHostedVideoErrorMessage,
+  getTorrentErrorMessage,
+} from "./playbackServiceHelpers.js";
+
 // js/services/playbackService.js
 
 /**
@@ -21,242 +31,22 @@ import { getCurrentVideo, setCurrentVideo } from "../state/appState.js";
  *   old session is cancelled and doesn't overwrite the new one.
  */
 
-class SimpleEventEmitter {
-  constructor(logger = null) {
-    this.logger = typeof logger === "function" ? logger : null;
-    this.listeners = new Map();
-  }
-
-  on(eventName, handler) {
-    if (typeof handler !== "function") {
-      return () => {};
-    }
-    if (!this.listeners.has(eventName)) {
-      this.listeners.set(eventName, new Set());
-    }
-    const handlers = this.listeners.get(eventName);
-    handlers.add(handler);
-    return () => {
-      handlers.delete(handler);
-      if (!handlers.size) {
-        this.listeners.delete(eventName);
-      }
-    };
-  }
-
-  emit(eventName, detail) {
-    const handlers = this.listeners.get(eventName);
-    if (!handlers || !handlers.size) {
-      return;
-    }
-    for (const handler of Array.from(handlers)) {
-      try {
-        handler(detail);
-      } catch (err) {
-        if (this.logger) {
-          this.logger("[PlaybackService] Listener error", err);
-        }
-      }
-    }
-  }
-}
-
-const HOSTED_URL_SUCCESS_MESSAGE = "✅ Streaming from hosted URL";
-const DEFAULT_UNSUPPORTED_BTITH_MESSAGE =
-  "This magnet link is missing a compatible BitTorrent v1 info hash.";
-const AUTH_STATUS_CODES = new Set([401, 403]);
-const SSL_ERROR_PATTERN = /(ssl|cert|certificate)/i;
-const CORS_ERROR_PATTERN = /cors/i;
-const PROBE_CACHE_TTL_MS = 45000;
-const WEBSEED_PARAM_KEYS = new Set(["ws", "webseed"]);
-
-const extractWebSeedsFromMagnet = (magnetUri) => {
-  if (typeof magnetUri !== "string") {
-    return [];
-  }
-  const trimmed = magnetUri.trim();
-  if (!trimmed) {
-    return [];
-  }
-  const [withoutFragment] = trimmed.split("#", 1);
-  const [, query = ""] = withoutFragment.split("?", 2);
-  if (!query) {
-    return [];
-  }
-
-  const webSeeds = [];
-  for (const segment of query.split("&")) {
-    if (!segment) {
-      continue;
-    }
-    const [rawKey, rawValue = ""] = segment.split("=", 2);
-    if (!rawKey) {
-      continue;
-    }
-    const key = rawKey.trim().toLowerCase();
-    if (!WEBSEED_PARAM_KEYS.has(key)) {
-      continue;
-    }
-    const decodedValue = safeDecodeURIComponent(rawValue.replace(/\+/g, "%20"));
-    const candidate = decodedValue.trim();
-    if (candidate) {
-      webSeeds.push(candidate);
-    }
-  }
-  return webSeeds;
-};
-
-const getHostedUrlFailureDetails = (probeResult = {}) => {
-  const outcome = probeResult?.outcome || "error";
-  const status = Number.isFinite(probeResult?.status)
-    ? probeResult.status
-    : null;
-  const error = probeResult?.error;
-  const isAuthStatus = status !== null && AUTH_STATUS_CODES.has(status);
-
-  if (outcome === "timeout") {
-    return {
-      category: "external",
-      message:
-        "Hosted URL timed out. We’ll try WebTorrent if available.",
-      status,
-    };
-  }
-
-  if (outcome === "bad") {
-    if (isAuthStatus) {
-      return {
-        category: "auth",
-        message:
-          "Hosted URL requires authorization or a signed request. Please log in or re-sign.",
-        status,
-      };
-    }
-
-    if (status === 404) {
-      return {
-        category: "external",
-        message: "Hosted URL not found (404).",
-        status,
-      };
-    }
-
-    if (status === 403) {
-      return {
-        category: "external",
-        message: "Hosted URL blocked (403).",
-        status,
-      };
-    }
-
-    if (status && status >= 500) {
-      return {
-        category: "external",
-        message: `Hosted URL unavailable (HTTP ${status}).`,
-        status,
-      };
-    }
-
-    if (status) {
-      return {
-        category: "external",
-        message: `Hosted URL failed (HTTP ${status}).`,
-        status,
-      };
-    }
-  }
-
-  if (outcome === "opaque" || outcome === "unknown") {
-    return {
-      category: "external",
-      message:
-        "Hosted URL blocked by browser security (CORS/SSL). We’ll try WebTorrent if available.",
-      status,
-    };
-  }
-
-  if (outcome === "error") {
-    const message = error?.message || "";
-    if (SSL_ERROR_PATTERN.test(message)) {
-      return {
-        category: "external",
-        message:
-          "Hosted URL blocked due to SSL certificate issues.",
-        status,
-      };
-    }
-    if (CORS_ERROR_PATTERN.test(message)) {
-      return {
-        category: "external",
-        message:
-          "Hosted URL blocked by CORS. We’ll try WebTorrent if available.",
-        status,
-      };
-    }
-    return {
-      category: "external",
-      message:
-        "Hosted URL failed to load due to network or security restrictions.",
-      status,
-    };
-  }
-
-  return {
-    category: "external",
-    message: "Hosted URL failed to load.",
-    status,
-  };
-};
-
-const getHostedVideoErrorMessage = (videoElement) => {
-  if (!videoElement?.error) {
-    return "";
-  }
-
-  const error = videoElement.error;
-  const code = error.code;
-  const mediaErrorCodes =
-    typeof MediaError !== "undefined"
-      ? MediaError
-      : {
-          MEDIA_ERR_ABORTED: 1,
-          MEDIA_ERR_NETWORK: 2,
-          MEDIA_ERR_DECODE: 3,
-          MEDIA_ERR_SRC_NOT_SUPPORTED: 4,
-        };
-
-  switch (code) {
-    case mediaErrorCodes.MEDIA_ERR_ABORTED:
-      return "Hosted playback was interrupted.";
-    case mediaErrorCodes.MEDIA_ERR_NETWORK:
-      return "Hosted playback failed due to network/CORS restrictions.";
-    case mediaErrorCodes.MEDIA_ERR_DECODE:
-      return "Hosted playback failed to decode the video.";
-    case mediaErrorCodes.MEDIA_ERR_SRC_NOT_SUPPORTED:
-      return "Hosted playback failed: source not supported or blocked.";
-    default:
-      return "Hosted playback failed to load.";
-  }
-};
-
-const getTorrentErrorMessage = (error) => {
-  if (!error) {
-    return "WebTorrent could not start. Please try again.";
-  }
-  const message = error.message || "";
-  if (message.includes(DEFAULT_UNSUPPORTED_BTITH_MESSAGE)) {
-    return DEFAULT_UNSUPPORTED_BTITH_MESSAGE;
-  }
-  if (/tracker|announce|peer/i.test(message)) {
-    return "WebTorrent could not reach any peers or trackers.";
-  }
-  if (/permission|blocked|denied/i.test(message)) {
-    return "WebTorrent was blocked by the browser or network.";
-  }
-  return "WebTorrent could not start. Please try again.";
-};
-
+/**
+ * Service for orchestrating video playback.
+ * Handles the "Hybrid Playback" strategy: probing hosted URLs, managing fallbacks to WebTorrent,
+ * and monitoring playback health via watchdogs.
+ */
 export class PlaybackService {
+  /**
+   * @param {Object} config
+   * @param {Function} [config.logger] - Logger function.
+   * @param {Object} [config.torrentClient] - WebTorrent client instance.
+   * @param {Function} [config.deriveTorrentPlaybackConfig] - Helper to parse magnet/URL.
+   * @param {Function} [config.isValidMagnetUri] - Helper to validate magnet strings.
+   * @param {boolean} [config.urlFirstEnabled=true] - Whether to attempt URL playback before Torrent.
+   * @param {Object} [config.analyticsCallbacks] - Callbacks for telemetry.
+   * @param {number} [config.playbackStartTimeout] - Ms to wait for playback start before fallback.
+   */
   constructor({
     logger,
     torrentClient,
@@ -321,12 +111,23 @@ export class PlaybackService {
     }
   }
 
+  /**
+   * Generates a cache key for probe results based on URL and magnet.
+   * @param {Object} params
+   * @param {string} params.url
+   * @param {string} params.magnet
+   * @returns {string} Cache key.
+   */
   getProbeCacheKey({ url, magnet }) {
     const trimmedUrl = typeof url === "string" ? url.trim() : "";
     const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
     return `${trimmedUrl}::${trimmedMagnet}`;
   }
 
+  /**
+   * Removes expired probe results from the cache.
+   * @param {number} [now=Date.now()]
+   */
   pruneProbeCache(now = Date.now()) {
     for (const [key, entry] of this.probeCache.entries()) {
       if (!entry || !Number.isFinite(entry.expiresAt) || entry.expiresAt <= now) {
@@ -335,6 +136,12 @@ export class PlaybackService {
     }
   }
 
+  /**
+   * Retrieves a valid cached probe result if available.
+   * @param {string} cacheKey
+   * @param {number} [now=Date.now()]
+   * @returns {Object|null} Cached result or null.
+   */
   getCachedProbeResult(cacheKey, now = Date.now()) {
     this.pruneProbeCache(now);
     const entry = this.probeCache.get(cacheKey);
@@ -344,6 +151,12 @@ export class PlaybackService {
     return entry.result;
   }
 
+  /**
+   * Caches a probe result.
+   * @param {string} cacheKey
+   * @param {Object} result
+   * @param {number} [now=Date.now()]
+   */
   storeProbeResult(cacheKey, result, now = Date.now()) {
     const ttl =
       Number.isFinite(this.probeCacheTtlMs) && this.probeCacheTtlMs > 0
@@ -352,6 +165,15 @@ export class PlaybackService {
     this.probeCache.set(cacheKey, { result, expiresAt: now + ttl });
   }
 
+  /**
+   * Probes a hosted URL to check for availability (e.g. via HEAD request).
+   * Handles caching and in-flight deduplication.
+   * @param {Object} params
+   * @param {string} params.url - URL to probe.
+   * @param {string} params.magnet - Associated magnet (part of cache key).
+   * @param {Function} [params.probeUrl] - Function to perform the actual network probe.
+   * @returns {Promise<Object>} Probe result ({ outcome: 'success'|'bad'|..., status: number, error: Error }).
+   */
   async probeHostedUrl({ url, magnet, probeUrl } = {}) {
     const sanitizedUrl = typeof url === "string" ? url.trim() : "";
     if (!sanitizedUrl) {
@@ -391,6 +213,10 @@ export class PlaybackService {
     return probePromise;
   }
 
+  /**
+   * Configures the video element (muting logic, autoplay detection).
+   * @param {HTMLVideoElement} videoElement
+   */
   prepareVideoElement(videoElement) {
     if (!videoElement) {
       return;
@@ -531,12 +357,20 @@ export class PlaybackService {
     };
   }
 
+  /**
+   * Cleans up the watchdog of the current session.
+   */
   cleanupWatchdog() {
     if (this.currentSession) {
       this.currentSession.cleanupWatchdog();
     }
   }
 
+  /**
+   * Creates a new playback session.
+   * @param {Object} options - Options for PlaybackSession.
+   * @returns {PlaybackSession} The created session.
+   */
   createSession(options = {}) {
     const session = new PlaybackSession(this, {
       ...options,
@@ -561,6 +395,19 @@ export class PlaybackService {
  * or if it needs to spin up a new one.
  */
 class PlaybackSession extends SimpleEventEmitter {
+  /**
+   * @param {PlaybackService} service - Parent service instance.
+   * @param {Object} options
+   * @param {string} [options.url] - Direct playback URL.
+   * @param {string} [options.magnet] - Magnet URI.
+   * @param {string} [options.requestSignature] - Unique ID for deduplication.
+   * @param {HTMLVideoElement} [options.videoElement] - The target video element.
+   * @param {Function} [options.probeUrl] - Function to probe URL validity.
+   * @param {Function} [options.playViaWebTorrent] - Function to start torrent playback.
+   * @param {Function} [options.showModalWithPoster] - UI callback.
+   * @param {Function} [options.teardownVideoElement] - UI callback.
+   * @param {string} [options.forcedSource] - 'url' or 'torrent' override.
+   */
   constructor(service, options = {}) {
     super((message, ...args) => service.log(message, ...args));
     this.service = service;
@@ -618,10 +465,20 @@ class PlaybackSession extends SimpleEventEmitter {
     this.magnetProvided = !!this.playbackConfig.provided;
   }
 
+  /**
+   * Checks if the session is currently active (not finished).
+   * @returns {boolean}
+   */
   isActive() {
     return !this.finished;
   }
 
+  /**
+   * Determines if this session corresponds to the given signature.
+   * Used for request deduplication.
+   * @param {string} signature
+   * @returns {boolean}
+   */
   matchesRequestSignature(signature) {
     if (!this.isActive()) {
       return false;
@@ -652,6 +509,9 @@ class PlaybackSession extends SimpleEventEmitter {
     return this.magnetProvided;
   }
 
+  /**
+   * Cleans up any active watchdog listeners.
+   */
   cleanupWatchdog() {
     if (typeof this.watchdogCleanup === "function") {
       try {
@@ -664,6 +524,11 @@ class PlaybackSession extends SimpleEventEmitter {
     }
   }
 
+  /**
+   * Registers new watchdog listeners on the video element.
+   * @param {HTMLVideoElement} videoElement
+   * @param {Object} options
+   */
   registerWatchdogs(videoElement, options) {
     this.cleanupWatchdog();
     this.watchdogCleanup = this.service.registerUrlPlaybackWatchdogs(
@@ -672,6 +537,11 @@ class PlaybackSession extends SimpleEventEmitter {
     );
   }
 
+  /**
+   * Attaches debug listeners to log video element events.
+   * @param {HTMLVideoElement} videoElement
+   * @returns {Function} Cleanup function.
+   */
   attachDebugListeners(videoElement) {
     if (!videoElement) {
       return () => {};
@@ -727,6 +597,7 @@ class PlaybackSession extends SimpleEventEmitter {
   /**
    * Begins the playback flow. Returns a promise that resolves when playback
    * has either successfully started (URL or Torrent) or fatally failed.
+   * @returns {Promise<Object>} The result object { source: 'url'|'torrent'|null, error? }.
    */
   async start() {
     if (this.startPromise) {
@@ -775,6 +646,7 @@ class PlaybackSession extends SimpleEventEmitter {
     this.emit("session-start", detail);
 
     try {
+      // --- Step 0: Pre-flight cleanup and UI preparation ---
       if (typeof waitForCleanup === "function") {
         await waitForCleanup();
       }
@@ -821,6 +693,7 @@ class PlaybackSession extends SimpleEventEmitter {
       const cleanupDebugListeners = this.attachDebugListeners(activeVideoEl);
       let cleanupHostedUrlStatusListeners = () => {};
 
+      // --- Step 1: WebSeed and Source Preparation ---
       const httpsUrl = this.sanitizedUrl;
       const webSeedCandidates = [];
       const webSeedSet = new Set();
@@ -841,10 +714,12 @@ class PlaybackSession extends SimpleEventEmitter {
         webSeedCandidates.push(trimmed);
       };
 
+      // Add the hosted URL as a webseed candidate
       if (httpsUrl) {
         addWebSeedCandidate(httpsUrl);
       }
 
+      // Add any webseeds found in the magnet link
       const magnetWebSeeds = extractWebSeedsFromMagnet(this.magnetForPlayback);
       if (magnetWebSeeds.length > 0) {
         magnetWebSeeds.forEach((seed) => addWebSeedCandidate(seed));
@@ -878,7 +753,7 @@ class PlaybackSession extends SimpleEventEmitter {
         }
       };
 
-      // --- Attempt Torrent Logic ---
+      // --- Helper: Torrent Playback Attempt ---
       let torrentAttempted = false;
       const attemptTorrentPlayback = async (reason) => {
         if (torrentAttempted) return null;
@@ -927,7 +802,7 @@ class PlaybackSession extends SimpleEventEmitter {
         return result;
       };
 
-      // --- Attempt URL Logic ---
+      // --- Helper: Hosted URL Playback Attempt ---
       const attemptHostedPlayback = async () => {
         if (!httpsUrl) return null;
 
@@ -989,6 +864,7 @@ class PlaybackSession extends SimpleEventEmitter {
           { once: true }
         );
 
+        // Probe the URL for availability (HEAD request)
         const probeResult = await this.service.probeHostedUrl({
           url: httpsUrl,
           magnet: this.trimmedMagnet,
@@ -1022,6 +898,7 @@ class PlaybackSession extends SimpleEventEmitter {
             };
           });
 
+          // Attach watchdogs to detect stalls during playback
           const attachWatchdogs = ({ stallMs = 8000 } = {}) => {
             this.registerWatchdogs(activeVideoEl, {
               stallMs,
@@ -1129,7 +1006,7 @@ class PlaybackSession extends SimpleEventEmitter {
         };
       };
 
-      // --- Timeout Wrapper ---
+      // --- Helper: Timeout Wrapper ---
       const withTimeout = (promise, ms, label = "Operation") => {
         if (!ms || ms <= 0) return promise;
         return new Promise((resolve, reject) => {
@@ -1150,7 +1027,7 @@ class PlaybackSession extends SimpleEventEmitter {
         });
       };
 
-      // --- Execution Flow ---
+      // --- Step 2: Main Execution Flow ---
 
       let tryUrlFirst = this.service.urlFirstEnabled;
       if (forcedSource === "url") tryUrlFirst = true;
@@ -1162,6 +1039,7 @@ class PlaybackSession extends SimpleEventEmitter {
 
       if (tryUrlFirst) {
         if (httpsUrl) {
+          // STRATEGY: Try URL first
           // Wrap URL attempt in timeout
           const urlResult = await withTimeout(
             attemptHostedPlayback(),
@@ -1193,7 +1071,7 @@ class PlaybackSession extends SimpleEventEmitter {
           return await attemptTorrentPlayback("url-missing");
         }
       } else {
-        // Try Torrent First
+        // STRATEGY: Try Torrent first
         if (this.magnetForPlayback) {
           try {
             // If we have a fallback URL, use the effective timeout.
@@ -1251,6 +1129,7 @@ class PlaybackSession extends SimpleEventEmitter {
         }
       }
 
+      // --- Step 3: Final Failure Handling ---
       const message =
         hostedErrorMessage ||
         (this.magnetProvided && !this.magnetForPlayback
