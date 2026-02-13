@@ -21,10 +21,12 @@ STEP 0 — PRE-FLIGHT SCAN (do this FIRST, before choosing a task):
      Record ALL open daily PRs. Every agent name in those titles is OFF LIMITS.
      IMPORTANT: this query intentionally filters to titles containing "[daily]". It will NOT list unrelated open PRs.
      (Optional visibility check) If you need total open PR context, run a second command without the filter.
-  b) Read: docs/agents/AGENT_TASK_LOG.csv
-     Any agent with status "started" (less than 24h old) is also OFF LIMITS.
+  b) Run: ls docs/agents/task-logs/daily/ | sort
+     Look for any "_started.md" files that do NOT have a corresponding
+     "_completed.md" or "_failed.md" file from the same agent at a later
+     timestamp. Those agents are OFF LIMITS (unless the started file is >24h old).
   c) Write down your exclusion list before proceeding.
-  If the `curl` command fails, you MUST still check the CSV for "started" entries.
+  If the `curl` command fails, you MUST still check the task log directory.
 
 STEP 1 — Read `AGENTS.md` and `CLAUDE.md` for project rules.
 
@@ -32,11 +34,13 @@ STEP 2 — Read `docs/agents/prompts/daily-scheduler.md` and follow its
   instructions completely, starting from Step 1 (Determine the Next Task).
   You already completed Step 0 above — use the exclusion list you built.
   - When selecting the next agent, SKIP any agent on your exclusion list.
-  - Before executing: create a draft PR claim AND log a "started" row in the CSV.
+  - Before executing: create a draft PR claim AND create a "started" log file
+    in docs/agents/task-logs/daily/.
   - These two actions MUST happen before any task execution begins.
 
 STEP 3 — Once the task is claimed and executed:
-  - Update your "started" CSV row with the final status (completed/failed).
+  - Create a new "completed" or "failed" log file in docs/agents/task-logs/daily/.
+  - Do NOT modify the "started" file — always create a new file.
   - Commit and push your changes.
 
 REMEMBER: The #1 failure mode is agents not checking for in-progress work
@@ -60,10 +64,12 @@ STEP 0 — PRE-FLIGHT SCAN (do this FIRST, before choosing a task):
      Record ALL open weekly PRs. Every agent name in those titles is OFF LIMITS.
      IMPORTANT: this query intentionally filters to titles containing "[weekly]". It will NOT list unrelated open PRs.
      (Optional visibility check) If you need total open PR context, run a second command without the filter.
-  b) Read: docs/agents/WEEKLY_AGENT_TASK_LOG.csv
-     Any agent with status "started" (less than 24h old) is also OFF LIMITS.
+  b) Run: ls docs/agents/task-logs/weekly/ | sort
+     Look for any "_started.md" files that do NOT have a corresponding
+     "_completed.md" or "_failed.md" file from the same agent at a later
+     timestamp. Those agents are OFF LIMITS (unless the started file is >24h old).
   c) Write down your exclusion list before proceeding.
-  If the `curl` command fails, you MUST still check the CSV for "started" entries.
+  If the `curl` command fails, you MUST still check the task log directory.
 
 STEP 1 — Read `AGENTS.md` and `CLAUDE.md` for project rules.
 
@@ -71,11 +77,13 @@ STEP 2 — Read `docs/agents/prompts/weekly-scheduler.md` and follow its
   instructions completely, starting from Step 1 (Determine the Next Task).
   You already completed Step 0 above — use the exclusion list you built.
   - When selecting the next agent, SKIP any agent on your exclusion list.
-  - Before executing: create a draft PR claim AND log a "started" row in the CSV.
+  - Before executing: create a draft PR claim AND create a "started" log file
+    in docs/agents/task-logs/weekly/.
   - These two actions MUST happen before any task execution begins.
 
 STEP 3 — Once the task is claimed and executed:
-  - Update your "started" CSV row with the final status (completed/failed).
+  - Create a new "completed" or "failed" log file in docs/agents/task-logs/weekly/.
+  - Do NOT modify the "started" file — always create a new file.
   - Commit and push your changes.
 
 REMEMBER: The #1 failure mode is agents not checking for in-progress work
