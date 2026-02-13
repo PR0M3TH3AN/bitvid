@@ -24,7 +24,6 @@ const SOURCE_DIR = join(ROOT, "js");
 const BASELINE = {
   "js/app.js": 1,
   "js/app/feedCoordinator.js": 1,
-  "js/channelProfile.js": 10,
   "js/docsView.js": 8,
   "js/exploreView.js": 1,
   "js/forYouView.js": 1,
