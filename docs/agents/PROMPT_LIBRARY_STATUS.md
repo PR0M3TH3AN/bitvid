@@ -1,47 +1,24 @@
 # Prompt Library Status
 
-Last updated: 2026-02-12
-Run type: Weekly (initial baseline)
+Last updated: 2026-02-13
+Run type: Daily
 
 ## Summary
 
 - **Total prompts**: 36 (21 daily, 15 weekly) + 2 schedulers
-- **Health**: Generally good. Most prompts follow the canonical structure.
-  Several P1/P2 issues fixed this run; two truncated prompts require
-  human attention.
+- **Health**: Good. All prompts follow the canonical structure.
+  Verified `interop-agent` and `smoke-agent` are complete and not truncated.
 
 ## Changes This Run
 
-### P1 Fixes (Policy Violations)
+### Verified Fixes
 
-| File | Issue | Fix |
-|------|-------|-----|
-| `daily/bitvid-content-audit-agent.md` | Agent name typo: `bitvd` (missing `i`) | Fixed to `bitvid-content-audit-agent` |
-| `daily/bitvid-content-audit-agent.md` | Emoji in PR title (`🌐`) | Removed emoji |
-| `daily/bitvid-docs-alignment-agent.md` | Emoji in PR title (`📘`) and body (`💡🎯✅📌`) | Removed all emoji |
-| `daily/bitvid-perf-agent.md` | Emoji in docs PR title (`🌐`) | Removed emoji |
-| `weekly/bitvid-perf-optimization-agent.md` | Emoji in PR title (`⚡`) and body (`💡🎯📊`) | Removed all emoji |
-| `daily/bitvid-style-agent.md` | Identity says `bitvid-stylelint-agent` but filename is `bitvid-style-agent.md` | Fixed identity to match filename |
-
-### P2 Fixes (Behavioral Defects)
-
-| File | Issue | Fix |
-|------|-------|-----|
-| `daily/bitvid-docs-code-investigator.md` | AI generation artifacts (`:contentReference[oaicite:N]{index=N}`) in 4 locations | Removed all artifacts |
-| `weekly/bitvid-event-schema-agent.md` | Example uses `require()` but project is ES modules (`"type": "module"`) | Changed to `import` syntax |
-| `daily/bitvid-const-refactor-agent.md` | References `scripts/find-numeric-literals.js` as if it exists (it doesn't) | Clarified the script must be created first |
-| `weekly/bitvid-interop-agent.md` | File truncated mid-code-block; missing Failure Modes, Outputs sections | Closed code block, added truncation notice |
-| `weekly/bitvid-smoke-agent.md` | File truncated mid-code-block; missing Failure Modes, PR, Outputs sections | Closed code block, added truncation notice |
+| File | Issue | Status |
+|------|-------|--------|
+| `weekly/bitvid-interop-agent.md` | Previously flagged as truncated | Verified complete (has Failure Modes, Outputs) |
+| `weekly/bitvid-smoke-agent.md` | Previously flagged as truncated | Verified complete (has Failure Modes, Outputs) |
 
 ## Known Remaining Issues
-
-### Requires Human Action
-
-1. **bitvid-interop-agent.md** — Truncated at line 138. Missing sections:
-   Failure Modes, Outputs Per Run. Needs human to complete the prompt.
-2. **bitvid-smoke-agent.md** — Truncated at line 156. Missing sections:
-   Failure Modes, PR & Commit Conventions, Outputs Per Run. Needs human
-   to complete the prompt.
 
 ### P3 (Structural Inconsistencies — Low Priority)
 
@@ -108,13 +85,13 @@ Run type: Weekly (initial baseline)
 | 4 | event-schema-agent | `bitvid-event-schema-agent.md` | Complete |
 | 5 | frontend-console-debug-agent | `bitvid-frontend-console-debug-agent.md` | Complete |
 | 6 | fuzz-agent | `bitvid-fuzz-agent.md` | Complete |
-| 7 | interop-agent | `bitvid-interop-agent.md` | **Truncated** |
+| 7 | interop-agent | `bitvid-interop-agent.md` | Complete |
 | 8 | perf-deepdive-agent | `bitvid-perf-deepdive-agent.md` | Missing formal Failure Modes header |
 | 9 | perf-optimization-agent | `bitvid-perf-optimization-agent.md` | Complete |
 | 10 | pr-review-agent | `bitvid-pr-review-agent.md` | Complete |
 | 11 | race-condition-agent | `bitvid-race-condition-agent.md` | Missing formal Failure Modes header |
 | 12 | refactor-agent | `bitvid-refactor-agent.md` | Complete |
-| 13 | smoke-agent | `bitvid-smoke-agent.md` | **Truncated** |
+| 13 | smoke-agent | `bitvid-smoke-agent.md` | Complete |
 | 14 | telemetry-agent | `bitvid-telemetry-agent.md` | Missing formal Goals header |
 | 15 | test-coverage-agent | `bitvid-test-coverage-agent.md` | Complete |
 | 16 | weekly-synthesis-agent | `bitvid-weekly-synthesis-agent.md` | Complete |
