@@ -211,3 +211,19 @@ Daily:
 - Updated `KNOWN_ISSUES.md` with last-checked notes and links
 - 0–N GitHub issues for medium/large/risky items
 - A short daily remediation report (artifact or PR body)
+
+## TASK COMPLETION & SELF-CORRECTION
+
+If you are unsure what to do next, complete what you have and commit after the initial goal is completed and tests are successful.
+
+**Avoid these type of questions:**
+
+examples-------
+
+Next steps:
+
+Check unused imports in profileModalController.js.
+Run unit tests npm run test:unit.
+Update file size baseline.
+Commit and complete the work.
+Do you have any specific advice or checks before I proceed?

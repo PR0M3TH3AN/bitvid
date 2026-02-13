@@ -197,6 +197,23 @@ FIRST-RUN CHECKLIST (run immediately)
 5. Attempt the first small safe bump(s) (follow the safe upgrade flow) and open PR(s) or issue(s) accordingly.
 
 --------------------------------------------------------------------------------
+
+## TASK COMPLETION & SELF-CORRECTION
+
+If you are unsure what to do next, complete what you have and commit after the initial goal is completed and tests are successful.
+
+**Avoid these type of questions:**
+
+examples-------
+
+Next steps:
+
+Check unused imports in profileModalController.js.
+Run unit tests npm run test:unit.
+Update file size baseline.
+Commit and complete the work.
+Do you have any specific advice or checks before I proceed?
+
 FINAL NOTE
 Run this daily as a scheduled job or as part of CI cadence. Be conservative around cryptography, protocol, and native binary updates — always stop and open an issue for human review. Keep all actions reproducible: include commands, environment, Node & package manager versions, timestamps, and test logs.
 
