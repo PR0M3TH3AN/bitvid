@@ -841,8 +841,8 @@ for (const _ of [0]) {
       await controller.show('hashtags');
       await waitForAnimationFrame(window, 2);
 
-      controller.hashtagInterestInput.value = '#nostr';
-      controller.addHashtagInterestButton.click();
+      controller.hashtagController.hashtagInterestInput.value = '#nostr';
+      controller.hashtagController.addHashtagInterestButton.click();
       await waitForAnimationFrame(window, 2);
 
       const interestList = document.getElementById('profileHashtagInterestList');
@@ -856,8 +856,8 @@ for (const _ of [0]) {
       assert.equal(disinterestList?.classList.contains('hidden'), true);
       assert.equal(disinterestEmpty?.classList.contains('hidden'), false);
 
-      controller.hashtagDisinterestInput.value = '#nostr';
-      controller.addHashtagDisinterestButton.click();
+      controller.hashtagController.hashtagDisinterestInput.value = '#nostr';
+      controller.hashtagController.addHashtagDisinterestButton.click();
       await waitForAnimationFrame(window, 2);
 
       assert.equal(interestList?.querySelectorAll('li').length, 0);
@@ -919,7 +919,7 @@ for (const _ of [0]) {
       await controller.show('hashtags');
       await waitForAnimationFrame(window, 2);
 
-      controller.hashtagInterestInput.value = '#nostr';
+      controller.hashtagController.hashtagInterestInput.value = '#nostr';
       const result = await controller.handleAddHashtagPreference('interest');
 
       assert.equal(result.success, true);
@@ -954,14 +954,14 @@ for (const _ of [0]) {
       await controller.show('hashtags');
       await waitForAnimationFrame(window, 2);
 
-      controller.hashtagInterestInput.value = 'art';
-      controller.addHashtagInterestButton.click();
+      controller.hashtagController.hashtagInterestInput.value = 'art';
+      controller.hashtagController.addHashtagInterestButton.click();
       await waitForAnimationFrame(window, 2);
 
       const interestList = document.getElementById('profileHashtagInterestList');
       assert.equal(interestList?.querySelectorAll('li').length, 1);
 
-      controller.hashtagPreferencesService.removeInterest('art');
+      controller.services.hashtagPreferences.removeInterest('art');
       await controller.handleAuthLogout({});
       await waitForAnimationFrame(window, 2);
 
