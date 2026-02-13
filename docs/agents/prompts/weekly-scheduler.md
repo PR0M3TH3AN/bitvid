@@ -64,45 +64,59 @@ To find all entries for a specific agent:
 ls docs/agents/task-logs/weekly/ | grep "<agent-name>"
 ```
 
-To check for in-progress (`started`) entries without a matching `completed`/`failed`:
-```bash
-ls docs/agents/task-logs/weekly/ | grep "_started.md"
-```
-Then verify each `started` file has a corresponding `completed` or `failed` file from the same agent at a later timestamp. If not, that agent is still in progress.
-
 ---
 
-## Step 0 — Pre-Flight: Scan ALL In-Flight Work (MANDATORY)
+## PRE-FLIGHT GATE — Run These Commands NOW
 
-> **DO NOT SKIP THIS STEP. This is the single most important step in the entire scheduler. If you skip this, you will cause duplicate work and waste an entire agent run.**
+> **This gate is NOT optional. You MUST run both commands below and paste their raw output before doing anything else. If you skip this, you will duplicate another agent's work and waste the entire run. This has happened repeatedly.**
 
-Before determining which agent to run, you MUST build situational awareness of what is already in progress. Run these commands and record the results:
+If you arrived here from the meta prompt and already ran these commands and pasted the output, you may skip ahead to Step 1. Otherwise:
 
-### 0a. List ALL open weekly agent PRs
+### COMMAND 1 — Check for open weekly agent PRs
 
+Run this command:
 ```bash
-curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq -c '.[] | select(.title | contains("[weekly]")) | {number: .number, title: .title, created_at: .created_at, author: .user.login}'
+gh pr list --repo PR0M3TH3AN/bitvid --state open --json number,title,createdAt,author --limit 100 | grep -i "\[weekly\]"
 ```
 
-Record every open PR. These represent **active claims by other agents**. Any agent whose name appears in these PR titles is OFF LIMITS.
+If `gh` is unavailable, use this fallback:
+```bash
+curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | grep -o '"title":"[^"]*\[weekly\][^"]*"'
+```
 
-### 0b. Check the task log for incomplete runs
+**Paste the complete raw output.** If the command returns nothing, write: `OUTPUT: (empty — no results)`
 
+Every agent name that appears in these PR titles is **OFF LIMITS** — do not select it.
+
+### COMMAND 2 — Check the task log for incomplete runs
+
+Run this command:
 ```bash
 ls docs/agents/task-logs/weekly/ | sort
 ```
 
-Look for any `_started.md` files that do NOT have a corresponding `_completed.md` or `_failed.md` file from the same agent at a later timestamp. These represent agents that began work but haven't finished. Treat them the same as open PRs: those agents are OFF LIMITS unless the `started` entry is **older than 24 hours** (stale/abandoned — check the date in the filename).
+**Paste the complete raw output.**
 
-### 0c. Build your exclusion list
+Look for any `_started.md` files that do NOT have a corresponding `_completed.md` or `_failed.md` file from the same agent at a later timestamp. Those agents are **OFF LIMITS** (unless the started file is more than 24 hours old — check the date in the filename).
 
-Combine the results from 0a and 0b into an explicit exclusion list:
+### Build your exclusion list
+
+Combine results from Commands 1 and 2:
 - Agents with open/draft PRs → EXCLUDED
 - Agents with `started` status less than 24 hours old (no matching `completed`/`failed`) → EXCLUDED
 
-Write this exclusion list down before proceeding. You will reference it in Step 1.
+Write your exclusion list explicitly:
+```
+EXCLUDED AGENTS: agent-a, agent-b
+```
+or:
+```
+EXCLUDED AGENTS: (none)
+```
 
-**If the `curl` command fails** (e.g., network error, API limit): You MUST still check the task log directory for `started` entries. Log a warning in your summary that PR-based claim checking was unavailable.
+**If Command 1 failed** (network error, API limit, `gh`/`curl` unavailable): you MUST still check the task log directory (Command 2). Log a warning in your summary that PR-based claim checking was unavailable.
+
+**Do not proceed to Step 1 until you have pasted command outputs and written your exclusion list.**
 
 ---
 
@@ -114,7 +128,7 @@ Write this exclusion list down before proceeding. You will reference it in Step 
 4. Look up that agent in the alphabetical roster below and select the **next agent** in the list.
 5. If the most recent agent is the **last** in the roster, wrap around to the **first**.
 6. If the directory is empty, start with the **first** agent in the roster.
-7. **CHECK YOUR EXCLUSION LIST FROM STEP 0.** If the selected agent is on the exclusion list, skip to the next agent in the roster. Repeat until you find an agent that is NOT excluded. If you cycle through the entire roster and ALL agents are excluded, log as `failed` with summary `"All roster tasks currently claimed by other agents"` and stop.
+7. **CHECK YOUR EXCLUSION LIST.** If the selected agent is on the exclusion list, skip to the next agent in the roster. Repeat until you find an agent that is NOT excluded. If you cycle through the entire roster and ALL agents are excluded, log as `failed` with summary `"All roster tasks currently claimed by other agents"` and stop.
 
 ### Agent Roster (alphabetical order)
 
@@ -161,13 +175,13 @@ You must create a visible claim before doing any work. This claim is a **distrib
 
 After creating the draft PR, immediately re-check:
 ```bash
-curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq -c '.[] | select(.title | contains("[weekly] <agent-name>")) | {number: .number, title: .title, created_at: .created_at}'
+gh pr list --repo PR0M3TH3AN/bitvid --state open --json number,title,createdAt --limit 100 | grep -i "<agent-name>"
 ```
-If you see another PR for this agent that was created *before* yours (by a different agent instance), close your PR with `gh pr close <your-pr-number>` (if `gh` works) and go back to Step 1 to select the next agent.
+If you see another PR for this agent that was created *before* yours (by a different agent instance), close your PR with `gh pr close <your-pr-number>` and go back to Step 1 to select the next agent.
 
 ### 2c. Log "started" in the task log immediately
 
-> **This is critical.** Create a `started` log file NOW, before executing the task. This ensures the rotation advances even if you crash during execution.
+> **Create a `started` log file NOW, before executing the task. This ensures the rotation advances even if you crash during execution.**
 
 Create a new file in `docs/agents/task-logs/weekly/` with this naming pattern:
 
@@ -270,8 +284,8 @@ Use the current UTC timestamp (which will be later than the `started` file). The
 
 | Layer | Mechanism | Catches |
 |-------|-----------|---------|
-| **Step 0** | Scan ALL open `[weekly]` PRs | Agents claimed by any platform |
-| **Step 0** | Check task log dir for `started` files | Agents in progress (even without PR) |
+| **Pre-flight gate** | Scan ALL open `[weekly]` PRs via `gh`/`curl` | Agents claimed by any platform |
+| **Pre-flight gate** | Check task log dir for `started` files | Agents in progress (even without PR) |
 | **Step 2a** | Create draft PR as lock | Cross-platform visibility |
 | **Step 2b** | Race condition re-check | Simultaneous claims |
 | **Step 2c** | Create `started` log file immediately | Crash recovery — rotation advances |
