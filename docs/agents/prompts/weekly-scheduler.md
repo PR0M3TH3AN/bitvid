@@ -76,17 +76,12 @@ If you arrived here from the meta prompt and already ran these commands and past
 
 Run this command:
 ```bash
-gh pr list --repo PR0M3TH3AN/bitvid --state open --json number,title,createdAt,author --limit 100 | grep -i "\[weekly\]"
+curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, titles: [.[].title]}'
 ```
 
-If `gh` is unavailable, use this fallback:
-```bash
-curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | grep -o '"title":"[^"]*\[weekly\][^"]*"'
-```
+**Paste the complete raw output.** If the command returns nothing or errors, write: `OUTPUT: (empty — no results)`
 
-**Paste the complete raw output.** If the command returns nothing, write: `OUTPUT: (empty — no results)`
-
-Every agent name that appears in these PR titles is **OFF LIMITS** — do not select it.
+Review the titles in the output. Every agent name that appears in a PR title containing `[weekly]` is **OFF LIMITS** — do not select it.
 
 ### COMMAND 2 — Check the task log for incomplete runs
 
@@ -114,7 +109,7 @@ or:
 EXCLUDED AGENTS: (none)
 ```
 
-**If Command 1 failed** (network error, API limit, `gh`/`curl` unavailable): you MUST still check the task log directory (Command 2). Log a warning in your summary that PR-based claim checking was unavailable.
+**If Command 1 failed** (network error, API rate limit, `curl`/`jq` unavailable): you MUST still check the task log directory (Command 2). Log a warning in your summary that PR-based claim checking was unavailable.
 
 **Do not proceed to Step 1 until you have pasted command outputs and written your exclusion list.**
 
@@ -159,25 +154,19 @@ EXCLUDED AGENTS: (none)
 
 You must create a visible claim before doing any work. This claim is a **distributed lock** that prevents agents on other platforms (Claude Code, Codex, Jules) from picking up the same task.
 
-### 2a. Create your working branch and claim via draft PR
+### 2a. Create your working branch and push a claim
 
 1. Create your working branch.
 2. Make a minimal initial commit (e.g., create a new `context/CONTEXT_<timestamp>.md` with the task scope).
-3. Push the branch and open a **draft PR**:
-   ```bash
-   gh pr create --draft \
-     --title "[weekly] <agent-name>: <brief task description>" \
-     --body "Claimed by weekly scheduler at $(date -u +%Y-%m-%dT%H:%M:%SZ). Work in progress."
-   ```
-4. Verify the draft PR was created successfully before proceeding.
+3. Push the branch immediately to make it visible to other agents.
 
 ### 2b. Race condition check
 
-After creating the draft PR, immediately re-check:
+After pushing, re-check for competing claims:
 ```bash
-gh pr list --repo PR0M3TH3AN/bitvid --state open --json number,title,createdAt --limit 100 | grep -i "<agent-name>"
+curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, titles: [.[].title]}'
 ```
-If you see another PR for this agent that was created *before* yours (by a different agent instance), close your PR with `gh pr close <your-pr-number>` and go back to Step 1 to select the next agent.
+If you see another PR for this agent that was created *before* yours, abandon your branch and go back to Step 1 to select the next agent.
 
 ### 2c. Log "started" in the task log immediately
 
@@ -204,7 +193,7 @@ Use the current UTC timestamp. The file content should be:
 
 Commit and push this log file to your branch. This `started` entry serves as a secondary lock: other scheduler instances will see it and skip this agent.
 
-**If `gh` is unavailable:** You MUST still create the `started` log file and push it. The log file is your minimum viable claim.
+**The `started` log file is your primary claim mechanism.** Push it immediately so other agents can see it.
 
 ---
 
@@ -276,7 +265,7 @@ Use the current UTC timestamp (which will be later than the `started` file). The
 - If the agent prompt file is **empty or missing**, skip it, log the run as `failed` with summary `"Prompt file empty or missing"`, and proceed to the **next agent** in the roster.
 - If a task **fails mid-execution** (test failures, build errors), log the run as `failed` with a summary describing the failure. Still commit the log file and any partial artifacts.
 - If the task log directory is **missing**, create it: `mkdir -p docs/agents/task-logs/weekly/`.
-- If `gh` or `curl` is **unavailable or errors**, fall back to log-file-only claiming (the `started` file). Log a warning in your summary that PR-based claim checking was degraded.
+- If `curl` or `jq` is **unavailable or errors**, fall back to log-file-only claiming (the `started` file). Log a warning in your summary that PR-based claim checking was degraded.
 
 ---
 
@@ -284,9 +273,9 @@ Use the current UTC timestamp (which will be later than the `started` file). The
 
 | Layer | Mechanism | Catches |
 |-------|-----------|---------|
-| **Pre-flight gate** | Scan ALL open `[weekly]` PRs via `gh`/`curl` | Agents claimed by any platform |
+| **Pre-flight gate** | Scan ALL open `[weekly]` PRs via `curl` | Agents claimed by any platform |
 | **Pre-flight gate** | Check task log dir for `started` files | Agents in progress (even without PR) |
-| **Step 2a** | Create draft PR as lock | Cross-platform visibility |
+| **Step 2a** | Push branch with claim commit | Cross-platform visibility |
 | **Step 2b** | Race condition re-check | Simultaneous claims |
 | **Step 2c** | Create `started` log file immediately | Crash recovery — rotation advances |
 

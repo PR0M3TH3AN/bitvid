@@ -76,11 +76,16 @@ WORKFLOW
   - Gather branch refs:
       - `git for-each-ref --sort=-committerdate --format='%(committerdate:short) %(refname:short)' refs/heads/ai`
 
-Optional method (only if tooling is available and policy allows):
-  - Use `gh` CLI or other configured tooling to fetch:
-      - PR links/status
-      - issue links/priorities
-  If not available: do not guess links; report locally-derived identifiers.
+Optional method (use curl to query the GitHub API):
+  - Fetch open PRs:
+      ```
+      curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, titles: [.[].title]}'
+      ```
+  - Fetch recently closed/merged PRs:
+      ```
+      curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=closed&per_page=50&sort=updated&direction=desc" | jq '[.[] | {title: .title, merged: .merged_at, number: .number}]'
+      ```
+  If curl is unavailable: do not guess links; report locally-derived identifiers.
 
 3) Normalize items into report sections
   For each item discovered, capture:

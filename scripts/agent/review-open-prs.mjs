@@ -13,18 +13,25 @@ function runCommand(command, args = [], options = {}) {
 }
 
 function getOpenPRs() {
-    console.log('Fetching open PRs...');
+    console.log('Fetching open PRs via GitHub API...');
     try {
-        const res = spawnSync('gh', ['pr', 'list', '--json', 'number,headRefName,baseRefName,url'], { encoding: 'utf-8' });
+        const res = spawnSync('curl', ['-s', 'https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100'], { encoding: 'utf-8' });
         if (res.error) {
-            console.error('Error fetching PRs (gh CLI not installed?):', res.error.message);
+            console.error('Error fetching PRs (curl not available?):', res.error.message);
             return [];
         }
         if (res.status !== 0) {
             console.error('Error fetching PRs:', res.stderr);
             return [];
         }
-        return JSON.parse(res.stdout);
+        const apiPRs = JSON.parse(res.stdout);
+        // Map GitHub API response to the shape we need
+        return apiPRs.map(pr => ({
+            number: pr.number,
+            headRefName: pr.head.ref,
+            baseRefName: pr.base.ref,
+            url: pr.html_url
+        }));
     } catch (e) {
         console.error('Exception fetching PRs:', e);
         return [];
@@ -52,15 +59,16 @@ async function main() {
     for (const pr of openPRs) {
         console.log(`\n=== Processing PR #${pr.number}: ${pr.url} ===`);
         try {
-            // Checkout PR
-            runCommand('gh', ['pr', 'checkout', pr.number]);
+            // Checkout PR via git fetch
+            runCommand('git', ['fetch', 'origin', `pull/${pr.number}/head:pr-${pr.number}`]);
+            runCommand('git', ['checkout', `pr-${pr.number}`]);
 
             // Set Environment Variables
             const env = {
                 ...process.env,
                 PR_NUMBER: pr.number.toString(),
                 GITHUB_BASE_REF: pr.baseRefName,
-                // Assuming origin is the base repo or gh pr checkout handled the remote setup.
+                // Assuming origin is the base repo.
                 // automated-pr-review.mjs handles missing GITHUB_BASE_REPO_URL by defaulting to upstream/origin.
             };
 

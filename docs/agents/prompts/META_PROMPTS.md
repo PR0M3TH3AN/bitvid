@@ -14,10 +14,9 @@ before choosing a task — is to run these two commands. Not later. NOW.
 
 COMMAND 1 — Check for open daily agent PRs:
 
-  gh pr list --repo PR0M3TH3AN/bitvid --state open --json number,title,createdAt,author --limit 100 | grep -i "\[daily\]"
+  curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, titles: [.[].title]}'
 
-  If `gh` is not available, use this fallback:
-  curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | grep -o '"title":"[^"]*\[daily\][^"]*"'
+  Review the output. Any title containing "[daily]" means that agent is OFF LIMITS.
 
 COMMAND 2 — Check for in-progress task logs:
 
@@ -63,10 +62,9 @@ before choosing a task — is to run these two commands. Not later. NOW.
 
 COMMAND 1 — Check for open weekly agent PRs:
 
-  gh pr list --repo PR0M3TH3AN/bitvid --state open --json number,title,createdAt,author --limit 100 | grep -i "\[weekly\]"
+  curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, titles: [.[].title]}'
 
-  If `gh` is not available, use this fallback:
-  curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | grep -o '"title":"[^"]*\[weekly\][^"]*"'
+  Review the output. Any title containing "[weekly]" means that agent is OFF LIMITS.
 
 COMMAND 2 — Check for in-progress task logs:
 
