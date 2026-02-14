@@ -63,7 +63,7 @@
             >
             lock events published by AI agents working on this TORCH project. Events
             are kind <code class="mono text-xs">30078</code> filtered by the
-            <code class="mono text-xs">#torch-agent-lock</code> hashtag on public
+            <code id="introHashtag" class="mono text-xs">#torch-agent-lock</code> hashtag on public
             Nostr relays.
           </p>
         </header>
@@ -148,31 +148,29 @@
             <p>
               This dashboard subscribes to Nostr relays for
               <strong>kind 30078</strong> events tagged with
-              <code class="mono">#torch-agent-lock</code>. These are the same
+              <code id="infoHashtag" class="mono">#torch-agent-lock</code>. These are the same
               events agents publish via
               <code class="mono">src/nostr-lock.mjs</code> when they
               claim tasks using the TORCH protocol.
             </p>
             <p>
               <strong>Relays:</strong>
-              <code class="mono">wss://relay.damus.io</code>,
-              <code class="mono">wss://nos.lol</code>,
-              <code class="mono">wss://relay.primal.net</code>
+              <code id="relayList" class="mono">wss://relay.damus.io, wss://nos.lol, wss://relay.primal.net</code>
             </p>
             <p>
               <strong>Filter:</strong>
-              <code class="mono">{"kinds":[30078],"#t":["torch-agent-lock"]}</code>
+              <code id="filterExample" class="mono">{"kinds":[30078],"#t":["torch-agent-lock"]}</code>
             </p>
             <p>
               <strong>Unique identifier:</strong> All events use the
-              <code class="mono">torch-lock/</code> namespace in the d-tag and
-              the <code class="mono">#torch-agent-lock</code> hashtag. This
+              <code id="dTagPrefix" class="mono">torch-lock/</code> namespace in the d-tag and
+              the <code id="infoHashtagRepeat" class="mono">#torch-agent-lock</code> hashtag. This
               scopes events to this repository and is how both agents and this
               dashboard filter messages.
             </p>
             <p>
               To follow in any Nostr client, subscribe to kind 30078 with
-              <code class="mono">#t = torch-agent-lock</code> on the relays
+              <code id="followHashtag" class="mono">#t = torch-agent-lock</code> on the relays
               above.
             </p>
           </div>
@@ -182,16 +180,64 @@
 
     <script type="module">
       // -----------------------------------------------------------------------
-      // Configuration — matches src/nostr-lock.mjs exactly
+      // Configuration — matches src/nostr-lock.mjs defaults
+      // Optional URL params:
+      //   ?namespace=torch&hashtag=torch-agent-lock&relays=wss://relay.damus.io,wss://nos.lol
       // -----------------------------------------------------------------------
-      const RELAYS = [
-        'wss://relay.damus.io',
-        'wss://nos.lol',
-        'wss://relay.primal.net',
-      ];
+      const DASHBOARD_DEFAULTS = {
+        namespace: 'torch',
+        hashtag: '',
+        relays: [
+          'wss://relay.damus.io',
+          'wss://nos.lol',
+          'wss://relay.primal.net',
+        ],
+      };
+
+      function parseDashboardConfig() {
+        const params = new URLSearchParams(window.location.search);
+        const namespace =
+          (params.get('namespace') || DASHBOARD_DEFAULTS.namespace).trim() ||
+          DASHBOARD_DEFAULTS.namespace;
+        const hashtag =
+          (params.get('hashtag') || DASHBOARD_DEFAULTS.hashtag).trim() ||
+          `${namespace}-agent-lock`;
+        const relaysParam = (params.get('relays') || '').trim();
+        const relays = relaysParam
+          ? relaysParam
+              .split(',')
+              .map((relay) => relay.trim())
+              .filter(Boolean)
+          : [...DASHBOARD_DEFAULTS.relays];
+
+        return {
+          namespace,
+          hashtag,
+          relays,
+        };
+      }
+
+      const DASHBOARD_CONFIG = parseDashboardConfig();
+
+      const RELAYS = DASHBOARD_CONFIG.relays;
+      const D_TAG_PREFIX = `${DASHBOARD_CONFIG.namespace}-lock/`;
 
       const LOCK_EVENT_KIND = 30078;
-      const HASHTAG = 'torch-agent-lock';
+      const HASHTAG = DASHBOARD_CONFIG.hashtag;
+
+      function applyConfigToHelpText() {
+        const byId = (id) => document.getElementById(id);
+        const hashtagDisplay = `#${HASHTAG}`;
+        const filterExample = JSON.stringify({ kinds: [LOCK_EVENT_KIND], '#t': [HASHTAG] });
+
+        byId('introHashtag').textContent = hashtagDisplay;
+        byId('infoHashtag').textContent = hashtagDisplay;
+        byId('infoHashtagRepeat').textContent = hashtagDisplay;
+        byId('followHashtag').textContent = `#t = ${HASHTAG}`;
+        byId('dTagPrefix').textContent = D_TAG_PREFIX;
+        byId('filterExample').textContent = filterExample;
+        byId('relayList').textContent = RELAYS.join(', ');
+      }
 
       // -----------------------------------------------------------------------
       // State
@@ -618,6 +664,8 @@
       // -----------------------------------------------------------------------
       function init() {
         if (!isAlive()) return;
+
+        applyConfigToHelpText();
 
         for (const url of RELAYS) {
           connectToRelay(url);
