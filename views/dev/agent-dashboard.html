@@ -520,13 +520,13 @@
           updateConnectionBadge();
 
           // NIP-01 REQ: subscribe to TORCH lock events
-          // Since today is the start of the window, request from today
-          const sinceToday =
-            Math.floor(new Date().setUTCHours(0, 0, 0, 0) / 1000);
+          // Request from 7 days ago to cover active locks created before midnight
+          // and recent history for weekly cadence
+          const since = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
           const filter = {
             kinds: [LOCK_EVENT_KIND],
             '#t': [HASHTAG],
-            since: sinceToday,
+            since: since,
           };
           ws.send(JSON.stringify(['REQ', subId, filter]));
         });
