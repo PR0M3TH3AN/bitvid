@@ -1,5 +1,13 @@
 import { Nip71FormManager } from "./nip71FormManager.js";
 import { createModalAccessibility } from "./modalAccessibility.js";
+import {
+  createImetaVariants,
+  createTextTracks,
+  createSegments,
+  createHashtags,
+  createParticipants,
+  createReferences,
+} from "./revertModalRenderers.js";
 
 // NOTE: Any metadata field added to the Upload or Edit modals must also be
 // rendered inside the Revert modal to keep the experiences aligned.
@@ -99,7 +107,12 @@ export class RevertModal {
       }
 
       const wrapper = document.createElement("div");
-      wrapper.innerHTML = html;
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, "text/html");
+      while (doc.body.firstChild) {
+        wrapper.appendChild(doc.body.firstChild);
+      }
+
       if (typeof this.removeTrackingScripts === "function") {
         this.removeTrackingScripts(wrapper);
       }
@@ -195,15 +208,18 @@ export class RevertModal {
     }
 
     if (this.list) {
-      this.list.innerHTML = "";
+      this.list.replaceChildren();
     }
 
     if (this.details) {
+      this.details.replaceChildren();
       if (this.detailsDefaultHTML) {
-        this.details.innerHTML = this.detailsDefaultHTML;
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(this.detailsDefaultHTML, "text/html");
+        while (doc.body.firstChild) {
+          this.details.appendChild(doc.body.firstChild);
+        }
         this.placeholder = this.details.querySelector("#revertVersionPlaceholder");
-      } else {
-        this.details.innerHTML = "";
       }
     }
 
@@ -381,11 +397,13 @@ export class RevertModal {
     const selectedId = this.selectedRevision?.id || "";
     const currentId = this.activeVideo?.id || "";
 
-    this.list.innerHTML = "";
+    this.list.replaceChildren();
 
     if (!this.revisions.length) {
-      this.list.innerHTML =
-        '<p class="text-xs text-subtle">No revisions found.</p>';
+      const p = document.createElement("p");
+      p.className = "text-xs text-subtle";
+      p.textContent = "No revisions found.";
+      this.list.appendChild(p);
       return;
     }
 
@@ -481,22 +499,37 @@ export class RevertModal {
         ? "text-status-danger-on"
         : "text-muted";
 
-      const escape = (value) =>
-        this.escapeHTML ? this.escapeHTML(String(value ?? "")) : String(value ?? "");
+      const container = document.createElement("div");
+      container.className = "flex items-start justify-between gap-3";
 
-      button.innerHTML = `
-        <div class="flex items-start justify-between gap-3">
-          <div class="space-y-1">
-            <p class="font-semibold">${escape(entry.title || "Untitled")}</p>
-            <p class="text-xs text-subtle">${escape(relative)} • ${escape(absolute)}</p>
-            ${meta ? `<p class="text-xs ${metaClass}">${escape(meta)}</p>` : ""}
-          </div>
-          <div class="text-xs uppercase tracking-wide text-muted">
-            ${escape(versionLabel)}
-          </div>
-        </div>
-      `;
+      const leftCol = document.createElement("div");
+      leftCol.className = "space-y-1";
 
+      const titleP = document.createElement("p");
+      titleP.className = "font-semibold";
+      titleP.textContent = entry.title || "Untitled";
+      leftCol.appendChild(titleP);
+
+      const timeP = document.createElement("p");
+      timeP.className = "text-xs text-subtle";
+      timeP.textContent = `${relative} • ${absolute}`;
+      leftCol.appendChild(timeP);
+
+      if (meta) {
+        const metaP = document.createElement("p");
+        metaP.className = `text-xs ${metaClass}`;
+        metaP.textContent = meta;
+        leftCol.appendChild(metaP);
+      }
+
+      container.appendChild(leftCol);
+
+      const rightCol = document.createElement("div");
+      rightCol.className = "text-xs uppercase tracking-wide text-muted";
+      rightCol.textContent = versionLabel;
+      container.appendChild(rightCol);
+
+      button.appendChild(container);
       fragment.appendChild(button);
     });
 
@@ -541,12 +574,16 @@ export class RevertModal {
       return;
     }
 
+    this.details.replaceChildren();
+
     if (!version) {
       if (this.detailsDefaultHTML) {
-        this.details.innerHTML = this.detailsDefaultHTML;
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(this.detailsDefaultHTML, "text/html");
+        while (doc.body.firstChild) {
+          this.details.appendChild(doc.body.firstChild);
+        }
         this.placeholder = this.details.querySelector("#revertVersionPlaceholder");
-      } else {
-        this.details.innerHTML = "";
       }
       return;
     }
@@ -569,364 +606,457 @@ export class RevertModal {
     const isPrivate = version.isPrivate === true;
     const dTagValue = this.extractDTagValue(version.tags);
 
-    const escape = this.getEscapeFn();
     const nip71Metadata = this.buildNip71DisplayMetadata(version);
 
-    const fallbackThumbnail = escape(this.fallbackThumbnailSrc);
-    const thumbnailSrc = thumbnail ? escape(thumbnail) : fallbackThumbnail;
+    const fallbackThumbnail = this.fallbackThumbnailSrc;
+    const thumbnailSrc = thumbnail || fallbackThumbnail;
     const thumbnailAlt = thumbnail ? "Revision thumbnail" : "Fallback thumbnail";
 
-    let urlHtml = this.renderPlaceholder("None");
-    if (url) {
-      urlHtml = this.buildLinkMarkup(url);
-    }
+    const urlNode = url ? this.createLinkMarkup(url) : this.createPlaceholder("None");
 
-    let magnetHtml = this.renderPlaceholder("None");
-    if (displayMagnet) {
-      const labelRaw = this.truncateMiddle
-        ? this.truncateMiddle(displayMagnet, 72)
-        : displayMagnet;
-      const label = escape(labelRaw);
-      const caption = isPrivate
-        ? '<span class="block mt-1 text-xs text-status-private-on">Magnet stays visible only to you — private notes keep the raw string local.</span>'
-        : "";
-      magnetHtml = `<div class="break-all">${label}${caption}</div>`;
-    }
+    const magnetNode = displayMagnet
+      ? (() => {
+          const div = document.createElement("div");
+          div.className = "break-all";
+          const label = this.truncateMiddle
+             ? this.truncateMiddle(displayMagnet, 72)
+             : displayMagnet;
+          div.textContent = label;
+          if (isPrivate) {
+             const span = document.createElement("span");
+             span.className = "block mt-1 text-xs text-status-private-on";
+             span.textContent = "Magnet stays visible only to you — private notes keep the raw string local.";
+             div.appendChild(span);
+          }
+          return div;
+        })()
+      : this.createPlaceholder("None");
 
-    const chips = [];
+    const chipsDiv = document.createElement("div");
+    chipsDiv.className = "flex flex-wrap gap-2";
+
     const nsfwFlag = version.isNsfw === true;
     const forKidsFlag = version.isForKids === true;
     const conflictingAudienceFlags = nsfwFlag && forKidsFlag;
+
     if (version.deleted) {
-      chips.push(
-        '<span class="pill" data-size="compact" data-variant="critical">Marked deleted</span>'
-      );
+      const s = document.createElement("span");
+      s.className = "pill";
+      s.dataset.size = "compact";
+      s.dataset.variant = "critical";
+      s.textContent = "Marked deleted";
+      chipsDiv.appendChild(s);
     }
     if (isPrivate) {
-      chips.push(
-        '<span class="pill" data-size="compact" data-variant="private">Private</span>'
-      );
+      const s = document.createElement("span");
+      s.className = "pill";
+      s.dataset.size = "compact";
+      s.dataset.variant = "private";
+      s.textContent = "Private";
+      chipsDiv.appendChild(s);
     }
     if (conflictingAudienceFlags) {
-      chips.push(
-        '<span class="pill" data-size="compact" data-variant="warning">NSFW + For kids conflict</span>'
-      );
+      const s = document.createElement("span");
+      s.className = "pill";
+      s.dataset.size = "compact";
+      s.dataset.variant = "warning";
+      s.textContent = "NSFW + For kids conflict";
+      chipsDiv.appendChild(s);
     } else {
       if (nsfwFlag) {
-        chips.push(
-          '<span class="pill" data-size="compact" data-variant="critical">Marked NSFW</span>'
-        );
+        const s = document.createElement("span");
+        s.className = "pill";
+        s.dataset.size = "compact";
+        s.dataset.variant = "critical";
+        s.textContent = "Marked NSFW";
+        chipsDiv.appendChild(s);
       }
       if (forKidsFlag) {
-        chips.push(
-          '<span class="pill" data-size="compact" data-variant="success">For kids</span>'
-        );
+        const s = document.createElement("span");
+        s.className = "pill";
+        s.dataset.size = "compact";
+        s.dataset.variant = "success";
+        s.textContent = "For kids";
+        chipsDiv.appendChild(s);
       }
     }
     if (version.version !== undefined) {
-      chips.push(
-        `<span class="pill" data-size="compact" data-variant="neutral">Schema v${escape(
-          String(version.version)
-        )}</span>`
-      );
+      const s = document.createElement("span");
+      s.className = "pill";
+      s.dataset.size = "compact";
+      s.dataset.variant = "neutral";
+      s.textContent = `Schema v${version.version}`;
+      chipsDiv.appendChild(s);
     }
 
-    const renderFlagStatus = (value, {
-      yesLabel = "Yes",
-      noLabel = "No",
-      unspecifiedLabel = "Not specified",
-    } = {}) => {
+    const createFlagStatus = (value, {yes, no, unspecified}) => {
       if (value === true) {
-        return `<span class="text-primary">${escape(yesLabel)}</span>`;
+        const s = document.createElement("span");
+        s.className = "text-primary";
+        s.textContent = yes;
+        return s;
       }
       if (value === false) {
-        return `<span class="text-primary">${escape(noLabel)}</span>`;
+        const s = document.createElement("span");
+        s.className = "text-primary";
+        s.textContent = no;
+        return s;
       }
-      return this.renderPlaceholder(unspecifiedLabel);
+      return this.createPlaceholder(unspecified);
     };
 
-    const nsfwStatusHtml = renderFlagStatus(version.isNsfw, {
-      yesLabel: "Yes — marked NSFW",
-      noLabel: "No — not flagged as NSFW",
-      unspecifiedLabel: "Not specified",
+    const nsfwStatusNode = createFlagStatus(version.isNsfw, {
+      yes: "Yes — marked NSFW",
+      no: "No — not flagged as NSFW",
+      unspecified: "Not specified",
     });
-    const kidsStatusHtml = renderFlagStatus(version.isForKids, {
-      yesLabel: "Yes — marked for kids",
-      noLabel: "No — not marked for kids",
-      unspecifiedLabel: "Not specified",
+    const kidsStatusNode = createFlagStatus(version.isForKids, {
+      yes: "Yes — marked for kids",
+      no: "No — not marked for kids",
+      unspecified: "Not specified",
     });
 
     const audienceConflictNotice = conflictingAudienceFlags
-      ? '<p class="text-xs text-status-warning-on">Conflicting flags detected — this revision is marked both NSFW and for kids. Review before reverting.</p>'
-      : "";
+      ? (() => {
+          const p = document.createElement("p");
+          p.className = "text-xs text-status-warning-on";
+          p.textContent = "Conflicting flags detected — this revision is marked both NSFW and for kids. Review before reverting.";
+          return p;
+        })()
+      : null;
 
-    const descriptionHtml = description
-      ? `<p class="whitespace-pre-wrap text-primary">${escape(description)}</p>`
-      : '<p class="text-subtle">No description provided.</p>';
+    const descriptionNode = description
+      ? (() => {
+          const p = document.createElement("p");
+          p.className = "whitespace-pre-wrap text-primary";
+          p.textContent = description;
+          return p;
+        })()
+      : (() => {
+          const p = document.createElement("p");
+          p.className = "text-subtle";
+          p.textContent = "No description provided.";
+          return p;
+        })();
 
-    const rootId =
-      typeof version.videoRootId === "string" ? version.videoRootId : "";
+    const rootId = typeof version.videoRootId === "string" ? version.videoRootId : "";
     const rootDisplay = rootId
       ? this.truncateMiddle
-        ? escape(this.truncateMiddle(rootId, 64))
-        : escape(rootId)
+        ? this.truncateMiddle(rootId, 64)
+        : rootId
       : "";
     const eventDisplay = version.id
       ? this.truncateMiddle
-        ? escape(this.truncateMiddle(version.id, 64))
-        : escape(version.id)
+        ? this.truncateMiddle(version.id, 64)
+        : version.id
       : "";
 
-    const timestampParts = [];
-    if (absolute) {
-      timestampParts.push(escape(absolute));
-    }
-    if (relative) {
-      timestampParts.push(`(${escape(relative)})`);
-    }
-    const timestampHtml = timestampParts.length
-      ? timestampParts.join(" ")
-      : escape(absolute || relative || "");
+    const timestampText = [absolute, relative ? `(${relative})` : ""]
+      .filter(Boolean)
+      .join(" ");
 
-    const formatTimestamp = (seconds, raw) => {
+    const createTimestampNode = (seconds, raw) => {
       if (Number.isFinite(seconds)) {
-        const absoluteLabel = this.formatAbsoluteTimestamp
-          ? this.formatAbsoluteTimestamp(seconds)
-          : `${seconds}`;
-        const relativeLabel = this.formatTimeAgo
-          ? this.formatTimeAgo(seconds)
-          : "";
-        const parts = [];
-        if (absoluteLabel) {
-          parts.push(`<span class="text-primary">${escape(absoluteLabel)}</span>`);
+        const abs = this.formatAbsoluteTimestamp ? this.formatAbsoluteTimestamp(seconds) : `${seconds}`;
+        const rel = this.formatTimeAgo ? this.formatTimeAgo(seconds) : "";
+        const frag = document.createDocumentFragment();
+        if (abs) {
+          const s = document.createElement("span");
+          s.className = "text-primary";
+          s.textContent = abs;
+          frag.appendChild(s);
+          frag.appendChild(document.createTextNode(" "));
         }
-        if (relativeLabel) {
-          parts.push(`<span class="text-muted">(${escape(relativeLabel)})</span>`);
+        if (rel) {
+           const s = document.createElement("span");
+           s.className = "text-muted";
+           s.textContent = `(${rel})`;
+           frag.appendChild(s);
         }
-        if (parts.length) {
-          return parts.join(" ");
-        }
+        return frag;
       }
       if (raw) {
-        return `<span class="text-primary">${escape(raw)}</span>`;
+        const s = document.createElement("span");
+        s.className = "text-primary";
+        s.textContent = raw;
+        return s;
       }
-      return this.renderPlaceholder();
+      return this.createPlaceholder();
     };
 
-    const formatDuration = (seconds, raw) => {
-      if (Number.isFinite(seconds)) {
-        const display = this.formatDurationSeconds(seconds);
-        const suffix = seconds === 1 ? "second" : "seconds";
-        return `<span class="text-primary">${escape(display)}</span> <span class="text-subtle">(${escape(
-          `${seconds} ${suffix}`
-        )})</span>`;
-      }
-      if (raw) {
-        return `<span class="text-primary">${escape(raw)}</span>`;
-      }
-      return this.renderPlaceholder();
+    const createDurationNode = (seconds, raw) => {
+       if (Number.isFinite(seconds)) {
+         const display = this.formatDurationSeconds(seconds);
+         const suffix = seconds === 1 ? "second" : "seconds";
+         const frag = document.createDocumentFragment();
+         const s1 = document.createElement("span");
+         s1.className = "text-primary";
+         s1.textContent = display;
+         frag.appendChild(s1);
+         frag.appendChild(document.createTextNode(" "));
+         const s2 = document.createElement("span");
+         s2.className = "text-subtle";
+         s2.textContent = `(${seconds} ${suffix})`;
+         frag.appendChild(s2);
+         return frag;
+       }
+       if (raw) {
+         const s = document.createElement("span");
+         s.className = "text-primary";
+         s.textContent = raw;
+         return s;
+       }
+       return this.createPlaceholder();
     };
 
     const kindValue = nip71Metadata.kind;
-    let kindHtml = this.renderPlaceholder();
-    if (kindValue !== "" && kindValue !== null && kindValue !== undefined) {
-      const label = typeof kindValue === "number" ? kindValue : `${kindValue}`;
-      const numeric = Number(label);
-      let suffix = "";
-      if (Number.isFinite(numeric)) {
-        if (numeric === 22) {
-          suffix = "short";
-        } else if (numeric === 21) {
-          suffix = "video";
+    const kindNode = (() => {
+      if (kindValue !== "" && kindValue !== null && kindValue !== undefined) {
+        const label = typeof kindValue === "number" ? kindValue : `${kindValue}`;
+        const numeric = Number(label);
+        let suffix = "";
+        if (Number.isFinite(numeric)) {
+          if (numeric === 22) suffix = "short";
+          else if (numeric === 21) suffix = "video";
         }
-      }
-      const badge = `<code class="rounded bg-overlay-panel-soft px-1.5 py-0.5 text-primary">kind ${escape(
-        label
-      )}</code>`;
-      kindHtml = suffix
-        ? `${badge} <span class="text-muted">(${escape(suffix)})</span>`
-        : badge;
-    }
 
-    const summaryHtml = nip71Metadata.summary
-      ? `<p class="whitespace-pre-wrap text-primary">${escape(
-          nip71Metadata.summary
-        )}</p>`
-      : this.renderPlaceholder("Not provided");
-    const contentWarningHtml = nip71Metadata.contentWarning
-      ? `<span class="pill" data-size="compact" data-variant="warning">${escape(
-          nip71Metadata.contentWarning
-        )}</span>`
-      : this.renderPlaceholder("Not provided");
-    const publishedAtHtml = formatTimestamp(
+        const frag = document.createDocumentFragment();
+        const code = document.createElement("code");
+        code.className = "rounded bg-overlay-panel-soft px-1.5 py-0.5 text-primary";
+        code.textContent = `kind ${label}`;
+        frag.appendChild(code);
+
+        if (suffix) {
+          frag.appendChild(document.createTextNode(" "));
+          const s = document.createElement("span");
+          s.className = "text-muted";
+          s.textContent = `(${suffix})`;
+          frag.appendChild(s);
+        }
+        return frag;
+      }
+      return this.createPlaceholder();
+    })();
+
+    const summaryNode = nip71Metadata.summary
+      ? (() => {
+          const p = document.createElement("p");
+          p.className = "whitespace-pre-wrap text-primary";
+          p.textContent = nip71Metadata.summary;
+          return p;
+        })()
+      : this.createPlaceholder("Not provided");
+
+    const contentWarningNode = nip71Metadata.contentWarning
+      ? (() => {
+          const s = document.createElement("span");
+          s.className = "pill";
+          s.dataset.size = "compact";
+          s.dataset.variant = "warning";
+          s.textContent = nip71Metadata.contentWarning;
+          return s;
+        })()
+      : this.createPlaceholder("Not provided");
+
+    const publishedAtNode = createTimestampNode(
       nip71Metadata.publishedAtSeconds,
       nip71Metadata.publishedAtRaw
     );
-    const durationHtml = formatDuration(
+    const durationNode = createDurationNode(
       nip71Metadata.durationSeconds,
       nip71Metadata.durationRaw
     );
-    const altHtml = nip71Metadata.alt
-      ? `<p class="whitespace-pre-wrap text-primary">${escape(nip71Metadata.alt)}</p>`
-      : this.renderPlaceholder("Not provided");
+    const altNode = nip71Metadata.alt
+      ? (() => {
+          const p = document.createElement("p");
+          p.className = "whitespace-pre-wrap text-primary";
+          p.textContent = nip71Metadata.alt;
+          return p;
+        })()
+      : this.createPlaceholder("Not provided");
 
-    const definition = (label, valueHtml, { span = 1 } = {}) => {
-      const colSpan = span > 1 ? "sm:col-span-2" : "";
-      return `
-        <div class="${colSpan}">
-          <dt class="font-semibold text-primary">${escape(label)}</dt>
-          <dd class="mt-1">${valueHtml}</dd>
-        </div>
-      `;
+    const createSection = (title) => {
+      const s = document.createElement("section");
+      s.className = "space-y-2";
+      const h = document.createElement("h4");
+      h.className = "text-sm font-semibold text-primary";
+      h.textContent = title;
+      s.appendChild(h);
+      return s;
     };
 
-    const eventMetadataRows = [
-      definition("NIP-71 kind", kindHtml),
-      definition("Summary", summaryHtml, { span: 2 }),
-      definition("Content warning", contentWarningHtml, { span: 2 }),
-      definition("Published timestamp", publishedAtHtml),
-      definition("Duration", durationHtml),
-      definition("Alt text", altHtml, { span: 2 }),
-    ].join("");
+    const createDl = () => {
+       const dl = document.createElement("dl");
+       dl.className = "grid gap-3 sm:grid-cols-2 text-xs text-subtle";
+       return dl;
+    };
 
-    const audienceRows = [
-      definition("NSFW flag", nsfwStatusHtml),
-      definition("For kids flag", kidsStatusHtml),
-    ].join("");
+    const createDtDd = (label, contentNode, colSpan = 1) => {
+        const div = document.createElement("div");
+        if (colSpan > 1) div.className = "sm:col-span-2";
 
-    this.details.innerHTML = `
-      <div class="space-y-6">
-        <div class="flex flex-col gap-4 lg:flex-row lg:items-start">
-          <div class="overflow-hidden rounded-md border border-overlay bg-overlay-strong w-full max-w-sm">
-            <img
-              src="${thumbnailSrc}"
-              alt="${escape(thumbnailAlt)}"
-              class="w-full h-auto object-cover"
-              loading="lazy"
-            />
-          </div>
-          <div class="flex-1 space-y-3">
-            <div class="space-y-1">
-              <h3 class="text-lg font-semibold text-primary">${escape(
-                version.title || "Untitled"
-              )}</h3>
-              <p class="text-xs text-muted">${timestampHtml}</p>
-            </div>
-            ${
-              chips.length
-                ? `<div class="flex flex-wrap gap-2">${chips.join("")}</div>`
-                : ""
-            }
-            <dl class="grid gap-3 sm:grid-cols-2 text-xs text-subtle">
-              <div>
-                <dt class="font-semibold text-primary">Hosted URL</dt>
-                <dd class="mt-1">${urlHtml}</dd>
-              </div>
-              <div>
-                <dt class="font-semibold text-primary">Magnet</dt>
-                <dd class="mt-1">${magnetHtml}</dd>
-              </div>
-            </dl>
-          </div>
-        </div>
+        const dt = document.createElement("dt");
+        dt.className = "font-semibold text-primary";
+        dt.textContent = label;
+        div.appendChild(dt);
 
-        <section class="space-y-2">
-          <h4 class="text-sm font-semibold text-primary">Description</h4>
-          ${descriptionHtml}
-        </section>
+        const dd = document.createElement("dd");
+        dd.className = "mt-1";
+        dd.appendChild(contentNode);
+        div.appendChild(dd);
+        return div;
+    };
 
-        <section class="space-y-2">
-          <h4 class="text-sm font-semibold text-primary">Audience flags</h4>
-          <dl class="grid gap-3 sm:grid-cols-2 text-xs text-subtle">
-            ${audienceRows}
-          </dl>
-          ${audienceConflictNotice}
-        </section>
+    const wrapper = document.createElement("div");
+    wrapper.className = "space-y-6";
 
-        <section class="space-y-2">
-          <h4 class="text-sm font-semibold text-primary">NIP-71 event metadata</h4>
-          <dl class="grid gap-3 sm:grid-cols-2 text-xs text-subtle">
-            ${eventMetadataRows}
-          </dl>
-        </section>
+    // Header Area
+    const headerRow = document.createElement("div");
+    headerRow.className = "flex flex-col gap-4 lg:flex-row lg:items-start";
 
-        <section class="space-y-2">
-          <h4 class="text-sm font-semibold text-primary">Note pointers</h4>
-          <dl class="grid gap-3 sm:grid-cols-2 text-xs text-subtle">
-            <div>
-              <dt class="font-semibold text-primary">Mode</dt>
-              <dd class="mt-1">${escape(version.mode || "live")}</dd>
-            </div>
-            <div>
-              <dt class="font-semibold text-primary">d tag</dt>
-              <dd class="mt-1">
-                ${
-                  dTagValue
-                    ? `<code class="rounded bg-overlay-panel-soft px-1.5 py-0.5 text-primary">${escape(
-                        dTagValue
-                      )}</code>`
-                    : '<span class="text-subtle">Not provided</span>'
-                }
-              </dd>
-            </div>
-            <div>
-              <dt class="font-semibold text-primary">videoRootId</dt>
-              <dd class="mt-1">
-                ${
-                  rootDisplay
-                    ? `<code class="break-all rounded bg-overlay-panel-soft px-1.5 py-0.5 text-primary" title="${escape(
-                        rootId
-                      )}">${rootDisplay}</code>`
-                    : '<span class="text-subtle">Not provided</span>'
-                }
-              </dd>
-            </div>
-            <div>
-              <dt class="font-semibold text-primary">Event ID</dt>
-              <dd class="mt-1">
-                ${
-                  eventDisplay
-                    ? `<code class="break-all rounded bg-overlay-panel-soft px-1.5 py-0.5 text-primary" title="${escape(
-                        version.id || ""
-                      )}">${eventDisplay}</code>`
-                    : '<span class="text-subtle">Unknown</span>'
-                }
-              </dd>
-            </div>
-          </dl>
-        </section>
+    const imgDiv = document.createElement("div");
+    imgDiv.className = "overflow-hidden rounded-md border border-overlay bg-overlay-strong w-full max-w-sm";
+    const img = document.createElement("img");
+    img.src = thumbnailSrc;
+    img.alt = thumbnailAlt;
+    img.className = "w-full h-auto object-cover";
+    img.loading = "lazy";
+    imgDiv.appendChild(img);
+    headerRow.appendChild(imgDiv);
 
-        <section class="space-y-4">
-          <h4 class="text-sm font-semibold text-primary">NIP-71 media metadata</h4>
-          <div class="space-y-4">
-            <div class="space-y-2">
-              <h5 class="text-xs font-semibold uppercase tracking-wide text-muted">Media variants (imeta)</h5>
-              ${this.renderImetaVariants(nip71Metadata.imeta)}
-            </div>
-            <div class="space-y-2">
-              <h5 class="text-xs font-semibold uppercase tracking-wide text-muted">Caption tracks</h5>
-              ${this.renderTextTracks(nip71Metadata.textTracks)}
-            </div>
-            <div class="space-y-2">
-              <h5 class="text-xs font-semibold uppercase tracking-wide text-muted">Chapters</h5>
-              ${this.renderSegments(nip71Metadata.segments)}
-            </div>
-            <div class="space-y-2">
-              <h5 class="text-xs font-semibold uppercase tracking-wide text-muted">Hashtags</h5>
-              ${this.renderHashtags(nip71Metadata.hashtags)}
-            </div>
-            <div class="space-y-2">
-              <h5 class="text-xs font-semibold uppercase tracking-wide text-muted">Participants</h5>
-              ${this.renderParticipants(nip71Metadata.participants)}
-            </div>
-            <div class="space-y-2">
-              <h5 class="text-xs font-semibold uppercase tracking-wide text-muted">References</h5>
-              ${this.renderReferences(nip71Metadata.references)}
-            </div>
-          </div>
-        </section>
-      </div>
-    `;
+    const headerContent = document.createElement("div");
+    headerContent.className = "flex-1 space-y-3";
+
+    const titleTimeDiv = document.createElement("div");
+    titleTimeDiv.className = "space-y-1";
+    const titleH3 = document.createElement("h3");
+    titleH3.className = "text-lg font-semibold text-primary";
+    titleH3.textContent = version.title || "Untitled";
+    titleTimeDiv.appendChild(titleH3);
+    const timeP = document.createElement("p");
+    timeP.className = "text-xs text-muted";
+    timeP.textContent = timestampText;
+    titleTimeDiv.appendChild(timeP);
+    headerContent.appendChild(titleTimeDiv);
+
+    if (chipsDiv.hasChildNodes()) {
+       headerContent.appendChild(chipsDiv);
+    }
+
+    const headerDl = createDl();
+    headerDl.appendChild(createDtDd("Hosted URL", urlNode));
+    headerDl.appendChild(createDtDd("Magnet", magnetNode));
+    headerContent.appendChild(headerDl);
+
+    headerRow.appendChild(headerContent);
+    wrapper.appendChild(headerRow);
+
+    // Description
+    const descSection = createSection("Description");
+    descSection.appendChild(descriptionNode);
+    wrapper.appendChild(descSection);
+
+    // Audience Flags
+    const audSection = createSection("Audience flags");
+    const audDl = createDl();
+    audDl.appendChild(createDtDd("NSFW flag", nsfwStatusNode));
+    audDl.appendChild(createDtDd("For kids flag", kidsStatusNode));
+    audSection.appendChild(audDl);
+    if (audienceConflictNotice) audSection.appendChild(audienceConflictNotice);
+    wrapper.appendChild(audSection);
+
+    // NIP-71 event metadata
+    const eventSection = createSection("NIP-71 event metadata");
+    const eventDl = createDl();
+    eventDl.appendChild(createDtDd("NIP-71 kind", kindNode));
+    eventDl.appendChild(createDtDd("Summary", summaryNode, 2));
+    eventDl.appendChild(createDtDd("Content warning", contentWarningNode, 2));
+    eventDl.appendChild(createDtDd("Published timestamp", publishedAtNode));
+    eventDl.appendChild(createDtDd("Duration", durationNode));
+    eventDl.appendChild(createDtDd("Alt text", altNode, 2));
+    eventSection.appendChild(eventDl);
+    wrapper.appendChild(eventSection);
+
+    // Note pointers
+    const ptrSection = createSection("Note pointers");
+    const ptrDl = createDl();
+    ptrDl.appendChild(createDtDd("Mode", document.createTextNode(version.mode || "live")));
+
+    const dTagNode = dTagValue
+       ? (() => {
+           const c = document.createElement("code");
+           c.className = "rounded bg-overlay-panel-soft px-1.5 py-0.5 text-primary";
+           c.textContent = dTagValue;
+           return c;
+         })()
+       : this.createPlaceholder("Not provided");
+    ptrDl.appendChild(createDtDd("d tag", dTagNode));
+
+    const rootIdNode = rootDisplay
+       ? (() => {
+           const c = document.createElement("code");
+           c.className = "break-all rounded bg-overlay-panel-soft px-1.5 py-0.5 text-primary";
+           c.title = rootId;
+           c.textContent = rootDisplay;
+           return c;
+         })()
+       : this.createPlaceholder("Not provided");
+    ptrDl.appendChild(createDtDd("videoRootId", rootIdNode));
+
+    const eventIdNode = eventDisplay
+       ? (() => {
+           const c = document.createElement("code");
+           c.className = "break-all rounded bg-overlay-panel-soft px-1.5 py-0.5 text-primary";
+           c.title = version.id || "";
+           c.textContent = eventDisplay;
+           return c;
+         })()
+       : (() => {
+           const s = document.createElement("span");
+           s.className = "text-subtle";
+           s.textContent = "Unknown";
+           return s;
+         })();
+    ptrDl.appendChild(createDtDd("Event ID", eventIdNode));
+
+    ptrSection.appendChild(ptrDl);
+    wrapper.appendChild(ptrSection);
+
+    // NIP-71 media metadata
+    const mediaSection = createSection("NIP-71 media metadata");
+    const mediaDiv = document.createElement("div");
+    mediaDiv.className = "space-y-4";
+
+    const createMediaSub = (label, contentNode) => {
+       const d = document.createElement("div");
+       d.className = "space-y-2";
+       const h = document.createElement("h5");
+       h.className = "text-xs font-semibold uppercase tracking-wide text-muted";
+       h.textContent = label;
+       d.appendChild(h);
+       d.appendChild(contentNode);
+       return d;
+    };
+
+    const renderUtils = {
+      createListEmpty: (t) => this.createListEmpty(t),
+      createPlaceholder: (t) => this.createPlaceholder(t),
+      createLinkMarkup: (v, o) => this.createLinkMarkup(v, o),
+      formatDurationSeconds: (s) => this.formatDurationSeconds(s),
+      truncateMiddle: this.truncateMiddle,
+    };
+
+    mediaDiv.appendChild(createMediaSub("Media variants (imeta)", createImetaVariants(nip71Metadata.imeta, renderUtils)));
+    mediaDiv.appendChild(createMediaSub("Caption tracks", createTextTracks(nip71Metadata.textTracks, renderUtils)));
+    mediaDiv.appendChild(createMediaSub("Chapters", createSegments(nip71Metadata.segments, renderUtils)));
+    mediaDiv.appendChild(createMediaSub("Hashtags", createHashtags(nip71Metadata.hashtags, renderUtils)));
+    mediaDiv.appendChild(createMediaSub("Participants", createParticipants(nip71Metadata.participants, renderUtils)));
+    mediaDiv.appendChild(createMediaSub("References", createReferences(nip71Metadata.references, renderUtils)));
+
+    mediaSection.appendChild(mediaDiv);
+    wrapper.appendChild(mediaSection);
+
+    this.details.appendChild(wrapper);
   }
 
   updateConfirmationState() {
@@ -1121,39 +1251,49 @@ export class RevertModal {
       this.escapeHTML ? this.escapeHTML(String(value ?? "")) : String(value ?? "");
   }
 
-  renderPlaceholder(text = "Not provided") {
-    const escape = this.getEscapeFn();
-    return `<span class="text-subtle">${escape(text)}</span>`;
+  createPlaceholder(text = "Not provided") {
+    const span = document.createElement("span");
+    span.className = "text-subtle";
+    span.textContent = text;
+    return span;
   }
 
-  renderListEmpty(text) {
-    const escape = this.getEscapeFn();
-    return `<p class="text-xs text-subtle">${escape(text)}</p>`;
+  createListEmpty(text) {
+    const p = document.createElement("p");
+    p.className = "text-xs text-subtle";
+    p.textContent = text;
+    return p;
   }
 
-  buildLinkMarkup(value, { breakAll = true } = {}) {
+  createLinkMarkup(value, { breakAll = true } = {}) {
     if (value == null) {
-      return "";
+      return document.createTextNode("");
     }
 
-    const escape = this.getEscapeFn();
     const raw = typeof value === "string" ? value.trim() : String(value ?? "").trim();
     if (!raw) {
-      return "";
+      return document.createTextNode("");
     }
 
     const displayRaw = this.truncateMiddle
       ? this.truncateMiddle(raw, 96)
       : raw;
-    const safeDisplay = escape(displayRaw);
-    const safeValue = escape(raw);
-    const breakClass = breakAll ? " break-all" : " break-words";
+    const breakClass = breakAll ? "break-all" : "break-words";
 
     if (/^https?:/i.test(raw)) {
-      return `<a href="${safeValue}" target="_blank" rel="noopener noreferrer" class="text-info hover:text-info-strong${breakClass}">${safeDisplay}</a>`;
+      const a = document.createElement("a");
+      a.href = raw;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.className = `text-info hover:text-info-strong ${breakClass}`;
+      a.textContent = displayRaw;
+      return a;
     }
 
-    return `<code class="rounded bg-overlay-panel-soft px-1.5 py-0.5 text-[0.75rem] text-primary${breakClass}">${safeDisplay}</code>`;
+    const code = document.createElement("code");
+    code.className = `rounded bg-overlay-panel-soft px-1.5 py-0.5 text-[0.75rem] text-primary ${breakClass}`;
+    code.textContent = displayRaw;
+    return code;
   }
 
   formatDurationSeconds(seconds) {
@@ -1349,300 +1489,6 @@ export class RevertModal {
     };
   }
 
-  renderImetaVariants(variants) {
-    if (!Array.isArray(variants) || variants.length === 0) {
-      return this.renderListEmpty("No media variants provided.");
-    }
-
-    const escape = this.getEscapeFn();
-
-    return `<ol class="space-y-3">${variants
-      .map((variant, index) => {
-        if (!variant) {
-          return "";
-        }
-
-        const badges = [];
-        if (variant.autoGenerated) {
-          badges.push(
-            '<span class="badge" data-variant="warning">Auto-generated</span>'
-          );
-        }
-
-        const variantNumber = `Variant ${index + 1}`;
-
-        const mimeHtml = variant.m
-          ? `<code class="rounded bg-overlay-panel-soft px-1.5 py-0.5 text-primary">${escape(
-              variant.m
-            )}</code>`
-          : this.renderPlaceholder();
-        const dimHtml = variant.dim
-          ? `<code class="rounded bg-overlay-panel-soft px-1.5 py-0.5 text-primary">${escape(
-              variant.dim
-            )}</code>`
-          : this.renderPlaceholder();
-        const urlHtml = variant.url
-          ? this.buildLinkMarkup(variant.url)
-          : this.renderPlaceholder("No URL");
-        const hashHtml = variant.x
-          ? `<code class="break-all rounded bg-overlay-panel-soft px-1.5 py-0.5 text-primary">${escape(
-              variant.x
-            )}</code>`
-          : this.renderPlaceholder("Not provided");
-
-        const renderNestedList = (label, values, emptyLabel) => {
-          if (!Array.isArray(values) || values.length === 0) {
-            return `<div><p class="text-2xs uppercase tracking-wide text-subtle">${escape(
-              label
-            )}</p>${this.renderListEmpty(emptyLabel)}</div>`;
-          }
-
-          const items = values
-            .map((entry) => this.buildLinkMarkup(entry))
-            .filter(Boolean)
-            .map((markup) => `<li>${markup}</li>`);
-
-          if (!items.length) {
-            return `<div><p class="text-2xs uppercase tracking-wide text-subtle">${escape(
-              label
-            )}</p>${this.renderListEmpty(emptyLabel)}</div>`;
-          }
-
-          return `
-            <div>
-              <p class="text-2xs uppercase tracking-wide text-subtle">${escape(
-                label
-              )}</p>
-              <ul class="mt-1 space-y-1 text-xs text-primary">${items.join("")}</ul>
-            </div>
-          `;
-        };
-
-        const nestedSections = [
-          renderNestedList("Images", variant.image, "No image URLs."),
-          renderNestedList("Fallbacks", variant.fallback, "No fallback URLs."),
-          renderNestedList("Services", variant.service, "No service hints."),
-        ].join("");
-
-        return `
-          <li class="rounded-md border border-overlay bg-overlay-muted p-3 space-y-3">
-            <div class="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
-              <span class="font-semibold text-primary">${escape(variantNumber)}</span>
-              ${badges.length ? `<div class="flex flex-wrap gap-2">${badges.join("")}</div>` : ""}
-            </div>
-            <dl class="grid gap-3 sm:grid-cols-2 text-xs text-subtle">
-              <div>
-                <dt class="font-semibold text-primary">MIME type</dt>
-                <dd class="mt-1">${mimeHtml}</dd>
-              </div>
-              <div>
-                <dt class="font-semibold text-primary">Dimensions</dt>
-                <dd class="mt-1">${dimHtml}</dd>
-              </div>
-              <div class="sm:col-span-2">
-                <dt class="font-semibold text-primary">URL</dt>
-                <dd class="mt-1">${urlHtml}</dd>
-              </div>
-              <div class="sm:col-span-2">
-                <dt class="font-semibold text-primary">Content hash</dt>
-                <dd class="mt-1">${hashHtml}</dd>
-              </div>
-            </dl>
-            <div class="grid gap-3 sm:grid-cols-3 text-xs text-subtle">
-              ${nestedSections}
-            </div>
-          </li>
-        `;
-      })
-      .join("")}</ol>`;
-  }
-
-  renderTextTracks(tracks) {
-    if (!Array.isArray(tracks) || tracks.length === 0) {
-      return this.renderListEmpty("No caption tracks.");
-    }
-
-    const escape = this.getEscapeFn();
-
-    return `<ol class="space-y-3">${tracks
-      .map((track, index) => {
-        const headerLabel = `Track ${index + 1}`;
-        const urlHtml = track.url
-          ? this.buildLinkMarkup(track.url)
-          : this.renderPlaceholder("No URL");
-        const typeHtml = track.type
-          ? `<code class="rounded bg-overlay-panel-soft px-1.5 py-0.5 text-primary">${escape(
-              track.type
-            )}</code>`
-          : this.renderPlaceholder();
-        const languageHtml = track.language
-          ? `<span class="pill" data-size="compact" data-variant="neutral">${escape(
-              track.language
-            )}</span>`
-          : this.renderPlaceholder();
-
-        return `
-          <li class="rounded-md border border-overlay bg-overlay-muted p-3 space-y-3">
-            <div class="flex items-center justify-between text-xs text-muted">
-              <span class="font-semibold text-primary">${escape(headerLabel)}</span>
-              ${track.language ? languageHtml : ""}
-            </div>
-            <dl class="grid gap-3 sm:grid-cols-2 text-xs text-subtle">
-              <div class="sm:col-span-2">
-                <dt class="font-semibold text-primary">URL</dt>
-                <dd class="mt-1">${urlHtml}</dd>
-              </div>
-              <div>
-                <dt class="font-semibold text-primary">Type</dt>
-                <dd class="mt-1">${typeHtml}</dd>
-              </div>
-              <div>
-                <dt class="font-semibold text-primary">Language</dt>
-                <dd class="mt-1">${track.language ? languageHtml : this.renderPlaceholder()}</dd>
-              </div>
-            </dl>
-          </li>
-        `;
-      })
-      .join("")}</ol>`;
-  }
-
-  renderSegments(segments) {
-    if (!Array.isArray(segments) || segments.length === 0) {
-      return this.renderListEmpty("No chapter segments.");
-    }
-
-    const escape = this.getEscapeFn();
-
-    const formatTime = (seconds, raw) => {
-      if (Number.isFinite(seconds)) {
-        const display = this.formatDurationSeconds(seconds);
-        const suffix = seconds === 1 ? "second" : "seconds";
-        return `<span class="text-primary">${escape(display)}</span> <span class="text-subtle">(${escape(
-          `${seconds} ${suffix}`
-        )})</span>`;
-      }
-      if (raw) {
-        return `<span class="text-primary">${escape(raw)}</span>`;
-      }
-      return this.renderPlaceholder();
-    };
-
-    return `<ol class="space-y-3">${segments
-      .map((segment, index) => {
-        const headerLabel = `Chapter ${index + 1}`;
-        const startHtml = formatTime(segment.startSeconds, segment.startRaw);
-        const endHtml = formatTime(segment.endSeconds, segment.endRaw);
-        const titleHtml = segment.title
-          ? `<p class="whitespace-pre-wrap text-primary">${escape(segment.title)}</p>`
-          : this.renderPlaceholder("No title");
-        const thumbnailHtml = segment.thumbnail
-          ? this.buildLinkMarkup(segment.thumbnail)
-          : this.renderPlaceholder("No thumbnail");
-
-        return `
-          <li class="rounded-md border border-overlay bg-overlay-muted p-3 space-y-3">
-            <div class="text-xs font-semibold text-primary">${escape(headerLabel)}</div>
-            <dl class="grid gap-3 sm:grid-cols-2 text-xs text-subtle">
-              <div>
-                <dt class="font-semibold text-primary">Start</dt>
-                <dd class="mt-1">${startHtml}</dd>
-              </div>
-              <div>
-                <dt class="font-semibold text-primary">End</dt>
-                <dd class="mt-1">${endHtml}</dd>
-              </div>
-              <div class="sm:col-span-2">
-                <dt class="font-semibold text-primary">Title</dt>
-                <dd class="mt-1">${titleHtml}</dd>
-              </div>
-              <div class="sm:col-span-2">
-                <dt class="font-semibold text-primary">Thumbnail</dt>
-                <dd class="mt-1">${thumbnailHtml}</dd>
-              </div>
-            </dl>
-          </li>
-        `;
-      })
-      .join("")}</ol>`;
-  }
-
-  renderHashtags(hashtags) {
-    if (!Array.isArray(hashtags) || hashtags.length === 0) {
-      return this.renderListEmpty("No hashtags provided.");
-    }
-
-    const escape = this.getEscapeFn();
-
-    const chips = hashtags.map((tag) => {
-      const label = tag.startsWith("#") ? tag : `#${tag}`;
-      return `<span class="pill" data-size="compact" data-variant="neutral">${escape(
-        label
-      )}</span>`;
-    });
-
-    return `<div class="flex flex-wrap gap-2">${chips.join("")}</div>`;
-  }
-
-  renderParticipants(participants) {
-    if (!Array.isArray(participants) || participants.length === 0) {
-      return this.renderListEmpty("No participants listed.");
-    }
-
-    const escape = this.getEscapeFn();
-
-    return `<ol class="space-y-3">${participants
-      .map((participant, index) => {
-        const label = `Participant ${index + 1}`;
-        const displayPubkey = participant.pubkey
-          ? this.truncateMiddle
-            ? this.truncateMiddle(participant.pubkey, 48)
-            : participant.pubkey
-          : "";
-        const pubkeyHtml = participant.pubkey
-          ? `<code class="break-all rounded bg-overlay-panel-soft px-1.5 py-0.5 text-primary" title="${escape(
-              participant.pubkey
-            )}">${escape(displayPubkey)}</code>`
-          : this.renderPlaceholder("No pubkey");
-        const relayHtml = participant.relay
-          ? this.buildLinkMarkup(participant.relay, { breakAll: false })
-          : this.renderPlaceholder("No relay specified");
-
-        return `
-          <li class="rounded-md border border-overlay bg-overlay-muted p-3 space-y-2">
-            <div class="text-xs font-semibold text-primary">${escape(label)}</div>
-            <dl class="grid gap-3 sm:grid-cols-2 text-xs text-subtle">
-              <div class="sm:col-span-2">
-                <dt class="font-semibold text-primary">Pubkey</dt>
-                <dd class="mt-1">${pubkeyHtml}</dd>
-              </div>
-              <div class="sm:col-span-2">
-                <dt class="font-semibold text-primary">Relay</dt>
-                <dd class="mt-1">${relayHtml}</dd>
-              </div>
-            </dl>
-          </li>
-        `;
-      })
-      .join("")}</ol>`;
-  }
-
-  renderReferences(references) {
-    if (!Array.isArray(references) || references.length === 0) {
-      return this.renderListEmpty("No external references.");
-    }
-
-    const items = references
-      .map((entry) => this.buildLinkMarkup(entry))
-      .filter(Boolean)
-      .map((markup) => `<li>${markup}</li>`);
-
-    if (!items.length) {
-      return this.renderListEmpty("No external references.");
-    }
-
-    return `<ul class="space-y-1 text-xs text-primary">${items.join("")}</ul>`;
-  }
 
   extractDTagValue(tags) {
     if (!Array.isArray(tags)) {
