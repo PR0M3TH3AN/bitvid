@@ -2,7 +2,7 @@
 
 This file is an extracted **bitvid-specific overlay** for TORCH scheduler flow.
 
-Use this document for **all scheduler runs**. Task locking uses the **TORCH** protocol (see `docs/agents/TORCH.md`).
+Use this document for **all scheduler runs**. Task locking uses the **TORCH** protocol (see `src/docs/TORCH.md`).
 
 ## Scheduler Override (Top-Line Rule)
 
@@ -25,14 +25,14 @@ During scheduler execution, the scheduler-specific instructions in this document
 
 1. **MUST** set cadence variables before any command:
    - `cadence` = `daily` or `weekly`
-   - `log_dir` = `docs/agents/task-logs/<cadence>/`
+   - `log_dir` = `task-logs/<cadence>/`
    - `branch_prefix` = `agents/<cadence>/`
-   - `prompt_dir` = `docs/agents/prompts/<cadence>/`
+   - `prompt_dir` = `src/prompts/<cadence>/`
 
 2. **MUST** run the preflight check to build the exclusion set:
 
    ```bash
-   node scripts/agent/nostr-lock.mjs check --cadence <cadence>
+   node src/nostr-lock.mjs check --cadence <cadence>
    ```
 
    This queries Nostr relays for active lock events and returns JSON with `locked` and `available` agent lists. Use the `locked` array as the exclusion set.
@@ -55,7 +55,7 @@ During scheduler execution, the scheduler-specific instructions in this document
 
    ```bash
    AGENT_PLATFORM=<jules|claude-code|codex> \
-   node scripts/agent/nostr-lock.mjs lock \
+   node src/nostr-lock.mjs lock \
      --agent <agent-name> \
      --cadence <cadence>
    ```

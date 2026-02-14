@@ -2,14 +2,14 @@
 
 This file is an extracted **bitvid-specific overlay** for TORCH scheduler prompts.
 
-Use `docs/agents/prompts/scheduler-flow.md` as the authoritative scheduler procedure.
+Use `src/prompts/scheduler-flow.md` as the authoritative scheduler procedure.
 
 ## Daily Cadence Configuration (Bitvid Example)
 
 - `cadence`: `daily`
-- `log_dir`: `docs/agents/task-logs/daily/`
+- `log_dir`: `task-logs/daily/`
 - `branch_prefix`: `agents/daily/`
-- `prompt_dir`: `docs/agents/prompts/daily/`
+- `prompt_dir`: `src/prompts/daily/`
 
 ## Daily Agent Roster (alphabetical order)
 
