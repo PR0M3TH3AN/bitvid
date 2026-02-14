@@ -127,14 +127,16 @@ test("EngagementController", async (t) => {
     const eventId = "test-event-id";
     mockNostrClient.rebroadcastEvent.mock.mockImplementation(async () => ({ throttled: true, cooldown: { remainingMs: 5000 } }));
 
-    global.window = { setTimeout: t.mock.fn() };
+    try {
+      global.window = { setTimeout: t.mock.fn() };
 
-    await controller.handleEnsurePresenceAction({ eventId });
+      await controller.handleEnsurePresenceAction({ eventId });
 
-    assert.equal(mockShowStatus.mock.calls.length, 1);
-    assert.match(mockShowStatus.mock.calls[0].arguments[0], /Rebroadcast is cooling down/);
-
-    delete global.window;
+      assert.equal(mockShowStatus.mock.calls.length, 1);
+      assert.match(mockShowStatus.mock.calls[0].arguments[0], /Rebroadcast is cooling down/);
+    } finally {
+      delete global.window;
+    }
   });
 
   await t.test("handleEnsurePresenceAction - should show success on successful rebroadcast", async () => {

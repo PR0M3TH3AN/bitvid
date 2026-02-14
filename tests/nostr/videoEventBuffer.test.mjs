@@ -156,38 +156,40 @@ test('VideoEventBuffer', async (t) => {
     // Mock document
     const originalDocument = global.document;
     let visibilityHandler = null;
-    global.document = {
-      hidden: true,
-      addEventListener: (type, handler) => {
-        if (type === 'visibilitychange') visibilityHandler = handler;
-      },
-      removeEventListener: () => {}
-    };
+    try {
+      global.document = {
+        hidden: true,
+        addEventListener: (type, handler) => {
+          if (type === 'visibilitychange') visibilityHandler = handler;
+        },
+        removeEventListener: () => {}
+      };
 
-    const client = new MockClient();
-    let onVideoCalls = [];
-    const onVideo = (videos) => onVideoCalls.push(videos);
-    const buffer = new VideoEventBuffer(client, onVideo);
+      const client = new MockClient();
+      let onVideoCalls = [];
+      const onVideo = (videos) => onVideoCalls.push(videos);
+      const buffer = new VideoEventBuffer(client, onVideo);
 
-    // Push event while hidden
-    buffer.push(validEvent);
-    buffer.scheduleFlush(true);
+      // Push event while hidden
+      buffer.push(validEvent);
+      buffer.scheduleFlush(true);
 
-    // Should NOT have called onVideo yet
-    assert.equal(onVideoCalls.length, 0);
-    // Should have buffered pending videos
-    assert.equal(buffer.pendingVideos.length, 1);
+      // Should NOT have called onVideo yet
+      assert.equal(onVideoCalls.length, 0);
+      // Should have buffered pending videos
+      assert.equal(buffer.pendingVideos.length, 1);
 
-    // Simulate visibility change
-    global.document.hidden = false;
-    assert.ok(visibilityHandler, "Listener attached");
-    visibilityHandler();
+      // Simulate visibility change
+      global.document.hidden = false;
+      assert.ok(visibilityHandler, "Listener attached");
+      visibilityHandler();
 
-    // Should flush now
-    assert.equal(onVideoCalls.length, 1);
-    assert.equal(buffer.pendingVideos.length, 0);
-
-    // Cleanup mock
-    global.document = originalDocument;
+      // Should flush now
+      assert.equal(onVideoCalls.length, 1);
+      assert.equal(buffer.pendingVideos.length, 0);
+    } finally {
+      // Cleanup mock
+      global.document = originalDocument;
+    }
   });
 });
