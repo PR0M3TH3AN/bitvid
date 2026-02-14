@@ -11,9 +11,28 @@ const CLIENTS = parseInt(process.env.CLIENTS || '50', 10);
 const DURATION_SEC = parseInt(process.env.DURATION_SEC || '600', 10);
 const RATE_EPS = parseFloat(process.env.RATE_EPS || '10');
 const MIX_VIDEO_RATIO = parseFloat(process.env.MIX || '0.5'); // 0.0 to 1.0
+const SEED = process.env.SEED || null;
 const DRY_RUN = process.env.DRY_RUN === '1';
 const VERBOSE = process.env.VERBOSE === '1';
 const FORCE_UNSAFE = process.env.FORCE_UNSAFE === '1';
+
+// --- RNG ---
+function mulberry32(a) {
+  return function() {
+    var t = a += 0x6D2B79F5;
+    t = Math.imul(t ^ t >>> 15, t | 1);
+    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  }
+}
+
+let random = Math.random;
+if (SEED) {
+  let seedNum = 0;
+  for(let i=0; i<SEED.length; i++) seedNum = (Math.imul(31, seedNum) + SEED.charCodeAt(i)) | 0;
+  random = mulberry32(seedNum);
+  console.log(`Using deterministic RNG with seed: "${SEED}"`);
+}
 
 // --- Safety Checks ---
 function isSafeRelayUrl(url) {
@@ -180,8 +199,8 @@ class LoadClient {
     if (!this.isOpen && !DRY_RUN) return;
 
     // Decide event type
-    const isVideo = Math.random() < MIX_VIDEO_RATIO;
-    const dTag = `load-${this.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const isVideo = random() < MIX_VIDEO_RATIO;
+    const dTag = `load-${this.id}-${Date.now()}-${random().toString(36).slice(2)}`;
 
     let eventTemplate;
     if (isVideo) {
@@ -197,7 +216,7 @@ class LoadClient {
     if (DRY_RUN) {
       metrics.sent++;
       metrics.accepted++; // Simulate acceptance
-      metrics.latencies.push(Math.random() * 50); // Simulate latency
+      metrics.latencies.push(random() * 50); // Simulate latency
       return;
     }
 
@@ -303,7 +322,7 @@ Load Test Configuration:
     // Pick a random connected client
     const availableClients = clients.filter(c => c.isOpen || DRY_RUN);
     if (availableClients.length > 0) {
-      const client = availableClients[Math.floor(Math.random() * availableClients.length)];
+      const client = availableClients[Math.floor(random() * availableClients.length)];
       client.publish();
     }
   };
