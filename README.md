@@ -174,13 +174,13 @@ To run **bitvid** locally:
    Run tests and linting to ensure everything is working correctly.
 
    ```bash
-   npm run test:unit
-   npm run test:smoke
+   npm run test:unit:shard1  # Run a subset of tests for speed
+   npm run test:smoke        # Critical path verification
    npm run format
    npm run lint
    ```
 
-   _Tip: Use `npm run test:unit:shard1` (or `shard2`/`shard3`) for faster local feedback._
+   _Tip: Use `npm run test:unit` to run the full suite (can be slow)._
 
 #### Quick Reference
 
