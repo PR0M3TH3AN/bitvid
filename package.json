@@ -47,7 +47,8 @@
     "verify:deployed:index-html": "node scripts/verify-deployed-index-html.mjs",
     "purge:cloudflare:changed": "node scripts/purge-cloudflare-changed.mjs",
     "smoke:dist-assets": "node scripts/check-asset-references.mjs",
-    "test:e2e:cache-upgrade": "npx playwright test tests/e2e/cache-upgrade-smoke.spec.ts --project=e2e"
+    "test:e2e:cache-upgrade": "npx playwright test tests/e2e/cache-upgrade-smoke.spec.ts --project=e2e",
+    "validate:torch-extraction": "node scripts/agent/validate-torch-extraction.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
