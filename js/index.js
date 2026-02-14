@@ -1277,13 +1277,13 @@ async function bootstrapInterface() {
 }
 
 async function initializeInterface() {
-  startApplication();
-
   try {
     await bootstrapInterface();
   } catch (error) {
     userLogger.error("Failed to bootstrap bitvid interface:", error);
   }
+
+  startApplication();
 }
 
 function onDomReady() {

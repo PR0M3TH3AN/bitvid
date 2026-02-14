@@ -1198,6 +1198,7 @@ class Application {
     // Grab the "Subscriptions" link by its id in the sidebar
     this.subscriptionsLink = document.getElementById("subscriptionsLink");
 
+    this.initializeLoginModalController();
     this.syncAuthUiState();
 
     if (typeof window !== "undefined") {
