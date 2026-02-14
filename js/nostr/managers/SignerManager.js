@@ -8,6 +8,7 @@ import {
 } from "../sessionActor.js";
 import {
   waitForNip07Extension,
+  NIP07_EXTENSION_WAIT_TIMEOUT_MS,
   requestEnablePermissions,
   normalizePermissionMethod,
   readStoredNip07Permissions,
@@ -390,7 +391,7 @@ export class SignerManager {
 
     if (!extension && this.extensionPermissionCache && this.extensionPermissionCache.size > 0) {
       try {
-        await waitForNip07Extension(5000);
+        await waitForNip07Extension(NIP07_EXTENSION_WAIT_TIMEOUT_MS);
         extension = window.nostr;
       } catch (error) {
         // Fall through to existing signer check
