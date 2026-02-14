@@ -657,6 +657,32 @@ async function bootstrapInterface() {
   await loadSidebar("components/sidebar.html", "sidebarContainer");
   devLogger.log("Sidebar loaded.");
 
+  // Attach nav listeners immediately to prevent race conditions with automated tests
+  const loginNavBtn = document.getElementById("loginButton");
+  if (loginNavBtn) {
+    loginNavBtn.addEventListener("click", (event) => {
+      const loginModal =
+        prepareStaticModal({ id: "loginModal" }) ||
+        document.getElementById("loginModal");
+      if (loginModal) {
+        openStaticModal(loginModal, { triggerElement: event.currentTarget });
+      }
+    });
+  }
+
+  const openAppFormBtn = document.getElementById("openApplicationModal");
+  if (openAppFormBtn) {
+    openAppFormBtn.addEventListener("click", (event) => {
+      closeStaticModal("loginModal");
+      const appModal =
+        prepareStaticModal({ id: "nostrFormModal" }) ||
+        document.getElementById("nostrFormModal");
+      if (appModal) {
+        openStaticModal(appModal, { triggerElement: event.currentTarget });
+      }
+    });
+  }
+
   const sidebar = document.getElementById("sidebar");
   const collapseToggle = document.getElementById("sidebarCollapseToggle");
   if (sidebar && !sidebar.hasAttribute("data-footer-state")) {
@@ -1234,35 +1260,10 @@ async function bootstrapInterface() {
   const { default: disclaimerModal } = await import("./disclaimer.js");
   disclaimerModal.init();
 
-  const loginNavBtn = document.getElementById("loginButton");
-  if (loginNavBtn) {
-    loginNavBtn.addEventListener("click", (event) => {
-      const loginModal =
-        prepareStaticModal({ id: "loginModal" }) ||
-        document.getElementById("loginModal");
-      if (loginModal) {
-        openStaticModal(loginModal, { triggerElement: event.currentTarget });
-      }
-    });
-  }
-
   const closeLoginBtn = document.getElementById("closeLoginModal");
   if (closeLoginBtn) {
     closeLoginBtn.addEventListener("click", () => {
       closeStaticModal("loginModal");
-    });
-  }
-
-  const openAppFormBtn = document.getElementById("openApplicationModal");
-  if (openAppFormBtn) {
-    openAppFormBtn.addEventListener("click", (event) => {
-      closeStaticModal("loginModal");
-      const appModal =
-        prepareStaticModal({ id: "nostrFormModal" }) ||
-        document.getElementById("nostrFormModal");
-      if (appModal) {
-        openStaticModal(appModal, { triggerElement: event.currentTarget });
-      }
     });
   }
 
