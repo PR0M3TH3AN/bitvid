@@ -570,6 +570,7 @@ export class NostrClient {
     this.dmDecryptor = null;
     this.dmDecryptorPromise = null;
     this.isInitialized = false;
+    this.initPromise = null;
   }
 
   get pubkey() { return this.signerManager.pubkey; }
@@ -1020,43 +1021,49 @@ export class NostrClient {
    * @returns {Promise<void>} Resolves when the relay pool is initialized and connections are attempted.
    */
   async init() {
-    if (this.isInitialized) {
-      return;
-    }
-    this.isInitialized = true;
-
-    devLogger.log("Connecting to relays...");
-
-    // 1. Restore cache for immediate UI render (Stale-While-Revalidate)
-    await this.restoreLocalData();
-
-    try {
-      this.scheduleStoredRemoteSignerRestore();
-    } catch (error) {
-      devLogger.warn("[nostr] Failed to schedule remote signer restoration:", error);
+    if (this.initPromise) {
+      return this.initPromise;
     }
 
-    try {
-      await this.ensurePool();
-      const results = await this.connectToRelays();
-      const successfulRelays = results
-        .filter((r) => r.success)
-        .map((r) => r.url);
-      if (successfulRelays.length === 0) {
-        userLogger.warn(
-          "[nostr] No relays connected during init. Retrying in the background.",
-        );
-        this.scheduleRelayReconnect({ reason: "initial-connect-failed" });
-      } else {
-        this.resetRelayReconnectState();
-        devLogger.log(
-          `Connected to ${successfulRelays.length} relay(s)`,
+    this.initPromise = (async () => {
+      devLogger.log("Connecting to relays...");
+
+      // 1. Restore cache for immediate UI render (Stale-While-Revalidate)
+      await this.restoreLocalData();
+
+      try {
+        this.scheduleStoredRemoteSignerRestore();
+      } catch (error) {
+        devLogger.warn(
+          "[nostr] Failed to schedule remote signer restoration:",
+          error
         );
       }
-    } catch (err) {
-      userLogger.error("Nostr init failed:", err);
-      throw err;
-    }
+
+      try {
+        await this.ensurePool();
+        const results = await this.connectToRelays();
+        const successfulRelays = results
+          .filter((r) => r.success)
+          .map((r) => r.url);
+        if (successfulRelays.length === 0) {
+          userLogger.warn(
+            "[nostr] No relays connected during init. Retrying in the background."
+          );
+          this.scheduleRelayReconnect({ reason: "initial-connect-failed" });
+        } else {
+          this.resetRelayReconnectState();
+          devLogger.log(`Connected to ${successfulRelays.length} relay(s)`);
+        }
+        this.isInitialized = true;
+      } catch (err) {
+        userLogger.error("Nostr init failed:", err);
+        this.initPromise = null;
+        throw err;
+      }
+    })();
+
+    return this.initPromise;
   }
 
   /**

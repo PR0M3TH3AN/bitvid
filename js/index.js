@@ -617,20 +617,6 @@ async function bootstrapInterface() {
 
   devLogger.log("Modals loaded.");
 
-  if (
-    application &&
-    typeof application.initializeLoginModalController === "function"
-  ) {
-    try {
-      application.initializeLoginModalController();
-    } catch (error) {
-      devLogger.error(
-        "[Interface] Failed to initialize login modal controller after loading markup:",
-        error,
-      );
-    }
-  }
-
   [
     "loginModal",
     "nostrFormModal",
@@ -982,20 +968,6 @@ async function bootstrapInterface() {
     updateSidebarDropupContentWidth();
   }
 
-  try {
-    await applicationReadyPromise;
-  } catch (error) {
-    // fall through
-  }
-
-  if (application && typeof application.hydrateSidebarNavigation === "function") {
-    try {
-      application.hydrateSidebarNavigation();
-    } catch (error) {
-      devLogger.warn("[Interface] Failed to hydrate sidebar navigation:", error);
-    }
-  }
-
   bindOptionalExternalLink({
     selector: "[data-blog-link]",
     url: BLOG_URL,
@@ -1265,6 +1237,36 @@ async function bootstrapInterface() {
         }
       }
     });
+  }
+
+  try {
+    await applicationReadyPromise;
+  } catch (error) {
+    // fall through
+  }
+
+  if (application) {
+    if (typeof application.initializeLoginModalController === "function") {
+      try {
+        application.initializeLoginModalController();
+      } catch (error) {
+        devLogger.error(
+          "[Interface] Failed to initialize login modal controller:",
+          error
+        );
+      }
+    }
+
+    if (typeof application.hydrateSidebarNavigation === "function") {
+      try {
+        application.hydrateSidebarNavigation();
+      } catch (error) {
+        devLogger.warn(
+          "[Interface] Failed to hydrate sidebar navigation:",
+          error
+        );
+      }
+    }
   }
 
   handleQueryParams();
