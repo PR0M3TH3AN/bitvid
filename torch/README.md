@@ -27,3 +27,22 @@ NOSTR_LOCK_NAMESPACE=my-project \
 AGENT_PLATFORM=codex \
 node src/nostr-lock.mjs lock --agent docs-agent --cadence daily
 ```
+
+## Agent dashboard (static page)
+
+TORCH includes a standalone dashboard page at `dashboard/index.html` that listens for
+`kind:30078` lock events tagged with `#torch-agent-lock`.
+
+Open it directly in a browser:
+
+```bash
+xdg-open dashboard/index.html
+```
+
+Or serve the folder with a static HTTP server:
+
+```bash
+python3 -m http.server 4173
+```
+
+Then visit `http://localhost:4173/dashboard/`.

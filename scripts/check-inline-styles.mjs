@@ -73,6 +73,10 @@ const VIOLATION_ALLOWLIST = new Map([
     "views/dev/agent-dashboard.html",
     new Set(["Inline style attribute"]),
   ],
+  [
+    "torch/dashboard/index.html",
+    new Set(["Inline style attribute"]),
+  ],
 ]);
 
 const TEXT_EXTENSIONS = new Set([
