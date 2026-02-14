@@ -137,6 +137,8 @@ bitvid will verify your credentials by attempting to list or upload a test file.
 - **Missing Source:** "Provide a hosted URL, magnet link, or an imeta variant before publishing."
 - **Invalid URL Protocol:** "Hosted video URLs must use HTTPS."
 - **Storage Not Configured:** "Please configure storage before selecting a file."
+- **Invalid S3 Settings:** "Invalid S3 settings." Double-check your endpoint, region, and bucket name in the Storage configuration tab.
+- **Concurrent Uploads:** "Please wait for uploads to complete." The client currently supports uploading one video at a time to prevent memory exhaustion.
 - **CORS Errors ("Network Error"):** If uploads fail immediately or the console shows "CORS", verify your bucket's CORS policy matches the JSON above. Ensure `AllowedHeaders` includes `*`, `AllowedMethods` includes `PUT`, and `ExposeHeaders` lists `ETag`.
 - **Permission Errors ("Access Denied"):** Check your API credentials. Ensure the token has `Object Read & Write` permissions (specifically `s3:PutObject` and `s3:DeleteObject`).
 - **Browser Crashes / Slow Performance:** Large files (>2GB) can exhaust browser memory during the hashing process. Try using a smaller file or ensuring you have plenty of free RAM.
@@ -147,7 +149,7 @@ bitvid will verify your credentials by attempting to list or upload a test file.
 
 ### How Uploads Work
 
-1. **Direct Upload:** Your browser uploads the file directly to your storage bucket. No video data passes through a bitvid server.
+1. **Direct Upload:** Your browser uploads the file directly to your storage bucket using **Multipart Upload**. This ensures reliability for larger files by splitting them into chunks. No video data passes through a bitvid server.
 2. **External Link:** Your browser streams directly from the provided URL (or via WebTorrent if a magnet is also provided). No video data passes through the bitvid server.
 3. **Client-Side Hashing:** Your browser calculates a cryptographic hash (info hash) of the file locally to enable WebTorrent support. This happens in memory, so large files require sufficient RAM.
 4. **Publication:** The video metadata (title, URL, hash, tags) is signed by your Nostr key and published to relays.
