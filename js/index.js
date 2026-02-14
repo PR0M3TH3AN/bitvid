@@ -383,7 +383,7 @@ async function prepareLockdownInterface() {
   }
 }
 
-function startApplication() {
+function startApplication(bootstrapPromise) {
   if (application) {
     return applicationReadyPromise;
   }
@@ -399,6 +399,12 @@ function startApplication() {
     });
 
     setApplication(application);
+
+    // Wait for the UI bootstrap to finish (DOM ready) before initializing app logic that binds to DOM.
+    // This allows application creation/imports to happen in parallel with HTML fetching.
+    if (bootstrapPromise) {
+      await bootstrapPromise;
+    }
 
     await application.init();
     if (typeof application.start === "function") {
@@ -1290,19 +1296,19 @@ async function bootstrapInterface() {
 }
 
 async function initializeInterface() {
-  try {
-    await bootstrapInterface();
-  } catch (error) {
+  // Start UI bootstrapping (DOM loading)
+  const bootstrapPromise = bootstrapInterface().catch((error) => {
     userLogger.error("Failed to bootstrap bitvid interface:", error);
-  }
+  });
 
-  // Chain startApplication to ensure applicationReadyPromise tracks the full sequence
-  if (!application) {
-    startApplication();
-  }
+  // Start Application logic (imports, harness, creation), passing the bootstrap promise
+  // so it can wait for DOM readiness before running init().
+  const appPromise = startApplication(bootstrapPromise);
+
+  // Wait for the app to be fully ready (including DOM and logic)
+  await appPromise;
 
   // Trigger the initial routing now that the app is started and DOM is ready.
-  // handleHashChange will wait for applicationReadyPromise internally.
   await handleHashChange();
 
   // Show disclaimer after route is handled
