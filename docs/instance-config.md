@@ -280,3 +280,9 @@ can be injected at build time.
   - **Why change it:** If the preferred source does not reach the "playing" state within this
     window, the player switches to the fallback source. This prevents users from staring at a
     loading spinner indefinitely.
+
+### Direct Message privacy
+
+- **`ENABLE_NIP17_RELAY_WARNING`**
+  - **What it does:** Whether to display privacy warnings when NIP-17 DM relay lists are missing (falling back to legacy routing).
+  - **Why change it:** Set to `true` to warn users about potential privacy leaks; set to `false` (default) for a quieter experience.
