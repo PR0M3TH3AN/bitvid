@@ -65,7 +65,10 @@ applyDesignSystemAttributes();
 initThemeController();
 
 let application = null;
-let applicationReadyPromise = Promise.resolve();
+let resolveAppReady;
+let applicationReadyPromise = new Promise((resolve) => {
+  resolveAppReady = resolve;
+});
 
 const LOCKDOWN_MODAL_ID = "lockdownModal";
 const LOCKDOWN_LOGIN_BUTTON_ID = "lockdownLoginButton";
@@ -402,6 +405,15 @@ function startApplication() {
       await application.start();
     }
   })();
+
+  // Ensure the initial pending promise also resolves when startup completes,
+  // in case early callers (like handleHashChange) are waiting on it.
+  startupPromise.then(() => {
+    if (resolveAppReady) {
+      resolveAppReady();
+      resolveAppReady = null;
+    }
+  });
 
   applicationReadyPromise = startupPromise;
   setApplicationReady(startupPromise);
@@ -1283,7 +1295,10 @@ async function initializeInterface() {
     userLogger.error("Failed to bootstrap bitvid interface:", error);
   }
 
-  startApplication();
+  // Chain startApplication to ensure applicationReadyPromise tracks the full sequence
+  if (!application) {
+    startApplication();
+  }
 }
 
 function onDomReady() {
