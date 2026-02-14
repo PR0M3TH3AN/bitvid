@@ -6098,6 +6098,27 @@ export class ProfileModalController {
     return this.dmController.handleDirectMessagesRelayWarning(...args);
   }
 
+  // Moderation Controller Delegates & Aliases
+  get moderationBlurInput() { return this.moderationController.moderationBlurInput; }
+  get moderationAutoplayInput() { return this.moderationController.moderationAutoplayInput; }
+  get moderationMuteHideInput() { return this.moderationController.moderationMuteHideInput; }
+  get moderationSpamHideInput() { return this.moderationController.moderationSpamHideInput; }
+  get moderationSaveButton() { return this.moderationController.moderationSaveButton; }
+  get moderationResetButton() { return this.moderationController.moderationResetButton; }
+  get moderationStatusText() { return this.moderationController.moderationStatusText; }
+  get moderationOverridesList() { return this.moderationController.moderationOverridesList; }
+  get moderationOverridesEmpty() { return this.moderationController.moderationOverridesEmpty; }
+  get moderationTrustedContactsCount() { return this.moderationController.moderationTrustedContactsCount; }
+  get moderationTrustedMuteCount() { return this.moderationController.moderationTrustedMuteCount; }
+  get moderationTrustedReportCount() { return this.moderationController.moderationTrustedReportCount; }
+  get moderationSeedOnlyIndicator() { return this.moderationController.moderationSeedOnlyIndicator; }
+  get moderationHideControlsGroup() { return this.moderationController.moderationHideControlsGroup; }
+  get moderationHideControlElements() { return this.moderationController.moderationHideControlElements; }
+
+  handleModerationSettingsSave(...args) { return this.moderationController.handleModerationSettingsSave(...args); }
+  handleModerationSettingsReset(...args) { return this.moderationController.handleModerationSettingsReset(...args); }
+  getModerationSettingsDefaults(...args) { return this.moderationController.getModerationSettingsDefaults(...args); }
+
   get relayList() {
     return this.relayController.relayList;
   }
