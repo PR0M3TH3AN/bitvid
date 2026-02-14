@@ -1,86 +1,51 @@
 {
-  "@playwright/test": {
-    "current": "1.58.0",
-    "wanted": "1.58.2",
-    "latest": "1.58.2",
-    "dependent": "bitvid",
-    "location": "/workspace/bitvid/node_modules/@playwright/test"
-  },
-  "autoprefixer": {
-    "current": "10.4.23",
-    "wanted": "10.4.24",
-    "latest": "10.4.24",
-    "dependent": "bitvid",
-    "location": "/workspace/bitvid/node_modules/autoprefixer"
-  },
-  "cross-env": {
-    "current": "7.0.3",
-    "wanted": "10.1.0",
-    "latest": "10.1.0",
-    "dependent": "bitvid",
-    "location": "/workspace/bitvid/node_modules/cross-env"
-  },
-  "esbuild": {
-    "current": "0.25.12",
-    "wanted": "0.27.3",
-    "latest": "0.27.3",
-    "dependent": "bitvid",
-    "location": "/workspace/bitvid/node_modules/esbuild"
-  },
-  "jsdom": {
-    "current": "27.4.0",
-    "wanted": "28.0.0",
-    "latest": "28.0.0",
-    "dependent": "bitvid",
-    "location": "/workspace/bitvid/node_modules/jsdom"
-  },
   "nostr-tools": {
-    "current": "2.20.0",
+    "current": "2.19.4",
     "wanted": "2.23.1",
     "latest": "2.23.1",
-    "dependent": "bitvid",
-    "location": "/workspace/bitvid/node_modules/nostr-tools"
+    "dependent": "app",
+    "location": "/app/node_modules/nostr-tools"
   },
   "pixelmatch": {
     "current": "5.3.0",
     "wanted": "5.3.0",
     "latest": "7.1.0",
-    "dependent": "bitvid",
-    "location": "/workspace/bitvid/node_modules/pixelmatch"
-  },
-  "playwright": {
-    "current": "1.58.0",
-    "wanted": "1.58.2",
-    "latest": "1.58.2",
-    "dependent": "bitvid",
-    "location": "/workspace/bitvid/node_modules/playwright"
+    "dependent": "app",
+    "location": "/app/node_modules/pixelmatch"
   },
   "postcss-import": {
     "current": "15.1.0",
     "wanted": "15.1.0",
     "latest": "16.1.1",
-    "dependent": "bitvid",
-    "location": "/workspace/bitvid/node_modules/postcss-import"
+    "dependent": "app",
+    "location": "/app/node_modules/postcss-import"
   },
   "prettier-plugin-tailwindcss": {
     "current": "0.6.14",
     "wanted": "0.6.14",
     "latest": "0.7.2",
-    "dependent": "bitvid",
-    "location": "/workspace/bitvid/node_modules/prettier-plugin-tailwindcss"
+    "dependent": "app",
+    "location": "/app/node_modules/prettier-plugin-tailwindcss"
   },
   "stylelint": {
-    "current": "16.26.1",
+    "current": "16.12.0",
     "wanted": "16.26.1",
-    "latest": "17.2.0",
-    "dependent": "bitvid",
-    "location": "/workspace/bitvid/node_modules/stylelint"
+    "latest": "17.3.0",
+    "dependent": "app",
+    "location": "/app/node_modules/stylelint"
+  },
+  "stylelint-config-standard": {
+    "current": "36.0.1",
+    "wanted": "36.0.1",
+    "latest": "40.0.0",
+    "dependent": "app",
+    "location": "/app/node_modules/stylelint-config-standard"
   },
   "tailwindcss": {
     "current": "3.4.19",
     "wanted": "3.4.19",
     "latest": "4.1.18",
-    "dependent": "bitvid",
-    "location": "/workspace/bitvid/node_modules/tailwindcss"
+    "dependent": "app",
+    "location": "/app/node_modules/tailwindcss"
   }
 }
