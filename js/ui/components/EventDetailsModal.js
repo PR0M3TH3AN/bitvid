@@ -36,7 +36,7 @@ export class EventDetailsModal {
   buildMarkup() {
     return `
       <div class="bv-modal-backdrop" data-dismiss></div>
-      <div class="modal-sheet w-full max-w-2xl flex flex-col max-h-[90vh]" role="dialog" aria-modal="true" aria-labelledby="eventDetailsTitle">
+      <div class="modal-sheet w-full max-w-2xl flex flex-col max-h-screen-90" role="dialog" aria-modal="true" aria-labelledby="eventDetailsTitle">
         <header class="modal-header flex items-center justify-between p-4 border-b border-border">
           <h2 id="eventDetailsTitle" class="text-lg font-semibold text-text">Event Details</h2>
           <button type="button" class="btn-ghost p-2 rounded-full" data-dismiss aria-label="Close">
@@ -62,7 +62,7 @@ export class EventDetailsModal {
                   <button type="button" data-action="open-channel" class="text-xs text-critical hover:underline">View Channel</button>
                 </div>
                 <div class="flex items-center gap-2 mt-1">
-                  <code data-author-npub class="text-xs text-muted truncate bg-panel/50 px-1.5 py-0.5 rounded max-w-[200px]"></code>
+                  <code data-author-npub class="text-xs text-muted truncate bg-panel/50 px-1.5 py-0.5 rounded max-w-xs"></code>
                   <button type="button" data-action="copy-npub" class="text-xs text-muted hover:text-text" title="Copy Npub">
                     <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 4v12a2 2 0 002 2h8a2 2 0 002-2V7.242a2 2 0 00-.602-1.43L16.083 4.162A2 2 0 0014.661 4H10a2 2 0 00-2 2z"></path><path d="M16 4v3.5a.5.5 0 00.5.5H20"></path><path d="M4 8v12a2 2 0 002 2h8"></path></svg>
                   </button>
@@ -102,7 +102,7 @@ export class EventDetailsModal {
                 Copy JSON
               </button>
             </div>
-            <div class="relative flex-1 min-h-[200px] bg-black/80 rounded-lg border border-border overflow-hidden group">
+            <div class="relative flex-1 min-h-48 bg-black/80 rounded-lg border border-border overflow-hidden group">
               <pre class="absolute inset-0 p-4 overflow-auto text-xs font-mono text-white/80 scrollbar-thin"><code data-json-content></code></pre>
             </div>
           </section>

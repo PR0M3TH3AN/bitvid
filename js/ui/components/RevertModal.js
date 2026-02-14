@@ -1153,7 +1153,7 @@ export class RevertModal {
       return `<a href="${safeValue}" target="_blank" rel="noopener noreferrer" class="text-info hover:text-info-strong${breakClass}">${safeDisplay}</a>`;
     }
 
-    return `<code class="rounded bg-overlay-panel-soft px-1.5 py-0.5 text-[0.75rem] text-primary${breakClass}">${safeDisplay}</code>`;
+    return `<code class="rounded bg-overlay-panel-soft px-1.5 py-0.5 text-xs text-primary${breakClass}">${safeDisplay}</code>`;
   }
 
   formatDurationSeconds(seconds) {
