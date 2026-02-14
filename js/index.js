@@ -1283,9 +1283,9 @@ async function bootstrapInterface() {
 
   window.addEventListener("hashchange", handleHashChange);
 
-  await handleHashChange();
-
-  disclaimerModal.show();
+  // We do NOT await handleHashChange() here because it waits for applicationReadyPromise,
+  // which is blocked until startApplication() runs.
+  // Instead, we let the bootstrap finish so initializeInterface can start the app.
 }
 
 async function initializeInterface() {
@@ -1298,6 +1298,16 @@ async function initializeInterface() {
   // Chain startApplication to ensure applicationReadyPromise tracks the full sequence
   if (!application) {
     startApplication();
+  }
+
+  // Trigger the initial routing now that the app is started and DOM is ready.
+  // handleHashChange will wait for applicationReadyPromise internally.
+  await handleHashChange();
+
+  // Show disclaimer after route is handled
+  const { default: disclaimerModal } = await import("./disclaimer.js");
+  if (disclaimerModal && typeof disclaimerModal.show === "function") {
+    disclaimerModal.show();
   }
 }
 
