@@ -9,6 +9,36 @@ This folder is a repo-ready extraction of TORCH so you can move it into a standa
 - `src/prompts/` — Generic scheduler prompts and flow
 - `examples/bitvid/` — Bitvid-specific scheduler overlay examples
 
+## Migration map (bitvid ➜ torch extract)
+
+Use this mapping when extracting TORCH from bitvid into this portable folder.
+
+| bitvid source path | torch destination path |
+| --- | --- |
+| `scripts/agent/nostr-lock.mjs` | `torch/src/nostr-lock.mjs` |
+| `docs/agents/TORCH.md` | `torch/src/docs/TORCH.md` |
+| `docs/agents/prompts/*` | `torch/src/prompts/*` and `torch/examples/bitvid/*` |
+| `views/dev/agent-dashboard.html` | `torch/dashboard/index.html` |
+
+### Leave source intact (copy-only, non-destructive)
+
+Use this checklist to ensure extraction does **not** mutate or remove any bitvid source files:
+
+- [ ] Copy files from bitvid source paths into `torch/...`; do not move/rename originals.
+- [ ] Do not delete or rewrite files under `scripts/agent/`, `docs/agents/`, or `views/dev/` during extraction.
+- [ ] Keep bitvid runtime paths valid (existing docs and scripts should continue to work in-place).
+- [ ] When adapting portable files, edit only the copied torch targets (`torch/src/...`, `torch/examples/...`, `torch/dashboard/...`).
+- [ ] Confirm `git status` in bitvid does not show source removals caused by extraction.
+
+### Verification checklist (namespace/tag parity)
+
+Confirm namespace/tag identifiers are consistent across CLI, docs, and dashboard wiring:
+
+- [ ] CLI defaults/constants in `torch/src/nostr-lock.mjs` match documented values in `torch/src/docs/TORCH.md`.
+- [ ] Prompt documentation in `torch/src/prompts/*` and `torch/examples/bitvid/*` references the same namespace usage as the CLI (for example `NOSTR_LOCK_NAMESPACE`).
+- [ ] Dashboard filters in `torch/dashboard/index.html` match the same lock tag namespace used by the CLI and docs.
+- [ ] Event kind/tag examples stay aligned across all three surfaces (CLI output/examples, protocol docs, dashboard expectations).
+
 ## Drop-in notes
 
 1. Copy this `torch/` directory into your destination repository.
