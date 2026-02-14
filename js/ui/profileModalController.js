@@ -72,7 +72,32 @@ const ADD_PROFILE_CANCELLATION_CODES = new Set([
   "modal-dismissed",
 ]);
 
+/**
+ * ProfileModalController
+ *
+ * Manages the "Profile" modal, which acts as the user's dashboard.
+ * It uses a Facade pattern, delegating specific functionality to sub-controllers:
+ * - ProfileDirectMessageController (DMs)
+ * - ProfileRelayController (Relay list)
+ * - ProfileWalletController (NWC/Zap settings)
+ * - ProfileAdminController (Moderation tools)
+ *
+ * Responsibilities:
+ * - Modal lifecycle (show/hide/load).
+ * - Pane navigation (Account, DMs, Relays, etc.).
+ * - Authentication state synchronization (Login/Logout/Switch).
+ * - DOM event binding for the modal shell.
+ */
 export class ProfileModalController {
+  /**
+   * Creates a new ProfileModalController instance.
+   *
+   * @param {object} options - Configuration options.
+   * @param {HTMLElement} [options.modalContainer] - The container to inject the modal into.
+   * @param {object} [options.callbacks] - Event callbacks (onClose, onLogout, etc.).
+   * @param {object} [options.services] - Service instances (nostrService, relayManager, etc.).
+   * @param {object} [options.state] - State management hooks.
+   */
   constructor(options = {}) {
     const {
       modalContainer = null,
@@ -520,6 +545,13 @@ export class ProfileModalController {
     }
   }
 
+  /**
+   * Loads the modal HTML template and injects it into the DOM.
+   * Initializes sub-controllers and binds event listeners.
+   *
+   * @returns {Promise<boolean>} Resolves true when loaded successfully.
+   * @throws {Error} If the modal container is missing or the template fetch fails.
+   */
   async load() {
     if (!(this.modalContainer instanceof HTMLElement)) {
       throw new Error("profile modal container missing");
@@ -2205,6 +2237,11 @@ export class ProfileModalController {
     }
   }
 
+  /**
+   * Processes a request to add a new account to the "Saved Profiles" list.
+   *
+   * @param {object} payload - The result from the auth provider (pubkey, etc.).
+   */
   async handleAddProfile(payload = {}) {
     const loginResult =
       payload && typeof payload === "object" ? payload.loginResult : null;
@@ -2358,6 +2395,11 @@ export class ProfileModalController {
     return this.handleAddProfile({ loginResult });
   }
 
+  /**
+   * Renders the list of saved profiles in the modal header and switcher menu.
+   * Handles avatar/name resolution, selection state, and "logout" button creation.
+   * Triggers a batch fetch for any missing profile metadata.
+   */
   renderSavedProfiles() {
     const normalizedActive = this.normalizeHexPubkey(this.getActivePubkey());
     const entriesNeedingFetch = new Set();
@@ -5466,6 +5508,13 @@ export class ProfileModalController {
     }
   }
 
+  /**
+   * Displays the profile modal, defaulting to the "account" pane.
+   * Triggers hydration of data for the active pane.
+   *
+   * @param {string} [targetPane="account"] - The pane to display initially.
+   * @returns {Promise<boolean>} Resolves true after the show animation starts.
+   */
   async show(targetPane = "account") {
     const pane =
       typeof targetPane === "string" && targetPane.trim()
@@ -5628,6 +5677,12 @@ export class ProfileModalController {
     });
   }
 
+  /**
+   * Hides the profile modal and resets temporary state.
+   *
+   * @param {object} [options]
+   * @param {boolean} [options.silent=false] - If true, suppresses the `onClose` callback.
+   */
   hide(options = {}) {
     const { silent = false } =
       options && typeof options === "object" ? options : {};
@@ -5745,6 +5800,13 @@ export class ProfileModalController {
     }
   }
 
+  /**
+   * Handles a successful login event.
+   * Syncs the active profile, hydrates wallet/admin state, and refreshes all lists.
+   *
+   * @param {object} detail - Login details (pubkey, savedProfiles, etc.).
+   * @returns {Promise<boolean>}
+   */
   async handleAuthLogin(detail = {}) {
     const postLoginPromise =
       detail && typeof detail.postLoginPromise?.then === "function"
@@ -5826,6 +5888,13 @@ export class ProfileModalController {
     return true;
   }
 
+  /**
+   * Handles a logout event.
+   * Clears personal data (DMs, friends, subscriptions) from the UI.
+   *
+   * @param {object} detail - Logout details.
+   * @returns {Promise<boolean>}
+   */
   async handleAuthLogout(detail = {}) {
     const savedProfiles = Array.isArray(detail?.savedProfiles)
       ? detail.savedProfiles
@@ -5973,6 +6042,15 @@ export class ProfileModalController {
     }
   }
 
+  /**
+   * Switches the active session to another saved profile.
+   *
+   * @param {string} pubkey - The public key of the target profile.
+   * @param {object} [options]
+   * @param {object} [options.entry] - The saved profile entry object.
+   * @param {string} [options.providerId] - The auth provider ID to use.
+   * @returns {Promise<{switched: boolean, error?: Error}>}
+   */
   async switchProfile(pubkey, { entry, providerId } = {}) {
     if (!pubkey) {
       return { switched: false, reason: "missing-pubkey" };
