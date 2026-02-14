@@ -192,6 +192,35 @@ See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full developer guide.
 - **Run visual regression tests**: `npm run test:visual`
 - **Cancel CI runs**: See [`docs/cancelling-ci-runs.md`](docs/cancelling-ci-runs.md) for a script to clear pending workflows.
 
+### Agent task orchestrator
+
+Use `scripts/agent/task-orchestrator.mjs` to run one task end-to-end (load → pick → execute → persist transitions → publish final state).
+
+```bash
+node scripts/agent/task-orchestrator.mjs \
+  --task-log data/tasks/task-log.json \
+  --source hybrid \
+  --actor-id ci-agent \
+  --handlers ./scripts/agent/task-handlers.mjs \
+  --nostr-relays wss://relay.example.com \
+  --nostr-private-key <hex-private-key>
+```
+
+Expected inputs:
+
+- `--task-log`: canonical JSON file (created automatically if missing) with `{ "tasks": [...] }`.
+- `--source`: `file` (default), `nostr`, or `hybrid` (merge file + nostr feed).
+- `--actor-id`: actor string recorded in each transition entry.
+- `--handlers`: optional module exporting `handlers` (map of handler name to async function).
+- `--nostr-relays`: comma-separated relay list used for loading task events (`--source nostr|hybrid`) and publishing the final state update.
+- `--nostr-private-key`: required for non-`--dry-run` publish (hex encoded key).
+
+Failure behavior:
+
+- If no pending task exists, the script exits successfully without changing state.
+- On handler failure, the selected task transitions `pending → in_progress → pending` and records the error in transition history before exiting non-zero.
+- On publish failure, the task remains `completed` (not `permanent`) so a later run can retry finalization.
+
 ### Docs navigation & TOC updates
 
 The docs viewer reads `content/docs/toc.json` to build the sidebar tree and map `doc` slugs to Markdown files. Each entry defines the label shown in the UI and the slug used in deep links. Add new docs content by creating a Markdown file under `content/` (or a subfolder) and then adding a matching entry in `content/docs/toc.json` that points to the new slug. Keep the slug and filename in sync so the reader can resolve the Markdown content and the sidebar link. Deep links follow the format `#view=docs&doc=<slug>` (for example, `#view=docs&doc=getting-started`). QA acceptance criteria for new docs include: the sidebar link appears, the deep link opens the correct document, the mobile drawer lists the new item, and the Markdown renders as expected (headings, lists, links, etc.).【F:content/docs/toc.json†L1-L5】

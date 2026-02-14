@@ -29,7 +29,8 @@
     "test:unit:shard1": "cross-env UNIT_TEST_SHARD=1/3 node scripts/run-unit-tests.mjs",
     "test:unit:shard2": "cross-env UNIT_TEST_SHARD=2/3 node scripts/run-unit-tests.mjs",
     "test:unit:shard3": "cross-env UNIT_TEST_SHARD=3/3 node scripts/run-unit-tests.mjs",
-    "telemetry:aggregate": "node scripts/agent/telemetry-aggregator.mjs"
+    "telemetry:aggregate": "node scripts/agent/telemetry-aggregator.mjs",
+    "task:orchestrate": "node scripts/agent/task-orchestrator.mjs"
   },
   "devDependencies": {
     "@noble/hashes": "^2.0.1",
