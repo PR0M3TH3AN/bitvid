@@ -1,6 +1,6 @@
 # Prompt Library Status
 
-Last updated: 2026-02-13
+Last updated: 2026-02-15
 Run type: Daily
 
 ## Summary
@@ -15,8 +15,8 @@ Run type: Daily
 
 | File | Issue | Status |
 |------|-------|--------|
-| `weekly/bitvid-interop-agent.md` | Previously flagged as truncated | Verified complete (has Failure Modes, Outputs) |
-| `weekly/bitvid-smoke-agent.md` | Previously flagged as truncated | Verified complete (has Failure Modes, Outputs) |
+| `daily/bitvid-innerhtml-migration-agent.md` | Missing output directory creation (`perf/innerhtml`) | Fixed: added `mkdir -p` to workflow |
+| `daily/bitvid-decompose-agent.md` | Missing output directory creation (`perf/decompose`) | Fixed: added `mkdir -p` to workflow |
 
 ## Known Remaining Issues
 
