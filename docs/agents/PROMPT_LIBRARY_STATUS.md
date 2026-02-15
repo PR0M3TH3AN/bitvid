@@ -15,8 +15,7 @@ Run type: Daily
 
 | File | Issue | Status |
 |------|-------|--------|
-| `daily/bitvid-innerhtml-migration-agent.md` | Missing output directory creation (`perf/innerhtml`) | Fixed: added `mkdir -p` to workflow |
-| `daily/bitvid-decompose-agent.md` | Missing output directory creation (`perf/decompose`) | Fixed: added `mkdir -p` to workflow |
+| `daily/bitvid-audit-agent.md` | Misleading Node.js parser examples | Fixed: updated to reference existing Python parsers in `scripts/agent/audit-parsers/` |
 
 ## Known Remaining Issues
 
