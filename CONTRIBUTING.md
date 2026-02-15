@@ -99,10 +99,11 @@ To set up the project locally:
    - **NPM**: v10 or higher (included with Node 22).
 
 2. **Install Dependencies**:
-   Use `npm ci` to ensure you get the exact dependencies from `package-lock.json`.
+   Use `npm ci` to ensure you get the exact dependencies from `package-lock.json`. If you intend to run smoke or visual tests, also install Playwright browsers.
 
    ```bash
    npm ci
+   npx playwright install
    ```
 
 3. **Start the Application**:
