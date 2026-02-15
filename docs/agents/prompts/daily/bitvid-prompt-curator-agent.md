@@ -173,12 +173,14 @@ file exists before creating it.** If `/docs/agents/` itself doesn't exist,
 that's a setup issue — open an issue rather than creating directory structure
 speculatively.
 
-- `PROMPT_LIBRARY_STATUS.md` — Current health, known issues, what changed
-  this run, what remains inconsistent.
-- `RESEARCH_LOG.md` — Dated entries from web research: query terms, sources,
-  key takeaways, what changed in the library (or why nothing changed).
-- `STYLE_GUIDE.md` — The canonical template (section 6 above) plus naming
-  rules, voice/tone guidance, and examples of good vs. bad prompt patterns.
+- `docs/agents/PROMPT_LIBRARY_STATUS.md` — Current health, known issues, what
+  changed this run, what remains inconsistent.
+- `docs/agents/RESEARCH_LOG.md` — Dated entries from web research: query
+  terms, sources, key takeaways, what changed in the library (or why nothing
+  changed).
+- `docs/agents/STYLE_GUIDE.md` — The canonical template (section 6 above)
+  plus naming rules, voice/tone guidance, and examples of good vs. bad prompt
+  patterns.
 
 Do not create helper scripts or tooling unless explicitly asked.
 
