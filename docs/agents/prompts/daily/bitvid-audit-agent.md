@@ -123,9 +123,9 @@ ADDITIONAL GUIDANCE & BEST PRACTICES
 ===============================================================================
 SEARCH / PARSING HELPER SCRIPTS (examples)
 - Parse file-size raw log into JSON:
-  - `node scripts/parse-file-size-report.js artifacts/audit/YYYY-MM-DD/raw-check-file-size.log > artifacts/audit/YYYY-MM-DD/file-size-report.json`
+  - `python3 scripts/agent/audit-parsers/parse_file_size.py artifacts/audit/YYYY-MM-DD/raw-check-file-size.log > artifacts/audit/YYYY-MM-DD/file-size-report.json`
 - Parse innerHTML log similarly:
-  - `node scripts/parse-innerhtml-report.js ...`
+  - `python3 scripts/agent/audit-parsers/parse_innerhtml.py ...`
 - If the repo’s scripts support `--json` or `--output`, prefer those flags.
 
 If such parsers do not exist, implement tiny Node scripts that reliably parse the scripts’ expected output.
