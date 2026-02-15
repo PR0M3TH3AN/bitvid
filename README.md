@@ -149,6 +149,12 @@ To run **bitvid** locally:
    npm ci
    ```
 
+   If you plan to run smoke, visual, or end-to-end tests, install the Playwright browsers:
+
+   ```bash
+   npx playwright install
+   ```
+
 3. Start the application:
 
    ```bash
