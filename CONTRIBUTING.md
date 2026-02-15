@@ -112,6 +112,12 @@ To set up the project locally:
    npx playwright install
    ```
 
+   If you plan to run smoke tests or visual tests, install the Playwright browsers:
+
+   ```bash
+   npx playwright install
+   ```
+
 3. **Start the Application**:
 
    ```bash
