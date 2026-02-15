@@ -13,6 +13,9 @@ Optimized `ExploreDataService` to reduce background resource usage.
   - Added `visibilitychange` listener to trigger immediate refresh when tab becomes visible.
 - **Tests**:
   - Added `tests/unit/services/exploreDataService.test.mjs` to verify visibility logic.
+- **CI Fix**:
+  - Updated `scripts/check-hex.js` to ignore `perf/**` to prevent CI failure when `perf/hits-*.json` contains binary-like data or hex codes from `min.js` files.
+  - Updated `rg` command to exclude `*.min.js` and `*.map` to prevent creating massive hits files.
 
 ### Artifacts
 - `perf/daily-perf-report-2026-02-15.md`
