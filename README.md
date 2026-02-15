@@ -143,10 +143,11 @@ To run **bitvid** locally:
 
 2. Install dependencies:
 
-   The project requires Node.js v22 or higher. Use `npm ci` to install dependencies exactly as specified in `package-lock.json`.
+   Use `npm ci` to install dependencies exactly as specified in `package-lock.json`. If you intend to run smoke or visual tests, also install Playwright browsers.
 
    ```bash
    npm ci
+   npx playwright install
    ```
 
    If you plan to run visual or smoke tests, install the Playwright browsers:
