@@ -309,9 +309,19 @@ class Application {
       getVideoModal: () => this.videoModal,
       callbacks: {
         showError: (msg) => this.showError(msg),
+        showSuccess: (msg) => this.showSuccess(msg),
+        showStatus: (msg, opts) => this.showStatus(msg, opts),
         getLastModalTrigger: () => this.lastModalTrigger,
         setLastModalTrigger: (val) => this.setLastModalTrigger(val),
         getCurrentVideo: () => this.currentVideo,
+        getPlaySource: () => this.playSource,
+        getStreamHealthSnapshots: () => this.streamHealthSnapshots,
+        getCachedUrlHealth: (id, url) => this.getCachedUrlHealth(id, url),
+        handleCopyMagnet: () => this.handleCopyMagnet(),
+        openShareNostrModal: (opts) => this.openShareNostrModal(opts),
+        playVideoWithFallback: (opts) => this.playVideoWithFallback(opts),
+        attachMoreMenuHandlers: (container) =>
+          this.attachMoreMenuHandlers(container),
       },
     });
 
@@ -850,131 +860,11 @@ class Application {
     );
   }
 
-  _bindVideoModalEvents() {
-    const modalRoot = this.videoModal.getRoot();
-    if (modalRoot) {
-      this.attachMoreMenuHandlers(modalRoot);
-    }
-    if (
-      this.videoModal &&
-      typeof this.videoModal.addEventListener === "function"
-    ) {
-      this.videoModal.addEventListener("video:share-nostr", (event) => {
-        this.openShareNostrModal({
-          video: event?.detail?.video || null,
-          triggerElement: event?.detail?.trigger || null,
-        });
-      });
-
-      this.videoModal.addEventListener("video:copy-cdn", (event) => {
-        const video = event?.detail?.video || this.currentVideo;
-        const url = video?.url || "";
-        if (!url) {
-          this.showError("No CDN link available to copy.");
-          return;
-        }
-        navigator.clipboard
-          .writeText(url)
-          .then(() => this.showSuccess("CDN link copied to clipboard!"))
-          .catch(() => this.showError("Failed to copy CDN link."));
-      });
-
-      this.videoModal.addEventListener("video:copy-magnet", () => {
-        this.handleCopyMagnet();
-      });
-
-      this.videoModal.addEventListener("playback:switch-source", (event) => {
-        const detail = event?.detail || {};
-        const { source } = detail;
-        if (!source) {
-          return;
-        }
-        const modalVideo = detail?.video || null;
-        const fallbackVideo = this.currentVideo || null;
-        const video = {
-          ...(fallbackVideo || {}),
-          ...(modalVideo || {}),
-        };
-        const urlCandidate =
-          typeof video.url === "string" ? video.url.trim() : "";
-        const magnetCandidate =
-          typeof video.magnet === "string" ? video.magnet.trim() : "";
-
-        if (!modalVideo && !fallbackVideo) {
-          devLogger.warn("[app] Playback source switch missing video data.");
-          return;
-        }
-
-        const magnetAvailable = Boolean(magnetCandidate);
-        const cachedStreamHealth =
-          video?.id && this.streamHealthSnapshots instanceof Map
-            ? this.streamHealthSnapshots.get(video.id)
-            : null;
-        const cachedPeers = Number.isFinite(cachedStreamHealth?.peers)
-          ? cachedStreamHealth.peers
-          : null;
-        const hasActivePeers =
-          cachedPeers === null ? null : cachedPeers > 0;
-        const cachedUrlHealth =
-          video?.id && urlCandidate
-            ? this.getCachedUrlHealth(video.id, urlCandidate)
-            : null;
-        const cdnUnavailable =
-          !urlCandidate ||
-          ["offline", "timeout"].includes(cachedUrlHealth?.status);
-
-        if (source === "torrent" && !magnetAvailable) {
-          userLogger.warn(
-            "[app] Unable to switch to torrent playback: missing magnet.",
-          );
-          this.showError(
-            "Torrent playback is unavailable for this video. No magnet was provided.",
-          );
-          return;
-        }
-
-        if (source === "torrent" && hasActivePeers === false) {
-          userLogger.warn(
-            "[app] Switching to torrent playback despite 0 active peers detected.",
-          );
-          this.showStatus(
-            "Warning: No peers detected. Playback may fail or stall.",
-            { autoHideMs: 5000 }
-          );
-          // Proceed anyway
-        }
-
-        if (source === "url" && cdnUnavailable) {
-          userLogger.warn(
-            "[app] Unable to switch to CDN playback: URL unavailable.",
-          );
-          this.showError(
-            "CDN playback is unavailable right now, staying on the torrent stream.",
-          );
-          return;
-        }
-
-        if (this.playSource && source === this.playSource) {
-          return;
-        }
-
-        this.playVideoWithFallback({
-          url: urlCandidate,
-          magnet: magnetCandidate,
-          forcedSource: source,
-        }).catch((error) => {
-          devLogger.warn(
-            "[app] Failed to switch playback source:",
-            error,
-          );
-        });
-      });
-    }
-  }
-
   _initModals() {
     const videoModalPromise = this.videoModal.load().then(() => {
-      this._bindVideoModalEvents();
+      if (this.videoModalController) {
+        this.videoModalController.bindEvents();
+      }
     });
 
     const uploadModalPromise = this.uploadModal.load().catch((error) => {
