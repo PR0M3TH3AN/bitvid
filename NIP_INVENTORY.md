@@ -30,3 +30,8 @@
 | **Kind 30015** | Hashtag Preferences | `js/services/hashtagPreferencesService.js` | Compliant | Implemented. |
 | **Kind 30078** | App Data | `js/nostr/client.js`, `js/nostr/videoPayloadBuilder.js` | Compliant | Verified by `tests/nostr-specs/kind30078.test.mjs`. |
 | **Kind 30079** | Watch History | `js/nostr/watchHistory.js`, `config/instance-config.js` | Compliant | Parameterized replaceable list (custom kind). Implements bucketing and encryption. |
+| **NIP-25** | Reactions | `js/nostr/reactionEvents.js`, `js/nostrEventSchemas.js` | Compliant | Implements Kind 7 reaction events. |
+| **NIP-42** | Authentication of clients to relays | `js/nostr/client.js` | Unknown | Needs verification of AUTH command handling. |
+| **NIP-47** | Wallet Connect | `js/payments/nwcClient.js` | Compliant | Implements NWC client for zaps. |
+| **NIP-57** | Zaps | `js/payments/zapRequests.js`, `js/payments/zapSplit.js` | Compliant | Implements Kind 9734/9735 flow. |
+| **NIP-96** | HTTP File Storage Integration | `js/nostr/videoPublisher.js` | Partial | References `service nip96` in NIP-71 tags. |
