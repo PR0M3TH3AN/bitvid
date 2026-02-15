@@ -156,13 +156,26 @@ export default class ExploreDataService {
     this.clearIntervals();
     if (Number.isFinite(this.historyRefreshIntervalMs) && this.historyRefreshIntervalMs > 0) {
       this.watchHistoryInterval = setInterval(() => {
+        if (typeof document !== "undefined" && document.hidden) {
+          return;
+        }
         this.refreshWatchHistoryTagCounts({ reason: "interval" });
       }, this.historyRefreshIntervalMs);
     }
     if (Number.isFinite(this.idfRefreshIntervalMs) && this.idfRefreshIntervalMs > 0) {
       this.tagIdfInterval = setInterval(() => {
+        if (typeof document !== "undefined" && document.hidden) {
+          return;
+        }
         this.refreshTagIdf({ reason: "interval" });
       }, this.idfRefreshIntervalMs);
+    }
+  }
+
+  handleVisibilityChange() {
+    if (typeof document !== "undefined" && !document.hidden) {
+      this.refreshWatchHistoryTagCounts({ reason: "visibility" });
+      this.refreshTagIdf({ reason: "visibility" });
     }
   }
 
@@ -184,6 +197,14 @@ export default class ExploreDataService {
       }
     });
     this.unsubscribeHandlers = [];
+
+    if (typeof document !== "undefined") {
+      const handler = () => this.handleVisibilityChange();
+      document.addEventListener("visibilitychange", handler);
+      this.unsubscribeHandlers.push(() => {
+        document.removeEventListener("visibilitychange", handler);
+      });
+    }
 
     if (this.watchHistoryService && typeof this.watchHistoryService.subscribe === "function") {
       const unsubscribe = this.watchHistoryService.subscribe("fingerprint", () => {
