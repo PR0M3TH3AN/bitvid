@@ -1,0 +1,29 @@
+[
+  {
+    "file": "js/services/exploreDataService.js",
+    "line": 158,
+    "type": "setInterval",
+    "trigger": "initialization",
+    "impact": "Runs worker tasks every 1-5 minutes even when tab is hidden.",
+    "priority": "P1",
+    "fix": "Implement visibility gating."
+  },
+  {
+    "file": "js/app/playbackCoordinator.js",
+    "line": 273,
+    "type": "setInterval",
+    "trigger": "torrent playback",
+    "impact": "Updates UI status",
+    "priority": "P3",
+    "note": "Already has visibility checks."
+  },
+   {
+    "file": "js/ui/ambientBackground.js",
+    "line": 130,
+    "type": "requestAnimationFrame",
+    "trigger": "video playback",
+    "impact": "Canvas animation",
+    "priority": "P3",
+    "note": "Already has visibility checks."
+  }
+]

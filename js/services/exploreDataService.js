@@ -143,13 +143,26 @@ export default class ExploreDataService {
     this.watchHistoryInterval = null;
     this.tagIdfInterval = null;
     this.unsubscribeHandlers = [];
+    this.handleVisibility = this.handleVisibility.bind(this);
   }
 
   initialize() {
     this.refreshWatchHistoryTagCounts({ force: true, reason: "init" });
     this.refreshTagIdf({ force: true, reason: "init" });
     this.subscribeToUpdates();
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", this.handleVisibility);
+    }
     this.startIntervals();
+  }
+
+  handleVisibility() {
+    if (typeof document === "undefined") return;
+    if (document.hidden) {
+      this.clearIntervals();
+    } else {
+      this.startIntervals();
+    }
   }
 
   startIntervals() {
@@ -305,6 +318,9 @@ export default class ExploreDataService {
 
   destroy() {
     this.clearIntervals();
+    if (typeof document !== "undefined") {
+      document.removeEventListener("visibilitychange", this.handleVisibility);
+    }
 
     if (this.watchHistoryRefreshHandle) {
       clearTimeout(this.watchHistoryRefreshHandle);
