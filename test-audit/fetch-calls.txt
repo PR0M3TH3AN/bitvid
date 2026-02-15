@@ -1,4 +1,0 @@
-tests/e2e/agent-testability.spec.ts:    const resp = await fetch(`${httpUrl}/events`);
-tests/e2e/agent-testability.spec.ts:    const resp = await fetch(`${httpUrl}/health`);
-tests/e2e/helpers/bitvidTestFixture.ts:  const resp = await fetch(`${httpUrl}/seed`, {
-tests/e2e/helpers/bitvidTestFixture.ts:  const resp = await fetch(`${httpUrl}/events`, { method: "DELETE" });

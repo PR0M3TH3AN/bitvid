@@ -4,8 +4,8 @@ docs/agents/prompts/daily/bitvid-audit-agent.md:110:   - If automated, add a fol
 docs/agents/prompts/daily/bitvid-const-refactor-agent.md:30:- `todo/TODO_<timestamp>.md` — List of duplicated constants to canonicalize and status for each.
 docs/agents/prompts/daily/bitvid-content-audit-agent.md:32:- `todo/TODO_<timestamp>.md` — checklist of pages and claims to verify, with statuses.
 docs/agents/prompts/daily/bitvid-decompose-agent.md:22:- `todo/TODO_<timestamp>.md` — checklist of extraction items (2–3 blocks) and status.
-docs/agents/prompts/daily/bitvid-decompose-agent.md:66:Add these items to `todo/TODO_<timestamp>.md`.
-docs/agents/prompts/daily/bitvid-decompose-agent.md:256:4. Read file, identify 2–3 cohesive blocks, document in `context/CONTEXT_<timestamp>.md` and `todo/TODO_<timestamp>.md`.
+docs/agents/prompts/daily/bitvid-decompose-agent.md:65:Add these items to `todo/TODO_<timestamp>.md`.
+docs/agents/prompts/daily/bitvid-decompose-agent.md:255:4. Read file, identify 2–3 cohesive blocks, document in `context/CONTEXT_<timestamp>.md` and `todo/TODO_<timestamp>.md`.
 docs/agents/prompts/daily/bitvid-deps-security-agent.md:33:- `todo/TODO_<timestamp>.md` — upgrade tasks and statuses.
 docs/agents/prompts/daily/bitvid-docs-code-investigator.md:12:  - Focus on files > ~200 LOC, or files that contain `TODO|FIXME|XXX`.
 docs/agents/prompts/daily/bitvid-docs-code-investigator.md:13:- Priority: files containing `TODO|FIXME|XXX` or >200 lines. Nostr helpers and signaling modules are high-value places to document.
@@ -14,7 +14,7 @@ docs/agents/prompts/daily/bitvid-docs-code-investigator.md:33:- Is large (> 200 
 docs/agents/prompts/daily/bitvid-docs-code-investigator.md:71:- Note unreachable code, TODOs, or suspicious `try/catch` with swallowing errors.
 docs/agents/prompts/daily/bitvid-docs-code-investigator.md:209:git grep -n -E "TODO|FIXME|XXX" -- js | sed -n '1,200p'
 docs/agents/prompts/daily/bitvid-innerhtml-migration-agent.md:20:- `todo/TODO_<timestamp>.md` — checklist of assignments in the file and status.
-docs/agents/prompts/daily/bitvid-innerhtml-migration-agent.md:55:   Add this list to `todo/TODO_<timestamp>.md` as items to migrate.
+docs/agents/prompts/daily/bitvid-innerhtml-migration-agent.md:54:   Add this list to `todo/TODO_<timestamp>.md` as items to migrate.
 docs/agents/prompts/daily/bitvid-nip-research-agent.md:34:- `todo/TODO_<timestamp>.md` — Checklist: NIPs/kinds to research and next actions (tests/PRs/issues).
 docs/agents/prompts/daily/bitvid-nip-research-agent.md:116:   - Where client behavior diverges intentionally or by omission, update `docs/nips/*` or `/content` to reflect reality, cite spec, and add "TODO: Fix" notes if non-compliant.
 docs/agents/prompts/daily/bitvid-nip-research-agent.md:219:- Tests/PRs/Issues for remediation, with `context/CONTEXT_<timestamp>.md`, `todo/TODO_<timestamp>.md`, `decisions/DECISIONS_<timestamp>.md` and `test_logs/TEST_LOG_<timestamp>.md`.
@@ -54,14 +54,6 @@ docs/agents/prompts/daily/bitvid-todo-triage-agent.md:161:- If multiple TODOs re
 docs/agents/prompts/daily/bitvid-todo-triage-agent.md:163:- Do not delete TODOs as “stale” unless you can prove the need is resolved.
 docs/agents/prompts/daily/bitvid-todo-triage-agent.md:178:- 0–N small PRs for trivial, safe TODOs
 docs/agents/prompts/daily/bitvid-todo-triage-agent.md:179:- 0–N GitHub issues for medium/large/sensitive TODOs
-docs/agents/task-logs/daily/2026-02-14_00-00-00_content-audit-agent_completed.md:22:- `todo/TODO_2026-02-14.md`
-docs/agents/task-logs/daily/2026-02-14_02-34-11_todo-triage-agent_completed.md:9:- Scanned codebase for `TODO`, `FIXME`, `XXX`.
-docs/agents/task-logs/daily/2026-02-14_02-34-11_todo-triage-agent_completed.md:12:  - `docs/agents/prompts/`: Agent prompts instructing others to manage TODOs.
-docs/agents/task-logs/daily/2026-02-14_02-34-11_todo-triage-agent_completed.md:13:  - `docs/agents/RESEARCH_LOG.md`: Mention of `TODO.md` file convention.
-docs/agents/task-logs/daily/2026-02-14_02-34-11_todo-triage-agent_completed.md:14:  - `js/ui/profileModalContract.js`: `npubXXXX…XXXX` string (false positive).
-docs/agents/task-logs/daily/2026-02-14_02-34-11_todo-triage-agent_completed.md:16:- **Result:** No actionable TODOs found in source code.
-docs/agents/task-logs/daily/2026-02-14_11-46-04_decompose-agent_completed.md:24:- `todo/TODO_1771068993.md`
-docs/agents/task-logs/daily/2026-02-15_17-59-53_scheduler-update-agent_completed.md:14:- `todo/TODO_2026-02-15_17-56-50.md`
 js/ui/profileModalContract.js:146:      "Formats npub strings for display using the canonical short representation (npubXXXX…XXXX).",
 vendor/highlight.min.js:62:begin:"[ ]*(?=(TODO|FIXME|NOTE|BUG|OPTIMIZE|HACK|XXX):)",
 vendor/highlight.min.js:63:end:/(TODO|FIXME|NOTE|BUG|OPTIMIZE|HACK|XXX):/,excludeBegin:!0,relevance:0})
