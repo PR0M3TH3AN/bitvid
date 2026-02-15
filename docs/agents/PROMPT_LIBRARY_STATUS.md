@@ -1,13 +1,12 @@
 # Prompt Library Status
 
-Last updated: 2026-02-13
+Last updated: 2026-02-15
 Run type: Daily
 
 ## Summary
 
 - **Total prompts**: 36 (21 daily, 15 weekly) + 2 schedulers
-- **Health**: Good. All prompts follow the canonical structure.
-  Verified `interop-agent` and `smoke-agent` are complete and not truncated.
+- **Health**: Good. Path validation checks passed after fixes.
 
 ## Changes This Run
 
@@ -15,8 +14,9 @@ Run type: Daily
 
 | File | Issue | Status |
 |------|-------|--------|
-| `weekly/bitvid-interop-agent.md` | Previously flagged as truncated | Verified complete (has Failure Modes, Outputs) |
-| `weekly/bitvid-smoke-agent.md` | Previously flagged as truncated | Verified complete (has Failure Modes, Outputs) |
+| `daily/bitvid-prompt-curator-agent.md` | Broken paths to `RESEARCH_LOG.md`, `STYLE_GUIDE.md`, `PROMPT_LIBRARY_STATUS.md` | Fixed (updated to `docs/agents/` paths) |
+| `daily/bitvid-content-audit-agent.md` | Broken paths to `js/ui/uploadModal.js`, `next.config.js`, `upload.md` | Fixed (updated to `js/ui/initUploadModal.js`, removed `next.config.js`, updated `content/docs/guides/`) |
+| `daily/bitvid-deps-security-agent.md` | Broken path to optional `scripts/deps-audit.sh` | Fixed (updated to use existing `scripts/agent/analyze_deps.py`) |
 
 ## Known Remaining Issues
 
@@ -75,7 +75,7 @@ Run type: Daily
 | 20 | test-audit-agent | `bitvid-test-audit-agent.md` | Complete |
 | 21 | todo-triage-agent | `bitvid-todo-triage-agent.md` | Complete |
 
-### Weekly Prompts (15)
+### Weekly Prompts (16)
 
 | # | Agent Name | Prompt File | Canonical Sections |
 |---|-----------|-------------|-------------------|
