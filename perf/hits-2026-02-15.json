@@ -1,29 +1,37 @@
 [
   {
-    "file": "js/services/exploreDataService.js",
-    "line": 158,
-    "type": "setInterval",
-    "trigger": "initialization",
-    "impact": "Runs worker tasks every 1-5 minutes even when tab is hidden.",
-    "priority": "P1",
-    "fix": "Implement visibility gating."
+    "file": "js/ui/loginModalController.js",
+    "pattern": "setInterval",
+    "line": "initializeModalCloseTracking",
+    "trigger": "always (fallback)",
+    "impact": "Main thread polling (500ms) when MutationObserver missing. Should be gated."
+  },
+  {
+    "file": "js/ui/loginModalController.js",
+    "pattern": "setInterval",
+    "line": "startModalCloseWatch",
+    "trigger": "login flow (fallback)",
+    "impact": "Main thread polling (200ms) during login. Should be gated."
+  },
+  {
+    "file": "js/viewCounter.js",
+    "pattern": "setTimeout",
+    "line": "persistTimer",
+    "trigger": "view count update",
+    "impact": "Debounced local storage write. Low impact."
   },
   {
     "file": "js/app/playbackCoordinator.js",
-    "line": 273,
-    "type": "setInterval",
-    "trigger": "torrent playback",
-    "impact": "Updates UI status",
-    "priority": "P3",
-    "note": "Already has visibility checks."
-  },
-   {
-    "file": "js/ui/ambientBackground.js",
-    "line": 130,
-    "type": "requestAnimationFrame",
+    "pattern": "setInterval",
+    "line": "startTorrentStatusInterval",
     "trigger": "video playback",
-    "impact": "Canvas animation",
-    "priority": "P3",
-    "note": "Already has visibility checks."
+    "impact": "Torrent status polling (3000ms). Already visibility gated."
+  },
+  {
+    "file": "js/services/exploreDataService.js",
+    "pattern": "setInterval",
+    "line": "startIntervals",
+    "trigger": "background data refresh",
+    "impact": "IDF/History refresh. Already visibility gated."
   }
 ]
