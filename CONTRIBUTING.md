@@ -105,6 +105,12 @@ To set up the project locally:
    npm ci
    ```
 
+   If you plan to run visual or smoke tests, install the Playwright browsers:
+
+   ```bash
+   npx playwright install
+   ```
+
 3. **Start the Application**:
 
    ```bash
