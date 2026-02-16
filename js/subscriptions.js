@@ -34,6 +34,7 @@ import {
   DEFAULT_NIP07_ENCRYPTION_METHODS,
   runNip07WithRetry,
   NIP07_PRIORITY,
+  NIP07_EXTENSION_WAIT_TIMEOUT_MS,
 } from "./nostr/nip07Permissions.js";
 import { relaySubscriptionService } from "./services/relaySubscriptionService.js";
 import {
@@ -1093,7 +1094,9 @@ class SubscriptionsManager {
     // gate now guarantees the extension is ready before decryption starts, so
     // decrypt calls should complete within 1-2s. 5s accommodates slow
     // extensions while still failing fast enough for scheme fallback.
-    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 12000 : 5000;
+    const nip07DecryptTimeoutMs = allowPermissionPrompt
+      ? 12000
+      : NIP07_EXTENSION_WAIT_TIMEOUT_MS;
     const signerDecryptOptions = {
       priority: NIP07_PRIORITY.NORMAL,
       timeoutMs: nip07DecryptTimeoutMs,
