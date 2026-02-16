@@ -99,28 +99,10 @@ To set up the project locally:
    - **NPM**: v10 or higher (included with Node 22).
 
 2. **Install Dependencies**:
-   Use `npm ci` to ensure you get the exact dependencies from `package-lock.json`. If you intend to run smoke or visual tests, also install Playwright browsers.
+   Use `npm ci` to ensure you get the exact dependencies from `package-lock.json`. If you intend to run smoke, visual, or end-to-end tests, also install Playwright browsers.
 
    ```bash
    npm ci
-   npx playwright install
-   ```
-
-   If you plan to run visual or smoke tests, install the Playwright browsers:
-
-   ```bash
-   npx playwright install
-   ```
-
-   If you plan to run smoke tests or visual tests, install the Playwright browsers:
-
-   ```bash
-   npx playwright install
-   ```
-
-   If you plan to run smoke, visual, or end-to-end tests, install the Playwright browsers:
-
-   ```bash
    npx playwright install
    ```
 
@@ -160,7 +142,7 @@ To set up the project locally:
 
    ```bash
    npm run test:e2e
-   npm run test:smoke
+   npm run test:smoke   # Critical path verification
    npm run test:visual
    ```
 
@@ -181,12 +163,6 @@ To set up the project locally:
    ```bash
    npm run test:dm:unit
    npm run test:dm:integration
-   ```
-
-   To run smoke tests (critical path verification):
-
-   ```bash
-   npm run test:smoke
    ```
 
    To aggregate telemetry from test logs:
