@@ -289,6 +289,8 @@ import {
   RELAY_SUMMARY_LOG_INTERVAL_MS,
   RELAY_BACKGROUND_CONCURRENCY,
 } from "./relayConstants.js";
+import { STANDARD_TIMEOUT_MS } from "../constants.js";
+
 const EVENTS_CACHE_STORAGE_KEY = "bitvid:eventsCache:v1";
 // We use the policy TTL, but currently the storage backend is hardcoded to IDB (with localStorage fallback).
 // Future refactors should make EventsCacheStore dynamic based on CACHE_POLICIES[NOTE_TYPES.VIDEO_POST].storage.
@@ -809,7 +811,7 @@ export class NostrClient {
     relayUrls,
     fetchFn,
     since,
-    timeoutMs = 10000,
+    timeoutMs = STANDARD_TIMEOUT_MS,
   } = {}) {
     return this.relayBatchFetcher.fetchListIncrementally({
       kind,
@@ -1422,7 +1424,7 @@ export class NostrClient {
 
     return new Promise((resolve) => {
       const sub = this.pool.sub(relaysToUse, filters);
-      const timeoutMs = options.timeoutMs || 10000;
+      const timeoutMs = options.timeoutMs || STANDARD_TIMEOUT_MS;
       let settled = false;
       let timeoutId = null;
 
