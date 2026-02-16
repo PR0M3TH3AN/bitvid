@@ -150,24 +150,6 @@ To run **bitvid** locally:
    npx playwright install
    ```
 
-   If you plan to run visual or smoke tests, install the Playwright browsers:
-
-   ```bash
-   npx playwright install
-   ```
-
-   If you plan to run smoke tests or visual tests, install the Playwright browsers:
-
-   ```bash
-   npx playwright install
-   ```
-
-   If you plan to run smoke, visual, or end-to-end tests, install the Playwright browsers:
-
-   ```bash
-   npx playwright install
-   ```
-
 3. Start the application:
 
    ```bash
@@ -227,7 +209,6 @@ For detailed architecture and system documentation, see the [Documentation Index
 
 **Other commands:**
 
-- **Run smoke tests**: `npm run test:smoke`
 - **Run load tests**: `npm run test:load`
 - **Run DM unit tests**: `npm run test:dm:unit`
 - **Run DM integration tests**: `npm run test:dm:integration`
