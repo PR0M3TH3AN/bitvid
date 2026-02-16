@@ -355,10 +355,6 @@ function applyFilters() {
   filters.tags = Array.from(selectedTags);
 
   // Duration
-  // (Simplified logic: taking the last checked one or union? The original popover logic allowed multiple?
-  // Let's look at the original logic in SearchFiltersPopover.js:
-  // It collected ranges into an array and took min of mins and max of maxes.
-  // Effectively treating them as OR if multiple selected (e.g. Short OR Medium -> 0 to 1200).
   const ranges = [];
   if (durationShortCheckbox.checked) ranges.push({ min: null, max: 300 });
   if (durationMediumCheckbox.checked) ranges.push({ min: 300, max: 1200 });
@@ -367,20 +363,6 @@ function applyFilters() {
   if (ranges.length) {
     const mins = ranges.map(r => r.min).filter(v => v !== null);
     const maxes = ranges.map(r => r.max).filter(v => v !== null);
-
-    // If any range has min=null (Short), the overall min is null.
-    // If any range has max=null (Long), the overall max is null.
-    // Actually, logic:
-    // Short (0-300) + Medium (300-1200) = 0-1200.
-    // Short + Long = 0-300 AND 1200+. Currently filter schema supports min/max seconds as a single range.
-    // It doesn't support disjoint ranges.
-    // The original logic:
-    // filters.duration.minSeconds = mins.length ? Math.min(...mins) : null;
-    // filters.duration.maxSeconds = maxes.length ? Math.max(...maxes) : null;
-    // This implies union of ranges IF they are contiguous. If disjoint (Short + Long), it creates 0 to infinity (min=0, max=null is wrong, max of maxes? Long has max=null).
-    // Let's stick to original logic.
-    // min: Math.min of all explicit mins. If Short is there, min is null.
-    // max: Math.max of all explicit maxes. If Long is there, max is null.
 
     const hasNullMin = ranges.some(r => r.min === null);
     const hasNullMax = ranges.some(r => r.max === null);
@@ -401,19 +383,7 @@ function applyFilters() {
   if (nsfwChecked) {
     filters.nsfw = "true";
   } else {
-    filters.nsfw = "any"; // or "false"? DEFAULT is "any".
-    // Wait, original popover logic:
-    // if (nsfwSwitch?.getAttribute("aria-checked") === "true") { filters.nsfw = "true"; }
-    // else { ... it defaults to cloneDefaultFilters which is 'any' }
-    // Wait, DEFAULT_FILTERS.nsfw is 'any'.
-    // If switch is off, it remains 'any' (showing sensitive content if user allows?).
-    // Usually NSFW toggle means "Show me NSFW".
-    // If off, it might mean "Filter out NSFW" or "Show Any".
-    // Let's assume 'any' means standard behavior (hide usually unless safe mode off?).
-    // Actually searchFilters.js says:
-    // filters.nsfw = "any" (default).
-    // So if I don't touch it, it's 'any'.
-    // If I toggle it ON, it becomes 'true'.
+    filters.nsfw = "any";
   }
 
   // Update State
