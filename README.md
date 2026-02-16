@@ -209,7 +209,6 @@ For detailed architecture and system documentation, see the [Documentation Index
 
 **Other commands:**
 
-- **Run smoke tests**: `npm run test:smoke` (Critical path verification)
 - **Run load tests**: `npm run test:load`
 - **Run DM unit tests**: `npm run test:dm:unit`
 - **Run DM integration tests**: `npm run test:dm:integration`

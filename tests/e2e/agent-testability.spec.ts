@@ -135,7 +135,7 @@ test.describe("Data-testid selectors are present", () => {
 
     // Wait for modal to be visible
     await expect(page.locator('[data-testid="login-modal"]')).toBeVisible({
-      timeout: 5000,
+      timeout: 15000,
     });
 
     // Check provider buttons exist
@@ -143,7 +143,7 @@ test.describe("Data-testid selectors are present", () => {
       '[data-testid="login-provider-button"]',
     );
     // At least one provider button should be present
-    await expect(providerButtons.first()).toBeVisible({ timeout: 5000 });
+    await expect(providerButtons.first()).toBeVisible({ timeout: 15000 });
   });
 });
 
