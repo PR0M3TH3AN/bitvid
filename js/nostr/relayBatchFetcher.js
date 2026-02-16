@@ -3,6 +3,7 @@ import { devLogger } from "../utils/logger.js";
 import { withRequestTimeout } from "../utils/asyncUtils.js";
 import { normalizeNostrPubkey, sanitizeRelayList } from "./nip46Client.js";
 import { DEFAULT_RELAY_URLS, RELAY_URLS } from "./toolkit.js";
+import { STANDARD_TIMEOUT_MS } from "../constants.js";
 
 export class RelayBatchFetcher {
   constructor(client) {
@@ -16,7 +17,7 @@ export class RelayBatchFetcher {
     relayUrls,
     fetchFn,
     since,
-    timeoutMs = 10000,
+    timeoutMs = STANDARD_TIMEOUT_MS,
   } = {}) {
     if (!kind || !pubkey) {
       throw new Error("fetchListIncrementally requires kind and pubkey");
@@ -132,7 +133,7 @@ export class RelayBatchFetcher {
         }
 
         // Allow callers to override list fetch timeouts without changing non-list query behavior.
-        const listTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 10000;
+        const listTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : STANDARD_TIMEOUT_MS;
 
         try {
           // Wrap fetch with a timeout to prevent hanging on slow relays
