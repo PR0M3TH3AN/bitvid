@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url';
 
 // --- Configuration ---
 let RELAY_URL = process.env.RELAY_URL;
-const CLIENTS = parseInt(process.env.CLIENTS || '50', 10);
+const CLIENTS = parseInt(process.env.CLIENTS || '1000', 10);
 const DURATION_SEC = parseInt(process.env.DURATION_SEC || '600', 10);
 const RATE_EPS = parseFloat(process.env.RATE_EPS || '10');
 const MIX_VIDEO_RATIO = parseFloat(process.env.MIX || '0.5'); // 0.0 to 1.0
@@ -50,6 +50,7 @@ const metrics = {
   errors: 0,
   latencies: [], // ms
   connectedClients: 0,
+  resources: [], // { time, rss, heapTotal, heapUsed, external, cpuUser, cpuSystem }
 };
 
 // --- Helpers ---
@@ -314,7 +315,20 @@ Load Test Configuration:
   const progressTimer = setInterval(() => {
     const elapsed = (Date.now() - startTime) / 1000;
     const sentRate = metrics.sent / elapsed;
-    console.log(`[${elapsed.toFixed(1)}s] Sent: ${metrics.sent} (${sentRate.toFixed(1)}/s) | Accepted: ${metrics.accepted} | Rejected: ${metrics.rejected} | Errors: ${metrics.errors}`);
+    const mem = process.memoryUsage();
+    const cpu = process.cpuUsage();
+
+    metrics.resources.push({
+      time: elapsed,
+      rss: mem.rss,
+      heapTotal: mem.heapTotal,
+      heapUsed: mem.heapUsed,
+      external: mem.external,
+      cpuUser: cpu.user,
+      cpuSystem: cpu.system
+    });
+
+    console.log(`[${elapsed.toFixed(1)}s] Sent: ${metrics.sent} (${sentRate.toFixed(1)}/s) | Accepted: ${metrics.accepted} | Rejected: ${metrics.rejected} | Errors: ${metrics.errors} | RSS: ${(mem.rss / 1024 / 1024).toFixed(1)}MB`);
   }, 5000);
 
   // 3. Finish & Report
@@ -358,7 +372,8 @@ Load Test Configuration:
           p50,
           p95,
           p99
-        }
+        },
+        resources: metrics.resources
       },
       timestamp: new Date().toISOString()
     };
