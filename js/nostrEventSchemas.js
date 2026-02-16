@@ -740,6 +740,24 @@ export function getAllNostrEventSchemas() {
   return entries;
 }
 
+function generateRandomIdentifier() {
+  if (
+    typeof globalThis.crypto !== "undefined" &&
+    typeof globalThis.crypto.randomUUID === "function"
+  ) {
+    return globalThis.crypto.randomUUID();
+  }
+  if (
+    typeof globalThis.crypto !== "undefined" &&
+    typeof globalThis.crypto.getRandomValues === "function"
+  ) {
+    const bytes = new Uint8Array(16);
+    globalThis.crypto.getRandomValues(bytes);
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+  return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+}
+
 function appendSchemaTags(tags, schema) {
   if (!Array.isArray(schema?.appendTags)) {
     return tags;
@@ -1834,9 +1852,7 @@ export function buildViewEvent(params) {
 
   const resolvedDedupeTag =
     dedupeTag ||
-    (schema?.identifierTag?.name
-      ? Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)
-      : "");
+    (schema?.identifierTag?.name ? generateRandomIdentifier() : "");
 
   if (resolvedDedupeTag && schema?.identifierTag?.name) {
     const identifierName = schema.identifierTag.name;
