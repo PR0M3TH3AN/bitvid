@@ -24,7 +24,7 @@ Before you start, ensure your content meets the following requirements:
 ### File Size
 
 - **Recommended:** Up to **2GB** per file.
-- **Why?** Browser-based uploads rely on your device's memory for hashing (to generate the WebTorrent info hash). Files larger than 2GB may cause browser instability or crashes during the hashing process, which happens entirely in your browser's memory. This is a client-side limitation, not a server limit.
+- **Why?** Browser-based uploads rely on your device's memory for hashing (to generate the WebTorrent info hash). Files larger than 2GB may cause browser instability or crashes during the hashing process, which happens entirely in your browser's memory. This is a client-side limitation due to in-memory hashing for WebTorrent, not a server limit.
 
 ## Metadata & Options
 
