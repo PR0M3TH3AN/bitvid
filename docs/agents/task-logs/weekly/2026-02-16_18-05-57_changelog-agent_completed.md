@@ -8,8 +8,8 @@
 ## Actions Taken
 1. Gathered changes from `main` and `unstable` for the last 7 days.
 2. Identified 2 relevant PRs:
-   - #2563: Documentation alignment and updates.
-   - #2562: Cleanup of Search Filter Modal comments.
+   - PR 2563: Documentation alignment and updates.
+   - PR 2562: Cleanup of Search Filter Modal comments.
 3. Updated `CHANGELOG.md` with new entries under `[Unreleased]`.
 4. Created `releases/draft-20260216.md` with highlights.
 5. Verified changes and ran lint.
