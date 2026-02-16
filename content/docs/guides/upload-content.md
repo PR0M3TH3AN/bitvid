@@ -16,10 +16,10 @@ Before you start, ensure your content meets the following requirements:
 
 ### Accepted File Types
 
-- **Video:** `.mp4` (`video/mp4`), `.webm` (`video/webm`), `.mov` (`video/quicktime`), `.mkv` (`video/x-matroska`), `.ts` (`video/mp2t`), `.m3u8` (`application/x-mpegurl`), `.mpg` (`video/mpeg`), `.mpeg` (`video/mpeg`).
+- **Video:** All standard video formats (`video/*`), including `.mp4`, `.webm`, `.mov`, `.mkv`, `.ts`, `.m3u8`, `.mpg`, `.mpeg`.
 - **Thumbnail:** Any standard image format (`image/*`) supported by your browser.
 
-> **Note:** The file picker restricts selection to these formats, but the backend handles standard video MIME types (`video/*`). Ensure your container format is supported by modern browsers for playback.
+> **Note:** Ensure your container format is supported by modern browsers (e.g., MP4/H.264, WebM) for optimal playback compatibility, although the backend and file picker accept any `video/*` type.
 
 ### File Size
 
