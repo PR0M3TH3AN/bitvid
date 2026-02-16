@@ -195,43 +195,45 @@ export function createWatchHistoryPointerSource({ service } = {}) {
       pointers = [];
     }
 
-    const results = [];
     const hook = context?.hooks?.watchHistory;
     const resolveVideoHook =
       isPlainObject(hook) && typeof hook.resolveVideo === "function"
         ? hook.resolveVideo
         : null;
 
-    for (const pointer of Array.isArray(pointers) ? pointers : []) {
-      const dto = {
-        video: null,
-        pointer,
-        metadata: {
-          source: "watch-history",
-          actor: actor || null,
-        },
-      };
+    const pointerList = Array.isArray(pointers) ? pointers : [];
+    const results = await Promise.all(
+      pointerList.map(async (pointer) => {
+        const dto = {
+          video: null,
+          pointer,
+          metadata: {
+            source: "watch-history",
+            actor: actor || null,
+          },
+        };
 
-      if (pointer && isPlainObject(pointer) && pointer.video) {
-        dto.video = pointer.video;
-      }
-
-      if (!dto.video && resolveVideoHook) {
-        try {
-          const resolvedVideo = await resolveVideoHook(pointer, context);
-          if (resolvedVideo) {
-            dto.video = resolvedVideo;
-          }
-        } catch (error) {
-          context?.log?.(
-            "[watch-history-source] resolveVideo hook threw",
-            error
-          );
+        if (pointer && isPlainObject(pointer) && pointer.video) {
+          dto.video = pointer.video;
         }
-      }
 
-      results.push(dto);
-    }
+        if (!dto.video && resolveVideoHook) {
+          try {
+            const resolvedVideo = await resolveVideoHook(pointer, context);
+            if (resolvedVideo) {
+              dto.video = resolvedVideo;
+            }
+          } catch (error) {
+            context?.log?.(
+              "[watch-history-source] resolveVideo hook threw",
+              error
+            );
+          }
+        }
+
+        return dto;
+      })
+    );
 
     return results;
   };
