@@ -1,3 +1,19 @@
+/**
+ * @fileoverview
+ * Moderation Service - Decentralized Trust & Safety.
+ *
+ * Implements a "Web of Trust" model where content visibility and safety actions (blur, hide)
+ * are determined by aggregating reports (NIP-56) and mutes (NIP-51) from the user's
+ * trusted social graph (follows).
+ *
+ * Flow:
+ * 1. setViewerPubkey(pubkey) loads the user's Kind 3 contacts -> trustedContacts.
+ * 2. subscribeToReports(eventId) listens for Kind 1984 reports.
+ * 3. ingestReportEvent(event) stores reports in memory.
+ * 4. recomputeSummaryForEvent(eventId) checks if reporter is in trustedContacts.
+ * 5. If trusted reports > threshold, emits 'summary' event to update UI.
+ */
+
 import {
   getActiveSigner,
   nostrClient,
@@ -528,22 +544,16 @@ function resolveStorage() {
  * Implements a "Web of Trust" model where content visibility and safety actions (blur, hide)
  * are determined by aggregating reports (NIP-56) and mutes (NIP-51) from the user's
  * trusted social graph (follows).
- *
- * Architecture:
- * - **Viewer Context**: Tracks the currently logged-in user and their Kind 3 Contact List.
- * - **Trust Graph**: Combines contacts + admin seeds + whitelists.
- * - **Report Aggregation**: Counts reports only from trusted users.
- * - **Thresholds**: Triggers actions (blur, block autoplay) when trusted report counts exceed limits.
  */
 export class ModerationService {
   /**
    * @param {object} options
-   * @param {object} [options.nostrClient] - The Nostr client instance (dependency injection).
-   * @param {object} [options.logger] - System logger.
-   * @param {object} [options.userBlocks] - User block manager instance.
-   * @param {object} [options.accessControl] - Admin whitelist/blacklist controller.
-   * @param {object} [options.userLogger] - User-facing logger for notifications.
-   * @param {function} [options.requestExtensionPermissions] - Helper to request NIP-07 permissions.
+   * @param {object} [options.nostrClient] Nostr client.
+   * @param {object} [options.logger] System logger.
+   * @param {object} [options.userBlocks] User block manager.
+   * @param {object} [options.accessControl] Admin access control.
+   * @param {object} [options.userLogger] User-facing logger.
+   * @param {function} [options.requestExtensionPermissions] NIP-07 helper.
    */
   constructor({
     nostrClient: client = null,
@@ -1568,6 +1578,12 @@ export class ModerationService {
     throw new Error("Mute list management is delegated to userBlocks.");
   }
 
+  /**
+   * Checks if an author is muted by any of the trusted contacts.
+   *
+   * @param {string} pubkey - The author's pubkey.
+   * @returns {boolean} True if at least one trusted contact mutes this author.
+   */
   isAuthorMutedByTrusted(pubkey) {
     const muters = this.getActiveTrustedMutersForAuthor(pubkey);
     return muters.length > 0;
@@ -1577,6 +1593,13 @@ export class ModerationService {
     return this.getActiveTrustedMutersForAuthor(pubkey);
   }
 
+  /**
+   * Checks if a pubkey is blocked or muted by the current viewer.
+   * Delegates to the UserBlocks manager.
+   *
+   * @param {string} pubkey - The pubkey to check.
+   * @returns {boolean} True if blocked or muted by viewer.
+   */
   isPubkeyBlockedByViewer(pubkey) {
     if (!this.userBlocks || typeof this.userBlocks.isBlocked !== "function") {
       return false;
@@ -1728,6 +1751,12 @@ export class ModerationService {
     return this.nostrClient.ensurePool();
   }
 
+  /**
+   * Checks the current Nostr client state and updates the viewer if changed.
+   * Useful when the user logs in or switches accounts externally.
+   *
+   * @returns {Promise<string>} The active viewer pubkey.
+   */
   async refreshViewerFromClient() {
     const clientPubkey = normalizeHex(
       this.nostrClient?.pubkey || this.nostrClient?.sessionActor?.pubkey,
@@ -2019,6 +2048,15 @@ export class ModerationService {
     this.activeSubscriptions.delete(normalized);
   }
 
+  /**
+   * Subscribes to Kind 1984 reports for a specific event.
+   *
+   * This fetches recent history (backfill) and opens a live subscription.
+   * Reports are ingested and trigger summary recomputation.
+   *
+   * @param {string} eventId - The ID of the event to monitor.
+   * @returns {Promise<void>}
+   */
   async subscribeToReports(eventId) {
     const normalized = normalizeEventId(eventId);
     if (!normalized) {
@@ -2271,6 +2309,12 @@ export class ModerationService {
     this.emit("summary", { eventId: normalized, summary: cloneSummary(summary) });
   }
 
+  /**
+   * Retrieves the current aggregated trust score for an event.
+   *
+   * @param {string} eventId - The event ID.
+   * @returns {object} The summary object ({ totalTrusted, types, ... }).
+   */
   getTrustedReportSummary(eventId) {
     const normalized = normalizeEventId(eventId);
     if (!normalized) {
