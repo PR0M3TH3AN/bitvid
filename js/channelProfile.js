@@ -70,7 +70,7 @@ import {
 } from "./ui/components/staticModalAccessibility.js";
 import { setModalState as setGlobalModalState } from "./state/appState.js";
 import { attachFeedInfoPopover } from "./ui/components/FeedInfoPopover.js";
-import { pMap } from "./utils/asyncUtils.js";
+import { pMapSettled } from "./utils/asyncUtils.js";
 import { RELAY_BACKGROUND_CONCURRENCY } from "./nostr/relayConstants.js";
 
 const getApp = () => getApplication();
@@ -5410,19 +5410,11 @@ async function loadUserVideos(pubkey) {
         userLogger.error("Relay error (default pool):", error);
       }
     } else {
-      const settled = await pMap(
+      const settled = await pMapSettled(
         relayList,
-        async (url) => {
-          try {
-            const value = await nostrClient.pool.list([url], [filter]);
-            return { status: "fulfilled", value };
-          } catch (reason) {
-            return { status: "rejected", reason };
-          }
-        },
+        (url) => nostrClient.pool.list([url], [filter]),
         { concurrency: RELAY_BACKGROUND_CONCURRENCY }
       );
-
       settled.forEach((result, index) => {
         const relayUrl = relayList[index];
 
