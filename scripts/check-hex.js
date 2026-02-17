@@ -36,7 +36,8 @@ const IGNORED_GLOBS = [
   'bitvid-working-webtorrent/**',
   'scripts/agent/**',
   'docs/capacitor-native-app-plan.md',
-  'js/webtorrent.min.js'
+  'js/webtorrent.min.js',
+  'perf/*.json'
 ];
 
 const gitArgs = [
@@ -71,10 +72,24 @@ if (result.error) {
 //   2+ on errors.
 
 if (result.status === 0 && result.stdout.trim()) {
-  console.error('Hex colors detected outside tokens or SVG assets:');
-  console.error(result.stdout.trimEnd());
-  console.error('\nAllowed exceptions: tokens (css/tokens.css) and vector logos (*.svg).');
-  process.exit(1);
+  const lines = result.stdout.trim().split('\n');
+
+  // Robust filtering: If git grep exclusion fails (e.g. in some CI environments),
+  // we filter out known ignored files here.
+  const filteredLines = lines.filter(line => {
+    // Output format is filename:line:content...
+    // We just check if the line starts with a known ignored file.
+    if (line.startsWith('js/webtorrent.min.js')) return false;
+    if (line.startsWith('perf/hits-')) return false;
+    return true;
+  });
+
+  if (filteredLines.length > 0) {
+    console.error('Hex colors detected outside tokens or SVG assets:');
+    console.error(filteredLines.join('\n'));
+    console.error('\nAllowed exceptions: tokens (css/tokens.css) and vector logos (*.svg).');
+    process.exit(1);
+  }
 }
 
 if (result.status && result.status !== 1) {
