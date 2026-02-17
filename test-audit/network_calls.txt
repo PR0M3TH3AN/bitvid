@@ -1,0 +1,226 @@
+tests/video-modal-zap.test.mjs:if (typeof globalThis.fetch === "undefined") {
+tests/video-modal-zap.test.mjs:  globalThis.fetch = async () => {
+tests/video-modal-zap.test.mjs:    throw new Error("Unexpected fetch call in tests.");
+tests/video-modal-zap.test.mjs:    fetchedAt: Date.now(),
+tests/subscriptions-feed.test.mjs:      throw new Error("should not fetch active videos when authors missing");
+tests/video-modal-accessibility.test.mjs:    const originalFetch = globalThis.fetch;
+tests/video-modal-accessibility.test.mjs:    globalThis.fetch = async (resource, init) => {
+tests/video-modal-accessibility.test.mjs:      throw new Error(`Unexpected fetch request in tests: ${String(url || resource)}`);
+tests/video-modal-accessibility.test.mjs:        globalThis.fetch = originalFetch;
+tests/video-modal-accessibility.test.mjs:        delete globalThis.fetch;
+tests/view-counter.test.mjs:      "hydration should fetch fresh data from relays even if cache was preserved"
+tests/view-counter.test.mjs:      "hydrateVideoHistory should fetch the root event when it is missing locally"
+tests/view-counter.test.mjs:    const fetchedRoot = history.find((entry) => entry.id === rootId);
+tests/view-counter.test.mjs:    assert.ok(fetchedRoot, "history should include the fetched root event");
+tests/view-counter.test.mjs:      fetchedRoot.created_at,
+tests/subscriptions-manager.test.mjs:    const originalFetchIncremental = nostrClient.fetchListIncrementally;
+tests/subscriptions-manager.test.mjs:    nostrClient.fetchListIncrementally = async () => [event];
+tests/subscriptions-manager.test.mjs:      nostrClient.fetchListIncrementally = originalFetchIncremental;
+tests/nostr/client.test.mjs:  describe("fetchListIncrementally", () => {
+tests/nostr/client.test.mjs:    it("should fetch events and deduplicate results", async () => {
+tests/nostr/client.test.mjs:      const events = await client.fetchListIncrementally({
+tests/nostr/client.test.mjs:      await client.fetchListIncrementally({
+tests/nostr/client.test.mjs:      await client.fetchListIncrementally({
+tests/nostr/client.test.mjs:    it("should force full fetch if since is 0", async () => {
+tests/nostr/client.test.mjs:      await client.fetchListIncrementally({
+tests/nostr/client.test.mjs:        since: 0 // Force full fetch
+tests/nostr/client.test.mjs:  describe("fetchVideos", () => {
+tests/nostr/client.test.mjs:      const result = await client.fetchVideos({ limit: 5 });
+tests/nostr/client.test.mjs:      // Ensure we force full fetch by default
+tests/nostr/client.test.mjs:      await client.fetchVideos({ since: 12345 });
+tests/nostr/client.test.mjs:      // and focus on `fetch`/`subscribe` which use `this.pool`.
+tests/nostr/watchHistory.test.js:  fetchWatchHistory,
+tests/nostr/watchHistory.test.js:test("fetchWatchHistory prefers decrypted chunk payloads when nip04 decrypt succeeds", async () => {
+tests/nostr/watchHistory.test.js:    const result = await fetchWatchHistory(manager, actorHex, { forceRefresh: true });
+tests/nostr/watchHistory.test.js:test("fetchWatchHistory falls back to pointer payload when nip04 decrypt fails", async () => {
+tests/nostr/watchHistory.test.js:    const result = await fetchWatchHistory(manager, actorHex, { forceRefresh: true });
+tests/nostr/nip71.test.js:test("populateNip71MetadataForVideos fetches missing records once", async () => {
+tests/nostr/nip71.test.js:  let fetchCalls = 0;
+tests/nostr/nip71.test.js:  const fetchMetadata = async (map, pointerValues) => {
+tests/nostr/nip71.test.js:    fetchCalls += 1;
+tests/nostr/nip71.test.js:    fetchMetadata,
+tests/nostr/nip71.test.js:  assert.equal(fetchCalls, 1);
+tests/nostr/nip71.test.js:  assert.ok(cacheEntry?.fetchedPointers.has(pointerValue));
+tests/nostr/nip71.test.js:    fetchMetadata,
+tests/nostr/nip71.test.js:  assert.equal(fetchCalls, 1, "cached pointer should skip subsequent fetches");
+tests/torrent/service-worker-fallback-message.test.mjs:    "Failed to register ServiceWorker: TypeError: Failed to fetch"
+tests/hashtag-preferences.test.mjs:        // Note: fetchListIncrementally calls pool.list separately for each kind
+tests/hashtag-preferences.test.mjs:    const originalFetchIncremental = nostrClient.fetchListIncrementally;
+tests/hashtag-preferences.test.mjs:    let fetchCalls = 0;
+tests/hashtag-preferences.test.mjs:    fetchCalls = 0;
+tests/hashtag-preferences.test.mjs:    nostrClient.fetchListIncrementally = async () => {
+tests/hashtag-preferences.test.mjs:      fetchCalls += 1;
+tests/hashtag-preferences.test.mjs:      return fetchCalls <= 4 ? [event] : [];
+tests/hashtag-preferences.test.mjs:      nostrClient.fetchListIncrementally = originalFetchIncremental;
+tests/app-batch-fetch-profiles.test.mjs:  // Should fetch despite cache presence
+tests/app-batch-fetch-profiles.test.mjs:    "should include cached pubkey in fetch list"
+tests/nostr-rebroadcast-guard.test.mjs:    fetchRawEventById: async () => null,
+tests/nostr-boost-actions.test.mjs:    fetchRawEventById: async (id, { relays: requestedRelays } = {}) => {
+tests/nostr-boost-actions.test.mjs:  client.fetchRawEventById = async () => null;
+tests/modal-accessibility.test.mjs:  const originalFetch = globalThis.fetch;
+tests/modal-accessibility.test.mjs:  globalThis.fetch = async (resource) => {
+tests/modal-accessibility.test.mjs:      throw new Error(`Unexpected fetch request: ${key}`);
+tests/modal-accessibility.test.mjs:    globalThis.fetch = originalFetch;
+tests/zap-split.test.mjs:globalThis.fetch = async () => {
+tests/zap-split.test.mjs:  throw new Error("Unexpected fetch call during zap split tests.");
+tests/zap-split.test.mjs:        async fetchPayServiceData(url) {
+tests/zap-split.test.mjs:  const fetcher = async (url) => {
+tests/zap-split.test.mjs:    fetcher,
+tests/zap-split.test.mjs:  assert.equal(requestedUrls.length, 1, "should call fetcher once");
+tests/zap-split.test.mjs:    assert.equal(listCalls, 1, "should fetch platform metadata once the pool is ready");
+tests/profile-modal-controller.test.mjs:  global.fetch = async (resource) => {
+tests/profile-modal-controller.test.mjs:    throw new Error(`Unexpected fetch: ${resource}`);
+tests/profile-modal-controller.test.mjs:  delete global.fetch;
+tests/watch-history.test.mjs:  const snapshotId = "extension-fetch";
+tests/watch-history.test.mjs:      const result = await nostrClient.fetchWatchHistory(actorInput, {
+tests/watch-history.test.mjs:  const originalFetch = nostrClient.fetchWatchHistory;
+tests/watch-history.test.mjs:  const originalManagerFetch = nostrClient.watchHistory.fetch;
+tests/watch-history.test.mjs:    const fetchResult = {
+tests/watch-history.test.mjs:    nostrClient.fetchWatchHistory = async () => fetchResult;
+tests/watch-history.test.mjs:    nostrClient.watchHistory.fetch = async () => fetchResult;
+tests/watch-history.test.mjs:    nostrClient.fetchWatchHistory = originalFetch;
+tests/watch-history.test.mjs:    nostrClient.watchHistory.fetch = originalManagerFetch;
+tests/watch-history.test.mjs:      "loadLatest should fetch from relays for logged-in actors",
+tests/watch-history.test.mjs:    // Simulate renderer fetching via feed engine
+tests/watch-history.test.mjs:      fetchHistory: async (actorInput, { cursor = 0, forceRefresh = false } = {}) => {
+tests/discussion-count-service.test.mjs:    "DOM should transition to ready after a successful fetch"
+tests/discussion-count-service.test.mjs:    "count value should reflect the fetched total"
+tests/edit-modal-submit-state.test.mjs:  global.fetch = async (resource) => {
+tests/edit-modal-submit-state.test.mjs:    throw new Error(`Unexpected fetch: ${resource}`);
+tests/edit-modal-submit-state.test.mjs:  delete global.fetch;
+tests/revert-modal-controller.test.mjs:        fetchVideos: async () => [mockVideo],
+tests/revert-modal-controller.test.mjs:  await t.test('open() fetches history and opens modal', async () => {
+tests/ui/uploadModal-integration.test.mjs:    originalGlobals.fetch = global.fetch;
+tests/ui/uploadModal-integration.test.mjs:    global.fetch = async (url) => {
+tests/ui/uploadModal-integration.test.mjs:    if ('fetch' in originalGlobals) global.fetch = originalGlobals.fetch; else delete global.fetch;
+tests/ui/profile-modal-moderation-settings.test.mjs:  global.fetch = async (url) => {
+tests/ui/profile-modal-moderation-settings.test.mjs:  delete global.fetch;
+tests/ui/url-health-controller.test.mjs:  // Mock fetch
+tests/ui/url-health-controller.test.mjs:  global.fetch = async (url) => {
+tests/ui/url-health-controller.test.mjs:  delete global.fetch;
+tests/ui/creatorProfileController.test.mjs:      fetchedProfile: { name: "Fetched Name", picture: "fetched.jpg" },
+tests/ui/creatorProfileController.test.mjs:    // logic prioritizes fetched > cached > video
+tests/ui/creatorProfileController.test.mjs:    assert.strictEqual(result.picture, "fetched.jpg");
+tests/ui/creatorProfileController.test.mjs:  await t.test("resolveCreatorProfileFromSources falls back to fetched profile", () => {
+tests/ui/creatorProfileController.test.mjs:      fetchedProfile: { name: "Fetched Name", picture: "fetched.jpg" },
+tests/ui/creatorProfileController.test.mjs:    assert.strictEqual(result.picture, "fetched.jpg");
+tests/ui/creatorProfileController.test.mjs:  await t.test("fetchModalCreatorProfile fetches profile and updates modal", async () => {
+tests/ui/creatorProfileController.test.mjs:        fetchProfileMetadata: async () => ({
+tests/ui/creatorProfileController.test.mjs:    await controller.fetchModalCreatorProfile({
+tests/ui/uploadModal-reset.test.mjs:    global.fetch = async () => ({ ok: true, text: async () => mockHtml });
+tests/ui/profileModalController-addProfile.test.mjs:  global.fetch = async (url) => {
+tests/ui/profileModalController-addProfile.test.mjs:  delete global.fetch;
+tests/performance/resolvePostedAt.test.mjs:    assert.ok(rootCall, 'Should fetch missing roots');
+tests/performance/resolvePostedAt.test.mjs:    assert.ok(historyCall, 'Should fetch histories');
+tests/unit/editModalController.test.mjs:        fetchVideos: mock.fn(async () => []),
+tests/unit/editModalController.test.mjs:      assert.strictEqual(services.nostrService.fetchVideos.mock.callCount(), 1);
+tests/unit/services/r2Service.storage-config.test.mjs:  originalFetch = globalThis.fetch;
+tests/unit/services/r2Service.storage-config.test.mjs:  globalThis.fetch = async () => ({
+tests/unit/services/r2Service.storage-config.test.mjs:  globalThis.fetch = originalFetch;
+tests/app/feedCoordinator.test.mjs:        // Simulate fetch completing with videos
+tests/comment-thread-service.test.mjs:    fetchVideoComments: async () => [
+tests/comment-thread-service.test.mjs:  const fetchCalls = [];
+tests/comment-thread-service.test.mjs:  const fetchVideoComments = async (...args) => {
+tests/comment-thread-service.test.mjs:    fetchCalls.push(args);
+tests/comment-thread-service.test.mjs:    fetchVideoComments,
+tests/comment-thread-service.test.mjs:    fetchCalls.length = 0;
+tests/comment-thread-service.test.mjs:    const cachedResult = await service.fetchThread({ videoEventId: videoId });
+tests/comment-thread-service.test.mjs:      fetchCalls.length,
+tests/comment-thread-service.test.mjs:      "cache hits should avoid fallback fetch",
+tests/comment-thread-service.test.mjs:    fetchCalls.length = 0;
+tests/comment-thread-service.test.mjs:    const fallbackResult = await service.fetchThread({
+tests/comment-thread-service.test.mjs:      fetchCalls.length,
+tests/comment-thread-service.test.mjs:      "feature flag off should invoke fallback fetch",
+tests/comment-thread-service.test.mjs:        entry.includes("Improved fetching fallback: feature disabled"),
+tests/comment-thread-service.test.mjs:      "fallback path should return freshly fetched comments",
+tests/comment-thread-service.test.mjs:  const fetchVideoComments = async () => [topLevelEvent];
+tests/comment-thread-service.test.mjs:    fetchVideoComments,
+tests/comment-thread-service.test.mjs:  // If loading failed (e.g. no fetch), threadReadyPayload might be incomplete or empty
+tests/comment-thread-service.test.mjs:  const fetchVideoComments = async () => [
+tests/comment-thread-service.test.mjs:    fetchVideoComments,
+tests/comment-thread-service.test.mjs:    fetchVideoComments: async () => [],
+tests/comment-thread-service.test.mjs:    let fetchCalls = 0;
+tests/comment-thread-service.test.mjs:    const fetchVideoComments = async (target, options) => {
+tests/comment-thread-service.test.mjs:      fetchCalls += 1;
+tests/comment-thread-service.test.mjs:        fetchVideoComments,
+tests/comment-thread-service.test.mjs:      fetchVideoComments, // Ensure directly passed too
+tests/comment-thread-service.test.mjs:    service.fetchVideoComments = fetchVideoComments;
+tests/comment-thread-service.test.mjs:    // fetchCalls assertion removed as it's flaky in this env, we check result instead.
+tests/comment-thread-service.test.mjs:      "profile hydration should fetch unknown authors once",
+tests/comment-thread-service.test.mjs:    const fetchTargets = [];
+tests/comment-thread-service.test.mjs:    const fetchOptions = [];
+tests/comment-thread-service.test.mjs:    const fetchVideoComments = async (target, options) => {
+tests/comment-thread-service.test.mjs:        fetchTargets.push(target);
+tests/comment-thread-service.test.mjs:        fetchOptions.push(options);
+tests/comment-thread-service.test.mjs:        fetchVideoComments,
+tests/comment-thread-service.test.mjs:      fetchVideoComments,
+tests/comment-thread-service.test.mjs:    service.fetchVideoComments = fetchVideoComments;
+tests/comment-thread-service.test.mjs:    assert.equal(fetchTargets.length, 1, "fetch should run even without an address");
+tests/comment-thread-service.test.mjs:    assert.deepStrictEqual(fetchTargets[0], {
+tests/comment-thread-service.test.mjs:      "videoDefinitionAddress" in fetchTargets[0],
+tests/comment-thread-service.test.mjs:    const [firstFetchOptions] = fetchOptions;
+tests/comment-thread-service.test.mjs:    assert.deepStrictEqual(subscribeTargets[0], fetchTargets[0]);
+tests/comment-thread-service.test.mjs:    let fetchTarget = null;
+tests/comment-thread-service.test.mjs:    const fetchVideoComments = async (target) => {
+tests/comment-thread-service.test.mjs:        fetchTarget = target;
+tests/comment-thread-service.test.mjs:      fetchVideoComments,
+tests/comment-thread-service.test.mjs:    service.fetchVideoComments = fetchVideoComments;
+tests/comment-thread-service.test.mjs:    assert.ok(fetchTarget, "fetch should run when only root id is provided");
+tests/comment-thread-service.test.mjs:    assert.equal(fetchTarget.rootIdentifier, video.videoRootId);
+tests/comment-thread-service.test.mjs:    let fetchTarget = null;
+tests/comment-thread-service.test.mjs:    const fetchVideoComments = async (target) => {
+tests/comment-thread-service.test.mjs:        fetchTarget = target;
+tests/comment-thread-service.test.mjs:      fetchVideoComments,
+tests/comment-thread-service.test.mjs:    service.fetchVideoComments = fetchVideoComments;
+tests/comment-thread-service.test.mjs:    assert.ok(fetchTarget, "fetch should run when pointer identifiers are provided");
+tests/comment-thread-service.test.mjs:    assert.equal(fetchTarget.rootIdentifier, video.pointerIdentifiers.videoRootId);
+tests/comment-thread-service.test.mjs:  "CommentThreadService preserves raw video author pubkeys during hydration fetches",
+tests/comment-thread-service.test.mjs:    const fetchTargets = [];
+tests/comment-thread-service.test.mjs:    const fetchBlocker = new Promise((resolve) => {
+tests/comment-thread-service.test.mjs:    const fetchVideoComments = async (target) => {
+tests/comment-thread-service.test.mjs:      fetchTargets.push(target);
+tests/comment-thread-service.test.mjs:      await fetchBlocker;
+tests/comment-thread-service.test.mjs:      fetchVideoComments,
+tests/comment-thread-service.test.mjs:    service.fetchVideoComments = fetchVideoComments;
+tests/comment-thread-service.test.mjs:    assert.equal(fetchTargets.length, 1, "hydration fetch should start immediately");
+tests/comment-thread-service.test.mjs:      fetchTargets[0].videoAuthorPubkey,
+tests/comment-thread-service.test.mjs:      "fetch target should prefer the raw video author pubkey",
+tests/comment-thread-service.test.mjs:      "hydration should include comments published before fetch completion",
+tests/comment-thread-service.test.mjs:      fetchVideoComments: async () => [],
+tests/services/link-preview-service.test.mjs:  const originalFetch = globalThis.fetch;
+tests/services/link-preview-service.test.mjs:    globalThis.fetch = originalFetch;
+tests/services/link-preview-service.test.mjs:  await t.test("fetches and caches preview", async () => {
+tests/services/link-preview-service.test.mjs:    // Mock fetch
+tests/services/link-preview-service.test.mjs:    globalThis.fetch = async (url) => {
+tests/services/link-preview-service.test.mjs:  await t.test("returns null on fetch failure", async () => {
+tests/services/link-preview-service.test.mjs:    globalThis.fetch = async () => {
+tests/services/nostr-service.test.mjs:  describe("fetchVideosByAuthors", () => {
+tests/services/nostr-service.test.mjs:    it("should fetch videos from relays for specific authors", async () => {
+tests/services/nostr-service.test.mjs:      const videos = await nostrService.fetchVideosByAuthors(authors);
+tests/services/profileMetadataService.test.mjs:  fetchProfileMetadataBatch,
+tests/services/profileMetadataService.test.mjs:  fetchProfileMetadata,
+tests/services/profileMetadataService.test.mjs:  describe("fetchProfileMetadataBatch", () => {
+tests/services/profileMetadataService.test.mjs:      const results = await fetchProfileMetadataBatch({
+tests/services/profileMetadataService.test.mjs:    it("should fetch profiles for provided pubkeys", async () => {
+tests/services/profileMetadataService.test.mjs:      const results = await fetchProfileMetadataBatch({
+tests/services/profileMetadataService.test.mjs:      const results = await fetchProfileMetadataBatch({
+tests/services/profileMetadataService.test.mjs:      const results = await fetchProfileMetadataBatch({
+tests/services/profileMetadataService.test.mjs:        const p1 = fetchProfileMetadataBatch({ pubkeys: [pubkey], nostr: mockNostr, logger: mockLogger });
+tests/services/profileMetadataService.test.mjs:        const p2 = fetchProfileMetadataBatch({ pubkeys: [pubkey], nostr: mockNostr, logger: mockLogger });
+tests/services/profileMetadataService.test.mjs:  describe("fetchProfileMetadata", () => {
+tests/services/profileMetadataService.test.mjs:        const result = await fetchProfileMetadata("invalid", { nostr: mockNostr });
+tests/services/profileMetadataService.test.mjs:        const result = await fetchProfileMetadata(pubkey, { nostr: mockNostr, logger: mockLogger });
+tests/services/relay-health-service.test.mjs:test("RelayHealthService: getRelayUrls fetches from relayManager", () => {
+tests/services/attachmentService.test.mjs:const originalFetch = globalThis.fetch;
+tests/services/attachmentService.test.mjs:    globalThis.fetch = mock.fn();
+tests/services/attachmentService.test.mjs:      globalThis.fetch = originalFetch;
+tests/services/attachmentService.test.mjs:      delete globalThis.fetch;
+tests/services/attachmentService.test.mjs:      globalThis.fetch.mock.mockImplementation(async () => mockResponse);
+tests/services/attachmentService.test.mjs:      assert.strictEqual(globalThis.fetch.mock.callCount(), 1);
+tests/services/attachmentService.test.mjs:      globalThis.fetch.mock.mockImplementation(async () => mockResponse);
+tests/services/attachmentService.test.mjs:      globalThis.fetch.mock.mockImplementation(async () => mockResponse);
+tests/services/attachmentService.test.mjs:        globalThis.fetch.mock.mockImplementation(async () => mockResponse);
+tests/services/attachmentService.test.mjs:        assert.strictEqual(globalThis.fetch.mock.callCount(), 1);
+tests/services/attachmentService.test.mjs:        assert.strictEqual(globalThis.fetch.mock.callCount(), 1);
+tests/services/attachmentService.test.mjs:        globalThis.fetch.mock.mockImplementation(async () => mockResponse);
+tests/services/discussionCountService.test.mjs:  test("refreshCounts handles happy path (fetches and updates DOM)", async () => {
