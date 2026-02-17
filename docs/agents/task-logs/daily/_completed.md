@@ -14,6 +14,4 @@ Audited `/content/docs/guides/upload-content.md` and `/content/docs/community/co
     *   **Fix**: Refactored `js/services/moderationService.js` to import `DEFAULT_BLUR_THRESHOLD` and `DEFAULT_AUTOPLAY_BLOCK_THRESHOLD` from `../config.js`.
 
 ## Artifacts
-- `artifacts/docs-audit/2026-02-17/inventory.md`
-- `artifacts/docs-audit/2026-02-17/verification.md`
-- `artifacts/docs-audit/2026-02-17/validation/validation.md`
+- (Internal artifacts cleaned up)

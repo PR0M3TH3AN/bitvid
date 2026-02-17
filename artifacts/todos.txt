@@ -1,1 +1,0 @@
-js/ui/profileModalContract.js:146:      "Formats npub strings for display using the canonical short representation (npubXXXX…XXXX).",
