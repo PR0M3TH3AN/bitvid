@@ -1551,7 +1551,7 @@ export default class LoginModalController {
             try {
               handshakeInput.select();
             } catch (error) {
-              // ignore
+              // no-op
             }
           }
           if (copied) {

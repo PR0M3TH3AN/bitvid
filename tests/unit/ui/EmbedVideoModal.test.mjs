@@ -1,146 +1,108 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { JSDOM } from "jsdom";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const originalFilePath = path.resolve(__dirname, "../../../js/ui/components/EmbedVideoModal.js");
-const tempFilePath = path.resolve(__dirname, "../../../js/ui/components/EmbedVideoModal.test_temp.js");
+// Mock globals
+if (!globalThis.window) {
+    globalThis.window = {
+        location: { origin: "http://localhost" },
+        NostrTools: { nip19: { naddrEncode: () => "naddr...", neventEncode: () => "nevent..." } }
+    };
+}
+if (!globalThis.document) {
+    globalThis.document = {
+        createElement: (tag) => {
+            return {
+                tagName: tag.toUpperCase(),
+                innerHTML: "",
+                firstChild: null,
+                querySelector: () => null,
+                classList: { add: () => {}, remove: () => {}, contains: () => false },
+                addEventListener: () => {},
+                setAttribute: () => {},
+                appendChild: () => {},
+                disabled: false,
+                checked: false,
+                value: ""
+            };
+        },
+        createDocumentFragment: () => ({ appendChild: () => {} }),
+        getElementById: () => null,
+        body: { appendChild: () => {} },
+        execCommand: () => {}
+    };
+}
+if (!globalThis.navigator) {
+    globalThis.navigator = {
+        userAgent: "node",
+    };
+}
+if (!globalThis.navigator.clipboard) {
+    globalThis.navigator.clipboard = {
+        writeText: async () => {},
+    };
+}
 
-// Setup JSDOM
-const dom = new JSDOM(`<!DOCTYPE html>
-<div id="modalContainer">
-  <div id="embedVideoModal">
-    <div class="bv-modal-backdrop"></div>
-    <div class="modal-sheet">
-        <button id="closeEmbedVideoModal"></button>
-        <button id="cancelEmbedVideo"></button>
-        <button id="copyEmbedVideo"></button>
-        <input type="radio" id="embedVideoSourceCdn" />
-        <input type="radio" id="embedVideoSourceP2p" />
-        <input id="embedVideoWidth" />
-        <input id="embedVideoHeight" />
-        <textarea id="embedVideoSnippet"></textarea>
-        <div id="embedVideoStatus"></div>
-    </div>
-  </div>
-</div>`);
-
-globalThis.window = dom.window;
-globalThis.document = dom.window.document;
-globalThis.HTMLElement = dom.window.HTMLElement;
-
-// Mock navigator on globalThis
-Object.defineProperty(globalThis, 'navigator', {
-  value: {
-    clipboard: {
-      writeText: async () => {},
-    },
-    userAgent: 'node-test',
-  },
-  writable: true,
-  configurable: true,
-});
-
-// Prepare mocks on global
-globalThis.mockStaticModal = {
-  prepareStaticModal: () => {},
-  openStaticModal: () => {},
-  closeStaticModal: () => {},
-};
-
-globalThis.mockLogger = {
-  user: {
-    warn: () => {},
-  },
-};
-
-globalThis.mockVideoPointer = {
-  resolveVideoPointer: () => ({ pointer: ["nevent", "123", ""] }),
-  buildVideoAddressPointer: () => "naddr:123",
-};
-
-// Create temp file with replaced imports
-const content = fs.readFileSync(originalFilePath, "utf8");
-let newContent = content
-  .replace(
-    /import\s*\{\s*prepareStaticModal,\s*openStaticModal,\s*closeStaticModal,?\s*\}\s*from\s*"\.\/staticModalAccessibility\.js";/s,
-    'const { prepareStaticModal, openStaticModal, closeStaticModal } = globalThis.mockStaticModal;'
-  )
-  .replace(
-    /import\s*logger\s*from\s*"\.\.\/\.\.\/utils\/logger\.js";/s,
-    'const logger = globalThis.mockLogger;'
-  )
-  .replace(
-    /import\s*\{\s*resolveVideoPointer,\s*buildVideoAddressPointer,?\s*\}\s*from\s*"\.\.\/\.\.\/utils\/videoPointer\.js";/s,
-    'const { resolveVideoPointer, buildVideoAddressPointer } = globalThis.mockVideoPointer;'
-  );
-
-fs.writeFileSync(tempFilePath, newContent);
-
-// Import the temp module
-const { EmbedVideoModal } = await import(pathToFileURL(tempFilePath).href);
+import { EmbedVideoModal } from "../../../js/ui/components/EmbedVideoModal.js";
 
 test("EmbedVideoModal handleCopy uses navigator.clipboard", async (t) => {
-  const modal = new EmbedVideoModal();
-  await modal.load();
-
-  modal.snippetTextarea.value = "test snippet";
-
-  let clipboardText = "";
-  let writeTextCalled = false;
-
-  // Set mock
-  globalThis.navigator.clipboard.writeText = async (text) => {
-    writeTextCalled = true;
-    clipboardText = text;
-  };
-
-  let successMsg = "";
-  modal.callbacks.showSuccess = (msg) => { successMsg = msg; };
-
-  await modal.handleCopy();
-
-  assert.equal(writeTextCalled, true, "Should call navigator.clipboard.writeText");
-  assert.equal(clipboardText, "test snippet", "Should write correct text to clipboard");
-  assert.ok(successMsg.includes("copied"), "Should show success message");
-});
-
-test("EmbedVideoModal handleCopy falls back to selection when clipboard fails", async (t) => {
-    const modal = new EmbedVideoModal();
-    await modal.load();
-
-    modal.snippetTextarea.value = "test snippet";
-
-    globalThis.navigator.clipboard.writeText = async () => {
-      throw new Error("Clipboard error");
+    let clipboardText = "";
+    const originalWriteText = globalThis.navigator.clipboard.writeText;
+    globalThis.navigator.clipboard.writeText = async (text) => {
+        clipboardText = text;
     };
 
-    let errorMsg = "";
-    modal.callbacks.showError = (msg) => { errorMsg = msg; };
+    let successMsg = "";
+    const callbacks = {
+        showSuccess: (msg) => { successMsg = msg; },
+        showError: () => {}
+    };
 
-    let selectCalled = false;
-    modal.snippetTextarea.select = () => { selectCalled = true; };
-
-    const originalExecCommand = document.execCommand;
-    let execCommandCalled = false;
-    document.execCommand = () => { execCommandCalled = true; return false; };
+    const modal = new EmbedVideoModal({ callbacks });
+    modal.snippetTextarea = { value: "<iframe></iframe>", select: () => {}, setSelectionRange: () => {}, focus: () => {} };
 
     await modal.handleCopy();
 
-    // Expect NO execCommand call
-    assert.equal(execCommandCalled, false, "Should NOT call execCommand");
-    assert.ok(errorMsg.includes("manually"), "Should show manual copy message");
+    assert.equal(clipboardText, "<iframe></iframe>");
+    assert.equal(successMsg, "Embed code copied to clipboard!");
 
-    document.execCommand = originalExecCommand;
+    globalThis.navigator.clipboard.writeText = originalWriteText;
 });
 
-// Cleanup
-test.after(() => {
-  if (fs.existsSync(tempFilePath)) {
-    fs.unlinkSync(tempFilePath);
-  }
+test("EmbedVideoModal handleCopy handles clipboard failure without execCommand", async (t) => {
+    // Simulate clipboard failure
+    const originalWriteText = globalThis.navigator.clipboard.writeText;
+    globalThis.navigator.clipboard.writeText = async () => { throw new Error("Clipboard error"); };
+
+    let errorMsg = "";
+    const callbacks = {
+        showSuccess: () => {},
+        showError: (msg) => { errorMsg = msg; }
+    };
+
+    // Mock document.execCommand to track calls
+    let execCommandCalled = false;
+    const originalExecCommand = globalThis.document.execCommand;
+    globalThis.document.execCommand = () => { execCommandCalled = true; return false; };
+
+    const modal = new EmbedVideoModal({ callbacks });
+    // Ensure modal uses our mocked document
+    modal.document = globalThis.document;
+
+    let selectCalled = false;
+    modal.snippetTextarea = {
+        value: "<iframe></iframe>",
+        select: () => { selectCalled = true; },
+        setSelectionRange: () => {},
+        focus: () => {}
+    };
+
+    await modal.handleCopy();
+
+    assert.equal(execCommandCalled, false, "execCommand should not be called");
+    assert.equal(selectCalled, true, "Text should be selected for manual copy");
+    assert.ok(errorMsg.toLowerCase().includes("manual"), "Error message should mention manual copy");
+
+    // Restore
+    globalThis.document.execCommand = originalExecCommand;
+    globalThis.navigator.clipboard.writeText = originalWriteText;
 });
