@@ -5,14 +5,12 @@ import {
 } from "./nostrClientFacade.js";
 import { getActiveSigner } from "./nostr/index.js";
 import { isSessionActor } from "./nostr/sessionActor.js";
-import { normalizeNostrPubkey } from "./nostr/nip46Client.js";
 import {
   buildBlockListEvent,
   buildMuteListEvent,
   BLOCK_LIST_IDENTIFIER,
   KIND_MUTE_LIST,
 } from "./nostrEventSchemas.js";
-import { CACHE_POLICIES, STORAGE_TIERS } from "./nostr/cachePolicies.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import { STANDARD_TIMEOUT_MS, MAX_BLOCKLIST_ENTRIES } from "./constants.js";
 import {
