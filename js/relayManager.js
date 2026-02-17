@@ -5,8 +5,7 @@ import {
   requestDefaultExtensionPermissions,
 } from "./nostrClientFacade.js";
 import { getActiveSigner } from "./nostr/index.js";
-import { buildRelayListEvent, NOTE_TYPES } from "./nostrEventSchemas.js";
-import { CACHE_POLICIES, STORAGE_TIERS } from "./nostr/cachePolicies.js";
+import { buildRelayListEvent } from "./nostrEventSchemas.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import {
   publishEventToRelays,
