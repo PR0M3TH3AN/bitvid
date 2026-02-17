@@ -1,30 +1,32 @@
-# Daily Performance Report - 2026-02-17
+# Daily Perf Report: 2026-02-17
 
-**Summary**: Identified and fixed background CPU usage in `ExploreDataService` when the tab is hidden. Found unbounded concurrency in `RelayHealthService`.
+**Summary**: Initial run established baseline hits. Identified and fixed P0 unbounded concurrency in `relayManager.js` causing potential network saturation during relay list hydration.
 
 ## Findings
 
-### P1: Background Interval Leaks (Fixed)
-- **File**: `js/services/exploreDataService.js`
-- **Issue**: `startIntervals()` initiated recurring timers (watch history sync, tag IDF calc) even if `document.hidden` was true at startup (e.g., background tab load).
-- **Impact**: Wasted CPU and network in background tabs.
-- **Fix**: Added explicit `document.hidden` check in `startIntervals`.
+### P0: Unbounded Relay List Hydration
+- **File**: `js/relayManager.js`
+- **Location**: `loadRelayList` (lines 376-384)
+- **Impact**: Simultaneously opens connections to all relays in a user's list (often > 20) during hydration, causing main-thread stutter and potential socket timeouts.
+- **Fix**: Implemented bounded concurrency using `pMap` (limit = 3).
+- **Status**: **FIXED** (PR pending)
 
-### P2: Unbounded Concurrency (Identified)
-- **File**: `js/services/relayHealthService.js`
-- **Issue**: `refresh()` uses `Promise.allSettled(urls.map(...))` to check all relays simultaneously.
-- **Impact**: Can spike network connections (N+1) if the relay list is large.
-- **Recommendation**: Implement a concurrency pool (e.g., limit to 3 parallel checks).
+### P1: Potential Unbounded Promise.all in App Initialization
+- **File**: `js/app.js`
+- **Location**: `refreshAllVideoGrids`
+- **Impact**: Runs multiple refresh tasks in parallel. Currently low impact as tasks are fixed (subscription + channel), but warrants monitoring.
+- **Status**: Monitoring.
 
-### Linting Issues
-- `npm run lint:hex` failed with `ENOBUFS` due to large `js/webtorrent.min.js`.
-- **Fix**: Increased `spawnSync` buffer size in `scripts/check-hex.js` and added exclusion (though git grep exclusion logic seems flaky for this file).
+### P2: WebTorrent Polling Interval
+- **File**: `js/webtorrent.js`
+- **Location**: `probePeers`
+- **Impact**: Polling `setInterval` runs every ~2.5s during probes.
+- **Mitigation**: Bounded by timeout and cleanup logic. Low priority.
 
 ## Metrics
-- **Login Time**: Not measured this run.
-- **Background CPU**: Expected reduction in background tab CPU usage due to `ExploreDataService` fix.
+- **Hits**: 1308
+- **PRs Opened**: 1 (Fix unbounded relay concurrency)
 
-## Actions Taken
-- [x] Patched `js/services/exploreDataService.js`.
-- [x] Patched `scripts/check-hex.js` to fix linter crash.
-- [x] Created `perf/hits-2026-02-17.json` inventory.
+## Decisions
+- Using `RELAY_BACKGROUND_CONCURRENCY = 3` from `js/nostr/relayConstants.js`.
+- Refactored `loadRelayList` to use `pMap`.

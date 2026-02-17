@@ -12,6 +12,8 @@ import {
   assertAnyRelayAccepted,
 } from "./nostrPublish.js";
 import { profileCache } from "./state/profileCache.js";
+import { pMap } from "./utils/asyncUtils.js";
+import { RELAY_BACKGROUND_CONCURRENCY } from "./nostr/relayConstants.js";
 
 const MODE_SEQUENCE = ["both", "read", "write"];
 
@@ -576,15 +578,29 @@ class RelayPreferencesManager {
     const fastPromises = fastRelays.map((relayUrl) =>
       fetchFromRelay(relayUrl, FAST_RELAY_TIMEOUT_MS, true)
     );
-    const backgroundPromises = backgroundRelays.map((relayUrl) =>
-      fetchFromRelay(relayUrl, BACKGROUND_RELAY_TIMEOUT_MS, false)
+    const backgroundBatchPromise = pMap(
+      backgroundRelays,
+      async (relayUrl) => {
+        try {
+          const res = await fetchFromRelay(
+            relayUrl,
+            BACKGROUND_RELAY_TIMEOUT_MS,
+            false
+          );
+          return { status: "fulfilled", value: res };
+        } catch (error) {
+          return { status: "rejected", reason: error };
+        }
+      },
+      { concurrency: RELAY_BACKGROUND_CONCURRENCY }
     );
 
-    const background = Promise.allSettled([
-      ...fastPromises,
-      ...backgroundPromises,
+    const background = Promise.all([
+      Promise.allSettled(fastPromises),
+      backgroundBatchPromise,
     ])
-      .then((outcomes) => {
+      .then(([fastOutcomes, backgroundOutcomes]) => {
+        const outcomes = [...fastOutcomes, ...backgroundOutcomes];
         const aggregated = [];
         outcomes.forEach((outcome) => {
           if (outcome.status === "fulfilled") {
