@@ -27,7 +27,6 @@ const BASELINE = {
   "js/docsView.js": 1,
   "js/exploreView.js": 1,
   "js/forYouView.js": 1,
-  "js/historyView.js": 4,
   "js/index.js": 1,
   "js/kidsView.js": 1,
   "js/ui/components/DeleteModal.js": 3,
