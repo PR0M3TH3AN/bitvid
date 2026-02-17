@@ -427,6 +427,7 @@ export class VideoListView {
     const shareBase = this.computeShareBase();
     const canManageBlacklist = this.utils.canManageBlacklist();
     this.videoCardInstances = [];
+    const videosToResolve = [];
 
     displayVideos.forEach((video, index) => {
       if (!video || !video.id || !video.title) {
@@ -726,29 +727,61 @@ export class VideoListView {
         typeof this.utils.resolveVideoPostedAt === "function";
 
       if (shouldResolvePostedAt) {
-        Promise.resolve(this.utils.resolveVideoPostedAt(video))
-          .then((resolvedPostedAt) => {
-            if (!Number.isFinite(resolvedPostedAt)) {
-              return;
-            }
-            if (!this.videoCardInstances.includes(videoCard)) {
-              return;
-            }
-            if (videoCard.video?.id !== video.id) {
-              return;
-            }
-            videoCard.updatePostedAt(Math.floor(resolvedPostedAt));
-          })
-          .catch((error) => {
-            if (this.window?.userLogger?.warn) {
-              this.window.userLogger.warn(
-                "[VideoListView] Failed to resolve posted timestamp:",
-                error
-              );
-            }
-          });
+        if (typeof this.utils.batchResolveVideoPostedAt === "function") {
+          videosToResolve.push(video);
+        } else {
+          Promise.resolve(this.utils.resolveVideoPostedAt(video))
+            .then((resolvedPostedAt) => {
+              if (!Number.isFinite(resolvedPostedAt)) {
+                return;
+              }
+              if (!this.videoCardInstances.includes(videoCard)) {
+                return;
+              }
+              if (videoCard.video?.id !== video.id) {
+                return;
+              }
+              videoCard.updatePostedAt(Math.floor(resolvedPostedAt));
+            })
+            .catch((error) => {
+              if (this.window?.userLogger?.warn) {
+                this.window.userLogger.warn(
+                  "[VideoListView] Failed to resolve posted timestamp:",
+                  error
+                );
+              }
+            });
+        }
       }
     });
+
+    if (videosToResolve.length > 0 && typeof this.utils.batchResolveVideoPostedAt === "function") {
+      Promise.resolve(this.utils.batchResolveVideoPostedAt(videosToResolve))
+        .then((results) => {
+          if (!results || !(results instanceof Map)) {
+            return;
+          }
+          if (Array.isArray(this.videoCardInstances)) {
+            this.videoCardInstances.forEach((card) => {
+              if (!card || !card.video || !card.video.id) {
+                return;
+              }
+              const timestamp = results.get(card.video.id);
+              if (Number.isFinite(timestamp)) {
+                card.updatePostedAt(Math.floor(timestamp));
+              }
+            });
+          }
+        })
+        .catch((error) => {
+          if (this.window?.userLogger?.warn) {
+            this.window.userLogger.warn(
+              "[VideoListView] Failed to batch resolve posted timestamps:",
+              error
+            );
+          }
+        });
+    }
 
     this.container.innerHTML = "";
     this.container.appendChild(fragment);

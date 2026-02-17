@@ -54,9 +54,17 @@ const extractRelayHints = (event) => {
   );
 };
 
+// Helper to create message elements for empty/loading/error states
+function createMessageElement(text, className) {
+  const p = document.createElement('p');
+  p.className = className || "text-sm text-muted col-span-full";
+  p.textContent = text;
+  return p;
+}
+
 function renderProfileCards(profiles, container) {
   if (!container) return;
-  container.innerHTML = "";
+  container.replaceChildren();
 
   // Reset the "Show More" button and container limit state
   const showMoreContainer = document.getElementById("searchChannelShowMore");
@@ -66,7 +74,7 @@ function renderProfileCards(profiles, container) {
   container.classList.remove("channel-grid-limit");
 
   if (!profiles || profiles.length === 0) {
-    container.innerHTML = `<p class="text-sm text-muted col-span-full">No matching channels found.</p>`;
+    container.appendChild(createMessageElement("No matching channels found."));
     return;
   }
 
@@ -93,7 +101,7 @@ function renderProfileCards(profiles, container) {
     const metadata = profile.metadata || {};
     const name = metadata.name || metadata.display_name || "Unknown User";
     const picture = sanitizeProfileMediaUrl(metadata.picture) || FALLBACK_AVATAR;
-    const about = metadata.about || "";
+    // const about = metadata.about || ""; // Unused in original code
 
     let npub = "";
     try {
@@ -110,25 +118,38 @@ function renderProfileCards(profiles, container) {
     card.href = `#view=channel-profile&npub=${npub || pubkey}`;
     card.className = "flex items-center gap-3 p-3 rounded-lg bg-surface hover:bg-surface-elevated transition-colors border border-border group";
 
-    card.innerHTML = `
-      <div class="relative w-12 h-12 flex-shrink-0 rounded-full overflow-hidden bg-background">
-        <img
-          src="${escapeHTML(picture)}"
-          alt="${escapeHTML(name)}"
-          class="w-full h-full object-cover"
-          loading="lazy"
-          onerror="this.src='${FALLBACK_AVATAR}'"
-        />
-      </div>
-      <div class="flex-1 min-w-0">
-        <h3 class="text-sm font-semibold text-text-strong truncate group-hover:text-primary transition-colors">
-          ${escapeHTML(name)}
-        </h3>
-        <p class="text-xs text-muted truncate">
-          ${escapeHTML(shortNpub)}
-        </p>
-      </div>
-    `;
+    // Create Image Container
+    const imgContainer = document.createElement("div");
+    imgContainer.className = "relative w-12 h-12 flex-shrink-0 rounded-full overflow-hidden bg-background";
+
+    const img = document.createElement("img");
+    img.src = picture;
+    img.alt = name;
+    img.className = "w-full h-full object-cover";
+    img.loading = "lazy";
+    img.decoding = "async";
+    img.addEventListener("error", (e) => {
+        e.target.src = FALLBACK_AVATAR;
+    });
+
+    imgContainer.appendChild(img);
+    card.appendChild(imgContainer);
+
+    // Create Text Container
+    const textContainer = document.createElement("div");
+    textContainer.className = "flex-1 min-w-0";
+
+    const nameEl = document.createElement("h3");
+    nameEl.className = "text-sm font-semibold text-text-strong truncate group-hover:text-primary transition-colors";
+    nameEl.textContent = name;
+
+    const npubEl = document.createElement("p");
+    npubEl.className = "text-xs text-muted truncate";
+    npubEl.textContent = shortNpub;
+
+    textContainer.appendChild(nameEl);
+    textContainer.appendChild(npubEl);
+    card.appendChild(textContainer);
 
     fragment.appendChild(card);
   }
@@ -164,15 +185,15 @@ export async function initSearchView() {
   const videoList = document.getElementById("searchVideoList");
 
   if (channelList) {
-    channelList.innerHTML = `<p class="text-sm text-muted animate-pulse col-span-full">Searching channels...</p>`;
+    channelList.replaceChildren(createMessageElement("Searching channels...", "text-sm text-muted animate-pulse col-span-full"));
   }
   if (videoList) {
-    videoList.innerHTML = `<p class="text-sm text-muted animate-pulse col-span-full">Searching videos...</p>`;
+    videoList.replaceChildren(createMessageElement("Searching videos...", "text-sm text-muted animate-pulse col-span-full"));
   }
 
   if (!query) {
-    if (channelList) channelList.innerHTML = `<p class="text-sm text-muted col-span-full">Please enter a search term.</p>`;
-    if (videoList) videoList.innerHTML = `<p class="text-sm text-muted col-span-full">Please enter a search term.</p>`;
+    if (channelList) channelList.replaceChildren(createMessageElement("Please enter a search term."));
+    if (videoList) videoList.replaceChildren(createMessageElement("Please enter a search term."));
     return;
   }
 
@@ -185,7 +206,7 @@ export async function initSearchView() {
   }).catch(err => {
     devLogger.warn("[Search] Profile search failed", err);
     if (channelList && searchToken === currentSearchToken) {
-        channelList.innerHTML = `<p class="text-sm text-critical col-span-full">Failed to load channels.</p>`;
+        channelList.replaceChildren(createMessageElement("Failed to load channels.", "text-sm text-critical col-span-full"));
     }
   });
 
@@ -197,7 +218,7 @@ export async function initSearchView() {
   }).catch(err => {
     devLogger.warn("[Search] Video search failed", err);
     if (videoList && searchToken === currentSearchToken) {
-        videoList.innerHTML = `<p class="text-sm text-critical col-span-full">Failed to load videos.</p>`;
+        videoList.replaceChildren(createMessageElement("Failed to load videos.", "text-sm text-critical col-span-full"));
     }
   });
 }
@@ -255,7 +276,7 @@ function renderActiveFilters(filters) {
     return;
   }
 
-  list.innerHTML = "";
+  list.replaceChildren();
   const pills = [];
 
   filters.authorPubkeys?.forEach((author) => {
@@ -413,10 +434,10 @@ function renderActiveFilters(filters) {
 
 async function renderSearchVideos(videos, container, app) {
     if (!container) return;
-    container.innerHTML = "";
+    container.replaceChildren();
 
     if (!videos || videos.length === 0) {
-        container.innerHTML = `<p class="text-sm text-muted col-span-full">No matching videos found.</p>`;
+        container.appendChild(createMessageElement("No matching videos found."));
         return;
     }
 

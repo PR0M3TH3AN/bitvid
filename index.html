@@ -47,6 +47,7 @@
       hex values scattered across templates.
     -->
     <meta name="theme-color" content="var(--color-page)" />
+    <meta name="bitvid-sw-version" content="bitvid-sw-2026-02-10" />
     <script>
       (() => {
         try {
@@ -107,12 +108,12 @@
 
     <!-- Styles -->
     <!--
-      Cache busting: keep these query strings in sync with config/asset-version.js
-      so browsers pick up the latest sidebar markup and styling without
-      hard-refreshing around CDN caches.
+      Build-time asset hashing rewrites these source paths to content-hashed
+      files in dist/, keeping source templates readable while preserving cache
+      busting semantics.
     -->
-    <link href="css/tailwind.generated.css?v=2024.11.09-2" rel="stylesheet" />
-    <link href="css/docs.css?v=2024.11.09-2" rel="stylesheet" />
+    <link href="css/tailwind.generated.css" rel="stylesheet" />
+    <link href="css/docs.css" rel="stylesheet" />
   </head>
   <body class="sidebar-collapsed" data-ds="new">
     <!--
@@ -207,6 +208,7 @@
               name="query"
               placeholder="Search videos"
               autocomplete="off"
+              data-testid="search-input"
             />
             <button type="submit" class="header-search__submit">
               <span class="sr-only">Submit search</span>
@@ -264,6 +266,7 @@
               id="loginButton"
               class="btn focus-ring h-12 w-12 rounded-full p-0"
               aria-label="Open login modal"
+              data-testid="login-button"
             >
               <svg
                 class="h-9 w-9"
@@ -284,6 +287,7 @@
             <button
               id="uploadButton"
               class="btn focus-ring hidden h-12 w-12 rounded-full p-0 text-xl font-bold leading-none"
+              data-testid="upload-button"
             >
               +
             </button>
@@ -292,6 +296,7 @@
             <button
               id="profileButton"
               class="btn-ghost focus-ring relative hidden h-12 w-12 rounded-full p-0"
+              data-testid="profile-button"
             >
               <div class="h-10 w-10 overflow-hidden rounded-full">
                 <img
@@ -354,6 +359,9 @@
         <h2 class="text-2xl font-bold tracking-wide text-muted-strong">
           seed. zap. subscribe.
         </h2>
+      </div>
+      <div class="text-center mb-8">
+        <!-- VERSION_INFO -->
       </div>
 
       <!-- Mobile Search FAB -->
@@ -419,7 +427,7 @@
     </div>
 
     <!-- Additional Scripts -->
-    <script type="module" src="js/index.js?v=2024.11.09"></script>
+    <script type="module" src="js/index.js"></script>
     <script src="vendor/marked.min.js"></script>
     <script src="vendor/highlight.min.js"></script>
     <div id="uiOverlay" data-overlay-root aria-hidden="true"></div>

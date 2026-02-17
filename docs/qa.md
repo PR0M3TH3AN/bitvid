@@ -50,4 +50,10 @@ Automated regression coverage now exercises these flows on the unified design-sy
    - While still signed in via the direct-key provider, send a direct message to a second account and confirm it decrypts successfully on the recipient before release.
    - Log out and ensure the session clears decrypted key material; stored keys should require the passphrase to unlock again.
 
+9. **Cache-Safe Deploy Checklist**
+   - Build from a clean tree (`npm run build`) and inspect `dist/index.html` and `dist/embed.html`; confirm every local JS/CSS `<script src>` / `<link href>` reference points at a hashed file name (for example `app.<hash>.js`) instead of unhashed paths.
+   - Confirm entry HTML responses use revalidation-friendly cache headers (`Cache-Control: no-cache` or equivalent) so browsers revalidate HTML on navigation/reload.
+   - With an already-open page, deploy a new build and reload once. Confirm the service worker transitions to the newest version (new worker reaches `activated` and controls the client) without forcing users to hard refresh.
+   - Perform a rollback deploy to the prior build and reload normally. Confirm the app loads the rolled-back bundle version without requiring cache clear or hard refresh.
+
 Document findings (pass/fail notes plus relevant screenshots or logs) so they can be attached to release or PR notes.

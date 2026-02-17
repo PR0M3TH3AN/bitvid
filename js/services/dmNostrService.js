@@ -7,6 +7,7 @@ import {
 import { sanitizeRelayList } from "../nostr/nip46Client.js";
 import { publishEventToRelay } from "../nostrPublish.js";
 import logger from "../utils/logger.js";
+import { SHORT_TIMEOUT_MS } from "../constants.js";
 
 const DEFAULT_BACKOFF = {
   baseMs: 1000,
@@ -15,7 +16,7 @@ const DEFAULT_BACKOFF = {
 };
 
 const MAX_SEEN_EVENT_IDS = 5000;
-const DM_RELAY_LIST_TIMEOUT_MS = 5000;
+const DM_RELAY_LIST_TIMEOUT_MS = SHORT_TIMEOUT_MS;
 export const DM_RELAY_WARNING_FALLBACK = "dm-relays-fallback";
 
 function normalizeRelayList(relays) {

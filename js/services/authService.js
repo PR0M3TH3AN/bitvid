@@ -10,6 +10,7 @@ import { userLogger } from "../utils/logger.js";
 import { requestDefaultExtensionPermissions } from "../nostr/defaultClient.js";
 import {
   getSavedProfiles,
+  setSavedProfiles,
   getActiveProfilePubkey,
   setActiveProfilePubkey,
   mutateSavedProfiles,
@@ -28,62 +29,22 @@ import getDefaultAuthProvider, {
 } from "./authProviders/index.js";
 import { fetchProfileMetadata } from "./profileMetadataService.js";
 import { HEX64_REGEX } from "../utils/hex.js";
-
-class SimpleEventEmitter {
-  constructor(logger = null) {
-    this.logger = typeof logger === "function" ? logger : null;
-    this.listeners = new Map();
-  }
-
-  on(eventName, handler) {
-    if (typeof handler !== "function") {
-      return () => {};
-    }
-    if (!this.listeners.has(eventName)) {
-      this.listeners.set(eventName, new Set());
-    }
-    const handlers = this.listeners.get(eventName);
-    handlers.add(handler);
-    return () => {
-      handlers.delete(handler);
-      if (!handlers.size) {
-        this.listeners.delete(eventName);
-      }
-    };
-  }
-
-  emit(eventName, detail) {
-    const handlers = this.listeners.get(eventName);
-    if (!handlers || !handlers.size) {
-      return;
-    }
-
-    for (const handler of Array.from(handlers)) {
-      try {
-        handler(detail);
-      } catch (error) {
-        if (this.logger) {
-          this.logger(`AuthService listener for "${eventName}" threw`, error);
-        }
-      }
-    }
-  }
-}
-
-
-const FALLBACK_PROFILE = {
-  name: "Unknown",
-  picture: "assets/svg/default-profile.svg",
-  about: "",
-  website: "",
-  banner: "",
-  lud16: "",
-  lud06: "",
-};
-
-const FAST_PROFILE_RELAY_LIMIT = 3;
-const FAST_PROFILE_TIMEOUT_MS = 2500;
-const BACKGROUND_PROFILE_TIMEOUT_MS = 6000;
+import {
+  safeEncodeNpub,
+  safeDecodeNpub,
+  normalizeHexPubkey,
+} from "../utils/nostrHelpers.js";
+import { SimpleEventEmitter } from "../utils/simpleEventEmitter.js";
+import {
+  FALLBACK_PROFILE,
+  FAST_PROFILE_RELAY_LIMIT,
+  FAST_PROFILE_TIMEOUT_MS,
+  BACKGROUND_PROFILE_TIMEOUT_MS,
+  normalizeProviderId,
+  normalizeAuthType,
+} from "./authUtils.js";
+import { pMap } from "../utils/asyncUtils.js";
+import { RELAY_BACKGROUND_CONCURRENCY } from "../nostr/relayConstants.js";
 
 export default class AuthService {
   constructor({
@@ -122,7 +83,7 @@ export default class AuthService {
 
     if (typeof getAuthProvider === "function") {
       this.resolveAuthProvider = (providerId) => {
-        const normalizedId = this.normalizeProviderId(providerId);
+        const normalizedId = normalizeProviderId(providerId);
         const provider = getAuthProvider(normalizedId);
         if (!provider || typeof provider.login !== "function") {
           const error = new Error(`Unknown auth provider: ${normalizedId}`);
@@ -133,7 +94,7 @@ export default class AuthService {
       };
     } else {
       this.resolveAuthProvider = (providerId) => {
-        const normalizedId = this.normalizeProviderId(providerId);
+        const normalizedId = normalizeProviderId(providerId);
         const registry = this.authProviders || defaultAuthProviders;
         const provider =
           registry && typeof registry === "object"
@@ -147,45 +108,6 @@ export default class AuthService {
         return getDefaultAuthProvider(normalizedId);
       };
     }
-  }
-
-  normalizeProviderId(providerId) {
-    return typeof providerId === "string" && providerId.trim()
-      ? providerId.trim()
-      : "nip07";
-  }
-
-  normalizeAuthType(authTypeCandidate, providerId, providerResult) {
-    const candidates = [];
-
-    if (typeof authTypeCandidate === "string") {
-      candidates.push(authTypeCandidate);
-    }
-
-    if (providerResult && typeof providerResult === "object") {
-      const resultAuthType = providerResult.authType;
-      if (typeof resultAuthType === "string") {
-        candidates.push(resultAuthType);
-      }
-
-      const resultProviderId = providerResult.providerId;
-      if (typeof resultProviderId === "string") {
-        candidates.push(resultProviderId);
-      }
-    }
-
-    if (typeof providerId === "string") {
-      candidates.push(providerId);
-    }
-
-    for (const candidate of candidates) {
-      const trimmed = candidate.trim();
-      if (trimmed) {
-        return trimmed;
-      }
-    }
-
-    return "nip07";
   }
 
   log(...args) {
@@ -266,70 +188,15 @@ export default class AuthService {
   }
 
   safeEncodeNpub(pubkey) {
-    if (typeof pubkey !== "string") {
-      return null;
-    }
-
-    const trimmed = pubkey.trim();
-    if (!trimmed) {
-      return null;
-    }
-
-    if (trimmed.startsWith("npub1")) {
-      return trimmed;
-    }
-
-    try {
-      return window?.NostrTools?.nip19?.npubEncode(trimmed) || null;
-    } catch (error) {
-      return null;
-    }
+    return safeEncodeNpub(pubkey);
   }
 
   safeDecodeNpub(npub) {
-    if (typeof npub !== "string") {
-      return null;
-    }
-
-    const trimmed = npub.trim();
-    if (!trimmed) {
-      return null;
-    }
-
-    try {
-      const decoded = window?.NostrTools?.nip19?.decode(trimmed);
-      if (decoded?.type === "npub" && typeof decoded.data === "string") {
-        return decoded.data;
-      }
-    } catch (error) {
-      return null;
-    }
-
-    return null;
+    return safeDecodeNpub(npub);
   }
 
   normalizeHexPubkey(pubkey) {
-    if (typeof pubkey !== "string") {
-      return null;
-    }
-
-    const trimmed = pubkey.trim();
-    if (!trimmed) {
-      return null;
-    }
-
-    if (HEX64_REGEX.test(trimmed)) {
-      return trimmed.toLowerCase();
-    }
-
-    if (trimmed.startsWith("npub1")) {
-      const decoded = this.safeDecodeNpub(trimmed);
-      if (decoded && HEX64_REGEX.test(decoded)) {
-        return decoded.toLowerCase();
-      }
-    }
-
-    return null;
+    return normalizeHexPubkey(pubkey);
   }
 
   async requestLogin(rawOptions = {}) {
@@ -342,7 +209,7 @@ export default class AuthService {
       ...providerOptions
     } = normalizedOptions;
 
-    const providerId = this.normalizeProviderId(requestedProviderId);
+    const providerId = normalizeProviderId(requestedProviderId);
     const provider = this.resolveAuthProvider(providerId);
     const providerResult = await provider.login({
       nostrClient: this.nostrClient,
@@ -364,7 +231,7 @@ export default class AuthService {
       providerResult && typeof providerResult === "object"
         ? providerResult.authType
         : null;
-    const authType = this.normalizeAuthType(
+    const authType = normalizeAuthType(
       authTypeCandidate,
       providerId,
       providerResult,
@@ -417,16 +284,99 @@ export default class AuthService {
     return publish(payload);
   }
 
+  get pubkey() {
+    return getPubkey();
+  }
+
+  set pubkey(value) {
+    setPubkey(value ?? null);
+  }
+
+  get currentUserNpub() {
+    return getCurrentUserNpub();
+  }
+
+  set currentUserNpub(value) {
+    setCurrentUserNpub(value ?? null);
+  }
+
+  get activeProfilePubkey() {
+    return getActiveProfilePubkey();
+  }
+
+  setActiveProfilePubkey(pubkey, options = {}) {
+    return setActiveProfilePubkey(pubkey, options);
+  }
+
+  get savedProfiles() {
+    return getSavedProfiles();
+  }
+
+  setSavedProfiles(profiles, options = {}) {
+    return setSavedProfiles(profiles, options);
+  }
+
   getActivePubkey() {
     return getPubkey();
   }
 
   async login(pubkey, options = {}) {
+    const {
+      normalizedOptions,
+      providerId,
+      authType,
+      signer,
+      providerResult,
+      nextPubkey,
+      normalizedPubkey,
+      trimmedPubkey,
+      previousPubkey,
+      persistActive,
+    } = this._validateAndNormalizeLoginInputs(pubkey, options);
+
+    const { candidateNpub } = this._checkAccessControl(
+      nextPubkey,
+      trimmedPubkey,
+    );
+
+    const identityChanged = previousPubkey !== nextPubkey;
+
+    this._updateGlobalState(
+      normalizedPubkey,
+      nextPubkey,
+      trimmedPubkey,
+      candidateNpub,
+    );
+
+    const { savedProfilesMutated, entryAuthType } = this._updateSavedProfiles({
+      normalizedPubkey,
+      nextPubkey,
+      candidateNpub,
+      authType,
+      providerId,
+      providerResult,
+      persistActive,
+    });
+
+    return this._initiatePostLogin({
+      activeLoginPubkey: getPubkey(),
+      previousPubkey,
+      identityChanged,
+      savedProfiles: this.cloneSavedProfiles(),
+      activeProfilePubkey: getActiveProfilePubkey(),
+      providerId,
+      entryAuthType,
+      signer,
+      providerResult,
+    });
+  }
+
+  _validateAndNormalizeLoginInputs(pubkey, options) {
     const normalizedOptions =
       options && typeof options === "object" ? { ...options } : {};
     const persistActive =
       normalizedOptions.persistActive === false ? false : true;
-    const providerId = this.normalizeProviderId(normalizedOptions.providerId);
+    const providerId = normalizeProviderId(normalizedOptions.providerId);
     const providerResult = Object.prototype.hasOwnProperty.call(
       normalizedOptions,
       "providerResult",
@@ -437,28 +387,46 @@ export default class AuthService {
       typeof normalizedOptions.authType === "string"
         ? normalizedOptions.authType
         : null;
-    const authType = this.normalizeAuthType(
+    const authType = normalizeAuthType(
       authTypeCandidate,
       providerId,
       providerResult,
     );
-    const signer = Object.prototype.hasOwnProperty.call(normalizedOptions, "signer")
+    const signer = Object.prototype.hasOwnProperty.call(
+      normalizedOptions,
+      "signer",
+    )
       ? normalizedOptions.signer ?? null
       : null;
 
     const previousPubkey = this.normalizeHexPubkey(getPubkey()) || getPubkey();
-    const normalized = this.normalizeHexPubkey(pubkey);
-    const trimmed = typeof pubkey === "string" ? pubkey.trim() : "";
-    const nextPubkey = normalized || trimmed || null;
+    const normalizedPubkey = this.normalizeHexPubkey(pubkey);
+    const trimmedPubkey = typeof pubkey === "string" ? pubkey.trim() : "";
+    const nextPubkey = normalizedPubkey || trimmedPubkey || null;
+
     if (!nextPubkey) {
       throw new Error("A valid pubkey is required for login.");
     }
 
-    const identityChanged = previousPubkey !== nextPubkey;
+    return {
+      normalizedOptions,
+      providerId,
+      authType,
+      signer,
+      providerResult,
+      nextPubkey,
+      normalizedPubkey,
+      trimmedPubkey,
+      previousPubkey,
+      persistActive,
+    };
+  }
 
+  _checkAccessControl(nextPubkey, trimmedPubkey) {
     const control = this.accessControl;
     const candidateNpub = this.safeEncodeNpub(nextPubkey) || null;
     let lockdownActive = false;
+
     if (control && typeof control.isLockdownActive === "function") {
       try {
         lockdownActive = control.isLockdownActive();
@@ -471,7 +439,10 @@ export default class AuthService {
     if (lockdownActive) {
       let isAdminCandidate = false;
       const adminCheckValue =
-        candidateNpub || (typeof trimmed === "string" && trimmed ? trimmed : null);
+        candidateNpub ||
+        (typeof trimmedPubkey === "string" && trimmedPubkey
+          ? trimmedPubkey
+          : null);
       if (adminCheckValue && typeof control?.isAdminEditor === "function") {
         try {
           isAdminCandidate = !!control.isAdminEditor(adminCheckValue);
@@ -520,73 +491,101 @@ export default class AuthService {
       }
     }
 
-    if (normalized) {
-      setPubkey(normalized);
+    return { candidateNpub };
+  }
+
+  _updateGlobalState(
+    normalizedPubkey,
+    nextPubkey,
+    trimmedPubkey,
+    candidateNpub,
+  ) {
+    if (normalizedPubkey) {
+      setPubkey(normalizedPubkey);
       if (this.nostrClient && typeof this.nostrClient === "object") {
-        this.nostrClient.pubkey = normalized;
+        this.nostrClient.pubkey = normalizedPubkey;
       }
-      profileCache.setActiveProfile(normalized);
+      profileCache.setActiveProfile(normalizedPubkey);
     } else {
       setPubkey(nextPubkey);
       if (this.nostrClient && typeof this.nostrClient === "object") {
-        this.nostrClient.pubkey = trimmed ? trimmed.toLowerCase() : "";
+        this.nostrClient.pubkey = trimmedPubkey
+          ? trimmedPubkey.toLowerCase()
+          : "";
       }
-      profileCache.setActiveProfile(trimmed ? trimmed.toLowerCase() : null);
+      profileCache.setActiveProfile(
+        trimmedPubkey ? trimmedPubkey.toLowerCase() : null,
+      );
     }
 
-    const npub = candidateNpub;
-    setCurrentUserNpub(npub);
+    setCurrentUserNpub(candidateNpub);
+  }
 
+  _updateSavedProfiles({
+    normalizedPubkey,
+    nextPubkey,
+    candidateNpub,
+    authType,
+    providerId,
+    providerResult,
+    persistActive,
+  }) {
     let savedProfilesMutated = false;
-    const entryAuthType = this.normalizeAuthType(
+    const entryAuthType = normalizeAuthType(
       authType,
       providerId,
       providerResult,
     );
 
-    const entryProviderId = this.normalizeProviderId(providerId) || entryAuthType;
+    const entryProviderId =
+      normalizeProviderId(providerId) || entryAuthType;
 
-    mutateSavedProfiles((profiles) => {
-      const draft = Array.isArray(profiles) ? profiles.slice() : [];
-      const existingIndex = draft.findIndex((entry) => {
-        const normalizedEntry = this.normalizeHexPubkey(entry?.pubkey);
-        return normalizedEntry && normalizedEntry === normalized;
-      });
+    mutateSavedProfiles(
+      (profiles) => {
+        const draft = Array.isArray(profiles) ? profiles.slice() : [];
+        const existingIndex = draft.findIndex((entry) => {
+          const normalizedEntry = this.normalizeHexPubkey(entry?.pubkey);
+          return normalizedEntry && normalizedEntry === normalizedPubkey;
+        });
 
-      const cacheEntry = this.getProfileCacheEntry(normalized || nextPubkey);
-      const cachedProfile = cacheEntry?.profile || {};
+        const cacheEntry = this.getProfileCacheEntry(
+          normalizedPubkey || nextPubkey,
+        );
+        const cachedProfile = cacheEntry?.profile || {};
 
-      const nextEntry = {
-        pubkey: normalized || nextPubkey,
-        npub: npub || (cachedProfile.npub ?? null),
-        name: cachedProfile.name || draft[existingIndex]?.name || "",
-        picture: cachedProfile.picture || draft[existingIndex]?.picture || "",
-        authType: entryAuthType,
-        providerId: entryProviderId,
-      };
+        const nextEntry = {
+          pubkey: normalizedPubkey || nextPubkey,
+          npub: candidateNpub || (cachedProfile.npub ?? null),
+          name: cachedProfile.name || draft[existingIndex]?.name || "",
+          picture: cachedProfile.picture || draft[existingIndex]?.picture || "",
+          authType: entryAuthType,
+          providerId: entryProviderId,
+        };
 
-      if (existingIndex >= 0) {
-        const currentEntry = draft[existingIndex] || {};
-        const changed =
-          currentEntry.npub !== nextEntry.npub ||
-          currentEntry.name !== nextEntry.name ||
-          currentEntry.picture !== nextEntry.picture ||
-          currentEntry.authType !== nextEntry.authType ||
-          currentEntry.providerId !== nextEntry.providerId;
-        if (changed) {
-          draft[existingIndex] = nextEntry;
+        if (existingIndex >= 0) {
+          const currentEntry = draft[existingIndex] || {};
+          const changed =
+            currentEntry.npub !== nextEntry.npub ||
+            currentEntry.name !== nextEntry.name ||
+            currentEntry.picture !== nextEntry.picture ||
+            currentEntry.authType !== nextEntry.authType ||
+            currentEntry.providerId !== nextEntry.providerId;
+          if (changed) {
+            draft[existingIndex] = nextEntry;
+            savedProfilesMutated = true;
+          }
+        } else {
+          draft.push(nextEntry);
           savedProfilesMutated = true;
         }
-      } else {
-        draft.push(nextEntry);
-        savedProfilesMutated = true;
-      }
 
-      return draft;
-    }, { persist: false, persistActive: false });
+        return draft;
+      },
+      { persist: false, persistActive: false },
+    );
 
     if (persistActive) {
-      setActiveProfilePubkey(normalized || nextPubkey, { persist: true });
+      setActiveProfilePubkey(normalizedPubkey || nextPubkey, { persist: true });
     }
 
     if (!persistActive && savedProfilesMutated) {
@@ -599,7 +598,20 @@ export default class AuthService {
       this.emitProfileList("login");
     }
 
-    const activeLoginPubkey = getPubkey();
+    return { savedProfilesMutated, entryAuthType };
+  }
+
+  _initiatePostLogin({
+    activeLoginPubkey,
+    previousPubkey,
+    identityChanged,
+    savedProfiles,
+    activeProfilePubkey,
+    providerId,
+    entryAuthType,
+    signer,
+    providerResult,
+  }) {
     const normalizedLoginPubkey =
       this.normalizeHexPubkey(activeLoginPubkey) || activeLoginPubkey || null;
 
@@ -608,8 +620,8 @@ export default class AuthService {
       npub: getCurrentUserNpub(),
       previousPubkey: previousPubkey || null,
       identityChanged,
-      savedProfiles: this.cloneSavedProfiles(),
-      activeProfilePubkey: getActiveProfilePubkey(),
+      savedProfiles,
+      activeProfilePubkey,
       providerId,
       authType: entryAuthType,
       signer,
@@ -624,7 +636,11 @@ export default class AuthService {
       postLoginError: null,
     };
 
-    const { detail: postLoginDetail, completionPromise, relaysReadyPromise } = this.applyPostLoginState({
+    const {
+      detail: postLoginDetail,
+      completionPromise,
+      relaysReadyPromise,
+    } = this.applyPostLoginState({
       deferBlocks: true,
     });
     detail.postLogin = postLoginDetail;
@@ -638,7 +654,10 @@ export default class AuthService {
         try {
           this.emitProfileList("post-login");
         } catch (error) {
-          this.log("[AuthService] Failed to emit profile list after login", error);
+          this.log(
+            "[AuthService] Failed to emit profile list after login",
+            error,
+          );
         }
 
         this.emit("auth:post-login", {
@@ -933,7 +952,7 @@ export default class AuthService {
 
     const normalizedOptions =
       options && typeof options === "object" ? { ...options } : {};
-    const providerId = this.normalizeProviderId(normalizedOptions.providerId);
+    const providerId = normalizeProviderId(normalizedOptions.providerId);
 
     const normalizedActive = this.normalizeHexPubkey(getActiveProfilePubkey());
     if (normalizedActive && normalizedActive === normalizedTarget) {
@@ -997,8 +1016,63 @@ export default class AuthService {
     return { switched: true, detail };
   }
 
+  async fetchProfileFromRelay(
+    relayUrl,
+    filter,
+    normalizedPubkey,
+    timeoutMs,
+    requireEvent,
+  ) {
+    const fetchPromise = this.nostrClient.pool.list([relayUrl], filter);
+    let timeoutId;
+
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => {
+        const timeoutError = new Error(
+          `Timed out fetching profile from ${relayUrl} after ${timeoutMs}ms`,
+        );
+        timeoutError.code = "timeout";
+        timeoutError.relay = relayUrl;
+        timeoutError.timeoutMs = timeoutMs;
+        reject(timeoutError);
+      }, timeoutMs);
+    });
+
+    try {
+      const result = await Promise.race([fetchPromise, timeoutPromise]);
+      clearTimeout(timeoutId);
+
+      const events = Array.isArray(result)
+        ? result.filter((event) => event && event.pubkey === normalizedPubkey)
+        : [];
+
+      if (requireEvent && !events.length) {
+        const emptyError = new Error(
+          `No profile events returned from ${relayUrl}`,
+        );
+        emptyError.code = "empty";
+        emptyError.relay = relayUrl;
+        throw emptyError;
+      }
+
+      return { relayUrl, events };
+    } catch (error) {
+      clearTimeout(timeoutId);
+      // Suppress unhandled rejection from fetchPromise if it's still running
+      fetchPromise.catch(() => {});
+
+      if (error.relay) {
+        throw error;
+      }
+      const wrapped = error instanceof Error ? error : new Error(String(error));
+      wrapped.relay = relayUrl;
+      throw wrapped;
+    }
+  }
+
   async loadOwnProfile(pubkey) {
-    const normalized = this.normalizeHexPubkey(pubkey) ||
+    const normalized =
+      this.normalizeHexPubkey(pubkey) ||
       (typeof pubkey === "string" ? pubkey.trim() : "");
     if (!normalized) {
       return FALLBACK_PROFILE;
@@ -1041,13 +1115,20 @@ export default class AuthService {
         return {
           name: data.display_name || data.name || FALLBACK_PROFILE.name,
           picture: data.picture || FALLBACK_PROFILE.picture,
-          about: typeof data.about === "string" ? data.about : FALLBACK_PROFILE.about,
+          about:
+            typeof data.about === "string" ? data.about : FALLBACK_PROFILE.about,
           website:
-            typeof data.website === "string" ? data.website : FALLBACK_PROFILE.website,
+            typeof data.website === "string"
+              ? data.website
+              : FALLBACK_PROFILE.website,
           banner:
-            typeof data.banner === "string" ? data.banner : FALLBACK_PROFILE.banner,
-          lud16: typeof data.lud16 === "string" ? data.lud16 : FALLBACK_PROFILE.lud16,
-          lud06: typeof data.lud06 === "string" ? data.lud06 : FALLBACK_PROFILE.lud06,
+            typeof data.banner === "string"
+              ? data.banner
+              : FALLBACK_PROFILE.banner,
+          lud16:
+            typeof data.lud16 === "string" ? data.lud16 : FALLBACK_PROFILE.lud16,
+          lud06:
+            typeof data.lud06 === "string" ? data.lud06 : FALLBACK_PROFILE.lud06,
         };
       } catch (error) {
         this.log("[AuthService] Failed to parse profile metadata", error);
@@ -1055,74 +1136,42 @@ export default class AuthService {
       }
     };
 
-    const fetchFromRelay = (relayUrl, timeoutMs, requireEvent) => {
-      return new Promise((resolve, reject) => {
-        let settled = false;
-        const timer = setTimeout(() => {
-          if (settled) {
-            return;
-          }
-          settled = true;
-          const timeoutError = new Error(
-            `Timed out fetching profile from ${relayUrl} after ${timeoutMs}ms`
-          );
-          timeoutError.code = "timeout";
-          timeoutError.relay = relayUrl;
-          timeoutError.timeoutMs = timeoutMs;
-          reject(timeoutError);
-        }, timeoutMs);
-
-        Promise.resolve()
-          .then(() => this.nostrClient.pool.list([relayUrl], filter))
-          .then((result) => {
-            if (settled) {
-              return;
-            }
-            settled = true;
-            clearTimeout(timer);
-            const events = Array.isArray(result)
-              ? result.filter((event) => event && event.pubkey === normalized)
-              : [];
-            if (requireEvent && !events.length) {
-              const emptyError = new Error(
-                `No profile events returned from ${relayUrl}`
-              );
-              emptyError.code = "empty";
-              emptyError.relay = relayUrl;
-              reject(emptyError);
-              return;
-            }
-            resolve({ relayUrl, events });
-          })
-          .catch((error) => {
-            if (settled) {
-              return;
-            }
-            settled = true;
-            clearTimeout(timer);
-            const wrapped =
-              error instanceof Error ? error : new Error(String(error));
-            wrapped.relay = relayUrl;
-            reject(wrapped);
-          });
-      });
-    };
-
     const fastRelays = relays.slice(0, FAST_PROFILE_RELAY_LIMIT);
     const backgroundRelays = relays.slice(fastRelays.length);
 
     const fastPromises = fastRelays.map((relayUrl) =>
-      fetchFromRelay(relayUrl, FAST_PROFILE_TIMEOUT_MS, true)
-    );
-    const backgroundPromises = backgroundRelays.map((relayUrl) =>
-      fetchFromRelay(relayUrl, BACKGROUND_PROFILE_TIMEOUT_MS, false)
+      this.fetchProfileFromRelay(
+        relayUrl,
+        filter,
+        normalized,
+        FAST_PROFILE_TIMEOUT_MS,
+        true,
+      ),
     );
 
-    const background = Promise.allSettled([
-      ...fastPromises,
-      ...backgroundPromises,
+    const background = Promise.all([
+      Promise.allSettled(fastPromises),
+      pMap(
+        backgroundRelays,
+        async (relayUrl) => {
+          try {
+            const value = await this.fetchProfileFromRelay(
+              relayUrl,
+              filter,
+              normalized,
+              BACKGROUND_PROFILE_TIMEOUT_MS,
+              false,
+            );
+            return { status: "fulfilled", value };
+          } catch (reason) {
+            return { status: "rejected", reason };
+          }
+        },
+        { concurrency: RELAY_BACKGROUND_CONCURRENCY },
+      ),
     ])
-      .then((outcomes) => {
+      .then(([fastOutcomes, backgroundOutcomes]) => {
+        const outcomes = [...fastOutcomes, ...backgroundOutcomes];
         const aggregated = [];
         outcomes.forEach((outcome) => {
           if (outcome.status === "fulfilled") {

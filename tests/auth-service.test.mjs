@@ -2,6 +2,7 @@
 
 import "./test-helpers/setup-localstorage.mjs";
 import assert from "node:assert/strict";
+import { test, describe, beforeEach } from "node:test";
 
 import AuthService from "../js/services/authService.js";
 import {
@@ -70,162 +71,134 @@ function resetState() {
   }
 }
 
-await (async () => {
-  resetState();
-  setPubkey(SAMPLE_PUBKEY);
+describe("AuthService", () => {
+  beforeEach(resetState);
 
-  const calls = [];
-  let resolveBlocks;
+  test("applyPostLoginState success flow", async () => {
+    setPubkey(SAMPLE_PUBKEY);
 
-  const service = new AuthService({
-    userBlocks: {
-      loadBlocks: () => {
-        calls.push("blocks:start");
-        return new Promise((resolve) => {
-          resolveBlocks = resolve;
-        });
+    const calls = [];
+    let resolveBlocks;
+
+    const service = new AuthService({
+      userBlocks: {
+        loadBlocks: () => {
+          calls.push("blocks:start");
+          return new Promise((resolve) => {
+            resolveBlocks = resolve;
+          });
+        },
       },
-    },
-    relayManager: {
-      loadRelayList: () => {
-        calls.push("relays:start");
-        return Promise.resolve("relays");
+      relayManager: {
+        loadRelayList: () => {
+          calls.push("relays:start");
+          return Promise.resolve("relays");
+        },
       },
-    },
+    });
+
+    service.loadOwnProfile = () => {
+      calls.push("profile:start");
+      return Promise.resolve({ name: "Test User" });
+    };
+
+    const promise = service.applyPostLoginState();
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    assert.deepEqual(calls, ["relays:start", "blocks:start", "profile:start"]);
+
+    resolveBlocks();
+
+    const result = await promise;
+    const detail = result.detail;
+    await result.completionPromise;
+
+    assert.equal(detail.pubkey, SAMPLE_PUBKEY);
+    assert.equal(detail.blocksLoaded, true);
+    assert.equal(detail.relaysLoaded, true);
+    assert.deepEqual(detail.profile, { name: "Test User" });
   });
 
-  service.loadOwnProfile = () => {
-    calls.push("profile:start");
-    return Promise.resolve({ name: "Test User" });
-  };
+  test("applyPostLoginState with deferBlocks: true", async () => {
+    setPubkey(SAMPLE_PUBKEY);
 
-  const promise = service.applyPostLoginState();
+    const calls = [];
+    // We leave resolveBlocks undefined/pending forever to simulate slow/hanging blocks
+    let resolveBlocks;
 
-  await new Promise((resolve) => setTimeout(resolve, 10));
-
-  assert.deepEqual(calls, ["relays:start", "blocks:start", "profile:start"]);
-
-  resolveBlocks();
-
-  const result = await promise;
-  const detail = result.detail;
-  await result.completionPromise;
-
-  assert.equal(detail.pubkey, SAMPLE_PUBKEY);
-  assert.equal(detail.blocksLoaded, true);
-  assert.equal(detail.relaysLoaded, true);
-  assert.deepEqual(detail.profile, { name: "Test User" });
-})();
-
-await (async () => {
-  resetState();
-  setPubkey(SAMPLE_PUBKEY);
-
-  const calls = [];
-  // We leave resolveBlocks undefined/pending forever to simulate slow/hanging blocks
-  let resolveBlocks;
-
-  const service = new AuthService({
-    userBlocks: {
-      loadBlocks: () => {
-        calls.push("blocks:start");
-        return new Promise((resolve) => {
-          resolveBlocks = resolve;
-        });
+    const service = new AuthService({
+      userBlocks: {
+        loadBlocks: () => {
+          calls.push("blocks:start");
+          return new Promise((resolve) => {
+            resolveBlocks = resolve;
+          });
+        },
       },
-    },
-    relayManager: {
-      loadRelayList: () => {
-        calls.push("relays:start");
-        return Promise.resolve("relays");
+      relayManager: {
+        loadRelayList: () => {
+          calls.push("relays:start");
+          return Promise.resolve("relays");
+        },
       },
-    },
+    });
+
+    service.loadOwnProfile = () => {
+      calls.push("profile:start");
+      return Promise.resolve({ name: "Test User" });
+    };
+
+    // Test deferBlocks: true
+    const promise = service.applyPostLoginState({ deferBlocks: true });
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    // Blocks should NOT be started if deferred
+    // Wait, deferBlocks just means it's not awaited in completionPromise?
+    // No, checking code:
+    // if (!deferBlocks) { const blocksOperation = this.createBlocksLoadOperation... }
+    // So it shouldn't even be called/pushed to concurrentOps.
+
+    assert.deepEqual(calls, ["relays:start", "profile:start"]);
+
+    const result = await promise;
+    // This should resolve even if blocks are not loaded
+    await result.completionPromise;
+
+    assert.equal(result.detail.blocksLoaded, null);
+    assert.equal(result.detail.relaysLoaded, true);
   });
 
-  service.loadOwnProfile = () => {
-    calls.push("profile:start");
-    return Promise.resolve({ name: "Test User" });
-  };
+  test("applyPostLoginState partial failure", async () => {
+    setPubkey(SAMPLE_PUBKEY);
 
-  // Test deferBlocks: true
-  const promise = service.applyPostLoginState({ deferBlocks: true });
-
-  await new Promise((resolve) => setTimeout(resolve, 10));
-
-  // Blocks should NOT be started if deferred
-  // Wait, deferBlocks just means it's not awaited in completionPromise?
-  // No, checking code:
-  // if (!deferBlocks) { const blocksOperation = this.createBlocksLoadOperation... }
-  // So it shouldn't even be called/pushed to concurrentOps.
-
-  assert.deepEqual(calls, ["relays:start", "profile:start"]);
-
-  const result = await promise;
-  // This should resolve even if blocks are not loaded
-  await result.completionPromise;
-
-  assert.equal(result.detail.blocksLoaded, null);
-  assert.equal(result.detail.relaysLoaded, true);
-})();
-
-await (async () => {
-  resetState();
-  setPubkey(SAMPLE_PUBKEY);
-
-  const logs = [];
-  const service = new AuthService({
-    userBlocks: {
-      loadBlocks: () => {
-        throw new Error("blocks failed synchronously");
+    const logs = [];
+    const service = new AuthService({
+      userBlocks: {
+        loadBlocks: () => {
+          throw new Error("blocks failed synchronously");
+        },
       },
-    },
-    relayManager: {
-      loadRelayList: () => Promise.reject(new Error("relays failed")),
-    },
-  });
+      relayManager: {
+        loadRelayList: () => Promise.reject(new Error("relays failed")),
+      },
+    });
 
-  service.log = (message, error) => {
-    logs.push({ message, error });
-  };
+    service.log = (message, error) => {
+      logs.push({ message, error });
+    };
 
-  service.loadOwnProfile = () => Promise.reject(new Error("profile failed"));
+    service.loadOwnProfile = () => Promise.reject(new Error("profile failed"));
 
-  const result = service.applyPostLoginState();
-  const detail = result.detail;
-  await result.completionPromise;
+    const result = service.applyPostLoginState();
+    const detail = result.detail;
+    await result.completionPromise;
 
-  assert.equal(detail.pubkey, SAMPLE_PUBKEY);
-  assert.equal(detail.blocksLoaded, false);
-  assert.equal(detail.relaysLoaded, false);
-  assert.deepEqual(detail.profile, {
-    name: "Unknown",
-    picture: "assets/svg/default-profile.svg",
-    about: "",
-    website: "",
-    banner: "",
-    lud16: "",
-    lud06: "",
-  });
-
-  assert.equal(logs.length, 3);
-  assert(logs.some(({ message }) => message.includes("block list")));
-  assert(logs.some(({ message }) => message.includes("relay list")));
-  assert(logs.some(({ message }) => message.includes("own profile")));
-})();
-
-await (async () => {
-  resetState();
-
-  const service = new AuthService();
-  const result = service.applyPostLoginState();
-  const detail = result.detail;
-  await result.completionPromise;
-
-  assert.deepEqual(detail, {
-    pubkey: null,
-    blocksLoaded: false,
-    relaysLoaded: false,
-    profile: {
+    assert.equal(detail.pubkey, SAMPLE_PUBKEY);
+    assert.equal(detail.blocksLoaded, false);
+    assert.equal(detail.relaysLoaded, false);
+    assert.deepEqual(detail.profile, {
       name: "Unknown",
       picture: "assets/svg/default-profile.svg",
       about: "",
@@ -233,75 +206,176 @@ await (async () => {
       banner: "",
       lud16: "",
       lud06: "",
-    },
-  });
-})();
+    });
 
-await (async () => {
-  resetState();
-
-  const service = new AuthService();
-  const postLogin = {
-    pubkey: SAMPLE_PUBKEY,
-    blocksLoaded: true,
-    relaysLoaded: false,
-    profile: { name: "Stub" },
-  };
-
-  service.applyPostLoginState = () => ({
-    detail: postLogin,
-    completionPromise: Promise.resolve(postLogin),
+    assert.equal(logs.length, 3);
+    assert(logs.some(({ message }) => message.includes("block list")));
+    assert(logs.some(({ message }) => message.includes("relay list")));
+    assert(logs.some(({ message }) => message.includes("own profile")));
   });
 
-  const detail = await service.login(SAMPLE_PUBKEY);
+  test("applyPostLoginState without pubkey", async () => {
+    const service = new AuthService();
+    const result = service.applyPostLoginState();
+    const detail = result.detail;
+    await result.completionPromise;
 
-  await detail.postLoginPromise;
-
-  assert.equal(detail.postLogin, postLogin);
-  assert.deepEqual(detail.postLogin, postLogin);
-})();
-
-await (async () => {
-  resetState();
-
-  const adminCheckCalls = [];
-  const service = new AuthService({
-    accessControl: {
-      isLockdownActive: () => true,
-      isAdminEditor: (npub) => {
-        adminCheckCalls.push(npub);
-        return false;
+    assert.deepEqual(detail, {
+      pubkey: null,
+      blocksLoaded: false,
+      relaysLoaded: false,
+      profile: {
+        name: "Unknown",
+        picture: "assets/svg/default-profile.svg",
+        about: "",
+        website: "",
+        banner: "",
+        lud16: "",
+        lud06: "",
       },
-    },
+    });
   });
 
-  let error;
-  try {
-    await service.login(SAMPLE_PUBKEY);
-  } catch (err) {
-    error = err;
-  }
+  test("login mocks postLogin flow", async () => {
+    const service = new AuthService();
+    const postLogin = {
+      pubkey: SAMPLE_PUBKEY,
+      blocksLoaded: true,
+      relaysLoaded: false,
+      profile: { name: "Stub" },
+    };
 
-  assert(error instanceof Error);
-  assert.equal(error.code, "site-lockdown");
-  assert.match(error.message, /locked down/i);
-  assert.equal(adminCheckCalls.length, 1);
-  assert.equal(typeof adminCheckCalls[0], "string");
-  assert(adminCheckCalls[0].length > 0);
-})();
+    service.applyPostLoginState = () => ({
+      detail: postLogin,
+      completionPromise: Promise.resolve(postLogin),
+    });
 
-await (async () => {
-  resetState();
+    const detail = await service.login(SAMPLE_PUBKEY);
 
-  const service = new AuthService({
-    accessControl: {
-      isLockdownActive: () => true,
-      isAdminEditor: () => true,
-    },
+    await detail.postLoginPromise;
+
+    assert.equal(detail.postLogin, postLogin);
+    assert.deepEqual(detail.postLogin, postLogin);
   });
 
-  const detail = await service.login(SAMPLE_PUBKEY);
+  test("login fails on lockdown", async () => {
+    const adminCheckCalls = [];
+    const service = new AuthService({
+      accessControl: {
+        isLockdownActive: () => true,
+        isAdminEditor: (npub) => {
+          adminCheckCalls.push(npub);
+          return false;
+        },
+      },
+    });
 
-  assert.ok(detail);
-  assert.equal(detail.pubkey, SAMPLE_PUBKEY);
-})();
+    let error;
+    try {
+      await service.login(SAMPLE_PUBKEY);
+    } catch (err) {
+      error = err;
+    }
+
+    assert(error instanceof Error);
+    assert.equal(error.code, "site-lockdown");
+    assert.match(error.message, /locked down/i);
+    assert.equal(adminCheckCalls.length, 1);
+    assert.equal(typeof adminCheckCalls[0], "string");
+    assert(adminCheckCalls[0].length > 0);
+  });
+
+  test("login succeeds for admin on lockdown", async () => {
+    const service = new AuthService({
+      accessControl: {
+        isLockdownActive: () => true,
+        isAdminEditor: () => true,
+      },
+    });
+
+    const detail = await service.login(SAMPLE_PUBKEY);
+
+    assert.ok(detail);
+    assert.equal(detail.pubkey, SAMPLE_PUBKEY);
+  });
+
+  describe("loadOwnProfile", () => {
+    const PUBKEY = SAMPLE_PUBKEY;
+
+    test("Fast Relay Success", async () => {
+      const mockNostrClient = {
+        relays: ["wss://fast1.com", "wss://fast2.com", "wss://slow.com"],
+        pool: {
+          list: async (relays) => {
+            const url = relays[0];
+            if (url === "wss://fast1.com") {
+              return [{
+                pubkey: PUBKEY,
+                created_at: 100,
+                content: JSON.stringify({ name: "Fast User" })
+              }];
+            }
+            return new Promise(() => {}); // Hang others
+          }
+        },
+        handleEvent: () => {}
+      };
+
+      const service = new AuthService({ nostrClient: mockNostrClient });
+      const profile = await service.loadOwnProfile(PUBKEY);
+      assert.equal(profile.name, "Fast User");
+    });
+
+    test("All Relays Fail", async () => {
+      const mockNostrClient = {
+        relays: ["wss://fail1.com", "wss://fail2.com"],
+        pool: {
+          list: async () => {
+            throw new Error("Failed");
+          }
+        },
+        handleEvent: () => {}
+      };
+
+      const service = new AuthService({ nostrClient: mockNostrClient });
+      const profile = await service.loadOwnProfile(PUBKEY);
+      assert.equal(profile.name, "Unknown");
+    });
+
+    test("Timeout Fallback", async () => {
+      let backgroundResolve;
+      const backgroundPromise = new Promise(r => backgroundResolve = r);
+
+      const mockNostrClient = {
+          relays: ["wss://fast-fail.com", "wss://fast-fail2.com", "wss://background-ok.com", "wss://background-ok-2.com"],
+          pool: {
+              list: async (relays) => {
+                  const url = relays[0];
+                  if (url.includes("fast")) {
+                      // Simulate timeout or error
+                      throw new Error("Fast fail");
+                  }
+                  if (url.includes("background")) {
+                      await backgroundPromise;
+                      return [{
+                          pubkey: PUBKEY,
+                          created_at: 200,
+                          content: JSON.stringify({ name: "Background User" })
+                      }];
+                  }
+                  return [];
+              }
+          },
+          handleEvent: () => {}
+      };
+
+      const service = new AuthService({ nostrClient: mockNostrClient });
+
+      const profile = await service.loadOwnProfile(PUBKEY);
+      assert.equal(profile.name, "Unknown");
+
+      // We resolve background promise to let background logic finish eventually (though test finishes here)
+      backgroundResolve();
+    });
+  });
+});

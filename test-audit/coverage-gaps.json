@@ -1,0 +1,10 @@
+{
+  "js/services/authService.js": 77.34,
+  "js/relayManager.js": 49.93,
+  "js/nostr/dmDecryptWorker.js": 71.8,
+  "js/nostr/dmDecryptWorkerClient.js": 96.85,
+  "js/nostr/watchHistory.js": 58.14,
+  "js/userBlocks.js": 25.86,
+  "js/ui/ambientBackground.js": 33.02,
+  "torrent/app.js": 0
+}

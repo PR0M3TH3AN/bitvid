@@ -1,7 +1,7 @@
 // js/feedEngine/kidsScoring.js
 
 import { normalizeHashtag } from "../utils/hashtagNormalization.js";
-import { isPlainObject, toSet } from "./utils.js";
+import { isPlainObject, toSet, getVideoTags } from "./utils.js";
 
 const DEFAULT_WEIGHTS = Object.freeze({
   w_age: 0.35,
@@ -48,39 +48,6 @@ function clamp01(value) {
     return 1;
   }
   return value;
-}
-
-function normalizeTagSetFromVideo(video) {
-  const normalized = new Set();
-  if (!video || typeof video !== "object") {
-    return normalized;
-  }
-
-  const addTag = (rawTag) => {
-    if (typeof rawTag !== "string") {
-      return;
-    }
-    const tag = normalizeHashtag(rawTag);
-    if (tag) {
-      normalized.add(tag);
-    }
-  };
-
-  if (Array.isArray(video.tags)) {
-    for (const tag of video.tags) {
-      if (Array.isArray(tag) && tag[0] === "t") {
-        addTag(tag[1]);
-      }
-    }
-  }
-
-  if (Array.isArray(video.nip71?.hashtags)) {
-    for (const tag of video.nip71.hashtags) {
-      addTag(tag);
-    }
-  }
-
-  return normalized;
 }
 
 function normalizeTagSet(values) {
@@ -315,7 +282,7 @@ export function createKidsScorerStage({
         continue;
       }
 
-      const tags = normalizeTagSetFromVideo(video);
+      const tags = getVideoTags(video);
       const duration = resolveDuration(video);
       let durationScore = 0.5;
       if (Number.isFinite(duration) && duration > 0) {
@@ -391,27 +358,32 @@ export function createKidsScorerStage({
       const videoId = typeof video.id === "string" ? video.id : null;
       const pubkey = typeof video.pubkey === "string" ? video.pubkey : null;
 
-      const positiveComponents = [
-        { key: "age-appropriateness", value: ageAppropriateness },
-        { key: "educational-boost", value: educationalBoost },
-        { key: "author-trust", value: authorTrust },
-        { key: "popularity", value: popularityWithinKids },
-        { key: "freshness", value: freshness },
-      ];
+      let maxKey = "age-appropriateness";
+      let maxValue = ageAppropriateness;
 
-      let dominantPositive = positiveComponents[0];
-      for (const component of positiveComponents) {
-        if (component.value > dominantPositive.value) {
-          dominantPositive = component;
-        }
+      if (educationalBoost > maxValue) {
+        maxKey = "educational-boost";
+        maxValue = educationalBoost;
+      }
+      if (authorTrust > maxValue) {
+        maxKey = "author-trust";
+        maxValue = authorTrust;
+      }
+      if (popularityWithinKids > maxValue) {
+        maxKey = "popularity";
+        maxValue = popularityWithinKids;
+      }
+      if (freshness > maxValue) {
+        maxKey = "freshness";
+        maxValue = freshness;
       }
 
-      if (dominantPositive.value > 0) {
+      if (maxValue > 0) {
         context?.addWhy?.({
           stage: stageName,
           type: "score",
-          reason: dominantPositive.key,
-          value: dominantPositive.value,
+          reason: maxKey,
+          value: maxValue,
           score: kidsScore,
           videoId,
           pubkey,

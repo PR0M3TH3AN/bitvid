@@ -41,6 +41,8 @@ Automated agents contributing to this repository should follow these rules:
 - **Commit Messages**: Use the convention `type(scope): description (agent)` (e.g., `fix(ai): formatting (agent)` or `docs(ai): update quickstart (agent)`).
 - **Reference Issues**: Link to relevant issues in the PR description.
 - **Review AGENTS.md**: Always consult `AGENTS.md` for specific architectural guidelines (like URL-first playback, token-first design system) and constraints before starting work.
+- **Review KNOWN_ISSUES.md**: Before starting development or debugging, review `KNOWN_ISSUES.md` to avoid investigating pre-existing failures or limitations.
+- **Dependency Upgrades**: Major or risky dependency upgrades must be documented by creating a Markdown file in the `issues/` directory (e.g., `issues/upgrade-<pkg>.md`) with a plan and risk assessment, rather than opening an immediate PR.
 - **Efficiency**: Prefer running targeted or sharded tests (e.g., `npm run test:unit:shard1`, `shard2`, or `shard3`) to conserve resources during iteration.
 
 ## Submitting a Pull Request
@@ -93,14 +95,15 @@ This workflow uses the `force-cancel` endpoint to ensure stalled runs are termin
 To set up the project locally:
 
 1. **Prerequisites**:
-   - **Node.js**: v22 or higher.
+   - **Node.js**: v22 or higher (enforced by `.npmrc`).
    - **NPM**: v10 or higher (included with Node 22).
 
 2. **Install Dependencies**:
-   Use `npm ci` to ensure you get the exact dependencies from `package-lock.json`.
+   Use `npm ci` to ensure you get the exact dependencies from `package-lock.json`. If you intend to run smoke, visual, or end-to-end tests, also install Playwright browsers.
 
    ```bash
    npm ci
+   npx playwright install
    ```
 
 3. **Start the Application**:
@@ -135,11 +138,18 @@ To set up the project locally:
 
    _Note: Running the full suite (`npm run test:unit`) is resource-intensive, runs sequentially, and may time out in some environments. We strongly recommend using sharded runs for local development to save time: `npm run test:unit:shard1`, `shard2`, or `shard3`._
 
-   You can also run end-to-end and visual tests:
+   You can also run end-to-end, smoke, and visual tests:
 
    ```bash
    npm run test:e2e
+   npm run test:smoke   # Critical path verification
    npm run test:visual
+   ```
+
+   To run load tests (agent-driven):
+
+   ```bash
+   npm run test:load
    ```
 
    To update visual regression baselines:
@@ -169,7 +179,9 @@ To set up the project locally:
    ```
 
    - **Format**: Targets CSS, HTML, Markdown, and config files. (Note: JavaScript files are not currently auto-formatted by this command).
-   - **Lint**: Checks for CSS errors, hex color usage, inline styles, design tokens, and Tailwind guards. (Note: There is no ESLint configuration for JavaScript logic; this step focuses on style and design system guards).
+   - **Lint**: Checks for CSS errors, hex color usage, inline styles, design tokens, Tailwind guards, file size limits, innerHTML usage, asset references, and Service Worker compatibility. (Note: There is no ESLint configuration for JavaScript logic; this step focuses on style and design system guards).
+   - **Note**: `npm run lint` includes an asset verification step (`lint:assets`) which checks the `dist/` directory. For full coverage, run `npm run build` before linting.
+   - **Audit**: `npm run audit` runs a design system audit and generates `REMEDIATION_REPORT.md` with auto-fix suggestions.
 
 6. **Git Hooks (Optional)**:
    We provide a script to set up a git pre-commit hook that runs linting and CSS builds automatically before you commit.
@@ -219,6 +231,7 @@ To use it:
 Before starting your work, please review these key documents:
 
 - **[AGENTS.md](./AGENTS.md)**: Architectural guidelines, mission statement, and troubleshooting tips.
+- **[Documentation Index](./docs/README.md)**: A complete list of system documentation, including architecture and feed logic.
 - **[Nostr Event Schemas](./docs/nostr-event-schemas.md)**: The source of truth for all Nostr events published by the application.
 - **[Playback Fallback](./docs/playback-fallback.md)**: Details on the URL-first playback strategy and WebTorrent fallback mechanism.
 

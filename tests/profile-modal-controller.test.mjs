@@ -88,7 +88,7 @@ function createMatchMediaList(query, initialMatches = false) {
       listeners.forEach((listener) => {
         try {
           listener(event);
-        } catch {}
+      } catch {}
       });
       return true;
     },
@@ -312,6 +312,8 @@ function createController(options = {}) {
       eventId: null,
       createdAt: null,
       loaded: true,
+      uiReady: true,
+      dataReady: true,
     }),
     describeHashtagPreferencesError: () => '',
     onAccessControlUpdated: async () => {},
@@ -337,221 +339,166 @@ function createController(options = {}) {
   });
 }
 
-for (const _ of [0]) {
+test(
+  'Profile modal Escape closes and restores trigger focus',
+  async (t) => {
+    const controller = createController();
+    await controller.load();
+    applyDesignSystemAttributes(document);
 
-  test(
-    'Profile modal Escape closes and restores trigger focus',
-    async (t) => {
-      const controller = createController();
+    const trigger = document.createElement('button');
+    trigger.id = 'profileTrigger';
+    trigger.textContent = 'Open profile';
+    document.body.appendChild(trigger);
+    trigger.focus();
+    await waitForAnimationFrame(window, 1);
+
+    const cleanup = () => {
+      try {
+        controller.hide({ silent: true });
+      } catch {}
+      try {
+        trigger.remove();
+      } catch {}
+    };
+
+    let cleanupRan = false;
+    try {
+      await controller.show('account');
+      await waitForAnimationFrame(window, 2);
+
+      const focusTrap =
+        controller.focusTrapContainer ||
+        controller.profileModalPanel ||
+        controller.profileModal ||
+        document.getElementById('profileModal');
+      assert.ok(focusTrap, 'focus trap container should exist');
+
+      focusTrap.dispatchEvent(
+        new window.KeyboardEvent('keydown', {
+          key: 'Escape',
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+
+      await waitForAnimationFrame(window, 2);
+
+      const modalRoot = document.getElementById('profileModal');
+      assert.ok(modalRoot?.classList.contains('hidden'));
+      assert.strictEqual(document.activeElement, trigger);
+    } finally {
+      cleanup();
+      cleanupRan = true;
+    }
+
+    t.after(() => {
+      if (!cleanupRan) {
+        cleanup();
+      }
+      resetRuntimeFlags();
+    });
+  },
+);
+
+test(
+  'Add profile request suspends focus trap and elevates login modal',
+  async (t) => {
+    const loginDeferred = createDeferred();
+    const loginModal = document.createElement('div');
+    loginModal.id = 'loginModal';
+    loginModal.className = 'bv-modal hidden';
+    container.appendChild(loginModal);
+
+    const controller = createController({
+      services: {
+        requestAddProfileLogin: async ({ triggerElement }) => {
+          assert.strictEqual(triggerElement, controller.addAccountButton);
+          assert.equal(controller.focusTrapSuspended, true);
+          return loginDeferred.promise;
+        },
+      },
+      callbacks: {
+        onAddAccount: async () => {},
+      },
+    });
+
+    let cleanupRan = false;
+    const cleanup = () => {
+      try {
+        loginModal.remove();
+      } catch {}
+      try {
+        controller.hide({ silent: true });
+      } catch {}
+      cleanupRan = true;
+    };
+
+    try {
       await controller.load();
       applyDesignSystemAttributes(document);
-
-      const trigger = document.createElement('button');
-      trigger.id = 'profileTrigger';
-      trigger.textContent = 'Open profile';
-      document.body.appendChild(trigger);
-      trigger.focus();
+      await controller.show('account');
       await waitForAnimationFrame(window, 1);
 
-      const cleanup = () => {
-        try {
-          controller.hide({ silent: true });
-        } catch {}
-        try {
-          trigger.remove();
-        } catch {}
-      };
+      const loginPromise = controller.handleAddAccountRequest();
+      await Promise.resolve();
 
-      let cleanupRan = false;
-      try {
-        await controller.show('account');
-        await waitForAnimationFrame(window, 2);
+      const profileModalRoot =
+        document.getElementById('profileModal') || controller.profileModal;
+      assert.ok(profileModalRoot, 'profile modal root should exist');
+      assert.equal(
+        profileModalRoot?.dataset.nestedModalActive,
+        'true',
+        'profile modal should mark nested modal state',
+      );
+      assert.equal(
+        profileModalRoot?.getAttribute('aria-hidden'),
+        'true',
+        'profile modal should be hidden from assistive tech',
+      );
 
-        const focusTrap =
-          controller.focusTrapContainer ||
-          controller.profileModalPanel ||
-          controller.profileModal ||
-          document.getElementById('profileModal');
-        assert.ok(focusTrap, 'focus trap container should exist');
+      const panel =
+        profileModalRoot?.querySelector('.bv-modal__panel') || profileModalRoot;
+      assert.ok(panel?.hasAttribute('inert'));
 
-        focusTrap.dispatchEvent(
-          new window.KeyboardEvent('keydown', {
-            key: 'Escape',
-            bubbles: true,
-            cancelable: true,
-          }),
-        );
+      assert.strictEqual(
+        container.lastElementChild,
+        loginModal,
+        'login modal should be last in the container',
+      );
 
-        await waitForAnimationFrame(window, 2);
+      loginDeferred.resolve({ provider: 'test' });
+      await loginPromise;
+      await waitForAnimationFrame(window, 1);
 
-        const modalRoot = document.getElementById('profileModal');
-        assert.ok(modalRoot?.classList.contains('hidden'));
-        assert.strictEqual(document.activeElement, trigger);
-      } finally {
-        cleanup();
-        cleanupRan = true;
-      }
+      assert.equal(controller.focusTrapSuspended, false);
+      assert.equal(
+        profileModalRoot?.dataset.nestedModalActive,
+        undefined,
+        'profile modal nested state should clear after login',
+      );
+      assert.equal(
+        profileModalRoot?.getAttribute('aria-hidden'),
+        'false',
+        'profile modal should restore aria-hidden',
+      );
+      assert.equal(panel?.hasAttribute('inert'), false);
+    } finally {
+      cleanup();
+    }
 
-      t.after(() => {
-        if (!cleanupRan) {
-          cleanup();
-        }
-        resetRuntimeFlags();
-      });
-    },
-  );
-
-  test(
-    'Add profile request suspends focus trap and elevates login modal',
-    async (t) => {
-      const loginDeferred = createDeferred();
-      const loginModal = document.createElement('div');
-      loginModal.id = 'loginModal';
-      loginModal.className = 'bv-modal hidden';
-      container.appendChild(loginModal);
-
-      const controller = createController({
-        services: {
-          requestAddProfileLogin: async ({ triggerElement }) => {
-            assert.strictEqual(triggerElement, controller.addAccountButton);
-            assert.equal(controller.focusTrapSuspended, true);
-            return loginDeferred.promise;
-          },
-        },
-        callbacks: {
-          onAddAccount: async () => {},
-        },
-      });
-
-      let cleanupRan = false;
-      const cleanup = () => {
-        try {
-          loginModal.remove();
-        } catch {}
-        try {
-          controller.hide({ silent: true });
-        } catch {}
-        cleanupRan = true;
-      };
-
-      try {
-        await controller.load();
-        applyDesignSystemAttributes(document);
-        await controller.show('account');
-        await waitForAnimationFrame(window, 1);
-
-        const loginPromise = controller.handleAddAccountRequest();
-        await Promise.resolve();
-
-        const profileModalRoot =
-          document.getElementById('profileModal') || controller.profileModal;
-        assert.ok(profileModalRoot, 'profile modal root should exist');
-        assert.equal(
-          profileModalRoot?.dataset.nestedModalActive,
-          'true',
-          'profile modal should mark nested modal state',
-        );
-        assert.equal(
-          profileModalRoot?.getAttribute('aria-hidden'),
-          'true',
-          'profile modal should be hidden from assistive tech',
-        );
-
-        const panel =
-          profileModalRoot?.querySelector('.bv-modal__panel') || profileModalRoot;
-        assert.ok(panel?.hasAttribute('inert'));
-
-        assert.strictEqual(
-          container.lastElementChild,
-          loginModal,
-          'login modal should be last in the container',
-        );
-
-        loginDeferred.resolve({ provider: 'test' });
-        await loginPromise;
-        await waitForAnimationFrame(window, 1);
-
-        assert.equal(controller.focusTrapSuspended, false);
-        assert.equal(
-          profileModalRoot?.dataset.nestedModalActive,
-          undefined,
-          'profile modal nested state should clear after login',
-        );
-        assert.equal(
-          profileModalRoot?.getAttribute('aria-hidden'),
-          'false',
-          'profile modal should restore aria-hidden',
-        );
-        assert.equal(panel?.hasAttribute('inert'), false);
-      } finally {
+    t.after(() => {
+      if (!cleanupRan) {
         cleanup();
       }
+      resetRuntimeFlags();
+    });
+  },
+);
 
-      t.after(() => {
-        if (!cleanupRan) {
-          cleanup();
-        }
-        resetRuntimeFlags();
-      });
-    },
-  );
-
-  test(
-    'Profile modal navigation buttons toggle active state',
-    async (t) => {
-      const controller = createController();
-      await controller.load();
-      applyDesignSystemAttributes(document);
-
-      let cleanupRan = false;
-      const cleanup = () => {
-        try {
-          controller.hide({ silent: true });
-        } catch {}
-        cleanupRan = true;
-      };
-
-      try {
-        await controller.show('account');
-        await waitForAnimationFrame(window, 2);
-
-        const accountButton = document.getElementById('profileNavAccount');
-        const relaysButton = document.getElementById('profileNavRelays');
-        const accountPane = document.getElementById('profilePaneAccount');
-        const relaysPane = document.getElementById('profilePaneRelays');
-
-        assert.ok(accountButton && relaysButton);
-        assert.ok(accountPane && relaysPane);
-
-        controller.selectPane('relays');
-        await waitForAnimationFrame(window, 1);
-
-        assert.equal(relaysButton?.getAttribute('aria-selected'), 'true');
-        assert.equal(accountButton?.getAttribute('aria-selected'), 'false');
-        assert.equal(relaysPane?.classList.contains('hidden'), false);
-        assert.equal(accountPane?.classList.contains('hidden'), true);
-
-        controller.selectPane('account');
-        await waitForAnimationFrame(window, 1);
-
-        assert.equal(accountButton?.getAttribute('aria-selected'), 'true');
-        assert.equal(relaysButton?.getAttribute('aria-selected'), 'false');
-        assert.equal(accountPane?.classList.contains('hidden'), false);
-        assert.equal(relaysPane?.classList.contains('hidden'), true);
-      } finally {
-        cleanup();
-      }
-
-      t.after(() => {
-        if (!cleanupRan) {
-          cleanup();
-        }
-        resetRuntimeFlags();
-      });
-    },
-  );
-
-  test('Profile modal toggles mobile menu and pane views', async (t) => {
+test(
+  'Profile modal navigation buttons toggle active state',
+  async (t) => {
     const controller = createController();
     await controller.load();
     applyDesignSystemAttributes(document);
@@ -568,45 +515,29 @@ for (const _ of [0]) {
       await controller.show('account');
       await waitForAnimationFrame(window, 2);
 
-      const layout = document.querySelector('[data-profile-layout]');
-      const menuWrapper = document.querySelector('[data-profile-mobile-menu]');
-      const paneWrapper = document.querySelector('[data-profile-mobile-pane]');
-      const backButton = document.getElementById('profileModalBack');
+      const accountButton = document.getElementById('profileNavAccount');
+      const relaysButton = document.getElementById('profileNavRelays');
+      const accountPane = document.getElementById('profilePaneAccount');
+      const relaysPane = document.getElementById('profilePaneRelays');
 
-      assert.ok(layout && menuWrapper && paneWrapper && backButton);
-
-      assert.equal(layout?.dataset.mobileView, 'menu');
-      assert.equal(menuWrapper?.getAttribute('aria-hidden'), 'false');
-      assert.equal(menuWrapper?.classList.contains('hidden'), false);
-      assert.equal(menuWrapper?.hasAttribute('hidden'), false);
-      assert.equal(paneWrapper?.getAttribute('aria-hidden'), 'true');
-      assert.equal(paneWrapper?.classList.contains('hidden'), true);
-      assert.equal(paneWrapper?.hasAttribute('hidden'), true);
-      assert.equal(backButton?.classList.contains('hidden'), true);
+      assert.ok(accountButton && relaysButton);
+      assert.ok(accountPane && relaysPane);
 
       controller.selectPane('relays');
       await waitForAnimationFrame(window, 1);
 
-      assert.equal(layout?.dataset.mobileView, 'pane');
-      assert.equal(menuWrapper?.getAttribute('aria-hidden'), 'true');
-      assert.equal(menuWrapper?.classList.contains('hidden'), true);
-      assert.equal(menuWrapper?.hasAttribute('hidden'), true);
-      assert.equal(paneWrapper?.getAttribute('aria-hidden'), 'false');
-      assert.equal(paneWrapper?.classList.contains('hidden'), false);
-      assert.equal(paneWrapper?.hasAttribute('hidden'), false);
-      assert.equal(backButton?.classList.contains('hidden'), false);
+      assert.equal(relaysButton?.getAttribute('aria-selected'), 'true');
+      assert.equal(accountButton?.getAttribute('aria-selected'), 'false');
+      assert.equal(relaysPane?.classList.contains('hidden'), false);
+      assert.equal(accountPane?.classList.contains('hidden'), true);
 
-      backButton?.click();
+      controller.selectPane('account');
       await waitForAnimationFrame(window, 1);
 
-      assert.equal(layout?.dataset.mobileView, 'menu');
-      assert.equal(menuWrapper?.getAttribute('aria-hidden'), 'false');
-      assert.equal(menuWrapper?.classList.contains('hidden'), false);
-      assert.equal(menuWrapper?.hasAttribute('hidden'), false);
-      assert.equal(paneWrapper?.getAttribute('aria-hidden'), 'true');
-      assert.equal(paneWrapper?.classList.contains('hidden'), true);
-      assert.equal(paneWrapper?.hasAttribute('hidden'), true);
-      assert.equal(backButton?.classList.contains('hidden'), true);
+      assert.equal(accountButton?.getAttribute('aria-selected'), 'true');
+      assert.equal(relaysButton?.getAttribute('aria-selected'), 'false');
+      assert.equal(accountPane?.classList.contains('hidden'), false);
+      assert.equal(relaysPane?.classList.contains('hidden'), true);
     } finally {
       cleanup();
     }
@@ -617,371 +548,439 @@ for (const _ of [0]) {
       }
       resetRuntimeFlags();
     });
-  });
+  },
+);
 
-  test('wallet URI input masks persisted values and restores on focus', async (t) => {
-    const controller = createController();
-    await controller.load();
+test('Profile modal toggles mobile menu and pane views', async (t) => {
+  const controller = createController();
+  await controller.load();
+  applyDesignSystemAttributes(document);
 
-    controller.state.setActivePubkey('a'.repeat(64));
-
-    await controller.show('wallet');
-
-    const sampleUri =
-      'nostr+walletconnect://pub1?relay=wss://relay.example.com';
-    await controller.services.nwcSettings.updateActiveNwcSettings({
-      nwcUri: sampleUri,
-      defaultZap: 21,
-    });
-
-    controller.refreshWalletPaneState();
-
-    assert.ok(
-      controller.walletUriInput instanceof window.HTMLElement,
-      'wallet URI input should exist',
-    );
-    assert.equal(controller.walletUriInput.value, '*****');
-    assert.equal(controller.walletUriInput.dataset.secretValue, sampleUri);
-    assert.equal(
-      controller.walletDisconnectButton?.classList.contains('hidden'),
-      false,
-      'disconnect button should remain visible when a URI exists',
-    );
-
-    const formValues = controller.getWalletFormValues();
-    assert.equal(formValues.uri, sampleUri);
-
-    controller.walletUriInput.dispatchEvent(new window.Event('focus'));
-    assert.equal(controller.walletUriInput.value, sampleUri);
-
-    controller.walletUriInput.dispatchEvent(new window.Event('blur'));
-    assert.equal(controller.walletUriInput.value, '*****');
-
-    controller.walletUriInput.dispatchEvent(new window.Event('focus'));
-    const updatedUri = `${sampleUri}&name=bitvid`;
-    controller.walletUriInput.value = updatedUri;
-    controller.walletUriInput.dispatchEvent(new window.Event('input'));
-    controller.walletUriInput.dispatchEvent(new window.Event('blur'));
-
-    const updatedValues = controller.getWalletFormValues();
-    assert.equal(updatedValues.uri, updatedUri);
-    assert.equal(controller.walletUriInput.value, '*****');
-
-    controller.walletUriInput.dispatchEvent(new window.Event('focus'));
-    controller.walletUriInput.value = '';
-    controller.walletUriInput.dispatchEvent(new window.Event('input'));
-    controller.walletUriInput.dispatchEvent(new window.Event('blur'));
-
-    assert.equal(controller.walletUriInput.value, '');
-    assert.equal(controller.walletUriInput.dataset.secretValue, undefined);
-
-    t.after(() => {
-      try {
-        controller.hide({ silent: true });
-      } catch {}
-    });
-  });
-
-  test('Profile modal uses abbreviated npub display', async () => {
-    const sampleProfiles = [
-      {
-        pubkey: defaultActorHex,
-        npub: 'npub1abcdefghijkmnopqrstuvwxyz1234567890example',
-        name: '',
-        picture: '',
-        providerId: 'nip07',
-        authType: 'nip07',
-      },
-      {
-        pubkey: 'b'.repeat(64),
-        npub: 'npub1zyxwvutsrqponmlkjihgfedcba1234567890sample',
-        name: '',
-        picture: '',
-        providerId: 'nsec',
-        authType: 'nsec',
-      },
-    ];
-
-    const controller = createController({
-      services: {
-        formatShortNpub,
-      },
-    });
-
-    await controller.load();
-
-    controller.state.setSavedProfiles(sampleProfiles);
-    controller.state.setActivePubkey(sampleProfiles[0].pubkey);
-
-    controller.renderSavedProfiles();
-
-    const expectedActive = formatShortNpub(sampleProfiles[0].npub);
-    assert.equal(controller.profileNpub.textContent, expectedActive);
-
-    const switcherNpubEl = controller.switcherList.querySelector('.font-mono');
-    assert.ok(switcherNpubEl, 'switcher should render the secondary profile');
-    const expectedSwitcher = formatShortNpub(sampleProfiles[1].npub);
-    assert.equal(switcherNpubEl.textContent, expectedSwitcher);
-  });
-
-  test('renderSavedProfiles applies provider metadata', async () => {
-    const sampleProfiles = [
-      {
-        pubkey: defaultActorHex,
-        npub: 'npub1abcdefghijkmnopqrstuvwxyz1234567890example',
-        name: 'Primary Account',
-        picture: '',
-        providerId: 'nip07',
-        authType: 'nip07',
-      },
-      {
-        pubkey: 'b'.repeat(64),
-        npub: 'npub1zyxwvutsrqponmlkjihgfedcba1234567890sample',
-        name: 'Backup',
-        picture: '',
-        providerId: 'nsec',
-        authType: 'nsec',
-      },
-    ];
-
-    const controller = createController({
-      services: {
-        formatShortNpub,
-      },
-    });
-
-    await controller.load();
-
-    controller.state.setSavedProfiles(sampleProfiles);
-    controller.state.setActivePubkey(null);
-
-    controller.renderSavedProfiles();
-
-    const buttons = Array.from(
-      controller.switcherList.querySelectorAll('button[data-provider-id]'),
-    );
-
-    assert.equal(buttons.length, 2, 'expected two provider entries in the switcher');
-
-    const [extensionButton, directKeyButton] = buttons;
-
-    assert.equal(extensionButton.dataset.providerId, 'nip07');
-    const extensionLabel = extensionButton.querySelector('[data-provider-variant]');
-    assert.ok(extensionLabel, 'extension entry should include a provider badge');
-    assert.equal(extensionLabel.textContent, 'extension (nip-07)');
-    assert.equal(extensionLabel.dataset.providerVariant, 'info');
-    assert.equal(extensionButton.getAttribute('aria-pressed'), 'false');
-
-    assert.equal(directKeyButton.dataset.providerId, 'nsec');
-    const directKeyLabel = directKeyButton.querySelector('[data-provider-variant]');
-    assert.ok(directKeyLabel, 'direct key entry should include a provider badge');
-    assert.equal(
-      directKeyLabel.textContent,
-      'nsec or seed (direct private key)',
-    );
-    assert.equal(directKeyLabel.dataset.providerVariant, 'warning');
-    assert.equal(directKeyButton.getAttribute('aria-pressed'), 'false');
-  });
-
-  test('Hashtag pane shows empty states by default', async (t) => {
-    const controller = createController();
-    await controller.load();
-    applyDesignSystemAttributes(document);
-
-    let cleanupRan = false;
-    const cleanup = () => {
-      try {
-        controller.hide({ silent: true });
-      } catch {}
-      cleanupRan = true;
-    };
-
+  let cleanupRan = false;
+  const cleanup = () => {
     try {
-      await controller.show('hashtags');
-      await waitForAnimationFrame(window, 2);
+      controller.hide({ silent: true });
+    } catch {}
+    cleanupRan = true;
+  };
 
-      const interestList = document.getElementById('profileHashtagInterestList');
-      const interestEmpty = document.getElementById('profileHashtagInterestEmpty');
-      const disinterestList = document.getElementById('profileHashtagDisinterestList');
-      const disinterestEmpty = document.getElementById(
-        'profileHashtagDisinterestEmpty',
-      );
+  try {
+    await controller.show('account');
+    await waitForAnimationFrame(window, 2);
 
-      assert.ok(interestList && interestEmpty && disinterestList && disinterestEmpty);
-      assert.equal(interestList?.classList.contains('hidden'), true);
-      assert.equal(interestEmpty?.classList.contains('hidden'), false);
-      assert.equal(disinterestList?.classList.contains('hidden'), true);
-      assert.equal(disinterestEmpty?.classList.contains('hidden'), false);
-    } finally {
+    const layout = document.querySelector('[data-profile-layout]');
+    const menuWrapper = document.querySelector('[data-profile-mobile-menu]');
+    const paneWrapper = document.querySelector('[data-profile-mobile-pane]');
+    const backButton = document.getElementById('profileModalBack');
+
+    assert.ok(layout && menuWrapper && paneWrapper && backButton);
+
+    assert.equal(layout?.dataset.mobileView, 'menu');
+    assert.equal(menuWrapper?.getAttribute('aria-hidden'), 'false');
+    assert.equal(menuWrapper?.classList.contains('hidden'), false);
+    assert.equal(menuWrapper?.hasAttribute('hidden'), false);
+    assert.equal(paneWrapper?.getAttribute('aria-hidden'), 'true');
+    assert.equal(paneWrapper?.classList.contains('hidden'), true);
+    assert.equal(paneWrapper?.hasAttribute('hidden'), true);
+    assert.equal(backButton?.classList.contains('hidden'), true);
+
+    controller.selectPane('relays');
+    await waitForAnimationFrame(window, 1);
+
+    assert.equal(layout?.dataset.mobileView, 'pane');
+    assert.equal(menuWrapper?.getAttribute('aria-hidden'), 'true');
+    assert.equal(menuWrapper?.classList.contains('hidden'), true);
+    assert.equal(menuWrapper?.hasAttribute('hidden'), true);
+    assert.equal(paneWrapper?.getAttribute('aria-hidden'), 'false');
+    assert.equal(paneWrapper?.classList.contains('hidden'), false);
+    assert.equal(paneWrapper?.hasAttribute('hidden'), false);
+    assert.equal(backButton?.classList.contains('hidden'), false);
+
+    backButton?.click();
+    await waitForAnimationFrame(window, 1);
+
+    assert.equal(layout?.dataset.mobileView, 'menu');
+    assert.equal(menuWrapper?.getAttribute('aria-hidden'), 'false');
+    assert.equal(menuWrapper?.classList.contains('hidden'), false);
+    assert.equal(menuWrapper?.hasAttribute('hidden'), false);
+    assert.equal(paneWrapper?.getAttribute('aria-hidden'), 'true');
+    assert.equal(paneWrapper?.classList.contains('hidden'), true);
+    assert.equal(paneWrapper?.hasAttribute('hidden'), true);
+    assert.equal(backButton?.classList.contains('hidden'), true);
+  } finally {
+    cleanup();
+  }
+
+  t.after(() => {
+    if (!cleanupRan) {
       cleanup();
     }
+    resetRuntimeFlags();
+  });
+});
 
-    t.after(() => {
-      if (!cleanupRan) {
-        cleanup();
-      }
-      resetRuntimeFlags();
-    });
+test('wallet URI input masks persisted values and restores on focus', async (t) => {
+  const controller = createController();
+  await controller.load();
+
+  controller.state.setActivePubkey('a'.repeat(64));
+
+  await controller.show('wallet');
+
+  const sampleUri =
+    'nostr+walletconnect://pub1?relay=wss://relay.example.com';
+  await controller.services.nwcSettings.updateActiveNwcSettings({
+    nwcUri: sampleUri,
+    defaultZap: 21,
   });
 
-  test('Hashtag pane adds, moves, and removes tags', async (t) => {
-    const controller = createController();
-    await controller.load();
-    applyDesignSystemAttributes(document);
+  controller.walletController.refreshWalletPaneState();
 
-    let cleanupRan = false;
-    const cleanup = () => {
-      try {
-        controller.hide({ silent: true });
-      } catch {}
-      cleanupRan = true;
-    };
+  assert.ok(
+    controller.walletController.walletUriInput instanceof window.HTMLElement,
+    'wallet URI input should exist',
+  );
+  assert.equal(controller.walletController.walletUriInput.value, '*****');
+  assert.equal(controller.walletController.walletUriInput.dataset.secretValue, sampleUri);
+  assert.equal(
+    controller.walletController.walletDisconnectButton?.classList.contains('hidden'),
+    false,
+    'disconnect button should remain visible when a URI exists',
+  );
 
+  const formValues = controller.walletController.getWalletFormValues();
+  assert.equal(formValues.uri, sampleUri);
+
+  controller.walletController.walletUriInput.dispatchEvent(new window.Event('focus'));
+  assert.equal(controller.walletController.walletUriInput.value, sampleUri);
+
+  controller.walletController.walletUriInput.dispatchEvent(new window.Event('blur'));
+  assert.equal(controller.walletController.walletUriInput.value, '*****');
+
+  controller.walletController.walletUriInput.dispatchEvent(new window.Event('focus'));
+  const updatedUri = `${sampleUri}&name=bitvid`;
+  controller.walletController.walletUriInput.value = updatedUri;
+  controller.walletController.walletUriInput.dispatchEvent(new window.Event('input'));
+  controller.walletController.walletUriInput.dispatchEvent(new window.Event('blur'));
+
+  const updatedValues = controller.walletController.getWalletFormValues();
+  assert.equal(updatedValues.uri, updatedUri);
+  assert.equal(controller.walletController.walletUriInput.value, '*****');
+
+  controller.walletController.walletUriInput.dispatchEvent(new window.Event('focus'));
+  controller.walletController.walletUriInput.value = '';
+  controller.walletController.walletUriInput.dispatchEvent(new window.Event('input'));
+  controller.walletController.walletUriInput.dispatchEvent(new window.Event('blur'));
+
+  assert.equal(controller.walletController.walletUriInput.value, '');
+  assert.equal(controller.walletController.walletUriInput.dataset.secretValue, undefined);
+
+  t.after(() => {
     try {
-      await controller.show('hashtags');
-      await waitForAnimationFrame(window, 2);
+      controller.hide({ silent: true });
+    } catch {}
+  });
+});
 
-      controller.hashtagInterestInput.value = '#nostr';
-      controller.addHashtagInterestButton.click();
-      await waitForAnimationFrame(window, 2);
+test('Profile modal uses abbreviated npub display', async () => {
+  const sampleProfiles = [
+    {
+      pubkey: defaultActorHex,
+      npub: 'npub1abcdefghijkmnopqrstuvwxyz1234567890example',
+      name: '',
+      picture: '',
+      providerId: 'nip07',
+      authType: 'nip07',
+    },
+    {
+      pubkey: 'b'.repeat(64),
+      npub: 'npub1zyxwvutsrqponmlkjihgfedcba1234567890sample',
+      name: '',
+      picture: '',
+      providerId: 'nsec',
+      authType: 'nsec',
+    },
+  ];
 
-      const interestList = document.getElementById('profileHashtagInterestList');
-      assert.equal(interestList?.classList.contains('hidden'), false);
-      assert.equal(interestList?.querySelectorAll('li').length, 1);
-      const interestLabel = interestList?.querySelector('li span');
-      assert.equal(interestLabel?.textContent, '#nostr');
-
-      const disinterestList = document.getElementById('profileHashtagDisinterestList');
-      const disinterestEmpty = document.getElementById('profileHashtagDisinterestEmpty');
-      assert.equal(disinterestList?.classList.contains('hidden'), true);
-      assert.equal(disinterestEmpty?.classList.contains('hidden'), false);
-
-      controller.hashtagDisinterestInput.value = '#nostr';
-      controller.addHashtagDisinterestButton.click();
-      await waitForAnimationFrame(window, 2);
-
-      assert.equal(interestList?.querySelectorAll('li').length, 0);
-      const interestEmpty = document.getElementById('profileHashtagInterestEmpty');
-      assert.equal(interestEmpty?.classList.contains('hidden'), false);
-
-      assert.equal(disinterestList?.classList.contains('hidden'), false);
-      assert.equal(disinterestList?.querySelectorAll('li').length, 1);
-      const disinterestLabel = disinterestList?.querySelector('li span');
-      assert.equal(disinterestLabel?.textContent, '#nostr');
-
-      const removeButton = disinterestList?.querySelector(
-        'button.profile-hashtag-remove',
-      );
-      assert.ok(removeButton);
-      removeButton.click();
-      await waitForAnimationFrame(window, 2);
-
-      assert.equal(disinterestList?.querySelectorAll('li').length, 0);
-      assert.equal(disinterestEmpty?.classList.contains('hidden'), false);
-    } finally {
-      cleanup();
-    }
-
-    t.after(() => {
-      if (!cleanupRan) {
-        cleanup();
-      }
-      resetRuntimeFlags();
-    });
+  const controller = createController({
+    services: {
+      formatShortNpub,
+    },
   });
 
-  test('handleAddHashtagPreference publishes updates', async (t) => {
-    const publishCalls = [];
-    const controller = createController({
-      services: {
-        hashtagPreferences: {
-          publish: async (payload) => {
-            publishCalls.push(payload);
-            return { ok: true };
-          },
+  await controller.load();
+
+  controller.state.setSavedProfiles(sampleProfiles);
+  controller.state.setActivePubkey(sampleProfiles[0].pubkey);
+
+  controller.renderSavedProfiles();
+
+  const expectedActive = formatShortNpub(sampleProfiles[0].npub);
+  assert.equal(controller.profileNpub.textContent, expectedActive);
+
+  const switcherNpubEl = controller.switcherList.querySelector('.font-mono');
+  assert.ok(switcherNpubEl, 'switcher should render the secondary profile');
+  const expectedSwitcher = formatShortNpub(sampleProfiles[1].npub);
+  assert.equal(switcherNpubEl.textContent, expectedSwitcher);
+});
+
+test('renderSavedProfiles applies provider metadata', async () => {
+  const sampleProfiles = [
+    {
+      pubkey: defaultActorHex,
+      npub: 'npub1abcdefghijkmnopqrstuvwxyz1234567890example',
+      name: 'Primary Account',
+      picture: '',
+      providerId: 'nip07',
+      authType: 'nip07',
+    },
+    {
+      pubkey: 'b'.repeat(64),
+      npub: 'npub1zyxwvutsrqponmlkjihgfedcba1234567890sample',
+      name: 'Backup',
+      picture: '',
+      providerId: 'nsec',
+      authType: 'nsec',
+    },
+  ];
+
+  const controller = createController({
+    services: {
+      formatShortNpub,
+    },
+  });
+
+  await controller.load();
+
+  controller.state.setSavedProfiles(sampleProfiles);
+  controller.state.setActivePubkey(null);
+
+  controller.renderSavedProfiles();
+
+  const buttons = Array.from(
+    controller.switcherList.querySelectorAll('button[data-provider-id]'),
+  );
+
+  assert.equal(buttons.length, 2, 'expected two provider entries in the switcher');
+
+  const [extensionButton, directKeyButton] = buttons;
+
+  assert.equal(extensionButton.dataset.providerId, 'nip07');
+  const extensionLabel = extensionButton.querySelector('[data-provider-variant]');
+  assert.ok(extensionLabel, 'extension entry should include a provider badge');
+  assert.equal(extensionLabel.textContent, 'extension (nip-07)');
+  assert.equal(extensionLabel.dataset.providerVariant, 'info');
+  assert.equal(extensionButton.getAttribute('aria-pressed'), 'false');
+
+  assert.equal(directKeyButton.dataset.providerId, 'nsec');
+  const directKeyLabel = directKeyButton.querySelector('[data-provider-variant]');
+  assert.ok(directKeyLabel, 'direct key entry should include a provider badge');
+  assert.equal(
+    directKeyLabel.textContent,
+    'nsec or seed (direct private key)',
+  );
+  assert.equal(directKeyLabel.dataset.providerVariant, 'warning');
+  assert.equal(directKeyButton.getAttribute('aria-pressed'), 'false');
+});
+
+test('Hashtag pane shows empty states by default', async (t) => {
+  const controller = createController();
+  await controller.load();
+  applyDesignSystemAttributes(document);
+
+  let cleanupRan = false;
+  const cleanup = () => {
+    try {
+      controller.hide({ silent: true });
+    } catch {}
+    cleanupRan = true;
+  };
+
+  try {
+    await controller.show('hashtags');
+    await waitForAnimationFrame(window, 2);
+
+    const interestList = document.getElementById('profileHashtagInterestList');
+    const interestEmpty = document.getElementById('profileHashtagInterestEmpty');
+    const disinterestList = document.getElementById('profileHashtagDisinterestList');
+    const disinterestEmpty = document.getElementById(
+      'profileHashtagDisinterestEmpty',
+    );
+
+    assert.ok(interestList && interestEmpty && disinterestList && disinterestEmpty);
+    assert.equal(interestList?.classList.contains('hidden'), true);
+    assert.equal(interestEmpty?.classList.contains('hidden'), false);
+    assert.equal(disinterestList?.classList.contains('hidden'), true);
+    assert.equal(disinterestEmpty?.classList.contains('hidden'), false);
+  } finally {
+    cleanup();
+  }
+
+  t.after(() => {
+    if (!cleanupRan) {
+      cleanup();
+    }
+    resetRuntimeFlags();
+  });
+});
+
+test('Hashtag pane adds, moves, and removes tags', async (t) => {
+  const controller = createController();
+  await controller.load();
+  applyDesignSystemAttributes(document);
+
+  let cleanupRan = false;
+  const cleanup = () => {
+    try {
+      controller.hide({ silent: true });
+    } catch {}
+    cleanupRan = true;
+  };
+
+  try {
+    await controller.show('hashtags');
+    await waitForAnimationFrame(window, 2);
+
+    controller.hashtagInterestInput.value = '#nostr';
+    controller.addHashtagInterestButton.click();
+    await waitForAnimationFrame(window, 2);
+
+    const interestList = document.getElementById('profileHashtagInterestList');
+    assert.equal(interestList?.classList.contains('hidden'), false);
+    assert.equal(interestList?.querySelectorAll('li').length, 1);
+    const interestLabel = interestList?.querySelector('li span');
+    assert.equal(interestLabel?.textContent, '#nostr');
+
+    const disinterestList = document.getElementById('profileHashtagDisinterestList');
+    const disinterestEmpty = document.getElementById('profileHashtagDisinterestEmpty');
+    assert.equal(disinterestList?.classList.contains('hidden'), true);
+    assert.equal(disinterestEmpty?.classList.contains('hidden'), false);
+
+    controller.hashtagDisinterestInput.value = '#nostr';
+    controller.addHashtagDisinterestButton.click();
+    await waitForAnimationFrame(window, 2);
+
+    assert.equal(interestList?.querySelectorAll('li').length, 0);
+    const interestEmpty = document.getElementById('profileHashtagInterestEmpty');
+    assert.equal(interestEmpty?.classList.contains('hidden'), false);
+
+    assert.equal(disinterestList?.classList.contains('hidden'), false);
+    assert.equal(disinterestList?.querySelectorAll('li').length, 1);
+    const disinterestLabel = disinterestList?.querySelector('li span');
+    assert.equal(disinterestLabel?.textContent, '#nostr');
+
+    const removeButton = disinterestList?.querySelector(
+      'button.profile-hashtag-remove',
+    );
+    assert.ok(removeButton);
+    removeButton.click();
+    await waitForAnimationFrame(window, 2);
+
+    assert.equal(disinterestList?.querySelectorAll('li').length, 0);
+    assert.equal(disinterestEmpty?.classList.contains('hidden'), false);
+  } finally {
+    cleanup();
+  }
+
+  t.after(() => {
+    if (!cleanupRan) {
+      cleanup();
+    }
+    resetRuntimeFlags();
+  });
+});
+
+test('handleAddHashtagPreference publishes updates', async (t) => {
+  const publishCalls = [];
+  const controller = createController({
+    services: {
+      hashtagPreferences: {
+        publish: async (payload) => {
+          publishCalls.push(payload);
+          return { ok: true };
         },
       },
-    });
-    await controller.load();
-    applyDesignSystemAttributes(document);
+    },
+  });
+  await controller.load();
+  applyDesignSystemAttributes(document);
 
-    controller.state.setActivePubkey(defaultActorHex);
+  controller.state.setActivePubkey(defaultActorHex);
 
-    let cleanupRan = false;
-    const cleanup = () => {
-      try {
-        controller.hide({ silent: true });
-      } catch {}
-      cleanupRan = true;
-    };
-
+  let cleanupRan = false;
+  const cleanup = () => {
     try {
-      await controller.show('hashtags');
-      await waitForAnimationFrame(window, 2);
+      controller.hide({ silent: true });
+    } catch {}
+    cleanupRan = true;
+  };
 
-      controller.hashtagInterestInput.value = '#nostr';
-      const result = await controller.handleAddHashtagPreference('interest');
+  try {
+    await controller.show('hashtags');
+    await waitForAnimationFrame(window, 2);
 
-      assert.equal(result.success, true);
-      assert.equal(publishCalls.length, 1);
-      assert.deepEqual(publishCalls[0], { pubkey: defaultActorHex });
-    } finally {
+    controller.hashtagInterestInput.value = '#nostr';
+    const result = await controller.handleAddHashtagPreference('interest');
+
+    assert.equal(result.success, true);
+    assert.equal(publishCalls.length, 1);
+    assert.deepEqual(publishCalls[0], { pubkey: defaultActorHex });
+  } finally {
+    cleanup();
+  }
+
+  t.after(() => {
+    if (!cleanupRan) {
       cleanup();
     }
-
-    t.after(() => {
-      if (!cleanupRan) {
-        cleanup();
-      }
-      resetRuntimeFlags();
-    });
+    resetRuntimeFlags();
   });
+});
 
-  test('Hashtag pane resets after logout when service clears tags', async (t) => {
-    const controller = createController();
-    await controller.load();
-    applyDesignSystemAttributes(document);
+test('Hashtag pane resets after logout when service clears tags', async (t) => {
+  const controller = createController();
+  await controller.load();
+  applyDesignSystemAttributes(document);
 
-    let cleanupRan = false;
-    const cleanup = () => {
-      try {
-        controller.hide({ silent: true });
-      } catch {}
-      cleanupRan = true;
-    };
-
+  let cleanupRan = false;
+  const cleanup = () => {
     try {
-      await controller.show('hashtags');
-      await waitForAnimationFrame(window, 2);
+      controller.hide({ silent: true });
+    } catch {}
+    cleanupRan = true;
+  };
 
-      controller.hashtagInterestInput.value = 'art';
-      controller.addHashtagInterestButton.click();
-      await waitForAnimationFrame(window, 2);
+  try {
+    await controller.show('hashtags');
+    await waitForAnimationFrame(window, 2);
 
-      const interestList = document.getElementById('profileHashtagInterestList');
-      assert.equal(interestList?.querySelectorAll('li').length, 1);
+    controller.hashtagInterestInput.value = 'art';
+    controller.addHashtagInterestButton.click();
+    await waitForAnimationFrame(window, 2);
 
-      controller.hashtagPreferencesService.removeInterest('art');
-      await controller.handleAuthLogout({});
-      await waitForAnimationFrame(window, 2);
+    const interestList = document.getElementById('profileHashtagInterestList');
+    assert.equal(interestList?.querySelectorAll('li').length, 1);
 
-      const interestEmpty = document.getElementById('profileHashtagInterestEmpty');
-      const disinterestEmpty = document.getElementById('profileHashtagDisinterestEmpty');
-      assert.equal(interestList?.querySelectorAll('li').length, 0);
-      assert.equal(interestEmpty?.classList.contains('hidden'), false);
-      assert.equal(disinterestEmpty?.classList.contains('hidden'), false);
-    } finally {
+    controller.services.hashtagPreferences.removeInterest('art');
+    await controller.handleAuthLogout({});
+    await waitForAnimationFrame(window, 2);
+
+    const interestEmpty = document.getElementById('profileHashtagInterestEmpty');
+    const disinterestEmpty = document.getElementById('profileHashtagDisinterestEmpty');
+    assert.equal(interestList?.querySelectorAll('li').length, 0);
+    assert.equal(interestEmpty?.classList.contains('hidden'), false);
+    assert.equal(disinterestEmpty?.classList.contains('hidden'), false);
+  } finally {
+    cleanup();
+  }
+
+  t.after(() => {
+    if (!cleanupRan) {
       cleanup();
     }
-
-    t.after(() => {
-      if (!cleanupRan) {
-        cleanup();
-      }
-      resetRuntimeFlags();
-    });
+    resetRuntimeFlags();
   });
-}
+});
 
 test('load() injects markup and caches expected elements', async () => {
   const controller = createController();
@@ -996,7 +995,7 @@ test('load() injects markup and caches expected elements', async () => {
   assert.ok(controller.panes.account instanceof window.HTMLElement);
   assert.ok(controller.relayList instanceof window.HTMLElement);
   assert.ok(controller.blockList instanceof window.HTMLElement);
-  assert.ok(controller.walletStatusText instanceof window.HTMLElement);
+  assert.ok(controller.walletController.walletStatusText instanceof window.HTMLElement);
 });
 
 test('show()/hide() toggle panes, trap focus, and refresh the wallet pane', async () => {
@@ -1009,12 +1008,12 @@ test('show()/hide() toggle panes, trap focus, and refresh the wallet pane', asyn
   };
 
   let walletRefreshes = 0;
-  controller.refreshWalletPaneState = () => {
+  controller.walletController.refreshWalletPaneState = () => {
     walletRefreshes += 1;
   };
 
   let relaysPopulated = 0;
-  controller.populateProfileRelays = () => {
+  controller.relayController.populateProfileRelays = () => {
     relaysPopulated += 1;
   };
 
@@ -1074,10 +1073,10 @@ test('populateProfileRelays renders entries and wires action buttons', async () 
 
   const modeCalls = [];
   const removeCalls = [];
-  controller.handleRelayModeToggle = (url) => {
+  controller.relayController.handleRelayModeToggle = (url) => {
     modeCalls.push(url);
   };
-  controller.handleRemoveRelay = (url) => {
+  controller.relayController.handleRemoveRelay = (url) => {
     removeCalls.push(url);
   };
 
@@ -1312,6 +1311,9 @@ test('handleDirectMessagesRelayWarning throttles status updates', async (t) => {
   const statusCalls = [];
   const controller = createController({
     showStatus: (message) => statusCalls.push(message),
+    constants: {
+      ENABLE_NIP17_RELAY_WARNING: true,
+    },
   });
   await controller.load();
 
@@ -1329,4 +1331,20 @@ test('handleDirectMessagesRelayWarning throttles status updates', async (t) => {
   controller.handleActiveDmIdentityChanged('newpubkey');
   controller.handleDirectMessagesRelayWarning(detail);
   assert.equal(statusCalls.length, 2);
+});
+
+test('handleDirectMessagesRelayWarning suppresses status updates when disabled', async (t) => {
+  const statusCalls = [];
+  const controller = createController({
+    showStatus: (message) => statusCalls.push(message),
+    constants: {
+      ENABLE_NIP17_RELAY_WARNING: false,
+    },
+  });
+  await controller.load();
+
+  const detail = { warning: 'dm-relays-fallback' };
+
+  controller.handleDirectMessagesRelayWarning(detail);
+  assert.equal(statusCalls.length, 0);
 });

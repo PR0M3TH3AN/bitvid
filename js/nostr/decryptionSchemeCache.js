@@ -10,7 +10,11 @@
  * login path where all three services decrypt simultaneously.
  */
 
-const DECRYPTION_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+// Extended from 10 minutes to 2 hours. The cache is cleared on logout, so
+// there's no privacy concern with a longer TTL. A short TTL caused redundant
+// scheme probing during normal browsing sessions, triggering unnecessary
+// NIP-07 extension calls that slow down background list re-syncs.
+const DECRYPTION_CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 
 /** @type {Map<string, { scheme: string, timestamp: number }>} */
 const cache = new Map();

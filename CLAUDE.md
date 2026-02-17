@@ -13,7 +13,7 @@ This document provides context and guidance for AI assistants working with the b
 - **WebTorrent**: P2P video streaming fallback
 - **Tailwind CSS**: Utility-first styling with custom design tokens
 - **Playwright**: E2E and visual regression testing
-- **Node.js 20+**: Development environment
+- **Node.js 22+**: Development environment
 
 ### License
 GPL-3.0-or-later (see `LICENSE`)
@@ -80,7 +80,14 @@ bitvid/
 | `js/nostrEventSchemas.js` | **Source of truth** for all Nostr event schemas |
 | `js/constants.js` | Feature flags and runtime configuration |
 | `config/instance-config.js` | Deployment-specific settings |
+| `js/testHarness.js` | Playwright test harness (`window.__bitvidTest__`) |
+| `tests/e2e/helpers/bitvidTestFixture.ts` | Reusable Playwright fixture for agent testing |
+| `scripts/agent/simple-relay.mjs` | Mock Nostr relay with HTTP seeding API |
 | `docs/nostr-event-schemas.md` | Event schema documentation |
+| `context/` | Agent working state: current goal, scope, assumptions (see AGENTS.md §15) |
+| `todo/` | Agent task checklist with done/blocked sections (see AGENTS.md §15) |
+| `decisions/` | Agent decision log: choices, alternatives, rationale (see AGENTS.md §15) |
+| `test_logs/` | Agent verification log: commands run and results (see AGENTS.md §15) |
 
 ---
 
@@ -119,17 +126,20 @@ npm run test:visual
 
 | Script | Purpose |
 |--------|---------|
-| `npm run build` | Full build (Tailwind + dist) |
+| `npm run build` | Full build (Tailwind + dist + verify) |
 | `npm run build:css` | Regenerate Tailwind only |
 | `npm run format` | Format with Prettier |
 | `npm run lint` | Run all linting checks |
 | `npm run lint:css` | CSS token validation |
 | `npm run lint:inline-styles` | Block inline styles |
 | `npm run lint:tokens` | Design token enforcement |
+| `npm run lint:file-size` | Enforce file size limits |
+| `npm run lint:innerhtml` | Enforce innerHTML baseline |
 | `npm run test:unit` | Full unit test suite |
 | `npm run test:unit:shard1` | Shard 1/3 (faster local dev) |
 | `npm run test:unit:shard2` | Shard 2/3 |
 | `npm run test:unit:shard3` | Shard 3/3 |
+| `npm run test:smoke` | Run critical path smoke tests |
 | `npm run test:dm:unit` | Direct message unit tests |
 | `npm run test:dm:integration` | DM integration tests |
 | `npm run test:e2e` | Headless E2E tests |
@@ -242,6 +252,8 @@ Feature flags in `js/constants.js` gate experimental behavior:
 | `FEATURE_PUBLISH_NIP71` | false | NIP-71 video publishing |
 | `FEATURE_SEARCH_FILTERS` | Dev mode only | Advanced search |
 | `FEATURE_TRUST_SEEDS` | true | Baseline trust seeds |
+| `FEATURE_TRUSTED_HIDE_CONTROLS` | true | Trusted mute/spam hide controls |
+| `FEATURE_IMPROVED_COMMENT_FETCHING` | true | Improved comment fetching logic |
 
 Toggle at runtime:
 ```javascript
@@ -330,6 +342,29 @@ Failed visual tests store artifacts in `artifacts/test-results/`:
 
 View with: `./scripts/show-artifacts.sh`
 
+### Agent E2E Testing (Playwright)
+
+bitvid includes a test harness for programmatic Playwright testing without browser extensions or real relays. See `AGENTS.md` Section 14 for the full reference. Quick start:
+
+```typescript
+import { test, expect } from "./helpers/bitvidTestFixture";
+
+test("my test", async ({ page, gotoApp, loginAs, seedEvent }) => {
+  await seedEvent({ title: "Test Video", url: "https://example.com/v.mp4" });
+  await gotoApp();
+  await loginAs(page);
+  // interact with the app using data-testid selectors
+  await expect(page.locator('[data-testid="upload-button"]')).toBeVisible();
+});
+```
+
+Key capabilities:
+- **Programmatic login**: `loginAs(page)` uses `window.__bitvidTest__.loginWithNsec()` — no modal interaction needed
+- **Mock relay**: Each test gets an isolated in-memory relay with HTTP seeding
+- **Relay override**: `?__test__=1&__testRelays__=ws://localhost:8877` redirects all connections
+- **State inspection**: `window.__bitvidTest__.getAppState()` returns login status, relays, etc.
+- **Stable selectors**: All key elements have `data-testid` attributes (see AGENTS.md Section 14)
+
 ---
 
 ## Common Tasks
@@ -383,10 +418,25 @@ rm css/tailwind.generated.css && npm run build:css
 
 ---
 
-## Release Channels
+## Release Channels & Promotion Pipeline
 
-- **Main**: Production track — preserve UX, atomic commits, feature flags default off
-- **Unstable**: Experimentation — gate risky features behind flags
+Code flows through three branches with increasing stability:
+
+```
+unstable  →  beta  →  main
+ (dev)      (soak)   (prod)
+```
+
+| Branch | Purpose | CI Required | Manual QA |
+|--------|---------|-------------|-----------|
+| `unstable` | Active development, AI agent PRs land here | Yes | No |
+| `beta` | Stabilization soak (hosted for testing) | Yes | Yes — hosted domain |
+| `main` | Production | Yes | Verified via beta |
+
+**Promotion rules:**
+- `unstable → beta`: After a batch of improvements passes CI and local testing
+- `beta → main`: After weeks of soak time on the beta hosted domain with no regressions
+- Never push directly to `main` or `beta` — always promote from the previous stage
 
 ### Emergency Response
 
@@ -394,6 +444,36 @@ If a change breaks playback or magnet handling:
 1. Revert immediately
 2. Note rollback in PR
 3. Document in AGENTS.md
+
+---
+
+## Multi-Agent Development Workflow
+
+This project uses multiple AI coding agents working in parallel:
+- **Claude Code** — Refactoring, convention enforcement, codebase-wide changes
+- **OpenAI Codex** — Isolated feature implementation with clear specs
+- **Google Jules** — Issue triage and straightforward bug fixes
+
+### Coordination Rules
+
+All agents **must** follow the subsystem boundaries and PR discipline rules in `AGENTS.md` Section 12. The key principles:
+
+1. **Check before you start.** Look at open PRs before beginning work by running:
+   ```
+   curl -s "https://api.github.com/repos/PR0M3TH3AN/bitvid/pulls?state=open&per_page=100" | jq '{count: length, titles: [.[].title]}'
+   ```
+   If another agent has an open PR touching the same files, stop and flag the conflict.
+2. **One subsystem per PR.** Don't mix unrelated changes. A lint fix and a feature addition are two separate PRs.
+3. **`js/app.js` is single-writer.** Only one PR at a time should modify the main orchestrator.
+4. **Merge fast, branch short.** Long-lived branches cause exponential merge pain with multiple agents. Keep PRs small and mergeable in one sitting.
+
+### For Human Maintainers
+
+When assigning work to agents:
+- Update the "Currently In-Flight Work" section in `AGENTS.md` to reserve subsystems
+- Avoid sending two agents at the same subsystem simultaneously
+- Review and merge agent PRs promptly to keep the queue short — stale PRs compound conflicts
+- Use PR title prefixes (`[nostr-core]`, `[ui]`, `[playback]`, etc.) to make scope visible
 
 ---
 
@@ -408,6 +488,8 @@ If a change breaks playback or magnet handling:
 | `docs/playback-fallback.md` | URL-first strategy |
 | `docs/moderation/README.md` | Moderation system |
 | `docs/logging.md` | Logger usage |
+| `docs/agents/TORCH.md` | TORCH distributed task locking protocol |
+| `context/` / `todo/` / `decisions/` / `test_logs/` | Agent persistent state files (see AGENTS.md §15) |
 
 ---
 
@@ -458,7 +540,7 @@ Validation: Must have `title` + at least one of `url` or `magnet`.
 
 ## Final Notes
 
-1. **Read AGENTS.md first** — it contains mission-critical architectural decisions
+1. **Read AGENTS.md first** — it contains mission-critical architectural decisions and the Agent Execution Protocol (§15)
 2. **Check KNOWN_ISSUES.md** — avoid investigating pre-existing failures
 3. **Use sharded tests** — faster feedback during development
 4. **Never commit generated CSS** — `css/tailwind.generated.css` is gitignored

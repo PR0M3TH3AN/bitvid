@@ -167,6 +167,9 @@ import { updateWatchHistoryListWithDefaultClient } from "./nostrWatchHistoryFaca
 | DM attachment (`NOTE_TYPES.DM_ATTACHMENT`)     | `15`           | `['p', <recipient pubkey>]`, `['x', <sha256 of uploaded bytes>]`, `['url', <download url>]`, optional `['name', <filename>]`, `['type', <mime>]`, `['size', <bytes>]`, optional `['k', <base64 key>]`; inherits schema append tags                                                                 | Empty content; attachment metadata is represented as tags                                                                                                                                                                                                           |
 | DM read receipt (`NOTE_TYPES.DM_READ_RECEIPT`) | `20001`        | `['p', <recipient pubkey>]`, `['e', <message event id>]`, optional `['k', <message kind>]`; inherits schema append tags                                                                                                                                                                            | Empty content; ephemeral receipt for message activity                                                                                                                                                                                                               |
 | DM typing indicator (`NOTE_TYPES.DM_TYPING`)   | `20002`        | `['p', <recipient pubkey>]`, optional `['e', <conversation event id>]`, `['t','typing']`, `['expiration', <unix seconds>]`; inherits schema append tags                                                                                                                                            | Empty content; ephemeral typing indicator that expires quickly                                                                                                                                                                                                      |
+| Gift Wrap (`NOTE_TYPES.GIFT_WRAP`)             | `1059`         | `['p', <recipient pubkey>]`                                                                                                                                                                                                                                                                         | NIP-44 encrypted seal                                                                                                                                                                                                                                               |
+| Seal (`NOTE_TYPES.SEAL`)                       | `13`           | Empty tags usually                                                                                                                                                                                                                                                                                  | NIP-44 encrypted rumor                                                                                                                                                                                                                                              |
+| Chat Message (`NOTE_TYPES.CHAT_MESSAGE`)       | `14`           | `['p', <recipient pubkey>]`                                                                                                                                                                                                                                                                         | Plain text chat message                                                                                                                                                                                                                                             |
 
 > **Publishing note:** Session actors only emit passive telemetry (for example, view counters) and must **not** sign video comments. Require a logged-in Nostr signer for comment publishing via [`commentEvents`](../js/nostr/commentEvents.js).
 
@@ -179,8 +182,9 @@ Video posts should treat `videoRootId` as the stable series identifier that rema
 | Relay list (`NOTE_TYPES.RELAY_LIST`) | `10002` | Repeating `['r', <relay url>]` tags, optionally with a marker of `'read'` or `'write'` to scope the relay; marker omitted for read/write relays | Empty content |
 | DM relay hints (`NOTE_TYPES.DM_RELAY_LIST`) | `10050` | Repeating `['relay', <relay url>]` tags to advertise delivery relays for NIP-17 gift-wrapped DMs | Empty content |
 | View counter (`NOTE_TYPES.VIEW_EVENT`) | `WATCH_HISTORY_KIND` (default `30079`) | Canonical tag set: `['t','view']`, a pointer tag (`['e', <eventId>]` or `['a', <address>]`), and a stable dedupe tag `['d', <view identifier>]`, with optional `['session','true']` when a session actor signs; schema overrides may append extra tags. `['video', ...]` is supported for legacy overrides only. | Optional plaintext message |
-| Watch history month (`NOTE_TYPES.WATCH_HISTORY`) | `WATCH_HISTORY_KIND` (default `30079`) | Replaceable list tag `['d', `${WATCH_HISTORY_LIST_IDENTIFIER}:<YYYY-MM>`]` with optional `['month', <YYYY-MM>]` marker plus schema append tags; no chunk pointers required. | JSON payload `{ version, month: 'YYYY-MM', items: [{ id: <eventId\|address>, watched_at?: <unix seconds> }] }` |
+| Watch history month (`NOTE_TYPES.WATCH_HISTORY`) | `WATCH_HISTORY_KIND` (default `30079`) | Replaceable list tag `['d', '<YYYY-MM>']` with optional `['month', <YYYY-MM>]` marker plus schema append tags; no chunk pointers required. | JSON payload `{ version, month: 'YYYY-MM', items: [{ id: <eventId\|address>, watched_at?: <unix seconds> }] }` |
 | Subscription list (`NOTE_TYPES.SUBSCRIPTION_LIST`) | `30000` | `['d', 'subscriptions']`, `['encrypted', 'nip44_v2']` (updated to the negotiated scheme at publish time) | NIP-04/NIP-44 encrypted JSON array of NIP-51 follow-set tuples (e.g., `[['p', <hex>], …]`) |
+| Subscription list backup (`NOTE_TYPES.SUBSCRIPTION_BACKUP`) | `30000` | `['d', <identifier>]`, `['encrypted', 'nip44_v2']` | NIP-04/NIP-44 encrypted JSON array of NIP-51 follow-set tuples (e.g., `[['p', <hex>], …]`) |
 | User block list (`NOTE_TYPES.USER_BLOCK_LIST`) | `10000` | `['d', 'user-blocks']` | **LEGACY**. NIP-04/NIP-44 encrypted JSON array of [NIP-51](https://github.com/nostr-protocol/nips/blob/master/51.md) tag tuples. Migrated to standard Mute List (kind `10000`) which uses public tags for mutes and encrypted content for private blocks. |
 | Hashtag preferences (`NOTE_TYPES.HASHTAG_PREFERENCES`) | `30015` | `['d', 'bitvid:tag-preferences']` plus schema-appended `['encrypted','nip44_v2']` | NIP-44 encrypted JSON `{ version, interests: string[], disinterests: string[] }` |
 | Admin moderation list (`NOTE_TYPES.ADMIN_MODERATION_LIST`) | `30000` | `['d', 'bitvid:admin:editors']`, repeated `['p', <pubkey>]` entries | Empty content |
@@ -244,6 +248,23 @@ toggle, relay list publishing, and metadata toggles), see
 If you introduce a new Nostr feature, add its schema to
 `js/nostrEventSchemas.js` so that the catalogue stays complete and so existing
 builders inherit the same debugging knobs.
+
+### NIP-17 & Gift Wrap (Kinds 1059, 13, 14)
+
+Modern direct messages use the NIP-17 "gift wrap" structure to maximize metadata privacy. The visible event on relays is the **Gift Wrap** (kind 1059), which encrypts a **Seal** (kind 13) for the recipient. The Seal in turn encrypts the actual **Chat Message** (kind 14) or other rumor types (like attachments), ensuring that only the sender and recipient can read the content or see the author/kind of the inner message.
+
+- **Gift Wrap (`1059`)**: Visible tags are limited to `['p', <recipient>]`. The content is a NIP-44 encrypted seal.
+- **Seal (`13`)**: The content is a NIP-44 encrypted rumor.
+- **Chat Message (`14`)**: The inner rumor containing the plaintext message.
+
+### DM Attachments & Receipts (Kinds 15, 20001, 20002, 10050)
+
+bitvid supports rich DM interactions via specialized kinds wrapped in NIP-17 seals (or legacy kind 4 for backward compatibility where applicable):
+
+- **DM Attachment (`15`)**: Represents a file transfer. Metadata lives in tags (`url`, `x` hash, `size`, `type`, `name`, `k` key) while the content field remains empty.
+- **DM Read Receipt (`20001`)**: Ephemeral signal that a message was viewed. Tags include `['e', <messageId>]` and optional `['k', <messageKind>]`.
+- **DM Typing Indicator (`20002`)**: Ephemeral signal with an `['expiration']` tag to show active typing state without persisting history.
+- **DM Relay Hints (`10050`)**: A discoverable list of relays where a user accepts NIP-17 gift wraps, allowing senders to route messages correctly.
 
 ### Hashtag preference lists
 

@@ -1,21 +1,26 @@
 # URL-first playback fallback orchestration
 
-This document explains how `bitvidApp.playVideoWithFallback` in `js/app.js` coordinates hosted URL playback first and falls back to WebTorrent when needed. It also covers the supporting helpers in `js/services/playbackService.js`, `js/playbackUtils.js`, and `js/magnetUtils.js`, including how tracker lists and `ws=`/`xs=` hints are applied.
+This document explains how `bitvidApp.playVideoWithFallback` (implemented via `PlaybackCoordinator` in `js/app/playbackCoordinator.js` and bound to the application instance in `js/app.js`) coordinates hosted URL playback first and falls back to WebTorrent when needed. It details the orchestration layer (`PlaybackStrategyService`), the supporting helpers in `js/services/playbackService.js`, `js/playbackUtils.js`, and `js/magnetUtils.js`, and how tracker lists and `ws=`/`xs=` hints are applied.
 
 ## High-level flow
 
-1. `bitvidApp.playVideoWithFallback({ url, magnet })` trims inputs, ensures the video modal is ready, and constructs a playback session via `playbackService.createSession(...)`.
-2. The session (from `js/services/playbackService.js`) derives a canonical magnet payload using `deriveTorrentPlaybackConfig` (from `js/playbackUtils.js`).
-3. Playback starts with the hosted URL when `URL_FIRST_ENABLED` is true and a URL is available; otherwise, it goes directly to torrent playback.
-4. If URL playback stalls or errors, the session triggers `playViaWebTorrent` with the normalized magnet and optional web seed hints.
+1. `bitvidApp.playVideoWithFallback({ url, magnet })` (via `PlaybackCoordinator`) trims inputs and delegates to `playbackStrategyService.play(...)`.
+2. `PlaybackStrategyService` (in `js/services/playbackStrategyService.js`) checks for existing sessions to deduplicate requests, manages the video modal element lifecycle, and constructs a playback session via `playbackService.createSession(...)`.
+3. The session (from `js/services/playbackService.js`) derives a canonical magnet payload using `deriveTorrentPlaybackConfig` (from `js/playbackUtils.js`).
+4. Playback starts with the hosted URL when `URL_FIRST_ENABLED` is true and a URL is available; otherwise, it goes directly to torrent playback.
+5. If URL playback stalls or errors, the session triggers `playViaWebTorrent` with the normalized magnet and optional web seed hints.
 
 ## Call flow into playbackService
 
-`bitvidApp.playVideoWithFallback` performs UI preparation and delegates the decision-making to a `PlaybackSession`:
+`bitvidApp.playVideoWithFallback` delegates the decision-making to `PlaybackStrategyService`, which then creates a `PlaybackSession`:
 
+- **Strategy orchestration**
+  - `playbackStrategyService.play({ url, magnet, ... })`
+  - The strategy handles request deduplication (reusing an active session if the inputs match) and ensures the UI video element is ready/replaced if needed.
+  - It calls `playbackService.createSession(...)` to instantiate the mechanism.
 - **Session setup**
   - `playbackService.createSession({ url, magnet, videoElement, probeUrl, playViaWebTorrent, ... })`
-  - The session captures `url`, `magnet`, and a request signature to de-duplicate duplicate calls.
+  - The session captures `url`, `magnet`, and a request signature.
 - **Hosted URL probe**
   - `PlaybackSession.execute()` calls `probeUrl(url)` to check availability and decides whether to attempt direct playback.
 - **Hosted URL playback**
@@ -59,13 +64,15 @@ The fallback hand-off happens in these places inside `PlaybackSession.execute()`
 
 ```mermaid
 sequenceDiagram
-  participant App as bitvidApp (js/app.js)
+  participant App as App (Coordinator)
+  participant Strategy as PlaybackStrategyService
   participant Service as PlaybackService (js/services/playbackService.js)
   participant Session as PlaybackSession
   participant Video as HTMLVideoElement
   participant Magnet as magnetUtils/playbackUtils
 
-  App->>Service: createSession({ url, magnet, videoElement, ... })
+  App->>Strategy: play({ url, magnet, ... })
+  Strategy->>Service: createSession({ url, magnet, videoElement, ... })
   Service->>Session: new PlaybackSession(...)
   Session->>Magnet: deriveTorrentPlaybackConfig()
   Magnet-->>Session: normalized magnet + fallbackMagnet

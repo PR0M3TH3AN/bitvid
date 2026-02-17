@@ -149,7 +149,7 @@ export default class ShareNostrController {
       throw new Error("share-missing-relays");
     }
 
-    if (signer.type === "extension" && this.services.nostrClient.ensureExtensionPermissions) {
+    if ((signer.type === "extension" || signer.type === "nip07") && this.services.nostrClient.ensureExtensionPermissions) {
       const permissionResult = await this.services.nostrClient.ensureExtensionPermissions(
         this.services.permissionMethods,
       );

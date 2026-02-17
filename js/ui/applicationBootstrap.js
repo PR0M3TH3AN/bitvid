@@ -6,6 +6,7 @@ import { createWatchHistoryRenderer } from "../historyView.js";
 import WatchHistoryController from "./watchHistoryController.js";
 import WatchHistoryTelemetry from "../services/watchHistoryTelemetry.js";
 import PlaybackService from "../services/playbackService.js";
+import PlaybackStrategyService from "../services/playbackStrategyService.js";
 import AuthService from "../services/authService.js";
 import DiscussionCountService from "../services/discussionCountService.js";
 import CommentThreadService from "../services/commentThreadService.js";
@@ -21,7 +22,7 @@ import r2Service from "../services/r2Service.js";
 import s3UploadService from "../services/s3UploadService.js";
 import RelayHealthService from "../services/relayHealthService.js";
 import { createFeedEngine } from "../feedEngine/index.js";
-import { URL_FIRST_ENABLED } from "../constants.js";
+import { URL_FIRST_ENABLED, SHORT_TIMEOUT_MS } from "../constants.js";
 import { ALLOW_NSFW_CONTENT } from "../config.js";
 import { relayManager } from "../relayManager.js";
 import { userBlocks } from "../userBlocks.js";
@@ -350,6 +351,10 @@ export default class ApplicationBootstrap {
           },
         },
       });
+    app.playbackStrategyService = new PlaybackStrategyService({
+      playbackService: app.playbackService,
+      logger: devLogger,
+    });
     app.activePlaybackResultPromise = null;
     app.activePlaybackSession = null;
 
@@ -605,6 +610,7 @@ export default class ApplicationBootstrap {
           onPublishDmRelayPreferences: (payload) =>
             app.handleProfilePublishDmRelayPreferences(payload),
           onRequestPermissionPrompt: () => app.handlePermissionPromptRequest(),
+          onRetryAuthSync: () => app.handleAuthSyncRetryRequest(),
         };
 
         app.profileController = new ProfileModalController({
@@ -867,31 +873,6 @@ export default class ApplicationBootstrap {
       }
     };
     app.boundNwcSettingsToastHandler = null;
-    Object.defineProperty(app, "savedProfiles", {
-      configurable: false,
-      enumerable: false,
-      get() {
-        return getSavedProfiles();
-      },
-      set(next) {
-        setSavedProfiles(Array.isArray(next) ? next : [], {
-          persist: false,
-          persistActive: false,
-        });
-      },
-    });
-
-    Object.defineProperty(app, "activeProfilePubkey", {
-      configurable: false,
-      enumerable: false,
-      get() {
-        return getActiveProfilePubkey();
-      },
-      set(value) {
-        setStoredActiveProfilePubkey(value, { persist: false });
-      },
-    });
-
     Object.defineProperty(app, "profileCache", {
       configurable: false,
       enumerable: false,
@@ -918,7 +899,7 @@ export default class ApplicationBootstrap {
           if (this.window && typeof this.window.setTimeout === "function") {
             this.window.setTimeout(() => {
               app.showStatus("");
-            }, 5000);
+            }, SHORT_TIMEOUT_MS);
           }
         } else {
           app.showError(message);
@@ -969,6 +950,7 @@ export default class ApplicationBootstrap {
         buildShareUrlFromEventId: (eventId) => app.buildShareUrlFromEventId(eventId),
         getKnownVideoPostedAt: (video) => app.getKnownVideoPostedAt(video),
         resolveVideoPostedAt: (video) => app.resolveVideoPostedAt(video),
+        batchResolveVideoPostedAt: (videos) => app.resolveVideoPostedAtBatch(videos),
         canManageBlacklist: () => app.canCurrentUserManageBlacklist(),
         canEditVideo: (video) => video?.pubkey === app.pubkey,
         canDeleteVideo: (video) => video?.pubkey === app.pubkey,

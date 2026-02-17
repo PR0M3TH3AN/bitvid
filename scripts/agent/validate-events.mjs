@@ -1,353 +1,422 @@
-import crypto from 'node:crypto';
-
-// Polyfills for browser environment
-class MockWebSocket {
-  constructor(url) {
-    this.url = url;
-    this.readyState = 0;
-  }
-  send() {}
-  close() {}
-  addEventListener() {}
-  removeEventListener() {}
-}
-
-process.env.NODE_ENV = 'test';
-
-if (!global.crypto) {
-    global.crypto = crypto;
-}
-global.WebSocket = MockWebSocket;
-global.window = {
-  crypto: global.crypto,
-  WebSocket: MockWebSocket,
-  localStorage: {
-    getItem: () => null,
-    setItem: () => {},
-    removeItem: () => {},
-  },
-  location: { protocol: 'https:' },
-  navigator: { userAgent: 'Node.js' },
-  __TEST_MODE__: true,
-};
-global.document = {
-  createElement: () => ({}),
-  addEventListener: () => {},
-};
-global.TextEncoder = TextEncoder;
-global.TextDecoder = TextDecoder;
-
-// Import schemas and builders
-import {
-  NOTE_TYPES,
-  ADMIN_LIST_IDENTIFIERS,
-  validateEventStructure,
-  buildVideoPostEvent,
-  buildHttpAuthEvent,
-  buildReportEvent,
-  buildVideoMirrorEvent,
-  buildRepostEvent,
-  buildShareEvent,
-  buildRelayListEvent,
-  buildDmRelayListEvent,
-  buildProfileMetadataEvent,
-  buildMuteListEvent,
-  buildDeletionEvent,
-  buildLegacyDirectMessageEvent,
-  buildDmAttachmentEvent,
-  buildDmReadReceiptEvent,
-  buildDmTypingIndicatorEvent,
-  buildViewEvent,
-  buildZapRequestEvent,
-  buildReactionEvent,
-  buildCommentEvent,
-  buildWatchHistoryEvent,
-  buildSubscriptionListEvent,
-  buildBlockListEvent,
-  buildHashtagPreferenceEvent,
-  buildAdminListEvent
-} from '../../js/nostrEventSchemas.js';
-
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import * as schemas from '../../js/nostrEventSchemas.js';
 import { buildNip71VideoEvent } from '../../js/nostr/nip71.js';
 
-const TEST_PUBKEY = '0000000000000000000000000000000000000000000000000000000000000001';
-const TEST_TIMESTAMP = 1672531200; // 2023-01-01
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-function runTest(name, builderFn, input, expectedType) {
-  console.log(`\nTesting: ${name}`);
+// Mock window for compatibility
+if (typeof window === 'undefined') {
+  global.window = {};
+}
+
+const results = [];
+
+const builders = {
+  ...schemas,
+  buildNip71VideoEvent
+};
+
+function runTest(builderName, testName, args, expectedValid = true) {
   try {
-    const event = builderFn(input);
-    if (!event) {
-      console.error(`❌ Builder returned null or undefined`);
-      return false;
+    const builder = builders[builderName];
+    if (typeof builder !== 'function') {
+      throw new Error(`Builder ${builderName} not found`);
     }
 
-    const { valid, errors } = validateEventStructure(expectedType, event);
-    if (valid) {
-      console.log(`✅ Valid ${expectedType} (Kind: ${event.kind})`);
-      return true;
+    // Handle arguments: if args is an array, apply it. If it's an object, assume single argument (params).
+    // Exception: buildAdminListEvent takes (listKey, params).
+    let event;
+    if (Array.isArray(args)) {
+      event = builder(...args);
     } else {
-      console.error(`❌ Invalid ${expectedType}:`);
-      errors.forEach(err => console.error(`   - ${err}`));
-      return false;
+      event = builder(args);
     }
+
+    if (!event) {
+       throw new Error(`Builder ${builderName} returned null/undefined`);
+    }
+
+    let type;
+    const builderToType = {
+      buildVideoPostEvent: schemas.NOTE_TYPES.VIDEO_POST,
+      buildVideoMirrorEvent: schemas.NOTE_TYPES.VIDEO_MIRROR,
+      buildRepostEvent: schemas.NOTE_TYPES.REPOST,
+      buildShareEvent: schemas.NOTE_TYPES.SHARE,
+      buildRelayListEvent: schemas.NOTE_TYPES.RELAY_LIST,
+      buildDmRelayListEvent: schemas.NOTE_TYPES.DM_RELAY_LIST,
+      buildProfileMetadataEvent: schemas.NOTE_TYPES.PROFILE_METADATA,
+      buildMuteListEvent: schemas.NOTE_TYPES.MUTE_LIST,
+      buildDeletionEvent: schemas.NOTE_TYPES.DELETION,
+      buildLegacyDirectMessageEvent: schemas.NOTE_TYPES.LEGACY_DM,
+      buildDmAttachmentEvent: schemas.NOTE_TYPES.DM_ATTACHMENT,
+      buildDmReadReceiptEvent: schemas.NOTE_TYPES.DM_READ_RECEIPT,
+      buildDmTypingIndicatorEvent: schemas.NOTE_TYPES.DM_TYPING,
+      buildViewEvent: schemas.NOTE_TYPES.VIEW_EVENT,
+      buildZapRequestEvent: schemas.NOTE_TYPES.ZAP_REQUEST,
+      buildReactionEvent: schemas.NOTE_TYPES.VIDEO_REACTION,
+      buildCommentEvent: schemas.NOTE_TYPES.VIDEO_COMMENT,
+      buildWatchHistoryEvent: schemas.NOTE_TYPES.WATCH_HISTORY,
+      buildSubscriptionListEvent: schemas.NOTE_TYPES.SUBSCRIPTION_LIST,
+      buildBlockListEvent: schemas.NOTE_TYPES.USER_BLOCK_LIST,
+      buildHashtagPreferenceEvent: schemas.NOTE_TYPES.HASHTAG_PREFERENCES,
+      buildAdminListEvent: schemas.NOTE_TYPES.ADMIN_MODERATION_LIST, // Default
+      buildGiftWrapEvent: schemas.NOTE_TYPES.GIFT_WRAP,
+      buildSealEvent: schemas.NOTE_TYPES.SEAL,
+      buildChatMessageEvent: schemas.NOTE_TYPES.CHAT_MESSAGE,
+      buildHttpAuthEvent: schemas.NOTE_TYPES.HTTP_AUTH,
+      buildReportEvent: schemas.NOTE_TYPES.REPORT,
+      buildNip71VideoEvent: schemas.NOTE_TYPES.NIP71_VIDEO // Default
+    };
+
+    type = builderToType[builderName];
+
+    // Special cases for type resolution
+    if (builderName === 'buildRepostEvent' && event.kind === 16) {
+      type = schemas.NOTE_TYPES.GENERIC_REPOST;
+    }
+    if (builderName === 'buildAdminListEvent') {
+      const listKey = Array.isArray(args) ? args[0] : args; // assuming first arg is listKey
+      if (listKey === 'moderation' || listKey === 'editors') type = schemas.NOTE_TYPES.ADMIN_MODERATION_LIST;
+      else if (listKey === 'whitelist') type = schemas.NOTE_TYPES.ADMIN_WHITELIST;
+      else if (listKey === 'blacklist') type = schemas.NOTE_TYPES.ADMIN_BLACKLIST;
+    }
+    if (builderName === 'buildNip71VideoEvent') {
+      if (event.kind === 22) type = schemas.NOTE_TYPES.NIP71_SHORT_VIDEO;
+      else type = schemas.NOTE_TYPES.NIP71_VIDEO;
+    }
+
+    const validation = schemas.validateEventStructure(type, event);
+
+    results.push({
+      builder: builderName,
+      testName,
+      inputs: args,
+      event,
+      valid: validation.valid === expectedValid,
+      validationResult: validation,
+      expectedValid
+    });
+
   } catch (error) {
-    console.error(`❌ Exception during build:`, error);
-    return false;
+    results.push({
+      builder: builderName,
+      testName,
+      inputs: args,
+      error: error.message,
+      stack: error.stack,
+      valid: false
+    });
   }
 }
 
-async function main() {
-  console.log('Starting Event Schema Validation...');
-  let failures = 0;
+// --- Test Cases ---
 
-  // 1. Video Post
-  const videoInput = {
-    pubkey: TEST_PUBKEY,
-    created_at: TEST_TIMESTAMP,
-    dTagValue: 'test-video-id',
-    content: {
-      version: 3,
-      title: 'Test Video',
-      videoRootId: 'test-video-id',
-      url: 'https://example.com/video.mp4',
-      magnet: 'magnet:?xt=urn:btih:1234567890abcdef1234567890abcdef12345678',
-      thumbnail: 'https://example.com/thumb.jpg',
-      description: 'A test video',
-      mode: 'live',
-      isPrivate: false,
-      isNsfw: false,
-      isForKids: true,
-      enableComments: true
+const PUBKEY = '0000000000000000000000000000000000000000000000000000000000000001';
+const CREATED_AT = 1700000000;
+
+// Video Post
+runTest('buildVideoPostEvent', 'Basic Video Post', {
+  pubkey: PUBKEY,
+  created_at: CREATED_AT,
+  dTagValue: 'video-1',
+  content: {
+    version: 3,
+    title: 'My Video',
+    videoRootId: 'video-1',
+    url: 'https://example.com/video.mp4'
+  }
+});
+
+runTest('buildVideoPostEvent', 'Video Post with Magnet', {
+  pubkey: PUBKEY,
+  created_at: CREATED_AT,
+  dTagValue: 'video-2',
+  content: {
+    version: 3,
+    title: 'My Magnet Video',
+    videoRootId: 'video-2',
+    magnet: 'magnet:?xt=urn:btih:1234567890abcdef1234567890abcdef12345678&dn=video'
+  }
+});
+
+// Video Mirror
+runTest('buildVideoMirrorEvent', 'Video Mirror', {
+  pubkey: PUBKEY,
+  created_at: CREATED_AT,
+  tags: [['url', 'https://example.com/mirror.mp4'], ['m', 'video/mp4']],
+  content: 'Alt text'
+});
+
+// Repost
+runTest('buildRepostEvent', 'Repost Event', {
+  pubkey: PUBKEY,
+  created_at: CREATED_AT,
+  eventId: '1111111111111111111111111111111111111111111111111111111111111111',
+  eventRelay: 'wss://relay.example.com'
+});
+
+runTest('buildRepostEvent', 'Generic Repost (Kind 16)', {
+  pubkey: PUBKEY,
+  created_at: CREATED_AT,
+  targetKind: 30078,
+  serializedEvent: JSON.stringify({ kind: 30078, tags: [], content: '{}' })
+});
+
+// Share
+runTest('buildShareEvent', 'Share Event', {
+  pubkey: PUBKEY,
+  created_at: CREATED_AT,
+  content: 'Check this out!',
+  video: { id: '2222222222222222222222222222222222222222222222222222222222222222', pubkey: PUBKEY },
+  relays: ['wss://relay.example.com']
+});
+
+// Relay List
+runTest('buildRelayListEvent', 'Relay List', {
+  pubkey: PUBKEY,
+  created_at: CREATED_AT,
+  relays: [
+    { url: 'wss://relay1.com', read: true, write: true },
+    { url: 'wss://relay2.com', read: true, write: false }
+  ]
+});
+
+// DM Relay List
+runTest('buildDmRelayListEvent', 'DM Relay List', {
+  pubkey: PUBKEY,
+  created_at: CREATED_AT,
+  relays: ['wss://relay.dm.com']
+});
+
+// Profile Metadata
+runTest('buildProfileMetadataEvent', 'Profile Metadata', {
+  pubkey: PUBKEY,
+  created_at: CREATED_AT,
+  metadata: { name: 'Alice', about: 'Hello' }
+});
+
+// Mute List
+runTest('buildMuteListEvent', 'Mute List', {
+  pubkey: PUBKEY,
+  created_at: CREATED_AT,
+  pTags: [PUBKEY],
+  content: '{ "blockedPubkeys": [] }',
+  encrypted: true,
+  encryptionTag: 'nip44_v2'
+});
+
+// Deletion
+runTest('buildDeletionEvent', 'Deletion', {
+  pubkey: PUBKEY,
+  created_at: CREATED_AT,
+  eventIds: ['3333333333333333333333333333333333333333333333333333333333333333'],
+  reason: 'Mistake'
+});
+
+// Legacy DM
+runTest('buildLegacyDirectMessageEvent', 'Legacy DM', {
+  pubkey: PUBKEY,
+  created_at: CREATED_AT,
+  recipientPubkey: PUBKEY,
+  ciphertext: 'encrypted_content'
+});
+
+// DM Attachment
+runTest('buildDmAttachmentEvent', 'DM Attachment', {
+  pubkey: PUBKEY,
+  created_at: CREATED_AT,
+  recipientPubkey: PUBKEY,
+  attachment: { url: 'https://example.com/file.jpg', x: 'hash', type: 'image/jpeg' }
+});
+
+// DM Read Receipt
+runTest('buildDmReadReceiptEvent', 'DM Read Receipt', {
+  pubkey: PUBKEY,
+  created_at: CREATED_AT,
+  recipientPubkey: PUBKEY,
+  eventId: '4444444444444444444444444444444444444444444444444444444444444444'
+});
+
+// DM Typing
+runTest('buildDmTypingIndicatorEvent', 'DM Typing', {
+  pubkey: PUBKEY,
+  created_at: CREATED_AT,
+  recipientPubkey: PUBKEY,
+  expiresAt: CREATED_AT + 60
+});
+
+// View Event
+runTest('buildViewEvent', 'View Event', {
+  pubkey: PUBKEY,
+  created_at: CREATED_AT,
+  pointerValue: 'video-1',
+  dedupeTag: 'session-1',
+  includeSessionTag: true
+});
+
+// Zap Request
+runTest('buildZapRequestEvent', 'Zap Request', {
+  pubkey: PUBKEY,
+  created_at: CREATED_AT,
+  recipientPubkey: PUBKEY,
+  amountSats: 100,
+  relays: ['wss://relay.zap.com']
+});
+
+// Reaction
+runTest('buildReactionEvent', 'Reaction', {
+  pubkey: PUBKEY,
+  created_at: CREATED_AT,
+  targetPointer: { type: 'e', value: '5555555555555555555555555555555555555555555555555555555555555555' },
+  content: '+'
+});
+
+// Comment
+runTest('buildCommentEvent', 'Comment', {
+  pubkey: PUBKEY,
+  created_at: CREATED_AT,
+  content: 'Nice video!',
+  videoEventId: '6666666666666666666666666666666666666666666666666666666666666666',
+  rootKind: '30078'
+});
+
+// Watch History
+runTest('buildWatchHistoryEvent', 'Watch History', {
+  pubkey: PUBKEY,
+  created_at: CREATED_AT,
+  monthIdentifier: '2023-11',
+  content: { version: 2, month: '2023-11', items: [] }
+});
+
+// Subscription List
+runTest('buildSubscriptionListEvent', 'Subscription List', {
+  pubkey: PUBKEY,
+  created_at: CREATED_AT,
+  content: 'encrypted_subscriptions',
+  encryption: 'nip44_v2'
+});
+
+// Block List
+runTest('buildBlockListEvent', 'Block List', {
+  pubkey: PUBKEY,
+  created_at: CREATED_AT,
+  content: 'encrypted_blocks',
+  encryption: 'nip44_v2'
+});
+
+// Hashtag Preferences
+runTest('buildHashtagPreferenceEvent', 'Hashtag Preferences', {
+  pubkey: PUBKEY,
+  created_at: CREATED_AT,
+  content: 'encrypted_preferences'
+});
+
+// Admin Lists
+runTest('buildAdminListEvent', 'Admin Moderation List', ['moderation', {
+  pubkey: PUBKEY,
+  created_at: CREATED_AT,
+  hexPubkeys: [PUBKEY]
+}]);
+
+runTest('buildAdminListEvent', 'Admin Whitelist', ['whitelist', {
+  pubkey: PUBKEY,
+  created_at: CREATED_AT,
+  hexPubkeys: [PUBKEY]
+}]);
+
+// Gift Wrap
+runTest('buildGiftWrapEvent', 'Gift Wrap', {
+  pubkey: PUBKEY,
+  created_at: CREATED_AT,
+  recipientPubkey: PUBKEY,
+  ciphertext: 'sealed_message'
+});
+
+// Seal
+runTest('buildSealEvent', 'Seal', {
+  pubkey: PUBKEY,
+  created_at: CREATED_AT,
+  ciphertext: 'rumor_message'
+});
+
+// Chat Message
+runTest('buildChatMessageEvent', 'Chat Message', {
+  pubkey: PUBKEY,
+  created_at: CREATED_AT,
+  recipientPubkey: PUBKEY,
+  content: 'Hello'
+});
+
+// HTTP Auth
+runTest('buildHttpAuthEvent', 'HTTP Auth', {
+  pubkey: PUBKEY,
+  created_at: CREATED_AT,
+  url: 'https://example.com/auth',
+  method: 'GET'
+});
+
+// Report
+runTest('buildReportEvent', 'Report', {
+  pubkey: PUBKEY,
+  created_at: CREATED_AT,
+  eventId: '7777777777777777777777777777777777777777777777777777777777777777',
+  reportType: 'spam'
+});
+
+// NIP-71 Video
+runTest('buildNip71VideoEvent', 'NIP-71 Video', {
+  metadata: {
+    title: 'My NIP-71 Video',
+    summary: 'Summary',
+    kind: 21,
+    publishedAt: 1700000000
+  },
+  pubkey: PUBKEY,
+  title: 'My NIP-71 Video',
+  created_at: CREATED_AT
+});
+
+// --- CLI Handling ---
+
+const args = process.argv.slice(2);
+let outFile = 'artifacts/validate-events-latest.json';
+const dryRun = args.includes('--dry-run');
+
+args.forEach(arg => {
+  if (arg.startsWith('--out=')) {
+    outFile = arg.split('=')[1];
+  }
+});
+
+// Summary
+const total = results.length;
+const passed = results.filter(r => r.valid).length;
+const failed = total - passed;
+
+console.log(`\nValidation Summary: ${passed}/${total} passed`);
+
+if (failed > 0) {
+  console.log(`⚠️  ${failed} failures found:`);
+  results.filter(r => !r.valid).forEach(r => {
+    console.log(`\n[FAIL] ${r.builder}: ${r.testName}`);
+    if (r.error) {
+      console.log(`  Error: ${r.error}`);
+    } else if (r.validationResult && r.validationResult.errors) {
+      r.validationResult.errors.forEach(e => console.log(`  Schema Error: ${e}`));
     }
-  };
-  if (!runTest('buildVideoPostEvent', buildVideoPostEvent, videoInput, NOTE_TYPES.VIDEO_POST)) failures++;
-
-  // 2. Relay List
-  const relayListInput = {
-    pubkey: TEST_PUBKEY,
-    created_at: TEST_TIMESTAMP,
-    relays: [
-      { url: 'wss://relay.example.com', mode: 'read' },
-      { url: 'wss://relay.other.com', mode: 'write' },
-      'wss://relay.both.com'
-    ]
-  };
-  if (!runTest('buildRelayListEvent', buildRelayListEvent, relayListInput, NOTE_TYPES.RELAY_LIST)) failures++;
-
-  // 3. Hashtag Preferences
-  const hashtagInput = {
-    pubkey: TEST_PUBKEY,
-    created_at: TEST_TIMESTAMP,
-    content: JSON.stringify({ interests: ['art', 'code'], disinterests: ['spam'] })
-  };
-  if (!runTest('buildHashtagPreferenceEvent', buildHashtagPreferenceEvent, hashtagInput, NOTE_TYPES.HASHTAG_PREFERENCES)) failures++;
-
-  // 4. HTTP Auth
-  const httpAuthInput = {
-    pubkey: TEST_PUBKEY,
-    created_at: TEST_TIMESTAMP,
-    url: 'https://api.example.com/auth',
-    method: 'POST',
-    payload: 'sha256-hash-of-body'
-  };
-  if (!runTest('buildHttpAuthEvent', buildHttpAuthEvent, httpAuthInput, NOTE_TYPES.HTTP_AUTH)) failures++;
-
-  // 5. Report
-  const reportInput = {
-    pubkey: TEST_PUBKEY,
-    created_at: TEST_TIMESTAMP,
-    eventId: 'e'.repeat(64),
-    reportType: 'spam',
-    content: 'This is spam'
-  };
-  if (!runTest('buildReportEvent', buildReportEvent, reportInput, NOTE_TYPES.REPORT)) failures++;
-
-  // 6. Video Mirror (NIP-94)
-  const mirrorInput = {
-    pubkey: TEST_PUBKEY,
-    created_at: TEST_TIMESTAMP,
-    content: 'Mirror description'
-  };
-  if (!runTest('buildVideoMirrorEvent', buildVideoMirrorEvent, mirrorInput, NOTE_TYPES.VIDEO_MIRROR)) failures++;
-
-  // 7. Repost
-  const repostInput = {
-    pubkey: TEST_PUBKEY,
-    created_at: TEST_TIMESTAMP,
-    eventId: 'e'.repeat(64),
-    eventRelay: 'wss://relay.example.com'
-  };
-  if (!runTest('buildRepostEvent', buildRepostEvent, repostInput, NOTE_TYPES.REPOST)) failures++;
-
-  // 8. Share
-  const shareInput = {
-    pubkey: TEST_PUBKEY,
-    created_at: TEST_TIMESTAMP,
-    content: 'Check this out',
-    video: { id: 'e'.repeat(64), pubkey: TEST_PUBKEY }
-  };
-  if (!runTest('buildShareEvent', buildShareEvent, shareInput, NOTE_TYPES.SHARE)) failures++;
-
-  // 9. DM Relay List
-  const dmRelayListInput = {
-    pubkey: TEST_PUBKEY,
-    created_at: TEST_TIMESTAMP,
-    relays: ['wss://dm.relay.com']
-  };
-  if (!runTest('buildDmRelayListEvent', buildDmRelayListEvent, dmRelayListInput, NOTE_TYPES.DM_RELAY_LIST)) failures++;
-
-  // 10. Profile Metadata
-  const profileInput = {
-    pubkey: TEST_PUBKEY,
-    created_at: TEST_TIMESTAMP,
-    metadata: { name: 'Alice', about: 'Test user' }
-  };
-  if (!runTest('buildProfileMetadataEvent', buildProfileMetadataEvent, profileInput, NOTE_TYPES.PROFILE_METADATA)) failures++;
-
-  // 11. Mute List
-  const muteListInput = {
-    pubkey: TEST_PUBKEY,
-    created_at: TEST_TIMESTAMP,
-    pTags: [TEST_PUBKEY]
-  };
-  if (!runTest('buildMuteListEvent', buildMuteListEvent, muteListInput, NOTE_TYPES.MUTE_LIST)) failures++;
-
-  // 12. Deletion
-  const deletionInput = {
-    pubkey: TEST_PUBKEY,
-    created_at: TEST_TIMESTAMP,
-    eventIds: ['e'.repeat(64)],
-    reason: 'Mistake'
-  };
-  if (!runTest('buildDeletionEvent', buildDeletionEvent, deletionInput, NOTE_TYPES.DELETION)) failures++;
-
-  // 13. Legacy DM
-  const legacyDmInput = {
-    pubkey: TEST_PUBKEY,
-    created_at: TEST_TIMESTAMP,
-    recipientPubkey: TEST_PUBKEY,
-    ciphertext: 'encrypted-stuff'
-  };
-  if (!runTest('buildLegacyDirectMessageEvent', buildLegacyDirectMessageEvent, legacyDmInput, NOTE_TYPES.LEGACY_DM)) failures++;
-
-  // 14. DM Attachment
-  const dmAttachmentInput = {
-    pubkey: TEST_PUBKEY,
-    created_at: TEST_TIMESTAMP,
-    recipientPubkey: TEST_PUBKEY,
-    attachment: { url: 'https://example.com/file.jpg', type: 'image/jpeg' }
-  };
-  if (!runTest('buildDmAttachmentEvent', buildDmAttachmentEvent, dmAttachmentInput, NOTE_TYPES.DM_ATTACHMENT)) failures++;
-
-  // 15. DM Read Receipt
-  const dmReadReceiptInput = {
-    pubkey: TEST_PUBKEY,
-    created_at: TEST_TIMESTAMP,
-    recipientPubkey: TEST_PUBKEY,
-    eventId: 'e'.repeat(64)
-  };
-  if (!runTest('buildDmReadReceiptEvent', buildDmReadReceiptEvent, dmReadReceiptInput, NOTE_TYPES.DM_READ_RECEIPT)) failures++;
-
-  // 16. DM Typing Indicator
-  const dmTypingInput = {
-    pubkey: TEST_PUBKEY,
-    created_at: TEST_TIMESTAMP,
-    recipientPubkey: TEST_PUBKEY
-  };
-  if (!runTest('buildDmTypingIndicatorEvent', buildDmTypingIndicatorEvent, dmTypingInput, NOTE_TYPES.DM_TYPING)) failures++;
-
-  // 17. View Event
-  const viewInput = {
-    pubkey: TEST_PUBKEY,
-    created_at: TEST_TIMESTAMP,
-    pointerValue: 'test-pointer',
-    pointerTag: ['a', 'test-pointer']
-  };
-  if (!runTest('buildViewEvent', buildViewEvent, viewInput, NOTE_TYPES.VIEW_EVENT)) failures++;
-
-  // 18. Zap Request
-  const zapRequestInput = {
-    pubkey: TEST_PUBKEY,
-    created_at: TEST_TIMESTAMP,
-    recipientPubkey: TEST_PUBKEY,
-    amountSats: 100,
-    relays: ['wss://relay.zap.com']
-  };
-  if (!runTest('buildZapRequestEvent', buildZapRequestEvent, zapRequestInput, NOTE_TYPES.ZAP_REQUEST)) failures++;
-
-  // 19. Reaction
-  const reactionInput = {
-    pubkey: TEST_PUBKEY,
-    created_at: TEST_TIMESTAMP,
-    pointerTag: ['e', 'e'.repeat(64)],
-    content: '+'
-  };
-  if (!runTest('buildReactionEvent', buildReactionEvent, reactionInput, NOTE_TYPES.VIDEO_REACTION)) failures++;
-
-  // 20. Comment
-  const commentInput = {
-    pubkey: TEST_PUBKEY,
-    created_at: TEST_TIMESTAMP,
-    videoEventId: 'e'.repeat(64),
-    content: 'Nice video!'
-  };
-  if (!runTest('buildCommentEvent', buildCommentEvent, commentInput, NOTE_TYPES.VIDEO_COMMENT)) failures++;
-
-  // 21. Watch History
-  const watchHistoryInput = {
-    pubkey: TEST_PUBKEY,
-    created_at: TEST_TIMESTAMP,
-    monthIdentifier: '2023-01',
-    content: JSON.stringify({ ['e'.repeat(64)]: 123456 })
-  };
-  if (!runTest('buildWatchHistoryEvent', buildWatchHistoryEvent, watchHistoryInput, NOTE_TYPES.WATCH_HISTORY)) failures++;
-
-  // 22. Subscription List
-  const subListInput = {
-    pubkey: TEST_PUBKEY,
-    created_at: TEST_TIMESTAMP
-  };
-  if (!runTest('buildSubscriptionListEvent', buildSubscriptionListEvent, subListInput, NOTE_TYPES.SUBSCRIPTION_LIST)) failures++;
-
-  // 23. Block List
-  const blockListInput = {
-    pubkey: TEST_PUBKEY,
-    created_at: TEST_TIMESTAMP
-  };
-  if (!runTest('buildBlockListEvent', buildBlockListEvent, blockListInput, NOTE_TYPES.USER_BLOCK_LIST)) failures++;
-
-  // 24. Admin List
-  const adminListInput = {
-    pubkey: TEST_PUBKEY,
-    created_at: TEST_TIMESTAMP,
-    hexPubkeys: [TEST_PUBKEY]
-  };
-  if (!runTest('buildAdminListEvent (moderation)', (i) => buildAdminListEvent(ADMIN_LIST_IDENTIFIERS.moderation, i), adminListInput, NOTE_TYPES.ADMIN_MODERATION_LIST)) failures++;
-
-  // 25. NIP-71 Video
-  const nip71Input = {
-    pubkey: TEST_PUBKEY,
-    title: 'NIP-71 Video',
-    metadata: {
-      kind: 21,
-      title: 'NIP-71 Video',
-      publishedAt: TEST_TIMESTAMP,
-      hashtags: ['test']
-    },
-    pointerIdentifiers: { videoRootId: 'test-root' }
-  };
-  if (!runTest('buildNip71VideoEvent', buildNip71VideoEvent, nip71Input, NOTE_TYPES.NIP71_VIDEO)) failures++;
-
-
-  console.log('\n-----------------------------------');
-  if (failures === 0) {
-    console.log('🎉 All schema validation tests passed!');
-    process.exit(0);
-  } else {
-    console.error(`💥 ${failures} tests failed.`);
-    process.exit(1);
-  }
+  });
+} else {
+  console.log('✓ All builders validated successfully.');
 }
 
-main();
+if (!dryRun) {
+  const dir = path.dirname(outFile);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  fs.writeFileSync(outFile, JSON.stringify(results, null, 2));
+  console.log(`\nReport written to ${outFile}`);
+}

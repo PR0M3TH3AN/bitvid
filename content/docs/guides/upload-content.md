@@ -1,31 +1,64 @@
 # How to Upload Content
 
-bitvid is a decentralized platform, but for larger video files, we support **Cloudflare R2** and **S3-compatible** storage backends. This allows you to upload files directly from your browser to a high-performance storage bucket.
+bitvid is a decentralized platform that supports multiple ways to share video content. For direct uploads, we support **Cloudflare R2** and **S3-compatible** storage backends (like MinIO, DigitalOcean Spaces, or AWS S3), allowing you to upload files directly from your browser to a high-performance storage bucket.
 
-## Prerequisites
+## Upload Methods
 
-- A **Cloudflare Account** (free to create) or an **S3-compatible provider**.
-- An activated **R2 Plan** (if using Cloudflare).
+bitvid offers three ways to publish content:
+
+1.  **Direct Upload:** Upload a video file from your device to your configured storage bucket (R2 or S3). The client handles the upload, generates a magnet link for WebTorrent, and publishes the metadata to Nostr.
+2.  **External Link:** Provide a direct URL to a video file hosted elsewhere (e.g., on a personal server or another CDN). This URL serves as a playback source (and usually the primary one, depending on instance settings). **Note:** External URLs must use **HTTPS**.
+3.  **Magnet Link:** Assist the network by providing a magnet link for an existing torrent. Note that magnet-only uploads require at least one active seeder to be playable.
 
 ## Supported Media & Limits
 
 Before you start, ensure your content meets the following requirements:
 
 ### Accepted File Types
-- **Video:** `.mp4`, `.webm`, `.mov`, `.mkv`, `.ts`, `.m3u8`, `.mpg`, `.mpeg`
-- **Thumbnail:** Any standard image format (`image/*`)
+
+- **Video:** All standard video formats (`video/*`). The browser file picker explicitly accepts: `.mp4`, `.webm`, `.mov`, `.mkv`, `.ts`, `.m3u8`, `.mpg`, `.mpeg`.
+- **Thumbnail:** Any standard image format (`image/*`) supported by your browser.
+
+> **Note:** Ensure your container format is supported by modern browsers (e.g., MP4/H.264, WebM) for optimal playback compatibility, although the backend and file picker accept any `video/*` type.
 
 ### File Size
-- **Recommended:** Up to **2GB** per file.
-- **Why?** Browser-based uploads rely on your device's memory for hashing and chunk management. Files larger than 2GB may cause browser instability or crashes.
 
-### Metadata
+- **Recommended:** Up to **2GB** per file.
+- **Why?** Browser-based uploads rely on your device's memory for hashing (to generate the WebTorrent info hash). Files larger than 2GB may cause browser instability or crashes during the hashing process, which happens entirely in your browser's memory. This is a client-side limitation due to in-memory hashing for WebTorrent, not a server limit.
+
+## Metadata & Options
+
+When publishing a video, you can configure the following:
+
+### Basic Info
+
 - **Title:** **Required**.
 - **Description:** Optional.
-- **Thumbnail:** Optional.
-- **Tags (Hashtags):** Optional but highly recommended for discoverability. Use the dedicated "Hashtags" section in the upload form.
+- **Thumbnail:** Optional (URL or upload).
+- **Tags (Hashtags):** Optional but highly recommended for discoverability.
 
-## Step-by-Step Guide
+### Audience & Engagement
+
+- **Enable Comments:** Toggle to allow or disable comments on your video.
+- **NSFW:** Mark content as "Not Safe For Work" (e.g., artistic nudity, sensitive topics).
+- **For Kids:** Mark content as specifically made for children.
+
+### Advanced Options (NIP-71)
+
+For power users and technical configurations, toggle the "Advanced Options" section to access:
+
+- **Content Warning:** A text label for sensitive content (automatically set to "NSFW" if the NSFW toggle is on).
+- **Duration:** Manually specify the video duration in seconds.
+- **Summary:** A short summary separate from the full description.
+- **IMETA (Video Variants):** Define alternative video sources, resolutions, or MIME types. You can add multiple variants if you have different resolutions or formats available.
+  - **MIME:** (e.g., `video/mp4`)
+  - **Dimensions:** (e.g., `1920x1080`)
+  - **URL:** Direct link to the video file
+  - **Magnet:** Info hash or magnet link
+- **Web Seed (ws):** Manually provide a web seed URL for the torrent.
+- **Torrent File (xs):** Manually provide a URL to a `.torrent` file.
+
+## Step-by-Step Guide: Direct Upload
 
 ### 1. Create a Bucket & Enable Public Access
 
@@ -40,33 +73,39 @@ Before you start, ensure your content meets the following requirements:
 
 To allow your browser to upload files directly to the storage bucket, you must allow Cross-Origin Resource Sharing (CORS).
 
-**Cloudflare R2 (Manual Configuration Required):**
-bitvid will attempt to configure CORS automatically if your API keys have "Admin Read & Write" permissions. However, standard "Object Read & Write" tokens (recommended) cannot modify bucket settings, so you must configure this manually:
+**Automatic Configuration:**
+bitvid will attempt to configure CORS automatically for you when you initiate an upload, provided your API credentials have the `s3:PutBucketCORS` permission.
 
-1. In your bucket's **Settings** tab, scroll down to **"CORS Policy"**.
-2. Click **"Add CORS Policy"** (or Edit).
-3. Paste the following JSON configuration. You **must** allow headers used by the AWS SDK (`amz-sdk-*`).
+**Manual Configuration (Fallback):**
+If your API token is restricted (e.g., "Object Read & Write" only) and lacks permission to modify bucket settings, you must configure CORS manually in your provider's console.
+
+**JSON Policy for Cloudflare R2 / S3:**
+In your bucket settings, add the following CORS policy. You **must** allow headers used by the AWS SDK (`amz-sdk-*`).
 
 ```json
 [
   {
-    "AllowedOrigins": ["http://localhost:5500", "https://bitvid.network"],
-    "AllowedMethods": ["GET", "PUT", "POST", "DELETE", "HEAD", "OPTIONS"],
+    "AllowedOrigins": ["http://localhost:3000", "https://bitvid.network"],
+    "AllowedMethods": ["GET", "HEAD", "PUT", "POST", "DELETE", "OPTIONS"],
     "AllowedHeaders": ["*"],
-    "ExposeHeaders": ["ETag", "Content-Length", "Content-Range", "Accept-Ranges"],
+    "ExposeHeaders": [
+      "ETag",
+      "Content-Length",
+      "Content-Range",
+      "Accept-Ranges"
+    ],
     "MaxAgeSeconds": 3600
   }
 ]
 ```
-> **Note:** Replace `AllowedOrigins` with your actual origins. If you are using the official site, keep `https://bitvid.network`. If you are running a local instance, use `http://localhost:5500`.
 
-**S3 Compatible Providers:**
-bitvid will attempt to configure CORS automatically for generic S3 providers if your credentials have sufficient permissions. However, if uploads fail with CORS errors, apply a similar policy manually in your provider's console.
+> **Note:** Replace `AllowedOrigins` with your actual origins. If you are using the official site, keep `https://bitvid.network`. If you are running a local instance, use `http://localhost:3000` or your custom domain.
 
 ### 3. Create API Credentials
 
 1. Create an API Token or Access Key pair.
-2. **Permissions**: Ensure **"Object Read & Write"** access (or `s3:PutObject`, `s3:DeleteObject`).
+2. **Permissions**: Ensure **"Object Read & Write"** access (specifically `s3:PutObject`, `s3:DeleteObject`).
+   - _Optional:_ Add `s3:PutBucketCORS` if you want bitvid to configure CORS automatically.
 3. **Copy the credentials**: You will need the **Access Key ID** and **Secret Access Key**.
 
 ### 4. Configure bitvid
@@ -81,8 +120,8 @@ bitvid will attempt to configure CORS automatically for generic S3 providers if 
      - **Bucket Name**: The exact name of your bucket.
      - **Public Access URL**: The R2.dev or custom domain URL from Step 1 (e.g., `https://pub-xxx.r2.dev`).
    - **S3 Compatible**:
-     - **Endpoint**: The S3 API endpoint (e.g., `https://s3.us-east-1.amazonaws.com`).
-     - **Region**: (e.g., `us-east-1` or `auto`).
+     - **Endpoint**: The S3 API endpoint (e.g., `https://s3.us-east-1.amazonaws.com` or `https://nyc3.digitaloceanspaces.com`).
+     - **Region**: (e.g., `us-east-1`, `nyc3`, or `auto`).
      - **Access Key ID & Secret Access Key**: From Step 3.
      - **Bucket Name**: The exact name of your bucket.
      - **Public Access URL**: The base URL for public file access (e.g., `https://my-bucket.s3.amazonaws.com` or a CDN URL).
@@ -90,17 +129,37 @@ bitvid will attempt to configure CORS automatically for generic S3 providers if 
 
 bitvid will verify your credentials by attempting to list or upload a test file. Once verified, return to the Upload Modal to start sharing!
 
+## Troubleshooting
+
+### Common Issues
+
+- **Missing Title:** "Title is required."
+- **Missing Source:** "Provide a hosted URL, magnet link, or an imeta variant before publishing."
+- **Invalid URL Protocol:** "Hosted video URLs must use HTTPS."
+- **Storage Not Configured:** "Please configure storage before selecting a file."
+- **Invalid S3 Settings:** "Invalid S3 settings." Double-check your endpoint, region, and bucket name in the Storage configuration tab.
+- **Concurrent Uploads:** "Please wait for uploads to complete." The client currently supports uploading one video at a time to prevent memory exhaustion.
+- **CORS Errors ("Network Error"):** If uploads fail immediately or the console shows "CORS", verify your bucket's CORS policy matches the JSON above. Ensure `AllowedHeaders` includes `*`, `AllowedMethods` includes `PUT`, and `ExposeHeaders` lists `ETag`.
+- **Permission Errors ("Access Denied"):** Check your API credentials. Ensure the token has `Object Read & Write` permissions (specifically `s3:PutObject` and `s3:DeleteObject`).
+- **Browser Crashes / Slow Performance:** Large files (>2GB) can exhaust browser memory during the hashing process. Try using a smaller file or ensuring you have plenty of free RAM.
+- **Playback Issues:** If the video uploads but doesn't play, ensure the "Public Access URL" is correct and publicly reachable. Test the URL directly in a browser.
+- **Magnet-Only Uploads:** "Magnet-only uploads require active seeding." If you provide only a magnet link, ensure you or a peer are actively seeding the torrent, otherwise it will not play for others.
+
 ## Upload Lifecycle & Moderation
 
 ### How Uploads Work
-1. **Direct Upload**: Your browser uploads the file directly to your storage bucket. No video data passes through a bitvid server.
-2. **Client-Side Hashing**: Your browser calculates a cryptographic hash (info hash) of the file to enable WebTorrent support.
-3. **Publication**: The video metadata (title, URL, hash, tags) is signed by your Nostr key and published to relays.
+
+1. **Direct Upload:** Your browser uploads the file directly to your storage bucket using **Multipart Upload**. This ensures reliability for larger files by splitting them into chunks. No video data passes through a bitvid server.
+2. **External Link:** Your browser streams directly from the provided URL (or via WebTorrent if a magnet is also provided). No video data passes through the bitvid server.
+3. **Client-Side Hashing:** Your browser calculates a cryptographic hash (info hash) of the file locally to enable WebTorrent support. This happens in memory, so large files require sufficient RAM.
+4. **Publication:** The video metadata (title, URL, hash, tags) is signed by your Nostr key and published to relays.
 
 ### Moderation & Visibility
-While publication is decentralized and permissionless, the bitvid.network instance may enforce moderation policies:
-- **Whitelists**: If the instance is in "whitelist mode", you may need approval before your videos appear in public feeds.
-- **Blacklists**: Violating community guidelines may result in your account being hidden from this instance.
-- **User Blocks**: Viewers can mute or block your content individually.
+
+While publication is decentralized and permissionless, individual bitvid instances (clients) may enforce moderation policies:
+
+- **Whitelists ("Invite-only"):** If the instance is in "whitelist mode", your videos will only appear in public feeds if your account has been approved by an admin. You can still share direct links, but discovery is restricted for users on strict instances.
+- **Blacklists:** Violating community guidelines may result in your account being hidden from this instance.
+- **User Blocks:** Viewers can mute or block your content individually.
 
 Check the [Community Guidelines](../community/community-guidelines.md) for more details.

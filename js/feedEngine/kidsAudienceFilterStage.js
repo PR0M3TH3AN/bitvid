@@ -1,7 +1,7 @@
 // js/feedEngine/kidsAudienceFilterStage.js
 
 import nostrService from "../services/nostrService.js";
-import { toSet } from "./utils.js";
+import { toSet, markAsNormalized } from "./utils.js";
 
 const DEFAULT_DISALLOWED_WARNINGS = [
   "nudity",
@@ -156,6 +156,6 @@ export function createKidsAudienceFilterStage({
       results.push(item);
     }
 
-    return results;
+    return markAsNormalized(results);
   };
 }

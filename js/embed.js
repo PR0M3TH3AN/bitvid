@@ -102,6 +102,8 @@ app.showSuccess = (message) => {
   setStatus(message, "success");
 };
 
+app.setup();
+
 const resolvePlaybackPreference = (value) => {
   if (typeof value !== "string") {
     return null;

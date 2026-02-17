@@ -26,6 +26,7 @@ const { createWatchHistoryFeedDefinition } = await import(
   "../js/feedEngine/watchHistoryFeed.js"
 );
 const { createFeedEngine } = await import("../js/feedEngine/engine.js");
+const { waitFor } = await import("./test-helpers/wait-for.mjs");
 
 if (typeof globalThis.window === "undefined") {
   globalThis.window = {};
@@ -64,14 +65,16 @@ const originalScheduleWatchHistoryRepublish =
 const originalResolveWatchHistory = nostrClient.resolveWatchHistory;
 const originalGetWatchHistoryFingerprint =
   nostrClient.getWatchHistoryFingerprint;
-const originalExtensionPermissionCache = nostrClient.extensionPermissionCache;
+const originalExtensionPermissionCache = nostrClient.signerManager.extensionPermissionCache;
 const originalExtensionPermissionSnapshot = Array.isArray(
   originalExtensionPermissionCache,
 )
   ? Array.from(originalExtensionPermissionCache)
   : originalExtensionPermissionCache instanceof Set
     ? Array.from(originalExtensionPermissionCache)
-    : [];
+    : originalExtensionPermissionCache instanceof Map
+      ? Array.from(originalExtensionPermissionCache.keys())
+      : [];
 
 const NIP07_PERMISSIONS_STORAGE_KEY = "bitvid:nip07:permissions";
 
@@ -115,7 +118,7 @@ function writeStoredExtensionPermissions(methods = []) {
   }
 }
 
-nostrClient.extensionPermissionCache = new Set();
+nostrClient.signerManager.extensionPermissionCache = new Map();
 clearStoredExtensionPermissions();
 
 nostrClient.watchHistoryCache = new Map();
@@ -981,7 +984,7 @@ async function testPublishSnapshotUsesPlaintext() {
 async function testEnsureExtensionPermissionCaching() {
   const actor = "permission-actor";
   const extension = installExtensionCrypto({ actor });
-  const previousCache = nostrClient.extensionPermissionCache;
+  const previousCache = nostrClient.signerManager.extensionPermissionCache;
   let previousStoredPermissions = null;
   if (typeof localStorage !== "undefined" && localStorage) {
     try {
@@ -992,7 +995,7 @@ async function testEnsureExtensionPermissionCaching() {
       previousStoredPermissions = null;
     }
   }
-  nostrClient.extensionPermissionCache = new Set();
+  nostrClient.signerManager.extensionPermissionCache = new Map();
   clearStoredExtensionPermissions();
 
   try {
@@ -1022,7 +1025,7 @@ async function testEnsureExtensionPermissionCaching() {
     );
   } finally {
     extension.restore();
-    nostrClient.extensionPermissionCache = previousCache;
+    nostrClient.signerManager.extensionPermissionCache = previousCache;
     if (typeof localStorage !== "undefined" && localStorage) {
       try {
         if (previousStoredPermissions && previousStoredPermissions.length) {
@@ -1590,113 +1593,18 @@ async function testWatchHistoryServiceIntegration() {
     assert.ok(snapshotResult.ok, "snapshot should publish queued pointers");
     // snapshotResult now contains { items: flatItems, results: [monthResults...] }
     // or items might be flatItems?
-    // In WatchHistoryManager.publishRecords, we return { ... pointerEvent ... } but items?
-    // In `ensureBackgroundRefresh` we construct entry with `items`.
-    // In `watchHistoryService.snapshot`, it calls `publishWatchHistorySnapshot`.
-    // My updated `publishWatchHistorySnapshot` returns `publishRecords` result.
-    // `publishRecords` returns `{ ok, retryable, results, snapshotId, pointerEvent }`.
-    // It does NOT return `items` explicitly at top level.
-    // But `snapshot` in `watchHistoryService` (which I didn't edit) might expect `items`.
-
-    // Let's check `watchHistoryService.snapshot`. It relies on `publishWatchHistorySnapshot` result.
-    // If `publishWatchHistorySnapshot` doesn't return items, `watchHistoryService` might return undefined items?
-
-    // Actually `publishMonthRecord` returns `items` in result.
-    // `publishRecords` returns `results` array.
-    // I should update `publishRecords` to return aggregated items or `watchHistoryService` test to look into results.
-
-    // In `WatchHistoryManager.js`, `publishRecords`:
-    // items are in `results[i].items`.
-
-    // snapshotResult now contains items (added in my fix to publishSnapshot),
-    // or we can look in results.
     const snapshotItems = snapshotResult.items || (snapshotResult.results || []).flatMap(r => r.items || []);
 
-    const snapshotVideo = extractVideoMetadataFromItem(
-      snapshotItems.find(
+    // Check if item exists first
+    const snapshotItem = snapshotItems.find(
         (entry) =>
           (entry?.value || entry?.pointer?.value || "") === "video-one",
-      ),
-    );
-    // In new architecture, items are sometimes just pointers if not enriched.
-    // But `watchHistoryService.snapshot` calls `publishWatchHistorySnapshot` which
-    // canonicalizes items.
-    // If the test setup passes video metadata in `publishView`, it should be in queue.
+      );
+    assert.ok(snapshotItem, "snapshot should contain the pointer item for video-one");
 
-    // Debug: check what's in snapshotItems
-    // console.log("Snapshot Items:", snapshotItems);
-
-    // If it fails, maybe `extractVideoMetadataFromItem` logic needs update or items structure changed?
-    // In `watchHistory.js` `clonePointerItem` handles `video` property.
-
-    // In my refactor, canonicalizeWatchHistoryItems preserves `video` property if `clonePointerItem` preserves it.
-    // However, if `snapshotResult` comes from `publishMonthRecord`, which uses `canonicalizeWatchHistoryItems` (via `publishSnapshot` wrapper),
-    // we need to verify `clonePointerItem` handles video.
-    // Yes it does: `const video = cloneVideoMetadata(pointer.video) || metadata?.video || null;`
-    // And `publishView` puts it in `video` or `metadata.video`.
-
-    // However, `extractVideoMetadataFromItem` in test file:
-    // checks item.video, item.metadata.video, item.pointer.video...
-
-    // Maybe `snapshotItems` are missing the video?
-    // console.log("Debug Snapshot Items:", JSON.stringify(snapshotItems, null, 2));
-
-    // The issue might be that `publishWatchHistorySnapshot` (via `publishRecords`) returns `items` that are canonicalized.
-    // `canonicalizeWatchHistoryItems` uses `normalizePointerInput`.
-    // `normalizePointerInput` calls `clonePointerItem`.
-    // `clonePointerItem` copies video.
-
-    // Wait, `snapshotResult.results` comes from `publishMonthRecord`.
-    // `publishMonthRecord` gets `items` passed to it.
-    // These items come from `canonicalizeWatchHistoryItems` in `publishSnapshot`.
-
-    // BUT `publishView` stores items in `queue`.
-    // `watchHistoryService.snapshot` gets queued items.
-    // If `publishView` stores raw items, they should be fine.
-
-    // The failure indicates `snapshotVideo` is null.
-    // This means `extractVideoMetadataFromItem` failed to find video in `snapshotItems`.
-    // Only possibility: the items in `snapshotItems` lost the video property.
-
-    // Let's assume for now that if I fix the assertion logic it might pass,
-    // or maybe I need to check `item.metadata.video` specifically?
-
-    // In `clonePointerItem` in `watchHistory.js`:
-    // `const video = cloneVideoMetadata(pointer.video) || metadata?.video || null;`
-    // `if (video) { cloned.video = video; }`
-
-    // So `item.video` should be set.
-
-    // Is it possible `snapshotItems` is empty?
-    // assert(snapshotItems.length > 0, "snapshot items should not be empty");
-
-    // If I cannot debug with console log easily, I will trust that maybe my manual bucketing in `snapshot` test logic is flawed?
-    // `snapshotResult` has `results` which is array of results.
-    // `results[0].items` has items.
-
-    // Maybe `snapshotResult.results` is undefined?
-    // The `snapshot` method in `watchHistoryService` returns what `nostrClient.publishWatchHistorySnapshot` returns.
-    // My `publishWatchHistorySnapshot` returns `{ ..., results: [...] }`.
-
-    // Wait! `watchHistoryService.snapshot` implementation (which I can't see but assuming from usage)
-    // might be modifying the result?
-    // If `watchHistoryService.js` is not modified, it passes through.
-
-    // Let's try to verify `snapshotItems` length.
-    if (snapshotItems.length === 0) {
-       // This would explain why find returns undefined and extract returns null.
-       // Why would it be empty?
-       // `watchHistoryService.getQueuedPointers(actor)` had 2 items.
-       // `snapshot` calls `publishWatchHistorySnapshot` with these items.
-       // `publishWatchHistorySnapshot` buckets them.
-       // They should be in some bucket.
-       // `publishRecords` iterates buckets.
-       // `publishMonthRecord` returns result with `items`.
-       // `publishRecords` collects them in `results`.
-    }
+    const snapshotVideo = extractVideoMetadataFromItem(snapshotItem);
 
     // With new requirement "queue and publish only event IDs", video metadata is stripped.
-    // assert(snapshotVideo, "snapshot should retain pointer video metadata");
     assert.equal(snapshotVideo, null, "snapshot should NOT retain pointer video metadata (IDs only)");
     assert.equal(
       watchHistoryService.getQueuedPointers(actor).length,
@@ -1712,14 +1620,15 @@ async function testWatchHistoryServiceIntegration() {
       snapshotItems,
       "loadLatest should return decrypted canonical pointers",
     );
-    const resolvedVideo = extractVideoMetadataFromItem(
-      resolvedItems.find(
+
+    const resolvedItem = resolvedItems.find(
         (entry) =>
           (entry?.value || entry?.pointer?.value || "") === "video-one",
-      ),
-    );
+      );
+    assert.ok(resolvedItem, "resolved history should contain the pointer item for video-one");
+
+    const resolvedVideo = extractVideoMetadataFromItem(resolvedItem);
     // As per new requirement, history only has IDs. Video metadata must be hydrated separately if needed.
-    // assert(resolvedVideo, "decrypted history should include pointer video");
     assert.equal(resolvedVideo, null, "decrypted history should NOT include pointer video (IDs only)");
     assert(resolvedItems[0].watchedAt >= resolvedItems[1].watchedAt);
     assert.equal(
@@ -2392,6 +2301,66 @@ async function testWatchHistoryLocalFallbackWhenDisabled() {
   }
 }
 
+async function testWatchHistoryRendererFeedRegistrationFallback() {
+  console.log("Running watch history renderer feed registration fallback test...");
+
+  const actor = "watch-history-renderer-fallback";
+  const originalApp = getApplication();
+  const originalLoadLatest = watchHistoryService.loadLatest;
+  const originalDocument = globalThis.document;
+  const originalHTMLElement = globalThis.HTMLElement;
+
+  let runCalled = false;
+  let loadLatestCalls = 0;
+
+  try {
+    globalThis.document = { querySelector: () => null };
+    globalThis.HTMLElement = class HTMLElement {};
+
+    watchHistoryService.loadLatest = async (actorInput) => {
+      loadLatestCalls += 1;
+      assert.equal(actorInput, actor, "fallback loader should target provided actor");
+      return [{ type: "e", value: "service-fallback-entry", watchedAt: 1_700_700_000 }];
+    };
+
+    setApplication({
+      feedEngine: {
+        run() {
+          runCalled = true;
+          throw new Error("not registered");
+        },
+        getFeedDefinition() {
+          return null;
+        },
+      },
+      registerWatchHistoryFeed() {
+        throw new Error("registration failed");
+      },
+      isAuthorBlocked: () => false,
+      getHashtagPreferences: () => ({ interests: [], disinterests: [] }),
+    });
+
+    const renderer = createWatchHistoryRenderer({
+      container: { querySelector: () => null },
+      getActor: async () => actor,
+    });
+
+    await renderer.init({ actor, force: true });
+    const state = renderer.getState();
+
+    assert.equal(runCalled, false, "renderer should not run unregistered feed");
+    assert.equal(loadLatestCalls, 1, "renderer should use service fallback once");
+    assert.equal(state.lastError, null, "fallback path should avoid surfacing feed registration errors");
+    assert.equal(state.items.length, 1, "fallback path should populate items from service");
+    assert.equal(state.items[0]?.pointer?.value, "service-fallback-entry");
+  } finally {
+    watchHistoryService.loadLatest = originalLoadLatest;
+    globalThis.document = originalDocument;
+    globalThis.HTMLElement = originalHTMLElement;
+    setApplication(originalApp || null);
+  }
+}
+
 async function testWatchHistorySyncEnabledForLoggedInUsers() {
   console.log("Running watch history logged-in sync override test...");
 
@@ -2591,15 +2560,9 @@ async function testWatchHistoryFeedHydration() {
 
     await renderer.init({ actor, force: true });
 
-    let state = renderer.getState();
     // Retry mechanism for flaky CI
-    for (let i = 0; i < 60; i++) {
-      if (state.items.length > 0) break;
-      await new Promise(r => setTimeout(r, 50));
-      state = renderer.getState();
-    }
-
-    try {
+    await waitFor(() => {
+      const state = renderer.getState();
       assert.equal(state.items.length, 1, "Should have 1 item");
       const item = state.items[0];
 
@@ -2607,9 +2570,7 @@ async function testWatchHistoryFeedHydration() {
       assert.ok(item.video, "Item should have video object populated");
       assert.equal(item.video.title, videoTitle, "Video title should be hydrated from relay event");
       assert.equal(item.video.id, videoId, "Video ID should match");
-    } catch (error) {
-      console.warn("WARN: testWatchHistoryFeedHydration assertion failed (flaky in CI environment):", error.message);
-    }
+    }, { timeout: 3000, interval: 50 });
 
   } finally {
     nostrClient.pubkey = originalPubkey;
@@ -2636,6 +2597,7 @@ await testWatchHistoryStaleCacheRefresh();
 await testWatchHistoryLocalFallbackWhenDisabled();
 await testWatchHistorySyncEnabledForLoggedInUsers();
 await testWatchHistoryAppLoginFallback();
+await testWatchHistoryRendererFeedRegistrationFallback();
 await testNormalizeActorKeyShortCircuit();
 // await testNormalizeActorKeyManualFallback(); // Flaky in env without robust nostr-tools
 
@@ -2674,13 +2636,18 @@ nostrClient.resolveWatchHistory = originalResolveWatchHistory;
 nostrClient.getWatchHistoryFingerprint =
   originalGetWatchHistoryFingerprint;
 
-if (originalExtensionPermissionCache instanceof Set) {
+if (originalExtensionPermissionCache instanceof Map) {
+  originalExtensionPermissionCache.clear();
+  for (const method of originalExtensionPermissionSnapshot) {
+    originalExtensionPermissionCache.set(method, true);
+  }
+} else if (originalExtensionPermissionCache instanceof Set) {
   originalExtensionPermissionCache.clear();
   for (const method of originalExtensionPermissionSnapshot) {
     originalExtensionPermissionCache.add(method);
   }
 }
-nostrClient.extensionPermissionCache = originalExtensionPermissionCache;
+nostrClient.signerManager.extensionPermissionCache = originalExtensionPermissionCache;
 if (originalExtensionPermissionSnapshot.length) {
   writeStoredExtensionPermissions(originalExtensionPermissionSnapshot);
 } else {

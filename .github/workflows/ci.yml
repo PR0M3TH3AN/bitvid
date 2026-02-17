@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - unstable
   pull_request:
 
 concurrency:
@@ -16,11 +17,13 @@ jobs:
     timeout-minutes: 45
     strategy:
       matrix:
-        node-version: [20]
+        node-version: [22]
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
@@ -49,7 +52,9 @@ jobs:
         run: npm ci
 
       - name: Install ripgrep
-        run: sudo apt-get update && sudo apt-get install -y ripgrep
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list
+          sudo apt-get update && sudo apt-get install -y ripgrep
 
       - name: Run lint suite
         run: npm run lint
@@ -57,8 +62,32 @@ jobs:
       - name: Build assets
         run: npm run build
 
+      - name: Verify deploy artifact markup and hashed references
+        run: npm run verify:dist:deploy-artifact
+
+      - name: Smoke check hashed dist asset references
+        run: npm run smoke:dist-assets
+
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
+
+      - name: Run cache-upgrade smoke test
+        if: github.event_name == 'push' && github.ref == 'refs/heads/unstable'
+        run: npm run test:e2e:cache-upgrade
+
+      - name: Generate dist hash state
+        if: github.event_name == 'push' && github.ref == 'refs/heads/unstable'
+        run: |
+          mkdir -p artifacts
+          node scripts/hash-dist.mjs --dist dist --output artifacts/dist-hashes-current.json
+
+      - name: Upload dist hash artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/unstable'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-hashes-current
+          path: artifacts/dist-hashes-current.json
+          if-no-files-found: error
 
       - name: Run visual regression tests
         id: visual
@@ -79,13 +108,173 @@ jobs:
         if: steps.visual.outcome == 'failure'
         run: exit 1
 
+
+  deploy-cache-state:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/unstable'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: deploy-cache-state-unstable
+      cancel-in-progress: false
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download dist hash artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-hashes-current
+          path: artifacts
+
+      - name: Fetch prior dist hash state and metadata
+        env:
+          DIST_HASH_STATE_URL: ${{ secrets.DIST_HASH_STATE_URL }}
+        run: |
+          mkdir -p artifacts
+
+          if [ -n "$DIST_HASH_STATE_URL" ]; then
+            curl --fail --silent --show-error --dump-header artifacts/dist-hashes-previous.headers "$DIST_HASH_STATE_URL" -o artifacts/dist-hashes-previous.json
+            DIST_HASH_STATE_ETAG=$(awk 'tolower($1)=="etag:" {print $2}' artifacts/dist-hashes-previous.headers | tr -d '\r' | tail -n 1)
+            DIST_HASH_STATE_VERSION=$(awk 'tolower($1)=="x-dist-hash-version:" {print $2}' artifacts/dist-hashes-previous.headers | tr -d '\r' | tail -n 1)
+            DIST_HASH_STATE_LAST_MODIFIED=$(awk 'BEGIN{IGNORECASE=1} /^Last-Modified:/ {sub(/^Last-Modified:[[:space:]]*/, ""); sub(/\r$/, ""); print; exit}' artifacts/dist-hashes-previous.headers)
+            echo "Loaded prior dist hash state from authoritative store."
+          else
+            echo '{"combined":"","files":[]}' > artifacts/dist-hashes-previous.json
+            DIST_HASH_STATE_ETAG=''
+            DIST_HASH_STATE_VERSION=''
+            DIST_HASH_STATE_LAST_MODIFIED=''
+            echo "No DIST_HASH_STATE_URL configured; using empty baseline."
+          fi
+
+          {
+            echo "DIST_HASH_STATE_ETAG=$DIST_HASH_STATE_ETAG"
+            echo "DIST_HASH_STATE_VERSION=$DIST_HASH_STATE_VERSION"
+            echo "DIST_HASH_STATE_LAST_MODIFIED=$DIST_HASH_STATE_LAST_MODIFIED"
+          } >> "$GITHUB_ENV"
+
+          echo "State metadata snapshot: etag='${DIST_HASH_STATE_ETAG:-<none>}', version='${DIST_HASH_STATE_VERSION:-<none>}', last-modified='${DIST_HASH_STATE_LAST_MODIFIED:-<none>}'"
+
+      - name: Diff dist hash states
+        run: |
+          node scripts/diff-dist-hashes.mjs \
+            --current artifacts/dist-hashes-current.json \
+            --previous artifacts/dist-hashes-previous.json > artifacts/dist-hashes-changed.txt
+          echo "Changed dist paths (initial baseline):"
+          cat artifacts/dist-hashes-changed.txt || true
+
+      - name: Plan cache purge scope
+        run: |
+          node scripts/plan-cache-purge.mjs \
+            --changed-file artifacts/dist-hashes-changed.txt \
+            --output-file artifacts/dist-purge-targets.txt > artifacts/dist-purge-plan.json
+          echo "Initial purge plan:"
+          cat artifacts/dist-purge-plan.json
+
+      - name: Record authoritative dist hash state with CAS and resolve races
+        env:
+          DIST_HASH_STATE_URL: ${{ secrets.DIST_HASH_STATE_URL }}
+          DIST_HASH_STATE_UPLOAD_URL: ${{ secrets.DIST_HASH_STATE_UPLOAD_URL }}
+        run: |
+          if [ -z "$DIST_HASH_STATE_UPLOAD_URL" ]; then
+            echo "No DIST_HASH_STATE_UPLOAD_URL configured; skipping authoritative hash-state update."
+            exit 0
+          fi
+
+          set +e
+          node scripts/store-dist-hash-state.mjs \
+            --input artifacts/dist-hashes-current.json \
+            --upload-url "$DIST_HASH_STATE_UPLOAD_URL" \
+            --if-match "$DIST_HASH_STATE_ETAG" \
+            --if-version "$DIST_HASH_STATE_VERSION" \
+            --if-unmodified-since "$DIST_HASH_STATE_LAST_MODIFIED"
+          STORE_EXIT=$?
+          set -e
+
+          if [ "$STORE_EXIT" -eq 0 ]; then
+            echo "CAS write succeeded on first attempt; retaining initial purge plan."
+            exit 0
+          fi
+
+          if [ "$STORE_EXIT" -ne 3 ]; then
+            echo "Hash-state upload failed with exit code $STORE_EXIT"
+            exit "$STORE_EXIT"
+          fi
+
+          echo "CAS conflict detected. Re-fetching state and recomputing purge targets before any CDN purge."
+
+          if [ -z "$DIST_HASH_STATE_URL" ]; then
+            echo "DIST_HASH_STATE_URL is required for race resolution after CAS conflict."
+            exit 1
+          fi
+
+          curl --fail --silent --show-error --dump-header artifacts/dist-hashes-previous.headers "$DIST_HASH_STATE_URL" -o artifacts/dist-hashes-previous.json
+          DIST_HASH_STATE_ETAG=$(awk 'tolower($1)=="etag:" {print $2}' artifacts/dist-hashes-previous.headers | tr -d '\r' | tail -n 1)
+          DIST_HASH_STATE_VERSION=$(awk 'tolower($1)=="x-dist-hash-version:" {print $2}' artifacts/dist-hashes-previous.headers | tr -d '\r' | tail -n 1)
+          DIST_HASH_STATE_LAST_MODIFIED=$(awk 'BEGIN{IGNORECASE=1} /^Last-Modified:/ {sub(/^Last-Modified:[[:space:]]*/, ""); sub(/\r$/, ""); print; exit}' artifacts/dist-hashes-previous.headers)
+
+          echo "Race-resolution metadata: etag='${DIST_HASH_STATE_ETAG:-<none>}', version='${DIST_HASH_STATE_VERSION:-<none>}', last-modified='${DIST_HASH_STATE_LAST_MODIFIED:-<none>}'"
+
+          node scripts/diff-dist-hashes.mjs \
+            --current artifacts/dist-hashes-current.json \
+            --previous artifacts/dist-hashes-previous.json > artifacts/dist-hashes-changed.txt
+          echo "Changed dist paths (race-resolved baseline):"
+          cat artifacts/dist-hashes-changed.txt || true
+
+          node scripts/plan-cache-purge.mjs \
+            --changed-file artifacts/dist-hashes-changed.txt \
+            --output-file artifacts/dist-purge-targets.txt > artifacts/dist-purge-plan.json
+          echo "Race-resolved purge plan:"
+          cat artifacts/dist-purge-plan.json
+
+          node scripts/store-dist-hash-state.mjs \
+            --input artifacts/dist-hashes-current.json \
+            --upload-url "$DIST_HASH_STATE_UPLOAD_URL" \
+            --if-match "$DIST_HASH_STATE_ETAG" \
+            --if-version "$DIST_HASH_STATE_VERSION" \
+            --if-unmodified-since "$DIST_HASH_STATE_LAST_MODIFIED"
+
+          echo "CAS write succeeded after race resolution; proceeding with recomputed purge targets."
+
+      - name: Purge changed Cloudflare URLs
+        env:
+          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_PURGE_BASE_URL: ${{ secrets.CLOUDFLARE_PURGE_BASE_URL }}
+        run: |
+          if [ ! -s artifacts/dist-purge-targets.txt ]; then
+            echo "No purge targets detected. Skipping purge."
+            exit 0
+          fi
+
+          if [ -z "$CLOUDFLARE_ZONE_ID" ] || [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_PURGE_BASE_URL" ]; then
+            echo "Cloudflare secrets not configured; skipping targeted purge."
+            exit 0
+          fi
+
+          node scripts/purge-cloudflare-changed.mjs \
+            --changed-file artifacts/dist-purge-targets.txt \
+            --base-url "$CLOUDFLARE_PURGE_BASE_URL"
+
+      - name: Verify deployed index.html version markup
+        env:
+          CLOUDFLARE_PURGE_BASE_URL: ${{ secrets.CLOUDFLARE_PURGE_BASE_URL }}
+        run: |
+          if [ -z "$CLOUDFLARE_PURGE_BASE_URL" ]; then
+            echo "CLOUDFLARE_PURGE_BASE_URL is required to verify deployed index.html"
+            exit 1
+          fi
+
+          DEPLOY_INDEX_URL="${CLOUDFLARE_PURGE_BASE_URL%/}/index.html" npm run verify:deployed:index-html
+
   unit-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        node-version: [20]
+        node-version: [22]
         shard: [1, 2, 3]
 
     steps:
@@ -128,7 +317,7 @@ jobs:
     timeout-minutes: 20
     strategy:
       matrix:
-        node-version: [20]
+        node-version: [22]
 
     steps:
       - name: Check out repository
@@ -168,7 +357,7 @@ jobs:
     timeout-minutes: 30
     strategy:
       matrix:
-        node-version: [20]
+        node-version: [22]
 
     steps:
       - name: Check out repository
@@ -208,7 +397,7 @@ jobs:
     timeout-minutes: 45
     strategy:
       matrix:
-        node-version: [20]
+        node-version: [22]
 
     steps:
       - name: Check out repository

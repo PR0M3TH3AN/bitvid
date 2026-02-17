@@ -15,6 +15,11 @@
 
 import { isDevMode } from "../config.js";
 import {
+  encryptSessionPrivateKey,
+  decryptSessionPrivateKey,
+  normalizeStoredEncryptionMetadata,
+} from "./sessionActor.js";
+import {
   DEFAULT_RELAY_URLS,
   ensureNostrTools,
   getCachedNostrTools,
@@ -27,10 +32,22 @@ import {
 import { devLogger, userLogger } from "../utils/logger.js";
 import { Nip46RequestQueue, NIP46_PRIORITY } from "./nip46Queue.js";
 import { HEX64_REGEX } from "../utils/hex.js";
+import {
+  summarizeHexForLog,
+  summarizeSecretForLog,
+  summarizeMetadataForLog,
+  summarizeUrlForLog,
+  summarizePayloadPreviewForLog,
+  summarizeRpcParamsForLog,
+  summarizeRpcResultForLog,
+  summarizeRelayPublishResultsForLog,
+} from "./nip46LoggingUtils.js";
+import { SHORT_TIMEOUT_MS } from "../constants.js";
 
 export const NIP46_RPC_KIND = 24_133;
 const NIP46_SESSION_STORAGE_KEY = "bitvid:nip46:session:v1";
 const NIP46_PUBLISH_TIMEOUT_MS = 8_000;
+const NIP46_PING_TIMEOUT_MS = SHORT_TIMEOUT_MS;
 const NIP46_RESPONSE_TIMEOUT_MS = 15_000;
 const NIP46_SIGN_EVENT_TIMEOUT_MS = 20_000;
 const NIP46_MAX_RETRIES = 1;
@@ -223,6 +240,11 @@ export function sanitizeStoredNip46Session(candidate) {
     lastConnectedAt: Number.isFinite(candidate.lastConnectedAt)
       ? candidate.lastConnectedAt
       : Date.now(),
+    encryptedSecrets:
+      typeof candidate.encryptedSecrets === "string"
+        ? candidate.encryptedSecrets.trim()
+        : "",
+    keyEncryption: normalizeStoredEncryptionMetadata(candidate.keyEncryption),
   };
 }
 
@@ -251,7 +273,7 @@ export function readStoredNip46Session() {
       (typeof parsed?.clientPrivateKey === "string" ||
         typeof parsed?.secret === "string")
     ) {
-      writeStoredNip46Session(sanitized);
+      writeStoredNip46SessionSync(sanitized);
     }
     return sanitized;
   } catch (error) {
@@ -267,7 +289,7 @@ export function readStoredNip46Session() {
   }
 }
 
-export function writeStoredNip46Session(payload) {
+export function writeStoredNip46SessionSync(payload) {
   const storage = getNip46Storage();
   if (!storage) {
     return;
@@ -285,6 +307,8 @@ export function writeStoredNip46Session(payload) {
           metadata: payload.metadata,
           userPubkey: payload.userPubkey,
           lastConnectedAt: payload.lastConnectedAt,
+          encryptedSecrets: payload.encryptedSecrets,
+          keyEncryption: payload.keyEncryption,
         }
       : payload;
   const normalized = sanitizeStoredNip46Session(sanitizedInput);
@@ -304,6 +328,90 @@ export function writeStoredNip46Session(payload) {
   }
 }
 
+export async function writeStoredNip46Session(payload, passphrase) {
+  if (!payload || typeof payload !== "object") {
+    return;
+  }
+
+  const update = { ...payload };
+
+  if (
+    passphrase &&
+    typeof passphrase === "string" &&
+    passphrase.trim() &&
+    typeof update.clientPrivateKey === "string" &&
+    update.clientPrivateKey &&
+    typeof update.secret === "string" &&
+    update.secret
+  ) {
+    const secrets = JSON.stringify({
+      clientPrivateKey: update.clientPrivateKey,
+      secret: update.secret,
+    });
+
+    try {
+      const encrypted = await encryptSessionPrivateKey(
+        secrets,
+        passphrase.trim(),
+      );
+      update.encryptedSecrets = encrypted.ciphertext;
+      update.keyEncryption = {
+        salt: encrypted.salt,
+        iv: encrypted.iv,
+        iterations: encrypted.iterations,
+        hash: encrypted.hash,
+        algorithm: encrypted.algorithm,
+        version: encrypted.version,
+      };
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to encrypt remote signer session:", error);
+      // Fall through to write sanitized (non-sensitive) data only
+    }
+  }
+
+  // Ensure plain text keys are never persisted
+  delete update.clientPrivateKey;
+  delete update.secret;
+
+  writeStoredNip46SessionSync(update);
+}
+
+export async function decryptNip46Session(session, passphrase) {
+  if (!session || typeof session !== "object") {
+    return null;
+  }
+
+  if (
+    !session.encryptedSecrets ||
+    typeof session.encryptedSecrets !== "string"
+  ) {
+    return { ...session };
+  }
+
+  if (!passphrase || typeof passphrase !== "string" || !passphrase.trim()) {
+    throw new Error("Passphrase required to decrypt session.");
+  }
+
+  const payload = {
+    privateKeyEncrypted: session.encryptedSecrets,
+    encryption: session.keyEncryption,
+  };
+
+  const decryptedJson = await decryptSessionPrivateKey(payload, passphrase);
+  let secrets = null;
+  try {
+    secrets = JSON.parse(decryptedJson);
+  } catch (error) {
+    throw new Error("Decrypted session secrets are malformed.");
+  }
+
+  return {
+    ...session,
+    clientPrivateKey: secrets.clientPrivateKey,
+    secret: secrets.secret,
+  };
+}
+
 export function clearStoredNip46Session() {
   const storage = getNip46Storage();
   if (!storage) {
@@ -315,125 +423,6 @@ export function clearStoredNip46Session() {
   } catch (error) {
     // ignore cleanup issues
   }
-}
-
-const BECH32_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
-const BECH32_CHARSET_MAP = (() => {
-  const map = new Map();
-  for (let index = 0; index < BECH32_CHARSET.length; index += 1) {
-    map.set(BECH32_CHARSET[index], index);
-  }
-  return map;
-})();
-
-function bech32Polymod(values) {
-  const GENERATORS = [
-    0x3b6a57b2,
-    0x26508e6d,
-    0x1ea119fa,
-    0x3d4233dd,
-    0x2a1462b3,
-  ];
-
-  let chk = 1;
-  for (const value of values) {
-    const top = chk >> 25;
-    chk = ((chk & 0x1ffffff) << 5) ^ value;
-    for (let i = 0; i < GENERATORS.length; i += 1) {
-      if ((top >> i) & 1) {
-        chk ^= GENERATORS[i];
-      }
-    }
-  }
-  return chk;
-}
-
-function bech32HrpExpand(hrp) {
-  const result = [];
-  for (let i = 0; i < hrp.length; i += 1) {
-    result.push(hrp.charCodeAt(i) >> 5);
-  }
-  result.push(0);
-  for (let i = 0; i < hrp.length; i += 1) {
-    result.push(hrp.charCodeAt(i) & 31);
-  }
-  return result;
-}
-
-function bech32VerifyChecksum(hrp, data) {
-  return bech32Polymod([...bech32HrpExpand(hrp), ...data]) === 1;
-}
-
-function convertBits(data, fromBits, toBits) {
-  let accumulator = 0;
-  let bits = 0;
-  const result = [];
-  const maxValue = (1 << toBits) - 1;
-  const maxAccumulator = (1 << (fromBits + toBits - 1)) - 1;
-
-  for (const value of data) {
-    if (value < 0 || (value >> fromBits) !== 0) {
-      return null;
-    }
-    accumulator = ((accumulator << fromBits) | value) & maxAccumulator;
-    bits += fromBits;
-    while (bits >= toBits) {
-      bits -= toBits;
-      result.push((accumulator >> bits) & maxValue);
-    }
-  }
-
-  if (bits > 0) {
-    result.push((accumulator << (toBits - bits)) & maxValue);
-  }
-
-  return result;
-}
-
-function decodeBech32Npub(value) {
-  if (typeof value !== "string") {
-    return "";
-  }
-
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return "";
-  }
-
-  const normalized = trimmed.toLowerCase();
-  const separatorIndex = normalized.lastIndexOf("1");
-  if (separatorIndex <= 0 || separatorIndex + 7 > normalized.length) {
-    return "";
-  }
-
-  const hrp = normalized.slice(0, separatorIndex);
-  if (hrp !== "npub") {
-    return "";
-  }
-
-  const dataPart = normalized.slice(separatorIndex + 1);
-  const values = [];
-  for (let i = 0; i < dataPart.length; i += 1) {
-    const mapped = BECH32_CHARSET_MAP.get(dataPart[i]);
-    if (typeof mapped !== "number") {
-      return "";
-    }
-    values.push(mapped);
-  }
-
-  if (values.length < 7 || !bech32VerifyChecksum(hrp, values)) {
-    return "";
-  }
-
-  const words = values.slice(0, -6);
-  const bytes = convertBits(words, 5, 8);
-  if (!bytes || bytes.length !== 32) {
-    return "";
-  }
-
-  return Array.from(bytes)
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
 }
 
 export function decodeNpubToHex(npub) {
@@ -478,11 +467,6 @@ export function decodeNpubToHex(npub) {
     } catch (error) {
       decodeError = error;
     }
-  }
-
-  const manualDecoded = decodeBech32Npub(trimmed);
-  if (manualDecoded) {
-    return manualDecoded;
   }
 
   if (isDevMode && warnableNpub) {
@@ -1203,160 +1187,6 @@ export async function decryptNip46PayloadWithKeys(privateKey, remotePubkey, ciph
   throw failure;
 }
 
-export function summarizeHexForLog(value) {
-  if (typeof value !== "string" || !value.trim()) {
-    return "";
-  }
-
-  const normalized = value.trim().toLowerCase();
-  if (normalized.length <= 12) {
-    return `${normalized} (len:${normalized.length})`;
-  }
-  return `${normalized.slice(0, 8)}…${normalized.slice(-4)} (len:${normalized.length})`;
-}
-
-export function summarizeSecretForLog(value) {
-  if (typeof value !== "string" || !value.trim()) {
-    return "<empty>";
-  }
-
-  const trimmed = value.trim();
-  const visible = trimmed.length <= 4 ? "*".repeat(trimmed.length) : `${"*".repeat(3)}…`;
-  return `${visible} (len:${trimmed.length})`;
-}
-
-export function summarizeMetadataForLog(metadata) {
-  if (!metadata || typeof metadata !== "object") {
-    return [];
-  }
-  return Object.keys(metadata).slice(0, 12);
-}
-
-export function summarizeUrlForLog(value) {
-  if (typeof value !== "string" || !value.trim()) {
-    return "";
-  }
-
-  const trimmed = value.trim();
-  try {
-    const url = new URL(trimmed);
-    return {
-      origin: url.origin,
-      pathname: url.pathname,
-      hasQuery: Boolean(url.search),
-      hasHash: Boolean(url.hash),
-      length: trimmed.length,
-    };
-  } catch (error) {
-    const length = trimmed.length;
-    if (length <= 64) {
-      return `${trimmed} (len:${length})`;
-    }
-    return `${trimmed.slice(0, 32)}…${trimmed.slice(-8)} (len:${length})`;
-  }
-}
-
-export function summarizePayloadPreviewForLog(value) {
-  if (typeof value !== "string") {
-    return { type: typeof value };
-  }
-
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return { type: "string", length: 0 };
-  }
-
-  return {
-    type: "string",
-    length: trimmed.length,
-    preview: trimmed.length <= 96 ? trimmed : `${trimmed.slice(0, 64)}…`,
-  };
-}
-
-export function summarizeRpcParamsForLog(method, params) {
-  if (!Array.isArray(params)) {
-    return [];
-  }
-
-  return params.map((param, index) => {
-    if (typeof param === "string") {
-      if (method === "connect" && index === 1) {
-        return { index, secret: summarizeSecretForLog(param) };
-      }
-      const trimmed = param.trim();
-      if (!trimmed) {
-        return { index, type: "string", length: 0 };
-      }
-      if (method === "sign_event") {
-        return { index, type: "string", length: trimmed.length };
-      }
-      if (trimmed.length <= 64) {
-        return { index, value: trimmed, length: trimmed.length };
-      }
-      return {
-        index,
-        type: "string",
-        length: trimmed.length,
-        preview: `${trimmed.slice(0, 32)}…${trimmed.slice(-8)}`,
-      };
-    }
-
-    if (param && typeof param === "object") {
-      return {
-        index,
-        type: Array.isArray(param) ? "array" : "object",
-        keys: Object.keys(param).slice(0, 6),
-      };
-    }
-
-    return { index, type: typeof param };
-  });
-}
-
-export function summarizeRpcResultForLog(method, result) {
-  if (typeof result === "string") {
-    const trimmed = result.trim();
-    if (!trimmed) {
-      return { type: "string", length: 0 };
-    }
-    if (method === "connect") {
-      return { type: "string", length: trimmed.length, secret: summarizeSecretForLog(trimmed) };
-    }
-    if (trimmed.length <= 96) {
-      return { type: "string", length: trimmed.length, value: trimmed };
-    }
-    return {
-      type: "string",
-      length: trimmed.length,
-      preview: `${trimmed.slice(0, 48)}…${trimmed.slice(-12)}`,
-    };
-  }
-
-  if (!result) {
-    return { type: typeof result };
-  }
-
-  if (typeof result === "object") {
-    return {
-      type: Array.isArray(result) ? "array" : "object",
-      keys: Object.keys(result).slice(0, 6),
-    };
-  }
-
-  return { type: typeof result };
-}
-
-export function summarizeRelayPublishResultsForLog(results) {
-  if (!Array.isArray(results)) {
-    return [];
-  }
-
-  return results.map((entry) => ({
-    relay: entry?.relay || "",
-    success: Boolean(entry?.ok),
-    reason: entry?.error ? entry.error?.message || String(entry.error) : null,
-  }));
-}
 
 export function createNip46RequestId() {
   try {
@@ -2049,7 +1879,7 @@ export class Nip46RpcClient {
   async ping() {
     try {
       const result = await this.sendRpc("ping", [], {
-        timeoutMs: 5000,
+        timeoutMs: NIP46_PING_TIMEOUT_MS,
         retries: 0,
         priority: NIP46_PRIORITY.HIGH,
       });

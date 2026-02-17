@@ -7,10 +7,25 @@ test.describe("Webseed Stream Playback", () => {
   const MAGNET_URI = `magnet:?xt=urn:btih:${INFO_HASH}`;
 
   test.beforeEach(async ({ page }) => {
-    await page.goto("/", { waitUntil: "networkidle" });
-    await page.waitForFunction(() => {
-        return !!document.getElementById('videoList');
-    });
+    // networkidle can be flaky if background polling/relays are active.
+    // We rely on explicit selector waits instead.
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+
+    try {
+        // Wait for either the video list (success) or the error message (failure)
+        await Promise.race([
+            page.waitForSelector('#videoList', { timeout: 30000 }),
+            page.waitForSelector('.text-critical-strong', { timeout: 30000 }).then(async (el) => {
+                const text = await el?.innerText();
+                throw new Error(`View load failed with message: ${text}`);
+            })
+        ]);
+    } catch (error) {
+        // If timeout occurs, capture page content for debugging
+        const body = await page.innerHTML('body');
+        console.error('Test failed to load video list. Body content:', body.substring(0, 500));
+        throw error;
+    }
   });
 
   test("plays directly from HTML link (CDN mode)", async ({ page }) => {

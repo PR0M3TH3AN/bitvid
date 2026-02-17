@@ -23,6 +23,7 @@ import {
   getActiveSigner,
   requestDefaultExtensionPermissions,
 } from "../../nostrClientFacade.js";
+import { UI_FEEDBACK_DELAY_MS } from "../../constants.js";
 
 const INFO_HASH_PATTERN = /^[a-f0-9]{40}$/;
 
@@ -790,7 +791,7 @@ export class UploadModal {
               if (this.thumbnailUploadId === currentUploadId) {
                   this.sourceSections.thumbnailProgress.classList.add("hidden");
               }
-          }, 2000);
+          }, UI_FEEDBACK_DELAY_MS);
 
       } catch (err) {
           if (this.thumbnailUploadId !== currentUploadId) return;
@@ -939,7 +940,7 @@ export class UploadModal {
       }
 
       try {
-          if (signer?.type === "extension") {
+          if (signer?.type === "extension" || signer?.type === "nip07") {
               const permissionResult = await requestDefaultExtensionPermissions();
               if (!permissionResult?.ok) {
                   alert("Extension permissions are required to unlock storage.");

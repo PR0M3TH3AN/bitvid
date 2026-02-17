@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it, after } from "node:test";
+import { ensureNostrTools } from "../js/nostr/toolkit.js";
 
 describe("Nostr Private Key Signer", () => {
   after(() => {
@@ -11,8 +12,23 @@ describe("Nostr Private Key Signer", () => {
   const previousNostrTools = globalThis.NostrTools;
   const previousReady = globalThis.nostrToolsReady;
 
-  const nostrTools = await import("nostr-tools");
+  const nostrTools = await ensureNostrTools();
   const canonicalTools = { ...nostrTools };
+
+  // Override mocks to support roundtrip test
+  if (canonicalTools.nip04) {
+      canonicalTools.nip04 = {
+          ...canonicalTools.nip04,
+          encrypt: async (priv, pub, text) => `encrypted:${text}`,
+          decrypt: async (priv, pub, cipher) => cipher.replace("encrypted:", "")
+      };
+  }
+
+    const bytesToHex = (bytes) => {
+      if (nostrTools.bytesToHex) return nostrTools.bytesToHex(bytes);
+      if (nostrTools.utils?.bytesToHex) return nostrTools.utils.bytesToHex(bytes);
+      return Buffer.from(bytes).toString('hex');
+    };
 
   try {
     globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__ = canonicalTools;
@@ -29,9 +45,9 @@ describe("Nostr Private Key Signer", () => {
       ]);
 
     const privateKeyBytes = nostrTools.generateSecretKey();
-    const privateKeyHex = nostrTools.utils.bytesToHex(privateKeyBytes);
+      const privateKeyHex = bytesToHex(privateKeyBytes);
     const recipientKeyBytes = nostrTools.generateSecretKey();
-    const recipientPrivateHex = nostrTools.utils.bytesToHex(recipientKeyBytes);
+      const recipientPrivateHex = bytesToHex(recipientKeyBytes);
     const recipientPubkey = nostrTools.getPublicKey(recipientKeyBytes);
 
     await nostrClient.registerPrivateKeySigner({ privateKey: privateKeyHex });

@@ -10,6 +10,7 @@ import {
   ADMIN_DM_IMAGE_URL,
   BITVID_WEBSITE_URL,
   ALLOW_NSFW_CONTENT,
+  ENABLE_NIP17_RELAY_WARNING,
 } from "./config.js";
 import { accessControl } from "./accessControl.js";
 import { extractBtihFromMagnet, safeDecodeMagnet } from "./magnetUtils.js";
@@ -22,9 +23,8 @@ import {
   DEFAULT_BLUR_THRESHOLD,
   DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
   DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
+  FEED_TYPES,
 } from "./constants.js";
-import { attachHealthBadges } from "./gridHealth.js";
-import { attachUrlHealthBadges } from "./urlHealthObserver.js";
 import { updateVideoCardSourceVisibility } from "./utils/cardSourceVisibility.js";
 import { collectVideoTags } from "./utils/videoTags.js";
 import { normalizeHashtag } from "./utils/hashtagNormalization.js";
@@ -138,22 +138,10 @@ import {
 import { getDesignSystemMode as getCanonicalDesignSystemMode } from "./designSystem.js";
 import { getHashViewName, setHashView } from "./hashView.js";
 import {
-  getPubkey as getStoredPubkey,
-  setPubkey as setStoredPubkey,
-  getCurrentUserNpub as getStoredCurrentUserNpub,
-  setCurrentUserNpub as setStoredCurrentUserNpub,
-  getCurrentVideo as getStoredCurrentVideo,
-  setCurrentVideo as setStoredCurrentVideo,
   setModalState as setGlobalModalState,
   subscribeToAppStateKey,
 } from "./state/appState.js";
 import {
-  getSavedProfiles,
-  getActiveProfilePubkey,
-  setActiveProfilePubkey as setStoredActiveProfilePubkey,
-  setSavedProfiles,
-  persistSavedProfiles,
-  getProfileCacheMap,
   getCachedUrlHealth as readCachedUrlHealth,
   storeUrlHealth as persistUrlHealth,
   setInFlightUrlProbe,
@@ -174,6 +162,7 @@ import {
 import ApplicationBootstrap from "./ui/applicationBootstrap.js";
 import EngagementController from "./ui/engagementController.js";
 import SimilarContentController from "./ui/similarContentController.js";
+import CreatorProfileController from "./ui/creatorProfileController.js";
 import UrlHealthController from "./ui/urlHealthController.js";
 import VideoModalCommentController from "./ui/videoModalCommentController.js";
 import VideoModalController from "./ui/videoModalController.js";
@@ -188,7 +177,14 @@ import { createPlaybackCoordinator } from "./app/playbackCoordinator.js";
 import { createAuthSessionCoordinator } from "./app/authSessionCoordinator.js";
 import { createModalCoordinator } from "./app/modalCoordinator.js";
 import { createModerationCoordinator } from "./app/moderationCoordinator.js";
+import { createRouterCoordinator } from "./app/routerCoordinator.js";
+import { createUiCoordinator } from "./app/uiCoordinator.js";
 import { HEX64_REGEX } from "./utils/hex.js";
+import {
+  safeEncodeNpub,
+  safeDecodeNpub,
+  normalizeHexPubkey,
+} from "./utils/nostrHelpers.js";
 
 const recordVideoViewApi = (...args) => recordVideoView(nostrClient, ...args);
 
@@ -211,39 +207,56 @@ const RELAY_UI_BATCH_DELAY_MS = 250;
  */
 class Application {
   get pubkey() {
-    return getStoredPubkey();
+    return this.authService.pubkey;
   }
 
   set pubkey(value) {
-    setStoredPubkey(value ?? null);
+    this.authService.pubkey = value;
   }
 
   get currentUserNpub() {
-    return getStoredCurrentUserNpub();
+    return this.authService.currentUserNpub;
   }
 
   set currentUserNpub(value) {
-    setStoredCurrentUserNpub(value ?? null);
+    this.authService.currentUserNpub = value;
   }
 
   get currentVideo() {
-    return getStoredCurrentVideo();
+    return this.playbackService.currentVideo;
   }
 
   set currentVideo(value) {
-    setStoredCurrentVideo(value ?? null);
+    this.playbackService.currentVideo = value;
   }
 
   get activeProfilePubkey() {
-    return getActiveProfilePubkey();
+    return this.authService.activeProfilePubkey;
+  }
+
+  set activeProfilePubkey(value) {
+    this.authService.setActiveProfilePubkey(value, { persist: false });
   }
 
   get savedProfiles() {
-    return getSavedProfiles();
+    return this.authService.savedProfiles;
+  }
+
+  set savedProfiles(value) {
+    this.authService.setSavedProfiles(value, { persist: false, persistActive: false });
   }
 
   constructor({ services = {}, ui = {}, helpers = {}, loadView: viewLoader } = {}) {
     this.loadView = typeof viewLoader === "function" ? viewLoader : null;
+    this._setupOptions = { services, ui, helpers };
+    this._isSetup = false;
+  }
+
+  setup() {
+    if (this._isSetup) return;
+    this._isSetup = true;
+
+    const { services = {}, ui = {}, helpers = {} } = this._setupOptions || {};
 
     const bootstrapServices = {
       ...services,
@@ -270,13 +283,43 @@ class Application {
     const { modalManager } = this.bootstrapper.initialize();
     this.modalManager = modalManager;
 
+    this.creatorProfileController = new CreatorProfileController({
+      services: { nostrClient },
+      ui: { zapController: this.zapController },
+      callbacks: {
+        getProfileCacheEntry: (pubkey) => this.getProfileCacheEntry(pubkey),
+        setProfileCacheEntry: (pubkey, profile, opts) =>
+          this.setProfileCacheEntry(pubkey, profile, opts),
+        getCurrentVideo: () => this.currentVideo,
+        getVideoModal: () => this.videoModal,
+      },
+      helpers: {
+        fetchProfileMetadata,
+        ensureProfileMetadataSubscription,
+        safeEncodeNpub: (val) => this.safeEncodeNpub(val),
+        formatShortNpub,
+        sanitizeProfileMediaUrl,
+      },
+      logger: devLogger,
+    });
+
     this.videoModalController = new VideoModalController({
       getVideoModal: () => this.videoModal,
       callbacks: {
         showError: (msg) => this.showError(msg),
+        showSuccess: (msg) => this.showSuccess(msg),
+        showStatus: (msg, opts) => this.showStatus(msg, opts),
         getLastModalTrigger: () => this.lastModalTrigger,
         setLastModalTrigger: (val) => this.setLastModalTrigger(val),
         getCurrentVideo: () => this.currentVideo,
+        getPlaySource: () => this.playSource,
+        getStreamHealthSnapshots: () => this.streamHealthSnapshots,
+        getCachedUrlHealth: (id, url) => this.getCachedUrlHealth(id, url),
+        handleCopyMagnet: () => this.handleCopyMagnet(),
+        openShareNostrModal: (opts) => this.openShareNostrModal(opts),
+        playVideoWithFallback: (opts) => this.playVideoWithFallback(opts),
+        attachMoreMenuHandlers: (container) =>
+          this.attachMoreMenuHandlers(container),
       },
     });
 
@@ -505,6 +548,8 @@ class Application {
     };
     onActiveSignerChanged(this.handleShareNostrSignerChange);
     this.updateShareNostrAuthState({ reason: "init" });
+
+    delete this._setupOptions;
   }
 
   /**
@@ -603,7 +648,7 @@ class Application {
         queueSignEvent,
         bootstrapTrustedSeeds,
         getModerationSettings,
-        getActiveProfilePubkey,
+        getActiveProfilePubkey: () => this.authService.activeProfilePubkey,
       })),
       writable: true,
       configurable: true,
@@ -639,6 +684,22 @@ class Application {
         userBlocks,
         buildVideoAddressPointer,
         VIDEO_EVENT_KIND,
+      })),
+      writable: true,
+      configurable: true,
+    });
+
+    Object.defineProperty(this, "_router", {
+      value: bindCoordinator(this, createRouterCoordinator({
+        devLogger,
+      })),
+      writable: true,
+      configurable: true,
+    });
+
+    Object.defineProperty(this, "_ui", {
+      value: bindCoordinator(this, createUiCoordinator({
+        devLogger,
       })),
       writable: true,
       configurable: true,
@@ -688,7 +749,7 @@ class Application {
   }
 
   persistActiveProfileSelection(pubkey, { persist = true } = {}) {
-    setStoredActiveProfilePubkey(pubkey, { persist });
+    this.authService.setActiveProfilePubkey(pubkey, { persist });
     this.renderSavedProfiles();
   }
 
@@ -718,9 +779,7 @@ class Application {
     const uniqueAuthors = new Set(activeVideos.map((v) => v.pubkey));
 
     // 3) For each author, fetchAndRenderProfile with forceRefresh = true
-    for (const authorPubkey of uniqueAuthors) {
-      this.authService.fetchAndRenderProfile(authorPubkey, true);
-    }
+    this.batchFetchProfiles(uniqueAuthors, { forceRefresh: true });
   }
 
   getCurrentUserNpub() {
@@ -756,501 +815,409 @@ class Application {
     return false;
   }
 
-  async init() {
-    try {
-      if (typeof this.loadView !== "function") {
-        const module = await import("./viewManager.js");
-        this.loadView = module?.loadView || null;
-      }
+  async _initViewManager() {
+    if (typeof this.loadView !== "function") {
+      const module = await import("./viewManager.js");
+      this.loadView = module?.loadView || null;
+    }
+  }
 
-      if (nostrClient && typeof nostrClient.warmupExtension === "function") {
-        nostrClient.warmupExtension();
-      }
+  _warmupNostrExtension() {
+    if (nostrClient && typeof nostrClient.warmupExtension === "function") {
+      nostrClient.warmupExtension();
+    }
+  }
 
-      // Force update of any registered service workers to ensure latest code is used.
-      if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.getRegistrations().then((registrations) => {
-          registrations.forEach((registration) => registration.update());
-        });
-      }
+  _initServiceWorker() {
+    // Force update of any registered service workers to ensure latest code is used.
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        registrations.forEach((registration) => registration.update());
+      });
+    }
+  }
 
-      this.authService.hydrateFromStorage();
-      this.renderSavedProfiles();
+  _initAuthAndModeration() {
+    this.authService.hydrateFromStorage();
+    this.renderSavedProfiles();
 
-      if (
-        this.nostrService &&
-        typeof this.nostrService.setDmBlockChecker === "function"
-      ) {
-        this.nostrService.setDmBlockChecker((pubkey) =>
-          this.isAuthorBlocked(pubkey),
-        );
-      }
-
-      loadModerationOverridesFromStorage();
-      loadModerationSettingsFromStorage();
-      loadDmPrivacySettingsFromStorage();
-      this.moderationSettings = this.normalizeModerationSettings(
-        getModerationSettings(),
+    if (
+      this.nostrService &&
+      typeof this.nostrService.setDmBlockChecker === "function"
+    ) {
+      this.nostrService.setDmBlockChecker((pubkey) =>
+        this.isAuthorBlocked(pubkey),
       );
+    }
 
-      const videoModalPromise = this.videoModal.load().then(() => {
-        const modalRoot = this.videoModal.getRoot();
-        if (modalRoot) {
-          this.attachMoreMenuHandlers(modalRoot);
-        }
-        if (
-          this.videoModal &&
-          typeof this.videoModal.addEventListener === "function"
-        ) {
-          this.videoModal.addEventListener("video:share-nostr", (event) => {
-            this.openShareNostrModal({
-              video: event?.detail?.video || null,
-              triggerElement: event?.detail?.trigger || null,
-            });
-          });
+    loadModerationOverridesFromStorage();
+    loadModerationSettingsFromStorage();
+    loadDmPrivacySettingsFromStorage();
+    this.moderationSettings = this.normalizeModerationSettings(
+      getModerationSettings(),
+    );
+  }
 
-          this.videoModal.addEventListener("video:copy-cdn", (event) => {
-            const video = event?.detail?.video || this.currentVideo;
-            const url = video?.url || "";
-            if (!url) {
-              this.showError("No CDN link available to copy.");
-              return;
-            }
-            navigator.clipboard
-              .writeText(url)
-              .then(() => this.showSuccess("CDN link copied to clipboard!"))
-              .catch(() => this.showError("Failed to copy CDN link."));
-          });
+  _initModals() {
+    const videoModalPromise = this.videoModal.load().then(() => {
+      if (this.videoModalController) {
+        this.videoModalController.bindEvents();
+      }
+    });
 
-          this.videoModal.addEventListener("video:copy-magnet", () => {
-            this.handleCopyMagnet();
-          });
+    const uploadModalPromise = this.uploadModal.load().catch((error) => {
+      devLogger.error("initUploadModal failed:", error);
+      this.showError(`Failed to initialize upload modal: ${error.message}`);
+    });
 
-          this.videoModal.addEventListener("playback:switch-source", (event) => {
-            const detail = event?.detail || {};
-            const { source } = detail;
-            if (!source) {
-              return;
-            }
-            const modalVideo = detail?.video || null;
-            const fallbackVideo = this.currentVideo || null;
-            const video = {
-              ...(fallbackVideo || {}),
-              ...(modalVideo || {}),
-            };
-            const urlCandidate =
-              typeof video.url === "string" ? video.url.trim() : "";
-            const magnetCandidate =
-              typeof video.magnet === "string" ? video.magnet.trim() : "";
+    const editModalPromise = this.editModal.load().catch((error) => {
+      devLogger.error("Failed to load edit modal:", error);
+      this.showError(`Failed to initialize edit modal: ${error.message}`);
+    });
 
-            if (!modalVideo && !fallbackVideo) {
-              devLogger.warn("[app] Playback source switch missing video data.");
-              return;
-            }
-
-            const magnetAvailable = Boolean(magnetCandidate);
-            const cachedStreamHealth =
-              video?.id && this.streamHealthSnapshots instanceof Map
-                ? this.streamHealthSnapshots.get(video.id)
-                : null;
-            const cachedPeers = Number.isFinite(cachedStreamHealth?.peers)
-              ? cachedStreamHealth.peers
-              : null;
-            const hasActivePeers =
-              cachedPeers === null ? null : cachedPeers > 0;
-            const cachedUrlHealth =
-              video?.id && urlCandidate
-                ? this.getCachedUrlHealth(video.id, urlCandidate)
-                : null;
-            const cdnUnavailable =
-              !urlCandidate ||
-              ["offline", "timeout"].includes(cachedUrlHealth?.status);
-
-            if (source === "torrent" && !magnetAvailable) {
-              userLogger.warn(
-                "[app] Unable to switch to torrent playback: missing magnet.",
-              );
-              this.showError(
-                "Torrent playback is unavailable for this video. No magnet was provided.",
-              );
-              return;
-            }
-
-            if (source === "torrent" && hasActivePeers === false) {
-              userLogger.warn(
-                "[app] Switching to torrent playback despite 0 active peers detected.",
-              );
-              this.showStatus(
-                "Warning: No peers detected. Playback may fail or stall.",
-                { autoHideMs: 5000 }
-              );
-              // Proceed anyway
-            }
-
-            if (source === "url" && cdnUnavailable) {
-              userLogger.warn(
-                "[app] Unable to switch to CDN playback: URL unavailable.",
-              );
-              this.showError(
-                "CDN playback is unavailable right now, staying on the torrent stream.",
-              );
-              return;
-            }
-
-            if (this.playSource && source === this.playSource) {
-              return;
-            }
-
-            this.playVideoWithFallback({
-              url: urlCandidate,
-              magnet: magnetCandidate,
-              forcedSource: source,
-            }).catch((error) => {
+    const profileModalPromise = this.profileController
+      ? this.profileController
+          .load()
+          .then(() => {
+            try {
+              this.renderSavedProfiles();
+            } catch (error) {
               devLogger.warn(
-                "[app] Failed to switch playback source:",
+                "[profileModal] Failed to render saved profiles after load:",
                 error,
               );
-            });
-          });
+            }
+
+            try {
+              this.profileController.refreshWalletPaneState();
+            } catch (error) {
+              devLogger.warn(
+                "[profileModal] Failed to refresh wallet pane after load:",
+                error,
+              );
+            }
+            return true;
+          })
+          .catch((error) => {
+            devLogger.error("Failed to load profile modal:", error);
+            return false;
+          })
+      : Promise.resolve(false);
+
+    return Promise.all([
+      videoModalPromise,
+      uploadModalPromise,
+      editModalPromise,
+      profileModalPromise,
+    ]);
+  }
+
+  async _initTrustedSeeds() {
+    try {
+      await bootstrapTrustedSeeds();
+    } catch (error) {
+      devLogger.warn("[app.init()] Trusted seed bootstrap failed:", error);
+    }
+  }
+
+  _initViewCounter() {
+    try {
+      initViewCounter({ nostrClient });
+    } catch (error) {
+      devLogger.warn("Failed to initialize view counter:", error);
+    }
+  }
+
+  _initAccessControl() {
+    accessControl
+      .refresh()
+      .then(() => {
+        if (
+          accessControl.lastError &&
+          accessControl.lastError?.code === "nostr-unavailable"
+        ) {
+          devLogger.warn(
+            "[app.init()] Access control refresh should not run before nostrClient.init()",
+            accessControl.lastError
+          );
         }
+      })
+      .catch((error) => {
+        devLogger.warn(
+          "Failed to refresh admin lists after connecting to Nostr:",
+          error
+        );
       });
 
-      const uploadModalPromise = this.uploadModal.load().catch((error) => {
-        devLogger.error("initUploadModal failed:", error);
-        this.showError(`Failed to initialize upload modal: ${error.message}`);
-      });
-
-      const editModalPromise = this.editModal.load().catch((error) => {
-        devLogger.error("Failed to load edit modal:", error);
-        this.showError(`Failed to initialize edit modal: ${error.message}`);
-      });
-
-      const profileModalPromise = this.profileController
-        ? this.profileController
-            .load()
-            .then(() => {
-              try {
-                this.renderSavedProfiles();
-              } catch (error) {
-                devLogger.warn(
-                  "[profileModal] Failed to render saved profiles after load:",
-                  error,
-                );
-              }
-
-              try {
-                this.profileController.refreshWalletPaneState();
-              } catch (error) {
-                devLogger.warn(
-                  "[profileModal] Failed to refresh wallet pane after load:",
-                  error,
-                );
-              }
-              return true;
-            })
-            .catch((error) => {
-              devLogger.error("Failed to load profile modal:", error);
-              return false;
-            })
-        : Promise.resolve(false);
-
-      const modalBootstrapPromise = Promise.all([
-        videoModalPromise,
-        uploadModalPromise,
-        editModalPromise,
-        profileModalPromise,
-      ]);
-
-      // Initialize the pool early to unblock bootstrapTrustedSeeds,
-      // but do NOT await the full connection process here.
-      try {
-        await nostrClient.ensurePool();
-      } catch (poolError) {
-        devLogger.warn("[app.init()] Pool ensure failed:", poolError);
-      }
-
-      // Kick off relay connection in the background.
-      const nostrInitPromise = nostrClient.init().catch((err) => {
-        devLogger.warn("[app.init()] Background nostrClient.init failed:", err);
-      });
-
-      await modalBootstrapPromise;
-
-      try {
-        await bootstrapTrustedSeeds();
-      } catch (error) {
-        devLogger.warn("[app.init()] Trusted seed bootstrap failed:", error);
-      }
-
-      try {
-        initViewCounter({ nostrClient });
-      } catch (error) {
-        devLogger.warn("Failed to initialize view counter:", error);
-      }
-
-      const accessControlPromise = accessControl
-        .refresh()
-        .then(() => {
-          if (
-            accessControl.lastError &&
-            accessControl.lastError?.code === "nostr-unavailable"
-          ) {
-            devLogger.warn(
-              "[app.init()] Access control refresh should not run before nostrClient.init()",
-              accessControl.lastError
-            );
-          }
-        })
+    if (this.profileController) {
+      Promise.resolve()
+        .then(() => this.profileController.refreshAdminPaneState())
         .catch((error) => {
           devLogger.warn(
-            "Failed to refresh admin lists after connecting to Nostr:",
-            error
+            "Failed to update admin pane after connecting to Nostr:",
+            error,
+          );
+        });
+    }
+  }
+
+  async _syncSessionActorBlacklist(trigger) {
+    if (this.pubkey) {
+      return;
+    }
+
+    const sessionActorPubkey = nostrClient.sessionActor?.pubkey;
+    if (!sessionActorPubkey) {
+      return;
+    }
+
+    const blacklist = accessControl.getBlacklist();
+    try {
+      await userBlocks.seedBaselineDelta(
+        sessionActorPubkey,
+        Array.from(blacklist || []),
+      );
+    } catch (error) {
+      devLogger.warn(
+        `[app.init()] Failed to sync session actor blacklist${
+          trigger ? ` (${trigger})` : ""
+        }:`,
+        error,
+      );
+    }
+  }
+
+  async _handleSessionActorReady({ pubkey, reason } = {}) {
+    if (this.pubkey) {
+      return;
+    }
+
+    const normalizedPubkey = this.normalizeHexPubkey(pubkey);
+    if (!normalizedPubkey) {
+      return;
+    }
+
+    const triggerLabel = reason ? `session-actor-${reason}` : "session-actor";
+    await this._syncSessionActorBlacklist(triggerLabel);
+
+    const refreshReason = "session-actor-ready";
+    if (typeof this.refreshVisibleModerationUi === "function") {
+      try {
+        this.refreshVisibleModerationUi({ reason: refreshReason });
+      } catch (error) {
+        devLogger.warn(
+          "[app.init()] Failed to refresh moderation UI after session actor:",
+          error,
+        );
+      }
+    } else {
+      this.refreshAllVideoGrids({
+        reason: refreshReason,
+        forceMainReload: true,
+      }).catch((error) => {
+        devLogger.warn(
+          "[app.init()] Failed to refresh video grids after session actor:",
+          error,
+        );
+      });
+    }
+  }
+
+  async _initNostr() {
+    // Kick off relay connection in the background.
+    return nostrClient.init().catch((err) => {
+      devLogger.warn("[app.init()] Background nostrClient.init failed:", err);
+    });
+  }
+
+  async _initSessionActor() {
+    // Placeholder for session actor initialization if needed
+  }
+
+  _initAccessControlListeners() {
+    if (typeof accessControl.onBlacklistChange === "function") {
+      accessControl.onBlacklistChange(() => {
+        this._syncSessionActorBlacklist("blacklist-change");
+        if (this.isUserLoggedIn()) {
+          return;
+        }
+
+        const refreshReason = "admin-blacklist-change";
+        this.refreshAllVideoGrids({
+          reason: refreshReason,
+          forceMainReload: true,
+        }).catch((error) => {
+          devLogger.warn(
+            "[app.init()] Failed to refresh video grids after admin blacklist change:",
+            error,
           );
         });
 
-      const adminPanePromise = this.profileController
-        ? Promise.resolve()
-            .then(() => this.profileController.refreshAdminPaneState())
-            .catch((error) => {
-              devLogger.warn(
-                "Failed to update admin pane after connecting to Nostr:",
-                error,
-              );
-            })
-        : Promise.resolve(null);
-
-      // await Promise.all([accessControlPromise, adminPanePromise]);
-
-      const syncSessionActorBlacklist = async (trigger) => {
-        if (this.pubkey) {
-          return;
-        }
-
-        const sessionActorPubkey = nostrClient.sessionActor?.pubkey;
-        if (!sessionActorPubkey) {
-          return;
-        }
-
-        const blacklist = accessControl.getBlacklist();
-        try {
-          await userBlocks.seedBaselineDelta(
-            sessionActorPubkey,
-            Array.from(blacklist || []),
-          );
-        } catch (error) {
-          devLogger.warn(
-            `[app.init()] Failed to sync session actor blacklist${
-              trigger ? ` (${trigger})` : ""
-            }:`,
-            error,
-          );
-        }
-      };
-
-      const handleSessionActorReady = async ({ pubkey, reason } = {}) => {
-        if (this.pubkey) {
-          return;
-        }
-
-        const normalizedPubkey = this.normalizeHexPubkey(pubkey);
-        if (!normalizedPubkey) {
-          return;
-        }
-
-        const triggerLabel = reason ? `session-actor-${reason}` : "session-actor";
-        await syncSessionActorBlacklist(triggerLabel);
-
-        const refreshReason = "session-actor-ready";
         if (typeof this.refreshVisibleModerationUi === "function") {
           try {
             this.refreshVisibleModerationUi({ reason: refreshReason });
           } catch (error) {
             devLogger.warn(
-              "[app.init()] Failed to refresh moderation UI after session actor:",
+              "[app.init()] Failed to refresh moderation UI after admin blacklist change:",
               error,
             );
-          }
-        } else {
-          this.refreshAllVideoGrids({
-            reason: refreshReason,
-            forceMainReload: true,
-          }).catch((error) => {
-            devLogger.warn(
-              "[app.init()] Failed to refresh video grids after session actor:",
-              error,
-            );
-          });
-        }
-      };
-
-      if (typeof nostrClient.onSessionActorChange === "function") {
-        nostrClient.onSessionActorChange((detail) => {
-          handleSessionActorReady(detail).catch((error) => {
-            devLogger.warn(
-              "[app.init()] Failed to process session actor change:",
-              error,
-            );
-          });
-        });
-      }
-
-      await syncSessionActorBlacklist("post-refresh");
-
-      if (typeof accessControl.onBlacklistChange === "function") {
-        accessControl.onBlacklistChange(() => {
-          syncSessionActorBlacklist("blacklist-change");
-          if (this.isUserLoggedIn()) {
-            return;
-          }
-
-          const refreshReason = "admin-blacklist-change";
-          this.refreshAllVideoGrids({
-            reason: refreshReason,
-            forceMainReload: true,
-          }).catch((error) => {
-            devLogger.warn(
-              "[app.init()] Failed to refresh video grids after admin blacklist change:",
-              error,
-            );
-          });
-
-          if (typeof this.refreshVisibleModerationUi === "function") {
-            try {
-              this.refreshVisibleModerationUi({ reason: refreshReason });
-            } catch (error) {
-              devLogger.warn(
-                "[app.init()] Failed to refresh moderation UI after admin blacklist change:",
-                error,
-              );
-            }
-          }
-        });
-      }
-
-      if (typeof accessControl.onWhitelistChange === "function") {
-        accessControl.onWhitelistChange(() => {
-          const refreshReason = "admin-whitelist-change";
-          this.refreshAllVideoGrids({
-            reason: refreshReason,
-            forceMainReload: true,
-          }).catch((error) => {
-            devLogger.warn(
-              "[app.init()] Failed to refresh video grids after admin whitelist change:",
-              error,
-            );
-          });
-        });
-      }
-
-      // Grab the "Subscriptions" link by its id in the sidebar
-      this.subscriptionsLink = document.getElementById("subscriptionsLink");
-
-      this.syncAuthUiState();
-
-      if (typeof window !== "undefined") {
-        window.addEventListener("bitvid:auth-changed", (event) => {
-          const detail = event.detail || {};
-          const previousPubkey = detail.previousPubkey;
-
-          if (previousPubkey && typeof storageService !== "undefined" && typeof storageService.lock === "function") {
-            storageService.lock(previousPubkey);
-          }
-
-          if (this.uploadModal && typeof this.uploadModal.refreshState === "function") {
-            this.uploadModal.refreshState();
-          }
-        });
-      }
-
-      const savedPubKey = this.activeProfilePubkey;
-      if (savedPubKey) {
-        // Auto-login if a pubkey was saved
-        try {
-          await this.authService.login(savedPubKey, { persistActive: false });
-        } catch (error) {
-          devLogger.error("Auto-login failed:", error);
-          if (error && error.code === "site-lockdown") {
-            const message = this.describeLoginError(
-              error,
-              "Auto-login failed. Please sign in again once lockdown ends.",
-            );
-            this.showStatus(message, { autoHideMs: 12000 });
           }
         }
-      }
+      });
+    }
 
-      // 5. Setup general event listeners
-      this.setupEventListeners();
-
-      const watchHistoryInitPromise =
-        this.watchHistoryTelemetry?.initPreferenceSync?.().catch((error) => {
+    if (typeof accessControl.onWhitelistChange === "function") {
+      accessControl.onWhitelistChange(() => {
+        const refreshReason = "admin-whitelist-change";
+        this.refreshAllVideoGrids({
+          reason: refreshReason,
+          forceMainReload: true,
+        }).catch((error) => {
           devLogger.warn(
-            "[app.init()] Failed to initialize watch history metadata sync:",
-            error
+            "[app.init()] Failed to refresh video grids after admin whitelist change:",
+            error,
           );
-        }) || Promise.resolve();
+        });
+      });
+    }
+  }
 
-      await watchHistoryInitPromise;
+  _initUI() {
+    // Grab the "Subscriptions" link by its id in the sidebar
+    this.subscriptionsLink = document.getElementById("subscriptionsLink");
 
-      // 9. Check URL ?v= param
-      this.checkUrlParams();
+    this.syncAuthUiState();
 
+    if (typeof window !== "undefined") {
+      window.addEventListener("bitvid:auth-changed", (event) => {
+        const detail = event.detail || {};
+        const previousPubkey = detail.previousPubkey;
+
+        if (previousPubkey && typeof storageService !== "undefined" && typeof storageService.lock === "function") {
+          storageService.lock(previousPubkey);
+        }
+
+        if (this.uploadModal && typeof this.uploadModal.refreshState === "function") {
+          this.uploadModal.refreshState();
+        }
+      });
+    }
+  }
+
+  async _initAutoLogin() {
+    const savedPubKey = this.activeProfilePubkey;
+    if (savedPubKey) {
+      // Look up the saved profile entry to forward authType and providerId.
+      // Without this, the login flow defaults to "nip07" and the signer
+      // restoration path cannot distinguish NIP-07 from NIP-46 or nsec,
+      // which leads to incorrect signer setup on page refresh.
+      const savedProfiles = this.authService.cloneSavedProfiles();
+      const normalizedSaved = this.normalizeHexPubkey(savedPubKey) || savedPubKey;
+      const savedEntry = savedProfiles.find((entry) => {
+        const entryPubkey = this.normalizeHexPubkey(entry?.pubkey);
+        return entryPubkey && entryPubkey === normalizedSaved;
+      });
+      const loginOptions = { persistActive: false };
+      if (savedEntry?.authType) {
+        loginOptions.authType = savedEntry.authType;
+      }
+      if (savedEntry?.providerId) {
+        loginOptions.providerId = savedEntry.providerId;
+      }
+
+      try {
+        await this.authService.login(savedPubKey, loginOptions);
+      } catch (error) {
+        devLogger.error("Auto-login failed:", error);
+        if (error && error.code === "site-lockdown") {
+          const message = this.describeLoginError(
+            error,
+            "Auto-login failed. Please sign in again once lockdown ends.",
+          );
+          this.showStatus(message, { autoHideMs: 12000 });
+        }
+      }
+    }
+  }
+
+  async _initWatchHistory() {
+    const watchHistoryInitPromise =
+      this.watchHistoryTelemetry?.initPreferenceSync?.().catch((error) => {
+        devLogger.warn(
+          "[app.init()] Failed to initialize watch history metadata sync:",
+          error
+        );
+      }) || Promise.resolve();
+
+    await watchHistoryInitPromise;
+  }
+
+  async initializeServices() {
+    await this._initViewManager();
+    this._warmupNostrExtension();
+    this._initServiceWorker();
+    this._initAuthAndModeration();
+  }
+
+  initializeUIResources() {
+    return this._initModals();
+  }
+
+  async initializeNetwork() {
+    await this._initNostr();
+  }
+
+  async initializeDataAndSession() {
+    await this._initTrustedSeeds();
+    this._initViewCounter();
+    this._initAccessControl();
+
+    await this._initSessionActor();
+    this._initAccessControlListeners();
+  }
+
+  initializeUserInterface() {
+    this._initUI();
+  }
+
+  async performAutoLogin() {
+    await this._initAutoLogin();
+  }
+
+  async finalizeInitialization() {
+    this.setupEventListeners();
+    await this._initWatchHistory();
+    this.checkUrlParams();
+  }
+
+  async init() {
+    try {
+      await this.initializeServices();
+
+      const modalPromise = this.initializeUIResources();
+      await this.initializeNetwork();
+      await modalPromise;
+
+      await this.initializeDataAndSession();
+
+      this.initializeUserInterface();
+      await this.performAutoLogin();
+
+      await this.finalizeInitialization();
     } catch (error) {
       devLogger.error("Init failed:", error);
       this.showError("Failed to connect to Nostr relay");
     }
   }
 
-  goToProfile(pubkey) {
-    if (typeof pubkey !== "string") {
-      this.showError("No creator info available.");
-      return;
-    }
-
-    let candidate = pubkey.trim();
-    if (!candidate) {
-      this.showError("No creator info available.");
-      return;
-    }
-
-    if (candidate.startsWith("nostr:")) {
-      candidate = candidate.slice("nostr:".length);
-    }
-
-    const normalizedHex = this.normalizeHexPubkey(candidate);
-    const npub = normalizedHex ? this.safeEncodeNpub(normalizedHex) : null;
-
-    if (!npub) {
-      devLogger.warn(
-        "[Application] Invalid pubkey for profile navigation:",
-        candidate,
-      );
-      this.showError("Invalid creator profile.");
-      return;
-    }
-
-    window.location.hash = `#view=channel-profile&npub=${npub}`;
+  goToProfile(...args) {
+    this._initCoordinators();
+    return this._router.goToProfile(...args);
   }
 
-  openCreatorChannel() {
-    if (!this.currentVideo || !this.currentVideo.pubkey) {
-      this.showError("No creator info available.");
-      return;
-    }
-
-    try {
-      // Encode the hex pubkey to npub
-      const npub = window.NostrTools.nip19.npubEncode(this.currentVideo.pubkey);
-
-      // Close the video modal
-      this.hideModal();
-
-      // Switch to channel profile view
-      window.location.hash = `#view=channel-profile&npub=${npub}`;
-    } catch (err) {
-      devLogger.error("Failed to open creator channel:", err);
-      this.showError("Could not open channel.");
-    }
+  openCreatorChannel(...args) {
+    this._initCoordinators();
+    return this._router.openCreatorChannel(...args);
   }
 
   openWalletPane() {
@@ -1294,41 +1261,14 @@ class Application {
     }
   }
 
-  dispatchAuthLoadingState(detail = {}) {
-    if (typeof window === "undefined" || typeof window.dispatchEvent !== "function") {
-      return false;
-    }
-
-    try {
-      const payload = { ...(typeof detail === "object" && detail ? detail : {}) };
-      window.dispatchEvent(new CustomEvent("bitvid:auth-loading-state", { detail: payload }));
-      return true;
-    } catch (error) {
-      devLogger.warn("[Application] Failed to dispatch auth loading state:", error);
-      return false;
-    }
+  dispatchAuthLoadingState(...args) {
+    this._initCoordinators();
+    return this._ui.dispatchAuthLoadingState(...args);
   }
 
-  updateAuthLoadingState(partial = {}) {
-    const baseState =
-      this.authLoadingState && typeof this.authLoadingState === "object"
-        ? this.authLoadingState
-        : { profile: "idle", lists: "idle", dms: "idle" };
-    const nextState = {
-      ...baseState,
-      ...(partial && typeof partial === "object" ? partial : {}),
-    };
-    this.authLoadingState = nextState;
-
-    const root = typeof document !== "undefined" ? document.documentElement : null;
-    if (root) {
-      root.dataset.authProfileLoading = nextState.profile || "idle";
-      root.dataset.authListsLoading = nextState.lists || "idle";
-      root.dataset.authDmsLoading = nextState.dms || "idle";
-    }
-
-    this.dispatchAuthLoadingState(nextState);
-    return nextState;
+  updateAuthLoadingState(...args) {
+    this._initCoordinators();
+    return this._ui.updateAuthLoadingState(...args);
   }
 
   normalizeModalTrigger(...args) {
@@ -1620,23 +1560,9 @@ class Application {
     this.closeAllMoreMenus();
   }
 
-  handleProfileChannelLink(element) {
-    if (!(element instanceof HTMLElement)) {
-      return;
-    }
-
-    const targetNpub =
-      typeof element.dataset.targetNpub === "string"
-        ? element.dataset.targetNpub
-        : "";
-    if (this.profileController) {
-      this.profileController.hide();
-    }
-    if (targetNpub) {
-      window.location.hash = `#view=channel-profile&npub=${encodeURIComponent(
-        targetNpub,
-      )}`;
-    }
+  handleProfileChannelLink(...args) {
+    this._initCoordinators();
+    return this._router.handleProfileChannelLink(...args);
   }
 
   async handleLoginModalSuccess(payload = {}) {
@@ -2207,6 +2133,22 @@ class Application {
       (detail?.loaded === false
         ? false
         : Boolean(service && service.loaded));
+    const uiReady =
+      detail?.uiReady === true ||
+      (detail?.uiReady === false
+        ? false
+        : Boolean(service && service.uiReady));
+    const dataReady =
+      detail?.dataReady === true ||
+      (detail?.dataReady === false
+        ? false
+        : Boolean(service && service.dataReady));
+    const loadedFromCache =
+      detail?.loadedFromCache === true ||
+      (detail?.loadedFromCache === false
+        ? false
+        : Boolean(service && service.loadedFromCache));
+    const lastLoadError = detail?.lastLoadError || service?.lastLoadError || null;
 
     return {
       interests: this.normalizeHashtagPreferenceList(sourceInterests),
@@ -2214,6 +2156,10 @@ class Application {
       eventId: rawEventId || null,
       createdAt,
       loaded,
+      uiReady,
+      dataReady,
+      loadedFromCache,
+      lastLoadError,
       action,
     };
   }
@@ -2233,8 +2179,22 @@ class Application {
       ? Number(snapshot.createdAt)
       : "";
     const loaded = snapshot.loaded === true ? "1" : "0";
+    const uiReady = snapshot.uiReady === true ? "1" : "0";
+    const dataReady = snapshot.dataReady === true ? "1" : "0";
+    const loadedFromCache = snapshot.loadedFromCache === true ? "1" : "0";
+    const lastLoadError = snapshot?.lastLoadError?.code || "";
 
-    return [interests, disinterests, eventId, createdAt, loaded].join("|");
+    return [
+      interests,
+      disinterests,
+      eventId,
+      createdAt,
+      loaded,
+      uiReady,
+      dataReady,
+      loadedFromCache,
+      lastLoadError,
+    ].join("|");
   }
 
   updateCachedHashtagPreferences(detail = {}) {
@@ -2248,6 +2208,10 @@ class Application {
       eventId: snapshot.eventId,
       createdAt: snapshot.createdAt,
       loaded: snapshot.loaded,
+      uiReady: snapshot.uiReady,
+      dataReady: snapshot.dataReady,
+      loadedFromCache: snapshot.loadedFromCache,
+      lastLoadError: snapshot.lastLoadError,
       action: snapshot.action,
     };
     this.hashtagPreferencesSnapshotSignature = signature;
@@ -2318,6 +2282,10 @@ class Application {
         ? Number(snapshot.createdAt)
         : null,
       loaded: snapshot.loaded === true,
+      uiReady: snapshot.uiReady === true,
+      dataReady: snapshot.dataReady === true,
+      loadedFromCache: snapshot.loadedFromCache === true,
+      lastLoadError: snapshot.lastLoadError || null,
     };
   }
 
@@ -2661,9 +2629,10 @@ class Application {
     return this.authService.fetchAndRenderProfile(pubkey, forceRefresh);
   }
 
-  async batchFetchProfiles(authorSet) {
+  async batchFetchProfiles(authorSet, { forceRefresh = false } = {}) {
     return batchFetchProfilesFromRelays({
       authorSet,
+      forceRefresh,
       getProfileCacheEntry: (pubkey) => this.getProfileCacheEntry(pubkey),
       setProfileCacheEntry: (pubkey, profile) =>
         this.setProfileCacheEntry(pubkey, profile),
@@ -2737,7 +2706,7 @@ class Application {
       throw error;
     }
 
-    if (signer.type === "extension" && nostrClient.ensureExtensionPermissions) {
+    if ((signer.type === "extension" || signer.type === "nip07") && nostrClient.ensureExtensionPermissions) {
       const permissionResult = await nostrClient.ensureExtensionPermissions(
         DEFAULT_NIP07_CORE_METHODS,
       );
@@ -2962,7 +2931,7 @@ class Application {
       ? recipient.relayHints
       : [];
 
-    if (enabled && !relayHints.length) {
+    if (ENABLE_NIP17_RELAY_WARNING && enabled && !relayHints.length) {
       this.showStatus(
         "Privacy warning: this recipient has not shared NIP-17 relays, so we'll use your default relays.",
       );
@@ -3216,36 +3185,9 @@ class Application {
     return this._moderation.refreshVisibleModerationUi(...args);
   }
 
-  updateActiveProfileUI(pubkey, profile = {}) {
-    if (this.profileController) {
-      this.profileController.handleProfileUpdated({
-        pubkey,
-        profile,
-      });
-      return;
-    }
-
-    const picture = profile.picture || "assets/svg/default-profile.svg";
-
-    if (this.profileAvatar) {
-      this.profileAvatar.src = picture;
-    }
-
-    const channelLink = document.getElementById("profileChannelLink");
-    if (channelLink instanceof HTMLElement) {
-      const targetNpub = this.safeEncodeNpub(pubkey);
-      if (targetNpub) {
-        channelLink.href = `#view=channel-profile&npub=${targetNpub}`;
-        channelLink.dataset.targetNpub = targetNpub;
-        channelLink.classList.remove("hidden");
-      } else {
-        channelLink.removeAttribute("href");
-        if (channelLink.dataset) {
-          delete channelLink.dataset.targetNpub;
-        }
-        channelLink.classList.add("hidden");
-      }
-    }
+  updateActiveProfileUI(...args) {
+    this._initCoordinators();
+    return this._ui.updateActiveProfileUI(...args);
   }
 
   async hydrateNwcSettingsForPubkey(pubkey) {
@@ -3326,226 +3268,49 @@ class Application {
     return this.nwcSettingsService.clearStoredNwcSettings(pubkey, options);
   }
 
-  applyAuthenticatedUiState() {
-    if (this.loginButton) {
-      this.loginButton.classList.add("hidden");
-      this.loginButton.setAttribute("hidden", "");
-    }
-
-    if (this.logoutButton) {
-      this.logoutButton.classList.remove("hidden");
-    }
-
-    if (this.userStatus) {
-      this.userStatus.classList.add("hidden");
-    }
-
-    if (this.uploadButton) {
-      this.uploadButton.classList.remove("hidden");
-      this.uploadButton.removeAttribute("hidden");
-    }
-
-    if (this.profileButton) {
-      this.profileButton.classList.remove("hidden");
-      this.profileButton.removeAttribute("hidden");
-    }
-
-    const subscriptionsLink = this.resolveSubscriptionsLink();
-    if (subscriptionsLink) {
-      subscriptionsLink.classList.remove("hidden");
-    }
-
-    const forYouLink = this.resolveForYouLink();
-    if (forYouLink) {
-      forYouLink.classList.remove("hidden");
-    }
-
-    const exploreLink = this.resolveExploreLink();
-    if (exploreLink) {
-      exploreLink.classList.remove("hidden");
-    }
+  applyAuthenticatedUiState(...args) {
+    this._initCoordinators();
+    return this._ui.applyAuthenticatedUiState(...args);
   }
 
-  applyLoggedOutUiState() {
-    if (this.loginButton) {
-      this.loginButton.classList.remove("hidden");
-      this.loginButton.removeAttribute("hidden");
-    }
-
-    if (this.logoutButton) {
-      this.logoutButton.classList.add("hidden");
-    }
-
-    if (this.userStatus) {
-      this.userStatus.classList.add("hidden");
-    }
-
-    if (this.userPubKey) {
-      this.userPubKey.textContent = "";
-    }
-
-    if (this.uploadButton) {
-      this.uploadButton.classList.add("hidden");
-      this.uploadButton.setAttribute("hidden", "");
-    }
-
-    if (this.profileButton) {
-      this.profileButton.classList.add("hidden");
-      this.profileButton.setAttribute("hidden", "");
-    }
-
-    const subscriptionsLink = this.resolveSubscriptionsLink();
-    if (subscriptionsLink) {
-      subscriptionsLink.classList.add("hidden");
-    }
-
-    const forYouLink = this.resolveForYouLink();
-    if (forYouLink) {
-      forYouLink.classList.add("hidden");
-    }
-
-    const exploreLink = this.resolveExploreLink();
-    if (exploreLink) {
-      exploreLink.classList.add("hidden");
-    }
+  applyLoggedOutUiState(...args) {
+    this._initCoordinators();
+    return this._ui.applyLoggedOutUiState(...args);
   }
 
-  syncAuthUiState() {
-    if (this.isUserLoggedIn()) {
-      this.applyAuthenticatedUiState();
-    } else {
-      this.applyLoggedOutUiState();
-    }
+  syncAuthUiState(...args) {
+    this._initCoordinators();
+    return this._ui.syncAuthUiState(...args);
   }
 
-  refreshChromeElements() {
-    const doc = typeof document !== "undefined" ? document : null;
-    const findElement = (id) => {
-      if (!doc || typeof doc.getElementById !== "function") {
-        return null;
-      }
-      const element = doc.getElementById(id);
-      if (!element || typeof element.addEventListener !== "function") {
-        return null;
-      }
-      return element;
-    };
-
-    this.loginButton = findElement("loginButton");
-    this.logoutButton = findElement("logoutButton");
-    this.uploadButton = findElement("uploadButton");
-    this.profileButton = findElement("profileButton");
-    this.closeLoginModalBtn = findElement("closeLoginModal");
-
-    return {
-      loginButton: this.loginButton,
-      logoutButton: this.logoutButton,
-      uploadButton: this.uploadButton,
-      profileButton: this.profileButton,
-      closeLoginModalButton: this.closeLoginModalBtn,
-    };
+  refreshChromeElements(...args) {
+    this._initCoordinators();
+    return this._ui.refreshChromeElements(...args);
   }
 
-  resolveSubscriptionsLink() {
-    if (
-      this.subscriptionsLink instanceof HTMLElement &&
-      this.subscriptionsLink.isConnected
-    ) {
-      return this.subscriptionsLink;
-    }
-
-    const linkCandidate = document.getElementById("subscriptionsLink");
-    if (linkCandidate instanceof HTMLElement) {
-      this.subscriptionsLink = linkCandidate;
-      return this.subscriptionsLink;
-    }
-
-    this.subscriptionsLink = null;
-    return null;
+  resolveSubscriptionsLink(...args) {
+    this._initCoordinators();
+    return this._ui.resolveSubscriptionsLink(...args);
   }
 
-  resolveForYouLink() {
-    if (this.forYouLink instanceof HTMLElement && this.forYouLink.isConnected) {
-      return this.forYouLink;
-    }
-
-    const linkCandidate = document.getElementById("forYouLink");
-    if (linkCandidate instanceof HTMLElement) {
-      this.forYouLink = linkCandidate;
-      return this.forYouLink;
-    }
-
-    this.forYouLink = null;
-    return null;
+  resolveForYouLink(...args) {
+    this._initCoordinators();
+    return this._ui.resolveForYouLink(...args);
   }
 
-  resolveExploreLink() {
-    if (
-      this.exploreLink instanceof HTMLElement &&
-      this.exploreLink.isConnected
-    ) {
-      return this.exploreLink;
-    }
-
-    const linkCandidate = document.getElementById("exploreLink");
-    if (linkCandidate instanceof HTMLElement) {
-      this.exploreLink = linkCandidate;
-      return this.exploreLink;
-    }
-
-    this.exploreLink = null;
-    return null;
+  resolveExploreLink(...args) {
+    this._initCoordinators();
+    return this._ui.resolveExploreLink(...args);
   }
 
-  hydrateSidebarNavigation() {
-    const chromeElements = this.refreshChromeElements();
-    this.resolveSubscriptionsLink();
-    this.resolveForYouLink();
-    this.resolveExploreLink();
-
-    if (this.appChromeController) {
-      if (typeof this.appChromeController.setElements === "function") {
-        this.appChromeController.setElements(chromeElements);
-      } else {
-        if (this.appChromeController.elements) {
-          Object.assign(this.appChromeController.elements, chromeElements);
-        }
-        this.appChromeController.initialize();
-      }
-    }
-
-    this.syncAuthUiState();
+  hydrateSidebarNavigation(...args) {
+    this._initCoordinators();
+    return this._ui.hydrateSidebarNavigation(...args);
   }
 
-  maybeShowExperimentalLoginWarning(provider) {
-    const normalizedProvider =
-      typeof provider === "string" ? provider.trim().toLowerCase() : "";
-
-    if (normalizedProvider !== "nsec" && normalizedProvider !== "nip46") {
-      return;
-    }
-
-    const now = Date.now();
-    if (
-      this.lastExperimentalWarningKey === normalizedProvider &&
-      typeof this.lastExperimentalWarningAt === "number" &&
-      now - this.lastExperimentalWarningAt < 2000
-    ) {
-      return;
-    }
-
-    this.lastExperimentalWarningKey = normalizedProvider;
-    this.lastExperimentalWarningAt = now;
-
-    const providerLabel =
-      normalizedProvider === "nsec"
-        ? "Direct nsec or seed"
-        : "NIP-46 remote signer";
-
-    this.showStatus(
-      `${providerLabel} logins are still in development and may not work well yet. We recommend using a NIP-07 browser extension for the most reliable experience.`,
-      { showSpinner: false, autoHideMs: 5000 },
-    );
+  maybeShowExperimentalLoginWarning(...args) {
+    this._initCoordinators();
+    return this._ui.maybeShowExperimentalLoginWarning(...args);
   }
 
   async handlePermissionPromptRequest() {
@@ -3665,6 +3430,95 @@ class Application {
 
     this.permissionPromptInFlight = false;
     this.updatePermissionPromptCta();
+  }
+
+  async handleAuthSyncRetryRequest() {
+    const activePubkey = this.normalizeHexPubkey(this.pubkey);
+    if (!activePubkey) {
+      return;
+    }
+
+    this.updateAuthLoadingState({ lists: "loading" });
+
+    const taskResults = await Promise.allSettled([
+      Promise.resolve()
+        .then(() => this.authService?.loadBlocksForPubkey?.(activePubkey, {
+          allowPermissionPrompt: true,
+        }))
+        .then((loaded) => ({ name: "blocks", ok: loaded !== false }))
+        .catch((error) => ({ name: "blocks", ok: false, error })),
+      Promise.resolve()
+        .then(() => subscriptions?.ensureLoaded?.(activePubkey, {
+          allowPermissionPrompt: true,
+        }))
+        .then(() => ({
+          name: "subscriptions",
+          ok: !subscriptions?.lastLoadError,
+          error: subscriptions?.lastLoadError || null,
+        }))
+        .catch((error) => ({ name: "subscriptions", ok: false, error })),
+      Promise.resolve()
+        .then(() => this.hashtagPreferences?.load?.(activePubkey, {
+          allowPermissionPrompt: true,
+        }))
+        .then(() => {
+          const error = this.hashtagPreferences?.lastLoadError || null;
+          if (!error) {
+            this.updateCachedHashtagPreferences();
+          }
+          return {
+            name: "hashtags",
+            ok: !error,
+            error,
+          };
+        })
+        .catch((error) => ({ name: "hashtags", ok: false, error })),
+    ]);
+
+    const tasks = taskResults.map((result) =>
+      result.status === "fulfilled"
+        ? result.value
+        : {
+            name: "unknown",
+            ok: false,
+            error: result.reason || null,
+          },
+    );
+    const hasFailure = tasks.some((task) => !task.ok);
+
+    this.updateAuthLoadingState({
+      lists: hasFailure ? "error" : "ready",
+      listsDetail: {
+        ready: !hasFailure,
+        degraded: hasFailure,
+        error: hasFailure,
+        retryScheduled: false,
+        retryCompleted: true,
+        tasks: tasks.map((task) => ({
+          name: task.name,
+          ok: task.ok,
+          fromCache: false,
+          error: task.error || null,
+        })),
+      },
+    });
+
+    this.dispatchAuthChange({
+      status: "auth-sync-retry",
+      loggedIn: true,
+      pubkey: activePubkey,
+      authLoadingState: this.authLoadingState,
+    });
+
+    if (this.profileController) {
+      this.profileController.populateBlockedList();
+      void this.profileController.populateSubscriptionsList();
+      this.profileController.populateHashtagPreferences();
+    }
+
+    if (!hasFailure) {
+      await this.onVideosShouldRefresh({ reason: "auth-sync-retry-success" });
+    }
   }
 
   async handleAuthLogin(...args) {
@@ -3947,27 +3801,37 @@ class Application {
 
   async refreshForYouFeed(...args) {
     this._initCoordinators();
-    return this._feed.refreshForYouFeed(...args);
+    return this._feed.refreshFeed(FEED_TYPES.FOR_YOU, ...args);
   }
 
   refreshKidsFeed(...args) {
     this._initCoordinators();
-    return this._feed.refreshKidsFeed(...args);
+    return this._feed.refreshFeed(FEED_TYPES.KIDS, ...args);
   }
 
   refreshExploreFeed(...args) {
     this._initCoordinators();
-    return this._feed.refreshExploreFeed(...args);
+    return this._feed.refreshFeed(FEED_TYPES.EXPLORE, ...args);
   }
 
   refreshRecentFeed(...args) {
     this._initCoordinators();
-    return this._feed.refreshRecentFeed(...args);
+    return this._feed.refreshFeed("recent", ...args);
+  }
+
+  async refreshFeed(...args) {
+    this._initCoordinators();
+    return this._feed.refreshFeed(...args);
   }
 
   checkRelayHealthWarning(...args) {
     this._initCoordinators();
     return this._feed.checkRelayHealthWarning(...args);
+  }
+
+  async loadFeedVideos(...args) {
+    this._initCoordinators();
+    return this._feed.loadFeedVideos(...args);
   }
 
   /**
@@ -4818,6 +4682,11 @@ class Application {
     return this._playback.resolveVideoPostedAt(...args);
   }
 
+  async resolveVideoPostedAtBatch(...args) {
+    this._initCoordinators();
+    return this._playback.resolveVideoPostedAtBatch(...args);
+  }
+
   async ensureModalPostedTimestamp(...args) {
     this._initCoordinators();
     return this._playback.ensureModalPostedTimestamp(...args);
@@ -4832,465 +4701,46 @@ class Application {
    * Simple helper to safely encode an npub.
    */
   safeEncodeNpub(pubkey) {
-    if (typeof pubkey !== "string") {
-      return null;
-    }
-
-    const trimmed = pubkey.trim();
-    if (!trimmed) {
-      return null;
-    }
-
-    if (trimmed.startsWith("npub1")) {
-      return trimmed;
-    }
-
-    try {
-      return window.NostrTools.nip19.npubEncode(trimmed);
-    } catch (err) {
-      return null;
-    }
+    return safeEncodeNpub(pubkey);
   }
 
   safeDecodeNpub(npub) {
-    if (typeof npub !== "string") {
-      return null;
-    }
-
-    const trimmed = npub.trim();
-    if (!trimmed) {
-      return null;
-    }
-
-    try {
-      const decoded = window.NostrTools.nip19.decode(trimmed);
-      if (decoded.type === "npub" && typeof decoded.data === "string") {
-        return decoded.data;
-      }
-    } catch (err) {
-      return null;
-    }
-
-    return null;
+    return safeDecodeNpub(npub);
   }
 
   selectPreferredCreatorName(candidates = []) {
-    for (const candidate of candidates) {
-      if (typeof candidate !== "string") {
-        continue;
-      }
-      const trimmed = candidate.trim();
-      if (!trimmed) {
-        continue;
-      }
-      if (HEX64_REGEX.test(trimmed)) {
-        continue;
-      }
-      return trimmed;
-    }
-    return "";
+    return this.creatorProfileController
+      ? this.creatorProfileController.selectPreferredCreatorName(candidates)
+      : "";
   }
 
   selectPreferredCreatorPicture(candidates = []) {
-    for (const candidate of candidates) {
-      if (typeof candidate !== "string") {
-        continue;
-      }
-      const sanitized = sanitizeProfileMediaUrl(candidate);
-      if (sanitized) {
-        return sanitized;
-      }
-    }
-    return "";
+    return this.creatorProfileController
+      ? this.creatorProfileController.selectPreferredCreatorPicture(candidates)
+      : "";
   }
 
-  resolveCreatorProfileFromSources({
-    video,
-    pubkey,
-    cachedProfile = null,
-    fetchedProfile = null,
-    fallbackAvatar,
-  } = {}) {
-    const normalizedPubkey =
-      typeof pubkey === "string" && pubkey.trim() ? pubkey.trim() : "";
-    const fallbackAvatarCandidate =
-      typeof fallbackAvatar === "string" && fallbackAvatar.trim()
-        ? fallbackAvatar.trim()
-        : normalizedPubkey
-          ? `https://robohash.org/${normalizedPubkey}`
-          : "assets/svg/default-profile.svg";
-    const defaultAvatar =
-      sanitizeProfileMediaUrl(fallbackAvatarCandidate) ||
-      fallbackAvatarCandidate ||
-      "assets/svg/default-profile.svg";
-
-    const nameCandidates = [];
-    const pictureCandidates = [];
-
-    const collectFromSource = (source) => {
-      if (!source || typeof source !== "object") {
-        return;
-      }
-      const names = [
-        source.display_name,
-        source.displayName,
-        source.name,
-        source.username,
-      ];
-      names.forEach((value) => {
-        if (typeof value === "string") {
-          nameCandidates.push(value);
-        }
-      });
-      const pictures = [source.picture, source.image, source.photo];
-      pictures.forEach((value) => {
-        if (typeof value === "string") {
-          pictureCandidates.push(value);
-        }
-      });
-    };
-
-    collectFromSource(fetchedProfile);
-    collectFromSource(cachedProfile);
-
-    if (video && typeof video === "object") {
-      collectFromSource(video.creator);
-      if (typeof video.creatorName === "string") {
-        nameCandidates.push(video.creatorName);
-      }
-      if (typeof video.creatorPicture === "string") {
-        pictureCandidates.push(video.creatorPicture);
-      }
-      collectFromSource(video.author);
-      if (typeof video.authorName === "string") {
-        nameCandidates.push(video.authorName);
-      }
-      if (typeof video.authorPicture === "string") {
-        pictureCandidates.push(video.authorPicture);
-      }
-      collectFromSource(video.profile);
-      const extraNames = [
-        video.shortNpub,
-        video.creatorNpub,
-        video.npub,
-        video.authorNpub,
-      ];
-      extraNames.forEach((value) => {
-        if (typeof value === "string") {
-          nameCandidates.push(value);
-        }
-      });
-    }
-
-    const resolvedName =
-      this.selectPreferredCreatorName(nameCandidates) || "Unknown";
-    const resolvedPicture =
-      this.selectPreferredCreatorPicture(pictureCandidates) || defaultAvatar;
-
-    return { name: resolvedName, picture: resolvedPicture };
+  resolveCreatorProfileFromSources(options) {
+    return this.creatorProfileController
+      ? this.creatorProfileController.resolveCreatorProfileFromSources(options)
+      : { name: "Unknown", picture: "assets/svg/default-profile.svg" };
   }
 
-  resolveModalCreatorProfile({
-    video,
-    pubkey,
-    cachedProfile = null,
-    fetchedProfile = null,
-  } = {}) {
-    return this.resolveCreatorProfileFromSources({
-      video,
-      pubkey,
-      cachedProfile,
-      fetchedProfile,
-    });
+  resolveModalCreatorProfile(options) {
+    return this.creatorProfileController
+      ? this.creatorProfileController.resolveModalCreatorProfile(options)
+      : { name: "Unknown", picture: "assets/svg/default-profile.svg" };
   }
 
   decorateVideoCreatorIdentity(video) {
-    if (!video || typeof video !== "object") {
-      return video;
-    }
-
-    const normalizedPubkey =
-      this.normalizeHexPubkey(video.pubkey) ||
-      (typeof video.pubkey === "string" ? video.pubkey.trim() : "");
-    if (!normalizedPubkey) {
-      return video;
-    }
-
-    let cachedProfile = null;
-    if (typeof this.getProfileCacheEntry === "function") {
-      const cacheEntry = this.getProfileCacheEntry(normalizedPubkey);
-      if (cacheEntry && typeof cacheEntry === "object") {
-        cachedProfile = cacheEntry.profile || null;
-      }
-    }
-
-    const resolvedProfile = this.resolveCreatorProfileFromSources({
-      video,
-      pubkey: normalizedPubkey,
-      cachedProfile,
-    });
-
-    if (!video.creator || typeof video.creator !== "object") {
-      video.creator = {};
-    }
-
-    if (!video.creator.pubkey) {
-      video.creator.pubkey = normalizedPubkey;
-    }
-
-    if (resolvedProfile.name) {
-      video.creator.name = resolvedProfile.name;
-      if (
-        typeof video.creatorName !== "string" ||
-        !video.creatorName.trim() ||
-        video.creatorName === "Unknown"
-      ) {
-        video.creatorName = resolvedProfile.name;
-      }
-      if (
-        typeof video.authorName !== "string" ||
-        !video.authorName.trim() ||
-        video.authorName === "Unknown"
-      ) {
-        video.authorName = resolvedProfile.name;
-      }
-    }
-
-    if (resolvedProfile.picture) {
-      video.creator.picture = resolvedProfile.picture;
-      video.creatorPicture = resolvedProfile.picture;
-      if (
-        typeof video.authorPicture !== "string" ||
-        !video.authorPicture.trim()
-      ) {
-        video.authorPicture = resolvedProfile.picture;
-      }
-    }
-
-    const encodedNpub = this.safeEncodeNpub(normalizedPubkey);
-    if (encodedNpub) {
-      const shortNpub = formatShortNpub(encodedNpub) || encodedNpub;
-      if (typeof video.npub !== "string" || !video.npub.trim()) {
-        video.npub = encodedNpub;
-      }
-      if (typeof video.shortNpub !== "string" || !video.shortNpub.trim()) {
-        video.shortNpub = shortNpub;
-      }
-      if (
-        typeof video.creatorNpub !== "string" ||
-        !video.creatorNpub.trim()
-      ) {
-        video.creatorNpub = shortNpub;
-      }
-    }
-
-    return video;
+    return this.creatorProfileController
+      ? this.creatorProfileController.decorateVideoCreatorIdentity(video)
+      : video;
   }
 
-  async fetchModalCreatorProfile({
-    pubkey,
-    displayNpub = "",
-    cachedProfile = null,
-    requestToken = null,
-  } = {}) {
-    const normalized = this.normalizeHexPubkey(pubkey);
-    if (!normalized) {
-      return;
-    }
-
-    const relayList =
-      Array.isArray(nostrClient?.relays) && nostrClient.relays.length
-        ? nostrClient.relays
-        : null;
-    if (!relayList) {
-      return;
-    }
-
-    const profileEntry = await fetchProfileMetadata(normalized, {
-      nostr: nostrClient,
-      relays: relayList,
-      logger: devLogger,
-    });
-
-    if (this.modalCreatorProfileRequestToken !== requestToken) {
-      return;
-    }
-
-    if (!profileEntry?.event) {
-      if (this.modalCreatorProfileRequestToken === requestToken) {
-        this.modalCreatorProfileRequestToken = null;
-      }
-      return;
-    }
-
-    ensureProfileMetadataSubscription({
-      pubkey: normalized,
-      nostr: nostrClient,
-      relays: relayList,
-      onProfile: ({ profile }) => {
-        if (typeof this.setProfileCacheEntry === "function" && profile) {
-          this.setProfileCacheEntry(normalized, profile);
-        }
-      },
-    });
-
-    let parsed = null;
-    try {
-      parsed = profileEntry.event.content
-        ? JSON.parse(profileEntry.event.content)
-        : null;
-    } catch (error) {
-      devLogger.warn(
-        `[Application] Failed to parse creator profile content for ${normalized}:`,
-        error,
-      );
-      if (this.modalCreatorProfileRequestToken === requestToken) {
-        this.modalCreatorProfileRequestToken = null;
-      }
-      return;
-    }
-
-    if (this.modalCreatorProfileRequestToken !== requestToken) {
-      return;
-    }
-
-    const parsedLud16 =
-      typeof parsed?.lud16 === "string" ? parsed.lud16.trim() : "";
-    const parsedLud06 =
-      typeof parsed?.lud06 === "string" ? parsed.lud06.trim() : "";
-    const lightningAddressCandidate = (() => {
-      const fields = [parsedLud16, parsedLud06];
-      for (const field of fields) {
-        if (typeof field !== "string") {
-          continue;
-        }
-        const trimmed = field.trim();
-        if (trimmed) {
-          return trimmed;
-        }
-      }
-      return "";
-    })();
-
-    const fetchedProfile = {
-      display_name: parsed?.display_name,
-      name: parsed?.name,
-      username: parsed?.username,
-      picture: parsed?.picture,
-      image: parsed?.image,
-      photo: parsed?.photo,
-    };
-
-    const resolvedProfile = this.resolveModalCreatorProfile({
-      video: this.currentVideo,
-      pubkey: normalized,
-      cachedProfile,
-      fetchedProfile,
-    });
-
-    if (this.modalCreatorProfileRequestToken !== requestToken) {
-      return;
-    }
-
-    const activeVideoPubkey = this.normalizeHexPubkey(this.currentVideo?.pubkey);
-    if (activeVideoPubkey && activeVideoPubkey !== normalized) {
-      return;
-    }
-
-    const nextLightning = lightningAddressCandidate || "";
-    const previousLightning =
-      typeof this.currentVideo?.lightningAddress === "string"
-        ? this.currentVideo.lightningAddress
-        : "";
-
-    if (this.currentVideo) {
-      this.currentVideo.lightningAddress = nextLightning ? nextLightning : null;
-      this.currentVideo.creatorName = resolvedProfile.name;
-      this.currentVideo.creatorPicture = resolvedProfile.picture;
-      this.currentVideo.creatorNpub = displayNpub;
-      if (this.currentVideo.creator && typeof this.currentVideo.creator === "object") {
-        this.currentVideo.creator = {
-          ...this.currentVideo.creator,
-          name: resolvedProfile.name,
-          picture: resolvedProfile.picture,
-          pubkey: normalized,
-          lightningAddress: nextLightning ? nextLightning : null,
-        };
-      } else {
-        this.currentVideo.creator = {
-          name: resolvedProfile.name,
-          picture: resolvedProfile.picture,
-          pubkey: normalized,
-          lightningAddress: nextLightning ? nextLightning : null,
-        };
-      }
-    }
-
-    if (this.videoModal) {
-      this.videoModal.updateMetadata({
-        creator: {
-          name: resolvedProfile.name,
-          avatarUrl: resolvedProfile.picture,
-          npub: displayNpub,
-        },
-      });
-    }
-
-    this.zapController?.setVisibility(Boolean(this.currentVideo?.lightningAddress));
-
-    const sanitizedFetchedPicture = sanitizeProfileMediaUrl(
-      parsed?.picture || parsed?.image || parsed?.photo || "",
-    );
-    const fetchedNameCandidate = this.selectPreferredCreatorName([
-      parsed?.display_name,
-      parsed?.name,
-      parsed?.username,
-    ]);
-
-    const cachedLightning =
-      typeof cachedProfile?.lightningAddress === "string"
-        ? cachedProfile.lightningAddress.trim()
-        : "";
-    const shouldUpdateCache =
-      Boolean(fetchedNameCandidate) ||
-      Boolean(sanitizedFetchedPicture) ||
-      cachedLightning !== nextLightning ||
-      previousLightning !== nextLightning;
-
-    if (shouldUpdateCache) {
-      try {
-        const profileForCache = {
-          name: fetchedNameCandidate || resolvedProfile.name,
-          picture: sanitizedFetchedPicture || resolvedProfile.picture,
-        };
-
-        if (parsedLud16) {
-          profileForCache.lud16 = parsedLud16;
-        }
-
-        if (parsedLud06) {
-          profileForCache.lud06 = parsedLud06;
-        }
-
-        if (nextLightning) {
-          profileForCache.lightningAddress = nextLightning;
-        }
-
-        this.setProfileCacheEntry(
-          normalized,
-          profileForCache,
-          { persist: false, reason: "modal-profile-fetch" },
-        );
-      } catch (error) {
-        devLogger.warn(
-          `[Application] Failed to update profile cache for ${normalized}:`,
-          error,
-        );
-      }
-    }
-
-    if (this.modalCreatorProfileRequestToken === requestToken) {
-      this.modalCreatorProfileRequestToken = null;
+  async fetchModalCreatorProfile(options) {
+    if (this.creatorProfileController) {
+      return this.creatorProfileController.fetchModalCreatorProfile(options);
     }
   }
 
@@ -5303,27 +4753,7 @@ class Application {
   }
 
   normalizeHexPubkey(pubkey) {
-    if (typeof pubkey !== "string") {
-      return null;
-    }
-
-    const trimmed = pubkey.trim();
-    if (!trimmed) {
-      return null;
-    }
-
-    if (HEX64_REGEX.test(trimmed)) {
-      return trimmed.toLowerCase();
-    }
-
-    if (trimmed.startsWith("npub1")) {
-      const decoded = this.safeDecodeNpub(trimmed);
-      if (decoded && HEX64_REGEX.test(decoded)) {
-        return decoded.toLowerCase();
-      }
-    }
-
-    return null;
+    return normalizeHexPubkey(pubkey);
   }
 
   /**

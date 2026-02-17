@@ -2,13 +2,20 @@
 
 ## Tests
 
-### Unit Tests
-- `npm run test:unit` may time out in resource-constrained environments (like CI) when running the full suite serially. CI workflows use sharding (`test:unit:shardX`) to mitigate this. Targeted testing (`test:dm:unit`, `test:dm:integration`) is recommended for local development focus. (Last checked: 2025-02-23)
-
 ### Skipped Tests
+
 The following tests are skipped due to flakiness or environmental issues and should be investigated:
 
-- `tests/e2e/popover.spec.ts`: `keeps the bottom-right grid menu inside the viewport` (Visual regression layout issue: Floating UI `flip` middleware fails to respect viewport boundary in constrained height scenarios. Verified 2025-02-23, fix attempt failed.)
+_No skipped tests currently documented._ (Last checked: 2026-02-17)
 
 ### Visual Regression Tests (`test:visual`)
+
 - **Artifact Retention**: Visual tests are configured to retain screenshots, traces, and videos on failure to assist with debugging. These artifacts can be found in `artifacts/test-results/`.
+- **Note**: Visual tests are passing as of 2026-02-12. (Agent verified 2026-02-17: Tests fail if browsers are missing, consistent with Environment issue).
+
+## Environment
+
+### Playwright Browsers
+
+- **Issue**: Visual and E2E tests (`npm run test:visual`, `npm run test:e2e`) may fail with `browserType.launch: Executable doesn't exist`.
+- **Workaround**: Run `npx playwright install` to download the required browser binaries if you are running tests outside of the pre-configured dev container or CI environment. (Last checked: 2026-02-17)

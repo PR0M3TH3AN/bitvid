@@ -5,14 +5,14 @@ import {
 } from "./nostrClientFacade.js";
 import { getActiveSigner } from "./nostr/index.js";
 import { isSessionActor } from "./nostr/sessionActor.js";
-import { normalizeNostrPubkey } from "./nostr/nip46Client.js";
 import {
   buildBlockListEvent,
   buildMuteListEvent,
   BLOCK_LIST_IDENTIFIER,
+  KIND_MUTE_LIST,
 } from "./nostrEventSchemas.js";
-import { CACHE_POLICIES, STORAGE_TIERS } from "./nostr/cachePolicies.js";
 import { devLogger, userLogger } from "./utils/logger.js";
+import { STANDARD_TIMEOUT_MS, MAX_BLOCKLIST_ENTRIES } from "./constants.js";
 import {
   publishEventToRelays,
   assertAnyRelayAccepted,
@@ -83,11 +83,13 @@ export const USER_BLOCK_EVENTS = Object.freeze({
 const FAST_BLOCKLIST_RELAY_LIMIT = 3;
 const FAST_BLOCKLIST_TIMEOUT_MS = 2500;
 const BACKGROUND_BLOCKLIST_TIMEOUT_MS = 6000;
-const DECRYPT_TIMEOUT_MS = 20000;
-const BACKGROUND_DECRYPT_TIMEOUT_MS = 15000;
+// PERF: Reduced from 20s/15s to 10s/8s — the signer is now guaranteed to be
+// ready before list loading starts (authSessionCoordinator waits for the
+// permission pre-grant), so decryption should succeed quickly.
+const DECRYPT_TIMEOUT_MS = STANDARD_TIMEOUT_MS;
+const BACKGROUND_DECRYPT_TIMEOUT_MS = 8000;
 // PERF: Reduced from 10s to 3s for faster recovery during login.
 const DECRYPT_RETRY_DELAY_MS = 3000;
-const MAX_BLOCKLIST_ENTRIES = 5000;
 
 function sanitizeRelayList(candidate) {
   return Array.isArray(candidate)
@@ -417,7 +419,7 @@ function isUserBlockListEvent(event) {
     return false;
   }
 
-  if (event.kind === 10000) {
+  if (event.kind === KIND_MUTE_LIST) {
     return true;
   }
 
@@ -752,7 +754,7 @@ class UserBlockListManager {
     this.blockListSubscriptionKey = key;
 
     const filters = [
-      { kinds: [10000], authors: [normalized] },
+      { kinds: [KIND_MUTE_LIST], authors: [normalized] },
       { kinds: [30002], authors: [normalized], "#d": [BLOCK_LIST_IDENTIFIER] },
     ];
 
@@ -990,20 +992,26 @@ class UserBlockListManager {
         return (!requiresNip44 || hasNip44) && (!requiresNip04 || hasNip04);
       };
 
+      // FIX: Always attempt to resolve the signer if one isn't available,
+      // regardless of allowPermissionPrompt. The previous guard meant that
+      // background refreshes (allowPermissionPrompt=false) could never decrypt
+      // because they skipped signer resolution entirely. ensureActiveSignerForPubkey
+      // does not itself prompt the user — it only waits for an already-injected
+      // extension or returns the existing signer.
       if (
-        allowPermissionPrompt &&
-        (!signer ||
-          (!signerHasRequiredDecryptors(signer) &&
-            typeof nostrClient?.ensureActiveSignerForPubkey === "function"))
+        (!signer || !signerHasRequiredDecryptors(signer)) &&
+        typeof nostrClient?.ensureActiveSignerForPubkey === "function"
       ) {
         signer = await nostrClient.ensureActiveSignerForPubkey(normalized);
       }
 
-      const caps = signer?.capabilities || {};
-      const signerHasNip04 =
-        caps.nip04 !== false && typeof signer?.nip04Decrypt === "function";
-      const signerHasNip44 =
-        caps.nip44 !== false && typeof signer?.nip44Decrypt === "function";
+      // FIX: Check method existence only, not capabilities. NIP-07 adapters
+      // always expose decrypt methods that check extension state at call time.
+      // The capabilities getter dynamically queries window.nostr which may not
+      // have injected nip04/nip44 modules yet (lazy injection), causing false
+      // negatives that block decryption even when methods will work at call time.
+      const signerHasNip04 = typeof signer?.nip04Decrypt === "function";
+      const signerHasNip44 = typeof signer?.nip44Decrypt === "function";
       const signerAvailable = Boolean(signer);
       const signerHasDecryptors = signerHasNip04 || signerHasNip44;
       const signerStatus = signerAvailable
@@ -1258,7 +1266,7 @@ class UserBlockListManager {
 
         // Standard Mute: Kind 10000 WITHOUT d=user-blocks
         const standardMuteEvents = validEvents
-          .filter((e) => e.kind === 10000 && !isTaggedBlockListEvent(e))
+          .filter((e) => e.kind === KIND_MUTE_LIST && !isTaggedBlockListEvent(e))
           .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
 
         const newestLegacy = legacyBlockEvents[0] || null;
@@ -1546,16 +1554,16 @@ class UserBlockListManager {
       // Legacy variants are fetched in parallel but processed separately to avoid blocking.
 
       const standardFetchPromise = nostrClient.fetchListIncrementally({
-        kind: 10000,
+        kind: KIND_MUTE_LIST,
         pubkey: normalized,
         relayUrls: relays,
         since: fetchSince,
-        timeoutMs: 6000,
+        timeoutMs: 10000,
       });
 
       const legacyFetchPromise = Promise.all([
         nostrClient.fetchListIncrementally({
-          kind: 10000,
+          kind: KIND_MUTE_LIST,
           pubkey: normalized,
           dTag: BLOCK_LIST_IDENTIFIER,
           relayUrls: relays,
@@ -2103,7 +2111,7 @@ class UserBlockListManager {
       throw err;
     }
 
-    if (signer.type === "extension") {
+    if (signer.type === "extension" || signer.type === "nip07") {
       const permissionResult = await requestDefaultExtensionPermissions(
         DEFAULT_NIP07_ENCRYPTION_METHODS,
       );

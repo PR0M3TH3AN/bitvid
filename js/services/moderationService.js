@@ -1,3 +1,19 @@
+/**
+ * @fileoverview
+ * Moderation Service - Decentralized Trust & Safety.
+ *
+ * Implements a "Web of Trust" model where content visibility and safety actions (blur, hide)
+ * are determined by aggregating reports (NIP-56) and mutes (NIP-51) from the user's
+ * trusted social graph (follows).
+ *
+ * Flow:
+ * 1. setViewerPubkey(pubkey) loads the user's Kind 3 contacts -> trustedContacts.
+ * 2. subscribeToReports(eventId) listens for Kind 1984 reports.
+ * 3. ingestReportEvent(event) stores reports in memory.
+ * 4. recomputeSummaryForEvent(eventId) checks if reporter is in trustedContacts.
+ * 5. If trusted reports > threshold, emits 'summary' event to update UI.
+ */
+
 import {
   getActiveSigner,
   nostrClient,
@@ -6,11 +22,26 @@ import {
 import { publishEventToRelays, assertAnyRelayAccepted } from "../nostrPublish.js";
 import { accessControl } from "../accessControl.js";
 import { userBlocks, USER_BLOCK_EVENTS } from "../userBlocks.js";
-import { buildReportEvent } from "../nostrEventSchemas.js";
+import { buildReportEvent, KIND_MUTE_LIST } from "../nostrEventSchemas.js";
 import logger from "../utils/logger.js";
+import { DEBOUNCE_DELAY_MS } from "../constants.js";
 
+/**
+ * Trust threshold for disabling autoplay on reported videos.
+ * If >= 1 trusted user reports content, autoplay is disabled.
+ */
 const AUTOPLAY_TRUST_THRESHOLD = 1;
+
+/**
+ * Trust threshold for blurring content.
+ * If >= 1 trusted user reports content, it is blurred.
+ */
 const BLUR_TRUST_THRESHOLD = 1;
+
+/**
+ * Time window for considering trusted mute list entries valid.
+ * Mutes older than 60 days are ignored to prevent stale lists from affecting scores.
+ */
 const TRUSTED_MUTE_WINDOW_DAYS = 60;
 const TRUSTED_MUTE_WINDOW_SECONDS = TRUSTED_MUTE_WINDOW_DAYS * 24 * 60 * 60;
 
@@ -198,6 +229,12 @@ function bytesToHex(bytes) {
   return hex;
 }
 
+/**
+ * @internal
+ * Internal implementation of bech32 encoding/decoding.
+ * This ensures the service can normalize `npub` inputs even if the global
+ * `NostrTools` object is unavailable or version-mismatched.
+ */
 const BECH32_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
 const BECH32_CHARSET_MAP = (() => {
   const map = new Map();
@@ -207,6 +244,7 @@ const BECH32_CHARSET_MAP = (() => {
   return map;
 })();
 
+/** @internal */
 function bech32Polymod(values) {
   let chk = 1;
   const generators = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
@@ -499,7 +537,24 @@ function resolveStorage() {
   return null;
 }
 
+/**
+ * ModerationService
+ *
+ * Central authority for Trust & Safety.
+ * Implements a "Web of Trust" model where content visibility and safety actions (blur, hide)
+ * are determined by aggregating reports (NIP-56) and mutes (NIP-51) from the user's
+ * trusted social graph (follows).
+ */
 export class ModerationService {
+  /**
+   * @param {object} options
+   * @param {object} [options.nostrClient] Nostr client.
+   * @param {object} [options.logger] System logger.
+   * @param {object} [options.userBlocks] User block manager.
+   * @param {object} [options.accessControl] Admin access control.
+   * @param {object} [options.userLogger] User-facing logger.
+   * @param {function} [options.requestExtensionPermissions] NIP-07 helper.
+   */
   constructor({
     nostrClient: client = null,
     logger: log = null,
@@ -1091,7 +1146,7 @@ export class ModerationService {
       this.refreshTrustedMuteSubscriptions().catch((error) => {
         this.log("[moderationService] refreshTrustedMuteSubscriptions failed", error);
       });
-    }, 2000);
+    }, DEBOUNCE_DELAY_MS);
   }
 
   async refreshTrustedMuteSubscriptions() {
@@ -1138,7 +1193,7 @@ export class ModerationService {
     this.log(`[moderationService] Refreshing mute subscriptions for ${authors.length} authors in ${chunks.length} batches`);
 
     for (const chunk of chunks) {
-      const filter = { kinds: [10000], authors: chunk };
+      const filter = { kinds: [KIND_MUTE_LIST], authors: chunk };
       try {
         const sub = this.nostrClient.pool.sub(relays, [filter]);
         sub.on("event", (event) => {
@@ -1303,7 +1358,7 @@ export class ModerationService {
       return;
     }
 
-    if (!event || event.kind !== 10000) {
+    if (!event || event.kind !== KIND_MUTE_LIST) {
       this.replaceTrustedMuteList(owner, new Set(), { createdAt: 0, eventId: "" });
       return;
     }
@@ -1343,7 +1398,7 @@ export class ModerationService {
   }
 
   ingestTrustedMuteEvent(event) {
-    if (!event || event.kind !== 10000) {
+    if (!event || event.kind !== KIND_MUTE_LIST) {
       return;
     }
 
@@ -1523,6 +1578,12 @@ export class ModerationService {
     throw new Error("Mute list management is delegated to userBlocks.");
   }
 
+  /**
+   * Checks if an author is muted by any of the trusted contacts.
+   *
+   * @param {string} pubkey - The author's pubkey.
+   * @returns {boolean} True if at least one trusted contact mutes this author.
+   */
   isAuthorMutedByTrusted(pubkey) {
     const muters = this.getActiveTrustedMutersForAuthor(pubkey);
     return muters.length > 0;
@@ -1532,6 +1593,13 @@ export class ModerationService {
     return this.getActiveTrustedMutersForAuthor(pubkey);
   }
 
+  /**
+   * Checks if a pubkey is blocked or muted by the current viewer.
+   * Delegates to the UserBlocks manager.
+   *
+   * @param {string} pubkey - The pubkey to check.
+   * @returns {boolean} True if blocked or muted by viewer.
+   */
   isPubkeyBlockedByViewer(pubkey) {
     if (!this.userBlocks || typeof this.userBlocks.isBlocked !== "function") {
       return false;
@@ -1683,6 +1751,12 @@ export class ModerationService {
     return this.nostrClient.ensurePool();
   }
 
+  /**
+   * Checks the current Nostr client state and updates the viewer if changed.
+   * Useful when the user logs in or switches accounts externally.
+   *
+   * @returns {Promise<string>} The active viewer pubkey.
+   */
   async refreshViewerFromClient() {
     const clientPubkey = normalizeHex(
       this.nostrClient?.pubkey || this.nostrClient?.sessionActor?.pubkey,
@@ -1700,6 +1774,14 @@ export class ModerationService {
     return this.setViewerPubkey(clientPubkey);
   }
 
+  /**
+   * Switches the active "Viewer" context.
+   * This reloads the trusted contact list (Kind 3) for the new user,
+   * effectively rebuilding the "Web of Trust" graph.
+   *
+   * @param {string} pubkey - The public key of the new viewer.
+   * @returns {Promise<string>} The normalized pubkey of the new viewer.
+   */
   async setViewerPubkey(pubkey) {
     const normalized = normalizeHex(pubkey);
     if (normalized === this.viewerPubkey && this.contactListPromise) {
@@ -1966,6 +2048,15 @@ export class ModerationService {
     this.activeSubscriptions.delete(normalized);
   }
 
+  /**
+   * Subscribes to Kind 1984 reports for a specific event.
+   *
+   * This fetches recent history (backfill) and opens a live subscription.
+   * Reports are ingested and trigger summary recomputation.
+   *
+   * @param {string} eventId - The ID of the event to monitor.
+   * @returns {Promise<void>}
+   */
   async subscribeToReports(eventId) {
     const normalized = normalizeEventId(eventId);
     if (!normalized) {
@@ -2019,6 +2110,15 @@ export class ModerationService {
     }
   }
 
+  /**
+   * Ingests a NIP-56 Report event (Kind 1984).
+   *
+   * The report is indexed by `targetEventId` -> `reporter` -> `reportType`.
+   * Note: This method only stores the report. Trust filtering happens during
+   * `recomputeSummaryForEvent`.
+   *
+   * @param {object} event - The Kind 1984 event.
+   */
   ingestReportEvent(event) {
     if (!event || event.kind !== 1984) {
       return;
@@ -2071,6 +2171,17 @@ export class ModerationService {
     }
   }
 
+  /**
+   * Aggregates all reports for a specific event and calculates the "Trust Score".
+   *
+   * Algorithm:
+   * 1. Iterate over all reports for the event.
+   * 2. Check if the reporter is in the `trustedContacts` set (or Admin Whitelist).
+   * 3. If trusted, increment the count for that report type (e.g., "nudity").
+   * 4. Update the summary state and emit change events if thresholds are crossed.
+   *
+   * @param {string} eventId - The ID of the event to recompute.
+   */
   recomputeSummaryForEvent(eventId) {
     const normalized = normalizeEventId(eventId);
     if (!normalized) {
@@ -2198,6 +2309,12 @@ export class ModerationService {
     this.emit("summary", { eventId: normalized, summary: cloneSummary(summary) });
   }
 
+  /**
+   * Retrieves the current aggregated trust score for an event.
+   *
+   * @param {string} eventId - The event ID.
+   * @returns {object} The summary object ({ totalTrusted, types, ... }).
+   */
   getTrustedReportSummary(eventId) {
     const normalized = normalizeEventId(eventId);
     if (!normalized) {
@@ -2296,6 +2413,17 @@ export class ModerationService {
     return Number.isFinite(entry.trusted) ? entry.trusted : 0;
   }
 
+  /**
+   * Publishes a NIP-56 Report (Kind 1984).
+   *
+   * @param {object} params
+   * @param {string} params.eventId - The ID of the content being reported.
+   * @param {string} params.type - The category (e.g., "nudity", "spam").
+   * @param {string} params.targetPubkey - The pubkey of the reported content's author.
+   * @param {string} [params.relayHint] - Optional relay URL hint.
+   * @param {string} [params.content] - Optional text description of the report.
+   * @returns {Promise<{ok: boolean, event: object, results: object[]}>}
+   */
   async submitReport({
     eventId,
     type,
@@ -2344,7 +2472,7 @@ export class ModerationService {
     }
 
     if (
-      signer.type === "extension" &&
+      (signer.type === "extension" || signer.type === "nip07") &&
       typeof this.nostrClient?.ensureExtensionPermissions === "function"
     ) {
       const permissionResult = await this.nostrClient.ensureExtensionPermissions([

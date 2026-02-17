@@ -19,7 +19,6 @@ import {
   NOTE_TYPES,
 } from "./nostrEventSchemas.js";
 import { CACHE_POLICIES, STORAGE_TIERS } from "./nostr/cachePolicies.js";
-import { getSidebarLoadingMarkup } from "./sidebarLoading.js";
 import {
   publishEventToRelays,
   assertAnyRelayAccepted
@@ -44,12 +43,16 @@ import {
 
 const SUBSCRIPTION_SET_KIND =
   getNostrEventSchema(NOTE_TYPES.SUBSCRIPTION_LIST)?.kind ?? 30000;
-const DECRYPT_TIMEOUT_MS = 20000;
-// PERF: Reduced from 10s to 3s — extensions that already granted permission
-// should recover quickly. The longer delay was causing unnecessary wait time
-// during the critical login path when the first decrypt attempt fails due to
-// the extension still initializing.
-const DECRYPT_RETRY_DELAY_MS = 3000;
+// PERF: Reduced from 10s to 6s — the signer is guaranteed ready before list
+// loading starts (authSessionCoordinator waits for the permission pre-grant),
+// so decryption should succeed within 2-3s. 6s is generous enough for slow
+// relays while still failing fast enough for the scheme fallback to try the
+// next decryption method without stalling the login path.
+const DECRYPT_TIMEOUT_MS = 6000;
+// PERF: Reduced from 3s to 1.5s — extensions that already granted permission
+// should recover near-instantly. The shorter delay prevents unnecessary wait
+// time during the critical login path when the first decrypt attempt fails.
+const DECRYPT_RETRY_DELAY_MS = 1500;
 
 function normalizeHexPubkey(value) {
   if (typeof value !== "string") {
@@ -127,23 +130,16 @@ function determineDecryptionOrder(event, availableSchemes, cachedScheme = null) 
     prioritized.push(cachedScheme);
   }
 
-  const hasNip44 =
-    availableSet.has("nip44_v2") || availableSet.has("nip44");
-  const allowNip04 = !hasNip44 && availableSet.has("nip04");
-
   const hints = extractEncryptionHints(event);
   const aliasMap = {
     nip04: ["nip04"],
-    nip44: ["nip44_v2", "nip44"],
+    nip44: ["nip44", "nip44_v2"],
     nip44_v2: ["nip44_v2", "nip44"],
   };
 
   for (const hint of hints) {
     const candidates = Array.isArray(aliasMap[hint]) ? aliasMap[hint] : [hint];
     for (const candidate of candidates) {
-      if (candidate === "nip04" && !allowNip04) {
-        continue;
-      }
       if (availableSet.has(candidate) && !prioritized.includes(candidate)) {
         prioritized.push(candidate);
         break;
@@ -151,11 +147,7 @@ function determineDecryptionOrder(event, availableSchemes, cachedScheme = null) 
     }
   }
 
-  const fallbacks = ["nip44_v2", "nip44"];
-  if (allowNip04) {
-    fallbacks.push("nip04");
-  }
-  for (const fallback of fallbacks) {
+  for (const fallback of ["nip44_v2", "nip44", "nip04"]) {
     if (availableSet.has(fallback) && !prioritized.includes(fallback)) {
       prioritized.push(fallback);
     }
@@ -356,7 +348,12 @@ class SubscriptionsManager {
     this.subsEventId = null;
     this.subsEventCreatedAt = null;
     this.currentUserPubkey = null;
+    this.uiReady = false;
+    this.dataReady = false;
     this.loaded = false;
+    this.loadedFromCache = false;
+    this.lastSuccessfulSyncAt = null;
+    this.lastAttemptAt = null;
     this.loadingPromise = null;
     this.backgroundLoading = false;
     this.subscriptionListView = null;
@@ -401,6 +398,7 @@ class SubscriptionsManager {
 
     const allowPermissionPrompt = options?.allowPermissionPrompt !== false;
     const normalizedUserPubkey = normalizeHexPubkey(userPubkey) || userPubkey;
+    this.lastAttemptAt = Date.now();
 
     // 1. Attempt to load from cache first
     const cached = profileCache.getProfileData(normalizedUserPubkey, "subscriptions");
@@ -411,7 +409,10 @@ class SubscriptionsManager {
       this.subsEventId = cachedSnapshot.eventId;
       this.subsEventCreatedAt = cachedSnapshot.createdAt;
       this.currentUserPubkey = normalizedUserPubkey;
+      this.uiReady = true;
+      this.dataReady = true;
       this.loaded = true;
+      this.loadedFromCache = true;
 
       // Trigger background update
       if (!allowPermissionPrompt && !this.backgroundLoading) {
@@ -475,7 +476,16 @@ class SubscriptionsManager {
     if (!userPubkey) return;
 
     try {
+      this.lastAttemptAt = Date.now();
       const allowPermissionPrompt = options?.allowPermissionPrompt !== false;
+      const signerReadinessGate =
+        options?.signerReadinessGate && typeof options.signerReadinessGate === "object"
+          ? options.signerReadinessGate
+          : null;
+      const shouldSuppressPermissionEscalation =
+        signerReadinessGate &&
+        (signerReadinessGate.status === "permission-denied" ||
+          signerReadinessGate.status === "extension-unavailable");
       const wasBackgroundLoading = this.backgroundLoading;
       const normalizedUserPubkey = normalizeHexPubkey(userPubkey) || userPubkey;
       const wasLoadedForUser =
@@ -488,6 +498,7 @@ class SubscriptionsManager {
         devLogger.warn(
           "[SubscriptionsManager] No relay URLs available while loading subscriptions.",
         );
+        this.uiReady = true;
         if (wasBackgroundLoading) {
           this.backgroundLoading = false;
           this.emitter.emit("change", {
@@ -590,11 +601,20 @@ class SubscriptionsManager {
           this.subscribedPubkeys.clear();
           this.subsEventId = null;
           this.subsEventCreatedAt = null;
+          this.uiReady = true;
+          this.dataReady = true;
           this.loaded = true;
+          this.loadedFromCache = false;
+          this.lastSuccessfulSyncAt = Date.now();
         } else {
            // We have data loaded, and relays returned nothing.
            // This means no updates. We keep what we have.
            devLogger.log("[SubscriptionsManager] No updates from relays.");
+           this.uiReady = true;
+           this.dataReady = true;
+           this.loaded = true;
+           this.loadedFromCache = false;
+           this.lastSuccessfulSyncAt = Date.now();
         }
         if (wasBackgroundLoading) {
           this.backgroundLoading = false;
@@ -623,6 +643,7 @@ class SubscriptionsManager {
       try {
         const decryptPromise = this.decryptSubscriptionEvent(newest, userPubkey, {
           allowPermissionPrompt,
+          signerReadinessGate,
         });
         const timeoutPromise = new Promise((_, reject) =>
           setTimeout(
@@ -643,12 +664,11 @@ class SubscriptionsManager {
 
       if (!decryptResult.ok) {
         this.lastLoadError = decryptResult.error || null;
+        this.uiReady = true;
         if (decryptResult.error?.code === "subscriptions-decrypt-timeout") {
-          if (!this.loaded && !cachedSnapshot.hasSnapshot) {
-            this.loaded = true;
-          }
           this.scheduleDecryptRetry(normalizedUserPubkey, decryptResult.error, {
             allowPermissionPrompt,
+            signerReadinessGate,
           });
           return;
         }
@@ -656,13 +676,25 @@ class SubscriptionsManager {
           !allowPermissionPrompt &&
           decryptResult.error?.code === "subscriptions-permission-required"
         ) {
-          if (!this.loaded && !cachedSnapshot.hasSnapshot) {
-            this.loaded = true;
+          if (shouldSuppressPermissionEscalation) {
+            userLogger.warn(
+              "[SubscriptionsManager] Skipping permission escalation due to shared signer gate outcome.",
+              signerReadinessGate,
+            );
+            if (wasBackgroundLoading) {
+              this.backgroundLoading = false;
+              this.emitter.emit("change", {
+                action: "background-loaded",
+                subscribedPubkeys: Array.from(this.subscribedPubkeys),
+              });
+            }
+            return;
           }
           // Retry with permission prompt enabled so the signer / window.nostr
           // path is available once the extension has finished initializing.
           this.scheduleDecryptRetry(normalizedUserPubkey, decryptResult.error, {
             allowPermissionPrompt: true,
+            signerReadinessGate,
           });
           if (wasBackgroundLoading) {
             this.backgroundLoading = false;
@@ -690,6 +722,7 @@ class SubscriptionsManager {
           );
           this.scheduleDecryptRetry(normalizedUserPubkey, decryptResult.error, {
             allowPermissionPrompt,
+            signerReadinessGate,
           });
           return;
         }
@@ -697,10 +730,12 @@ class SubscriptionsManager {
           this.subscribedPubkeys.clear();
           this.subsEventId = null;
           this.subsEventCreatedAt = null;
+          this.dataReady = false;
           this.loaded = true;
         }
         this.scheduleDecryptRetry(normalizedUserPubkey, decryptResult.error, {
           allowPermissionPrompt,
+          signerReadinessGate,
         });
         return;
       }
@@ -714,7 +749,11 @@ class SubscriptionsManager {
       // Update state
       this.subscribedPubkeys = newSet;
       this.currentUserPubkey = normalizedUserPubkey;
+      this.uiReady = true;
+      this.dataReady = true;
       this.loaded = true;
+      this.loadedFromCache = false;
+      this.lastSuccessfulSyncAt = Date.now();
       if (wasBackgroundLoading) {
         this.backgroundLoading = false;
       }
@@ -754,6 +793,7 @@ class SubscriptionsManager {
 
     } catch (err) {
       this.lastLoadError = err || null;
+      this.uiReady = true;
       userLogger.error("[SubscriptionsManager] Failed to update subs from relays:", err);
     }
   }
@@ -764,7 +804,12 @@ class SubscriptionsManager {
     this.subsEventId = null;
     this.subsEventCreatedAt = null;
     this.currentUserPubkey = null;
+    this.uiReady = false;
+    this.dataReady = false;
     this.loaded = false;
+    this.loadedFromCache = false;
+    this.lastSuccessfulSyncAt = null;
+    this.lastAttemptAt = null;
     this.backgroundLoading = false;
     this.lastRunOptions = null;
     this.lastResult = null;
@@ -830,12 +875,12 @@ class SubscriptionsManager {
     devLogger.log("[SubscriptionsManager] ensureLoaded start", actorHex);
     const normalizedActor = normalizeHexPubkey(actorHex) || actorHex;
     if (!normalizedActor) {
-      return;
+      return { ok: false, error: new Error("Missing actor pubkey."), state: this.getLoadState() };
     }
 
-    if (this.loaded && this.currentUserPubkey === normalizedActor) {
+    if (this.dataReady && this.currentUserPubkey === normalizedActor) {
       devLogger.log("[SubscriptionsManager] ensureLoaded already loaded");
-      return;
+      return { ok: true, error: null, state: this.getLoadState() };
     }
 
     if (this.loadingPromise) {
@@ -843,9 +888,9 @@ class SubscriptionsManager {
         devLogger.log("[SubscriptionsManager] ensureLoaded awaiting existing promise");
         await this.loadingPromise;
       } catch (error) {
-        throw error;
+        return { ok: false, error, state: this.getLoadState() };
       }
-      return;
+      return { ok: this.dataReady === true, error: this.lastLoadError || null, state: this.getLoadState() };
     }
 
     const loader = this.loadSubscriptions(normalizedActor, options);
@@ -863,27 +908,47 @@ class SubscriptionsManager {
 
     try {
       // Race against a timeout so the UI doesn't hang indefinitely if relays stall.
-      // The timeout must accommodate relay fetch (~12s) + decryption (~20s timeout
-      // with ~5s per scheme attempt × up to 3 schemes), so we use 45s.
-      const timeoutMs = 45000;
+      // The timeout accommodates relay fetch (~12s) + decryption (~6s timeout per
+      // scheme × up to 3 schemes = ~18s) = ~30s. Reduced from 45s to prevent
+      // blocking the login path for nearly a minute.
+      const timeoutMs = 25000;
+      let timeoutId;
       await Promise.race([
         loader,
-        new Promise((_, reject) =>
-          setTimeout(
+        new Promise((_, reject) => {
+          timeoutId = setTimeout(
             () => reject(new Error("Timeout loading subscriptions")),
             timeoutMs
-          )
-        ),
-      ]);
+          );
+        }),
+      ]).finally(() => {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+      });
       devLogger.log("[SubscriptionsManager] ensureLoaded success");
+      return { ok: this.dataReady === true, error: this.lastLoadError || null, state: this.getLoadState() };
     } catch (error) {
       userLogger.warn("[SubscriptionsManager] ensureLoaded timed out or failed:", error);
-      // Mark as loaded so the UI can proceed.  The background loader will
-      // continue and emit a "change" event if it eventually succeeds.
-      if (!this.loaded) {
-        this.loaded = true;
-      }
+      this.lastLoadError = this.lastLoadError || error;
+      this.uiReady = true;
+      return { ok: false, error: this.lastLoadError, state: this.getLoadState() };
     }
+  }
+
+  getLoadState() {
+    return {
+      uiReady: this.uiReady === true,
+      dataReady: this.dataReady === true,
+      lastLoadError: this.lastLoadError || null,
+      loadedFromCache: this.loadedFromCache === true,
+      lastSuccessfulSyncAt: Number.isFinite(this.lastSuccessfulSyncAt)
+        ? Number(this.lastSuccessfulSyncAt)
+        : null,
+      lastAttemptAt: Number.isFinite(this.lastAttemptAt)
+        ? Number(this.lastAttemptAt)
+        : null,
+    };
   }
 
   isSubscribed(channelHex) {
@@ -926,6 +991,14 @@ class SubscriptionsManager {
     }
 
     const allowPermissionPrompt = options?.allowPermissionPrompt !== false;
+    const signerReadinessGate =
+      options?.signerReadinessGate && typeof options.signerReadinessGate === "object"
+        ? options.signerReadinessGate
+        : null;
+    const suppressPermissionPrompt =
+      signerReadinessGate &&
+      (signerReadinessGate.status === "permission-denied" ||
+        signerReadinessGate.status === "extension-unavailable");
     const hints = extractEncryptionHints(event);
     const requiresNip44 = hints.includes("nip44") || hints.includes("nip44_v2");
     const requiresNip04 = !hints.length || hints.includes("nip04") || !requiresNip44;
@@ -937,28 +1010,33 @@ class SubscriptionsManager {
     };
 
     let signer = getActiveSigner();
+    // FIX: Always attempt to resolve the signer if one isn't available,
+    // regardless of allowPermissionPrompt. The previous guard meant that
+    // background refreshes (allowPermissionPrompt=false) could never decrypt
+    // because they skipped signer resolution entirely. ensureActiveSignerForPubkey
+    // does not itself prompt the user — it only waits for an already-injected
+    // extension or returns the existing signer.
     if (
-      allowPermissionPrompt &&
-      (!signer ||
-        (!signerHasRequiredDecryptors(signer) &&
-          typeof nostrClient?.ensureActiveSignerForPubkey === "function"))
+      (!signer || !signerHasRequiredDecryptors(signer)) &&
+      typeof nostrClient?.ensureActiveSignerForPubkey === "function"
     ) {
       signer = await nostrClient.ensureActiveSignerForPubkey(userPubkey);
     }
 
-    const signerCapabilities = signer?.capabilities;
-    const signerHasNip04 =
-      typeof signer?.nip04Decrypt === "function" &&
-      (!signerCapabilities || signerCapabilities.nip04 !== false);
-    const signerHasNip44 =
-      typeof signer?.nip44Decrypt === "function" &&
-      (!signerCapabilities || signerCapabilities.nip44 !== false);
+    // FIX: Check method existence only, not capabilities. NIP-07 adapters
+    // always expose decrypt methods that check extension state at call time.
+    // The capabilities getter dynamically queries window.nostr which may not
+    // have injected nip04/nip44 modules yet (lazy injection), causing false
+    // negatives that block decryption even when methods will work at call time.
+    const signerHasNip04 = typeof signer?.nip04Decrypt === "function";
+    const signerHasNip44 = typeof signer?.nip44Decrypt === "function";
 
-    const nostrApi = allowPermissionPrompt
-      ? typeof window !== "undefined"
-        ? window?.nostr
-        : null
-      : null;
+    // FIX: Always check window.nostr for decrypt methods as a fallback,
+    // not only when allowPermissionPrompt is true. The extension may have
+    // already granted permissions from a previous session, and checking
+    // its methods doesn't trigger any user-visible prompts.
+    const nostrApi =
+      typeof window !== "undefined" ? window?.nostr : null;
     const windowHasNip04 = typeof nostrApi?.nip04?.decrypt === "function";
     const windowHasNip44 =
       (nostrApi?.nip44 && typeof nostrApi.nip44.decrypt === "function") ||
@@ -971,6 +1049,13 @@ class SubscriptionsManager {
       if (!allowPermissionPrompt) {
         const error = new Error(
           "Decrypt permissions are required to read subscriptions."
+        );
+        error.code = "subscriptions-permission-required";
+        return { ok: false, error };
+      }
+      if (suppressPermissionPrompt) {
+        const error = new Error(
+          "Shared signer gate indicates extension permissions are unavailable.",
         );
         error.code = "subscriptions-permission-required";
         return { ok: false, error };
@@ -1004,11 +1089,11 @@ class SubscriptionsManager {
       decryptors.set(scheme, handler);
     };
 
-    // PERF: Previous 5s no-prompt timeout was too aggressive — extensions that
-    // have already granted permission still need time to decrypt. 8s gives a
-    // realistic window while still failing faster than the full 15s interactive
-    // timeout.
-    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 15000 : 8000;
+    // PERF: Reduced no-prompt timeout from 8s to 5s — the signer readiness
+    // gate now guarantees the extension is ready before decryption starts, so
+    // decrypt calls should complete within 1-2s. 5s accommodates slow
+    // extensions while still failing fast enough for scheme fallback.
+    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 12000 : 5000;
     const signerDecryptOptions = {
       priority: NIP07_PRIORITY.NORMAL,
       timeoutMs: nip07DecryptTimeoutMs,
@@ -1144,12 +1229,19 @@ class SubscriptionsManager {
         const decryptFn = decryptors.get(scheme);
         if (!decryptFn) return null;
         attemptSchemes.push(scheme);
-        return decryptFn(ciphertext).then((plaintext) => {
-          if (typeof plaintext !== "string") {
-            throw new Error("Decryption returned a non-string payload.");
-          }
-          return { plaintext, scheme };
-        });
+        // FIX: Wrap in Promise.resolve().then() to catch synchronous throws
+        // from decryptor functions (e.g. NIP-07 adapter nip44Decrypt throws
+        // immediately if the extension hasn't injected its nip44 module yet).
+        // Without this, a sync throw breaks the .map() chain and prevents
+        // Promise.any() from trying the remaining schemes.
+        return Promise.resolve()
+          .then(() => decryptFn(ciphertext))
+          .then((plaintext) => {
+            if (typeof plaintext !== "string") {
+              throw new Error("Decryption returned a non-string payload.");
+            }
+            return { plaintext, scheme };
+          });
       })
       .filter(Boolean);
 
@@ -1263,7 +1355,7 @@ class SubscriptionsManager {
       throw error;
     }
 
-    if (signer.type === "extension") {
+    if (signer.type === "extension" || signer.type === "nip07") {
       const permissionResult = await requestDefaultExtensionPermissions(
         DEFAULT_NIP07_ENCRYPTION_METHODS,
       );
@@ -1470,8 +1562,7 @@ class SubscriptionsManager {
     const container = document.getElementById(containerId);
     if (!userPubkey) {
       if (container) {
-        container.innerHTML =
-          "<p class='text-muted-strong'>Please log in first.</p>";
+        this._renderStatusMessage(container, "Please log in first.");
       }
       this.lastRunOptions = null;
       this.lastResult = null;
@@ -1500,8 +1591,7 @@ class SubscriptionsManager {
     }
 
     if (!channelHexes.length) {
-      container.innerHTML =
-        "<p class='text-muted-strong'>No subscriptions found.</p>";
+      this._renderStatusMessage(container, "No subscriptions found.");
       this.lastRunOptions = {
         actorPubkey: userPubkey,
         limit,
@@ -1513,7 +1603,7 @@ class SubscriptionsManager {
     }
 
     if (!this.hasRenderedOnce) {
-      container.innerHTML = getSidebarLoadingMarkup("Fetching subscriptions…");
+      this._renderLoading(container, "Fetching subscriptions…");
     }
 
     this.lastRunOptions = {
@@ -1541,8 +1631,7 @@ class SubscriptionsManager {
 
     const engine = this.getFeedEngine();
     if (!engine || typeof engine.run !== "function") {
-      container.innerHTML =
-        "<p class='text-muted-strong'>Subscriptions are unavailable right now.</p>";
+      this._renderStatusMessage(container, "Subscriptions are unavailable right now.");
       this.hasRenderedOnce = true;
       return null;
     }
@@ -1621,8 +1710,7 @@ class SubscriptionsManager {
           reason: fallbackReason,
         });
       } else if (container) {
-        container.innerHTML =
-          "<p class='text-muted-strong'>Unable to load subscriptions right now.</p>";
+        this._renderStatusMessage(container, "Unable to load subscriptions right now.");
       }
       this.hasRenderedOnce = Boolean(container);
       return this.lastResult;
@@ -1811,10 +1899,11 @@ class SubscriptionsManager {
 
     const listView = this.getListView(container, app);
     if (!listView) {
-      container.innerHTML = `
-        <p class="flex justify-center items-center h-full w-full text-center text-muted-strong">
-          Unable to render subscriptions feed.
-        </p>`;
+      this._renderStatusMessage(
+        container,
+        "Unable to render subscriptions feed.",
+        "flex justify-center items-center h-full w-full text-center"
+      );
       return;
     }
 
@@ -1849,7 +1938,7 @@ class SubscriptionsManager {
         ? message.trim()
         : "No playable subscription videos found yet. We'll keep watching for new posts.";
 
-    container.innerHTML = getSidebarLoadingMarkup(copy, { showSpinner: false });
+    this._renderLoading(container, copy, false);
 
     if (this.subscriptionListView && this.subscriptionListView.state) {
       const currentMetadata =
@@ -2271,6 +2360,43 @@ class SubscriptionsManager {
 
   convertEventToVideo(evt) {
     return sharedConvertEventToVideo(evt);
+  }
+
+  _renderStatusMessage(container, message, extraClasses = "") {
+    if (!container) return;
+    container.replaceChildren();
+    const p = document.createElement("p");
+    p.className = `text-muted-strong ${extraClasses}`.trim();
+    p.textContent = message;
+    container.appendChild(p);
+  }
+
+  _renderLoading(container, message, showSpinner = true) {
+    if (!container) return;
+    container.replaceChildren();
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "sidebar-loading-wrapper";
+    wrapper.setAttribute("role", "status");
+    wrapper.setAttribute("aria-live", "polite");
+
+    const indicator = document.createElement("div");
+    indicator.className = "sidebar-loading-indicator";
+
+    if (showSpinner) {
+      const spinner = document.createElement("span");
+      spinner.className = "status-spinner status-spinner--inline";
+      spinner.setAttribute("aria-hidden", "true");
+      indicator.appendChild(spinner);
+    }
+
+    const text = document.createElement("span");
+    text.className = "sidebar-loading-text";
+    text.textContent = message;
+    indicator.appendChild(text);
+
+    wrapper.appendChild(indicator);
+    container.appendChild(wrapper);
   }
 }
 

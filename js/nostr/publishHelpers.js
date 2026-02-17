@@ -5,10 +5,15 @@ import {
   summarizePublishResults,
 } from "../nostrPublish.js";
 import {
+  buildVideoPostEvent,
   buildRepostEvent,
   buildVideoMirrorEvent,
   sanitizeAdditionalTags,
 } from "../nostrEventSchemas.js";
+import {
+  getStoragePointerFromTags,
+  resolveStoragePointerValue,
+} from "../utils/storagePointer.js";
 import { normalizePointerInput } from "./watchHistory.js";
 import { sanitizeRelayList } from "./nip46Client.js";
 import {
@@ -135,7 +140,21 @@ export function signEventWithPrivateKey(event, privateKey) {
     throw new Error("Missing signing primitives");
   }
 
-  const finalized = finalizeFn(prepared, normalizedKey);
+  let secretKey = normalizedKey;
+  if (typeof Uint8Array !== "undefined") {
+    try {
+      const len = normalizedKey.length;
+      const bytes = new Uint8Array(len / 2);
+      for (let i = 0; i < len; i += 2) {
+        bytes[i / 2] = parseInt(normalizedKey.substring(i, i + 2), 16);
+      }
+      secretKey = bytes;
+    } catch (error) {
+      // Ignore conversion error, secretKey remains string
+    }
+  }
+
+  const finalized = finalizeFn(prepared, secretKey);
   if (
     !finalized ||
     typeof finalized.id !== "string" ||
@@ -1330,6 +1349,66 @@ export async function rebroadcastEvent({ client, eventId, options = {} }) {
       cooldown: guardScope ? getRebroadcastCooldownState(guardScope) : null,
     };
   }
+}
+
+export function buildRevertVideoPayload({
+  baseEvent,
+  originalEventId,
+  pubkey,
+  existingD,
+  stableDTag,
+}) {
+  let oldContent = {};
+  try {
+    oldContent = JSON.parse(baseEvent.content || "{}");
+  } catch (err) {
+    devLogger.warn(
+      "[nostr] Failed to parse baseEvent.content while reverting:",
+      err,
+    );
+    oldContent = {};
+  }
+  const oldVersion = oldContent.version ?? 1;
+
+  const finalRootId =
+    oldContent.videoRootId ||
+    (existingD
+      ? `LEGACY:${baseEvent.pubkey}:${existingD}`
+      : stableDTag || baseEvent.id || originalEventId || "");
+
+  const oldIsNsfw = oldContent.isNsfw === true;
+  const oldIsForKids = oldContent.isForKids === true && !oldIsNsfw;
+
+  const contentObject = {
+    videoRootId: finalRootId,
+    version: oldVersion,
+    deleted: true,
+    isPrivate: oldContent.isPrivate ?? false,
+    isNsfw: oldIsNsfw,
+    isForKids: oldIsForKids,
+    title: oldContent.title || "",
+    url: "",
+    magnet: "",
+    thumbnail: "",
+    description: "This version was reverted by the creator.",
+    mode: oldContent.mode || "live",
+  };
+
+  const storagePointer = resolveStoragePointerValue({
+    storagePointer: getStoragePointerFromTags(baseEvent.tags),
+    url: oldContent.url,
+    infoHash: oldContent.infoHash,
+    fallbackId: finalRootId,
+  });
+  const additionalTags = storagePointer ? [["s", storagePointer]] : [];
+
+  return buildVideoPostEvent({
+    pubkey,
+    created_at: Math.floor(Date.now() / 1000),
+    dTagValue: stableDTag,
+    content: contentObject,
+    additionalTags,
+  });
 }
 
 export { summarizePublishResults };

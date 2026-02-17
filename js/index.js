@@ -1,7 +1,6 @@
 // js/index.js
 
 import { validateInstanceConfig } from "../config/validate-config.js";
-import { ASSET_VERSION } from "../config/asset-version.js";
 import "./bufferPolyfill.js";
 import {
   getApplication,
@@ -54,8 +53,13 @@ import { userBlocks } from "./userBlocks.js";
 import { relayManager } from "./relayManager.js";
 import createApplication from "./bootstrap.js";
 import SearchFilterModal from "./ui/components/SearchFilterModal.js";
+import { installTestHarness } from "./testHarness.js";
 
 validateInstanceConfig();
+
+// Install test harness early so relay overrides apply before connections.
+// Only activates when ?__test__=1 or localStorage __bitvidTestMode__ is set.
+installTestHarness();
 
 applyDesignSystemAttributes();
 initThemeController();
@@ -543,17 +547,8 @@ document.addEventListener("animationend", handleFadeInAnimationComplete, true);
 document.addEventListener("animationcancel", handleFadeInAnimationComplete, true);
 
 // 1) Load modals (login, application, etc.)
-const withAssetVersion = (url) => {
-  if (typeof url !== "string" || url.length === 0) {
-    return url;
-  }
-
-  const separator = url.includes("?") ? "&" : "?";
-  return `${url}${separator}v=${encodeURIComponent(ASSET_VERSION)}`;
-};
-
 const fetchPartial = async (url) => {
-  const response = await fetch(withAssetVersion(url), { cache: "no-store" });
+  const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) {
     throw new Error("Failed to load " + url);
   }
@@ -621,20 +616,6 @@ async function bootstrapInterface() {
   ]);
 
   devLogger.log("Modals loaded.");
-
-  if (
-    application &&
-    typeof application.initializeLoginModalController === "function"
-  ) {
-    try {
-      application.initializeLoginModalController();
-    } catch (error) {
-      devLogger.error(
-        "[Interface] Failed to initialize login modal controller after loading markup:",
-        error,
-      );
-    }
-  }
 
   [
     "loginModal",
@@ -987,20 +968,6 @@ async function bootstrapInterface() {
     updateSidebarDropupContentWidth();
   }
 
-  try {
-    await applicationReadyPromise;
-  } catch (error) {
-    // fall through
-  }
-
-  if (application && typeof application.hydrateSidebarNavigation === "function") {
-    try {
-      application.hydrateSidebarNavigation();
-    } catch (error) {
-      devLogger.warn("[Interface] Failed to hydrate sidebar navigation:", error);
-    }
-  }
-
   bindOptionalExternalLink({
     selector: "[data-blog-link]",
     url: BLOG_URL,
@@ -1270,6 +1237,36 @@ async function bootstrapInterface() {
         }
       }
     });
+  }
+
+  try {
+    await applicationReadyPromise;
+  } catch (error) {
+    // fall through
+  }
+
+  if (application) {
+    if (typeof application.initializeLoginModalController === "function") {
+      try {
+        application.initializeLoginModalController();
+      } catch (error) {
+        devLogger.error(
+          "[Interface] Failed to initialize login modal controller:",
+          error
+        );
+      }
+    }
+
+    if (typeof application.hydrateSidebarNavigation === "function") {
+      try {
+        application.hydrateSidebarNavigation();
+      } catch (error) {
+        devLogger.warn(
+          "[Interface] Failed to hydrate sidebar navigation:",
+          error
+        );
+      }
+    }
   }
 
   handleQueryParams();

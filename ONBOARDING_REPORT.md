@@ -1,29 +1,39 @@
-# Developer Onboarding Audit - 2025-02-18
+# Onboarding Audit Report
 
-This document summarizes the findings from the developer onboarding audit.
-
-## Steps Executed
-
-1.  `npm ci`: Successful.
-2.  `npm run build:css`: Successful.
-3.  `npm run format`: Successful.
+**Date:** 2026-02-15
+**Agent:** onboarding-audit-agent
+**Status:** ⚠️ Onboarding failures found (Fixed in this run)
 
 ## Environment
+- **Node:** v22.22.0
+- **NPM:** 11.10.0
+- **OS:** Linux
 
--   **Node.js Version:** v22.22.0
--   **Dependencies:** Installed successfully via `npm ci`.
--   **CSS Build:** Tailwind CSS bundle generated successfully.
+## Executed Steps (Clean Environment)
 
-## Findings
+| Step | Command | Result | Notes |
+|------|---------|--------|-------|
+| 1 | `npm ci` | ✅ Pass | Installed dependencies successfully. |
+| 2 | `npm run build` | ✅ Pass | Build verified manually (simulating `npm start` build step). |
+| 3 | `npm run test:unit:shard1` | ✅ Pass | Unit tests passed. |
+| 4 | `npm run test:smoke` | ❌ Fail / ✅ Pass | Failed initially due to missing Playwright browsers. Passed after running `npx playwright install`. |
+| 5 | `npm run format` | ✅ Pass | Format check passed. |
+| 6 | `npm run lint` | ✅ Pass | Lint check passed. |
 
--   **Setup Reliability:** The onboarding steps are robust and reliable. No errors were encountered.
--   **Documentation:** `CONTRIBUTING.md` and `README.md` provide clear instructions.
--   **Dev Container:** The project includes a valid `.devcontainer/devcontainer.json` which uses `mcr.microsoft.com/devcontainers/javascript-node:22`. This is recommended for a consistent development environment.
--   **Node Version:** While `package.json` does not explicitly enforce a Node.js version, the `.devcontainer` configuration implies a dependency on Node 22. Adding an `engines` field to `package.json` would improve environment consistency.
--   **Build Commands:** The README suggests `npm run build:css` for CSS verification, which works as expected. For full builds, `npm run build` or `npm start` should be used.
--   **Warnings:** A warning about `browserslist` (`caniuse-lite is outdated`) was observed during `npm run build:css`. This is documented in `CONTRIBUTING.md` under Troubleshooting.
+## Failures & Fixes
 
-## Recommendations implemented
+### 1. Missing Playwright Browsers
+**Command:** `npm run test:smoke`
+**Failure:**
+```
+browserType.launch: Executable doesn't exist at /home/jules/.cache/ms-playwright/chromium_headless_shell-1208/chrome-headless-shell-linux64/chrome-headless-shell
+Looks like Playwright Test or Playwright was just installed or updated.
+Please run the following command to download new browsers:
+    npx playwright install
+```
+**Root Cause:** `npm ci` installs the `@playwright/test` package but does not download the browser binaries required for smoke and visual tests. The documentation did not mention this step for local setup.
+**Fix:** Updated `README.md` and `CONTRIBUTING.md` to include `npx playwright install` as a required step for running these tests.
 
--   Added `"engines": { "node": ">=22" }` to `package.json` to align with `.devcontainer` and ensure environment consistency.
--   Updated `CONTRIBUTING.md` to explicitly mention the Node.js version requirement and clarify build commands.
+## Documentation Updates
+- **README.md**: Added `npx playwright install` note to "Local Setup".
+- **CONTRIBUTING.md**: Added `npx playwright install` note to "Development Setup".

@@ -11,7 +11,7 @@ import {
   WATCH_HISTORY_BATCH_PAGE_SIZE
 } from "./config.js";
 import { getApplication } from "./applicationContext.js";
-import { userLogger } from "./utils/logger.js";
+import { devLogger, userLogger } from "./utils/logger.js";
 import {
   normalizeVideoModerationContext,
   applyModerationContextDatasets,
@@ -1241,6 +1241,8 @@ export function buildHistoryCard({ item, video, profile, variant }) {
       : FALLBACK_AVATAR;
   avatarImg.src = avatarSrc;
   avatarImg.alt = profile?.name || "Avatar";
+  avatarImg.loading = "lazy";
+  avatarImg.decoding = "async";
   avatarBtn.appendChild(avatarImg);
 
   const authorNameBtn = document.createElement("button");
@@ -1391,6 +1393,7 @@ export function buildHistoryCard({ item, video, profile, variant }) {
 }
 
 export function createWatchHistoryRenderer(config = {}) {
+  let hasLoggedFeedRegistrationFallback = false;
   const {
     container = typeof document !== "undefined" ? document : null,
     fetchHistory = async (
@@ -1400,12 +1403,41 @@ export function createWatchHistoryRenderer(config = {}) {
       const app = getAppInstance();
       const engine = app?.feedEngine;
       if (engine && typeof engine.run === "function") {
-        const runtime = buildWatchHistoryFeedRuntime({
-          actor: actorInput,
-          cursor,
-          forceRefresh,
-        });
-        return engine.run("watch-history", { runtime });
+        let hasFeedDefinition =
+          typeof engine.getFeedDefinition === "function"
+            ? Boolean(engine.getFeedDefinition("watch-history"))
+            : true;
+        // Ensure the watch-history feed is registered. It may not be if the
+        // feed engine was ready but registration was silently skipped during
+        // bootstrap (e.g. timing edge cases).
+        if (!hasFeedDefinition && typeof app.registerWatchHistoryFeed === "function") {
+          try {
+            app.registerWatchHistoryFeed();
+          } catch (registerError) {
+            // Fall through to service fallback if registration fails.
+          }
+          hasFeedDefinition =
+            typeof engine.getFeedDefinition === "function"
+              ? Boolean(engine.getFeedDefinition("watch-history"))
+              : hasFeedDefinition;
+        }
+        if (hasFeedDefinition) {
+          try {
+            const runtime = buildWatchHistoryFeedRuntime({
+              actor: actorInput,
+              cursor,
+              forceRefresh,
+            });
+            return await engine.run("watch-history", { runtime });
+          } catch (feedError) {
+            // Fall through to service fallback if feed is still not registered
+          }
+        } else if (!hasLoggedFeedRegistrationFallback) {
+          hasLoggedFeedRegistrationFallback = true;
+          devLogger.info(
+            "[historyView] watch-history feed unavailable after registration attempt; using service fallback.",
+          );
+        }
       }
       const items = await watchHistoryService.loadLatest(actorInput, {
         allowStale: !forceRefresh,
@@ -1750,7 +1782,7 @@ export function createWatchHistoryRenderer(config = {}) {
 
   function showEmptyState() {
     if (elements.grid) {
-      elements.grid.innerHTML = "";
+      elements.grid.replaceChildren();
       setHidden(elements.grid, true);
     }
     clearHistoryCardRegistry();
@@ -1774,7 +1806,7 @@ export function createWatchHistoryRenderer(config = {}) {
     }
     detachObserver();
     if (elements.grid) {
-      elements.grid.innerHTML = "";
+      elements.grid.replaceChildren();
       setHidden(elements.grid, true);
     }
     if (elements.empty) {
@@ -2124,7 +2156,7 @@ export function createWatchHistoryRenderer(config = {}) {
           if (typeof app?.showSuccess === "function") {
             app.showSuccess("Local watch history reset.");
           } else {
-            console.log("Local watch history reset.");
+            userLogger.info("[historyView] Local watch history reset.");
           }
         } catch (error) {
           const message =
@@ -2135,7 +2167,7 @@ export function createWatchHistoryRenderer(config = {}) {
           if (typeof app?.showError === "function") {
             app.showError(message);
           } else {
-            console.error(message);
+            userLogger.error("[historyView]", message);
           }
         }
       };
@@ -2272,7 +2304,7 @@ export function createWatchHistoryRenderer(config = {}) {
     }
     state.cursor = 0;
     state.hasMore = state.items.length > 0;
-    elements.grid.innerHTML = "";
+    elements.grid.replaceChildren();
     clearHistoryCardRegistry();
     removeEmptyDayContainers(elements.grid);
     if (!state.items.length) {
@@ -2395,7 +2427,7 @@ export function createWatchHistoryRenderer(config = {}) {
       }
       clearSubscriptions();
       if (elements.grid) {
-        elements.grid.innerHTML = "";
+        elements.grid.replaceChildren();
       }
       clearHistoryCardRegistry();
       state.initialized = false;

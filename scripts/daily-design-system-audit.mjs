@@ -132,7 +132,8 @@ function parseOutput(category, output) {
 
 function generateReport(violations) {
   let totalViolations = 0;
-  let report = "# Daily Design System Audit Report\n\n";
+  const date = new Date().toISOString().split('T')[0];
+  let report = `# Daily Design System Audit Report (${date})\n\n`;
 
   for (const category in violations) {
     totalViolations += violations[category].length;

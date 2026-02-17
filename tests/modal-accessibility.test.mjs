@@ -38,6 +38,7 @@ function installDom(html) {
   globalThis.CustomEvent = window.CustomEvent;
   globalThis.Event = window.Event;
   globalThis.Node = window.Node;
+  globalThis.DOMParser = window.DOMParser;
   Object.defineProperty(globalThis, "navigator", {
     value: window.navigator,
     writable: true,
@@ -64,6 +65,7 @@ function installDom(html) {
     delete globalThis.CustomEvent;
     delete globalThis.Event;
     delete globalThis.Node;
+    delete globalThis.DOMParser;
     delete globalThis.navigator;
     delete globalThis.location;
     delete globalThis.KeyboardEvent;

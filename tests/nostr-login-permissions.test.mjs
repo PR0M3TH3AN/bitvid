@@ -55,6 +55,7 @@ function setupLoginEnvironment({ enableImpl, getPublicKey = HEX_PUBKEY } = {}) {
       return Promise.resolve();
     },
     getPublicKey: () => Promise.resolve(getPublicKey),
+    signEvent: () => Promise.resolve({ id: "mock_sig" }),
   };
 
   windowRef.nostr = nostrStub;
@@ -100,7 +101,7 @@ function setupLoginEnvironment({ enableImpl, getPublicKey = HEX_PUBKEY } = {}) {
     nostrClient.extensionPermissionCache &&
     typeof nostrClient.extensionPermissionCache.clear === "function"
   ) {
-    nostrClient.extensionPermissionCache.clear();
+      nostrClient.extensionPermissionCache.clear();
   }
   clearStoredPermissions();
 
@@ -160,6 +161,7 @@ describe("NIP-07 Login Permissions", () => {
 
   it("NIP-07 login requests decrypt permissions upfront", async () => {
     const env = setupLoginEnvironment();
+    if (nostrClient.extensionPermissionCache) nostrClient.extensionPermissionCache.clear();
     try {
       const result = await nip07Provider.login({ nostrClient });
       const pubkey = result.pubkey;
@@ -456,10 +458,12 @@ describe("NIP-07 Login Permissions", () => {
   it("NIP-07 login does not wait for deferred permission grants", async () => {
     clearStoredPermissions();
     const env = setupLoginEnvironment();
-    const originalEnsurePermissions = nostrClient.ensureExtensionPermissions;
+    // With SignerManager refactor, we need to mock the method on the manager
+    const targetObject = nostrClient.signerManager || nostrClient;
+    const originalEnsurePermissions = targetObject.ensureExtensionPermissions;
     let completionPromise;
 
-    nostrClient.ensureExtensionPermissions = async () => {
+    targetObject.ensureExtensionPermissions = async () => {
       completionPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error("permission denied")), 300);
       });
@@ -482,7 +486,7 @@ describe("NIP-07 Login Permissions", () => {
         "deferred permission grants should still reject",
       );
     } finally {
-      nostrClient.ensureExtensionPermissions = originalEnsurePermissions;
+      targetObject.ensureExtensionPermissions = originalEnsurePermissions;
       env.restore();
       nostrClient.logout();
       clearStoredPermissions();

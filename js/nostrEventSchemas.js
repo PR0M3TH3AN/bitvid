@@ -6,7 +6,6 @@ import {
   ADMIN_COMMUNITY_BLACKLIST_PREFIX,
   isDevMode,
   WATCH_HISTORY_KIND,
-  WATCH_HISTORY_LIST_IDENTIFIER,
   WATCH_HISTORY_VERSION_TAG_VALUE,
 } from "./config.js";
 import {
@@ -46,7 +45,12 @@ export const NOTE_TYPES = Object.freeze({
   LEGACY_DM: "legacyDm",
   HTTP_AUTH: "httpAuth",
   REPORT: "report",
+  GIFT_WRAP: "giftWrap",
+  SEAL: "seal",
+  CHAT_MESSAGE: "chatMessage",
 });
+
+export const KIND_MUTE_LIST = 10000;
 
 export const SUBSCRIPTION_LIST_IDENTIFIER = "subscriptions";
 export const BLOCK_LIST_IDENTIFIER = "user-blocks";
@@ -538,7 +542,7 @@ const BASE_SCHEMAS = {
   [NOTE_TYPES.USER_BLOCK_LIST]: {
     type: NOTE_TYPES.USER_BLOCK_LIST,
     label: "User block list (legacy)",
-    kind: 10000,
+    kind: KIND_MUTE_LIST,
     identifierTag: {
       name: "d",
       value: BLOCK_LIST_IDENTIFIER,
@@ -614,7 +618,7 @@ const BASE_SCHEMAS = {
   [NOTE_TYPES.MUTE_LIST]: {
     type: NOTE_TYPES.MUTE_LIST,
     label: "Mute list",
-    kind: 10000,
+    kind: KIND_MUTE_LIST,
     participantTagName: "p",
     appendTags: DEFAULT_APPEND_TAGS,
     content: {
@@ -664,6 +668,38 @@ const BASE_SCHEMAS = {
     content: {
       format: "text",
       description: "Report reason.",
+    },
+  },
+  [NOTE_TYPES.GIFT_WRAP]: {
+    type: NOTE_TYPES.GIFT_WRAP,
+    label: "Gift Wrap",
+    kind: 1059,
+    recipientTagName: "p",
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "text",
+      description: "NIP-44 encrypted seal.",
+    },
+  },
+  [NOTE_TYPES.SEAL]: {
+    type: NOTE_TYPES.SEAL,
+    label: "Seal",
+    kind: 13,
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "text",
+      description: "NIP-44 encrypted rumor.",
+    },
+  },
+  [NOTE_TYPES.CHAT_MESSAGE]: {
+    type: NOTE_TYPES.CHAT_MESSAGE,
+    label: "Chat Message (Rumor)",
+    kind: 14,
+    participantTagName: "p",
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "text",
+      description: "Plain text chat message.",
     },
   },
 };
@@ -1093,6 +1129,116 @@ export function buildReportEvent(params) {
 
   if (isDevMode) {
     validateEventAgainstSchema(NOTE_TYPES.REPORT, event);
+  }
+
+  return event;
+}
+
+export function buildGiftWrapEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    recipientPubkey,
+    ciphertext = "",
+    relayHint,
+    additionalTags = [],
+  } = params || {};
+  const schema = getNostrEventSchema(NOTE_TYPES.GIFT_WRAP);
+  const tags = [];
+
+  const recipient = normalizePointerIdentifier(recipientPubkey);
+  if (recipient) {
+    const pTag = [schema?.recipientTagName || "p", recipient];
+    if (typeof relayHint === "string" && relayHint.trim()) {
+      pTag.push(relayHint.trim());
+    }
+    tags.push(pTag);
+  }
+
+  appendSchemaTags(tags, schema);
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
+  }
+
+  const event = {
+    kind: schema?.kind ?? 1059,
+    pubkey,
+    created_at,
+    tags,
+    content: typeof ciphertext === "string" ? ciphertext : "",
+  };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.GIFT_WRAP, event);
+  }
+
+  return event;
+}
+
+export function buildSealEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    ciphertext = "",
+    additionalTags = [],
+  } = params || {};
+  const schema = getNostrEventSchema(NOTE_TYPES.SEAL);
+  const tags = [];
+
+  appendSchemaTags(tags, schema);
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
+  }
+
+  const event = {
+    kind: schema?.kind ?? 13,
+    pubkey,
+    created_at,
+    tags,
+    content: typeof ciphertext === "string" ? ciphertext : "",
+  };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.SEAL, event);
+  }
+
+  return event;
+}
+
+export function buildChatMessageEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    recipientPubkey,
+    content = "",
+    additionalTags = [],
+  } = params || {};
+  const schema = getNostrEventSchema(NOTE_TYPES.CHAT_MESSAGE);
+  const tags = [];
+
+  const participant = normalizePointerIdentifier(recipientPubkey);
+  if (participant) {
+    tags.push([schema?.participantTagName || "p", participant]);
+  }
+
+  appendSchemaTags(tags, schema);
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
+  }
+
+  const event = {
+    kind: schema?.kind ?? 14,
+    pubkey,
+    created_at,
+    tags,
+    content: typeof content === "string" ? content : "",
+  };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.CHAT_MESSAGE, event);
   }
 
   return event;
@@ -1560,7 +1706,7 @@ export function buildMuteListEvent(params) {
   }
 
   const event = {
-    kind: schema?.kind ?? 10000,
+    kind: schema?.kind ?? KIND_MUTE_LIST,
     pubkey,
     created_at,
     tags,
@@ -2107,57 +2253,46 @@ export function buildReactionEvent(params) {
   return event;
 }
 
-export function buildCommentEvent(params) {
-  const {
-    pubkey,
-    created_at,
-    videoEventId = "",
-    videoEventRelay = "",
-    videoDefinitionAddress = "",
-    videoDefinitionRelay = "",
-    rootIdentifier = "",
-    rootIdentifierRelay = "",
-    parentCommentId = "",
-    parentCommentRelay = "",
-    threadParticipantPubkey = "",
-    threadParticipantRelay = "",
-    rootKind,
-    rootAuthorPubkey = "",
-    rootAuthorRelay = "",
-    parentKind,
-    parentAuthorPubkey = "",
-    parentAuthorRelay = "",
-    parentIdentifier = "",
-    parentIdentifierRelay = "",
-    additionalTags = [],
-    content = "",
-  } = params || {};
-  const schema = getNostrEventSchema(NOTE_TYPES.VIDEO_COMMENT);
-  const tags = [];
-
+function normalizeCommentInputs(params) {
   const normalizeString = (value) =>
     typeof value === "string" ? value.trim() : "";
 
-  const normalizedVideoEventId = normalizeString(videoEventId);
-  const normalizedVideoEventRelay = normalizeString(videoEventRelay);
-  const normalizedVideoDefinitionAddress = normalizeString(videoDefinitionAddress);
-  const normalizedVideoDefinitionRelay = normalizeString(videoDefinitionRelay);
-  const normalizedRootIdentifier = normalizeString(rootIdentifier);
-  const normalizedRootIdentifierRelay = normalizeString(rootIdentifierRelay);
-  const normalizedParentCommentId = normalizeString(parentCommentId);
-  const normalizedParentCommentRelay = normalizeString(parentCommentRelay);
-  const normalizedParentIdentifier = normalizeString(parentIdentifier);
-  const normalizedParentIdentifierRelay = normalizeString(parentIdentifierRelay);
-  const normalizedThreadParticipantPubkey = normalizeString(
-    threadParticipantPubkey,
-  );
-  const normalizedThreadParticipantRelay = normalizeString(
-    threadParticipantRelay,
-  );
+  return {
+    normalizedVideoEventId: normalizeString(params.videoEventId),
+    normalizedVideoEventRelay: normalizeString(params.videoEventRelay),
+    normalizedVideoDefinitionAddress: normalizeString(params.videoDefinitionAddress),
+    normalizedVideoDefinitionRelay: normalizeString(params.videoDefinitionRelay),
+    normalizedRootIdentifier: normalizeString(params.rootIdentifier),
+    normalizedRootIdentifierRelay: normalizeString(params.rootIdentifierRelay),
+    normalizedParentCommentId: normalizeString(params.parentCommentId),
+    normalizedParentCommentRelay: normalizeString(params.parentCommentRelay),
+    normalizedThreadParticipantPubkey: normalizeString(params.threadParticipantPubkey),
+    normalizedThreadParticipantRelay: normalizeString(params.threadParticipantRelay),
+    normalizedParentIdentifier: normalizeString(params.parentIdentifier),
+    normalizedParentIdentifierRelay: normalizeString(params.parentIdentifierRelay),
+    resolvedRootKind: normalizeString(params.rootKind),
+    resolvedRootAuthorPubkey: normalizeString(params.rootAuthorPubkey),
+    resolvedRootAuthorRelay: normalizeString(params.rootAuthorRelay),
+    resolvedParentAuthorPubkey: normalizeString(params.parentAuthorPubkey),
+    resolvedParentAuthorRelay: normalizeString(params.parentAuthorRelay),
+    resolvedParentKind: normalizeString(params.parentKind),
+  };
+}
 
-  let resolvedRootKind = normalizeString(rootKind);
-  let resolvedRootAuthorPubkey = normalizeString(rootAuthorPubkey);
-  let resolvedRootAuthorRelay = normalizeString(rootAuthorRelay);
+function resolveCommentContext(inputs, schema) {
+  let {
+    resolvedRootKind,
+    resolvedRootAuthorPubkey,
+    resolvedRootAuthorRelay,
+    resolvedParentAuthorPubkey,
+    resolvedParentAuthorRelay,
+    resolvedParentKind,
+    normalizedVideoDefinitionAddress,
+    normalizedVideoDefinitionRelay,
+    normalizedThreadParticipantPubkey,
+    normalizedThreadParticipantRelay,
+    normalizedParentCommentId,
+  } = inputs;
 
   if (normalizedVideoDefinitionAddress) {
     const definitionSegments = normalizedVideoDefinitionAddress.split(":");
@@ -2172,12 +2307,10 @@ export function buildCommentEvent(params) {
     }
   }
 
-  let resolvedParentAuthorPubkey = normalizeString(parentAuthorPubkey);
   if (!resolvedParentAuthorPubkey) {
     resolvedParentAuthorPubkey = normalizedThreadParticipantPubkey;
   }
 
-  let resolvedParentAuthorRelay = normalizeString(parentAuthorRelay);
   if (!resolvedParentAuthorRelay) {
     resolvedParentAuthorRelay = normalizedThreadParticipantRelay;
   }
@@ -2196,7 +2329,6 @@ export function buildCommentEvent(params) {
     resolvedParentAuthorRelay = resolvedRootAuthorRelay;
   }
 
-  let resolvedParentKind = normalizeString(parentKind);
   if (!resolvedParentKind) {
     if (normalizedParentCommentId) {
       resolvedParentKind = String(schema?.kind ?? 1111);
@@ -2208,6 +2340,41 @@ export function buildCommentEvent(params) {
   if (!resolvedRootKind) {
     resolvedRootKind = resolvedParentKind;
   }
+
+  return {
+    resolvedRootKind,
+    resolvedRootAuthorPubkey,
+    resolvedRootAuthorRelay,
+    resolvedParentAuthorPubkey,
+    resolvedParentAuthorRelay,
+    resolvedParentKind,
+  };
+}
+
+function buildCommentTags(schema, inputs, context) {
+  const {
+    normalizedVideoEventId,
+    normalizedVideoEventRelay,
+    normalizedVideoDefinitionAddress,
+    normalizedVideoDefinitionRelay,
+    normalizedRootIdentifier,
+    normalizedRootIdentifierRelay,
+    normalizedParentCommentId,
+    normalizedParentCommentRelay,
+    normalizedParentIdentifier,
+    normalizedParentIdentifierRelay,
+  } = inputs;
+
+  const {
+    resolvedRootKind,
+    resolvedRootAuthorPubkey,
+    resolvedRootAuthorRelay,
+    resolvedParentAuthorPubkey,
+    resolvedParentAuthorRelay,
+    resolvedParentKind,
+  } = context;
+
+  const tags = [];
 
   const rootDefinitionPointerTagName = schema?.rootDefinitionPointerTagName || "A";
   const rootEventPointerTagName = schema?.rootEventPointerTagName || "E";
@@ -2334,6 +2501,22 @@ export function buildCommentEvent(params) {
     }
   }
 
+  return tags;
+}
+
+export function buildCommentEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    additionalTags = [],
+    content = "",
+  } = params || {};
+  const schema = getNostrEventSchema(NOTE_TYPES.VIDEO_COMMENT);
+
+  const inputs = normalizeCommentInputs(params || {});
+  const context = resolveCommentContext(inputs, schema);
+  const tags = buildCommentTags(schema, inputs, context);
+
   const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
   if (sanitizedAdditionalTags.length) {
     tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
@@ -2370,9 +2553,14 @@ export function buildWatchHistoryEvent(params) {
   const tags = [];
   const identifierName = schema?.identifierTag?.name || "d";
 
+  const defaultMonth = Number.isFinite(created_at)
+    ? new Date(created_at * 1000).toISOString().slice(0, 7)
+    : new Date().toISOString().slice(0, 7);
+
   const identifierValue =
     (typeof monthIdentifier === "string" && monthIdentifier.trim()) ||
-    schema?.identifierTag?.value;
+    schema?.identifierTag?.value ||
+    defaultMonth;
 
   if (identifierName && identifierValue) {
     tags.push([identifierName, identifierValue]);

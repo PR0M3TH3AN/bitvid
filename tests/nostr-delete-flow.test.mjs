@@ -37,7 +37,14 @@ await (async function testDeleteFlowPublishesDeletionFlag() {
       signedEvents.push(event);
       return { ...event, id: `signed-${signedEvents.length}` };
     },
+    getPublicKey: async () => pubkey,
   };
+
+  client.signerManager.setActiveSigner({
+    type: "extension",
+    pubkey,
+    signEvent: window.nostr.signEvent,
+  });
 
   client.ensureExtensionPermissions = async () => ({ ok: true });
   client.relays = ["wss://relay.ok", "wss://relay.fail"];

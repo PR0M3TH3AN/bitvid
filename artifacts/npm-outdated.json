@@ -1,22 +1,15 @@
 {
-  "@playwright/test": {
-    "current": "1.58.1",
-    "wanted": "1.58.2",
-    "latest": "1.58.2",
+  "jsdom": {
+    "current": "28.0.0",
+    "wanted": "28.1.0",
+    "latest": "28.1.0",
     "dependent": "app",
-    "location": "/app/node_modules/@playwright/test"
-  },
-  "esbuild": {
-    "current": "0.27.2",
-    "wanted": "0.27.3",
-    "latest": "0.27.3",
-    "dependent": "app",
-    "location": "/app/node_modules/esbuild"
+    "location": "/app/node_modules/jsdom"
   },
   "nostr-tools": {
     "current": "2.19.4",
-    "wanted": "2.19.4",
-    "latest": "2.23.0",
+    "wanted": "2.23.1",
+    "latest": "2.23.1",
     "dependent": "app",
     "location": "/app/node_modules/nostr-tools"
   },
@@ -27,12 +20,12 @@
     "dependent": "app",
     "location": "/app/node_modules/pixelmatch"
   },
-  "playwright": {
-    "current": "1.58.1",
-    "wanted": "1.58.2",
-    "latest": "1.58.2",
+  "postcss-import": {
+    "current": "15.1.0",
+    "wanted": "15.1.0",
+    "latest": "16.1.1",
     "dependent": "app",
-    "location": "/app/node_modules/playwright"
+    "location": "/app/node_modules/postcss-import"
   },
   "prettier-plugin-tailwindcss": {
     "current": "0.6.14",
@@ -44,7 +37,7 @@
   "stylelint": {
     "current": "16.12.0",
     "wanted": "16.26.1",
-    "latest": "17.1.1",
+    "latest": "17.3.0",
     "dependent": "app",
     "location": "/app/node_modules/stylelint"
   },

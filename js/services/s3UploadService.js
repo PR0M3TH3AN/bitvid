@@ -30,29 +30,50 @@ function isValidInfoHash(value) {
   return INFO_HASH_PATTERN.test(value);
 }
 
-async function resolveUploadIdentifier({ infoHash = "", file = null } = {}) {
-  const normalizedInfoHash = normalizeInfoHash(infoHash);
-  if (isValidInfoHash(normalizedInfoHash)) {
-    return normalizedInfoHash;
-  }
-  if (!file) {
-    return "";
-  }
-  try {
-    const computedHash = await calculateTorrentInfoHash(file);
-    const normalizedComputed = normalizeInfoHash(computedHash);
-    if (isValidInfoHash(normalizedComputed)) {
-      return normalizedComputed;
-    }
-  } catch (err) {
-    userLogger.warn("Failed to precompute info hash for storage key:", err);
-  }
-  return "";
-}
+const defaultDeps = {
+  ensureS3SdkLoaded,
+  makeS3Client,
+  multipartUpload,
+  buildR2Key,
+  buildS3ObjectUrl,
+  getCorsOrigins,
+  prepareS3Connection,
+  validateS3Connection,
+  userLogger,
+  buildStoragePointerValue,
+  buildStoragePrefixFromKey,
+  getVideoNoteErrorMessage,
+  normalizeVideoNotePayload,
+  calculateTorrentInfoHash,
+};
 
-class S3UploadService {
-  constructor() {
+export class S3UploadService {
+  constructor(deps = {}) {
+    this.deps = { ...defaultDeps, ...deps };
     this.listeners = new Map();
+  }
+
+  async _resolveUploadIdentifier({ infoHash = "", file = null } = {}) {
+    const normalizedInfoHash = normalizeInfoHash(infoHash);
+    if (isValidInfoHash(normalizedInfoHash)) {
+      return normalizedInfoHash;
+    }
+    if (!file) {
+      return "";
+    }
+    try {
+      const computedHash = await this.deps.calculateTorrentInfoHash(file);
+      const normalizedComputed = normalizeInfoHash(computedHash);
+      if (isValidInfoHash(normalizedComputed)) {
+        return normalizedComputed;
+      }
+    } catch (err) {
+      this.deps.userLogger.warn(
+        "Failed to precompute info hash for storage key:",
+        err
+      );
+    }
+    return "";
   }
 
   on(event, handler) {
@@ -81,7 +102,11 @@ class S3UploadService {
       try {
         handler(detail);
       } catch (err) {
-        userLogger.error("[s3UploadService] Listener error for", event, err);
+        this.deps.userLogger.error(
+          "[s3UploadService] Listener error for",
+          event,
+          err
+        );
       }
     }
   }
@@ -113,9 +138,11 @@ class S3UploadService {
     createBucketIfMissing = true,
     origins = null,
   } = {}) {
-    const normalized = validateS3Connection(settings);
-    const allowedOrigins = Array.isArray(origins) ? origins : getCorsOrigins();
-    const prepared = await prepareS3Connection({
+    const normalized = this.deps.validateS3Connection(settings);
+    const allowedOrigins = Array.isArray(origins)
+      ? origins
+      : this.deps.getCorsOrigins();
+    const prepared = await this.deps.prepareS3Connection({
       ...normalized,
       origins: allowedOrigins,
       createBucketIfMissing,
@@ -124,7 +151,10 @@ class S3UploadService {
   }
 
   async prepareUpload(settings = {}, { createBucketIfMissing = true } = {}) {
-    const prepared = await this.verifyConnection({ settings, createBucketIfMissing });
+    const prepared = await this.verifyConnection({
+      settings,
+      createBucketIfMissing,
+    });
     return {
       settings: prepared,
       bucketEntry: {
@@ -157,9 +187,9 @@ class S3UploadService {
       throw new Error("Missing required parameters for uploadFile");
     }
 
-    await ensureS3SdkLoaded();
+    await this.deps.ensureS3SdkLoaded();
 
-    const s3 = makeS3Client({
+    const s3 = this.deps.makeS3Client({
       endpoint,
       region,
       accessKeyId,
@@ -167,7 +197,7 @@ class S3UploadService {
       forcePathStyle: Boolean(forcePathStyle),
     });
 
-    await multipartUpload({
+    await this.deps.multipartUpload({
       s3,
       bucket,
       key,
@@ -215,7 +245,7 @@ class S3UploadService {
 
     if (!title) {
       this.setUploadStatus(
-        getVideoNoteErrorMessage(VIDEO_NOTE_ERROR_CODES.MISSING_TITLE),
+        this.deps.getVideoNoteErrorMessage(VIDEO_NOTE_ERROR_CODES.MISSING_TITLE),
         "error"
       );
       return false;
@@ -228,7 +258,7 @@ class S3UploadService {
 
     let normalized = null;
     try {
-      normalized = validateS3Connection(settings);
+      normalized = this.deps.validateS3Connection(settings);
     } catch (err) {
       this.setUploadStatus(err?.message || "Invalid S3 settings.", "error");
       return false;
@@ -238,13 +268,16 @@ class S3UploadService {
     this.updateProgress(0);
 
     try {
-      await ensureS3SdkLoaded();
+      await this.deps.ensureS3SdkLoaded();
 
-      const keyIdentifier = await resolveUploadIdentifier({ infoHash, file });
+      const keyIdentifier = await this._resolveUploadIdentifier({
+        infoHash,
+        file,
+      });
       const normalizedInfoHash = normalizeInfoHash(infoHash || keyIdentifier);
       const hasValidInfoHash = isValidInfoHash(normalizedInfoHash);
 
-      const s3 = makeS3Client({
+      const s3 = this.deps.makeS3Client({
         endpoint: normalized.endpoint,
         region: normalized.region,
         accessKeyId: normalized.accessKeyId,
@@ -252,10 +285,12 @@ class S3UploadService {
         forcePathStyle: Boolean(normalized.forcePathStyle),
       });
 
-      const key = forcedVideoKey || buildR2Key(npub, file, keyIdentifier);
+      const key =
+        forcedVideoKey ||
+        this.deps.buildR2Key(npub, file, keyIdentifier);
       const publicUrl =
         forcedVideoUrl ||
-        buildS3ObjectUrl({
+        this.deps.buildS3ObjectUrl({
           publicBaseUrl: normalized.publicBaseUrl,
           endpoint: normalized.endpoint,
           bucket: normalized.bucket,
@@ -271,7 +306,7 @@ class S3UploadService {
         const thumbExt = thumbnailFile.name.split(".").pop() || "jpg";
         const thumbKey = key.replace(/\.[^/.]+$/, "") + `.thumb.${thumbExt}`;
         try {
-          await multipartUpload({
+          await this.deps.multipartUpload({
             s3,
             bucket: normalized.bucket,
             key: thumbKey,
@@ -280,7 +315,7 @@ class S3UploadService {
             createBucketIfMissing,
             region: normalized.region,
           });
-          const thumbUrl = buildS3ObjectUrl({
+          const thumbUrl = this.deps.buildS3ObjectUrl({
             publicBaseUrl: normalized.publicBaseUrl,
             endpoint: normalized.endpoint,
             bucket: normalized.bucket,
@@ -291,13 +326,16 @@ class S3UploadService {
             metadata.thumbnail = thumbUrl;
           }
         } catch (err) {
-          userLogger.warn("Thumbnail upload failed, continuing with video...", err);
+          this.deps.userLogger.warn(
+            "Thumbnail upload failed, continuing with video...",
+            err
+          );
         }
       }
 
       this.setUploadStatus(statusMessage, "info");
 
-      await multipartUpload({
+      await this.deps.multipartUpload({
         s3,
         bucket: normalized.bucket,
         key,
@@ -323,7 +361,7 @@ class S3UploadService {
             return `${key}.torrent`;
           })();
         try {
-          await multipartUpload({
+          await this.deps.multipartUpload({
             s3,
             bucket: normalized.bucket,
             key: torrentKey,
@@ -333,7 +371,7 @@ class S3UploadService {
             region: normalized.region,
           });
           if (!torrentUrl) {
-            torrentUrl = buildS3ObjectUrl({
+            torrentUrl = this.deps.buildS3ObjectUrl({
               publicBaseUrl: normalized.publicBaseUrl,
               endpoint: normalized.endpoint,
               bucket: normalized.bucket,
@@ -342,12 +380,17 @@ class S3UploadService {
             });
           }
         } catch (err) {
-          userLogger.warn("Torrent metadata upload failed, continuing...", err);
+          this.deps.userLogger.warn(
+            "Torrent metadata upload failed, continuing...",
+            err
+          );
         }
       }
 
       if (typeof publishVideoNote !== "function") {
-        userLogger.warn("publishVideoNote handler missing; skipping publish step.");
+        this.deps.userLogger.warn(
+          "publishVideoNote handler missing; skipping publish step."
+        );
         return false;
       }
 
@@ -366,7 +409,10 @@ class S3UploadService {
         generatedWs = publicUrl;
       } else {
         if (infoHash) {
-          userLogger.warn("Invalid info hash provided. Skipping magnet generation.", infoHash);
+          this.deps.userLogger.warn(
+            "Invalid info hash provided. Skipping magnet generation.",
+            infoHash
+          );
         }
         this.setUploadStatus(
           "Info hash missing or invalid. Publishing URL-first without WebTorrent fallback.",
@@ -374,11 +420,11 @@ class S3UploadService {
         );
       }
 
-      const storagePrefix = buildStoragePrefixFromKey({
+      const storagePrefix = this.deps.buildStoragePrefixFromKey({
         publicBaseUrl: normalized.publicBaseUrl,
         key,
       });
-      const storagePointer = buildStoragePointerValue({
+      const storagePointer = this.deps.buildStoragePointerValue({
         provider: "s3",
         prefix: storagePrefix,
       });
@@ -398,9 +444,10 @@ class S3UploadService {
         isForKids: metadata?.isForKids,
       };
 
-      const { payload, errors } = normalizeVideoNotePayload(rawVideoPayload);
+      const { payload, errors } =
+        this.deps.normalizeVideoNotePayload(rawVideoPayload);
       if (errors.length) {
-        const message = getVideoNoteErrorMessage(errors[0]);
+        const message = this.deps.getVideoNoteErrorMessage(errors[0]);
         this.setUploadStatus(message, "error");
         return false;
       }
@@ -418,7 +465,7 @@ class S3UploadService {
       }
       return Boolean(published);
     } catch (err) {
-      userLogger.error("S3 upload failed:", err);
+      this.deps.userLogger.error("S3 upload failed:", err);
       this.setUploadStatus(
         err?.message ? `Upload failed: ${err.message}` : "Upload failed.",
         "error"

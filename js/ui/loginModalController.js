@@ -294,6 +294,7 @@ export default class LoginModalController {
     this.modalCloseIntervalId = null;
     this.isSelectionInProgress = false;
     this.nip46AutoStartTimer = null;
+    this.handleVisibility = this.handleVisibility.bind(this);
 
     this.initializeRemoteSignerStatus();
     this.initialized = false;
@@ -320,12 +321,32 @@ export default class LoginModalController {
     // Start tracking modal close events to reset per-session key generation state.
     this.initializeModalCloseTracking();
 
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", this.handleVisibility);
+    }
+
     if (typeof this.lastRemoteSignerStatus !== "undefined") {
       this.applyRemoteSignerStatus(this.lastRemoteSignerStatus);
     }
 
     this.providerContainer.addEventListener("click", this.boundClickHandler);
     this.initialized = true;
+  }
+
+  handleVisibility() {
+    if (typeof document === "undefined") return;
+    if (document.hidden) {
+      if (
+        this.modalCloseIntervalId &&
+        this.window &&
+        typeof this.window.clearInterval === "function"
+      ) {
+        this.window.clearInterval(this.modalCloseIntervalId);
+        this.modalCloseIntervalId = null;
+      }
+    } else {
+      this.initializeModalCloseTracking();
+    }
   }
 
   initializeModalCloseTracking() {
@@ -1529,11 +1550,8 @@ export default class LoginModalController {
           if (!copied && handshakeInput.select) {
             try {
               handshakeInput.select();
-              if (this.document?.execCommand) {
-                copied = this.document.execCommand("copy");
-              }
             } catch (error) {
-              copied = false;
+              // no-op
             }
           }
           if (copied) {
@@ -1561,6 +1579,23 @@ export default class LoginModalController {
           if (!pendingAuthUrl) {
             return;
           }
+
+          let isValid = false;
+          try {
+            const parsed = new URL(pendingAuthUrl);
+            isValid = parsed.protocol === "http:" || parsed.protocol === "https:";
+          } catch (error) {
+            isValid = false;
+          }
+
+          if (!isValid) {
+            devLogger.warn(
+              "[LoginModalController] Blocked unsafe authentication URL:",
+              pendingAuthUrl,
+            );
+            return;
+          }
+
           if (this.window && typeof this.window.open === "function") {
             this.window.open(pendingAuthUrl, "_blank", "noopener,noreferrer");
           } else if (this.document && this.document.location) {
@@ -2470,6 +2505,10 @@ export default class LoginModalController {
   }
 
   destroy() {
+    if (typeof document !== "undefined") {
+      document.removeEventListener("visibilitychange", this.handleVisibility);
+    }
+
     if (this.modalCloseObserver) {
       try {
         this.modalCloseObserver.disconnect();

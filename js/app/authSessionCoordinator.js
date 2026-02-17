@@ -42,8 +42,97 @@ export function createAuthSessionCoordinator(deps) {
     getActiveProfilePubkey,
   } = deps;
 
+  const now =
+    typeof performance !== "undefined" && typeof performance.now === "function"
+      ? () => performance.now()
+      : () => Date.now();
+
+  const SIGNER_GATE_STATUS = Object.freeze({
+    READY: "signer-ready",
+    EXTENSION_UNAVAILABLE: "extension-unavailable",
+    PERMISSION_DENIED: "permission-denied",
+  });
+
+  const classifySignerGateError = (error) => {
+    const code =
+      typeof error?.code === "string" && error.code.trim()
+        ? error.code.trim().toLowerCase()
+        : "";
+    const message =
+      typeof error?.message === "string" && error.message.trim()
+        ? error.message.trim().toLowerCase()
+        : "";
+
+    if (
+      code.includes("permission") ||
+      message.includes("permission") ||
+      message.includes("denied")
+    ) {
+      return SIGNER_GATE_STATUS.PERMISSION_DENIED;
+    }
+
+    return SIGNER_GATE_STATUS.EXTENSION_UNAVAILABLE;
+  };
+
+  const evaluateSignerReadinessGate = async (pubkey) => {
+    if (!pubkey) {
+      return {
+        ready: false,
+        status: SIGNER_GATE_STATUS.EXTENSION_UNAVAILABLE,
+        error: null,
+      };
+    }
+
+    try {
+      const signer = await nostrClient.ensureActiveSignerForPubkey(pubkey);
+      if (!signer) {
+        return {
+          ready: false,
+          status: SIGNER_GATE_STATUS.EXTENSION_UNAVAILABLE,
+          error: null,
+        };
+      }
+
+      if (
+        signer?.type === "extension" ||
+        signer?.type === "nip07"
+      ) {
+        const permissionResult = await nostrClient.ensureExtensionPermissions(
+          DEFAULT_NIP07_PERMISSION_METHODS,
+        );
+        if (!permissionResult?.ok) {
+          const error =
+            permissionResult?.error instanceof Error
+              ? permissionResult.error
+              : new Error("permission-denied");
+          return {
+            ready: false,
+            status: classifySignerGateError(error),
+            error,
+          };
+        }
+      }
+
+      return {
+        ready: true,
+        status: SIGNER_GATE_STATUS.READY,
+        error: null,
+      };
+    } catch (error) {
+      return {
+        ready: false,
+        status: classifySignerGateError(error),
+        error,
+      };
+    }
+  };
+
   return {
     async handleAuthLogin(detail = {}) {
+      const authLoginStart = now();
+      userLogger.info("[auth-login-start]", {
+        pubkey: detail?.pubkey || this.pubkey || null,
+      });
       const postLoginPromise =
         detail && typeof detail.postLoginPromise?.then === "function"
           ? detail.postLoginPromise
@@ -193,25 +282,61 @@ export function createAuthSessionCoordinator(deps) {
           return null;
         });
 
-      // PRE-AUTH: Request full permissions once so subsequent services don't
-      // spam individual prompts. This runs immediately (not gated behind
-      // relaysReadyPromise) so the user can approve while relays connect.
-      const permissionPromise = activePubkey
+      // Shared signer readiness gate used by both auto-login and manual NIP-07
+      // login sync orchestration before decrypt-dependent list fetches begin.
+      const signerReadinessPromise = activePubkey
         ? Promise.resolve()
             .then(async () => {
-              const signer = await nostrClient.ensureActiveSignerForPubkey(
-                activePubkey,
+              const signerGateStart = now();
+              // PERF: Evaluate signer readiness once. The previous double-gate
+              // evaluation added 5-10s to the login path by repeating the same
+              // extension wait + permission request. A single evaluation is
+              // sufficient because ensureActiveSignerForPubkey already waits
+              // for extension injection internally.
+              const outcome = await evaluateSignerReadinessGate(activePubkey);
+
+              const durationMs = Math.max(
+                0,
+                Math.round(now() - signerGateStart),
               );
-              if (signer?.type === "extension" || signer?.type === "nip07") {
-                await nostrClient.ensureExtensionPermissions(
-                  DEFAULT_NIP07_PERMISSION_METHODS,
+              const finalOutcome = {
+                ...outcome,
+                recoveryAttempted: false,
+                durationMs,
+              };
+              userLogger.info("[signer-ready]", {
+                ready: finalOutcome.ready,
+                status: finalOutcome.status,
+                recoveryAttempted: finalOutcome.recoveryAttempted,
+                durationMs: finalOutcome.durationMs,
+              });
+
+              if (!finalOutcome.ready && finalOutcome.error) {
+                devLogger.warn(
+                  "[Application] Signer readiness gate not ready:",
+                  finalOutcome.error,
                 );
               }
+
+              return finalOutcome;
             })
             .catch((error) => {
-              devLogger.warn("[Application] Pre-authorization failed:", error);
+              devLogger.warn("[Application] Signer readiness gate failed:", error);
+              return {
+                ready: false,
+                status: classifySignerGateError(error),
+                error,
+                recoveryAttempted: false,
+                durationMs: 0,
+              };
             })
-        : Promise.resolve();
+        : Promise.resolve({
+            ready: false,
+            status: SIGNER_GATE_STATUS.EXTENSION_UNAVAILABLE,
+            error: null,
+            recoveryAttempted: false,
+            durationMs: 0,
+          });
 
       // Start list loading as soon as relays are ready — lists don't depend on
       // profile data, only on relay URLs. This runs in parallel with profile
@@ -222,13 +347,75 @@ export function createAuthSessionCoordinator(deps) {
       // render needs all three to be settled. Loading them concurrently shaves
       // 20-30 seconds off the critical login path.
       //
-      // PERF: Lists no longer wait for the permission pre-grant to complete.
-      // The NIP-07 extension already granted decrypt permissions during the
-      // login flow (ensureExtensionPermissions is called in loginWithExtension),
-      // so the signer adapter's decrypt functions work immediately. Waiting for
-      // the redundant pre-grant was adding 2-5 seconds of unnecessary latency
-      // before list loading could even begin.
-      const listStatePromise = relaysReadyPromise.then(async () => {
+      // Lists wait for the permission pre-grant to settle before attempting
+      // decryption. During auto-login (page refresh), the NIP-07 extension
+      // may not be ready yet — without waiting, all three services would fail
+      // with "permission-required" and schedule 3-second retry delays, adding
+      // 6-10 seconds to the critical login path. By waiting for the pre-grant
+      // (which itself waits for the extension and requests permissions), the
+      // signer is guaranteed to be available when decryption starts. This does
+      // NOT slow down fresh logins because the pre-grant resolves immediately
+      // when permissions were already granted during loginWithExtension().
+      //
+      // If pre-auth fails (e.g. extension was slow to inject), allow list
+      // services to request permissions themselves so they don't stall waiting
+      // for a retry timer.
+      const listStatePromise = Promise.all([
+        relaysReadyPromise,
+        signerReadinessPromise,
+      ]).then(async ([, signerGateOutcome]) => {
+        const listSyncStart = now();
+        const allowPermissionPrompt = !signerGateOutcome?.ready;
+        userLogger.info("[lists-sync-start]", {
+          pubkey: activePubkey || null,
+          allowPermissionPrompt,
+          signerStatus: signerGateOutcome?.status || null,
+        });
+        const hasValidBlocksCache = () => {
+          if (!activePubkey || !userBlocks) {
+            return false;
+          }
+          const activeCachePubkey = this.normalizeHexPubkey(userBlocks.activePubkey);
+          return userBlocks.loaded === true && activeCachePubkey === activePubkey;
+        };
+        const hasValidSubscriptionsCache = () => {
+          if (!activePubkey || !subscriptions) {
+            return false;
+          }
+          const activeCachePubkey = this.normalizeHexPubkey(
+            subscriptions.currentUserPubkey,
+          );
+          return subscriptions.loaded === true && activeCachePubkey === activePubkey;
+        };
+        const hasValidHashtagCache = () => {
+          if (!activePubkey || !this.hashtagPreferences) {
+            return false;
+          }
+          const activeCachePubkey = this.normalizeHexPubkey(
+            this.hashtagPreferences.activePubkey,
+          );
+          return this.hashtagPreferences.loaded === true && activeCachePubkey === activePubkey;
+        };
+
+        const runListTask = async (name, task, { hasValidCache }) => {
+          try {
+            const result = await task();
+            return {
+              name,
+              ok: Boolean(result?.ok),
+              error: result?.error || null,
+              hasCache: hasValidCache(),
+            };
+          } catch (error) {
+            return {
+              name,
+              ok: false,
+              error,
+              hasCache: hasValidCache(),
+            };
+          }
+        };
+
         const parallelListTasks = [];
 
         if (
@@ -236,16 +423,23 @@ export function createAuthSessionCoordinator(deps) {
           typeof this.authService.loadBlocksForPubkey === "function"
         ) {
           parallelListTasks.push(
-            this.authService
-              .loadBlocksForPubkey(activePubkey, {
-                allowPermissionPrompt: false,
-              })
-              .catch((error) => {
-                devLogger.warn(
-                  "[Application] Failed to load blocks during login:",
-                  error,
-                );
-              }),
+            runListTask(
+              "blocks",
+              async () => {
+                const loaded = await this.authService.loadBlocksForPubkey(activePubkey, {
+                  allowPermissionPrompt,
+                  signerReadinessGate: signerGateOutcome,
+                });
+                const ok = loaded !== false;
+                if (!ok) {
+                  const error = new Error("Block list sync returned a failed status.");
+                  error.code = "blocks-sync-failed";
+                  return { ok: false, error };
+                }
+                return { ok: true, error: null };
+              },
+              { hasValidCache: hasValidBlocksCache },
+            ),
           );
         }
 
@@ -255,20 +449,19 @@ export function createAuthSessionCoordinator(deps) {
           typeof subscriptions.ensureLoaded === "function"
         ) {
           parallelListTasks.push(
-            subscriptions
-              .ensureLoaded(activePubkey, { allowPermissionPrompt: false })
-              .then(() => {
-                this.capturePermissionPromptFromError(
-                  subscriptions?.lastLoadError,
-                );
-              })
-              .catch((error) => {
-                devLogger.warn(
-                  "[Application] Failed to load subscriptions during login:",
-                  error,
-                );
+            runListTask(
+              "subscriptions",
+              async () => {
+                await subscriptions.ensureLoaded(activePubkey, {
+                  allowPermissionPrompt,
+                  signerReadinessGate: signerGateOutcome,
+                });
+                const error = subscriptions?.lastLoadError || null;
                 this.capturePermissionPromptFromError(error);
-              }),
+                return { ok: !error, error };
+              },
+              { hasValidCache: hasValidSubscriptionsCache },
+            ),
           );
         }
 
@@ -278,28 +471,141 @@ export function createAuthSessionCoordinator(deps) {
           typeof this.hashtagPreferences.load === "function"
         ) {
           parallelListTasks.push(
-            this.hashtagPreferences
-              .load(activePubkey, { allowPermissionPrompt: false })
-              .then(() => {
-                this.capturePermissionPromptFromError(
-                  this.hashtagPreferences?.lastLoadError,
-                );
-                this.updateCachedHashtagPreferences();
-              })
-              .catch((error) => {
-                devLogger.warn(
-                  "[Application] Failed to load hashtag preferences during login:",
-                  error,
-                );
+            runListTask(
+              "hashtags",
+              async () => {
+                await this.hashtagPreferences.load(activePubkey, {
+                  allowPermissionPrompt,
+                  signerReadinessGate: signerGateOutcome,
+                });
+                const error = this.hashtagPreferences?.lastLoadError || null;
                 this.capturePermissionPromptFromError(error);
-              }),
+                this.updateCachedHashtagPreferences();
+                return { ok: !error, error };
+              },
+              { hasValidCache: hasValidHashtagCache },
+            ),
           );
         }
 
-        await Promise.allSettled(parallelListTasks);
+        const taskOutcomes = await Promise.all(parallelListTasks);
+        const requiredTaskOutcomes = taskOutcomes.filter((outcome) =>
+          ["blocks", "subscriptions", "hashtags"].includes(outcome.name),
+        );
+        const failedRequiredOutcomes = requiredTaskOutcomes.filter(
+          (outcome) => !outcome.ok,
+        );
+        const ready = requiredTaskOutcomes.every(
+          (outcome) => outcome.ok || outcome.hasCache,
+        );
+        const degraded = failedRequiredOutcomes.length > 0;
+        const fatal = failedRequiredOutcomes.some((outcome) => !outcome.hasCache);
 
-        this.updateAuthLoadingState({ lists: "ready" });
-        return true;
+        const listSyncDetail = {
+          ready,
+          degraded,
+          error: fatal,
+          retryScheduled: false,
+          tasks: requiredTaskOutcomes.map((outcome) => ({
+            name: outcome.name,
+            ok: outcome.ok,
+            fromCache: outcome.hasCache && !outcome.ok,
+            error: outcome.error || null,
+          })),
+        };
+
+        if (degraded && activePubkey) {
+          listSyncDetail.retryScheduled = true;
+          Promise.resolve()
+            .then(() =>
+              Promise.all([
+                this.authService?.loadBlocksForPubkey?.(activePubkey, {
+                  allowPermissionPrompt: true,
+                  signerReadinessGate: signerGateOutcome,
+                }),
+                subscriptions?.ensureLoaded?.(activePubkey, {
+                  allowPermissionPrompt: true,
+                  signerReadinessGate: signerGateOutcome,
+                }),
+                this.hashtagPreferences?.load?.(activePubkey, {
+                  allowPermissionPrompt: true,
+                  signerReadinessGate: signerGateOutcome,
+                }),
+              ]),
+            )
+            .then(() => {
+              this.updateCachedHashtagPreferences();
+              const retryTasks = [
+                {
+                  name: "blocks",
+                  ok: hasValidBlocksCache(),
+                  fromCache: false,
+                  error: null,
+                },
+                {
+                  name: "subscriptions",
+                  ok:
+                    hasValidSubscriptionsCache() &&
+                    !subscriptions?.lastLoadError,
+                  fromCache: false,
+                  error: subscriptions?.lastLoadError || null,
+                },
+                {
+                  name: "hashtags",
+                  ok:
+                    hasValidHashtagCache() &&
+                    !this.hashtagPreferences?.lastLoadError,
+                  fromCache: false,
+                  error: this.hashtagPreferences?.lastLoadError || null,
+                },
+              ];
+              const retryReady = retryTasks.every((task) => task.ok);
+              const retryDegraded = retryTasks.some((task) => !task.ok);
+              this.updateAuthLoadingState({
+                lists: retryReady ? "ready" : "degraded",
+                listsDetail: {
+                  ready: retryReady,
+                  degraded: retryDegraded,
+                  error: retryDegraded,
+                  retryScheduled: false,
+                  retryCompleted: true,
+                  tasks: retryTasks,
+                },
+              });
+              this.dispatchAuthChange({
+                status: "login-lists-sync",
+                loggedIn: true,
+                pubkey: activePubkey,
+                authLoadingState: this.authLoadingState,
+              });
+            })
+            .catch((error) => {
+              devLogger.warn(
+                "[Application] Consolidated list sync retry failed after login:",
+                error,
+              );
+            });
+        }
+
+        const listsState = ready ? (degraded ? "degraded" : "ready") : "error";
+        userLogger.info("[lists-sync-complete]", {
+          pubkey: activePubkey || null,
+          ready,
+          degraded,
+          fatal,
+          durationMs: Math.max(0, Math.round(now() - listSyncStart)),
+        });
+        this.updateAuthLoadingState({
+          lists: listsState,
+          listsDetail: listSyncDetail,
+        });
+        this.dispatchAuthChange({
+          status: "login-lists-sync",
+          loggedIn: true,
+          pubkey: activePubkey,
+          authLoadingState: this.authLoadingState,
+        });
+        return listSyncDetail;
       });
 
       // DMs can wait for profile since they need encryption context.
@@ -396,7 +702,10 @@ export function createAuthSessionCoordinator(deps) {
       // hashtag preferences) to settle before rendering the video grid. This
       // prevents the feed from briefly showing unfiltered content. We use a
       // time-boxed wait so the UI isn't blocked indefinitely if decryption stalls.
-      const FEED_SYNC_TIMEOUT_MS = 12000;
+      // PERF: Reduced from 12s to 8s — list decryption timeouts have been
+      // lowered so settled results arrive faster. 8s prevents the feed from
+      // being blocked while still giving most lists time to decrypt.
+      const FEED_SYNC_TIMEOUT_MS = 8000;
       const feedSyncPromise = Promise.race([
         Promise.allSettled([
           listStatePromise,
@@ -433,6 +742,11 @@ export function createAuthSessionCoordinator(deps) {
             );
           });
       }
+
+      userLogger.info("[auth-login-complete]", {
+        pubkey: activePubkey || null,
+        durationMs: Math.max(0, Math.round(now() - authLoginStart)),
+      });
     },
 
     handleBlocksLoaded(detail = {}) {
@@ -513,10 +827,6 @@ export function createAuthSessionCoordinator(deps) {
       const detail = await this.authService.logout();
 
       if (detail && typeof detail === "object") {
-        if (detail.__handled === true) {
-          return detail;
-        }
-
         try {
           detail.__handled = true;
         } catch (error) {
@@ -529,6 +839,22 @@ export function createAuthSessionCoordinator(deps) {
     },
 
     async handleAuthLogout(detail = {}) {
+      // Deduplicate concurrent calls — the auth:logout event listener may
+      // fire-and-forget this method while requestLogout() also awaits it.
+      // Return the in-flight promise so both callers resolve together.
+      if (this._pendingLogoutPromise) {
+        return this._pendingLogoutPromise;
+      }
+
+      this._pendingLogoutPromise = this._executeAuthLogout(detail);
+      try {
+        return await this._pendingLogoutPromise;
+      } finally {
+        this._pendingLogoutPromise = null;
+      }
+    },
+
+    async _executeAuthLogout(detail = {}) {
       if (detail && typeof detail === "object") {
         try {
           detail.__handled = true;

@@ -80,8 +80,8 @@ Info JSON:               https://cdn.example.com/uploads/demo/video.info.json
 
 ### How playback works
 
-1. **URL-first**: `playVideoWithFallback({ url, magnet })` attempts the hosted URL immediately. Healthy URLs deliver the full experience without touching P2P resources.
-2. **WebTorrent fallback**: If the URL probe fails or returns an error status, bitvid falls back to WebTorrent using the raw magnet. The helpers append HTTPS `ws=`/`xs=` hints so peers seed quickly.
+1. **Configurable Priority**: `playVideoWithFallback({ url, magnet })` attempts the preferred source (URL or WebTorrent) based on the `DEFAULT_PLAYBACK_SOURCE` configuration.
+2. **Seamless Fallback**: If the preferred source fails, stalls, or is unavailable, bitvid automatically switches to the alternative source.
 3. **Safety checks**: Magnets are decoded with `safeDecodeMagnet()` and normalized via `normalizeAndAugmentMagnet()` before reaching WebTorrent. Trackers remain WSS-only to satisfy browser constraints.
 4. **Operator playbook**: If a deployment causes playback regressions, flip the relevant feature flags back to their default values in `js/constants.js` and redeploy. Capture the rollback steps in AGENTS.md and the PR description so the Main channel stays stable.
 5. **Deep dive**: See [`docs/playback-fallback.md`](docs/playback-fallback.md) for the call flow into `playbackService`, magnet normalization details, and fallback hand-off points.
@@ -143,10 +143,11 @@ To run **bitvid** locally:
 
 2. Install dependencies:
 
-   Use `npm ci` to install dependencies exactly as specified in `package-lock.json`. This ensures `npx` finds the correct local `tailwindcss` version.
+   Use `npm ci` to install dependencies exactly as specified in `package-lock.json`. If you intend to run smoke, visual, or end-to-end tests, also install Playwright browsers.
 
    ```bash
    npm ci
+   npx playwright install
    ```
 
 3. Start the application:
@@ -163,15 +164,32 @@ To run **bitvid** locally:
    http://localhost:3000
    ```
 
-   _(Note: The default port is 3000, but `npx serve` may select a different port if 3000 is in use. Check your terminal output.)_
+   _(Note: The application runs via `npx serve`. The default port is 3000, but it may select a different port if 3000 is occupied. Check your terminal output for the correct URL.)_
 
-   _Note: If you prefer manual steps, you can run `npm run build` followed by `npx serve dist`._
+   _Note: If you prefer manual steps, run `npm run build` followed by `npx serve dist`. Because `dist` is the document root in this mode, always open `/` rather than appending `/dist`._
+
+   _If you use a static server from the repository root (for example VS Code Live Server or `python3 -m http.server`), open `http://127.0.0.1:8000/dist/` with the trailing slash._
+
+5. Verify setup:
+
+   Run tests and linting to ensure everything is working correctly.
+
+   ```bash
+   npm run test:unit:shard1  # Run a subset of tests for speed
+   npm run test:smoke        # Critical path verification
+   npm run format
+   npm run lint
+   ```
+
+   _Tip: Use `npm run test:unit` to run the full suite (can be slow)._
 
 #### Quick Reference
 
 - **Run unit tests**: `npm run test:unit`
+- **Run smoke tests**: `npm run test:smoke`
 - **Format code**: `npm run format` (CSS, HTML, MD, Config - no JS logic)
-- **Lint code**: `npm run lint` (Styles, Tokens, Hex, Tailwind guards - no ESLint/logic linting)
+- **Lint code**: `npm run lint` (Styles, Tokens, Hex, Tailwind guards, file size, innerHTML, assets, SW compat - no ESLint/logic linting)
+- **Visual tests**: `npm run test:visual` (Playwright snapshots)
 
 ### Dev Container
 
@@ -181,19 +199,23 @@ This project includes a `.devcontainer` configuration. If you use VS Code, you c
 
 See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full developer guide.
 
+For detailed architecture and system documentation, see the [Documentation Index](docs/README.md).
+
 **Verify your work:**
 
 - **Run unit tests**: `npm run test:unit` (Required before PRs). _Tip: Use `npm run test:unit:shard1`, `shard2`, or `shard3` for faster local feedback._
 - **Format code**: `npm run format` (Required before PRs - only formats CSS, HTML, MD, and Config)
-- **Lint code**: `npm run lint` (Checks for CSS, hex colors, inline styles, design tokens, and Tailwind guards - no ESLint/logic linting)
+- **Lint code**: `npm run lint` (Checks for CSS, hex colors, inline styles, design tokens, Tailwind guards, file size, innerHTML, assets, and SW compat - no ESLint/logic linting)
 
 **Other commands:**
 
+- **Run load tests**: `npm run test:load`
 - **Run DM unit tests**: `npm run test:dm:unit`
 - **Run DM integration tests**: `npm run test:dm:integration`
 - **Run headless E2E tests**: `npm run test:e2e`
 - **Run visual regression tests**: `npm run test:visual`
 - **Update visual baselines**: `npm run test:visual:update`
+- **Run design system audit**: `npm run audit` (Generates remediation report)
 - **Aggregate telemetry**: `npm run telemetry:aggregate`
 - **Cancel CI runs**: See [`docs/cancelling-ci-runs.md`](docs/cancelling-ci-runs.md) for a script to clear pending workflows.
 
@@ -257,23 +279,18 @@ const event = buildVideoPostEvent({
 
 console.log("Event constructed:", event);
 
-// 2. Publish using the high-level client (requires browser/extension or active signer)
-/*
+// 2. Publish the event (requires browser/extension or active signer)
+// In an application context (e.g. browser console or module):
 import { nostrClient } from "./js/nostrClientFacade.js";
 
 // Ensure client is connected
 await nostrClient.init();
 
 // Login (prompts NIP-07 extension)
-await nostrClient.login();
+await nostrClient.loginWithExtension();
 
-// Publish! (Handles signing and relay broadcasting)
-await nostrClient.publishVideo({
-  title: "My First Video",
-  url: "https://example.com/video.mp4",
-  description: "Published via bitvid SDK"
-}, nostrClient.pubkey);
-*/
+// Publish the built event
+await nostrClient.signAndPublishEvent(event);
 ```
 
 ### CSS build pipeline
@@ -302,7 +319,7 @@ package scripts to keep formatting, linting, and generated output consistent:
 ```bash
 npm install               # install Prettier, Stylelint, and Tailwind toolchain
 npm run format            # format CSS/HTML/MD with Prettier + tailwindcss plugin
-npm run lint              # run CSS, hex color, inline-style, design-token, and Tailwind color/bracket guards in one pass
+npm run lint              # run CSS, hex, inline-style, tokens, Tailwind, file-size, innerHTML, assets, and SW compat guards
 npm run lint:css          # enforce token usage and forbid raw hex colors
 npm run lint:inline-styles # fail CI if inline style attributes or element.style usage slip in
 npm run build             # run the full production build (cleans dist/, runs build:css, and copies assets)
@@ -331,6 +348,46 @@ commands from the repo root:
 The generated `css/tailwind.generated.css` artifact is ignored in git. CI
 workflows and Netlify deploys run `npm run build` to produce the compiled
 stylesheet during deployment, so source changes are all you need to commit.
+
+Deploy targets must publish the `dist/` directory as the web root (never the
+repository root). CI enforces deploy artifact integrity with
+`npm run verify:dist:deploy-artifact` immediately after `npm run build`, and
+hosts that support a publish/output directory (for example Netlify and Vercel)
+should be configured to use `dist`.
+
+#### Netlify cache policy for safe fast rollouts
+
+bitvid uses path-class cache rules so deployments propagate quickly without
+breaking long-term static asset caching:
+
+- `index.html`, `embed.html`, and other `*.html` shell pages are served with
+  `Cache-Control: no-cache, must-revalidate` so clients always revalidate the
+  app entry document before booting a new session.
+- Hashed bundles under `/css/*` and `/js/*` are served with
+  `Cache-Control: public, max-age=31536000, immutable` so browsers and CDNs can
+  keep them for a year with zero revalidation churn.
+- Service-worker-related files (`/sw.min.js`, `/site.webmanifest`) use short,
+  revalidation-friendly cache controls (`max-age=0, must-revalidate`) so rollout
+  metadata and worker updates are picked up promptly.
+
+This split is required for safe fast rollouts: HTML needs rapid update pickup,
+while fingerprinted static assets should remain aggressively cacheable for
+performance and cost control.
+
+> Migration note: runtime `ASSET_VERSION` query-parameter mutation has been
+> removed. Static asset freshness now comes from build-time hashed filenames
+> recorded in `dist/asset-manifest.json` and rewritten into `dist/index.html`
+> / `dist/embed.html` during `npm run build`.
+
+#### Service worker rollback playbook
+
+If a deploy regresses playback and you suspect `sw.min.js`, use this rollback runbook:
+
+1. **Freeze impact**: redeploy the last known-good commit so clients fetch the previous worker script immediately.
+2. **Invalidate active workers**: from DevTools > Application > Service Workers, click **Unregister** for `sw.min.js` and hard reload once to verify playback without stale worker state.
+3. **Confirm claim flow**: in the browser console, confirm worker lifecycle messages (`BITVID_SW_LIFECYCLE`) appear and that requests to `/webtorrent/*` carry the `X-Bitvid-SW-Version` response header.
+4. **Check compatibility guardrails**: run `npm run lint:sw-compat` before shipping the fix. This fails deploys when service-worker runtime paths/scope changes are not accompanied by `_headers`, `index.html`, and `embed.html` updates in the same commit.
+5. **Redeploy + monitor**: publish the fix, then replay the URL-first fallback QA script in `docs/qa.md` and capture logs/screenshots in the PR.
 
 Inline styles are intentionally blocked. `npm run lint:inline-styles` scans HTML
 and scripts for `style=` attributes, `element.style`, or `style.cssText` usage
@@ -392,12 +449,13 @@ call the facade to keep API surfaces consistent.
 
 ### Nostr video fetch limits
 
-`nostrClient.fetchVideos(options)` now accepts an optional `options.limit` to
-control how many video events are requested per relay. The request size defaults
+The `nostrClient` uses `subscribeVideos(callback, options)` for the main feed to support buffering and streaming. It accepts an optional `options.limit` to control how many video events are requested per relay. The request size defaults
 to `DEFAULT_VIDEO_REQUEST_LIMIT` (150) and is clamped to
 `MAX_VIDEO_REQUEST_LIMIT` (500) to avoid accidental firehose requests as the
 network grows. Use a smaller limit for lightweight surfaces or a larger value
 when running batch jobs that can tolerate additional load.
+
+`nostrClient.fetchVideos(options)` is a legacy wrapper around subscription and is deprecated.
 
 The build command compiles Tailwind with `tailwind.config.cjs`, runs it through
 the PostCSS pipeline defined in `postcss.config.cjs` (for autoprefixing), and
@@ -500,16 +558,20 @@ Please see [`CONTRIBUTING.md`](./CONTRIBUTING.md) for detailed setup instruction
 ## Testing
 
 Continuous integration runs CSS linting/builds, the DM unit/integration suites, the Playwright kitchen-sink snapshots, headless E2E flows, and the Node-based unit tests on every push.
+
 Before pushing, run `npm run build` locally so the Tailwind bundle regenerates.
-Pair that with `npm run test:unit` for application logic changes, or a shard
-(`npm run test:unit:shard1`, `test:unit:shard2`, `test:unit:shard3`) when you want to
-split the suite. You can also set `UNIT_TEST_SHARD=1/3` or pass `--shard=1/3`
-to `scripts/run-unit-tests.mjs` for custom shard splits, and use
-`UNIT_TEST_TIMEOUT_MS=120000` to abort a single stalled test file without
-blocking the entire run. `npm run test:visual` covers presentation updates to mirror the CI surface area.
-For DM-specific changes, also run `npm run test:dm:unit` and
-`npm run test:dm:integration` to cover the direct message flows.
-Use `npm run test:e2e` to execute the headless Playwright journeys in `tests/e2e`.
+
+- **Unit Tests**: Run `npm run test:unit` for application logic changes.
+  - _Tip_: Use `npm run test:unit:shard1`, `shard2`, or `shard3` for faster local feedback.
+  - Custom shards: `cross-env UNIT_TEST_SHARD=1/3 node scripts/run-unit-tests.mjs` or pass `--shard=1/3`.
+  - Timeout override: `cross-env UNIT_TEST_TIMEOUT_MS=120000` to abort stalled files.
+
+- **Visual Regression**: Run `npm run test:visual` to verify UI presentation against baselines.
+  - Update baselines: `npm run test:visual:update`.
+
+- **Direct Messages**: Run `npm run test:dm:unit` and `npm run test:dm:integration` for DM flows.
+
+- **End-to-End**: Run `npm run test:e2e` for headless Playwright journeys.
 
 ### Manual QA checklist
 

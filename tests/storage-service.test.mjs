@@ -82,6 +82,54 @@ describe("StorageService", () => {
     assert.strictEqual(mockLegacySigner.nip04Encrypt.mock.callCount(), 1);
   });
 
+  test("unlock() normalizes permission denied decrypt errors", async () => {
+    await storageService.unlock(pubkey, { signer: mockSigner });
+    storageService.lock(pubkey);
+
+    const permissionDeniedSigner = {
+      nip44Decrypt: mock.fn(async () => {
+        const error = new Error("Permission denied by extension");
+        error.code = "extension-encryption-permission-denied";
+        throw error;
+      }),
+    };
+
+    await assert.rejects(
+      async () => storageService.unlock(pubkey, { signer: permissionDeniedSigner }),
+      (error) => error?.code === "storage-unlock-permission-denied",
+    );
+  });
+
+  test("unlock() normalizes missing decryptor errors", async () => {
+    await storageService.unlock(pubkey, { signer: mockSigner });
+    storageService.lock(pubkey);
+
+    const missingDecryptSigner = {
+      capabilities: { nip44: false, nip04: false },
+    };
+
+    await assert.rejects(
+      async () => storageService.unlock(pubkey, { signer: missingDecryptSigner }),
+      (error) => error?.code === "storage-unlock-no-decryptor",
+    );
+  });
+
+  test("unlock() normalizes unknown decrypt errors", async () => {
+    await storageService.unlock(pubkey, { signer: mockSigner });
+    storageService.lock(pubkey);
+
+    const failingDecryptSigner = {
+      nip44Decrypt: mock.fn(async () => {
+        throw new Error("Unexpected decrypt failure");
+      }),
+    };
+
+    await assert.rejects(
+      async () => storageService.unlock(pubkey, { signer: failingDecryptSigner }),
+      (error) => error?.code === "storage-unlock-decrypt-failed",
+    );
+  });
+
   test("saveConnection() encrypts and stores connection", async () => {
     await storageService.unlock(pubkey, { signer: mockSigner });
 

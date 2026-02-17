@@ -33,6 +33,8 @@ export const IS_DEV_MODE = false;
  * a quieter dev mode without disabling other development helpers entirely.
  * Use the runtime override documented in `js/config.js` if you need to toggle
  * verbosity without editing this file.
+ *
+ * Security: This must be false in production.
  */
 export const IS_VERBOSE_DEV_MODE = false;
 
@@ -450,3 +452,15 @@ export const DEFAULT_PLAYBACK_SOURCE = "torrent";
  * if the primary source is slow or stalled.
  */
 export const DEFAULT_PLAYBACK_START_TIMEOUT = 3000;
+
+/**
+ * Whether to display privacy warnings when NIP-17 DM relay lists are missing.
+ *
+ * When set to `true`, the UI alerts users if their recipient has not published
+ * a NIP-17 relay list (falling back to default relays), or if DM delivery falls
+ * back to NIP-04/default relays due to missing configuration.
+ *
+ * Set to `false` to suppress these warnings for a cleaner UI, assuming users
+ * accept the privacy trade-offs of legacy routing.
+ */
+export const ENABLE_NIP17_RELAY_WARNING = false;

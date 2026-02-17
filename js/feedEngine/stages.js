@@ -11,7 +11,7 @@ import moderationService from "../services/moderationService.js";
 import logger from "../utils/logger.js";
 import { dedupeToNewestByRoot } from "../utils/videoDeduper.js";
 import { normalizeHashtag } from "../utils/hashtagNormalization.js";
-import { isPlainObject, toSet } from "./utils.js";
+import { isPlainObject, toSet, markAsNormalized, getVideoTags } from "./utils.js";
 
 const FEED_HIDE_BYPASS_NAMES = new Set(["home", "recent"]);
 
@@ -90,7 +90,7 @@ export function createDedupeByRootStage({
       });
     }
 
-    return keep;
+    return markAsNormalized(keep);
   };
 }
 
@@ -173,9 +173,9 @@ async function resolveTimestampWithResolvers({
     return null;
   }
 
-  for (const resolver of resolvers) {
+  const promises = resolvers.map(async (resolver) => {
     if (typeof resolver !== "function") {
-      continue;
+      throw new Error("Resolver is not a function");
     }
 
     try {
@@ -183,12 +183,20 @@ async function resolveTimestampWithResolvers({
       if (Number.isFinite(value)) {
         return Math.floor(value);
       }
+      throw new Error("Invalid timestamp value");
     } catch (error) {
-      context?.log?.(`[${stageName}] resolve timestamp hook threw`, error);
+      if (error.message !== "Invalid timestamp value") {
+        context?.log?.(`[${stageName}] resolve timestamp hook threw`, error);
+      }
+      throw error;
     }
-  }
+  });
 
-  return null;
+  try {
+    return await Promise.any(promises);
+  } catch (error) {
+    return null;
+  }
 }
 
 export function createResolvePostedAtStage({
@@ -306,34 +314,6 @@ export function createDisinterestFilterStage({
   };
 }
 
-function collectVideoTags(video) {
-  const videoTags = new Set();
-
-  if (Array.isArray(video.tags)) {
-    for (const tag of video.tags) {
-      if (Array.isArray(tag) && tag[0] === "t" && typeof tag[1] === "string") {
-        const normalized = normalizeHashtag(tag[1]);
-        if (normalized) {
-          videoTags.add(normalized);
-        }
-      }
-    }
-  }
-
-  if (Array.isArray(video.nip71?.hashtags)) {
-    for (const tag of video.nip71.hashtags) {
-      if (typeof tag === "string") {
-        const normalized = normalizeHashtag(tag);
-        if (normalized) {
-          videoTags.add(normalized);
-        }
-      }
-    }
-  }
-
-  return videoTags;
-}
-
 function filterByTagPreferences({
   items = [],
   context = {},
@@ -341,6 +321,14 @@ function filterByTagPreferences({
   enforceInterests,
 }) {
   const tagPreferences = context?.runtime?.tagPreferences;
+  if (tagPreferences?.available === false) {
+    context?.addWhy?.({
+      stage: stageName,
+      type: "status",
+      reason: "preferences-unavailable",
+    });
+    return items;
+  }
   const interests = normalizeTagSet(tagPreferences?.interests);
   const disinterests = normalizeTagSet(tagPreferences?.disinterests);
   if (!interests.size && !disinterests.size) {
@@ -356,7 +344,7 @@ function filterByTagPreferences({
       continue;
     }
 
-    const videoTags = collectVideoTags(video);
+    const videoTags = getVideoTags(video);
 
     let disinterested = false;
     if (disinterests.size) {
@@ -412,7 +400,7 @@ function filterByTagPreferences({
     results.push(item);
   }
 
-  return results;
+  return markAsNormalized(results);
 }
 
 export function createBlacklistFilterStage({
@@ -464,7 +452,7 @@ export function createBlacklistFilterStage({
       results.push(item);
     }
 
-    return results;
+    return markAsNormalized(results);
   };
 }
 
@@ -530,7 +518,7 @@ export function createWatchHistorySuppressionStage({
       results.push(item);
     }
 
-    return results;
+    return markAsNormalized(results);
   };
 }
 
@@ -1356,6 +1344,6 @@ export function createModerationStage({
       results.push(item);
     }
 
-    return results;
+    return markAsNormalized(results);
   };
 }

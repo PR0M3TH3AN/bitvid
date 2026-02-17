@@ -1,0 +1,37 @@
+[
+  {
+    "file": "js/ui/loginModalController.js",
+    "pattern": "setInterval",
+    "line": "initializeModalCloseTracking",
+    "trigger": "always (fallback)",
+    "impact": "Main thread polling (500ms) when MutationObserver missing. Should be gated."
+  },
+  {
+    "file": "js/ui/loginModalController.js",
+    "pattern": "setInterval",
+    "line": "startModalCloseWatch",
+    "trigger": "login flow (fallback)",
+    "impact": "Main thread polling (200ms) during login. Should be gated."
+  },
+  {
+    "file": "js/viewCounter.js",
+    "pattern": "setTimeout",
+    "line": "persistTimer",
+    "trigger": "view count update",
+    "impact": "Debounced local storage write. Low impact."
+  },
+  {
+    "file": "js/app/playbackCoordinator.js",
+    "pattern": "setInterval",
+    "line": "startTorrentStatusInterval",
+    "trigger": "video playback",
+    "impact": "Torrent status polling (3000ms). Already visibility gated."
+  },
+  {
+    "file": "js/services/exploreDataService.js",
+    "pattern": "setInterval",
+    "line": "startIntervals",
+    "trigger": "background data refresh",
+    "impact": "IDF/History refresh. Already visibility gated."
+  }
+]

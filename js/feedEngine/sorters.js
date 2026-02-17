@@ -1,6 +1,7 @@
 // js/feedEngine/sorters.js
 
 import { normalizeHashtag } from "../utils/hashtagNormalization.js";
+import { markAsNormalized } from "./utils.js";
 
 export function createChronologicalSorter({
   direction = "desc",
@@ -14,6 +15,14 @@ export function createChronologicalSorter({
     }
 
     const copy = [...items];
+
+    // Pre-resolve hooks to avoid allocation and property access in the hot loop
+    const hook = context?.hooks?.timestamps;
+    const h1 = typeof hook?.getKnownVideoPostedAt === "function" ? hook.getKnownVideoPostedAt : null;
+    const h2 = typeof hook?.getKnownPostedAt === "function" ? hook.getKnownPostedAt : null;
+    const h3 = typeof hook?.getVideoPostedAt === "function" ? hook.getVideoPostedAt : null;
+    const h4 = typeof hook?.resolveVideoPostedAt === "function" ? hook.resolveVideoPostedAt : null;
+
     const getTimestamp = (entry) => {
       if (!entry || typeof entry !== "object") {
         return Number.NEGATIVE_INFINITY;
@@ -36,33 +45,37 @@ export function createChronologicalSorter({
           }
         }
 
-        const hook = context?.hooks?.timestamps;
-        if (!hook || typeof hook !== "object") {
-          return null;
-        }
-
-        const candidates = [
-          hook.getKnownVideoPostedAt,
-          hook.getKnownPostedAt,
-          hook.getVideoPostedAt,
-          hook.resolveVideoPostedAt,
-        ];
-
-        for (const candidate of candidates) {
-          if (typeof candidate !== "function") {
-            continue;
-          }
-
+        // Unrolled check for pre-resolved hooks
+        if (h1) {
           try {
-            const value = candidate(video, { entry, context });
-            if (Number.isFinite(value)) {
-              return Math.floor(value);
-            }
+            const value = h1(video, { entry, context });
+            if (Number.isFinite(value)) return Math.floor(value);
           } catch (error) {
-            context?.log?.(
-              "[chronological-sorter] timestamps hook threw",
-              error,
-            );
+            context?.log?.("[chronological-sorter] timestamps hook threw", error);
+          }
+        }
+        if (h2) {
+          try {
+            const value = h2(video, { entry, context });
+            if (Number.isFinite(value)) return Math.floor(value);
+          } catch (error) {
+            context?.log?.("[chronological-sorter] timestamps hook threw", error);
+          }
+        }
+        if (h3) {
+          try {
+            const value = h3(video, { entry, context });
+            if (Number.isFinite(value)) return Math.floor(value);
+          } catch (error) {
+            context?.log?.("[chronological-sorter] timestamps hook threw", error);
+          }
+        }
+        if (h4) {
+          try {
+            const value = h4(video, { entry, context });
+            if (Number.isFinite(value)) return Math.floor(value);
+          } catch (error) {
+            context?.log?.("[chronological-sorter] timestamps hook threw", error);
           }
         }
 
@@ -121,7 +134,7 @@ export function createChronologicalSorter({
         : bId.localeCompare(aId);
     });
 
-    return copy;
+    return markAsNormalized(copy);
   };
 }
 
@@ -443,7 +456,7 @@ export function createExploreDiversitySorter({
     }
 
     const orderedRest = [...rest].sort(compareByTimestampId);
-    return selected.concat(orderedRest);
+    return markAsNormalized(selected.concat(orderedRest));
   };
 }
 
@@ -490,6 +503,6 @@ export function createKidsScoreSorter({
       });
     }
 
-    return copy;
+    return markAsNormalized(copy);
   };
 }
