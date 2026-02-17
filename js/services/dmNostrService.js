@@ -279,7 +279,7 @@ class DmNostrService {
       async (relayUrl) => {
         await this.connectRelay(relayUrl);
       },
-      { concurrency: RELAY_BACKGROUND_CONCURRENCY },
+      { concurrency: RELAY_BACKGROUND_CONCURRENCY || 3 },
     );
   }
 
@@ -680,7 +680,7 @@ class DmNostrService {
 
         return { ...result, relayUrl };
       },
-      { concurrency: RELAY_BACKGROUND_CONCURRENCY },
+      { concurrency: RELAY_BACKGROUND_CONCURRENCY || 3 },
     );
 
     return results;

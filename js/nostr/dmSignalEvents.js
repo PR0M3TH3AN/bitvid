@@ -144,7 +144,7 @@ export async function publishDmReadReceipt(
   const publishResults = await pMap(
     relayList,
     (url) => publishEventToRelay(client.pool, url, signedEvent),
-    { concurrency: RELAY_BACKGROUND_CONCURRENCY },
+    { concurrency: RELAY_BACKGROUND_CONCURRENCY || 3 },
   );
 
   const acceptedRelays = publishResults
@@ -287,7 +287,7 @@ export async function publishDmTypingIndicator(
   const publishResults = await pMap(
     relayList,
     (url) => publishEventToRelay(client.pool, url, signedEvent),
-    { concurrency: RELAY_BACKGROUND_CONCURRENCY },
+    { concurrency: RELAY_BACKGROUND_CONCURRENCY || 3 },
   );
 
   const acceptedRelays = publishResults
