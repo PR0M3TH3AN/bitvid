@@ -2889,80 +2889,82 @@ export class NostrClient {
     const revertSummaries = [];
     const revertEvents = [];
 
-    for (const vid of matchingEvents.values()) {
-      const baseRoot =
-        (typeof vid.videoRootId === "string" && vid.videoRootId) ||
-        inferredRoot ||
-        (targetVideo && typeof targetVideo.videoRootId === "string"
-          ? targetVideo.videoRootId
-          : "") ||
-        (targetVideo ? targetVideo.id : "") ||
-        vid.id;
+    await Promise.all(
+      Array.from(matchingEvents.values()).map(async (vid) => {
+        const baseRoot =
+          (typeof vid.videoRootId === "string" && vid.videoRootId) ||
+          inferredRoot ||
+          (targetVideo && typeof targetVideo.videoRootId === "string"
+            ? targetVideo.videoRootId
+            : "") ||
+          (targetVideo ? targetVideo.id : "") ||
+          vid.id;
 
-      const contentPayload = {
-        version: Number.isFinite(vid.version) ? vid.version : 3,
-        deleted: true,
-        isPrivate: vid.isPrivate === true,
-        isNsfw: vid.isNsfw === true,
-        isForKids: vid.isForKids === true && vid.isNsfw !== true,
-        title: typeof vid.title === "string" ? vid.title : "",
-        url: typeof vid.url === "string" ? vid.url : "",
-        magnet: typeof vid.magnet === "string" ? vid.magnet : "",
-        thumbnail: typeof vid.thumbnail === "string" ? vid.thumbnail : "",
-        description: typeof vid.description === "string" ? vid.description : "",
-        mode: typeof vid.mode === "string" ? vid.mode : "live",
-        videoRootId: baseRoot,
-      };
+        const contentPayload = {
+          version: Number.isFinite(vid.version) ? vid.version : 3,
+          deleted: true,
+          isPrivate: vid.isPrivate === true,
+          isNsfw: vid.isNsfw === true,
+          isForKids: vid.isForKids === true && vid.isNsfw !== true,
+          title: typeof vid.title === "string" ? vid.title : "",
+          url: typeof vid.url === "string" ? vid.url : "",
+          magnet: typeof vid.magnet === "string" ? vid.magnet : "",
+          thumbnail: typeof vid.thumbnail === "string" ? vid.thumbnail : "",
+          description: typeof vid.description === "string" ? vid.description : "",
+          mode: typeof vid.mode === "string" ? vid.mode : "live",
+          videoRootId: baseRoot,
+        };
 
-      const revertResult = await this.revertVideo(
-        {
-          id: vid.id,
-          pubkey: vid.pubkey,
-          content: JSON.stringify(contentPayload),
-          tags: Array.isArray(vid.tags) ? vid.tags : [],
-        },
-        pubkey
-      );
+        const revertResult = await this.revertVideo(
+          {
+            id: vid.id,
+            pubkey: vid.pubkey,
+            content: JSON.stringify(contentPayload),
+            tags: Array.isArray(vid.tags) ? vid.tags : [],
+          },
+          pubkey
+        );
 
-      const revertEvent = revertResult?.event || null;
-      const revertSummary =
-        revertResult?.summary ||
-        summarizePublishResults(revertResult?.publishResults || []);
-      const revertPublishResults = Array.isArray(revertResult?.publishResults)
-        ? revertResult.publishResults
-        : [];
+        const revertEvent = revertResult?.event || null;
+        const revertSummary =
+          revertResult?.summary ||
+          summarizePublishResults(revertResult?.publishResults || []);
+        const revertPublishResults = Array.isArray(revertResult?.publishResults)
+          ? revertResult.publishResults
+          : [];
 
-      revertSummaries.push({
-        targetId: vid.id || "",
-        event: revertEvent,
-        publishResults: revertPublishResults,
-        summary: revertSummary,
-      });
+        revertSummaries.push({
+          targetId: vid.id || "",
+          event: revertEvent,
+          publishResults: revertPublishResults,
+          summary: revertSummary,
+        });
 
-      if (revertEvent?.id) {
-        revertEvents.push(revertEvent);
-        this.rawEvents.set(revertEvent.id, revertEvent);
-      }
+        if (revertEvent?.id) {
+          revertEvents.push(revertEvent);
+          this.rawEvents.set(revertEvent.id, revertEvent);
+        }
 
-      const cached = this.allEvents.get(vid.id) || vid;
-      cached.deleted = true;
-      cached.url = "";
-      cached.magnet = "";
-      cached.thumbnail = "";
-      cached.description = "This version was deleted by the creator.";
-      cached.videoRootId = baseRoot;
-      this.allEvents.set(vid.id, cached);
-      this.dirtyEventIds.add(vid.id);
+        const cached = this.allEvents.get(vid.id) || vid;
+        cached.deleted = true;
+        cached.url = "";
+        cached.magnet = "";
+        cached.thumbnail = "";
+        cached.description = "This version was deleted by the creator.";
+        cached.videoRootId = baseRoot;
+        this.allEvents.set(vid.id, cached);
+        this.dirtyEventIds.add(vid.id);
 
-      const activeKey = getActiveKey(cached);
-      if (activeKey) {
-        this.activeMap.delete(activeKey);
-        const revertCreatedAt = Number.isFinite(revertEvent?.created_at)
-          ? Math.floor(revertEvent.created_at)
-          : Math.floor(Date.now() / 1000);
-        this.recordTombstone(activeKey, revertCreatedAt);
-      }
-    }
+        const activeKey = getActiveKey(cached);
+        if (activeKey) {
+          this.activeMap.delete(activeKey);
+          const revertCreatedAt = Number.isFinite(revertEvent?.created_at)
+            ? Math.floor(revertEvent.created_at)
+            : Math.floor(Date.now() / 1000);
+          this.recordTombstone(activeKey, revertCreatedAt);
+        }
+      })
+    );
 
     return { revertSummaries, revertEvents };
   }
