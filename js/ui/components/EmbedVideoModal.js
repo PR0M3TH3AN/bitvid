@@ -414,19 +414,9 @@ export class EmbedVideoModal {
     textarea.select();
     textarea.setSelectionRange(0, textarea.value.length);
 
-    let succeeded = false;
-    try {
-      succeeded = this.document.execCommand("copy");
-    } catch (error) {
-      logger.user.warn("Embed modal copy fallback failed.", error);
-      succeeded = false;
-    }
-
-    if (succeeded) {
-      this.callbacks.showSuccess("Embed code copied to clipboard!");
-    } else {
-      this.callbacks.showError("Unable to copy embed code. Please copy it manually.");
-    }
+    this.callbacks.showError(
+      "Unable to copy embed code. Please copy it manually."
+    );
   }
 
   async open({ video, triggerElement } = {}) {
