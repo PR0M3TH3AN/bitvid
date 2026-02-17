@@ -1,6 +1,6 @@
 # Prompt Library Status
 
-Last updated: 2026-02-15
+Last updated: 2026-02-17
 Run type: Daily
 
 ## Summary
@@ -15,7 +15,7 @@ Run type: Daily
 
 | File | Issue | Status |
 |------|-------|--------|
-| `daily/bitvid-audit-agent.md` | Misleading Node.js parser examples | Fixed: updated to reference existing Python parsers in `scripts/agent/audit-parsers/` |
+| (none) | No P0/P1 issues found. Verified script references and policy alignment. | Verified |
 
 ## Known Remaining Issues
 
