@@ -167,6 +167,11 @@ export default class ExploreDataService {
 
   startIntervals() {
     this.clearIntervals();
+
+    if (typeof document !== "undefined" && document.hidden) {
+      return;
+    }
+
     if (Number.isFinite(this.historyRefreshIntervalMs) && this.historyRefreshIntervalMs > 0) {
       this.watchHistoryInterval = setInterval(() => {
         this.refreshWatchHistoryTagCounts({ reason: "interval" });

@@ -1,0 +1,26 @@
+[
+  {
+    "file": "js/services/exploreDataService.js",
+    "pattern": "setInterval",
+    "line": 171,
+    "trigger": "page load / initialization",
+    "impact": "Starts background intervals (watch history sync, tag IDF calc) even if tab is hidden.",
+    "fix": "Check document.hidden inside startIntervals()."
+  },
+  {
+    "file": "js/services/relayHealthService.js",
+    "pattern": "Promise.allSettled",
+    "line": 239,
+    "trigger": "refresh() called (e.g. periodically or on demand)",
+    "impact": "Unbounded concurrency for relay checks. If many relays, spawns many connections.",
+    "fix": "Use a concurrency limit (e.g. p-limit equivalent)."
+  },
+  {
+    "file": "js/ui/loginModalController.js",
+    "pattern": "setInterval",
+    "line": 395,
+    "trigger": "login modal open",
+    "impact": "Polls for modal close if MutationObserver fails. Checked document.hidden but context is complex.",
+    "fix": "Ensure visibility checks are robust."
+  }
+]
