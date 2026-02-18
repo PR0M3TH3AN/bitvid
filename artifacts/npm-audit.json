@@ -1,0 +1,76 @@
+{
+  "auditReportVersion": 2,
+  "vulnerabilities": {
+    "ajv": {
+      "name": "ajv",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1113214,
+          "name": "ajv",
+          "dependency": "ajv",
+          "title": "ajv has ReDoS when using `$data` option",
+          "url": "https://github.com/advisories/GHSA-2g4f-4pwh-qvx6",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-400"
+          ],
+          "cvss": {
+            "score": 0,
+            "vectorString": null
+          },
+          "range": "<8.18.0"
+        }
+      ],
+      "effects": [
+        "serve"
+      ],
+      "range": "<8.18.0",
+      "nodes": [
+        "node_modules/ajv"
+      ],
+      "fixAvailable": {
+        "name": "serve",
+        "version": "6.5.8",
+        "isSemVerMajor": true
+      }
+    },
+    "serve": {
+      "name": "serve",
+      "severity": "moderate",
+      "isDirect": true,
+      "via": [
+        "ajv"
+      ],
+      "effects": [],
+      "range": ">=7.0.0",
+      "nodes": [
+        "node_modules/serve"
+      ],
+      "fixAvailable": {
+        "name": "serve",
+        "version": "6.5.8",
+        "isSemVerMajor": true
+      }
+    }
+  },
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 2,
+      "high": 0,
+      "critical": 0,
+      "total": 2
+    },
+    "dependencies": {
+      "prod": 111,
+      "dev": 340,
+      "optional": 53,
+      "peer": 0,
+      "peerOptional": 0,
+      "total": 477
+    }
+  }
+}
