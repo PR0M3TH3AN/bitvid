@@ -257,7 +257,7 @@ export const DEFAULT_TRUST_SEED_NPUBS = [
  * When a video receives at least this many trusted reports for the active
  * category (for example, `nudity`), thumbnails render with the blurred preview
  * by default. Align this value with your moderation policy — the upstream
- * deployment targets 3 trusted reports before blurring.
+ * deployment targets 1 trusted report before blurring.
  */
 export const DEFAULT_BLUR_THRESHOLD = 1;
 
@@ -267,7 +267,7 @@ export const DEFAULT_BLUR_THRESHOLD = 1;
  * Videos that meet or exceed this count will not autoplay in feeds unless the
  * viewer explicitly opts in. Increase the number for a more permissive stance
  * or decrease it if you want autoplay to stop sooner. The upstream deployment
- * targets 2 trusted reports before blocking autoplay.
+ * targets 1 trusted report before blocking autoplay.
  */
 export const DEFAULT_AUTOPLAY_BLOCK_THRESHOLD = 1;
 
