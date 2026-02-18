@@ -304,7 +304,7 @@ function normalizeNip71Metadata(rawMetadata) {
     normalized.segments = segments;
   }
 
-  const hashtags = normalizeStringArray(rawMetadata.hashtags);
+  const hashtags = normalizeStringArray(rawMetadata.hashtags || rawMetadata.t);
   if (hashtags.length) {
     normalized.hashtags = hashtags;
   }
