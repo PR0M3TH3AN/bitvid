@@ -26,6 +26,7 @@ import {
 import { getApplication } from "./applicationContext.js";
 import { VideoListView } from "./ui/views/VideoListView.js";
 import { ALLOW_NSFW_CONTENT } from "./config.js";
+import { SHORT_TIMEOUT_MS } from "./constants.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import moderationService from "./services/moderationService.js";
 import nostrService from "./services/nostrService.js";
@@ -1093,7 +1094,7 @@ class SubscriptionsManager {
     // gate now guarantees the extension is ready before decryption starts, so
     // decrypt calls should complete within 1-2s. 5s accommodates slow
     // extensions while still failing fast enough for scheme fallback.
-    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 12000 : 5000;
+    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 12000 : SHORT_TIMEOUT_MS;
     const signerDecryptOptions = {
       priority: NIP07_PRIORITY.NORMAL,
       timeoutMs: nip07DecryptTimeoutMs,

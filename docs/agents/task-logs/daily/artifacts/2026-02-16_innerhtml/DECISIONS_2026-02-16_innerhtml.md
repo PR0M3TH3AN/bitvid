@@ -1,0 +1,7 @@
+- fetchHistory(): Replaced listContainer.innerHTML = "" with replaceChildren().
+- renderList(): Replaced listContainer.innerHTML = "" with replaceChildren().
+- renderList(): Replaced item.innerHTML template literal with createElement/appendChild construction. All variables (isBackup, dateStr, timeAgo) are trusted or boolean, but textContent is safer anyway.
+- selectEvent(): Replaced selectedChannelsList.innerHTML = "" with replaceChildren().
+- selectEvent(): Replaced error message innerHTML with createElement('p') and textContent.
+- renderChannels(): Replaced selectedChannelsList.innerHTML = "" with replaceChildren().
+- load(): template.innerHTML = html left as-is (static template loading from file).

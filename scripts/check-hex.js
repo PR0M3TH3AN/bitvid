@@ -56,7 +56,9 @@ for (const glob of IGNORED_GLOBS) {
 
 // We rely on 'git' being available and 'git grep' supporting -P.
 // Typically available in most CI/dev environments.
-const result = spawnSync('git', gitArgs, { encoding: 'utf8' });
+// Increase maxBuffer to 10MB to avoid ENOBUFS on large outputs.
+console.log("Running git with args:", gitArgs.join(" "));
+const result = spawnSync('git', gitArgs, { encoding: 'utf8', maxBuffer: 1024 * 1024 * 10 });
 
 if (result.error) {
   console.error('Failed to execute git grep:', result.error.message);

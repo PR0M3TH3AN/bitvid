@@ -1,0 +1,245 @@
+{
+  "tests/admin-list-store.test.mjs": [
+    "Uses setTimeout/sleep (brittle)",
+    "Console usage inside test"
+  ],
+  "tests/app-batch-fetch-profiles.test.mjs": [
+    "Console usage inside test"
+  ],
+  "tests/auth-service.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/comment-thread-service.test.mjs": [
+    "Uses setTimeout/sleep (brittle)",
+    "Console usage inside test"
+  ],
+  "tests/compliance/nip07_compliance.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/discussion-count-service.test.mjs": [
+    "Console usage inside test"
+  ],
+  "tests/dm-normalization.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/event-schemas.test.mjs": [
+    "Console usage inside test"
+  ],
+  "tests/feed-engine.test.mjs": [
+    "Uses setTimeout/sleep (brittle)",
+    "Console usage inside test"
+  ],
+  "tests/hashtag-preferences.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/minimal-channel-profile.test.mjs": [
+    "No obvious assertions found"
+  ],
+  "tests/minimal-webtorrent.test.mjs": [
+    "No obvious assertions found"
+  ],
+  "tests/modal-accessibility.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/moderation/submit-report.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/moderation/video-card.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/nip07-concurrency.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/nostr/client.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/nostr/comment-events.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/nostr/countDiagnostics.test.mjs": [
+    "Console usage inside test"
+  ],
+  "tests/nostr/dm-direct-message-flow.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/nostr/dmDecryptWorkerClient.test.mjs": [
+    "Console usage inside test"
+  ],
+  "tests/nostr/dmSignalEvents.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/nostr/integration-remote-flow.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/nostr/nip04WorkerClient.test.mjs": [
+    "Console usage inside test"
+  ],
+  "tests/nostr/nip07Permissions.test.js": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/nostr/sessionActor.test.mjs": [
+    "Test is focused (.only) or skipped (.skip)"
+  ],
+  "tests/nostr/sign-request-queue.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/nostr/toolkit.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/nostr/watchHistory.test.js": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/nostr-boost-actions.test.mjs": [
+    "Console usage inside test"
+  ],
+  "tests/nostr-count-fallback.test.mjs": [
+    "Console usage inside test"
+  ],
+  "tests/nostr-delete-flow.test.mjs": [
+    "Console usage inside test"
+  ],
+  "tests/nostr-login-permissions.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/nostr-nip46-queue.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/nostr-private-key-signer.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/nostr-publish-rejection.test.mjs": [
+    "Console usage inside test"
+  ],
+  "tests/nostr-rebroadcast-guard.test.mjs": [
+    "Console usage inside test"
+  ],
+  "tests/nostr-send-direct-message.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/nostr-service-access-control.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/nostr-signer-race.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/nostr-view-event-bindings.test.mjs": [
+    "Console usage inside test"
+  ],
+  "tests/nostr-view-events.test.mjs": [
+    "Console usage inside test"
+  ],
+  "tests/nwc-client.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/performance/resolvePostedAt.test.mjs": [
+    "Console usage inside test"
+  ],
+  "tests/profile-cache.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/profile-modal-controller.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/race/nostr-client-init-race.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/services/exploreDataService.test.mjs": [
+    "Console usage inside test"
+  ],
+  "tests/services/link-preview-service.test.mjs": [
+    "Uses setTimeout/sleep (brittle)",
+    "Console usage inside test"
+  ],
+  "tests/services/playbackService_forcedSource.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/services/profileMetadataService.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/services/relay-health-service.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/services/trustBootstrap.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/sign-request-queue.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/state/cache.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/subscriptions-feed.test.mjs": [
+    "Console usage inside test"
+  ],
+  "tests/subscriptions-manager.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/torrent/toast-service.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/ui/components/debug_hashtag_strip_helper.test.mjs": [
+    "No obvious assertions found",
+    "Console usage inside test"
+  ],
+  "tests/ui/profileModalController-addProfile.test.mjs": [
+    "Console usage inside test"
+  ],
+  "tests/ui/uploadModal-integration.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/ui/uploadModal-reset.test.mjs": [
+    "Console usage inside test"
+  ],
+  "tests/ui/url-health-controller.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/unit/client-count-resilience.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/unit/notificationController.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/unit/ui/videoModalController.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/user-blocks.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/utils/domUtils.test.mjs": [
+    "Console usage inside test"
+  ],
+  "tests/video-card-source-visibility.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/video-modal-accessibility.test.mjs": [
+    "Console usage inside test"
+  ],
+  "tests/view-counter.test.mjs": [
+    "Uses setTimeout/sleep (brittle)",
+    "Console usage inside test"
+  ],
+  "tests/watch-history-feed.test.mjs": [
+    "Console usage inside test"
+  ],
+  "tests/watch-history.test.mjs": [
+    "Uses setTimeout/sleep (brittle)",
+    "Console usage inside test"
+  ],
+  "tests/watchHistory/watch-history-telemetry.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/webtorrent-handlers.test.mjs": [
+    "Uses setTimeout/sleep (brittle)"
+  ],
+  "tests/webtorrent-regression.test.mjs": [
+    "Uses setTimeout/sleep (brittle)",
+    "Console usage inside test"
+  ],
+  "tests/zap-shared-state.test.mjs": [
+    "Console usage inside test"
+  ],
+  "tests/zap-split.test.mjs": [
+    "Uses setTimeout/sleep (brittle)",
+    "Console usage inside test"
+  ]
+}
