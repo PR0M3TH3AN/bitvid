@@ -49,7 +49,7 @@ Each phase below includes concrete steps and deliverables.
 Goal: build a complete mapping: `/content` page → concrete claims → code locations that implement the claim.
 
 Steps:
-- List every page in `/content` related to uploading, contributing, or media (e.g., `content/docs/upload.md`, `content/contribute/*`, `content/guides/*`). Use:
+- List every page in `/content` related to uploading, contributing, or media (e.g., `content/docs/guides/upload-content.md`, `content/contribute/*`, `content/guides/*`). Use:
 ```
 
 rg --hidden --files --glob 'content/**' | rg '/content/' -n
@@ -67,17 +67,17 @@ rg --hidden --files --glob 'content/**' | rg '/content/' -n
 - Licensing & attribution templates and policies
 - How to edit/delete content and check status
 - For each claim, find the authoritative code location(s) — the file(s) and function(s) implementing it:
-- Upload UI: look under `js/` for upload modal/upload service controllers (e.g., `js/services/uploadService.js`, `js/ui/uploadModal.js`).
+- Upload UI: look under `js/` for upload modal/upload service controllers (e.g., `js/services/s3UploadService.js`, `js/ui/components/UploadModal.js`).
 - API endpoints: search backend server for upload handlers (e.g., `server/` or `api/`).
 - Storage/processing: check any `torrent/`, `storage/`, or `cloud` integration code.
 - Moderation code: e.g., `js/userBlocks.js`, moderation service.
 - Configs: `js/constants.js`, `config/instance-config.js`, environment variables.
-- Build process: look for static site generation that uses `/content` (e.g., `npm run build` scripts, `next.config.js`, or a docs site generator).
+- Build process: look for static site generation that uses `/content` (e.g., `npm run build` scripts, or a docs site generator).
 - Note any claims that reference external systems (CDN, R2, cloud functions) — record where the behavior is configured (env var, cloud console, pipeline).
 - Produce a deliverable CSV or markdown table:
 ```
 
-/content/path.md | Claim: "Max file size 100MB" | Code: js/services/uploadService.js#L123-L160 | Verified? (unknown)
+/content/path.md | Claim: "Max file size 100MB" | Code: js/services/s3UploadService.js#L123-L160 | Verified? (unknown)
 
 ```
 

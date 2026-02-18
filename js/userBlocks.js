@@ -1558,7 +1558,7 @@ class UserBlockListManager {
         pubkey: normalized,
         relayUrls: relays,
         since: fetchSince,
-        timeoutMs: 10000,
+        timeoutMs: STANDARD_TIMEOUT_MS,
       });
 
       const legacyFetchPromise = Promise.all([
