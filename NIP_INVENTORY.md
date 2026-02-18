@@ -15,13 +15,11 @@
 | **NIP-46** | Nostr Remote Signing | `js/nostr/nip46Client.js` | Compliant | Full client implementation for remote signing. |
 | **NIP-51** | Lists | `js/userBlocks.js`, `js/subscriptions.js` | Compliant | Mute list (Kind 10000) and Subscription list (Kind 30000) logic aligns with spec. |
 | **NIP-56** | Reporting | `js/services/moderationService.js`, `docs/nips/56.md` | Compliant | `buildReportEvent` implements Kind 1984. |
-| **NIP-57** | Zaps | `js/payments/zapRequests.js`, `js/payments/zapSplit.js` | Compliant | Implements Kind 9734/9735 flow. |
 | **NIP-59** | Gift Wrap | `js/nostr/client.js` | Compliant | Implemented as part of NIP-17. |
-| **NIP-65** | Relay List Metadata | `js/relayManager.js` | Partial | Code supports Kind 10002. Test `nip65_compliance.test.mjs` is missing. |
-| **NIP-71** | Video Events | `js/nostr/nip71.js` | Partial | Kinds 21/22 supported in schema, but Kind 30078 is primary. Verified tag generation in `tests/nostr-specs/kind30078.test.mjs`. |
+| **NIP-65** | Relay List Metadata | `js/relayManager.js` | Compliant | Verified Kind 10002 loading and parsing in `nip65_compliance.test.mjs`. |
+| **NIP-71** | Video Events | `js/nostr/nip71.js` | Compliant | Verified tag generation for Kind 30078 in `tests/nostr-specs/kind30078.test.mjs`. |
 | **NIP-78** | Application-specific data | `js/services/hashtagPreferencesService.js` | Compliant | Used for hashtag preferences (Kind 30015). |
 | **NIP-94** | File Metadata | `js/nostr/videoPublisher.js` | Compliant | `buildVideoMirrorEvent` implements Kind 1063. |
-| **NIP-96** | HTTP File Storage Integration | `js/nostr/videoPublisher.js` | Partial | References `service nip96` in NIP-71 tags. |
 | **NIP-98** | HTTP Auth | `js/services/r2Service.js` | Compliant | Used for R2 service authentication (Kind 27235). |
 | **Kind 21** | NIP-71 Video | `js/nostr/nip71.js` | Compliant | Implemented. |
 | **Kind 22** | NIP-71 Short Video | `js/nostr/nip71.js` | Compliant | Implemented. |
@@ -35,3 +33,5 @@
 | **NIP-25** | Reactions | `js/nostr/reactionEvents.js`, `js/nostrEventSchemas.js` | Compliant | Implements Kind 7 reaction events. |
 | **NIP-42** | Authentication of clients to relays | `js/nostr/client.js` | Unknown | Needs verification of AUTH command handling. |
 | **NIP-47** | Wallet Connect | `js/payments/nwcClient.js` | Compliant | Implements NWC client for zaps. |
+| **NIP-57** | Zaps | `js/payments/zapRequests.js`, `js/payments/zapSplit.js` | Compliant | Implements Kind 9734/9735 flow. |
+| **NIP-96** | HTTP File Storage Integration | `js/nostr/videoPublisher.js` | Partial | References `service nip96` in NIP-71 tags. |

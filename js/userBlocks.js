@@ -5,14 +5,16 @@ import {
 } from "./nostrClientFacade.js";
 import { getActiveSigner } from "./nostr/index.js";
 import { isSessionActor } from "./nostr/sessionActor.js";
+import { normalizeNostrPubkey } from "./nostr/nip46Client.js";
 import {
   buildBlockListEvent,
   buildMuteListEvent,
   BLOCK_LIST_IDENTIFIER,
   KIND_MUTE_LIST,
 } from "./nostrEventSchemas.js";
+import { CACHE_POLICIES, STORAGE_TIERS } from "./nostr/cachePolicies.js";
 import { devLogger, userLogger } from "./utils/logger.js";
-import { STANDARD_TIMEOUT_MS, MAX_BLOCKLIST_ENTRIES } from "./constants.js";
+import { STANDARD_TIMEOUT_MS } from "./constants.js";
 import {
   publishEventToRelays,
   assertAnyRelayAccepted,
@@ -90,6 +92,7 @@ const DECRYPT_TIMEOUT_MS = STANDARD_TIMEOUT_MS;
 const BACKGROUND_DECRYPT_TIMEOUT_MS = 8000;
 // PERF: Reduced from 10s to 3s for faster recovery during login.
 const DECRYPT_RETRY_DELAY_MS = 3000;
+const MAX_BLOCKLIST_ENTRIES = 5000;
 
 function sanitizeRelayList(candidate) {
   return Array.isArray(candidate)
@@ -1558,7 +1561,7 @@ class UserBlockListManager {
         pubkey: normalized,
         relayUrls: relays,
         since: fetchSince,
-        timeoutMs: STANDARD_TIMEOUT_MS,
+        timeoutMs: 10000,
       });
 
       const legacyFetchPromise = Promise.all([

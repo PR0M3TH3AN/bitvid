@@ -165,3 +165,76 @@ describe('exploreDataService - buildWatchHistoryTagCounts', () => {
     assert.ok(warning, 'Should log warning about worker failure');
   });
 });
+
+describe('exploreDataService - visibility', () => {
+  let ExploreDataService;
+  let service;
+  let watchHistoryService;
+  let nostrService;
+
+  before(async () => {
+    // We import the same module again, it should be cached, but that's fine as we instantiate the class.
+    const mod = await import('../../js/services/exploreDataService.js');
+    ExploreDataService = mod.default;
+  });
+
+  beforeEach(() => {
+    // Reset global document state for each test if possible
+    if (!globalThis.document) {
+        globalThis.document = {
+            visibilityState: 'hidden',
+            hidden: true,
+            addEventListener: mock.fn(),
+            removeEventListener: mock.fn(),
+        };
+    } else {
+        globalThis.document.visibilityState = 'hidden';
+        globalThis.document.hidden = true;
+        if (globalThis.document.addEventListener.mock) globalThis.document.addEventListener.mock.resetCalls();
+        if (globalThis.document.removeEventListener.mock) globalThis.document.removeEventListener.mock.resetCalls();
+    }
+
+    watchHistoryService = {
+      loadLatest: mock.fn(async () => []),
+      subscribe: mock.fn(() => () => {}),
+    };
+    nostrService = {
+      getVideosMap: mock.fn(() => new Map()),
+      on: mock.fn(() => () => {}),
+    };
+
+    service = new ExploreDataService({
+      watchHistoryService,
+      nostrService,
+      logger: { warn: () => {} },
+      idfRefreshIntervalMs: 1000,
+      historyRefreshIntervalMs: 1000,
+    });
+
+    // Spy on refresh methods
+    mock.method(service, 'refreshWatchHistoryTagCounts');
+    mock.method(service, 'refreshTagIdf');
+  });
+
+  afterEach(() => {
+    if (service) service.destroy();
+  });
+
+  it('visibility change triggers refresh', async () => {
+    service.initialize();
+
+    // Simulate becoming visible
+    document.visibilityState = 'visible';
+    document.hidden = false;
+
+    // Find the handler and call it
+    const call = document.addEventListener.mock.calls.find(c => c.arguments[0] === 'visibilitychange');
+    assert.ok(call, 'Should add visibilitychange listener');
+    const handler = call.arguments[1];
+
+    handler();
+
+    assert.strictEqual(service.refreshWatchHistoryTagCounts.mock.callCount(), 2);
+    assert.strictEqual(service.refreshTagIdf.mock.callCount(), 2);
+  });
+});

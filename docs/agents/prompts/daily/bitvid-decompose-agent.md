@@ -29,7 +29,6 @@ SELECTION PROCESS — how to pick the file
 1. Run the file-size report:
 ```
 
-mkdir -p perf/decompose
 node scripts/check-file-size.mjs --report | tee perf/decompose/raw-file-size-report-$(date +%F).log
 
 ````

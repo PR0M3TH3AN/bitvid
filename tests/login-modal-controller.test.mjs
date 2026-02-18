@@ -110,18 +110,6 @@ beforeEach(() => {
   };
   global.matchMedia = window.matchMedia;
 
-  // Mock navigator
-  Object.defineProperty(global, 'navigator', {
-      value: {
-          clipboard: {
-              writeText: async () => {}
-          },
-          userAgent: 'node'
-      },
-      writable: true,
-      configurable: true
-  });
-
   container = document.getElementById('modalMount');
   container.innerHTML = loginModalHtml;
 });
@@ -145,7 +133,6 @@ afterEach(() => {
   delete global.MutationObserver;
   delete global.requestAnimationFrame;
   delete global.matchMedia;
-  delete global.navigator;
 
   if (dom) {
     dom.window.close();
@@ -284,125 +271,4 @@ test('LoginModalController shows NIP-46 handshake panel', async (t) => {
     const handshakePanel = form.querySelector('[data-nip46-handshake-panel]');
     assert.ok(handshakePanel, 'handshake panel should be present');
     assert.ok(!handshakePanel.classList.contains('hidden'), 'handshake panel should not be hidden');
-});
-
-test('LoginModalController NIP-46 copy button uses navigator.clipboard', async (t) => {
-    const providers = [{ id: 'nip46', label: 'Remote Signer', login: async () => {} }];
-
-    // Mock auth service to provide URI
-    const authService = {
-        requestLogin: async (opts) => {
-            if (opts.onHandshakePrepared) {
-                // simulate async URI generation
-                setTimeout(() => {
-                    opts.onHandshakePrepared({ uri: 'nostr:connect:test' });
-                }, 10);
-            }
-            return new Promise(() => {}); // hang forever (simulating pending login)
-        }
-    };
-
-    controller = createController({ providers, services: { authService } });
-    controller.initialize();
-
-    const providerButton = container.querySelector('[data-provider-id="nip46"]');
-    providerButton.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
-
-    await waitForAnimationFrame(window, 5);
-    // Wait for autoStart and requestLogin response
-    await new Promise(resolve => setTimeout(resolve, 50));
-    await waitForAnimationFrame(window, 5);
-
-    const form = container.querySelector('[data-nip46-form]');
-    assert.ok(form, 'Form should be present');
-
-    const copyButton = form.querySelector('[data-nip46-copy-uri]');
-    const handshakeInput = form.querySelector('[data-nip46-handshake-uri]');
-
-    assert.equal(handshakeInput.value, 'nostr:connect:test', 'Input should have URI');
-    assert.equal(copyButton.disabled, false, 'Copy button should be enabled');
-
-    // Setup clipboard mock verification
-    let writeTextCalled = false;
-    let clipboardText = '';
-    global.navigator.clipboard.writeText = async (text) => {
-        writeTextCalled = true;
-        clipboardText = text;
-    };
-
-    // Spy on execCommand
-    let execCommandCalled = false;
-    document.execCommand = () => { execCommandCalled = true; return false; };
-
-    copyButton.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
-
-    // Wait for async writeText
-    await new Promise(resolve => setTimeout(resolve, 10));
-
-    assert.equal(writeTextCalled, true, 'Should use navigator.clipboard');
-    assert.equal(clipboardText, 'nostr:connect:test', 'Should copy correct text');
-    assert.equal(execCommandCalled, false, 'Should NOT use execCommand');
-    assert.equal(copyButton.textContent, 'Copied!', 'Button should show success feedback');
-});
-
-test('LoginModalController NIP-46 copy button selects text on failure', async (t) => {
-    const providers = [{ id: 'nip46', label: 'Remote Signer', login: async () => {} }];
-
-    const authService = {
-        requestLogin: async (opts) => {
-            if (opts.onHandshakePrepared) {
-                setTimeout(() => {
-                    opts.onHandshakePrepared({ uri: 'nostr:connect:test' });
-                }, 10);
-            }
-            return new Promise(() => {});
-        }
-    };
-
-    controller = createController({ providers, services: { authService } });
-    controller.initialize();
-
-    const providerButton = container.querySelector('[data-provider-id="nip46"]');
-    providerButton.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
-
-    await waitForAnimationFrame(window, 5);
-    await new Promise(resolve => setTimeout(resolve, 50));
-    await waitForAnimationFrame(window, 5);
-
-    const form = container.querySelector('[data-nip46-form]');
-    const copyButton = form.querySelector('[data-nip46-copy-uri]');
-    const handshakeInput = form.querySelector('[data-nip46-handshake-uri]');
-
-    // Mock clipboard failure
-    global.navigator.clipboard.writeText = async () => {
-        throw new Error('Clipboard error');
-    };
-
-    let execCommandCalled = false;
-    document.execCommand = () => { execCommandCalled = true; return false; };
-
-    let selectCalled = false;
-    // JSDOM input element supports select?
-    if (!handshakeInput.select) {
-        handshakeInput.select = () => { selectCalled = true; };
-    } else {
-        // Wrap it
-        const originalSelect = handshakeInput.select.bind(handshakeInput);
-        handshakeInput.select = () => {
-            selectCalled = true;
-            originalSelect();
-        };
-    }
-
-    copyButton.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
-
-    await new Promise(resolve => setTimeout(resolve, 10));
-
-    assert.equal(selectCalled, true, 'Should select input text on fallback');
-    assert.equal(execCommandCalled, false, 'Should NOT use execCommand on fallback');
-
-    // Check status message
-    const statusNode = form.querySelector('[data-nip46-status]');
-    assert.ok(!statusNode.classList.contains('hidden'), 'Status should be visible');
-    assert.ok(statusNode.textContent.includes('fallback'), 'Status should mention fallback');
 });

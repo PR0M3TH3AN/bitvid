@@ -42,12 +42,11 @@ import {
   summarizeRpcResultForLog,
   summarizeRelayPublishResultsForLog,
 } from "./nip46LoggingUtils.js";
-import { SHORT_TIMEOUT_MS } from "../constants.js";
 
 export const NIP46_RPC_KIND = 24_133;
 const NIP46_SESSION_STORAGE_KEY = "bitvid:nip46:session:v1";
 const NIP46_PUBLISH_TIMEOUT_MS = 8_000;
-const NIP46_PING_TIMEOUT_MS = SHORT_TIMEOUT_MS;
+const NIP46_PING_TIMEOUT_MS = 5000;
 const NIP46_RESPONSE_TIMEOUT_MS = 15_000;
 const NIP46_SIGN_EVENT_TIMEOUT_MS = 20_000;
 const NIP46_MAX_RETRIES = 1;

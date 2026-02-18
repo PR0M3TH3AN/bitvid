@@ -10,7 +10,6 @@ let PROVIDERS;
 describe("StorageService", () => {
   let dom;
   const mockPubkey = "0000000000000000000000000000000000000000000000000000000000000001";
-  const originalGlobals = {};
 
   // Mock Signer (NIP-04 style for simplicity)
   // In a real app, this does ECIES. Here we just reverse string or something reversible for test speed/simplicity
@@ -35,13 +34,6 @@ describe("StorageService", () => {
   };
 
   before(async () => {
-    originalGlobals.window = global.window;
-    originalGlobals.indexedDB = global.indexedDB;
-    originalGlobals.globalThisIndexedDB = globalThis.indexedDB;
-    originalGlobals.IDBKeyRange = global.IDBKeyRange;
-    originalGlobals.globalThisIDBKeyRange = globalThis.IDBKeyRange;
-    originalGlobals.crypto = global.crypto;
-
     dom = createUiDom();
 
     // Polyfill Globals
@@ -74,27 +66,6 @@ describe("StorageService", () => {
 
   after(() => {
     if (dom) dom.cleanup();
-
-    if ('window' in originalGlobals) global.window = originalGlobals.window; else delete global.window;
-
-    if ('indexedDB' in originalGlobals) global.indexedDB = originalGlobals.indexedDB; else delete global.indexedDB;
-    if ('globalThisIndexedDB' in originalGlobals) globalThis.indexedDB = originalGlobals.globalThisIndexedDB; else delete globalThis.indexedDB;
-
-    if ('IDBKeyRange' in originalGlobals) global.IDBKeyRange = originalGlobals.IDBKeyRange; else delete global.IDBKeyRange;
-    if ('globalThisIDBKeyRange' in originalGlobals) globalThis.IDBKeyRange = originalGlobals.globalThisIDBKeyRange; else delete globalThis.IDBKeyRange;
-
-    if ('crypto' in originalGlobals) {
-        if (global.crypto !== originalGlobals.crypto) {
-            try {
-                global.crypto = originalGlobals.crypto;
-            } catch (e) {
-                // If read-only/getter, use defineProperty
-                Object.defineProperty(global, 'crypto', { value: originalGlobals.crypto, writable: true, configurable: true });
-            }
-        }
-    } else {
-        delete global.crypto;
-    }
   });
 
   // Since storageService is a singleton, state might persist.

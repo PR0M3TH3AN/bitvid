@@ -1,0 +1,24 @@
+[
+  {
+    "fingerprint": "00257328",
+    "title": "Load Test Bottleneck: Cryptographic Bottleneck (Avg Sign Time 5.87ms > 5ms)",
+    "count": 1,
+    "sources": [
+      "load-test:load-report-20260204.json"
+    ],
+    "severity": "Medium",
+    "stack": "Bottleneck: Cryptographic Bottleneck (Avg Sign Time 5.87ms > 5ms)\nRemediation: Client-side event signing is slow. Review cryptographic library (nostr-tools) usage or client hardware capabilities.",
+    "owner": "P2P Team"
+  },
+  {
+    "fingerprint": "bc06bea0",
+    "title": "Load Test Bottleneck: Cryptographic Bottleneck (Avg Sign Time 5.53ms > 5ms)",
+    "count": 1,
+    "sources": [
+      "load-test:load-report.json"
+    ],
+    "severity": "Medium",
+    "stack": "Bottleneck: Cryptographic Bottleneck (Avg Sign Time 5.53ms > 5ms)\nRemediation: Client-side event signing is slow. Review cryptographic library (nostr-tools) usage or client hardware capabilities.",
+    "owner": "P2P Team"
+  }
+]

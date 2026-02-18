@@ -25,6 +25,8 @@ import {
   DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
   FEED_TYPES,
 } from "./constants.js";
+import { attachHealthBadges } from "./gridHealth.js";
+import { attachUrlHealthBadges } from "./urlHealthObserver.js";
 import { updateVideoCardSourceVisibility } from "./utils/cardSourceVisibility.js";
 import { collectVideoTags } from "./utils/videoTags.js";
 import { normalizeHashtag } from "./utils/hashtagNormalization.js";
