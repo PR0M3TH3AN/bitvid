@@ -33,7 +33,7 @@ Create/update these files/folders (commit them in the branch when PRing):
 - `todo/TODO_<timestamp>.md` — upgrade tasks and statuses.
 - `decisions/DECISIONS_<timestamp>.md` — rationale for upgrade choices and tradeoffs.
 - `test_logs/TEST_LOG_<timestamp>.md` — exact commands run and their outputs (timestamped).
-- Use `scripts/agent/analyze_deps.py` for reproducible report generation.
+- Optionally: `scripts/deps-audit.sh` for reproducible automation.
 
 Also read `AGENTS.md` and `KNOWN_ISSUES.md` for project-specific caveats (e.g., the repo uses `nostr-tools`, `webtorrent`, `Playwright`, `Tailwind`). Tag these libraries for special handling.
 
@@ -63,13 +63,12 @@ C. Run audits & outdated scans
   - Optionally: `npx npm-check-updates --jsonUpgraded > artifacts/ncu.json` for a view of latest semver.
   - If the org uses Snyk or similar, fetch current advisories and note them.
 
-D. Produce `artifacts/deps-report.md`:
-  - Run `python3 scripts/agent/analyze_deps.py` to generate the report from JSON artifacts.
-  - The report summarizes:
-    - Vulnerable packages grouped by severity.
-    - Outdated packages separated into major/minor/patch.
-    - Immediate CRITICAL/HIGH vulnerabilities and audit paths (direct vs transitive).
-    - Notable devDeps (Playwright/Tailwind/etc.) flagged for build/test impact.
+D. Produce `artifacts/deps-report.md` summarizing:
+  - Vulnerable packages grouped by severity.
+  - Outdated packages separated into major/minor/patch.
+  - Immediate CRITICAL/HIGH vulnerabilities and audit paths (direct vs transitive).
+  - Notable devDeps (Playwright/Tailwind/etc.) flagged for build/test impact.
+  - License or maintenance red flags (deprecated/unmaintained packages).
 
 E. Triage rules — automatic categorization
   - **CRITICAL / UNSAFE**:

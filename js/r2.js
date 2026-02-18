@@ -101,7 +101,7 @@ export async function loadLegacyR2Settings() {
   try {
     const db = await openSettingsDb();
     if (db) {
-      const fromDb = await new Promise((resolve, reject) => {
+      return await new Promise((resolve, reject) => {
         const tx = db.transaction(STORE_NAME, "readonly");
         const store = tx.objectStore(STORE_NAME);
         const req = store.get(SETTINGS_KEY);
@@ -109,16 +109,9 @@ export async function loadLegacyR2Settings() {
           resolve(normalizeSettings(req.result));
         };
         req.onerror = () => {
-          // If read fails, resolve null to try fallback
-          resolve(null);
+          reject(req.error || new Error("Failed to load settings"));
         };
       });
-
-      // If we have valid settings from DB, return them.
-      // We check for accountId as a signal that settings are present.
-      if (fromDb && fromDb.accountId) {
-        return fromDb;
-      }
     }
   } catch (err) {
     userLogger.warn("Failed to open IndexedDB for settings, falling back:", err);
@@ -128,37 +121,7 @@ export async function loadLegacyR2Settings() {
     if (typeof localStorage !== "undefined") {
       const raw = localStorage.getItem(LOCALSTORAGE_FALLBACK_KEY);
       if (raw) {
-        const parsed = JSON.parse(raw);
-        const settings = normalizeSettings(parsed);
-
-        // Security Fix: Move secrets from insecure LocalStorage to IndexedDB immediately
-        try {
-          const db = await openSettingsDb();
-          if (db) {
-            await new Promise((resolve, reject) => {
-              const tx = db.transaction(STORE_NAME, "readwrite");
-              const store = tx.objectStore(STORE_NAME);
-              // Store the raw parsed object, not normalized, to preserve original structure
-              // though normalizeSettings handles it fine either way.
-              const req = store.put(parsed, SETTINGS_KEY);
-              req.onsuccess = () => resolve();
-              req.onerror = () => reject(req.error);
-            });
-            localStorage.removeItem(LOCALSTORAGE_FALLBACK_KEY);
-            userLogger.info(
-              "Migrated legacy R2 settings from LocalStorage to IndexedDB"
-            );
-          }
-        } catch (migrationErr) {
-          userLogger.warn(
-            "Failed to migrate legacy settings to IndexedDB:",
-            migrationErr
-          );
-          // If migration fails, we still return settings to avoid data loss,
-          // but the vulnerability remains until next successful load.
-        }
-
-        return settings;
+        return normalizeSettings(JSON.parse(raw));
       }
     }
   } catch (err) {

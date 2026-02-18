@@ -74,22 +74,10 @@ if (result.error) {
 //   2+ on errors.
 
 if (result.status === 0 && result.stdout.trim()) {
-  const lines = result.stdout.split('\n');
-  const filteredLines = lines.filter(line => {
-    // Robustly ignore webtorrent.min.js even if git exclusions fail
-    if (line.includes('webtorrent.min.js')) return false;
-    return line.trim().length > 0;
-  });
-
-  if (filteredLines.length > 0) {
-    console.error('Hex colors detected outside tokens or SVG assets:');
-    console.error(filteredLines.join('\n'));
-    console.error('\nAllowed exceptions: tokens (css/tokens.css) and vector logos (*.svg).');
-    process.exit(1);
-  } else {
-    // All matches were ignored
-    process.exit(0);
-  }
+  console.error('Hex colors detected outside tokens or SVG assets:');
+  console.error(result.stdout.trimEnd());
+  console.error('\nAllowed exceptions: tokens (css/tokens.css) and vector logos (*.svg).');
+  process.exit(1);
 }
 
 if (result.status && result.status !== 1) {
