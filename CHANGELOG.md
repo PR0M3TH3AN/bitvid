@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Documentation alignment and updates. (PR #2563 by PR0M3TH3AN)
+- Cleanup of Search Filter Modal comments. (PR #2562 by PR0M3TH3AN)
 - Performance improvements for documentation scroll spy. (PR #2129 by PR0M3TH3AN)
 - Optimized Nostr login speed. (PR #2153 by PR0M3TH3AN)
 - Updated `nostr-tools`, `floating-ui`, and `crypto-helpers` dependencies. (PR #2153 by PR0M3TH3AN)

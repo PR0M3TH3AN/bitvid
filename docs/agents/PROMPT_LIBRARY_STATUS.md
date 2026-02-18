@@ -6,8 +6,7 @@ Run type: Daily
 ## Summary
 
 - **Total prompts**: 36 (21 daily, 15 weekly) + 2 schedulers
-- **Health**: Good. All prompts follow the canonical structure.
-  Verified `interop-agent` and `smoke-agent` are complete and not truncated.
+- **Health**: Good. Path validation checks passed after fixes.
 
 ## Changes This Run
 
@@ -77,7 +76,7 @@ Run type: Daily
 | 20 | test-audit-agent | `bitvid-test-audit-agent.md` | Complete |
 | 21 | todo-triage-agent | `bitvid-todo-triage-agent.md` | Complete |
 
-### Weekly Prompts (15)
+### Weekly Prompts (16)
 
 | # | Agent Name | Prompt File | Canonical Sections |
 |---|-----------|-------------|-------------------|

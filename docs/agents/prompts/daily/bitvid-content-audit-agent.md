@@ -72,7 +72,7 @@ rg --hidden --files --glob 'content/**' | rg '/content/' -n
 - Storage/processing: check any `torrent/`, `storage/`, or `cloud` integration code.
 - Moderation code: e.g., `js/userBlocks.js`, moderation service.
 - Configs: `js/constants.js`, `config/instance-config.js`, environment variables.
-- Build process: look for static site generation that uses `/content` (e.g., `npm run build` scripts, `next.config.js`, or a docs site generator).
+- Build process: look for static site generation that uses `/content` (e.g., `npm run build` scripts, or a docs site generator).
 - Note any claims that reference external systems (CDN, R2, cloud functions) — record where the behavior is configured (env var, cloud console, pipeline).
 - Produce a deliverable CSV or markdown table:
 ```
