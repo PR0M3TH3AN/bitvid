@@ -14,9 +14,10 @@ Run type: Daily
 
 | File | Issue | Status |
 |------|-------|--------|
-| `daily/bitvid-prompt-curator-agent.md` | Broken paths to `RESEARCH_LOG.md`, `STYLE_GUIDE.md`, `PROMPT_LIBRARY_STATUS.md` | Fixed (updated to `docs/agents/` paths) |
-| `daily/bitvid-content-audit-agent.md` | Broken paths to `js/ui/uploadModal.js`, `next.config.js`, `upload.md` | Fixed (updated to `js/ui/initUploadModal.js`, removed `next.config.js`, updated `content/docs/guides/`) |
-| `daily/bitvid-deps-security-agent.md` | Broken path to optional `scripts/deps-audit.sh` | Fixed (updated to use existing `scripts/agent/analyze_deps.py`) |
+| `daily/bitvid-content-audit-agent.md` | Broken file paths | Fixed `upload-content.md`, `s3UploadService.js`, `UploadModal.js` paths |
+| `daily/bitvid-audit-agent.md` | Incorrect script extension | Fixed `.js` -> `.py` for audit parsers |
+| `daily/bitvid-const-refactor-agent.md` | Non-existent example path | Fixed `relayClient.js` -> `client.js` |
+| `weekly/bitvid-test-coverage-agent.md` | Non-existent example paths | Fixed `parseEvent.js` -> `eventsMap.js`, `kvStore.js` -> `cache.js` |
 
 ## Known Remaining Issues
 

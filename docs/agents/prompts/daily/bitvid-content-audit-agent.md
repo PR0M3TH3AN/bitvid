@@ -67,7 +67,7 @@ rg --hidden --files --glob 'content/**' | rg '/content/' -n
 - Licensing & attribution templates and policies
 - How to edit/delete content and check status
 - For each claim, find the authoritative code location(s) — the file(s) and function(s) implementing it:
-- Upload UI: look under `js/` for upload modal/upload service controllers (e.g., `js/services/s3UploadService.js`, `js/ui/initUploadModal.js`).
+- Upload UI: look under `js/` for upload modal/upload service controllers (e.g., `js/services/s3UploadService.js`, `js/ui/components/UploadModal.js`).
 - API endpoints: search backend server for upload handlers (e.g., `server/` or `api/`).
 - Storage/processing: check any `torrent/`, `storage/`, or `cloud` integration code.
 - Moderation code: e.g., `js/userBlocks.js`, moderation service.

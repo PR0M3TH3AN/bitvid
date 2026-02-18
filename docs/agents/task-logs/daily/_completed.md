@@ -1,22 +1,18 @@
-# Deps Security Agent (Daily) - Completed
+# Daily Agent Run: prompt-curator-agent
 
-**Date:** 2026-02-18
-**Agent:** deps-security-agent
-**Status:** Success
+**Date**: 2026-02-15
+**Agent**: prompt-curator-agent
+**Status**: Completed
 
 ## Summary
-Performed daily security and dependency audit.
-- **Vulnerabilities:** 1 Moderate (`ajv` via `serve` devDependency).
-- **Outdated:** 7 packages (mostly major, skipped).
-- **Upgrades:** Upgraded `stylelint` to `16.26.1` (safe minor bump).
-- **Verification:** All tests passed.
-
-## Findings
-1.  **Vulnerability**: `ajv` <8.18.0 via `serve`. Low risk (dev tool).
-2.  **Upgraded**: `stylelint` (16.12.0 -> 16.26.1).
+Executed `prompt-curator-agent` to audit the prompt library.
+- Verified file path references in all prompts.
+- Found and fixed broken paths in 4 prompts:
+  - `daily/bitvid-content-audit-agent.md`: Fixed paths to upload guide, upload service, and modal component.
+  - `daily/bitvid-audit-agent.md`: Fixed script extensions (.js -> .py).
+  - `daily/bitvid-const-refactor-agent.md`: Fixed example path (relayClient.js -> client.js).
+  - `weekly/bitvid-test-coverage-agent.md`: Fixed example paths (parseEvent.js -> eventsMap.js).
+- Updated `docs/agents/PROMPT_LIBRARY_STATUS.md` with verified fixes.
 
 ## Artifacts
-- `artifacts/npm-audit.json`
-- `artifacts/npm-outdated.json`
-- `artifacts/deps-report.md`
-- `test_logs/TEST_LOG_1771418959.md`
+- `docs/agents/PROMPT_LIBRARY_STATUS.md` (Updated)
