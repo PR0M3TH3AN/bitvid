@@ -36,7 +36,11 @@ const IGNORED_GLOBS = [
   'bitvid-working-webtorrent/**',
   'scripts/agent/**',
   'docs/capacitor-native-app-plan.md',
-  '**/webtorrent.min.js'
+  'perf/**',
+  'test_logs/**',
+  'context/**',
+  'decisions/**',
+  'todo/**'
 ];
 
 const gitArgs = [
@@ -56,9 +60,8 @@ for (const glob of IGNORED_GLOBS) {
 
 // We rely on 'git' being available and 'git grep' supporting -P.
 // Typically available in most CI/dev environments.
-// Increase maxBuffer to 10MB to avoid ENOBUFS on large outputs.
-console.log("Running git with args:", gitArgs.join(" "));
-const result = spawnSync('git', gitArgs, { encoding: 'utf8', maxBuffer: 1024 * 1024 * 10 });
+// Increase maxBuffer to 10MB to prevent ENOBUFS on large minified files
+const result = spawnSync('git', gitArgs, { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 });
 
 if (result.error) {
   console.error('Failed to execute git grep:', result.error.message);
@@ -71,22 +74,10 @@ if (result.error) {
 //   2+ on errors.
 
 if (result.status === 0 && result.stdout.trim()) {
-  const lines = result.stdout.split('\n');
-  const filteredLines = lines.filter(line => {
-    // Robustly ignore webtorrent.min.js even if git exclusions fail
-    if (line.includes('webtorrent.min.js')) return false;
-    return line.trim().length > 0;
-  });
-
-  if (filteredLines.length > 0) {
-    console.error('Hex colors detected outside tokens or SVG assets:');
-    console.error(filteredLines.join('\n'));
-    console.error('\nAllowed exceptions: tokens (css/tokens.css) and vector logos (*.svg).');
-    process.exit(1);
-  } else {
-    // All matches were ignored
-    process.exit(0);
-  }
+  console.error('Hex colors detected outside tokens or SVG assets:');
+  console.error(result.stdout.trimEnd());
+  console.error('\nAllowed exceptions: tokens (css/tokens.css) and vector logos (*.svg).');
+  process.exit(1);
 }
 
 if (result.status && result.status !== 1) {

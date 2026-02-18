@@ -54,6 +54,31 @@ export async function pMap(iterable, mapper, { concurrency = Infinity } = {}) {
   });
 }
 
+/**
+ * Similar to pMap, but returns { status: 'fulfilled', value } or { status: 'rejected', reason }
+ * for each item, ensuring all items are processed (like Promise.allSettled).
+ *
+ * @param {Iterable} iterable - The items to map over.
+ * @param {Function} mapper - The async mapping function.
+ * @param {Object} options - Options object.
+ * @param {number} options.concurrency - The concurrency limit (default: Infinity).
+ * @returns {Promise<Array>} - The settled results.
+ */
+export async function pMapSettled(iterable, mapper, options) {
+  return pMap(
+    iterable,
+    async (item, index) => {
+      try {
+        const value = await mapper(item, index);
+        return { status: "fulfilled", value };
+      } catch (reason) {
+        return { status: "rejected", reason };
+      }
+    },
+    options
+  );
+}
+
 export function withRequestTimeout(promise, timeoutMs, onTimeout, message = "Request timed out") {
   const resolvedTimeout = Number(timeoutMs);
   const effectiveTimeout =

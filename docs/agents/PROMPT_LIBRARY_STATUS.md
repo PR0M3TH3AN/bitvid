@@ -6,7 +6,8 @@ Run type: Daily
 ## Summary
 
 - **Total prompts**: 36 (21 daily, 15 weekly) + 2 schedulers
-- **Health**: Good. Path validation checks passed after fixes.
+- **Health**: Good. All prompts follow the canonical structure.
+  Verified `interop-agent` and `smoke-agent` are complete and not truncated.
 
 ## Changes This Run
 
@@ -14,7 +15,7 @@ Run type: Daily
 
 | File | Issue | Status |
 |------|-------|--------|
-| - | No P0/P1 issues found | - |
+| `daily/bitvid-audit-agent.md` | Misleading Node.js parser examples | Fixed: updated to reference existing Python parsers in `scripts/agent/audit-parsers/` |
 
 ## Known Remaining Issues
 
@@ -73,7 +74,7 @@ Run type: Daily
 | 20 | test-audit-agent | `bitvid-test-audit-agent.md` | Complete |
 | 21 | todo-triage-agent | `bitvid-todo-triage-agent.md` | Complete |
 
-### Weekly Prompts (16)
+### Weekly Prompts (15)
 
 | # | Agent Name | Prompt File | Canonical Sections |
 |---|-----------|-------------|-------------------|
