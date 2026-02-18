@@ -1,3 +1,18 @@
+/**
+ * NIP-71 Video Events Module
+ *
+ * Implements the NIP-71 specification for video events in BitVid.
+ * Handles:
+ * - Event creation (Kind 22/21)
+ * - Metadata parsing and validation
+ * - Caching and hydration of video objects
+ *
+ * Flow:
+ * 1. `processNip71Events` parses incoming events and updates the `nip71Cache`.
+ * 2. `mergeNip71MetadataIntoVideo` applies cached metadata to video objects (Kind 30078).
+ * 3. `buildNip71VideoEvent` constructs new events for publishing.
+ */
+
 import { deriveTitleFromEvent } from "../videoEventUtils.js";
 import { extractBtihFromMagnet, extractMagnetHints } from "../magnetShared.js";
 import { devLogger } from "../utils/logger.js";
@@ -819,6 +834,12 @@ function cloneNip71Metadata(metadata) {
   }
 }
 
+/**
+ * Helper to extract the first `d` tag value from a list of tags.
+ *
+ * @param {string[][]} tags - The event tags.
+ * @returns {string} The `d` tag value or empty string.
+ */
 export function getDTagValueFromTags(tags) {
   if (!Array.isArray(tags)) {
     return "";
@@ -834,6 +855,15 @@ export function getDTagValueFromTags(tags) {
   return "";
 }
 
+/**
+ * Constructs the unique `a` tag value for a video root.
+ *
+ * Format: `30078:<pubkey>:<videoRootId>`
+ *
+ * @param {string} pubkey - The publisher's pubkey.
+ * @param {string} videoRootId - The video root ID.
+ * @returns {string} The formatted pointer string.
+ */
 export function buildVideoPointerValue(pubkey, videoRootId) {
   const normalizedRoot = stringFromInput(videoRootId);
   const normalizedPubkey = stringFromInput(pubkey).toLowerCase();
@@ -843,6 +873,16 @@ export function buildVideoPointerValue(pubkey, videoRootId) {
   return `30078:${normalizedPubkey}:${normalizedRoot}`;
 }
 
+/**
+ * Constructs the standard NIP-71 pointer tags (`a`, `video-root`, `e`, `d`).
+ *
+ * @param {Object} identifiers - The video identifiers.
+ * @param {string} [identifiers.pubkey] - Video publisher pubkey.
+ * @param {string} [identifiers.videoRootId] - The stable video root ID.
+ * @param {string} [identifiers.videoEventId] - Specific video note ID.
+ * @param {string} [identifiers.dTag] - Specific d-tag.
+ * @returns {string[][]} Array of pointer tags.
+ */
 export function buildNip71PointerTags({
   pubkey = "",
   videoRootId = "",
@@ -954,6 +994,14 @@ export function buildNip71VideoEvent({
   return event;
 }
 
+/**
+ * Scans a list of videos and builds a map of NIP-71 pointers to fetch.
+ *
+ * Identifies video root IDs, event IDs, and d-tags referenced by the videos.
+ *
+ * @param {Array<Object>} videos - List of video objects.
+ * @returns {Map<string, Object>} Map of pointer values (`30078:<pub>:<root>`) to metadata request info.
+ */
 export function collectNip71PointerRequests(videos = []) {
   const pointerMap = new Map();
   if (!Array.isArray(videos)) {
@@ -1245,6 +1293,18 @@ export function mergeNip71MetadataIntoVideo(video, { nip71Cache } = {}) {
   return video;
 }
 
+/**
+ * Ensures that cached NIP-71 metadata is available for the given videos.
+ *
+ * If metadata is missing or stale, it fetches the required events using `fetchMetadata`.
+ *
+ * @param {Array<Object>} videos - The video objects to hydrate.
+ * @param {Object} context
+ * @param {Map} context.nip71Cache - The metadata cache.
+ * @param {Map} [context.pointerMap] - Optimization: pre-computed pointer map.
+ * @param {Function} [context.fetchMetadata] - Callback to fetch events (pointerMap, pointersToFetch).
+ * @returns {Promise<void>}
+ */
 export async function populateNip71MetadataForVideos(videos = [], {
   nip71Cache,
   pointerMap = null,
@@ -1358,6 +1418,15 @@ function inferMimeTypeFromUrl(url) {
   return typeof mimeType === "string" ? mimeType : "";
 }
 
+/**
+ * Converts a raw Nostr event (Kind 30078) into a standardized Video object.
+ *
+ * Handles parsing of `content` JSON, extraction of magnet links, info hashes,
+ * and normalization of metadata fields.
+ *
+ * @param {import("nostr-tools").Event} event - The raw event.
+ * @returns {Object} The normalized video object, or { invalid: true, reason: string }.
+ */
 export function convertEventToVideo(event = {}) {
   const safeTrim = (value) => (typeof value === "string" ? value.trim() : "");
 
