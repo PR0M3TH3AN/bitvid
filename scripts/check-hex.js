@@ -36,7 +36,7 @@ const IGNORED_GLOBS = [
   'bitvid-working-webtorrent/**',
   'scripts/agent/**',
   'docs/capacitor-native-app-plan.md',
-  'perf/**'
+  '**/webtorrent.min.js'
 ];
 
 const gitArgs = [
@@ -71,16 +71,11 @@ if (result.error) {
 //   2+ on errors.
 
 if (result.status === 0 && result.stdout.trim()) {
-  const lines = result.stdout.trim().split('\n');
-
-  // Robust filtering: If git grep exclusion fails (e.g. in some CI environments),
-  // we filter out known ignored files here.
+  const lines = result.stdout.split('\n');
   const filteredLines = lines.filter(line => {
-    // Output format is filename:line:content...
-    // We just check if the line starts with a known ignored file.
-    if (line.startsWith('js/webtorrent.min.js')) return false;
-    if (line.startsWith('perf/hits-')) return false;
-    return true;
+    // Robustly ignore webtorrent.min.js even if git exclusions fail
+    if (line.includes('webtorrent.min.js')) return false;
+    return line.trim().length > 0;
   });
 
   if (filteredLines.length > 0) {
@@ -88,6 +83,9 @@ if (result.status === 0 && result.stdout.trim()) {
     console.error(filteredLines.join('\n'));
     console.error('\nAllowed exceptions: tokens (css/tokens.css) and vector logos (*.svg).');
     process.exit(1);
+  } else {
+    // All matches were ignored
+    process.exit(0);
   }
 }
 
