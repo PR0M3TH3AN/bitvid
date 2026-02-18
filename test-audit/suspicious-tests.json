@@ -1,245 +1,308 @@
 {
   "tests/admin-list-store.test.mjs": [
-    "Uses setTimeout/sleep (brittle)",
-    "Console usage inside test"
+    "Time dependence (sleep/timeout) (2 occurrences)",
+    "Console usage (4 occurrences)"
+  ],
+  "tests/app/feedCoordinator.test.mjs": [
+    "Network dependence (fetch/WebSocket) (1 occurrences)"
   ],
   "tests/app-batch-fetch-profiles.test.mjs": [
-    "Console usage inside test"
+    "Network dependence (fetch/WebSocket) (2 occurrences)",
+    "Console usage (3 occurrences)"
   ],
   "tests/auth-service.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (2 occurrences)"
   ],
   "tests/comment-thread-service.test.mjs": [
-    "Uses setTimeout/sleep (brittle)",
-    "Console usage inside test"
+    "Time dependence (sleep/timeout) (1 occurrences)",
+    "Network dependence (fetch/WebSocket) (78 occurrences)",
+    "Console usage (1 occurrences)"
   ],
   "tests/compliance/nip07_compliance.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (1 occurrences)"
   ],
   "tests/discussion-count-service.test.mjs": [
-    "Console usage inside test"
+    "Network dependence (fetch/WebSocket) (2 occurrences)",
+    "Console usage (1 occurrences)"
   ],
   "tests/dm-normalization.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (2 occurrences)"
+  ],
+  "tests/edit-modal-submit-state.test.mjs": [
+    "Network dependence (fetch/WebSocket) (3 occurrences)"
   ],
   "tests/event-schemas.test.mjs": [
-    "Console usage inside test"
+    "Console usage (3 occurrences)"
   ],
   "tests/feed-engine.test.mjs": [
-    "Uses setTimeout/sleep (brittle)",
-    "Console usage inside test"
+    "Time dependence (sleep/timeout) (1 occurrences)",
+    "Console usage (1 occurrences)"
   ],
   "tests/hashtag-preferences.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (2 occurrences)",
+    "Network dependence (fetch/WebSocket) (8 occurrences)"
   ],
-  "tests/minimal-channel-profile.test.mjs": [
-    "No obvious assertions found"
+  "tests/login-modal-controller.test.mjs": [
+    "Time dependence (sleep/timeout) (6 occurrences)"
   ],
   "tests/minimal-webtorrent.test.mjs": [
-    "No obvious assertions found"
+    "No assertions found"
   ],
   "tests/modal-accessibility.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (1 occurrences)",
+    "Network dependence (fetch/WebSocket) (4 occurrences)"
   ],
   "tests/moderation/submit-report.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (1 occurrences)"
   ],
   "tests/moderation/video-card.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (6 occurrences)"
   ],
   "tests/nip07-concurrency.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (2 occurrences)"
   ],
   "tests/nostr/client.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (3 occurrences)",
+    "Network dependence (fetch/WebSocket) (13 occurrences)"
   ],
   "tests/nostr/comment-events.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (1 occurrences)"
   ],
   "tests/nostr/countDiagnostics.test.mjs": [
-    "Console usage inside test"
+    "Console usage (4 occurrences)"
   ],
   "tests/nostr/dm-direct-message-flow.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (2 occurrences)"
   ],
   "tests/nostr/dmDecryptWorkerClient.test.mjs": [
-    "Console usage inside test"
+    "Console usage (4 occurrences)"
   ],
   "tests/nostr/dmSignalEvents.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (1 occurrences)"
   ],
   "tests/nostr/integration-remote-flow.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (1 occurrences)"
   ],
   "tests/nostr/nip04WorkerClient.test.mjs": [
-    "Console usage inside test"
+    "Console usage (2 occurrences)"
   ],
   "tests/nostr/nip07Permissions.test.js": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (1 occurrences)"
+  ],
+  "tests/nostr/nip71.test.js": [
+    "Network dependence (fetch/WebSocket) (10 occurrences)"
   ],
   "tests/nostr/sessionActor.test.mjs": [
-    "Test is focused (.only) or skipped (.skip)"
+    "Focused or skipped test (1 occurrences)"
   ],
   "tests/nostr/sign-request-queue.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (3 occurrences)"
   ],
   "tests/nostr/toolkit.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (1 occurrences)"
   ],
   "tests/nostr/watchHistory.test.js": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (1 occurrences)",
+    "Network dependence (fetch/WebSocket) (5 occurrences)"
   ],
   "tests/nostr-boost-actions.test.mjs": [
-    "Console usage inside test"
+    "Network dependence (fetch/WebSocket) (2 occurrences)",
+    "Console usage (1 occurrences)"
   ],
   "tests/nostr-count-fallback.test.mjs": [
-    "Console usage inside test"
+    "Console usage (4 occurrences)"
   ],
   "tests/nostr-delete-flow.test.mjs": [
-    "Console usage inside test"
+    "Console usage (1 occurrences)"
   ],
   "tests/nostr-login-permissions.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (1 occurrences)"
   ],
   "tests/nostr-nip46-queue.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (3 occurrences)"
   ],
   "tests/nostr-private-key-signer.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (1 occurrences)"
   ],
   "tests/nostr-publish-rejection.test.mjs": [
-    "Console usage inside test"
+    "Console usage (1 occurrences)"
   ],
   "tests/nostr-rebroadcast-guard.test.mjs": [
-    "Console usage inside test"
+    "Network dependence (fetch/WebSocket) (1 occurrences)",
+    "Console usage (1 occurrences)"
   ],
   "tests/nostr-send-direct-message.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (2 occurrences)"
   ],
   "tests/nostr-service-access-control.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (1 occurrences)"
   ],
   "tests/nostr-signer-race.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (1 occurrences)"
   ],
   "tests/nostr-view-event-bindings.test.mjs": [
-    "Console usage inside test"
+    "Console usage (1 occurrences)"
   ],
   "tests/nostr-view-events.test.mjs": [
-    "Console usage inside test"
+    "Console usage (1 occurrences)"
   ],
   "tests/nwc-client.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (2 occurrences)"
   ],
   "tests/performance/resolvePostedAt.test.mjs": [
-    "Console usage inside test"
+    "Network dependence (fetch/WebSocket) (2 occurrences)",
+    "Console usage (2 occurrences)"
   ],
   "tests/profile-cache.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (2 occurrences)"
   ],
   "tests/profile-modal-controller.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (3 occurrences)",
+    "Network dependence (fetch/WebSocket) (3 occurrences)"
   ],
   "tests/race/nostr-client-init-race.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (1 occurrences)"
+  ],
+  "tests/revert-modal-controller.test.mjs": [
+    "Network dependence (fetch/WebSocket) (2 occurrences)"
+  ],
+  "tests/services/attachmentService.test.mjs": [
+    "Network dependence (fetch/WebSocket) (12 occurrences)"
+  ],
+  "tests/services/discussionCountService.test.mjs": [
+    "Network dependence (fetch/WebSocket) (1 occurrences)"
   ],
   "tests/services/exploreDataService.test.mjs": [
-    "Console usage inside test"
+    "Console usage (4 occurrences)"
   ],
   "tests/services/link-preview-service.test.mjs": [
-    "Uses setTimeout/sleep (brittle)",
-    "Console usage inside test"
+    "Time dependence (sleep/timeout) (1 occurrences)",
+    "Network dependence (fetch/WebSocket) (7 occurrences)",
+    "Console usage (1 occurrences)"
+  ],
+  "tests/services/nostr-service.test.mjs": [
+    "Network dependence (fetch/WebSocket) (3 occurrences)"
   ],
   "tests/services/playbackService_forcedSource.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (3 occurrences)"
   ],
   "tests/services/profileMetadataService.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (1 occurrences)",
+    "Network dependence (fetch/WebSocket) (13 occurrences)"
   ],
   "tests/services/relay-health-service.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (1 occurrences)",
+    "Network dependence (fetch/WebSocket) (1 occurrences)"
   ],
   "tests/services/trustBootstrap.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (2 occurrences)"
   ],
   "tests/sign-request-queue.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (3 occurrences)"
   ],
   "tests/state/cache.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (1 occurrences)"
   ],
   "tests/subscriptions-feed.test.mjs": [
-    "Console usage inside test"
+    "Network dependence (fetch/WebSocket) (1 occurrences)",
+    "Console usage (1 occurrences)"
   ],
   "tests/subscriptions-manager.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (1 occurrences)",
+    "Network dependence (fetch/WebSocket) (3 occurrences)"
+  ],
+  "tests/torrent/service-worker-fallback-message.test.mjs": [
+    "Network dependence (fetch/WebSocket) (1 occurrences)"
   ],
   "tests/torrent/toast-service.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (1 occurrences)"
   ],
   "tests/ui/components/debug_hashtag_strip_helper.test.mjs": [
-    "No obvious assertions found",
-    "Console usage inside test"
+    "No assertions found",
+    "Console usage (3 occurrences)"
+  ],
+  "tests/ui/creatorProfileController.test.mjs": [
+    "Network dependence (fetch/WebSocket) (12 occurrences)"
+  ],
+  "tests/ui/profile-modal-moderation-settings.test.mjs": [
+    "Network dependence (fetch/WebSocket) (2 occurrences)"
   ],
   "tests/ui/profileModalController-addProfile.test.mjs": [
-    "Console usage inside test"
+    "Network dependence (fetch/WebSocket) (2 occurrences)",
+    "Console usage (2 occurrences)"
   ],
   "tests/ui/uploadModal-integration.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (1 occurrences)",
+    "Network dependence (fetch/WebSocket) (7 occurrences)"
   ],
   "tests/ui/uploadModal-reset.test.mjs": [
-    "Console usage inside test"
+    "Network dependence (fetch/WebSocket) (1 occurrences)",
+    "Console usage (1 occurrences)"
   ],
   "tests/ui/url-health-controller.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (5 occurrences)",
+    "Network dependence (fetch/WebSocket) (3 occurrences)"
   ],
   "tests/unit/client-count-resilience.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (1 occurrences)"
+  ],
+  "tests/unit/editModalController.test.mjs": [
+    "Network dependence (fetch/WebSocket) (2 occurrences)"
   ],
   "tests/unit/notificationController.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (1 occurrences)"
+  ],
+  "tests/unit/services/r2Service.storage-config.test.mjs": [
+    "Network dependence (fetch/WebSocket) (3 occurrences)"
   ],
   "tests/unit/ui/videoModalController.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (2 occurrences)"
   ],
   "tests/user-blocks.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (2 occurrences)"
   ],
   "tests/utils/domUtils.test.mjs": [
-    "Console usage inside test"
+    "Console usage (2 occurrences)"
   ],
   "tests/video-card-source-visibility.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (2 occurrences)"
   ],
   "tests/video-modal-accessibility.test.mjs": [
-    "Console usage inside test"
+    "Network dependence (fetch/WebSocket) (5 occurrences)",
+    "Console usage (4 occurrences)"
+  ],
+  "tests/video-modal-zap.test.mjs": [
+    "Network dependence (fetch/WebSocket) (4 occurrences)"
   ],
   "tests/view-counter.test.mjs": [
-    "Uses setTimeout/sleep (brittle)",
-    "Console usage inside test"
+    "Time dependence (sleep/timeout) (2 occurrences)",
+    "Network dependence (fetch/WebSocket) (6 occurrences)",
+    "Console usage (4 occurrences)"
   ],
   "tests/watch-history-feed.test.mjs": [
-    "Console usage inside test"
+    "Console usage (1 occurrences)"
   ],
   "tests/watch-history.test.mjs": [
-    "Uses setTimeout/sleep (brittle)",
-    "Console usage inside test"
+    "Time dependence (sleep/timeout) (4 occurrences)",
+    "Network dependence (fetch/WebSocket) (14 occurrences)",
+    "Console usage (19 occurrences)"
   ],
   "tests/watchHistory/watch-history-telemetry.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (1 occurrences)"
   ],
   "tests/webtorrent-handlers.test.mjs": [
-    "Uses setTimeout/sleep (brittle)"
+    "Time dependence (sleep/timeout) (3 occurrences)"
   ],
   "tests/webtorrent-regression.test.mjs": [
-    "Uses setTimeout/sleep (brittle)",
-    "Console usage inside test"
+    "Time dependence (sleep/timeout) (2 occurrences)",
+    "Console usage (1 occurrences)"
   ],
   "tests/zap-shared-state.test.mjs": [
-    "Console usage inside test"
+    "Console usage (1 occurrences)"
   ],
   "tests/zap-split.test.mjs": [
-    "Uses setTimeout/sleep (brittle)",
-    "Console usage inside test"
+    "Time dependence (sleep/timeout) (1 occurrences)",
+    "Network dependence (fetch/WebSocket) (7 occurrences)",
+    "Console usage (1 occurrences)"
   ]
 }
