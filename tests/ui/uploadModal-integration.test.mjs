@@ -5,6 +5,7 @@ import { createUiDom } from "./helpers/jsdom-test-helpers.mjs";
 describe("UploadModal Integration", () => {
   let dom;
   let UploadModal;
+  const originalGlobals = {};
 
   // Mock StorageService
   const mockStorageService = {
@@ -77,6 +78,17 @@ describe("UploadModal Integration", () => {
   `;
 
   before(async () => {
+    // Capture original globals to restore later
+    originalGlobals.window = global.window;
+    originalGlobals.document = global.document;
+    originalGlobals.EventTarget = global.EventTarget;
+    originalGlobals.alert = global.alert;
+    originalGlobals.HTMLElement = global.HTMLElement;
+    originalGlobals.HTMLInputElement = global.HTMLInputElement;
+    originalGlobals.HTMLButtonElement = global.HTMLButtonElement;
+    originalGlobals.HTMLDivElement = global.HTMLDivElement;
+    originalGlobals.fetch = global.fetch;
+
     dom = createUiDom();
     global.window = dom.window;
     global.document = dom.document;
@@ -106,6 +118,17 @@ describe("UploadModal Integration", () => {
 
   after(() => {
     if (dom) dom.cleanup();
+
+    // Restore globals
+    if ('window' in originalGlobals) global.window = originalGlobals.window; else delete global.window;
+    if ('document' in originalGlobals) global.document = originalGlobals.document; else delete global.document;
+    if ('EventTarget' in originalGlobals) global.EventTarget = originalGlobals.EventTarget; else delete global.EventTarget;
+    if ('alert' in originalGlobals) global.alert = originalGlobals.alert; else delete global.alert;
+    if ('HTMLElement' in originalGlobals) global.HTMLElement = originalGlobals.HTMLElement; else delete global.HTMLElement;
+    if ('HTMLInputElement' in originalGlobals) global.HTMLInputElement = originalGlobals.HTMLInputElement; else delete global.HTMLInputElement;
+    if ('HTMLButtonElement' in originalGlobals) global.HTMLButtonElement = originalGlobals.HTMLButtonElement; else delete global.HTMLButtonElement;
+    if ('HTMLDivElement' in originalGlobals) global.HTMLDivElement = originalGlobals.HTMLDivElement; else delete global.HTMLDivElement;
+    if ('fetch' in originalGlobals) global.fetch = originalGlobals.fetch; else delete global.fetch;
   });
 
   beforeEach(() => {

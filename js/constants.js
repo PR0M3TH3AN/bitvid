@@ -24,6 +24,9 @@ export const STANDARD_TIMEOUT_MS = 10000;
 export const MEDIUM_TIMEOUT_MS = 30000;
 export const LONG_TIMEOUT_MS = 60000;
 
+// Limits
+export const MAX_BLOCKLIST_ENTRIES = 5000;
+
 export const UI_FEEDBACK_DELAY_MS = 2000;
 export const DEBOUNCE_DELAY_MS = 2000;
 export const NETWORK_RETRY_DELAY_MS = 1500;
@@ -135,7 +138,6 @@ function sanitizeTrustSeedList(candidate) {
 const DEFAULT_WSS_TRACKERS = Object.freeze([
   "wss://tracker.openwebtorrent.com",
   "wss://tracker.files.fm:7073/announce",
-  "wss://tracker.btorrent.xyz",
   "wss://tracker.novage.com.ua:443/announce",
   "wss://tracker.webtorrent.dev",
 ]);
