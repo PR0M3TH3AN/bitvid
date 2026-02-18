@@ -24,7 +24,6 @@ tests/torrent/toast-service.test.mjs:    await new Promise((resolve) => setTimeo
 tests/hashtag-preferences.test.mjs:          setTimeout(() => handler(), 0);
 tests/hashtag-preferences.test.mjs:  setTimeout(() => process.exit(0), 100);
 tests/nostr-private-key-signer.test.mjs:    setTimeout(() => process.exit(0), 100);
-tests/e2e/webseed-playback.spec.ts:    test.setTimeout(90000); // Increase timeout for fallback logic
 tests/nwc-client.test.mjs:      setTimeout(() => {
 tests/nwc-client.test.mjs:            setTimeout(() => {
 tests/watchHistory/watch-history-telemetry.test.mjs:  await new Promise((resolve) => setTimeout(resolve, 0));
@@ -48,26 +47,30 @@ tests/moderation/video-card.test.mjs:    await new Promise((resolve) => setTimeo
 tests/moderation/video-card.test.mjs:  await new Promise((resolve) => setTimeout(resolve, 0));
 tests/moderation/video-card.test.mjs:  await new Promise((resolve) => setTimeout(resolve, 0));
 tests/moderation/submit-report.test.mjs:            setTimeout(() => handler(), 0);
+tests/race/nostr-client-init-race.test.mjs:    await new Promise(resolve => setTimeout(resolve, 50));
 tests/modal-accessibility.test.mjs:      setTimeout(() => callback(Date.now()), 0);
 tests/zap-split.test.mjs:      setTimeout(() => {
 tests/profile-modal-controller.test.mjs:  await new Promise((resolve) => setTimeout(resolve, 0));
 tests/profile-modal-controller.test.mjs:  await new Promise((resolve) => setTimeout(resolve, 0));
 tests/profile-modal-controller.test.mjs:    await new Promise((resolve) => setTimeout(resolve, 0));
-tests/auth-service.test.mjs:  await new Promise((resolve) => setTimeout(resolve, 10));
-tests/auth-service.test.mjs:  await new Promise((resolve) => setTimeout(resolve, 10));
-tests/test-helpers/wait-for.mjs:    await new Promise((resolve) => setTimeout(resolve, interval));
+tests/auth-service.test.mjs:    await new Promise((resolve) => setTimeout(resolve, 10));
+tests/auth-service.test.mjs:    await new Promise((resolve) => setTimeout(resolve, 10));
+tests/login-modal-controller.test.mjs:                setTimeout(() => {
+tests/login-modal-controller.test.mjs:    await new Promise(resolve => setTimeout(resolve, 50));
+tests/login-modal-controller.test.mjs:    await new Promise(resolve => setTimeout(resolve, 10));
+tests/login-modal-controller.test.mjs:                setTimeout(() => {
+tests/login-modal-controller.test.mjs:    await new Promise(resolve => setTimeout(resolve, 50));
+tests/login-modal-controller.test.mjs:    await new Promise(resolve => setTimeout(resolve, 10));
 tests/watch-history.test.mjs:      setTimeout(() => {
 tests/watch-history.test.mjs:    await new Promise((resolve) => setTimeout(resolve, 0));
 tests/watch-history.test.mjs:    await new Promise((resolve) => setTimeout(resolve, 0));
 tests/watch-history.test.mjs:    await new Promise((resolve) => setTimeout(resolve, 0));
-tests/watch-history.test.mjs:      await new Promise(r => setTimeout(r, 50));
 tests/user-blocks.test.mjs:await new Promise((resolve) => setTimeout(resolve, 100));
 tests/user-blocks.test.mjs:await new Promise((resolve) => setTimeout(resolve, 100));
 tests/nostr-service-access-control.test.mjs:  setTimeout(() => process.exit(0), 100);
 tests/nostr-login-permissions.test.mjs:        setTimeout(() => reject(new Error("permission denied")), 300);
 tests/admin-list-store.test.mjs:            setTimeout(fn, delay);
 tests/admin-list-store.test.mjs:await new Promise((resolve) => setTimeout(resolve, slowRelayDelayMs + 20));
-tests/visual/overlay-layers.spec.ts:    test.setTimeout(120_000);
 tests/state/cache.test.mjs:    await new Promise((resolve) => setTimeout(resolve, 10));
 tests/nip07-concurrency.test.mjs:      await new Promise(resolve => setTimeout(resolve, delay));
 tests/nip07-concurrency.test.mjs:    // Note: Node's setTimeout is not precise, so we use loose bounds
@@ -83,7 +86,7 @@ tests/ui/components/hashtagStripHelper.test.mjs:    // Note: removing setTimeout
 tests/ui/components/hashtagStripHelper.test.mjs:    // But for testing fallback path where RAF is missing, we usually want setTimeout available.
 tests/ui/components/hashtagStripHelper.test.mjs:    // If we want to test "no RAF, use setTimeout", we remove RAF.
 tests/ui/components/hashtagStripHelper.test.mjs:test("HashtagStripHelper falls back to window resize with setTimeout when RAF is missing", (t) => {
-tests/ui/engagement-controller.test.mjs:    global.window = { setTimeout: t.mock.fn() };
+tests/ui/engagement-controller.test.mjs:      global.window = { setTimeout: t.mock.fn() };
 tests/ui/hashtag-strip-helper-bounce.test.mjs:  // Mock setTimeout
 tests/ui/hashtag-strip-helper-bounce.test.mjs:  window.setTimeout = (cb, delay) => {
 tests/ui/hashtag-strip-helper-bounce.test.mjs:  window.setTimeout = (cb, delay) => {
@@ -95,11 +98,12 @@ tests/ui/url-health-controller.test.mjs:    await new Promise(resolve => setTime
 tests/compliance/nip07_compliance.test.mjs:        await new Promise(resolve => setTimeout(resolve, 50));
 tests/unit/notificationController.test.mjs:      setTimeout: mock.fn((cb, ms) => setTimeout(cb, ms)),
 tests/unit/client-count-resilience.test.mjs:                await new Promise(r => setTimeout(r, 100));
+tests/unit/ui/videoModalController.test.mjs:  await new Promise(resolve => setTimeout(resolve, 0));
+tests/unit/ui/videoModalController.test.mjs:    await new Promise(resolve => setTimeout(resolve, 0));
 tests/unit/services/r2Service.storage-config.test.mjs:  originalSetTimeout = globalThis.setTimeout;
 tests/unit/services/r2Service.storage-config.test.mjs:  globalThis.setTimeout = (fn) => {
 tests/unit/services/r2Service.storage-config.test.mjs:  globalThis.setTimeout = originalSetTimeout;
 tests/nostr-signer-race.test.mjs:    await new Promise(resolve => setTimeout(resolve, 50));
-tests/embed_playback_check.spec.mjs:  await new Promise(resolve => setTimeout(resolve, 2000));
 tests/comment-thread-service.test.mjs:const tick = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms));
 tests/services/link-preview-service.test.mjs:      await new Promise((r) => setTimeout(r, 10));
 tests/services/playbackService.test.mjs:      mock.timers.enable({ apis: ['setTimeout'] });

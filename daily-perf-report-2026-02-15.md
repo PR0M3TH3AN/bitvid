@@ -1,30 +1,20 @@
-# Daily Performance Report - 2026-02-15
+# Daily Performance Report: 2026-02-15
 
-## Summary
-Executed daily performance audit. Identified and fixed a visibility gating issue in `ExploreDataService` to reduce background resource consumption. Verified documentation accuracy for uploads.
+**Summary:** Identified and fixed unconditional background intervals in `js/services/exploreDataService.js`. Audited upload documentation.
 
 ## Findings & Fixes
 
-### P1: ExploreDataService Background Intervals
-- **Issue**: `js/services/exploreDataService.js` was running `setInterval` loops for watch history (1m) and tag IDF (5m) updates even when the tab was hidden.
-- **Impact**: Unnecessary CPU and battery usage for background tabs.
-- **Fix**: Implemented `handleVisibility` to pause intervals when `document.hidden` is true and resume when visible.
-- **Status**: **Fixed**.
+### P1: Unconditional Background Intervals
+- **File:** `js/services/exploreDataService.js`
+- **Issue:** `watchHistoryInterval` (1m) and `tagIdfInterval` (5m) executed even when the tab was hidden, consuming resources unnecessarily.
+- **Fix:** Added `if (document.hidden) return;` check to the interval callbacks.
+- **Impact:** Reduces CPU/Network usage when the tab is in the background.
 
-### P3: Other Background Tasks
-- **`js/app/playbackCoordinator.js`**: Verified that torrent status updates are already visibility-gated.
-- **`js/ui/ambientBackground.js`**: Verified that canvas animations are already visibility-gated.
+## Docs Audit
+- **Scope:** `content/docs/guides/upload-content.md` vs `js/ui/components/UploadModal.js` / `js/services/s3Service.js`.
+- **Status:** Verified.
+- **Notes:** File types, size limits, and CORS automation claims in documentation match the implementation.
 
-## Metrics
-- **Performance Hits**: 198 (raw grep count).
-- **Analyzed**: 3 specific services/controllers.
-- **Artifacts**: `perf/hits-2026-02-15.json`.
-
-## Documentation Audit
-- **Scope**: `content/docs/guides/upload-content.md` vs `js/ui/components/UploadModal.js`.
-- **Result**: Documentation accurately reflects the supported file types, size recommendations (2GB limit due to client-side hashing), and upload methods (Direct R2/S3, External URL, Magnet).
-- **Status**: **Aligned**.
-
-## Next Steps
-- Monitor `ExploreDataService` for any regression in data freshness (though unlikely as it updates on visibility).
-- Continue auditing other `setInterval` usages in future runs.
+## Artifacts
+- `perf/hits-2026-02-15.json`: Search pattern hits.
+- `js/services/exploreDataService.js`: Modified source.

@@ -125,9 +125,7 @@ SEARCH / PARSING HELPER SCRIPTS (examples)
 - Parse file-size raw log into JSON:
   - `python3 scripts/agent/audit-parsers/parse_file_size.py artifacts/audit/YYYY-MM-DD/raw-check-file-size.log > artifacts/audit/YYYY-MM-DD/file-size-report.json`
 - Parse innerHTML log similarly:
-  - `python3 scripts/agent/audit-parsers/parse_innerhtml.py artifacts/audit/YYYY-MM-DD/raw-check-innerhtml.log > artifacts/audit/YYYY-MM-DD/innerhtml-report.json`
-- Parse lint log similarly:
-  - `python3 scripts/agent/audit-parsers/parse_lint.py artifacts/audit/YYYY-MM-DD/raw-lint.log > artifacts/audit/YYYY-MM-DD/lint-report.json`
+  - `python3 scripts/agent/audit-parsers/parse_innerhtml.py ...`
 - If the repo’s scripts support `--json` or `--output`, prefer those flags.
 
 Use the existing Python parsers in `scripts/agent/audit-parsers/`. Do not implement new Node.js parsers unless necessary.

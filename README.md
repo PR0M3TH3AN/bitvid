@@ -175,6 +175,7 @@ To run **bitvid** locally:
    Run tests and linting to ensure everything is working correctly.
 
    ```bash
+   npx playwright install    # Install browsers for smoke/visual tests
    npm run test:unit:shard1  # Run a subset of tests for speed
    npm run test:smoke        # Critical path verification
    npm run format

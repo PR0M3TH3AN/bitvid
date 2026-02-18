@@ -1,0 +1,20 @@
+
+> bitvid@1.0.0 prepare
+> npm run build:css
+
+
+> bitvid@1.0.0 build:css
+> postcss css/tailwind.source.css -o css/tailwind.generated.css
+
+
+added 427 packages, and audited 428 packages in 16s
+
+110 packages are looking for funding
+  run `npm fund` for details
+
+2 moderate severity vulnerabilities
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+
+Run `npm audit` for details.

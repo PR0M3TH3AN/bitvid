@@ -25,18 +25,22 @@ import { userBlocks, USER_BLOCK_EVENTS } from "../userBlocks.js";
 import { buildReportEvent, KIND_MUTE_LIST } from "../nostrEventSchemas.js";
 import logger from "../utils/logger.js";
 import { DEBOUNCE_DELAY_MS } from "../constants.js";
+import {
+  DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+  DEFAULT_BLUR_THRESHOLD,
+} from "../config.js";
 
 /**
  * Trust threshold for disabling autoplay on reported videos.
  * If >= 1 trusted user reports content, autoplay is disabled.
  */
-const AUTOPLAY_TRUST_THRESHOLD = 1;
+const AUTOPLAY_TRUST_THRESHOLD = DEFAULT_AUTOPLAY_BLOCK_THRESHOLD;
 
 /**
  * Trust threshold for blurring content.
  * If >= 1 trusted user reports content, it is blurred.
  */
-const BLUR_TRUST_THRESHOLD = 1;
+const BLUR_TRUST_THRESHOLD = DEFAULT_BLUR_THRESHOLD;
 
 /**
  * Time window for considering trusted mute list entries valid.

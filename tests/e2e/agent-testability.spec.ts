@@ -130,6 +130,10 @@ test.describe("Data-testid selectors are present", () => {
   }) => {
     await gotoApp();
 
+    // Wait for the app to finish bootstrapping (evidenced by the disclaimer modal being loaded)
+    // This prevents a race condition where the login button click handler hasn't been attached yet.
+    await page.locator("#disclaimerModal").waitFor({ state: "attached" });
+
     // Open the login modal
     await page.locator('[data-testid="login-button"]').click();
 
