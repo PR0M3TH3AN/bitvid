@@ -16,15 +16,15 @@ Before you start, ensure your content meets the following requirements:
 
 ### Accepted File Types
 
-- **Video:** `.mp4` (`video/mp4`), `.webm` (`video/webm`), `.mov` (`video/quicktime`), `.mkv` (`video/x-matroska`), `.ts` (`video/mp2t`), `.m3u8` (`application/x-mpegurl`), `.mpg` (`video/mpeg`), `.mpeg` (`video/mpeg`).
+- **Video:** All standard video formats (`video/*`). The browser file picker explicitly accepts: `.mp4`, `.m4v`, `.webm`, `.mkv`, `.mov`, `.avi`, `.ogv`, `.ogg`, `.m3u8`, `.mpd`, `.ts`, `.mpg`, `.mpeg`, `.flv`, `.3gp`.
 - **Thumbnail:** Any standard image format (`image/*`) supported by your browser.
 
-> **Note:** The file picker restricts selection to these formats, but the backend handles standard video MIME types (`video/*`). Ensure your container format is supported by modern browsers for playback.
+> **Note:** Ensure your container format is supported by modern browsers (e.g., MP4/H.264, WebM) for optimal playback compatibility, although the backend and file picker accept any `video/*` type.
 
 ### File Size
 
 - **Recommended:** Up to **2GB** per file.
-- **Why?** Browser-based uploads rely on your device's memory for hashing (to generate the WebTorrent info hash). Files larger than 2GB may cause browser instability or crashes during the hashing process, which happens entirely in your browser's memory. This is a client-side limitation, not a server limit.
+- **Why?** Browser-based uploads rely on your device's memory for hashing (to generate the WebTorrent info hash). Files larger than 2GB may cause browser instability or crashes during the hashing process, which happens entirely in your browser's memory. This is a client-side limitation due to in-memory hashing for WebTorrent, not a server limit.
 
 ## Metadata & Options
 

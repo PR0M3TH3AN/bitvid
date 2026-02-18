@@ -1550,11 +1550,8 @@ export default class LoginModalController {
           if (!copied && handshakeInput.select) {
             try {
               handshakeInput.select();
-              if (this.document?.execCommand) {
-                copied = this.document.execCommand("copy");
-              }
             } catch (error) {
-              copied = false;
+              // no-op
             }
           }
           if (copied) {

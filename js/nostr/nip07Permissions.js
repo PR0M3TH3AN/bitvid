@@ -1,7 +1,8 @@
 import { devLogger, userLogger } from "../utils/logger.js";
+import { SHORT_TIMEOUT_MS } from "../constants.js";
 
 export const NIP07_LOGIN_TIMEOUT_MS = 60_000; // 60 seconds
-export const NIP07_EXTENSION_WAIT_TIMEOUT_MS = 5000;
+export const NIP07_EXTENSION_WAIT_TIMEOUT_MS = SHORT_TIMEOUT_MS;
 export const NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE =
   "Timed out waiting for the NIP-07 extension. Confirm the extension prompt in your browser toolbar and try again.";
 const NIP07_PERMISSIONS_STORAGE_KEY = "bitvid:nip07:permissions";
