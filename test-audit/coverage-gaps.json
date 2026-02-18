@@ -1,10 +1,37 @@
 {
-  "js/services/authService.js": 77.34,
-  "js/relayManager.js": 49.93,
-  "js/nostr/dmDecryptWorker.js": 71.8,
-  "js/nostr/dmDecryptWorkerClient.js": 96.85,
-  "js/nostr/watchHistory.js": 58.14,
-  "js/userBlocks.js": 25.86,
-  "js/ui/ambientBackground.js": 33.02,
-  "torrent/app.js": 0
+  "js/services/authService.js": {
+    "lines": 77.34,
+    "statements": 77.34,
+    "functions": 61.9,
+    "branches": 62.71,
+    "status": "LOW_COVERAGE"
+  },
+  "js/relayManager.js": {
+    "lines": 56.75,
+    "statements": 56.75,
+    "functions": 73.33,
+    "branches": 51.93,
+    "status": "LOW_COVERAGE"
+  },
+  "js/nostr/dmDecryptWorker.js": {
+    "lines": 71.8,
+    "statements": 71.8,
+    "functions": 100,
+    "branches": 31.66,
+    "status": "LOW_COVERAGE"
+  },
+  "js/nostr/watchHistory.js": {
+    "lines": 58.14,
+    "statements": 58.14,
+    "functions": 69.64,
+    "branches": 40.68,
+    "status": "LOW_COVERAGE"
+  },
+  "js/userBlocks.js": {
+    "lines": 25.77,
+    "statements": 25.77,
+    "functions": 33.33,
+    "branches": 29.2,
+    "status": "LOW_COVERAGE"
+  }
 }

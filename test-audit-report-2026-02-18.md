@@ -1,4 +1,10 @@
-# Test Audit Report - 2025-02-18
+# Test Audit Report - 2026-02-18
+
+## Run Metadata
+- **Date**: 2026-02-18T20:13:50.582Z
+- **Node Version**: v22.22.0
+- **NPM Version**: 11.7.0
+- **Test Command**: `npm run test:unit` (with c8 coverage)
 
 ## Summary
 - **Flaky Tests**: 0
@@ -6,7 +12,7 @@
 - **Critical Coverage Gaps**: 5
 
 ## Flakiness Detection
-No flaky tests detected (based on 2 runs).
+No flaky tests detected (based on run matrix).
 
 ## Suspicious Patterns
 Found suspicious patterns in 91 files:
