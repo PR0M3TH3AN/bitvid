@@ -63,7 +63,8 @@ describe('ExploreDataService', () => {
         assert.strictEqual(service.refreshTagIdf.mock.callCount(), 0, "Should skip IDF refresh when hidden");
     });
 
-    test('visibility change triggers refresh', () => {
+    test('visibility change triggers refresh', (t) => {
+        t.mock.timers.enable({ apis: ['setInterval'] });
         service.subscribeToUpdates();
 
         assert.ok(visibilityHandler, "Visibility change listener should be registered");
@@ -71,6 +72,9 @@ describe('ExploreDataService', () => {
         // Simulate hidden -> visible
         global.document.hidden = false;
         visibilityHandler();
+
+        // Advance time to trigger the interval refresh
+        t.mock.timers.tick(150);
 
         assert.strictEqual(service.refreshWatchHistoryTagCounts.mock.callCount(), 1, "Should refresh history on visibility");
         assert.strictEqual(service.refreshTagIdf.mock.callCount(), 1, "Should refresh IDF on visibility");
