@@ -36,8 +36,7 @@ const IGNORED_GLOBS = [
   'bitvid-working-webtorrent/**',
   'scripts/agent/**',
   'docs/capacitor-native-app-plan.md',
-  'js/webtorrent.min.js',
-  'perf/*.json'
+  'perf/**'
 ];
 
 const gitArgs = [
