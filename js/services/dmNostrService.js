@@ -8,6 +8,8 @@ import { sanitizeRelayList } from "../nostr/nip46Client.js";
 import { publishEventToRelay } from "../nostrPublish.js";
 import logger from "../utils/logger.js";
 import { SHORT_TIMEOUT_MS } from "../constants.js";
+import { pMap } from "../utils/asyncUtils.js";
+import { RELAY_BACKGROUND_CONCURRENCY } from "../nostr/relayConstants.js";
 
 const DEFAULT_BACKOFF = {
   baseMs: 1000,
@@ -272,10 +274,12 @@ class DmNostrService {
 
     await this.ensurePool();
 
-    await Promise.all(
-      this.relays.map(async (relayUrl) => {
+    await pMap(
+      this.relays,
+      async (relayUrl) => {
         await this.connectRelay(relayUrl);
-      }),
+      },
+      { concurrency: RELAY_BACKGROUND_CONCURRENCY || 3 },
     );
   }
 
@@ -654,8 +658,9 @@ class DmNostrService {
 
     await this.ensurePool();
 
-    const results = await Promise.all(
-      relayList.map(async (relayUrl) => {
+    const results = await pMap(
+      relayList,
+      async (relayUrl) => {
         let result;
         try {
           result = await publishEventToRelay(this.pool, relayUrl, signedEvent);
@@ -674,7 +679,8 @@ class DmNostrService {
         }
 
         return { ...result, relayUrl };
-      }),
+      },
+      { concurrency: RELAY_BACKGROUND_CONCURRENCY || 3 },
     );
 
     return results;

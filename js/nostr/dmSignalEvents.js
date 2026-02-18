@@ -10,6 +10,8 @@ import { queueSignEvent } from "./signRequestQueue.js";
 import { getActiveSigner } from "../nostrClientRegistry.js";
 import { isSessionActor } from "./sessionActor.js";
 import { sanitizeRelayList as sanitizeRelayUrls } from "./nip46Client.js";
+import { pMap } from "../utils/asyncUtils.js";
+import { RELAY_BACKGROUND_CONCURRENCY } from "./relayConstants.js";
 
 const DEFAULT_TYPING_EXPIRY_SECONDS = 15;
 
@@ -139,8 +141,10 @@ export async function publishDmReadReceipt(
     client.writeRelays || client.relays,
   );
 
-  const publishResults = await Promise.all(
-    relayList.map((url) => publishEventToRelay(client.pool, url, signedEvent)),
+  const publishResults = await pMap(
+    relayList,
+    (url) => publishEventToRelay(client.pool, url, signedEvent),
+    { concurrency: RELAY_BACKGROUND_CONCURRENCY || 3 },
   );
 
   const acceptedRelays = publishResults
@@ -280,8 +284,10 @@ export async function publishDmTypingIndicator(
     client.writeRelays || client.relays,
   );
 
-  const publishResults = await Promise.all(
-    relayList.map((url) => publishEventToRelay(client.pool, url, signedEvent)),
+  const publishResults = await pMap(
+    relayList,
+    (url) => publishEventToRelay(client.pool, url, signedEvent),
+    { concurrency: RELAY_BACKGROUND_CONCURRENCY || 3 },
   );
 
   const acceptedRelays = publishResults

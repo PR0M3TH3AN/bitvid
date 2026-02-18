@@ -36,7 +36,11 @@ const IGNORED_GLOBS = [
   'bitvid-working-webtorrent/**',
   'scripts/agent/**',
   'docs/capacitor-native-app-plan.md',
-  'perf/**'
+  'perf/**',
+  'test_logs/**',
+  'context/**',
+  'decisions/**',
+  'todo/**'
 ];
 
 const gitArgs = [
@@ -56,7 +60,8 @@ for (const glob of IGNORED_GLOBS) {
 
 // We rely on 'git' being available and 'git grep' supporting -P.
 // Typically available in most CI/dev environments.
-const result = spawnSync('git', gitArgs, { encoding: 'utf8' });
+// Increase maxBuffer to 10MB to prevent ENOBUFS on large minified files
+const result = spawnSync('git', gitArgs, { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 });
 
 if (result.error) {
   console.error('Failed to execute git grep:', result.error.message);
