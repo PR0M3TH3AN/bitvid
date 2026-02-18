@@ -1,13 +1,12 @@
 # Prompt Library Status
 
-Last updated: 2026-02-13
+Last updated: 2026-02-15
 Run type: Daily
 
 ## Summary
 
 - **Total prompts**: 36 (21 daily, 15 weekly) + 2 schedulers
-- **Health**: Good. All prompts follow the canonical structure.
-  Verified `interop-agent` and `smoke-agent` are complete and not truncated.
+- **Health**: Good. Path validation checks passed after fixes.
 
 ## Changes This Run
 
@@ -15,8 +14,10 @@ Run type: Daily
 
 | File | Issue | Status |
 |------|-------|--------|
-| `weekly/bitvid-interop-agent.md` | Previously flagged as truncated | Verified complete (has Failure Modes, Outputs) |
-| `weekly/bitvid-smoke-agent.md` | Previously flagged as truncated | Verified complete (has Failure Modes, Outputs) |
+| `daily/bitvid-content-audit-agent.md` | Broken file paths | Fixed `upload-content.md`, `s3UploadService.js`, `UploadModal.js` paths |
+| `daily/bitvid-audit-agent.md` | Incorrect script extension | Fixed `.js` -> `.py` for audit parsers |
+| `daily/bitvid-const-refactor-agent.md` | Non-existent example path | Fixed `relayClient.js` -> `client.js` |
+| `weekly/bitvid-test-coverage-agent.md` | Non-existent example paths | Fixed `parseEvent.js` -> `eventsMap.js`, `kvStore.js` -> `cache.js` |
 
 ## Known Remaining Issues
 
@@ -75,7 +76,7 @@ Run type: Daily
 | 20 | test-audit-agent | `bitvid-test-audit-agent.md` | Complete |
 | 21 | todo-triage-agent | `bitvid-todo-triage-agent.md` | Complete |
 
-### Weekly Prompts (15)
+### Weekly Prompts (16)
 
 | # | Agent Name | Prompt File | Canonical Sections |
 |---|-----------|-------------|-------------------|

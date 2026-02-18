@@ -156,7 +156,19 @@ export default class ExploreDataService {
     this.refreshWatchHistoryTagCounts({ force: true, reason: "init" });
     this.refreshTagIdf({ force: true, reason: "init" });
     this.subscribeToUpdates();
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", this.handleVisibility);
+    }
     this.startIntervals();
+  }
+
+  handleVisibility() {
+    if (typeof document === "undefined") return;
+    if (document.hidden) {
+      this.clearIntervals();
+    } else {
+      this.startIntervals();
+    }
   }
 
   startIntervals() {
@@ -172,6 +184,7 @@ export default class ExploreDataService {
       this.historyRefreshIntervalMs > 0
     ) {
       this.watchHistoryInterval = setInterval(() => {
+        if (typeof document !== "undefined" && document.hidden) return;
         this.refreshWatchHistoryTagCounts({ reason: "interval" });
       }, this.historyRefreshIntervalMs);
     }
@@ -180,6 +193,7 @@ export default class ExploreDataService {
       this.idfRefreshIntervalMs > 0
     ) {
       this.tagIdfInterval = setInterval(() => {
+        if (typeof document !== "undefined" && document.hidden) return;
         this.refreshTagIdf({ reason: "interval" });
       }, this.idfRefreshIntervalMs);
     }
@@ -212,6 +226,14 @@ export default class ExploreDataService {
       }
     });
     this.unsubscribeHandlers = [];
+
+    if (typeof document !== "undefined") {
+      const handler = () => this.handleVisibilityChange();
+      document.addEventListener("visibilitychange", handler);
+      this.unsubscribeHandlers.push(() => {
+        document.removeEventListener("visibilitychange", handler);
+      });
+    }
 
     if (this.watchHistoryService && typeof this.watchHistoryService.subscribe === "function") {
       const unsubscribe = this.watchHistoryService.subscribe("fingerprint", () => {
@@ -339,6 +361,9 @@ export default class ExploreDataService {
       );
     }
     this.clearIntervals();
+    if (typeof document !== "undefined") {
+      document.removeEventListener("visibilitychange", this.handleVisibility);
+    }
 
     if (this.watchHistoryRefreshHandle) {
       clearTimeout(this.watchHistoryRefreshHandle);

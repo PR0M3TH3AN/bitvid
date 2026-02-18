@@ -117,7 +117,7 @@ export class SubscriptionHistoryController {
   async fetchHistory() {
     if (!this.loadingIndicator) return;
     this.loadingIndicator.classList.remove("hidden");
-    this.listContainer.innerHTML = "";
+    this.listContainer.replaceChildren();
     this.emptyIndicator.classList.add("hidden");
 
     try {
@@ -133,7 +133,7 @@ export class SubscriptionHistoryController {
   }
 
   renderList() {
-    this.listContainer.innerHTML = "";
+    this.listContainer.replaceChildren();
     if (!this.historyEvents.length) {
       this.emptyIndicator.classList.remove("hidden");
       return;
@@ -154,17 +154,30 @@ export class SubscriptionHistoryController {
       });
       const timeAgo = formatTimeAgo(event.created_at);
 
-      item.innerHTML = `
-            <div class="flex justify-between items-start">
-                <div>
-                    <p class="text-sm font-medium text-text">${
-                      isBackup ? "Backup" : "Standard List"
-                    }</p>
-                    <p class="text-xs text-muted">${dateStr}</p>
-                </div>
-                <span class="text-xs text-muted whitespace-nowrap ml-2">${timeAgo}</span>
-            </div>
-          `;
+      const divFlex = document.createElement("div");
+      divFlex.className = "flex justify-between items-start";
+
+      const divLeft = document.createElement("div");
+
+      const pTitle = document.createElement("p");
+      pTitle.className = "text-sm font-medium text-text";
+      pTitle.textContent = isBackup ? "Backup" : "Standard List";
+
+      const pDate = document.createElement("p");
+      pDate.className = "text-xs text-muted";
+      pDate.textContent = dateStr;
+
+      divLeft.appendChild(pTitle);
+      divLeft.appendChild(pDate);
+
+      const spanTime = document.createElement("span");
+      spanTime.className = "text-xs text-muted whitespace-nowrap ml-2";
+      spanTime.textContent = timeAgo;
+
+      divFlex.appendChild(divLeft);
+      divFlex.appendChild(spanTime);
+
+      item.appendChild(divFlex);
 
       item.addEventListener("click", () => {
         this.listContainer.querySelectorAll("li").forEach((li) => {
@@ -184,7 +197,7 @@ export class SubscriptionHistoryController {
     this.selectedEvent = event;
     this.detailsEmpty.classList.add("hidden");
     this.detailsContainer.classList.remove("hidden");
-    this.selectedChannelsList.innerHTML = "";
+    this.selectedChannelsList.replaceChildren();
     this.decryptingIndicator.classList.remove("hidden");
 
     const date = new Date(event.created_at * 1000);
@@ -225,7 +238,10 @@ export class SubscriptionHistoryController {
       this.renderChannels(pubkeys);
     } catch (error) {
       userLogger.error("Failed to decrypt event:", error);
-      this.selectedChannelsList.innerHTML = `<p class="text-critical text-sm text-center w-full mt-4">Decryption failed or content is invalid.</p>`;
+      const errorP = document.createElement("p");
+      errorP.className = "text-critical text-sm text-center w-full mt-4";
+      errorP.textContent = "Decryption failed or content is invalid.";
+      this.selectedChannelsList.replaceChildren(errorP);
       this.selectedMeta.textContent = "Unknown content";
     } finally {
       this.decryptingIndicator.classList.add("hidden");
@@ -233,7 +249,7 @@ export class SubscriptionHistoryController {
   }
 
   async renderChannels(pubkeys) {
-    this.selectedChannelsList.innerHTML = "";
+    this.selectedChannelsList.replaceChildren();
 
     const app = getApplication();
     if (app && typeof app.batchFetchProfiles === "function") {

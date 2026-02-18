@@ -143,10 +143,11 @@ To run **bitvid** locally:
 
 2. Install dependencies:
 
-   The project requires Node.js v22 or higher. Use `npm ci` to install dependencies exactly as specified in `package-lock.json`.
+   Use `npm ci` to install dependencies exactly as specified in `package-lock.json`. If you intend to run smoke, visual, or end-to-end tests, also install Playwright browsers.
 
    ```bash
    npm ci
+   npx playwright install
    ```
 
 3. Start the application:
@@ -174,6 +175,7 @@ To run **bitvid** locally:
    Run tests and linting to ensure everything is working correctly.
 
    ```bash
+   npx playwright install    # Install browsers for smoke/visual tests
    npm run test:unit:shard1  # Run a subset of tests for speed
    npm run test:smoke        # Critical path verification
    npm run format
@@ -208,14 +210,12 @@ For detailed architecture and system documentation, see the [Documentation Index
 
 **Other commands:**
 
-- **Run smoke tests**: `npm run test:smoke`
 - **Run load tests**: `npm run test:load`
 - **Run DM unit tests**: `npm run test:dm:unit`
 - **Run DM integration tests**: `npm run test:dm:integration`
 - **Run headless E2E tests**: `npm run test:e2e`
 - **Run visual regression tests**: `npm run test:visual`
 - **Update visual baselines**: `npm run test:visual:update`
-- **Run smoke tests**: `npm run test:smoke` (Critical path verification)
 - **Run design system audit**: `npm run audit` (Generates remediation report)
 - **Aggregate telemetry**: `npm run telemetry:aggregate`
 - **Cancel CI runs**: See [`docs/cancelling-ci-runs.md`](docs/cancelling-ci-runs.md) for a script to clear pending workflows.
