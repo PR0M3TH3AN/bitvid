@@ -31,6 +31,7 @@ WORKFLOW — top-level steps (one file only)
    - `node -v` and `npm -v` recorded in `context/CONTEXT_<timestamp>.md`
    - Run the innerHTML report:
      ```
+     mkdir -p perf/innerhtml
      node scripts/check-innerhtml.mjs --report | tee perf/innerhtml/raw-report-$(date +%F).log
      ```
    - Inspect the report and **choose exactly one file** to migrate. Prefer:

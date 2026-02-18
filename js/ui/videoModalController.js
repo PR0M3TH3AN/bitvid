@@ -1,4 +1,5 @@
 import { devLogger, userLogger } from "../utils/logger.js";
+import { SHORT_TIMEOUT_MS } from "../constants.js";
 
 export default class VideoModalController {
   constructor({
@@ -180,7 +181,7 @@ export default class VideoModalController {
       if (this.showStatus) {
         this.showStatus(
           "Warning: No peers detected. Playback may fail or stall.",
-          { autoHideMs: 5000 },
+          { autoHideMs: SHORT_TIMEOUT_MS },
         );
       }
       // Proceed anyway

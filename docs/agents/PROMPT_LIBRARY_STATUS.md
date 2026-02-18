@@ -1,6 +1,6 @@
 # Prompt Library Status
 
-Last updated: 2026-02-13
+Last updated: 2026-02-17
 Run type: Daily
 
 ## Summary
@@ -15,8 +15,7 @@ Run type: Daily
 
 | File | Issue | Status |
 |------|-------|--------|
-| `weekly/bitvid-interop-agent.md` | Previously flagged as truncated | Verified complete (has Failure Modes, Outputs) |
-| `weekly/bitvid-smoke-agent.md` | Previously flagged as truncated | Verified complete (has Failure Modes, Outputs) |
+| (none) | No P0/P1 issues found. Verified script references and policy alignment. | Verified |
 
 ## Known Remaining Issues
 

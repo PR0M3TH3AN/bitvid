@@ -123,12 +123,14 @@ ADDITIONAL GUIDANCE & BEST PRACTICES
 ===============================================================================
 SEARCH / PARSING HELPER SCRIPTS (examples)
 - Parse file-size raw log into JSON:
-  - `node scripts/parse-file-size-report.js artifacts/audit/YYYY-MM-DD/raw-check-file-size.log > artifacts/audit/YYYY-MM-DD/file-size-report.json`
+  - `python3 scripts/agent/audit-parsers/parse_file_size.py artifacts/audit/YYYY-MM-DD/raw-check-file-size.log > artifacts/audit/YYYY-MM-DD/file-size-report.json`
 - Parse innerHTML log similarly:
-  - `node scripts/parse-innerhtml-report.js ...`
+  - `python3 scripts/agent/audit-parsers/parse_innerhtml.py artifacts/audit/YYYY-MM-DD/raw-check-innerhtml.log > artifacts/audit/YYYY-MM-DD/innerhtml-report.json`
+- Parse lint log similarly:
+  - `python3 scripts/agent/audit-parsers/parse_lint.py artifacts/audit/YYYY-MM-DD/raw-lint.log > artifacts/audit/YYYY-MM-DD/lint-report.json`
 - If the repo’s scripts support `--json` or `--output`, prefer those flags.
 
-If such parsers do not exist, implement tiny Node scripts that reliably parse the scripts’ expected output.
+Use the existing Python parsers in `scripts/agent/audit-parsers/`. Do not implement new Node.js parsers unless necessary.
 
 ===============================================================================
 REPORT FORMAT (Markdown snippet to post)
@@ -216,7 +218,7 @@ FIRST-RUN CHECKLIST (do this now)
    - `npm run lint`
    - Save raw outputs to `artifacts/audit/$(date +%F)/`
    - Record commands & outputs in `test_logs/TEST_LOG_<timestamp>.md`
-4. Parse outputs into JSON (use existing script or small Node parser).
+4. Parse outputs into JSON (use existing Python parsers in `scripts/agent/audit-parsers/` or implement small Python scripts).
 5. Compute metrics and compare with the last report (search issues/PRs).
 6. Create `artifacts/audit/$(date +%F)/summary.md`.
 7. Post summary comment on existing audit issue/PR or open a new `Audit Report — YYYY-MM-DD` issue (label `audit-report`) with artifacts attached.
