@@ -1,21 +1,26 @@
 # Prompt Library Status
 
-Last updated: 2026-02-17
+Last updated: 2026-02-18
 Run type: Daily
 
 ## Summary
 
 - **Total prompts**: 36 (21 daily, 15 weekly) + 2 schedulers
 - **Health**: Good. All prompts follow the canonical structure.
-  Verified `interop-agent` and `smoke-agent` are complete and not truncated.
+  Verified `test-audit-agent` update is consistent with repo policy.
 
 ## Changes This Run
 
 ### Verified Fixes
 
-| File | Issue | Status |
-|------|-------|--------|
-| `daily/bitvid-audit-agent.md` | Misleading Node.js parser examples | Fixed: updated to reference existing Python parsers in `scripts/agent/audit-parsers/` |
+None.
+
+### Audited Prompts (Sample)
+
+- `daily/bitvid-test-audit-agent.md` (Verified recent update)
+- `daily/bitvid-docs-alignment-agent.md` (Verified valid)
+- `daily/bitvid-docs-agent.md` (Verified valid)
+- `daily/bitvid-known-issues-agent.md` (Verified valid)
 
 ## Known Remaining Issues
 
