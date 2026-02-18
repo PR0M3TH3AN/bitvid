@@ -1,2 +1,0 @@
-docs/agents/RESEARCH_LOG.md:33:   most require `CONTEXT.md`, `TODO.md`, `DECISIONS.md`, `TEST_LOG.md`
-js/ui/profileModalContract.js:146:      "Formats npub strings for display using the canonical short representation (npubXXXX…XXXX).",

@@ -38,8 +38,8 @@ def run():
         page.on("requestfailed", on_request_failed)
 
         try:
-            log("INFO", "Navigating to http://localhost:8000...")
-            page.goto("http://localhost:8000")
+            log("INFO", "Navigating to http://localhost:3000...")
+            page.goto("http://localhost:3000")
 
             # Wait for load state to ensure initial resources are loaded
             try:
