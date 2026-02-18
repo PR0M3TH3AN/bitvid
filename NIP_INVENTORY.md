@@ -17,7 +17,7 @@
 | **NIP-56** | Reporting | `js/services/moderationService.js`, `docs/nips/56.md` | Compliant | `buildReportEvent` implements Kind 1984. |
 | **NIP-57** | Zaps | `js/payments/zapRequests.js`, `js/payments/zapSplit.js` | Compliant | Implements Kind 9734/9735 flow. |
 | **NIP-59** | Gift Wrap | `js/nostr/client.js` | Compliant | Implemented as part of NIP-17. |
-| **NIP-65** | Relay List Metadata | `js/relayManager.js` | Partial | Code supports Kind 10002. Test `nip65_compliance.test.mjs` is missing. |
+| **NIP-65** | Relay List Metadata | `js/relayManager.js` | Compliant | Code supports Kind 10002. Verified by `tests/nostr-specs/nip65_compliance.test.mjs`. |
 | **NIP-71** | Video Events | `js/nostr/nip71.js` | Partial | Kinds 21/22 supported in schema, but Kind 30078 is primary. Verified tag generation in `tests/nostr-specs/kind30078.test.mjs`. |
 | **NIP-78** | Application-specific data | `js/services/hashtagPreferencesService.js` | Compliant | Used for hashtag preferences (Kind 30015). |
 | **NIP-94** | File Metadata | `js/nostr/videoPublisher.js` | Compliant | `buildVideoMirrorEvent` implements Kind 1063. |
