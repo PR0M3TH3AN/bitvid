@@ -106,32 +106,16 @@ function buildLink(item) {
 }
 
 function getChevronIcon(expanded) {
-  const xmlns = "http://www.w3.org/2000/svg";
-  const svg = document.createElementNS(xmlns, "svg");
-  svg.setAttribute("viewBox", "0 0 20 20");
-  svg.setAttribute("fill", "currentColor");
-  svg.setAttribute("class", "w-4 h-4");
-
-  const path = document.createElementNS(xmlns, "path");
-  path.setAttribute("fill-rule", "evenodd");
-  path.setAttribute("clip-rule", "evenodd");
-
   if (expanded) {
     // Chevron Down
-    path.setAttribute(
-      "d",
-      "M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-    );
-  } else {
-    // Chevron Right
-    path.setAttribute(
-      "d",
-      "M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
-    );
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
+      <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+    </svg>`;
   }
-
-  svg.appendChild(path);
-  return svg;
+  // Chevron Right
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
+    <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+  </svg>`;
 }
 
 function buildToggleButton(item, controlsId, expanded, groupList) {
@@ -141,12 +125,12 @@ function buildToggleButton(item, controlsId, expanded, groupList) {
   button.setAttribute("aria-expanded", expanded ? "true" : "false");
   button.setAttribute("aria-controls", controlsId);
   button.setAttribute("aria-label", `Toggle ${item.title || item.slug} section`);
-  button.replaceChildren(getChevronIcon(expanded));
+  button.innerHTML = getChevronIcon(expanded);
   button.addEventListener("click", () => {
     const isExpanded = button.getAttribute("aria-expanded") === "true";
     const nextExpanded = !isExpanded;
     button.setAttribute("aria-expanded", nextExpanded ? "true" : "false");
-    button.replaceChildren(getChevronIcon(nextExpanded));
+    button.innerHTML = getChevronIcon(nextExpanded);
     if (groupList) {
       groupList.hidden = !nextExpanded;
       groupList.classList.toggle("hidden", !nextExpanded);
@@ -215,7 +199,7 @@ function renderToc(items) {
   tocState.groupLookup.clear();
 
   roots.forEach((root) => {
-    root.replaceChildren();
+    root.innerHTML = "";
     const groupPrefix = root.id ? `docs-${root.id}` : "docs-toc";
     renderTocItems(items, root, 0, groupPrefix);
   });
@@ -253,7 +237,7 @@ function updateActiveToc(slug) {
       groups.forEach((group) => {
         if (group?.button && group?.list) {
           group.button.setAttribute("aria-expanded", "true");
-          group.button.replaceChildren(getChevronIcon(true));
+          group.button.innerHTML = getChevronIcon(true);
           group.list.hidden = false;
           group.list.classList.remove("hidden");
         }
@@ -455,8 +439,6 @@ async function renderMarkdown(path) {
     }
     const markdownText = await response.text();
     const html = window.marked.parse(markdownText);
-    // TRUSTED: Docs content is internal and trusted.
-    // Migration blocked: No sanitizer available (DOMPurify).
     container.innerHTML = html;
     highlightCodeBlocks(container);
     const schedule =
@@ -468,10 +450,8 @@ async function renderMarkdown(path) {
     });
   } catch (error) {
     logger.user.error("Error loading docs content.", error);
-    const p = document.createElement("p");
-    p.className = "text-critical-strong";
-    p.textContent = "Error loading content. Please try again later.";
-    container.replaceChildren(p);
+    container.innerHTML =
+      '<p class="text-critical-strong">Error loading content. Please try again later.</p>';
   }
 }
 
@@ -639,17 +619,13 @@ async function initDocsView() {
     logger.user.error("Failed to initialize docs view.", error);
     const tocRoot = document.getElementById(TOC_LIST_ID);
     if (tocRoot) {
-      const p = document.createElement("p");
-      p.className = "text-critical-strong";
-      p.textContent = "Unable to load docs table of contents.";
-      tocRoot.replaceChildren(p);
+      tocRoot.innerHTML =
+        '<p class="text-critical-strong">Unable to load docs table of contents.</p>';
     }
     const container = document.getElementById("markdown-container");
     if (container) {
-      const p = document.createElement("p");
-      p.className = "text-critical-strong";
-      p.textContent = "Error loading content. Please try again later.";
-      container.replaceChildren(p);
+      container.innerHTML =
+        '<p class="text-critical-strong">Error loading content. Please try again later.</p>';
     }
   }
 }

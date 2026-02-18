@@ -130,16 +130,12 @@ test.describe("Data-testid selectors are present", () => {
   }) => {
     await gotoApp();
 
-    // Wait for the app to finish bootstrapping (evidenced by the disclaimer modal being loaded)
-    // This prevents a race condition where the login button click handler hasn't been attached yet.
-    await page.locator("#disclaimerModal").waitFor({ state: "attached" });
-
     // Open the login modal
     await page.locator('[data-testid="login-button"]').click();
 
     // Wait for modal to be visible
     await expect(page.locator('[data-testid="login-modal"]')).toBeVisible({
-      timeout: 15000,
+      timeout: 5000,
     });
 
     // Check provider buttons exist
@@ -147,7 +143,7 @@ test.describe("Data-testid selectors are present", () => {
       '[data-testid="login-provider-button"]',
     );
     // At least one provider button should be present
-    await expect(providerButtons.first()).toBeVisible({ timeout: 15000 });
+    await expect(providerButtons.first()).toBeVisible({ timeout: 5000 });
   });
 });
 

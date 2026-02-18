@@ -146,8 +146,8 @@ PR & COMMIT CONVENTIONS
 
 - Branch: `ai/tests-<module>-YYYYMMDD`
 - Commit message examples:
-  - `test(ai): add unit tests for js/nostr/eventsMap.js (agent)`
-  - `test(ai): add fake-indexeddb tests for js/state/cache.js (agent)`
+  - `test(ai): add unit tests for js/nostr/parseEvent.js (agent)`
+  - `test(ai): add fake-indexeddb tests for js/state/kvStore.js (agent)`
 - PR title: `test(ai): add unit tests for <module>`
 - PR body must include:
   - Baseline test/coverage run summary

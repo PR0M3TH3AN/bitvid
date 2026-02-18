@@ -1782,7 +1782,7 @@ export function createWatchHistoryRenderer(config = {}) {
 
   function showEmptyState() {
     if (elements.grid) {
-      elements.grid.replaceChildren();
+      elements.grid.innerHTML = "";
       setHidden(elements.grid, true);
     }
     clearHistoryCardRegistry();
@@ -1806,7 +1806,7 @@ export function createWatchHistoryRenderer(config = {}) {
     }
     detachObserver();
     if (elements.grid) {
-      elements.grid.replaceChildren();
+      elements.grid.innerHTML = "";
       setHidden(elements.grid, true);
     }
     if (elements.empty) {
@@ -2304,7 +2304,7 @@ export function createWatchHistoryRenderer(config = {}) {
     }
     state.cursor = 0;
     state.hasMore = state.items.length > 0;
-    elements.grid.replaceChildren();
+    elements.grid.innerHTML = "";
     clearHistoryCardRegistry();
     removeEmptyDayContainers(elements.grid);
     if (!state.items.length) {
@@ -2427,7 +2427,7 @@ export function createWatchHistoryRenderer(config = {}) {
       }
       clearSubscriptions();
       if (elements.grid) {
-        elements.grid.replaceChildren();
+        elements.grid.innerHTML = "";
       }
       clearHistoryCardRegistry();
       state.initialized = false;

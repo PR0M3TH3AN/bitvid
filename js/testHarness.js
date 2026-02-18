@@ -19,7 +19,6 @@ import {
   listRegisteredSigners,
 } from "./nostrClientRegistry.js";
 import { devLogger } from "./utils/logger.js";
-import { STANDARD_TIMEOUT_MS } from "./constants.js";
 
 const HARNESS_VERSION = 1;
 
@@ -209,7 +208,7 @@ function waitForFeedItems(minCount = 1, timeoutMs = 15000) {
 /**
  * Wait for a specific DOM element matching a selector.
  */
-function waitForSelector(selector, timeoutMs = STANDARD_TIMEOUT_MS) {
+function waitForSelector(selector, timeoutMs = 10000) {
   return new Promise((resolve, reject) => {
     const start = Date.now();
 

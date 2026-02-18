@@ -1,7 +1,0 @@
-- [ ] load(): template.innerHTML = html (Line 26) - Assess if replaceable or keep.
-- [ ] fetchHistory(): this.listContainer.innerHTML = "" (Line 118) -> replaceChildren() or textContent=""
-- [ ] renderList(): this.listContainer.innerHTML = "" (Line 134) -> replaceChildren() or textContent=""
-- [ ] renderList(): item.innerHTML = ... (Line 155) -> Convert to createElement/appendChild
-- [ ] selectEvent(): this.selectedChannelsList.innerHTML = "" (Line 185) -> replaceChildren()
-- [ ] selectEvent(): this.selectedChannelsList.innerHTML = error msg (Line 226) -> createElement
-- [ ] renderChannels(): this.selectedChannelsList.innerHTML = "" (Line 234) -> replaceChildren()
