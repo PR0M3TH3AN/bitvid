@@ -147,28 +147,10 @@ export default class ExploreDataService {
   }
 
   initialize() {
-    if (typeof document !== "undefined") {
-      document.addEventListener(
-        "visibilitychange",
-        this.boundHandleVisibilityChange
-      );
-    }
     this.refreshWatchHistoryTagCounts({ force: true, reason: "init" });
     this.refreshTagIdf({ force: true, reason: "init" });
     this.subscribeToUpdates();
-    if (typeof document !== "undefined") {
-      document.addEventListener("visibilitychange", this.handleVisibility);
-    }
     this.startIntervals();
-  }
-
-  handleVisibility() {
-    if (typeof document === "undefined") return;
-    if (document.hidden) {
-      this.clearIntervals();
-    } else {
-      this.startIntervals();
-    }
   }
 
   startIntervals() {
@@ -204,6 +186,8 @@ export default class ExploreDataService {
     if (document.hidden) {
       this.clearIntervals();
     } else {
+      this.refreshWatchHistoryTagCounts({ reason: "visibility" });
+      this.refreshTagIdf({ reason: "visibility" });
       this.startIntervals();
     }
   }
@@ -354,16 +338,7 @@ export default class ExploreDataService {
   }
 
   destroy() {
-    if (typeof document !== "undefined") {
-      document.removeEventListener(
-        "visibilitychange",
-        this.boundHandleVisibilityChange
-      );
-    }
     this.clearIntervals();
-    if (typeof document !== "undefined") {
-      document.removeEventListener("visibilitychange", this.handleVisibility);
-    }
 
     if (this.watchHistoryRefreshHandle) {
       clearTimeout(this.watchHistoryRefreshHandle);
