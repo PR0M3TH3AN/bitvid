@@ -1,32 +1,39 @@
-# Developer Onboarding Audit
+# Onboarding Audit Report
 
-**Date:** 2026-02-12
-**Environment:** Linux (x64) | Node.js v22
+**Date:** 2026-02-15
+**Agent:** onboarding-audit-agent
+**Status:** ⚠️ Onboarding failures found (Fixed in this run)
 
-## Steps Executed
+## Environment
+- **Node:** v22.22.0
+- **NPM:** 11.10.0
+- **OS:** Linux
 
-1.  `npm ci`: Successful.
-2.  `npm run build:css`: Successful.
-3.  `npm run format`: Successful.
-4.  `npm run build`: Successful (required for full lint coverage).
-5.  `npm run lint`: Successful.
-    -   `lint:assets` skipped initially when `dist/` was missing, then passed after `npm run build`.
-    -   `lint:sw-compat` skipped due to missing git history (expected in shallow clones).
-6.  `npm run test:unit`: Successful (13 tests passed).
+## Executed Steps (Clean Environment)
 
-## Findings
+| Step | Command | Result | Notes |
+|------|---------|--------|-------|
+| 1 | `npm ci` | ✅ Pass | Installed dependencies successfully. |
+| 2 | `npm run build` | ✅ Pass | Build verified manually (simulating `npm start` build step). |
+| 3 | `npm run test:unit:shard1` | ✅ Pass | Unit tests passed. |
+| 4 | `npm run test:smoke` | ❌ Fail / ✅ Pass | Failed initially due to missing Playwright browsers. Passed after running `npx playwright install`. |
+| 5 | `npm run format` | ✅ Pass | Format check passed. |
+| 6 | `npm run lint` | ✅ Pass | Lint check passed. |
 
--   **Reliability:** The onboarding steps are robust. Dependencies installed correctly, and build/test scripts executed without error.
--   **Documentation:**
-    -   `README.md` correctly lists `npm ci`, `npm start` (which builds), and `npm run test:unit`. It was missing `npm run lint` in the "Verify setup" checklist.
-    -   `CONTRIBUTING.md` correctly lists `npm run format` and `npm run lint`. It did not explicitly mention that `npm run build` is a prerequisite for `lint:assets` (though the lint script handles the missing build gracefully).
--   **Dev Container:** The `.devcontainer/devcontainer.json` uses `mcr.microsoft.com/devcontainers/javascript-node:22` which aligns with the project's requirement. However, `postCreateCommand` uses `npx playwright install` without `--with-deps`, which might fail if system dependencies are missing in the base image.
--   **Node Version:** `package.json` correctly enforces `"engines": { "node": ">=22" }`.
+## Failures & Fixes
 
-## Recommendations Implemented
+### 1. Missing Playwright Browsers
+**Command:** `npm run test:smoke`
+**Failure:**
+```
+browserType.launch: Executable doesn't exist at /home/jules/.cache/ms-playwright/chromium_headless_shell-1208/chrome-headless-shell-linux64/chrome-headless-shell
+Looks like Playwright Test or Playwright was just installed or updated.
+Please run the following command to download new browsers:
+    npx playwright install
+```
+**Root Cause:** `npm ci` installs the `@playwright/test` package but does not download the browser binaries required for smoke and visual tests. The documentation did not mention this step for local setup.
+**Fix:** Updated `README.md` and `CONTRIBUTING.md` to include `npx playwright install` as a required step for running these tests.
 
-1.  **Documentation Updates:**
-    -   Added `npm run lint` to `README.md` verification steps.
-    -   Clarified build prerequisites for linting in `CONTRIBUTING.md`.
-2.  **Dev Container Robustness:**
-    -   Updated `.devcontainer/devcontainer.json` to use `npx playwright install --with-deps`.
+## Documentation Updates
+- **README.md**: Added `npx playwright install` note to "Local Setup".
+- **CONTRIBUTING.md**: Added `npx playwright install` note to "Development Setup".

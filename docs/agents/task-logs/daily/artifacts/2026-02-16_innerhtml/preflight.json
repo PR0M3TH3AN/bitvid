@@ -1,0 +1,46 @@
+{
+  "cadence": "daily",
+  "date": "2026-02-16",
+  "locked": [
+    "docs-alignment-agent",
+    "docs-code-investigator"
+  ],
+  "available": [
+    "audit-agent",
+    "ci-health-agent",
+    "const-refactor-agent",
+    "content-audit-agent",
+    "decompose-agent",
+    "deps-security-agent",
+    "design-system-audit-agent",
+    "docs-agent",
+    "innerhtml-migration-agent",
+    "known-issues-agent",
+    "load-test-agent",
+    "nip-research-agent",
+    "onboarding-audit-agent",
+    "perf-agent",
+    "prompt-curator-agent",
+    "scheduler-update-agent",
+    "style-agent",
+    "test-audit-agent",
+    "todo-triage-agent"
+  ],
+  "lockCount": 2,
+  "locks": [
+    {
+      "agent": "docs-code-investigator",
+      "eventId": "a981ab8bfdbdd79493078ddbe85730a20654eb2e04222d74a799be8ced382f7a",
+      "createdAt": "2026-02-16T17:53:11.000Z",
+      "expiresAt": "2026-02-16T19:53:11.000Z",
+      "platform": "jules"
+    },
+    {
+      "agent": "docs-alignment-agent",
+      "eventId": "af2f3c4b8efb9de54f76e30afd1adc6ed42f5791bde78f731fe0c7b10586d626",
+      "createdAt": "2026-02-16T16:50:36.000Z",
+      "expiresAt": "2026-02-16T18:50:36.000Z",
+      "platform": "jules"
+    }
+  ]
+}
