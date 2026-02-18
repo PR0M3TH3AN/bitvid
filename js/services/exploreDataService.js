@@ -143,16 +143,10 @@ export default class ExploreDataService {
     this.watchHistoryInterval = null;
     this.tagIdfInterval = null;
     this.unsubscribeHandlers = [];
-    this.boundHandleVisibilityChange = this.handleVisibilityChange.bind(this);
+    this.handleVisibility = this.handleVisibility.bind(this);
   }
 
   initialize() {
-    if (typeof document !== "undefined") {
-      document.addEventListener(
-        "visibilitychange",
-        this.boundHandleVisibilityChange
-      );
-    }
     this.refreshWatchHistoryTagCounts({ force: true, reason: "init" });
     this.refreshTagIdf({ force: true, reason: "init" });
     this.subscribeToUpdates();
@@ -167,44 +161,23 @@ export default class ExploreDataService {
     if (document.hidden) {
       this.clearIntervals();
     } else {
+      this.refreshWatchHistoryTagCounts({ reason: "visibility" });
+      this.refreshTagIdf({ reason: "visibility" });
       this.startIntervals();
     }
   }
 
   startIntervals() {
     this.clearIntervals();
-
-    // If hidden, do not start intervals (will start on visibility change)
-    if (typeof document !== "undefined" && document.hidden) {
-      return;
-    }
-
-    if (
-      Number.isFinite(this.historyRefreshIntervalMs) &&
-      this.historyRefreshIntervalMs > 0
-    ) {
+    if (Number.isFinite(this.historyRefreshIntervalMs) && this.historyRefreshIntervalMs > 0) {
       this.watchHistoryInterval = setInterval(() => {
-        if (typeof document !== "undefined" && document.hidden) return;
         this.refreshWatchHistoryTagCounts({ reason: "interval" });
       }, this.historyRefreshIntervalMs);
     }
-    if (
-      Number.isFinite(this.idfRefreshIntervalMs) &&
-      this.idfRefreshIntervalMs > 0
-    ) {
+    if (Number.isFinite(this.idfRefreshIntervalMs) && this.idfRefreshIntervalMs > 0) {
       this.tagIdfInterval = setInterval(() => {
-        if (typeof document !== "undefined" && document.hidden) return;
         this.refreshTagIdf({ reason: "interval" });
       }, this.idfRefreshIntervalMs);
-    }
-  }
-
-  handleVisibilityChange() {
-    if (typeof document === "undefined") return;
-    if (document.hidden) {
-      this.clearIntervals();
-    } else {
-      this.startIntervals();
     }
   }
 
@@ -226,14 +199,6 @@ export default class ExploreDataService {
       }
     });
     this.unsubscribeHandlers = [];
-
-    if (typeof document !== "undefined") {
-      const handler = () => this.handleVisibilityChange();
-      document.addEventListener("visibilitychange", handler);
-      this.unsubscribeHandlers.push(() => {
-        document.removeEventListener("visibilitychange", handler);
-      });
-    }
 
     if (this.watchHistoryService && typeof this.watchHistoryService.subscribe === "function") {
       const unsubscribe = this.watchHistoryService.subscribe("fingerprint", () => {
@@ -354,12 +319,6 @@ export default class ExploreDataService {
   }
 
   destroy() {
-    if (typeof document !== "undefined") {
-      document.removeEventListener(
-        "visibilitychange",
-        this.boundHandleVisibilityChange
-      );
-    }
     this.clearIntervals();
     if (typeof document !== "undefined") {
       document.removeEventListener("visibilitychange", this.handleVisibility);

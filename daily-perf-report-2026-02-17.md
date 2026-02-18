@@ -1,32 +1,27 @@
-# Daily Perf Report: 2026-02-17
+# Daily Perf Report - 2026-02-17
 
-**Summary**: Initial run established baseline hits. Identified and fixed P0 unbounded concurrency in `relayManager.js` causing potential network saturation during relay list hydration.
+**Summary:** Bounded concurrency for channel video fetching; audited upload documentation.
 
-## Findings
+## Findings & Fixes
 
-### P0: Unbounded Relay List Hydration
-- **File**: `js/relayManager.js`
-- **Location**: `loadRelayList` (lines 376-384)
-- **Impact**: Simultaneously opens connections to all relays in a user's list (often > 20) during hydration, causing main-thread stutter and potential socket timeouts.
-- **Fix**: Implemented bounded concurrency using `pMap` (limit = 3).
-- **Status**: **FIXED** (PR pending)
+### P1: Unbounded Concurrency in Channel Profile
+- **File:** `js/channelProfile.js`
+- **Function:** `loadUserVideos`
+- **Issue:** Used `Promise.allSettled` on a map of all relays to fetch videos. This would trigger N concurrent requests (where N = relay count), potentially saturating the network.
+- **Fix:** Replaced with `pMap` using `RELAY_BACKGROUND_CONCURRENCY` (3). Preserved `Promise.allSettled` semantics by returning `{ status, value|reason }` objects from the mapper.
+- **Status:** Fixed.
 
-### P1: Potential Unbounded Promise.all in App Initialization
-- **File**: `js/app.js`
-- **Location**: `refreshAllVideoGrids`
-- **Impact**: Runs multiple refresh tasks in parallel. Currently low impact as tasks are fixed (subscription + channel), but warrants monitoring.
-- **Status**: Monitoring.
+### P0: Comment Events Concurrency
+- **File:** `js/nostr/commentEvents.js`
+- **Status:** Validated as already fixed (uses `pMap`). Updated baseline.
 
-### P2: WebTorrent Polling Interval
-- **File**: `js/webtorrent.js`
-- **Location**: `probePeers`
-- **Impact**: Polling `setInterval` runs every ~2.5s during probes.
-- **Mitigation**: Bounded by timeout and cleanup logic. Low priority.
+## Docs Audit
+- **Scope:** `content/docs/guides/upload-content.md`
+- **Verification:**
+  - **CORS Port:** Docs specify `http://localhost:3000`, matching the dev environment.
+  - **Upload Limit:** Docs state 2GB, which matches the client-side hashing limitation.
+- **Outcome:** Documentation is accurate; no changes needed.
 
 ## Metrics
-- **Hits**: 1308
-- **PRs Opened**: 1 (Fix unbounded relay concurrency)
-
-## Decisions
-- Using `RELAY_BACKGROUND_CONCURRENCY = 3` from `js/nostr/relayConstants.js`.
-- Refactored `loadRelayList` to use `pMap`.
+- **Login Time:** (No change measured)
+- **Relay Concurrency:** Enforced limit of 3 for background tasks.

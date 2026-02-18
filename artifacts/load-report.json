@@ -1,0 +1,129 @@
+{
+  "config": {
+    "clients": 1000,
+    "duration": 60,
+    "rate": 0.2,
+    "relay": null,
+    "outputDir": "artifacts"
+  },
+  "timestamp": "2026-02-12T19:10:35.621Z",
+  "durationSec": 63.068,
+  "throughput": 158.78099828756262,
+  "totalSent": 10014,
+  "totalAccepted": 10014,
+  "totalRejected": 0,
+  "totalErrors": 0,
+  "latency": {
+    "p50": 0,
+    "p95": 1,
+    "p99": 1,
+    "min": 0,
+    "max": 6,
+    "avg": 0.2518474136209307
+  },
+  "signingTime": {
+    "avg": 0.7027462706211202,
+    "max": 3.145286999999371
+  },
+  "resources": [
+    {
+      "time": 7994,
+      "cpuUser": 2231161,
+      "cpuSystem": 437532,
+      "rss": 119869440,
+      "heapTotal": 55013376,
+      "heapUsed": 28269464
+    },
+    {
+      "time": 12994,
+      "cpuUser": 3142379,
+      "cpuSystem": 522268,
+      "rss": 122753024,
+      "heapTotal": 56848384,
+      "heapUsed": 26284072
+    },
+    {
+      "time": 17994,
+      "cpuUser": 3977010,
+      "cpuSystem": 616834,
+      "rss": 125243392,
+      "heapTotal": 58683392,
+      "heapUsed": 24239504
+    },
+    {
+      "time": 22993,
+      "cpuUser": 4886434,
+      "cpuSystem": 708145,
+      "rss": 128258048,
+      "heapTotal": 60256256,
+      "heapUsed": 35053272
+    },
+    {
+      "time": 27993,
+      "cpuUser": 5695214,
+      "cpuSystem": 818451,
+      "rss": 131010560,
+      "heapTotal": 62328832,
+      "heapUsed": 32881992
+    },
+    {
+      "time": 32994,
+      "cpuUser": 6598049,
+      "cpuSystem": 901079,
+      "rss": 133763072,
+      "heapTotal": 64163840,
+      "heapUsed": 29520680
+    },
+    {
+      "time": 37994,
+      "cpuUser": 7410460,
+      "cpuSystem": 1001266,
+      "rss": 135860224,
+      "heapTotal": 65212416,
+      "heapUsed": 40101552
+    },
+    {
+      "time": 42994,
+      "cpuUser": 8255994,
+      "cpuSystem": 1088486,
+      "rss": 138219520,
+      "heapTotal": 67047424,
+      "heapUsed": 36800544
+    },
+    {
+      "time": 47994,
+      "cpuUser": 9094489,
+      "cpuSystem": 1172380,
+      "rss": 141234176,
+      "heapTotal": 68882432,
+      "heapUsed": 34655312
+    },
+    {
+      "time": 52994,
+      "cpuUser": 9929570,
+      "cpuSystem": 1275658,
+      "rss": 143724544,
+      "heapTotal": 69898240,
+      "heapUsed": 36593096
+    },
+    {
+      "time": 57995,
+      "cpuUser": 10749951,
+      "cpuSystem": 1294454,
+      "rss": 143724544,
+      "heapTotal": 69898240,
+      "heapUsed": 33902488
+    }
+  ],
+  "topHotFunctions": [
+    {
+      "function": "finalizeEvent (client signing)",
+      "avgTime": "0.70ms",
+      "impact": "Low/Moderate CPU usage"
+    }
+  ],
+  "errors": 0,
+  "proposedRemediation": [
+    "Signing speed is good (<10ms). Focus on network I/O."
+  ]
+}

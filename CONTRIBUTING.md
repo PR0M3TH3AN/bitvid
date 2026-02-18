@@ -132,14 +132,6 @@ To set up the project locally:
 
 4. **Run Tests**:
 
-   First, install the required browsers for UI testing:
-
-   ```bash
-   npx playwright install
-   ```
-
-   Then run the tests:
-
    ```bash
    npm run test:unit
    ```

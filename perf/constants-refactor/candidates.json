@@ -1,13 +1,5 @@
 [
   {
-    "value": 5000,
-    "semantic": "short timeout",
-    "occurrences": [
-      { "file": "js/subscriptions.js", "line": 1096, "context": "nip07DecryptTimeoutMs" }
-    ],
-    "canonical": { "name": "SHORT_TIMEOUT_MS", "file": "js/constants.js" }
-  },
-  {
     "value": 10000,
     "semantic": "STANDARD_TIMEOUT_MS",
     "occurrences": [
@@ -15,9 +7,7 @@
       {"file": "js/nostr/relayBatchFetcher.js", "line": 19, "context": "timeoutMs = 10000"},
       {"file": "js/nostr/relayBatchFetcher.js", "line": 135, "context": "timeoutMs : 10000"},
       {"file": "js/nostr/client.js", "line": 812, "context": "timeoutMs = 10000"},
-      {"file": "js/nostr/client.js", "line": 1425, "context": "timeoutMs || 10000"},
-      { "file": "js/userBlocks.js", "line": 1561, "context": "timeoutMs" }
-    ],
-    "canonical": { "name": "STANDARD_TIMEOUT_MS", "file": "js/constants.js" }
+      {"file": "js/nostr/client.js", "line": 1425, "context": "timeoutMs || 10000"}
+    ]
   }
 ]
