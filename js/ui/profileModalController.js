@@ -50,21 +50,6 @@ import { ProfileRelayController } from "./profileModal/ProfileRelayController.js
 import { ProfileHashtagController } from "./profileModal/ProfileHashtagController.js";
 import { ProfileAdminController } from "./profileModal/ProfileAdminController.js";
 import { ProfileModerationController } from "./profileModal/ProfileModerationController.js";
-import {
-  cacheDmRelayElements,
-  bindDmRelayControls,
-  refreshDmRelayPreferences,
-  handlePublishDmRelayPreferences,
-  updateDmPrivacyToggleForRecipient,
-  setPrivacyToggleState,
-  handleActiveDmIdentityChanged,
-} from "./profileModal/ProfileDmRelayBinder.js";
-import {
-  renderAttachmentQueue,
-  uploadAttachmentQueue,
-  resolveLatestDirectMessageForRecipient,
-  maybePublishTypingIndicator,
-} from "./profileModal/ProfileDmAttachmentBinder.js";
 
 const noop = () => {};
 
@@ -77,6 +62,8 @@ const DEFAULT_MAX_WALLET_DEFAULT_ZAP = 100000000;
 const DEFAULT_SAVED_PROFILE_LABEL = "Saved profile";
 const TRUSTED_MUTE_HIDE_HELPER_TEXT =
   "Reaching this count hides cards (with “Show anyway”); lower signals only blur thumbnails or block autoplay.";
+const TYPING_INDICATOR_TTL_SECONDS = 15;
+const TYPING_INDICATOR_COOLDOWN_MS = 4000;
 const DIRECT_MESSAGES_BATCH_DELAY_MS = 250;
 
 const ADD_PROFILE_CANCELLATION_CODES = new Set([
@@ -1019,40 +1006,233 @@ export class ProfileModalController {
 
 
   cacheDmRelayElements() {
-    cacheDmRelayElements(this);
+    this.dmController.profileMessagesRelayList =
+      document.getElementById("profileMessagesRelayList") || null;
+    this.dmController.profileMessagesRelayInput =
+      document.getElementById("profileMessagesRelayInput") || null;
+    this.dmController.profileMessagesRelayAddButton =
+      document.getElementById("profileMessagesRelayAdd") || null;
+    this.dmController.profileMessagesRelayPublishButton =
+      document.getElementById("profileMessagesRelayPublish") || null;
+    this.dmController.profileMessagesRelayStatus =
+      document.getElementById("profileMessagesRelayStatus") || null;
   }
 
   bindDmRelayControls() {
-    bindDmRelayControls(this);
+    const bindOnce = (element, eventName, handler, key) => {
+      if (!(element instanceof HTMLElement)) {
+        return;
+      }
+      const datasetKey = key || "dmRelayBound";
+      if (element.dataset[datasetKey] === "true") {
+        return;
+      }
+      element.dataset[datasetKey] = "true";
+      element.addEventListener(eventName, handler);
+    };
+
+    bindOnce(
+      this.dmController.profileMessagesRelayAddButton,
+      "click",
+      () => {
+        void this.dmController.handleAddDmRelayPreference();
+      },
+      "dmRelayAddBound",
+    );
+
+    bindOnce(
+      this.dmController.profileMessagesRelayInput,
+      "keydown",
+      (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          void this.dmController.handleAddDmRelayPreference();
+        }
+      },
+      "dmRelayInputBound",
+    );
+
+    bindOnce(
+      this.dmController.profileMessagesRelayPublishButton,
+      "click",
+      () => {
+        void this.handlePublishDmRelayPreferences();
+      },
+      "dmRelayPublishBound",
+    );
   }
 
-  async refreshDmRelayPreferences(options) {
-    return refreshDmRelayPreferences(this, options);
+  async refreshDmRelayPreferences({ force = false } = {}) {
+    const owner = this.dmController.resolveActiveDmRelayOwner();
+    if (!owner) {
+      this.dmController.populateDmRelayPreferences();
+      return;
+    }
+
+    const existing = this.dmController.getActiveDmRelayPreferences();
+    if (!existing.length || force) {
+      if (typeof this.services.fetchDmRelayHints === "function") {
+        try {
+          const hints = await this.services.fetchDmRelayHints(owner);
+          if (typeof this.state.setDmRelayPreferences === "function") {
+            this.state.setDmRelayPreferences(owner, hints);
+          }
+        } catch (error) {
+          devLogger.warn(
+            "[profileModal] Failed to refresh DM relay hints for profile:",
+            error,
+          );
+        }
+      }
+    }
+
+    this.dmController.populateDmRelayPreferences();
   }
 
 
 
 
   async handlePublishDmRelayPreferences() {
-    return handlePublishDmRelayPreferences(this);
+    const owner = this.dmController.resolveActiveDmRelayOwner();
+    if (!owner) {
+      this.showError("Please sign in to publish DM relay hints.");
+      return;
+    }
+
+    const relays = this.dmController.getActiveDmRelayPreferences();
+    if (!relays.length) {
+      this.showError("Add at least one DM relay before publishing.");
+      return;
+    }
+
+    const callback = this.callbacks.onPublishDmRelayPreferences;
+    if (!callback || callback === noop) {
+      this.showError("DM relay publishing is unavailable right now.");
+      return;
+    }
+
+    this.dmController.setDmRelayPreferencesStatus("Publishing DM relay hints…");
+
+    try {
+      const result = await callback({
+        pubkey: owner,
+        relays,
+        controller: this,
+      });
+      if (result?.ok) {
+        const acceptedCount = Array.isArray(result.accepted)
+          ? result.accepted.length
+          : 0;
+        const summary = acceptedCount
+          ? `Published to ${acceptedCount} relay${acceptedCount === 1 ? "" : "s"}.`
+          : "DM relay hints published.";
+        this.showSuccess("DM relay hints published.");
+        this.dmController.setDmRelayPreferencesStatus(summary);
+        return;
+      }
+      this.showError("Failed to publish DM relay hints.");
+      this.dmController.setDmRelayPreferencesStatus("DM relay hints publish failed.");
+    } catch (error) {
+      const message =
+        error && typeof error.message === "string" && error.message.trim()
+          ? error.message.trim()
+          : "Failed to publish DM relay hints.";
+      this.showError(message);
+      this.dmController.setDmRelayPreferencesStatus(message);
+    }
   }
 
 
 
 
 
-  updateDmPrivacyToggleForRecipient(recipientContext, options) {
-    updateDmPrivacyToggleForRecipient(this, recipientContext, options);
+  updateDmPrivacyToggleForRecipient(recipientContext, { force = false } = {}) {
+    if (!recipientContext) {
+      return;
+    }
+
+    const relayHints = Array.isArray(recipientContext.relayHints)
+      ? recipientContext.relayHints
+      : [];
+    const hasHints = relayHints.length > 0;
+
+    if (!this.dmController.dmPrivacyToggleTouched || force) {
+      this.setPrivacyToggleState(hasHints);
+    }
   }
+
+
+
 
   setPrivacyToggleState(enabled) {
-    setPrivacyToggleState(this, enabled);
+    if (this.dmController.profileMessagesPrivacyToggle instanceof HTMLInputElement) {
+      this.dmController.profileMessagesPrivacyToggle.checked = Boolean(enabled);
+    }
+    this.dmController.updateMessagePrivacyModeDisplay();
   }
 
 
 
-  handleActiveDmIdentityChanged(actorPubkey) {
-    handleActiveDmIdentityChanged(this, actorPubkey);
+  handleActiveDmIdentityChanged(actorPubkey = null) {
+    const normalized = actorPubkey
+      ? this.normalizeHexPubkey(actorPubkey)
+      : this.dmController.resolveActiveDmActor();
+
+    this.dmController.hasShownRelayWarning = false;
+    this.dmController.setDirectMessageRecipient(null, { reason: "clear" });
+    this.resetAttachmentQueue({ clearInput: true });
+    this.dmController.dmReadReceiptCache.clear();
+    this.dmController.dmTypingLastSentAt = 0;
+    this.dmController.syncDmPrivacySettingsUi();
+
+    if (
+      this.dmController.directMessagesSubscription &&
+      this.dmController.directMessagesSubscription.actor &&
+      normalized !== this.dmController.directMessagesSubscription.actor
+    ) {
+      this.dmController.resetDirectMessageSubscription();
+    }
+
+    this.dmController.directMessagesLastActor = normalized || null;
+    this.dmController.directMessagesCache = [];
+    this.dmController.messagesInitialLoadPending = true;
+    this.dmController.pendingMessagesRender = null;
+
+    if (this.dmController.profileMessagesList instanceof HTMLElement) {
+      this.dmController.profileMessagesList.textContent = "";
+      this.dmController.profileMessagesList.classList.add("hidden");
+      this.dmController.profileMessagesList.setAttribute("hidden", "");
+    }
+    if (this.dmController.profileMessagesConversation instanceof HTMLElement) {
+      this.dmController.profileMessagesConversation.textContent = "";
+      this.dmController.profileMessagesConversation.classList.add("hidden");
+      this.dmController.profileMessagesConversation.setAttribute("hidden", "");
+    }
+    if (this.dmController.profileMessagesConversationEmpty instanceof HTMLElement) {
+      this.dmController.profileMessagesConversationEmpty.classList.remove("hidden");
+      this.dmController.profileMessagesConversationEmpty.removeAttribute("hidden");
+    }
+
+    if (!normalized) {
+      this.dmController.setMessagesLoadingState("unauthenticated");
+      this.dmController.updateMessagesReloadState();
+      this.dmController.populateDmRelayPreferences();
+      this.dmController.setDmRelayPreferencesStatus("");
+      return;
+    }
+
+    this.dmController.setMessagesLoadingState("loading");
+    void this.dmController.ensureDirectMessageSubscription(normalized);
+    this.dmController.updateMessagesReloadState();
+
+    if (this.getActivePane() === "messages") {
+      void this.dmController.populateProfileMessages({
+        force: true,
+        reason: "identity-change",
+      });
+    }
+
+    void this.refreshDmRelayPreferences({ force: true });
   }
 
 
@@ -1110,23 +1290,216 @@ export class ProfileModalController {
 
 
   renderAttachmentQueue() {
-    renderAttachmentQueue(this);
+    const list = this.dmController.profileMessageAttachmentList;
+    if (!(list instanceof HTMLElement)) {
+      return;
+    }
+
+    list.textContent = "";
+
+    if (!this.dmController.dmAttachmentQueue.length) {
+      return;
+    }
+
+    this.dmController.dmAttachmentQueue.forEach((entry) => {
+      const item = document.createElement("div");
+      item.className = "card flex flex-col gap-2 p-3";
+      item.dataset.attachmentId = entry.id;
+
+      const header = document.createElement("div");
+      header.className = "flex items-center justify-between gap-2";
+      const title = document.createElement("div");
+      title.className = "text-sm font-semibold text-text";
+      title.textContent = entry.name || "Attachment";
+      header.appendChild(title);
+
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "btn-ghost focus-ring inline-flex items-center";
+      removeButton.dataset.size = "sm";
+      removeButton.textContent = "Remove";
+      removeButton.addEventListener("click", () => {
+        this.dmController.dmAttachmentQueue = this.dmController.dmAttachmentQueue.filter(
+          (queued) => queued.id !== entry.id,
+        );
+        if (entry.previewUrl && typeof URL !== "undefined") {
+          URL.revokeObjectURL(entry.previewUrl);
+        }
+        this.renderAttachmentQueue();
+      });
+      header.appendChild(removeButton);
+      item.appendChild(header);
+
+      const meta = document.createElement("div");
+      meta.className = "text-xs text-muted";
+      const sizeLabel = formatAttachmentSize(entry.size);
+      meta.textContent = sizeLabel
+        ? `${entry.type || "file"} · ${sizeLabel}`
+        : entry.type || "file";
+      item.appendChild(meta);
+
+      if (entry.previewUrl && entry.type?.startsWith("image/")) {
+        const img = document.createElement("img");
+        img.src = entry.previewUrl;
+        img.alt = entry.name || "Attachment preview";
+        img.className = "h-24 w-24 rounded-lg object-cover";
+        img.loading = "lazy";
+        img.decoding = "async";
+        item.appendChild(img);
+      }
+
+      const progress = document.createElement("progress");
+      progress.className = "progress";
+      progress.value = entry.progress || 0;
+      progress.max = 1;
+      progress.dataset.variant = "surface";
+      item.appendChild(progress);
+
+      const status = document.createElement("div");
+      status.className = "text-xs text-muted";
+      status.textContent =
+        entry.status === "uploading"
+          ? "Uploading…"
+          : entry.status === "error"
+          ? entry.error || "Upload failed."
+          : "Ready to upload.";
+      item.appendChild(status);
+
+      list.appendChild(item);
+    });
   }
 
   async uploadAttachmentQueue(actorPubkey) {
-    return uploadAttachmentQueue(this, actorPubkey);
+    const r2Service = this.services.r2Service;
+    if (!r2Service) {
+      throw new Error("Storage service unavailable.");
+    }
+
+    const encrypt =
+      this.dmController.profileMessageAttachmentEncrypt instanceof HTMLInputElement
+        ? this.dmController.profileMessageAttachmentEncrypt.checked
+        : false;
+
+    const payloads = [];
+
+    for (const entry of this.dmController.dmAttachmentQueue) {
+      entry.status = "uploading";
+      entry.progress = 0;
+      this.renderAttachmentQueue();
+
+      try {
+        const payload = await uploadAttachment({
+          r2Service,
+          pubkey: actorPubkey,
+          file: entry.file,
+          encrypt,
+          buildKey: buildR2Key,
+          buildUrl: buildPublicUrl,
+          onProgress: (fraction) => {
+            entry.progress = Number.isFinite(fraction) ? fraction : entry.progress;
+            this.renderAttachmentQueue();
+          },
+        });
+        payloads.push(payload);
+        entry.status = "uploaded";
+        entry.progress = 1;
+      } catch (error) {
+        entry.status = "error";
+        entry.error =
+          error && typeof error.message === "string"
+            ? error.message
+            : "Attachment upload failed.";
+        this.renderAttachmentQueue();
+        throw error;
+      }
+    }
+
+    return payloads;
   }
 
 
 
-  resolveLatestDirectMessageForRecipient(recipientPubkey, actorPubkey) {
-    return resolveLatestDirectMessageForRecipient(this, recipientPubkey, actorPubkey);
+  resolveLatestDirectMessageForRecipient(recipientPubkey, actorPubkey = null) {
+    const normalizedRecipient =
+      typeof recipientPubkey === "string"
+        ? this.normalizeHexPubkey(recipientPubkey)
+        : "";
+    if (!normalizedRecipient || !Array.isArray(this.dmController.directMessagesCache)) {
+      return null;
+    }
+
+    const resolvedActor = actorPubkey
+      ? this.normalizeHexPubkey(actorPubkey)
+      : this.dmController.resolveActiveDmActor();
+
+    let latest = null;
+    let latestTimestamp = 0;
+
+    for (const entry of this.dmController.directMessagesCache) {
+      if (this.dmController.resolveDirectMessageRemote(entry, resolvedActor) !== normalizedRecipient) {
+        continue;
+      }
+      const timestamp = Number(entry?.timestamp) || 0;
+      if (!latest || timestamp > latestTimestamp) {
+        latest = entry;
+        latestTimestamp = timestamp;
+      }
+    }
+
+    return latest;
   }
 
 
 
   async maybePublishTypingIndicator() {
-    return maybePublishTypingIndicator(this);
+    const settings = this.dmController.getDmPrivacySettingsSnapshot();
+    if (!settings.typingIndicatorsEnabled) {
+      return;
+    }
+
+    if (
+      !this.services.nostrClient ||
+      typeof this.services.nostrClient.publishDmTypingIndicator !== "function"
+    ) {
+      return;
+    }
+
+    const input = this.dmController.profileMessageInput;
+    const messageText =
+      input instanceof HTMLTextAreaElement ? input.value.trim() : "";
+    if (!messageText) {
+      return;
+    }
+
+    const recipient = this.dmController.resolveActiveDmRecipient();
+    if (!recipient) {
+      return;
+    }
+
+    const now = Date.now();
+    if (now - this.dmController.dmTypingLastSentAt < TYPING_INDICATOR_COOLDOWN_MS) {
+      return;
+    }
+
+    this.dmController.dmTypingLastSentAt = now;
+
+    const relayHints = this.dmController.buildDmRecipientContext(recipient)?.relayHints || [];
+    const latestMessage = this.resolveLatestDirectMessageForRecipient(
+      recipient,
+      this.dmController.resolveActiveDmActor(),
+    );
+    const latestEventId = this.dmController.resolveDirectMessageEventId(latestMessage);
+
+    try {
+      await this.services.nostrClient.publishDmTypingIndicator({
+        recipientPubkey: recipient,
+        conversationEventId: latestEventId || null,
+        relays: relayHints,
+        expiresInSeconds: TYPING_INDICATOR_TTL_SECONDS,
+      });
+    } catch (error) {
+      devLogger.warn("[profileModal] Failed to publish typing indicator:", error);
+    }
   }
 
 
