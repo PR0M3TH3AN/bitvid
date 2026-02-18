@@ -48,7 +48,7 @@ const GRANDFATHERED = {
   "js/payments/nwcClient.js": 1642,
   "js/ui/moreMenuController.js": 1601,
   "js/nostr/commentEvents.js": 1571,
-  "js/nostr/nip71.js": 1531,
+  "js/nostr/nip71.js": 1650,
   "js/services/hashtagPreferencesService.js": 1434,
   "js/nostr/publishHelpers.js": 1415,
   "js/index.js": 1412,
