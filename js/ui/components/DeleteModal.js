@@ -108,7 +108,8 @@ export class DeleteModal {
 
       const html = await response.text();
       const wrapper = document.createElement("div");
-      wrapper.innerHTML = html;
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      wrapper.append(...doc.body.children);
       this.removeTrackingScripts(wrapper);
       targetContainer.appendChild(wrapper);
       modal = wrapper.querySelector("#deleteVideoModal");
@@ -263,7 +264,7 @@ export class DeleteModal {
     }
 
     const doc = this.metadataList.ownerDocument;
-    this.metadataList.innerHTML = "";
+    this.metadataList.replaceChildren();
     if (!doc) {
       return;
     }
@@ -421,7 +422,7 @@ export class DeleteModal {
     }
 
     if (this.metadataList) {
-      this.metadataList.innerHTML = "";
+      this.metadataList.replaceChildren();
     }
   }
 
