@@ -32,18 +32,60 @@ import {
 } from "../../js/nostrEventSchemas.js";
 import { buildNip71VideoEvent } from "../../js/nostr/nip71.js";
 import fs from "fs";
+import { execSync } from "child_process";
+import path from "path";
 
-const REPORT_FILE = "artifacts/validate-events.json";
+// Parse CLI args
+const args = process.argv.slice(2);
+const getArg = (key) => {
+  const arg = args.find(a => a.startsWith(`--${key}=`));
+  return arg ? arg.split('=')[1] : null;
+};
+const hasArg = (key) => args.includes(`--${key}`);
+
+const now = new Date();
+const yyyymmdd = now.toISOString().slice(0, 10).replace(/-/g, "");
+const defaultOut = `artifacts/validate-events-${yyyymmdd}.json`;
+
+const OUT_FILE = getArg("out") || defaultOut;
+const ONLY_BUILDER = getArg("only");
+const DRY_RUN = hasArg("dry-run");
 
 // Valid 32-byte hex pubkey for testing
 const TEST_PUBKEY = "0000000000000000000000000000000000000000000000000000000000000001";
 const TEST_EVENT_ID = "0000000000000000000000000000000000000000000000000000000000000002";
+
+function findCallSites() {
+  try {
+    // Grep for build*Event calls in js/ directory, excluding node_modules and dist
+    // We look for the pattern build[A-Z]...Event
+    const cmd = `grep -rn "build[A-Z][a-zA-Z]*Event" js/ --include="*.js" --exclude-dir=node_modules`;
+    const output = execSync(cmd, { encoding: 'utf-8' });
+    return output.split('\n').filter(Boolean).map(line => {
+      // line format: file:line:content
+      const parts = line.split(':');
+      if (parts.length < 3) return null;
+      return {
+        file: parts[0],
+        line: parts[1],
+        content: parts.slice(2).join(':').trim()
+      };
+    }).filter(Boolean);
+  } catch (e) {
+    // grep returns exit code 1 if no matches found, which execSync treats as error
+    if (e.status === 1) return [];
+    console.warn("Could not find call sites via grep:", e.message);
+    return [];
+  }
+}
 
 function runValidation() {
   const results = [];
   const failures = [];
 
   const runTest = (name, builder, input, expectedType) => {
+    if (ONLY_BUILDER && !name.includes(ONLY_BUILDER)) return;
+
     try {
       const event = builder(input);
       const validation = validateEventStructure(expectedType, event);
@@ -78,7 +120,7 @@ function runValidation() {
     }
   };
 
-  console.log("Starting event schema validation...");
+  console.log(`Starting event schema validation... Output: ${OUT_FILE}`);
 
   // 1. Video Post
   runTest("buildVideoPostEvent", buildVideoPostEvent, {
@@ -304,9 +346,22 @@ function runValidation() {
     }
   }, NOTE_TYPES.NIP71_VIDEO);
 
-  // Write Report
-  fs.writeFileSync(REPORT_FILE, JSON.stringify(results, null, 2));
-  console.log(`\nReport written to ${REPORT_FILE}`);
+  // Find call sites
+  const callSites = findCallSites();
+  console.log(`Found ${callSites.length} runtime call sites.`);
+
+  const finalReport = {
+    results,
+    runtime_call_sites: callSites
+  };
+
+  if (!DRY_RUN) {
+    fs.mkdirSync(path.dirname(OUT_FILE), { recursive: true });
+    fs.writeFileSync(OUT_FILE, JSON.stringify(finalReport, null, 2));
+    console.log(`\nReport written to ${OUT_FILE}`);
+  } else {
+    console.log("\nDry run: Skipping report write.");
+  }
 
   if (failures.length > 0) {
     console.error(`\n⚠️  Found ${failures.length} validation failures.`);
