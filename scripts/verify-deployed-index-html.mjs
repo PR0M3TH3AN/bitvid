@@ -31,26 +31,45 @@ function parseArgs(argv) {
   return args;
 }
 
+const MAX_RETRIES = 5;
+const RETRY_DELAY_MS = 5000;
+
+async function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const response = await fetch(args.url, {
-    headers: {
-      Accept: 'text/html'
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const response = await fetch(args.url, {
+        headers: {
+          Accept: 'text/html'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const html = await response.text();
+      if (VERSION_MARKUP_PATTERN.test(html)) {
+        console.log(`Deployed index verification passed: ${args.url} includes slogan version markup.`);
+        return;
+      }
+
+      throw new Error('Missing version markup');
+    } catch (error) {
+      if (attempt === MAX_RETRIES) {
+        throw new Error(
+          `Failed to verify deployed index.html at ${args.url} after ${MAX_RETRIES} attempts. Last error: ${error.message}`
+        );
+      }
+      console.log(`Attempt ${attempt} failed: ${error.message}. Retrying in ${RETRY_DELAY_MS / 1000}s...`);
+      await sleep(RETRY_DELAY_MS);
     }
-  });
-
-  if (!response.ok) {
-    throw new Error(`Unable to fetch deployed index.html (${args.url}): HTTP ${response.status}`);
   }
-
-  const html = await response.text();
-  if (!VERSION_MARKUP_PATTERN.test(html)) {
-    throw new Error(
-      `Deployed index.html is missing version markup under the slogan at ${args.url} (expected: v: <8-char-hash> • <date>).`
-    );
-  }
-
-  console.log(`Deployed index verification passed: ${args.url} includes slogan version markup.`);
 }
 
 main().catch((error) => {
