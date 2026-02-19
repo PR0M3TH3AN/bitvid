@@ -24,8 +24,6 @@ import { getBreakpointLg } from "../designSystem/metrics.js";
 import { getProviderMetadata } from "../services/authProviders/index.js";
 import { AppShell } from "./dm/index.js";
 import { devLogger, userLogger } from "../utils/logger.js";
-import { buildPublicUrl, buildR2Key } from "../r2.js";
-import { buildProfileMetadataEvent } from "../nostrEventSchemas.js";
 import {
   describeAttachment,
   extractAttachmentsFromMessage,
@@ -50,6 +48,8 @@ import { ProfileRelayController } from "./profileModal/ProfileRelayController.js
 import { ProfileHashtagController } from "./profileModal/ProfileHashtagController.js";
 import { ProfileAdminController } from "./profileModal/ProfileAdminController.js";
 import { ProfileModerationController } from "./profileModal/ProfileModerationController.js";
+import { ProfileBlockListController } from "./profileModal/ProfileBlockListController.js";
+import { ProfileEditController } from "./profileModal/ProfileEditController.js";
 
 const noop = () => {};
 
@@ -211,6 +211,8 @@ export class ProfileModalController {
     this.hashtagController = new ProfileHashtagController(this);
     this.adminController = new ProfileAdminController(this);
     this.moderationController = new ProfileModerationController(this);
+    this.blockListController = new ProfileBlockListController(this);
+    this.editController = new ProfileEditController(this);
     this.hashtagController.initialize();
 
     this.dmController.enableNip17RelayWarning = resolvedEnableNip17RelayWarning;
@@ -726,12 +728,7 @@ export class ProfileModalController {
     this.profileFriendsRefreshBtn =
       document.getElementById("friendsRefreshBtn") || null;
 
-    this.blockList = document.getElementById("blockedList") || null;
-    this.blockListEmpty = document.getElementById("blockedEmpty") || null;
-    this.blockInput = document.getElementById("blockedInput") || null;
-    this.addBlockedButton = document.getElementById("addBlockedBtn") || null;
-    this.profileBlockedRefreshBtn =
-      document.getElementById("blockedRefreshBtn") || null;
+    this.blockListController.cacheDomReferences();
 
     this.dmController.profileMessagesPane =
       document.getElementById("profilePaneMessages") || null;
@@ -831,13 +828,6 @@ export class ProfileModalController {
     this.profileFriendsEmpty = this.friendListEmpty;
     this.profileFriendsInput = this.friendInput;
     this.profileAddFriendBtn = this.addFriendButton;
-    this.profileBlockedList = this.blockList;
-    this.profileBlockedEmpty = this.blockListEmpty;
-    this.profileBlockedInput = this.blockInput;
-    this.profileAddBlockedBtn = this.addBlockedButton;
-    this.blockListStatus =
-      this.panes.blocked?.querySelector("[data-role=\"blocked-list-status\"]") ||
-      null;
     this.moderationController.cacheDomReferences();
     this.adminController.cacheDomReferences();
 
@@ -887,30 +877,9 @@ export class ProfileModalController {
     );
     ensureAriaLabel(this.profileSubscriptionsRefreshBtn, "Refresh subscriptions");
     ensureAriaLabel(this.profileFriendsRefreshBtn, "Refresh friends");
+
+    this.editController.cacheDomReferences();
     ensureAriaLabel(this.profileBlockedRefreshBtn, "Refresh muted & blocked users");
-
-    this.editNameInput = document.getElementById("editNameInput") || null;
-    this.editDisplayNameInput = document.getElementById("editDisplayNameInput") || null;
-    this.editAboutInput = document.getElementById("editAboutInput") || null;
-    this.editWebsiteInput = document.getElementById("editWebsiteInput") || null;
-    this.editNip05Input = document.getElementById("editNip05Input") || null;
-    this.editLud16Input = document.getElementById("editLud16Input") || null;
-    this.editPictureInput = document.getElementById("editPictureInput") || null;
-    this.editBannerInput = document.getElementById("editBannerInput") || null;
-
-    this.editPictureFile = document.getElementById("editPictureFile") || null;
-    this.editPictureUploadBtn = document.getElementById("editPictureUploadBtn") || null;
-    this.editPictureStorageHint = document.getElementById("editPictureStorageHint") || null;
-    this.editPictureConfigureLink = document.getElementById("editPictureConfigureLink") || null;
-
-    this.editBannerFile = document.getElementById("editBannerFile") || null;
-    this.editBannerUploadBtn = document.getElementById("editBannerUploadBtn") || null;
-    this.editBannerStorageHint = document.getElementById("editBannerStorageHint") || null;
-    this.editBannerConfigureLink = document.getElementById("editBannerConfigureLink") || null;
-
-    this.editSaveBtn = document.getElementById("editSaveBtn") || null;
-    this.editCancelBtn = document.getElementById("editCancelBtn") || null;
-    this.editStatusText = document.getElementById("editStatusText") || null;
 
     if (this.createWatchHistoryRenderer) {
       this.ensureProfileHistoryRenderer();
@@ -1692,41 +1661,7 @@ export class ProfileModalController {
       });
     }
 
-    if (this.addBlockedButton instanceof HTMLElement) {
-      this.addBlockedButton.addEventListener("click", () => {
-        void this.handleAddBlockedCreator();
-      });
-    }
-
-    if (this.profileBlockedRefreshBtn instanceof HTMLElement) {
-      this.profileBlockedRefreshBtn.addEventListener("click", () => {
-        const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
-        if (!activeHex) {
-          return;
-        }
-        const blocksService = this.services.userBlocks;
-        if (!blocksService || typeof blocksService.loadBlocks !== "function") {
-          return;
-        }
-        void blocksService
-          .loadBlocks(activeHex)
-          .then(() => {
-            this.populateBlockedList();
-          })
-          .catch((error) => {
-            devLogger.warn("[profileModal] Failed to refresh blocked list:", error);
-          });
-      });
-    }
-
-    if (this.blockInput instanceof HTMLElement) {
-      this.blockInput.addEventListener("keydown", (event) => {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          void this.handleAddBlockedCreator();
-        }
-      });
-    }
+    this.blockListController.registerEventListeners();
 
     if (this.profileSubscriptionsRefreshBtn instanceof HTMLElement) {
       this.profileSubscriptionsRefreshBtn.addEventListener("click", () => {
@@ -1954,67 +1889,7 @@ export class ProfileModalController {
     }
 
 
-    if (this.profileEditBtn instanceof HTMLElement) {
-      this.profileEditBtn.addEventListener("click", () => {
-        this.handleEditProfile();
-      });
-    }
-
-    if (this.profileEditBackBtn instanceof HTMLElement) {
-      this.profileEditBackBtn.addEventListener("click", () => {
-        this.selectPane("account");
-      });
-    }
-
-    if (this.editCancelBtn instanceof HTMLElement) {
-      this.editCancelBtn.addEventListener("click", () => {
-        this.selectPane("account");
-      });
-    }
-
-    if (this.editSaveBtn instanceof HTMLElement) {
-      this.editSaveBtn.addEventListener("click", () => {
-        void this.handleSaveProfile();
-      });
-    }
-
-    if (this.editPictureUploadBtn instanceof HTMLElement) {
-      this.editPictureUploadBtn.addEventListener("click", () => {
-        if (this.editPictureFile) this.editPictureFile.click();
-      });
-    }
-
-    if (this.editPictureFile instanceof HTMLElement) {
-      this.editPictureFile.addEventListener("change", () => {
-        void this.handleUpload("picture");
-      });
-    }
-
-    if (this.editBannerUploadBtn instanceof HTMLElement) {
-      this.editBannerUploadBtn.addEventListener("click", () => {
-        if (this.editBannerFile) this.editBannerFile.click();
-      });
-    }
-
-    if (this.editBannerFile instanceof HTMLElement) {
-      this.editBannerFile.addEventListener("change", () => {
-        void this.handleUpload("banner");
-      });
-    }
-
-    if (this.editPictureConfigureLink instanceof HTMLElement) {
-      this.editPictureConfigureLink.addEventListener("click", (e) => {
-        e.preventDefault();
-        this.selectPane("storage");
-      });
-    }
-
-    if (this.editBannerConfigureLink instanceof HTMLElement) {
-      this.editBannerConfigureLink.addEventListener("click", (e) => {
-        e.preventDefault();
-        this.selectPane("storage");
-      });
-    }
+    this.editController.registerEventListeners();
 
     this.dmController.updateMessagesReloadState();
   }
@@ -3390,98 +3265,8 @@ export class ProfileModalController {
 
 
 
-  ensureBlockListStatusElement() {
-    if (this.blockListStatus instanceof HTMLElement) {
-      return this.blockListStatus;
-    }
-
-    const anchor =
-      this.blockList instanceof HTMLElement
-        ? this.blockList
-        : this.blockListEmpty instanceof HTMLElement
-        ? this.blockListEmpty
-        : null;
-
-    if (!anchor || !(anchor.parentElement instanceof HTMLElement)) {
-      return null;
-    }
-
-    const existing = anchor.parentElement.querySelector(
-      '[data-role="blocked-list-status"]',
-    );
-    if (existing instanceof HTMLElement) {
-      this.blockListStatus = existing;
-      return existing;
-    }
-
-    const status = document.createElement("div");
-    status.dataset.role = "blocked-list-status";
-    status.className = "mt-4 flex items-center gap-3 text-sm text-muted hidden";
-    status.setAttribute("role", "status");
-    status.setAttribute("aria-live", "polite");
-
-    if (this.blockList instanceof HTMLElement) {
-      anchor.parentElement.insertBefore(status, this.blockList);
-    } else {
-      anchor.parentElement.appendChild(status);
-    }
-
-    this.blockListStatus = status;
-    return status;
-  }
-
-  setBlockListLoadingState(state = "idle", options = {}) {
-    const statusEl = this.ensureBlockListStatusElement();
-    if (!statusEl) {
-      this.blockListLoadingState = state;
-      return;
-    }
-
-    const message =
-      typeof options.message === "string" && options.message.trim()
-        ? options.message.trim()
-        : "";
-
-    statusEl.textContent = "";
-    statusEl.classList.remove("text-status-warning");
-    statusEl.classList.add("text-muted");
-    statusEl.classList.add("hidden");
-
-    this.blockListLoadingState = state;
-
-    if (state === "loading") {
-      if (this.blockListEmpty instanceof HTMLElement) {
-        this.blockListEmpty.classList.add("hidden");
-      }
-
-      const spinner = document.createElement("span");
-      spinner.className = "status-spinner status-spinner--inline";
-      spinner.setAttribute("aria-hidden", "true");
-
-      const text = document.createElement("span");
-      text.textContent = message || "Loading blocked creators…";
-
-      statusEl.appendChild(spinner);
-      statusEl.appendChild(text);
-      statusEl.classList.remove("hidden");
-      return;
-    }
-
-    if (state === "error") {
-      statusEl.classList.remove("text-muted");
-      statusEl.classList.add("text-status-warning");
-
-      if (this.blockListEmpty instanceof HTMLElement) {
-        this.blockListEmpty.classList.add("hidden");
-      }
-
-      const text = document.createElement("span");
-      text.textContent =
-        message || "Blocked creators may be out of date. Try again later.";
-
-      statusEl.appendChild(text);
-      statusEl.classList.remove("hidden");
-    }
+  setBlockListLoadingState(...args) {
+    return this.blockListController.setBlockListLoadingState(...args);
   }
 
   setPermissionPromptCtaState(nextState = {}) {
@@ -3689,184 +3474,8 @@ export class ProfileModalController {
     this.refreshSubscriptionsBackgroundStatus();
   }
 
-  populateBlockedList(blocked = null) {
-    if (!this.blockList || !this.blockListEmpty) {
-      if (this.blockListLoadingState === "loading") {
-        this.setBlockListLoadingState("idle");
-      }
-      return;
-    }
-
-    const sourceEntries =
-      Array.isArray(blocked) && blocked.length
-        ? blocked
-        : this.services.userBlocks.getBlockedPubkeys();
-
-    const normalizedEntries = [];
-    const pushEntry = (hex, label) => {
-      if (!hex || !label) {
-        return;
-      }
-      normalizedEntries.push({ hex, label });
-    };
-
-    sourceEntries.forEach((entry) => {
-      if (typeof entry === "string") {
-        const trimmed = entry.trim();
-        if (!trimmed) {
-          return;
-        }
-
-        if (trimmed.startsWith("npub1")) {
-          const decoded = this.safeDecodeNpub(trimmed);
-          if (!decoded) {
-            return;
-          }
-          const label = this.safeEncodeNpub(decoded) || trimmed;
-          pushEntry(decoded, label);
-          return;
-        }
-
-        if (/^[0-9a-f]{64}$/i.test(trimmed)) {
-          const hex = trimmed.toLowerCase();
-          const label = this.safeEncodeNpub(hex) || hex;
-          pushEntry(hex, label);
-        }
-        return;
-      }
-
-      if (entry && typeof entry === "object") {
-        const candidateNpub =
-          typeof entry.npub === "string" ? entry.npub.trim() : "";
-        const candidateHex =
-          typeof entry.pubkey === "string" ? entry.pubkey.trim() : "";
-
-        if (candidateHex && /^[0-9a-f]{64}$/i.test(candidateHex)) {
-          const normalizedHex = candidateHex.toLowerCase();
-          const label =
-            candidateNpub && candidateNpub.startsWith("npub1")
-              ? candidateNpub
-              : this.safeEncodeNpub(normalizedHex) || normalizedHex;
-          pushEntry(normalizedHex, label);
-          return;
-        }
-
-        if (candidateNpub && candidateNpub.startsWith("npub1")) {
-          const decoded = this.safeDecodeNpub(candidateNpub);
-          if (!decoded) {
-            return;
-          }
-          const label = this.safeEncodeNpub(decoded) || candidateNpub;
-          pushEntry(decoded, label);
-        }
-      }
-    });
-
-    const deduped = [];
-    const seenHex = new Set();
-    normalizedEntries.forEach((entry) => {
-      if (!seenHex.has(entry.hex)) {
-        seenHex.add(entry.hex);
-        deduped.push(entry);
-      }
-    });
-
-    this.blockList.textContent = "";
-
-    if (!deduped.length) {
-      this.blockListEmpty.classList.remove("hidden");
-      this.blockList.classList.add("hidden");
-      if (this.blockListLoadingState === "loading") {
-        this.setBlockListLoadingState("idle");
-      }
-      return;
-    }
-
-    this.blockListEmpty.classList.add("hidden");
-    this.blockList.classList.remove("hidden");
-
-    const formatNpub =
-      typeof this.formatShortNpub === "function"
-        ? (value) => this.formatShortNpub(value)
-        : (value) => (typeof value === "string" ? value : "");
-    const entriesNeedingFetch = new Set();
-
-    deduped.forEach(({ hex, label }) => {
-      const item = document.createElement("li");
-      item.className =
-        "card flex items-center justify-between gap-4 p-4";
-
-      let cachedProfile = null;
-      if (hex) {
-        const cacheEntry = this.services.getProfileCacheEntry(hex);
-        cachedProfile = cacheEntry?.profile || null;
-        if (!cacheEntry) {
-          entriesNeedingFetch.add(hex);
-        }
-      }
-
-      const encodedNpub =
-        hex && typeof this.safeEncodeNpub === "function"
-          ? this.safeEncodeNpub(hex)
-          : label;
-      const displayNpub = formatNpub(encodedNpub) || encodedNpub || label;
-      const displayName =
-        cachedProfile?.name?.trim() || displayNpub || "Blocked profile";
-      const avatarSrc =
-        cachedProfile?.picture || FALLBACK_PROFILE_AVATAR;
-
-      const summary = this.dmController.createCompactProfileSummary({
-        displayName,
-        displayNpub,
-        avatarSrc,
-      });
-
-      const actions = document.createElement("div");
-      actions.className = "flex flex-wrap items-center justify-end gap-2";
-
-      const viewButton = this.createViewChannelButton({
-        targetNpub: encodedNpub,
-        displayNpub,
-      });
-      if (viewButton) {
-        actions.appendChild(viewButton);
-      }
-
-      const copyButton = this.createCopyNpubButton({
-        targetNpub: encodedNpub,
-        displayNpub,
-      });
-      if (copyButton) {
-        actions.appendChild(copyButton);
-      }
-
-      const removeButton = this.createRemoveButton({
-        label: "Remove",
-        onRemove: () => this.handleRemoveBlockedCreator(hex),
-      });
-      if (removeButton) {
-        removeButton.dataset.blockedHex = hex;
-        actions.appendChild(removeButton);
-      }
-
-      item.appendChild(summary);
-      if (actions.childElementCount > 0) {
-        item.appendChild(actions);
-      }
-
-      this.blockList.appendChild(item);
-    });
-
-    if (this.blockListLoadingState === "loading") {
-      this.setBlockListLoadingState("idle");
-    }
-
-    if (
-      entriesNeedingFetch.size &&
-      typeof this.services.batchFetchProfiles === "function"
-    ) {
-      this.services.batchFetchProfiles(entriesNeedingFetch);
-    }
+  populateBlockedList(...args) {
+    return this.blockListController.populateBlockedList(...args);
   }
 
   async populateSubscriptionsList(subscriptions = null) {
@@ -4556,354 +4165,28 @@ export class ProfileModalController {
     return { success: true, reason: successReason };
   }
 
-  async handleAddBlockedCreator() {
-    const input = this.blockInput || null;
-    const rawValue = typeof input?.value === "string" ? input.value : "";
-    const trimmed = rawValue.trim();
-
-    const context = {
-      input,
-      rawValue,
-      value: trimmed,
-      success: false,
-      reason: null,
-      error: null,
-    };
-
-    if (!input) {
-      context.reason = "missing-input";
-      this.callbacks.onAddBlocked(context, this);
-      return context;
-    }
-
-    if (!trimmed) {
-      this.showError("Enter an npub to block.");
-      context.reason = "empty";
-      this.callbacks.onAddBlocked(context, this);
-      return context;
-    }
-
-    const activePubkey = this.normalizeHexPubkey(this.getActivePubkey());
-    if (!activePubkey) {
-      this.showError("Please login to manage your block list.");
-      context.reason = "no-active-pubkey";
-      this.callbacks.onAddBlocked(context, this);
-      return context;
-    }
-
-    const actorHex = activePubkey;
-    let targetHex = "";
-
-    if (trimmed.startsWith("npub1")) {
-      targetHex = this.safeDecodeNpub(trimmed) || "";
-      if (!targetHex) {
-        this.showError("Invalid npub. Please double-check and try again.");
-        context.reason = "invalid-npub";
-        this.callbacks.onAddBlocked(context, this);
-        return context;
-      }
-    } else if (/^[0-9a-f]{64}$/i.test(trimmed)) {
-      targetHex = trimmed.toLowerCase();
-    } else {
-      this.showError("Enter a valid npub or hex pubkey.");
-      context.reason = "invalid-value";
-      this.callbacks.onAddBlocked(context, this);
-      return context;
-    }
-
-    if (targetHex === actorHex) {
-      this.showError("You cannot block yourself.");
-      context.reason = "self";
-      this.callbacks.onAddBlocked(context, this);
-      return context;
-    }
-
-    context.targetHex = targetHex;
-
-    try {
-      const mutationResult = await this.mutateBlocklist({
-        action: "add",
-        actorHex,
-        targetHex,
-        controller: this,
-      });
-
-      context.result = mutationResult;
-
-      if (mutationResult?.ok) {
-        this.showSuccess(
-          "Creator blocked. You won't see their videos anymore.",
-        );
-        context.success = true;
-        context.reason = mutationResult.reason || "blocked";
-      } else if (mutationResult?.reason === "already-blocked") {
-        this.showSuccess("You already blocked this creator.");
-        context.reason = "already-blocked";
-      } else {
-        const message =
-          mutationResult?.error?.code === "nip04-missing"
-            ? "Your Nostr extension must support NIP-04 to manage private lists."
-            : mutationResult?.error?.code ===
-              "extension-encryption-permission-denied"
-            ? "Your Nostr extension must allow encryption to update your mute/block list."
-            : mutationResult?.error?.message ||
-              "Failed to update your mute/block list. Please try again.";
-        context.error = mutationResult?.error || null;
-        context.reason = mutationResult?.reason || "service-error";
-        if (message) {
-          this.showError(message);
-        }
-      }
-
-      if (this.blockInput) {
-        this.blockInput.value = "";
-      }
-      this.populateBlockedList();
-    } catch (error) {
-      userLogger.error("Failed to add creator to personal block list:", error);
-      context.error = error;
-      context.reason = error?.code || "service-error";
-      const message =
-        error?.code === "nip04-missing"
-          ? "Your Nostr extension must support NIP-04 to manage private lists."
-          : error?.code === "extension-encryption-permission-denied"
-          ? "Your Nostr extension must allow encryption to update your mute/block list."
-          : "Failed to update your mute/block list. Please try again.";
-      this.showError(message);
-    }
-
-    this.callbacks.onAddBlocked(context, this);
-    return context;
+  handleAddBlockedCreator(...args) {
+    return this.blockListController.handleAddBlockedCreator(...args);
   }
 
-  async handleRemoveBlockedCreator(candidate) {
-    const activePubkey = this.normalizeHexPubkey(this.getActivePubkey());
-    if (!activePubkey) {
-      this.showError("Please login to manage your block list.");
-      return;
-    }
-
-    let targetHex = "";
-    if (typeof candidate === "string") {
-      const trimmed = candidate.trim();
-      if (!trimmed) {
-        return;
-      }
-
-      if (trimmed.startsWith("npub1")) {
-        targetHex = this.safeDecodeNpub(trimmed) || "";
-      } else if (/^[0-9a-f]{64}$/i.test(trimmed)) {
-        targetHex = trimmed.toLowerCase();
-      }
-    }
-
-    if (!targetHex) {
-      userLogger.warn("No valid pubkey to remove from block list:", candidate);
-      return;
-    }
-
-    try {
-      const mutationResult = await this.mutateBlocklist({
-        action: "remove",
-        actorHex: activePubkey,
-        targetHex,
-        controller: this,
-      });
-
-      if (mutationResult?.ok) {
-        this.showSuccess("Creator removed from your mute/block list.");
-      } else if (mutationResult?.reason === "not-blocked") {
-        this.showSuccess("Creator already removed from your mute/block list.");
-      } else if (mutationResult?.error) {
-        const message =
-          mutationResult.error.code === "nip04-missing"
-            ? "Your Nostr extension must support NIP-04 to manage private lists."
-            : mutationResult.error.code ===
-              "extension-encryption-permission-denied"
-            ? "Your Nostr extension must allow encryption to update your mute/block list."
-            : mutationResult.error.message ||
-              "Failed to update your mute/block list. Please try again.";
-        if (message) {
-          this.showError(message);
-        }
-      }
-
-      this.populateBlockedList();
-    } catch (error) {
-      userLogger.error(
-        "Failed to remove creator from personal block list:",
-        error,
-      );
-      const message =
-        error?.code === "nip04-missing"
-          ? "Your Nostr extension must support NIP-04 to manage private lists."
-          : error?.code === "extension-encryption-permission-denied"
-          ? "Your Nostr extension must allow encryption to update your mute/block list."
-          : "Failed to update your mute/block list. Please try again.";
-      this.showError(message);
-    }
+  handleRemoveBlockedCreator(...args) {
+    return this.blockListController.handleRemoveBlockedCreator(...args);
   }
 
-  handleEditProfile() {
-    this.selectPane("edit");
-    void this.populateEditPane();
+  handleEditProfile(...args) {
+    return this.editController.handleEditProfile(...args);
   }
 
-  async populateEditPane() {
-    const pubkey = this.normalizeHexPubkey(this.getActivePubkey());
-    if (!pubkey) {
-      return;
-    }
-
-    const cacheEntry = this.services.getProfileCacheEntry(pubkey);
-    const profile = cacheEntry?.profile || {};
-
-    if (this.editNameInput) this.editNameInput.value = profile.name || "";
-    if (this.editDisplayNameInput)
-      this.editDisplayNameInput.value = profile.display_name || "";
-    if (this.editAboutInput) this.editAboutInput.value = profile.about || "";
-    if (this.editWebsiteInput)
-      this.editWebsiteInput.value = profile.website || "";
-    if (this.editNip05Input) this.editNip05Input.value = profile.nip05 || "";
-    if (this.editLud16Input) this.editLud16Input.value = profile.lud16 || "";
-    if (this.editPictureInput)
-      this.editPictureInput.value = profile.picture || "";
-    if (this.editBannerInput) this.editBannerInput.value = profile.banner || "";
-
-    void this.checkStorageForUploads(pubkey);
+  populateEditPane(...args) {
+    return this.editController.populateEditPane(...args);
   }
 
-  async checkStorageForUploads(pubkey) {
-    const r2Service = this.services.r2Service;
-    if (!r2Service) return;
-
-    let hasStorage = false;
-    try {
-      const credentials = await r2Service.resolveConnection(pubkey);
-      hasStorage = !!credentials;
-    } catch (e) {
-      hasStorage = false;
-    }
-
-    const updateUI = (uploadBtn, hint, has) => {
-      if (uploadBtn) {
-        uploadBtn.disabled = !has;
-        if (!has) uploadBtn.setAttribute("aria-disabled", "true");
-        else uploadBtn.removeAttribute("aria-disabled");
-      }
-      if (hint) {
-        if (has) hint.classList.add("hidden");
-        else hint.classList.remove("hidden");
-      }
-    };
-
-    updateUI(
-      this.editPictureUploadBtn,
-      this.editPictureStorageHint,
-      hasStorage,
-    );
-    updateUI(this.editBannerUploadBtn, this.editBannerStorageHint, hasStorage);
+  async handleUpload(...args) {
+    return this.editController.handleUpload(...args);
   }
 
-  async handleUpload(type) {
-    const pubkey = this.normalizeHexPubkey(this.getActivePubkey());
-    if (!pubkey) return;
-
-    const r2Service = this.services.r2Service;
-    if (!r2Service) return;
-
-    const fileInput =
-      type === "picture" ? this.editPictureFile : this.editBannerFile;
-    const urlInput =
-      type === "picture" ? this.editPictureInput : this.editBannerInput;
-    const uploadBtn =
-      type === "picture" ? this.editPictureUploadBtn : this.editBannerUploadBtn;
-
-    if (!fileInput || !fileInput.files.length) return;
-    const file = fileInput.files[0];
-
-    try {
-      if (uploadBtn) {
-        uploadBtn.disabled = true;
-        uploadBtn.textContent = "Uploading...";
-      }
-
-      const credentials = await r2Service.resolveConnection(pubkey);
-      if (!credentials) {
-        this.showError("Storage configuration missing.");
-        return;
-      }
-
-      const key = buildR2Key(pubkey, file);
-      await r2Service.uploadFile({
-        file,
-        ...credentials,
-        bucket: credentials.bucket,
-        key,
-      });
-
-      const url = buildPublicUrl(credentials.baseDomain, key);
-      if (urlInput) urlInput.value = url;
-
-      fileInput.value = "";
-    } catch (error) {
-      this.showError("Upload failed: " + (error.message || "Unknown error"));
-      devLogger.error("Upload error:", error);
-    } finally {
-      if (uploadBtn) {
-        uploadBtn.disabled = false;
-        uploadBtn.textContent = "Upload";
-      }
-    }
-  }
-
-  async handleSaveProfile() {
-    const pubkey = this.normalizeHexPubkey(this.getActivePubkey());
-    if (!pubkey) return;
-
-    const profile = {
-      name: this.editNameInput?.value?.trim() || "",
-      display_name: this.editDisplayNameInput?.value?.trim() || "",
-      about: this.editAboutInput?.value?.trim() || "",
-      website: this.editWebsiteInput?.value?.trim() || "",
-      nip05: this.editNip05Input?.value?.trim() || "",
-      lud16: this.editLud16Input?.value?.trim() || "",
-      picture: this.editPictureInput?.value?.trim() || "",
-      banner: this.editBannerInput?.value?.trim() || "",
-    };
-
-    if (this.editSaveBtn) {
-      this.editSaveBtn.disabled = true;
-      this.editSaveBtn.textContent = "Saving...";
-    }
-
-    try {
-      const event = buildProfileMetadataEvent({
-        pubkey,
-        created_at: Math.floor(Date.now() / 1000),
-        metadata: profile,
-      });
-
-      const result =
-        await this.services.nostrClient.signAndPublishEvent(event);
-
-      if (result && result.signedEvent) {
-        if (this.services.nostrClient.handleEvent) {
-          this.services.nostrClient.handleEvent(result.signedEvent);
-        }
-      }
-
-      this.showSuccess("Profile updated!");
-      this.selectPane("account");
-      this.renderSavedProfiles();
-    } catch (error) {
-      this.showError("Failed to save profile: " + error.message);
-    } finally {
-      if (this.editSaveBtn) {
-        this.editSaveBtn.disabled = false;
-        this.editSaveBtn.textContent = "Save Profile";
-      }
-    }
+  async handleSaveProfile(...args) {
+    return this.editController.handleSaveProfile(...args);
   }
 
 
