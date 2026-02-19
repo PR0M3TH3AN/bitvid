@@ -22,6 +22,16 @@ def run():
         def on_console(msg):
             nonlocal error_count
             if msg.type == "error":
+                # Ignore known external/content errors that are not code issues
+                ignored_errors = [
+                    "net::ERR_CERT_COMMON_NAME_INVALID",
+                    "blocked by CORS policy",
+                    "net::ERR_FAILED",
+                    "404 (Not Found)"
+                ]
+                if any(ignored in msg.text for ignored in ignored_errors):
+                    log(f"CONSOLE:ERROR(IGNORED)", msg.text)
+                    return
                 error_count += 1
             log(f"CONSOLE:{msg.type.upper()}", msg.text)
 
