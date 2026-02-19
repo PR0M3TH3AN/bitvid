@@ -1,22 +1,122 @@
 {
   "auditReportVersion": 2,
-  "vulnerabilities": {},
+  "vulnerabilities": {
+    "ajv": {
+      "name": "ajv",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1113214,
+          "name": "ajv",
+          "dependency": "ajv",
+          "title": "ajv has ReDoS when using `$data` option",
+          "url": "https://github.com/advisories/GHSA-2g4f-4pwh-qvx6",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-400"
+          ],
+          "cvss": {
+            "score": 0,
+            "vectorString": null
+          },
+          "range": "<8.18.0"
+        }
+      ],
+      "effects": [
+        "serve"
+      ],
+      "range": "<8.18.0",
+      "nodes": [
+        "node_modules/ajv"
+      ],
+      "fixAvailable": {
+        "name": "serve",
+        "version": "6.5.8",
+        "isSemVerMajor": true
+      }
+    },
+    "minimatch": {
+      "name": "minimatch",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1113296,
+          "name": "minimatch",
+          "dependency": "minimatch",
+          "title": "minimatch has a ReDoS via repeated wildcards with non-matching literal in pattern",
+          "url": "https://github.com/advisories/GHSA-3ppc-4f35-3m26",
+          "severity": "high",
+          "cwe": [
+            "CWE-1333"
+          ],
+          "cvss": {
+            "score": 0,
+            "vectorString": null
+          },
+          "range": "<10.2.1"
+        }
+      ],
+      "effects": [
+        "serve-handler"
+      ],
+      "range": "<10.2.1",
+      "nodes": [
+        "node_modules/minimatch"
+      ],
+      "fixAvailable": true
+    },
+    "serve": {
+      "name": "serve",
+      "severity": "high",
+      "isDirect": true,
+      "via": [
+        "ajv",
+        "serve-handler"
+      ],
+      "effects": [],
+      "range": ">=7.0.0",
+      "nodes": [
+        "node_modules/serve"
+      ],
+      "fixAvailable": {
+        "name": "serve",
+        "version": "6.5.8",
+        "isSemVerMajor": true
+      }
+    },
+    "serve-handler": {
+      "name": "serve-handler",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "minimatch"
+      ],
+      "effects": [],
+      "range": ">=1.1.0",
+      "nodes": [
+        "node_modules/serve-handler"
+      ],
+      "fixAvailable": true
+    }
+  },
   "metadata": {
     "vulnerabilities": {
       "info": 0,
       "low": 0,
-      "moderate": 0,
-      "high": 0,
+      "moderate": 1,
+      "high": 3,
       "critical": 0,
-      "total": 0
+      "total": 4
     },
     "dependencies": {
       "prod": 111,
-      "dev": 337,
+      "dev": 340,
       "optional": 53,
       "peer": 0,
       "peerOptional": 0,
-      "total": 474
+      "total": 477
     }
   }
 }
