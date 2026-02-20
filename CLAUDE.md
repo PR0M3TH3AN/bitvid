@@ -135,6 +135,8 @@ npm run test:visual
 | `npm run lint:tokens` | Design token enforcement |
 | `npm run lint:file-size` | Enforce file size limits |
 | `npm run lint:innerhtml` | Enforce innerHTML baseline |
+| `npm run audit` | Run design system audit |
+| `npm run build:beacon` | Build torrent beacon assets |
 | `npm run test:unit` | Full unit test suite |
 | `npm run test:unit:shard1` | Shard 1/3 (faster local dev) |
 | `npm run test:unit:shard2` | Shard 2/3 |
@@ -143,7 +145,10 @@ npm run test:visual
 | `npm run test:dm:unit` | Direct message unit tests |
 | `npm run test:dm:integration` | DM integration tests |
 | `npm run test:e2e` | Headless E2E tests |
+| `npm run test:load` | Run load tests |
 | `npm run test:visual` | Visual regression tests |
+| `npm run test:visual:update` | Update visual regression baselines |
+| `npm run telemetry:aggregate` | Aggregate telemetry logs |
 | `node scripts/agent/validate-events.mjs` | Validate Nostr event schemas |
 
 ---
