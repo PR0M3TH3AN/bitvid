@@ -1,3 +1,14 @@
+/**
+ * @fileoverview Central definition for Nostr event schemas, Kinds, and builder functions.
+ * This module manages the construction and validation of all application-specific Nostr events,
+ * ensuring they conform to defined schemas (NIP-01, NIP-33, etc.).
+ *
+ * It exports:
+ * - NOTE_TYPES: Enum of supported event types.
+ * - Builder functions: Pure functions to create unsigned event objects (e.g., buildVideoPostEvent).
+ * - Validation helpers: Functions to check event structure against schemas.
+ */
+
 import { devLogger } from "./utils/logger.js";
 import { decodeNpubToHex } from "./nostr/nip46Client.js";
 import {
@@ -13,6 +24,12 @@ import {
   deriveStoragePointerFromUrl,
 } from "./utils/storagePointer.js";
 
+/**
+ * Enumeration of all supported Nostr event types in the application.
+ * Maps logical names (e.g., VIDEO_POST) to schema definitions.
+ * @readonly
+ * @enum {string}
+ */
 export const NOTE_TYPES = Object.freeze({
   VIDEO_POST: "videoPost",
   VIDEO_MIRROR: "videoMirror",
@@ -50,10 +67,16 @@ export const NOTE_TYPES = Object.freeze({
   CHAT_MESSAGE: "chatMessage",
 });
 
+/** Kind for NIP-51 Mute List. */
 export const KIND_MUTE_LIST = 10000;
 
 export const SUBSCRIPTION_LIST_IDENTIFIER = "subscriptions";
 export const BLOCK_LIST_IDENTIFIER = "user-blocks";
+
+/**
+ * Identifiers for admin-related NIP-33 lists.
+ * @readonly
+ */
 export const ADMIN_LIST_IDENTIFIERS = Object.freeze({
   moderation: "editors",
   editors: "editors",
@@ -135,6 +158,13 @@ function normalizeTagSlotValue(value) {
   return "";
 }
 
+/**
+ * Normalizes and sanitizes an array of additional user-provided tags.
+ * Ensures that tags are arrays of strings and handles hex/npub conversion for 'p'/'e' tags.
+ *
+ * @param {Array<Array<string>>} additionalTags - Raw tags to sanitize.
+ * @returns {Array<Array<string>>} Cleaned tags.
+ */
 export function sanitizeAdditionalTags(additionalTags) {
   if (!Array.isArray(additionalTags) || !additionalTags.length) {
     return [];
@@ -750,6 +780,10 @@ function resolveOverride(type) {
   return null;
 }
 
+/**
+ * Injects schema overrides for runtime configuration (e.g., feature flags).
+ * @param {Object} overrides - A deep object to merge onto BASE_SCHEMAS.
+ */
 export function setNostrEventSchemaOverrides(overrides = {}) {
   if (overrides && typeof overrides === "object") {
     try {
@@ -771,6 +805,13 @@ export function setNostrEventSchemaOverrides(overrides = {}) {
   }
 }
 
+/**
+ * Retrieves the schema configuration for a specific note type.
+ * Applies any active runtime overrides.
+ *
+ * @param {string} type - The NOTE_TYPES key.
+ * @returns {Object|null} Schema object or null if not found.
+ */
 export function getNostrEventSchema(type) {
   if (typeof type !== "string") {
     return null;
@@ -783,6 +824,10 @@ export function getNostrEventSchema(type) {
   return mergeDeep(base, override);
 }
 
+/**
+ * Returns all schema definitions with overrides applied.
+ * @returns {Object.<string, Object>} Map of schema configurations by type.
+ */
 export function getAllNostrEventSchemas() {
   const entries = {};
   for (const type of Object.keys(BASE_SCHEMAS)) {
@@ -931,6 +976,18 @@ function mergePointerTags(pointerTags = []) {
   return merged;
 }
 
+/**
+ * Builds a Video Post event (Kind 30078).
+ * Ensures required tags ('d', 's', 't') are present and content is serialized.
+ *
+ * @param {Object} params - Event parameters.
+ * @param {string} params.pubkey - Author hex pubkey.
+ * @param {number} params.created_at - Timestamp in seconds.
+ * @param {string} params.dTagValue - NIP-33 identifier (video slug).
+ * @param {Object|string} params.content - Video metadata payload.
+ * @param {Array<Array<string>>} [params.additionalTags] - Extra tags.
+ * @returns {Object} Unsigned Nostr event.
+ */
 export function buildVideoPostEvent(params) {
   const {
     pubkey,
@@ -1011,6 +1068,15 @@ export function buildVideoPostEvent(params) {
   return event;
 }
 
+/**
+ * Builds an HTTP Auth event (Kind 27235).
+ * Used for NIP-98 authentication.
+ *
+ * @param {Object} params - Auth params.
+ * @param {string} params.url - Target URL.
+ * @param {string} params.method - HTTP method.
+ * @returns {Object} Unsigned event.
+ */
 export function buildHttpAuthEvent(params) {
   const {
     pubkey,
@@ -1060,6 +1126,16 @@ export function buildHttpAuthEvent(params) {
   return event;
 }
 
+/**
+ * Builds a Report event (Kind 1984).
+ * Used for flagging content or users.
+ *
+ * @param {Object} params - Report params.
+ * @param {string} [params.eventId] - Reported event ID.
+ * @param {string} [params.userId] - Reported user pubkey.
+ * @param {string} [params.reportType] - Type of report (e.g., 'spam').
+ * @returns {Object} Unsigned event.
+ */
 export function buildReportEvent(params) {
   const {
     pubkey,
@@ -1134,6 +1210,15 @@ export function buildReportEvent(params) {
   return event;
 }
 
+/**
+ * Builds a NIP-59 Gift Wrap event (Kind 1059).
+ * Contains an encrypted Seal event.
+ *
+ * @param {Object} params - Params.
+ * @param {string} params.recipientPubkey - Intended recipient.
+ * @param {string} params.ciphertext - Encrypted seal.
+ * @returns {Object} Unsigned event.
+ */
 export function buildGiftWrapEvent(params) {
   const {
     pubkey,
@@ -1176,6 +1261,14 @@ export function buildGiftWrapEvent(params) {
   return event;
 }
 
+/**
+ * Builds a NIP-59 Seal event (Kind 13).
+ * Wraps the actual rumor event.
+ *
+ * @param {Object} params - Params.
+ * @param {string} params.ciphertext - Encrypted rumor.
+ * @returns {Object} Unsigned event.
+ */
 export function buildSealEvent(params) {
   const {
     pubkey,
@@ -1207,6 +1300,14 @@ export function buildSealEvent(params) {
   return event;
 }
 
+/**
+ * Builds a Chat Message rumor (Kind 14).
+ * Intended to be wrapped in a Seal.
+ *
+ * @param {Object} params - Params.
+ * @param {string} params.content - Chat message text.
+ * @returns {Object} Unsigned event.
+ */
 export function buildChatMessageEvent(params) {
   const {
     pubkey,
@@ -1244,6 +1345,12 @@ export function buildChatMessageEvent(params) {
   return event;
 }
 
+/**
+ * Builds a NIP-94 Video Mirror event (Kind 1063).
+ *
+ * @param {Object} params - Params.
+ * @returns {Object} Unsigned event.
+ */
 export function buildVideoMirrorEvent(params) {
   const {
     pubkey,
@@ -1276,6 +1383,15 @@ export function buildVideoMirrorEvent(params) {
   return event;
 }
 
+/**
+ * Builds a Repost (Kind 6) or Generic Repost (Kind 16) event.
+ *
+ * @param {Object} params - Repost params.
+ * @param {string} [params.eventId] - ID of event to repost.
+ * @param {string} [params.address] - NIP-33 address to repost.
+ * @param {Object} [params.targetEvent] - Full event object being reposted (for Kind 16).
+ * @returns {Object} Unsigned event.
+ */
 export function buildRepostEvent(params) {
   const {
     pubkey,
@@ -1399,6 +1515,14 @@ export function buildRepostEvent(params) {
   return event;
 }
 
+/**
+ * Builds a Share event (Kind 1).
+ * Typically used to share a video URL with text.
+ *
+ * @param {Object} params - Share params.
+ * @param {Object} [params.video] - Video metadata {id, pubkey} for tags.
+ * @returns {Object} Unsigned event.
+ */
 export function buildShareEvent(params) {
   const {
     pubkey,
@@ -1512,6 +1636,14 @@ export function buildShareEvent(params) {
   return event;
 }
 
+/**
+ * Builds a Relay List event (Kind 10002).
+ * NIP-65: Defines read/write relays for the user.
+ *
+ * @param {Object} params - Params.
+ * @param {Array<string|Object>} params.relays - List of relay URLs or objects with markers.
+ * @returns {Object} Unsigned event.
+ */
 export function buildRelayListEvent(params) {
   const {
     pubkey,
@@ -1589,6 +1721,14 @@ export function buildRelayListEvent(params) {
   return event;
 }
 
+/**
+ * Builds a DM Relay List event (Kind 10050).
+ * NIP-17: Hints for where to find DMs.
+ *
+ * @param {Object} params - Params.
+ * @param {Array<string>} params.relays - List of relay URLs.
+ * @returns {Object} Unsigned event.
+ */
 export function buildDmRelayListEvent(params) {
   const {
     pubkey,
@@ -1631,6 +1771,14 @@ export function buildDmRelayListEvent(params) {
   return event;
 }
 
+/**
+ * Builds a Profile Metadata event (Kind 0).
+ * NIP-01: User profile information.
+ *
+ * @param {Object} params - Params.
+ * @param {Object} params.metadata - Profile object {name, about, picture, ...}.
+ * @returns {Object} Unsigned event.
+ */
 export function buildProfileMetadataEvent(params) {
   const {
     pubkey,
@@ -1673,6 +1821,15 @@ export function buildProfileMetadataEvent(params) {
   return event;
 }
 
+/**
+ * Builds a Mute List event (Kind 10000).
+ * NIP-51: Public mutes (p tags) and private blocks (encrypted content).
+ *
+ * @param {Object} params - Params.
+ * @param {Array<string>} params.pTags - Publicly muted pubkeys.
+ * @param {boolean} [params.encrypted] - If true, adds 'encrypted' tag.
+ * @returns {Object} Unsigned event.
+ */
 export function buildMuteListEvent(params) {
   const {
     pubkey,
@@ -1720,6 +1877,15 @@ export function buildMuteListEvent(params) {
   return event;
 }
 
+/**
+ * Builds a Deletion event (Kind 5).
+ * NIP-09: Request to delete past events.
+ *
+ * @param {Object} params - Params.
+ * @param {Array<string>} [params.eventIds] - IDs to delete.
+ * @param {Array<string>} [params.addresses] - NIP-33 addresses to delete.
+ * @returns {Object} Unsigned event.
+ */
 export function buildDeletionEvent(params) {
   const {
     pubkey,
@@ -1771,6 +1937,15 @@ export function buildDeletionEvent(params) {
   return event;
 }
 
+/**
+ * Builds a Legacy Direct Message event (Kind 4).
+ * NIP-04: Encrypted text message.
+ *
+ * @param {Object} params - Params.
+ * @param {string} params.recipientPubkey - Recipient hex key.
+ * @param {string} params.ciphertext - Encrypted content.
+ * @returns {Object} Unsigned event.
+ */
 export function buildLegacyDirectMessageEvent(params) {
   const {
     pubkey,
@@ -1808,6 +1983,14 @@ export function buildLegacyDirectMessageEvent(params) {
   return event;
 }
 
+/**
+ * Builds a DM Attachment event (Kind 15).
+ * NIP-17: File rumor with metadata tags (x, url, etc.).
+ *
+ * @param {Object} params - Params.
+ * @param {Object} params.attachment - {url, x (hash), name, type, size, key}.
+ * @returns {Object} Unsigned event.
+ */
 export function buildDmAttachmentEvent(params) {
   const {
     pubkey,
@@ -1864,6 +2047,13 @@ export function buildDmAttachmentEvent(params) {
   return event;
 }
 
+/**
+ * Builds a DM Read Receipt event (Kind 20001).
+ *
+ * @param {Object} params - Params.
+ * @param {string} params.eventId - ID of message read.
+ * @returns {Object} Unsigned event.
+ */
 export function buildDmReadReceiptEvent(params) {
   const {
     pubkey,
@@ -1911,6 +2101,14 @@ export function buildDmReadReceiptEvent(params) {
   return event;
 }
 
+/**
+ * Builds a DM Typing Indicator event (Kind 20002).
+ * Ephemeral event to show typing status.
+ *
+ * @param {Object} params - Params.
+ * @param {number} params.expiresAt - Expiration timestamp.
+ * @returns {Object} Unsigned event.
+ */
 export function buildDmTypingIndicatorEvent(params) {
   const {
     pubkey,
@@ -1962,6 +2160,14 @@ export function buildDmTypingIndicatorEvent(params) {
   return event;
 }
 
+/**
+ * Builds a View event (Kind 30078 or WATCH_HISTORY_KIND).
+ * Tracks analytics for video views.
+ *
+ * @param {Object} params - Params.
+ * @param {boolean} [params.includeSessionTag] - Whether to include a session marker.
+ * @returns {Object} Unsigned event.
+ */
 export function buildViewEvent(params) {
   const {
     pubkey,
@@ -2035,6 +2241,15 @@ export function buildViewEvent(params) {
   return event;
 }
 
+/**
+ * Builds a Zap Request event (Kind 9734).
+ * Used to request an invoice from a Lightning Service Provider (LSP).
+ *
+ * @param {Object} params - Params.
+ * @param {number} params.amountSats - Amount in satoshis.
+ * @param {string} params.lnurl - LNURL of the recipient.
+ * @returns {Object} Unsigned event.
+ */
 export function buildZapRequestEvent(params) {
   const {
     pubkey,
@@ -2115,6 +2330,15 @@ export function buildZapRequestEvent(params) {
   return event;
 }
 
+/**
+ * Builds a Reaction event (Kind 7).
+ * E.g., Like ('+'), Dislike ('-'), or emoji.
+ *
+ * @param {Object} params - Params.
+ * @param {string} params.content - Reaction content (+, -, emoji).
+ * @param {Object} [params.targetPointer] - Target event details.
+ * @returns {Object} Unsigned event.
+ */
 export function buildReactionEvent(params) {
   const {
     pubkey,
@@ -2504,6 +2728,14 @@ function buildCommentTags(schema, inputs, context) {
   return tags;
 }
 
+/**
+ * Builds a Video Comment event (Kind 1111).
+ * Supports threaded replies via complex tag structures (root, parent, video def).
+ *
+ * @param {Object} params - Comment params including root/parent references.
+ * @param {string} params.content - Comment text.
+ * @returns {Object} Unsigned event.
+ */
 export function buildCommentEvent(params) {
   const {
     pubkey,
@@ -2541,6 +2773,15 @@ export function buildCommentEvent(params) {
   return event;
 }
 
+/**
+ * Builds a Watch History event (Kind 30078 variant).
+ * Stores watched video IDs for a specific month.
+ *
+ * @param {Object} params - Params.
+ * @param {string} params.monthIdentifier - 'YYYY-MM' slug.
+ * @param {Array<Array<string>>} params.pointerTags - Watched items (v tags).
+ * @returns {Object} Unsigned event.
+ */
 export function buildWatchHistoryEvent(params) {
   const {
     pubkey,
@@ -2594,6 +2835,14 @@ export function buildWatchHistoryEvent(params) {
   return event;
 }
 
+/**
+ * Builds a Subscription List event (Kind 30000).
+ * Stores user channel subscriptions (NIP-51).
+ *
+ * @param {Object} params - Params.
+ * @param {string} [params.encryption] - NIP-04/44 encryption payload.
+ * @returns {Object} Unsigned event.
+ */
 export function buildSubscriptionListEvent(params) {
   const {
     pubkey,
@@ -2640,6 +2889,12 @@ export function buildSubscriptionListEvent(params) {
   return event;
 }
 
+/**
+ * Builds a User Block List event (Legacy).
+ *
+ * @param {Object} params - Params.
+ * @returns {Object} Unsigned event.
+ */
 export function buildBlockListEvent(params) {
   const {
     pubkey,
@@ -2676,6 +2931,13 @@ export function buildBlockListEvent(params) {
   return event;
 }
 
+/**
+ * Builds a Hashtag Preferences event (Kind 30015).
+ * Stores user tag interests/blocks.
+ *
+ * @param {Object} params - Params.
+ * @returns {Object} Unsigned event.
+ */
 export function buildHashtagPreferenceEvent(params) {
   const {
     pubkey,
@@ -2720,6 +2982,15 @@ function resolveAdminNoteType(listKey) {
   }
 }
 
+/**
+ * Builds an Admin List event (Kind 30000).
+ * Used for moderation lists (whitelist, blacklist, etc.).
+ *
+ * @param {string} listKey - 'moderation', 'whitelist', 'blacklist'.
+ * @param {Object} params - Params.
+ * @param {Array<string>} params.hexPubkeys - List of affected users.
+ * @returns {Object} Unsigned event.
+ */
 export function buildAdminListEvent(listKey, params) {
   const {
     pubkey,
@@ -2795,6 +3066,14 @@ function hasTagName(tags, tagName) {
   });
 }
 
+/**
+ * Validates an event object against the schema for a given type.
+ * Checks kind, required tags, and content structure.
+ *
+ * @param {string} type - NOTE_TYPES key.
+ * @param {Object} event - The event object to validate.
+ * @returns {{valid: boolean, errors: Array<string>}} Validation result.
+ */
 export function validateEventStructure(type, event) {
   const schema = getNostrEventSchema(type);
   const errors = [];
