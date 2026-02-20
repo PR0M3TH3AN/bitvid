@@ -179,6 +179,7 @@ To run **bitvid** locally:
    npm run test:smoke        # Critical path verification
    npm run format
    npm run lint
+   npm run audit             # Design system audit
    ```
 
    _Tip: Use `npm run test:unit` to run the full suite (can be slow)._
