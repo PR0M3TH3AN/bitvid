@@ -33,7 +33,6 @@ const BASELINE = {
   "js/ui/components/EmbedVideoModal.js": 1,
   "js/ui/components/EventDetailsModal.js": 1,
   "js/ui/components/nip71FormManager.js": 1,
-  "js/ui/components/ShareNostrModal.js": 3,
   "js/ui/components/UploadModal.js": 1,
   "js/ui/components/VideoModal.js": 1,
   "js/ui/dm/AppShell.js": 1,
