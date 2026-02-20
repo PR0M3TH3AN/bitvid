@@ -107,7 +107,9 @@ export class ShareNostrModal {
 
       const html = await response.text();
       const wrapper = document.createElement("div");
-      wrapper.innerHTML = html;
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, "text/html");
+      wrapper.replaceChildren(...Array.from(doc.body.childNodes));
       this.removeTrackingScripts(wrapper);
       targetContainer.appendChild(wrapper);
       modal = wrapper.querySelector("#shareNostrModal");
@@ -273,7 +275,7 @@ export class ShareNostrModal {
     if (!this.relayPills) {
       return;
     }
-    this.relayPills.innerHTML = "";
+    this.relayPills.replaceChildren();
     if (!this.currentRelays.length) {
       const placeholder = document.createElement("span");
       placeholder.className = "text-xs text-muted";
@@ -299,8 +301,21 @@ export class ShareNostrModal {
       removeButton.setAttribute("aria-label", `Remove ${relay}`);
       removeButton.dataset.action = "remove-relay";
       removeButton.dataset.relay = relay;
-      removeButton.innerHTML =
-        '<svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("class", "h-3 w-3");
+      svg.setAttribute("viewBox", "0 0 24 24");
+      svg.setAttribute("fill", "none");
+      svg.setAttribute("stroke", "currentColor");
+      svg.setAttribute("stroke-width", "2");
+
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", "M18 6L6 18M6 6l12 12");
+      path.setAttribute("stroke-linecap", "round");
+      path.setAttribute("stroke-linejoin", "round");
+
+      svg.appendChild(path);
+      removeButton.appendChild(svg);
       pill.appendChild(removeButton);
 
       this.relayPills.appendChild(pill);
