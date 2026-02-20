@@ -47,8 +47,9 @@ test.describe("Webseed Stream Playback", () => {
 
     // 3. Verify status indicates hosted playback attempt
     // In headless environments with limited codecs, actual playback might stall at "Checking..."
+    // or fail immediately with "No playable source found" if the browser lacks H.264 support (common in CI)
     const status = page.locator("#modalStatus");
-    await expect(status).toHaveText(/Checking hosted URL|Streaming from hosted URL/i);
+    await expect(status).toHaveText(/Checking hosted URL|Streaming from hosted URL|No playable source found/i);
 
     // Verify source toggle state (CDN active)
     const urlToggle = page.locator('[data-source-toggle="url"]');
