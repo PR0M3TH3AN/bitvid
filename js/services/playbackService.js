@@ -352,6 +352,15 @@ export class PlaybackService {
     this.probeCache.set(cacheKey, { result, expiresAt: now + ttl });
   }
 
+  /**
+   * Probes a hosted URL to check for reachability (usually via a HEAD request).
+   *
+   * @param {Object} options
+   * @param {string} [options.url] - The HTTPS URL to probe.
+   * @param {string} [options.magnet] - Optional magnet context for caching keys.
+   * @param {Function} [options.probeUrl] - The actual probe function (returns { outcome: 'ok'|'bad'|'timeout'|'error', status?: number }).
+   * @returns {Promise<{outcome: string, status?: number, error?: Error}>}
+   */
   async probeHostedUrl({ url, magnet, probeUrl } = {}) {
     const sanitizedUrl = typeof url === "string" ? url.trim() : "";
     if (!sanitizedUrl) {
@@ -537,6 +546,19 @@ export class PlaybackService {
     }
   }
 
+  /**
+   * Creates a new playback session for a specific video request.
+   *
+   * @param {Object} options
+   * @param {string} [options.url] - The hosted video URL.
+   * @param {string} [options.magnet] - The WebTorrent magnet link.
+   * @param {string} [options.requestSignature] - Unique identifier for deduplication.
+   * @param {HTMLVideoElement} [options.videoElement] - Target video element.
+   * @param {Function} [options.probeUrl] - Probe function override.
+   * @param {Function} [options.playViaWebTorrent] - Torrent handler.
+   * @param {string} [options.forcedSource] - 'url' or 'torrent' to skip priority checks.
+   * @returns {PlaybackSession} The new session instance.
+   */
   createSession(options = {}) {
     const session = new PlaybackSession(this, {
       ...options,
@@ -727,6 +749,8 @@ class PlaybackSession extends SimpleEventEmitter {
   /**
    * Begins the playback flow. Returns a promise that resolves when playback
    * has either successfully started (URL or Torrent) or fatally failed.
+   *
+   * @returns {Promise<{source: 'url'|'torrent'|null, error?: Error}>}
    */
   async start() {
     if (this.startPromise) {
@@ -738,6 +762,7 @@ class PlaybackSession extends SimpleEventEmitter {
 
   /**
    * The core execution loop for the session.
+   *
    * Flow:
    * 1. Check if forced source (e.g. user manually switched to "Torrent")
    * 2. If URL available & URL-first enabled:
@@ -746,6 +771,8 @@ class PlaybackSession extends SimpleEventEmitter {
    *    c. Attach watchdogs.
    *    d. If watchdog triggers (stall/error), trigger `startTorrentFallback`.
    * 3. If URL fails or not available, call `startTorrentFallback`.
+   *
+   * @returns {Promise<{source: 'url'|'torrent'|null, error?: Error}>}
    */
   async execute() {
     const {
