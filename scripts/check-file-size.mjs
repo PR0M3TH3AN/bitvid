@@ -27,7 +27,7 @@ const GROWTH_MARGIN = 50; // lines — allowlisted files may grow by this much f
 // They must NOT grow beyond (recorded + GROWTH_MARGIN).
 const GRANDFATHERED = {
   "js/ui/profileModalController.js": 8130,
-  "js/ui/components/VideoModal.js": 6045,
+  "js/ui/components/VideoModal.js": 4976,
   "js/app.js": 5602,
   "js/channelProfile.js": 5529,
   "js/nostr/client.js": 4356,
