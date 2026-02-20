@@ -2,9 +2,11 @@ import WebSocket from 'ws';
 import { webcrypto } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { startRelay } from './simple-relay.mjs';
+import { fileURLToPath } from 'url';
+import { spawn } from 'child_process';
 import { NostrClient } from '../../js/nostr/client.js';
 import { buildVideoPostEvent, buildViewEvent } from '../../js/nostrEventSchemas.js';
+import { decryptDM } from '../../js/dmDecryptor.js';
 import { generateSecretKey, getPublicKey, nip19 } from 'nostr-tools';
 
 // --- Polyfills for Node.js environment ---
@@ -28,12 +30,13 @@ if (typeof globalThis.localStorage === 'undefined') {
 if (typeof globalThis.window === 'undefined') {
   globalThis.window = globalThis;
   globalThis.window.localStorage = globalThis.localStorage;
+  // Mock runtime overrides for schemas
+  globalThis.window.bitvidNostrEventOverrides = {};
 }
 if (typeof globalThis.navigator === 'undefined') {
   globalThis.navigator = { userAgent: 'node' };
 }
 if (typeof globalThis.document === 'undefined') {
-  // Minimal document mock for some utility checks
   globalThis.document = {
     createElement: () => ({}),
     body: {},
@@ -48,7 +51,7 @@ function parseArgs() {
     relays: [],
     burst: 3,
     timeout: 30, // seconds
-    out: `artifacts/interop-${new Date().toISOString().split('T')[0]}.json`,
+    out: `artifacts/interop-${new Date().toISOString().split('T')[0].replace(/-/g, '')}.json`,
     confirmPublic: false
   };
 
@@ -85,7 +88,7 @@ function log(level, message, data = null) {
   const entry = `[${timestamp}] [${level.toUpperCase()}] ${message}`;
   console.log(entry);
   if (data) {
-    console.dir(data, { depth: null, colors: true });
+    // console.dir(data, { depth: null, colors: true });
   }
   logs.push({ timestamp, level, message, data });
 }
@@ -99,7 +102,7 @@ function saveArtifacts(config, results) {
   // Save JSON summary
   const summary = {
     timestamp: new Date().toISOString(),
-    config: { ...config, relays: config.relays }, // include actual used relays
+    config: { ...config, relays: config.relays },
     results,
     logs
   };
@@ -113,6 +116,25 @@ function saveArtifacts(config, results) {
   log('info', `Log saved to ${logPath}`);
 }
 
+// --- Helper: Start Local Relay ---
+async function startLocalRelay() {
+    const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+    const relayScript = path.resolve(scriptDir, 'simple-relay.mjs');
+    const port = 8899;
+
+    log('info', `Starting local relay on port ${port}...`);
+    const relayProcess = spawn('node', [relayScript], {
+        env: { ...process.env, PORT: port.toString() },
+        stdio: 'ignore', // 'inherit' for debug
+        detached: false
+    });
+
+    // Allow relay to boot
+    await new Promise(r => setTimeout(r, 2000));
+    return { process: relayProcess, url: `ws://localhost:${port}` };
+}
+
+
 // --- Main Test Logic ---
 async function runTests() {
   const config = parseArgs();
@@ -122,16 +144,15 @@ async function runTests() {
     dm: { status: 'pending' }
   };
 
-  let relayServer = null;
+  let relayProcess = null;
 
   try {
     // 1. Setup Relays
     if (config.relays.length === 0) {
       log('info', 'No relays specified. Starting local test relay...');
-      const port = 8899;
-      relayServer = startRelay(port);
-      config.relays = [`ws://localhost:${port}`];
-      log('info', `Local relay started at ws://localhost:${port}`);
+      const local = await startLocalRelay();
+      relayProcess = local.process;
+      config.relays = [local.url];
     } else {
       log('info', `Using configured relays: ${config.relays.join(', ')}`);
       // Security check for public relays
@@ -156,12 +177,13 @@ async function runTests() {
       const pk = getPublicKey(sk);
       const npub = nip19.npubEncode(pk);
 
+      // We manually initialize internal managers since we are in Node
       await client.ensurePool();
       await client.connectToRelays();
-      await client.registerPrivateKeySigner({ privateKey: skHex, pubkey: pk });
+      const signer = await client.registerPrivateKeySigner({ privateKey: skHex, pubkey: pk });
 
       log('info', `${name} initialized`, { pubkey: pk, npub });
-      return { client, sk, skHex, pk, npub };
+      return { client, sk, skHex, pk, npub, signer };
     };
 
     const alice = await setupClient('Alice');
@@ -196,6 +218,8 @@ async function runTests() {
       if (!fetched) {
         throw new Error('Failed to fetch published video event');
       }
+
+      // Validation
       if (fetched.title !== 'Interop Test Video') {
         throw new Error(`Content mismatch: expected 'Interop Test Video', got '${fetched.title}'`);
       }
@@ -221,9 +245,27 @@ async function runTests() {
 
         const { signedEvent } = await alice.client.signAndPublishEvent(viewEvent);
         log('info', 'View event published', { id: signedEvent.id });
+
+        // Wait for propagation
+        await new Promise(r => setTimeout(r, 500));
+
+        // Verify reception
+        // Since View Events (Kind 30078/10003?) wait, View Event is Kind 30078 with t=view?
+        // Let's check schema. KIND_WATCH_HISTORY = 30078 (wait, that's video post kind usually, but schema says WATCH_HISTORY_KIND).
+        // Actually viewEvent is KIND_WATCH_HISTORY (30078) with specific tags.
+        // Let's check `getNostrEventSchema(NOTE_TYPES.VIEW_EVENT)`.
+        // It says kind: WATCH_HISTORY_KIND (imported from config).
+        // But usually view events are just data events.
+
+        // Anyway, let's fetch it back by ID to confirm.
+        const fetchedView = await alice.client.getEventById(signedEvent.id);
+        if (!fetchedView) {
+             throw new Error('Failed to fetch published view event');
+        }
+
         results.viewEvent.publishedId = signedEvent.id;
         results.viewEvent.status = 'pass';
-        log('info', 'View Event verified successfully (publish only)');
+        log('info', 'View Event verified successfully');
       } catch (e) {
         log('error', 'View Event test failed', e);
         results.viewEvent.status = 'fail';
@@ -234,37 +276,67 @@ async function runTests() {
       results.viewEvent.status = 'skipped';
     }
 
-    // --- Test 3: DM Roundtrip (NIP-04) ---
-    log('info', '--- Test 3: DM Roundtrip (NIP-04) ---');
+    // --- Test 3: DM Roundtrip (NIP-04/17) ---
+    log('info', '--- Test 3: DM Roundtrip ---');
     try {
       const message = `Secret message ${Date.now()}`;
 
-      // Sending
-      const sendResult = await alice.client.sendDirectMessage(bob.npub, message, null, { useNip17: false });
+      // Sending from Alice to Bob
+      // Note: sendDirectMessage automatically chooses NIP-04 or NIP-17 based on options.
+      // We will try default (NIP-04 usually, unless attachments present).
+      // The prompt asks for "DM encrypt/decrypt roundtrip using js/dmDecryptor.js".
+
+      // Explicitly pass signingAdapter to avoid global registry lookup issues in test harness
+      const sendResult = await alice.client.sendDirectMessage(bob.npub, message, null, {
+          useNip17: false,
+          signingAdapter: alice.signer
+      });
+
       if (!sendResult.ok) {
         throw new Error(`Send failed: ${sendResult.error}`);
       }
-      log('info', 'DM sent', { message });
+      log('info', 'DM sent (NIP-04)', { message });
 
       // Wait for propagation
-      await new Promise(r => setTimeout(r, 1000));
+      await new Promise(r => setTimeout(r, 2000));
 
       // Receiving
-      // We need to fetch messages for Bob.
-      // NostrClient.listDirectMessages usually assumes the active user is the one fetching.
-      // We can use bob.client.listDirectMessages() since bob.client has Bob's signer active.
-      // Note: listDirectMessages filters by 'authors' or 'p' tags relative to 'actorPubkey'.
+      // We fetch the DM event as Bob.
+      // We need to list messages.
+      // Note: listDirectMessages does a whole workflow. We want to test `decryptDM` specifically.
+      // So we will manually fetch the event using pool.list and then pass it to decryptDM.
 
-      // Force Bob's client to see Bob as the actor
-      const dms = await bob.client.listDirectMessages(bob.pk, { limit: 10 });
-      const received = dms.find(m => m.plaintext === message);
+      const filters = [{
+          kinds: [4], // NIP-04
+          '#p': [bob.pk],
+          authors: [alice.pk],
+          limit: 1
+      }];
 
-      if (!received) {
-        log('debug', 'Received DMs', dms.map(m => m.plaintext));
-        throw new Error('Bob did not receive/decrypt the DM');
+      const events = await bob.client.pool.list(bob.client.readRelays, filters);
+      const dmEvent = events.find(e => e.kind === 4);
+
+      if (!dmEvent) {
+          throw new Error('Bob could not find the DM event on relay');
       }
 
-      log('info', 'DM received and decrypted', { plaintext: received.plaintext });
+      log('info', 'DM Event fetched', { id: dmEvent.id });
+
+      // Decrypt using js/dmDecryptor.js
+      // We need a decrypt context for Bob.
+      const context = await bob.client.buildDmDecryptContext(bob.pk);
+
+      const result = await decryptDM(dmEvent, context);
+
+      if (!result.ok) {
+          throw new Error(`Decryption failed: ${result.errors?.[0]?.error?.message || 'Unknown error'}`);
+      }
+
+      if (result.plaintext !== message) {
+          throw new Error(`Content mismatch. Expected '${message}', got '${result.plaintext}'`);
+      }
+
+      log('info', 'DM decrypted successfully via decryptDM', { plaintext: result.plaintext });
       results.dm.status = 'pass';
     } catch (e) {
       log('error', 'DM test failed', e);
@@ -275,10 +347,14 @@ async function runTests() {
   } catch (error) {
     log('error', 'Fatal error in test runner', error);
   } finally {
-    if (relayServer) {
+    if (relayProcess) {
       log('info', 'Closing local relay...');
-      relayServer.close();
+      relayProcess.kill();
     }
+
+    // Force close clients
+    // (There isn't a clean close method exposed on NostrClient that closes the pool,
+    // but we can exit process)
 
     saveArtifacts(config, results);
 
