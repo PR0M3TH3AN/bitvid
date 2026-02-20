@@ -97,8 +97,12 @@ export function randomObject(depth = 0, maxDepth = 3) {
   return obj;
 }
 
-export async function runFuzzer(targetName, fn, generator, iterations = 1000) {
-  const reportPath = path.join(ARTIFACTS_DIR, `fuzz-report-${targetName}.json`);
+export async function runFuzzer(targetName, fn, generator, defaultIterations = 1000) {
+  const envIterations = process.env.FUZZ_ITERATIONS ? parseInt(process.env.FUZZ_ITERATIONS, 10) : NaN;
+  const iterations = !isNaN(envIterations) ? envIterations : defaultIterations;
+
+  const today = new Date().toISOString().slice(0, 10).replace(/-/g, ""); // YYYYMMDD
+  const reportPath = path.join(ARTIFACTS_DIR, `fuzz-report-${targetName}-${today}.json`);
   const failures = [];
 
   console.log(`Starting fuzzer for ${targetName} with ${iterations} iterations...`);
@@ -122,18 +126,20 @@ export async function runFuzzer(targetName, fn, generator, iterations = 1000) {
       failures.push(failure);
 
       // Save reproducer
-      const reproducerPath = path.join(
+      const reproDir = path.join(
         REPRODUCERS_DIR,
-        targetName,
-        `crash-${i}.json`
+        `fuzz-${targetName}-${today}`
       );
-      if (!fs.existsSync(path.dirname(reproducerPath))) {
-        fs.mkdirSync(path.dirname(reproducerPath), { recursive: true });
+      if (!fs.existsSync(reproDir)) {
+          fs.mkdirSync(reproDir, { recursive: true });
       }
+
+      const reproducerPath = path.join(reproDir, `case-${i}.json`);
       fs.writeFileSync(reproducerPath, JSON.stringify(inputs, null, 2));
     }
   }
 
+  // Always write the report, even if empty (as per requirement: "an empty array [] ... indicates zero failures")
   fs.writeFileSync(reportPath, JSON.stringify(failures, null, 2));
   console.log(`Fuzzer finished. Found ${failures.length} failures. Report saved to ${reportPath}`);
   return failures;
