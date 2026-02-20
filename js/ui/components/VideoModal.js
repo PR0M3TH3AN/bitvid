@@ -11,6 +11,8 @@ import { CommentsController } from "./video-modal/commentsController.js";
 import { ReactionsController } from "./video-modal/reactionsController.js";
 import { SimilarContentController } from "./video-modal/similarContentController.js";
 import { ModerationController } from "./video-modal/moderationController.js";
+import { ZapController } from "./video-modal/zapController.js";
+import { LinkPreviewController } from "./video-modal/linkPreviewController.js";
 import {
   normalizeCommentAvatarKey as normalizeCommentAvatarKeyUtil,
   resolveCommentAvatarAsset as resolveCommentAvatarAssetUtil,
@@ -45,13 +47,6 @@ import {
 } from "../../utils/formatters.js";
 import { sanitizeProfileMediaUrl } from "../../utils/profileMedia.js";
 import { getBreakpointLg } from "../../designSystem/metrics.js";
-import { LinkPreviewService } from "../../services/linkPreviewService.js";
-import {
-  allowLinkPreviewDomain,
-  getLinkPreviewSettings,
-  isLinkPreviewDomainAllowed,
-  subscribeToLinkPreviewSettings,
-} from "../../utils/linkPreviewSettings.js";
 import { HEX64_REGEX } from "../../utils/hex.js";
 import { UI_FEEDBACK_DELAY_MS } from "../../constants.js";
 
@@ -166,7 +161,6 @@ export class VideoModal {
     this.modalDownloaded = null;
     this.videoTitle = null;
     this.videoDescription = null;
-    this.videoDescriptionPreviews = null;
     this.videoTimestamp = null;
     this.videoEditedTimestamp = null;
     this.videoViewCountEl = null;
@@ -182,7 +176,6 @@ export class VideoModal {
     this.copyMagnetBtn = null;
     this.shareBtn = null;
     this.embedBtn = null;
-    this.modalZapBtn = null;
     this.modalMoreBtn = null;
     this.reactionButtons = {
       "+": null,
@@ -218,24 +211,6 @@ export class VideoModal {
     this.modalAccessibility = null;
     this.modalNavScrollHandler = null;
 
-    this.modalZapDialog = null;
-    this.modalZapForm = null;
-    this.modalZapAmountInput = null;
-    this.modalZapCommentInput = null;
-    this.modalZapSplitSummary = null;
-    this.modalZapStatusEl = null;
-    this.modalZapReceipts = null;
-    this.modalZapSendBtn = null;
-    this.modalZapCloseBtn = null;
-    this.modalZapWalletPrompt = null;
-    this.modalZapWalletLink = null;
-    this.modalZapDialogOpen = false;
-    this.modalZapPending = false;
-    this.modalZapRequiresLogin = false;
-    this.modalZapPopover = null;
-    this.modalZapOpenPromise = null;
-    this.modalZapPendingToggle = null;
-
     this.modalMorePopover = null;
     this.modalMoreMenuPanel = null;
     this.modalMoreMenuContext = {
@@ -250,6 +225,8 @@ export class VideoModal {
     this.reactionsController = new ReactionsController({ modal: this });
     this.similarContentController = new SimilarContentController({ modal: this });
     this.moderationController = new ModerationController({ modal: this });
+    this.zapController = new ZapController({ modal: this });
+    this.linkPreviewController = new LinkPreviewController({ modal: this });
 
     this.commentsRoot = null;
     this.commentsContainer = null;
@@ -293,12 +270,6 @@ export class VideoModal {
     this.commentCallbacks = {
       teardown: null,
     };
-    this.linkPreviewService = new LinkPreviewService();
-    this.linkPreviewAbortControllers = new Map();
-    this.linkPreviewSettingsUnsubscribe = null;
-    this.currentDescriptionText = "";
-    this.handleLinkPreviewSettingsChange =
-      this.handleLinkPreviewSettingsChange.bind(this);
     this.boundCommentSubmitHandler =
       this.handleCommentComposerSubmit.bind(this);
     this.boundCommentInputHandler =
@@ -594,16 +565,10 @@ export class VideoModal {
     }
     this.modalAccessibility = null;
 
-    // 2. Cleanup existing popovers (Zap, More Menu)
-    if (this.modalZapPopover?.destroy) {
-      this.modalZapPopover.destroy();
-    }
+    // 2. Cleanup existing popovers (More Menu)
     if (this.modalMorePopover?.destroy) {
       this.modalMorePopover.destroy();
     }
-    this.modalZapPopover = null;
-    this.modalZapOpenPromise = null;
-    this.modalZapPendingToggle = null;
     this.modalMorePopover = null;
     this.modalMoreMenuPanel = null;
 
@@ -648,6 +613,8 @@ export class VideoModal {
     this.reactionsController.destroy();
     this.similarContentController.destroy();
     this.moderationController.destroy();
+    this.zapController.destroy();
+    this.linkPreviewController.destroy();
 
     this.clearSimilarContent({ preservePending: true });
 
@@ -740,8 +707,6 @@ export class VideoModal {
     this.videoTitle = playerModal.querySelector("#videoTitle") || null;
     this.videoDescription =
       playerModal.querySelector("#videoDescription") || null;
-    this.videoDescriptionPreviews =
-      playerModal.querySelector("#videoDescriptionPreviews") || null;
     this.videoTimestamp = playerModal.querySelector("#videoTimestamp") || null;
     this.videoEditedTimestamp =
       playerModal.querySelector("#videoEditedTimestamp") || null;
@@ -753,7 +718,6 @@ export class VideoModal {
     this.copyMagnetBtn = playerModal.querySelector("#copyMagnetBtn") || null;
     this.shareBtn = playerModal.querySelector("#shareBtn") || null;
     this.embedBtn = playerModal.querySelector("#embedBtn") || null;
-    this.modalZapBtn = playerModal.querySelector("#modalZapBtn") || null;
     this.modalMoreBtn = playerModal.querySelector("#modalMoreBtn") || null;
     this.reactionsController.initialize({ playerModal });
 
@@ -767,41 +731,14 @@ export class VideoModal {
 
     this.ambientCanvas = playerModal.querySelector("#ambientCanvas") || null;
 
-    this.modalZapDialog = playerModal.querySelector("#modalZapDialog") || null;
-    this.modalZapForm = playerModal.querySelector("#modalZapForm") || null;
-    this.modalZapAmountInput =
-      playerModal.querySelector("#modalZapAmountInput") || null;
-    this.modalZapCommentInput =
-      playerModal.querySelector("#modalZapCommentInput") || null;
-    this.modalZapSplitSummary =
-      playerModal.querySelector("#modalZapSplitSummary") || null;
-    this.modalZapStatusEl =
-      playerModal.querySelector("#modalZapStatus") || null;
-    this.modalZapReceipts =
-      playerModal.querySelector("#modalZapReceipts") || null;
-    this.modalZapSendBtn =
-      playerModal.querySelector("#modalZapSendBtn") || null;
-    this.modalZapCloseBtn =
-      playerModal.querySelector("#modalZapCloseBtn") || null;
-    this.modalZapWalletPrompt =
-      playerModal.querySelector("#modalZapWalletPrompt") || null;
-    this.modalZapWalletLink =
-      playerModal.querySelector("#modalZapWalletLink") || null;
-    this.modalZapDialogOpen = false;
-    this.setupModalZapPopover();
     this.setupModalMorePopover();
     this.setupModalSharePopover();
 
     this.refreshActiveVideoModeration({ video: this.activeVideo });
 
     this.commentsController.initialize({ playerModal });
-
-    if (this.linkPreviewSettingsUnsubscribe) {
-      this.linkPreviewSettingsUnsubscribe();
-    }
-    this.linkPreviewSettingsUnsubscribe = subscribeToLinkPreviewSettings(
-      this.handleLinkPreviewSettingsChange,
-    );
+    this.zapController.initialize({ playerModal });
+    this.linkPreviewController.initialize({ playerModal });
 
     const closeButton = playerModal.querySelector("#closeModal");
     if (closeButton) {
@@ -842,7 +779,7 @@ export class VideoModal {
 
     this.bindVideoEvents();
     this.bindActionButtons();
-    this.setZapVisibility(false);
+    // zap visibility is handled by ZapController.initialize
     this.setCopyEnabled(false);
     this.setShareEnabled(false);
     this.setEmbedEnabled(false);
@@ -2151,12 +2088,9 @@ export class VideoModal {
     this.reactionsController.destroy();
     this.similarContentController.destroy();
     this.moderationController.destroy();
+    this.zapController.destroy();
+    this.linkPreviewController.destroy();
     this.invokeCommentTeardown();
-    this.clearLinkPreviews();
-    if (this.linkPreviewSettingsUnsubscribe) {
-      this.linkPreviewSettingsUnsubscribe();
-      this.linkPreviewSettingsUnsubscribe = null;
-    }
 
     if (this.document) {
       this.document.removeEventListener(
@@ -2359,58 +2293,6 @@ export class VideoModal {
       this.embedBtn.addEventListener("click", this.handleEmbedRequest);
     }
 
-    if (this.modalZapBtn) {
-      this.modalZapBtn.addEventListener("click", (event) => {
-        event?.preventDefault?.();
-        event?.stopPropagation?.();
-
-        if (this.modalZapBtn?.disabled) {
-          return;
-        }
-
-        if (this.modalZapRequiresLogin) {
-          this.dispatch(
-            "zap:open",
-            {
-              video: this.activeVideo,
-              requiresLogin: true,
-            },
-            { cancelable: false },
-          );
-          return;
-        }
-
-        const popoverIsOpen = this.isZapDialogOpen();
-
-        if (this.modalZapOpenPromise) {
-          this.modalZapPendingToggle = "close";
-          this.closeZapDialog({ silent: true, restoreFocus: false });
-          return;
-        }
-
-        if (popoverIsOpen) {
-          if (this.modalZapPending) {
-            return;
-          }
-
-          this.closeZapDialog();
-          return;
-        }
-
-        const allowed = this.dispatch(
-          "zap:open",
-          { video: this.activeVideo },
-          { cancelable: true },
-        );
-        if (allowed === false) {
-          return;
-        }
-
-        this.modalZapPendingToggle = null;
-        this.openZapDialog();
-      });
-    }
-
     if (this.modalMoreBtn && this.modalMoreBtn.dataset.modalMenuHandler !== "true") {
       this.modalMoreBtn.dataset.modalMenuHandler = "true";
       this.modalMoreBtn.addEventListener("click", this.handleModalMoreButtonClick);
@@ -2429,68 +2311,6 @@ export class VideoModal {
       });
     }
 
-    if (this.modalZapCloseBtn) {
-      this.modalZapCloseBtn.addEventListener("click", (event) => {
-        event?.preventDefault?.();
-        this.closeZapDialog();
-      });
-    }
-
-    if (this.modalZapWalletLink) {
-      this.modalZapWalletLink.addEventListener("click", (event) => {
-        event?.preventDefault?.();
-        this.dispatch("zap:wallet-link", { video: this.activeVideo });
-      });
-    }
-
-    if (this.modalZapForm) {
-      this.modalZapForm.addEventListener("submit", (event) => {
-        event?.preventDefault?.();
-        if (this.modalZapSendBtn?.dataset.completed === "true") {
-          this.closeZapDialog();
-          return;
-        }
-        if (this.modalZapSendBtn?.disabled) {
-          return;
-        }
-        this.dispatch("video:zap", {
-          video: this.activeVideo,
-          amount: this.getZapAmountValue(),
-          comment: this.getZapCommentValue()
-        });
-      });
-    }
-
-    if (this.modalZapSendBtn) {
-      this.modalZapSendBtn.addEventListener("click", (event) => {
-        if (this.modalZapSendBtn?.dataset.completed === "true") {
-          event?.preventDefault?.();
-          this.closeZapDialog();
-        }
-      });
-    }
-
-    if (this.modalZapAmountInput) {
-      const amountHandler = () => {
-        this.dispatch("zap:amount-change", {
-          video: this.activeVideo,
-          amount: this.getZapAmountValue()
-        });
-      };
-      this.modalZapAmountInput.addEventListener("input", amountHandler);
-      this.modalZapAmountInput.addEventListener("change", amountHandler);
-    }
-
-    if (this.modalZapCommentInput) {
-      const commentHandler = () => {
-        this.dispatch("zap:comment-change", {
-          video: this.activeVideo,
-          comment: this.getZapCommentValue()
-        });
-      };
-      this.modalZapCommentInput.addEventListener("input", commentHandler);
-    }
-
     if (this.creatorAvatar) {
       this.creatorAvatar.addEventListener(
         "click",
@@ -2502,108 +2322,6 @@ export class VideoModal {
     }
   }
 
-  setupModalZapPopover() {
-    if (!this.modalZapDialog) {
-      this.modalZapPopover = null;
-      return;
-    }
-
-    if (!this.modalZapDialog.dataset.state) {
-      const isHidden =
-        this.modalZapDialog.hasAttribute("hidden") ||
-        this.modalZapDialog.getAttribute("aria-hidden") === "true";
-      this.modalZapDialog.dataset.state = isHidden ? "closed" : "open";
-    }
-
-    if (this.modalZapDialog.dataset.state !== "open") {
-      this.modalZapDialog.hidden = true;
-      this.modalZapDialog.setAttribute("aria-hidden", "true");
-      this.modalZapDialogOpen = false;
-    }
-
-    if (!this.modalZapBtn) {
-      this.modalZapPopover = null;
-      return;
-    }
-
-    const documentRef =
-      this.modalZapDialog.ownerDocument ||
-      this.modalZapBtn.ownerDocument ||
-      this.document ||
-      (typeof document !== "undefined" ? document : null);
-
-    const popover = createPopover(
-      this.modalZapBtn,
-      () => this.modalZapDialog,
-      {
-        document: documentRef,
-        placement: "bottom-end",
-        restoreFocusOnClose: true,
-      },
-    );
-
-    if (!popover) {
-      this.modalZapPopover = null;
-      return;
-    }
-
-    const originalOpen = popover.open?.bind(popover);
-    if (originalOpen) {
-      popover.open = async (...args) => {
-        const result = await originalOpen(...args);
-        if (result) {
-          this.modalZapDialog.dataset.state = "open";
-          this.modalZapDialog.hidden = false;
-          this.modalZapDialog.setAttribute("aria-hidden", "false");
-          this.modalZapDialogOpen = true;
-          if (this.modalZapBtn) {
-            this.modalZapBtn.setAttribute("aria-expanded", "true");
-          }
-          this.focusZapAmount();
-        }
-        return result;
-      };
-    }
-
-    const originalClose = popover.close?.bind(popover);
-    if (originalClose) {
-      popover.close = (options = {}) => {
-        const { silent = false, ...rest } = options;
-        const wasOpen = popover.isOpen?.() === true;
-        const result = originalClose(rest);
-        const wasDialogMarkedOpen =
-          this.modalZapDialogOpen === true ||
-          this.modalZapDialog?.dataset?.state === "open";
-        if (wasOpen || wasDialogMarkedOpen) {
-          this.modalZapPendingToggle = null;
-          this.modalZapOpenPromise = null;
-          this.modalZapDialog.dataset.state = "closed";
-          this.modalZapDialog.setAttribute("aria-hidden", "true");
-          this.modalZapDialog.hidden = true;
-          this.modalZapDialogOpen = false;
-          if (this.modalZapBtn) {
-            this.modalZapBtn.setAttribute("aria-expanded", "false");
-          }
-          if (!silent && (wasOpen || wasDialogMarkedOpen)) {
-            this.dispatch("zap:close", { video: this.activeVideo });
-          }
-        }
-        return result;
-      };
-    }
-
-    const originalDestroy = popover.destroy?.bind(popover);
-    if (originalDestroy) {
-      popover.destroy = (...args) => {
-        originalDestroy(...args);
-        if (this.modalZapPopover === popover) {
-          this.modalZapPopover = null;
-        }
-      };
-    }
-
-    this.modalZapPopover = popover;
-  }
 
   setupModalMorePopover() {
     if (!this.modalMoreBtn) {
@@ -3891,611 +3609,75 @@ export class VideoModal {
   }
 
   setZapVisibility(visible, options = {}) {
-    let config;
-    if (typeof visible === "object" && visible !== null) {
-      config = { ...visible };
-    } else {
-      config = {
-        visible,
-        ...(options && typeof options === "object" ? options : {}),
-      };
-    }
-
-    const shouldShow = !!config.visible;
-    const requiresLogin = shouldShow && !!config.requiresLogin;
-    this.modalZapRequiresLogin = requiresLogin;
-
-    if (this.modalZapBtn) {
-      this.modalZapBtn.toggleAttribute("hidden", !shouldShow);
-      const disableButton =
-        !shouldShow || (this.modalZapPending && !requiresLogin);
-      this.modalZapBtn.disabled = disableButton;
-      const ariaDisabledValue =
-        requiresLogin || !shouldShow ? "true" : "false";
-      this.modalZapBtn.setAttribute("aria-disabled", ariaDisabledValue);
-      this.modalZapBtn.setAttribute("aria-hidden", (!shouldShow).toString());
-      this.modalZapBtn.setAttribute("aria-expanded", "false");
-      if (shouldShow) {
-        this.modalZapBtn.removeAttribute("tabindex");
-      } else {
-        this.modalZapBtn.setAttribute("tabindex", "-1");
-      }
-      if (requiresLogin) {
-        this.modalZapBtn.dataset.requiresLogin = "true";
-        this.modalZapBtn.removeAttribute("aria-busy");
-        this.modalZapBtn.classList.remove("opacity-50", "pointer-events-none");
-      } else {
-        delete this.modalZapBtn.dataset.requiresLogin;
-        if (this.modalZapPending) {
-          this.modalZapBtn.setAttribute("aria-busy", "true");
-          this.modalZapBtn.classList.add("opacity-50", "pointer-events-none");
-        } else {
-          this.modalZapBtn.removeAttribute("aria-busy");
-          this.modalZapBtn.classList.remove(
-            "opacity-50",
-            "pointer-events-none",
-          );
-        }
-      }
-    }
-
-    if (!shouldShow || requiresLogin) {
-      this.closeZapDialog({ silent: true, restoreFocus: false });
-    }
+    this.zapController.setZapVisibility(visible, options);
   }
 
   setWalletPromptVisible(visible) {
-    if (!this.modalZapWalletPrompt) {
-      return;
-    }
-    const shouldShow = !!visible;
-    this.modalZapWalletPrompt.toggleAttribute("hidden", !shouldShow);
-    this.modalZapWalletPrompt.setAttribute(
-      "aria-hidden",
-      (!shouldShow).toString()
-    );
+    this.zapController.setWalletPromptVisible(visible);
   }
 
   async openZapDialog() {
-    if (this.modalZapRequiresLogin) {
-      return Promise.resolve(false);
-    }
-
-    if (this.modalZapOpenPromise) {
-      return this.modalZapOpenPromise;
-    }
-
-    const runOpen = async () => {
-      if (this.modalZapPopover?.open) {
-        const opened = await this.modalZapPopover.open();
-        if (opened) {
-          this.modalZapDialogOpen = true;
-          if (this.modalZapDialog) {
-            this.modalZapDialog.dataset.state = "open";
-            this.modalZapDialog.hidden = false;
-            this.modalZapDialog.setAttribute("aria-hidden", "false");
-          }
-          this.focusZapAmount();
-          return true;
-        }
-
-        if (this.modalZapDialog) {
-          this.modalZapDialog.hidden = false;
-          this.modalZapDialog.dataset.state = "open";
-          this.modalZapDialog.setAttribute("aria-hidden", "false");
-          this.modalZapDialogOpen = true;
-          if (this.modalZapBtn) {
-            this.modalZapBtn.setAttribute("aria-expanded", "true");
-          }
-          this.focusZapAmount();
-          return true;
-        }
-
-        return opened;
-      }
-
-      if (!this.modalZapDialog) {
-        return false;
-      }
-
-      this.modalZapDialog.hidden = false;
-      this.modalZapDialog.dataset.state = "open";
-      this.modalZapDialog.setAttribute("aria-hidden", "false");
-      this.modalZapDialogOpen = true;
-      if (this.modalZapBtn) {
-        this.modalZapBtn.setAttribute("aria-expanded", "true");
-      }
-      this.focusZapAmount();
-      return true;
-    };
-
-    const promise = runOpen().catch((error) => {
-      this.log("[VideoModal] Failed to open zap popover", error);
-      return false;
-    });
-
-    this.modalZapOpenPromise = promise.finally(() => {
-      const shouldClose = this.modalZapPendingToggle === "close";
-      this.modalZapOpenPromise = null;
-      this.modalZapPendingToggle = null;
-      if (shouldClose && !this.modalZapPending) {
-        this.closeZapDialog();
-      }
-    });
-
-    return this.modalZapOpenPromise;
+    return this.zapController.openZapDialog();
   }
 
-  closeZapDialog({ silent = false, restoreFocus } = {}) {
-    const dialogAppearsOpen = this.isZapDialogOpen();
-
-    if (this.modalZapOpenPromise && !dialogAppearsOpen) {
-      this.modalZapPendingToggle = "close";
-      return;
-    }
-
-    this.modalZapPendingToggle = null;
-    if (this.modalZapPopover?.close) {
-      const options = { silent };
-      if (restoreFocus !== undefined) {
-        options.restoreFocus = restoreFocus;
-      }
-      const closeResult = this.modalZapPopover.close(options);
-
-      if (
-        closeResult !== true &&
-        this.modalZapDialog &&
-        this.modalZapDialogOpen
-      ) {
-        this.modalZapDialog.dataset.state = "closed";
-        this.modalZapDialog.setAttribute("aria-hidden", "true");
-        this.modalZapDialog.hidden = true;
-        this.modalZapDialogOpen = false;
-        if (this.modalZapBtn) {
-          this.modalZapBtn.setAttribute("aria-expanded", "false");
-        }
-        if (!silent) {
-          this.dispatch("zap:close", { video: this.activeVideo });
-        }
-      }
-
-      return;
-    }
-
-    if (!this.modalZapDialog) {
-      return;
-    }
-    if (this.modalZapDialogOpen) {
-      this.modalZapDialog.dataset.state = "closed";
-      this.modalZapDialog.setAttribute("aria-hidden", "true");
-      this.modalZapDialog.hidden = true;
-      this.modalZapDialogOpen = false;
-      if (this.modalZapBtn) {
-        this.modalZapBtn.setAttribute("aria-expanded", "false");
-      }
-      if (!silent) {
-        this.dispatch("zap:close", { video: this.activeVideo });
-      }
-    }
+  closeZapDialog(options) {
+    this.zapController.closeZapDialog(options);
   }
 
   isZapDialogOpen() {
-    const popoverIsOpen =
-      typeof this.modalZapPopover?.isOpen === "function"
-        ? this.modalZapPopover.isOpen()
-        : null;
-
-    if (popoverIsOpen === true) {
-      return true;
-    }
-
-    if (popoverIsOpen === false && this.modalZapDialogOpen) {
-      return true;
-    }
-
-    if (this.modalZapDialog?.dataset?.state === "open") {
-      return true;
-    }
-
-    if (this.modalZapDialog && this.modalZapDialog.hidden === false) {
-      return true;
-    }
-
-    return !!this.modalZapDialogOpen;
+    return this.zapController.isZapDialogOpen();
   }
 
   focusZapAmount() {
-    if (
-      this.modalZapAmountInput &&
-      typeof this.modalZapAmountInput.focus === "function"
-    ) {
-      this.modalZapAmountInput.focus();
-    }
+    this.zapController.focusZapAmount();
   }
 
   getZapAmountValue() {
-    if (!this.modalZapAmountInput) {
-      return 0;
-    }
-    const numeric = Number(this.modalZapAmountInput.value);
-    if (!Number.isFinite(numeric)) {
-      return 0;
-    }
-    return Math.max(0, Math.round(numeric));
+    return this.zapController.getZapAmountValue();
   }
 
   setZapAmount(value) {
-    if (!this.modalZapAmountInput) {
-      return;
-    }
-    if (value === null || value === undefined || value === "") {
-      this.modalZapAmountInput.value = "";
-      return;
-    }
-    const numeric = Number(value);
-    if (Number.isFinite(numeric)) {
-      this.modalZapAmountInput.value = Math.max(0, Math.round(numeric));
-      return;
-    }
-    this.modalZapAmountInput.value = value;
+    this.zapController.setZapAmount(value);
   }
 
   getZapCommentValue() {
-    if (!this.modalZapCommentInput) {
-      return "";
-    }
-    return (this.modalZapCommentInput.value || "").trim();
+    return this.zapController.getZapCommentValue();
   }
 
   setZapComment(value) {
-    if (!this.modalZapCommentInput) {
-      return;
-    }
-    this.modalZapCommentInput.value = typeof value === "string" ? value : "";
+    this.zapController.setZapComment(value);
   }
 
-  resetZapForm({ amount = "", comment = "" } = {}) {
-    this.setZapAmount(amount);
-    this.setZapComment(comment);
-    this.setZapStatus("", "neutral");
-    this.clearZapReceipts();
-    this.setZapRetryPending(false);
-    this.setZapCompleted(false);
+  resetZapForm(values) {
+    this.zapController.resetZapForm(values);
   }
 
   setZapSplitSummary(text) {
-    if (!this.modalZapSplitSummary) {
-      return;
-    }
-    const message = typeof text === "string" ? text : "";
-    this.modalZapSplitSummary.textContent =
-      message || "Enter an amount to view the split.";
+    this.zapController.setZapSplitSummary(text);
   }
 
-  setZapStatus(message, tone = "neutral") {
-    if (!this.modalZapStatusEl) {
-      return;
-    }
-
-    const normalizedTone = typeof tone === "string" ? tone : "neutral";
-    const text = typeof message === "string" ? message : "";
-    this.modalZapStatusEl.textContent = text;
-    this.modalZapStatusEl.classList.remove(
-      "text-text",
-      "text-muted",
-      "text-info",
-      "text-critical",
-      "text-warning-strong"
-    );
-
-    if (!text) {
-      this.modalZapStatusEl.classList.add("text-muted");
-      return;
-    }
-
-    if (normalizedTone === "success") {
-      this.modalZapStatusEl.classList.add("text-info");
-    } else if (normalizedTone === "error") {
-      this.modalZapStatusEl.classList.add("text-critical");
-    } else if (normalizedTone === "warning") {
-      this.modalZapStatusEl.classList.add("text-warning-strong");
-    } else {
-      this.modalZapStatusEl.classList.add("text-text");
-    }
+  setZapStatus(message, tone) {
+    this.zapController.setZapStatus(message, tone);
   }
 
   clearZapReceipts() {
-    if (!this.modalZapReceipts) {
-      return;
-    }
-    while (this.modalZapReceipts.firstChild) {
-      this.modalZapReceipts.removeChild(this.modalZapReceipts.firstChild);
-    }
+    this.zapController.clearZapReceipts();
   }
 
-  renderZapReceipts(receipts = [], { partial = false } = {}) {
-    if (!this.modalZapReceipts || !this.document) {
-      return;
-    }
-
-    this.clearZapReceipts();
-
-    if (!Array.isArray(receipts) || receipts.length === 0) {
-      if (partial) {
-        const empty = this.document.createElement("li");
-        empty.className = "text-sm text-text";
-        empty.textContent = "No zap receipts available.";
-        this.modalZapReceipts.appendChild(empty);
-      }
-      return;
-    }
-
-    const normalized = receipts.filter(
-      (receipt) => receipt && typeof receipt === "object"
-    );
-
-    const validatedReceipts = normalized.filter(
-      (receipt) => receipt?.validation?.status === "passed" && receipt.validation.event
-    );
-
-    const paymentFailures = normalized.filter((receipt) => {
-      if (!receipt) {
-        return false;
-      }
-      const status =
-        typeof receipt.status === "string" ? receipt.status.toLowerCase() : "";
-      return status && status !== "success";
-    });
-
-    const unvalidatedReceipts = normalized.filter((receipt) => {
-      if (!receipt) {
-        return false;
-      }
-      const status =
-        typeof receipt.status === "string" ? receipt.status.toLowerCase() : "success";
-      if (status !== "success" && status !== "") {
-        return false;
-      }
-      const validationStatus =
-        typeof receipt.validation?.status === "string"
-          ? receipt.validation.status.toLowerCase()
-          : "";
-      if (!validationStatus || validationStatus === "skipped") {
-        return false;
-      }
-      return validationStatus !== "passed";
-    });
-
-    const renderReceiptItem = ({ receipt, tone }) => {
-      const li = this.document.createElement("li");
-      li.className = "rounded border border-border p-3 bg-overlay-panel-soft";
-
-      const header = this.document.createElement("div");
-      header.className =
-        "flex items-center justify-between gap-2 text-xs text-text";
-
-      const shareType = receipt.recipientType || receipt.type || "creator";
-      const shareLabel = this.document.createElement("span");
-      const isPlatformShare = shareType === "platform";
-      const label = isPlatformShare
-        ? "Platform fee"
-        : shareType === "creator"
-          ? "Creator"
-          : "Lightning";
-      shareLabel.textContent = `${label} • ${Math.max(
-        0,
-        Math.round(Number(receipt.amount || 0))
-      )} sats`;
-
-      const status = this.document.createElement("span");
-      if (tone === "validated") {
-        status.textContent = "Validated";
-        status.className = "text-info";
-      } else if (tone === "failed") {
-        status.textContent = "Failed";
-        status.className = "text-critical";
-      } else {
-        status.textContent = "Pending";
-        status.className = "text-muted";
-      }
-
-      header.appendChild(shareLabel);
-      header.appendChild(status);
-      li.appendChild(header);
-
-      const address = this.document.createElement("p");
-      address.className = "mt-1 text-xs text-text break-all";
-      if (receipt.address && !isPlatformShare) {
-        address.textContent = receipt.address;
-        li.appendChild(address);
-      }
-
-      const detail = this.document.createElement("p");
-      detail.className = "mt-2 text-xs text-muted";
-      if (tone === "failed") {
-        const errorMessage =
-          (receipt.error && receipt.error.message) ||
-          (typeof receipt.error === "string"
-            ? receipt.error
-            : "Payment failed.");
-        detail.textContent = errorMessage;
-      } else {
-        let detailMessage = "Invoice settled.";
-        const preimage = receipt.payment?.result?.preimage;
-        if (typeof preimage === "string" && preimage) {
-          detailMessage = `Preimage: ${preimage.slice(0, 18)}${
-            preimage.length > 18 ? "…" : ""
-          }`;
-        }
-        detail.textContent = detailMessage;
-      }
-      li.appendChild(detail);
-
-      this.modalZapReceipts.appendChild(li);
-    };
-
-    validatedReceipts.forEach((receipt) => {
-      renderReceiptItem({ receipt, tone: "validated" });
-    });
-
-    paymentFailures.forEach((receipt) => {
-      renderReceiptItem({ receipt, tone: "failed" });
-    });
-
-    if (!validatedReceipts.length && !paymentFailures.length && !unvalidatedReceipts.length) {
-      const empty = this.document.createElement("li");
-      empty.className = "text-sm text-text";
-      empty.textContent = partial
-        ? "No zap receipts available."
-        : "No zap receipts published yet.";
-      this.modalZapReceipts.appendChild(empty);
-      return;
-    }
-
-    if (unvalidatedReceipts.length) {
-      const warning = this.document.createElement("li");
-      warning.className =
-        "rounded border border-border p-3 bg-overlay-panel-soft text-xs text-warning-strong";
-      const summaries = unvalidatedReceipts.map((receipt) => {
-        const shareType = receipt.recipientType || receipt.type || "creator";
-        const label =
-          shareType === "platform"
-            ? "Platform"
-            : shareType === "creator"
-              ? "Creator"
-              : "Lightning";
-        const address =
-          typeof receipt.address === "string" && receipt.address
-            ? ` (${receipt.address})`
-            : "";
-        const reason =
-          typeof receipt.validation?.reason === "string" && receipt.validation.reason
-            ? ` — ${receipt.validation.reason}`
-            : " — Awaiting compliant receipt.";
-        return `${label}${address}${reason}`;
-      });
-
-      const intro = validatedReceipts.length
-        ? "Awaiting validated zap receipt for remaining share(s)."
-        : "No validated zap receipts yet.";
-      warning.textContent = `${intro} ${summaries.join(" ")}`.trim();
-      this.modalZapReceipts.appendChild(warning);
-    }
+  renderZapReceipts(receipts, options) {
+    this.zapController.renderZapReceipts(receipts, options);
   }
 
   setZapPending(pending) {
-    const isPending = !!pending;
-    this.modalZapPending = isPending;
-
-    if (this.modalZapSendBtn) {
-      this.modalZapSendBtn.disabled = isPending;
-      this.modalZapSendBtn.setAttribute(
-        "aria-busy",
-        isPending ? "true" : "false"
-      );
-      this.modalZapSendBtn.classList.toggle("opacity-50", isPending);
-      this.modalZapSendBtn.classList.toggle("pointer-events-none", isPending);
-    }
-
-    if (this.modalZapAmountInput) {
-      this.modalZapAmountInput.disabled = isPending;
-    }
-
-    if (this.modalZapCommentInput) {
-      this.modalZapCommentInput.disabled = isPending;
-    }
-
-    if (this.modalZapCloseBtn) {
-      this.modalZapCloseBtn.disabled = isPending;
-      this.modalZapCloseBtn.classList.toggle("opacity-50", isPending);
-      this.modalZapCloseBtn.classList.toggle("pointer-events-none", isPending);
-    }
-
-    if (this.modalZapBtn) {
-      const buttonHidden = this.modalZapBtn.hasAttribute("hidden");
-      if (isPending && !this.modalZapRequiresLogin) {
-        this.modalZapBtn.disabled = true;
-        this.modalZapBtn.setAttribute("aria-busy", "true");
-        this.modalZapBtn.classList.add("opacity-50", "pointer-events-none");
-      } else if (!buttonHidden) {
-        this.modalZapBtn.disabled = false;
-        this.modalZapBtn.removeAttribute("aria-busy");
-        this.modalZapBtn.classList.remove("opacity-50", "pointer-events-none");
-      } else {
-        this.modalZapBtn.removeAttribute("aria-busy");
-        this.modalZapBtn.classList.remove("opacity-50", "pointer-events-none");
-        this.modalZapBtn.disabled = true;
-      }
-    }
+    this.zapController.setZapPending(pending);
   }
 
-  setZapRetryPending(pending, { summary = "" } = {}) {
-    if (!this.modalZapSendBtn) {
-      return;
-    }
-
-    if (pending) {
-      delete this.modalZapSendBtn.dataset.completed;
-      this.modalZapSendBtn.dataset.retryPending = "true";
-      if (summary) {
-        this.modalZapSendBtn.dataset.retrySummary = summary;
-      } else {
-        delete this.modalZapSendBtn.dataset.retrySummary;
-      }
-    } else {
-      delete this.modalZapSendBtn.dataset.retryPending;
-      delete this.modalZapSendBtn.dataset.retrySummary;
-    }
-
-    this.applyZapSendButtonState();
+  setZapRetryPending(pending, options) {
+    this.zapController.setZapRetryPending(pending, options);
   }
 
   setZapCompleted(completed) {
-    if (!this.modalZapSendBtn) {
-      return;
-    }
-
-    if (completed) {
-      delete this.modalZapSendBtn.dataset.retryPending;
-      delete this.modalZapSendBtn.dataset.retrySummary;
-      this.modalZapSendBtn.dataset.completed = "true";
-    } else {
-      delete this.modalZapSendBtn.dataset.completed;
-    }
-
-    this.applyZapSendButtonState();
-  }
-
-  applyZapSendButtonState() {
-    if (!this.modalZapSendBtn) {
-      return;
-    }
-
-    if (this.modalZapSendBtn.dataset.completed === "true") {
-      this.modalZapSendBtn.textContent = "Done";
-      this.modalZapSendBtn.setAttribute("aria-label", "Close zap dialog");
-      this.modalZapSendBtn.title = "Close zap dialog";
-      return;
-    }
-
-    if (this.modalZapSendBtn.dataset.retryPending === "true") {
-      this.modalZapSendBtn.textContent = "Retry";
-      this.modalZapSendBtn.setAttribute(
-        "aria-label",
-        "Retry failed zap shares"
-      );
-      const summary = this.modalZapSendBtn.dataset.retrySummary;
-      if (summary) {
-        this.modalZapSendBtn.title = summary;
-      } else {
-        this.modalZapSendBtn.removeAttribute("title");
-      }
-      return;
-    }
-
-    this.modalZapSendBtn.textContent = "Send";
-    this.modalZapSendBtn.setAttribute("aria-label", "Send a zap");
-    this.modalZapSendBtn.removeAttribute("title");
+    this.zapController.setZapCompleted(completed);
   }
 
   getViewCountElement() {
@@ -5225,263 +4407,12 @@ export class VideoModal {
     return { anchor, trailing };
   }
 
-  handleLinkPreviewSettingsChange(event) {
-    const detail = event?.detail?.settings || null;
-    if (!this.videoDescriptionPreviews) {
-      return;
-    }
-    const nextText = this.currentDescriptionText || "";
-    if (!nextText) {
-      return;
-    }
-    if (detail && typeof detail.autoFetchUnknownDomains === "boolean") {
-      this.renderLinkPreviews(nextText);
-    }
-  }
-
-  clearLinkPreviewRequests() {
-    if (!(this.linkPreviewAbortControllers instanceof Map)) {
-      this.linkPreviewAbortControllers = new Map();
-      return;
-    }
-    this.linkPreviewAbortControllers.forEach((controller) => {
-      try {
-        controller.abort();
-      } catch {
-        // noop
-      }
-    });
-    this.linkPreviewAbortControllers.clear();
-  }
-
   clearLinkPreviews() {
-    this.clearLinkPreviewRequests();
-    this.currentDescriptionText = "";
-    if (this.videoDescriptionPreviews) {
-      this.videoDescriptionPreviews.textContent = "";
-      this.videoDescriptionPreviews.setAttribute("hidden", "");
-    }
+    this.linkPreviewController.clearLinkPreviews();
   }
 
   renderLinkPreviews(description) {
-    const root = this.videoDescriptionPreviews;
-    if (!root || !this.document) {
-      return;
-    }
-    const text =
-      typeof description === "string" ? description : String(description ?? "");
-    this.currentDescriptionText = text;
-    this.clearLinkPreviewRequests();
-    root.textContent = "";
-
-    const urls = this.extractDescriptionUrls(text);
-    if (!urls.length) {
-      root.setAttribute("hidden", "");
-      return;
-    }
-
-    root.removeAttribute("hidden");
-    const fragment = this.document.createDocumentFragment();
-    urls.forEach((url) => {
-      const domain = this.extractPreviewDomain(url);
-      const card = this.createLinkPreviewCard({ url, domain });
-      fragment.appendChild(card);
-      void this.resolveLinkPreview(url, domain, card);
-    });
-    root.appendChild(fragment);
-  }
-
-  extractDescriptionUrls(text) {
-    if (!text) {
-      return [];
-    }
-    const urlPattern = /\bhttps?:\/\/[^\s<>"']+/gi;
-    const urls = new Set();
-    let match;
-    while ((match = urlPattern.exec(text)) !== null) {
-      const normalized = this.normalizePreviewUrl(match[0]);
-      if (normalized) {
-        urls.add(normalized);
-      }
-    }
-    return Array.from(urls);
-  }
-
-  normalizePreviewUrl(candidate) {
-    if (!candidate) {
-      return "";
-    }
-    let href = typeof candidate === "string" ? candidate : String(candidate ?? "");
-    let trailing = "";
-    const trailingPattern = /[)\]\}>"',.;!?]+$/;
-    while (href && trailingPattern.test(href)) {
-      trailing = href.slice(-1) + trailing;
-      href = href.slice(0, -1);
-    }
-    return href.trim();
-  }
-
-  extractPreviewDomain(url) {
-    if (!url) {
-      return "";
-    }
-    try {
-      return new URL(url).hostname || "";
-    } catch {
-      return "";
-    }
-  }
-
-  createLinkPreviewCard({ url, domain }) {
-    const card = this.document.createElement("article");
-    card.className = "card flex flex-col gap-2 p-3";
-    card.dataset.linkPreviewUrl = url;
-
-    const header = this.document.createElement("div");
-    header.className = "flex items-start gap-3";
-
-    const imageWrapper = this.document.createElement("div");
-    imageWrapper.className =
-      "flex h-16 w-16 flex-shrink-0 items-center justify-center overflow-hidden rounded-md border border-border/60 bg-surface-muted text-2xs text-muted";
-    const image = this.document.createElement("img");
-    image.hidden = true;
-    image.loading = "lazy";
-    image.decoding = "async";
-    image.className = "h-full w-full object-cover";
-    const imagePlaceholder = this.document.createElement("span");
-    imagePlaceholder.textContent = "Preview";
-    imageWrapper.appendChild(image);
-    imageWrapper.appendChild(imagePlaceholder);
-
-    const content = this.document.createElement("div");
-    content.className = "flex min-w-0 flex-1 flex-col gap-1";
-
-    const domainEl = this.document.createElement("p");
-    domainEl.className = "text-3xs uppercase tracking-wide text-muted";
-    domainEl.textContent = domain || "Link preview";
-
-    const titleEl = this.document.createElement("a");
-    titleEl.className =
-      "text-sm font-semibold text-text break-words hover:underline focus-ring";
-    titleEl.href = url;
-    titleEl.target = "_blank";
-    titleEl.rel = "noopener noreferrer";
-    titleEl.textContent = url;
-
-    const descEl = this.document.createElement("p");
-    descEl.className = "text-xs text-muted";
-    descEl.textContent = "";
-
-    content.appendChild(domainEl);
-    content.appendChild(titleEl);
-    content.appendChild(descEl);
-
-    header.appendChild(imageWrapper);
-    header.appendChild(content);
-
-    const statusEl = this.document.createElement("p");
-    statusEl.className = "text-xs text-muted";
-
-    const actions = this.document.createElement("div");
-    actions.className = "flex flex-wrap gap-2";
-
-    card.appendChild(header);
-    card.appendChild(statusEl);
-    card.appendChild(actions);
-
-    card.__linkPreviewElements = {
-      imageWrapper,
-      image,
-      imagePlaceholder,
-      domainEl,
-      titleEl,
-      descEl,
-      statusEl,
-      actions,
-    };
-
-    return card;
-  }
-
-  setLinkPreviewStatus(card, { message = "", actionLabel = "", onAction } = {}) {
-    const elements = card?.__linkPreviewElements;
-    if (!elements) {
-      return;
-    }
-    const statusText = typeof message === "string" ? message : "";
-    elements.statusEl.textContent = statusText;
-    elements.actions.textContent = "";
-
-    if (actionLabel && typeof onAction === "function") {
-      const button = this.document.createElement("button");
-      button.type = "button";
-      button.className = "btn-ghost focus-ring text-xs";
-      button.textContent = actionLabel;
-      button.addEventListener("click", onAction);
-      elements.actions.appendChild(button);
-    }
-  }
-
-  updateLinkPreviewCard(card, preview, { domain } = {}) {
-    const elements = card?.__linkPreviewElements;
-    if (!elements || !preview) {
-      return;
-    }
-    const title = preview.title || preview.siteName || preview.url || "";
-    elements.titleEl.textContent = title || preview.url;
-    elements.descEl.textContent = preview.description || "";
-    const label = preview.siteName || domain || "Link preview";
-    elements.domainEl.textContent = label;
-
-    if (preview.image) {
-      elements.image.src = preview.image;
-      elements.image.alt = title || "Link preview";
-      elements.image.hidden = false;
-      elements.imagePlaceholder.hidden = true;
-    } else {
-      elements.image.hidden = true;
-      elements.imagePlaceholder.hidden = false;
-    }
-
-    this.setLinkPreviewStatus(card, { message: "" });
-  }
-
-  async resolveLinkPreview(url, domain, card) {
-    const settings = getLinkPreviewSettings();
-    const isAllowed =
-      settings.autoFetchUnknownDomains ||
-      isLinkPreviewDomainAllowed(domain, settings);
-
-    if (!isAllowed) {
-      this.setLinkPreviewStatus(card, {
-        message: "Preview disabled for new domains.",
-        actionLabel: domain ? `Allow previews for ${domain}` : "Allow previews",
-        onAction: () => {
-          if (domain) {
-            allowLinkPreviewDomain(domain);
-          }
-        },
-      });
-      return;
-    }
-
-    this.setLinkPreviewStatus(card, { message: "Loading preview…" });
-    const controller = new AbortController();
-    this.linkPreviewAbortControllers.set(url, controller);
-    const preview = await this.linkPreviewService.getPreview(url, {
-      signal: controller.signal,
-    });
-    this.linkPreviewAbortControllers.delete(url);
-
-    if (!preview) {
-      this.setLinkPreviewStatus(card, { message: "Preview unavailable." });
-      return;
-    }
-
-    this.updateLinkPreviewCard(card, preview, { domain });
-    if (domain) {
-      allowLinkPreviewDomain(domain, { silent: true });
-    }
+    this.linkPreviewController.renderLinkPreviews(description);
   }
 
   updateTimestamps({ posted, edited } = {}) {
