@@ -1,11 +1,4 @@
 {
-  "jsdom": {
-    "current": "28.0.0",
-    "wanted": "28.1.0",
-    "latest": "28.1.0",
-    "dependent": "app",
-    "location": "/app/node_modules/jsdom"
-  },
   "nostr-tools": {
     "current": "2.19.4",
     "wanted": "2.23.1",
@@ -51,7 +44,7 @@
   "tailwindcss": {
     "current": "3.4.19",
     "wanted": "3.4.19",
-    "latest": "4.1.18",
+    "latest": "4.2.0",
     "dependent": "app",
     "location": "/app/node_modules/tailwindcss"
   }
