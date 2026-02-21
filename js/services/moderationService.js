@@ -893,6 +893,11 @@ export class ModerationService {
       if (!aggregate || !(aggregate.muters instanceof Map)) {
         continue;
       }
+
+      // Throttle pruning: only run once per minute per author
+      if (aggregate.lastPrunedAt && nowSeconds - aggregate.lastPrunedAt < 60) continue;
+      aggregate.lastPrunedAt = nowSeconds;
+
       const expiredOwners = new Set();
       for (const [owner, updatedAt] of aggregate.muters.entries()) {
         if (ensureNumber(updatedAt) < cutoff) {
