@@ -1,6 +1,14 @@
+import "./test-helpers/setup-localstorage.mjs";
 import { describe, it, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
 import nostrService from "../js/services/nostrService.js";
+import { userBlocks } from "../js/userBlocks.js";
+import { nostrClient } from "../js/nostrClientFacade.js";
+import { relayManager } from "../js/relayManager.js";
+import {
+  BLOCK_LIST_IDENTIFIER,
+  KIND_MUTE_LIST,
+} from "../js/nostrEventSchemas.js";
 
 const ACTOR_PUBKEY = "aaaa".repeat(16);
 const BLOCKED_PUBKEY = "bbbb".repeat(16);
@@ -168,6 +176,152 @@ describe("DM block/mute filtering", () => {
         direction: "incoming",
       });
       assert.equal(nostrService._isDmRemoteBlocked(message), false);
+    });
+  });
+
+  describe("integration with loaded user block list", () => {
+    it("should block DM contact for pubkeys loaded from both standard and legacy lists", async () => {
+      const actor = ACTOR_PUBKEY;
+      const legacyBlockedPubkey = "dddd".repeat(16);
+      const standardBlockedPubkey = "eeee".repeat(16);
+
+      const UserBlockListManager = userBlocks.constructor;
+      const manager = new UserBlockListManager();
+
+      const originalNostr = globalThis.window?.nostr;
+      const originalRelays = Array.isArray(nostrClient.relays)
+        ? [...nostrClient.relays]
+        : nostrClient.relays;
+      const originalFetchListIncrementally = nostrClient.fetchListIncrementally;
+      const originalRelayEntries = relayManager.getEntries();
+
+      const relayUrls = ["wss://dm-block-regression.example"];
+      relayManager.setEntries(
+        relayUrls.map((url) => ({ url, mode: "both" })),
+        { allowEmpty: false, updateClient: false },
+      );
+      nostrClient.relays = relayUrls;
+
+      if (typeof globalThis.window === "undefined") {
+        globalThis.window = {};
+      }
+
+      globalThis.window.nostr = {
+        ...(originalNostr || {}),
+        nip04: {
+          ...((originalNostr && originalNostr.nip04) || {}),
+          decrypt: async () =>
+            JSON.stringify({
+              blockedPubkeys: [legacyBlockedPubkey],
+            }),
+        },
+      };
+
+      const standardEvent = {
+        id: "event-standard-mute",
+        kind: KIND_MUTE_LIST,
+        created_at: 2_000,
+        pubkey: actor,
+        content: "",
+        tags: [["p", standardBlockedPubkey]],
+      };
+
+      const legacyEvent = {
+        id: "event-legacy-blocks",
+        kind: KIND_MUTE_LIST,
+        created_at: 1_000,
+        pubkey: actor,
+        content: "legacy-encrypted",
+        tags: [["d", BLOCK_LIST_IDENTIFIER]],
+      };
+
+      nostrClient.fetchListIncrementally = async ({
+        kind,
+        dTag,
+      } = {}) => {
+        if (kind === KIND_MUTE_LIST && dTag === BLOCK_LIST_IDENTIFIER) {
+          return [legacyEvent];
+        }
+        if (kind === KIND_MUTE_LIST && !dTag) {
+          return [standardEvent];
+        }
+        if (kind === 30002 && dTag === BLOCK_LIST_IDENTIFIER) {
+          return [];
+        }
+        return [];
+      };
+
+      try {
+        await manager.loadBlocks(actor, { allowPermissionPrompt: false });
+
+        const waitForMergedBlocks = async (timeoutMs = 250) => {
+          const startedAt = Date.now();
+          while (Date.now() - startedAt < timeoutMs) {
+            if (
+              manager.isBlocked(legacyBlockedPubkey) &&
+              manager.isBlocked(standardBlockedPubkey)
+            ) {
+              return;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 10));
+          }
+        };
+        await waitForMergedBlocks();
+
+        nostrService.setDmBlockChecker((pubkey) => manager.isBlocked(pubkey));
+
+        nostrService.applyDirectMessage(
+          makeDmMessage({
+            senderPubkey: legacyBlockedPubkey,
+            receiverPubkey: actor,
+            eventId: "blocked-legacy",
+            direction: "incoming",
+          }),
+          { reason: "integration-test" },
+        );
+
+        nostrService.applyDirectMessage(
+          makeDmMessage({
+            senderPubkey: standardBlockedPubkey,
+            receiverPubkey: actor,
+            eventId: "blocked-standard",
+            direction: "incoming",
+          }),
+          { reason: "integration-test" },
+        );
+
+        nostrService.applyDirectMessage(
+          makeDmMessage({
+            senderPubkey: ALLOWED_PUBKEY,
+            receiverPubkey: actor,
+            eventId: "allowed-contact",
+            direction: "incoming",
+          }),
+          { reason: "integration-test" },
+        );
+
+        assert.equal(
+          nostrService.dmMessages.length,
+          1,
+          "only non-blocked contacts should remain in DM message state",
+        );
+        assert.equal(
+          nostrService.dmMessages[0]?.remotePubkey,
+          ALLOWED_PUBKEY,
+          "allowed contact should pass block filter",
+        );
+      } finally {
+        relayManager.setEntries(originalRelayEntries, {
+          allowEmpty: false,
+          updateClient: false,
+        });
+        nostrClient.relays = originalRelays;
+        nostrClient.fetchListIncrementally = originalFetchListIncrementally;
+        if (typeof globalThis.window === "undefined") {
+          globalThis.window = {};
+        }
+        globalThis.window.nostr = originalNostr;
+      }
     });
   });
 });

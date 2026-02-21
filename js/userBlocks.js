@@ -1214,10 +1214,10 @@ class UserBlockListManager {
         return;
       }
 
-      const applyEvents = async (
-        events,
-        { skipIfEmpty = false, source = "fast" } = {},
-      ) => {
+        const applyEvents = async (
+          events,
+          { skipIfEmpty = false, source = "fast" } = {},
+        ) => {
         const previousState = {
           blockedPubkeys: new Set(this.blockedPubkeys),
           privateBlocks: new Set(this._privateBlocks),
@@ -1302,13 +1302,41 @@ class UserBlockListManager {
         this.blockEventId = newestOverall?.id || null;
         this.blockEventCreatedAt = newestCreatedAt;
 
+        const looksLikeJsonPayload = (value) => {
+          if (typeof value !== "string") {
+            return false;
+          }
+          const trimmed = value.trim();
+          if (!trimmed) {
+            return false;
+          }
+          const first = trimmed[0];
+          return first === "[" || first === "{";
+        };
+
         // Helper to decrypt a single event
         const decryptEvent = async (ev, meta = {}) => {
           if (!ev) return [];
-          const isContentEmpty = !ev.content || !ev.content.trim();
+          const trimmedContent =
+            typeof ev.content === "string" ? ev.content.trim() : "";
+          const isContentEmpty = !trimmedContent;
 
           if (isContentEmpty) {
             return [];
+          }
+
+          const hasEncryptionHints = extractEncryptionHints(ev).length > 0;
+          const isLegacyBlockFormat = isTaggedBlockListEvent(ev) || ev.kind === 30002;
+          const optionalDecrypt = !hasEncryptionHints && !isLegacyBlockFormat;
+
+          if (
+            !hasEncryptionHints &&
+            !isLegacyBlockFormat &&
+            looksLikeJsonPayload(trimmedContent)
+          ) {
+            return parseBlockListPlaintext(trimmedContent, normalized, {
+              limit: MAX_BLOCKLIST_ENTRIES,
+            });
           }
 
           const { decryptors, order, sources, permissionError, signerStatus } =
@@ -1319,6 +1347,12 @@ class UserBlockListManager {
           );
 
           if (!decryptors.size) {
+            if (optionalDecrypt) {
+              // NIP-51 allows descriptive plaintext in content for standard
+              // mute lists. If decryptors are unavailable and encryption was
+              // not explicitly indicated, keep public tags and continue.
+              return [];
+            }
             if (permissionError) {
               throw permissionError;
             }
@@ -1436,12 +1470,14 @@ class UserBlockListManager {
             timeoutPromise,
           ]);
 
-          // Only apply the newest list to avoid zombie data from stale lists
-          if (newestOverall === newestStandard && newestStandard) {
+          // Merge the newest standard mute snapshot with legacy/private lists so
+          // users retain full cross-client compatibility during migration.
+          if (newestStandard) {
             const publicTags = extractPubkeysFromTags(newestStandard.tags, normalized, { limit: MAX_BLOCKLIST_ENTRIES });
             publicTags.forEach((pk) => nextPublicMutes.add(pk));
             standardDecrypted.forEach((pk) => nextPrivateBlocks.add(pk));
-          } else if (newestLegacy) {
+          }
+          if (newestLegacy) {
             legacyDecrypted.forEach((pk) => nextPrivateBlocks.add(pk));
           }
 

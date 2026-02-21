@@ -1333,7 +1333,7 @@ await (async () => {
   })();
 
 await (async () => {
-  // Test: Merge 'd=user-blocks' tagged lists with plain lists
+  // Test: Merge legacy tagged/private lists with standard mute lists
   const actor = "a".repeat(64);
   const taggedBlocked = "b".repeat(64);
   const plainBlocked = "c".repeat(64);
@@ -1386,10 +1386,75 @@ await (async () => {
     await userBlocks.loadBlocks(actor);
 
     const blocked = userBlocks.getBlockedPubkeys();
-    assert.ok(!blocked.includes(taggedBlocked), "Should NOT include pubkey from older tagged list (superseded)");
-    assert.ok(blocked.includes(plainBlocked), "Should include pubkey from newer plain list");
+    assert.ok(
+      blocked.includes(taggedBlocked),
+      "should include pubkey from legacy tagged/private list",
+    );
+    assert.ok(
+      blocked.includes(plainBlocked),
+      "should include pubkey from standard mute list",
+    );
   } finally {
     relayManager.setEntries(originalRelayEntries, { allowEmpty: false, updateClient: false });
+    nostrClient.relays = originalRelays;
+    nostrClient.pool = originalPool;
+    window.nostr = originalNostr;
+  }
+})();
+
+await (async () => {
+  // Test: standard mute lists may contain non-encrypted text content
+  const actor = "d".repeat(64);
+  const blockedHex = "e".repeat(64);
+
+  const UserBlockListManager = userBlocks.constructor;
+  const manager = new UserBlockListManager();
+
+  const originalRelays = Array.isArray(nostrClient.relays)
+    ? [...nostrClient.relays]
+    : nostrClient.relays;
+  const originalPool = nostrClient.pool;
+  const originalNostr = window.nostr;
+
+  const relayUrls = ["wss://plain-content-mute.example"];
+  const originalRelayEntries = relayManager.getEntries();
+  relayManager.setEntries(
+    relayUrls.map((url) => ({ url, mode: "both" })),
+    { allowEmpty: false, updateClient: false },
+  );
+
+  window.nostr = {
+    ...(originalNostr || {}),
+    nip04: undefined,
+    nip44: undefined,
+  };
+
+  nostrClient.relays = relayUrls;
+  nostrClient.pool = {
+    list: async () => [
+      {
+        id: "event-standard-note",
+        kind: 10000,
+        created_at: 13_000,
+        pubkey: actor,
+        content: "mute list synced from another client",
+        tags: [["p", blockedHex]],
+      },
+    ],
+  };
+
+  try {
+    await manager.loadBlocks(actor, { allowPermissionPrompt: false });
+    assert.equal(
+      manager.blockedPubkeys.has(blockedHex),
+      true,
+      "non-encrypted content should not block p-tag mute ingestion",
+    );
+  } finally {
+    relayManager.setEntries(
+      originalRelayEntries,
+      { allowEmpty: false, updateClient: false },
+    );
     nostrClient.relays = originalRelays;
     nostrClient.pool = originalPool;
     window.nostr = originalNostr;
