@@ -89,6 +89,34 @@ test("requestEnablePermissions supports requestPermissions-only extensions", asy
   assert.deepStrictEqual(calls, [{ permissions: [{ method: "sign_event" }] }]);
 });
 
+test("requestEnablePermissions prefers enable over requestPermissions when both exist", async () => {
+  clearStoredNip07Permissions();
+  const calls = {
+    enable: [],
+    requestPermissions: [],
+  };
+  const extension = {
+    enable: (options) => {
+      calls.enable.push(options);
+      return Promise.resolve();
+    },
+    requestPermissions: (options) => {
+      calls.requestPermissions.push(options);
+      return Promise.resolve({ granted: true });
+    },
+  };
+
+  const result = await requestEnablePermissions(
+    extension,
+    ["sign_event"],
+    { isDevMode: false },
+  );
+
+  assert.deepStrictEqual(result, { ok: true });
+  assert.deepStrictEqual(calls.enable, [{ permissions: [{ method: "sign_event" }] }]);
+  assert.deepStrictEqual(calls.requestPermissions, []);
+});
+
 test("requestEnablePermissions fails when requestPermissions exists but denies", async () => {
   clearStoredNip07Permissions();
   const extension = {

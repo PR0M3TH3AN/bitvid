@@ -345,8 +345,10 @@ export async function requestEnablePermissions(
   }
 
   let lastError = null;
-  if (hasRequestPermissions) {
+  const runPermissionMethod = async (methodName, method) => {
     for (const options of permissionVariants) {
+      // Specific permission payloads should fail fast; prompt-based no-arg calls
+      // get a longer timeout so users have time to confirm in extension UI.
       const variantTimeoutOverrides = options
         ? {
             timeoutMs: Math.min(3000, getEnableVariantTimeoutMs()),
@@ -364,64 +366,49 @@ export async function requestEnablePermissions(
         await runNip07WithRetry(
           () =>
             options === null
-              ? extension.requestPermissions()
-              : extension.requestPermissions(options),
+              ? method()
+              : methodName === "enable"
+                ? method(options)
+                : method(options),
           {
-            label: "extension.requestPermissions",
+            label: `extension.${methodName}`,
             ...variantTimeoutOverrides,
           },
         );
-        return { ok: true };
+        return true;
       } catch (error) {
         lastError = error;
         if (options && isDevMode) {
           userLogger.warn(
-            "[nostr] extension.requestPermissions call failed:",
+            `[nostr] extension.${methodName} permission request failed:`,
             error,
           );
         }
       }
     }
-  }
+    return false;
+  };
 
-  if (!hasEnable) {
-    return {
-      ok: false,
-      error: lastError || new Error("permission-denied"),
-    };
-  }
-
-  for (const options of permissionVariants) {
-    // If specific permissions are requested (variants 1 & 2), fail fast (3s)
-    // to avoid hanging if the extension doesn't support the structured format.
-    // If we fall back to standard enable() (null), allow the full user interaction time.
-    const variantTimeoutOverrides = options
-      ? {
-          timeoutMs: Math.min(3000, getEnableVariantTimeoutMs()),
-          retryMultiplier: 1,
-        }
-      : {
-          timeoutMs: Math.min(
-            NIP07_LOGIN_TIMEOUT_MS,
-            getEnableVariantTimeoutMs(),
-          ),
-          retryMultiplier: 1,
-        };
-
-    try {
-      await runNip07WithRetry(
-        () => (options ? extension.enable(options) : extension.enable()),
-        { label: "extension.enable", ...variantTimeoutOverrides },
-      );
+  // Compatibility-first: prefer standard NIP-07 enable() where available.
+  if (hasEnable) {
+    const enableSucceeded = await runPermissionMethod(
+      "enable",
+      extension.enable.bind(extension),
+    );
+    if (enableSucceeded) {
       return { ok: true };
-    } catch (error) {
-      lastError = error;
-      if (options && isDevMode) {
-        userLogger.warn(
-          "[nostr] extension.enable request with explicit permissions failed:",
-          error,
-        );
-      }
+    }
+  }
+
+  // Fallback for extensions that implement requestPermissions() but not enable(),
+  // or where enable() payload handling is broken.
+  if (hasRequestPermissions) {
+    const requestPermissionsSucceeded = await runPermissionMethod(
+      "requestPermissions",
+      extension.requestPermissions.bind(extension),
+    );
+    if (requestPermissionsSucceeded) {
+      return { ok: true };
     }
   }
 

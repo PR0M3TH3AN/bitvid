@@ -481,8 +481,6 @@ export class SignerManager {
       extension = window.nostr;
     }
 
-    const message = resolvePermissionStatusMessage(missing, context);
-
     try {
       const response = await requestEnablePermissions(extension, missing);
       if (response?.ok) {
@@ -494,7 +492,10 @@ export class SignerManager {
         }
         return { ok: true };
       }
-      return { ok: false, error: "permission-denied" };
+      return {
+        ok: false,
+        error: response?.error || "permission-denied",
+      };
     } catch (error) {
       devLogger.warn("[nostr] Extension permission request failed:", error);
       return { ok: false, error: "request-failed" };
@@ -572,8 +573,23 @@ export class SignerManager {
       { context: "login", logMetrics: true, showStatus: false },
     );
     if (!permissionResult.ok) {
+      const permissionErrorDetail =
+        permissionResult && typeof permissionResult === "object"
+          ? permissionResult.error
+          : null;
+      const permissionDetailMessage =
+        permissionErrorDetail instanceof Error &&
+        typeof permissionErrorDetail.message === "string" &&
+        permissionErrorDetail.message.trim()
+          ? permissionErrorDetail.message.trim()
+          : typeof permissionErrorDetail === "string" &&
+            permissionErrorDetail.trim()
+          ? permissionErrorDetail.trim()
+          : "";
       const denialMessage =
-        'The NIP-07 extension reported "permission denied". Please approve the prompt and try again.';
+        permissionDetailMessage
+          ? `The NIP-07 extension denied the permission request (${permissionDetailMessage}). Please approve the prompt and try again.`
+          : 'The NIP-07 extension reported "permission denied". Please approve the prompt and try again.';
       const denialError = new Error(denialMessage);
       if (permissionResult.error) {
         denialError.cause = permissionResult.error;
