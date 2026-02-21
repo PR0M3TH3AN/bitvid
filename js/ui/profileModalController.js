@@ -2334,7 +2334,12 @@ export class ProfileModalController {
         (entry) => this.normalizeHexPubkey(entry.pubkey) === normalizedActive,
       );
     }
-    if (!activeEntry && savedEntries.length) {
+    // Only fall back to the first saved profile when an active pubkey IS set
+    // but doesn't match any saved entry (data-inconsistency edge case).
+    // When normalizedActive is null the user is logged out — do NOT auto-select
+    // a profile, otherwise the modal appears as if the user merely switched
+    // accounts instead of logging out.
+    if (!activeEntry && normalizedActive && savedEntries.length) {
       activeEntry = savedEntries[0];
     }
 
