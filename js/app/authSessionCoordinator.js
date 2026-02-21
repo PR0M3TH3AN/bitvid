@@ -834,7 +834,17 @@ export function createAuthSessionCoordinator(deps) {
         }
       }
 
-      await this.handleAuthLogout(detail);
+      try {
+        await this.handleAuthLogout(detail);
+      } catch (error) {
+        // Logout must remain idempotent and successful once auth state is cleared.
+        // Post-logout UI cleanup failures should be logged but must not bubble
+        // up and cause "Failed to logout" UX or require repeated attempts.
+        userLogger.warn(
+          "[Application] Post-logout cleanup failed after auth state was cleared:",
+          error,
+        );
+      }
       return detail ?? null;
     },
 
@@ -871,10 +881,14 @@ export function createAuthSessionCoordinator(deps) {
       clearDecryptionSchemeCache();
       this.updateAuthLoadingState({ profile: "idle", lists: "idle", dms: "idle" });
 
-      await this.nwcSettingsService.onLogout({
-        pubkey: detail?.pubkey || this.pubkey,
-        previousPubkey: detail?.previousPubkey,
-      });
+      try {
+        await this.nwcSettingsService.onLogout({
+          pubkey: detail?.pubkey || this.pubkey,
+          previousPubkey: detail?.previousPubkey,
+        });
+      } catch (error) {
+        devLogger.warn("Failed to reset NWC settings during logout:", error);
+      }
 
       if (this.profileController) {
         try {
@@ -978,10 +992,14 @@ export function createAuthSessionCoordinator(deps) {
         }
       }
 
-      await this.renderVideoList({
-        videos: [],
-        metadata: { reason: "auth:logout" },
-      });
+      try {
+        await this.renderVideoList({
+          videos: [],
+          metadata: { reason: "auth:logout" },
+        });
+      } catch (error) {
+        devLogger.warn("Failed to render empty list during logout:", error);
+      }
 
       this.dispatchAuthChange({
         status: "logout",
@@ -997,7 +1015,14 @@ export function createAuthSessionCoordinator(deps) {
       }
       this.forceRefreshAllProfiles();
       if (this.uploadModal?.refreshCloudflareBucketPreview) {
-        await this.uploadModal.refreshCloudflareBucketPreview();
+        try {
+          await this.uploadModal.refreshCloudflareBucketPreview();
+        } catch (error) {
+          devLogger.warn(
+            "[Application] Failed to refresh Cloudflare preview during logout:",
+            error,
+          );
+        }
       }
     },
 
