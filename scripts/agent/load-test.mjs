@@ -1,87 +1,82 @@
 import WebSocket from 'ws';
-import { finalizeEvent, getPublicKey, generateSecretKey } from 'nostr-tools/pure';
-import fs from 'fs';
-import path from 'path';
-import { spawn } from 'child_process';
+import { generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools';
+import { buildVideoPostEvent, buildViewEvent, NOTE_TYPES } from '../../js/nostrEventSchemas.js';
+import { writeFileSync, mkdirSync } from 'fs';
+import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { buildVideoPostEvent, buildViewEvent } from '../../js/nostrEventSchemas.js';
 
-// --- Configuration ---
-let RELAY_URL = process.env.RELAY_URL;
-const CLIENTS = parseInt(process.env.CLIENTS || '1000', 10);
-const DURATION_SEC = parseInt(process.env.DURATION_SEC || '600', 10);
-const RATE_EPS = parseFloat(process.env.RATE_EPS || '10');
-const MIX_VIDEO_RATIO = parseFloat(process.env.MIX || '0.5'); // 0.0 to 1.0
-const DRY_RUN = process.env.DRY_RUN === '1';
-const VERBOSE = process.env.VERBOSE === '1';
-const FORCE_UNSAFE = process.env.FORCE_UNSAFE === '1';
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// --- Safety Checks ---
-function isSafeRelayUrl(url) {
-  if (!url) return false;
-  try {
-    const parsed = new URL(url);
-    const hostname = parsed.hostname;
+// Configuration
+const config = {
+  relayUrl: process.env.RELAY_URL,
+  clients: parseInt(process.env.CLIENTS || '1000', 10),
+  durationSec: parseInt(process.env.DURATION_SEC || '600', 10),
+  rateEps: parseFloat(process.env.RATE_EPS || '10'),
+  mix: process.env.MIX || 'video:0.1,view:0.9',
+  seed: process.env.SEED, // Not fully implementing deterministic seed for now, using Math.random
+  dryRun: process.env.DRY_RUN === '1',
+};
 
-    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') return true;
-
-    // Private IP ranges
-    // 10.0.0.0 - 10.255.255.255
-    // 172.16.0.0 - 172.31.255.255
-    // 192.168.0.0 - 192.168.255.255
-    const parts = hostname.split('.').map(Number);
-    if (parts.length === 4) {
-      if (parts[0] === 10) return true;
-      if (parts[0] === 192 && parts[1] === 168) return true;
-      if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
-    }
-
-    return false;
-  } catch (e) {
-    return false;
-  }
+if (!config.relayUrl) {
+  console.error('Error: RELAY_URL environment variable is required.');
+  process.exit(1);
 }
 
-// --- Metrics ---
+// Check for public relays to avoid accidents
+const PUBLIC_RELAY_KEYWORDS = ['damus', 'primal', 'nostr.land', 'nos.lol'];
+if (PUBLIC_RELAY_KEYWORDS.some(k => config.relayUrl.includes(k)) && !process.env.FORCE_PUBLIC) {
+  console.error('Error: RELAY_URL appears to be a public relay. Aborting for safety.');
+  console.error('Set FORCE_PUBLIC=1 if you really mean to do this (not recommended).');
+  process.exit(1);
+}
+
+// Parse Mix
+const mix = {};
+config.mix.split(',').forEach(part => {
+  const [type, ratio] = part.split(':');
+  mix[type] = parseFloat(ratio);
+});
+
+// Normalize mix
+const totalRatio = Object.values(mix).reduce((a, b) => a + b, 0);
+for (const key in mix) {
+  mix[key] /= totalRatio;
+}
+
+console.log('Load Test Configuration:', JSON.stringify(config, null, 2));
+console.log('Event Mix:', mix);
+
+// Metrics
 const metrics = {
   startTime: Date.now(),
   sent: 0,
-  accepted: 0,
-  rejected: 0,
-  errors: 0,
-  latencies: [], // ms
-  connectedClients: 0,
-  resources: [], // { time, rss, heapTotal, heapUsed, external, cpuUser, cpuSystem }
+  success: 0,
+  failed: 0,
+  latencies: [], // in ms
+  errors: {},
 };
 
-// --- Helpers ---
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-function generateKeypair() {
-  const secretKey = generateSecretKey();
-  const sk = Buffer.from(secretKey).toString('hex');
-  const pk = getPublicKey(secretKey);
-  return { sk, pk };
+function recordError(code) {
+  metrics.errors[code] = (metrics.errors[code] || 0) + 1;
 }
 
-// Event builders are imported from js/nostrEventSchemas.js
-
-// --- Client Class ---
+// Client Class
 class LoadClient {
   constructor(id, relayUrl) {
     this.id = id;
     this.relayUrl = relayUrl;
     this.ws = null;
-    this.keys = generateKeypair();
-    this.isOpen = false;
-    this.pendingPublishes = new Map(); // eventId -> startTime
+    this.connected = false;
+    this.sk = generateSecretKey();
+    this.pk = getPublicKey(this.sk);
+    this.pending = new Map(); // eventId -> startTime
   }
 
   connect() {
     return new Promise((resolve, reject) => {
-      if (DRY_RUN) {
-        this.isOpen = true;
-        metrics.connectedClients++;
+      if (config.dryRun) {
+        this.connected = true;
         resolve();
         return;
       }
@@ -89,297 +84,191 @@ class LoadClient {
       this.ws = new WebSocket(this.relayUrl);
 
       this.ws.on('open', () => {
-        this.isOpen = true;
-        metrics.connectedClients++;
+        this.connected = true;
         resolve();
-      });
-
-      this.ws.on('error', (err) => {
-        if (VERBOSE) console.error(`Client ${this.id} error:`, err.message);
-        metrics.errors++;
-        if (!this.isOpen) reject(err);
-      });
-
-      this.ws.on('close', () => {
-        if (this.isOpen) metrics.connectedClients--;
-        this.isOpen = false;
       });
 
       this.ws.on('message', (data) => {
         try {
           const msg = JSON.parse(data);
-          // ["OK", eventId, true, "message"]
+          // ["OK", eventId, true, "saved"]
           if (Array.isArray(msg) && msg[0] === 'OK') {
             const eventId = msg[1];
             const accepted = msg[2];
-            const message = msg[3];
-            this.handleOk(eventId, accepted, message);
+            const reason = msg[3];
+
+            if (this.pending.has(eventId)) {
+              const start = this.pending.get(eventId);
+              this.pending.delete(eventId);
+              const latency = Date.now() - start;
+
+              if (accepted) {
+                metrics.success++;
+                metrics.latencies.push(latency);
+              } else {
+                metrics.failed++;
+                recordError(reason || 'rejected');
+              }
+            }
           }
-        } catch (err) {
-          // ignore malformed
+        } catch (e) {
+          recordError('json_parse_error');
         }
+      });
+
+      this.ws.on('error', (err) => {
+        recordError('ws_error');
+        // console.error(`Client ${this.id} error:`, err.message);
+      });
+
+      this.ws.on('close', () => {
+        this.connected = false;
       });
     });
   }
 
-  handleOk(eventId, accepted, message) {
-    const startTime = this.pendingPublishes.get(eventId);
-    if (startTime) {
-      const latency = Date.now() - startTime;
-      metrics.latencies.push(latency);
-      this.pendingPublishes.delete(eventId);
-
-      if (accepted) {
-        metrics.accepted++;
-      } else {
-        metrics.rejected++;
-        if (VERBOSE) console.warn(`Event ${eventId} rejected: ${message}`);
-      }
-    }
-  }
-
-  async publish() {
-    if (!this.isOpen && !DRY_RUN) return;
-
-    // Decide event type
-    const isVideo = Math.random() < MIX_VIDEO_RATIO;
-    const dTag = `load-${this.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-
-    let eventTemplate;
-    const now = Math.floor(Date.now() / 1000);
-    if (isVideo) {
-      eventTemplate = buildVideoPostEvent({
-        pubkey: this.keys.pk,
-        created_at: now,
-        dTagValue: dTag,
-        content: {
-          version: 3,
-          title: `Load Test Video ${dTag}`,
-          videoRootId: dTag,
-          url: `https://example.com/videos/${dTag}.mp4`,
-          magnet: `magnet:?xt=urn:btih:${dTag}&dn=video`,
-          mode: 'dev',
-          description: 'Generated by load-test-agent'
-        }
-      });
-    } else {
-      eventTemplate = buildViewEvent({
-        pubkey: this.keys.pk,
-        created_at: now,
-        dedupeTag: dTag,
-        pointerTag: ['s', `nostr:${dTag}`],
-        content: 'View event'
-      });
+  sendEvent(event) {
+    if (config.dryRun) {
+      metrics.success++;
+      return;
     }
 
-    // Sign
-    const skBytes = Uint8Array.from(Buffer.from(this.keys.sk, 'hex'));
-    try {
-      const signedEvent = finalizeEvent(eventTemplate, skBytes);
-      if (DRY_RUN) {
-        metrics.sent++;
-        metrics.accepted++; // Simulate acceptance
-        metrics.latencies.push(Math.random() * 50); // Simulate latency
-        return;
-      }
+    if (!this.connected) return;
 
-      // Send
-      const msg = JSON.stringify(['EVENT', signedEvent]);
-      this.pendingPublishes.set(signedEvent.id, Date.now());
+    // Sign event
+    const signedEvent = finalizeEvent(event, this.sk);
 
-      try {
-        this.ws.send(msg);
-        metrics.sent++;
-      } catch (err) {
-        metrics.errors++;
-        this.pendingPublishes.delete(signedEvent.id);
-      }
-    } catch (err) {
-      console.error('Failed to finalize event:', err);
-      console.error('Event template:', JSON.stringify(eventTemplate, null, 2));
-      metrics.errors++;
-    }
-
+    this.pending.set(signedEvent.id, Date.now());
+    this.ws.send(JSON.stringify(['EVENT', signedEvent]));
+    metrics.sent++;
   }
 
   close() {
     if (this.ws) {
-      this.ws.close();
+      this.ws.terminate();
     }
   }
 }
 
-// --- Main Execution ---
+// Main Execution
 async function run() {
-  let relayProcess = null;
-
-  // Auto-start logic
-  if (!RELAY_URL && !DRY_RUN) {
-    const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-    const relayScript = path.resolve(scriptDir, 'simple-relay.mjs');
-
-    if (fs.existsSync(relayScript)) {
-      console.log('No RELAY_URL provided. Starting local relay...');
-      RELAY_URL = 'ws://localhost:8888';
-
-      relayProcess = spawn('node', [relayScript], {
-        stdio: VERBOSE ? 'inherit' : 'ignore',
-        detached: false
-      });
-
-      relayProcess.unref(); // Allow independent life, but we kill it on exit
-      await delay(2000); // Wait for boot
-    } else {
-      console.error('Error: RELAY_URL not set and local relay script not found.');
-      process.exit(1);
-    }
-  }
-
-  if (!DRY_RUN && !isSafeRelayUrl(RELAY_URL) && !FORCE_UNSAFE) {
-    console.error(`
-SAFETY BLOCK: The target relay (${RELAY_URL}) appears to be public.
-Load testing against public relays is strictly forbidden without explicit overrides.
-To force this run, set FORCE_UNSAFE=1 (use with extreme caution).
-    `);
-    if (relayProcess) relayProcess.kill();
-    process.exit(1);
-  }
-
-  console.log(`
-Load Test Configuration:
-  Relay: ${RELAY_URL || '(Dry Run)'}
-  Clients: ${CLIENTS}
-  Duration: ${DURATION_SEC}s
-  Rate: ${RATE_EPS} events/sec
-  Mix: ${MIX_VIDEO_RATIO * 100}% Video Posts
-  Dry Run: ${DRY_RUN}
-`);
-
+  console.log(`Initializing ${config.clients} clients...`);
   const clients = [];
 
-  // 1. Init Clients
-  console.log(`Initializing ${CLIENTS} clients...`);
-  const connectPromises = [];
-  for (let i = 0; i < CLIENTS; i++) {
-    const client = new LoadClient(i, RELAY_URL);
-    clients.push(client);
-    connectPromises.push(client.connect().catch(e => e)); // Catch connection errors individually
+  // Create clients
+  for (let i = 0; i < config.clients; i++) {
+    clients.push(new LoadClient(i, config.relayUrl));
   }
 
-  await Promise.all(connectPromises);
-  console.log(`Connected ${metrics.connectedClients}/${CLIENTS} clients.`);
-
-  if (metrics.connectedClients === 0 && !DRY_RUN) {
-    console.error("No clients connected. Aborting.");
-    if (relayProcess) relayProcess.kill();
-    process.exit(1);
+  // Connect clients in batches to avoid OS limits/thundering herd
+  const BATCH_SIZE = 50;
+  for (let i = 0; i < clients.length; i += BATCH_SIZE) {
+    const batch = clients.slice(i, i + BATCH_SIZE);
+    await Promise.all(batch.map(c => c.connect().catch(e => recordError('connect_error'))));
+    if (i % 500 === 0 && i > 0) console.log(`Connected ${i} clients...`);
   }
+  console.log(`All ${config.clients} clients initialized.`);
 
-  // 2. Load Loop
-  console.log('Starting load generation...');
-  const intervalMs = 1000 / RATE_EPS;
-  const startTime = Date.now();
-  const endTime = startTime + (DURATION_SEC * 1000);
+  // Event Loop
+  const intervalMs = 1000 / config.rateEps;
+  const endTime = Date.now() + (config.durationSec * 1000);
 
-  const tick = async () => {
+  console.log(`Starting load test for ${config.durationSec} seconds at ${config.rateEps} EPS...`);
+
+  const loop = setInterval(() => {
     if (Date.now() >= endTime) {
-      clearInterval(timer);
+      clearInterval(loop);
       finish();
       return;
     }
 
     // Pick a random connected client
-    const availableClients = clients.filter(c => c.isOpen || DRY_RUN);
-    if (availableClients.length > 0) {
-      const client = availableClients[Math.floor(Math.random() * availableClients.length)];
-      client.publish();
+    const client = clients[Math.floor(Math.random() * clients.length)];
+    if (!client || !client.connected) return;
+
+    // Determine event type
+    const rand = Math.random();
+    let type = 'view';
+    let cumulative = 0;
+    for (const [t, r] of Object.entries(mix)) {
+      cumulative += r;
+      if (rand < cumulative) {
+        type = t;
+        break;
+      }
     }
-  };
 
-  const timer = setInterval(tick, intervalMs);
+    // Build event
+    let event;
+    const now = Math.floor(Date.now() / 1000);
 
-  // Progress Logger
-  const progressTimer = setInterval(() => {
-    const elapsed = (Date.now() - startTime) / 1000;
-    const sentRate = metrics.sent / elapsed;
-    const mem = process.memoryUsage();
-    const cpu = process.cpuUsage();
+    if (type === 'video') {
+      event = buildVideoPostEvent({
+        pubkey: client.pk, // Will be overridden by finalizeEvent but good for builder
+        created_at: now,
+        dTagValue: `load-test-${client.id}-${Date.now()}`,
+        content: {
+          version: 3,
+          title: `Load Test Video ${Date.now()}`,
+          videoRootId: `load-test-${client.id}-${Date.now()}`,
+          url: `https://example.com/video-${Date.now()}.mp4`,
+          mode: 'dev'
+        }
+      });
+    } else {
+      // View event
+      event = buildViewEvent({
+        pubkey: client.pk,
+        created_at: now,
+        content: JSON.stringify({ eventId: 'test-event-id', duration: 10 }),
+        includeSessionTag: true
+      });
+    }
 
-    metrics.resources.push({
-      time: elapsed,
-      rss: mem.rss,
-      heapTotal: mem.heapTotal,
-      heapUsed: mem.heapUsed,
-      external: mem.external,
-      cpuUser: cpu.user,
-      cpuSystem: cpu.system
-    });
+    // Client signs and sends
+    client.sendEvent(event);
 
-    console.log(`[${elapsed.toFixed(1)}s] Sent: ${metrics.sent} (${sentRate.toFixed(1)}/s) | Accepted: ${metrics.accepted} | Rejected: ${metrics.rejected} | Errors: ${metrics.errors} | RSS: ${(mem.rss / 1024 / 1024).toFixed(1)}MB`);
-  }, 5000);
+  }, intervalMs);
 
-  // 3. Finish & Report
-  async function finish() {
-    clearInterval(progressTimer);
-    console.log('Load generation finished. Waiting for pending confirmations...');
-    await delay(2000); // Wait for trailing OKs
-
+  function finish() {
+    console.log('Test finished. Closing clients...');
     clients.forEach(c => c.close());
-    if (relayProcess) {
-        console.log('Stopping local relay...');
-        relayProcess.kill();
-    }
 
-    const elapsed = (Date.now() - metrics.startTime) / 1000;
-
-    // Calculate Latency Stats
+    // Calculate stats
+    const duration = (Date.now() - metrics.startTime) / 1000;
     metrics.latencies.sort((a, b) => a - b);
-    const p50 = metrics.latencies[Math.floor(metrics.latencies.length * 0.50)] || 0;
+
+    const p50 = metrics.latencies[Math.floor(metrics.latencies.length * 0.5)] || 0;
+    const p90 = metrics.latencies[Math.floor(metrics.latencies.length * 0.9)] || 0;
     const p95 = metrics.latencies[Math.floor(metrics.latencies.length * 0.95)] || 0;
     const p99 = metrics.latencies[Math.floor(metrics.latencies.length * 0.99)] || 0;
-    const avg = metrics.latencies.reduce((a, b) => a + b, 0) / (metrics.latencies.length || 1);
 
     const report = {
-      config: {
-        relay: RELAY_URL,
-        clients: CLIENTS,
-        duration: DURATION_SEC,
-        rate: RATE_EPS,
-        mix: MIX_VIDEO_RATIO,
-        dryRun: DRY_RUN
-      },
+      config: { ...config, relayUrl: config.relayUrl.replace(/:\/\/[^@]+@/, '://***@') }, // Redact auth if present
       summary: {
+        duration,
         totalSent: metrics.sent,
-        totalAccepted: metrics.accepted,
-        totalRejected: metrics.rejected,
-        totalErrors: metrics.errors,
-        throughput: metrics.accepted / elapsed,
-        latency: {
-          avg: parseFloat(avg.toFixed(2)),
-          p50,
-          p95,
-          p99
-        },
-        resources: metrics.resources
+        totalSuccess: metrics.success,
+        totalFailed: metrics.failed,
+        throughputEps: metrics.success / duration,
+        latency: { p50, p90, p95, p99 }
       },
-      timestamp: new Date().toISOString()
+      errors: metrics.errors
     };
 
-    console.log('\n--- Final Report ---');
-    console.log(JSON.stringify(report, null, 2));
+    console.log('Report:', JSON.stringify(report, null, 2));
 
-    // Ensure artifacts directory exists
-    const artifactsDir = path.resolve('artifacts');
-    if (!fs.existsSync(artifactsDir)) {
-      fs.mkdirSync(artifactsDir, { recursive: true });
-    }
+    // Save report
+    const artifactsDir = join(process.cwd(), 'artifacts');
+    // Ensure artifacts dir exists (mkdirSync recursive)
+    mkdirSync(artifactsDir, { recursive: true });
 
-    const filename = `load-report-${new Date().toISOString().split('T')[0].replace(/-/g, '')}.json`;
-    const filepath = path.join(artifactsDir, filename);
-    fs.writeFileSync(filepath, JSON.stringify(report, null, 2));
-    console.log(`Report saved to ${filepath}`);
+    const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
+    const filename = `load-report-${dateStr}.json`;
+    const filepath = join(artifactsDir, filename);
 
-    process.exit(0);
+    writeFileSync(filepath, JSON.stringify(report, null, 2));
+    console.log(`Saved report to ${filepath}`);
   }
 }
 
