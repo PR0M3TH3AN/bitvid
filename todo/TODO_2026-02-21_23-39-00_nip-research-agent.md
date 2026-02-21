@@ -1,0 +1,21 @@
+# Todo: NIP Research Agent Run (2026-02-21)
+
+- [x] Create Context/Todo/Decisions/TestLog files.
+- [x] Explore codebase:
+    - [x] Read `js/nostr/client.js`.
+    - [x] List `js/utils/`.
+    - [x] Read `js/utils/nostrHelpers.js`.
+    - [x] Grep for `nostr:` and `AUTH`.
+- [x] Fetch Specs:
+    - [x] Download NIP-09.
+    - [x] Download NIP-21.
+    - [x] Download NIP-42.
+- [x] Analyze & Verify:
+    - [x] Verify NIP-21 logic (`scripts/verify-nip21.mjs`).
+    - [x] Verify NIP-09 logic (`deleteAllVersions`).
+    - [x] Verify NIP-42 logic (`AUTH`).
+- [x] Update `NIP_INVENTORY.md`.
+- [x] Generate `nip-report-2026-02-21.md`.
+- [x] Run `npm test` (shard 1 passed).
+- [ ] Run `npm run lint`.
+- [ ] Create completion log.
