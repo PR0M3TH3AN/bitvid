@@ -45,6 +45,15 @@ const DECRYPT_TIMEOUT_MS = 6000;
 // PERF: Reduced from 3s to 1.5s — extensions that already granted permission
 // should recover near-instantly. Shorter delay speeds up the login path.
 const DECRYPT_RETRY_DELAY_MS = NETWORK_RETRY_DELAY_MS;
+const MAX_DECRYPT_RETRY_DELAY_MS = 30000;
+
+function computeRetryDelay(baseDelayMs, attempt) {
+  const normalizedAttempt =
+    Number.isFinite(attempt) && attempt > 0 ? Math.floor(attempt) : 0;
+  const multiplier = 2 ** normalizedAttempt;
+  const nextDelay = Math.max(250, Math.floor(baseDelayMs * multiplier));
+  return Math.min(MAX_DECRYPT_RETRY_DELAY_MS, nextDelay);
+}
 
 class TinyEventEmitter {
   constructor() {
@@ -260,6 +269,7 @@ class HashtagPreferencesService {
     this.backgroundLoading = false;
     this.preferencesVersion = DEFAULT_VERSION;
     this.decryptRetryTimeoutId = null;
+    this.decryptRetryAttempt = 0;
     this.loadPromise = null;
     this.loadingPubkey = null;
     this.subscriptionKey = null;
@@ -303,6 +313,7 @@ class HashtagPreferencesService {
       clearTimeout(this.decryptRetryTimeoutId);
       this.decryptRetryTimeoutId = null;
     }
+    this.decryptRetryAttempt = 0;
     this.loadPromise = null;
     this.loadingPubkey = null;
     this.emitChange("reset");
@@ -525,6 +536,9 @@ class HashtagPreferencesService {
     if (this.decryptRetryTimeoutId) {
       clearTimeout(this.decryptRetryTimeoutId);
     }
+    const attempt = this.decryptRetryAttempt;
+    const retryDelayMs = computeRetryDelay(DECRYPT_RETRY_DELAY_MS, attempt);
+    this.decryptRetryAttempt = attempt + 1;
     this.decryptRetryTimeoutId = setTimeout(() => {
       this.decryptRetryTimeoutId = null;
       if (this.activePubkey && this.activePubkey !== normalized) {
@@ -533,9 +547,9 @@ class HashtagPreferencesService {
       this.load(normalized, options).catch((retryError) => {
         userLogger.warn(`${LOG_PREFIX} Decryption retry failed`, retryError);
       });
-    }, DECRYPT_RETRY_DELAY_MS);
+    }, retryDelayMs);
     devLogger.log(
-      `${LOG_PREFIX} Decryption timed out; scheduling retry in ${DECRYPT_RETRY_DELAY_MS / 1000}s.`,
+      `${LOG_PREFIX} Decryption timed out; scheduling retry in ${retryDelayMs / 1000}s.`,
       error,
     );
   }
@@ -939,6 +953,7 @@ class HashtagPreferencesService {
       this.loaded = true;
       this.loadedFromCache = false;
       this.lastSuccessfulSyncAt = Date.now();
+      this.decryptRetryAttempt = 0;
       if (this.backgroundLoading) {
         this.backgroundLoading = false;
       }

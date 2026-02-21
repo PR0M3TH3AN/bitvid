@@ -3342,8 +3342,17 @@ export class ProfileModalController {
     const failedTasks = Array.isArray(listsDetail.tasks)
       ? listsDetail.tasks.filter((task) => task && task.ok === false)
       : [];
+    const permissionFailureTasks = failedTasks.filter((task) => {
+      const code =
+        task?.error && typeof task.error.code === "string"
+          ? task.error.code.trim()
+          : "";
+      return code.endsWith("-permission-required");
+    });
     const loadedFromCacheTasks = failedTasks.filter((task) => task.fromCache === true);
     const hardFailTasks = failedTasks.filter((task) => task.fromCache !== true);
+    const onlyPermissionFailures =
+      failedTasks.length > 0 && permissionFailureTasks.length === failedTasks.length;
 
     if (loadedFromCacheTasks.length > 0 && hardFailTasks.length === 0) {
       this.setSubscriptionsStatus(
@@ -3356,6 +3365,18 @@ export class ProfileModalController {
       );
       this.setBlockListLoadingState("error", {
         message: "Blocked creators loaded from cache; syncing latest in background.",
+      });
+    } else if (onlyPermissionFailures) {
+      this.setSubscriptionsStatus(
+        "Waiting for extension decrypt permissions to sync your lists.",
+        "warning",
+      );
+      this.hashtagController.setHashtagStatus(
+        "Waiting for extension decrypt permissions to sync your lists.",
+        "warning",
+      );
+      this.setBlockListLoadingState("error", {
+        message: "Waiting for extension decrypt permissions to sync your blocked creators.",
       });
     } else if (hardFailTasks.length > 0) {
       this.setSubscriptionsStatus(
@@ -3375,11 +3396,15 @@ export class ProfileModalController {
       this.setPermissionPromptCtaState({
         visible: true,
         message:
-          loadedFromCacheTasks.length > 0
+          onlyPermissionFailures
+            ? "NIP-07 decrypt permissions are needed to finish syncing your profile lists."
+            : loadedFromCacheTasks.length > 0
             ? "Some lists are currently from cache. Retry now to sync with relays."
             : "Failed to sync required profile lists. Retry now.",
-        buttonLabel: "Retry list sync",
-        action: "retry-auth-sync",
+        buttonLabel: onlyPermissionFailures
+          ? "Enable permissions"
+          : "Retry list sync",
+        action: onlyPermissionFailures ? "permission" : "retry-auth-sync",
         busy: false,
       });
       return;

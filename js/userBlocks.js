@@ -90,6 +90,15 @@ const DECRYPT_TIMEOUT_MS = STANDARD_TIMEOUT_MS;
 const BACKGROUND_DECRYPT_TIMEOUT_MS = 8000;
 // PERF: Reduced from 10s to 3s for faster recovery during login.
 const DECRYPT_RETRY_DELAY_MS = 3000;
+const MAX_DECRYPT_RETRY_DELAY_MS = 30000;
+
+function computeRetryDelay(baseDelayMs, attempt) {
+  const normalizedAttempt =
+    Number.isFinite(attempt) && attempt > 0 ? Math.floor(attempt) : 0;
+  const multiplier = 2 ** normalizedAttempt;
+  const nextDelay = Math.max(250, Math.floor(baseDelayMs * multiplier));
+  return Math.min(MAX_DECRYPT_RETRY_DELAY_MS, nextDelay);
+}
 
 function sanitizeRelayList(candidate) {
   return Array.isArray(candidate)
@@ -699,6 +708,7 @@ class UserBlockListManager {
     this.emitter = new TinyEventEmitter();
     this.seedStateCache = new Map();
     this.decryptRetryTimeoutId = null;
+    this.decryptRetryAttempt = 0;
     this.loadPromise = null;
     this.loadingPubkey = null;
     this.blockListSubscriptionKey = null;
@@ -730,6 +740,7 @@ class UserBlockListManager {
       clearTimeout(this.decryptRetryTimeoutId);
       this.decryptRetryTimeoutId = null;
     }
+    this.decryptRetryAttempt = 0;
     this.loadPromise = null;
     this.loadingPubkey = null;
   }
@@ -805,6 +816,9 @@ class UserBlockListManager {
     if (this.decryptRetryTimeoutId) {
       clearTimeout(this.decryptRetryTimeoutId);
     }
+    const attempt = this.decryptRetryAttempt;
+    const retryDelayMs = computeRetryDelay(DECRYPT_RETRY_DELAY_MS, attempt);
+    this.decryptRetryAttempt = attempt + 1;
     const retryMeta = detail && typeof detail === "object" ? detail : {};
     const signerStatus = retryMeta.signerStatus || "unknown";
     this.decryptRetryTimeoutId = setTimeout(() => {
@@ -820,9 +834,9 @@ class UserBlockListManager {
       }).catch((retryError) => {
         userLogger.warn("[UserBlockList] Decryption retry failed:", retryError);
       });
-    }, DECRYPT_RETRY_DELAY_MS);
+    }, retryDelayMs);
     devLogger.log(
-      `[UserBlockList] Decryption stalled (${signerStatus}); retrying in ${DECRYPT_RETRY_DELAY_MS / 1000}s.`,
+      `[UserBlockList] Decryption stalled (${signerStatus}); retrying in ${retryDelayMs / 1000}s.`,
       retryMeta.error || retryMeta,
     );
   }
@@ -1528,6 +1542,7 @@ class UserBlockListManager {
           reason: effectiveReason,
           events: [newestStandard?.id, newestLegacy?.id].filter(Boolean),
         });
+        this.decryptRetryAttempt = 0;
 
         if (effectiveReason === "empty-events") {
            emitStatus({ status: "applied-empty", event: newestOverall, source });

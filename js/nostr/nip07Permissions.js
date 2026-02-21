@@ -99,10 +99,10 @@ class Nip07RequestQueue {
 // This prevents "message channel closed" errors caused by race conditions
 // when multiple components (blocks, DMs, auth) query the extension simultaneously,
 // while allowing critical tasks (e.g. blocklist decryption) to jump the line.
-// PERF: Increased from 3 to 5 to allow more parallel decrypt operations
-// during login when blocks, subscriptions, and hashtag preferences all need
-// to decrypt simultaneously.
-const requestQueue = new Nip07RequestQueue(5);
+// Stability: keep extension request concurrency conservative. Some NIP-07
+// providers/content scripts drop channels under high parallel load, which
+// manifests as "message channel closed" and repeated decrypt timeouts.
+const requestQueue = new Nip07RequestQueue(2);
 
 export function getEnableVariantTimeoutMs() {
   const overrideValue =

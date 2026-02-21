@@ -54,6 +54,15 @@ const DECRYPT_TIMEOUT_MS = 6000;
 // should recover near-instantly. The shorter delay prevents unnecessary wait
 // time during the critical login path when the first decrypt attempt fails.
 const DECRYPT_RETRY_DELAY_MS = 1500;
+const MAX_DECRYPT_RETRY_DELAY_MS = 30000;
+
+function computeRetryDelay(baseDelayMs, attempt) {
+  const normalizedAttempt =
+    Number.isFinite(attempt) && attempt > 0 ? Math.floor(attempt) : 0;
+  const multiplier = 2 ** normalizedAttempt;
+  const nextDelay = Math.max(250, Math.floor(baseDelayMs * multiplier));
+  return Math.min(MAX_DECRYPT_RETRY_DELAY_MS, nextDelay);
+}
 
 function normalizeHexPubkey(value) {
   if (typeof value !== "string") {
@@ -369,6 +378,7 @@ class SubscriptionsManager {
     this.hasRenderedOnce = false;
     this.emitter = new TinyEventEmitter();
     this.decryptRetryTimeoutId = null;
+    this.decryptRetryAttempt = 0;
     this.ensureNostrServiceListener();
     this.subscriptionKey = null;
 
@@ -458,6 +468,9 @@ class SubscriptionsManager {
     if (this.decryptRetryTimeoutId) {
       clearTimeout(this.decryptRetryTimeoutId);
     }
+    const attempt = this.decryptRetryAttempt;
+    const retryDelayMs = computeRetryDelay(DECRYPT_RETRY_DELAY_MS, attempt);
+    this.decryptRetryAttempt = attempt + 1;
     this.decryptRetryTimeoutId = setTimeout(() => {
       this.decryptRetryTimeoutId = null;
       if (this.currentUserPubkey && this.currentUserPubkey !== normalized) {
@@ -466,9 +479,9 @@ class SubscriptionsManager {
       this.updateFromRelays(normalized, options).catch((retryError) => {
         userLogger.warn("[SubscriptionsManager] Decryption retry failed:", retryError);
       });
-    }, DECRYPT_RETRY_DELAY_MS);
+    }, retryDelayMs);
     devLogger.log(
-      `[SubscriptionsManager] Decryption timed out; scheduling retry in ${DECRYPT_RETRY_DELAY_MS / 1000}s.`,
+      `[SubscriptionsManager] Decryption timed out; scheduling retry in ${retryDelayMs / 1000}s.`,
       error,
     );
   }
@@ -741,6 +754,8 @@ class SubscriptionsManager {
         return;
       }
 
+      this.decryptRetryAttempt = 0;
+
       const decryptedStr = decryptResult.plaintext;
       const normalized = parseSubscriptionPlaintext(decryptedStr);
 
@@ -820,6 +835,7 @@ class SubscriptionsManager {
       clearTimeout(this.decryptRetryTimeoutId);
       this.decryptRetryTimeoutId = null;
     }
+    this.decryptRetryAttempt = 0;
     this.emitter.emit("change", { action: "reset", subscribedPubkeys: [] });
   }
 

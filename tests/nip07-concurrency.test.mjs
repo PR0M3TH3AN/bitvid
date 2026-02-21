@@ -21,7 +21,7 @@ describe("NIP-07 Concurrency Queue", () => {
     global.window = originalWindow;
   });
 
-  test("runs up to 5 tasks concurrently", async () => {
+  test("runs up to 2 tasks concurrently", async () => {
     const start = Date.now();
     const delays = [200, 200, 200, 200, 200, 100];
     const log = [];
@@ -44,12 +44,11 @@ describe("NIP-07 Concurrency Queue", () => {
 
     const starts = log.filter(e => e.status === 'start');
 
-    // Task 1-5 should start almost immediately (concurrency 5)
-    assert.ok(Math.abs(starts[0].time - starts[4].time) < 50, "Task 1-5 should start concurrently");
+    // Task 1-2 should start almost immediately (concurrency 2)
+    assert.ok(Math.abs(starts[0].time - starts[1].time) < 50, "Task 1-2 should start concurrently");
 
-    // Task 6 should start after roughly 200ms (when slot opens)
-    // Note: Node's setTimeout is not precise, so we use loose bounds
-    assert.ok(starts[5].time >= 150, "Task 6 should wait for a slot");
+    // Task 3 should start only after the first slot opens (~200ms).
+    assert.ok(starts[2].time >= 150, "Task 3 should wait for a slot");
   });
 
   test("respects priority", async () => {
@@ -62,12 +61,9 @@ describe("NIP-07 Concurrency Queue", () => {
       return id;
     };
 
-    // Fill the queue (size 5)
+    // Fill the queue (size 2)
     runNip07WithRetry(task('blocker1', 100));
     runNip07WithRetry(task('blocker2', 100));
-    runNip07WithRetry(task('blocker3', 100));
-    runNip07WithRetry(task('blocker4', 100));
-    runNip07WithRetry(task('blocker5', 100));
 
     // Enqueue low priority
     const pLow = runNip07WithRetry(task('low', 50), { priority: NIP07_PRIORITY.LOW });
