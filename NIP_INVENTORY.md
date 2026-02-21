@@ -33,5 +33,5 @@
 | **Kind 30078** | App Data | `js/nostr/client.js`, `js/nostr/videoPayloadBuilder.js` | Compliant | Verified by `tests/nostr-specs/kind30078.test.mjs`. |
 | **Kind 30079** | Watch History | `js/nostr/watchHistory.js`, `config/instance-config.js` | Compliant | Parameterized replaceable list (custom kind). Implements bucketing and encryption. |
 | **NIP-25** | Reactions | `js/nostr/reactionEvents.js`, `js/nostrEventSchemas.js` | Compliant | Implements Kind 7 reaction events. |
-| **NIP-42** | Authentication of clients to relays | `js/nostr/client.js` | Unknown | Needs verification of AUTH command handling. |
+| **NIP-42** | Authentication of clients to relays | `js/nostr/client.js` | Non-compliant | No `AUTH` command handling found. |
 | **NIP-47** | Wallet Connect | `js/payments/nwcClient.js` | Compliant | Implements NWC client for zaps. |
