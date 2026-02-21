@@ -181,6 +181,12 @@ Mix in Tailwind utilities for icon spacing (`gap-3`), sizing (`px-lg`, `py-sm`),
 
 `.badge` renders an inline pill (`bg-panel`, uppercase text). Opt into semantic variants with `data-variant="info"`, `data-variant="critical"`, or `data-variant="neutral"`. Layer on utilities for icon alignment or truncation.
 
+### Interaction Guidelines
+
+- **No blocking alerts:** Do not use `window.alert()` or `window.confirm()`. These native modals block the main thread and disrupt the user experience.
+- **Preferred pattern:** Use the `showError(message)` and `showSuccess(message)` callbacks provided to controllers, or render inline `.notification-banner` elements for persistent feedback.
+- **Complex confirmations:** For destructive actions requiring confirmation, use a dedicated modal or a two-step button state (e.g., "Click to confirm") rather than a native confirm dialog.
+
 ### Messaging & Notification Tokens
 
 Use the dedicated messaging tokens when styling chat surfaces and banners so they inherit theme-safe contrast and icon colors:

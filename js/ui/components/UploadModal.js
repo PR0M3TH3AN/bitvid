@@ -477,12 +477,12 @@ export class UploadModal {
       if (!file) return;
 
       if (!this.storageConfigured) {
-          alert("Please configure storage before selecting a file.");
+          this.showError("Please configure storage before selecting a file.");
           e.target.value = ""; // Clear selection
           return;
       }
       if (!this.isStorageUnlocked) {
-          alert("Please unlock storage before selecting a file.");
+          this.showError("Please unlock storage before selecting a file.");
           e.target.value = "";
           return;
       }
@@ -696,7 +696,7 @@ export class UploadModal {
           if (this.results.magnet) this.results.magnet.value = "Upload Failed";
           if (this.results.torrentUrl) this.results.torrentUrl.value = "Upload Failed";
 
-          alert(`Upload failed: ${err.message}`);
+          this.showError(`Upload failed: ${err.message}`);
 
           this.inputs.file.value = ""; // Reset
       }
@@ -798,7 +798,7 @@ export class UploadModal {
           userLogger.error("Thumbnail upload failed:", err);
           this.thumbnailUploadState.status = 'error';
           this.updateThumbnailProgress(null, "Failed.");
-          alert("Thumbnail upload failed.");
+          this.showError("Thumbnail upload failed.");
       }
   }
 
@@ -934,7 +934,7 @@ export class UploadModal {
         ? signer.canSign()
         : typeof signer?.signEvent === "function";
       if (!canSign) {
-          alert("No signer available to unlock storage.");
+          this.showError("No signer available to unlock storage.");
           return;
       }
 
@@ -942,7 +942,7 @@ export class UploadModal {
           if (signer?.type === "extension") {
               const permissionResult = await requestDefaultExtensionPermissions();
               if (!permissionResult?.ok) {
-                  alert("Extension permissions are required to unlock storage.");
+                  this.showError("Extension permissions are required to unlock storage.");
                   return;
               }
           }
@@ -956,7 +956,7 @@ export class UploadModal {
           await this.loadFromStorage();
       } catch (err) {
           userLogger.error("Unlock failed", err);
-          alert("Failed to unlock storage: " + err.message);
+          this.showError("Failed to unlock storage: " + err.message);
       } finally {
           if (this.toggles.storageUnlock) {
             this.toggles.storageUnlock.textContent = "Unlock";
@@ -1012,17 +1012,17 @@ export class UploadModal {
       // Check upload state
       if (this.activeSource === "upload") {
           if (this.videoUploadState.status === 'uploading' || this.thumbnailUploadState.status === 'uploading') {
-              alert("Please wait for uploads to complete.");
+              this.showError("Please wait for uploads to complete.");
               return;
           }
           if (this.videoUploadState.status === 'error') {
-              alert("Video upload failed. Please try again.");
+              this.showError("Video upload failed. Please try again.");
               return;
           }
           if (this.videoUploadState.status !== 'complete') {
                // Fallback: If no file selected, maybe they want to submit without a new file?
                // (Not supported in this simplified modal, assume file required)
-               alert("Please select a video file and wait for it to upload.");
+               this.showError("Please select a video file and wait for it to upload.");
                return;
           }
       }
