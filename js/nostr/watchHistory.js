@@ -693,6 +693,101 @@ async function resolveNostrToolkit(deps = {}, cacheRef = null) {
   return cacheRef?.current || null;
 }
 
+async function decryptWatchHistoryCiphertext(
+  {
+    event = null,
+    ciphertext = "",
+    actorKey = "",
+    decryptSigner = null,
+    sessionPrivateKey = "",
+    deps = {},
+  } = {},
+  toolkitCacheRef = null,
+) {
+  const normalizedCiphertext =
+    typeof ciphertext === "string" ? ciphertext.trim() : "";
+  if (!normalizedCiphertext || !actorKey) {
+    return "";
+  }
+
+  const decryptors = new Map();
+  const registerDecryptor = (scheme, decrypt) => {
+    if (typeof scheme !== "string" || !scheme || typeof decrypt !== "function") {
+      return;
+    }
+    if (!decryptors.has(scheme)) {
+      decryptors.set(scheme, decrypt);
+    }
+  };
+
+  if (decryptSigner && typeof decryptSigner === "object") {
+    if (typeof decryptSigner.nip44Decrypt === "function") {
+      registerDecryptor("nip44", (value) =>
+        decryptSigner.nip44Decrypt(actorKey, value),
+      );
+    }
+    if (typeof decryptSigner.nip04Decrypt === "function") {
+      registerDecryptor("nip04", (value) =>
+        decryptSigner.nip04Decrypt(actorKey, value),
+      );
+    }
+  }
+
+  const normalizedSessionPrivateKey =
+    typeof sessionPrivateKey === "string" ? sessionPrivateKey.trim().toLowerCase() : "";
+  const canUseSessionPrivateKey = /^[0-9a-f]{64}$/.test(normalizedSessionPrivateKey);
+  if (canUseSessionPrivateKey) {
+    const tools = await resolveNostrToolkit(deps, toolkitCacheRef);
+    if (tools?.nip04 && typeof tools.nip04.decrypt === "function") {
+      registerDecryptor("nip04", (value) =>
+        tools.nip04.decrypt(normalizedSessionPrivateKey, actorKey, value),
+      );
+    }
+    const nip44Suite = createNip44CipherSuite(
+      tools,
+      normalizedSessionPrivateKey,
+      actorKey,
+    );
+    if (nip44Suite?.v2 && typeof nip44Suite.v2.decrypt === "function") {
+      registerDecryptor("nip44_v2", (value) => nip44Suite.v2.decrypt(value));
+    }
+    if (nip44Suite?.legacy && typeof nip44Suite.legacy.decrypt === "function") {
+      registerDecryptor("nip44", (value) => nip44Suite.legacy.decrypt(value));
+    }
+  }
+
+  if (!decryptors.size) {
+    return "";
+  }
+
+  const availableSchemes = Array.from(decryptors.keys());
+  const order = determineWatchHistoryDecryptionOrder(
+    event,
+    normalizedCiphertext,
+    availableSchemes,
+  );
+
+  for (const scheme of order) {
+    const decrypt = decryptors.get(scheme);
+    if (typeof decrypt !== "function") {
+      continue;
+    }
+    try {
+      const plaintext = await decrypt(normalizedCiphertext);
+      if (typeof plaintext === "string" && plaintext.trim()) {
+        return plaintext;
+      }
+    } catch (error) {
+      devLogger.warn(
+        `[nostr] Failed to decrypt watch history payload with ${scheme}:`,
+        error,
+      );
+    }
+  }
+
+  return "";
+}
+
 function mergeWatchHistoryItemsWithFallback(parsed, fallbackItems) {
   if (!parsed || typeof parsed !== "object") {
     return {
@@ -1900,8 +1995,13 @@ class WatchHistoryManager {
       }
     }
 
+    const sessionPrivateKey =
+      typeof sessionActor?.privateKey === "string" ? sessionActor.privateKey : "";
+    const canAttemptDecrypt = Boolean(decryptSigner) || Boolean(sessionPrivateKey);
+    const toolkitCacheRef = { current: null };
+
     let decryptedItems = [];
-    if (chunkIdentifiers.length && decryptSigner) {
+    if (chunkIdentifiers.length && canAttemptDecrypt) {
       try {
         const results = await pool.list(readRelays, [
           {
@@ -1920,13 +2020,19 @@ class WatchHistoryManager {
             if (!ciphertext) {
               return [];
             }
-            let plaintext = "";
-            if (typeof decryptSigner.nip04Decrypt === "function") {
-              try {
-                plaintext = await decryptSigner.nip04Decrypt(actorKey, ciphertext);
-              } catch (error) {
-                devLogger.warn("[nostr] Failed to decrypt watch history chunk:", error);
-              }
+            let plaintext = looksLikeJsonStructure(ciphertext) ? ciphertext : "";
+            if (!plaintext) {
+              plaintext = await decryptWatchHistoryCiphertext(
+                {
+                  event,
+                  ciphertext,
+                  actorKey,
+                  decryptSigner,
+                  sessionPrivateKey,
+                  deps: this.deps,
+                },
+                toolkitCacheRef,
+              );
             }
             if (!plaintext) {
               return [];
@@ -1962,9 +2068,27 @@ class WatchHistoryManager {
       const dTag = event.tags.find(t => t[0] === 'd');
       const eventSnapshotId = dTag ? dTag[1] : "";
 
+      let payloadContent = ciphertext;
+      if (!looksLikeJsonStructure(payloadContent) && canAttemptDecrypt) {
+        const decrypted = await decryptWatchHistoryCiphertext(
+          {
+            event,
+            ciphertext: payloadContent,
+            actorKey,
+            decryptSigner,
+            sessionPrivateKey,
+            deps: this.deps,
+          },
+          toolkitCacheRef,
+        );
+        if (decrypted) {
+          payloadContent = decrypted;
+        }
+      }
+
       // Try parsing as plaintext first
       const payload = parseWatchHistoryContentWithFallback(
-          ciphertext,
+          payloadContent,
           fallbackPointers,
           {
             version: 0,

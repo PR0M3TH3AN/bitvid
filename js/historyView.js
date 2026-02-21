@@ -3,6 +3,10 @@
 import watchHistoryService from "./watchHistoryService.js";
 import { nostrClient } from "./nostrClientFacade.js";
 import {
+  createFeedEngine,
+  createWatchHistoryFeedDefinition,
+} from "./feedEngine/index.js";
+import {
   updateWatchHistoryListWithDefaultClient as updateWatchHistoryList,
 } from "./nostrWatchHistoryFacade.js";
 import { pointerKey, normalizePointerInput } from "./nostr/watchHistory.js";
@@ -84,6 +88,21 @@ function setTextContent(element, text) {
 
 function getAppInstance() {
   return getApplication();
+}
+
+let localWatchHistoryFallbackEngine = null;
+
+function getLocalWatchHistoryFallbackEngine() {
+  if (localWatchHistoryFallbackEngine) {
+    return localWatchHistoryFallbackEngine;
+  }
+  const engine = createFeedEngine();
+  engine.registerFeed(
+    "watch-history",
+    createWatchHistoryFeedDefinition({ service: watchHistoryService }),
+  );
+  localWatchHistoryFallbackEngine = engine;
+  return localWatchHistoryFallbackEngine;
 }
 
 function buildWatchHistoryFeedRuntime({
@@ -228,8 +247,17 @@ function normalizeHistoryItems(rawItems) {
     if (!key) {
       continue;
     }
+    const baseMetadata =
+      candidate &&
+      typeof candidate === "object" &&
+      candidate.metadata &&
+      typeof candidate.metadata === "object"
+        ? { ...candidate.metadata }
+        : {};
     const watchedAtRaw = Number.isFinite(candidate?.watchedAt)
       ? candidate.watchedAt
+      : Number.isFinite(baseMetadata?.watchedAt)
+        ? baseMetadata.watchedAt
       : Number.isFinite(candidate?.timestamp)
         ? candidate.timestamp
         : Number.isFinite(pointer?.watchedAt)
@@ -237,10 +265,23 @@ function normalizeHistoryItems(rawItems) {
           : null;
     const watchedAt =
       watchedAtRaw !== null ? Math.max(0, Math.floor(watchedAtRaw)) : 0;
+    const video = candidate?.video || baseMetadata.video || null;
+    const profile = candidate?.profile || baseMetadata.profile || null;
+    const metadata = {
+      ...baseMetadata,
+      pointerKey: key,
+      watchedAt: Number.isFinite(baseMetadata?.watchedAt)
+        ? baseMetadata.watchedAt
+        : watchedAt || null,
+      video: video || null,
+      profile: profile || null,
+    };
     normalized.push({
       pointer,
       pointerKey: key,
       watchedAt,
+      video: metadata.video,
+      metadata,
       raw: candidate
     });
   }
@@ -1436,6 +1477,31 @@ export function createWatchHistoryRenderer(config = {}) {
           hasLoggedFeedRegistrationFallback = true;
           devLogger.info(
             "[historyView] watch-history feed unavailable after registration attempt; using service fallback.",
+          );
+        }
+      }
+      try {
+        const runtime = buildWatchHistoryFeedRuntime({
+          actor: actorInput,
+          cursor,
+          forceRefresh,
+        });
+        const fallbackEngine = getLocalWatchHistoryFallbackEngine();
+        const hydrated = await fallbackEngine.run("watch-history", { runtime });
+        return {
+          ...(hydrated && typeof hydrated === "object" ? hydrated : {}),
+          metadata: {
+            ...(hydrated?.metadata && typeof hydrated.metadata === "object"
+              ? hydrated.metadata
+              : {}),
+            engine: "local-feed-fallback",
+          },
+        };
+      } catch (fallbackError) {
+        if (isDevEnv) {
+          devLogger.warn(
+            "[historyView] local feed fallback failed; using raw service data.",
+            fallbackError,
           );
         }
       }

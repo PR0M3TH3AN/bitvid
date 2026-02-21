@@ -311,6 +311,67 @@ test("fetchWatchHistory falls back to pointer payload when nip04 decrypt fails",
   }
 });
 
+test("fetchWatchHistory decrypts encrypted pointer events with nip44 signer support", async () => {
+  const actorHex = "5".repeat(64);
+  const ciphertext = "nip44-ciphertext";
+  const decryptCalls = [];
+
+  const pointerEvent = {
+    id: "pointer-nip44",
+    pubkey: actorHex,
+    created_at: 1_700_200_000,
+    content: ciphertext,
+    tags: [
+      ["encrypted", "nip44"],
+      ["a", "30078:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:fallback"],
+      ["d", "watch-history-month"],
+    ],
+  };
+
+  const signer = {
+    nip44Decrypt: async (pubkey, payload) => {
+      decryptCalls.push({ pubkey, payload });
+      assert.equal(pubkey, actorHex, "nip44 decrypt should target the actor pubkey");
+      assert.equal(payload, ciphertext, "nip44 decrypt should receive encrypted content");
+      return JSON.stringify({
+        version: 2,
+        items: [{ type: "e", value: "decrypted-from-pointer", watchedAt: 33 }],
+      });
+    },
+  };
+
+  const pool = {
+    async list() {
+      return [pointerEvent];
+    },
+  };
+
+  const manager = createWatchHistoryManager({
+    getActivePubkey: () => actorHex,
+    resolveActiveSigner: () => signer,
+    shouldRequestExtensionPermissions: () => false,
+    getPool: () => pool,
+    getReadRelays: () => ["wss://relay.example"],
+  });
+
+  try {
+    const result = await fetchWatchHistory(manager, actorHex, { forceRefresh: true });
+    assert.equal(decryptCalls.length, 1, "nip44 decrypt should be attempted once");
+    assert.deepStrictEqual(
+      result.items.map((item) => item.value),
+      ["decrypted-from-pointer"],
+      "decrypted pointer event payload should be used",
+    );
+    assert.equal(
+      result.items[0]?.watchedAt,
+      33,
+      "watched timestamp from decrypted payload should be preserved",
+    );
+  } finally {
+    manager.clear();
+  }
+});
+
 test("publishWatchHistorySnapshot uses injected nostr-tools helpers when signer cannot encrypt", async () => {
   const actorPubkey = "f".repeat(64);
   const sessionPrivateKey = "a".repeat(64);
