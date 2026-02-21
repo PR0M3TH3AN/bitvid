@@ -549,7 +549,12 @@ export class SignerManager {
       throw new Error("Please install a Nostr extension (Alby, nos2x, etc.).");
     }
 
-    const { allowAccountSelection = false, expectPubkey } =
+    const {
+      allowAccountSelection = false,
+      expectPubkey,
+      getPublicKeyTimeoutMs,
+      getPublicKeyRetryMultiplier,
+    } =
       typeof options === "object" && options !== null ? options : {};
     const normalizedExpectedPubkey =
       typeof expectPubkey === "string" && expectPubkey.trim()
@@ -576,7 +581,14 @@ export class SignerManager {
       throw denialError;
     }
 
-    const pubkey = await extension.getPublicKey();
+    const pubkey = await runNip07WithRetry(
+      () => extension.getPublicKey(),
+      {
+        label: "extension.getPublicKey",
+        timeoutMs: getPublicKeyTimeoutMs,
+        retryMultiplier: getPublicKeyRetryMultiplier,
+      },
+    );
     if (!pubkey) {
       throw new Error("Extension did not return a public key.");
     }

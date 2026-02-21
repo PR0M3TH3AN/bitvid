@@ -318,9 +318,8 @@ export async function requestEnablePermissions(
     return { ok: false, error: new Error("extension-unavailable") };
   }
 
-  if (typeof extension.enable !== "function") {
-    return { ok: true, code: "enable-unavailable" };
-  }
+  const hasRequestPermissions = typeof extension.requestPermissions === "function";
+  const hasEnable = typeof extension.enable === "function";
 
   const normalized = Array.isArray(outstandingMethods)
     ? outstandingMethods
@@ -328,16 +327,70 @@ export async function requestEnablePermissions(
         .filter(Boolean)
     : [];
 
-  const permissionVariants = [];
-  if (normalized.length) {
-    permissionVariants.push({
-      permissions: normalized.map((method) => ({ method })),
-    });
-    permissionVariants.push({ permissions: normalized });
+  const permissionVariants = (() => {
+    const variants = [];
+    if (normalized.length) {
+      variants.push({
+        permissions: normalized.map((method) => ({ method })),
+      });
+      variants.push({ permissions: normalized });
+      variants.push(normalized);
+    }
+    variants.push(null);
+    return variants;
+  })();
+
+  if (!hasRequestPermissions && !hasEnable) {
+    return { ok: true, code: "enable-unavailable" };
   }
-  permissionVariants.push(null);
 
   let lastError = null;
+  if (hasRequestPermissions) {
+    for (const options of permissionVariants) {
+      const variantTimeoutOverrides = options
+        ? {
+            timeoutMs: Math.min(3000, getEnableVariantTimeoutMs()),
+            retryMultiplier: 1,
+          }
+        : {
+            timeoutMs: Math.min(
+              NIP07_LOGIN_TIMEOUT_MS,
+              getEnableVariantTimeoutMs(),
+            ),
+            retryMultiplier: 1,
+          };
+
+      try {
+        await runNip07WithRetry(
+          () =>
+            options === null
+              ? extension.requestPermissions()
+              : extension.requestPermissions(options),
+          {
+            label: "extension.requestPermissions",
+            ...variantTimeoutOverrides,
+          },
+        );
+        return { ok: true };
+      } catch (error) {
+        lastError = error;
+        if (options && isDevMode) {
+          userLogger.warn(
+            "[nostr] extension.requestPermissions call failed:",
+            error,
+          );
+        }
+      }
+    }
+  }
+
+  if (!hasEnable) {
+    return {
+      ok: false,
+      error: lastError || new Error("permission-denied"),
+    };
+  }
+
   for (const options of permissionVariants) {
     // If specific permissions are requested (variants 1 & 2), fail fast (3s)
     // to avoid hanging if the extension doesn't support the structured format.

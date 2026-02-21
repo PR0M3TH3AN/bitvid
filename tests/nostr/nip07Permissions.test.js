@@ -64,9 +64,45 @@ test("requestEnablePermissions retries explicit and fallback variants", async ()
   assert.deepStrictEqual(calls, [
     { permissions: [{ method: "sign_event" }] },
     { permissions: ["sign_event"] },
-    undefined,
+    ["sign_event"],
   ]);
   assert.deepStrictEqual(result, { ok: true });
+});
+
+test("requestEnablePermissions supports requestPermissions-only extensions", async () => {
+  clearStoredNip07Permissions();
+  const calls = [];
+  const extension = {
+    requestPermissions: (options) => {
+      calls.push(options);
+      return Promise.resolve({ granted: true });
+    },
+  };
+
+  const result = await requestEnablePermissions(
+    extension,
+    ["sign_event"],
+    { isDevMode: false },
+  );
+
+  assert.deepStrictEqual(result, { ok: true });
+  assert.deepStrictEqual(calls, [{ permissions: [{ method: "sign_event" }] }]);
+});
+
+test("requestEnablePermissions fails when requestPermissions exists but denies", async () => {
+  clearStoredNip07Permissions();
+  const extension = {
+    requestPermissions: () => Promise.reject(new Error("permission denied")),
+  };
+
+  const result = await requestEnablePermissions(
+    extension,
+    ["sign_event"],
+    { isDevMode: false },
+  );
+
+  assert.strictEqual(result.ok, false);
+  assert.ok(result.error instanceof Error);
 });
 
 test("requestEnablePermissions reports unavailable extension", async () => {

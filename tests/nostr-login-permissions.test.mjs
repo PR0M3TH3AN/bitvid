@@ -392,8 +392,14 @@ describe("NIP-07 Login Permissions", () => {
       const [objectCall, stringCall, plainCall] = env.enableCalls;
       assert.ok(objectCall !== undefined);
       assert.ok(stringCall !== undefined);
-      // plainCall is the one that succeeded (called with undefined/no args)
-      assert.equal(plainCall, undefined, "successful attempt should use plain enable()");
+      // Success may come from requestPermissions() (array payload) or fallback enable().
+      assert.ok(
+        plainCall === undefined ||
+          (Array.isArray(plainCall) &&
+            plainCall.includes("get_public_key") &&
+            plainCall.includes("sign_event")),
+        "successful attempt should use a plain permission payload or plain enable()",
+      );
     } finally {
       env.restore();
       nostrClient.logout();
@@ -451,6 +457,37 @@ describe("NIP-07 Login Permissions", () => {
       } else {
         global.__BITVID_NIP07_ENABLE_VARIANT_TIMEOUT_MS__ = originalOverride;
       }
+      clearStoredPermissions();
+    }
+  });
+
+  it("NIP-07 login times out instead of hanging when getPublicKey stalls", async () => {
+    clearStoredPermissions();
+    const env = setupLoginEnvironment({
+      getPublicKey: new Promise(() => {}),
+    });
+
+    try {
+      const start = Date.now();
+      await assert.rejects(
+        () =>
+          nip07Provider.login({
+            nostrClient,
+            options: {
+              getPublicKeyTimeoutMs: 80,
+              getPublicKeyRetryMultiplier: 1,
+            },
+          }),
+        /Timed out waiting for the NIP-07 extension/,
+      );
+      const duration = Date.now() - start;
+      assert.ok(
+        duration < 1000,
+        `getPublicKey timeout should fail quickly (duration: ${duration}ms)`,
+      );
+    } finally {
+      env.restore();
+      nostrClient.logout();
       clearStoredPermissions();
     }
   });
