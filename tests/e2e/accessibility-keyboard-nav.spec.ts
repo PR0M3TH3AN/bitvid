@@ -88,24 +88,8 @@ test.describe("Accessibility and keyboard navigation", () => {
       await page.keyboard.press("Enter");
 
       // Then: login modal opens
-      // Wait for the modal to be attached to the DOM first (it might be loaded dynamically)
-      await page.waitForSelector('[data-testid="login-modal"]', {
-        state: "attached",
-        timeout: 15000,
-      });
-
-      await page.waitForFunction(
-        () => {
-          const modal = document.querySelector(
-            '[data-testid="login-modal"]',
-          );
-          if (!(modal instanceof HTMLElement)) return false;
-          return modal.getAttribute("data-open") === "true";
-        },
-        { timeout: 15000 },
-      );
-
       const modal = page.locator('[data-testid="login-modal"]');
+      await expect(modal).toBeVisible({ timeout: 15000 });
       await expect(modal).toHaveAttribute("data-open", "true");
     });
   });
@@ -134,19 +118,8 @@ test.describe("Accessibility and keyboard navigation", () => {
       await page.keyboard.press("Escape");
 
       // Then: modal closes (data-open becomes false or modal is hidden)
-      await page.waitForFunction(
-        () => {
-          const modal = document.querySelector(
-            '[data-testid="login-modal"]',
-          );
-          if (!(modal instanceof HTMLElement)) return true;
-          return (
-            modal.getAttribute("data-open") === "false" ||
-            modal.classList.contains("hidden")
-          );
-        },
-        { timeout: 10000 },
-      );
+      const modal = page.locator('[data-testid="login-modal"]');
+      await expect(modal).toBeHidden({ timeout: 10000 });
     });
 
     test("login modal contains focusable elements", async ({
@@ -157,16 +130,8 @@ test.describe("Accessibility and keyboard navigation", () => {
       await gotoApp();
       await page.locator('[data-testid="login-button"]').click();
 
-      await page.waitForFunction(
-        () => {
-          const modal = document.querySelector(
-            '[data-testid="login-modal"]',
-          );
-          if (!(modal instanceof HTMLElement)) return false;
-          return modal.getAttribute("data-open") === "true";
-        },
-        { timeout: 15000 },
-      );
+      const modal = page.locator('[data-testid="login-modal"]');
+      await expect(modal).toBeVisible({ timeout: 15000 });
 
       // Then: modal has focusable interactive elements
       const focusableCount = await page.evaluate(() => {
@@ -274,16 +239,8 @@ test.describe("Accessibility and keyboard navigation", () => {
       await expect(uploadBtn).toBeVisible();
       await uploadBtn.click();
 
-      await page.waitForFunction(
-        () => {
-          const modal = document.querySelector(
-            '[data-testid="upload-modal"]',
-          );
-          if (!(modal instanceof HTMLElement)) return false;
-          return !modal.classList.contains("hidden");
-        },
-        { timeout: 10000 },
-      );
+      const modal = page.locator('[data-testid="upload-modal"]');
+      await expect(modal).toBeVisible({ timeout: 10000 });
 
       // Then: form fields are focusable
       const titleInput = page.locator('[data-testid="upload-title"]');

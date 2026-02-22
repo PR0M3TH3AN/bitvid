@@ -31,11 +31,7 @@ test.describe("Video upload and discovery", () => {
 
       // Then: upload modal becomes visible with expected form fields
       const modal = page.locator('[data-testid="upload-modal"]');
-      await page.waitForFunction(() => {
-        const m = document.querySelector('[data-testid="upload-modal"]');
-        if (!(m instanceof HTMLElement)) return false;
-        return !m.classList.contains("hidden");
-      }, { timeout: 10000 });
+      await expect(modal).toBeVisible({ timeout: 10000 });
 
       await expect(
         page.locator('[data-testid="upload-title"]'),
@@ -201,7 +197,6 @@ test.describe("Video upload and discovery", () => {
       const card = page.locator("[data-video-card]").first();
       await expect(card).toBeVisible();
 
-      // The title attribute is on the h3 element inside the card
       const titleEl = card.locator("[data-video-title]");
       const title = await titleEl.getAttribute("data-video-title");
       expect(title).toBe("Attributed Video");

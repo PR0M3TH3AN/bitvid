@@ -41,7 +41,7 @@ const IGNORED_GLOBS = [
   'context/**',
   'decisions/**',
   'todo/**',
-  'docs/**'
+  'docs/agents/task-logs/**'
 ];
 
 const gitArgs = [

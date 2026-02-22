@@ -156,7 +156,7 @@ SEARCH PATTERNS & REPO COMMANDS
 - Example validation commands:
   - Fetch NIP markdown: `curl -sSL https://raw.githubusercontent.com/nostr-protocol/nips/master/text/0000-nip.md > artifacts/nips/nip-0000.md`
   - Run a local node test harness: `node test/nostr-specs/validate-serialization.js`
-  - Run unit tests for nostr helpers: `npm test -- js/nostr/dmDecryptWorker.test.js --runInBand`
+  - Run unit tests for nostr helpers: `npm test -- tests/dm-decryptor.test.mjs --runInBand`
 
 ===============================================================================
 TESTS & AUTOMATION (what to add)
