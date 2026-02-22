@@ -877,6 +877,24 @@ export function createModerationStage({
 
     const results = [];
 
+    let authorModerationInfo = new Map();
+    try {
+      if (typeof resolvedService.getModerationInfoForAuthors === "function") {
+        const authorSet = new Set();
+        for (const item of items) {
+          const pubkey = item?.video?.pubkey;
+          if (typeof pubkey === "string") {
+            authorSet.add(pubkey);
+          }
+        }
+        if (authorSet.size > 0) {
+          authorModerationInfo = resolvedService.getModerationInfoForAuthors(authorSet);
+        }
+      }
+    } catch (error) {
+      context?.log?.(`[${stageName}] Failed to batch fetch moderation info`, error);
+    }
+
     for (const item of items) {
       if (!item || typeof item !== "object") {
         results.push(item);
@@ -982,39 +1000,59 @@ export function createModerationStage({
 
       if (authorHex) {
         try {
-          if (typeof resolvedService.isAuthorMutedByTrusted === "function") {
-            trustedMuted = resolvedService.isAuthorMutedByTrusted(authorHex) === true;
-          }
-          if (trustedMuted && typeof resolvedService.getTrustedMutersForAuthor === "function") {
-            const muters = resolvedService.getTrustedMutersForAuthor(authorHex);
-            if (Array.isArray(muters)) {
-              const seen = new Set();
-              trustedMuters = muters
-                .map((value) => (typeof value === "string" ? value.trim().toLowerCase() : ""))
-                .filter((value) => {
-                  if (!value || seen.has(value)) {
-                    return false;
-                  }
-                  seen.add(value);
-                  return true;
-                });
-            }
-          }
-          if (
-            trustedMuted &&
-            typeof resolvedService.getTrustedMuteCountsForAuthor === "function"
-          ) {
-            const summary = resolvedService.getTrustedMuteCountsForAuthor(authorHex);
-            if (summary && typeof summary === "object") {
-              trustedMuteCountTotal = Number.isFinite(summary.total)
-                ? Math.max(0, Math.floor(summary.total))
+          let infoFound = false;
+          if (authorModerationInfo instanceof Map) {
+            const info = authorModerationInfo.get(authorHex);
+            if (info) {
+              trustedMuted = info.trustedMuted === true;
+              trustedMuters = Array.isArray(info.trustedMuters) ? info.trustedMuters : [];
+              trustedMuteCountTotal = Number.isFinite(info.trustedMuteCountTotal)
+                ? Math.max(0, Math.floor(info.trustedMuteCountTotal))
                 : 0;
               trustedMuteCountsByCategory =
-                summary.categories && typeof summary.categories === "object"
-                  ? { ...summary.categories }
+                info.trustedMuteCountsByCategory && typeof info.trustedMuteCountsByCategory === "object"
+                  ? info.trustedMuteCountsByCategory
                   : null;
+              infoFound = true;
             }
           }
+
+          if (!infoFound) {
+            if (typeof resolvedService.isAuthorMutedByTrusted === "function") {
+              trustedMuted = resolvedService.isAuthorMutedByTrusted(authorHex) === true;
+            }
+            if (trustedMuted && typeof resolvedService.getTrustedMutersForAuthor === "function") {
+              const muters = resolvedService.getTrustedMutersForAuthor(authorHex);
+              if (Array.isArray(muters)) {
+                const seen = new Set();
+                trustedMuters = muters
+                  .map((value) => (typeof value === "string" ? value.trim().toLowerCase() : ""))
+                  .filter((value) => {
+                    if (!value || seen.has(value)) {
+                      return false;
+                    }
+                    seen.add(value);
+                    return true;
+                  });
+              }
+            }
+            if (
+              trustedMuted &&
+              typeof resolvedService.getTrustedMuteCountsForAuthor === "function"
+            ) {
+              const summary = resolvedService.getTrustedMuteCountsForAuthor(authorHex);
+              if (summary && typeof summary === "object") {
+                trustedMuteCountTotal = Number.isFinite(summary.total)
+                  ? Math.max(0, Math.floor(summary.total))
+                  : 0;
+                trustedMuteCountsByCategory =
+                  summary.categories && typeof summary.categories === "object"
+                    ? { ...summary.categories }
+                    : null;
+              }
+            }
+          }
+
           if (typeof resolvedService.isAuthorMutedByViewer === "function") {
             viewerMuted = resolvedService.isAuthorMutedByViewer(authorHex) === true;
           }
