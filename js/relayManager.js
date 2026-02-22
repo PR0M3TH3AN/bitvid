@@ -204,16 +204,21 @@ class RelayPreferencesManager {
     this.lastEvent = null;
     this.loadedPubkey = null;
     this.lastLoadSource = "default";
-    this.defaultEntries = DEFAULT_RELAY_URLS.map((url) => {
-      const normalized = normalizeRelayUrl(url) || url;
-      return createEntry(normalized, "both");
-    });
+    const testOverrides = this.getTestOverrides();
+    if (testOverrides && testOverrides.length) {
+      this.defaultEntries = testOverrides.map((entry) => cloneEntry(entry));
+    } else {
+      this.defaultEntries = DEFAULT_RELAY_URLS.map((url) => {
+        const normalized = normalizeRelayUrl(url) || url;
+        return createEntry(normalized, "both");
+      });
+    }
 
     // Attempt to load from storage if policy allows
     const loaded = this.loadFromStorage();
-    const testOverrides = this.getTestOverrides();
 
     if (testOverrides && testOverrides.length) {
+      // In test mode, force the overrides
       this.setEntries(testOverrides, { allowEmpty: false, updateClient: true });
     } else if (loaded && loaded.length) {
       this.setEntries(loaded, { allowEmpty: false, updateClient: true });
@@ -223,6 +228,13 @@ class RelayPreferencesManager {
 
     profileCache.subscribe((event, detail) => {
       if (event === "profileChanged") {
+        const currentOverrides = this.getTestOverrides();
+        if (currentOverrides && currentOverrides.length) {
+          // Enforce test isolation even on profile change
+          this.setEntries(currentOverrides, { allowEmpty: false, updateClient: true });
+          return;
+        }
+
         const fresh = this.loadFromStorage();
         if (fresh && fresh.length) {
           this.setEntries(fresh, { allowEmpty: false, updateClient: true });

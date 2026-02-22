@@ -246,6 +246,7 @@ test.describe("Login and authentication flows", () => {
       );
 
       // When: user selects nsec provider
+      await page.locator('[data-provider-id="nsec"]').waitFor({ state: "visible" });
       await page.click('[data-provider-id="nsec"]');
 
       // Then: nsec input elements should be present in the DOM
