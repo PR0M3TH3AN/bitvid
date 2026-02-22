@@ -8,17 +8,17 @@ if (!global.WebSocket) {
     global.WebSocket = WebSocket;
 }
 
-const RELAY_PORT = 8899;
-const RELAY_URL = `ws://127.0.0.1:${RELAY_PORT}`;
-
 test.describe('Embed Player', () => {
   let relayServer;
+  let RELAY_URL;
 
-  test.beforeAll(async () => {
-    relayServer = startRelay(RELAY_PORT);
+  test.beforeEach(async ({}, testInfo) => {
+    const port = 8900 + (testInfo.workerIndex * 10);
+    RELAY_URL = `ws://127.0.0.1:${port}`;
+    relayServer = startRelay(port);
   });
 
-  test.afterAll(async () => {
+  test.afterEach(async () => {
     if (relayServer) {
         await relayServer.close();
     }
