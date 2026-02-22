@@ -1170,7 +1170,7 @@ class Application {
   async initializeDataAndSession() {
     await this._initTrustedSeeds();
     this._initViewCounter();
-    this._initAccessControl();
+    await this._initAccessControl();
 
     await this._initSessionActor();
     this._initAccessControlListeners();
