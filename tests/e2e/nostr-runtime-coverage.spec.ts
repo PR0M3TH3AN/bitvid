@@ -425,4 +425,356 @@ test.describe("nostr runtime coverage (deterministic)", () => {
     expect(result.fallbackOk).toBe(true);
     expect(result.fallbackSignCalls).toBe(1);
   });
+
+  test("exercises session-actor crypto + storage lifecycle", async ({ page }) => {
+    const result = await page.evaluate(async ({ actor }) => {
+      const sessionActor = await import("/js/nostr/sessionActor.js");
+      const {
+        SESSION_ACTOR_STORAGE_KEY,
+        encryptSessionPrivateKey,
+        decryptSessionPrivateKey,
+        normalizeStoredEncryptionMetadata,
+        readStoredSessionActorEntry,
+        persistSessionActor,
+        clearStoredSessionActor,
+        isSessionActor,
+        __testExports,
+      } = sessionActor;
+
+      localStorage.removeItem(SESSION_ACTOR_STORAGE_KEY);
+
+      const passphrase = "correct horse battery staple";
+      const privateKey = "f".repeat(64);
+      const encrypted = await encryptSessionPrivateKey(privateKey, passphrase);
+
+      const encryptedActor = {
+        pubkey: actor,
+        privateKeyEncrypted: encrypted.ciphertext,
+        encryption: {
+          salt: encrypted.salt,
+          iv: encrypted.iv,
+          iterations: encrypted.iterations,
+          hash: encrypted.hash,
+          algorithm: encrypted.algorithm,
+          version: encrypted.version,
+        },
+        createdAt: 12345,
+      };
+
+      persistSessionActor(encryptedActor);
+      const persistedRaw = localStorage.getItem(SESSION_ACTOR_STORAGE_KEY);
+      const storedEntry = readStoredSessionActorEntry();
+      const decrypted = await decryptSessionPrivateKey(storedEntry, passphrase);
+
+      let wrongPassphraseErrorCode = "";
+      try {
+        await decryptSessionPrivateKey(storedEntry, "wrong passphrase");
+      } catch (error) {
+        wrongPassphraseErrorCode = error?.code || "";
+      }
+
+      const metadata = normalizeStoredEncryptionMetadata({
+        salt: encrypted.salt,
+        iv: encrypted.iv,
+        iterations: encrypted.iterations,
+        hash: encrypted.hash,
+        algorithm: encrypted.algorithm,
+        version: encrypted.version,
+      });
+      const invalidMetadata = normalizeStoredEncryptionMetadata({ salt: "", iv: "" });
+
+      localStorage.setItem(
+        SESSION_ACTOR_STORAGE_KEY,
+        JSON.stringify({
+          pubkey: actor,
+          privateKey: "legacy-plaintext-key",
+          createdAt: 42,
+        }),
+      );
+      const migratedLegacyEntry = readStoredSessionActorEntry();
+
+      const actorMatch = isSessionActor({
+        pubkey: actor,
+        sessionActor: { pubkey: actor, source: "nip46" },
+      });
+      const actorMismatch = isSessionActor({
+        pubkey: actor,
+        sessionActor: { pubkey: "0".repeat(64), source: "nip46" },
+      });
+      const nsecActor = isSessionActor({
+        pubkey: actor,
+        sessionActor: { pubkey: actor, source: "nsec" },
+      });
+
+      const randomBytes = __testExports.generateRandomBytes(8);
+      const base64 = __testExports.arrayBufferToBase64(randomBytes);
+      const roundtripBytes = __testExports.base64ToUint8Array(base64);
+      const subtleAvailable = __testExports.isSubtleCryptoAvailable();
+
+      clearStoredSessionActor();
+      const clearedRaw = localStorage.getItem(SESSION_ACTOR_STORAGE_KEY);
+      await __testExports._closeSessionActorDb();
+
+      return {
+        persistedRawExists: typeof persistedRaw === "string" && persistedRaw.length > 0,
+        storedEntryHasCiphertext:
+          typeof storedEntry?.privateKeyEncrypted === "string" &&
+          storedEntry.privateKeyEncrypted.length > 0,
+        decryptedMatches: decrypted === privateKey,
+        wrongPassphraseErrorCode,
+        metadataValid: metadata && metadata.salt === encrypted.salt,
+        metadataInvalidIsNull: invalidMetadata === null,
+        migratedLegacyEntryIsNull: migratedLegacyEntry === null,
+        actorMatch,
+        actorMismatch,
+        nsecActor,
+        randomBytesLength: randomBytes.length,
+        roundtripBytesLength: roundtripBytes?.length || 0,
+        subtleAvailable,
+        clearedRaw,
+      };
+    }, { actor: HEX_B });
+
+    expect(result.persistedRawExists).toBe(true);
+    expect(result.storedEntryHasCiphertext).toBe(true);
+    expect(result.decryptedMatches).toBe(true);
+    expect(result.wrongPassphraseErrorCode).toBe("decrypt-failed");
+    expect(result.metadataValid).toBeTruthy();
+    expect(result.metadataInvalidIsNull).toBe(true);
+    expect(result.migratedLegacyEntryIsNull).toBe(true);
+    expect(result.actorMatch).toBe(true);
+    expect(result.actorMismatch).toBe(false);
+    expect(result.nsecActor).toBe(false);
+    expect(result.randomBytesLength).toBe(8);
+    expect(result.roundtripBytesLength).toBe(8);
+    expect(result.subtleAvailable).toBe(true);
+    expect(result.clearedRaw).toBeNull();
+  });
+
+  test("exercises publish helper repost/mirror/rebroadcast/revert flows", async ({
+    page,
+  }) => {
+    const result = await page.evaluate(async ({ actorA, actorB }) => {
+      const {
+        repostEvent,
+        mirrorVideoEvent,
+        rebroadcastEvent,
+        buildRevertVideoPayload,
+      } = await import("/js/nostr/publishHelpers.js");
+
+      const relayPublish = "wss://relay.publish";
+      const relaySource = "wss://relay.source";
+      const eventId = "1".repeat(64);
+      const dTag = "video-root-1";
+      const author = actorB;
+
+      const rawEvent = {
+        id: eventId,
+        pubkey: author,
+        kind: 30078,
+        created_at: 10,
+        tags: [["d", dTag], ["title", "Test Video"]],
+        content: JSON.stringify({
+          version: 3,
+          title: "Test Video",
+          url: "https://example.com/video.mp4",
+          videoRootId: dTag,
+          mode: "live",
+        }),
+        relay: relaySource,
+      };
+
+      const videoEvent = {
+        id: eventId,
+        pubkey: author,
+        kind: 30078,
+        title: "Test Video",
+        url: "https://example.com/video.mp4",
+        magnet: "magnet:?xt=urn:btih:" + "f".repeat(40),
+        thumbnail: "https://example.com/thumb.jpg",
+        description: "desc",
+        videoRootId: dTag,
+        pointerInfo: { eventRelay: relaySource },
+      };
+
+      const publishCalls = [];
+      const client = {
+        pubkey: actorA,
+        relays: [relayPublish],
+        writeRelays: [relayPublish],
+        allEvents: new Map([[eventId, videoEvent]]),
+        rawEvents: new Map([[eventId, rawEvent]]),
+        ensurePool: async () => client.pool,
+        ensureSessionActor: async () => actorA,
+        fetchRawEventById: async () => rawEvent,
+        countEventsAcrossRelays: async () => ({ total: 0 }),
+        pool: {
+          publish(relays, event) {
+            publishCalls.push({ relays, event });
+            return {
+              on(eventName, handler) {
+                if (eventName === "ok") {
+                  Promise.resolve().then(() => handler());
+                }
+              },
+            };
+          },
+        },
+      };
+
+      const signer = {
+        signEvent: async (event) => ({
+          ...event,
+          id: `${event.kind}-signed`,
+          sig: `${event.kind}-sig`,
+        }),
+      };
+
+      const repostOk = await repostEvent({
+        client,
+        eventId,
+        options: {},
+        resolveActiveSigner: () => signer,
+        shouldRequestExtensionPermissions: () => false,
+        signEventWithPrivateKey: (event) => ({
+          ...event,
+          id: "fallback-repost",
+          sig: "fallback-repost-sig",
+        }),
+        eventToAddressPointer: () => `30078:${author}:${dTag}`,
+      });
+
+      const repostInvalid = await repostEvent({
+        client,
+        eventId: "",
+        options: {},
+        resolveActiveSigner: () => signer,
+        shouldRequestExtensionPermissions: () => false,
+        signEventWithPrivateKey: (event) => event,
+        eventToAddressPointer: () => "",
+      });
+
+      const mirrorInvalidSha = await mirrorVideoEvent({
+        client,
+        eventId,
+        options: {
+          fileSha256: "zz-invalid-sha",
+        },
+        resolveActiveSigner: () => signer,
+        shouldRequestExtensionPermissions: () => false,
+        signEventWithPrivateKey: (event) => event,
+        inferMimeTypeFromUrl: () => "video/mp4",
+      });
+
+      const mirrorOk = await mirrorVideoEvent({
+        client,
+        eventId,
+        options: {
+          url: "https://example.com/video.mp4",
+          fileSha256: "a".repeat(64),
+          originalFileSha256: "b".repeat(64),
+          additionalTags: [["client", "playwright"]],
+        },
+        resolveActiveSigner: () => signer,
+        shouldRequestExtensionPermissions: () => false,
+        signEventWithPrivateKey: (event) => ({
+          ...event,
+          id: "mirror-fallback",
+          sig: "mirror-fallback-sig",
+        }),
+        inferMimeTypeFromUrl: () => "video/mp4",
+      });
+
+      const rebroadcastOk = await rebroadcastEvent({
+        client,
+        eventId,
+        options: {
+          relays: [relayPublish],
+          rawEvent,
+        },
+      });
+
+      const rebroadcastCooldown = await rebroadcastEvent({
+        client,
+        eventId,
+        options: {
+          relays: [relayPublish],
+          rawEvent,
+        },
+      });
+
+      const clientCountPresent = {
+        ...client,
+        countEventsAcrossRelays: async () => ({ total: 2 }),
+      };
+      const rebroadcastAlreadyPresent = await rebroadcastEvent({
+        client: clientCountPresent,
+        eventId: "2".repeat(64),
+        options: {
+          relays: [relayPublish],
+          rawEvent: { ...rawEvent, id: "2".repeat(64) },
+        },
+      });
+
+      const clientNotFound = {
+        ...client,
+        rawEvents: new Map(),
+        fetchRawEventById: async () => null,
+      };
+      const rebroadcastMissing = await rebroadcastEvent({
+        client: clientNotFound,
+        eventId: "3".repeat(64),
+        options: {
+          relays: [relayPublish],
+        },
+      });
+
+      const revertPayload = buildRevertVideoPayload({
+        baseEvent: rawEvent,
+        originalEventId: eventId,
+        pubkey: actorA,
+        existingD: dTag,
+        stableDTag: dTag,
+      });
+
+      return {
+        repostOk: repostOk.ok,
+        repostKind: repostOk.event?.kind,
+        repostInvalidError: repostInvalid.error,
+        mirrorInvalidShaError: mirrorInvalidSha.error,
+        mirrorOk: mirrorOk.ok,
+        mirrorKind: mirrorOk.event?.kind,
+        rebroadcastOk: rebroadcastOk.ok,
+        rebroadcastHasSummary: Array.isArray(rebroadcastOk?.summary?.accepted),
+        rebroadcastCooldownError: rebroadcastCooldown.error,
+        rebroadcastAlreadyPresent: rebroadcastAlreadyPresent.alreadyPresent === true,
+        rebroadcastMissingError: rebroadcastMissing.error,
+        revertDeleted: Boolean(
+          (() => {
+            try {
+              const parsed = JSON.parse(revertPayload.content || "{}");
+              return parsed.deleted === true;
+            } catch {
+              return false;
+            }
+          })(),
+        ),
+        publishCalls: publishCalls.length,
+      };
+    }, { actorA: HEX_A, actorB: HEX_B });
+
+    expect(result.repostOk).toBe(true);
+    expect(result.repostKind).toBeGreaterThan(0);
+    expect(result.repostInvalidError).toBe("invalid-event-id");
+    expect(result.mirrorInvalidShaError).toBe("invalid-file-sha");
+    expect(result.mirrorOk).toBe(true);
+    expect(result.mirrorKind).toBeGreaterThan(0);
+    expect(result.rebroadcastOk).toBe(true);
+    expect(result.rebroadcastHasSummary).toBe(true);
+    expect(result.rebroadcastCooldownError).toBe("cooldown-active");
+    expect(result.rebroadcastAlreadyPresent).toBe(true);
+    expect(result.rebroadcastMissingError).toBe("event-not-found");
+    expect(result.revertDeleted).toBe(true);
+    expect(result.publishCalls).toBeGreaterThan(0);
+  });
 });

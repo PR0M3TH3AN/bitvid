@@ -37,11 +37,11 @@ This command:
 
 From a full real run (`npm run test:e2e:coverage`) on 2026-02-22:
 
-- E2E result: `38 passed`
-- Function coverage: `29.41%` (`2826/9609`)
+- E2E result: `40 passed`
+- Function coverage: `29.9%` (`2863/9576`)
 - Loaded source files: `297/313`
-- Console logs: `68`
-- Console error-like entries: `6`
+- Console logs: `72`
+- Console error-like entries: `4`
 - Page errors: `0`
 
 Primary issue groups captured:
@@ -56,7 +56,8 @@ Recent high-impact coverage improvements:
 
 - `js/nostr/commentEvents.js`: `90.91%` (`20/20`)
 - `js/nostr/reactionEvents.js`: `78.57%` (`11/14`)
-- `js/nostr/publishHelpers.js`: `26.47%` (`9/34`)
+- `js/nostr/publishHelpers.js`: `79.41%` (`27/34`)
+- `js/nostr/sessionActor.js`: `79.41%` (`27/34`)
 
 ## Integration Rules For Agents
 
