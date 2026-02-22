@@ -366,6 +366,11 @@ Or set `localStorage.__bitvidTestRelays__` to a JSON array of relay URLs.
 | `waitForSelector(sel, ms)` | `Promise<true>` | Wait for a DOM element |
 | `getRelayHealth()` | `{ relays, unreachable, backoff }` | Relay connection status |
 | `applyRelayOverrides(urls)` | `boolean` | Redirect relay connections |
+| `setTestRelays(urls)` | `{ ok, relays }` | Align relayManager + nostrClient to a deterministic relay set |
+| `setSignerDecryptBehavior(mode, opts?)` | `{ ok, mode, ... }` | Force decrypt behavior (`passthrough`, `timeout`, `error`, `delay`) for signer-based list sync tests |
+| `getListSyncEvents()` | `Array<{ source, at, detail }>` | Read captured sync timeline (`bitvid:auth-loading-state` + `userBlocks` status) |
+| `clearListSyncEvents()` | `void` | Reset captured sync events between assertions |
+| `waitForListSyncEvent(criteria, ms?)` | `Promise<Event>` | Wait for sync milestones (`status`, `reason`, `source`) |
 | `nostrClient` | `NostrClient` | Direct access for advanced use |
 
 ### Mock Relay (`scripts/agent/simple-relay.mjs`)
@@ -406,6 +411,9 @@ test("agent can seed and view videos", async ({ page, gotoApp, loginAs, seedEven
 | `clearRelay()` | `() => Promise` | Wipe all relay events |
 | `gotoApp(path?)` | `(string?) => Promise` | Navigate with test mode + relay overrides |
 | `loginAs(page)` | `(Page) => Promise<string>` | Login with deterministic test key |
+| `setTestRelays(page, relays)` | `(Page, string[]) => Promise<{ok, relays}>` | Force relay alignment through harness + relayManager |
+| `setDecryptBehavior(page, mode, opts?)` | `(Page, mode, opts?) => Promise` | Force signer decrypt behavior (`passthrough`, `timeout`, `error`, `delay`) |
+| `startDiagnostics(page, opts?)` | `(Page, opts?) => Promise<{stop()}>` | Capture console/page errors and list-sync telemetry for assertions |
 | `testPubkey` | `string` | Hex pubkey of the test key |
 | `relayUrl` | `string` | WebSocket URL of the mock relay |
 
@@ -418,6 +426,8 @@ Use these for stable element targeting:
 | `[data-testid="login-button"]` | Header login button |
 | `[data-testid="upload-button"]` | Header upload button (hidden until logged in) |
 | `[data-testid="profile-button"]` | Header profile button (hidden until logged in) |
+| `[data-testid="profile-permission-prompt"]` | Profile list-sync permission CTA container |
+| `[data-testid="profile-permission-prompt-button"]` | Profile list-sync permission/retry CTA button |
 | `[data-testid="search-input"]` | Header search field |
 | `[data-testid="login-modal"]` | Login modal container |
 | `[data-testid="login-provider-button"]` | Login provider option buttons |
@@ -428,6 +438,12 @@ Use these for stable element targeting:
 | `[data-testid="upload-url"]` | Video URL input |
 | `[data-testid="upload-magnet"]` | Magnet link input |
 | `[data-testid="upload-submit"]` | Publish button |
+| `[data-testid="hashtags-sync-status"]` | Profile hashtag sync status message |
+| `[data-testid="subscriptions-sync-status"]` | Profile subscriptions sync status message |
+| `[data-testid="blocked-refresh-button"]` | Profile blocked creators refresh button |
+| `[data-testid="blocked-sync-status"]` | Profile blocked creators sync status message |
+| `[data-testid="blocked-list"]` | Blocked creators list container |
+| `[data-testid="blocked-empty-state"]` | Blocked creators empty state |
 | `[data-testid="video-modal"]` | Video player modal |
 | `[data-testid="video-card"]` | Individual video card in the feed |
 | `[data-testid="video-list"]` | Video feed grid container |
@@ -440,6 +456,8 @@ Use these for stable element targeting:
 | `scripts/agent/simple-relay.mjs` | Mock relay with HTTP seeding API |
 | `tests/e2e/helpers/bitvidTestFixture.ts` | Reusable Playwright fixture |
 | `tests/e2e/agent-testability.spec.ts` | Infrastructure validation tests |
+| `scripts/playwright/run-extension-persistent.mjs` | Dedicated persistent-context launcher for extension smoke tests |
+| `docs/testing/playwright-integration-recommendations-2026-02-22.md` | Playwright/extension integration recommendations and follow-ups |
 
 ---
 

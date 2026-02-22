@@ -100,12 +100,16 @@ export class ProfileBlockListController {
       '[data-role="blocked-list-status"]',
     );
     if (existing instanceof HTMLElement) {
+      if (!existing.dataset.testid) {
+        existing.dataset.testid = "blocked-sync-status";
+      }
       this.blockListStatus = existing;
       return existing;
     }
 
     const status = document.createElement("div");
     status.dataset.role = "blocked-list-status";
+    status.dataset.testid = "blocked-sync-status";
     status.className = "mt-4 flex items-center gap-3 text-sm text-muted hidden";
     status.setAttribute("role", "status");
     status.setAttribute("aria-live", "polite");

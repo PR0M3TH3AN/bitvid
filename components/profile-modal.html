@@ -383,16 +383,19 @@
           >
             <div
               id="profilePermissionPrompt"
+              data-testid="profile-permission-prompt"
               class="card hidden flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"
               role="status"
               aria-live="polite"
             >
               <p
                 id="profilePermissionPromptMessage"
+                data-testid="profile-permission-prompt-message"
                 class="text-sm text-muted"
               ></p>
               <button
                 id="profilePermissionPromptButton"
+                data-testid="profile-permission-prompt-button"
                 type="button"
                 class="btn focus-ring"
               >
@@ -927,6 +930,7 @@
                 </p>
                 <p
                   id="profileHashtagStatus"
+                  data-testid="hashtags-sync-status"
                   class="text-sm text-muted"
                   role="status"
                   aria-live="polite"
@@ -1053,6 +1057,7 @@
               </p>
               <p
                 id="subscriptionsStatus"
+                data-testid="subscriptions-sync-status"
                 class="text-sm text-muted"
                 role="status"
                 aria-live="polite"
@@ -1339,6 +1344,7 @@
                 <h3 class="text-base font-semibold text-text">Blocked creators</h3>
                 <button
                   id="blockedRefreshBtn"
+                  data-testid="blocked-refresh-button"
                   type="button"
                   class="btn-ghost btn-icon"
                   data-size="sm"
@@ -1369,11 +1375,17 @@
               </div>
               <div
                 id="blockedEmpty"
+                data-testid="blocked-empty-state"
                 class="card border border-dashed border-border/60 p-6 text-center text-sm text-muted"
               >
                 You haven’t blocked any creators yet.
               </div>
-              <ul id="blockedList" class="grid-stack" data-orientation="vertical"></ul>
+              <ul
+                id="blockedList"
+                data-testid="blocked-list"
+                class="grid-stack"
+                data-orientation="vertical"
+              ></ul>
             </section>
             <section
               id="profilePaneMessages"

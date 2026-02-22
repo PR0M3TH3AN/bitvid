@@ -213,7 +213,13 @@ For detailed architecture and system documentation, see the [Documentation Index
 - **Run load tests**: `npm run test:load`
 - **Run DM unit tests**: `npm run test:dm:unit`
 - **Run DM integration tests**: `npm run test:dm:integration`
-- **Run headless E2E tests**: `npm run test:e2e`
+- **Run headless E2E tests (Chromium + Firefox)**: `npm run test:e2e`
+- **Run E2E tests (Chromium only)**: `npm run test:e2e:chromium`
+- **Run E2E tests (Firefox only)**: `npm run test:e2e:firefox`
+- **Run deterministic E2E matrix**: `npm run test:e2e:deterministic`
+- **Run NIP-07 extension smoke (opt-in)**: `PLAYWRIGHT_EXTENSION_PATH=/abs/path/to/extension npm run test:e2e:extension`
+  - Uses persistent-context launcher: `scripts/playwright/run-extension-persistent.mjs`
+  - Optional profile dir: `PLAYWRIGHT_EXTENSION_USER_DATA_DIR=/abs/path/to/profile`
 - **Run visual regression tests**: `npm run test:visual`
 - **Update visual baselines**: `npm run test:visual:update`
 - **Run design system audit**: `npm run audit` (Generates remediation report)
@@ -572,7 +578,11 @@ Before pushing, run `npm run build` locally so the Tailwind bundle regenerates.
 
 - **Direct Messages**: Run `npm run test:dm:unit` and `npm run test:dm:integration` for DM flows.
 
-- **End-to-End**: Run `npm run test:e2e` for headless Playwright journeys.
+- **End-to-End**:
+  - `npm run test:e2e` runs deterministic Playwright journeys on Chromium + Firefox.
+  - `npm run test:e2e:chromium` / `npm run test:e2e:firefox` runs a single browser target.
+  - `npm run test:e2e:extension` runs the opt-in Chromium extension suite (set `PLAYWRIGHT_EXTENSION_PATH` and optionally `PLAYWRIGHT_ENABLE_EXTENSION_E2E=1`).
+  - Recommendations/roadmap: `docs/testing/playwright-integration-recommendations-2026-02-22.md`
 
 ### Manual QA checklist
 

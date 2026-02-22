@@ -1469,3 +1469,110 @@ await (async () => {
     window.nostr = originalNostr;
   }
 })();
+
+await (async () => {
+  // Test: decrypt timeout should still apply public p-tags while preserving
+  // existing private blocks.
+  const actor = "6".repeat(64);
+  const existingPrivateBlocked = "7".repeat(64);
+  const publicBlocked = "8".repeat(64);
+
+  const UserBlockListManager = userBlocks.constructor;
+  const manager = new UserBlockListManager();
+
+  const originalRelays = Array.isArray(nostrClient.relays)
+    ? [...nostrClient.relays]
+    : nostrClient.relays;
+  const originalWriteRelays = Array.isArray(nostrClient.writeRelays)
+    ? [...nostrClient.writeRelays]
+    : nostrClient.writeRelays;
+  const originalPool = nostrClient.pool;
+  const originalSigner = getActiveSigner();
+  const originalRelayEntries = relayManager.getEntries();
+
+  const relayUrls = ["wss://decrypt-timeout-partial.example"];
+  relayManager.setEntries(
+    relayUrls.map((url) => ({ url, mode: "both" })),
+    { allowEmpty: false, updateClient: false },
+  );
+
+  nostrClient.relays = relayUrls;
+  nostrClient.writeRelays = relayUrls;
+  nostrClient.pool = {
+    list: async () => [
+      {
+        id: "event-timeout-partial",
+        kind: 10000,
+        created_at: 21_000,
+        pubkey: actor,
+        content: "ciphertext-timeout",
+        tags: [
+          ["encrypted", "nip44"],
+          ["p", publicBlocked],
+        ],
+      },
+    ],
+  };
+
+  setActiveSigner({
+    getPublicKey: async () => actor,
+    nip44Decrypt: async () => new Promise(() => {}),
+  });
+
+  manager._privateBlocks = new Set([existingPrivateBlocked]);
+  manager._publicMutes = new Set();
+  manager.blockedPubkeys = new Set([existingPrivateBlocked]);
+  manager.blockEventId = "event-previous";
+  manager.blockEventCreatedAt = 20_000;
+  manager.loaded = true;
+
+  const statusEvents = [];
+  const unsubscribe = manager.on(USER_BLOCK_EVENTS.STATUS, (detail) => {
+    statusEvents.push(detail);
+  });
+
+  try {
+    await manager.loadBlocks(actor, {
+      allowPermissionPrompt: false,
+      decryptTimeoutMs: 30,
+    });
+
+    const blocked = manager.getBlockedPubkeys();
+    assert.equal(
+      blocked.includes(existingPrivateBlocked),
+      true,
+      "timeout fallback should preserve previously decrypted private blocks",
+    );
+    assert.equal(
+      blocked.includes(publicBlocked),
+      true,
+      "timeout fallback should still ingest public mute p-tags",
+    );
+    assert.equal(
+      manager.blockEventId,
+      "event-timeout-partial",
+      "timeout fallback should keep metadata anchored to the newest relay event",
+    );
+    assert(
+      statusEvents.some(
+        (detail) =>
+          detail?.status === "stale" && detail?.reason === "decrypt-timeout",
+      ),
+      "timeout fallback should emit stale decrypt-timeout status",
+    );
+  } finally {
+    unsubscribe?.();
+    relayManager.setEntries(
+      originalRelayEntries,
+      { allowEmpty: false, updateClient: false },
+    );
+    nostrClient.relays = originalRelays;
+    nostrClient.writeRelays = originalWriteRelays;
+    nostrClient.pool = originalPool;
+    clearActiveSigner();
+    if (originalSigner) {
+      setActiveSigner(originalSigner);
+    }
+    manager.reset();
+  }
+})();

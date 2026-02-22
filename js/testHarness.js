@@ -12,6 +12,8 @@
 //   await page.evaluate(() => window.__bitvidTest__.getAppState());
 
 import { nostrClient } from "./nostrClientFacade.js";
+import { relayManager } from "./relayManager.js";
+import { userBlocks, USER_BLOCK_EVENTS } from "./userBlocks.js";
 import {
   registerSigner,
   setActiveSigner,
@@ -21,7 +23,238 @@ import {
 import { devLogger } from "./utils/logger.js";
 import { STANDARD_TIMEOUT_MS } from "./constants.js";
 
-const HARNESS_VERSION = 1;
+const HARNESS_VERSION = 2;
+const MAX_SYNC_EVENT_BUFFER = 300;
+const SYNC_EVENT_POLL_INTERVAL_MS = 50;
+
+const listSyncEvents = [];
+let listSyncCaptureInstalled = false;
+let removeUserBlockStatusListener = null;
+let removeAuthLoadingListener = null;
+const signerDecryptOriginals = new WeakMap();
+let activeDecryptBehavior = {
+  mode: "passthrough",
+  delayMs: 0,
+  errorMessage: "",
+};
+
+function normalizeRelayList(relayUrls) {
+  if (!Array.isArray(relayUrls)) {
+    return [];
+  }
+  const seen = new Set();
+  const normalized = [];
+  for (const item of relayUrls) {
+    const value = typeof item === "string" ? item.trim() : "";
+    if (!value || seen.has(value)) {
+      continue;
+    }
+    seen.add(value);
+    normalized.push(value);
+  }
+  return normalized;
+}
+
+function pushListSyncEvent(source, detail = {}) {
+  const event = {
+    source: typeof source === "string" ? source : "unknown",
+    at: Date.now(),
+    detail: detail && typeof detail === "object" ? detail : { value: detail },
+  };
+  listSyncEvents.push(event);
+  if (listSyncEvents.length > MAX_SYNC_EVENT_BUFFER) {
+    listSyncEvents.splice(0, listSyncEvents.length - MAX_SYNC_EVENT_BUFFER);
+  }
+}
+
+function installListSyncCapture() {
+  if (listSyncCaptureInstalled || typeof window === "undefined") {
+    return;
+  }
+
+  removeAuthLoadingListener = (event) => {
+    pushListSyncEvent("auth-loading-state", event?.detail || {});
+  };
+  window.addEventListener("bitvid:auth-loading-state", removeAuthLoadingListener);
+
+  if (userBlocks && typeof userBlocks.on === "function") {
+    removeUserBlockStatusListener = userBlocks.on(
+      USER_BLOCK_EVENTS.STATUS,
+      (detail) => {
+        pushListSyncEvent("user-blocks-status", detail || {});
+      },
+    );
+  }
+
+  listSyncCaptureInstalled = true;
+}
+
+function clearListSyncEvents() {
+  listSyncEvents.length = 0;
+}
+
+function getListSyncEvents() {
+  return listSyncEvents.map((entry) => ({
+    source: entry.source,
+    at: entry.at,
+    detail: entry.detail,
+  }));
+}
+
+function matchesListSyncCriteria(event, criteria = {}) {
+  if (!event || typeof event !== "object") {
+    return false;
+  }
+
+  const expectedSource =
+    typeof criteria.source === "string" ? criteria.source.trim() : "";
+  if (expectedSource && event.source !== expectedSource) {
+    return false;
+  }
+
+  const expectedStatus =
+    typeof criteria.status === "string" ? criteria.status.trim() : "";
+  if (expectedStatus && event?.detail?.status !== expectedStatus) {
+    return false;
+  }
+
+  const expectedReason =
+    typeof criteria.reason === "string" ? criteria.reason.trim() : "";
+  if (expectedReason && event?.detail?.reason !== expectedReason) {
+    return false;
+  }
+
+  return true;
+}
+
+function waitForListSyncEvent(criteria = {}, timeoutMs = STANDARD_TIMEOUT_MS) {
+  const timeout = Number.isFinite(timeoutMs)
+    ? Math.max(0, Math.floor(timeoutMs))
+    : STANDARD_TIMEOUT_MS;
+  const startedAt = Date.now();
+
+  return new Promise((resolve, reject) => {
+    const check = () => {
+      for (const event of listSyncEvents) {
+        if (matchesListSyncCriteria(event, criteria)) {
+          resolve(event);
+          return;
+        }
+      }
+
+      if (Date.now() - startedAt >= timeout) {
+        reject(
+          new Error(
+            `[testHarness] Timed out waiting for list sync event: ${JSON.stringify(criteria)}`,
+          ),
+        );
+        return;
+      }
+
+      setTimeout(check, SYNC_EVENT_POLL_INTERVAL_MS);
+    };
+
+    check();
+  });
+}
+
+function normalizeDecryptBehavior(mode, options = {}) {
+  const normalizedMode =
+    typeof mode === "string" ? mode.trim().toLowerCase() : "passthrough";
+  const allowed = new Set(["passthrough", "timeout", "error", "delay"]);
+  const safeMode = allowed.has(normalizedMode) ? normalizedMode : "passthrough";
+  const delayMs = Number.isFinite(options?.delayMs)
+    ? Math.max(0, Math.floor(options.delayMs))
+    : 0;
+  const errorMessage =
+    typeof options?.errorMessage === "string" && options.errorMessage.trim()
+      ? options.errorMessage.trim()
+      : "test-harness decrypt failure";
+  return { mode: safeMode, delayMs, errorMessage };
+}
+
+function ensureSignerDecryptOriginals(signer) {
+  if (!signer || typeof signer !== "object") {
+    return null;
+  }
+  if (!signerDecryptOriginals.has(signer)) {
+    signerDecryptOriginals.set(signer, {
+      nip04Decrypt: signer.nip04Decrypt,
+      nip44Decrypt: signer.nip44Decrypt,
+    });
+  }
+  return signerDecryptOriginals.get(signer);
+}
+
+function buildDecryptWrapper(originalDecrypt, behavior, methodName) {
+  if (typeof originalDecrypt !== "function") {
+    return originalDecrypt;
+  }
+
+  if (behavior.mode === "timeout") {
+    return () => new Promise(() => {});
+  }
+
+  if (behavior.mode === "error") {
+    return async () => {
+      const error = new Error(behavior.errorMessage);
+      error.code = "test-harness-decrypt-error";
+      error.method = methodName;
+      throw error;
+    };
+  }
+
+  if (behavior.mode === "delay") {
+    return async (...args) => {
+      if (behavior.delayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, behavior.delayMs));
+      }
+      return originalDecrypt(...args);
+    };
+  }
+
+  return originalDecrypt;
+}
+
+function setSignerDecryptBehavior(mode = "passthrough", options = {}) {
+  const behavior = normalizeDecryptBehavior(mode, options);
+  activeDecryptBehavior = behavior;
+
+  const signer = getActiveSigner();
+  if (!signer || typeof signer !== "object") {
+    return {
+      ok: false,
+      mode: behavior.mode,
+      reason: "no-active-signer",
+    };
+  }
+
+  const originals = ensureSignerDecryptOriginals(signer);
+  if (!originals) {
+    return {
+      ok: false,
+      mode: behavior.mode,
+      reason: "invalid-signer",
+    };
+  }
+
+  signer.nip04Decrypt = buildDecryptWrapper(
+    originals.nip04Decrypt,
+    behavior,
+    "nip04Decrypt",
+  );
+  signer.nip44Decrypt = buildDecryptWrapper(
+    originals.nip44Decrypt,
+    behavior,
+    "nip44Decrypt",
+  );
+
+  return {
+    ok: true,
+    mode: behavior.mode,
+    delayMs: behavior.delayMs,
+  };
+}
 
 /**
  * Check if test mode is enabled via URL param or localStorage.
@@ -77,14 +310,15 @@ export function getTestRelayOverrides() {
  * instead of production relays.
  */
 function applyRelayOverrides(relayUrls) {
-  if (!relayUrls || !relayUrls.length) return false;
+  const normalizedRelays = normalizeRelayList(relayUrls);
+  if (!normalizedRelays.length) return false;
 
   try {
     if (typeof nostrClient.applyRelayPreferences === "function") {
       nostrClient.applyRelayPreferences({
-        all: relayUrls,
-        read: relayUrls,
-        write: relayUrls,
+        all: normalizedRelays,
+        read: normalizedRelays,
+        write: normalizedRelays,
       });
       return true;
     }
@@ -92,9 +326,9 @@ function applyRelayOverrides(relayUrls) {
     // Fallback: directly set relay arrays if available
     if (nostrClient.connectionManager) {
       const cm = nostrClient.connectionManager;
-      cm.relays = [...relayUrls];
-      if (Array.isArray(cm.readRelays)) cm.readRelays = [...relayUrls];
-      if (Array.isArray(cm.writeRelays)) cm.writeRelays = [...relayUrls];
+      cm.relays = [...normalizedRelays];
+      if (Array.isArray(cm.readRelays)) cm.readRelays = [...normalizedRelays];
+      if (Array.isArray(cm.writeRelays)) cm.writeRelays = [...normalizedRelays];
       return true;
     }
   } catch (err) {
@@ -102,6 +336,47 @@ function applyRelayOverrides(relayUrls) {
   }
 
   return false;
+}
+
+function setTestRelays(relayUrls, options = {}) {
+  const normalizedRelays = normalizeRelayList(relayUrls);
+  if (!normalizedRelays.length) {
+    return { ok: false, reason: "invalid-relays" };
+  }
+
+  const persist = options?.persist !== false;
+  let applied = false;
+
+  try {
+    if (relayManager && typeof relayManager.setEntries === "function") {
+      relayManager.setEntries(
+        normalizedRelays.map((url) => ({ url, mode: "both" })),
+        { allowEmpty: false, updateClient: true },
+      );
+      applied = true;
+    }
+  } catch (error) {
+    devLogger.warn("[testHarness] relayManager.setEntries failed:", error);
+  }
+
+  if (!applied) {
+    applied = applyRelayOverrides(normalizedRelays);
+  } else {
+    applyRelayOverrides(normalizedRelays);
+  }
+
+  if (persist) {
+    try {
+      localStorage.setItem("__bitvidTestRelays__", JSON.stringify(normalizedRelays));
+    } catch (_error) {
+      // ignore storage failures in restricted contexts
+    }
+  }
+
+  return {
+    ok: applied,
+    relays: normalizedRelays,
+  };
 }
 
 /**
@@ -129,6 +404,10 @@ async function loginWithNsec(hexPrivateKey) {
     pubkey,
     persist: false,
   });
+
+  if (activeDecryptBehavior.mode !== "passthrough") {
+    setSignerDecryptBehavior(activeDecryptBehavior.mode, activeDecryptBehavior);
+  }
 
   return pubkey;
 }
@@ -161,6 +440,15 @@ function getAppState() {
           write: [...(nostrClient.connectionManager.writeRelays || [])],
         }
       : null,
+    relayManager: relayManager
+      ? {
+          all: relayManager.getAllRelayUrls?.() || [],
+          read: relayManager.getReadRelayUrls?.() || [],
+          write: relayManager.getWriteRelayUrls?.() || [],
+          lastLoadSource: relayManager.lastLoadSource || null,
+        }
+      : null,
+    decryptBehavior: { ...activeDecryptBehavior },
   };
 }
 
@@ -257,8 +545,10 @@ export function installTestHarness() {
 
   const testRelays = getTestRelayOverrides();
   if (testRelays) {
-    applyRelayOverrides(testRelays);
+    setTestRelays(testRelays, { persist: false });
   }
+
+  installListSyncCapture();
 
   window.__bitvidTest__ = Object.freeze({
     version: HARNESS_VERSION,
@@ -270,6 +560,11 @@ export function installTestHarness() {
     waitForSelector,
     getRelayHealth,
     applyRelayOverrides,
+    setTestRelays,
+    setSignerDecryptBehavior,
+    getListSyncEvents,
+    clearListSyncEvents,
+    waitForListSyncEvent,
 
     // Expose nostrClient for advanced test scenarios
     get nostrClient() {

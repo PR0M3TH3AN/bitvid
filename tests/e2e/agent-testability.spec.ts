@@ -26,7 +26,7 @@ test.describe("Agent testability infrastructure", () => {
     });
 
     expect(harness).not.toBeNull();
-    expect(harness!.version).toBe(1);
+    expect(harness!.version).toBe(2);
   });
 
   test("relay overrides are applied via query params", async ({
@@ -47,6 +47,29 @@ test.describe("Agent testability infrastructure", () => {
       const allRelays = state.relays.all || [];
       expect(allRelays).toContain(relayUrl);
     }
+  });
+
+  test("setTestRelays aligns relayManager and nostrClient", async ({
+    page,
+    gotoApp,
+    relayUrl,
+  }) => {
+    await gotoApp();
+
+    const result = await page.evaluate((url) => {
+      const harness = (window as any).__bitvidTest__;
+      if (!harness || typeof harness.setTestRelays !== "function") {
+        throw new Error("setTestRelays missing");
+      }
+      return harness.setTestRelays([url]);
+    }, relayUrl);
+    expect(result.ok).toBe(true);
+
+    const state = await page.evaluate(() => {
+      return (window as any).__bitvidTest__.getAppState();
+    });
+    expect(state.relays.read).toEqual([relayUrl]);
+    expect(state.relayManager.read).toEqual([relayUrl]);
   });
 
   test("programmatic login works via test harness", async ({
@@ -133,10 +156,15 @@ test.describe("Data-testid selectors are present", () => {
     // Open the login modal
     await page.locator('[data-testid="login-button"]').click();
 
-    // Wait for modal to be visible
-    await expect(page.locator('[data-testid="login-modal"]')).toBeVisible({
-      timeout: 15000,
-    });
+    // Wait for modal to transition into an open, visible state.
+    await page.waitForFunction(() => {
+      const modal = document.querySelector('[data-testid="login-modal"]');
+      if (!(modal instanceof HTMLElement)) {
+        return false;
+      }
+      const openAttr = modal.getAttribute("data-open");
+      return openAttr === "true" && !modal.classList.contains("hidden");
+    }, { timeout: 15000 });
 
     // Check provider buttons exist
     const providerButtons = page.locator(
@@ -185,5 +213,33 @@ test.describe("App state inspection", () => {
       return (window as any).__bitvidTest__.getAppState();
     });
     expect(state.isLoggedIn).toBe(false);
+  });
+
+  test("list sync event capture APIs are available", async ({
+    page,
+    gotoApp,
+  }) => {
+    await gotoApp();
+
+    const result = await page.evaluate(() => {
+      const harness = (window as any).__bitvidTest__;
+      if (!harness) {
+        throw new Error("Harness missing");
+      }
+      harness.clearListSyncEvents();
+      window.dispatchEvent(
+        new CustomEvent("bitvid:auth-loading-state", {
+          detail: { lists: "loading", listsDetail: { ready: false } },
+        }),
+      );
+      const events = harness.getListSyncEvents();
+      return {
+        count: events.length,
+        firstSource: events[0]?.source || "",
+      };
+    });
+
+    expect(result.count).toBeGreaterThan(0);
+    expect(result.firstSource).toBe("auth-loading-state");
   });
 });

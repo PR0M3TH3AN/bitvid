@@ -149,6 +149,22 @@ type BitvidFixtures = {
   clearRelay: () => Promise<void>;
   gotoApp: (path?: string) => Promise<void>;
   loginAs: (page: Page) => Promise<string>;
+  setTestRelays: (page: Page, relays: string[]) => Promise<any>;
+  setDecryptBehavior: (
+    page: Page,
+    mode: "passthrough" | "timeout" | "error" | "delay",
+    options?: { delayMs?: number; errorMessage?: string },
+  ) => Promise<any>;
+  startDiagnostics: (
+    page: Page,
+    options?: { captureSyncEvents?: boolean },
+  ) => Promise<{
+    stop: () => Promise<{
+      console: Array<{ type: string; text: string }>;
+      pageErrors: string[];
+      syncEvents: any[];
+    }>;
+  }>;
   testPubkey: string;
   testPrivateKey: string;
   relayUrl: string;
@@ -204,6 +220,92 @@ export const test = base.extend<BitvidFixtures>({
   loginAs: async ({}, use) => {
     await use(async (page: Page) => {
       return loginWithTestKey(page);
+    });
+  },
+
+  setTestRelays: async ({}, use) => {
+    await use(async (page: Page, relays: string[]) => {
+      return page.evaluate((urls) => {
+        const harness = (window as any).__bitvidTest__;
+        if (!harness || typeof harness.setTestRelays !== "function") {
+          throw new Error("setTestRelays is not available in test harness");
+        }
+        return harness.setTestRelays(urls);
+      }, relays);
+    });
+  },
+
+  setDecryptBehavior: async ({}, use) => {
+    await use(
+      async (
+        page: Page,
+        mode: "passthrough" | "timeout" | "error" | "delay",
+        options = {},
+      ) => {
+        return page.evaluate(
+          ({ nextMode, nextOptions }) => {
+            const harness = (window as any).__bitvidTest__;
+            if (!harness || typeof harness.setSignerDecryptBehavior !== "function") {
+              throw new Error(
+                "setSignerDecryptBehavior is not available in test harness",
+              );
+            }
+            return harness.setSignerDecryptBehavior(nextMode, nextOptions);
+          },
+          { nextMode: mode, nextOptions: options },
+        );
+      },
+    );
+  },
+
+  startDiagnostics: async ({}, use) => {
+    await use(async (page: Page, options = {}) => {
+      const consoleEntries: Array<{ type: string; text: string }> = [];
+      const pageErrors: string[] = [];
+      const captureSyncEvents = options.captureSyncEvents !== false;
+
+      const onConsole = (message: any) => {
+        consoleEntries.push({
+          type: message.type(),
+          text: message.text(),
+        });
+      };
+      const onPageError = (error: Error) => {
+        pageErrors.push(error?.message || String(error));
+      };
+
+      page.on("console", onConsole);
+      page.on("pageerror", onPageError);
+
+      if (captureSyncEvents) {
+        await page.evaluate(() => {
+          const harness = (window as any).__bitvidTest__;
+          if (harness && typeof harness.clearListSyncEvents === "function") {
+            harness.clearListSyncEvents();
+          }
+        });
+      }
+
+      return {
+        stop: async () => {
+          page.off("console", onConsole);
+          page.off("pageerror", onPageError);
+          const syncEvents = captureSyncEvents
+            ? await page.evaluate(() => {
+                const harness = (window as any).__bitvidTest__;
+                if (harness && typeof harness.getListSyncEvents === "function") {
+                  return harness.getListSyncEvents();
+                }
+                return [];
+              })
+            : [];
+          return {
+            console: consoleEntries,
+            pageErrors,
+            syncEvents,
+          };
+        },
+      };
     });
   },
 

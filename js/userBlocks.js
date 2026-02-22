@@ -89,31 +89,31 @@ const FAST_BLOCKLIST_RELAY_LIMIT = 3;
 const FAST_BLOCKLIST_TIMEOUT_MS = 2500;
 const BACKGROUND_BLOCKLIST_TIMEOUT_MS = 6000;
 const MAX_BACKGROUND_BLOCKLIST_RELAY_LIMIT = 24;
-// PERF: Reduced from 20s/15s to 10s/8s — the signer is now guaranteed to be
-// ready before list loading starts (authSessionCoordinator waits for the
-// permission pre-grant), so decryption should succeed quickly.
-const DECRYPT_TIMEOUT_MS = STANDARD_TIMEOUT_MS;
+// Keep interactive decrypt timeout above extension retry timeout window.
+const DECRYPT_TIMEOUT_MS = Math.max(STANDARD_TIMEOUT_MS, 15000);
 const BACKGROUND_DECRYPT_TIMEOUT_MS = 8000;
 // PERF: Reduced from 10s to 3s for faster recovery during login.
 const DECRYPT_RETRY_DELAY_MS = 3000;
 const MAX_DECRYPT_RETRY_DELAY_MS = 30000;
-
 function computeRetryDelay(baseDelayMs, attempt) {
-  const normalizedAttempt =
-    Number.isFinite(attempt) && attempt > 0 ? Math.floor(attempt) : 0;
+  const normalizedAttempt = Number.isFinite(attempt) && attempt > 0 ? Math.floor(attempt) : 0;
   const multiplier = 2 ** normalizedAttempt;
   const nextDelay = Math.max(250, Math.floor(baseDelayMs * multiplier));
   return Math.min(MAX_DECRYPT_RETRY_DELAY_MS, nextDelay);
 }
 
 function sanitizeRelayList(candidate) {
-  return Array.isArray(candidate)
-    ? candidate
-        .map((url) => (typeof url === "string" ? url.trim() : ""))
-        .filter(Boolean)
-    : [];
+  if (!Array.isArray(candidate)) return [];
+  const seen = new Set();
+  const relays = [];
+  for (const value of candidate) {
+    const normalized = typeof value === "string" ? value.trim() : "";
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    relays.push(normalized);
+  }
+  return relays;
 }
-
 function normalizeEncryptionToken(value) {
   if (typeof value !== "string") {
     return "";
@@ -1526,17 +1526,23 @@ class UserBlockListManager {
             return;
           }
           if (decryptionError.code === "user-blocklist-decrypt-timeout") {
-            const signerStatus =
-              decryptionError.signerStatus || resolveSignerStatus();
-
-            // If decrypt times out, restore the previous state to avoid wiping the user's blocks.
-            // We then schedule a background retry.
-            this.blockedPubkeys = previousState.blockedPubkeys;
-            this._privateBlocks = previousState.privateBlocks;
-            this._publicMutes = previousState.publicMutes;
-            this.blockEventId = previousState.blockEventId;
-            this.blockEventCreatedAt = previousState.blockEventCreatedAt;
-            this.loaded = true; // Mark as loaded so UI renders, even if stale
+            const signerStatus = decryptionError.signerStatus || resolveSignerStatus();
+            const recoveredPrivateBlocks = new Set(previousState.privateBlocks);
+            const recoveredPublicMutes = new Set([
+              ...previousState.publicMutes,
+              ...extractPubkeysFromTags(newestStandard?.tags, normalized, {
+                limit: MAX_BLOCKLIST_ENTRIES,
+              }),
+            ]);
+            this.blockEventId = newestOverall?.id || previousState.blockEventId;
+            this.blockEventCreatedAt =
+              Number.isFinite(newestCreatedAt) ? newestCreatedAt : previousState.blockEventCreatedAt;
+            applySets(recoveredPrivateBlocks, recoveredPublicMutes, {
+              source,
+              reason: "decrypt-timeout-partial",
+              events: [newestStandard?.id, newestLegacy?.id].filter(Boolean),
+            });
+            this.loaded = true;
 
             emitStatus({
               status: "stale",
