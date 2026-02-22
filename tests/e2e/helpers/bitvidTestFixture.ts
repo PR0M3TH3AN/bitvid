@@ -118,9 +118,11 @@ async function gotoWithTestMode(page: Page, relayUrl: string, path = "/") {
   await page.addInitScript((url) => {
     localStorage.setItem("hasSeenDisclaimer", "true");
     localStorage.setItem("__bitvidTestMode__", "1");
-    // Inject test relays to ensure robust fallback if URL parsing fails
+    // Ensure network isolation by injecting test relays directly into storage
     localStorage.setItem("__bitvidTestRelays__", JSON.stringify([url]));
-    // Disable whitelist mode to ensure seeded test events are accessible
+    // Also set on window for robustness against storage clearing
+    (window as any).__bitvidTestRelays__ = [url];
+    // Disable whitelist mode so seeded test users work correctly
     localStorage.setItem("bitvid_admin_whitelist_mode", "false");
   }, relayUrl);
 

@@ -234,8 +234,8 @@ function syncStateToControls(filters) {
   const safeFilters = filters || DEFAULT_FILTERS;
 
   // Date
-  dateStartInput.value = formatDateInputValue(safeFilters.dateRange?.after);
-  dateEndInput.value = formatDateInputValue(safeFilters.dateRange?.before);
+  if (dateStartInput) dateStartInput.value = formatDateInputValue(safeFilters.dateRange?.after);
+  if (dateEndInput) dateEndInput.value = formatDateInputValue(safeFilters.dateRange?.before);
 
   // Logic to highlight correct date chip if it matches
   // (Simplified: just highlight 'All Time' if no dates, otherwise clear chips)
@@ -254,13 +254,13 @@ function syncStateToControls(filters) {
   });
 
   // Sort
-  sortSelect.value = safeFilters.sort || "relevance";
+  if (sortSelect) sortSelect.value = safeFilters.sort || "relevance";
 
   // Author
-  authorInput.value = safeFilters.authorPubkeys?.join(", ") || "";
+  if (authorInput) authorInput.value = safeFilters.authorPubkeys?.join(", ") || "";
 
   // Tags
-  tagsInput.value = "";
+  if (tagsInput) tagsInput.value = "";
   // We separate tags that are in chips vs typed
   const activeTags = new Set(safeFilters.tags || []);
   const tagBtns = tagChipsContainer.querySelectorAll("button");

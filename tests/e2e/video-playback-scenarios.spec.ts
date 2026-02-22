@@ -232,6 +232,13 @@ test.describe("Video playback scenarios", () => {
         },
         { timeout: 10000 },
       );
+      if ((await closeBtn.count()) > 0) {
+        await closeBtn.first().click({ force: true });
+
+        // Then: modal is hidden again
+        const modal = page.locator("#playerModal");
+        await expect(modal).toBeHidden({ timeout: 10000 });
+      }
 
       // App state should still be valid
       const state = await page.evaluate(() => {
