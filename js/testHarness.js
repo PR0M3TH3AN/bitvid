@@ -284,11 +284,9 @@ export function isTestMode() {
 export function getTestRelayOverrides() {
   if (typeof window === "undefined") return null;
 
-  console.error(`[testHarness] getTestRelayOverrides called. URL: ${window.location.href}`);
   const params = new URLSearchParams(window.location.search);
   const paramRelays = params.get("__testRelays__");
   if (paramRelays) {
-    console.error(`[testHarness] Found URL override: ${paramRelays}`);
     return paramRelays
       .split(",")
       .map((r) => r.trim())
@@ -298,15 +296,13 @@ export function getTestRelayOverrides() {
   try {
     const stored = localStorage.getItem("__bitvidTestRelays__");
     if (stored) {
-      console.error(`[testHarness] Found localStorage override: ${stored}`);
       const parsed = JSON.parse(stored);
       if (Array.isArray(parsed)) return parsed;
     }
-  } catch (err) {
-    console.error("[testHarness] localStorage read failed:", err);
+  } catch {
+    // Ignore
   }
 
-  console.error("[testHarness] No overrides found.");
   return null;
 }
 
@@ -588,7 +584,8 @@ export function installTestHarness() {
       const defaultEntries = JSON.stringify(this.defaultEntries.map(e => ({ url: e.url, mode: e.mode })));
 
       if (isTest && currentEntries !== defaultEntries) {
-        console.error("[testHarness] Preserving non-default relays in loadRelayList (test mode active)");
+        // We pretend we loaded successfully but found no new events to apply,
+        // so the existing (test) relays remain active.
         return { ok: true, source: "test-override-preserved", events: [] };
       }
 
@@ -603,7 +600,6 @@ export function installTestHarness() {
       if (isTestMode()) {
         const overrides = getTestRelayOverrides();
         if (overrides && overrides.length > 0) {
-          console.error("[testHarness] Patching reset to restore test relays:", overrides);
           this.lastEvent = null;
           this.loadedPubkey = null;
           this.lastLoadSource = "test-override";
