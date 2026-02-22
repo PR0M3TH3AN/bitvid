@@ -32,6 +32,7 @@ This command:
 
 - Coverage is captured from Chromium runtime execution (`page.coverage`), then combined with static function estimates for source files in `js/` and `torrent/`.
 - Firefox coverage is not included in this report because Playwright JS coverage is Chromium-only.
+- For reliability patterns while increasing coverage, see `docs/testing/high-quality-playwright-tests.md`.
 
 ## Current Baseline (2026-02-22)
 
