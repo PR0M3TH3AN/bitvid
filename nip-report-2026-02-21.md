@@ -1,18 +1,44 @@
-# NIP Compliance Report (2026-02-21)
+# NIP Research Report — 2026-02-21
 
-## Executive Summary
-This run focused on investigating **NIP-42 (Relay Authentication)**. Analysis of the codebase confirmed that the client currently lacks support for the `AUTH` command and the associated Kind 22242 event signing flow. The NIP-42 specification was fetched and saved to `artifacts/nips/42.md`.
+**Agent:** bitvid-nip-research-agent
+**Focus:** NIP-09 (Deletion), NIP-21 (URI Scheme), NIP-42 (Auth).
 
-## Changes
-- **NIP-42**: Status updated from `Unknown` to `Non-compliant`.
-- **Artifacts**: Fetched `artifacts/nips/42.md`.
+## 1. Inventory Updates
 
-## Compliance Status (Snapshot)
-- **Compliant**: NIP-01, NIP-04, NIP-07, NIP-10, NIP-17, NIP-19, NIP-33, NIP-44, NIP-46, NIP-51, NIP-56, NIP-57, NIP-59, NIP-65, NIP-78, NIP-94, NIP-98, NIP-25, NIP-47.
-- **Partial**: NIP-09 (Event Deletion - incomplete Kind 5), NIP-71 (Video Events - mixed Kind 30078/21/22), NIP-96 (HTTP File Storage).
-- **Non-compliant**: NIP-42 (Auth).
-- **Unknown**: NIP-21 (URI Scheme).
+| NIP | Previous Status | New Status | Findings |
+|---|---|---|---|
+| **NIP-09** | Partial | **Compliant** | `js/nostr/client.js` implements `deleteAllVersions` which performs both soft delete (tombstone) and hard delete (Kind 5). `js/nostrEventSchemas.js` defines correct Kind 5 schema. |
+| **NIP-21** | Unknown | **Partial** | `js/app/routerCoordinator.js` strips `nostr:` prefix but delegates to `js/utils/nostrHelpers.js` which only handles `npub1...` and hex. URIs like `nostr:nprofile1...` or `nostr:nevent1...` fail. |
+| **NIP-42** | Non-compliant | **Non-compliant** | Confirmed total absence of `AUTH` message handling in `js/nostr/client.js` and `ConnectionManager`. |
 
-## Next Steps
-- **NIP-42 (Auth)**: Implement `AUTH` command handler in `ConnectionManager` or `SimplePool` wrapper.
-- **NIP-21**: Verify `nostr:` URI scheme handling.
+## 2. Compliance Details
+
+### NIP-09 (Event Deletion)
+- **Status:** Compliant.
+- **Evidence:** `NostClient.deleteAllVersions` creates Kind 5 events with proper `e` and `a` tags referencing all historical versions. It also performs local tombstoning.
+- **Action:** Updated status in inventory.
+
+### NIP-21 (`nostr:` URI Scheme)
+- **Status:** Partial.
+- **Evidence:**
+  - `routerCoordinator.js` handles `nostr:` prefix.
+  - `nostrHelpers.normalizeHexPubkey` strictly checks for `startsWith('npub1')`.
+  - Verification script `scripts/verify-nip21.mjs` confirmed failure for `nprofile`.
+- **Gap:** Navigation via `nostr:nprofile...` or `nostr:naddr...` is not supported.
+- **Recommendation:** Update `normalizeHexPubkey` to support `nprofile` decoding via `nostr-tools`.
+
+### NIP-42 (Relay Auth)
+- **Status:** Non-compliant.
+- **Evidence:** `grep "AUTH" js/` yielded no protocol handler results. `SimplePool` usage does not enable auth.
+- **Impact:** Cannot connect to relays requiring authentication (e.g. paid relays).
+- **Recommendation:** Implement `AUTH` challenge handler in `ConnectionManager`.
+
+## 3. Artifacts Created
+- `artifacts/nips/09.md` (Fetched)
+- `artifacts/nips/21.md` (Fetched)
+- `artifacts/nips/42.md` (Fetched)
+- `scripts/verify-nip21.mjs` (Reproduction script)
+
+## 4. Next Steps
+- **P1:** Fix NIP-21 support in `js/utils/nostrHelpers.js` to handle `nprofile` and `naddr`.
+- **P2:** Implement NIP-42 Auth flow.

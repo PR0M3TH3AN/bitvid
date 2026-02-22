@@ -5,12 +5,13 @@
 | **NIP-01** | Basic Protocol Flow | `js/nostr/client.js`, `docs/nips/01.md` | Compliant | Base implementation verified via `client.js`. |
 | **NIP-04** | Encrypted Direct Message | `js/nostr/dmDecryptWorker.js`, `js/nostr/client.js` | Compliant | Verified by `tests/nostr-specs/nip04-nip44.test.mjs`. |
 | **NIP-07** | `window.nostr` Capability | `js/nostr/nip07Permissions.js`, `js/nostr/adapters/nip07Adapter.js` | Compliant | Retry logic and timeouts verified in `nip07_compliance.test.mjs`. |
-| **NIP-09** | Event Deletion | `js/nostr/client.js`, `docs/nips/09.md` | Partial | `deleteAllVersions` implements Kind 5 logic. |
+| **NIP-09** | Event Deletion | `js/nostr/client.js`, `js/nostrEventSchemas.js` | Compliant | `deleteAllVersions` calls `_hardDeleteVersions` which uses Kind 5. |
 | **NIP-10** | Text Notes & Threads | `js/nostr/commentEvents.js`, `docs/nips/10.md` | Compliant | `buildCommentEvent` implements NIP-10 threading markers (E, P, K tags). |
 | **NIP-17** | Private Direct Messages | `js/nostr/client.js`, `js/ui/profileModal/ProfileDirectMessageRenderer.js` | Compliant | Explicit support for Gift Wraps (Kind 1059) and Seals (Kind 13). |
 | **NIP-19** | bech32-encoded entities | `js/utils/nostrHelpers.js`, `js/nostr/nip71.js` | Compliant | Uses `nostr-tools` for correct encoding/decoding. |
-| **NIP-21** | `nostr:` URI scheme | `docs/nips/21.md` | Unknown | Usage in content parsing verified in `js/utils/nostrHelpers.js`. |
+| **NIP-21** | `nostr:` URI scheme | `js/app/routerCoordinator.js`, `js/utils/nostrHelpers.js` | Partial | Router handles `nostr:` prefix but only for hex/npub. `nprofile`/`nevent` not supported in helper. |
 | **NIP-33** | Addressable Events | `js/nostr/client.js` | Compliant | `d` tag usage verified in `video_note_compliance.test.mjs`. |
+| **NIP-42** | Authentication of clients to relays | `js/nostr/client.js` | Non-compliant | No `AUTH` command handling found in client or pool. |
 | **NIP-44** | Encrypted Payloads (Versioned) | `js/nostr/dmDecryptWorker.js`, `js/nostr/client.js` | Compliant | Verified by `tests/nostr-specs/nip04-nip44.test.mjs`. |
 | **NIP-46** | Nostr Remote Signing | `js/nostr/nip46Client.js` | Compliant | Full client implementation for remote signing. |
 | **NIP-51** | Lists | `js/userBlocks.js`, `js/subscriptions.js` | Compliant | Mute list (Kind 10000) and Subscription list (Kind 30000) logic aligns with spec. |
@@ -33,5 +34,4 @@
 | **Kind 30078** | App Data | `js/nostr/client.js`, `js/nostr/videoPayloadBuilder.js` | Compliant | Verified by `tests/nostr-specs/kind30078.test.mjs`. |
 | **Kind 30079** | Watch History | `js/nostr/watchHistory.js`, `config/instance-config.js` | Compliant | Parameterized replaceable list (custom kind). Implements bucketing and encryption. |
 | **NIP-25** | Reactions | `js/nostr/reactionEvents.js`, `js/nostrEventSchemas.js` | Compliant | Implements Kind 7 reaction events. |
-| **NIP-42** | Authentication of clients to relays | `js/nostr/client.js` | Non-compliant | No `AUTH` command handling found. |
 | **NIP-47** | Wallet Connect | `js/payments/nwcClient.js` | Compliant | Implements NWC client for zaps. |
