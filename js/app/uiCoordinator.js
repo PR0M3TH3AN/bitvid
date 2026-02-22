@@ -95,7 +95,6 @@ export function createUiCoordinator(deps) {
       const logoutButton = this.logoutButton || document.getElementById("logoutButton");
       if (logoutButton) {
         logoutButton.classList.remove("hidden");
-        logoutButton.style.display = "";
       }
 
       const userStatus = this.userStatus || document.getElementById("userStatus");
@@ -107,14 +106,12 @@ export function createUiCoordinator(deps) {
       if (uploadButton) {
         uploadButton.classList.remove("hidden");
         uploadButton.removeAttribute("hidden");
-        uploadButton.style.display = "";
       }
 
       const profileButton = this.profileButton || document.getElementById("profileButton");
       if (profileButton) {
         profileButton.classList.remove("hidden");
         profileButton.removeAttribute("hidden");
-        profileButton.style.display = "";
       }
 
       const subscriptionsLink = this.resolveSubscriptionsLink();
@@ -159,14 +156,12 @@ export function createUiCoordinator(deps) {
       if (uploadButton) {
         uploadButton.classList.add("hidden");
         uploadButton.setAttribute("hidden", "");
-        uploadButton.style.display = "none";
       }
 
       const profileButton = this.profileButton || document.getElementById("profileButton");
       if (profileButton) {
         profileButton.classList.add("hidden");
         profileButton.setAttribute("hidden", "");
-        profileButton.style.display = "none";
       }
 
       const subscriptionsLink = this.resolveSubscriptionsLink();
