@@ -472,7 +472,9 @@ function getAppState() {
 function getFeedItems() {
   const cards = document.querySelectorAll("[data-video-card]");
   return Array.from(cards).map((card) => ({
-    title: card.querySelector("[data-video-title]")?.textContent?.trim() || "",
+    title:
+      card.querySelector("[data-video-title]")?.getAttribute("data-video-title") ||
+      "",
     pubkey: card.getAttribute("data-video-pubkey") || "",
     dTag: card.getAttribute("data-video-dtag") || "",
     hasUrl: Boolean(card.getAttribute("data-play-url")),

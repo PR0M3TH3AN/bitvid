@@ -215,6 +215,7 @@ test.describe("Video playback scenarios", () => {
             if (!modal) return true;
             return (
               modal.classList.contains("hidden") ||
+              modal.style.display === "none" ||
               modal.getAttribute("data-open") === "false"
             );
           },
