@@ -805,7 +805,9 @@ export class UploadModal {
 
 
   updateVideoProgress(fraction, text) {
-      if (text) this.statusText.uploadMain.textContent = text;
+      if (text && this.statusText?.uploadMain) {
+          this.statusText.uploadMain.textContent = text;
+      }
 
       if (fraction === null) {
            // Indeterminate or error
@@ -813,18 +815,28 @@ export class UploadModal {
       }
 
       const pct = Math.round(fraction * 100);
-      this.inputs.progress.value = pct;
-      this.statusText.uploadPercent.textContent = `${pct}%`;
+      if (this.inputs?.progress) {
+          this.inputs.progress.value = pct;
+      }
+      if (this.statusText?.uploadPercent) {
+          this.statusText.uploadPercent.textContent = `${pct}%`;
+      }
   }
 
   updateThumbnailProgress(fraction, text) {
-      if (text) this.statusText.thumbnailMain.textContent = text;
+      if (text && this.statusText?.thumbnailMain) {
+          this.statusText.thumbnailMain.textContent = text;
+      }
 
       if (fraction === null) return;
 
       const pct = Math.round(fraction * 100);
-      this.inputs.thumbnailProgress.value = pct;
-      this.statusText.thumbnailPercent.textContent = `${pct}%`;
+      if (this.inputs?.thumbnailProgress) {
+          this.inputs.thumbnailProgress.value = pct;
+      }
+      if (this.statusText?.thumbnailPercent) {
+          this.statusText.thumbnailPercent.textContent = `${pct}%`;
+      }
   }
 
 
@@ -911,6 +923,9 @@ export class UploadModal {
   }
 
   toggleStorageView(viewName) {
+      if (!this.storageViews?.summary || !this.storageViews?.empty) {
+          return;
+      }
       if (viewName === "summary") {
           this.storageViews.summary.classList.remove("hidden");
           this.storageViews.empty.classList.add("hidden");
@@ -968,11 +983,11 @@ export class UploadModal {
 
   updateLockUi() {
       const locked = !this.isStorageUnlocked;
-      if (this.statusText.storageLock) {
+      if (this.statusText?.storageLock) {
           this.statusText.storageLock.textContent = locked ? "Locked 🔒" : "Unlocked 🔓";
           this.statusText.storageLock.className = locked ? "text-xs text-critical" : "text-xs text-success";
       }
-      if (this.toggles.storageUnlock) {
+      if (this.toggles?.storageUnlock) {
           // Show unlock button only if locked AND we have a configuration to unlock
           if (locked && this.storageConfigured) {
               this.toggles.storageUnlock.classList.remove("hidden");

@@ -83,6 +83,7 @@ test.describe("Accessibility and keyboard navigation", () => {
 
       // When: login button receives focus and Enter is pressed
       const loginBtn = page.locator('[data-testid="login-button"]');
+      await expect(loginBtn).toBeVisible();
       await loginBtn.focus();
       await page.keyboard.press("Enter");
 

@@ -350,8 +350,17 @@ function setTestRelays(relayUrls, options = {}) {
 
   try {
     if (relayManager && typeof relayManager.setEntries === "function") {
+      const entries = normalizedRelays.map((url) => ({ url, mode: "both" }));
+      // Overwrite defaults so resets/fallbacks use test relays
+      if (relayManager.defaultEntries) {
+        relayManager.defaultEntries = entries.map((e) => ({
+          ...e,
+          read: true,
+          write: true,
+        }));
+      }
       relayManager.setEntries(
-        normalizedRelays.map((url) => ({ url, mode: "both" })),
+        entries,
         { allowEmpty: false, updateClient: true },
       );
       applied = true;
@@ -565,6 +574,46 @@ export function installTestHarness() {
   }
 
   installListSyncCapture();
+
+  // Patch relayManager to respect test overrides during login/logout
+  if (relayManager) {
+    const originalLoadRelayList = relayManager.loadRelayList;
+    relayManager.loadRelayList = async function (pubkey) {
+      // Heuristic: If we are in test mode and the current relays are different from defaults,
+      // assume they are test relays and preserve them.
+      const isTest = isTestMode();
+      const currentEntries = JSON.stringify(this.entries.map(e => ({ url: e.url, mode: e.mode })));
+      const defaultEntries = JSON.stringify(this.defaultEntries.map(e => ({ url: e.url, mode: e.mode })));
+
+      if (isTest && currentEntries !== defaultEntries) {
+        // We pretend we loaded successfully but found no new events to apply,
+        // so the existing (test) relays remain active.
+        return { ok: true, source: "test-override-preserved", events: [] };
+      }
+
+      if (typeof originalLoadRelayList === "function") {
+        return originalLoadRelayList.call(this, pubkey);
+      }
+      return { ok: false, reason: "original-method-missing" };
+    };
+
+    const originalReset = relayManager.reset;
+    relayManager.reset = function () {
+      if (isTestMode()) {
+        const overrides = getTestRelayOverrides();
+        if (overrides && overrides.length > 0) {
+          this.lastEvent = null;
+          this.loadedPubkey = null;
+          this.lastLoadSource = "test-override";
+          setTestRelays(overrides, { persist: false });
+          return;
+        }
+      }
+      if (typeof originalReset === "function") {
+        originalReset.call(this);
+      }
+    };
+  }
 
   window.__bitvidTest__ = Object.freeze({
     version: HARNESS_VERSION,
