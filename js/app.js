@@ -928,8 +928,10 @@ class Application {
     }
   }
 
-  _initAccessControl() {
-    accessControl
+  async _initAccessControl() {
+    const promises = [];
+
+    const aclRefreshPromise = accessControl
       .refresh()
       .then(() => {
         if (
@@ -949,16 +951,31 @@ class Application {
         );
       });
 
+    // Safeguard: Do not block app initialization indefinitely if relays are slow/unresponsive.
+    // 15s gives plenty of time for a healthy connection but prevents E2E test timeouts (60s).
+    const timeoutPromise = new Promise((resolve) => {
+      setTimeout(() => {
+        devLogger.warn("[app.init()] Access control refresh timed out; proceeding without full admin state.");
+        resolve();
+      }, 15000);
+    });
+
+    promises.push(Promise.race([aclRefreshPromise, timeoutPromise]));
+
     if (this.profileController) {
-      Promise.resolve()
-        .then(() => this.profileController.refreshAdminPaneState())
-        .catch((error) => {
-          devLogger.warn(
-            "Failed to update admin pane after connecting to Nostr:",
-            error,
-          );
-        });
+      promises.push(
+        Promise.resolve()
+          .then(() => this.profileController.refreshAdminPaneState())
+          .catch((error) => {
+            devLogger.warn(
+              "Failed to update admin pane after connecting to Nostr:",
+              error,
+            );
+          })
+      );
     }
+
+    await Promise.all(promises);
   }
 
   async _syncSessionActorBlacklist(trigger) {
