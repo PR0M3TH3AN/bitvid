@@ -545,6 +545,84 @@ function waitForSelector(selector, timeoutMs = STANDARD_TIMEOUT_MS) {
   });
 }
 
+function isModalOpen(modalId) {
+  const modal = document.getElementById(modalId);
+  if (!(modal instanceof HTMLElement)) {
+    return false;
+  }
+  if (modal.getAttribute("data-open") === "true") {
+    return true;
+  }
+  return !modal.classList.contains("hidden");
+}
+
+function waitForModalOpen(modalId, timeoutMs = STANDARD_TIMEOUT_MS) {
+  return new Promise((resolve, reject) => {
+    const timeout = Number.isFinite(timeoutMs)
+      ? Math.max(0, Math.floor(timeoutMs))
+      : STANDARD_TIMEOUT_MS;
+    const start = Date.now();
+
+    function check() {
+      if (isModalOpen(modalId)) {
+        resolve(true);
+        return;
+      }
+      if (Date.now() - start > timeout) {
+        reject(new Error(`[testHarness] Timed out waiting for modal open: ${modalId}`));
+        return;
+      }
+      requestAnimationFrame(check);
+    }
+
+    check();
+  });
+}
+
+async function openLoginModal() {
+  const app = getApplication();
+  if (
+    app?.loginModalController &&
+    typeof app.loginModalController.openModal === "function"
+  ) {
+    app.loginModalController.openModal();
+    await waitForModalOpen("loginModal");
+    return { ok: true, source: "controller" };
+  }
+
+  const loginButton = document.querySelector('[data-testid="login-button"]');
+  if (loginButton instanceof HTMLElement) {
+    loginButton.click();
+    await waitForModalOpen("loginModal");
+    return { ok: true, source: "click" };
+  }
+
+  return { ok: false, reason: "login-unavailable" };
+}
+
+async function openUploadModal() {
+  const app = getApplication();
+  if (app?.uploadModal) {
+    if (typeof app.uploadModal.load === "function") {
+      await app.uploadModal.load();
+    }
+    if (typeof app.uploadModal.open === "function") {
+      app.uploadModal.open();
+      await waitForModalOpen("uploadModal");
+      return { ok: true, source: "controller" };
+    }
+  }
+
+  const uploadButton = document.querySelector('[data-testid="upload-button"]');
+  if (uploadButton instanceof HTMLElement) {
+    uploadButton.click();
+    await waitForModalOpen("uploadModal");
+    return { ok: true, source: "click" };
+  }
+
+  return { ok: false, reason: "upload-unavailable" };
+}
+
 /**
  * Get relay connection health info.
  */
@@ -623,6 +701,9 @@ export function installTestHarness() {
     getFeedItems,
     waitForFeedItems,
     waitForSelector,
+    waitForModalOpen,
+    openLoginModal,
+    openUploadModal,
     getRelayHealth,
     applyRelayOverrides,
     setTestRelays,

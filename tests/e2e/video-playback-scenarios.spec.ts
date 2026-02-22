@@ -216,7 +216,7 @@ test.describe("Video playback scenarios", () => {
 
       // When: user closes the modal
       // Use the standard close button ID which is bound in VideoModal.js
-      const closeBtn = page.locator("#closeModal");
+      const closeBtn = page.locator("#playerModal #closeModal:visible").first();
       await closeBtn.waitFor({ state: "visible", timeout: 5000 });
       await closeBtn.click();
 
@@ -232,13 +232,8 @@ test.describe("Video playback scenarios", () => {
         },
         { timeout: 10000 },
       );
-      if ((await closeBtn.count()) > 0) {
-        await closeBtn.first().click({ force: true });
-
-        // Then: modal is hidden again
-        const modal = page.locator("#playerModal");
-        await expect(modal).toBeHidden({ timeout: 10000 });
-      }
+      const modal = page.locator("#playerModal");
+      await expect(modal).toBeHidden({ timeout: 10000 });
 
       // App state should still be valid
       const state = await page.evaluate(() => {
