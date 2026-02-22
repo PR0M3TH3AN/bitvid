@@ -1223,19 +1223,19 @@ export class UploadModal {
     }
 
     // Clear Result Inputs
-    if (this.results.videoUrl) this.results.videoUrl.value = "";
-    if (this.results.magnet) this.results.magnet.value = "";
-    if (this.results.torrentUrl) this.results.torrentUrl.value = "";
+    if (this.results?.videoUrl) this.results.videoUrl.value = "";
+    if (this.results?.magnet) this.results.magnet.value = "";
+    if (this.results?.torrentUrl) this.results.torrentUrl.value = "";
 
     // Reset Inputs
-    if (this.inputs.file) {
+    if (this.inputs?.file) {
         this.inputs.file.value = "";
     }
-    if (this.inputs.thumbnailFile) {
+    if (this.inputs?.thumbnailFile) {
         this.inputs.thumbnailFile.value = "";
     }
     // Re-enable thumbnail input if it was disabled by an upload
-    if (this.inputs.thumbnail) {
+    if (this.inputs?.thumbnail) {
         this.inputs.thumbnail.disabled = false;
         if (this.inputs.thumbnail.placeholder && this.inputs.thumbnail.placeholder.startsWith("Selected:")) {
              this.inputs.thumbnail.placeholder = "https://example.com/thumbnail.jpg";

@@ -209,17 +209,8 @@ test.describe("Video playback scenarios", () => {
         await closeBtn.first().click({ force: true });
 
         // Then: modal is hidden again
-        await page.waitForFunction(
-          () => {
-            const modal = document.querySelector("#playerModal");
-            if (!modal) return true;
-            return (
-              modal.classList.contains("hidden") ||
-              modal.getAttribute("data-open") === "false"
-            );
-          },
-          { timeout: 10000 },
-        );
+        const modal = page.locator("#playerModal");
+        await expect(modal).toBeHidden({ timeout: 10000 });
       }
 
       // App state should still be valid

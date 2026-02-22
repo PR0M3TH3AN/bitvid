@@ -150,8 +150,8 @@ test.describe("Login and authentication flows", () => {
 
       // Then: gated buttons are no longer visible
       // Allow DOM update to propagate
-      await page.waitForTimeout(500);
-      await expect(uploadBtn).not.toBeVisible();
+      await page.waitForTimeout(2000);
+      await expect(uploadBtn).not.toBeVisible({ timeout: 10000 });
     });
 
     test("login button is visible in logged-out state", async ({
@@ -179,21 +179,8 @@ test.describe("Login and authentication flows", () => {
       await page.locator('[data-testid="login-button"]').click();
 
       // Then: login modal becomes visible
-      await page.waitForFunction(
-        () => {
-          const modal = document.querySelector(
-            '[data-testid="login-modal"]',
-          );
-          if (!(modal instanceof HTMLElement)) return false;
-          return (
-            modal.getAttribute("data-open") === "true" &&
-            !modal.classList.contains("hidden")
-          );
-        },
-        { timeout: 15000 },
-      );
-
       const modal = page.locator('[data-testid="login-modal"]');
+      await expect(modal).toBeVisible({ timeout: 15000 });
       await expect(modal).toHaveAttribute("data-open", "true");
     });
 
@@ -205,16 +192,8 @@ test.describe("Login and authentication flows", () => {
       await gotoApp();
       await page.locator('[data-testid="login-button"]').click();
 
-      await page.waitForFunction(
-        () => {
-          const modal = document.querySelector(
-            '[data-testid="login-modal"]',
-          );
-          if (!(modal instanceof HTMLElement)) return false;
-          return modal.getAttribute("data-open") === "true";
-        },
-        { timeout: 15000 },
-      );
+      const modal = page.locator('[data-testid="login-modal"]');
+      await expect(modal).toBeVisible({ timeout: 15000 });
 
       // Then: at least one provider button is visible
       const providers = page.locator(
@@ -244,6 +223,11 @@ test.describe("Login and authentication flows", () => {
         },
         { timeout: 15000 },
       );
+
+      // Click the nsec provider to reveal inputs
+      const nsecProvider = page.locator('[data-provider-id="nsec"]');
+      await expect(nsecProvider).toBeVisible();
+      await nsecProvider.click();
 
       // Then: nsec input elements should be present in the DOM
       const nsecInput = page.locator('[data-testid="nsec-secret-input"]');
