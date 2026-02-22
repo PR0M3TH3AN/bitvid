@@ -179,21 +179,8 @@ test.describe("Login and authentication flows", () => {
       await page.locator('[data-testid="login-button"]').click();
 
       // Then: login modal becomes visible
-      await page.waitForFunction(
-        () => {
-          const modal = document.querySelector(
-            '[data-testid="login-modal"]',
-          );
-          if (!(modal instanceof HTMLElement)) return false;
-          return (
-            modal.getAttribute("data-open") === "true" &&
-            !modal.classList.contains("hidden")
-          );
-        },
-        { timeout: 15000 },
-      );
-
       const modal = page.locator('[data-testid="login-modal"]');
+      await expect(modal).toBeVisible({ timeout: 15000 });
       await expect(modal).toHaveAttribute("data-open", "true");
     });
 
@@ -205,16 +192,8 @@ test.describe("Login and authentication flows", () => {
       await gotoApp();
       await page.locator('[data-testid="login-button"]').click();
 
-      await page.waitForFunction(
-        () => {
-          const modal = document.querySelector(
-            '[data-testid="login-modal"]',
-          );
-          if (!(modal instanceof HTMLElement)) return false;
-          return modal.getAttribute("data-open") === "true";
-        },
-        { timeout: 15000 },
-      );
+      const modal = page.locator('[data-testid="login-modal"]');
+      await expect(modal).toBeVisible({ timeout: 15000 });
 
       // Then: at least one provider button is visible
       const providers = page.locator(
