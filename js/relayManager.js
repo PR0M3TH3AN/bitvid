@@ -19,6 +19,36 @@ const FAST_RELAY_FETCH_LIMIT = 3;
 const FAST_RELAY_TIMEOUT_MS = 2500;
 const BACKGROUND_RELAY_TIMEOUT_MS = 6000;
 
+function getTestRelayOverrides() {
+  if (typeof window === "undefined" || !window.location) {
+    return null;
+  }
+
+  // 1. Check window globals (injected by Playwright addInitScript)
+  if (
+    Array.isArray(window.__bitvidTestRelays__) &&
+    window.__bitvidTestRelays__.length > 0
+  ) {
+    return window.__bitvidTestRelays__;
+  }
+
+  // 2. Check URL search params
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get("__testRelays__");
+    if (raw) {
+      const candidates = raw.split(",").map((u) => u.trim()).filter(Boolean);
+      if (candidates.length) {
+        return candidates;
+      }
+    }
+  } catch (error) {
+    // Ignore URL parsing errors
+  }
+
+  return null;
+}
+
 function normalizeHexPubkey(pubkey) {
   if (typeof pubkey !== "string") {
     return null;
@@ -209,12 +239,23 @@ class RelayPreferencesManager {
       return createEntry(normalized, "both");
     });
 
-    // Attempt to load from storage if policy allows
-    const loaded = this.loadFromStorage();
-    if (loaded && loaded.length) {
-      this.setEntries(loaded, { allowEmpty: false, updateClient: true });
+    const testOverrides = getTestRelayOverrides();
+    if (testOverrides) {
+      const entries = testOverrides.map((url) =>
+        createEntry(normalizeRelayUrl(url) || url, "both")
+      );
+      this.setEntries(entries, { allowEmpty: false, updateClient: true });
     } else {
-      this.setEntries(this.defaultEntries, { allowEmpty: false, updateClient: true });
+      // Attempt to load from storage if policy allows
+      const loaded = this.loadFromStorage();
+      if (loaded && loaded.length) {
+        this.setEntries(loaded, { allowEmpty: false, updateClient: true });
+      } else {
+        this.setEntries(this.defaultEntries, {
+          allowEmpty: false,
+          updateClient: true,
+        });
+      }
     }
 
     profileCache.subscribe((event, detail) => {

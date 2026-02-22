@@ -3,6 +3,8 @@
 import "./test-helpers/setup-localstorage.mjs";
 import assert from "node:assert/strict";
 
+globalThis.__BITVID_DEV_MODE_OVERRIDE__ = true;
+
 if (typeof globalThis.window === "undefined") {
   globalThis.window = {};
 }
