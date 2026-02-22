@@ -245,6 +245,11 @@ test.describe("Login and authentication flows", () => {
         { timeout: 15000 },
       );
 
+      // Select the nsec provider
+      const nsecProvider = page.locator('button[data-provider-id="nsec"]');
+      await expect(nsecProvider).toBeVisible();
+      await nsecProvider.click();
+
       // Then: nsec input elements should be present in the DOM
       const nsecInput = page.locator('[data-testid="nsec-secret-input"]');
       const nsecSubmit = page.locator('[data-testid="nsec-submit"]');

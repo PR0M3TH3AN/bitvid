@@ -86,27 +86,32 @@ export function createUiCoordinator(deps) {
     },
 
     applyAuthenticatedUiState() {
-      if (this.loginButton) {
-        this.loginButton.classList.add("hidden");
-        this.loginButton.setAttribute("hidden", "");
+      const loginButton = this.loginButton || document.getElementById("loginButton");
+      if (loginButton) {
+        loginButton.classList.add("hidden");
+        loginButton.setAttribute("hidden", "");
       }
 
-      if (this.logoutButton) {
-        this.logoutButton.classList.remove("hidden");
+      const logoutButton = this.logoutButton || document.getElementById("logoutButton");
+      if (logoutButton) {
+        logoutButton.classList.remove("hidden");
       }
 
-      if (this.userStatus) {
-        this.userStatus.classList.add("hidden");
+      const userStatus = this.userStatus || document.getElementById("userStatus");
+      if (userStatus) {
+        userStatus.classList.add("hidden");
       }
 
-      if (this.uploadButton) {
-        this.uploadButton.classList.remove("hidden");
-        this.uploadButton.removeAttribute("hidden");
+      const uploadButton = this.uploadButton || document.getElementById("uploadButton");
+      if (uploadButton) {
+        uploadButton.classList.remove("hidden");
+        uploadButton.removeAttribute("hidden");
       }
 
-      if (this.profileButton) {
-        this.profileButton.classList.remove("hidden");
-        this.profileButton.removeAttribute("hidden");
+      const profileButton = this.profileButton || document.getElementById("profileButton");
+      if (profileButton) {
+        profileButton.classList.remove("hidden");
+        profileButton.removeAttribute("hidden");
       }
 
       const subscriptionsLink = this.resolveSubscriptionsLink();
@@ -126,31 +131,37 @@ export function createUiCoordinator(deps) {
     },
 
     applyLoggedOutUiState() {
-      if (this.loginButton) {
-        this.loginButton.classList.remove("hidden");
-        this.loginButton.removeAttribute("hidden");
+      const loginButton = this.loginButton || document.getElementById("loginButton");
+      if (loginButton) {
+        loginButton.classList.remove("hidden");
+        loginButton.removeAttribute("hidden");
       }
 
-      if (this.logoutButton) {
-        this.logoutButton.classList.add("hidden");
+      const logoutButton = this.logoutButton || document.getElementById("logoutButton");
+      if (logoutButton) {
+        logoutButton.classList.add("hidden");
       }
 
-      if (this.userStatus) {
-        this.userStatus.classList.add("hidden");
+      const userStatus = this.userStatus || document.getElementById("userStatus");
+      if (userStatus) {
+        userStatus.classList.add("hidden");
       }
 
-      if (this.userPubKey) {
-        this.userPubKey.textContent = "";
+      const userPubKey = this.userPubKey || document.getElementById("userPubKey");
+      if (userPubKey) {
+        userPubKey.textContent = "";
       }
 
-      if (this.uploadButton) {
-        this.uploadButton.classList.add("hidden");
-        this.uploadButton.setAttribute("hidden", "");
+      const uploadButton = this.uploadButton || document.getElementById("uploadButton");
+      if (uploadButton) {
+        uploadButton.classList.add("hidden");
+        uploadButton.setAttribute("hidden", "");
       }
 
-      if (this.profileButton) {
-        this.profileButton.classList.add("hidden");
-        this.profileButton.setAttribute("hidden", "");
+      const profileButton = this.profileButton || document.getElementById("profileButton");
+      if (profileButton) {
+        profileButton.classList.add("hidden");
+        profileButton.setAttribute("hidden", "");
       }
 
       const subscriptionsLink = this.resolveSubscriptionsLink();
