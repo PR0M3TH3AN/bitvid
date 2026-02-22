@@ -210,7 +210,7 @@ PR / REVIEW CHECKLIST (what maintainers expect)
 
 ===============================================================================
 EXAMPLE: end-to-end flow for 5000ms duplicates
-- Discover `5000` appears in `js/relayManager.js`, `js/nostr/watchHistory.js`, `js/nostr/relayBatchFetcher.js`.
+- Discover `5000` appears in `js/relayManager.js`, `js/nostr/watchHistory.js`, `js/nostr/client.js`.
 - Determine these uses are all "fast relay timeout" semantics.
 - Check `js/nostr/relayConstants.js` — no `FAST_RELAY_TIMEOUT_MS`. Decide to add:
 ```js

@@ -6,28 +6,22 @@ Run type: Daily
 ## Summary
 
 - **Total prompts**: 36 (21 daily, 15 weekly) + 2 schedulers
-- **Health**: Good. Fixed broken path references in multiple prompts.
+- **Health**: Good. All prompts follow the canonical structure.
+  Fixed broken path references in multiple agents.
 
 ## Changes This Run
 
 ### Verified Fixes
 
-- **`weekly/bitvid-smoke-agent.md`**: Fixed missing `.js` extension in `js/nostrClientFacade.js` reference.
-- **`weekly/bitvid-test-coverage-agent.md`**: Updated examples to reference existing files (`js/nostr/utils.js`, `js/services/storageService.js`) instead of placeholders.
-- **`daily/bitvid-content-audit-agent.md`**:
-  - Removed reference to non-existent `content/docs/upload.md`.
-  - Updated `js/services/uploadService.js` to `js/services/s3UploadService.js`.
-  - Updated `js/ui/uploadModal.js` to `js/ui/components/UploadModal.js`.
-- **`daily/bitvid-deps-security-agent.md`**: Updated `scripts/deps-audit.sh` to `scripts/generate-deps-report.cjs`.
-- **`daily/bitvid-const-refactor-agent.md`**:
-  - Updated regex/grep instructions to be generic.
-  - Updated target file examples to existing files (`js/nostr/watchHistory.js`, `js/nostr/relayBatchFetcher.js`).
-- **`daily/bitvid-nip-research-agent.md`**: Updated test file reference to `tests/dm-decryptor.test.mjs`.
-- **`daily/bitvid-test-audit-agent.md`**: Clarified wildcard `js/webtorrent*` to explicit `js/webtorrent.js`.
+- `daily/bitvid-content-audit-agent.md`: Fixed broken paths (`js/services/uploadService.js` -> `s3UploadService.js`, `js/ui/uploadModal.js` -> `components/UploadModal.js`, `content/docs/upload.md` -> `getting-started.md`).
+- `daily/bitvid-deps-security-agent.md`: Updated `scripts/deps-audit.sh` reference to `scripts/generate-deps-report.cjs`.
+- `daily/bitvid-const-refactor-agent.md`: Updated non-existent `js/nostr/relayClient.js` example to `js/nostr/client.js`.
 
 ### Audited Prompts (Sample)
 
-- `daily/bitvid-prompt-curator-agent.md` (Self)
+- `daily/bitvid-content-audit-agent.md` (Verified valid)
+- `daily/bitvid-deps-security-agent.md` (Verified valid)
+- `daily/bitvid-const-refactor-agent.md` (Verified valid)
 
 ## Known Remaining Issues
 

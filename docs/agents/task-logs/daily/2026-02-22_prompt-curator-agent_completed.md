@@ -1,21 +1,20 @@
-# prompt-curator-agent - Daily Run
+# Daily Task Log: prompt-curator-agent
 
-Date: 2026-02-22
-Status: Completed
+- **Date**: 2026-02-22
+- **Agent**: prompt-curator-agent
+- **Status**: Completed
+- **Outcome**: Fixed 3 broken file references in daily prompts.
 
-## Summary
+## Details
 
-Executed daily prompt curation. Verified paths in all prompt files against the codebase.
-
-## Changes
-
-- **Verified Paths**: Scanned all prompts for broken file references.
-- **Fixed Issues**:
-  - `weekly/bitvid-smoke-agent.md`: Fixed missing `.js` extension.
-  - `weekly/bitvid-test-coverage-agent.md`: Updated examples to real files.
-  - `daily/bitvid-content-audit-agent.md`: Fixed `docs/upload.md` reference and `js/services/s3UploadService.js`.
-  - `daily/bitvid-deps-security-agent.md`: Updated `scripts/deps-audit.sh` to `scripts/generate-deps-report.cjs`.
-  - `daily/bitvid-const-refactor-agent.md`: Updated target file examples.
-  - `daily/bitvid-nip-research-agent.md`: Updated test file reference.
-  - `daily/bitvid-test-audit-agent.md`: Clarified wildcard usage.
-- **Updated Status**: Updated `docs/agents/PROMPT_LIBRARY_STATUS.md`.
+1.  **Inventory**: Scanned 21 daily prompts for broken file paths.
+2.  **Fixes**:
+    - `bitvid-content-audit-agent.md`:
+        - `js/services/uploadService.js` -> `js/services/s3UploadService.js`
+        - `js/ui/uploadModal.js` -> `js/ui/components/UploadModal.js`
+        - `content/docs/upload.md` -> `content/docs/getting-started.md`
+    - `bitvid-deps-security-agent.md`:
+        - `scripts/deps-audit.sh` -> `scripts/generate-deps-report.cjs`
+    - `bitvid-const-refactor-agent.md`:
+        - `js/nostr/relayClient.js` -> `js/nostr/client.js`
+3.  **Documentation**: Updated `docs/agents/PROMPT_LIBRARY_STATUS.md`.

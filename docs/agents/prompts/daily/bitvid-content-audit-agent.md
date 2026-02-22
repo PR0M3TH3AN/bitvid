@@ -49,7 +49,7 @@ Each phase below includes concrete steps and deliverables.
 Goal: build a complete mapping: `/content` page → concrete claims → code locations that implement the claim.
 
 Steps:
-- List every page in `/content` related to uploading, contributing, or media (e.g., `content/contribute/*`, `content/guides/*`). Use:
+- List every page in `/content` related to uploading, contributing, or media (e.g., `content/docs/getting-started.md`, `content/contribute/*`, `content/guides/*`). Use:
 ```
 
 rg --hidden --files --glob 'content/**' | rg '/content/' -n
