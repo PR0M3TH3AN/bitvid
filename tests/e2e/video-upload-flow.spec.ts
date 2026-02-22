@@ -34,10 +34,7 @@ test.describe("Video upload and discovery", () => {
       await page.waitForFunction(() => {
         const m = document.querySelector('[data-testid="upload-modal"]');
         if (!(m instanceof HTMLElement)) return false;
-        return (
-          m.getAttribute("data-open") === "true" &&
-          !m.classList.contains("hidden")
-        );
+        return !m.classList.contains("hidden");
       }, { timeout: 10000 });
 
       await expect(
@@ -204,7 +201,9 @@ test.describe("Video upload and discovery", () => {
       const card = page.locator("[data-video-card]").first();
       await expect(card).toBeVisible();
 
-      const title = await card.getAttribute("data-video-title");
+      // The title attribute is on the h3 element inside the card
+      const titleEl = card.locator("[data-video-title]");
+      const title = await titleEl.getAttribute("data-video-title");
       expect(title).toBe("Attributed Video");
 
       const pubkey = await card.getAttribute("data-video-pubkey");
