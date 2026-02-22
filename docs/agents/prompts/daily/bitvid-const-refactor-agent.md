@@ -100,7 +100,7 @@ DETAILED WORKFLOW (step-by-step)
        - Generic app-level: `js/constants.js`
        - Nostr/relay-level: `js/nostr/relayConstants.js`
        - Cache TTLs: `js/nostr/cachePolicies.js`
-       - If a more specific domain exists (e.g., `js/services/watchHistoryConstants.js`), prefer creating in that domain.
+       - If a more specific domain exists (e.g., `js/nostr/watchHistory.js`), prefer creating in that domain.
      - Choose a clear semantic name. Naming guidelines:
        - Use all-caps snake-case with domain and unit: e.g., `FAST_RELAY_TIMEOUT_MS`, `DM_DECRYPT_WORKER_MAX_PENDING`, `WATCH_HISTORY_REPUBLISH_MAX_DELAY_MS`, `DEFAULT_RETRY_ATTEMPTS`.
        - Suffix with `_MS` for millisecond timeouts, `_S` for seconds, `_COUNT`, `_TTL_MS`.

@@ -77,7 +77,7 @@ rg --hidden --files --glob 'content/**' | rg '/content/' -n
 - Produce a deliverable CSV or markdown table:
 ```
 
-/content/path.md | Claim: "Max file size 100MB" | Code: js/services/uploadService.js#L123-L160 | Verified? (unknown)
+/content/path.md | Claim: "Max file size 100MB" | Code: js/services/s3UploadService.js#L123-L160 | Verified? (unknown)
 
 ```
 

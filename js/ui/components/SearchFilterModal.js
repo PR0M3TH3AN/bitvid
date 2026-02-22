@@ -197,8 +197,8 @@ const formatDateInputValue = (timestampSeconds) => {
 
 function handleDateChip(days) {
   if (days === "all") {
-    dateStartInput.value = "";
-    dateEndInput.value = "";
+    if (dateStartInput) dateStartInput.value = "";
+    if (dateEndInput) dateEndInput.value = "";
     return;
   }
 
@@ -209,8 +209,8 @@ function handleDateChip(days) {
   const start = new Date();
   start.setDate(now.getDate() - numDays);
 
-  dateStartInput.value = formatDateInputValue(Math.floor(start.getTime() / 1000));
-  dateEndInput.value = formatDateInputValue(Math.floor(now.getTime() / 1000));
+  if (dateStartInput) dateStartInput.value = formatDateInputValue(Math.floor(start.getTime() / 1000));
+  if (dateEndInput) dateEndInput.value = formatDateInputValue(Math.floor(now.getTime() / 1000));
 }
 
 // Helpers for Chips
@@ -234,49 +234,53 @@ function syncStateToControls(filters) {
   const safeFilters = filters || DEFAULT_FILTERS;
 
   // Date
-  dateStartInput.value = formatDateInputValue(safeFilters.dateRange?.after);
-  dateEndInput.value = formatDateInputValue(safeFilters.dateRange?.before);
+  if (dateStartInput) dateStartInput.value = formatDateInputValue(safeFilters.dateRange?.after);
+  if (dateEndInput) dateEndInput.value = formatDateInputValue(safeFilters.dateRange?.before);
 
   // Logic to highlight correct date chip if it matches
   // (Simplified: just highlight 'All Time' if no dates, otherwise clear chips)
   const hasDateRange = Number.isFinite(safeFilters.dateRange?.after) || Number.isFinite(safeFilters.dateRange?.before);
-  const dateBtns = dateChipsContainer.querySelectorAll("button");
-  dateBtns.forEach(btn => {
-    if (btn.dataset.days === "all") {
-       const isActive = !hasDateRange;
-       btn.setAttribute("aria-pressed", isActive);
-       btn.dataset.state = isActive ? "on" : "off";
-    } else {
-       // We could try to calculate if range matches 24h/7d etc, but for now just clear them if custom dates are set
-       btn.setAttribute("aria-pressed", "false");
-       btn.dataset.state = "off";
-    }
-  });
+  if (dateChipsContainer) {
+    const dateBtns = dateChipsContainer.querySelectorAll("button");
+    dateBtns.forEach(btn => {
+      if (btn.dataset.days === "all") {
+         const isActive = !hasDateRange;
+         btn.setAttribute("aria-pressed", isActive);
+         btn.dataset.state = isActive ? "on" : "off";
+      } else {
+         // We could try to calculate if range matches 24h/7d etc, but for now just clear them if custom dates are set
+         btn.setAttribute("aria-pressed", "false");
+         btn.dataset.state = "off";
+      }
+    });
+  }
 
   // Sort
-  sortSelect.value = safeFilters.sort || "relevance";
+  if (sortSelect) sortSelect.value = safeFilters.sort || "relevance";
 
   // Author
-  authorInput.value = safeFilters.authorPubkeys?.join(", ") || "";
+  if (authorInput) authorInput.value = safeFilters.authorPubkeys?.join(", ") || "";
 
   // Tags
-  tagsInput.value = "";
+  if (tagsInput) tagsInput.value = "";
   // We separate tags that are in chips vs typed
   const activeTags = new Set(safeFilters.tags || []);
-  const tagBtns = tagChipsContainer.querySelectorAll("button");
   const chippedTags = new Set();
 
-  tagBtns.forEach(btn => {
-    const tag = btn.dataset.tag;
-    chippedTags.add(tag);
-    const isActive = activeTags.has(tag);
-    btn.setAttribute("aria-pressed", isActive);
-    btn.dataset.state = isActive ? "on" : "off";
-  });
+  if (tagChipsContainer) {
+    const tagBtns = tagChipsContainer.querySelectorAll("button");
+    tagBtns.forEach(btn => {
+      const tag = btn.dataset.tag;
+      chippedTags.add(tag);
+      const isActive = activeTags.has(tag);
+      btn.setAttribute("aria-pressed", isActive);
+      btn.dataset.state = isActive ? "on" : "off";
+    });
+  }
 
   // Remaining tags go to input
   const otherTags = (safeFilters.tags || []).filter(t => !chippedTags.has(t));
-  if (otherTags.length) {
+  if (otherTags.length && tagsInput) {
     tagsInput.value = otherTags.join(", ");
   }
 
@@ -284,34 +288,38 @@ function syncStateToControls(filters) {
   const minSec = safeFilters.duration?.minSeconds;
   const maxSec = safeFilters.duration?.maxSeconds;
 
-  durationShortCheckbox.checked = false;
-  durationMediumCheckbox.checked = false;
-  durationLongCheckbox.checked = false;
+  if (durationShortCheckbox) durationShortCheckbox.checked = false;
+  if (durationMediumCheckbox) durationMediumCheckbox.checked = false;
+  if (durationLongCheckbox) durationLongCheckbox.checked = false;
 
-  if (minSec === null && maxSec === 300) durationShortCheckbox.checked = true;
-  if (minSec === 300 && maxSec === 1200) durationMediumCheckbox.checked = true;
-  if (minSec === 1200 && maxSec === null) durationLongCheckbox.checked = true;
+  if (minSec === null && maxSec === 300 && durationShortCheckbox) durationShortCheckbox.checked = true;
+  if (minSec === 300 && maxSec === 1200 && durationMediumCheckbox) durationMediumCheckbox.checked = true;
+  if (minSec === 1200 && maxSec === null && durationLongCheckbox) durationLongCheckbox.checked = true;
 
   // Has
-  const hasBtns = hasChipsContainer.querySelectorAll("button");
-  hasBtns.forEach(btn => {
-    const type = btn.dataset.has;
-    let isActive = false;
-    if (type === "magnet") isActive = safeFilters.hasMagnet === true;
-    if (type === "url") isActive = safeFilters.hasUrl === true;
+  if (hasChipsContainer) {
+    const hasBtns = hasChipsContainer.querySelectorAll("button");
+    hasBtns.forEach(btn => {
+      const type = btn.dataset.has;
+      let isActive = false;
+      if (type === "magnet") isActive = safeFilters.hasMagnet === true;
+      if (type === "url") isActive = safeFilters.hasUrl === true;
 
-    btn.setAttribute("aria-pressed", isActive);
-    btn.dataset.state = isActive ? "on" : "off";
-  });
+      btn.setAttribute("aria-pressed", isActive);
+      btn.dataset.state = isActive ? "on" : "off";
+    });
+  }
 
   // NSFW
-  if (ALLOW_NSFW_CONTENT) {
-    const nsfwIsOn = safeFilters.nsfw === "true" || safeFilters.nsfw === "only";
-    nsfwToggle.setAttribute("aria-checked", nsfwIsOn);
-    nsfwToggle.classList.toggle("is-on", nsfwIsOn);
-  } else {
-    nsfwToggle.setAttribute("aria-checked", "false");
-    nsfwToggle.classList.remove("is-on");
+  if (nsfwToggle) {
+    if (ALLOW_NSFW_CONTENT) {
+      const nsfwIsOn = safeFilters.nsfw === "true" || safeFilters.nsfw === "only";
+      nsfwToggle.setAttribute("aria-checked", nsfwIsOn);
+      nsfwToggle.classList.toggle("is-on", nsfwIsOn);
+    } else {
+      nsfwToggle.setAttribute("aria-checked", "false");
+      nsfwToggle.classList.remove("is-on");
+    }
   }
 
   // Auto-expand Advanced if needed
