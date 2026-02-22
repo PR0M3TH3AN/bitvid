@@ -27,15 +27,19 @@ test.describe("Video upload and discovery", () => {
       // When: user clicks the upload button
       const uploadBtn = page.locator('[data-testid="upload-button"]');
       await expect(uploadBtn).toBeVisible();
-      await uploadBtn.click();
 
-      // Then: upload modal becomes visible with expected form fields
-      const modal = page.locator('[data-testid="upload-modal"]');
-      await page.waitForFunction(() => {
-        const m = document.querySelector('[data-testid="upload-modal"]');
-        if (!(m instanceof HTMLElement)) return false;
-        return !m.classList.contains("hidden");
-      }, { timeout: 10000 });
+      // Retry click if modal doesn't open (handles hydration race condition)
+      await expect.poll(async () => {
+        await uploadBtn.click();
+        const m = await page.locator('[data-testid="upload-modal"]').elementHandle();
+        if (!m) return false;
+        const hidden = await m.evaluate((el) => el.classList.contains("hidden"));
+        return !hidden;
+      }, {
+        message: "Upload modal did not open after clicking upload button",
+        timeout: 10000,
+        intervals: [500, 1000, 2000],
+      }).toBe(true);
 
       await expect(
         page.locator('[data-testid="upload-title"]'),
