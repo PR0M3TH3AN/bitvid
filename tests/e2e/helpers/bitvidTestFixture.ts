@@ -114,11 +114,16 @@ async function gotoWithTestMode(page: Page, relayUrl: string, path = "/") {
   const separator = path.includes("?") ? "&" : "?";
   const testUrl = `${path}${separator}__test__=1&__testRelays__=${encodeURIComponent(relayUrl)}`;
 
-  // Set up localStorage before navigation
-  await page.addInitScript(() => {
+  // Set up overrides before navigation to ensure they exist when scripts load
+  await page.addInitScript((url) => {
     localStorage.setItem("hasSeenDisclaimer", "true");
     localStorage.setItem("__bitvidTestMode__", "1");
-  });
+    localStorage.setItem("bitvid_admin_whitelist_mode", "false");
+
+    // Inject global overrides for Reliability
+    (window as any).__bitvidTestMode__ = true;
+    (window as any).__bitvidTestRelays__ = [url];
+  }, relayUrl);
 
   await page.goto(testUrl);
 

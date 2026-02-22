@@ -208,10 +208,16 @@ class RelayPreferencesManager {
     if (testOverrides && testOverrides.length) {
       this.defaultEntries = testOverrides.map((entry) => cloneEntry(entry));
     } else {
-      this.defaultEntries = DEFAULT_RELAY_URLS.map((url) => {
-        const normalized = normalizeRelayUrl(url) || url;
-        return createEntry(normalized, "both");
-      });
+      // In test mode, if no overrides are present, we should NOT fall back to production relays.
+      // This safeguards against accidental leakage in CI/E2E environments.
+      if (this.isTestMode()) {
+        this.defaultEntries = [];
+      } else {
+        this.defaultEntries = DEFAULT_RELAY_URLS.map((url) => {
+          const normalized = normalizeRelayUrl(url) || url;
+          return createEntry(normalized, "both");
+        });
+      }
     }
 
     // Attempt to load from storage if policy allows
@@ -223,7 +229,12 @@ class RelayPreferencesManager {
     } else if (loaded && loaded.length) {
       this.setEntries(loaded, { allowEmpty: false, updateClient: true });
     } else {
-      this.setEntries(this.defaultEntries, { allowEmpty: false, updateClient: true });
+      // Allow empty in test mode to prevent fallback to production defaults
+      const isTest = this.isTestMode();
+      this.setEntries(this.defaultEntries, {
+        allowEmpty: isTest,
+        updateClient: true,
+      });
     }
 
     profileCache.subscribe((event, detail) => {
@@ -231,7 +242,10 @@ class RelayPreferencesManager {
         const currentOverrides = this.getTestOverrides();
         if (currentOverrides && currentOverrides.length) {
           // Enforce test isolation even on profile change
-          this.setEntries(currentOverrides, { allowEmpty: false, updateClient: true });
+          this.setEntries(currentOverrides, {
+            allowEmpty: false,
+            updateClient: true,
+          });
           return;
         }
 
@@ -239,16 +253,43 @@ class RelayPreferencesManager {
         if (fresh && fresh.length) {
           this.setEntries(fresh, { allowEmpty: false, updateClient: true });
         } else {
-          this.setEntries(this.defaultEntries, { allowEmpty: false, updateClient: true });
+          const isTest = this.isTestMode();
+          this.setEntries(this.defaultEntries, {
+            allowEmpty: isTest,
+            updateClient: true,
+          });
         }
       }
     });
+  }
+
+  isTestMode() {
+    if (typeof window === "undefined") return false;
+    try {
+      if (window.__bitvidTestMode__) return true;
+      if (localStorage.getItem("__bitvidTestMode__") === "1") return true;
+      const params = new URLSearchParams(window.location.search);
+      if (params.has("__test__")) return true;
+    } catch (e) {
+      // ignore
+    }
+    return false;
   }
 
   getTestOverrides() {
     if (typeof window === "undefined") return null;
 
     try {
+      // Check for global injection (added via Playwright addInitScript)
+      if (
+        Array.isArray(window.__bitvidTestRelays__) &&
+        window.__bitvidTestRelays__.length > 0
+      ) {
+        return window.__bitvidTestRelays__.map((url) =>
+          createEntry(url, "both")
+        );
+      }
+
       const params = new URLSearchParams(window.location.search);
       const paramRelays = params.get("__testRelays__");
       if (paramRelays) {
@@ -281,7 +322,10 @@ class RelayPreferencesManager {
   }
 
   saveToStorage() {
-    profileCache.set("relays", this.entries.map((entry) => ({ url: entry.url, mode: entry.mode })));
+    profileCache.set(
+      "relays",
+      this.entries.map((entry) => ({ url: entry.url, mode: entry.mode }))
+    );
   }
 
   snapshot() {
@@ -301,7 +345,9 @@ class RelayPreferencesManager {
   }
 
   getWriteRelayUrls() {
-    return this.entries.filter((entry) => entry.write).map((entry) => entry.url);
+    return this.entries
+      .filter((entry) => entry.write)
+      .map((entry) => entry.url);
   }
 
   syncClient() {
@@ -461,7 +507,9 @@ class RelayPreferencesManager {
       throw error;
     }
 
-    const nextEntries = this.getEntries().filter((entry) => entry.url !== normalizedUrl);
+    const nextEntries = this.getEntries().filter(
+      (entry) => entry.url !== normalizedUrl
+    );
     this.setEntries(nextEntries, { allowEmpty: false });
     return { changed: true };
   }
@@ -586,7 +634,9 @@ class RelayPreferencesManager {
             settled = true;
             clearTimeout(timer);
             const events = Array.isArray(result)
-              ? result.filter((event) => event && event.pubkey === normalizedPubkey)
+              ? result.filter(
+                  (event) => event && event.pubkey === normalizedPubkey
+                )
               : [];
             if (requireEvent && !events.length) {
               const emptyError = new Error(
@@ -641,12 +691,13 @@ class RelayPreferencesManager {
             const reason = outcome.reason;
             if (reason?.code === "timeout") {
               devLogger.warn(
-              `[relayManager] Relay ${reason.relay} timed out while loading relay list (${reason.timeoutMs}ms)`
+                `[relayManager] Relay ${reason.relay} timed out while loading relay list (${reason.timeoutMs}ms)`
               );
-            } else devLogger.warn(
- `[relayManager] Relay ${reason?.relay || "unknown"} failed while loading relay list:`,
- reason
- );
+            } else
+              devLogger.warn(
+                `[relayManager] Relay ${reason?.relay || "unknown"} failed while loading relay list:`,
+                reason
+              );
           }
         });
 
@@ -712,10 +763,10 @@ class RelayPreferencesManager {
       if (!permissionResult.ok) {
         userLogger.warn(
           "[RelayPreferencesManager] Signer permissions denied while publishing relay preferences.",
-          permissionResult.error,
+          permissionResult.error
         );
         const error = new Error(
-          "The active signer must allow signing before publishing relay preferences.",
+          "The active signer must allow signing before publishing relay preferences."
         );
         error.code = "extension-permission-denied";
         error.cause = permissionResult.error;
