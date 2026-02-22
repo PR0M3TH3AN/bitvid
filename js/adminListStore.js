@@ -523,6 +523,18 @@ function extractNpubsFromEvent(event) {
 
 async function fetchLatestListEvent(filter, contextLabel = "admin-list") {
   const nostrClient = requireNostrClient();
+
+  if (!nostrClient.pool && nostrClient.initPromise) {
+    try {
+      await nostrClient.initPromise;
+    } catch (error) {
+      devLogger.warn(
+        `[adminListStore] Awaiting nostrClient init failed during ${contextLabel} fetch:`,
+        error,
+      );
+    }
+  }
+
   const relays = ensureNostrReady();
 
   const kind = (Array.isArray(filter?.kinds) && filter.kinds.length)
@@ -827,6 +839,18 @@ function publishListWithFirstAcceptance(pool, relays, event, options = {}) {
 
 async function persistNostrState(actorNpub, updates = {}) {
   const nostrClient = requireNostrClient();
+
+  if (!nostrClient.pool && nostrClient.initPromise) {
+    try {
+      await nostrClient.initPromise;
+    } catch (error) {
+      devLogger.warn(
+        "[adminListStore] Awaiting nostrClient init failed during persist:",
+        error,
+      );
+    }
+  }
+
   ensureNostrReady();
   const permissionResult = await requestDefaultExtensionPermissions();
   if (!permissionResult.ok) {
