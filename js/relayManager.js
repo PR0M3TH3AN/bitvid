@@ -211,7 +211,11 @@ class RelayPreferencesManager {
 
     // Attempt to load from storage if policy allows
     const loaded = this.loadFromStorage();
-    if (loaded && loaded.length) {
+    const testOverrides = this.getTestOverrides();
+
+    if (testOverrides && testOverrides.length) {
+      this.setEntries(testOverrides, { allowEmpty: false, updateClient: true });
+    } else if (loaded && loaded.length) {
       this.setEntries(loaded, { allowEmpty: false, updateClient: true });
     } else {
       this.setEntries(this.defaultEntries, { allowEmpty: false, updateClient: true });
@@ -227,6 +231,33 @@ class RelayPreferencesManager {
         }
       }
     });
+  }
+
+  getTestOverrides() {
+    if (typeof window === "undefined") return null;
+
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const paramRelays = params.get("__testRelays__");
+      if (paramRelays) {
+        return paramRelays
+          .split(",")
+          .map((r) => r.trim())
+          .filter(Boolean)
+          .map((url) => createEntry(url, "both"));
+      }
+
+      const stored = localStorage.getItem("__bitvidTestRelays__");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          return parsed.map((url) => createEntry(url, "both"));
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+    return null;
   }
 
   loadFromStorage() {
