@@ -83,6 +83,7 @@ export const USER_BLOCK_EVENTS = Object.freeze({
 const FAST_BLOCKLIST_RELAY_LIMIT = 3;
 const FAST_BLOCKLIST_TIMEOUT_MS = 2500;
 const BACKGROUND_BLOCKLIST_TIMEOUT_MS = 6000;
+const MAX_BACKGROUND_BLOCKLIST_RELAY_LIMIT = 24;
 // PERF: Reduced from 20s/15s to 10s/8s — the signer is now guaranteed to be
 // ready before list loading starts (authSessionCoordinator waits for the
 // permission pre-grant), so decryption should succeed quickly.
@@ -951,8 +952,14 @@ class UserBlockListManager {
     };
 
     const readRelays = relayManager.getReadRelayUrls();
-    const relays = readRelays.length > 0 ? readRelays : Array.from(DEFAULT_RELAY_URLS);
-    emitStatus({ status: "loading", relays });
+    const writeRelays = relayManager.getWriteRelayUrls();
+    const relays = sanitizeRelayList([
+      ...readRelays,
+      ...writeRelays,
+    ]);
+    const effectiveRelays =
+      relays.length > 0 ? relays : Array.from(DEFAULT_RELAY_URLS);
+    emitStatus({ status: "loading", relays: effectiveRelays });
     if (!nostrClient?.pool && typeof nostrClient?.ensurePool === "function") {
       try {
         await nostrClient.ensurePool();
@@ -960,7 +967,7 @@ class UserBlockListManager {
         devLogger.warn("[UserBlockList] Failed to initialize relay pool for subscription", error);
       }
     }
-    this.ensureBlockListSubscription(normalized, relays);
+    this.ensureBlockListSubscription(normalized, effectiveRelays);
 
     const localData = this._loadLocal(normalized);
     const hasLocalData = !!localData;
@@ -1201,7 +1208,7 @@ class UserBlockListManager {
     };
 
     try {
-      if (!relays.length) {
+      if (!effectiveRelays.length) {
         // Only clear if truly no relays, though loadBlocks with no relays is weird.
         if (!this.loaded) {
           this.blockedPubkeys.clear();
@@ -1604,30 +1611,53 @@ class UserBlockListManager {
       // We prioritize standard NIP-51 lists (Kind 10000) to ensure the UI loads quickly.
       // Legacy variants are fetched in parallel but processed separately to avoid blocking.
 
+      const fastRelayLimit = Math.max(
+        1,
+        Math.min(FAST_BLOCKLIST_RELAY_LIMIT, relays.length || FAST_BLOCKLIST_RELAY_LIMIT),
+      );
+      const backgroundRelayLimit = Math.max(
+        fastRelayLimit,
+        Math.min(
+          MAX_BACKGROUND_BLOCKLIST_RELAY_LIMIT,
+          relays.length || MAX_BACKGROUND_BLOCKLIST_RELAY_LIMIT,
+        ),
+      );
+
       const standardFetchPromise = nostrClient.fetchListIncrementally({
         kind: KIND_MUTE_LIST,
         pubkey: normalized,
-        relayUrls: relays,
+        relayUrls: effectiveRelays,
         since: fetchSince,
-        timeoutMs: 10000,
+        timeoutMs: FAST_BLOCKLIST_TIMEOUT_MS,
+        maxRelays: fastRelayLimit,
       });
 
       const legacyFetchPromise = Promise.all([
         nostrClient.fetchListIncrementally({
           kind: KIND_MUTE_LIST,
           pubkey: normalized,
-          dTag: BLOCK_LIST_IDENTIFIER,
-          relayUrls: relays,
+          relayUrls: effectiveRelays,
           since: fetchSince,
-          timeoutMs: 12000,
+          timeoutMs: BACKGROUND_BLOCKLIST_TIMEOUT_MS,
+          maxRelays: backgroundRelayLimit,
+        }),
+        nostrClient.fetchListIncrementally({
+          kind: KIND_MUTE_LIST,
+          pubkey: normalized,
+          dTag: BLOCK_LIST_IDENTIFIER,
+          relayUrls: effectiveRelays,
+          since: fetchSince,
+          timeoutMs: BACKGROUND_BLOCKLIST_TIMEOUT_MS,
+          maxRelays: backgroundRelayLimit,
         }),
         nostrClient.fetchListIncrementally({
           kind: 30002,
           pubkey: normalized,
           dTag: BLOCK_LIST_IDENTIFIER,
-          relayUrls: relays,
+          relayUrls: effectiveRelays,
           since: fetchSince,
-          timeoutMs: 12000,
+          timeoutMs: BACKGROUND_BLOCKLIST_TIMEOUT_MS,
+          maxRelays: backgroundRelayLimit,
         }),
       ]);
 
@@ -1647,8 +1677,13 @@ class UserBlockListManager {
       // We do NOT await this for the main return, allowing the UI to unblock immediately
       // if the standard list was found.
       legacyFetchPromise
-        .then(async ([blockEvents, legacyEvents]) => {
-          const combined = [...standardEvents, ...blockEvents, ...legacyEvents];
+        .then(async ([backgroundStandardEvents, blockEvents, legacyEvents]) => {
+          const combined = [
+            ...standardEvents,
+            ...backgroundStandardEvents,
+            ...blockEvents,
+            ...legacyEvents,
+          ];
 
           if (!combined.length) {
             // Only apply empty if we haven't already marked loaded (meaning standard failed or was empty)

@@ -18,6 +18,7 @@ export class RelayBatchFetcher {
     fetchFn,
     since,
     timeoutMs = STANDARD_TIMEOUT_MS,
+    maxRelays = 8,
   } = {}) {
     if (!kind || !pubkey) {
       throw new Error("fetchListIncrementally requires kind and pubkey");
@@ -31,14 +32,18 @@ export class RelayBatchFetcher {
     const relaysToUse = Array.isArray(relayUrls) && relayUrls.length
       ? relayUrls
       : this.client.relays;
+    const sanitizedRequestedRelays = sanitizeRelayList(relaysToUse);
 
-    const healthyCandidates = this.client.getHealthyRelays(relaysToUse);
-    let relayCandidates = healthyCandidates;
+    const healthyCandidates = this.client.getHealthyRelays(sanitizedRequestedRelays);
+    const healthySet = new Set(healthyCandidates);
+    const remainingRequested = sanitizedRequestedRelays.filter(
+      (relayUrl) => !healthySet.has(relayUrl),
+    );
+    let relayCandidates = [...healthyCandidates, ...remainingRequested];
     if (!healthyCandidates.length && relaysToUse.length) {
-      const sanitizedFallback = sanitizeRelayList(relaysToUse);
       const defaultFallback = sanitizeRelayList(Array.from(DEFAULT_RELAY_URLS));
-      relayCandidates = sanitizedFallback.length
-        ? sanitizedFallback
+      relayCandidates = sanitizedRequestedRelays.length
+        ? sanitizedRequestedRelays
         : defaultFallback.length
           ? defaultFallback
           : sanitizeRelayList(Array.from(RELAY_URLS));
@@ -53,16 +58,23 @@ export class RelayBatchFetcher {
     const readPreferences = new Set(Array.isArray(this.client.readRelays) ? this.client.readRelays : []);
 
     // Sort relays: prefer user's read relays first
-    const sortedRelays = relayCandidates.sort((a, b) => {
+    const sortedRelays = [...relayCandidates].sort((a, b) => {
       const aPreferred = readPreferences.has(a);
       const bPreferred = readPreferences.has(b);
+      const aHealthy = healthySet.has(a);
+      const bHealthy = healthySet.has(b);
+      if (aHealthy && !bHealthy) return -1;
+      if (!aHealthy && bHealthy) return 1;
       if (aPreferred && !bPreferred) return -1;
       if (!aPreferred && bPreferred) return 1;
       return 0;
     });
 
     // Cap the number of relays to avoid excessive requests
-    const cappedRelays = sortedRelays.slice(0, 8);
+    const relayCap = Number.isFinite(maxRelays)
+      ? Math.max(1, Math.floor(maxRelays))
+      : 8;
+    const cappedRelays = sortedRelays.slice(0, relayCap);
     const normalizedRelays = sanitizeRelayList(cappedRelays);
 
     if (isDevMode) {

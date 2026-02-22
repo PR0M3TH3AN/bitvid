@@ -802,6 +802,7 @@ export class NostrClient {
    * @param {function} [params.fetchFn] - Custom fetch function (mocks or specialized logic). Defaults to `pool.list`.
    * @param {number} [params.since] - Explicit start timestamp (overrides storage).
    * @param {number} [params.timeoutMs] - Optional per-relay timeout for list fetches; defaults to a higher list-friendly baseline.
+   * @param {number} [params.maxRelays] - Maximum relay count to query for this fetch (defaults to 8).
    * @returns {Promise<import("nostr-tools").Event[]>} Deduplicated list of events found across all relays.
    */
   async fetchListIncrementally({
@@ -812,6 +813,7 @@ export class NostrClient {
     fetchFn,
     since,
     timeoutMs = STANDARD_TIMEOUT_MS,
+    maxRelays = 8,
   } = {}) {
     return this.relayBatchFetcher.fetchListIncrementally({
       kind,
@@ -821,6 +823,7 @@ export class NostrClient {
       fetchFn,
       since,
       timeoutMs,
+      maxRelays,
     });
   }
 
