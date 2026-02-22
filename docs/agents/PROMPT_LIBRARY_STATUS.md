@@ -1,26 +1,33 @@
 # Prompt Library Status
 
-Last updated: 2026-02-18
+Last updated: 2026-02-22
 Run type: Daily
 
 ## Summary
 
 - **Total prompts**: 36 (21 daily, 15 weekly) + 2 schedulers
-- **Health**: Good. All prompts follow the canonical structure.
-  Verified `test-audit-agent` update is consistent with repo policy.
+- **Health**: Good. Fixed broken path references in multiple prompts.
 
 ## Changes This Run
 
 ### Verified Fixes
 
-None.
+- **`weekly/bitvid-smoke-agent.md`**: Fixed missing `.js` extension in `js/nostrClientFacade.js` reference.
+- **`weekly/bitvid-test-coverage-agent.md`**: Updated examples to reference existing files (`js/nostr/utils.js`, `js/services/storageService.js`) instead of placeholders.
+- **`daily/bitvid-content-audit-agent.md`**:
+  - Removed reference to non-existent `content/docs/upload.md`.
+  - Updated `js/services/uploadService.js` to `js/services/s3UploadService.js`.
+  - Updated `js/ui/uploadModal.js` to `js/ui/components/UploadModal.js`.
+- **`daily/bitvid-deps-security-agent.md`**: Updated `scripts/deps-audit.sh` to `scripts/generate-deps-report.cjs`.
+- **`daily/bitvid-const-refactor-agent.md`**:
+  - Updated regex/grep instructions to be generic.
+  - Updated target file examples to existing files (`js/nostr/watchHistory.js`, `js/nostr/relayBatchFetcher.js`).
+- **`daily/bitvid-nip-research-agent.md`**: Updated test file reference to `tests/dm-decryptor.test.mjs`.
+- **`daily/bitvid-test-audit-agent.md`**: Clarified wildcard `js/webtorrent*` to explicit `js/webtorrent.js`.
 
 ### Audited Prompts (Sample)
 
-- `daily/bitvid-test-audit-agent.md` (Verified recent update)
-- `daily/bitvid-docs-alignment-agent.md` (Verified valid)
-- `daily/bitvid-docs-agent.md` (Verified valid)
-- `daily/bitvid-known-issues-agent.md` (Verified valid)
+- `daily/bitvid-prompt-curator-agent.md` (Self)
 
 ## Known Remaining Issues
 

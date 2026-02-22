@@ -93,7 +93,7 @@ WORKFLOW (implementation & run steps)
    - If Playwright is available:
      - Launch `chromium` headless and open `http://localhost:8000`
      - Optionally use Playwright page APIs to interact with the UI to trigger login/publish flows
-   - Alternatively implement a headless Node client using `js/nostrClientFacade` directly to simulate flows without UI.
+   - Alternatively implement a headless Node client using `js/nostrClientFacade.js` directly to simulate flows without UI.
 
 4) Login with ephemeral keys
    - Generate ephemeral keypair in memory (do not persist)

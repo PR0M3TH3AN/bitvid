@@ -106,7 +106,7 @@ DAILY WORKFLOW (run every day or as scheduled)
      - `js/nostr/watchHistory.js` — normalization, payload limits, republish backoff/jitter.
      - `js/userBlocks.js` — block list parsing/sanitation.
      - `js/ui/ambientBackground.js` — RAF and visibility gating.
-     - `js/webtorrent*` / `torrent/app.js` — lazy initialization.
+     - `js/webtorrent.js` / `torrent/app.js` — lazy initialization.
    - Parse coverage data (LCOV/coverage-summary) and map production files to coverage percentages.
    - Flag critical files with coverage < X% (configurable threshold, default 70%) and record in `test-audit/coverage-gaps.json`.
 
@@ -199,7 +199,7 @@ Focus on tests that exercise real behavior for these critical modules (examples 
   - Tests: normalization, payload size limits, republish backoff/jitter handling, serialization.
 - **Block lists & moderation**: `js/userBlocks.js`
   - Tests: tag sanitation, self-target filtering, parsing, and dumping behavior.
-- **Playback & WebTorrent**: `js/webtorrent*`, `torrent/app.js`, `js/ui/ambientBackground.js`
+- **Playback & WebTorrent**: `js/webtorrent.js`, `torrent/app.js`, `js/ui/ambientBackground.js`
   - Tests: lazy webtorrent init, visibility gating, ensure heavy loops paused when hidden.
 
 (If you need file paths to scan, search the `js/` tree for the filenames above).
