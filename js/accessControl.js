@@ -796,10 +796,17 @@ class AccessControl {
     // Bypass lockdown in test mode
     if (typeof window !== "undefined") {
       try {
+        const hostname = window.location.hostname;
+        const isLocal =
+          hostname === "localhost" ||
+          hostname === "127.0.0.1" ||
+          hostname === "[::1]";
         const params = new URLSearchParams(window.location.search);
+
         if (
-          params.get("__test__") === "1" ||
-          localStorage.getItem("__bitvidTestMode__") === "1"
+          isLocal &&
+          (params.get("__test__") === "1" ||
+            localStorage.getItem("__bitvidTestMode__") === "1")
         ) {
           return false;
         }
