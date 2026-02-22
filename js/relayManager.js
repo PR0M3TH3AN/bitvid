@@ -46,6 +46,19 @@ function getTestRelayOverrides() {
     // Ignore URL parsing errors
   }
 
+  // 3. Check persisted test relays
+  try {
+    const stored = localStorage.getItem("__bitvidTestRelays__");
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (error) {
+    // Ignore storage/JSON errors
+  }
+
   return null;
 }
 
@@ -225,31 +238,6 @@ function resolveEntryInput(entry) {
     }
   }
   return { url, mode: deriveMode(mode) };
-}
-
-function getTestRelayOverrides() {
-  if (typeof window === "undefined" || !window.location) return null;
-
-  const params = new URLSearchParams(window.location.search);
-  const paramRelays = params.get("__testRelays__");
-  if (paramRelays) {
-    return paramRelays
-      .split(",")
-      .map((r) => r.trim())
-      .filter(Boolean);
-  }
-
-  try {
-    const stored = localStorage.getItem("__bitvidTestRelays__");
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed)) return parsed;
-    }
-  } catch {
-    // Ignore
-  }
-
-  return null;
 }
 
 class RelayPreferencesManager {
