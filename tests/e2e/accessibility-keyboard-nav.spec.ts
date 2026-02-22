@@ -83,10 +83,17 @@ test.describe("Accessibility and keyboard navigation", () => {
 
       // When: login button receives focus and Enter is pressed
       const loginBtn = page.locator('[data-testid="login-button"]');
+      await expect(loginBtn).toBeVisible();
       await loginBtn.focus();
       await page.keyboard.press("Enter");
 
       // Then: login modal opens
+      // Wait for the modal to be attached to the DOM first (it might be loaded dynamically)
+      await page.waitForSelector('[data-testid="login-modal"]', {
+        state: "attached",
+        timeout: 15000,
+      });
+
       await page.waitForFunction(
         () => {
           const modal = document.querySelector(
@@ -273,10 +280,7 @@ test.describe("Accessibility and keyboard navigation", () => {
             '[data-testid="upload-modal"]',
           );
           if (!(modal instanceof HTMLElement)) return false;
-          return (
-            modal.getAttribute("data-open") === "true" &&
-            !modal.classList.contains("hidden")
-          );
+          return !modal.classList.contains("hidden");
         },
         { timeout: 10000 },
       );

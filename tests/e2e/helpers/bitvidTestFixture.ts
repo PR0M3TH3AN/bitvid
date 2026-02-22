@@ -115,10 +115,14 @@ async function gotoWithTestMode(page: Page, relayUrl: string, path = "/") {
   const testUrl = `${path}${separator}__test__=1&__testRelays__=${encodeURIComponent(relayUrl)}`;
 
   // Set up localStorage before navigation
-  await page.addInitScript(() => {
+  await page.addInitScript((url) => {
     localStorage.setItem("hasSeenDisclaimer", "true");
     localStorage.setItem("__bitvidTestMode__", "1");
-  });
+    // Inject test relays to ensure robust fallback if URL parsing fails
+    localStorage.setItem("__bitvidTestRelays__", JSON.stringify([url]));
+    // Disable whitelist mode to ensure seeded test events are accessible
+    localStorage.setItem("bitvid_admin_whitelist_mode", "false");
+  }, relayUrl);
 
   await page.goto(testUrl);
 
@@ -127,6 +131,11 @@ async function gotoWithTestMode(page: Page, relayUrl: string, path = "/") {
     () => typeof (window as any).__bitvidTest__ === "object",
     { timeout: 15000 },
   );
+
+  // Explicitly set test relays to ensure they are active and recognized by the relayManager patch
+  await page.evaluate((url) => {
+    (window as any).__bitvidTest__.setTestRelays([url], { persist: false });
+  }, relayUrl);
 }
 
 /**
