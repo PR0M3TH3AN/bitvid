@@ -22,6 +22,7 @@ import {
 } from "./nostrClientRegistry.js";
 import { devLogger } from "./utils/logger.js";
 import { STANDARD_TIMEOUT_MS } from "./constants.js";
+import { getApplication } from "./applicationContext.js";
 
 const HARNESS_VERSION = 2;
 const MAX_SYNC_EVENT_BUFFER = 300;
@@ -409,16 +410,29 @@ async function loginWithNsec(hexPrivateKey) {
     setSignerDecryptBehavior(activeDecryptBehavior.mode, activeDecryptBehavior);
   }
 
+  const app = getApplication();
+  if (app && app.authService) {
+    // Notify the app about the login so UI updates
+    await app.authService.login(pubkey, { persistActive: false });
+  } else {
+    devLogger.warn("[testHarness] App or authService not available during loginWithNsec");
+  }
+
   return pubkey;
 }
 
 /**
  * Logout the current signer.
  */
-function logout() {
+async function logout() {
   const signer = getActiveSigner();
   if (signer) {
     setActiveSigner(null);
+  }
+
+  const app = getApplication();
+  if (app && app.requestLogout) {
+    await app.requestLogout();
   }
 }
 

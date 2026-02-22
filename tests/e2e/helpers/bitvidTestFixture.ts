@@ -64,7 +64,9 @@ function createVideoEvent(video: TestVideoEvent) {
 
   const tags: string[][] = [
     ["d", dTag],
+    ["t", "video"],
     ["title", video.title],
+    ["s", `nostr:${dTag}`],
   ];
   if (video.url) tags.push(["url", video.url]);
 

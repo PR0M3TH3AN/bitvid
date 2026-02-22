@@ -17,6 +17,13 @@ import { HEX64_REGEX } from "../../utils/hex.js";
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const DEFAULT_PROFILE_AVATAR = "assets/svg/default-profile.svg";
 
+function extractDTagValue(tags) {
+  if (!Array.isArray(tags)) return "";
+  for (const tag of tags) {
+    if (Array.isArray(tag) && tag[0] === "d") return tag[1] || "";
+  }
+  return "";
+}
 
 export class VideoCard {
   constructor({
@@ -394,6 +401,9 @@ export class VideoCard {
 
     this.root.dataset.component = "video-card";
     this.root.dataset.testid = "video-card";
+    this.root.dataset.videoCard = "true";
+    this.root.dataset.videoPubkey = this.video.pubkey || "";
+    this.root.dataset.videoDtag = extractDTagValue(this.video.tags);
     this.syncCardState();
     this.syncMotionState();
     if (this.video?.id) {
@@ -469,6 +479,7 @@ export class VideoCard {
       this.video.title
     );
     title.dataset.videoId = this.video.id;
+    title.dataset.videoTitle = this.video.title;
     this.titleEl = title;
 
     const header = this.createElement("div", {
@@ -2693,7 +2704,7 @@ export class VideoCard {
   }
 
   applyPlaybackDatasets() {
-    const elements = [this.anchorEl, this.titleEl].filter(Boolean);
+    const elements = [this.root, this.anchorEl, this.titleEl].filter(Boolean);
     elements.forEach((el) => {
       if (!el) return;
       el.dataset.playUrl = encodeURIComponent(this.playbackUrl || "");
