@@ -1,26 +1,27 @@
 # Prompt Library Status
 
-Last updated: 2026-02-18
+Last updated: 2026-02-22
 Run type: Daily
 
 ## Summary
 
 - **Total prompts**: 36 (21 daily, 15 weekly) + 2 schedulers
 - **Health**: Good. All prompts follow the canonical structure.
-  Verified `test-audit-agent` update is consistent with repo policy.
+  Fixed broken path references in multiple agents.
 
 ## Changes This Run
 
 ### Verified Fixes
 
-None.
+- `daily/bitvid-content-audit-agent.md`: Fixed broken paths (`js/services/uploadService.js` -> `s3UploadService.js`, `js/ui/uploadModal.js` -> `components/UploadModal.js`, `content/docs/upload.md` -> `getting-started.md`).
+- `daily/bitvid-deps-security-agent.md`: Updated `scripts/deps-audit.sh` reference to `scripts/generate-deps-report.cjs`.
+- `daily/bitvid-const-refactor-agent.md`: Updated non-existent `js/nostr/relayClient.js` example to `js/nostr/client.js`.
 
 ### Audited Prompts (Sample)
 
-- `daily/bitvid-test-audit-agent.md` (Verified recent update)
-- `daily/bitvid-docs-alignment-agent.md` (Verified valid)
-- `daily/bitvid-docs-agent.md` (Verified valid)
-- `daily/bitvid-known-issues-agent.md` (Verified valid)
+- `daily/bitvid-content-audit-agent.md` (Verified valid)
+- `daily/bitvid-deps-security-agent.md` (Verified valid)
+- `daily/bitvid-const-refactor-agent.md` (Verified valid)
 
 ## Known Remaining Issues
 
