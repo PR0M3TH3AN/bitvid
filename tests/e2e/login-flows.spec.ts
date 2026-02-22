@@ -98,6 +98,11 @@ test.describe("Login and authentication flows", () => {
           (window as any).__bitvidTest__.logout();
         });
 
+        // Wait for state to settle with a longer timeout
+        await page.waitForFunction(() => {
+          return (window as any).__bitvidTest__.getAppState().isLoggedIn === false;
+        }, { timeout: 15000 });
+
         const loggedOut = await page.evaluate(() => {
           return (window as any).__bitvidTest__.getAppState();
         });
