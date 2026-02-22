@@ -9,6 +9,7 @@ import {
   ADMIN_COMMUNITY_BLACKLIST_PREFIX,
   isDevMode,
 } from "./config.js";
+import { SHORT_TIMEOUT_MS } from "./constants.js";
 import {
   getRegisteredNostrClient,
   requestDefaultExtensionPermissions,
@@ -549,22 +550,42 @@ async function fetchLatestListEvent(filter, contextLabel = "admin-list") {
   }
 
   let events = [];
-  if (pubkey) {
-    events = await nostrClient.fetchListIncrementally({
-      kind,
-      pubkey,
-      dTag,
-      relayUrls: relays
-    });
-  } else {
+  const timeoutPromise = new Promise((_, reject) => {
+    setTimeout(() => {
+      reject(createError("timeout", "Request timed out"));
+    }, SHORT_TIMEOUT_MS);
+  });
+
+  try {
+    if (pubkey) {
+      events = await Promise.race([
+        nostrClient.fetchListIncrementally({
+          kind,
+          pubkey,
+          dTag,
+          relayUrls: relays,
+        }),
+        timeoutPromise,
+      ]);
+    } else {
       // Fallback for non-specific queries
       const normalizedFilter = {
         kinds: [kind],
-        limit: 50
+        limit: 50,
       };
       if (dTag) normalizedFilter["#d"] = [dTag];
       if (filter.authors) normalizedFilter.authors = filter.authors;
-      events = await nostrClient.pool.list(relays, [normalizedFilter]);
+      events = await Promise.race([
+        nostrClient.pool.list(relays, [normalizedFilter]),
+        timeoutPromise,
+      ]);
+    }
+  } catch (error) {
+    devLogger.warn(
+      `[adminListStore] Fetch failed for ${contextLabel}:`,
+      error,
+    );
+    throw error;
   }
 
   if (!events || !events.length) {
