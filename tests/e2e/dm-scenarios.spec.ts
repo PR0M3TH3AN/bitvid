@@ -14,7 +14,7 @@ test.describe("Direct Message Scenarios", () => {
 
       const targetHex = "0000000000000000000000000000000000000000000000000000000000000002";
 
-      const results = {};
+      const results: any = {};
 
       try {
         // Test sending DM (NIP-04)
