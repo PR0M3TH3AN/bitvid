@@ -204,8 +204,27 @@ class RelayPreferencesManager {
     this.lastEvent = null;
     this.loadedPubkey = null;
     this.lastLoadSource = "default";
-    this.defaultEntries = DEFAULT_RELAY_URLS.map((url) => {
-      const normalized = normalizeRelayUrl(url) || url;
+
+    let defaults = DEFAULT_RELAY_URLS;
+    try {
+      if (typeof window !== "undefined" && Array.isArray(window.__bitvidTestRelays__)) {
+        defaults = window.__bitvidTestRelays__;
+      } else {
+        const testRelays = localStorage.getItem("__bitvidTestRelays__");
+        if (testRelays) {
+          const parsed = JSON.parse(testRelays);
+          if (Array.isArray(parsed) && parsed.length) {
+            defaults = parsed;
+          }
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    this.defaultEntries = defaults.map((url) => {
+      const item = typeof url === "string" ? url : url?.url;
+      const normalized = normalizeRelayUrl(item) || item;
       return createEntry(normalized, "both");
     });
 
@@ -230,6 +249,29 @@ class RelayPreferencesManager {
   }
 
   loadFromStorage() {
+    try {
+      if (typeof window !== "undefined" && Array.isArray(window.__bitvidTestRelays__)) {
+        return window.__bitvidTestRelays__.map((item) => {
+          if (typeof item === "string") return createEntry(item, "both");
+          return item;
+        });
+      }
+
+      const testRelays = localStorage.getItem("__bitvidTestRelays__");
+      if (testRelays) {
+        const parsed = JSON.parse(testRelays);
+        if (Array.isArray(parsed) && parsed.length) {
+          // Normalize plain URLs to entry objects if needed
+          return parsed.map((item) => {
+            if (typeof item === "string") return createEntry(item, "both");
+            return item;
+          });
+        }
+      }
+    } catch (error) {
+      // Ignore storage errors in restricted contexts
+    }
+
     const cached = profileCache.get("relays");
     if (Array.isArray(cached)) {
       return cached;

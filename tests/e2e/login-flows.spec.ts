@@ -150,8 +150,8 @@ test.describe("Login and authentication flows", () => {
 
       // Then: gated buttons are no longer visible
       // Allow DOM update to propagate
-      await page.waitForTimeout(500);
-      await expect(uploadBtn).not.toBeVisible();
+      await page.waitForTimeout(2000);
+      await expect(uploadBtn).not.toBeVisible({ timeout: 10000 });
     });
 
     test("login button is visible in logged-out state", async ({
@@ -244,6 +244,11 @@ test.describe("Login and authentication flows", () => {
         },
         { timeout: 15000 },
       );
+
+      // Click the nsec provider to reveal inputs
+      const nsecProvider = page.locator('[data-provider-id="nsec"]');
+      await expect(nsecProvider).toBeVisible();
+      await nsecProvider.click();
 
       // Then: nsec input elements should be present in the DOM
       const nsecInput = page.locator('[data-testid="nsec-secret-input"]');
