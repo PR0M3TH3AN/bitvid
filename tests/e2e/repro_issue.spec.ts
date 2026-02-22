@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './helpers/instrumentedTest';
 import { startRelay } from '../../scripts/agent/simple-relay.mjs';
 import { WebSocket } from 'ws';
 import { finalizeEvent, getPublicKey, nip19 } from 'nostr-tools';

@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./helpers/instrumentedTest";
 
 test.describe("Webseed Stream Playback", () => {
   const VIDEO_URL =

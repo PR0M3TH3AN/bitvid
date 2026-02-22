@@ -33,6 +33,8 @@
     "test:e2e:chromium": "npm run build && npx playwright test tests/e2e --project=e2e",
     "test:e2e:firefox": "npm run build && npx playwright test tests/e2e --project=e2e-firefox",
     "test:e2e:deterministic": "npm run build && npx playwright test tests/e2e --project=e2e --project=e2e-firefox",
+    "test:e2e:coverage": "npm run build && cross-env PLAYWRIGHT_COVERAGE=1 PLAYWRIGHT_CAPTURE_CONSOLE=1 npx playwright test tests/e2e --project=e2e && node scripts/playwright/generate-function-coverage-report.mjs",
+    "test:e2e:coverage:report": "node scripts/playwright/generate-function-coverage-report.mjs",
     "test:e2e:extension": "npm run build && node scripts/playwright/run-extension-persistent.mjs",
     "test:load": "node scripts/agent/load-test.mjs",
     "test:smoke": "node scripts/agent/smoke-test.mjs",

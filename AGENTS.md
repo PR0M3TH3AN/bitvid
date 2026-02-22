@@ -458,6 +458,7 @@ Use these for stable element targeting:
 | `tests/e2e/agent-testability.spec.ts` | Infrastructure validation tests |
 | `scripts/playwright/run-extension-persistent.mjs` | Dedicated persistent-context launcher for extension smoke tests |
 | `docs/testing/playwright-integration-recommendations-2026-02-22.md` | Playwright/extension integration recommendations and follow-ups |
+| `docs/testing/playwright-function-coverage.md` | Playwright coverage integration, latest baseline metrics, and improvement plan |
 
 ---
 

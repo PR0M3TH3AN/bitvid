@@ -47,6 +47,7 @@ if (ENABLE_EXTENSION_E2E && EXTENSION_PATH) {
 
 export default defineConfig({
   testDir: "./tests",
+  globalSetup: "./tests/e2e/helpers/playwrightCoverageGlobalSetup.ts",
   outputDir: "artifacts/test-results",
   timeout: 60_000,
   reporter: process.env.CI

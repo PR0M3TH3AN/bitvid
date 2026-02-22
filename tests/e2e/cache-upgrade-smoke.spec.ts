@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./helpers/instrumentedTest";
 
 test("reload after deploy upgrade picks latest hashed bundle without manual cache clear", async ({
   page,

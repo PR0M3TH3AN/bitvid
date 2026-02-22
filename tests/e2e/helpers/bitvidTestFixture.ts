@@ -20,6 +20,7 @@ import { test as base, expect, type Page } from "@playwright/test";
 import { startRelay } from "../../../scripts/agent/simple-relay.mjs";
 import { finalizeEvent, getPublicKey } from "nostr-tools";
 import { WebSocket } from "ws";
+import { attachCoverageAndConsoleCapture } from "./playwrightCoverageInstrumentation";
 
 // Polyfill WebSocket for node environment
 if (!global.WebSocket) {
@@ -143,6 +144,7 @@ async function loginWithTestKey(page: Page) {
 // ------------------------------------------------------------------
 
 type BitvidFixtures = {
+  _coverageAndConsoleCapture: void;
   relay: Awaited<ReturnType<typeof startRelay>>;
   seedEvent: (video: TestVideoEvent) => Promise<any>;
   seedRawEvent: (event: any) => Promise<any>;
@@ -175,6 +177,15 @@ type BitvidFixtures = {
 // ------------------------------------------------------------------
 
 export const test = base.extend<BitvidFixtures>({
+  _coverageAndConsoleCapture: [
+    async ({ page, browserName }, use, testInfo) => {
+      const stopCapture = await attachCoverageAndConsoleCapture(page, testInfo, browserName);
+      await use();
+      await stopCapture();
+    },
+    { auto: true },
+  ],
+
   relay: [
     async ({}, use, testInfo) => {
       // Avoid port collisions when running in parallel workers

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./helpers/instrumentedTest";
 import { applyReducedMotion, failOnConsoleErrors } from "./helpers/uiTestUtils";
 
 test.describe("toast service in full DOM", () => {
