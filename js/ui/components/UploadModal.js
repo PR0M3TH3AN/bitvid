@@ -517,9 +517,9 @@ export class UploadModal {
       // Show UI
       this.sourceSections.progress.classList.remove("hidden");
       this.sourceSections.results.classList.remove("hidden");
-      this.results.videoUrl.value = "Uploading...";
-      this.results.magnet.value = "Pending...";
-      this.results.torrentUrl.value = "Pending...";
+      if (this.results.videoUrl) this.results.videoUrl.value = "Uploading...";
+      if (this.results.magnet) this.results.magnet.value = "Pending...";
+      if (this.results.torrentUrl) this.results.torrentUrl.value = "Pending...";
 
       this.updateVideoProgress(0, "Preparing upload...");
 
@@ -615,7 +615,7 @@ export class UploadModal {
               provider: providerLabel,
               prefix: storagePrefix,
           });
-          this.results.videoUrl.value = videoPublicUrl;
+          if (this.results.videoUrl) this.results.videoUrl.value = videoPublicUrl;
           this.updateVideoProgress(1, "Video uploaded.");
 
           // 5. Handle Torrent Result & Upload .torrent file
@@ -670,15 +670,15 @@ export class UploadModal {
 
               this.torrentState.magnet = magnet;
 
-              this.results.magnet.value = magnet;
-              this.results.torrentUrl.value = torrentPublicUrl;
+              if (this.results.magnet) this.results.magnet.value = magnet;
+              if (this.results.torrentUrl) this.results.torrentUrl.value = torrentPublicUrl;
 
               this.updateVideoProgress(1, "Ready to publish!");
           } else {
               this.torrentState.status = 'skipped'; // Failed hash or invalid
               this.updateVideoProgress(1, "Upload complete (No torrent fallback).");
-              this.results.magnet.value = "Not available (Info Hash failed)";
-              this.results.torrentUrl.value = "Not available";
+              if (this.results.magnet) this.results.magnet.value = "Not available (Info Hash failed)";
+              if (this.results.torrentUrl) this.results.torrentUrl.value = "Not available";
           }
 
       } catch (err) {
@@ -699,7 +699,7 @@ export class UploadModal {
 
           alert(`Upload failed: ${err.message}`);
 
-          this.inputs.file.value = ""; // Reset
+          if (this.inputs.file) this.inputs.file.value = ""; // Reset
       }
   }
 
@@ -782,7 +782,7 @@ export class UploadModal {
 
           this.thumbnailUploadState.status = 'complete';
           this.thumbnailUploadState.url = publicUrl;
-          this.inputs.thumbnail.value = publicUrl;
+          if (this.inputs.thumbnail) this.inputs.thumbnail.value = publicUrl;
 
           this.updateThumbnailProgress(1, "Thumbnail uploaded.");
 
@@ -813,18 +813,18 @@ export class UploadModal {
       }
 
       const pct = Math.round(fraction * 100);
-      this.inputs.progress.value = pct;
-      this.statusText.uploadPercent.textContent = `${pct}%`;
+      if (this.inputs.progress) this.inputs.progress.value = pct;
+      if (this.statusText.uploadPercent) this.statusText.uploadPercent.textContent = `${pct}%`;
   }
 
   updateThumbnailProgress(fraction, text) {
-      if (text) this.statusText.thumbnailMain.textContent = text;
+      if (text && this.statusText.thumbnailMain) this.statusText.thumbnailMain.textContent = text;
 
       if (fraction === null) return;
 
       const pct = Math.round(fraction * 100);
-      this.inputs.thumbnailProgress.value = pct;
-      this.statusText.thumbnailPercent.textContent = `${pct}%`;
+      if (this.inputs.thumbnailProgress) this.inputs.thumbnailProgress.value = pct;
+      if (this.statusText.thumbnailPercent) this.statusText.thumbnailPercent.textContent = `${pct}%`;
   }
 
 
