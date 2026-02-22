@@ -198,7 +198,7 @@ function resolveEntryInput(entry) {
 }
 
 function getTestRelayOverrides() {
-  if (typeof window === "undefined") return null;
+  if (typeof window === "undefined" || !window.location) return null;
 
   const params = new URLSearchParams(window.location.search);
   const paramRelays = params.get("__testRelays__");
