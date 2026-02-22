@@ -127,6 +127,11 @@ async function gotoWithTestMode(page: Page, relayUrl: string, path = "/") {
     () => typeof (window as any).__bitvidTest__ === "object",
     { timeout: 15000 },
   );
+
+  // Explicitly set test relays to ensure they are active and recognized by the relayManager patch
+  await page.evaluate((url) => {
+    (window as any).__bitvidTest__.setTestRelays([url], { persist: false });
+  }, relayUrl);
 }
 
 /**
