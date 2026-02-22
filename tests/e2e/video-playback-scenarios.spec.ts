@@ -35,6 +35,11 @@ test.describe("Video playback scenarios", () => {
         return (window as any).__bitvidTest__.waitForFeedItems(1, 15000);
       });
 
+      // Wait for the modal element to be present in DOM before clicking
+      // This ensures event listeners (like VideoModalController's body click delegate)
+      // have likely been initialized by the app boot sequence.
+      await page.locator("#playerModal").waitFor({ state: "attached", timeout: 15000 });
+
       // When: user clicks the video card
       const card = page.locator("[data-video-card]").first();
       await expect(card).toBeVisible();
@@ -64,6 +69,9 @@ test.describe("Video playback scenarios", () => {
       await page.evaluate(() => {
         return (window as any).__bitvidTest__.waitForFeedItems(1, 15000);
       });
+
+      // Wait for modal presence to ensure app is fully initialized
+      await page.locator("#playerModal").waitFor({ state: "attached", timeout: 15000 });
 
       await page.locator("[data-video-card]").first().click();
 
@@ -100,6 +108,8 @@ test.describe("Video playback scenarios", () => {
       await page.evaluate(() => {
         return (window as any).__bitvidTest__.waitForFeedItems(1, 15000);
       });
+
+      await page.locator("#playerModal").waitFor({ state: "attached", timeout: 15000 });
 
       // When: user opens the video
       await page.locator("[data-video-card]").first().click();
@@ -146,6 +156,8 @@ test.describe("Video playback scenarios", () => {
       await page.evaluate(() => {
         return (window as any).__bitvidTest__.waitForFeedItems(1, 15000);
       });
+
+      await page.locator("#playerModal").waitFor({ state: "attached", timeout: 15000 });
 
       // When: user opens the video
       await page.locator("[data-video-card]").first().click();
@@ -195,32 +207,31 @@ test.describe("Video playback scenarios", () => {
         return (window as any).__bitvidTest__.waitForFeedItems(1, 15000);
       });
 
+      await page.locator("#playerModal").waitFor({ state: "attached", timeout: 15000 });
+
       await page.locator("[data-video-card]").first().click();
 
       const playerModal = page.locator("#playerModal");
       await expect(playerModal).not.toHaveClass(/hidden/, { timeout: 10000 });
 
       // When: user closes the modal
-      // Try various close mechanisms
-      const closeBtn = page.locator(
-        "#playerModal .modal-close, #playerModal [data-close], #playerModal [data-dismiss], #closePlayerModal",
-      );
-      if ((await closeBtn.count()) > 0) {
-        await closeBtn.first().click({ force: true });
+      // Use the standard close button ID which is bound in VideoModal.js
+      const closeBtn = page.locator("#closeModal");
+      await closeBtn.waitFor({ state: "visible", timeout: 5000 });
+      await closeBtn.click();
 
-        // Then: modal is hidden again
-        await page.waitForFunction(
-          () => {
-            const modal = document.querySelector("#playerModal");
-            if (!modal) return true;
-            return (
-              modal.classList.contains("hidden") ||
-              modal.getAttribute("data-open") === "false"
-            );
-          },
-          { timeout: 10000 },
-        );
-      }
+      // Then: modal is hidden again
+      await page.waitForFunction(
+        () => {
+          const modal = document.querySelector("#playerModal");
+          if (!modal) return true;
+          return (
+            modal.classList.contains("hidden") ||
+            modal.getAttribute("data-open") === "false"
+          );
+        },
+        { timeout: 10000 },
+      );
 
       // App state should still be valid
       const state = await page.evaluate(() => {
@@ -248,6 +259,8 @@ test.describe("Video playback scenarios", () => {
       await page.evaluate(() => {
         return (window as any).__bitvidTest__.waitForFeedItems(1, 15000);
       });
+
+      await page.locator("#playerModal").waitFor({ state: "attached", timeout: 15000 });
 
       // When: user opens the video
       await page.locator("[data-video-card]").first().click();

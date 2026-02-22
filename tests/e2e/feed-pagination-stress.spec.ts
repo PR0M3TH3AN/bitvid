@@ -297,13 +297,14 @@ test.describe("Feed pagination and stress scenarios", () => {
       const attrs = await page.evaluate(() => {
         const el = document.querySelector("[data-video-card]");
         if (!el) return null;
+        const titleEl = el.querySelector("[data-video-title]");
         return {
-          hasTitle: el.hasAttribute("data-video-title"),
+          hasTitle: !!titleEl,
           hasPubkey: el.hasAttribute("data-video-pubkey"),
           hasDtag: el.hasAttribute("data-video-dtag"),
           hasPlayUrl: el.hasAttribute("data-play-url"),
           hasPlayMagnet: el.hasAttribute("data-play-magnet"),
-          title: el.getAttribute("data-video-title"),
+          title: titleEl ? titleEl.getAttribute("data-video-title") : null,
           pubkey: el.getAttribute("data-video-pubkey"),
           dtag: el.getAttribute("data-video-dtag"),
         };

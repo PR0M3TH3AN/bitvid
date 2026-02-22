@@ -805,7 +805,9 @@ export class UploadModal {
 
 
   updateVideoProgress(fraction, text) {
-      if (text) this.statusText.uploadMain.textContent = text;
+      if (text && this.statusText?.uploadMain) {
+          this.statusText.uploadMain.textContent = text;
+      }
 
       if (fraction === null) {
            // Indeterminate or error
@@ -911,6 +913,9 @@ export class UploadModal {
   }
 
   toggleStorageView(viewName) {
+      if (!this.storageViews?.summary || !this.storageViews?.empty) {
+          return;
+      }
       if (viewName === "summary") {
           this.storageViews.summary.classList.remove("hidden");
           this.storageViews.empty.classList.add("hidden");
@@ -968,11 +973,11 @@ export class UploadModal {
 
   updateLockUi() {
       const locked = !this.isStorageUnlocked;
-      if (this.statusText.storageLock) {
+      if (this.statusText?.storageLock) {
           this.statusText.storageLock.textContent = locked ? "Locked 🔒" : "Unlocked 🔓";
           this.statusText.storageLock.className = locked ? "text-xs text-critical" : "text-xs text-success";
       }
-      if (this.toggles.storageUnlock) {
+      if (this.toggles?.storageUnlock) {
           // Show unlock button only if locked AND we have a configuration to unlock
           if (locked && this.storageConfigured) {
               this.toggles.storageUnlock.classList.remove("hidden");
