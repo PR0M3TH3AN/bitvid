@@ -197,6 +197,31 @@ function resolveEntryInput(entry) {
   return { url, mode: deriveMode(mode) };
 }
 
+function getTestRelayOverrides() {
+  if (typeof window === "undefined") return null;
+
+  const params = new URLSearchParams(window.location.search);
+  const paramRelays = params.get("__testRelays__");
+  if (paramRelays) {
+    return paramRelays
+      .split(",")
+      .map((r) => r.trim())
+      .filter(Boolean);
+  }
+
+  try {
+    const stored = localStorage.getItem("__bitvidTestRelays__");
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {
+    // Ignore
+  }
+
+  return null;
+}
+
 class RelayPreferencesManager {
   constructor() {
     this.entries = [];
@@ -208,6 +233,16 @@ class RelayPreferencesManager {
       const normalized = normalizeRelayUrl(url) || url;
       return createEntry(normalized, "both");
     });
+
+    const testOverrides = getTestRelayOverrides();
+    if (testOverrides && testOverrides.length) {
+      this.defaultEntries = testOverrides
+        .map((url) => {
+          const normalized = normalizeRelayUrl(url) || url;
+          return createEntry(normalized, "both");
+        })
+        .filter((e) => e.url);
+    }
 
     // Attempt to load from storage if policy allows
     const loaded = this.loadFromStorage();
