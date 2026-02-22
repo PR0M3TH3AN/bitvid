@@ -657,3 +657,82 @@ test(
       assert.deepEqual(hashtagPreferences.getInterests(), ["signerfallback"]);
     }
   );
+
+test(
+  "load applies same-timestamp updates deterministically with overlap fetch",
+  { concurrency: false },
+  async () => {
+    const pubkey = "c".repeat(64);
+    const sinceCalls = [];
+    let callCount = 0;
+    const originalFetchIncremental = nostrClient.fetchListIncrementally;
+
+    setActiveSigner({
+      nip04Decrypt: async (_target, ciphertext) => {
+        if (ciphertext === "cipher-new") {
+          return JSON.stringify({
+            version: 1,
+            interests: ["newpref"],
+            disinterests: [],
+          });
+        }
+        return JSON.stringify({
+          version: 1,
+          interests: ["oldpref"],
+          disinterests: [],
+        });
+      },
+    });
+
+    try {
+      nostrClient.fetchListIncrementally = async (params = {}) => {
+        sinceCalls.push(params.since);
+        callCount += 1;
+        const events = [
+          {
+            id: "0000",
+            created_at: 1500,
+            kind: 30015,
+            pubkey,
+            content: "cipher-old",
+            tags: [["encrypted", "nip04"]],
+          },
+        ];
+        if (callCount > 1) {
+          events.push({
+            id: "ffff",
+            created_at: 1500,
+            kind: 30015,
+            pubkey,
+            content: "cipher-new",
+            tags: [["encrypted", "nip04"]],
+          });
+        }
+        return events;
+      };
+
+      relayManager.setEntries(
+        [{ url: "wss://relay.same-second", mode: "both" }],
+        { allowEmpty: false, updateClient: false },
+      );
+
+      await hashtagPreferences.load(pubkey);
+      assert.deepEqual(hashtagPreferences.getInterests(), ["oldpref"]);
+
+      await hashtagPreferences.load(pubkey);
+      assert.deepEqual(
+        hashtagPreferences.getInterests(),
+        ["newpref"],
+        "newer same-second event should replace prior snapshot",
+      );
+      assert.ok(sinceCalls.length >= 2);
+      assert.equal(
+        sinceCalls[1],
+        1499,
+        "second fetch should include one-second overlap",
+      );
+    } finally {
+      nostrClient.fetchListIncrementally = originalFetchIncremental;
+    }
+  },
+);

@@ -1273,3 +1273,103 @@ test(
     setApplication(null);
   },
 );
+
+test("loadSubscriptions uses overlap window and deterministic latest-event tie-break", async () => {
+  const SubscriptionsManager = subscriptions.constructor;
+  const manager = new SubscriptionsManager();
+  const pubkey = "9".repeat(64);
+  const oldAuthor = "1".repeat(64);
+  const newAuthor = "2".repeat(64);
+
+  const originalRelays = Array.isArray(nostrClient.relays)
+    ? [...nostrClient.relays]
+    : nostrClient.relays;
+  const originalWriteRelays = Array.isArray(nostrClient.writeRelays)
+    ? [...nostrClient.writeRelays]
+    : nostrClient.writeRelays;
+  const originalFetchIncremental = nostrClient.fetchListIncrementally;
+  const originalSessionActor = nostrClient.sessionActor;
+  const originalPool = nostrClient.pool;
+  const originalRelayEntries = relayManager.getEntries();
+  const originalDecryptSubscriptionEvent = manager.decryptSubscriptionEvent;
+
+  const relayUrls = ["wss://relay-overlap.example"];
+  const sinceCalls = [];
+
+  const decryptEventIds = [];
+  manager.decryptSubscriptionEvent = async (event) => {
+    decryptEventIds.push(event?.id || "");
+    if (event?.id === "ffff") {
+      return { ok: true, plaintext: JSON.stringify([["p", newAuthor]]), scheme: "nip04" };
+    }
+    return { ok: true, plaintext: JSON.stringify([["p", oldAuthor]]), scheme: "nip04" };
+  };
+
+  nostrClient.relays = relayUrls;
+  nostrClient.writeRelays = relayUrls;
+  nostrClient.sessionActor = null;
+  nostrClient.pool = {
+    list: async () => [],
+  };
+  relayManager.setEntries(
+    relayUrls.map((url) => ({ url, mode: "both" })),
+    { allowEmpty: false, updateClient: false },
+  );
+
+  profileCache.setProfileData(pubkey, "subscriptions", {
+    subscribedPubkeys: [oldAuthor],
+    createdAt: 1000,
+    eventId: "cached-event",
+  });
+
+  nostrClient.fetchListIncrementally = async (params = {}) => {
+    sinceCalls.push(params.since);
+    return [
+      {
+        id: "0000",
+        created_at: 1000,
+        pubkey,
+        content: "cipher-old",
+        tags: [["encrypted", "nip04"]],
+      },
+      {
+        id: "ffff",
+        created_at: 1000,
+        pubkey,
+        content: "cipher-new",
+        tags: [["encrypted", "nip04"]],
+      },
+    ];
+  };
+
+  try {
+    await manager.updateFromRelays(pubkey, { allowPermissionPrompt: false });
+    assert.ok(sinceCalls.length >= 1, "incremental fetch should be called");
+    assert.equal(
+      sinceCalls[0],
+      999,
+      "incremental fetch should overlap one second to catch same-timestamp updates",
+    );
+    assert.equal(
+      manager.subsEventId,
+      "ffff",
+      "same-timestamp ties should resolve to the deterministic newest event id",
+    );
+    assert.deepEqual(decryptEventIds, ["ffff"]);
+    assert.deepEqual(manager.getSubscribedAuthors(), [newAuthor]);
+  } finally {
+    relayManager.setEntries(originalRelayEntries, {
+      allowEmpty: false,
+      updateClient: false,
+    });
+    nostrClient.relays = originalRelays;
+    nostrClient.writeRelays = originalWriteRelays;
+    nostrClient.pool = originalPool;
+    nostrClient.fetchListIncrementally = originalFetchIncremental;
+    nostrClient.sessionActor = originalSessionActor;
+    manager.decryptSubscriptionEvent = originalDecryptSubscriptionEvent;
+    localStorage.clear();
+    profileCache.memoryCache.clear();
+    profileCache.activePubkey = null;
+  }
+});

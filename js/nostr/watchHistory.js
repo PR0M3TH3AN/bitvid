@@ -32,6 +32,7 @@ import {
   mergePointerDetails,
 } from "../utils/pointerNormalization.js";
 import { pMap } from "../utils/asyncUtils.js";
+import { selectNewestListEvent } from "./listEventOrdering.js";
 
 export { normalizePointerInput, pointerKey };
 
@@ -1963,8 +1964,7 @@ class WatchHistoryManager {
     }
 
     // Determine snapshotId from the latest event (prioritizing monthly)
-    const sortedEvents = [...eventToProcess].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-    const latestEvent = sortedEvents[0];
+    const latestEvent = selectNewestListEvent(eventToProcess);
 
     const chunkIdentifiers = [];
     for (const event of pointerEvents) {

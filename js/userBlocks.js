@@ -30,6 +30,11 @@ import {
   getLastSuccessfulScheme,
   setLastSuccessfulScheme,
 } from "./nostr/decryptionSchemeCache.js";
+import {
+  compareListEventsDesc,
+  computeIncrementalSinceWithOverlap,
+  selectNewestListEvent,
+} from "./nostr/listEventOrdering.js";
 
 class TinyEventEmitter {
   constructor() {
@@ -1282,16 +1287,18 @@ class UserBlockListManager {
         // Separate by logic (Block vs Mute)
         // Legacy Block: Kind 10000 with d=user-blocks OR Kind 30002
         const legacyBlockEvents = validEvents
-          .filter((e) => isTaggedBlockListEvent(e) || e.kind === 30002)
-          .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
+          .filter((e) => isTaggedBlockListEvent(e) || e.kind === 30002);
 
         // Standard Mute: Kind 10000 WITHOUT d=user-blocks
         const standardMuteEvents = validEvents
-          .filter((e) => e.kind === KIND_MUTE_LIST && !isTaggedBlockListEvent(e))
-          .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
+          .filter((e) => e.kind === KIND_MUTE_LIST && !isTaggedBlockListEvent(e));
 
-        const newestLegacy = legacyBlockEvents[0] || null;
-        const newestStandard = standardMuteEvents[0] || null;
+        const newestLegacy = selectNewestListEvent(legacyBlockEvents, {
+          preferredKinds: [KIND_MUTE_LIST, 30002],
+        });
+        const newestStandard = selectNewestListEvent(standardMuteEvents, {
+          preferredKinds: [KIND_MUTE_LIST],
+        });
 
         const newestStandardTime = Number.isFinite(newestStandard?.created_at)
           ? newestStandard.created_at
@@ -1302,7 +1309,9 @@ class UserBlockListManager {
 
         // The "canonical" newest event for stale checks is simply the latest of either.
         const newestOverall =
-          newestStandardTime >= newestLegacyTime ? newestStandard : newestLegacy;
+          compareListEventsDesc(newestStandard, newestLegacy) <= 0
+            ? newestStandard
+            : newestLegacy;
         const newestCreatedAt = Math.max(newestStandardTime, newestLegacyTime);
 
         // We accept this state.
@@ -1604,7 +1613,7 @@ class UserBlockListManager {
       // If we have no data, we force a full fetch (since=0).
       const fetchSince =
         hasLocalData && Number.isFinite(this.blockEventCreatedAt)
-          ? this.blockEventCreatedAt
+          ? computeIncrementalSinceWithOverlap(this.blockEventCreatedAt, 1)
           : 0;
 
       // Concurrent incremental fetch for all variants

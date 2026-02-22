@@ -41,6 +41,10 @@ import {
   getLastSuccessfulScheme,
   setLastSuccessfulScheme,
 } from "./nostr/decryptionSchemeCache.js";
+import {
+  computeIncrementalSinceWithOverlap,
+  selectNewestListEvent,
+} from "./nostr/listEventOrdering.js";
 
 const SUBSCRIPTION_SET_KIND =
   getNostrEventSchema(NOTE_TYPES.SUBSCRIPTION_LIST)?.kind ?? 30000;
@@ -540,6 +544,9 @@ class SubscriptionsManager {
       );
       const hadCachedSnapshot = cachedSnapshot.hasSnapshot;
       const shouldForceFullFetch = !cachedSnapshot.hasSnapshot;
+      const incrementalSince = shouldForceFullFetch
+        ? 0
+        : computeIncrementalSinceWithOverlap(cachedSnapshot.createdAt, 1);
 
       // Fetch user and session actor subscription lists in parallel to reduce
       // total relay wait time during login.
@@ -549,7 +556,7 @@ class SubscriptionsManager {
           pubkey: normalizedUserPubkey,
           dTag: SUBSCRIPTION_LIST_IDENTIFIER,
           relayUrls,
-          since: shouldForceFullFetch ? 0 : (cachedSnapshot.createdAt || 0),
+          since: incrementalSince,
           timeoutMs: 12000,
         }),
       ];
@@ -568,13 +575,16 @@ class SubscriptionsManager {
           ),
         );
         const shouldForceSessionFetch = !sessionCachedSnapshot.hasSnapshot;
+        const sessionSince = shouldForceSessionFetch
+          ? 0
+          : computeIncrementalSinceWithOverlap(sessionCachedSnapshot.createdAt, 1);
         fetchPromises.push(
           nostrClient.fetchListIncrementally({
             kind: SUBSCRIPTION_SET_KIND,
             pubkey: normalizedSessionActorPubkey,
             dTag: SUBSCRIPTION_LIST_IDENTIFIER,
             relayUrls,
-            since: shouldForceSessionFetch ? 0 : (sessionCachedSnapshot.createdAt || 0),
+            since: sessionSince,
             timeoutMs: 12000,
           }),
         );
@@ -640,9 +650,10 @@ class SubscriptionsManager {
         return;
       }
 
-      // Sort by created_at desc, pick newest
-      mergedEvents.sort((a, b) => b.created_at - a.created_at);
-      const newest = mergedEvents[0];
+      const newest = selectNewestListEvent(mergedEvents);
+      if (!newest) {
+        return;
+      }
 
       // Any event returned here is effectively "new information" (or re-fetched full state).
       // fetchListIncrementally already handles the "newer than last sync" logic per relay,

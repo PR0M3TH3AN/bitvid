@@ -30,6 +30,11 @@ import {
   getLastSuccessfulScheme,
   setLastSuccessfulScheme,
 } from "../nostr/decryptionSchemeCache.js";
+import {
+  compareListEventsDesc,
+  computeIncrementalSinceWithOverlap,
+  selectNewestListEvent,
+} from "../nostr/listEventOrdering.js";
 import { HEX64_REGEX } from "../utils/hex.js";
 import { SHORT_TIMEOUT_MS, NETWORK_RETRY_DELAY_MS } from "../constants.js";
 
@@ -711,7 +716,9 @@ class HashtagPreferencesService {
       // Anchor the fetch to the service's current state to prevent desync.
       // If we have cached data, we ask for updates since that timestamp.
       // If we have no data, we force a full fetch (since=0).
-      const since = wasLoadedForUser ? Number(this.eventCreatedAt) || 0 : 0;
+      const since = wasLoadedForUser
+        ? computeIncrementalSinceWithOverlap(this.eventCreatedAt, 1)
+        : 0;
 
       const promises = kinds.map((kind) =>
         nostrClient.fetchListIncrementally({
@@ -780,32 +787,9 @@ class HashtagPreferencesService {
       return;
     }
 
-    const latest = events.reduce((current, candidate) => {
-      if (!candidate) {
-        return current;
-      }
-      if (!current) {
-        return candidate;
-      }
-      const candidateTs = Number(candidate.created_at) || 0;
-      const currentTs = Number(current.created_at) || 0;
-      if (candidateTs === currentTs) {
-        if (
-          candidate.kind === canonicalKind &&
-          current.kind !== canonicalKind
-        ) {
-          return candidate;
-        }
-        if (
-          current.kind === canonicalKind &&
-          candidate.kind !== canonicalKind
-        ) {
-          return current;
-        }
-        return candidate.id > current.id ? candidate : current;
-      }
-      return candidateTs > currentTs ? candidate : current;
-    }, null);
+    const latest = selectNewestListEvent(events, {
+      preferredKinds: [canonicalKind, legacyKind],
+    });
 
     if (!latest) {
       if (wasLoadedForUser) {
@@ -837,7 +821,12 @@ class HashtagPreferencesService {
 
     // Protection against overwriting optimistic updates:
     // If the local version is newer (because user just edited), ignore the remote fetch.
-    if (wasLoadedForUser && currentCreatedAt >= latestCreatedAt) {
+    const currentEvent = {
+      created_at: this.eventCreatedAt,
+      id: this.eventId,
+      kind: canonicalKind,
+    };
+    if (wasLoadedForUser && compareListEventsDesc(currentEvent, latest) <= 0) {
       devLogger.log(
         `${LOG_PREFIX} Ignoring stale/concurrent preferences event (remote: ${latestCreatedAt}, local: ${currentCreatedAt}).`,
       );
