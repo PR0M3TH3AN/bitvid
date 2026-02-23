@@ -679,14 +679,14 @@ export class ProfileStorageController {
   }
 
   handleClearStorage() {
-    this.storageEndpointInput.value = "";
-    this.storageRegionInput.value = "auto";
-    this.storageAccessKeyInput.value = "";
-    this.storageSecretKeyInput.value = "";
-    this.storageBucketInput.value = "";
-    this.storagePrefixInput.value = "";
-    this.storageDefaultInput.checked = false;
-    this.storageProviderInput.value = "cloudflare_r2";
+    if (this.storageEndpointInput) this.storageEndpointInput.value = "";
+    if (this.storageRegionInput) this.storageRegionInput.value = "auto";
+    if (this.storageAccessKeyInput) this.storageAccessKeyInput.value = "";
+    if (this.storageSecretKeyInput) this.storageSecretKeyInput.value = "";
+    if (this.storageBucketInput) this.storageBucketInput.value = "";
+    if (this.storagePrefixInput) this.storagePrefixInput.value = "";
+    if (this.storageDefaultInput) this.storageDefaultInput.checked = false;
+    if (this.storageProviderInput) this.storageProviderInput.value = "cloudflare_r2";
     if (this.storageForcePathStyleInput) {
       this.storageForcePathStyleInput.checked = true;
     }
