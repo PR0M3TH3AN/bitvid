@@ -10,6 +10,34 @@ export class ProfileDirectMessageHelper {
     this.controller = controller;
   }
 
+  updateDmPrivacyToggleForRecipient(...args) {
+    if (typeof this.mainController.updateDmPrivacyToggleForRecipient === "function") {
+      return this.mainController.updateDmPrivacyToggleForRecipient(...args);
+    }
+    return undefined;
+  }
+
+  resolveDirectMessageScheme(message) {
+    if (typeof this.mainController.resolveDirectMessageScheme === "function") {
+      return this.mainController.resolveDirectMessageScheme(message);
+    }
+
+    if (!message || typeof message !== "object") {
+      return "";
+    }
+
+    const scheme =
+      typeof message.scheme === "string"
+        ? message.scheme
+        : typeof message.encryption_scheme === "string"
+        ? message.encryption_scheme
+        : typeof message?.decryptor?.scheme === "string"
+        ? message.decryptor.scheme
+        : "";
+
+    return typeof scheme === "string" ? scheme.trim().toLowerCase() : "";
+  }
+
   resolveActiveDmActor() {
     const active = this.mainController.normalizeHexPubkey(this.mainController.getActivePubkey());
     if (active) {

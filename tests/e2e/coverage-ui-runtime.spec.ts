@@ -243,8 +243,22 @@ test.describe("runtime UI utility coverage", () => {
 
       window.location.hash = "#view=docs&doc=advanced";
       window.dispatchEvent(new HashChangeEvent("hashchange"));
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const waitForCondition = async (predicate: () => boolean, timeoutMs = 3000) => {
+        const started = Date.now();
+        while (Date.now() - started < timeoutMs) {
+          if (predicate()) {
+            return true;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        return false;
+      };
+
+      await waitForCondition(() => {
+        const html = document.getElementById("markdown-container")?.innerHTML || "";
+        return document.title === "Advanced | bitvid docs" && html.includes("Second doc");
+      });
 
       const advancedTitle = document.title;
       const markdownHtml =

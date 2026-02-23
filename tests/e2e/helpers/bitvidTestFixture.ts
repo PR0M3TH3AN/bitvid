@@ -164,6 +164,7 @@ type BitvidFixtures = {
   clearRelay: () => Promise<void>;
   gotoApp: (path?: string) => Promise<void>;
   loginAs: (page: Page) => Promise<string>;
+  openProfileModal: (page: Page, pane?: string) => Promise<any>;
   setTestRelays: (page: Page, relays: string[]) => Promise<any>;
   setDecryptBehavior: (
     page: Page,
@@ -244,6 +245,36 @@ export const test = base.extend<BitvidFixtures>({
   loginAs: async ({}, use) => {
     await use(async (page: Page) => {
       return loginWithTestKey(page);
+    });
+  },
+
+  openProfileModal: async ({}, use) => {
+    await use(async (page: Page, pane = "account") => {
+      let lastError: unknown = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const result = await page.evaluate(async (targetPane) => {
+            const harness = (window as any).__bitvidTest__;
+            if (!harness || typeof harness.openProfileModal !== "function") {
+              throw new Error("openProfileModal is not available in test harness");
+            }
+            return harness.openProfileModal(targetPane);
+          }, pane);
+          if (result?.ok) {
+            return result;
+          }
+          lastError = new Error(
+            `openProfileModal returned non-ok result: ${JSON.stringify(result)}`,
+          );
+        } catch (error) {
+          lastError = error;
+        }
+        await page.waitForTimeout(500);
+      }
+
+      throw lastError instanceof Error
+        ? lastError
+        : new Error("openProfileModal failed after retries");
     });
   },
 

@@ -144,33 +144,37 @@ test.describe("Notification system — behavior", () => {
   }) => {
     // Given: the app is loaded
     await gotoApp();
+    await page.waitForTimeout(750);
 
     // When: a status notification is triggered
-    await page.evaluate(() => {
+    const snapshot = await page.evaluate(async () => {
+      const { getApplication } = await import("/js/applicationContext.js");
+      const app = getApplication();
       const statusContainer = document.getElementById("statusContainer");
       const messageSpan = statusContainer?.querySelector(
         "[data-status-message]",
       );
       const portal = document.getElementById("notificationPortal");
-      if (statusContainer) {
-        if (messageSpan instanceof HTMLElement) {
-          messageSpan.textContent = "Loading data...";
-        } else {
-          statusContainer.textContent = "Loading data...";
-        }
-        statusContainer.classList.remove("hidden");
+
+      if (app && typeof app.showStatus === "function") {
+        app.showStatus("Loading data...", { showSpinner: true });
       }
-      if (portal) {
-        portal.classList.add("notification-portal--active");
-      }
+
+      return {
+        hidden: statusContainer?.classList.contains("hidden") ?? true,
+        message:
+          messageSpan instanceof HTMLElement
+            ? messageSpan.textContent
+            : statusContainer?.textContent || "",
+        portalActive:
+          portal?.classList.contains("notification-portal--active") ?? false,
+      };
     });
 
-    // Then: the status container should be visible with the message
-    const statusContainer = page.locator("#statusContainer");
-    await expect(statusContainer).not.toHaveClass(/hidden/);
-
-    const messageSpan = statusContainer.locator("[data-status-message]");
-    await expect(messageSpan).toHaveText("Loading data...");
+    // Then: status state should reflect an active status message.
+    expect(snapshot.hidden).toBe(false);
+    expect(snapshot.message).toContain("Loading data...");
+    expect(snapshot.portalActive).toBe(true);
   });
 
   test("portal active class is absent when all banners hidden", async ({

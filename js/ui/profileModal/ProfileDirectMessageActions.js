@@ -14,6 +14,26 @@ export class ProfileDirectMessageActions {
     this.controller = controller;
   }
 
+  getDmPrivacySettingsSnapshot(...args) {
+    return this.controller.getDmPrivacySettingsSnapshot(...args);
+  }
+
+  persistDmPrivacySettings(...args) {
+    return this.controller.persistDmPrivacySettings(...args);
+  }
+
+  syncDmPrivacySettingsUi(...args) {
+    return this.controller.syncDmPrivacySettingsUi(...args);
+  }
+
+  focusMessageComposer(...args) {
+    return this.controller.focusMessageComposer(...args);
+  }
+
+  setDirectMessageRecipient(...args) {
+    return this.controller.setDirectMessageRecipient(...args);
+  }
+
   handleReadReceiptsToggle(enabled) {
     this.persistDmPrivacySettings({
       readReceiptsEnabled: Boolean(enabled),
@@ -819,12 +839,12 @@ export class ProfileDirectMessageActions {
   }
 
   setDmRelayPreferencesStatus(message = "") {
-    if (!(this.profileMessagesRelayStatus instanceof HTMLElement)) {
+    if (!(this.controller.renderer.profileMessagesRelayStatus instanceof HTMLElement)) {
       return;
     }
 
     const text = typeof message === "string" ? message.trim() : "";
-    this.profileMessagesRelayStatus.textContent = text;
+    this.controller.renderer.profileMessagesRelayStatus.textContent = text;
   }
 
   populateDmRelayPreferences() {

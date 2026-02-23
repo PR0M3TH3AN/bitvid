@@ -623,6 +623,55 @@ async function openUploadModal() {
   return { ok: false, reason: "upload-unavailable" };
 }
 
+async function openProfileModal(pane = "account") {
+  const app = getApplication();
+  const normalizedPane =
+    typeof pane === "string" && pane.trim() ? pane.trim().toLowerCase() : "account";
+
+  const ensureProfileModalLoaded = async () => {
+    if (!app?.profileController) {
+      return false;
+    }
+    if (document.getElementById("profileModal")) {
+      return true;
+    }
+    if (typeof app.profileController.load === "function") {
+      await app.profileController.load();
+      return Boolean(document.getElementById("profileModal"));
+    }
+    return false;
+  };
+
+  if (app?.profileController && typeof app.profileController.show === "function") {
+    await ensureProfileModalLoaded();
+    await app.profileController.show(normalizedPane);
+    try {
+      await waitForModalOpen("profileModal", 15000);
+      return { ok: true, source: "controller", pane: normalizedPane };
+    } catch (_error) {
+      // Fall through to click-based fallback.
+    }
+  }
+
+  const profileButton = document.querySelector('[data-testid="profile-button"]');
+  if (profileButton instanceof HTMLElement) {
+    profileButton.click();
+    await waitForModalOpen("profileModal", 15000);
+
+    if (
+      normalizedPane !== "account" &&
+      app?.profileController &&
+      typeof app.profileController.selectPane === "function"
+    ) {
+      app.profileController.selectPane(normalizedPane);
+    }
+
+    return { ok: true, source: "click", pane: normalizedPane };
+  }
+
+  return { ok: false, reason: "profile-unavailable", pane: normalizedPane };
+}
+
 /**
  * Get relay connection health info.
  */
@@ -704,6 +753,7 @@ export function installTestHarness() {
     waitForModalOpen,
     openLoginModal,
     openUploadModal,
+    openProfileModal,
     getRelayHealth,
     applyRelayOverrides,
     setTestRelays,
