@@ -705,6 +705,7 @@ class UserBlockListManager {
     this.blockedPubkeys = new Set();
     this._privateBlocks = new Set();
     this._publicMutes = new Set();
+    this.activePubkey = null;
     this.blockEventId = null;
     this.blockEventCreatedAt = null;
     this.lastPublishedCreatedAt = null;
@@ -718,7 +719,6 @@ class UserBlockListManager {
     this.loadPromise = null;
     this.loadingPubkey = null;
     this.blockListSubscriptionKey = null;
-
     profileCache.subscribe((event, detail) => {
       if (event === "profileChanged") {
         this.reset();
@@ -793,7 +793,6 @@ class UserBlockListManager {
     if (!isUserBlockListEvent(event)) {
       return;
     }
-
     this.loadBlocks(normalized).catch((error) => {
       devLogger.warn("[UserBlockList] Failed to refresh after block list event", error);
     });
@@ -864,7 +863,6 @@ class UserBlockListManager {
     if (!normalized) {
       return;
     }
-
     await this.loadBlocks(normalized);
   }
 
@@ -877,7 +875,6 @@ class UserBlockListManager {
       });
       return this.loadPromise;
     }
-
     if (this.loadPromise && this.loadingPubkey && this.loadingPubkey !== normalized) {
       devLogger.log("[UserBlockList] Waiting for existing block list load to settle.", {
         previous: this.loadingPubkey,
@@ -889,10 +886,15 @@ class UserBlockListManager {
     const loadPromise = this.loadBlocksInternal(normalized, options);
     this.loadPromise = loadPromise;
     this.loadingPubkey = normalized;
-
     try {
       return await loadPromise;
     } finally {
+      this.emitter.emit(USER_BLOCK_EVENTS.CHANGE, {
+        action: "load-settled",
+        blockedPubkeys: Array.from(this.blockedPubkeys),
+        loaded: this.loaded === true,
+        activePubkey: this.activePubkey || null,
+      });
       if (this.loadPromise === loadPromise) {
         this.loadPromise = null;
         this.loadingPubkey = null;
@@ -931,7 +933,6 @@ class UserBlockListManager {
     // realistic window while still failing faster than the full 15s interactive
     // timeout.
     const nip07DecryptTimeoutMs = allowPermissionPrompt ? 15000 : 8000;
-
     const emitStatus = (detail) => {
       if (!detail || typeof detail !== "object") {
         return;
@@ -997,7 +998,6 @@ class UserBlockListManager {
       this._privateBlocks = privateSet;
       this._publicMutes = publicSet;
       this.blockedPubkeys = new Set([...privateSet, ...publicSet]);
-
       this.emitter.emit(USER_BLOCK_EVENTS.CHANGE, {
         action: "sync",
         blockedPubkeys: Array.from(this.blockedPubkeys),

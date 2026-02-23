@@ -324,6 +324,183 @@ test(
 );
 
 test(
+  "load emits load-settled with readiness metadata for empty relay results",
+  { concurrency: false },
+  async () => {
+    const pubkey = "1".repeat(64);
+    const changes = [];
+    const unsubscribe = hashtagPreferences.on("change", (detail) => {
+      changes.push(detail);
+    });
+
+    const originalFetchIncremental = nostrClient.fetchListIncrementally;
+    try {
+      relayManager.setEntries(
+        [{ url: "wss://relay.empty", mode: "both" }],
+        { allowEmpty: false, updateClient: false },
+      );
+      nostrClient.fetchListIncrementally = async () => [];
+
+      await hashtagPreferences.load(pubkey);
+
+      const settled = changes.filter((entry) => entry?.action === "load-settled");
+      assert.ok(settled.length >= 1, "load should emit a final load-settled event");
+
+      const final = settled[settled.length - 1];
+      assert.equal(final.activePubkey, pubkey);
+      assert.equal(final.uiReady, true);
+      assert.equal(final.dataReady, true);
+      assert.equal(final.loaded, true);
+      assert.equal(final.loadedFromCache, false);
+      assert.equal(final.lastLoadError, null);
+      assert.deepEqual(final.interests, []);
+      assert.deepEqual(final.disinterests, []);
+    } finally {
+      unsubscribe();
+      nostrClient.fetchListIncrementally = originalFetchIncremental;
+    }
+  },
+);
+
+test(
+  "load emits load-settled with permission-required metadata when decrypt is deferred",
+  { concurrency: false },
+  async () => {
+    const pubkey = "2".repeat(64);
+    const changes = [];
+    const unsubscribe = hashtagPreferences.on("change", (detail) => {
+      changes.push(detail);
+    });
+
+    const originalFetchIncremental = nostrClient.fetchListIncrementally;
+    const originalWindowNostr = window.nostr;
+    const relayUrls = ["wss://relay.permission-metadata"];
+
+    try {
+      relayManager.setEntries(
+        relayUrls.map((url) => ({ url, mode: "both" })),
+        { allowEmpty: false, updateClient: false },
+      );
+      nostrClient.relays = relayUrls;
+      nostrClient.writeRelays = relayUrls;
+      nostrClient.fetchListIncrementally = async () => [
+        {
+          id: "pref-permission-metadata",
+          created_at: 401,
+          pubkey,
+          content: "cipher-permission-metadata",
+          tags: [["encrypted", "nip04"]],
+        },
+      ];
+
+      window.nostr = {
+        enable: async () => {},
+        getPublicKey: async () => pubkey,
+        nip04: {
+          decrypt: async () => {
+            throw new Error("permission denied");
+          },
+        },
+      };
+      clearActiveSigner();
+
+      await hashtagPreferences.load(pubkey, { allowPermissionPrompt: false });
+
+      const settled = changes.filter((entry) => entry?.action === "load-settled");
+      assert.ok(settled.length >= 1, "load should emit load-settled even on deferred decrypt");
+
+      const final = settled[settled.length - 1];
+      assert.equal(final.activePubkey, pubkey);
+      assert.equal(final.uiReady, true);
+      assert.equal(typeof final.dataReady, "boolean");
+      assert.equal(final.dataReady, hashtagPreferences.dataReady === true);
+      assert.equal(typeof final.loaded, "boolean");
+      assert.equal(final.loaded, hashtagPreferences.loaded === true);
+      assert.equal(final.lastLoadError?.code, "hashtag-preferences-permission-required");
+    } finally {
+      unsubscribe();
+      nostrClient.fetchListIncrementally = originalFetchIncremental;
+      window.nostr = originalWindowNostr;
+    }
+  },
+);
+
+test(
+  "load emits load-settled with loadedFromCache when relay fetch is unavailable",
+  { concurrency: false },
+  async () => {
+    const pubkey = "3".repeat(64);
+    const originalPool = nostrClient.pool;
+    const originalLoadFromCache = hashtagPreferences.loadFromCache;
+    const originalInterests = hashtagPreferences.interests;
+    const originalDisinterests = hashtagPreferences.disinterests;
+    const originalEventId = hashtagPreferences.eventId;
+    const originalEventCreatedAt = hashtagPreferences.eventCreatedAt;
+    const originalLoaded = hashtagPreferences.loaded;
+    const originalUiReady = hashtagPreferences.uiReady;
+    const originalDataReady = hashtagPreferences.dataReady;
+    const originalLoadedFromCache = hashtagPreferences.loadedFromCache;
+    const originalLastSuccessfulSyncAt = hashtagPreferences.lastSuccessfulSyncAt;
+    const originalPreferencesVersion = hashtagPreferences.preferencesVersion;
+
+    try {
+      hashtagPreferences.loadFromCache = (candidate) => {
+        if (candidate !== pubkey) {
+          return false;
+        }
+        hashtagPreferences.activePubkey = candidate;
+        hashtagPreferences.interests = new Set(["cachepref"]);
+        hashtagPreferences.disinterests = new Set();
+        hashtagPreferences.eventId = "cache-event";
+        hashtagPreferences.eventCreatedAt = 777;
+        hashtagPreferences.loaded = true;
+        hashtagPreferences.uiReady = true;
+        hashtagPreferences.dataReady = true;
+        hashtagPreferences.loadedFromCache = true;
+        hashtagPreferences.lastSuccessfulSyncAt = 777000;
+        hashtagPreferences.preferencesVersion = 1;
+        hashtagPreferences.emitChange("cache-load");
+        return true;
+      };
+
+      const changes = [];
+      const unsubscribe = hashtagPreferences.on("change", (detail) => {
+        changes.push(detail);
+      });
+      try {
+        nostrClient.pool = null;
+        await hashtagPreferences.load(pubkey, { allowPermissionPrompt: false });
+
+        const settled = changes.filter((entry) => entry?.action === "load-settled");
+        assert.ok(settled.length >= 1, "cache-backed load should emit load-settled");
+        const final = settled[settled.length - 1];
+
+        assert.equal(final.activePubkey, pubkey);
+        assert.equal(final.loadedFromCache, true);
+        assert.equal(final.dataReady, true);
+        assert.equal(final.uiReady, true);
+        assert.deepEqual(final.interests, ["cachepref"]);
+      } finally {
+        unsubscribe();
+      }
+    } finally {
+      nostrClient.pool = originalPool;
+      hashtagPreferences.loadFromCache = originalLoadFromCache;
+      hashtagPreferences.interests = originalInterests;
+      hashtagPreferences.disinterests = originalDisinterests;
+      hashtagPreferences.eventId = originalEventId;
+      hashtagPreferences.eventCreatedAt = originalEventCreatedAt;
+      hashtagPreferences.loaded = originalLoaded;
+      hashtagPreferences.uiReady = originalUiReady;
+      hashtagPreferences.dataReady = originalDataReady;
+      hashtagPreferences.loadedFromCache = originalLoadedFromCache;
+      hashtagPreferences.lastSuccessfulSyncAt = originalLastSuccessfulSyncAt;
+      hashtagPreferences.preferencesVersion = originalPreferencesVersion;
+    }
+  },
+);
+
+test(
   "interest and disinterest lists remain exclusive",
   { concurrency: false },
   async () => {

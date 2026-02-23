@@ -526,6 +526,13 @@ class HashtagPreferencesService {
         eventId: this.eventId,
         createdAt: this.eventCreatedAt,
         version: this.preferencesVersion,
+        loaded: this.loaded === true,
+        uiReady: this.uiReady === true,
+        dataReady: this.dataReady === true,
+        loadedFromCache: this.loadedFromCache === true,
+        backgroundLoading: this.backgroundLoading === true,
+        lastLoadError: this.lastLoadError || null,
+        activePubkey: this.activePubkey || null,
         ...detail,
       });
     } catch (error) {
@@ -589,6 +596,11 @@ class HashtagPreferencesService {
         state: this.getLoadState(),
       };
     } finally {
+      this.emitChange("load-settled", {
+        ...this.getLoadState(),
+        loaded: this.loaded === true,
+        backgroundLoading: this.backgroundLoading === true,
+      });
       if (this.loadPromise === loadPromise) {
         this.loadPromise = null;
         this.loadingPubkey = null;
