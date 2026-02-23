@@ -856,7 +856,9 @@ export function createAuthSessionCoordinator(deps) {
         return this._pendingLogoutPromise;
       }
 
-      this._pendingLogoutPromise = this._executeAuthLogout(detail);
+      // Coordinator methods are bound to the Application instance, so
+      // private coordinator helpers must be reached through the coordinator object.
+      this._pendingLogoutPromise = this._auth._executeAuthLogout(detail);
       try {
         return await this._pendingLogoutPromise;
       } finally {
