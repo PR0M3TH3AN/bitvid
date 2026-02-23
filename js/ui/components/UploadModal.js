@@ -1262,7 +1262,8 @@ export class UploadModal {
 
   // --- Modal Control ---
 
-  open({ triggerElement } = {}) {
+  async open({ triggerElement } = {}) {
+    await this.load();
     if (!this.root) return;
     this.root.classList.remove("hidden");
     this.setGlobalModalState("upload", true);
