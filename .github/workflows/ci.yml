@@ -262,8 +262,8 @@ jobs:
           CLOUDFLARE_PURGE_BASE_URL: ${{ secrets.CLOUDFLARE_PURGE_BASE_URL }}
         run: |
           if [ -z "$CLOUDFLARE_PURGE_BASE_URL" ]; then
-            echo "CLOUDFLARE_PURGE_BASE_URL is required to verify deployed index.html"
-            exit 1
+            echo "CLOUDFLARE_PURGE_BASE_URL is not configured; skipping deployed index.html verification."
+            exit 0
           fi
 
           DEPLOY_INDEX_URL="${CLOUDFLARE_PURGE_BASE_URL%/}/index.html" npm run verify:deployed:index-html

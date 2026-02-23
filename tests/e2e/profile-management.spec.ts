@@ -309,14 +309,14 @@ test.describe("Profile management and moderation", () => {
       const diag = await startDiagnostics(page);
 
       // When: a page error occurs
-      await page.evaluate(() => {
-        setTimeout(() => {
-          throw new Error("intentional-test-error");
-        }, 0);
-      });
-
-      // Allow the async error to be caught
-      await page.waitForTimeout(200);
+      await Promise.all([
+        page.waitForEvent("pageerror", { timeout: 5000 }),
+        page.evaluate(() => {
+          setTimeout(() => {
+            throw new Error("intentional-test-error");
+          }, 0);
+        }),
+      ]);
 
       // Then: error is captured
       const results = await diag.stop();
