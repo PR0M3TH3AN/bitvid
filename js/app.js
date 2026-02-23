@@ -1212,12 +1212,14 @@ class Application {
       await this.initializeServices();
 
       const modalPromise = this.initializeUIResources();
+
+      // Initialize UI listeners early so buttons are responsive while network connects
+      this.initializeUserInterface();
+
       await this.initializeNetwork();
       await modalPromise;
 
       await this.initializeDataAndSession();
-
-      this.initializeUserInterface();
       await this.performAutoLogin();
 
       await this.finalizeInitialization();
