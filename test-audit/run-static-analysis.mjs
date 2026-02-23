@@ -1,89 +1,72 @@
-import fs from "node:fs/promises";
+import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
-const rootDir = process.cwd();
-const testsDir = path.join(rootDir, "tests");
-const resultsFile = path.join(rootDir, "test-audit/suspicious-tests.json");
+const OUTPUT_FILE = "test-audit/suspicious-tests.json";
 
-const checks = {
-  zeroAssertions: {
-    regex: /(expect\(|assert\.|t\.is|chai\.expect|should\.)/,
-    message: "No obvious assertions found",
-    inverted: true // fails if NOT found
-  },
-  focusedOrSkipped: {
-    regex: /\.(only|skip)\(/,
-    message: "Test is focused (.only) or skipped (.skip)"
-  },
-  sleeps: {
-    regex: /(setTimeout\(|sleep\(|await delay\(|new Promise\(r => setTimeout)/,
-    message: "Uses setTimeout/sleep (brittle)"
-  },
-  network: {
-    regex: /(fetch\(|axios\.|new WebSocket|WebSocket\()/,
-    message: "Direct network usage found"
-  },
-  mocking: {
-    regex: /(jest\.mock|sinon\.stub|proxyquire|rewire|vi\.mock|vi\.spy)/,
-    message: "Heavy mocking detected"
-  },
-  console: {
-    regex: /console\.(log|warn|error)/,
-    message: "Console usage inside test"
-  }
-};
-
-async function collectTests(dir, testFiles = []) {
-  const entries = await fs.readdir(dir, { withFileTypes: true });
-
-  for (const entry of entries) {
-    if (entry.name.startsWith(".")) continue;
-    const fullPath = path.join(dir, entry.name);
-
-    if (entry.isDirectory()) {
-      if (entry.name === "visual") continue; // Skip visual tests if needed?
-      await collectTests(fullPath, testFiles);
-      continue;
-    }
-
-    if (entry.isFile() && (entry.name.endsWith(".test.mjs") || entry.name.endsWith(".test.js"))) {
-      testFiles.push(fullPath);
-    }
-  }
-  return testFiles;
-}
-
-async function analyzeFile(filepath) {
-  const content = await fs.readFile(filepath, "utf8");
-  const issues = [];
-
-  for (const [key, check] of Object.entries(checks)) {
-    const match = check.regex.test(content);
-    if (check.inverted) {
-      if (!match) issues.push(check.message);
+function walkDir(dir, callback) {
+  if (!fs.existsSync(dir)) return;
+  const files = fs.readdirSync(dir);
+  for (const f of files) {
+    const fullPath = path.join(dir, f);
+    const stat = fs.statSync(fullPath);
+    if (stat.isDirectory()) {
+      if (f !== "node_modules" && f !== "artifacts" && f !== "test-audit") {
+        walkDir(fullPath, callback);
+      }
     } else {
-      if (match) issues.push(check.message);
+      callback(fullPath);
     }
   }
-
-  return issues;
 }
 
-async function run() {
-  const testFiles = await collectTests(testsDir);
-  const suspiciousTests = {};
+function runAnalysis() {
+  const skippedOrFocused = [];
+  const timing = [];
+  const consoleUsage = [];
+  const zeroAssertions = [];
 
-  for (const file of testFiles) {
-    const issues = await analyzeFile(file);
-    if (issues.length > 0) {
-      const relativePath = path.relative(rootDir, file);
-      suspiciousTests[relativePath] = issues;
+  const files = [];
+  walkDir("js", (f) => files.push(f));
+  walkDir("tests", (f) => files.push(f));
+
+  for (const file of files) {
+    if (!file.match(/\.(js|mjs|ts)$/)) continue;
+
+    const content = fs.readFileSync(file, "utf8");
+    const lines = content.split("\n");
+
+    // Zero assertions check (heuristic) - only for test files
+    if (file.match(/\.(test|spec)\.(mjs|js|ts)$/)) {
+        if (content.match(/describe\(|test\(|it\(/)) {
+             if (!content.match(/expect\(|assert\.|t\.is|chai\.expect|should\.|ok\(/)) {
+                 zeroAssertions.push(file);
+             }
+        }
     }
+
+    lines.forEach((line, index) => {
+        const lineNum = index + 1;
+        if (line.match(/\.(only|skip)\(/)) {
+            skippedOrFocused.push(`${file}:${lineNum}:${line.trim()}`);
+        }
+        if (line.match(/setTimeout\(|sleep\(|await delay\(|new Promise\(r => setTimeout/)) {
+            timing.push(`${file}:${lineNum}:${line.trim()}`);
+        }
+        if (line.match(/console\.(log|warn|error)/)) {
+            consoleUsage.push(`${file}:${lineNum}:${line.trim()}`);
+        }
+    });
   }
 
-  await fs.writeFile(resultsFile, JSON.stringify(suspiciousTests, null, 2));
-  console.log(`Static analysis complete. Found issues in ${Object.keys(suspiciousTests).length} files.`);
+  const report = {
+    skippedOrFocused,
+    timing,
+    consoleUsage,
+    zeroAssertions
+  };
+
+  fs.writeFileSync(OUTPUT_FILE, JSON.stringify(report, null, 2));
+  console.log(`Static analysis report written to ${OUTPUT_FILE}`);
 }
 
-run().catch(console.error);
+runAnalysis();
