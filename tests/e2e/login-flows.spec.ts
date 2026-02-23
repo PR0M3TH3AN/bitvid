@@ -195,9 +195,20 @@ test.describe("Login and authentication flows", () => {
     }) => {
       // Given: the login modal is open
       await gotoApp();
-      await page.locator('[data-testid="login-button"]').click();
+      const loginButton = page.locator('[data-testid="login-button"]');
+      await loginButton.click();
 
       const modal = page.locator('[data-testid="login-modal"]');
+      await page.waitForFunction(
+        () => {
+          const loginModal = document.querySelector('[data-testid="login-modal"]');
+          if (!(loginModal instanceof HTMLElement)) {
+            return false;
+          }
+          return loginModal.getAttribute("data-open") === "true";
+        },
+        { timeout: 15000 },
+      );
       await expect(modal).toBeVisible({ timeout: 15000 });
 
       // Then: at least one provider button is visible

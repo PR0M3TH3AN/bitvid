@@ -50,6 +50,7 @@ export default defineConfig({
   globalSetup: "./tests/e2e/helpers/playwrightCoverageGlobalSetup.ts",
   outputDir: "artifacts/test-results",
   timeout: 60_000,
+  retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI
     ? [["github"], ["html", { open: "never" }]]
     : [["list"], ["html", { open: "never" }]],
