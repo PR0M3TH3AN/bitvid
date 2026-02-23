@@ -185,13 +185,16 @@ import {
   safeDecodeNpub,
   normalizeHexPubkey,
 } from "./utils/nostrHelpers.js";
+import {
+  bindThumbnailFallbacks as bindThumbnailFallbacksUtil,
+  FALLBACK_THUMBNAIL_SRC,
+} from "./ui/thumbnailBinder.js";
 
 const recordVideoViewApi = (...args) => recordVideoView(nostrClient, ...args);
 
 const UNSUPPORTED_BTITH_MESSAGE =
   "This magnet link is missing a compatible BitTorrent v1 info hash.";
 
-const FALLBACK_THUMBNAIL_SRC = "/assets/jpg/video-thumbnail-fallback.jpg";
 const VIDEO_EVENT_KIND = 30078;
 
 const RELAY_UI_BATCH_DELAY_MS = 250;
@@ -4111,85 +4114,7 @@ class Application {
   }
 
   bindThumbnailFallbacks(container) {
-    if (!container || typeof container.querySelectorAll !== "function") {
-      return;
-    }
-
-    const thumbnails = container.querySelectorAll("[data-video-thumbnail]");
-    thumbnails.forEach((img) => {
-      if (!img) {
-        return;
-      }
-
-      const ensureFallbackSource = () => {
-        let fallbackSrc = "";
-        if (typeof img.dataset.fallbackSrc === "string") {
-          fallbackSrc = img.dataset.fallbackSrc.trim();
-        }
-
-        if (!fallbackSrc) {
-          const attr = img.getAttribute("data-fallback-src") || "";
-          fallbackSrc = attr.trim();
-        }
-
-        if (!fallbackSrc && img.tagName === "IMG") {
-          fallbackSrc = FALLBACK_THUMBNAIL_SRC;
-        }
-
-        if (fallbackSrc) {
-          if (img.dataset.fallbackSrc !== fallbackSrc) {
-            img.dataset.fallbackSrc = fallbackSrc;
-          }
-          if (!img.getAttribute("data-fallback-src")) {
-            img.setAttribute("data-fallback-src", fallbackSrc);
-          }
-        }
-
-        return fallbackSrc;
-      };
-
-      const applyFallback = () => {
-        const fallbackSrc = ensureFallbackSource() || FALLBACK_THUMBNAIL_SRC;
-        if (!fallbackSrc) {
-          return;
-        }
-
-        if (img.src !== fallbackSrc) {
-          img.src = fallbackSrc;
-        }
-
-        img.dataset.thumbnailFailed = "true";
-      };
-
-      const handleLoad = () => {
-        if (
-          (img.naturalWidth === 0 && img.naturalHeight === 0) ||
-          !img.currentSrc
-        ) {
-          applyFallback();
-        } else {
-          delete img.dataset.thumbnailFailed;
-        }
-      };
-
-      ensureFallbackSource();
-
-      if (img.dataset.thumbnailFallbackBound === "true") {
-        if (img.complete) {
-          handleLoad();
-        }
-        return;
-      }
-
-      img.addEventListener("error", applyFallback);
-      img.addEventListener("load", handleLoad);
-
-      img.dataset.thumbnailFallbackBound = "true";
-
-      if (img.complete) {
-        handleLoad();
-      }
-    });
+    bindThumbnailFallbacksUtil(container);
   }
 
   ensureGlobalMoreMenuHandlers() {
