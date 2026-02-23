@@ -146,6 +146,9 @@ test.describe("Notification system — behavior", () => {
     await gotoApp();
     await page.waitForTimeout(750);
 
+    // Wait for app initialization (e.g. auto-login checks) to settle so they don't reset the status
+    await page.waitForTimeout(1000);
+
     // When: a status notification is triggered
     const snapshot = await page.evaluate(async () => {
       const { getApplication } = await import("/js/applicationContext.js");
