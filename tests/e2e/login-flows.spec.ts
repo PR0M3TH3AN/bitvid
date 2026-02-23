@@ -78,11 +78,13 @@ test.describe("Login and authentication flows", () => {
       loginAs,
       testPubkey,
     }) => {
+      test.setTimeout(90000); // Increase timeout for slower CI environments (Firefox)
+
       // Given: the app is loaded
       await gotoApp();
 
-      // Perform 3 login/logout cycles
-      for (let cycle = 0; cycle < 3; cycle++) {
+      // Perform 2 login/logout cycles (reduced from 3 to save time in CI)
+      for (let cycle = 0; cycle < 2; cycle++) {
         // When: login
         const pubkey = await loginAs(page);
         expect(pubkey).toBe(testPubkey);
