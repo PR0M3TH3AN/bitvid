@@ -11,7 +11,7 @@ const commandArgs = args.length > 1 ? args.slice(1) : ["run", "test:unit"];
 
 console.log(`Running flakiness check: ${command} ${commandArgs.join(" ")} (${ITERATIONS}x)`);
 
-async function runTest(iteration) {
+function runTest(iteration) {
   return new Promise((resolve) => {
     const child = spawn(command, commandArgs, { stdio: "pipe" });
     let stdout = "";
@@ -21,10 +21,14 @@ async function runTest(iteration) {
     child.stderr.on("data", (data) => { stderr += data.toString(); });
 
     child.on("close", (code) => {
-      // Check for TAP failures in stdout even if exit code is 0
-      const hasTapFailure = stdout.includes("not ok");
+      // Check for TAP failures or other failure indicators
+      const hasTapFailure = stdout.includes("not ok") || stdout.includes("FAIL");
       const passed = code === 0 && !hasTapFailure;
       resolve({ passed, code, stdout, stderr });
+    });
+
+    child.on("error", (err) => {
+        resolve({ passed: false, code: -1, stdout: "", stderr: err.message });
     });
   });
 }
@@ -34,22 +38,29 @@ async function main() {
 
   for (let i = 0; i < ITERATIONS; i++) {
     console.log(`Iteration ${i + 1}/${ITERATIONS}...`);
+    const startTime = Date.now();
     const result = await runTest(i);
-    results.push({
+    const duration = Date.now() - startTime;
+
+    const entry = {
       iteration: i + 1,
       passed: result.passed,
       code: result.code,
-      hasTapFailure: result.stdout.includes("not ok") // Simplified check
-    });
+      duration,
+      failure: result.passed ? null : "Suite failed"
+    };
+    results.push(entry);
 
     if (!result.passed) {
-      console.log(`  Failed. TAP error: ${result.stdout.includes("not ok")}`);
+      console.log(`  Failed (code ${result.code}).`);
     } else {
-        console.log(`  Passed.`);
+      console.log(`  Passed (${duration}ms).`);
     }
+
+    // Save incrementally
+    fs.writeFileSync(MATRIX_FILE, JSON.stringify(results, null, 2));
   }
 
-  fs.writeFileSync(MATRIX_FILE, JSON.stringify(results, null, 2));
   console.log(`Flakiness matrix written to ${MATRIX_FILE}`);
 }
 
