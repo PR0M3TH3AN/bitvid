@@ -1,98 +1,108 @@
-import fs from "node:fs/promises";
-import path from "node:path";
+import fs from "node:fs";
 
-const rootDir = process.cwd();
-const reportFile = `test-audit-report-${new Date().toISOString().split("T")[0]}.md`;
-const logFile = "test-audit/coverage-run.log";
-const flakinessFile = "test-audit/flakiness-matrix.json";
-const suspiciousFile = "test-audit/suspicious-tests.json";
-const coverageFile = "coverage/coverage-summary.json";
+const FLAKINESS_FILE = "test-audit/flakiness-matrix.json";
+const SUSPICIOUS_FILE = "test-audit/suspicious-tests.json";
+const LOG_FILE = "test-audit/coverage-run.log";
 
-async function readJson(file) {
+// Dynamic date
+const date = new Date().toISOString().split("T")[0];
+const REPORT_FILE = `test-audit-report-${date}.md`;
+
+function main() {
+  const flakiness = JSON.parse(fs.readFileSync(FLAKINESS_FILE, "utf8"));
+  const suspicious = JSON.parse(fs.readFileSync(SUSPICIOUS_FILE, "utf8"));
+  let log = "";
   try {
-    const content = await fs.readFile(file, "utf8");
-    return JSON.parse(content);
+    log = fs.readFileSync(LOG_FILE, "utf8");
   } catch (e) {
-    return null;
-  }
-}
-
-async function run() {
-  const flakiness = await readJson(flakinessFile);
-  const suspicious = await readJson(suspiciousFile);
-  const coverage = await readJson(coverageFile);
-  const logContent = await fs.readFile(logFile, "utf8");
-
-  let report = `# Test Audit Report - ${new Date().toISOString().split("T")[0]}\n\n`;
-
-  // Summary
-  report += "## Summary\n";
-  report += "- **Runner**: Custom (`scripts/run-unit-tests.mjs`)\n";
-  report += "- **Command**: `npx c8 npm run test:unit`\n";
-
-  // Failures
-  if (logContent.includes("failed with exit code")) {
-    report += "- **Status**: FAIL (Failures detected)\n";
-  } else {
-    report += "- **Status**: PASS\n";
+    log = "";
   }
 
-  // Coverage Stats
-  if (coverage && coverage.total) {
-    report += `- **Coverage**: ${coverage.total.lines.pct}% Lines, ${coverage.total.statements.pct}% Statements, ${coverage.total.functions.pct}% Functions, ${coverage.total.branches.pct}% Branches\n`;
-  } else {
-    report += "- **Coverage**: N/A\n";
-  }
+  const failingTests = flakiness.filter(r => !r.passed || r.hasTapFailure);
+  const passed = failingTests.length === 0;
 
-  // Flakiness
-  report += "\n## Flakiness Check\n";
-  if (flakiness && flakiness.error) {
-    report += `- **Error**: ${flakiness.error}\n`;
-  } else if (flakiness && flakiness.runs) {
-    // Process flakiness
-    report += `- **Runs**: ${flakiness.runs.length}\n`;
-    // Add details
-  } else {
-    report += "- **Status**: Skipped or failed to produce results.\n";
-  }
+  // Filter suspicious zero-assertion to actual test files
+  const zeroAssertionTests = suspicious.zeroAssertions ? suspicious.zeroAssertions.filter(f => f.match(/\.(test|spec)\.(mjs|js|ts)$/)) : [];
 
-  // Suspicious Tests
-  report += "\n## Suspicious Tests\n";
-  if (suspicious) {
-    let count = 0;
-    for (const [file, issues] of Object.entries(suspicious)) {
-      count++;
-      report += `- **${file}**:\n`;
-      issues.forEach(i => report += `  - ${i}\n`);
-    }
-    if (count === 0) report += "None found.\n";
-  } else {
-    report += "Analysis not run or failed.\n";
-  }
-
-  // Coverage Gaps (Critical Files)
-  report += "\n## Coverage Gaps (< 70%)\n";
-  if (coverage) {
-    let gaps = 0;
-    for (const [file, stats] of Object.entries(coverage)) {
-      if (file === "total") continue;
-      const relativePath = path.relative(rootDir, file);
-      if (stats.lines.pct < 70) {
-        gaps++;
-        report += `- **${relativePath}**: ${stats.lines.pct}% (Lines)\n`;
+  // Extract failures from log dynamically
+  let failureDetails = "";
+  if (!passed) {
+      const lines = log.split('\n');
+      const failures = lines.filter(l => l.includes('not ok') || l.includes('FAIL'));
+      if (failures.length > 0) {
+        failureDetails = failures.slice(0, 10).map(l => `- \`${l.trim()}\``).join('\n');
+        if (failures.length > 10) failureDetails += `\n- ... and ${failures.length - 10} more.`;
+      } else {
+        failureDetails = "Check logs for details (exit code non-zero but no explicit 'not ok' found).";
       }
-    }
-    if (gaps === 0) report += "No files under 70%.\n";
   }
 
-  // Recommendations
-  report += "\n## Recommendations\n";
-  report += "1. Fix suspicious tests (especially timeouts and console usage).\n";
-  report += "2. Improve coverage for files < 70%.\n";
-  report += "3. Investigate potential flakiness (if checked).\n";
+  let content = `# Test Audit Report - ${date}
 
-  await fs.writeFile(reportFile, report);
-  console.log(`Report generated: ${reportFile}`);
+## Summary
+- **Status**: ${passed ? "PASS" : "FAIL"}
+- **Test Command**: (Check \`test_logs/\`)
+- **Coverage**: Skipped (missing \`c8\` / \`@vitest/coverage-v8\`)
+
+## Flakiness & Failures
+`;
+
+  if (passed) {
+    content += "- No failures or flakiness detected.\n";
+  } else {
+    content += `- **Failures**: ${failingTests.length}/${flakiness.length} runs failed.\n`;
+    content += `\n### Failure Details\n${failureDetails}\n`;
+    content += "\n### Run Matrix\n";
+    content += "| Iteration | Passed | TAP Failure |\n|---|---|---|\n";
+    flakiness.forEach(r => {
+      content += `| ${r.iteration} | ${r.passed ? "✅" : "❌"} | ${r.hasTapFailure ? "Yes" : "No"} |\n`;
+    });
+  }
+
+  content += `
+## Suspicious Tests (Static Analysis)
+
+### Zero Assertions (Heuristic)
+These test files contain \`test(\` or \`describe(\` but no obvious assertion keywords.
+`;
+
+  if (zeroAssertionTests.length === 0) {
+    content += "- None found.\n";
+  } else {
+    zeroAssertionTests.forEach(f => content += `- ${f}\n`);
+  }
+
+  content += `
+### Skipped or Focused Tests (\`.skip\`, \`.only\`)
+`;
+   if (suspicious.skippedOrFocused.length === 0) {
+    content += "- None found.\n";
+  } else {
+    suspicious.skippedOrFocused.forEach(f => content += `- ${f.trim()}\n`);
+  }
+
+  content += `
+### Timing Dependencies (\`setTimeout\`, \`sleep\`)
+Found ${suspicious.timing.length} occurrences. Examples:
+`;
+  suspicious.timing.slice(0, 10).forEach(f => content += `- \`${f.trim()}\`\n`);
+  if (suspicious.timing.length > 10) content += `- ... and ${suspicious.timing.length - 10} more.\n`;
+
+  content += `
+## Coverage Gaps
+- **Critical**: Coverage metrics could not be generated.
+- **Action**: Install \`c8\` or configure \`vitest\` coverage.
+
+## Recommendations
+1. **Fix Failures**: Investigate any failures listed above.
+2. **Remove Skips**: Address skipped tests.
+3. **Reduce Timing Flakes**: Refactor tests using real \`setTimeout\` to use mock timers or deterministic waits.
+4. **Tooling**: Add \`c8\` to \`devDependencies\` to enable coverage reporting for Node.js native runner.
+
+`;
+
+  fs.writeFileSync(REPORT_FILE, content);
+  console.log(`Report generated: ${REPORT_FILE}`);
 }
 
-run().catch(console.error);
+main();
