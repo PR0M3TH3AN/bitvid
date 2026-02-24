@@ -3,18 +3,7 @@
     "iteration": 1,
     "passed": false,
     "code": 0,
-    "hasTapFailure": true
-  },
-  {
-    "iteration": 2,
-    "passed": false,
-    "code": 0,
-    "hasTapFailure": true
-  },
-  {
-    "iteration": 3,
-    "passed": false,
-    "code": 0,
-    "hasTapFailure": true
+    "duration": 340124,
+    "failure": "Suite failed"
   }
 ]
