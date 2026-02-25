@@ -1263,8 +1263,14 @@ export class UploadModal {
   // --- Modal Control ---
 
   async open({ triggerElement } = {}) {
-    await this.load();
+    try {
+      await this.load();
+    } catch (error) {
+      devLogger.error("[UploadModal] Failed to load modal template:", error);
+    }
+
     if (!this.root) return;
+
     this.root.classList.remove("hidden");
     this.setGlobalModalState("upload", true);
     this.isVisible = true;
