@@ -13,3 +13,6 @@ ai/reports/
 coverage/
 dist/
 TEST_LOG.mdtest_logs/nip-hits.txt
+!artifacts/audit/
+!artifacts/audit/*.md
+!artifacts/audit/*.json

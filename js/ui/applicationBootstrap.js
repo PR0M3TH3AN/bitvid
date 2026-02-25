@@ -1124,6 +1124,7 @@ export default class ApplicationBootstrap {
       },
       logger: devLogger,
     });
+    app.appChromeController.initialize();
 
     app.blacklistedEventIds = new Set();
     if (this.window?.NostrTools?.nip19?.decode) {

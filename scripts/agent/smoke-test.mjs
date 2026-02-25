@@ -16,14 +16,43 @@ import { chromium } from 'playwright';
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import { parseArgs } from 'node:util';
+
+// Parse Arguments
+const { values } = parseArgs({
+    options: {
+        relays: { type: 'string' },
+        serve: { type: 'string', default: 'npx' },
+        'dry-run': { type: 'boolean' },
+        timeout: { type: 'string', default: '30' },
+        burst: { type: 'string', default: '1' },
+        out: { type: 'string', default: 'artifacts' },
+        'confirm-public': { type: 'boolean' },
+    },
+    allowPositionals: true,
+});
 
 const RELAY_PORT = 8899;
-const RELAY_URL = `ws://localhost:${RELAY_PORT}`;
+const DEFAULT_RELAY_URL = `ws://localhost:${RELAY_PORT}`;
 const HTTP_PORT = 8000;
 const HTTP_URL = `http://localhost:${HTTP_PORT}`;
 
-// Artifacts
-const ARTIFACTS_DIR = 'artifacts';
+// Configuration from Args
+const ARTIFACTS_DIR = values.out;
+const SERVE_MODE = values.serve;
+const TIMEOUT_MS = parseInt(values.timeout, 10) * 1000;
+const RELAY_URLS = values.relays ? values.relays.split(',').map(r => r.trim()) : [DEFAULT_RELAY_URL];
+const IS_DRY_RUN = values['dry-run'];
+const CONFIRM_PUBLIC = values['confirm-public'];
+
+// Safety Check for Public Relays
+const hasPublicRelay = RELAY_URLS.some(url => !url.includes('localhost') && !url.includes('127.0.0.1'));
+if (hasPublicRelay && !CONFIRM_PUBLIC) {
+    console.error('ERROR: Public relays detected without --confirm-public. Aborting.');
+    process.exit(1);
+}
+
+// Artifacts Setup
 const LOG_FILE = path.join(ARTIFACTS_DIR, `smoke-${new Date().toISOString().split('T')[0].replace(/-/g, '')}.log`);
 const SCREENSHOT_FILE = path.join(ARTIFACTS_DIR, 'smoke-test-ui.png');
 
@@ -32,7 +61,9 @@ function log(message) {
     const timestamp = new Date().toISOString();
     const line = `[${timestamp}] ${message}`;
     console.log(line);
-    fs.appendFileSync(LOG_FILE, line + '\n');
+    if (fs.existsSync(ARTIFACTS_DIR)) {
+        fs.appendFileSync(LOG_FILE, line + '\n');
+    }
 }
 
 // Generate Keys
@@ -42,11 +73,27 @@ const EPHEMERAL_SK = bytesToHex(EPHEMERAL_SK_BYTES);
 const EPHEMERAL_PK = getPublicKey(EPHEMERAL_SK_BYTES);
 
 async function startHttpServer() {
-    log('Starting HTTP Server...');
-    const serve = spawn('npx', ['serve', '.', '-p', String(HTTP_PORT)], {
-        stdio: 'ignore',
-        shell: true
-    });
+    if (SERVE_MODE === 'none') {
+        log('Skipping HTTP Server start (--serve=none). Assuming app is running.');
+        return null;
+    }
+
+    log(`Starting HTTP Server (${SERVE_MODE})...`);
+    let serve;
+
+    if (SERVE_MODE === 'npx') {
+        serve = spawn('npx', ['serve', '.', '-p', String(HTTP_PORT)], {
+            stdio: 'ignore',
+            shell: true
+        });
+    } else if (SERVE_MODE === 'python') {
+        serve = spawn('python3', ['-m', 'http.server', String(HTTP_PORT)], {
+            stdio: 'ignore',
+            shell: true
+        });
+    } else {
+        throw new Error(`Unknown serve mode: ${SERVE_MODE}`);
+    }
 
     const maxRetries = 20;
     for (let i = 0; i < maxRetries; i++) {
@@ -58,14 +105,14 @@ async function startHttpServer() {
             await new Promise(r => setTimeout(r, 250));
         }
     }
-    serve.kill();
+    if (serve) serve.kill();
     throw new Error('HTTP Server failed to start within timeout.');
 }
 
 async function runSmokeTest() {
     // Ensure artifacts dir
     if (!fs.existsSync(ARTIFACTS_DIR)) {
-        fs.mkdirSync(ARTIFACTS_DIR);
+        fs.mkdirSync(ARTIFACTS_DIR, { recursive: true });
     }
     fs.writeFileSync(LOG_FILE, ''); // Clear log
 
@@ -78,21 +125,33 @@ async function runSmokeTest() {
     try {
         log('--- Smoke Test Started ---');
         log(`Ephemeral Pubkey: ${EPHEMERAL_PK}`);
+        log(`Relays: ${RELAY_URLS.join(', ')}`);
 
         // 1. Start Infrastructure
-        relayServer = startRelay(RELAY_PORT);
+        // Only start local relay if we are using the default local URL and it wasn't overridden
+        if (RELAY_URLS.length === 1 && RELAY_URLS[0] === DEFAULT_RELAY_URL) {
+            relayServer = startRelay(RELAY_PORT);
+        } else {
+            log('Using external/provided relays, skipping local relay start.');
+        }
+
         httpServer = await startHttpServer();
 
         // 2. Initialize Node Client
         log('Initializing Node Client...');
         nodeClient = new NostrClient();
-        nodeClient.relays = [RELAY_URL];
-        nodeClient.writeRelays = [RELAY_URL];
-        nodeClient.readRelays = [RELAY_URL];
+        nodeClient.relays = [...RELAY_URLS];
+        nodeClient.writeRelays = [...RELAY_URLS];
+        nodeClient.readRelays = [...RELAY_URLS];
 
         await nodeClient.registerPrivateKeySigner({ privateKey: EPHEMERAL_SK });
-        await nodeClient.init();
+        await nodeClient.init(); // Wait for connection
         log('Node Client connected.');
+
+        if (IS_DRY_RUN) {
+            log('Dry run enabled. Skipping publish and browser steps.');
+            return;
+        }
 
         // 3. Publish Video Event (Node)
         log('Node: Publishing Video Post...');
@@ -144,7 +203,8 @@ async function runSmokeTest() {
             activePubkey: EPHEMERAL_PK,
             version: 1
         };
-        const relayList = [{ url: RELAY_URL, mode: "both" }];
+        // Transform RELAY_URLS into object format expected by app
+        const relayList = RELAY_URLS.map(url => ({ url, mode: "both" }));
 
         // Note: Key format derived from investigation: bitvid:profile:<pubkey>:relayList:v1
         const relayStorageKey = `bitvid:profile:${EPHEMERAL_PK}:relayList:v1`;
@@ -155,6 +215,10 @@ async function runSmokeTest() {
 
             window.localStorage.setItem('bitvid:savedProfiles:v1', JSON.stringify(profiles));
             window.localStorage.setItem(relayKey, JSON.stringify(relays));
+
+            // Inject test relays for isolation
+            window.__bitvidTestRelays__ = relays.map(r => r.url);
+
             // Mock NIP-07 to avoid errors if app tries to use it (though we won't sign in browser)
             window.nostr = {
                 getPublicKey: async () => profiles.activePubkey,
@@ -176,13 +240,14 @@ async function runSmokeTest() {
         log('Browser: Verifying Login...');
         // #profileButton might be hidden initially, wait for it
         try {
-            await page.waitForSelector('#profileButton', { state: 'visible', timeout: 15000 });
+            await page.waitForSelector('#profileButton', { state: 'visible', timeout: TIMEOUT_MS });
             log('Browser: Login verified (Profile button visible).');
         } catch (e) {
             log('Browser: Login verification failed (Profile button not found). Dumping localStorage...');
             const storage = await page.evaluate(() => JSON.stringify(localStorage));
             log(`[Browser Storage] ${storage}`);
             await page.screenshot({ path: path.join(ARTIFACTS_DIR, 'smoke-fail-login.png') });
+            throw e;
         }
 
         // Verify Feed (Video Card presence)
@@ -190,7 +255,8 @@ async function runSmokeTest() {
         // Look for the video title
         try {
             // Wait longer for feed to load (relays might be slow)
-            await page.waitForSelector(`text=Smoke Test Video`, { timeout: 60000 });
+            // Use 2x timeout for network/relay operations
+            await page.waitForSelector(`text=Smoke Test Video`, { timeout: TIMEOUT_MS * 2 });
             log('Browser: Video found in feed!');
         } catch (e) {
             log('Browser: Video NOT found in feed. Taking screenshot...');
@@ -198,10 +264,8 @@ async function runSmokeTest() {
 
             // Debug: Check relays
             const relayState = await page.evaluate(() => {
-                // Try to access global nostrClient if exposed, or check localStorage again
                 return {
                     localStorage: JSON.stringify(localStorage),
-                    // If we can't access client directly, we rely on logs
                 };
             });
             log(`[Browser Debug] Storage: ${relayState.localStorage}`);
@@ -244,7 +308,8 @@ async function runSmokeTest() {
             details: {
                 videoEventId: publishedVideo.id,
                 dmEventId: publishedDM.id,
-                ephemeralPubkey: EPHEMERAL_PK
+                ephemeralPubkey: EPHEMERAL_PK,
+                relays: RELAY_URLS
             }
         };
         const summaryFile = path.join(ARTIFACTS_DIR, `smoke-summary-${new Date().toISOString().split('T')[0].replace(/-/g, '')}.json`);
