@@ -44,6 +44,7 @@ const IGNORED_GLOBS = [
   'test-audit/**',
   'js/webtorrent.min.js',
   'js/webtorrent.min.js.map',
+  'torch/**',
 ];
 
 const gitArgs = [
