@@ -64,6 +64,14 @@ test.describe("Login and authentication flows", () => {
         (window as any).__bitvidTest__.logout();
       });
 
+      // Wait for state to settle
+      await page.waitForFunction(
+        () => {
+          return (window as any).__bitvidTest__.getAppState().isLoggedIn === false;
+        },
+        { timeout: 15000 },
+      );
+
       // Then: state is fully cleared
       const loggedOutState = await page.evaluate(() => {
         return (window as any).__bitvidTest__.getAppState();
