@@ -686,7 +686,7 @@ export class ProfileDirectMessageRenderer {
     container.textContent = "";
 
     try {
-      const dmPrivacySettings = this.getDmPrivacySettingsSnapshot();
+      const dmPrivacySettings = this.controller.getDmPrivacySettingsSnapshot();
 
       this.dmAppShell = new AppShell({
         document,

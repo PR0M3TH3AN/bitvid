@@ -45,6 +45,39 @@ test.describe("Profile management and moderation", () => {
       // Profile button may or may not be visible depending on layout;
       // at minimum it should be attached and not hidden
     });
+
+    test("DM tab mounts and remounts the direct message shell", async ({
+      page,
+      gotoApp,
+      loginAs,
+      openProfileModal,
+    }) => {
+      await gotoApp();
+      await loginAs(page);
+      await page.waitForFunction(
+        () => (window as any).__bitvidTest__?.getAppState?.().isLoggedIn === true,
+      );
+      await expect(page.locator('[data-testid="profile-button"]')).toBeAttached();
+
+      const openResult = await openProfileModal(page, "account");
+      expect(openResult.ok).toBe(true);
+
+      await expect(page.locator("#profileModal")).toBeVisible();
+      await page.locator("#profileNavMessages").click();
+
+      const dmPane = page.locator("#profilePaneMessages");
+      await expect(dmPane).toBeVisible();
+      await expect(page.locator("#dmAppShellMount .dm-app-shell")).toHaveCount(1);
+      await expect(page.locator("#dmAppShellMount .dm-app-shell__sidebar")).toHaveCount(1);
+      await expect(page.locator("#dmAppShellMount .dm-app-shell__main")).toHaveCount(1);
+
+      // Switching away and back should not leave the DM pane blank.
+      await page.locator("#profileNavAccount").click();
+      await expect(page.locator("#profilePaneAccount")).toBeVisible();
+      await page.locator("#profileNavMessages").click();
+      await expect(dmPane).toBeVisible();
+      await expect(page.locator("#dmAppShellMount .dm-app-shell")).toHaveCount(1);
+    });
   });
 
   test.describe("Decrypt behavior simulation", () => {
@@ -276,14 +309,14 @@ test.describe("Profile management and moderation", () => {
       const diag = await startDiagnostics(page);
 
       // When: a page error occurs
-      await page.evaluate(() => {
-        setTimeout(() => {
-          throw new Error("intentional-test-error");
-        }, 0);
-      });
-
-      // Allow the async error to be caught
-      await page.waitForTimeout(200);
+      await Promise.all([
+        page.waitForEvent("pageerror", { timeout: 5000 }),
+        page.evaluate(() => {
+          setTimeout(() => {
+            throw new Error("intentional-test-error");
+          }, 0);
+        }),
+      ]);
 
       // Then: error is captured
       const results = await diag.stop();

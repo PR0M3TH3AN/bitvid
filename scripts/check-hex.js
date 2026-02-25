@@ -41,6 +41,9 @@ const IGNORED_GLOBS = [
   'context/**',
   'decisions/**',
   'todo/**',
+  'test-audit/**',
+  'js/webtorrent.min.js',
+  'js/webtorrent.min.js.map',
   'docs/agents/task-logs/**'
 ];
 

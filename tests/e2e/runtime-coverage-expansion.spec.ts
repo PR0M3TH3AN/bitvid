@@ -258,4 +258,267 @@ test.describe("runtime coverage expansion", () => {
     expect(result.badSaveLength).toBe(0);
     expect(result.badClear).toBe(false);
   });
+
+  test("exercises DM app shell and notification center interactions", async ({ page }) => {
+    await page.goto("/?__test__=1", { waitUntil: "networkidle" });
+
+    const result = await page.evaluate(async () => {
+      document.body.innerHTML = '<div id="mount"></div>';
+      const mount = document.getElementById("mount");
+      if (!mount) {
+        return { ok: false, reason: "missing-mount" };
+      }
+
+      const { AppShell } = await import("/js/ui/dm/AppShell.js");
+      const { NotificationCenter } = await import("/js/ui/dm/NotificationCenter.js");
+      const { DMPrivacySettings } = await import("/js/ui/dm/DMPrivacySettings.js");
+      const { DMRelaySettings } = await import("/js/ui/dm/DMRelaySettings.js");
+
+      const selectedConversations: string[] = [];
+      const sentMessages: Array<{ text: string; privacyMode?: string }> = [];
+      const filterSelections: string[] = [];
+      const selectedNotices: string[] = [];
+      const readToggles: boolean[] = [];
+      const typingToggles: boolean[] = [];
+      let markAllReadCount = 0;
+      let markReadCount = 0;
+      let backCount = 0;
+      let zapCount = 0;
+
+      const shell = new AppShell({
+        document,
+        currentUserAvatarUrl: "",
+        conversations: [
+          {
+            id: "conv-1",
+            name: "Alice Example",
+            preview: "hello",
+            timestamp: "now",
+            unreadCount: 2,
+            status: "online",
+            avatarSrc: "",
+            pubkey: "a".repeat(64),
+            lightningAddress: "alice@getalby.com",
+            relayHints: ["wss://relay.example.com"],
+          },
+          {
+            id: "conv-2",
+            name: "Bob Example",
+            preview: "yo",
+            timestamp: "now",
+            unreadCount: 0,
+            status: "away",
+            avatarSrc: "",
+            pubkey: "b".repeat(64),
+            lightningAddress: "bob@getalby.com",
+            relayHints: ["wss://relay.example.com"],
+          },
+        ],
+        activeConversationId: "conv-1",
+        messages: [
+          { type: "day", label: "Today" },
+          { id: "m1", direction: "incoming", body: "hello", timestamp: "09:00" },
+          { id: "m2", direction: "outgoing", body: "hi", timestamp: "09:01", status: "sent" },
+        ],
+        zapReceipts: [
+          {
+            id: "zr1",
+            kind: 9735,
+            conversationId: "conv-1",
+            profileId: "a".repeat(64),
+            senderName: "Alice",
+            amountSats: 21,
+            note: "thanks",
+            timestamp: "09:05",
+            status: "confirmed",
+          },
+        ],
+        dmPrivacySettings: { readReceiptsEnabled: true, typingIndicatorsEnabled: false },
+        onSelectConversation: (conversation: { id: string }) => {
+          selectedConversations.push(conversation.id);
+        },
+        onSendMessage: (text: string, payload: { privacyMode?: string }) => {
+          sentMessages.push({ text, privacyMode: payload?.privacyMode });
+        },
+        onMarkConversationRead: () => {
+          markReadCount += 1;
+        },
+        onMarkAllRead: () => {
+          markAllReadCount += 1;
+        },
+        onToggleReadReceipts: (enabled: boolean) => {
+          readToggles.push(Boolean(enabled));
+        },
+        onToggleTypingIndicators: (enabled: boolean) => {
+          typingToggles.push(Boolean(enabled));
+        },
+        onBack: () => {
+          backCount += 1;
+        },
+        onSendZap: async () => {
+          zapCount += 1;
+        },
+        zapConfig: {
+          resolveRecipient: async () => ({
+            lnurl: "lnurl1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq",
+          }),
+        },
+      });
+
+      const root = shell.getRoot();
+      mount.appendChild(root);
+
+      const directPrivacyPanel = DMPrivacySettings({
+        document,
+        readReceiptsEnabled: true,
+        typingIndicatorsEnabled: false,
+        onToggleReadReceipts: (enabled: boolean) => readToggles.push(Boolean(enabled)),
+        onToggleTypingIndicators: (enabled: boolean) => typingToggles.push(Boolean(enabled)),
+      });
+      mount.appendChild(directPrivacyPanel);
+
+      const directRelayPanel = DMRelaySettings({ document });
+      mount.appendChild(directRelayPanel);
+
+      root
+        .querySelector('[data-conversation-id="conv-2"]')
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      root
+        .querySelector(".dm-message-thread__back")
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      const markReadButton = [...root.querySelectorAll("button")].find((button) =>
+        button.textContent?.includes("Mark read"),
+      );
+      markReadButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      root
+        .querySelector(".dm-conversation-list .btn-ghost.ml-auto")
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+      const composerInput = root.querySelector("#dm-composer-input") as HTMLTextAreaElement | null;
+      if (composerInput) {
+        composerInput.value = "coverage ping";
+        composerInput.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+        );
+      }
+
+      const moreButton = root.querySelector(
+        '.dm-composer__more-btn[aria-label="More options"]',
+      ) as HTMLButtonElement | null;
+      moreButton?.click();
+      root
+        .querySelector('.dm-composer__menu-item[aria-label="Toggle privacy mode"]')
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+      const settingsButton = root.querySelector(
+        '.dm-app-shell__sidebar .icon-button[aria-label="Direct message settings"]',
+      ) as HTMLButtonElement | null;
+      settingsButton?.click();
+
+      const readToggle = mount.querySelector("#dm-read-receipts-toggle") as HTMLInputElement | null;
+      if (readToggle) {
+        readToggle.checked = false;
+        readToggle.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+
+      const typingToggle = mount.querySelector(
+        "#dm-typing-indicators-toggle",
+      ) as HTMLInputElement | null;
+      if (typingToggle) {
+        typingToggle.checked = true;
+        typingToggle.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+
+      const zapButton = root.querySelector(
+        '.dm-composer__send[aria-label="Zap"]',
+      ) as HTMLButtonElement | null;
+      zapButton?.click();
+
+      const zapForm = root.querySelector(".dm-zap-interface form") as HTMLFormElement | null;
+      const zapAmount = zapForm?.querySelector('input[type="number"]') as HTMLInputElement | null;
+      const zapSubmit = zapForm?.querySelector(".btn-primary") as HTMLButtonElement | null;
+      if (zapAmount && zapSubmit) {
+        zapAmount.value = "21";
+        zapSubmit.click();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+
+      const noticeCenter = NotificationCenter({
+        document,
+        notices: [
+          {
+            id: "n1",
+            type: "dms",
+            group: "unread",
+            title: "New DM",
+            message: "ping",
+            timestamp: "now",
+            timestampISO: new Date().toISOString(),
+            icon: "✉",
+          },
+          {
+            id: "n2",
+            type: "zaps",
+            group: "new",
+            title: "Zap received",
+            message: "21 sats",
+            timestamp: "now",
+            timestampISO: new Date().toISOString(),
+          },
+        ],
+        activeFilter: "all",
+        onFilterSelect: (filterId: string) => {
+          filterSelections.push(filterId);
+        },
+        onNoticeSelect: (notice: { id: string }) => {
+          selectedNotices.push(notice.id);
+        },
+      });
+      mount.appendChild(noticeCenter);
+
+      noticeCenter
+        .querySelector('[data-filter-id="dms"]')
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      noticeCenter
+        .querySelector('[data-notice-id="n1"]')
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+      return {
+        ok: true,
+        hasAppShell: Boolean(root.querySelector(".dm-app-shell__sidebar")),
+        hasRelayPanel: Boolean(mount.querySelector("#profileMessagesRelayPanel")),
+        hasComposer: Boolean(root.querySelector(".dm-composer")),
+        hasMessageBubble: Boolean(root.querySelector(".dm-message-bubble")),
+        hasDayDivider: Boolean(root.querySelector(".dm-day-divider")),
+        selectedConversations,
+        sentMessages,
+        filterSelections,
+        selectedNotices,
+        readToggles,
+        typingToggles,
+        markAllReadCount,
+        markReadCount,
+        backCount,
+        zapCount,
+      };
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.hasAppShell).toBe(true);
+    expect(result.hasRelayPanel).toBe(true);
+    expect(result.hasComposer).toBe(true);
+    expect(result.hasMessageBubble).toBe(true);
+    expect(result.hasDayDivider).toBe(true);
+    expect(result.selectedConversations).toContain("conv-2");
+    expect(result.sentMessages.length).toBeGreaterThan(0);
+    expect(result.sentMessages[0].text).toBe("coverage ping");
+    expect(result.filterSelections).toContain("dms");
+    expect(result.selectedNotices).toContain("n1");
+    expect(result.readToggles).toContain(false);
+    expect(result.typingToggles).toContain(true);
+    expect(result.markAllReadCount).toBe(1);
+    expect(result.markReadCount).toBe(1);
+    expect(result.backCount).toBe(1);
+    expect(result.zapCount).toBe(1);
+  });
 });

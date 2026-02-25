@@ -1,0 +1,48 @@
+
+> bitvid@1.0.0 lint
+> npm run lint:css && npm run lint:hex && npm run lint:inline-styles && npm run lint:tokens && npm run lint:tailwind-brackets && npm run lint:tailwind-colors && npm run lint:file-size && npm run lint:innerhtml && npm run lint:assets && npm run lint:sw-compat
+
+
+> bitvid@1.0.0 lint:css
+> stylelint css/tailwind.source.css css/tokens.css css/docs.css
+
+
+> bitvid@1.0.0 lint:hex
+> node scripts/check-hex.js
+
+
+> bitvid@1.0.0 lint:inline-styles
+> node scripts/check-inline-styles.mjs
+
+No inline style usage found.
+
+> bitvid@1.0.0 lint:tokens
+> node scripts/check-design-tokens.mjs --check=tokens
+
+
+> bitvid@1.0.0 lint:tailwind-brackets
+> node scripts/check-design-tokens.mjs --check=brackets
+
+
+> bitvid@1.0.0 lint:tailwind-colors
+> node scripts/check-tailwind-colors.mjs
+
+
+> bitvid@1.0.0 lint:file-size
+> node scripts/check-file-size.mjs
+
+
+> bitvid@1.0.0 lint:innerhtml
+> node scripts/check-innerhtml.mjs
+
+
+> bitvid@1.0.0 lint:assets
+> node scripts/check-asset-references.mjs
+
+[lint:assets] Missing dist/asset-manifest.json. Skipping asset reference check (build required).
+
+> bitvid@1.0.0 lint:sw-compat
+> node scripts/check-sw-compat.mjs
+
+[sw-compat] Skipping check: unable to determine HEAD^ or git history unavailable.
+[sw-compat] No commit delta found; skipping compatibility check.

@@ -730,55 +730,56 @@ export class ProfileModalController {
 
     this.blockListController.cacheDomReferences();
 
+    this.dmController.renderer.cacheDomReferences();
     this.dmController.profileMessagesPane =
-      document.getElementById("profilePaneMessages") || null;
+      this.dmController.renderer.profileMessagesPane;
     this.dmController.profileMessagesList =
-      document.getElementById("profileMessagesList") || null;
+      this.dmController.renderer.profileMessagesList;
     this.dmController.profileMessagesEmpty =
-      document.getElementById("profileMessagesEmpty") || null;
+      this.dmController.renderer.profileMessagesEmpty;
     this.dmController.profileMessagesLoading =
-      document.getElementById("profileMessagesLoading") || null;
+      this.dmController.renderer.profileMessagesLoading;
     this.dmController.profileMessagesError =
-      document.getElementById("profileMessagesError") || null;
+      this.dmController.renderer.profileMessagesError;
     this.dmController.profileMessagesStatus =
-      document.getElementById("profileMessagesStatus") || null;
+      this.dmController.renderer.profileMessagesStatus;
     this.dmController.profileMessagesReloadButton =
-      document.getElementById("profileMessagesReload") || null;
+      this.dmController.renderer.profileMessagesReloadButton;
     this.dmController.profileMessagesConversation =
-      document.getElementById("profileMessagesConversation") || null;
+      this.dmController.renderer.profileMessagesConversation;
     this.dmController.profileMessagesConversationEmpty =
-      document.getElementById("profileMessagesConversationEmpty") || null;
+      this.dmController.renderer.profileMessagesConversationEmpty;
     this.dmController.profileMessageInput =
-      document.getElementById("profileMessageInput") || null;
+      this.dmController.renderer.profileMessageInput;
     this.dmController.profileMessageSendButton =
-      document.getElementById("profileMessageSendBtn") || null;
+      this.dmController.renderer.profileMessageSendButton;
     this.dmController.profileMessageAttachmentInput =
-      document.getElementById("profileMessageAttachmentInput") || null;
+      this.dmController.renderer.profileMessageAttachmentInput;
     this.dmController.profileMessageAttachmentButton =
-      document.getElementById("profileMessageAttachmentButton") || null;
+      this.dmController.renderer.profileMessageAttachmentButton;
     this.dmController.profileMessageAttachmentEncrypt =
-      document.getElementById("profileMessageAttachmentEncrypt") || null;
+      this.dmController.renderer.profileMessageAttachmentEncrypt;
     this.dmController.profileMessageAttachmentList =
-      document.getElementById("profileMessageAttachmentList") || null;
+      this.dmController.renderer.profileMessageAttachmentList;
     this.dmController.profileMessageAttachmentClearCache =
-      document.getElementById("profileMessageAttachmentClearCache") || null;
+      this.dmController.renderer.profileMessageAttachmentClearCache;
     this.dmController.profileMessagesComposerHelper =
-      document.getElementById("profileMessagesComposerHelper") || null;
+      this.dmController.renderer.profileMessagesComposerHelper;
     this.dmController.profileMessagesSendDmButton =
-      document.getElementById("profileMessagesSendDm") || null;
+      this.dmController.renderer.profileMessagesSendDmButton;
     this.dmController.profileMessagesOpenRelaysButton =
-      document.getElementById("profileMessagesOpenRelays") || null;
+      this.dmController.renderer.profileMessagesOpenRelaysButton;
     this.dmController.profileMessagesPrivacyToggle =
-      document.getElementById("profileMessagesPrivacyToggle") || null;
+      this.dmController.renderer.profileMessagesPrivacyToggle;
     this.dmController.profileMessagesPrivacyMode =
-      document.getElementById("profileMessagesPrivacyMode") || null;
+      this.dmController.renderer.profileMessagesPrivacyMode;
     this.cacheDmRelayElements();
     this.dmController.profileMessagesUnreadDot =
-      document.getElementById("profileMessagesUnreadDot") || null;
+      this.dmController.renderer.profileMessagesUnreadDot;
     this.dmController.dmAppShellContainer =
-      document.getElementById("dmAppShellMount") || null;
+      this.dmController.renderer.dmAppShellContainer;
     this.dmController.profileLinkPreviewAutoToggle =
-      document.getElementById("profileLinkPreviewAutoToggle") || null;
+      this.dmController.renderer.profileLinkPreviewAutoToggle;
 
     this.walletController.cacheDomReferences();
     this.storageController.cacheDomReferences();

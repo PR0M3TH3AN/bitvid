@@ -166,6 +166,176 @@ await (async () => {
   }
 })();
 
+await (async () => {
+  const actor = "7".repeat(64);
+  const UserBlockListManager = userBlocks.constructor;
+  const manager = new UserBlockListManager();
+
+  const originalRelayEntries = relayManager.getEntries();
+  const originalFetchIncremental = nostrClient.fetchListIncrementally;
+  const originalPool = nostrClient.pool;
+  const originalRelays = Array.isArray(nostrClient.relays)
+    ? [...nostrClient.relays]
+    : nostrClient.relays;
+  const originalWriteRelays = Array.isArray(nostrClient.writeRelays)
+    ? [...nostrClient.writeRelays]
+    : nostrClient.writeRelays;
+
+  const relayUrls = ["wss://relay-blocks-empty.example"];
+  relayManager.setEntries(
+    relayUrls.map((url) => ({ url, mode: "both" })),
+    { allowEmpty: false, updateClient: false },
+  );
+  nostrClient.relays = relayUrls;
+  nostrClient.writeRelays = relayUrls;
+  nostrClient.pool = originalPool || { list: async () => [] };
+  nostrClient.fetchListIncrementally = async () => [];
+
+  const changeEvents = [];
+  const statusEvents = [];
+  const unsubscribeChange = manager.on(USER_BLOCK_EVENTS.CHANGE, (detail) => {
+    changeEvents.push(detail);
+  });
+  const unsubscribeStatus = manager.on(USER_BLOCK_EVENTS.STATUS, (detail) => {
+    statusEvents.push(detail);
+  });
+
+  try {
+    await manager.loadBlocks(actor);
+
+    const settledChange = changeEvents.filter(
+      (detail) => detail?.action === "load-settled",
+    );
+    assert.ok(
+      settledChange.length >= 1,
+      "loadBlocks should emit a final load-settled change event",
+    );
+    const finalChange = settledChange[settledChange.length - 1];
+    assert.equal(finalChange.activePubkey, actor);
+    assert.equal(finalChange.loaded, true);
+    assert.deepEqual(finalChange.blockedPubkeys, []);
+
+    const settledStatus = statusEvents.filter(
+      (detail) => detail?.status === "settled",
+    );
+    assert.ok(
+      settledStatus.length >= 1,
+      "loadBlocks should emit settled status metadata",
+    );
+    const finalStatus = settledStatus[settledStatus.length - 1];
+    assert.equal(finalStatus.status, "settled");
+  } finally {
+    unsubscribeChange?.();
+    unsubscribeStatus?.();
+    relayManager.setEntries(
+      originalRelayEntries,
+      { allowEmpty: false, updateClient: false },
+    );
+    nostrClient.fetchListIncrementally = originalFetchIncremental;
+    nostrClient.pool = originalPool;
+    nostrClient.relays = originalRelays;
+    nostrClient.writeRelays = originalWriteRelays;
+    manager.reset();
+  }
+})();
+
+await (async () => {
+  const actor = "8".repeat(64);
+  const UserBlockListManager = userBlocks.constructor;
+  const manager = new UserBlockListManager();
+
+  const originalRelayEntries = relayManager.getEntries();
+  const originalFetchIncremental = nostrClient.fetchListIncrementally;
+  const originalPool = nostrClient.pool;
+  const originalRelays = Array.isArray(nostrClient.relays)
+    ? [...nostrClient.relays]
+    : nostrClient.relays;
+  const originalWriteRelays = Array.isArray(nostrClient.writeRelays)
+    ? [...nostrClient.writeRelays]
+    : nostrClient.writeRelays;
+  const originalNostr = window.nostr;
+  const originalEnsureSignerForPubkey = nostrClient.ensureActiveSignerForPubkey;
+  const originalSigner = getActiveSigner();
+
+  const relayUrls = ["wss://relay-blocks-permission.example"];
+  relayManager.setEntries(
+    relayUrls.map((url) => ({ url, mode: "both" })),
+    { allowEmpty: false, updateClient: false },
+  );
+  nostrClient.relays = relayUrls;
+  nostrClient.writeRelays = relayUrls;
+  nostrClient.pool = originalPool || { list: async () => [] };
+  nostrClient.fetchListIncrementally = async () => [
+    {
+      id: "event-blocks-permission",
+      kind: 10000,
+      created_at: 505,
+      pubkey: actor,
+      content: "cipher-blocks-permission",
+      tags: [["encrypted", "nip04"]],
+    },
+  ];
+  nostrClient.ensureActiveSignerForPubkey = async () => null;
+  clearActiveSigner();
+  window.nostr = undefined;
+
+  const changeEvents = [];
+  const statusEvents = [];
+  const unsubscribeChange = manager.on(USER_BLOCK_EVENTS.CHANGE, (detail) => {
+    changeEvents.push(detail);
+  });
+  const unsubscribeStatus = manager.on(USER_BLOCK_EVENTS.STATUS, (detail) => {
+    statusEvents.push(detail);
+  });
+
+  try {
+    await manager.loadBlocks(actor, { allowPermissionPrompt: false });
+
+    const settledChange = changeEvents.filter(
+      (detail) => detail?.action === "load-settled",
+    );
+    assert.ok(
+      settledChange.length >= 1,
+      "permission-gated loads should still emit load-settled change",
+    );
+    const finalChange = settledChange[settledChange.length - 1];
+    assert.equal(finalChange.activePubkey, actor);
+    assert.equal(finalChange.loaded, true);
+
+    const settledStatus = statusEvents.filter(
+      (detail) => detail?.status === "settled",
+    );
+    assert.ok(
+      settledStatus.length >= 1,
+      "permission-gated loads should still emit settled status",
+    );
+    assert.ok(
+      statusEvents.some(
+        (detail) => detail?.status === "permission-required",
+      ),
+      "permission-gated load should emit permission-required status before settling",
+    );
+  } finally {
+    unsubscribeChange?.();
+    unsubscribeStatus?.();
+    relayManager.setEntries(
+      originalRelayEntries,
+      { allowEmpty: false, updateClient: false },
+    );
+    nostrClient.fetchListIncrementally = originalFetchIncremental;
+    nostrClient.pool = originalPool;
+    nostrClient.relays = originalRelays;
+    nostrClient.writeRelays = originalWriteRelays;
+    nostrClient.ensureActiveSignerForPubkey = originalEnsureSignerForPubkey;
+    window.nostr = originalNostr;
+    clearActiveSigner();
+    if (originalSigner) {
+      setActiveSigner(originalSigner);
+    }
+    manager.reset();
+  }
+})();
+
 await new Promise((resolve) => setTimeout(resolve, 100));
 
 await (async () => {

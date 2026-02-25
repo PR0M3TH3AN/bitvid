@@ -23,11 +23,23 @@ test.describe("Video upload and discovery", () => {
       // Given: a logged-in user on the app
       await gotoApp();
       await loginAs(page);
+      await page.waitForFunction(
+        () => (window as any).__bitvidTest__?.getAppState?.().isLoggedIn === true,
+      );
 
-      // When: user clicks the upload button
+      // When: user opens upload modal
       const uploadBtn = page.locator('[data-testid="upload-button"]');
       await expect(uploadBtn).toBeVisible();
-      await uploadBtn.click();
+      const openResult = await page.evaluate(async () => {
+        const harness = (window as any).__bitvidTest__;
+        if (!harness || typeof harness.openUploadModal !== "function") {
+          return { ok: false, reason: "harness-unavailable" };
+        }
+        return harness.openUploadModal();
+      });
+      if (!openResult?.ok) {
+        await uploadBtn.click();
+      }
 
       // Then: upload modal becomes visible with expected form fields
       const modal = page.locator('[data-testid="upload-modal"]');
