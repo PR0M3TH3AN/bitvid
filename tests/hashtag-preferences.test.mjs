@@ -875,7 +875,7 @@ test(
             tags: [["encrypted", "nip04"]],
           },
         ];
-        if (callCount > 1) {
+        if (params.since > 0) {
           events.push({
             id: "ffff",
             created_at: 1500,
@@ -902,12 +902,12 @@ test(
         ["newpref"],
         "newer same-second event should replace prior snapshot",
       );
-      assert.ok(sinceCalls.length >= 2);
-      assert.equal(
-        sinceCalls[1],
-        1499,
-        "second fetch should include one-second overlap",
-      );
+
+      // Verify incremental fetch behavior.
+      // Since load() may fetch multiple kinds concurrently, checking specific indices is unreliable.
+      // Instead, verify that at least one call used the incremental since timestamp.
+      const incrementalCalls = sinceCalls.filter((since) => since === 1499);
+      assert.ok(incrementalCalls.length >= 1, "second fetch should include one-second overlap");
     } finally {
       nostrClient.fetchListIncrementally = originalFetchIncremental;
     }
