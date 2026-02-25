@@ -69,9 +69,14 @@ export function getTorchConfigPath() {
   if (explicitPath) return path.resolve(process.cwd(), explicitPath);
 
   const localPath = path.resolve(process.cwd(), DEFAULT_CONFIG_PATH);
-  if (fs.existsSync(localPath)) return localPath;
-
   const parentPath = path.resolve(process.cwd(), '..', DEFAULT_CONFIG_PATH);
+  const cwdBaseName = path.basename(process.cwd());
+  // Host-repo mode: when running from "<repo>/torch", prefer parent config.
+  if (cwdBaseName === 'torch' && fs.existsSync(parentPath)) {
+    return parentPath;
+  }
+
+  if (fs.existsSync(localPath)) return localPath;
   if (fs.existsSync(parentPath)) return parentPath;
 
   return localPath;

@@ -1,0 +1,10 @@
+Score memory importance from 0.0 to 1.0 conservatively.
+
+Output STRICT JSON only:
+{"importance":0.0,"rationale":"short factual reason"}
+
+Guidelines:
+- 0.0-0.3: routine/noisy or low impact
+- 0.4-0.7: useful operational context
+- 0.8-1.0: high-salience commitments, incidents, or decisions
+- Avoid over-scoring uncertain data

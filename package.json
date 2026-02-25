@@ -89,7 +89,7 @@
     "nostr-tools": "^2.19.4",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.19",
-    "torch-lock": "https://github.com/PR0M3TH3AN/TORCH/archive/refs/heads/main.tar.gz",
+    "torch-lock": "https://github.com/PR0M3TH3AN/TORCH/archive/b5023799d34ee0f7064c2d0f0591aef22eaa2288.tar.gz",
     "ws": "^8.19.0"
   }
 }

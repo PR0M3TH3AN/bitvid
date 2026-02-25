@@ -1,0 +1,12 @@
+The previous response was malformed JSON.
+
+Repair it into STRICT JSON only, preserving original meaning and using conservative confidence:
+{"summary":"...","importance":0.0}
+
+No markdown. No preamble. No trailing text.
+
+Parse error:
+{{PARSE_ERROR}}
+
+Malformed response:
+{{RAW_RESPONSE}}

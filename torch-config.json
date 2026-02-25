@@ -27,6 +27,10 @@
       "daily": "protocol-research-agent",
       "weekly": "event-schema-agent"
     },
+    "handoffCommandByCadence": {
+      "daily": "node torch/scripts/agent/run-selected-prompt.mjs",
+      "weekly": "node torch/scripts/agent/run-selected-prompt.mjs"
+    },
     "memoryPolicyByCadence": {
       "daily": {
         "mode": "required",

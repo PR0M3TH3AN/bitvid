@@ -1,0 +1,70 @@
+{
+  "nostrLock": {
+    "namespace": "torch-example",
+    "relays": [
+      "wss://relay.damus.io",
+      "wss://nos.lol",
+      "wss://relay.primal.net"
+    ],
+    "ttlSeconds": 7200,
+    "queryTimeoutMs": 30000,
+    "publishTimeoutMs": 15000,
+    "minSuccessfulRelayPublishes": 2,
+    "minActiveRelayPool": 2,
+    "relayFallbacks": [
+      "wss://relay.snort.social",
+      "wss://relay.nostr.band"
+    ]
+  },
+  "dashboard": {
+    "defaultCadenceView": "daily",
+    "defaultStatusView": "active",
+    "auth": "admin:password"
+  },
+  "scheduler": {
+    "firstPromptByCadence": {
+      "daily": "scheduler-update-agent",
+      "weekly": "bug-reproducer-agent"
+    },
+    "memoryPolicyByCadence": {
+      "daily": {
+        "mode": "required",
+        "retrieveCommand": "node torch/scripts/memory/retrieve.mjs",
+        "storeCommand": "node torch/scripts/memory/store.mjs",
+        "retrieveSuccessMarkers": [
+          "MEMORY_RETRIEVED"
+        ],
+        "storeSuccessMarkers": [
+          "MEMORY_STORED"
+        ],
+        "retrieveArtifacts": [
+          ".scheduler-memory/latest/daily/retrieve.ok"
+        ],
+        "storeArtifacts": [
+          ".scheduler-memory/latest/daily/store.ok"
+        ]
+      },
+      "weekly": {
+        "mode": "required",
+        "retrieveCommand": "node torch/scripts/memory/retrieve.mjs",
+        "storeCommand": "node torch/scripts/memory/store.mjs",
+        "retrieveSuccessMarkers": [
+          "MEMORY_RETRIEVED"
+        ],
+        "storeSuccessMarkers": [
+          "MEMORY_STORED"
+        ],
+        "retrieveArtifacts": [
+          ".scheduler-memory/latest/weekly/retrieve.ok"
+        ],
+        "storeArtifacts": [
+          ".scheduler-memory/latest/weekly/store.ok"
+        ]
+      }
+    },
+    "paused": {
+      "daily": [],
+      "weekly": []
+    }
+  }
+}

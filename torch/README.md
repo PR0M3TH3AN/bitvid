@@ -23,7 +23,7 @@ Prerequisites:
 First 5 minutes:
 
 ```bash
-npm install https://github.com/PR0M3TH3AN/TORCH/archive/refs/heads/main.tar.gz \
+npm install https://github.com/PR0M3TH3AN/TORCH/archive/<commit-sha>.tar.gz --force \
   && npx --no-install torch-lock init
 
 # sanity check (optional, but recommended)
@@ -34,6 +34,47 @@ npx --no-install torch-lock dashboard --port 4173 --host 127.0.0.1
 ```
 
 > TORCH is distributed from GitHub tarballs and is not currently published to the npm registry.
+> Use pinned commit tarballs (`archive/<commit-sha>.tar.gz`) for repeatable installs. Avoid `refs/heads/main.tar.gz` for production rollouts.
+
+### Upgrade TORCH In An Existing Repository
+
+Use this when the repository already has a `torch/` directory:
+
+```bash
+npm install https://github.com/PR0M3TH3AN/TORCH/archive/<commit-sha>.tar.gz --force
+npx --no-install torch-lock update --force
+npm install --prefix torch
+npm run --prefix torch lock:check:daily -- --json --quiet
+```
+
+Use this for first-time setup in a repository without `torch/`:
+
+```bash
+npm install https://github.com/PR0M3TH3AN/TORCH/archive/<commit-sha>.tar.gz --force
+npx --no-install torch-lock init --force
+npm install --prefix torch
+npm run --prefix torch lock:check:daily -- --json --quiet
+```
+
+One-liner (auto-detect existing vs new install):
+
+```bash
+npm install https://github.com/PR0M3TH3AN/TORCH/archive/<commit-sha>.tar.gz --force && \
+if [ -d torch ]; then npx --no-install torch-lock update --force; else npx --no-install torch-lock init --force; fi && \
+npm install --prefix torch && \
+npm run --prefix torch lock:check:daily -- --json --quiet
+```
+
+Post-upgrade validation checklist:
+
+1. Confirm root config exists: `test -f torch-config.json`.
+2. Confirm handoff defaults exist: `rg -n "handoffCommandByCadence" torch-config.json`.
+3. Confirm host install dependencies exist: `test -d torch/node_modules`.
+4. Run one scheduler cycle (expected to fail on Linux simulation due to artifact checks, but not due to missing config/handoff):
+   - `AGENT_PLATFORM=linux npm run --prefix torch scheduler:daily`
+5. Verify installed package matches expected resolver behavior:
+   - `rg -n "cwdBaseName === 'torch' && fs.existsSync\\(parentPath\\)" node_modules/torch-lock/src/torch-config.mjs`
+   - `rg -n "cwdBaseName === 'torch' && fs.existsSync\\(parentPath\\)" torch/src/torch-config.mjs`
 
 ## Development
 

@@ -1,0 +1,9 @@
+Decide whether low-value memory can be pruned.
+
+Output STRICT JSON only:
+{"prune":false,"reason":"short factual reason"}
+
+Rules:
+- Never prune if uncertain.
+- Never expose PII; redact if quoted.
+- Prefer retaining safety-critical, decision, and incident context.
