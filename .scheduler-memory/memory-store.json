@@ -1,0 +1,27 @@
+[
+  [
+    "fd81cac3-2ced-46ed-954a-370e0e71de96",
+    {
+      "schema_version": 1,
+      "id": "fd81cac3-2ced-46ed-954a-370e0e71de96",
+      "agent_id": "scheduler-memory-daily",
+      "session_id": "session-mm2cwyuv",
+      "type": "batch_window",
+      "content": "Memory retrieval seed for daily :: scheduler memory retrieval",
+      "summary": "Memory retrieval seed for daily :: scheduler memory retrieval",
+      "tags": [
+        "scheduler",
+        "daily",
+        "retrieve"
+      ],
+      "importance": 0.4,
+      "embedding_id": null,
+      "created_at": 1772043447415,
+      "last_seen": 1772043447434,
+      "source": "scheduler-retrieve",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ]
+]
