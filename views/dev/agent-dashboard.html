@@ -57,7 +57,7 @@
           <p class="text-muted text-sm max-w-prose">
             Live view of
             <a
-              href="docs/agents/TORCH.md"
+              href="torch/TORCH.md"
               class="text-info hover:text-info-strong"
               >TORCH</a
             >
@@ -150,7 +150,7 @@
               <strong>kind 30078</strong> events tagged with
               <code class="mono">#bitvid-agent-lock</code>. These are the same
               events agents publish via
-              <code class="mono">scripts/agent/nostr-lock.mjs</code> when they
+              <code class="mono">torch/bin/torch-lock.mjs</code> when they
               claim tasks using the TORCH protocol.
             </p>
             <p>
@@ -182,7 +182,7 @@
 
     <script type="module">
       // -----------------------------------------------------------------------
-      // Configuration — matches scripts/agent/nostr-lock.mjs exactly
+      // Configuration — matches torch/bin/torch-lock.mjs exactly
       // -----------------------------------------------------------------------
       const RELAYS = [
         'wss://relay.damus.io',

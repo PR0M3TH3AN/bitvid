@@ -44,7 +44,6 @@ const IGNORED_GLOBS = [
   'test-audit/**',
   'js/webtorrent.min.js',
   'js/webtorrent.min.js.map',
-  'docs/agents/task-logs/**'
 ];
 
 const gitArgs = [

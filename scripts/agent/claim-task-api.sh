@@ -104,7 +104,7 @@ TIMESTAMP=$(date -u +"%Y-%m-%d_%H-%M-%S")
 DATE_ONLY=$(date -u +"%Y-%m-%d")
 RUN_ID="${RUN_ID:-$(date -u +"%s")}"
 BRANCH_NAME="agents/${CADENCE}/${AGENT}/${DATE_ONLY}-run-${RUN_ID}"
-LOG_DIR="docs/agents/task-logs/${CADENCE}"
+LOG_DIR="task-logs/${CADENCE}"
 LOG_FILE="${TIMESTAMP}_${AGENT}_started.md"
 LOG_PATH="${LOG_DIR}/${LOG_FILE}"
 

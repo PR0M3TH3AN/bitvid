@@ -54,7 +54,12 @@
     "purge:cloudflare:changed": "node scripts/purge-cloudflare-changed.mjs",
     "smoke:dist-assets": "node scripts/check-asset-references.mjs",
     "test:e2e:cache-upgrade": "npx playwright test tests/e2e/cache-upgrade-smoke.spec.ts --project=e2e",
-    "validate:torch-extraction": "node scripts/agent/validate-torch-extraction.mjs"
+    "torch:dashboard": "npm run --prefix torch dashboard:serve",
+    "torch:check": "npm run --prefix torch lock:check:daily",
+    "torch:lock": "npm run --prefix torch lock:lock",
+    "torch:health": "npm run --prefix torch lock:health",
+    "torch:memory:list": "node torch/bin/torch-lock.mjs list-memories",
+    "torch:memory:inspect": "node torch/bin/torch-lock.mjs inspect-memory"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
@@ -84,6 +89,7 @@
     "nostr-tools": "^2.19.4",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.19",
+    "torch-lock": "https://github.com/PR0M3TH3AN/TORCH/archive/refs/heads/main.tar.gz",
     "ws": "^8.19.0"
   }
 }

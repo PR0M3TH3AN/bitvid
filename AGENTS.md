@@ -246,20 +246,20 @@ When you create a PR or start work, leave a clear signal:
 
 ### Task Claiming Protocol (TORCH)
 
-Task coordination uses **TORCH** (Task Orchestration via Relay-Coordinated Handoff) — a decentralized locking protocol built on Nostr. Agents publish ephemeral lock events to public relays; locks auto-expire via NIP-40. No tokens, no secrets, no git push required. Works across all platforms (Claude Code, Codex, Jules). See `docs/agents/TORCH.md` for the full protocol documentation.
+Task coordination uses **TORCH** (Task Orchestration via Relay-Coordinated Handoff) — a decentralized locking protocol built on Nostr. Agents publish ephemeral lock events to public relays; locks auto-expire via NIP-40. No tokens, no secrets, no git push required. Works across all platforms (Claude Code, Codex, Jules). See `torch/TORCH.md` for the full protocol documentation.
 
 **Before starting any task:**
 
 1. **Check for existing claims:**
    ```bash
-   node scripts/agent/nostr-lock.mjs check --cadence <daily|weekly>
+   node torch/bin/torch-lock.mjs check --cadence <daily|weekly>
    ```
    Returns JSON with `locked` (claimed agents) and `available` (free agents) arrays. If an agent appears in the `locked` list, **skip it**.
 
 2. **Claim the task:**
    ```bash
    AGENT_PLATFORM=<jules|claude-code|codex> \
-   node scripts/agent/nostr-lock.mjs lock \
+   node torch/bin/torch-lock.mjs lock \
      --agent <agent-name> \
      --cadence <daily|weekly>
    ```
@@ -271,10 +271,10 @@ Task coordination uses **TORCH** (Task Orchestration via Relay-Coordinated Hando
 
 3. **View all active locks** (optional, for debugging):
    ```bash
-   node scripts/agent/nostr-lock.mjs list
+   node torch/bin/torch-lock.mjs list
    ```
 
-**Scheduler agents:** Daily and weekly scheduler agents must follow this protocol in addition to their directory-based rotation logic (`docs/agents/task-logs/daily/` and `docs/agents/task-logs/weekly/`). The lock check happens _after_ determining the next task but _before_ executing it. See the scheduler prompts for the specific implementation steps.
+**Scheduler agents:** Daily and weekly scheduler agents must follow this protocol in addition to their directory-based rotation logic (`task-logs/daily/` and `task-logs/weekly/`). The lock check happens _after_ determining the next task but _before_ executing it. See the scheduler prompts for the specific implementation steps.
 
 ### Currently In-Flight Work
 
