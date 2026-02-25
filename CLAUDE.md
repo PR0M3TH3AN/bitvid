@@ -557,6 +557,13 @@ When assigning work to agents:
 - Review and merge agent PRs promptly to keep the queue short — stale PRs compound conflicts
 - Use PR title prefixes (`[nostr-core]`, `[ui]`, `[playback]`, etc.) to make scope visible
 
+### TORCH Memory Integration
+
+You have access to the TORCH memory system.
+
+1. **READ:** Check `.scheduler-memory/latest/${cadence}/memories.md` for past learnings.
+2. **WRITE:** Before exiting, save new insights to `memory-update.md` so future runs can learn from this session.
+
 ---
 
 ## Key Documentation

@@ -276,6 +276,13 @@ Task coordination uses **TORCH** (Task Orchestration via Relay-Coordinated Hando
 
 **Scheduler agents:** Daily and weekly scheduler agents must follow this protocol in addition to their directory-based rotation logic (`task-logs/daily/` and `task-logs/weekly/`). The lock check happens _after_ determining the next task but _before_ executing it. See the scheduler prompts for the specific implementation steps.
 
+### TORCH Memory Integration
+
+You have access to the TORCH memory system.
+
+1. **READ:** Check `.scheduler-memory/latest/${cadence}/memories.md` for past learnings.
+2. **WRITE:** Before exiting, save new insights to `memory-update.md` so future runs can learn from this session.
+
 ### Currently In-Flight Work
 
 <!-- Maintainer: update this list when assigning work to agents. Agents: check this before starting. -->
