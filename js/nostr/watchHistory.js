@@ -1234,17 +1234,15 @@ class WatchHistoryManager {
 
      const months = Object.keys(records).sort();
 
-     const results = await pMap(
-       months,
-       async (month) => {
+     const results = await Promise.all(
+       months.map(async (month) => {
          const items = records[month];
          // Ideally we check if this month changed before publishing.
          // For now, we rely on the caller or just publish.
          // In a real optimized system we'd track dirty flags per month.
 
          return this.publishMonthRecord(month, items, options);
-       },
-       { concurrency: 5 },
+       }),
      );
 
      for (const res of results) {

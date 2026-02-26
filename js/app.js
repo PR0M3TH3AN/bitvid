@@ -2,6 +2,7 @@
 
 import { nostrClient } from "./nostrClientFacade.js";
 import { recordVideoView } from "./nostrViewEventsFacade.js";
+import { getDTagValueFromTags } from "./nostr/nip71.js";
 import { torrentClient } from "./webtorrent.js";
 import { emit } from "./embedDiagnostics.js";
 import {
@@ -1370,18 +1371,7 @@ class Application {
       return this.similarContentController.extractDTagValue(tags);
     }
     // Fallback if controller not initialized (though it should be)
-    if (!Array.isArray(tags)) {
-      return "";
-    }
-    for (const tag of tags) {
-      if (!Array.isArray(tag) || tag.length < 2) {
-        continue;
-      }
-      if (tag[0] === "d" && typeof tag[1] === "string") {
-        return tag[1];
-      }
-    }
-    return "";
+    return getDTagValueFromTags(tags);
   }
 
   deriveVideoPointerInfo(video) {

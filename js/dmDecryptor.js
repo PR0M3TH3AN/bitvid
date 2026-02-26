@@ -467,6 +467,56 @@ async function decryptGiftWrap(event, decryptors, actorPubkey) {
   });
 }
 
+function raceOrdered(promises) {
+  if (!promises || promises.length === 0) {
+    return Promise.reject(new AggregateError([], "No promises to race"));
+  }
+
+  return new Promise((resolve, reject) => {
+    let pendingCount = promises.length;
+    const errors = new Array(promises.length);
+    const results = new Array(promises.length);
+    const states = new Array(promises.length).fill("pending");
+    let scanIndex = 0;
+
+    promises.forEach((p, i) => {
+      Promise.resolve(p).then(
+        (val) => {
+          states[i] = "fulfilled";
+          results[i] = val;
+
+          if (i === scanIndex) {
+            resolve(val);
+          }
+        },
+        (err) => {
+          states[i] = "rejected";
+          errors[i] = err;
+          pendingCount--;
+
+          if (i === scanIndex) {
+            while (scanIndex < promises.length) {
+              if (states[scanIndex] === "fulfilled") {
+                resolve(results[scanIndex]);
+                return;
+              }
+              if (states[scanIndex] === "rejected") {
+                scanIndex++;
+              } else {
+                return;
+              }
+            }
+          }
+
+          if (pendingCount === 0 && scanIndex >= promises.length) {
+            reject(new AggregateError(errors, "All promises rejected"));
+          }
+        },
+      );
+    });
+  });
+}
+
 async function decryptLegacyDm(event, decryptors, actorPubkey) {
   const ciphertext = typeof event?.content === "string" ? event.content : "";
   const senderPubkey = normalizeHex(event?.pubkey);
@@ -564,7 +614,7 @@ async function decryptLegacyDm(event, decryptors, actorPubkey) {
   // Race all decryption attempts to return the first successful result
   // This significantly reduces latency compared to sequential attempts
   try {
-    return await Promise.any(attempts);
+    return await raceOrdered(attempts);
   } catch (aggregateError) {
     const aggregatedErrors = aggregateError.errors || [];
     errors.push(...aggregatedErrors);
