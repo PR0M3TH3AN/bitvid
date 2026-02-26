@@ -130,6 +130,7 @@ export class VideoEventBuffer {
               }
             }
           }
+          updatedVideos.push(video);
           continue;
         }
 
