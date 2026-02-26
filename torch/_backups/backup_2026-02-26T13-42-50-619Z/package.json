@@ -1,0 +1,91 @@
+{
+  "name": "torch-lock",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "TORCH — portable Nostr-based task locking toolkit for multi-agent coordination",
+  "main": "src/lib.mjs",
+  "exports": {
+    ".": "./src/lib.mjs",
+    "./constants": "./src/constants.mjs",
+    "./lock-ops": "./src/lock-ops.mjs"
+  },
+  "bin": {
+    "torch-lock": "./bin/torch-lock.mjs"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/PR0M3TH3AN/TORCH.git"
+  },
+  "keywords": [
+    "nostr",
+    "task-locking",
+    "multi-agent",
+    "coordination",
+    "scheduler",
+    "cli"
+  ],
+  "license": "MIT",
+  "files": [
+    "bin/",
+    "src/*.mjs",
+    "src/services/",
+    "src/prompts/",
+    "src/docs/",
+    "scripts/check-file-size.mjs",
+    "scripts/check-innerhtml.mjs",
+    "scripts/test-audit/",
+    "scripts/memory/",
+    "migrations/",
+    "skills/",
+    "dashboard/",
+    "assets/",
+    "eslint.config.mjs",
+    "torch-config.example.json",
+    "README.md",
+    "TORCH.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "npm run validate:scheduler && npm run test:integration:e2e && node --test --test-timeout=30000 test/*.test.mjs test/*.test.js",
+    "test:unit:lock-backend": "node --test test/lock-ops.test.mjs test/lock-ops-publish-retry.test.mjs",
+    "lock:check:daily": "node bin/torch-lock.mjs check --cadence daily",
+    "lock:check:weekly": "node bin/torch-lock.mjs check --cadence weekly",
+    "lock:list": "node bin/torch-lock.mjs list",
+    "lock:lock": "node bin/torch-lock.mjs lock",
+    "lock:health": "node bin/torch-lock.mjs health",
+    "dashboard:serve": "node bin/torch-lock.mjs dashboard",
+    "build": "node build.mjs",
+    "format": "eslint . --fix",
+    "lint": "eslint .",
+    "lint:inline-styles": "! grep -r \"style=\" src/ dashboard/ --exclude-dir=test_logs --exclude-dir=task-logs",
+    "lock:complete": "node bin/torch-lock.mjs complete",
+    "validate:scheduler": "node scripts/validate-scheduler-roster.mjs && node scripts/validate-prompt-contract.mjs && node scripts/validate-scheduler-flow-parity.mjs && npm run validate:scheduler-failure-schema",
+    "scheduler:daily": "node scripts/agent/run-scheduler-cycle.mjs daily",
+    "scheduler:weekly": "node scripts/agent/run-scheduler-cycle.mjs weekly",
+    "report:lock-reliability": "node scripts/agent/summarize-lock-reliability.mjs --since-days 30",
+    "test:integration:e2e": "node --test test/scheduler-preflight-lock.e2e.test.mjs",
+    "validate:scheduler-failure-schema": "node --test test/scheduler-lock-failure-schema.contract.test.mjs",
+    "test:ci-resilience": "node --test test/lock-acquisition-resilience.integration.test.mjs",
+    "test:extended-main": "npm run test:integration:e2e && npm run test:ci-resilience",
+    "test:playwright": "playwright test",
+    "test:playwright:coverage": "rm -rf coverage/playwright/tmp && mkdir -p coverage/playwright/tmp && CI=true playwright test && npx c8 report --temp-directory coverage/playwright/tmp --report-dir coverage/playwright --reporter text --reporter json --all --src src",
+    "test:playwright:ui": "playwright test --ui",
+    "torch:memory:list": "node bin/torch-lock.mjs list-memories",
+    "torch:memory:inspect": "node bin/torch-lock.mjs inspect-memory",
+    "torch:remove": "node bin/torch-lock.mjs remove"
+  },
+  "dependencies": {
+    "nostr-tools": "2.23.1",
+    "ws": "8.19.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.58.2",
+    "c8": "^10.1.3",
+    "eslint": "^10.0.1",
+    "globals": "^17.3.0"
+  }
+}

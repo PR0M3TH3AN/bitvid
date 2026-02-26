@@ -1,0 +1,1640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TORCH: AI Workforce Orchestration</title>
+    <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+    <link rel="stylesheet" href="../dashboard/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        /* Landing Page Specific Overrides & Additions */
+        body {
+            overflow-x: hidden;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        header {
+            padding: 2rem 5%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: linear-gradient(to bottom, var(--surface-alt), transparent);
+        }
+
+        .logo-container {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            font-weight: 700;
+            font-size: 1.5rem;
+            color: var(--text-strong);
+            letter-spacing: -0.02em;
+        }
+
+        .hero {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 4rem 1rem;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .hero h1 {
+            font-size: 3.5rem;
+            line-height: 1.1;
+            margin-bottom: 1.5rem;
+            background: linear-gradient(to right, var(--text-strong) 0%, var(--info) 30%, var(--accent) 50%, var(--info) 70%, var(--text-strong) 100%);
+            background-size: 200% auto;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.03em;
+            animation: textShine 5s linear infinite;
+        }
+
+        @keyframes textShine {
+            to {
+                background-position: 200% center;
+            }
+        }
+
+        .hero p {
+            font-size: 1.25rem;
+            color: var(--muted);
+            margin-bottom: 2.5rem;
+            line-height: 1.6;
+            max-width: 60ch;
+        }
+
+        .actions {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .cta-button {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.75rem 2rem;
+            border-radius: 9999px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            font-size: 1rem;
+            cursor: pointer;
+            border: 1px solid transparent;
+        }
+
+        .cta-button.primary {
+            background: var(--accent);
+            color: white;
+            box-shadow: 0 4px 20px rgba(79, 140, 255, 0.3);
+        }
+
+        .cta-button.primary:hover {
+            background: var(--accent-strong);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 25px rgba(79, 140, 255, 0.4);
+        }
+
+        .cta-button.secondary {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text);
+            border-color: var(--border);
+        }
+
+        .cta-button.secondary:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-strong);
+        }
+
+        /* Feature Grid */
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+            max-width: 1200px;
+            margin: 4rem auto;
+            padding: 0 2rem;
+        }
+
+        .feature-card {
+            background: var(--surface-alt);
+            border: 1px solid var(--border);
+            padding: 2rem;
+            border-radius: 1rem;
+            transition: transform 0.2s;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--accent);
+        }
+
+        .feature-icon {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+            color: var(--accent);
+        }
+
+        .feature-title {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: var(--text-strong);
+        }
+
+        .feature-desc {
+            font-size: 0.9rem;
+            color: var(--muted);
+        }
+
+        /* Meta Prompts Section */
+        .meta-prompts {
+            max-width: 1200px;
+            margin: 4rem auto;
+            padding: 0 2rem;
+            width: 100%;
+        }
+
+        @media (max-width: 640px) {
+            .meta-prompts, .agent-showcase {
+                padding: 0 1rem;
+            }
+        }
+
+        .meta-prompts h2 {
+            text-align: center;
+            font-size: 2rem;
+            margin-bottom: 2rem;
+            color: var(--text-strong);
+        }
+
+        .prompts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2rem;
+        }
+
+        .prompt-card {
+            background: var(--surface-alt);
+            border: 1px solid var(--border);
+            border-radius: 1rem;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .prompt-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(0,0,0,0.2);
+        }
+
+        .prompt-title {
+            font-weight: 600;
+            color: var(--text-strong);
+        }
+
+        .copy-btn {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--muted);
+            padding: 0.25rem 0.75rem;
+            border-radius: 0.5rem;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .copy-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .prompt-content {
+            padding: 0;
+            margin: 0;
+            background: #0d1117;
+            overflow: auto;
+            max-height: 400px;
+            flex: 1;
+        }
+
+        .prompt-content pre {
+            margin: 0;
+            padding: 1.5rem;
+            overflow: auto;
+        }
+
+        .prompt-content code {
+            display: block;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 0.85rem;
+            color: #e6edf3;
+            line-height: 1.5;
+            white-space: pre;
+            word-break: normal;
+            overflow-wrap: normal;
+        }
+
+        footer {
+            margin-top: auto;
+            padding: 2rem;
+            text-align: center;
+            color: var(--muted);
+            font-size: 0.875rem;
+            border-top: 1px solid var(--border);
+        }
+
+        /* Install CTA Section */
+        .install-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 4rem;
+            text-align: center;
+            width: 100%;
+            max-width: 600px;
+            padding: 0 1rem;
+            animation: fadeIn 0.8s ease-out forwards;
+            opacity: 0;
+            transform: translateY(10px);
+        }
+
+        @keyframes fadeIn {
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .install-label {
+            font-size: 0.9rem;
+            color: var(--muted);
+            margin-bottom: 0.75rem;
+            font-weight: 500;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+
+        .install-code-wrapper {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(11, 16, 32, 0.8);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 0.75rem 1rem;
+            width: 100%;
+            max-width: 450px;
+            position: relative;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+            transition: all 0.3s ease;
+        }
+
+        .install-code-wrapper:hover {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 1px var(--accent), 0 8px 30px rgba(79, 140, 255, 0.2);
+            transform: translateY(-2px);
+        }
+
+        .install-code-wrapper code {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 1rem;
+            color: var(--text-strong);
+            background: transparent;
+            padding: 0;
+            margin-right: 1rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            text-align: left;
+            flex: 1;
+        }
+
+        .install-code-wrapper code::before {
+            content: "$ ";
+            color: var(--muted);
+            user-select: none;
+        }
+
+        .install-code-wrapper.multiline {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 1rem;
+            max-width: 800px; /* Wider for multiline prompt */
+        }
+
+        .install-code-wrapper.multiline code {
+            white-space: pre-wrap;
+            word-break: break-word;
+            margin-right: 0;
+            width: 100%;
+            font-size: 0.95rem;
+            line-height: 1.6;
+            color: #a5d6ff; /* Slightly lighter/blue tint for prompt text */
+        }
+
+        .install-code-wrapper.multiline code::before {
+            content: none;
+        }
+
+        .install-code-wrapper.multiline .copy-install-btn {
+            align-self: flex-end;
+        }
+
+        /* Agent Selector Styles */
+        .agent-selector {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1.5rem;
+            width: 100%;
+            max-width: 900px;
+            margin-bottom: 3rem;
+        }
+
+        .agent-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            text-align: left;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .agent-card.active {
+            border-color: var(--accent);
+            background: rgba(79, 140, 255, 0.08);
+            box-shadow: 0 0 30px rgba(79, 140, 255, 0.1);
+        }
+
+        .agent-card.active:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(79, 140, 255, 0.2);
+            background: rgba(79, 140, 255, 0.12);
+        }
+
+        .agent-card.disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            background: rgba(0, 0, 0, 0.2);
+            border-style: dashed;
+        }
+
+        .agent-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .agent-name {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-strong);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .agent-status {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 0.2rem 0.6rem;
+            border-radius: 99px;
+            font-weight: 600;
+        }
+
+        .agent-card.active .agent-status {
+            color: var(--surface);
+            background: var(--accent);
+        }
+
+        .agent-card.disabled .agent-status {
+            background: rgba(255,255,255,0.1);
+            color: var(--muted);
+        }
+
+        .agent-desc {
+            font-size: 0.9rem;
+            color: var(--muted);
+            line-height: 1.5;
+        }
+
+        .copy-install-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 0.4rem 0.8rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 500;
+            flex-shrink: 0;
+            line-height: 1;
+        }
+
+        .copy-install-btn:hover {
+            background: var(--surface-alt);
+            color: var(--text-strong);
+            border-color: var(--accent);
+        }
+
+        .copy-install-btn:active {
+            transform: scale(0.98);
+        }
+
+        /* Acknowledgement Modal Styles */
+        #ackModal .modal-content {
+            border-color: var(--danger);
+            max-width: 500px;
+            text-align: center;
+        }
+
+        #ackModal h2 {
+            color: var(--danger);
+            margin-top: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        #ackModal .modal-body {
+            font-size: 1.1rem;
+            color: var(--text);
+            margin: 1.5rem 0;
+            line-height: 1.6;
+        }
+
+        #ackModal .modal-actions {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-top: 2rem;
+        }
+
+        #ackModal .btn-cancel {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 0.75rem 1.5rem;
+            border-radius: 9999px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 600;
+        }
+
+        #ackModal .btn-cancel:hover {
+            background: var(--surface-alt);
+            color: var(--text-strong);
+        }
+
+        #ackModal .btn-confirm {
+            background: var(--danger);
+            border: 1px solid var(--danger);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 9999px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(255, 50, 50, 0.3);
+        }
+
+        #ackModal .btn-confirm:hover {
+            background: #ff4d4d; /* lighter red */
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(255, 50, 50, 0.4);
+        }
+
+        /* Define danger color if not exists in dashboard/styles.css */
+        :root {
+            --danger: #ef4444;
+            /* Warm Accent Colors */
+            --warm-primary: #ff6b6b;
+            --warm-secondary: #fbbf24;
+            --warm-glow: rgba(255, 107, 107, 0.15);
+        }
+
+        /* Ambient Background */
+        .background-decoration {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            pointer-events: none;
+            overflow: hidden;
+        }
+
+        .background-decoration svg {
+            width: 100%;
+            height: 100%;
+            opacity: 0.4;
+        }
+
+        /* Scroll Animations */
+        .scroll-reveal {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.8s cubic-bezier(0.5, 0, 0, 1);
+        }
+
+        .scroll-reveal.is-visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Core Capabilities Section */
+        .core-capabilities {
+            max-width: 1200px;
+            margin: 4rem auto;
+            padding: 0 2rem;
+            text-align: center;
+        }
+
+        .core-capabilities h2 {
+            font-size: 2.5rem;
+            margin-bottom: 3rem;
+            background: linear-gradient(135deg, var(--text-strong) 0%, var(--accent) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .capability-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+
+        .capability-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border);
+            border-radius: 1.5rem;
+            padding: 2.5rem;
+            text-align: left;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .capability-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at top right, rgba(79, 140, 255, 0.1), transparent 60%);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .capability-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--accent);
+            box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.5);
+        }
+
+        .capability-card:hover::before {
+            opacity: 1;
+        }
+
+        .cap-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1.5rem;
+            background: rgba(79, 140, 255, 0.1);
+            width: 60px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 1rem;
+            color: var(--accent);
+        }
+
+        .capability-card h3 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            color: var(--text-strong);
+        }
+
+        .capability-card p {
+            color: var(--muted);
+            line-height: 1.6;
+            font-size: 1rem;
+        }
+
+        /* Agent Showcase Section */
+        .agent-showcase {
+            max-width: 1200px;
+            margin: 4rem auto;
+            padding: 0 2rem;
+        }
+
+        .agent-showcase h2 {
+            font-size: 2.5rem;
+            margin-bottom: 3rem;
+            text-align: center;
+            color: var(--text-strong);
+        }
+
+        .agent-category-title {
+            font-size: 1.5rem;
+            color: var(--accent);
+            margin: 2rem 0 1.5rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+            font-weight: 600;
+        }
+
+        .functional-agent-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .functional-agent-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            transition: all 0.2s ease;
+        }
+
+        .functional-agent-card:hover {
+            border-color: var(--accent);
+            background: rgba(79, 140, 255, 0.05);
+            transform: translateY(-2px);
+        }
+
+        .functional-agent-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .functional-agent-title {
+            font-weight: 700;
+            color: var(--text-strong);
+            font-size: 1.1rem;
+        }
+
+        .functional-agent-title-group {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .functional-agent-icon {
+            font-size: 1.5rem;
+            line-height: 1;
+        }
+
+        .functional-agent-schedule {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            background: var(--surface-alt);
+            color: var(--muted);
+            border: 1px solid var(--border);
+        }
+
+        .functional-agent-desc {
+            font-size: 0.9rem;
+            color: var(--muted);
+            line-height: 1.5;
+            flex-grow: 1;
+        }
+
+        .view-prompt-btn {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+            font-weight: 500;
+        }
+
+        .view-prompt-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: rgba(79, 140, 255, 0.05);
+        }
+
+        /* Prompt Modal */
+        #promptModal .modal-content {
+            max-width: 900px;
+            width: 90%;
+            height: 85vh;
+            display: flex;
+            flex-direction: column;
+            padding: 0;
+            background: var(--surface);
+        }
+
+        #promptModal .modal-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--surface-alt);
+        }
+
+        #promptModal .modal-title {
+            font-weight: 700;
+            font-size: 1.1rem;
+            color: var(--text-strong);
+        }
+
+        #promptModal .modal-body {
+            flex: 1;
+            overflow: auto;
+            padding: 0;
+            background: #0d1117;
+        }
+
+        #promptModal .modal-body pre {
+            margin: 0;
+            padding: 1.5rem;
+            overflow: auto;
+        }
+
+        #promptModal .modal-body code {
+            display: block;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 0.9rem;
+            color: #e6edf3;
+            line-height: 1.5;
+            white-space: pre;
+            word-break: normal;
+            overflow-wrap: normal;
+        }
+
+        #promptModal .close-prompt {
+            color: var(--muted);
+            font-size: 1.5rem;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        #promptModal .close-prompt:hover {
+            color: var(--text-strong);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="background-decoration" aria-hidden="true">
+        <svg viewBox="0 0 1440 1024" fill="none" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice">
+            <defs>
+                <linearGradient id="warmGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stop-color="var(--accent)" stop-opacity="0" />
+                    <stop offset="50%" stop-color="var(--warm-primary)" stop-opacity="0.6" />
+                    <stop offset="100%" stop-color="var(--warm-secondary)" stop-opacity="0" />
+                </linearGradient>
+                <radialGradient id="heroGlow">
+                    <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.3" />
+                    <stop offset="100%" stop-color="var(--accent)" stop-opacity="0" />
+                </radialGradient>
+            </defs>
+            <circle cx="720" cy="200" r="400" fill="url(#heroGlow)">
+                <animate attributeName="opacity" values="0.4;0.8;0.4" dur="4s" repeatCount="indefinite" />
+                <animate attributeName="r" values="350;450;350" dur="10s" repeatCount="indefinite" />
+            </circle>
+            <path d="M-100 600 C 200 400, 600 800, 1540 500" stroke="url(#warmGradient)" stroke-width="2" fill="none" opacity="0.5">
+                <animate attributeName="d"
+                         values="M-100 600 C 200 400, 600 800, 1540 500; M-100 600 C 200 500, 600 700, 1540 500; M-100 600 C 200 400, 600 800, 1540 500"
+                         dur="20s" repeatCount="indefinite" />
+            </path>
+            <path d="M-100 300 C 400 500, 800 100, 1540 400" stroke="url(#warmGradient)" stroke-width="1.5" fill="none" opacity="0.3">
+                 <animate attributeName="d"
+                         values="M-100 300 C 400 500, 800 100, 1540 400; M-100 300 C 400 400, 800 200, 1540 400; M-100 300 C 400 500, 800 100, 1540 400"
+                         dur="25s" repeatCount="indefinite" />
+            </path>
+            <circle cx="200" cy="400" r="4" fill="var(--warm-primary)" opacity="0.2">
+                <animate attributeName="opacity" values="0.2;0.8;0.2" dur="4s" repeatCount="indefinite" />
+                <animate attributeName="cx" values="200;220;200" dur="10s" repeatCount="indefinite" />
+            </circle>
+            <circle cx="800" cy="100" r="3" fill="var(--info)" opacity="0.3">
+                <animate attributeName="opacity" values="0.2;0.6;0.2" dur="3s" repeatCount="indefinite" />
+            </circle>
+             <circle cx="1200" cy="700" r="2" fill="var(--warm-secondary)" opacity="0.4">
+                <animate attributeName="cy" values="700;720;700" dur="8s" repeatCount="indefinite" />
+            </circle>
+        </svg>
+    </div>
+
+    <header>
+        <div class="logo-container">
+            <img src="../assets/logo.svg" alt="TORCH Logo" width="32" height="32">
+            TORCH
+        </div>
+        <nav>
+            <a href="https://github.com/PR0M3TH3AN/TORCH" class="text-muted hover:text-info-strong transition-colors">GitHub</a>
+        </nav>
+    </header>
+
+    <main>
+        <section class="hero scroll-reveal">
+            <h1>A Simple Round-Robin Agent Scheduler.</h1>
+            <p>
+                A lightweight, drop-in folder that rotates through autonomous agents to maintain and improve your codebase. No complex pipelines—just simple, effective orchestration.
+            </p>
+            <div class="actions">
+                <a href="../dashboard/" class="cta-button primary">Launch Dashboard</a>
+                <button id="openDocs" class="cta-button secondary">Read Documentation</button>
+            </div>
+        </section>
+
+        <div class="install-container scroll-reveal">
+            <h2 class="mb-8 text-text-strong" style="font-size: 2rem;">Choose Your Agent</h2>
+
+            <div class="agent-selector" role="radiogroup" aria-label="Select an Agent">
+                <div id="card-jules" onclick="selectAgent('jules')" class="agent-card active" style="cursor: pointer;" role="radio" aria-checked="true" tabindex="0">
+                    <div class="agent-header">
+                        <span class="agent-name">Jules</span>
+                        <span class="agent-status">Active</span>
+                    </div>
+                    <p class="agent-desc">Web-based tool with Auto-Scheduler. Optimized for Google's latest coding agent. <a href="https://jules.google/" target="_blank" onclick="event.stopPropagation()">Learn more</a>.</p>
+                </div>
+
+                <div id="card-codex" onclick="selectAgent('codex')" class="agent-card" style="cursor: pointer;" role="radio" aria-checked="false" tabindex="0">
+                    <div class="agent-header">
+                        <span class="agent-name">Codex CLI</span>
+                        <span class="agent-status">Active</span>
+                    </div>
+                    <p class="agent-desc">Advanced reasoning for complex tasks. (Requires full access permissions) <a href="https://openai.com/blog/openai-codex" target="_blank" onclick="event.stopPropagation()">Learn more</a>.</p>
+                </div>
+
+                <div id="card-opencode" onclick="selectAgent('opencode')" class="agent-card" style="cursor: pointer;" role="radio" aria-checked="false" tabindex="0">
+                    <div class="agent-header">
+                        <span class="agent-name">OpenCode CLI</span>
+                        <span class="agent-status">Active</span>
+                    </div>
+                    <p class="agent-desc">Open source models running locally. <a href="https://opencode.ai/" target="_blank" onclick="event.stopPropagation()">Learn more</a>.</p>
+                </div>
+
+                <div id="card-claude" onclick="selectAgent('claude')" class="agent-card" style="cursor: pointer;" role="radio" aria-checked="false" tabindex="0">
+                    <div class="agent-header">
+                        <span class="agent-name">Claude Code CLI</span>
+                        <span class="agent-status">Active</span>
+                    </div>
+                    <p class="agent-desc">Long-context understanding and safety. (CLI Required, needs cronjob) <a href="https://claude.ai/" target="_blank" onclick="event.stopPropagation()">Learn more</a>.</p>
+                </div>
+
+                <div id="card-gemini" onclick="selectAgent('gemini')" class="agent-card" style="cursor: pointer;" role="radio" aria-checked="false" tabindex="0">
+                    <div class="agent-header">
+                        <span class="agent-name">Gemini CLI</span>
+                        <span class="agent-status">Active</span>
+                    </div>
+                    <p class="agent-desc">Google's multimodal AI model. (CLI Required, needs cronjob) <a href="https://deepmind.google/technologies/gemini/" target="_blank" onclick="event.stopPropagation()">Learn more</a>.</p>
+                </div>
+
+                <div id="card-qwen" onclick="selectAgent('qwen')" class="agent-card" style="cursor: pointer;" role="radio" aria-checked="false" tabindex="0">
+                    <div class="agent-header">
+                        <span class="agent-name">Qwen Coder CLI</span>
+                        <span class="agent-status">Active</span>
+                    </div>
+                    <p class="agent-desc">Alibaba's open weights coding model. (CLI Required, needs cronjob) <a href="https://qwenlm.github.io/" target="_blank" onclick="event.stopPropagation()">Learn more</a>.</p>
+                </div>
+
+                <div id="card-antigravity" onclick="selectAgent('antigravity')" class="agent-card" style="cursor: pointer;" role="radio" aria-checked="false" tabindex="0">
+                    <div class="agent-header">
+                        <span class="agent-name">Antigravity IDE</span>
+                        <span class="agent-status">Active</span>
+                    </div>
+                    <p class="agent-desc">The autonomous Python IDE. (Manual only) <a href="https://antigravity.google/" target="_blank" onclick="event.stopPropagation()">Learn more</a>.</p>
+                </div>
+            </div>
+
+            <p class="install-label" style="margin-top: 1rem;">Copy this happy-path prompt to onboard TORCH:</p>
+            <p class="text-muted" style="margin-top: 0; margin-bottom: 0.75rem; font-size: 0.85rem;">Requires Node.js 22+. `init` also hooks TORCH memory instructions into AGENTS.md / CLAUDE.md.</p>
+            <div class="install-code-wrapper multiline">
+                <code id="install-cmd">Hey Jules, can you install and setup TORCH into this repo in one pass? Please run this command:
+
+npm install https://github.com/PR0M3TH3AN/TORCH/archive/refs/heads/main.tar.gz && npx --no-install torch-lock init</code>
+                <button class="copy-install-btn" onclick="copyToClipboard('install-cmd', this, true)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                    Copy
+                </button>
+            </div>
+
+            <div class="text-center w-full border-t border-border" style="margin-top: 4rem; padding-top: 2rem; max-width: 600px;">
+                <h3 class="mb-2 text-text-strong" style="font-size: 1.25rem;">Running Offline or Air-Gapped?</h3>
+                <p class="text-muted mb-6" style="font-size: 0.95rem;">Download the standalone bundle and install it directly without registry access.</p>
+
+                <a href="{{OFFLINE_BUNDLE_FILENAME}}" download class="cta-button secondary mb-6">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 0.5rem;">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    Download Bundle
+                </a>
+
+                <div class="install-code-wrapper mx-auto" style="max-width: 450px;">
+                    <code id="offline-cmd">npm install ./{{OFFLINE_BUNDLE_FILENAME}}</code>
+                    <button class="copy-install-btn" onclick="copyToClipboard('offline-cmd', this)">
+                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                        Copy
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <section class="features scroll-reveal">
+            <div class="feature-card">
+                <div class="feature-icon">⚡</div>
+                <div class="feature-title">Instant Setup</div>
+                <div class="feature-desc">Just drop the folder into your project. No complex configuration pipelines.</div>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🤖</div>
+                <div class="feature-title">Adaptive Agents</div>
+                <div class="feature-desc">Agents automatically adapt to your codebase and workflow patterns.</div>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🔒</div>
+                <div class="feature-title">Decentralized Locking</div>
+                <div class="feature-desc">Powered by Nostr for secure, distributed task orchestration.</div>
+            </div>
+        </section>
+
+        <section class="core-capabilities scroll-reveal">
+            <h2>Why Run TORCH?</h2>
+            <div class="capability-grid">
+                <div class="capability-card">
+                    <div class="cap-icon">🧠</div>
+                    <h3>Drop-in Orchestration</h3>
+                    <p>Transform any LLM session into a productive workforce. Just paste a meta-prompt, and watch it coordinate tasks autonomously.</p>
+                </div>
+                <div class="capability-card">
+                    <div class="cap-icon">✅</div>
+                    <h3>Verifiable Handoffs</h3>
+                    <p>Code doesn't ship unless it works. Agents must pass your specific tests and linters before releasing the lock.</p>
+                </div>
+                <div class="capability-card">
+                    <div class="cap-icon">🌐</div>
+                    <h3>Decentralized State</h3>
+                    <p>Serverless coordination via Nostr. No databases to manage, just pure, distributed task locking across agents.</p>
+                </div>
+                <div class="capability-card">
+                    <div class="cap-icon">📚</div>
+                    <h3>Persistent Memory</h3>
+                    <p>Agents that remember. TORCH maintains a semantic history of decisions, preventing loops and regressions.</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="meta-prompts scroll-reveal">
+            <h2>Scheduler Meta Prompts</h2>
+            <div class="prompts-grid">
+                <div class="prompt-card">
+                    <div class="prompt-header">
+                        <span class="prompt-title">Daily Scheduler</span>
+                        <button class="copy-btn" onclick="copyToClipboard('daily-code', this)">Copy</button>
+                    </div>
+                    <div class="prompt-content">
+                        <pre><code id="daily-code">Loading...</code></pre>
+                    </div>
+                </div>
+                <div class="prompt-card">
+                    <div class="prompt-header">
+                        <span class="prompt-title">Weekly Scheduler</span>
+                        <button class="copy-btn" onclick="copyToClipboard('weekly-code', this)">Copy</button>
+                    </div>
+                    <div class="prompt-content">
+                        <pre><code id="weekly-code">Loading...</code></pre>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="agent-showcase scroll-reveal" id="agent-showcase">
+            <h2>Functional Agents</h2>
+            <div id="functional-agent-list">
+                <!-- Populated by JS -->
+                <p class="text-center text-muted">Loading agents...</p>
+            </div>
+        </section>
+
+    </main>
+
+    <footer>
+        <p>&copy; TORCH Project. Built for the future of AI-driven development.</p>
+        <p>
+            <a href="https://tipjar.bitvid.network/?n=npub15jnttpymeytm80hatjqcvhhqhzrhx6gxp8pq0wn93rhnu8s9h9dsha32lx" class="text-muted hover:text-info-strong transition-colors">Support TORCH via Tipjar</a>
+        </p>
+    </footer>
+
+    <!-- Documentation Modal -->
+    <div id="docsModal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <div id="markdown-content">
+                <p class="text-muted">Loading documentation...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Agent Prompt Modal -->
+    <div id="promptModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-title" id="promptModalTitle">Agent Prompt</span>
+                <div style="display: flex; gap: 1rem; align-items: center;">
+                    <button class="copy-btn" id="copyPromptBtn">Copy</button>
+                    <span class="close-prompt">&times;</span>
+                </div>
+            </div>
+            <div class="modal-body">
+                <pre><code id="promptModalCode">Loading...</code></pre>
+            </div>
+        </div>
+    </div>
+
+    <!-- Acknowledgement Modal -->
+    <div id="ackModal" class="modal">
+        <div class="modal-content">
+            <h2>
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                    <line x1="12" y1="9" x2="12" y2="13"></line>
+                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+                Warning: Vibecoded Project
+            </h2>
+            <div class="modal-body">
+                This is a freshly vibecoded project and that using this in a valuable production repo is reckless.
+            </div>
+            <div class="modal-actions">
+                <button class="btn-cancel" onclick="dismissAckModal()">Cancel</button>
+                <button class="btn-confirm" onclick="confirmAck()">I Understand, Copy</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Scroll Reveal
+        const scrollObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('is-visible');
+                }
+            });
+        }, { threshold: 0.1 });
+
+        document.querySelectorAll('.scroll-reveal').forEach(el => scrollObserver.observe(el));
+
+        // Modal Logic
+        const modal = document.getElementById("docsModal");
+        const btn = document.getElementById("openDocs");
+        const span = document.getElementsByClassName("close-modal")[0];
+        const contentDiv = document.getElementById("markdown-content");
+        let docsLoaded = false;
+
+        btn.onclick = function() {
+            modal.classList.add("show");
+            if (!docsLoaded) {
+                fetchDocs();
+            }
+        }
+
+        span.onclick = function() {
+            modal.classList.remove("show");
+        }
+
+        // Agent Prompt Modal Logic
+        const promptModal = document.getElementById("promptModal");
+        const closePromptBtn = document.querySelector("#promptModal .close-prompt");
+        const copyPromptBtn = document.getElementById("copyPromptBtn");
+
+        if (closePromptBtn) {
+            closePromptBtn.onclick = function() {
+                promptModal.classList.remove("show");
+            }
+        }
+
+        if (copyPromptBtn) {
+            copyPromptBtn.onclick = function() {
+                copyToClipboard('promptModalCode', copyPromptBtn);
+            }
+        }
+
+        window.onclick = function(event) {
+            if (event.target == modal) {
+                modal.classList.remove("show");
+            }
+            if (event.target == ackModal) {
+                dismissAckModal();
+            }
+            if (event.target == promptModal) {
+                promptModal.classList.remove("show");
+            }
+        }
+
+        // Fetch and Render Markdown
+        async function fetchDocs() {
+            try {
+                const docPaths = [
+                    '../README.md',
+                    '../TORCH.md',
+                    '../src/docs/TORCH.md'
+                ];
+
+                let text = null;
+                let lastError = null;
+
+                for (const docPath of docPaths) {
+                    try {
+                        const response = await fetch(docPath);
+                        if (!response.ok) {
+                            continue;
+                        }
+                        text = await response.text();
+                        break;
+                    } catch (err) {
+                        lastError = err;
+                    }
+                }
+
+                if (!text) {
+                    if (lastError) {
+                        throw lastError;
+                    }
+                    throw new Error('Failed to load documentation markdown');
+                }
+
+                marked.setOptions({
+                    gfm: true
+                });
+                contentDiv.innerHTML = marked.parse(text);
+                docsLoaded = true;
+            } catch (error) {
+                console.error(error);
+                const p = document.createElement('p');
+                p.className = 'text-danger';
+                p.textContent = `Error loading documentation: ${error.message}`;
+                contentDiv.replaceChildren(p);
+            }
+        }
+
+        // Meta Prompts Logic
+        async function fetchMetaPrompts() {
+            try {
+                const response = await fetch('../src/prompts/META_PROMPTS.md');
+                if (!response.ok) throw new Error('Failed to load prompts');
+                const text = await response.text();
+
+                // Regex to capture content between ```text and ``` inside the headers
+                // strict on the header, loose on the code block language (text, markdown, or none)
+                // Using non-capturing group (?:[^\n\r]*)? for optional language hint on the same line
+                // followed by newline(s) to start content capture
+                const dailyMatch = text.match(/## Daily Scheduler Meta Prompt[\s\S]*?```(?:[^\n\r]*)?[\r\n]+([\s\S]*?)```/);
+                const weeklyMatch = text.match(/## Weekly Scheduler Meta Prompt[\s\S]*?```(?:[^\n\r]*)?[\r\n]+([\s\S]*?)```/);
+
+                if (dailyMatch && dailyMatch[1]) {
+                    document.getElementById('daily-code').textContent = dailyMatch[1].trim();
+                } else {
+                    console.warn('Daily prompt regex mismatch');
+                    document.getElementById('daily-code').textContent = 'Error: Daily prompt format mismatch in META_PROMPTS.md';
+                }
+
+                if (weeklyMatch && weeklyMatch[1]) {
+                    document.getElementById('weekly-code').textContent = weeklyMatch[1].trim();
+                } else {
+                    console.warn('Weekly prompt regex mismatch');
+                    document.getElementById('weekly-code').textContent = 'Error: Weekly prompt format mismatch in META_PROMPTS.md';
+                }
+            } catch (error) {
+                console.error('Error fetching meta prompts:', error);
+                document.getElementById('daily-code').textContent = 'Error loading prompt.';
+                document.getElementById('weekly-code').textContent = 'Error loading prompt.';
+            }
+        }
+
+        // Acknowledgement Logic
+        let hasAcknowledged = false;
+        let pendingCopy = null;
+        const ackModal = document.getElementById('ackModal');
+
+        function showAckModal(callback) {
+            pendingCopy = callback;
+            ackModal.classList.add('show');
+        }
+
+        function dismissAckModal() {
+            ackModal.classList.remove('show');
+            pendingCopy = null;
+        }
+
+        function confirmAck() {
+            hasAcknowledged = true;
+            ackModal.classList.remove('show');
+            if (pendingCopy) {
+                pendingCopy();
+                pendingCopy = null;
+            }
+        }
+
+        function copyToClipboard(elementId, btn, requiresAck = false) {
+            if (requiresAck && !hasAcknowledged) {
+                showAckModal(() => copyToClipboard(elementId, btn, false));
+                return;
+            }
+
+            const code = document.getElementById(elementId).textContent;
+            navigator.clipboard.writeText(code).then(() => {
+                // Capture child nodes to avoid innerHTML
+                const originalChildren = Array.from(btn.childNodes).map(n => n.cloneNode(true));
+
+                btn.textContent = 'Copied!';
+                btn.style.borderColor = 'var(--success)';
+                btn.style.color = 'var(--success)';
+
+                setTimeout(() => {
+                    btn.replaceChildren(...originalChildren);
+                    btn.style.borderColor = '';
+                    btn.style.color = '';
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy text: ', err);
+            });
+        }
+
+        async function resolveOfflineBundleTemplate() {
+            const offlineLink = document.querySelector('a[download][href*="OFFLINE_BUNDLE_FILENAME"]');
+            const offlineCode = document.getElementById('offline-cmd');
+            if (!offlineCode) {
+                return;
+            }
+
+            const unresolvedToken = '{{OFFLINE_BUNDLE_FILENAME}}';
+            if (!offlineCode.textContent.includes(unresolvedToken) && (!offlineLink || !offlineLink.getAttribute('href')?.includes(unresolvedToken))) {
+                return;
+            }
+
+            let bundleName = 'torch-offline-bundle.tgz';
+            try {
+                const response = await fetch('../package.json');
+                if (response.ok) {
+                    const pkg = await response.json();
+                    if (pkg?.name && pkg?.version) {
+                        bundleName = `${pkg.name}-${pkg.version}.tgz`;
+                    }
+                }
+            } catch (error) {
+                console.warn('Unable to resolve offline bundle filename from package.json:', error);
+            }
+
+            if (offlineLink) {
+                offlineLink.setAttribute('href', bundleName);
+                offlineLink.setAttribute('download', bundleName);
+            }
+            offlineCode.textContent = `npm install ./${bundleName}`;
+        }
+
+        // Initialize Meta Prompts
+        resolveOfflineBundleTemplate();
+        fetchMetaPrompts();
+
+        // Initialize Agent Showcase
+        fetchAgents();
+
+        // Store agent data globally
+        window.agentData = {};
+
+        const AGENT_ICONS = {
+            'audit-agent': '🕵️',
+            'ci-health-agent': '🏥',
+            'const-refactor-agent': '🧹',
+            'content-audit-agent': '📝',
+            'decompose-agent': '🧩',
+            'deps-security-agent': '🛡️',
+            'design-system-audit-agent': '🎨',
+            'docs-agent': '📚',
+            'docs-alignment-agent': '📐',
+            'docs-code-investigator': '🧐',
+            'innerhtml-migration-agent': '🔐',
+            'known-issues-agent': '📋',
+            'load-test-agent': '🏋️',
+            'log-fixer-agent': '📜',
+            'onboarding-audit-agent': '🧭',
+            'perf-agent': '🚀',
+            'protocol-research-agent': '🔬',
+            'scheduler-update-agent': '⏰',
+            'style-agent': '💅',
+            'test-audit-agent': '🧪',
+            'todo-triage-agent': '📥',
+            'torch-garbage-collection-agent': '♻️',
+            'bug-reproducer-agent': '🕷️',
+            'changelog-agent': '📰',
+            'dead-code-agent': '⚰️',
+            'feature-proposer-agent': '💡',
+            'frontend-console-debug-agent': '🕹️',
+            'fuzz-agent': '🎲',
+            'perf-deepdive-agent': '🤿',
+            'perf-optimization-agent': '🏎️',
+            'pr-review-agent': '👓',
+            'prompt-fixer-agent': '✏️',
+            'prompt-gap-analysis-agent': '🗺️',
+            'prompt-maintenance-agent': '🧼',
+            'prompt-safety-agent': '🦺',
+            'race-condition-agent': '🏁',
+            'refactor-agent': '🔨',
+            'repo-fit-agent': '🧘',
+            'smoke-agent': '💨',
+            'telemetry-agent': '📡',
+            'test-coverage-agent': '☔',
+            'ui-ux-agent': '🖼️',
+            'weekly-synthesis-agent': '🧠',
+            'proposal-triage-agent': '🗳️',
+            'plan-agent': '🔭',
+            'builder-agent': '🏗️',
+            'governance-agent': '⚖️'
+        };
+
+        const AGENT_CATEGORIES = {
+            'scheduler-update-agent': 'TORCH Maintenance & Agent Evolution',
+            'torch-garbage-collection-agent': 'TORCH Maintenance & Agent Evolution',
+            'repo-fit-agent': 'TORCH Maintenance & Agent Evolution',
+            'weekly-synthesis-agent': 'TORCH Maintenance & Agent Evolution',
+            'prompt-fixer-agent': 'TORCH Maintenance & Agent Evolution',
+            'prompt-gap-analysis-agent': 'TORCH Maintenance & Agent Evolution',
+            'prompt-maintenance-agent': 'TORCH Maintenance & Agent Evolution',
+            'prompt-safety-agent': 'TORCH Maintenance & Agent Evolution',
+            // Default: 'Repo Development'
+        };
+
+        async function fetchAgents() {
+            const container = document.getElementById('functional-agent-list');
+            try {
+                const response = await fetch('../src/prompts/roster.json');
+                if (!response.ok) throw new Error('Failed to load roster');
+                const roster = await response.json();
+
+                container.replaceChildren(); // Clear loading state
+
+                // Flatten roster into a single list with schedule info
+                const allAgents = [];
+                for (const schedule of ['daily', 'weekly']) {
+                    if (roster[schedule]) {
+                        for (const agentName of roster[schedule]) {
+                            allAgents.push({ agentName, schedule });
+                        }
+                    }
+                }
+
+                // Process all agents in parallel
+                const agentPromises = allAgents.map(async ({ agentName, schedule }) => {
+                    try {
+                        const mdResponse = await fetch(`../src/prompts/${schedule}/${agentName}.md`);
+                        if (!mdResponse.ok) return null;
+                        const content = await mdResponse.text();
+
+                        // Extract Metadata
+                        const meta = extractAgentMetadata(content, agentName);
+
+                        // Determine functional category
+                        const functionalCategory = AGENT_CATEGORIES[agentName] || 'Repo Development';
+
+                        return { ...meta, content, agentName, schedule, functionalCategory };
+                    } catch (e) {
+                        console.error(`Failed to load ${agentName}`, e);
+                        return null;
+                    }
+                });
+
+                const agents = (await Promise.all(agentPromises)).filter(Boolean);
+
+                // Group agents by functional category
+                const groups = {
+                    'TORCH Maintenance & Agent Evolution': [],
+                    'Repo Development': []
+                };
+
+                agents.forEach(agent => {
+                    if (!groups[agent.functionalCategory]) {
+                        groups[agent.functionalCategory] = [];
+                    }
+                    groups[agent.functionalCategory].push(agent);
+                });
+
+                // Render each group
+                for (const categoryName of Object.keys(groups)) {
+                    const categoryAgents = groups[categoryName];
+                    if (categoryAgents.length === 0) continue;
+
+                    // Sort alphabetically within category
+                    categoryAgents.sort((a, b) => a.agentName.localeCompare(b.agentName));
+
+                    // Category Title
+                    const categoryTitle = document.createElement('div');
+                    categoryTitle.className = 'agent-category-title';
+                    categoryTitle.textContent = categoryName;
+                    container.appendChild(categoryTitle);
+
+                    // Grid
+                    const grid = document.createElement('div');
+                    grid.className = 'functional-agent-grid';
+
+                    categoryAgents.forEach(agent => {
+                        // Store in global map
+                        window.agentData[agent.agentName] = agent;
+
+                        const icon = AGENT_ICONS[agent.agentName] || '🤖';
+
+                        const card = document.createElement('div');
+                        card.className = 'functional-agent-card';
+
+                        // Header
+                        const header = document.createElement('div');
+                        header.className = 'functional-agent-header';
+
+                        const titleGroup = document.createElement('div');
+                        titleGroup.className = 'functional-agent-title-group';
+
+                        const iconSpan = document.createElement('span');
+                        iconSpan.className = 'functional-agent-icon';
+                        iconSpan.textContent = icon;
+
+                        const titleSpan = document.createElement('span');
+                        titleSpan.className = 'functional-agent-title';
+                        titleSpan.textContent = agent.title;
+
+                        titleGroup.appendChild(iconSpan);
+                        titleGroup.appendChild(titleSpan);
+
+                        const scheduleSpan = document.createElement('span');
+                        scheduleSpan.className = 'functional-agent-schedule';
+                        scheduleSpan.textContent = agent.schedule;
+
+                        header.appendChild(titleGroup);
+                        header.appendChild(scheduleSpan);
+
+                        // Description
+                        const descDiv = document.createElement('div');
+                        descDiv.className = 'functional-agent-desc';
+                        descDiv.textContent = agent.description;
+
+                        // Button
+                        const btn = document.createElement('button');
+                        btn.className = 'view-prompt-btn';
+                        btn.textContent = 'View Prompt';
+                        // Use function reference for safety instead of inline onclick string
+                        btn.onclick = () => window.openAgentModal(agent.agentName);
+
+                        card.appendChild(header);
+                        card.appendChild(descDiv);
+                        card.appendChild(btn);
+
+                        grid.appendChild(card);
+                    });
+
+                    container.appendChild(grid);
+                }
+
+            } catch (error) {
+                console.error('Error fetching agents:', error);
+                const p = document.createElement('p');
+                p.className = 'text-center';
+                p.style.color = 'var(--danger)';
+                p.textContent = `Error loading agents: ${error.message}`;
+                container.replaceChildren(p);
+            }
+        }
+
+        function extractAgentMetadata(content, agentName) {
+            let title = agentName;
+            let description = "No description available.";
+
+            // Normalize newlines
+            content = content.replace(/\r\n/g, '\n');
+
+            // Title extraction
+            const titleMatch = content.match(/You are:\s*\*\*?([^\*\n,.]+)\*\*?/i);
+            if (titleMatch) {
+                title = titleMatch[1].trim();
+                // Ensure Title Case if it looks like kebab-case
+                if (title.includes('-') && title.toLowerCase() === title) {
+                    title = title.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                }
+            } else {
+                title = agentName.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+            }
+
+            // Description extraction
+            const missionRegex = /(?:\bYour single-purpose mission\b|\bMission\b|\bYour mission\b):?\s*(?:\*\*)?([\s\S]+?)(?:\n\s*\n|\n(?=#{1,6}\s)|\n(?=[=\-_]{3,})|$)/i;
+            const missionMatch = content.match(missionRegex);
+
+            if (missionMatch) {
+                description = missionMatch[1].replace(/\*\*/g, '').trim();
+            }
+
+            return { title, description };
+        }
+
+        // Expose to window for onclick
+        window.openAgentModal = function(agentName) {
+            const agent = window.agentData[agentName];
+            if (!agent) return;
+
+            document.getElementById('promptModalTitle').textContent = agent.title;
+            document.getElementById('promptModalCode').textContent = agent.content;
+            document.getElementById('promptModal').classList.add('show');
+        }
+
+        function escapeHtml(unsafe) {
+            return unsafe
+                 .replace(/&/g, "&amp;")
+                 .replace(/</g, "&lt;")
+                 .replace(/>/g, "&gt;")
+                 .replace(/"/g, "&quot;")
+                 .replace(/'/g, "&#039;");
+        }
+
+        // Handle keyboard navigation for agent cards
+        document.querySelectorAll('.agent-card').forEach(card => {
+            card.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    card.click();
+                }
+            });
+        });
+
+        function selectAgent(agent) {
+            // Remove active class from all cards
+            document.querySelectorAll('.agent-card').forEach(card => {
+                card.classList.remove('active');
+                card.setAttribute('aria-checked', 'false');
+            });
+
+            // Add active class to selected card
+            const selectedCard = document.getElementById('card-' + agent);
+            if (selectedCard) {
+                selectedCard.classList.add('active');
+                selectedCard.setAttribute('aria-checked', 'true');
+            }
+
+            // Update prompt text
+            const installCmd = document.getElementById('install-cmd');
+            let promptText = '';
+            const agentLabelById = {
+                jules: 'Jules',
+                codex: 'Codex',
+                opencode: 'OpenCode',
+                claude: 'Claude',
+                gemini: 'Gemini',
+                qwen: 'Qwen',
+                antigravity: 'Antigravity',
+            };
+            const installCommand = 'npm install https://github.com/PR0M3TH3AN/TORCH/archive/refs/heads/main.tar.gz && npx --no-install torch-lock init';
+            const agentLabel = agentLabelById[agent];
+            if (agentLabel) {
+                promptText = `Hey ${agentLabel}, can you install and setup TORCH into this repo in one pass? Please run this command:\n\n${installCommand}`;
+            }
+
+            if (installCmd) {
+                installCmd.textContent = promptText;
+            }
+        }
+    </script>
+</body>
+</html>

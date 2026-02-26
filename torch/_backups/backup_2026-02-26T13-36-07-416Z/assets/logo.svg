@@ -1,0 +1,33 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="handleGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#4A5568"/>
+      <stop offset="100%" stop-color="#2D3748"/>
+    </linearGradient>
+    <linearGradient id="flameGrad" x1="32" y1="4" x2="32" y2="44" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFD700"/>
+      <stop offset="40%" stop-color="#FF8C00"/>
+      <stop offset="100%" stop-color="#FF4500"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Handle -->
+  <path d="M26 42 L29 60 L35 60 L38 42 Z" fill="url(#handleGrad)"/>
+  <rect x="24" y="40" width="16" height="4" rx="1" fill="#718096"/>
+
+  <!-- Flame Body -->
+  <path d="M32 2
+           C32 2 16 18 16 30
+           C16 38 22 42 32 42
+           C42 42 48 38 48 30
+           C48 18 32 2 32 2Z"
+        fill="url(#flameGrad)"/>
+
+  <!-- Inner Flame Highlight -->
+  <path d="M32 10
+           C32 10 22 22 22 30
+           C22 36 26 38 32 38
+           C38 38 42 36 42 30
+           C42 22 32 10 32 10Z"
+        fill="#FFF700" opacity="0.4"/>
+</svg>

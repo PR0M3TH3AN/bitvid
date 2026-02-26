@@ -1,0 +1,243 @@
+<!-- torch/dashboard/index.html -->
+<!DOCTYPE html>
+<html lang="en" data-ds="new">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TORCH Agent Dashboard</title>
+    <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  </head>
+  <body>
+    <div class="bg-surface text-text min-h-screen">
+      <div role="main" class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <!-- Header -->
+        <header class="mb-8">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-3">
+              <img src="../assets/logo.svg" alt="TORCH Logo" width="32" height="32">
+              <h1 class="text-2xl font-semibold text-text-strong">
+                TORCH Agent Dashboard
+              </h1>
+              <span
+                id="connectionStatus"
+                class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-surface-alt text-muted"
+              >
+                <span class="pulse-dot bg-muted"></span>
+                Connecting&hellip;
+              </span>
+            </div>
+            <a
+              href="../landing/"
+              class="rounded-md bg-surface border border-border px-3 py-1.5 text-sm font-medium text-text hover:bg-surface-alt focus:outline-none focus:ring-2 focus:ring-accent transition-colors"
+            >
+              Home
+            </a>
+          </div>
+          <p class="text-muted text-sm max-w-prose">
+            Live view of
+            <a
+              href="#"
+              id="openDocs"
+              class="text-info hover:text-info-strong"
+              >TORCH</a
+            >
+            lock events published by AI agents working on this TORCH project. Events
+            are kind <code class="mono text-xs">30078</code> filtered by the
+            <code id="introHashtag" class="mono text-xs">...</code> hashtag on public
+            Nostr relays.
+          </p>
+        </header>
+
+        <!-- Controls -->
+        <div
+          class="flex flex-wrap items-center gap-4 mb-6 p-4 rounded-lg bg-surface-alt"
+        >
+          <div class="flex items-center gap-2">
+            <label for="cadenceFilter" class="text-sm font-medium text-text"
+              >Cadence</label
+            >
+            <select
+              id="cadenceFilter"
+              class="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text focus:outline-none focus:ring-2 focus:ring-accent"
+            >
+              <option value="all">All</option>
+              <option value="daily" selected>Daily</option>
+              <option value="weekly">Weekly</option>
+            </select>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <label for="statusFilter" class="text-sm font-medium text-text"
+              >Status</label
+            >
+            <select
+              id="statusFilter"
+              class="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text focus:outline-none focus:ring-2 focus:ring-accent"
+            >
+              <option value="active" selected>Active only</option>
+              <option value="completed">Completed only</option>
+              <option value="all">All (incl. expired)</option>
+            </select>
+          </div>
+
+          <div class="flex items-center gap-2 ml-auto">
+            <span id="eventCount" class="text-xs text-muted mono">0 events</span>
+            <button
+              id="settingsBtn"
+              type="button"
+              class="rounded-md bg-surface border border-border px-3 py-1.5 text-sm font-medium text-text hover:bg-surface-alt focus:outline-none focus:ring-2 focus:ring-accent transition-colors"
+            >
+              Settings
+            </button>
+            <button
+              id="refreshBtn"
+              type="button"
+              class="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-strong focus:outline-none focus:ring-2 focus:ring-accent transition-colors"
+            >
+              Refresh
+            </button>
+          </div>
+        </div>
+
+        <!-- Summary bar -->
+        <div
+          id="summaryBar"
+          class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6"
+        ></div>
+
+        <!-- Lock cards -->
+        <div id="lockGrid" class="lock-grid mb-8">
+          <p id="emptyState" class="text-muted col-span-full text-center py-12">
+            Waiting for lock events from relays&hellip;
+          </p>
+        </div>
+
+        <!-- Pagination Controls -->
+        <div id="paginationControls" class="flex items-center justify-between border-t border-border pt-4 mb-8 hidden">
+          <div class="flex flex-1 justify-between sm:hidden">
+            <button id="mobilePrevBtn" class="pagination-btn rounded-md px-3 py-2">Previous</button>
+            <button id="mobileNextBtn" class="pagination-btn rounded-md ml-auto px-3 py-2">Next</button>
+          </div>
+          <div class="sm:flex sm:flex-1 sm:items-center sm:justify-between hidden">
+            <div>
+              <p class="text-sm text-muted">
+                Showing
+                <span class="font-medium text-text" id="pageStart">1</span>
+                to
+                <span class="font-medium text-text" id="pageEnd">10</span>
+                of
+                <span class="font-medium text-text" id="totalItems">97</span>
+                results
+              </p>
+            </div>
+            <div>
+              <nav class="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                <button id="prevBtn" class="pagination-btn rounded-l-md px-2 py-2">
+                  <span class="sr-only">Previous</span>
+                  <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path fill-rule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clip-rule="evenodd" />
+                  </svg>
+                </button>
+                <button id="nextBtn" class="pagination-btn rounded-r-md px-2 py-2">
+                  <span class="sr-only">Next</span>
+                  <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd" />
+                  </svg>
+                </button>
+              </nav>
+            </div>
+          </div>
+        </div>
+
+        <!-- Raw event log -->
+        <details class="rounded-lg border border-border">
+          <summary
+            class="cursor-pointer px-4 py-3 text-sm font-medium text-text hover:bg-surface-alt"
+          >
+            Raw event log
+          </summary>
+          <div
+            id="rawLog"
+            class="max-h-96 overflow-y-auto p-4 mono text-xs text-muted bg-surface-alt"
+          >
+            <p>Events will appear here as they arrive&hellip;</p>
+          </div>
+        </details>
+
+      </div>
+    </div>
+
+    <!-- Documentation Modal -->
+    <div id="docsModal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <div id="markdown-content">
+                <p class="text-muted">Loading documentation...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal" id="closeSettings">&times;</span>
+            <h2 class="text-xl font-semibold mb-4 text-text-strong">Dashboard Settings</h2>
+
+            <form id="settingsForm" class="space-y-4">
+              <div>
+                <label for="settingHashtag" class="block text-sm font-medium text-text mb-1">Hashtag (Required)</label>
+                <input
+                  type="text"
+                  id="settingHashtag"
+                  class="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text focus:outline-none focus:ring-2 focus:ring-accent"
+                  placeholder="e.g. my-project-lock"
+                  required
+                >
+                <p class="text-xs text-muted mt-1">Unique identifier for this project's locks.</p>
+              </div>
+
+              <div>
+                <label for="settingNamespace" class="block text-sm font-medium text-text mb-1">Namespace</label>
+                <input
+                  type="text"
+                  id="settingNamespace"
+                  class="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text focus:outline-none focus:ring-2 focus:ring-accent"
+                  placeholder="torch"
+                >
+                <p class="text-xs text-muted mt-1">Default: torch</p>
+              </div>
+
+              <div>
+                <label for="settingRelays" class="block text-sm font-medium text-text mb-1">Relays (Comma-separated)</label>
+                <input
+                  type="text"
+                  id="settingRelays"
+                  class="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text focus:outline-none focus:ring-2 focus:ring-accent"
+                  placeholder="wss://relay.damus.io, wss://nos.lol"
+                >
+              </div>
+
+              <div class="pt-4 flex justify-end gap-3">
+                <button
+                  type="button"
+                  id="cancelSettings"
+                  class="rounded-md border border-border bg-surface px-4 py-2 text-sm font-medium text-text hover:bg-surface-alt"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  class="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-strong"
+                >
+                  Save & Reload
+                </button>
+              </div>
+            </form>
+        </div>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

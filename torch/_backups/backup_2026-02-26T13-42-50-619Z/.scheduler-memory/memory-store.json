@@ -1,0 +1,52 @@
+[
+  [
+    "b7e9374d-faee-4a10-ab13-e14d42fdd88c",
+    {
+      "schema_version": 1,
+      "id": "b7e9374d-faee-4a10-ab13-e14d42fdd88c",
+      "agent_id": "scheduler-update-agent",
+      "session_id": "session-mm2h9p75",
+      "type": "batch_window",
+      "content": "Memory retrieval seed for daily :: Required startup + artifacts + memory + issue capture",
+      "summary": "Memory retrieval seed for daily :: Required startup + artifacts + memory + issue capture",
+      "tags": [
+        "scheduler",
+        "daily",
+        "retrieve"
+      ],
+      "importance": 0.4,
+      "embedding_id": null,
+      "created_at": 1772050759889,
+      "last_seen": 1772050759894,
+      "source": "scheduler-retrieve",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "978b679f-ac98-4605-beed-8c2ce7c40192",
+    {
+      "schema_version": 1,
+      "id": "978b679f-ac98-4605-beed-8c2ce7c40192",
+      "agent_id": "style-agent",
+      "session_id": "session-mm2ha9tn",
+      "type": "batch_window",
+      "content": "Memory retrieval seed for daily :: Required startup + artifacts + memory + issue capture",
+      "summary": "Memory retrieval seed for daily :: Required startup + artifacts + memory + issue capture",
+      "tags": [
+        "scheduler",
+        "daily",
+        "retrieve"
+      ],
+      "importance": 0.4,
+      "embedding_id": null,
+      "created_at": 1772050786619,
+      "last_seen": 1772050786624,
+      "source": "scheduler-retrieve",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ]
+]
