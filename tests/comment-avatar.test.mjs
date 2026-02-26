@@ -1,4 +1,4 @@
-import test from "node:test";
+import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   normalizeCommentAvatarKey,
@@ -6,151 +6,155 @@ import {
   registerCommentAvatarFailure,
 } from "../js/ui/components/video-modal/utils/commentAvatar.js";
 
-test("normalizeCommentAvatarKey returns empty string for non-string inputs", () => {
-  assert.equal(normalizeCommentAvatarKey(null), "");
-  assert.equal(normalizeCommentAvatarKey(undefined), "");
-  assert.equal(normalizeCommentAvatarKey(123), "");
-  assert.equal(normalizeCommentAvatarKey({}), "");
-  assert.equal(normalizeCommentAvatarKey([]), "");
-});
+describe("commentAvatar utils", () => {
+  describe("normalizeCommentAvatarKey", () => {
+    it("should return empty string for non-string inputs", () => {
+      assert.equal(normalizeCommentAvatarKey(null), "");
+      assert.equal(normalizeCommentAvatarKey(undefined), "");
+      assert.equal(normalizeCommentAvatarKey(123), "");
+      assert.equal(normalizeCommentAvatarKey({}), "");
+    });
 
-test("normalizeCommentAvatarKey returns empty string for empty or whitespace-only strings", () => {
-  assert.equal(normalizeCommentAvatarKey(""), "");
-  assert.equal(normalizeCommentAvatarKey("   "), "");
-  assert.equal(normalizeCommentAvatarKey("\t\n"), "");
-});
+    it("should return empty string for empty or whitespace-only strings", () => {
+      assert.equal(normalizeCommentAvatarKey(""), "");
+      assert.equal(normalizeCommentAvatarKey("   "), "");
+      assert.equal(normalizeCommentAvatarKey("\t\n"), "");
+    });
 
-test("normalizeCommentAvatarKey returns normalized lowercased string", () => {
-  assert.equal(normalizeCommentAvatarKey("FooBar"), "foobar");
-  assert.equal(normalizeCommentAvatarKey("  BazQux  "), "bazqux");
-  assert.equal(normalizeCommentAvatarKey("ABC"), "abc");
-});
-
-test("resolveCommentAvatarAsset returns default avatar if source is in failures", () => {
-  const failures = new Set(["https://example.com/failed.jpg"]);
-  const result = resolveCommentAvatarAsset({
-    cache: new Map(),
-    failures,
-    defaultAvatar: "default.png",
-    pubkey: "somekey",
-    sanitizedPicture: "https://example.com/failed.jpg",
+    it("should return lowercased string for valid inputs", () => {
+      assert.equal(normalizeCommentAvatarKey("TestKey"), "testkey");
+      assert.equal(normalizeCommentAvatarKey("  TestKey  "), "testkey");
+      assert.equal(normalizeCommentAvatarKey("TESTKEY"), "testkey");
+    });
   });
 
-  assert.deepEqual(result, { url: "default.png", source: "" });
-});
+  describe("resolveCommentAvatarAsset", () => {
+    const defaultAvatar = "default.png";
 
-test("resolveCommentAvatarAsset returns cached asset if pubkey matches and source matches", () => {
-  const cache = new Map();
-  cache.set("somekey", { url: "cached.jpg", source: "https://example.com/pic.jpg" });
+    it("should return default avatar if source is in failures", () => {
+      const failures = new Set(["bad-source.jpg"]);
+      const result = resolveCommentAvatarAsset({
+        failures,
+        defaultAvatar,
+        pubkey: "pubkey1",
+        sanitizedPicture: "bad-source.jpg",
+      });
+      assert.deepEqual(result, { url: defaultAvatar, source: "" });
+    });
 
-  const result = resolveCommentAvatarAsset({
-    cache,
-    failures: new Set(),
-    defaultAvatar: "default.png",
-    pubkey: "somekey",
-    sanitizedPicture: "https://example.com/pic.jpg",
+    it("should return cached data if pubkey is in cache and source matches", () => {
+      const cache = new Map();
+      cache.set("pubkey1", { url: "cached.jpg", source: "source.jpg" });
+      const result = resolveCommentAvatarAsset({
+        cache,
+        defaultAvatar,
+        pubkey: "pubkey1",
+        sanitizedPicture: "source.jpg",
+      });
+      assert.deepEqual(result, { url: "cached.jpg", source: "source.jpg" });
+    });
+
+    it("should return cached data if source is empty and pubkey is in cache", () => {
+      const cache = new Map();
+      cache.set("pubkey1", { url: "cached.jpg", source: "source.jpg" });
+      const result = resolveCommentAvatarAsset({
+        cache,
+        defaultAvatar,
+        pubkey: "pubkey1",
+        sanitizedPicture: "",
+      });
+      assert.deepEqual(result, { url: "cached.jpg", source: "source.jpg" });
+    });
+
+    it("should update cache and return new source if cache miss (different source)", () => {
+      const cache = new Map();
+      cache.set("pubkey1", { url: "old.jpg", source: "old-source.jpg" });
+      const result = resolveCommentAvatarAsset({
+        cache,
+        defaultAvatar,
+        pubkey: "pubkey1",
+        sanitizedPicture: "new-source.jpg",
+      });
+      assert.deepEqual(result, {
+        url: "new-source.jpg",
+        source: "new-source.jpg",
+      });
+      assert.equal(cache.get("pubkey1").url, "new-source.jpg");
+      assert.equal(cache.get("pubkey1").source, "new-source.jpg");
+    });
+
+    it("should update cache and return new source if cache miss (new pubkey)", () => {
+      const cache = new Map();
+      const result = resolveCommentAvatarAsset({
+        cache,
+        defaultAvatar,
+        pubkey: "pubkey2",
+        sanitizedPicture: "source.jpg",
+      });
+      assert.deepEqual(result, { url: "source.jpg", source: "source.jpg" });
+      assert.equal(cache.get("pubkey2").url, "source.jpg");
+    });
+
+    it("should return default avatar if source is missing and not cached", () => {
+      const cache = new Map();
+      const result = resolveCommentAvatarAsset({
+        cache,
+        defaultAvatar,
+        pubkey: "pubkey3",
+        sanitizedPicture: "",
+      });
+      assert.deepEqual(result, { url: defaultAvatar, source: "" });
+      assert.deepEqual(cache.get("pubkey3"), { url: defaultAvatar, source: "" });
+    });
   });
 
-  assert.deepEqual(result, { url: "cached.jpg", source: "https://example.com/pic.jpg" });
-});
+  describe("registerCommentAvatarFailure", () => {
+    const defaultAvatar = "default.png";
 
-test("resolveCommentAvatarAsset returns cached asset if source is empty", () => {
-  const cache = new Map();
-  cache.set("somekey", { url: "cached.jpg", source: "https://example.com/pic.jpg" });
+    it("should ignore invalid inputs", () => {
+      const failures = new Set();
+      registerCommentAvatarFailure({ failures, defaultAvatar, sourceUrl: null });
+      registerCommentAvatarFailure({ failures, defaultAvatar, sourceUrl: "" });
+      registerCommentAvatarFailure({
+        failures,
+        defaultAvatar,
+        sourceUrl: defaultAvatar,
+      });
+      assert.equal(failures.size, 0);
+    });
 
-  const result = resolveCommentAvatarAsset({
-    cache,
-    failures: new Set(),
-    defaultAvatar: "default.png",
-    pubkey: "somekey",
-    sanitizedPicture: "",
+    it("should add valid source to failures", () => {
+      const failures = new Set();
+      registerCommentAvatarFailure({
+        failures,
+        defaultAvatar,
+        sourceUrl: "bad.jpg",
+      });
+      assert.ok(failures.has("bad.jpg"));
+    });
+
+    it("should update cache entries matching the failed source", () => {
+      const failures = new Set();
+      const cache = new Map();
+      cache.set("pubkey1", { url: "bad.jpg", source: "bad.jpg" });
+      cache.set("pubkey2", { url: "good.jpg", source: "good.jpg" });
+
+      registerCommentAvatarFailure({
+        cache,
+        failures,
+        defaultAvatar,
+        sourceUrl: "bad.jpg",
+      });
+
+      assert.ok(failures.has("bad.jpg"));
+      assert.deepEqual(cache.get("pubkey1"), {
+        url: defaultAvatar,
+        source: "",
+      });
+      assert.deepEqual(cache.get("pubkey2"), {
+        url: "good.jpg",
+        source: "good.jpg",
+      });
+    });
   });
-
-  assert.deepEqual(result, { url: "cached.jpg", source: "https://example.com/pic.jpg" });
-});
-
-test("resolveCommentAvatarAsset updates cache and returns new asset if not cached", () => {
-  const cache = new Map();
-  const result = resolveCommentAvatarAsset({
-    cache,
-    failures: new Set(),
-    defaultAvatar: "default.png",
-    pubkey: "newkey",
-    sanitizedPicture: "https://example.com/new.jpg",
-  });
-
-  assert.deepEqual(result, { url: "https://example.com/new.jpg", source: "https://example.com/new.jpg" });
-  assert.ok(cache.has("newkey"));
-  assert.deepEqual(cache.get("newkey"), { url: "https://example.com/new.jpg", source: "https://example.com/new.jpg" });
-});
-
-test("resolveCommentAvatarAsset updates cache when source changes for existing key", () => {
-  const cache = new Map();
-  cache.set("somekey", { url: "old.jpg", source: "https://example.com/old.jpg" });
-
-  const result = resolveCommentAvatarAsset({
-    cache,
-    failures: new Set(),
-    defaultAvatar: "default.png",
-    pubkey: "somekey",
-    sanitizedPicture: "https://example.com/new.jpg",
-  });
-
-  assert.deepEqual(result, { url: "https://example.com/new.jpg", source: "https://example.com/new.jpg" });
-  assert.deepEqual(cache.get("somekey"), { url: "https://example.com/new.jpg", source: "https://example.com/new.jpg" });
-});
-
-test("resolveCommentAvatarAsset uses default avatar when no source provided", () => {
-  const cache = new Map();
-  const result = resolveCommentAvatarAsset({
-    cache,
-    failures: new Set(),
-    defaultAvatar: "default.png",
-    pubkey: "somekey",
-    sanitizedPicture: null,
-  });
-
-  assert.deepEqual(result, { url: "default.png", source: "" });
-  assert.deepEqual(cache.get("somekey"), { url: "default.png", source: "" });
-});
-
-test("registerCommentAvatarFailure ignores invalid or default source urls", () => {
-  const failures = new Set();
-  const cache = new Map();
-  const defaultAvatar = "default.png";
-
-  registerCommentAvatarFailure({ cache, failures, defaultAvatar, sourceUrl: null });
-  assert.equal(failures.size, 0);
-
-  registerCommentAvatarFailure({ cache, failures, defaultAvatar, sourceUrl: "" });
-  assert.equal(failures.size, 0);
-
-  registerCommentAvatarFailure({ cache, failures, defaultAvatar, sourceUrl: "default.png" });
-  assert.equal(failures.size, 0);
-});
-
-test("registerCommentAvatarFailure adds source to failures", () => {
-  const failures = new Set();
-  const cache = new Map();
-  const defaultAvatar = "default.png";
-  const failedUrl = "https://example.com/fail.jpg";
-
-  registerCommentAvatarFailure({ cache, failures, defaultAvatar, sourceUrl: failedUrl });
-  assert.ok(failures.has(failedUrl));
-});
-
-test("registerCommentAvatarFailure updates cache entries matching the failed source", () => {
-  const failures = new Set();
-  const cache = new Map();
-  const defaultAvatar = "default.png";
-  const failedUrl = "https://example.com/fail.jpg";
-
-  cache.set("user1", { url: failedUrl, source: failedUrl });
-  cache.set("user2", { url: "other.jpg", source: "other.jpg" });
-
-  registerCommentAvatarFailure({ cache, failures, defaultAvatar, sourceUrl: failedUrl });
-
-  assert.ok(failures.has(failedUrl));
-  assert.deepEqual(cache.get("user1"), { url: defaultAvatar, source: "" });
-  assert.deepEqual(cache.get("user2"), { url: "other.jpg", source: "other.jpg" });
 });
