@@ -148,6 +148,10 @@ function syncAppDirectories(torchDir, verb = 'Copied') {
   for (const dir of APP_DIRS) {
     const src = path.join(PKG_ROOT, dir);
     const dest = path.join(torchDir, dir);
+    if (path.resolve(src) === path.resolve(dest)) {
+      console.log(`  Skipping ${dir}/ (source and destination are identical).`);
+      continue;
+    }
     if (fs.existsSync(src)) {
       copyDir(src, dest);
       console.log(`  ${verb} ${dir}/`);
@@ -167,6 +171,10 @@ function syncAppFiles(torchDir, installDir, verb = 'Copied') {
   for (const file of APP_FILES) {
     const src = path.join(PKG_ROOT, file);
     const dest = path.join(torchDir, file);
+    if (path.resolve(src) === path.resolve(dest)) {
+      console.log(`  Skipping ${file} (source and destination are identical).`);
+      continue;
+    }
     if (fs.existsSync(src)) {
       if (installDir === '.' && file === 'package.json') {
         if (verb === 'Copied' && fs.existsSync(dest)) {
