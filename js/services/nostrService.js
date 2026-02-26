@@ -1743,9 +1743,59 @@ export class NostrService {
           limit: this.nostrClient.clampVideoRequestLimit(200),
         };
         const subscription = this.nostrClient.subscribeVideos(
-          () => {
-            const updated = this.nostrClient.getActiveVideos();
-            applyAndNotify(updated, "subscription");
+          (updatedVideos) => {
+            if (!Array.isArray(updatedVideos) || !updatedVideos.length) {
+              return;
+            }
+
+            const activeUpdates = [];
+            const deletedUpdates = [];
+
+            for (const v of updatedVideos) {
+              if (v.deleted) {
+                deletedUpdates.push(v);
+              } else {
+                activeUpdates.push(v);
+              }
+            }
+
+            if (deletedUpdates.length > 0) {
+              const map = this.ensureVideosMap();
+              for (const v of deletedUpdates) {
+                if (v.id) {
+                  map.delete(v.id);
+                }
+              }
+              this.markAuthorIndexDirty();
+            }
+
+            const filtered = this.filterVideos(activeUpdates, {
+              blacklistedEventIds,
+              isAuthorBlocked,
+            });
+
+            if (filtered.length > 0) {
+              this.cacheVideos(filtered);
+            }
+
+            if (filtered.length > 0 || deletedUpdates.length > 0) {
+              // Persist the full list (latest N) from the now-updated cache
+              const map = this.ensureVideosMap();
+              const fullList = Array.from(map.values());
+              fullList.sort((a, b) => {
+                const aCreated = Number(a?.created_at) || 0;
+                const bCreated = Number(b?.created_at) || 0;
+                return bCreated - aCreated;
+              });
+
+              this.emit("videos:updated", {
+                videos: fullList,
+                deleted: deletedUpdates,
+                reason: "subscription",
+              });
+
+              persistFilteredVideos(fullList);
+            }
           },
           subscriptionOptions,
         );
