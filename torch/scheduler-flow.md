@@ -26,6 +26,8 @@ Every agent prompt invoked by the schedulers (daily/weekly) MUST enforce this co
    - `docs/agent-handoffs/README.md`
    - Recent notes in `docs/agent-handoffs/learnings/` and `docs/agent-handoffs/incidents/`
 2. **Update run artifacts** in `src/context/`, `src/todo/`, `src/decisions/`, and `src/test_logs/` during the run, or explicitly document why each artifact update is not needed for that run.
+   - When creating filenames with `<timestamp>`, use the scheduler-provided `SCHEDULER_RUN_TIMESTAMP` value when available.
+   - Required filename-safe format: `YYYY-MM-DDTHH-MM-SSZ` (for example `2026-02-15T01-03-31Z`); never use `:` in filenames.
 3. **Capture reusable failures and unresolved issues**:
    - Record reusable failures in `docs/agent-handoffs/incidents/`
    - Record active unresolved reproducible items in `KNOWN_ISSUES.md`

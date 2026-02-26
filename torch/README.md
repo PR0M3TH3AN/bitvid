@@ -33,6 +33,8 @@ npx --no-install torch-lock check --cadence daily
 npx --no-install torch-lock dashboard --port 4173 --host 127.0.0.1
 ```
 
+`torch-lock init` and `torch-lock update` now auto-upsert the `## TORCH Memory Integration` block into root-level `AGENTS.md` and `CLAUDE.md` (and create `AGENTS.md` if neither file exists).
+
 > TORCH is distributed from GitHub tarballs and is not currently published to the npm registry.
 > Use pinned commit tarballs (`archive/<commit-sha>.tar.gz`) for repeatable installs. Avoid `refs/heads/main.tar.gz` for production rollouts.
 
@@ -118,6 +120,9 @@ npx --no-install torch-lock init
 
 # Update TORCH configuration and scripts
 npx --no-install torch-lock update
+
+# Validate setup and print actionable fixes
+npx --no-install torch-lock doctor
 
 # Remove TORCH completely from this project
 npx --no-install torch-lock remove

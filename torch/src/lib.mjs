@@ -44,6 +44,7 @@ import { cmdRollback } from './cmd-rollback.mjs';
 import { cmdCheck } from './cmd-check.mjs';
 import { cmdList } from './cmd-list.mjs';
 import { cmdComplete } from './cmd-complete.mjs';
+import { cmdDoctor } from './cmd-doctor.mjs';
 
 useWebSocketImplementation(WebSocket);
 
@@ -307,6 +308,12 @@ const COMMAND_HANDLERS = {
   },
   dashboard: async (args) => {
     await cmdDashboard(args.port, args.host);
+  },
+  doctor: async (args) => {
+    const report = cmdDoctor({ json: args.json });
+    if (!report.ok) {
+      throw new ExitError(2, 'Doctor found setup failures');
+    }
   },
   init: async (args) => {
     await cmdInit(args.force);

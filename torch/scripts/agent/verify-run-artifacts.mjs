@@ -133,6 +133,14 @@ function getMatchingArtifacts(files, { expectedPrefix, session }) {
   return files.filter((file) => file.name.startsWith(expectedPrefix));
 }
 
+function findInvalidFilenameCharacters(files) {
+  // Windows-invalid filename characters: <>:"/\|?*
+  const invalidCharRe = /[<>:"/\\|?*]/;
+  return files
+    .filter((file) => invalidCharRe.test(file.name))
+    .map((file) => file.name);
+}
+
 async function hasValidArtifactStructure(files, artifact) {
   for (const file of files) {
     const content = await fs.readFile(file.filePath, 'utf8').catch(() => '');
@@ -334,6 +342,11 @@ async function main() {
         : `${artifact.expectedPrefix}<timestamp>.md`;
       missing.push(`${artifact.dir}/${expectedName}`);
       continue;
+    }
+
+    const invalidFilenames = findInvalidFilenameCharacters(matchingArtifacts);
+    if (invalidFilenames.length) {
+      missing.push(`${artifact.dir}: invalid filename characters for cross-platform sync in ${invalidFilenames.join(', ')}`);
     }
 
     const hasValidStructure = await hasValidArtifactStructure(matchingArtifacts, artifact);

@@ -45,6 +45,7 @@ Commands:
   list      [--cadence <daily|weekly>]             Print active lock table
   health    --cadence <daily|weekly>               Probe relay websocket + publish/read health
   dashboard [--port <port>] [--host <host>]        Serve the dashboard (default: ${DEFAULT_DASHBOARD_PORT})
+  doctor    [--json]                               Validate local TORCH setup and print fixes
   init      [--force]                              Initialize torch/ directory in current project
   update    [--force]                              Update torch/ configuration (backups, merges)
   remove    [--force]                              Remove all TORCH files and configuration from project

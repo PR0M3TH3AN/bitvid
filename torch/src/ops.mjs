@@ -54,6 +54,12 @@ const APP_DIRS = ['src', 'bin', 'dashboard', 'landing', 'assets', 'scripts'];
 
 /** Individual files to sync from package root to install directory. */
 const APP_FILES = ['package.json', 'build.mjs', 'README.md', 'torch-config.example.json', 'TORCH.md', 'eslint.config.mjs'];
+const MEMORY_PROMPT_FILES = ['AGENTS.md', 'CLAUDE.md'];
+const MEMORY_INTEGRATION_HEADING = '## TORCH Memory Integration';
+const MEMORY_INTEGRATION_BLOCK = `${MEMORY_INTEGRATION_HEADING}
+You have access to the TORCH memory system.
+1. READ: Check \`.scheduler-memory/latest/\${cadence}/memories.md\` for past learnings.
+2. WRITE: Before exiting, save new insights to \`memory-update.md\` so future runs can learn from this session.`;
 
 /**
  * Resolves the absolute paths for the installation.
@@ -479,6 +485,61 @@ function injectHostScriptsIfNeeded(paths, installDir) {
 }
 
 /**
+ * Upserts the TORCH memory integration section inside a system prompt file.
+ *
+ * @param {string} content - Existing file content.
+ * @returns {string} Updated file content.
+ */
+function upsertMemoryIntegrationBlock(content) {
+  if (content.includes(MEMORY_INTEGRATION_BLOCK)) {
+    return content;
+  }
+
+  const escapedHeading = MEMORY_INTEGRATION_HEADING.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const sectionRegex = new RegExp(`(^|\\n)${escapedHeading}\\n[\\s\\S]*?(?=\\n##\\s|$)`, 'm');
+
+  if (sectionRegex.test(content)) {
+    return content.replace(sectionRegex, (_match, prefix) => `${prefix}${MEMORY_INTEGRATION_BLOCK}`);
+  }
+
+  const trimmed = content.trimEnd();
+  if (!trimmed) {
+    return `${MEMORY_INTEGRATION_BLOCK}\n`;
+  }
+  return `${trimmed}\n\n${MEMORY_INTEGRATION_BLOCK}\n`;
+}
+
+/**
+ * Ensures AGENTS/CLAUDE system prompt files include TORCH memory integration.
+ * If neither file exists, creates AGENTS.md with the integration block.
+ *
+ * @param {string} root - Host project root.
+ */
+function ensureMemoryPromptHook(root) {
+  const existingTargets = MEMORY_PROMPT_FILES.filter((file) => fs.existsSync(path.join(root, file)));
+
+  if (existingTargets.length === 0) {
+    const defaultPath = path.join(root, 'AGENTS.md');
+    fs.writeFileSync(defaultPath, `${MEMORY_INTEGRATION_BLOCK}\n`, 'utf8');
+    console.log(`Created ${path.relative(root, defaultPath)} with TORCH memory integration.`);
+    return;
+  }
+
+  for (const file of existingTargets) {
+    const filePath = path.join(root, file);
+    const current = fs.readFileSync(filePath, 'utf8');
+    const next = upsertMemoryIntegrationBlock(current);
+
+    if (next !== current) {
+      fs.writeFileSync(filePath, next, 'utf8');
+      console.log(`Updated ${path.relative(root, filePath)} with TORCH memory integration.`);
+    } else {
+      console.log(`TORCH memory integration already present in ${path.relative(root, filePath)}.`);
+    }
+  }
+}
+
+/**
  * Main entry point for `torch-lock init`.
  *
  * @param {boolean} [force=false] - Force overwrite.
@@ -505,6 +566,7 @@ export async function cmdInit(force = false, cwd = process.cwd(), mockAnswers = 
   configureTorch(cwd, paths, installDir, namespace, relays, hashtag);
   const dashboardUrl = createDashboardLinkFile(paths, namespace, relays, hashtag);
   injectHostScriptsIfNeeded(paths, installDir);
+  ensureMemoryPromptHook(paths.root);
 
   console.log('\nInitialization complete.');
   console.log('You can now customize the files in ' + path.relative(cwd, paths.torchDir) + '/');
@@ -712,5 +774,6 @@ export function cmdUpdate(force = false, cwd = process.cwd()) {
     }
   }
 
+  ensureMemoryPromptHook(paths.root);
   console.log('\nUpdate complete.');
 }

@@ -889,6 +889,7 @@ async function main() {
     schedulerRunState.lock_deferral = null;
     await writeRunState(runStatePath, schedulerRunState);
     const runArtifactSince = new Date().toISOString();
+    const runArtifactTimestamp = ts();
     const runStartMs = Date.parse(runArtifactSince);
     const outputChunks = [];
 
@@ -904,6 +905,7 @@ async function main() {
       SCHEDULER_CADENCE: cadence,
       SCHEDULER_PROMPT_PATH: promptPath,
       SCHEDULER_MEMORY_FILE: memoryFile,
+      SCHEDULER_RUN_TIMESTAMP: runArtifactTimestamp,
     };
 
     if (schedulerConfig.memoryPolicy.retrieveCommand) {

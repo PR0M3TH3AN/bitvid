@@ -692,3 +692,8 @@ Please read these documents next.
 And if you need to create new nostr kinds please keep the logic centralized there in `nostrEventSchemas.js` and the `nostr-event-schemas.md` up to date.
 
 **End of AGENTS.md**
+
+## TORCH Memory Integration
+You have access to the TORCH memory system.
+1. READ: Check `.scheduler-memory/latest/${cadence}/memories.md` for past learnings.
+2. WRITE: Before exiting, save new insights to `memory-update.md` so future runs can learn from this session.

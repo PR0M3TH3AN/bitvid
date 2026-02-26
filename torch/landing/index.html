@@ -938,9 +938,9 @@
             </div>
 
             <p class="install-label" style="margin-top: 1rem;">Copy this happy-path prompt to onboard TORCH:</p>
-            <p class="text-muted" style="margin-top: 0; margin-bottom: 0.75rem; font-size: 0.85rem;">Requires Node.js 22+.</p>
+            <p class="text-muted" style="margin-top: 0; margin-bottom: 0.75rem; font-size: 0.85rem;">Requires Node.js 22+. `init` also hooks TORCH memory instructions into AGENTS.md / CLAUDE.md.</p>
             <div class="install-code-wrapper multiline">
-                <code id="install-cmd">Hey Jules, can you install and setup TORCH into this repo? Here is the install command:
+                <code id="install-cmd">Hey Jules, can you install and setup TORCH into this repo in one pass? Please run this command:
 
 npm install https://github.com/PR0M3TH3AN/TORCH/archive/refs/heads/main.tar.gz && npx --no-install torch-lock init</code>
                 <button class="copy-install-btn" onclick="copyToClipboard('install-cmd', this, true)">
@@ -1019,27 +1019,6 @@ npm install https://github.com/PR0M3TH3AN/TORCH/archive/refs/heads/main.tar.gz &
                     <h3>Persistent Memory</h3>
                     <p>Agents that remember. TORCH maintains a semantic history of decisions, preventing loops and regressions.</p>
                 </div>
-            </div>
-        </section>
-
-        <section class="hook-memory scroll-reveal" style="max-width: 800px; margin: 4rem auto; padding: 0 2rem; text-align: center;">
-            <h2 style="font-size: 2rem; margin-bottom: 1.5rem; color: var(--text-strong);">Hook memory into your existing agents</h2>
-            <p style="font-size: 1.1rem; color: var(--muted); margin-bottom: 2rem; line-height: 1.6;">
-                Add these instructions to your agent's system prompt (e.g. in <code>AGENTS.md</code> or <code>CLAUDE.md</code>) to enable the TORCH memory system.
-            </p>
-
-            <div class="install-code-wrapper multiline" style="margin: 0 auto; text-align: left;">
-                <code id="memory-hook-code">## TORCH Memory Integration
-You have access to the TORCH memory system.
-1. READ: Check `.scheduler-memory/latest/${cadence}/memories.md` for past learnings.
-2. WRITE: Before exiting, save new insights to `memory-update.md` so future runs can learn from this session.</code>
-                <button class="copy-install-btn" onclick="copyToClipboard('memory-hook-code', this)">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                    </svg>
-                    Copy
-                </button>
             </div>
         </section>
 
@@ -1637,21 +1616,19 @@ You have access to the TORCH memory system.
             // Update prompt text
             const installCmd = document.getElementById('install-cmd');
             let promptText = '';
-
-            if (agent === 'jules') {
-                promptText = "Hey Jules, can you install and setup TORCH into this repo? Here is the install command:\n\nnpm install https://github.com/PR0M3TH3AN/TORCH/archive/refs/heads/main.tar.gz && npx --no-install torch-lock init";
-            } else if (agent === 'codex') {
-                promptText = "Hey Codex, can you install and setup TORCH into this repo? Here is the install command:\n\nnpm install https://github.com/PR0M3TH3AN/TORCH/archive/refs/heads/main.tar.gz && npx --no-install torch-lock init";
-            } else if (agent === 'opencode') {
-                promptText = "Hey OpenCode, can you install and setup TORCH into this repo? Here is the install command:\n\nnpm install https://github.com/PR0M3TH3AN/TORCH/archive/refs/heads/main.tar.gz && npx --no-install torch-lock init";
-            } else if (agent === 'claude') {
-                promptText = "Hey Claude, can you install and setup TORCH into this repo? Here is the install command:\n\nnpm install https://github.com/PR0M3TH3AN/TORCH/archive/refs/heads/main.tar.gz && npx --no-install torch-lock init";
-            } else if (agent === 'gemini') {
-                promptText = "Hey Gemini, can you install and setup TORCH into this repo? Here is the install command:\n\nnpm install https://github.com/PR0M3TH3AN/TORCH/archive/refs/heads/main.tar.gz && npx --no-install torch-lock init";
-            } else if (agent === 'qwen') {
-                promptText = "Hey Qwen, can you install and setup TORCH into this repo? Here is the install command:\n\nnpm install https://github.com/PR0M3TH3AN/TORCH/archive/refs/heads/main.tar.gz && npx --no-install torch-lock init";
-            } else if (agent === 'antigravity') {
-                promptText = "Hey Antigravity, can you install and setup TORCH into this repo? Here is the install command:\n\nnpm install https://github.com/PR0M3TH3AN/TORCH/archive/refs/heads/main.tar.gz && npx --no-install torch-lock init";
+            const agentLabelById = {
+                jules: 'Jules',
+                codex: 'Codex',
+                opencode: 'OpenCode',
+                claude: 'Claude',
+                gemini: 'Gemini',
+                qwen: 'Qwen',
+                antigravity: 'Antigravity',
+            };
+            const installCommand = 'npm install https://github.com/PR0M3TH3AN/TORCH/archive/refs/heads/main.tar.gz && npx --no-install torch-lock init';
+            const agentLabel = agentLabelById[agent];
+            if (agentLabel) {
+                promptText = `Hey ${agentLabel}, can you install and setup TORCH into this repo in one pass? Please run this command:\n\n${installCommand}`;
             }
 
             if (installCmd) {
