@@ -1,3 +1,4 @@
+import { getDTagValueFromTags } from "../../nostr/nip71.js";
 import { Nip71FormManager } from "./nip71FormManager.js";
 import { createModalAccessibility } from "./modalAccessibility.js";
 import {
@@ -354,7 +355,7 @@ export class RevertModal {
 
     if (this.subtitle) {
       const subtitleParts = [];
-      const dTagValue = this.extractDTagValue(video.tags);
+      const dTagValue = getDTagValueFromTags(video.tags);
       if (dTagValue) {
         subtitleParts.push(`d=${dTagValue}`);
       }
@@ -604,7 +605,7 @@ export class RevertModal {
       typeof version.rawMagnet === "string" ? version.rawMagnet.trim() : "";
     const displayMagnet = magnet || rawMagnet;
     const isPrivate = version.isPrivate === true;
-    const dTagValue = this.extractDTagValue(version.tags);
+    const dTagValue = getDTagValueFromTags(version.tags);
 
     const nip71Metadata = this.buildNip71DisplayMetadata(version);
 
@@ -1487,22 +1488,6 @@ export class RevertModal {
       participants,
       references,
     };
-  }
-
-
-  extractDTagValue(tags) {
-    if (!Array.isArray(tags)) {
-      return "";
-    }
-    for (const tag of tags) {
-      if (!Array.isArray(tag) || tag.length < 2) {
-        continue;
-      }
-      if (tag[0] === "d" && typeof tag[1] === "string") {
-        return tag[1];
-      }
-    }
-    return "";
   }
 }
 
