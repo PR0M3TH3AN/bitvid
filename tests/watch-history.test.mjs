@@ -1591,9 +1591,7 @@ async function testWatchHistoryServiceIntegration() {
       reason: "integration",
     });
     assert.ok(snapshotResult.ok, "snapshot should publish queued pointers");
-    // snapshotResult now contains { items: flatItems, results: [monthResults...] }
-    // or items might be flatItems?
-    const snapshotItems = snapshotResult.items || (snapshotResult.results || []).flatMap(r => r.items || []);
+    const snapshotItems = snapshotResult.items || [];
 
     // Check if item exists first
     const snapshotItem = snapshotItems.find(
