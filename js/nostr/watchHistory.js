@@ -2052,24 +2052,36 @@ class WatchHistoryManager {
         const chunkEvents = Array.isArray(results)
           ? results.flat().filter((event) => event && typeof event === "object")
           : [];
-        for (const event of chunkEvents) {
-          const ciphertext = typeof event.content === "string" ? event.content : "";
+
+        const decryptionPromises = chunkEvents.map(async (event) => {
+          const ciphertext =
+            typeof event.content === "string" ? event.content : "";
           if (!ciphertext) {
-            continue;
+            return null;
           }
           let plaintext = "";
           if (typeof decryptSigner.nip04Decrypt === "function") {
             try {
-              plaintext = await decryptSigner.nip04Decrypt(actorKey, ciphertext);
+              plaintext = await decryptSigner.nip04Decrypt(
+                actorKey,
+                ciphertext,
+              );
             } catch (error) {
-              devLogger.warn("[nostr] Failed to decrypt watch history chunk:", error);
+              devLogger.warn(
+                "[nostr] Failed to decrypt watch history chunk:",
+                error,
+              );
             }
           }
           if (!plaintext) {
-            continue;
+            return null;
           }
-          const parsed = parseWatchHistoryPayload(plaintext);
-          if (Array.isArray(parsed.items) && parsed.items.length) {
+          return parseWatchHistoryPayload(plaintext);
+        });
+
+        const decryptedPayloads = await Promise.all(decryptionPromises);
+        for (const parsed of decryptedPayloads) {
+          if (parsed && Array.isArray(parsed.items) && parsed.items.length) {
             decryptedItems.push(...parsed.items);
           }
         }
