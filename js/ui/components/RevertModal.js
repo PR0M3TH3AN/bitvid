@@ -1,3 +1,4 @@
+import { getDTagValueFromTags } from "../../nostr/nip71.js";
 import { Nip71FormManager } from "./nip71FormManager.js";
 import { createModalAccessibility } from "./modalAccessibility.js";
 import { getDTagValueFromTags } from "../../nostr/nip71.js";
@@ -594,6 +595,24 @@ export class RevertModal {
       }
       return;
     }
+
+    const createdAt = typeof version.created_at === "number" ? version.created_at : 0;
+    const absolute = this.formatAbsoluteTimestamp
+      ? this.formatAbsoluteTimestamp(createdAt)
+      : "";
+    const relative = this.formatTimeAgo ? this.formatTimeAgo(createdAt) : "";
+    const description =
+      typeof version.description === "string" ? version.description : "";
+    const thumbnail =
+      typeof version.thumbnail === "string" ? version.thumbnail.trim() : "";
+    const url = typeof version.url === "string" ? version.url.trim() : "";
+    const magnet =
+      typeof version.magnet === "string" ? version.magnet.trim() : "";
+    const rawMagnet =
+      typeof version.rawMagnet === "string" ? version.rawMagnet.trim() : "";
+    const displayMagnet = magnet || rawMagnet;
+    const isPrivate = version.isPrivate === true;
+    const dTagValue = getDTagValueFromTags(version.tags);
 
     const nip71Metadata = this.buildNip71DisplayMetadata(version);
     const dTagValue = getDTagValueFromTags(version.tags);
