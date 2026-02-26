@@ -1,19 +1,5 @@
+import { getDTagValueFromTags } from "../../nostr/index.js";
 import { createModalAccessibility } from "./modalAccessibility.js";
-
-function extractDTagValue(tags) {
-  if (!Array.isArray(tags)) {
-    return "";
-  }
-  for (const entry of tags) {
-    if (!Array.isArray(entry) || entry.length < 2) {
-      continue;
-    }
-    if (entry[0] === "d" && typeof entry[1] === "string") {
-      return entry[1];
-    }
-  }
-  return "";
-}
 
 export class DeleteModal {
   constructor({
@@ -232,7 +218,7 @@ export class DeleteModal {
       video && typeof video.videoRootId === "string" && video.videoRootId.trim().length
         ? video.videoRootId.trim()
         : "";
-    const dTagValue = extractDTagValue(video?.tags);
+    const dTagValue = getDTagValueFromTags(video?.tags);
 
     if (this.subtitle) {
       const subtitleParts = [];
