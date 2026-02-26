@@ -336,7 +336,14 @@ if (hasDocument) {
 			var nCount = oQRCode.getModuleCount();
 			var nWidth = Math.floor(_htOption.width / nCount);
 			var nHeight = Math.floor(_htOption.height / nCount);
-			var aHTML = ['<table class="qr-code__table">'];
+
+			// Clear existing content
+			while (_el.firstChild) {
+				_el.removeChild(_el.firstChild);
+			}
+
+			var elTable = document.createElement("table");
+			elTable.className = "qr-code__table";
 
 			updateQrCodeContainerStyles(_el, {
 				colorDark: _htOption.colorDark,
@@ -347,23 +354,22 @@ if (hasDocument) {
 			});
 			
 			for (var row = 0; row < nCount; row++) {
-				aHTML.push('<tr>');
+				var elRow = document.createElement("tr");
 				
 				for (var col = 0; col < nCount; col++) {
-					var cellClass = oQRCode.isDark(row, col)
+					var elCell = document.createElement("td");
+					elCell.className = oQRCode.isDark(row, col)
 						? "qr-code__cell qr-code__cell--dark"
 						: "qr-code__cell";
-					aHTML.push('<td class="' + cellClass + '"></td>');
+					elRow.appendChild(elCell);
 				}
 				
-				aHTML.push('</tr>');
+				elTable.appendChild(elRow);
 			}
 			
-			aHTML.push('</table>');
-			_el.innerHTML = aHTML.join('');
+			_el.appendChild(elTable);
 			
 			// Fix the margin values as real size.
-			var elTable = _el.childNodes[0];
 			var nLeftMarginTable = (_htOption.width - (nCount * nWidth)) / 2;
 			var nTopMarginTable = (_htOption.height - (nCount * nHeight)) / 2;
 			
@@ -378,7 +384,9 @@ if (hasDocument) {
 		 * Clear the QRCode
 		 */
 		Drawing.prototype.clear = function () {
-			this._el.innerHTML = '';
+			while (this._el.firstChild) {
+				this._el.removeChild(this._el.firstChild);
+			}
 		};
 		
 		return Drawing;
