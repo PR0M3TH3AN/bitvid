@@ -1,70 +1,129 @@
-import { test, describe, it, beforeEach, afterEach } from "node:test";
+import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert";
-import { JSDOM } from "jsdom";
+
+// Manual DOM Mocks
+class MockElement {
+  constructor(tagName) {
+    this.tagName = tagName;
+    this.children = [];
+    this.textContent = "";
+    this.dataset = {};
+    this.classList = {
+      add: () => {},
+      remove: () => {},
+      contains: () => false,
+    };
+    this.style = {};
+  }
+  querySelector() {
+    return null;
+  }
+  querySelectorAll() {
+    return [];
+  }
+  appendChild(child) {
+    this.children.push(child);
+  }
+  replaceChildren() {
+    this.children = [];
+  }
+  getAttribute() {
+    return null;
+  }
+  setAttribute() {}
+  get ownerDocument() {
+    return globalThis.document;
+  }
+  get nodeType() {
+    return 1;
+  } // ELEMENT_NODE
+  addEventListener() {}
+  removeEventListener() {}
+}
+
+globalThis.EventTarget = class EventTarget {
+  addEventListener() {}
+  removeEventListener() {}
+  dispatchEvent() {}
+};
+globalThis.CustomEvent = class CustomEvent {};
+globalThis.DOMParser = class DOMParser {
+  parseFromString() {
+    return { body: { children: [] } };
+  }
+};
+globalThis.document = {
+  getElementById: () => null,
+  createElement: (tag) => new MockElement(tag),
+  body: new MockElement("BODY"),
+  activeElement: null,
+  addEventListener: () => {},
+  removeEventListener: () => {},
+  contains: () => false,
+};
+
+// Dynamic import to ensure mocks are ready before module execution
+const { DeleteModal } = await import("../../../js/ui/components/DeleteModal.js");
 
 describe("DeleteModal", () => {
-    let DeleteModal;
-    let modal;
-    let mockModalElement;
-    let subtitle;
-    let metadataList;
+  let modal;
+  let mockModalElement;
+  let subtitle;
+  let metadataList;
 
-    beforeEach(async () => {
-        const dom = new JSDOM("<!DOCTYPE html><html><body></body></html>", {
-            url: "http://localhost/",
-        });
-        globalThis.document = dom.window.document;
-        globalThis.window = dom.window;
-        globalThis.HTMLElement = dom.window.HTMLElement;
-        globalThis.EventTarget = dom.window.EventTarget;
-        globalThis.Node = dom.window.Node;
-        globalThis.DOMParser = dom.window.DOMParser;
-        globalThis.Event = dom.window.Event;
-        globalThis.CustomEvent = dom.window.CustomEvent;
+  beforeEach(() => {
+    // Setup mock elements
+    mockModalElement = new MockElement("DIV");
+    subtitle = new MockElement("DIV");
+    subtitle.id = "deleteModalSubtitle";
+    metadataList = new MockElement("DL");
+    metadataList.id = "deleteModalMetadata";
 
-        // Dynamic import to ensure globals are set before module execution
-        const module = await import("../../../js/ui/components/DeleteModal.js");
-        DeleteModal = module.DeleteModal;
+    // Mock querySelector for cacheElements
+    mockModalElement.querySelector = (selector) => {
+      if (selector === "#deleteModalSubtitle") return subtitle;
+      if (selector === "#deleteModalMetadata") return metadataList;
+      return new MockElement("DIV"); // Return generic element for others
+    };
 
-        // Mock DOM elements
-        mockModalElement = document.createElement('div');
-        subtitle = document.createElement('div');
-        subtitle.id = "deleteModalSubtitle";
-        metadataList = document.createElement('dl');
-        metadataList.id = "deleteModalMetadata";
+    modal = new DeleteModal({ container: new MockElement("DIV") });
+    modal.cacheElements(mockModalElement);
+  });
 
-        mockModalElement.appendChild(subtitle);
-        mockModalElement.appendChild(metadataList);
+  it("should extract d-tag and display it in subtitle", () => {
+    const video = {
+      tags: [["d", "test-d-tag"]],
+    };
+    modal.setVideo(video);
 
-        modal = new DeleteModal();
-        modal.cacheElements(mockModalElement);
+    // Check if subtitle text content contains the d-tag
+    assert.match(subtitle.textContent, /d=test-d-tag/);
+  });
+
+  it("should extract d-tag and display it in metadata", () => {
+    const video = {
+      tags: [["d", "test-d-tag"]],
+    };
+    modal.setVideo(video);
+
+    // Metadata list populates children
+    // We can check if any child (or grandchild) has the text
+    const hasDTag = metadataList.children.some((child) => {
+      // child is wrapper, wrapper has dt/dd
+      return child.children.some((grandchild) =>
+        grandchild.textContent.includes("test-d-tag"),
+      );
     });
 
-    it("should extract d-tag and display it in subtitle", () => {
-        const video = {
-            tags: [['d', 'my-d-tag']]
-        };
-        modal.setVideo(video);
+    assert.ok(hasDTag, "Metadata should contain d-tag");
+  });
 
-        assert.ok(subtitle.textContent.includes("d=my-d-tag"), `Subtitle should contain d-tag, got: ${subtitle.textContent}`);
-    });
+  it("should handle missing d-tag", () => {
+    const video = {
+      tags: [["t", "hashtag"]],
+    };
+    modal.setVideo(video);
 
-    it("should extract d-tag and display it in metadata", () => {
-        const video = {
-            tags: [['d', 'my-d-tag']]
-        };
-        modal.setVideo(video);
-
-        const metadataText = metadataList.textContent;
-        assert.ok(metadataText.includes("my-d-tag"), `Metadata should contain d-tag, got: ${metadataText}`);
-    });
-
-     it("should handle missing d-tag", () => {
-        const video = {
-            tags: [['t', 'hashtag']]
-        };
-        modal.setVideo(video);
-
-        assert.ok(!subtitle.textContent.includes("d="), `Subtitle should not contain d-tag, got: ${subtitle.textContent}`);
-    });
+    assert.ok(!subtitle.textContent.includes("d="));
+  });
 });
