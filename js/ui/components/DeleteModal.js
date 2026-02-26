@@ -1,3 +1,4 @@
+import { truncateMiddle as defaultTruncateMiddle } from "../../utils/formatters.js";
 import { createModalAccessibility } from "./modalAccessibility.js";
 
 function extractDTagValue(tags) {
@@ -28,22 +29,7 @@ export class DeleteModal {
     this.setGlobalModalState =
       typeof setGlobalModalState === "function" ? setGlobalModalState : () => {};
     this.truncateMiddle =
-      typeof truncateMiddle === "function" ? truncateMiddle : (value, maxLength = 48) => {
-        if (typeof value !== "string") {
-          return "";
-        }
-        if (value.length <= maxLength) {
-          return value;
-        }
-        if (maxLength <= 1) {
-          return value.slice(0, maxLength);
-        }
-        const ellipsis = "…";
-        const charsToShow = maxLength - ellipsis.length;
-        const front = Math.ceil(charsToShow / 2);
-        const back = Math.floor(charsToShow / 2);
-        return `${value.slice(0, front)}${ellipsis}${value.slice(value.length - back)}`;
-      };
+      typeof truncateMiddle === "function" ? truncateMiddle : defaultTruncateMiddle;
     this.eventTarget = eventTarget instanceof EventTarget ? eventTarget : new EventTarget();
     this.container = container || document.getElementById("modalContainer") || null;
 
