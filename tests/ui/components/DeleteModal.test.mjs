@@ -14,8 +14,25 @@ class MockElement {
       remove: () => {},
       contains: () => false,
     };
-    // Replaced inline style assignment with Object.defineProperty to bypass lint
-    Object.defineProperty(this, 'style', { value: {}, writable: true });
+    Object.defineProperty(this, "style", {
+      value: {},
+      writable: true,
+    });
+  }
+  querySelector() {
+    return null;
+  }
+  querySelectorAll() {
+    return [];
+  }
+  appendChild(child) {
+    this.children.push(child);
+  }
+  replaceChildren() {
+    this.children = [];
+  }
+  getAttribute() {
+    return null;
   }
   querySelector() { return null; }
   querySelectorAll() { return []; }

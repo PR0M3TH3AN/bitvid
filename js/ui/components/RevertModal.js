@@ -611,6 +611,7 @@ export class RevertModal {
       typeof version.rawMagnet === "string" ? version.rawMagnet.trim() : "";
     const displayMagnet = magnet || rawMagnet;
     const isPrivate = version.isPrivate === true;
+
     const nip71Metadata = this.buildNip71DisplayMetadata(version);
     const dTagValue = getDTagValueFromTags(version.tags);
 
