@@ -143,7 +143,9 @@ export function attachAmbientBackground(videoElement, canvasElement, options = {
     }
     const fillColor = getFallbackFillColor(canvasElement);
     ctx.fillStyle = fillColor;
-    ctx.fillRect(0, 0, canvasElement.width || 0, canvasElement.height || 0);
+    if (ctx && typeof ctx.fillRect === "function") {
+        ctx.fillRect(0, 0, canvasElement.width || 0, canvasElement.height || 0);
+    }
   };
 
   const stop = () => {

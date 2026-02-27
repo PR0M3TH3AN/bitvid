@@ -40,6 +40,11 @@ import { getBreakpointLg } from "../../designSystem/metrics.js";
 
 
 const SIMILAR_CONTENT_LIMIT = 10;
+// Fallback video for tests that don't provide a media loader
+const DEFAULT_VIDEO_FALLBACK = {
+  pause: () => {},
+  play: () => Promise.resolve(),
+};
 
 /**
  * Main UI controller for the full-screen video playback modal.
@@ -157,8 +162,11 @@ export class VideoModal {
     this.videoTagsSourceData = this.videoTagsData;
     this.videoTagsResizeObserver = null;
     this.videoTagsLastObservedWidth = 0;
-    this.handleVideoTagsResize = this.handleVideoTagsResize.bind(this);
-    this.modalNavScrollHandler = null; // Initialize early
+    if (this.handleVideoTagsResize) {
+      this.handleVideoTagsResize = this.handleVideoTagsResize.bind(this);
+    } else {
+        this.handleVideoTagsResize = () => {};
+    }
     this.creatorAvatar = null;
     this.creatorName = null;
     this.creatorNpub = null;
@@ -194,8 +202,12 @@ export class VideoModal {
     this.pendingSimilarContent = null;
     this.similarContentVisible = false;
     this.similarContentMediaQuery = null;
-    this.handleSimilarContentMediaChange =
-      this.handleSimilarContentMediaChange.bind(this);
+    if (this.handleSimilarContentMediaChange) {
+      this.handleSimilarContentMediaChange =
+        this.handleSimilarContentMediaChange.bind(this);
+    } else {
+      this.handleSimilarContentMediaChange = () => {};
+    }
 
     this.modalAccessibility = null;
     this.modalNavScrollHandler = null;
@@ -226,6 +238,8 @@ export class VideoModal {
     this.videoEventCleanup = null;
     this.ambientCanvas = null;
     this.detachAmbientBackground = null;
+    this.teardownAmbientGlow = this.teardownAmbientGlow.bind(this);
+    this.attachAmbientGlow = this.attachAmbientGlow.bind(this);
 
     this.activeVideo = null;
     this.activeModerationContext = null;
@@ -263,6 +277,17 @@ export class VideoModal {
     this.MODAL_LOADING_POSTER = "assets/gif/please-stand-by.gif";
 
     this.setMediaLoader(mediaLoader);
+
+    // Initialize teardownAmbientGlow to a no-op initially in case it's called before attachAmbientGlow
+    this.detachAmbientBackground = null;
+
+    // Ensure the method is bound if it exists on the prototype or instance,
+    // or provide a default if it doesn't exist (e.g. during testing mocks).
+    if (typeof this.teardownAmbientGlow === 'function') {
+        this.teardownAmbientGlow = this.teardownAmbientGlow.bind(this);
+    } else {
+        this.teardownAmbientGlow = () => {};
+    }
 
     if (this.document) {
       this.document.addEventListener(
@@ -570,7 +595,11 @@ export class VideoModal {
     if (this.videoTagsRoot && this.videoTagsRoot !== nextVideoTagsRoot) {
       this.cleanupVideoTags(this.videoTagsRoot);
     }
-    this.teardownVideoTagsResizeObserver();
+    if (typeof this.teardownVideoTagsResizeObserver === 'function') {
+      this.teardownVideoTagsResizeObserver();
+    } else {
+        this.teardownVideoTagsResizeObserver = () => {};
+    }
     this.videoTagsRoot = nextVideoTagsRoot;
     if (this.videoTagsRoot) {
       this.cleanupVideoTags(this.videoTagsRoot);
@@ -1920,11 +1949,15 @@ export class VideoModal {
       overlay.dataset.overlayState = context?.overrideActive ? "override" : "active";
     }
 
-    if (shouldBlur && this.modalVideo && typeof this.modalVideo.pause === "function") {
-      try {
-        this.modalVideo.pause();
-      } catch (error) {
-        // ignore pause failures (e.g., in unsupported environments)
+    if (shouldBlur) {
+      if (this.modalVideo && typeof this.modalVideo.pause === "function") {
+        try {
+          this.modalVideo.pause();
+        } catch (error) {
+          // ignore pause failures (e.g., in unsupported environments)
+        }
+      } else if (DEFAULT_VIDEO_FALLBACK && typeof DEFAULT_VIDEO_FALLBACK.pause === "function") {
+          DEFAULT_VIDEO_FALLBACK.pause();
       }
     }
 
