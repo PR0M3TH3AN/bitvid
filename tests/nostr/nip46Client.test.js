@@ -254,8 +254,8 @@ test("parseNip46ConnectionString handles remote signer key hints", async () => {
   const signerSecretBytes = generateSecretKey();
   const userSecretBytes = generateSecretKey();
 
-  const signerPubkey = getPublicKey(utils.hexToBytes(signerSecret)).toLowerCase();
-  const userPubkey = getPublicKey(utils.hexToBytes(userSecret)).toLowerCase();
+  const signerPubkey = getPublicKey(signerSecretBytes).toLowerCase();
+  const userPubkey = getPublicKey(userSecretBytes).toLowerCase();
 
   const signerNpub = nip19.npubEncode(signerPubkey);
   const userNpub = nip19.npubEncode(userPubkey);
@@ -296,13 +296,13 @@ test(
     const remoteSignerSecretBytes = generateSecretKey();
     const userSecretBytes = generateSecretKey();
 
-    const remoteSignerPubkey = getPublicKey(utils.hexToBytes(remoteSignerSecret)).toLowerCase();
-    const userPubkey = getPublicKey(utils.hexToBytes(userSecret)).toLowerCase();
+    const remoteSignerPubkey = getPublicKey(remoteSignerSecretBytes).toLowerCase();
+    const userPubkey = getPublicKey(userSecretBytes).toLowerCase();
 
     const conversationKey =
       typeof nip44.v2.getConversationKey === "function"
-        ? nip44.v2.getConversationKey(utils.hexToBytes(clientSecret), remoteSignerPubkey)
-        : nip44.v2.utils.getConversationKey(utils.hexToBytes(clientSecret), remoteSignerPubkey);
+        ? nip44.v2.getConversationKey(clientSecretBytes, remoteSignerPubkey)
+        : nip44.v2.utils.getConversationKey(clientSecretBytes, remoteSignerPubkey);
 
     const payload = JSON.stringify({ id: "ack", result: "ok" });
     const ciphertext = nip44.v2.encrypt(payload, conversationKey);
@@ -333,10 +333,12 @@ test(
     const { generateSecretKey, getPublicKey, nip04, utils } = nostrTools;
     const { attemptDecryptNip46HandshakePayload } = await loadNip46Module();
 
-    const clientSecret = utils.bytesToHex(generateSecretKey());
-    const clientPubkey = getPublicKey(utils.hexToBytes(clientSecret)).toLowerCase();
-    const remoteSecret = utils.bytesToHex(generateSecretKey());
-    const remotePubkey = getPublicKey(utils.hexToBytes(remoteSecret)).toLowerCase();
+    const clientSecretBytes = generateSecretKey();
+    const clientSecret = utils.bytesToHex(clientSecretBytes);
+    const clientPubkey = getPublicKey(clientSecretBytes).toLowerCase();
+    const remoteSecretBytes = generateSecretKey();
+    const remoteSecret = utils.bytesToHex(remoteSecretBytes);
+    const remotePubkey = getPublicKey(remoteSecretBytes).toLowerCase();
 
     const payload = JSON.stringify({ id: "ack", result: "ack" });
     const ciphertext = await nip04.encrypt(remoteSecret, clientPubkey, payload);

@@ -7,13 +7,13 @@ test("CommentsController lifecycle manages comment references", async (t) => {
   const { modal, cleanup } = await setupModal();
   t.after(cleanup);
 
-  assert.ok(modal.commentsRoot, "comments should be initialized after hydrate");
+  assert.ok(modal.commentsController.commentsRoot, "comments should be initialized after hydrate");
 
   modal.commentsController.destroy();
-  assert.equal(modal.commentsRoot, null, "destroy should clear comment root");
+  assert.equal(modal.commentsController.commentsRoot, null, "destroy should clear comment root");
 
   modal.commentsController.initialize({ playerModal: modal.getRoot() });
-  assert.ok(modal.commentsRoot, "initialize should restore comment root");
+  assert.ok(modal.commentsController.commentsRoot, "initialize should restore comment root");
 });
 
 test("ReactionsController delegates reaction updates", async (t) => {
@@ -189,4 +189,3 @@ test("VideoModal trims tag strip to fit modal width", async (t) => {
     "reflow should restore full list order before trimming",
   );
 });
-
