@@ -1054,16 +1054,16 @@ function resolveAvailableNip46Ciphers(
     typeof nip44v2GetConversationKey === "function"
   ) {
     registerCipher("nip44.v2", () => {
-      // Ensure keys are Uint8Array if available, falling back to string if not.
-      // nostr-tools v2 generally expects Uint8Array for keys in encryption helpers.
+      // nostr-tools v2 `getConversationKey(priv, pub)` expects:
+      // priv: Uint8Array (private key bytes)
+      // pub: string (public key hex string, which it prefixes with '02' and converts)
       const privKeyInput =
         typeof privateKey === "string" && tools?.utils?.hexToBytes
           ? tools.utils.hexToBytes(privateKey)
           : privateKey;
-      const pubKeyInput =
-        typeof remotePubkey === "string" && tools?.utils?.hexToBytes
-          ? tools.utils.hexToBytes(remotePubkey)
-          : remotePubkey;
+
+      // Keep remotePubkey as string if it is one, otherwise pass as is (e.g. if already bytes, though v2 expects string)
+      const pubKeyInput = remotePubkey;
 
       const conversationKey = nip44v2GetConversationKey(privKeyInput, pubKeyInput);
 

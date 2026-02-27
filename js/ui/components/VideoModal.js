@@ -2987,11 +2987,177 @@ export class VideoModal {
   }
 
   updateSourceToggleState(source) {
-    // Stub
+    if (!this.sourceToggleButtons) return;
+    this.sourceToggleButtons.forEach((btn) => {
+      const isMatch = btn.dataset.sourceToggle === source;
+      btn.setAttribute("aria-pressed", isMatch ? "true" : "false");
+    });
   }
 
   updateSourceAvailability(video) {
-    // Stub
+    const hasVideo = Boolean(video && video.id);
+    this.setCopyEnabled(hasVideo);
+    this.setShareEnabled(hasVideo);
+    this.setEmbedEnabled(hasVideo);
+  }
+
+  setCommentsVisibility(visible) {
+    const commentsRoot = this.playerModal?.querySelector(
+      "[data-comments-root]"
+    );
+    if (commentsRoot) {
+      if (visible) {
+        commentsRoot.removeAttribute("hidden");
+        commentsRoot.classList.remove("hidden");
+      } else {
+        commentsRoot.setAttribute("hidden", "");
+        commentsRoot.classList.add("hidden");
+      }
+    }
+  }
+
+  renderComments(snapshot) {
+    if (this.commentsController) {
+      this.commentsController.renderComments(snapshot);
+    }
+  }
+
+  setCommentComposerState(state) {
+    this._commentComposerState = state;
+    if (this.commentsController) {
+      // Also update the internal controller to keep them in sync if possible,
+      // but primarily we trust the caller (which might be a test controller)
+      if (typeof this.commentsController.setCommentComposerState === 'function') {
+         // Avoid infinite recursion if controller calls back
+         if (this.commentsController.composerState !== state) {
+            this.commentsController.setCommentComposerState(state);
+         }
+      }
+    }
+    // Reflect state to DOM immediately if elements exist
+    if (this.commentsInput) {
+        this.commentsInput.disabled = !!state?.disabled;
+    }
+    if (this.commentsSubmitButton) {
+        this.commentsSubmitButton.disabled = !!state?.disabled;
+    }
+    if (this.commentsComposer) {
+        const reason = state?.reason;
+        if (reason === 'disabled') {
+            this.commentsComposer.setAttribute('hidden', '');
+        } else {
+            this.commentsComposer.removeAttribute('hidden');
+        }
+    }
+    if (this.commentsDisabledPlaceholder) {
+        const reason = state?.reason;
+        if (reason === 'disabled') {
+            this.commentsDisabledPlaceholder.removeAttribute('hidden');
+        } else {
+            this.commentsDisabledPlaceholder.setAttribute('hidden', '');
+        }
+    }
+    if (this.commentComposerHint && this.commentComposerDefaultHint) {
+        if (state?.reason === 'login-required') {
+            this.commentComposerHint.textContent = "Log in to add a comment.";
+        } else {
+            this.commentComposerHint.textContent = this.commentComposerDefaultHint.trim();
+        }
+    }
+  }
+
+  setCommentStatus(message, type) {
+    this._commentStatus = { message, type };
+    if (this.commentsStatusMessage) {
+        this.commentsStatusMessage.textContent = message || '';
+        this.commentsStatusMessage.className = type === 'error' ? 'text-danger' : 'text-muted';
+    }
+    if (this.commentsController) {
+       if (typeof this.commentsController.setCommentStatus === 'function') {
+           this.commentsController.setCommentStatus(message, type);
+       }
+    }
+  }
+
+  resetCommentComposer(values) {
+    if (this.commentsInput) {
+        this.commentsInput.value = values?.text || '';
+    }
+    if (this.commentsController) {
+      this.commentsController.resetCommentComposer(values);
+    }
+  }
+
+  appendComment(comment) {
+    if (this.commentsController) {
+      this.commentsController.appendComment(comment);
+    }
+  }
+
+  hideCommentsDisabledMessage() {
+    if (this.commentsController) {
+      this.commentsController.hideCommentsDisabledMessage();
+    }
+  }
+
+  showCommentsDisabledMessage(message) {
+    if (this.commentsController) {
+      this.commentsController.showCommentsDisabledMessage(message);
+    }
+  }
+
+  updateCommentCharCount() {
+    if (this.commentsController) {
+        this.commentsController.updateCommentCharCount();
+    }
+  }
+
+  updateCommentSubmitState() {
+    if (this.commentsController) {
+        this.commentsController.updateCommentSubmitState();
+    }
+  }
+
+  // Getters to expose commentsController elements for tests
+  get commentsList() {
+    return this.commentsController?.commentsList;
+  }
+
+  get commentsComposer() {
+    return this.commentsController?.commentsComposer;
+  }
+
+  get commentsInput() {
+    return this.commentsController?.commentsInput;
+  }
+
+  get commentsSubmitButton() {
+    return this.commentsController?.commentsSubmitButton;
+  }
+
+  get commentsDisabledPlaceholder() {
+    return this.commentsController?.commentsDisabledPlaceholder;
+  }
+
+  get commentComposerHint() {
+      return this.commentsController?.commentComposerHint;
+  }
+
+  get commentsStatusMessage() {
+      return this.commentsController?.commentsStatusMessage;
+  }
+
+  get commentRetryButton() {
+      return this.commentsController?.commentRetryButton;
+  }
+
+  get commentComposerState() {
+      // Prioritize locally pushed state, fallback to controller
+      return this._commentComposerState || this.commentsController?.composerState;
+  }
+
+  get commentComposerDefaultHint() {
+      return this.commentsController?.DEFAULT_COMPOSER_HINT || "Add a comment...";
   }
 
   attachAmbientGlow() {
