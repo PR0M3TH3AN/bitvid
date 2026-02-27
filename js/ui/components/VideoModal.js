@@ -3025,20 +3025,23 @@ export class VideoModal {
   setCommentComposerState(state) {
     this._commentComposerState = state;
     if (this.commentsController) {
-      // Also update the internal controller to keep them in sync if possible,
-      // but primarily we trust the caller (which might be a test controller)
+      // Delegate entirely to the controller if it exists to avoid fighting over DOM state
+      // (especially submit button enablement which depends on input value)
       if (typeof this.commentsController.setCommentComposerState === 'function') {
-         // Avoid infinite recursion if controller calls back
          if (this.commentsController.composerState !== state) {
             this.commentsController.setCommentComposerState(state);
          }
       }
+      return;
     }
-    // Reflect state to DOM immediately if elements exist
+
+    // Fallback: Manually reflect state to DOM if no controller is attached (e.g. in isolated tests)
     if (this.commentsInput) {
         this.commentsInput.disabled = !!state?.disabled;
     }
     if (this.commentsSubmitButton) {
+        // Note: This naive check doesn't account for empty input,
+        // but without a controller we can't easily validte.
         this.commentsSubmitButton.disabled = !!state?.disabled;
     }
     if (this.commentsComposer) {
@@ -3169,14 +3172,107 @@ export class VideoModal {
   }
 
   setupModalMorePopover() {
-    // Stub
+    if (!this.playerModal || !this.modalMoreBtn) {
+      return;
+    }
+
+    if (this.modalMorePopover?.destroy) {
+      this.modalMorePopover.destroy();
+    }
+
+    this.modalMorePopover = createPopover({
+      trigger: this.modalMoreBtn,
+      content: (container) => {
+        if (!this.activeVideo) {
+          container.innerHTML = "";
+          return;
+        }
+        const panel = createVideoMoreMenuPanel({
+          document: this.document,
+          video: this.activeVideo,
+          pointerInfo: this.modalMoreMenuContext.pointerInfo,
+          playbackUrl: this.modalMoreMenuContext.playbackUrl,
+          playbackMagnet: this.modalMoreMenuContext.playbackMagnet,
+          canManageBlacklist: this.modalMoreMenuContext.canManageBlacklist,
+          context: "modal",
+        });
+        if (panel) {
+          container.appendChild(panel);
+          this.modalMoreMenuPanel = panel;
+        }
+      },
+      placement: "bottom-end",
+      offset: 8,
+      onOpen: () => {
+        if (this.activeVideo) {
+          this.syncMoreMenuData({
+            currentVideo: this.activeVideo,
+            canManageBlacklist: this.modalMoreMenuContext.canManageBlacklist,
+          });
+        }
+      },
+    });
   }
 
   setupModalSharePopover() {
-    // Stub
+    if (!this.playerModal || !this.shareBtn) {
+      return;
+    }
+
+    // Reuse popover engine for share button
+    // Using a simpler on-click binding for now to match legacy behavior,
+    // or instantiate a popover if we want the full menu experience.
+    // The E2E test expects a popover with [data-menu="video-share"].
+
+    // We'll create a local property for share popover to clean up later
+    if (this.modalSharePopover?.destroy) {
+      this.modalSharePopover.destroy();
+    }
+
+    this.modalSharePopover = createPopover({
+      trigger: this.shareBtn,
+      content: (container) => {
+        if (!this.activeVideo) {
+          container.innerHTML = "";
+          return;
+        }
+        const panel = createVideoShareMenuPanel({
+          document: this.document,
+          video: this.activeVideo,
+          isLoggedIn: this.shareNostrAuthState.isLoggedIn,
+          hasSigner: this.shareNostrAuthState.hasSigner,
+          hasMagnet: Boolean(this.modalMoreMenuContext.playbackMagnet), // Re-use magnet from context
+          hasCdn: Boolean(this.modalMoreMenuContext.playbackUrl),
+        });
+        if (panel) {
+          container.appendChild(panel);
+        }
+      },
+      placement: "top", // or "top-start" based on layout
+      offset: 8,
+    });
   }
 
   refreshModalMoreMenuPanel() {
-    // Stub
+    if (this.modalMoreMenuPanel && this.activeVideo) {
+        // Re-render panel content if open
+        const container = this.modalMoreMenuPanel.parentElement;
+        if(container) {
+            container.innerHTML = "";
+            const panel = createVideoMoreMenuPanel({
+                document: this.document,
+                video: this.activeVideo,
+                pointerInfo: this.modalMoreMenuContext.pointerInfo,
+                playbackUrl: this.modalMoreMenuContext.playbackUrl,
+                playbackMagnet: this.modalMoreMenuContext.playbackMagnet,
+                canManageBlacklist: this.modalMoreMenuContext.canManageBlacklist,
+                context: "modal",
+            });
+            if (panel) {
+                container.appendChild(panel);
+                this.modalMoreMenuPanel = panel;
+            }
+        }
+    }
   }
 }
