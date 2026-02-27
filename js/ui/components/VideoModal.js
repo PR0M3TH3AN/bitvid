@@ -2927,4 +2927,264 @@ export class VideoModal {
       this.refreshModalMoreMenuPanel();
     }
   }
+
+  attachAmbientGlow() {
+    if (
+      !this.modalVideo ||
+      !this.ambientCanvas ||
+      typeof attachAmbientBackground !== "function"
+    ) {
+      return;
+    }
+
+    this.teardownAmbientGlow({ clear: false });
+
+    try {
+      this.detachAmbientBackground = attachAmbientBackground(
+        this.modalVideo,
+        this.ambientCanvas
+      );
+    } catch (error) {
+      this.log("[VideoModal] Failed to attach ambient background", error);
+    }
+  }
+
+  teardownAmbientGlow({ clear = true } = {}) {
+    if (typeof this.detachAmbientBackground === "function") {
+      this.detachAmbientBackground();
+      this.detachAmbientBackground = null;
+    }
+
+    if (clear && this.ambientCanvas) {
+      const ctx = this.ambientCanvas.getContext("2d");
+      if (ctx) {
+        ctx.clearRect(0, 0, this.ambientCanvas.width, this.ambientCanvas.height);
+      }
+    }
+  }
+
+  bindVideoEvents() {
+    if (!this.modalVideo) return;
+    // Basic event binding if needed for internal state tracking
+    // Most playback logic is handled by playbackService/coordinator,
+    // but the modal might track play/pause for UI updates.
+  }
+
+  detachVideoEvents() {
+    if (!this.modalVideo) return;
+    // Cleanup listeners if any were added in bindVideoEvents
+  }
+
+  bindActionButtons() {
+    if (this.copyMagnetBtn) {
+      this.copyMagnetBtn.addEventListener("click", this.handleCopyRequest);
+    }
+    if (this.shareBtn) {
+      // shareBtn click is handled by popover if setupModalSharePopover is called
+      // but we add a listener just in case logic requires manual dispatch
+      // this.shareBtn.addEventListener("click", this.handleShareRequest);
+    }
+    if (this.embedBtn) {
+      this.embedBtn.addEventListener("click", this.handleEmbedRequest);
+    }
+    if (this.creatorNpub) {
+      this.creatorNpub.addEventListener("click", this.handleCreatorNavigation);
+    }
+    if (this.creatorName) {
+      this.creatorName.addEventListener("click", this.handleCreatorNavigation);
+    }
+    if (this.creatorAvatar) {
+      this.creatorAvatar.addEventListener("click", this.handleCreatorNavigation);
+    }
+    // modalMoreBtn is handled by popover setup
+  }
+
+  handleCopyRequest(event) {
+    event?.preventDefault?.();
+    const magnet =
+      this.activeVideo?.magnet || this.activeVideo?.originalMagnet || "";
+    if (magnet) {
+      if (this.window?.navigator?.clipboard) {
+        this.window.navigator.clipboard.writeText(magnet).catch(() => {});
+      }
+      this.dispatch("video:copy-magnet", {
+        video: this.activeVideo,
+        magnet,
+      });
+    }
+  }
+
+  handleShareRequest(event) {
+    event?.preventDefault?.();
+    // Usually triggers share popover or native share
+    this.dispatch("video:share", { video: this.activeVideo });
+  }
+
+  handleEmbedRequest(event) {
+    event?.preventDefault?.();
+    this.dispatch("video:embed", { video: this.activeVideo });
+  }
+
+  handleCreatorNavigation(event) {
+    event?.preventDefault?.();
+    if (this.activeVideo?.pubkey) {
+      this.dispatch("navigate:profile", { pubkey: this.activeVideo.pubkey });
+    }
+  }
+
+  handleModalMoreButtonClick(event) {
+    event?.preventDefault?.();
+    // Handled by popover engine mostly
+  }
+
+  handleReactionClick(event) {
+    // Handled by ReactionsController, which binds its own listeners
+    // to the buttons and calls this if needed, or we just dispatch here.
+    // ReactionsController.initialize calls `this.modal.handleReactionClick` via its bound handler.
+    // So we must implement it.
+
+    // Actually ReactionsController usually manages the logic.
+    // If ReactionsController calls this, it expects us to dispatch or handle logic.
+    // Based on ReactionsController code:
+    // `this.modal?.handleReactionClick?.(event);`
+
+    const target = event?.currentTarget;
+    const isLike = target === this.reactionButtons?.["+"];
+    const isDislike = target === this.reactionButtons?.["-"];
+
+    if (isLike) {
+        this.dispatch("video:reaction", { video: this.activeVideo, reaction: "+" });
+    } else if (isDislike) {
+        this.dispatch("video:reaction", { video: this.activeVideo, reaction: "-" });
+    }
+  }
+
+  updateSourceAvailability(video) {
+    if (!video) return;
+
+    const hasUrl = !!video.url;
+    const hasMagnet = !!video.magnet || !!video.infoHash;
+
+    if (this.sourceToggleContainer) {
+        // Simple logic: if both, show toggles. If only one, maybe hide or disable?
+        // For now, just ensuring it doesn't crash.
+        const showToggles = hasUrl && hasMagnet;
+        this.sourceToggleContainer.hidden = !showToggles;
+    }
+  }
+
+  updateSourceToggleState(activeSource) {
+     if (!this.sourceToggleButtons) return;
+     this.sourceToggleButtons.forEach(btn => {
+         const source = btn.dataset.sourceToggle;
+         const isActive = source === activeSource;
+         btn.setAttribute("aria-pressed", isActive ? "true" : "false");
+         if (isActive) {
+             btn.classList.add("bg-surface-highlight", "text-text");
+             btn.classList.remove("text-muted");
+         } else {
+             btn.classList.remove("bg-surface-highlight", "text-text");
+             btn.classList.add("text-muted");
+         }
+     });
+  }
+
+  setupModalMorePopover() {
+    if (!this.modalMoreBtn) return;
+
+    this.modalMorePopover = createPopover(
+        this.modalMoreBtn,
+        () => {
+            return this.createModalMoreMenuContent();
+        },
+        {
+            placement: "bottom-end",
+            document: this.document,
+            restoreFocusOnClose: true
+        }
+    );
+  }
+
+  createModalMoreMenuContent() {
+     this.modalMoreMenuPanel = createVideoMoreMenuPanel(
+         this.modalMoreMenuContext,
+         {
+             document: this.document,
+             onClose: () => this.modalMorePopover?.close(),
+             onShare: () => this.handleShareRequest(),
+             onEmbed: () => this.handleEmbedRequest(),
+             onCopyMagnet: () => this.handleCopyRequest(),
+             onRemoveHistory: () => {
+                 this.dispatch("video:remove-history", { video: this.activeVideo });
+                 this.modalMorePopover?.close();
+             },
+             onOpenBlacklist: () => {
+                 this.dispatch("video:open-blacklist", { video: this.activeVideo });
+                 this.modalMorePopover?.close();
+             },
+             onEdit: () => {
+                 this.dispatch("video:edit", { video: this.activeVideo });
+                 this.modalMorePopover?.close();
+             },
+             onDelete: () => {
+                 this.dispatch("video:delete", { video: this.activeVideo });
+                 this.modalMorePopover?.close();
+             },
+             onBoost: () => {
+                 this.dispatch("video:boost", { video: this.activeVideo });
+                 this.modalMorePopover?.close();
+             }
+         }
+     );
+     return this.modalMoreMenuPanel;
+  }
+
+  refreshModalMoreMenuPanel() {
+      if (this.modalMoreMenuPanel && this.modalMoreMenuPanel.isConnected && this.modalMorePopover?.isOpen?.()) {
+          const newPanel = this.createModalMoreMenuContent();
+          this.modalMoreMenuPanel.replaceWith(newPanel);
+          this.modalMoreMenuPanel = newPanel;
+      }
+  }
+
+  setupModalSharePopover() {
+      if (!this.shareBtn) return;
+      // Share popover logic if separate from generic share request
+      // For now assume standard behavior or similar to more menu
+      // If videoShareMenuPanel exists:
+      this.modalSharePopover = createPopover(
+          this.shareBtn,
+          () => {
+              return createVideoShareMenuPanel(
+                  { video: this.activeVideo, url: this.activeVideo?.url || "" },
+                  {
+                      document: this.document,
+                      onClose: () => this.modalSharePopover?.close(),
+                      onCopyLink: () => {
+                           // copy link logic
+                           this.modalSharePopover?.close();
+                      },
+                      onCopyMagnet: () => {
+                          this.handleCopyRequest();
+                          this.modalSharePopover?.close();
+                      },
+                      onEmbed: () => {
+                          this.handleEmbedRequest();
+                          this.modalSharePopover?.close();
+                      },
+                      onShareNostr: () => {
+                          this.dispatch("video:share-nostr", { video: this.activeVideo });
+                          this.modalSharePopover?.close();
+                      }
+                  }
+              );
+          },
+          {
+              placement: "top-end",
+              document: this.document,
+              restoreFocusOnClose: true
+          }
+      );
+  }
+
 }
