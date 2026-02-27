@@ -2927,4 +2927,90 @@ export class VideoModal {
       this.refreshModalMoreMenuPanel();
     }
   }
+
+  handleCopyRequest() {
+    this.dispatch("action:copy", { video: this.activeVideo });
+  }
+
+  handleShareRequest() {
+    this.dispatch("action:share", { video: this.activeVideo });
+  }
+
+  handleEmbedRequest() {
+    this.dispatch("action:embed", { video: this.activeVideo });
+  }
+
+  handleCreatorNavigation() {
+    if (this.activeVideo?.pubkey) {
+      this.dispatch("navigate:profile", { pubkey: this.activeVideo.pubkey });
+    }
+  }
+
+  handleModalMoreButtonClick(event) {
+    // Basic stub to prevent crash
+    this.log("[VideoModal] More button clicked");
+  }
+
+  handleReactionClick(reaction) {
+    if (this.reactionsController) {
+      this.reactionsController.handleReaction(reaction);
+    }
+  }
+
+  bindVideoEvents() {
+    // Stub
+  }
+
+  detachVideoEvents() {
+    // Stub
+  }
+
+  bindActionButtons() {
+    if (this.copyMagnetBtn) {
+      this.copyMagnetBtn.addEventListener("click", this.handleCopyRequest);
+    }
+    if (this.shareBtn) {
+      this.shareBtn.addEventListener("click", this.handleShareRequest);
+    }
+    if (this.embedBtn) {
+      this.embedBtn.addEventListener("click", this.handleEmbedRequest);
+    }
+    if (this.creatorAvatar) {
+      this.creatorAvatar.addEventListener("click", this.handleCreatorNavigation);
+    }
+    if (this.creatorName) {
+      this.creatorName.addEventListener("click", this.handleCreatorNavigation);
+    }
+    if (this.modalMoreBtn) {
+      this.modalMoreBtn.addEventListener("click", this.handleModalMoreButtonClick);
+    }
+  }
+
+  updateSourceToggleState(source) {
+    // Stub
+  }
+
+  updateSourceAvailability(video) {
+    // Stub
+  }
+
+  attachAmbientGlow() {
+    // Stub
+  }
+
+  teardownAmbientGlow() {
+    // Stub
+  }
+
+  setupModalMorePopover() {
+    // Stub
+  }
+
+  setupModalSharePopover() {
+    // Stub
+  }
+
+  refreshModalMoreMenuPanel() {
+    // Stub
+  }
 }

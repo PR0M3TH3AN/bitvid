@@ -33,6 +33,15 @@ test('NIP-04/44 Compliance: Encryption Preference', async (t) => {
   };
 
   await t.test('createNip46Cipher prefers nip44.v2 when available', async () => {
+    // Add getConversationKey mock for v2
+    toolsMock.nip44.v2 = {
+        utils: {
+            getConversationKey: () => 'mock-conversation-key'
+        },
+        encrypt: () => 'base64ciphertext',
+        decrypt: () => 'plaintext'
+    };
+
     const cipher = createNip46Cipher(toolsMock, privateKeyHex, remotePubkeyHex);
     assert.equal(cipher.algorithm, 'nip44.v2');
 
