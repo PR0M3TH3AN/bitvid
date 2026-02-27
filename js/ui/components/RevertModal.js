@@ -1,7 +1,6 @@
 import { getDTagValueFromTags } from "../../nostr/nip71.js";
 import { Nip71FormManager } from "./nip71FormManager.js";
 import { createModalAccessibility } from "./modalAccessibility.js";
-import { getDTagValueFromTags } from "../../nostr/nip71.js";
 import {
   createImetaVariants,
   createTextTracks,
@@ -612,7 +611,6 @@ export class RevertModal {
       typeof version.rawMagnet === "string" ? version.rawMagnet.trim() : "";
     const displayMagnet = magnet || rawMagnet;
     const isPrivate = version.isPrivate === true;
-    const dTagValue = getDTagValueFromTags(version.tags);
 
     const nip71Metadata = this.buildNip71DisplayMetadata(version);
     const dTagValue = getDTagValueFromTags(version.tags);

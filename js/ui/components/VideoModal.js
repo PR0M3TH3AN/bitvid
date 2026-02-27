@@ -158,6 +158,7 @@ export class VideoModal {
     this.videoTagsResizeObserver = null;
     this.videoTagsLastObservedWidth = 0;
     this.handleVideoTagsResize = this.handleVideoTagsResize.bind(this);
+    this.modalNavScrollHandler = null; // Initialize early
     this.creatorAvatar = null;
     this.creatorName = null;
     this.creatorNpub = null;
