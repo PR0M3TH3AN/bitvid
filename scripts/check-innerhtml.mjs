@@ -48,7 +48,6 @@ const BASELINE = {
   "js/ui/subscriptionHistoryController.js": 1,
   "js/ui/videoListViewController.js": 1,
   "js/ui/views/VideoListView.js": 3,
-  "js/utils/qrcode.js": 2,
   "js/viewManager.js": 3,
 };
 

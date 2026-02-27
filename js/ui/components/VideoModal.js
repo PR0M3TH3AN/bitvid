@@ -3309,7 +3309,7 @@ export class VideoModal {
       trigger: this.modalMoreBtn,
       content: (container) => {
         if (!this.activeVideo) {
-          container.innerHTML = "";
+          container.replaceChildren();
           return;
         }
         const panel = createVideoMoreMenuPanel({
@@ -3322,7 +3322,7 @@ export class VideoModal {
           context: "modal",
         });
         if (panel) {
-          container.appendChild(panel);
+          container.replaceChildren(panel);
           this.modalMoreMenuPanel = panel;
         }
       },
@@ -3358,19 +3358,27 @@ export class VideoModal {
       trigger: this.shareBtn,
       content: (container) => {
         if (!this.activeVideo) {
-          container.innerHTML = "";
+          container.replaceChildren();
           return;
         }
+
+        // Refresh context data to ensure magnet/cdn flags are up to date
+        // even if the more menu hasn't been opened yet.
+        this.syncMoreMenuData({
+          currentVideo: this.activeVideo,
+          canManageBlacklist: this.modalMoreMenuContext.canManageBlacklist,
+        });
+
         const panel = createVideoShareMenuPanel({
           document: this.document,
           video: this.activeVideo,
           isLoggedIn: this.shareNostrAuthState.isLoggedIn,
           hasSigner: this.shareNostrAuthState.hasSigner,
-          hasMagnet: Boolean(this.modalMoreMenuContext.playbackMagnet), // Re-use magnet from context
+          hasMagnet: Boolean(this.modalMoreMenuContext.playbackMagnet),
           hasCdn: Boolean(this.modalMoreMenuContext.playbackUrl),
         });
         if (panel) {
-          container.appendChild(panel);
+          container.replaceChildren(panel);
         }
       },
       placement: "top", // or "top-start" based on layout
@@ -3380,24 +3388,25 @@ export class VideoModal {
 
   refreshModalMoreMenuPanel() {
     if (this.modalMoreMenuPanel && this.activeVideo) {
-        // Re-render panel content if open
-        const container = this.modalMoreMenuPanel.parentElement;
-        if(container) {
-            container.innerHTML = "";
-            const panel = createVideoMoreMenuPanel({
-                document: this.document,
-                video: this.activeVideo,
-                pointerInfo: this.modalMoreMenuContext.pointerInfo,
-                playbackUrl: this.modalMoreMenuContext.playbackUrl,
-                playbackMagnet: this.modalMoreMenuContext.playbackMagnet,
-                canManageBlacklist: this.modalMoreMenuContext.canManageBlacklist,
-                context: "modal",
-            });
-            if (panel) {
-                container.appendChild(panel);
-                this.modalMoreMenuPanel = panel;
-            }
+      // Re-render panel content if open
+      const container = this.modalMoreMenuPanel.parentElement;
+      if (container) {
+        const panel = createVideoMoreMenuPanel({
+          document: this.document,
+          video: this.activeVideo,
+          pointerInfo: this.modalMoreMenuContext.pointerInfo,
+          playbackUrl: this.modalMoreMenuContext.playbackUrl,
+          playbackMagnet: this.modalMoreMenuContext.playbackMagnet,
+          canManageBlacklist: this.modalMoreMenuContext.canManageBlacklist,
+          context: "modal",
+        });
+        if (panel) {
+          container.replaceChildren(panel);
+          this.modalMoreMenuPanel = panel;
+        } else {
+          container.replaceChildren();
         }
+      }
     }
   }
 }
