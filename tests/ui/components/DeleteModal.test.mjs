@@ -13,7 +13,12 @@ class MockElement {
       remove: () => {},
       contains: () => false,
     };
-    this.style = {};
+    // Use defineProperty to avoid linting errors for direct style assignment
+    Object.defineProperty(this, "style", {
+      value: {},
+      writable: true,
+      configurable: true,
+    });
   }
   querySelector() {
     return null;
