@@ -41,6 +41,9 @@ test.describe("video modal share button", () => {
                 magnet: "magnet:?xt=urn:btih:test",
             };
 
+            // Ensure context is synced manually since we are bypassing normal app flow
+            videoModal.syncMoreMenuData({ currentVideo: videoModal.activeVideo });
+
             // Open the modal
             videoModal.open(videoModal.activeVideo);
         }
