@@ -1054,7 +1054,17 @@ function resolveAvailableNip46Ciphers(
     typeof nip44v2GetConversationKey === "function"
   ) {
     registerCipher("nip44.v2", () => {
-      const conversationKey = nip44v2GetConversationKey(privateKey, remotePubkey);
+      // Ensure private key is bytes if using nostr-tools v2
+      let privKey = privateKey;
+      if (typeof privKey === "string" && tools.utils?.hexToBytes) {
+        try {
+          privKey = tools.utils.hexToBytes(privKey);
+        } catch (err) {
+          // Keep as string if conversion fails (legacy behavior fallback)
+        }
+      }
+
+      const conversationKey = nip44v2GetConversationKey(privKey, remotePubkey);
 
       if (!conversationKey) {
         throw new Error("Failed to derive a nip44 conversation key for remote signing.");
