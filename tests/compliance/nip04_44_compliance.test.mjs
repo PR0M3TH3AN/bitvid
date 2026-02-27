@@ -27,8 +27,21 @@ test('NIP-04/44 Compliance: Encryption Preference', async (t) => {
   const remoteKey = RealNostrTools.generateSecretKey();
   const remotePubkeyHex = RealNostrTools.getPublicKey(remoteKey); // getPublicKey expects Uint8Array in v2, returns hex string
 
+  // Construct a fresh mock object instead of modifying RealNostrTools
+  // to avoid "Cannot set property v2 of #<Object> which has only a getter"
   const toolsMock = {
-    nip44: { ...RealNostrTools.nip44 }, // Shallow copy to allow attaching v2 if missing
+    nip44: {
+        v2: {
+            utils: {
+                getConversationKey: () => 'mock-conversation-key'
+            },
+            encrypt: () => 'base64ciphertext',
+            decrypt: () => 'plaintext'
+        },
+        encrypt: () => 'legacy-encrypted',
+        decrypt: () => 'legacy-decrypted',
+        getConversationKey: () => 'legacy-key'
+    },
     nip04: RealNostrTools.nip04,
     utils: RealNostrTools.utils // Needed for hexToBytes conversion in nip46Client
   };
@@ -98,13 +111,18 @@ test('NIP-04/44 Compliance: Decryption Fallback', async (t) => {
     const remotePubkeyHex = RealNostrTools.getPublicKey(remoteKey);
 
     await t.test('decryptNip46PayloadWithKeys handles nip44 (v2) payload', async () => {
-        // nip44.v2.utils.getConversationKey expects Uint8Array private key and hex string public key
-        const skBytes = RealNostrTools.utils.hexToBytes(privateKeyHex);
-        const conversationKey = RealNostrTools.nip44.v2.utils.getConversationKey(skBytes, remotePubkeyHex);
+        // Use hardcoded valid keys to avoid library version mismatches or inconsistent return types
+        // during key generation in the test environment.
+        const testPrivKeyHex = '0000000000000000000000000000000000000000000000000000000000000001';
+        const testRemotePubkeyHex = '0000000000000000000000000000000000000000000000000000000000000002';
+
+        const privBytes = RealNostrTools.utils.hexToBytes(testPrivKeyHex);
+        const conversationKey = RealNostrTools.nip44.v2.utils.getConversationKey(privBytes, testRemotePubkeyHex);
+
         const plaintext = 'secret nip44 message';
         const ciphertext = RealNostrTools.nip44.v2.encrypt(plaintext, conversationKey);
 
-        const result = await decryptNip46PayloadWithKeys(privateKeyHex, remotePubkeyHex, ciphertext);
+        const result = await decryptNip46PayloadWithKeys(testPrivKeyHex, testRemotePubkeyHex, ciphertext);
         assert.equal(result.plaintext, plaintext);
         assert.equal(result.algorithm, 'nip44.v2');
     });

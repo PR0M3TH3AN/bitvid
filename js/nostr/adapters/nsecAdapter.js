@@ -6,8 +6,6 @@ import { ensureNostrTools, getCachedNostrTools } from "../toolkit.js";
 import { normalizeActorKey } from "../watchHistory.js";
 import { HEX64_REGEX } from "../../utils/hex.js";
 
-
-
 function normalizePrivateKey(privateKey) {
   if (typeof privateKey !== "string") {
     return "";
@@ -31,18 +29,28 @@ async function resolvePublicKey(privateKey, pubkey) {
 
   const tools = (await ensureNostrTools()) || getCachedNostrTools();
   if (tools?.getPublicKey && typeof tools.getPublicKey === "function") {
-    let input = privateKey;
-    if (typeof input === "string" && tools.utils?.hexToBytes) {
-      try {
-        input = tools.utils.hexToBytes(input);
-      } catch (error) {
-        // Fallback to string if conversion fails
+    try {
+      // nostr-tools v2 requires Uint8Array
+      let keyInput = privateKey;
+      if (typeof privateKey === "string" && tools.utils?.hexToBytes) {
+        keyInput = tools.utils.hexToBytes(privateKey);
       }
-    }
-    const derived = tools.getPublicKey(input);
-    const normalized = normalizeActorKey(derived);
-    if (normalized && HEX64_REGEX.test(normalized)) {
-      return normalized;
+      const derived = tools.getPublicKey(keyInput);
+      const normalized = normalizeActorKey(derived);
+      if (normalized && HEX64_REGEX.test(normalized)) {
+        return normalized;
+      }
+    } catch (e) {
+      // Fallback for v1 or other errors
+      try {
+        const derived = tools.getPublicKey(privateKey);
+        const normalized = normalizeActorKey(derived);
+        if (normalized && HEX64_REGEX.test(normalized)) {
+          return normalized;
+        }
+      } catch (e2) {
+        return "";
+      }
     }
   }
 

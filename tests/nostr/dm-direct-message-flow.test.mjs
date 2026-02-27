@@ -151,16 +151,14 @@ async function setupDmScenario() {
   const senderPrivateKey = nostrTools.utils.bytesToHex(senderSecret);
   const receiverPrivateKey = nostrTools.utils.bytesToHex(receiverSecret);
 
-  const senderPubkey = nostrTools.getPublicKey(senderSecret); // Fixed: pass Uint8Array
-  const receiverPubkey = nostrTools.getPublicKey(receiverSecret); // Fixed: pass Uint8Array
+  const senderPubkey = nostrTools.getPublicKey(senderSecret);
+  const receiverPubkey = nostrTools.getPublicKey(receiverSecret);
 
-  const createSigner = (privateKeyHex, pubkey) => ({
+  const createSigner = (privateKey, pubkey, secret) => ({
     type: "test",
     pubkey,
     signEvent: (event) => {
-      // finalizeEvent expects Uint8Array private key
-      const skBytes = nostrTools.utils.hexToBytes(privateKeyHex);
-      const finalized = nostrTools.finalizeEvent(event, skBytes);
+      const finalized = nostrTools.finalizeEvent(event, secret);
       return { ...event, id: finalized.id, sig: finalized.sig };
     },
     nip04Encrypt: (target, plaintext) =>
@@ -171,8 +169,8 @@ async function setupDmScenario() {
       nostrTools.nip04.decrypt(privateKeyHex, target, ciphertext),
   });
 
-  const senderSigner = createSigner(senderPrivateKey, senderPubkey);
-  const receiverSigner = createSigner(receiverPrivateKey, receiverPubkey);
+  const senderSigner = createSigner(senderPrivateKey, senderPubkey, senderSecret);
+  const receiverSigner = createSigner(receiverPrivateKey, receiverPubkey, receiverSecret);
 
   const relayPool = new FakeRelayPool();
 
