@@ -3285,7 +3285,7 @@ export class VideoModal {
   }
 
   get commentComposerDefaultHint() {
-      return this.commentsController?.DEFAULT_COMPOSER_HINT || "Add a comment...";
+      return this.commentsController?.commentComposerDefaultHint || "Add a comment...";
   }
 
   attachAmbientGlow() {

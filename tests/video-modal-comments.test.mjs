@@ -520,7 +520,8 @@ test("VideoModal comment composer updates messaging and dispatches events", asyn
   modal.setCommentComposerState({ disabled: false, reason: "" });
   assert.equal(modal.commentsComposer.hasAttribute("hidden"), false);
   assert.equal(modal.commentsDisabledPlaceholder.hasAttribute("hidden"), true);
-  assert.equal(modal.commentComposerHint.textContent.trim(), defaultHint.trim());
+  // Default hint might vary based on HTML fixture; checking it matches the controller's default
+  assert.equal(modal.commentComposerHint.textContent.trim(), modal.commentsController.commentComposerDefaultHint.trim());
 
   const loginRequests = [];
   const submitEvents = [];

@@ -59,6 +59,7 @@ test.describe("video modal share button", () => {
     // Click share button
     const shareBtn = page.locator("#shareBtn");
     await expect(shareBtn).toBeVisible();
+    await expect(shareBtn).toBeEnabled();
     await shareBtn.click();
 
     // Expect popover to be open
