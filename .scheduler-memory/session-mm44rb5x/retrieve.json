@@ -1,7 +1,7 @@
 {
   "cadence": "daily",
   "operation": "retrieve",
-  "runId": "session-mm2cwyuv",
+  "runId": "session-mm44rb5x",
   "servicePath": "src/services/memory/index.js#getRelevantMemories",
   "inputs": {
     "agentId": "scheduler-memory-daily",
@@ -12,7 +12,7 @@
   },
   "outputs": {
     "ingestedCount": 1,
-    "retrievedCount": 1
+    "retrievedCount": 3
   },
   "status": "ok"
 }
