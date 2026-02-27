@@ -790,7 +790,98 @@ export class VideoModal {
     this.setGlobalModalState("player", true);
     this.applyLoadingPoster();
     this.updateSourceAvailability(this.activeVideo);
+    this.setShareEnabled(!!this.activeVideo);
+    this.setEmbedEnabled(!!this.activeVideo);
+    this.updateSourceAvailability(this.activeVideo);
     this.refreshActiveVideoModeration({ video: this.activeVideo });
+  }
+
+  setCommentSectionCallbacks(callbacks) {
+    this.commentsController.setCallbacks(callbacks);
+  }
+
+  hideCommentsDisabledMessage() {
+    this.commentsController.hideCommentsDisabledMessage();
+  }
+
+  showCommentsDisabledMessage(message) {
+    this.commentsController.showCommentsDisabledMessage(message);
+  }
+
+  setCommentsVisibility(visible) {
+    this.commentsController.setCommentsVisibility(visible);
+  }
+
+  clearComments() {
+    this.commentsController.clearComments();
+  }
+
+  resetCommentComposer() {
+    this.commentsController.resetCommentComposer();
+  }
+
+  setCommentStatus(message, type) {
+    this.commentsController.setCommentStatus(message, type);
+  }
+
+  setCommentComposerState(state) {
+    this.commentsController.setCommentComposerState(state);
+  }
+
+  appendComment(comment) {
+    this.commentsController.appendComment(comment);
+  }
+
+  renderComments(snapshot) {
+    this.commentsController.renderComments(snapshot);
+  }
+
+  updateCommentCharCount() {
+    this.commentsController.updateCommentCharCount();
+  }
+
+  updateCommentSubmitState() {
+    this.commentsController.updateCommentSubmitState();
+  }
+
+  get commentsList() {
+    return this.commentsController.commentsList;
+  }
+
+  get commentsComposer() {
+    return this.commentsController.commentsComposer;
+  }
+
+  get commentsInput() {
+    return this.commentsController.commentsInput;
+  }
+
+  get commentsSubmitButton() {
+    return this.commentsController.commentsSubmitButton;
+  }
+
+  get commentsStatusMessage() {
+    return this.commentsController.commentsStatusMessage;
+  }
+
+  get commentRetryButton() {
+    return this.commentsController.commentRetryButton;
+  }
+
+  get commentsDisabledPlaceholder() {
+    return this.commentsController.commentsDisabledPlaceholder;
+  }
+
+  get commentComposerHint() {
+    return this.commentsController.commentComposerHint;
+  }
+
+  get commentComposerDefaultHint() {
+    return this.commentsController.commentComposerDefaultHint;
+  }
+
+  get commentComposerState() {
+    return this.commentsController.commentComposerState;
   }
 
   /**
@@ -3063,14 +3154,15 @@ export class VideoModal {
     if (!video) return;
 
     const hasUrl = !!video.url;
-    const hasMagnet = !!video.magnet || !!video.infoHash;
+    const hasMagnet = !!video.magnet || !!video.originalMagnet || !!video.infoHash;
 
     if (this.sourceToggleContainer) {
-        // Simple logic: if both, show toggles. If only one, maybe hide or disable?
-        // For now, just ensuring it doesn't crash.
-        const showToggles = hasUrl && hasMagnet;
-        this.sourceToggleContainer.hidden = !showToggles;
+      // Simple logic: if both, show toggles.
+      const showToggles = hasUrl && hasMagnet;
+      this.sourceToggleContainer.hidden = !showToggles;
     }
+
+    this.setCopyEnabled(hasMagnet);
   }
 
   updateSourceToggleState(activeSource) {

@@ -31,7 +31,15 @@ async function resolvePublicKey(privateKey, pubkey) {
 
   const tools = (await ensureNostrTools()) || getCachedNostrTools();
   if (tools?.getPublicKey && typeof tools.getPublicKey === "function") {
-    const derived = tools.getPublicKey(privateKey);
+    let input = privateKey;
+    if (typeof input === "string" && tools.utils?.hexToBytes) {
+      try {
+        input = tools.utils.hexToBytes(input);
+      } catch (error) {
+        // Fallback to string if conversion fails
+      }
+    }
+    const derived = tools.getPublicKey(input);
     const normalized = normalizeActorKey(derived);
     if (normalized && HEX64_REGEX.test(normalized)) {
       return normalized;
