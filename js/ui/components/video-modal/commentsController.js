@@ -57,7 +57,7 @@ export class CommentsController {
   }
 
   get commentsList() {
-      return this.renderer?.listRoot;
+      return this.renderer?.listRoot || this.commentsRoot?.querySelector("[data-comments-list]") || null;
   }
 
   dispatch(type, detail, options) {
@@ -154,12 +154,15 @@ export class CommentsController {
       logger.user.warn(
         `[VideoModal:comments] Missing required selectors: ${missingSelectors.join(", ")}; disabling comments UI`
       );
+      // Ensure missing elements (like submit button) don't crash when setCommentComposerState tries to access them
       this.disableComments({
         reason: "missing-selectors",
         message: this.commentsDisabledPlaceholderDefaultText ||
           "Comments are unavailable right now.",
       });
-      return;
+      // Do not return here - allow controller to be partially initialized so that
+      // load/teardown methods don't crash when called by the modal.
+      // Just ensure we don't try to use null references in critical paths.
     }
 
     if (this.playerModal) {
@@ -172,6 +175,9 @@ export class CommentsController {
       if (hintText) {
         this.commentComposerDefaultHint = hintText;
       }
+    } else {
+        // Fallback for tests or missing DOM
+        this.commentComposerDefaultHint = "Log in to add a comment.";
     }
 
     if (this.commentsCharCount) {
@@ -206,6 +212,12 @@ export class CommentsController {
     this.clearComments();
     this.resetCommentComposer();
     this.attachCommentEventHandlers();
+  }
+
+  setCallbacks({ teardown } = {}) {
+    if (teardown) {
+      this.commentCallbacks.teardown = typeof teardown === "function" ? teardown : null;
+    }
   }
 
   attachCommentEventHandlers() {
@@ -504,11 +516,6 @@ export class CommentsController {
     this.setCommentStatus("");
     this.updateCommentCharCount();
     this.updateCommentSubmitState();
-  }
-
-  setCommentSectionCallbacks({ teardown = null } = {}) {
-    this.commentCallbacks.teardown =
-      typeof teardown === "function" ? teardown : null;
   }
 
   invokeCommentTeardown() {
