@@ -762,11 +762,11 @@ export function resolveNip46Relays(relays, fallbackRelays = []) {
 
 function resolveNip44V2ConversationKeyGetter(tools) {
   if (typeof tools?.nip44?.v2?.getConversationKey === "function") {
-    return tools.nip44.v2.getConversationKey.bind(tools.nip44.v2);
+    return tools.nip44.v2.getConversationKey;
   }
 
   if (typeof tools?.nip44?.v2?.utils?.getConversationKey === "function") {
-    return tools.nip44.v2.utils.getConversationKey.bind(tools.nip44.v2.utils);
+    return tools.nip44.v2.utils.getConversationKey;
   }
 
   return null;
@@ -774,11 +774,11 @@ function resolveNip44V2ConversationKeyGetter(tools) {
 
 function resolveLegacyNip44ConversationKeyGetter(tools) {
   if (typeof tools?.nip44?.getConversationKey === "function") {
-    return tools.nip44.getConversationKey.bind(tools.nip44);
+    return tools.nip44.getConversationKey;
   }
 
   if (typeof tools?.nip44?.utils?.getConversationKey === "function") {
-    return tools.nip44.utils.getConversationKey.bind(tools.nip44.utils);
+    return tools.nip44.utils.getConversationKey;
   }
 
   return null;
@@ -1054,18 +1054,16 @@ function resolveAvailableNip46Ciphers(
     typeof nip44v2GetConversationKey === "function"
   ) {
     registerCipher("nip44.v2", () => {
-      // nostr-tools v2 `getConversationKey(priv, pub)` expects:
-      // priv: Uint8Array (private key bytes)
-      // pub: string (public key hex string, which it prefixes with '02' and converts)
-      const privKeyInput =
-        typeof privateKey === "string" && tools?.utils?.hexToBytes
-          ? tools.utils.hexToBytes(privateKey)
-          : privateKey;
+      let privKeyBytes = privateKey;
+      if (typeof privateKey === "string") {
+        if (typeof tools?.utils?.hexToBytes === "function") {
+          privKeyBytes = tools.utils.hexToBytes(privateKey);
+        } else if (typeof tools?.hexToBytes === "function") {
+          privKeyBytes = tools.hexToBytes(privateKey);
+        }
+      }
 
-      // Keep remotePubkey as string if it is one, otherwise pass as is (e.g. if already bytes, though v2 expects string)
-      const pubKeyInput = remotePubkey;
-
-      const conversationKey = nip44v2GetConversationKey(privKeyInput, pubKeyInput);
+      const conversationKey = nip44v2GetConversationKey(privKeyBytes, remotePubkey);
 
       if (!conversationKey) {
         throw new Error("Failed to derive a nip44 conversation key for remote signing.");
@@ -1089,7 +1087,16 @@ function resolveAvailableNip46Ciphers(
     typeof nip44GetConversationKey === "function"
   ) {
     registerCipher("nip44", () => {
-      const conversationKey = nip44GetConversationKey(privateKey, remotePubkey);
+      let privKeyBytes = privateKey;
+      if (typeof privateKey === "string") {
+        if (typeof tools?.utils?.hexToBytes === "function") {
+          privKeyBytes = tools.utils.hexToBytes(privateKey);
+        } else if (typeof tools?.hexToBytes === "function") {
+          privKeyBytes = tools.hexToBytes(privateKey);
+        }
+      }
+
+      const conversationKey = nip44GetConversationKey(privKeyBytes, remotePubkey);
 
       if (!conversationKey) {
         throw new Error("Failed to derive a nip44 conversation key for remote signing.");
@@ -2071,10 +2078,10 @@ export class Nip46RpcClient {
           decrypt: (pubkey, ciphertext, options) =>
             this.nip44Decrypt(pubkey, ciphertext, options),
         },
-        nip04Encrypt: (pubkey, plaintext, options) =>
-          this.nip04Encrypt(pubkey, plaintext, options),
-        nip04Decrypt: (pubkey, ciphertext, options) =>
-          this.nip04Decrypt(pubkey, ciphertext, options),
+        nip44Encrypt: (pubkey, plaintext, options) =>
+          this.nip44Encrypt(pubkey, plaintext, options),
+        nip44Decrypt: (pubkey, ciphertext, options) =>
+          this.nip44Decrypt(pubkey, ciphertext, options),
         nip44Encrypt: (pubkey, plaintext, options) =>
           this.nip44Encrypt(pubkey, plaintext, options),
         nip44Decrypt: (pubkey, ciphertext, options) =>

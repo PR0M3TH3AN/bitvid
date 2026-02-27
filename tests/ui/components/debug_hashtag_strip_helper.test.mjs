@@ -34,10 +34,16 @@ test("Debug HashtagStripHelper fallback", (t) => {
   const container = document.getElementById("container");
 
   const helper = new HashtagStripHelper({ window, document });
+  assert.ok(helper, "HashtagStripHelper instance created");
 
   console.log("Helper window ResizeObserver:", typeof helper.window.ResizeObserver);
 
-  helper.mount(container);
-  // Need to update with tags to trigger render and observer setup
-  helper.update([{ tags: [["t", "test"]] }]);
+  assert.doesNotThrow(() => {
+    helper.mount(container);
+  }, "mount() should not throw");
+
+  assert.doesNotThrow(() => {
+    // Need to update with tags to trigger render and observer setup
+    helper.update([{ tags: [["t", "test"]] }]);
+  }, "update() should not throw");
 });
