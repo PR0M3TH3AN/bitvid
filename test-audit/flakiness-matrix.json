@@ -1,1 +1,23 @@
-{"flakyTests": []}
+[
+  {
+    "iteration": 1,
+    "passed": false,
+    "code": 1,
+    "duration": 945,
+    "failure": "Suite failed"
+  },
+  {
+    "iteration": 2,
+    "passed": false,
+    "code": 1,
+    "duration": 903,
+    "failure": "Suite failed"
+  },
+  {
+    "iteration": 3,
+    "passed": false,
+    "code": 1,
+    "duration": 978,
+    "failure": "Suite failed"
+  }
+]

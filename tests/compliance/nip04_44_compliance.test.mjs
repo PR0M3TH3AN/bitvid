@@ -43,9 +43,27 @@ test('NIP-04/44 Compliance: Encryption Preference', async (t) => {
         getConversationKey: () => 'legacy-key'
     },
     nip04: RealNostrTools.nip04,
+    utils: RealNostrTools.utils // Needed for hexToBytes conversion in nip46Client
   };
 
+  // Ensure toolsMock.nip44.v2 is explicitly available for resolveAvailableNip46Ciphers
+  if (!toolsMock.nip44.v2 && RealNostrTools.nip44.v2) {
+      toolsMock.nip44.v2 = RealNostrTools.nip44.v2;
+  }
+
+  // Debug logging to inspect structure
+  console.log('DEBUG: toolsMock.nip44 keys:', Object.keys(toolsMock.nip44));
+  if (toolsMock.nip44.v2) {
+      console.log('DEBUG: toolsMock.nip44.v2 keys:', Object.keys(toolsMock.nip44.v2));
+      console.log('DEBUG: toolsMock.nip44.v2.utils keys:', toolsMock.nip44.v2.utils ? Object.keys(toolsMock.nip44.v2.utils) : 'undefined');
+  }
+
   await t.test('createNip46Cipher prefers nip44.v2 when available', async () => {
+    // Verify the mock structure matches what nip46Client expects
+    const hasV2 = !!(toolsMock.nip44?.v2?.encrypt && toolsMock.nip44?.v2?.decrypt);
+    if (!hasV2) {
+        console.warn('Test Warning: nip44.v2 methods missing from toolsMock');
+    }
     const cipher = createNip46Cipher(toolsMock, privateKeyHex, remotePubkeyHex);
     assert.equal(cipher.algorithm, 'nip44.v2');
 
@@ -82,6 +100,10 @@ test('NIP-04/44 Compliance: Decryption Fallback', async (t) => {
         getPublicKey: RealNostrTools.getPublicKey,
         utils: RealNostrTools.utils
     };
+    // Ensure tools.nip44.v2 is available for resolveAvailableNip46Ciphers -> resolveNip44V2ConversationKeyGetter
+    if (!globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__.nip44.v2) {
+        globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__.nip44.v2 = RealNostrTools.nip44.v2;
+    }
 
     const privateKey = RealNostrTools.generateSecretKey();
     const privateKeyHex = bytesToHex(privateKey);

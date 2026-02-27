@@ -1,7 +1,7 @@
 {
   "cadence": "daily",
   "operation": "store",
-  "runId": "session-mm3v4xpe",
+  "runId": "session-mm3ybzlq",
   "servicePath": "src/services/memory/index.js#ingestEvents",
   "inputs": {
     "agentId": "scheduler-memory-daily",
