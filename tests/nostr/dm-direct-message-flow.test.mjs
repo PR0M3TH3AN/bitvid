@@ -151,20 +151,24 @@ async function setupDmScenario() {
   const senderPrivateKey = nostrTools.utils.bytesToHex(senderSecret);
   const receiverPrivateKey = nostrTools.utils.bytesToHex(receiverSecret);
 
-  const senderPubkey = nostrTools.getPublicKey(senderPrivateKey);
-  const receiverPubkey = nostrTools.getPublicKey(receiverPrivateKey);
+  const senderPubkey = nostrTools.getPublicKey(senderSecret); // Fixed: pass Uint8Array
+  const receiverPubkey = nostrTools.getPublicKey(receiverSecret); // Fixed: pass Uint8Array
 
-  const createSigner = (privateKey, pubkey) => ({
+  const createSigner = (privateKeyHex, pubkey) => ({
     type: "test",
     pubkey,
     signEvent: (event) => {
-      const finalized = nostrTools.finalizeEvent(event, privateKey);
+      // finalizeEvent expects Uint8Array private key
+      const skBytes = nostrTools.utils.hexToBytes(privateKeyHex);
+      const finalized = nostrTools.finalizeEvent(event, skBytes);
       return { ...event, id: finalized.id, sig: finalized.sig };
     },
     nip04Encrypt: (target, plaintext) =>
-      nostrTools.nip04.encrypt(privateKey, target, plaintext),
+      // nip04.encrypt expects string private key (hex)
+      nostrTools.nip04.encrypt(privateKeyHex, target, plaintext),
     nip04Decrypt: (target, ciphertext) =>
-      nostrTools.nip04.decrypt(privateKey, target, ciphertext),
+      // nip04.decrypt expects string private key (hex)
+      nostrTools.nip04.decrypt(privateKeyHex, target, ciphertext),
   });
 
   const senderSigner = createSigner(senderPrivateKey, senderPubkey);
