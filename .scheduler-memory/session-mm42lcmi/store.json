@@ -1,0 +1,18 @@
+{
+  "cadence": "daily",
+  "operation": "store",
+  "runId": "session-mm42lcmi",
+  "servicePath": "src/services/memory/index.js#ingestEvents",
+  "inputs": {
+    "agentId": "scheduler-memory-daily",
+    "promptPath": "",
+    "promptIntent": "scheduler memory store",
+    "events": 0,
+    "sourceFile": "none"
+  },
+  "outputs": {
+    "storedCount": 0,
+    "summaries": []
+  },
+  "status": "ok"
+}

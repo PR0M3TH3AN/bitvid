@@ -17,7 +17,7 @@
       "importance": 0.4,
       "embedding_id": null,
       "created_at": 1772043447415,
-      "last_seen": 1772132732113,
+      "last_seen": 1772146989418,
       "source": "scheduler-retrieve",
       "ttl_days": null,
       "merged_into": null,
@@ -42,7 +42,32 @@
       "importance": 0.4,
       "embedding_id": null,
       "created_at": 1772132732103,
-      "last_seen": 1772132732113,
+      "last_seen": 1772146989418,
+      "source": "scheduler-retrieve",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "fdcbba05-bf54-4db1-8c04-83deef7daabd",
+    {
+      "schema_version": 1,
+      "id": "fdcbba05-bf54-4db1-8c04-83deef7daabd",
+      "agent_id": "scheduler-memory-daily",
+      "session_id": "session-mm42k8d6",
+      "type": "batch_window",
+      "content": "Memory retrieval seed for daily :: scheduler memory retrieval",
+      "summary": "Memory retrieval seed for daily :: scheduler memory retrieval",
+      "tags": [
+        "scheduler",
+        "daily",
+        "retrieve"
+      ],
+      "importance": 0.4,
+      "embedding_id": null,
+      "created_at": 1772146989403,
+      "last_seen": 1772146989418,
       "source": "scheduler-retrieve",
       "ttl_days": null,
       "merged_into": null,

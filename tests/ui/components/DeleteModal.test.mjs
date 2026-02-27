@@ -13,7 +13,7 @@ class MockElement {
       remove: () => {},
       contains: () => false,
     };
-    this.style = {};
+    Object.defineProperty(this, "style", { value: {}, writable: true });
   }
   querySelector() {
     return null;
