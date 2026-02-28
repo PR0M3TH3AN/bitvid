@@ -154,7 +154,7 @@ async function setupDmScenario() {
   const senderPubkey = nostrTools.getPublicKey(senderSecret);
   const receiverPubkey = nostrTools.getPublicKey(receiverSecret);
 
-  const createSigner = (privateKey, pubkey, secret) => ({
+  const createSigner = (privateKeyHex, pubkey, secret) => ({
     type: "test",
     pubkey,
     signEvent: (event) => {

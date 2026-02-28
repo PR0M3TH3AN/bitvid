@@ -34,7 +34,7 @@ const BASELINE = {
   "js/ui/components/EventDetailsModal.js": 1,
   "js/ui/components/nip71FormManager.js": 1,
   "js/ui/components/UploadModal.js": 1,
-  "js/ui/components/VideoModal.js": 1,
+  "js/ui/components/VideoModal.js": 4,
   "js/ui/dm/AppShell.js": 1,
   "js/ui/dm/Composer.js": 1,
   "js/ui/dm/ConversationList.js": 1,
@@ -48,7 +48,6 @@ const BASELINE = {
   "js/ui/subscriptionHistoryController.js": 1,
   "js/ui/videoListViewController.js": 1,
   "js/ui/views/VideoListView.js": 3,
-  "js/utils/qrcode.js": 2,
   "js/viewManager.js": 3,
 };
 
