@@ -3094,9 +3094,7 @@ export class VideoModal {
     if (this.copyMagnetBtn) {
       this.copyMagnetBtn.addEventListener("click", this.handleCopyRequest);
     }
-    if (this.shareBtn) {
-      this.shareBtn.addEventListener("click", this.handleShareRequest);
-    }
+    // Share is now handled by popover, but dispatch is still possible via handleShareRequest if needed
     if (this.embedBtn) {
       this.embedBtn.addEventListener("click", this.handleEmbedRequest);
     }
