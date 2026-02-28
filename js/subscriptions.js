@@ -1,4 +1,5 @@
 // js/subscriptions.js
+import { MAX_DECRYPT_RETRY_DELAY_MS } from './constants.js';
 import {
   getActiveSigner,
   nostrClient,
@@ -58,7 +59,6 @@ const DECRYPT_TIMEOUT_MS = 6000;
 // should recover near-instantly. The shorter delay prevents unnecessary wait
 // time during the critical login path when the first decrypt attempt fails.
 const DECRYPT_RETRY_DELAY_MS = 1500;
-const MAX_DECRYPT_RETRY_DELAY_MS = 30000;
 
 function computeRetryDelay(baseDelayMs, attempt) {
   const normalizedAttempt =

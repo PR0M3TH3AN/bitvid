@@ -1,4 +1,5 @@
 // js/services/hashtagPreferencesService.js
+import { MAX_DECRYPT_RETRY_DELAY_MS } from '../constants.js';
 import {
   nostrClient,
   requestDefaultExtensionPermissions,
@@ -50,7 +51,6 @@ const DECRYPT_TIMEOUT_MS = 6000;
 // PERF: Reduced from 3s to 1.5s — extensions that already granted permission
 // should recover near-instantly. Shorter delay speeds up the login path.
 const DECRYPT_RETRY_DELAY_MS = NETWORK_RETRY_DELAY_MS;
-const MAX_DECRYPT_RETRY_DELAY_MS = 30000;
 
 function computeRetryDelay(baseDelayMs, attempt) {
   const normalizedAttempt =

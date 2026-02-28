@@ -1,4 +1,5 @@
 // js/userBlocks.js
+import { MAX_DECRYPT_RETRY_DELAY_MS, DECRYPT_TIMEOUT_MS } from './constants.js';
 import {
   nostrClient,
   requestDefaultExtensionPermissions,
@@ -90,11 +91,9 @@ const FAST_BLOCKLIST_TIMEOUT_MS = 2500;
 const BACKGROUND_BLOCKLIST_TIMEOUT_MS = 6000;
 const MAX_BACKGROUND_BLOCKLIST_RELAY_LIMIT = 24;
 // Keep interactive decrypt timeout above extension retry timeout window.
-const DECRYPT_TIMEOUT_MS = Math.max(STANDARD_TIMEOUT_MS, 15000);
 const BACKGROUND_DECRYPT_TIMEOUT_MS = 8000;
 // PERF: Reduced from 10s to 3s for faster recovery during login.
 const DECRYPT_RETRY_DELAY_MS = 3000;
-const MAX_DECRYPT_RETRY_DELAY_MS = 30000;
 function computeRetryDelay(baseDelayMs, attempt) {
   const normalizedAttempt = Number.isFinite(attempt) && attempt > 0 ? Math.floor(attempt) : 0;
   const multiplier = 2 ** normalizedAttempt;
@@ -932,7 +931,7 @@ class UserBlockListManager {
     // have already granted permission still need time to decrypt. 8s gives a
     // realistic window while still failing faster than the full 15s interactive
     // timeout.
-    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 15000 : 8000;
+    const nip07DecryptTimeoutMs = allowPermissionPrompt ? DECRYPT_TIMEOUT_MS : 8000;
     const emitStatus = (detail) => {
       if (!detail || typeof detail !== "object") {
         return;
