@@ -1,0 +1,18 @@
+{
+  "cadence": "daily",
+  "operation": "retrieve",
+  "runId": "session-mm6nayc4",
+  "servicePath": "src/services/memory/index.js#getRelevantMemories",
+  "inputs": {
+    "agentId": "scheduler-memory-daily",
+    "promptPath": "",
+    "promptIntent": "scheduler memory retrieval",
+    "query": "scheduler | daily | agent | scheduler-memory-daily | intent | scheduler memory retrieval",
+    "events": 1
+  },
+  "outputs": {
+    "ingestedCount": 1,
+    "retrievedCount": 5
+  },
+  "status": "ok"
+}
