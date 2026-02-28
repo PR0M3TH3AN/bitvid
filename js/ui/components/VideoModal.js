@@ -854,66 +854,6 @@ export class VideoModal {
     this.commentsController.setCommentStatus(message, type);
   }
 
-  setCommentComposerState(state) {
-    this.commentsController.setCommentComposerState(state);
-  }
-
-  appendComment(comment) {
-    this.commentsController.appendComment(comment);
-  }
-
-  renderComments(snapshot) {
-    this.commentsController.renderComments(snapshot);
-  }
-
-  updateCommentCharCount() {
-    this.commentsController.updateCommentCharCount();
-  }
-
-  updateCommentSubmitState() {
-    this.commentsController.updateCommentSubmitState();
-  }
-
-  get commentsList() {
-    return this.commentsController.commentsList;
-  }
-
-  get commentsComposer() {
-    return this.commentsController.commentsComposer;
-  }
-
-  get commentsInput() {
-    return this.commentsController.commentsInput;
-  }
-
-  get commentsSubmitButton() {
-    return this.commentsController.commentsSubmitButton;
-  }
-
-  get commentsStatusMessage() {
-    return this.commentsController.commentsStatusMessage;
-  }
-
-  get commentRetryButton() {
-    return this.commentsController.commentRetryButton;
-  }
-
-  get commentsDisabledPlaceholder() {
-    return this.commentsController.commentsDisabledPlaceholder;
-  }
-
-  get commentComposerHint() {
-    return this.commentsController.commentComposerHint;
-  }
-
-  get commentComposerDefaultHint() {
-    return this.commentsController.commentComposerDefaultHint;
-  }
-
-  get commentComposerState() {
-    return this.commentsController.commentComposerState;
-  }
-
   /**
    * Closes the modal, pauses playback, clears active state, and restores focus.
    * This is the primary cleanup method when dismissing the modal.
@@ -3244,6 +3184,10 @@ export class VideoModal {
     if (this.commentsController) {
         this.commentsController.updateCommentSubmitState();
     }
+  }
+
+  get commentsRoot() {
+      return this.commentsController?.commentsRoot;
   }
 
   // Getters to expose commentsController elements for tests
