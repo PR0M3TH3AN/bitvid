@@ -1,0 +1,20 @@
+{
+  "cadence": "daily",
+  "operation": "store",
+  "runId": "session-mm6nbnyb",
+  "servicePath": "src/services/memory/index.js#ingestEvents",
+  "inputs": {
+    "agentId": "scheduler-memory-daily",
+    "promptPath": "",
+    "promptIntent": "scheduler memory store",
+    "events": 1,
+    "sourceFile": "memory-update.md"
+  },
+  "outputs": {
+    "storedCount": 1,
+    "summaries": [
+      "No stale files found"
+    ]
+  },
+  "status": "ok"
+}
