@@ -523,3 +523,5 @@ export const FEED_TYPES = Object.freeze({
   SEARCH: "search",
   DEV_DASHBOARD: "dev/agent-dashboard",
 });
+export const MAX_DECRYPT_RETRY_DELAY_MS = 30000;
+export const DECRYPT_TIMEOUT_MS = 15000;
