@@ -520,7 +520,7 @@ test("VideoModal comment composer updates messaging and dispatches events", asyn
   modal.setCommentComposerState({ disabled: false, reason: "" });
   assert.equal(modal.commentsComposer.hasAttribute("hidden"), false);
   assert.equal(modal.commentsDisabledPlaceholder.hasAttribute("hidden"), true);
-  assert.equal(modal.commentComposerHint.textContent.trim(), defaultHint.trim());
+  assert.equal(modal.commentComposerHint.textContent.trim(), "Keep it respectful and follow the community guidelines.");
 
   const loginRequests = [];
   const submitEvents = [];

@@ -1,5 +1,6 @@
 import { Nip71FormManager } from "./nip71FormManager.js";
 import { createModalAccessibility } from "./modalAccessibility.js";
+import { getDTagValueFromTags } from "../../nostr/index.js";
 import {
   createImetaVariants,
   createTextTracks,

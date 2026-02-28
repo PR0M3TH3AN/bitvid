@@ -254,8 +254,8 @@ test("parseNip46ConnectionString handles remote signer key hints", async () => {
   const signerSecretBytes = generateSecretKey();
   const userSecretBytes = generateSecretKey();
 
-  const signerPubkey = getPublicKey(utils.hexToBytes(signerSecret)).toLowerCase();
-  const userPubkey = getPublicKey(utils.hexToBytes(userSecret)).toLowerCase();
+  const signerPubkey = getPublicKey(signerSecretBytes).toLowerCase();
+  const userPubkey = getPublicKey(userSecretBytes).toLowerCase();
 
   const signerNpub = nip19.npubEncode(signerPubkey);
   const userNpub = nip19.npubEncode(userPubkey);
@@ -296,8 +296,8 @@ test(
     const remoteSignerSecretBytes = generateSecretKey();
     const userSecretBytes = generateSecretKey();
 
-    const remoteSignerPubkey = getPublicKey(utils.hexToBytes(remoteSignerSecret)).toLowerCase();
-    const userPubkey = getPublicKey(utils.hexToBytes(userSecret)).toLowerCase();
+    const remoteSignerPubkey = getPublicKey(remoteSignerSecretBytes).toLowerCase();
+    const userPubkey = getPublicKey(userSecretBytes).toLowerCase();
 
     const conversationKey =
       typeof nip44.v2.getConversationKey === "function"

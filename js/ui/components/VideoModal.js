@@ -499,7 +499,7 @@ export class VideoModal {
     }
 
     const wrapper = this.document.createElement("div");
-    wrapper.innerHTML = html;
+    wrapper.textContent = html;
     this.removeTrackingScripts(wrapper);
 
     const fragment = this.document.createDocumentFragment();
@@ -3309,7 +3309,7 @@ export class VideoModal {
       trigger: this.modalMoreBtn,
       content: (container) => {
         if (!this.activeVideo) {
-          container.innerHTML = "";
+          container.textContent = "";
           return;
         }
         const panel = createVideoMoreMenuPanel({
@@ -3358,7 +3358,7 @@ export class VideoModal {
       trigger: this.shareBtn,
       content: (container) => {
         if (!this.activeVideo) {
-          container.innerHTML = "";
+          container.textContent = "";
           return;
         }
         const panel = createVideoShareMenuPanel({
@@ -3383,7 +3383,7 @@ export class VideoModal {
         // Re-render panel content if open
         const container = this.modalMoreMenuPanel.parentElement;
         if(container) {
-            container.innerHTML = "";
+            container.textContent = "";
             const panel = createVideoMoreMenuPanel({
                 document: this.document,
                 video: this.activeVideo,
