@@ -200,5 +200,56 @@
       "merged_into": null,
       "pinned": false
     }
+  ],
+  [
+    "fd4bf220-9db3-4598-83ef-b467e29fa4a3",
+    {
+      "schema_version": 1,
+      "id": "fd4bf220-9db3-4598-83ef-b467e29fa4a3",
+      "agent_id": "scheduler-memory-weekly",
+      "session_id": "session-mm6ohxmf",
+      "type": "batch_window",
+      "content": "Memory retrieval seed for weekly :: scheduler memory retrieval",
+      "summary": "Memory retrieval seed for weekly :: scheduler memory retrieval",
+      "tags": [
+        "scheduler",
+        "weekly",
+        "retrieve"
+      ],
+      "importance": 0.4,
+      "embedding_id": null,
+      "created_at": 1772304766071,
+      "last_seen": 1772304766084,
+      "source": "scheduler-retrieve",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "8d73c03a-95af-4279-9d79-d9d336fa7861",
+    {
+      "schema_version": 1,
+      "id": "8d73c03a-95af-4279-9d79-d9d336fa7861",
+      "agent_id": "scheduler-memory-weekly",
+      "session_id": "session-mm6oi5y4",
+      "type": "batch_window",
+      "content": "No bugs were found requiring reproduction. Exiting early, ensuring weekly cadence memory is properly stored.",
+      "summary": "No bugs were found requiring reproduction. Exiting early, ensuring weekly cadence memory is properly stored.",
+      "tags": [
+        "scheduler",
+        "weekly",
+        "store",
+        "insight"
+      ],
+      "importance": 0.8,
+      "embedding_id": null,
+      "created_at": 1772304776861,
+      "last_seen": 1772304776861,
+      "source": "agent-output",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
   ]
 ]
