@@ -251,5 +251,107 @@
       "merged_into": null,
       "pinned": false
     }
+  ],
+  [
+    "4de09581-9f3f-4766-bdc2-6d14d771096e",
+    {
+      "schema_version": 1,
+      "id": "4de09581-9f3f-4766-bdc2-6d14d771096e",
+      "agent_id": "docs-agent",
+      "session_id": "session-mm82cwkc",
+      "type": "batch_window",
+      "content": "Memory retrieval seed for daily :: Required startup + artifacts + memory + issue capture",
+      "summary": "Memory retrieval seed for daily :: Required startup + artifacts + memory + issue capture",
+      "tags": [
+        "scheduler",
+        "daily",
+        "retrieve"
+      ],
+      "importance": 0.4,
+      "embedding_id": null,
+      "created_at": 1772388512220,
+      "last_seen": 1772389143386,
+      "source": "scheduler-retrieve",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "537d4228-086b-4a36-b411-a0748f59bc23",
+    {
+      "schema_version": 1,
+      "id": "537d4228-086b-4a36-b411-a0748f59bc23",
+      "agent_id": "docs-agent",
+      "session_id": "session-mm82dn40",
+      "type": "batch_window",
+      "content": "- The `todo-triage-agent` successfully ran but found 0 actionable TODOs in the codebase (excluding vendor files).\n- The regex used `grep -n -E \"TODO|FIXME|XXX\" -- '*.js' '*.html' 'docs/*'` correctly filtered the files.\n- The `js/ui/profileModalContract.js` match was a string literal description, not a comment.",
+      "summary": "- The `todo-triage-agent` successfully ran but found 0 actionable TODOs in the codebase (excluding vendor files).\n- The regex used `grep -n -E \"TODO|FIXME|XXX\" -- '*.js' '*.html' 'docs/*'` correctly filtered the files.\n- The `js/ui/profileModalContract.js` match was a string lit…",
+      "tags": [
+        "scheduler",
+        "daily",
+        "store",
+        "insight"
+      ],
+      "importance": 0.8,
+      "embedding_id": null,
+      "created_at": 1772388546625,
+      "last_seen": 1772389143386,
+      "source": "agent-output",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "79c15a6d-fabd-428e-bdc0-f0ae53694d9c",
+    {
+      "schema_version": 1,
+      "id": "79c15a6d-fabd-428e-bdc0-f0ae53694d9c",
+      "agent_id": "docs-agent",
+      "session_id": "session-mm82qfk7",
+      "type": "batch_window",
+      "content": "Memory retrieval seed for daily :: Required startup + artifacts + memory + issue capture",
+      "summary": "Memory retrieval seed for daily :: Required startup + artifacts + memory + issue capture",
+      "tags": [
+        "scheduler",
+        "daily",
+        "retrieve"
+      ],
+      "importance": 0.4,
+      "embedding_id": null,
+      "created_at": 1772389143368,
+      "last_seen": 1772389143386,
+      "source": "scheduler-retrieve",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "3f43b1e3-6cea-41f5-a1e9-c8f648569f2f",
+    {
+      "schema_version": 1,
+      "id": "3f43b1e3-6cea-41f5-a1e9-c8f648569f2f",
+      "agent_id": "docs-agent",
+      "session_id": "session-mm8376nb",
+      "type": "batch_window",
+      "content": "The `docs-agent` successfully reviewed and updated the documentation in `README.md`.\nSpecifically:\n- Updated the \"Start the local development server\" section to clarify that `npm start` automatically builds and serves using `npx serve dist`, reducing confusion about the document root.\n- Corrected the \"Send your first video post\" quickstart example to include the `publishAll: true` option for `signAndPublishEvent`, matching the actual method signature expected in the codebase (as confirmed by the `publishHelpers.js` references).\n\nAll documented commands (`npm run format`, `npm run test:unit`, etc.) were verified against the `package.json` scripts and found to be accurate.",
+      "summary": "The `docs-agent` successfully reviewed and updated the documentation in `README.md`.\nSpecifically:\n- Updated the \"Start the local development server\" section to clarify that `npm start` automatically builds and serves using `npx serve dist`, reducing confusion about the document…",
+      "tags": [
+        "scheduler",
+        "daily",
+        "store",
+        "insight"
+      ],
+      "importance": 0.8,
+      "embedding_id": null,
+      "created_at": 1772389924968,
+      "last_seen": 1772389924968,
+      "source": "agent-output",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
   ]
 ]
