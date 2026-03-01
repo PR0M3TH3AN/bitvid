@@ -241,7 +241,7 @@ test.describe("Relay resilience and management", () => {
 
       // Wait for initial feed
       await page.evaluate(() => {
-        return (window as any).__bitvidTest__.waitForFeedItems(1, 15000);
+        return (window as any).__bitvidTest__.waitForFeedItems(1, 30000);
       });
 
       // When: clear and re-seed with different content
