@@ -51,7 +51,7 @@ test.describe("video modal share button", () => {
 
             // Open the modal
             videoModal.open(videoModal.activeVideo);
-            videoModal.updateSourceAvailability(true);
+            videoModal.updateSourceAvailability(videoModal.activeVideo);
         }
 
         window.__videoModal = videoModal;
