@@ -251,5 +251,56 @@
       "merged_into": null,
       "pinned": false
     }
+  ],
+  [
+    "2e94df88-4690-4162-be24-ed0bd6b24d3a",
+    {
+      "schema_version": 1,
+      "id": "2e94df88-4690-4162-be24-ed0bd6b24d3a",
+      "agent_id": "governance-agent",
+      "session_id": "session-mm89hr71",
+      "type": "batch_window",
+      "content": "Memory retrieval seed for daily :: Required startup + artifacts + memory + issue capture",
+      "summary": "Memory retrieval seed for daily :: Required startup + artifacts + memory + issue capture",
+      "tags": [
+        "scheduler",
+        "daily",
+        "retrieve"
+      ],
+      "importance": 0.4,
+      "embedding_id": null,
+      "created_at": 1772400495853,
+      "last_seen": 1772400495867,
+      "source": "scheduler-retrieve",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "95a3956c-7a43-46a6-9d22-5e194d138afc",
+    {
+      "schema_version": 1,
+      "id": "95a3956c-7a43-46a6-9d22-5e194d138afc",
+      "agent_id": "governance-agent",
+      "session_id": "session-mm89i6ey",
+      "type": "batch_window",
+      "content": "Simulated learnings for governance-agent",
+      "summary": "Simulated learnings for governance-agent",
+      "tags": [
+        "scheduler",
+        "daily",
+        "store",
+        "insight"
+      ],
+      "importance": 0.8,
+      "embedding_id": null,
+      "created_at": 1772400515579,
+      "last_seen": 1772400515579,
+      "source": "agent-output",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
   ]
 ]
