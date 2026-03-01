@@ -1,0 +1,18 @@
+{
+  "cadence": "daily",
+  "operation": "retrieve",
+  "runId": "session-mm8dfoy2",
+  "servicePath": "src/services/memory/index.js#getRelevantMemories",
+  "inputs": {
+    "agentId": "known-issues-agent",
+    "promptPath": "torch/src/prompts/daily/known-issues-agent.md",
+    "promptIntent": "Known Issues Agent",
+    "query": "scheduler | daily | agent | known-issues-agent | intent | Known Issues Agent",
+    "events": 1
+  },
+  "outputs": {
+    "ingestedCount": 1,
+    "retrievedCount": 1
+  },
+  "status": "ok"
+}

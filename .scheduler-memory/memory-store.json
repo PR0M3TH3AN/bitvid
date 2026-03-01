@@ -251,5 +251,56 @@
       "merged_into": null,
       "pinned": false
     }
+  ],
+  [
+    "4fc41790-e1d2-42d6-979c-0dfa1d5dbe33",
+    {
+      "schema_version": 1,
+      "id": "4fc41790-e1d2-42d6-979c-0dfa1d5dbe33",
+      "agent_id": "known-issues-agent",
+      "session_id": "session-mm8dfoy2",
+      "type": "batch_window",
+      "content": "Memory retrieval seed for daily :: Known Issues Agent",
+      "summary": "Memory retrieval seed for daily :: Known Issues Agent",
+      "tags": [
+        "scheduler",
+        "daily",
+        "retrieve"
+      ],
+      "importance": 0.4,
+      "embedding_id": null,
+      "created_at": 1772407118090,
+      "last_seen": 1772407118103,
+      "source": "scheduler-retrieve",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "14281061-1a35-483b-9bcc-f2fb7722686d",
+    {
+      "schema_version": 1,
+      "id": "14281061-1a35-483b-9bcc-f2fb7722686d",
+      "agent_id": "known-issues-agent",
+      "session_id": "session-mm8dgndd",
+      "type": "batch_window",
+      "content": "Simulated execution completed.",
+      "summary": "Simulated execution completed.",
+      "tags": [
+        "scheduler",
+        "daily",
+        "store",
+        "insight"
+      ],
+      "importance": 0.8,
+      "embedding_id": null,
+      "created_at": 1772407162706,
+      "last_seen": 1772407162706,
+      "source": "agent-output",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
   ]
 ]
