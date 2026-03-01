@@ -17,7 +17,7 @@
       "importance": 0.4,
       "embedding_id": null,
       "created_at": 1772043447415,
-      "last_seen": 1772335100834,
+      "last_seen": 1772381319312,
       "source": "scheduler-retrieve",
       "ttl_days": null,
       "merged_into": null,
@@ -143,7 +143,7 @@
       "importance": 0.8,
       "embedding_id": null,
       "created_at": 1772157945667,
-      "last_seen": 1772335100834,
+      "last_seen": 1772381319312,
       "source": "agent-output",
       "ttl_days": null,
       "merged_into": null,
@@ -194,7 +194,7 @@
       "importance": 0.8,
       "embedding_id": null,
       "created_at": 1772161488465,
-      "last_seen": 1772335100834,
+      "last_seen": 1772381319312,
       "source": "agent-output",
       "ttl_days": null,
       "merged_into": null,
@@ -245,7 +245,109 @@
       "importance": 0.8,
       "embedding_id": null,
       "created_at": 1772335125235,
-      "last_seen": 1772335125235,
+      "last_seen": 1772381319312,
+      "source": "agent-output",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "f60eca28-35b2-4893-b593-8f917d800f40",
+    {
+      "schema_version": 1,
+      "id": "f60eca28-35b2-4893-b593-8f917d800f40",
+      "agent_id": "scheduler-memory-daily",
+      "session_id": "session-mm7y2qh0",
+      "type": "batch_window",
+      "content": "Memory retrieval seed for daily :: scheduler memory retrieval",
+      "summary": "Memory retrieval seed for daily :: scheduler memory retrieval",
+      "tags": [
+        "scheduler",
+        "daily",
+        "retrieve"
+      ],
+      "importance": 0.4,
+      "embedding_id": null,
+      "created_at": 1772381319300,
+      "last_seen": 1772381319312,
+      "source": "scheduler-retrieve",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "86675692-0b98-48a1-b217-3becfabce444",
+    {
+      "schema_version": 1,
+      "id": "86675692-0b98-48a1-b217-3becfabce444",
+      "agent_id": "scheduler-memory-daily",
+      "session_id": "session-mm7y3lmq",
+      "type": "batch_window",
+      "content": "- The `todo-triage-agent` successfully ran but found 0 actionable TODOs in the codebase (excluding vendor files).\n- The regex used `grep -n -E \"TODO|FIXME|XXX\" -- '*.js' '*.html' 'docs/*'` correctly filtered the files.\n- The `js/ui/profileModalContract.js` match was a string literal description, not a comment.",
+      "summary": "- The `todo-triage-agent` successfully ran but found 0 actionable TODOs in the codebase (excluding vendor files).\n- The regex used `grep -n -E \"TODO|FIXME|XXX\" -- '*.js' '*.html' 'docs/*'` correctly filtered the files.\n- The `js/ui/profileModalContract.js` match was a string lit…",
+      "tags": [
+        "scheduler",
+        "daily",
+        "store",
+        "insight"
+      ],
+      "importance": 0.8,
+      "embedding_id": null,
+      "created_at": 1772381359683,
+      "last_seen": 1772381359683,
+      "source": "agent-output",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "ddaf9373-9d78-4130-818f-5b8090316d9d",
+    {
+      "schema_version": 1,
+      "id": "ddaf9373-9d78-4130-818f-5b8090316d9d",
+      "agent_id": "bug-reproducer-agent",
+      "session_id": "session-mm7y4hrd",
+      "type": "batch_window",
+      "content": "Memory retrieval seed for weekly :: Required startup + artifacts + memory + issue capture",
+      "summary": "Memory retrieval seed for weekly :: Required startup + artifacts + memory + issue capture",
+      "tags": [
+        "scheduler",
+        "weekly",
+        "retrieve"
+      ],
+      "importance": 0.4,
+      "embedding_id": null,
+      "created_at": 1772381401322,
+      "last_seen": 1772381401333,
+      "source": "scheduler-retrieve",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "2d572b98-26b4-44f6-b514-1eaabb96b0ea",
+    {
+      "schema_version": 1,
+      "id": "2d572b98-26b4-44f6-b514-1eaabb96b0ea",
+      "agent_id": "bug-reproducer-agent",
+      "session_id": "session-mm7y4ogm",
+      "type": "batch_window",
+      "content": "- The `todo-triage-agent` successfully ran but found 0 actionable TODOs in the codebase (excluding vendor files).\n- The regex used `grep -n -E \"TODO|FIXME|XXX\" -- '*.js' '*.html' 'docs/*'` correctly filtered the files.\n- The `js/ui/profileModalContract.js` match was a string literal description, not a comment.",
+      "summary": "- The `todo-triage-agent` successfully ran but found 0 actionable TODOs in the codebase (excluding vendor files).\n- The regex used `grep -n -E \"TODO|FIXME|XXX\" -- '*.js' '*.html' 'docs/*'` correctly filtered the files.\n- The `js/ui/profileModalContract.js` match was a string lit…",
+      "tags": [
+        "scheduler",
+        "weekly",
+        "store",
+        "insight"
+      ],
+      "importance": 0.8,
+      "embedding_id": null,
+      "created_at": 1772381410007,
+      "last_seen": 1772381410007,
       "source": "agent-output",
       "ttl_days": null,
       "merged_into": null,
