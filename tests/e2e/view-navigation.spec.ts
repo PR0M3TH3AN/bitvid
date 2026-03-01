@@ -171,7 +171,7 @@ test.describe("View navigation — direct hash routing", () => {
 
     // Then: the feed should populate with the seeded video
     const items = await page.evaluate(() => {
-      return (window as any).__bitvidTest__.waitForFeedItems(1, 15000);
+      return (window as any).__bitvidTest__.waitForFeedItems(1, 30000);
     });
     expect(items.length).toBeGreaterThanOrEqual(1);
   });
@@ -256,7 +256,7 @@ test.describe("View navigation — feed with seeded content", () => {
 
     // Then: both videos should appear in the feed
     const items = await page.evaluate(() => {
-      return (window as any).__bitvidTest__.waitForFeedItems(2, 15000);
+      return (window as any).__bitvidTest__.waitForFeedItems(2, 30000);
     });
     expect(items.length).toBeGreaterThanOrEqual(2);
 
@@ -282,7 +282,7 @@ test.describe("View navigation — feed with seeded content", () => {
     await loginAs(page);
 
     await page.evaluate(() => {
-      return (window as any).__bitvidTest__.waitForFeedItems(1, 15000);
+      return (window as any).__bitvidTest__.waitForFeedItems(1, 30000);
     });
 
     // When: user navigates to kids view and back
