@@ -1,0 +1,18 @@
+{
+  "cadence": "daily",
+  "operation": "retrieve",
+  "runId": "session-mm87berf",
+  "servicePath": "src/services/memory/index.js#getRelevantMemories",
+  "inputs": {
+    "agentId": "docs-code-investigator",
+    "promptPath": "torch/src/prompts/daily/docs-code-investigator.md",
+    "promptIntent": "Required startup + artifacts + memory + issue capture",
+    "query": "scheduler | daily | agent | docs-code-investigator | intent | Required startup + artifacts + memory + issue capture",
+    "events": 1
+  },
+  "outputs": {
+    "ingestedCount": 1,
+    "retrievedCount": 1
+  },
+  "status": "ok"
+}
