@@ -251,5 +251,56 @@
       "merged_into": null,
       "pinned": false
     }
+  ],
+  [
+    "ad87d1ab-6d5b-484a-9969-d57703adb77f",
+    {
+      "schema_version": 1,
+      "id": "ad87d1ab-6d5b-484a-9969-d57703adb77f",
+      "agent_id": "docs-code-investigator",
+      "session_id": "session-mm87berf",
+      "type": "batch_window",
+      "content": "Memory retrieval seed for daily :: Required startup + artifacts + memory + issue capture",
+      "summary": "Memory retrieval seed for daily :: Required startup + artifacts + memory + issue capture",
+      "tags": [
+        "scheduler",
+        "daily",
+        "retrieve"
+      ],
+      "importance": 0.4,
+      "embedding_id": null,
+      "created_at": 1772396840572,
+      "last_seen": 1772396840582,
+      "source": "scheduler-retrieve",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "1964c8b8-4086-43b4-a2b0-aab1b6873519",
+    {
+      "schema_version": 1,
+      "id": "1964c8b8-4086-43b4-a2b0-aab1b6873519",
+      "agent_id": "docs-code-investigator",
+      "session_id": "session-mm87qgzw",
+      "type": "batch_window",
+      "content": "# Memory Update for docs-code-investigator 2026-03-01T20-40-00Z\n\n- Selected `js/channelProfile.js` for documentation investigation as it is the largest JS file in the repository (5578 lines) and acts as a central handler for the Channel Profile view.\n- Documented its responsibilities: identity parsing, profile hydration, content grid rendering, moderation integration, zaps, and subscriptions.\n- Produced `src/context/CONTEXT_2026-03-01T20-40-00Z.md` outlining the plan and file choice.\n- Produced `docs/channelProfile-overview.md` with architectural breakdown and \"When to change\" refactoring guidance.\n- Refrain from adding inline comments to the file itself during this task as to avoid potential breakage or conflicts before discussing with maintainers, relying instead on the comprehensive overview document created.",
+      "summary": "# Memory Update for docs-code-investigator 2026-03-01T20-40-00Z\n\n- Selected `js/channelProfile.js` for documentation investigation as it is the largest JS file in the repository (5578 lines) and acts as a central handler for the Channel Profile view.\n- Documented its responsibil…",
+      "tags": [
+        "scheduler",
+        "daily",
+        "store",
+        "insight"
+      ],
+      "importance": 0.8,
+      "embedding_id": null,
+      "created_at": 1772397543310,
+      "last_seen": 1772397543310,
+      "source": "agent-output",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
   ]
 ]
