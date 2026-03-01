@@ -164,9 +164,9 @@ To run **bitvid** locally:
    http://localhost:3000
    ```
 
-   _(Note: The application runs via `npx serve`. The default port is 3000, but it may select a different port if 3000 is occupied. Check your terminal output for the correct URL.)_
+   _(Note: `npm start` automatically runs `npm run build` and then uses `npx serve dist`. The default port is 3000, but it may select a different port if 3000 is occupied. Check your terminal output for the correct URL.)_
 
-   _Note: If you prefer manual steps, run `npm run build` followed by `npx serve dist`. Because `dist` is the document root in this mode, always open `/` rather than appending `/dist`._
+   _Note: Because `dist` is the document root when using `npx serve dist`, always open `/` rather than appending `/dist`._
 
    _If you use a static server from the repository root (for example VS Code Live Server or `python3 -m http.server`), open `http://127.0.0.1:8000/dist/` with the trailing slash._
 
@@ -297,7 +297,7 @@ await nostrClient.init();
 await nostrClient.loginWithExtension();
 
 // Publish the built event
-await nostrClient.signAndPublishEvent(event);
+await nostrClient.signAndPublishEvent(event, { publishAll: true });
 ```
 
 ### CSS build pipeline
