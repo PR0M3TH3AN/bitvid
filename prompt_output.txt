@@ -1,0 +1,2 @@
+[scheduler] Injected memories from /app/.scheduler-memory/latest/daily/memories.md
+[scheduler] Platform 'linux' detected. simulated execution for prompt.
