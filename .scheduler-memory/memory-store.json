@@ -17,7 +17,7 @@
       "importance": 0.4,
       "embedding_id": null,
       "created_at": 1772043447415,
-      "last_seen": 1772161455747,
+      "last_seen": 1772332484909,
       "source": "scheduler-retrieve",
       "ttl_days": null,
       "merged_into": null,
@@ -92,7 +92,7 @@
       "importance": 0.4,
       "embedding_id": null,
       "created_at": 1772150678854,
-      "last_seen": 1772161455747,
+      "last_seen": 1772332484909,
       "source": "scheduler-retrieve",
       "ttl_days": null,
       "merged_into": null,
@@ -143,7 +143,7 @@
       "importance": 0.8,
       "embedding_id": null,
       "created_at": 1772157945667,
-      "last_seen": 1772161455747,
+      "last_seen": 1772332484909,
       "source": "agent-output",
       "ttl_days": null,
       "merged_into": null,
@@ -194,7 +194,84 @@
       "importance": 0.8,
       "embedding_id": null,
       "created_at": 1772161488465,
-      "last_seen": 1772161488465,
+      "last_seen": 1772332484909,
+      "source": "agent-output",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "7c7fd9be-4149-4974-ae23-95bae9509514",
+    {
+      "schema_version": 1,
+      "id": "7c7fd9be-4149-4974-ae23-95bae9509514",
+      "agent_id": "scheduler-memory-daily",
+      "session_id": "session-mm7501l9",
+      "type": "batch_window",
+      "content": "Memory retrieval seed for daily :: scheduler memory retrieval",
+      "summary": "Memory retrieval seed for daily :: scheduler memory retrieval",
+      "tags": [
+        "scheduler",
+        "daily",
+        "retrieve"
+      ],
+      "importance": 0.4,
+      "embedding_id": null,
+      "created_at": 1772332484877,
+      "last_seen": 1772332484909,
+      "source": "scheduler-retrieve",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "e5d64f93-280e-4acd-b872-0eafc5a03f67",
+    {
+      "schema_version": 1,
+      "id": "e5d64f93-280e-4acd-b872-0eafc5a03f67",
+      "agent_id": "scheduler-memory-daily",
+      "session_id": "session-mm750hdp",
+      "type": "batch_window",
+      "content": "- The `todo-triage-agent` successfully ran but found 0 actionable TODOs in the codebase (excluding vendor files).\n- The regex used `grep -n -E \"TODO|FIXME|XXX\" -- '*.js' '*.html' 'docs/*'` correctly filtered the files.\n- The `js/ui/profileModalContract.js` match was a string literal description, not a comment.",
+      "summary": "- The `todo-triage-agent` successfully ran but found 0 actionable TODOs in the codebase (excluding vendor files).\n- The regex used `grep -n -E \"TODO|FIXME|XXX\" -- '*.js' '*.html' 'docs/*'` correctly filtered the files.\n- The `js/ui/profileModalContract.js` match was a string lit…",
+      "tags": [
+        "scheduler",
+        "daily",
+        "store",
+        "insight"
+      ],
+      "importance": 0.8,
+      "embedding_id": null,
+      "created_at": 1772332505342,
+      "last_seen": 1772332505342,
+      "source": "agent-output",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "b72421e3-708f-45e9-b3df-dc97f06350c3",
+    {
+      "schema_version": 1,
+      "id": "b72421e3-708f-45e9-b3df-dc97f06350c3",
+      "agent_id": "scheduler-memory-daily",
+      "session_id": "session-mm75jdcq",
+      "type": "batch_window",
+      "content": "- The design-system-audit-agent ran a simulated execution.\n- No design system violations were found or fixed.",
+      "summary": "- The design-system-audit-agent ran a simulated execution.\n- No design system violations were found or fixed.",
+      "tags": [
+        "scheduler",
+        "daily",
+        "store",
+        "insight"
+      ],
+      "importance": 0.8,
+      "embedding_id": null,
+      "created_at": 1772333386587,
+      "last_seen": 1772333386587,
       "source": "agent-output",
       "ttl_days": null,
       "merged_into": null,
