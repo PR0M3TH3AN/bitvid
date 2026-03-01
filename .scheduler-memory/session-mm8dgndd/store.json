@@ -1,0 +1,20 @@
+{
+  "cadence": "daily",
+  "operation": "store",
+  "runId": "session-mm8dgndd",
+  "servicePath": "src/services/memory/index.js#ingestEvents",
+  "inputs": {
+    "agentId": "known-issues-agent",
+    "promptPath": "torch/src/prompts/daily/known-issues-agent.md",
+    "promptIntent": "Known Issues Agent",
+    "events": 1,
+    "sourceFile": "memory-update.md"
+  },
+  "outputs": {
+    "storedCount": 1,
+    "summaries": [
+      "Simulated execution completed."
+    ]
+  },
+  "status": "ok"
+}
