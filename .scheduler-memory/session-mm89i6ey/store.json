@@ -1,0 +1,20 @@
+{
+  "cadence": "daily",
+  "operation": "store",
+  "runId": "session-mm89i6ey",
+  "servicePath": "src/services/memory/index.js#ingestEvents",
+  "inputs": {
+    "agentId": "governance-agent",
+    "promptPath": "torch/src/prompts/daily/governance-agent.md",
+    "promptIntent": "Required startup + artifacts + memory + issue capture",
+    "events": 1,
+    "sourceFile": "memory-update.md"
+  },
+  "outputs": {
+    "storedCount": 1,
+    "summaries": [
+      "Simulated learnings for governance-agent"
+    ]
+  },
+  "status": "ok"
+}

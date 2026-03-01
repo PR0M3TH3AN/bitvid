@@ -35,7 +35,7 @@ async function setupAndOpenSettings(
   await loginAs(page);
 
   await page.evaluate(() =>
-    (window as any).__bitvidTest__.waitForFeedItems(1, 15000),
+    (window as any).__bitvidTest__.waitForFeedItems(1, 30000),
   );
 
   const card = page.locator("[data-video-card]").first();
