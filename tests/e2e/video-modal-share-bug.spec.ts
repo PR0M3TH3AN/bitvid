@@ -27,6 +27,14 @@ test.describe("video modal share button", () => {
           mediaLoader: mockMediaLoader,
         });
 
+        // Ensure UI overlay exists for popovers
+        let uiOverlay = document.getElementById("uiOverlay");
+        if (!uiOverlay) {
+          uiOverlay = document.createElement("div");
+          uiOverlay.id = "uiOverlay";
+          document.body.appendChild(uiOverlay);
+        }
+
         // Force loaded state and hydrate
         const playerModal = document.getElementById("playerModal");
         if (playerModal) {
@@ -43,6 +51,7 @@ test.describe("video modal share button", () => {
 
             // Open the modal
             videoModal.open(videoModal.activeVideo);
+            videoModal.updateSourceAvailability(true);
         }
 
         window.__videoModal = videoModal;
