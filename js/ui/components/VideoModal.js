@@ -3288,14 +3288,17 @@ export class VideoModal {
       return;
     }
 
-    // Reuse popover engine for share button
-    // Using a simpler on-click binding for now to match legacy behavior,
-    // or instantiate a popover if we want the full menu experience.
-    // The E2E test expects a popover with [data-menu="video-share"].
-
-    // We'll create a local property for share popover to clean up later
+    // Clean up any existing popover instance
     if (this.modalSharePopover?.destroy) {
       this.modalSharePopover.destroy();
+    }
+
+    // To ensure UI test compatibility, append portal explicitly to document.body
+    let portalTarget = this.document.getElementById("uiOverlay");
+    if (!portalTarget && this.document.body) {
+      portalTarget = this.document.createElement("div");
+      portalTarget.id = "uiOverlay";
+      this.document.body.appendChild(portalTarget);
     }
 
     this.modalSharePopover = createPopover({
@@ -3308,16 +3311,16 @@ export class VideoModal {
         const panel = createVideoShareMenuPanel({
           document: this.document,
           video: this.activeVideo,
-          isLoggedIn: this.shareNostrAuthState.isLoggedIn,
-          hasSigner: this.shareNostrAuthState.hasSigner,
-          hasMagnet: Boolean(this.modalMoreMenuContext.playbackMagnet), // Re-use magnet from context
-          hasCdn: Boolean(this.modalMoreMenuContext.playbackUrl),
+          isLoggedIn: this.shareNostrAuthState?.isLoggedIn || false,
+          hasSigner: this.shareNostrAuthState?.hasSigner || false,
+          hasMagnet: Boolean(this.modalMoreMenuContext?.playbackMagnet),
+          hasCdn: Boolean(this.modalMoreMenuContext?.playbackUrl),
         });
         if (panel) {
           container.appendChild(panel);
         }
       },
-      placement: "top", // or "top-start" based on layout
+      placement: "top",
       offset: 8,
     });
   }

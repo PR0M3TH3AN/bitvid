@@ -27,6 +27,14 @@ test.describe("video modal share button", () => {
           mediaLoader: mockMediaLoader,
         });
 
+        // Ensure portal exists for popover rendering
+        let portalTarget = document.getElementById("uiOverlay");
+        if (!portalTarget && document.body) {
+            portalTarget = document.createElement("div");
+            portalTarget.id = "uiOverlay";
+            document.body.appendChild(portalTarget);
+        }
+
         // Force loaded state and hydrate
         const playerModal = document.getElementById("playerModal");
         if (playerModal) {
