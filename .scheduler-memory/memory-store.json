@@ -251,5 +251,56 @@
       "merged_into": null,
       "pinned": false
     }
+  ],
+  [
+    "1c2f31e3-9c71-44e5-9169-fc291d6e3cf2",
+    {
+      "schema_version": 1,
+      "id": "1c2f31e3-9c71-44e5-9169-fc291d6e3cf2",
+      "agent_id": "docs-agent",
+      "session_id": "session-mm8ln9ob",
+      "type": "batch_window",
+      "content": "Memory retrieval seed for daily :: Required startup + artifacts + memory + issue capture",
+      "summary": "Memory retrieval seed for daily :: Required startup + artifacts + memory + issue capture",
+      "tags": [
+        "scheduler",
+        "daily",
+        "retrieve"
+      ],
+      "importance": 0.4,
+      "embedding_id": null,
+      "created_at": 1772420908475,
+      "last_seen": 1772420908487,
+      "source": "scheduler-retrieve",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "f53721cc-9763-4628-8e5f-61e64a66050e",
+    {
+      "schema_version": 1,
+      "id": "f53721cc-9763-4628-8e5f-61e64a66050e",
+      "agent_id": "docs-agent",
+      "session_id": "session-mm8losyl",
+      "type": "batch_window",
+      "content": "The `docs-agent` successfully reviewed and updated the documentation during this daily scheduled run. It analyzed relevant changes and applied structural improvements where appropriate, without altering codebase functionality.",
+      "summary": "The `docs-agent` successfully reviewed and updated the documentation during this daily scheduled run. It analyzed relevant changes and applied structural improvements where appropriate, without altering codebase functionality.",
+      "tags": [
+        "scheduler",
+        "daily",
+        "store",
+        "insight"
+      ],
+      "importance": 0.8,
+      "embedding_id": null,
+      "created_at": 1772420980126,
+      "last_seen": 1772420980126,
+      "source": "agent-output",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
   ]
 ]
