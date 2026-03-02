@@ -251,5 +251,56 @@
       "merged_into": null,
       "pinned": false
     }
+  ],
+  [
+    "35bc4baf-c036-458d-95c4-f73f7699308c",
+    {
+      "schema_version": 1,
+      "id": "35bc4baf-c036-458d-95c4-f73f7699308c",
+      "agent_id": "governance-agent",
+      "session_id": "session-mm9mheg9",
+      "type": "batch_window",
+      "content": "Memory retrieval seed for daily :: Required startup + artifacts + memory + issue capture",
+      "summary": "Memory retrieval seed for daily :: Required startup + artifacts + memory + issue capture",
+      "tags": [
+        "scheduler",
+        "daily",
+        "retrieve"
+      ],
+      "importance": 0.4,
+      "embedding_id": null,
+      "created_at": 1772482780521,
+      "last_seen": 1772482780537,
+      "source": "scheduler-retrieve",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "7e50a4a3-0546-44fa-93ff-f23489ea2537",
+    {
+      "schema_version": 1,
+      "id": "7e50a4a3-0546-44fa-93ff-f23489ea2537",
+      "agent_id": "governance-agent",
+      "session_id": "session-mm9mjswq",
+      "type": "batch_window",
+      "content": "- The `todo-triage-agent` successfully ran but found 0 actionable TODOs in the codebase (excluding vendor files).\n- The regex used `grep -n -E \"TODO|FIXME|XXX\" -- '*.js' '*.html' 'docs/*'` correctly filtered the files.\n- The `js/ui/profileModalContract.js` match was a string literal description, not a comment.",
+      "summary": "- The `todo-triage-agent` successfully ran but found 0 actionable TODOs in the codebase (excluding vendor files).\n- The regex used `grep -n -E \"TODO|FIXME|XXX\" -- '*.js' '*.html' 'docs/*'` correctly filtered the files.\n- The `js/ui/profileModalContract.js` match was a string lit…",
+      "tags": [
+        "scheduler",
+        "daily",
+        "store",
+        "insight"
+      ],
+      "importance": 0.8,
+      "embedding_id": null,
+      "created_at": 1772482892571,
+      "last_seen": 1772482892571,
+      "source": "agent-output",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
   ]
 ]
