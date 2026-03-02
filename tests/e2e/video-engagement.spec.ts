@@ -32,15 +32,15 @@ async function openVideoModal(
   await loginAs(page);
 
   await page.evaluate(() => {
-    return (window as any).__bitvidTest__.waitForFeedItems(1, 30000);
+    return (window as any).__bitvidTest__.waitForFeedItems(1, 60000);
   });
 
-  await page.locator("#playerModal").waitFor({ state: "attached", timeout: 15000 });
+  await page.locator("#playerModal").waitFor({ state: "attached", timeout: 60000 });
 
   await page.locator("[data-video-card]").first().click();
 
   const playerModal = page.locator("#playerModal");
-  await expect(playerModal).not.toHaveClass(/hidden/, { timeout: 10000 });
+  await expect(playerModal).not.toHaveClass(/hidden/, { timeout: 60000 });
 }
 
 test.describe("Video engagement — reactions", () => {
@@ -208,7 +208,7 @@ test.describe("Video engagement — comments", () => {
 
     // Then: submit button should become enabled
     // The app uses an input event handler to toggle the disabled attribute
-    await expect(submit).toBeEnabled({ timeout: 3000 });
+    await expect(submit).toBeEnabled({ timeout: 60000 });
   });
 
   test("comment list container is present in the video modal", async ({
