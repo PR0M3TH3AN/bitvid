@@ -2997,8 +2997,12 @@ export class VideoModal {
     this.dispatch("action:copy", { video: this.activeVideo });
   }
 
-  handleShareRequest() {
-    this.dispatch("action:share", { video: this.activeVideo });
+  handleShareRequest(event) {
+    if (this.modalSharePopover) {
+      this.modalSharePopover.toggle();
+    } else {
+      this.dispatch("action:share", { video: this.activeVideo });
+    }
   }
 
   handleEmbedRequest() {
@@ -3249,9 +3253,9 @@ export class VideoModal {
       this.modalMorePopover.destroy();
     }
 
-    this.modalMorePopover = createPopover({
-      trigger: this.modalMoreBtn,
-      content: (container) => {
+    this.modalMorePopover = createPopover(
+      this.modalMoreBtn,
+      ({ container }) => {
         if (!this.activeVideo) {
           container.innerHTML = "";
           return;
@@ -3269,18 +3273,21 @@ export class VideoModal {
           container.appendChild(panel);
           this.modalMoreMenuPanel = panel;
         }
+        return panel;
       },
-      placement: "bottom-end",
-      offset: 8,
-      onOpen: () => {
-        if (this.activeVideo) {
-          this.syncMoreMenuData({
-            currentVideo: this.activeVideo,
-            canManageBlacklist: this.modalMoreMenuContext.canManageBlacklist,
-          });
-        }
-      },
-    });
+      {
+        placement: "bottom-end",
+        offset: 8,
+        onOpen: () => {
+          if (this.activeVideo) {
+            this.syncMoreMenuData({
+              currentVideo: this.activeVideo,
+              canManageBlacklist: this.modalMoreMenuContext.canManageBlacklist,
+            });
+          }
+        },
+      }
+    );
   }
 
   setupModalSharePopover() {
@@ -3298,9 +3305,9 @@ export class VideoModal {
       this.modalSharePopover.destroy();
     }
 
-    this.modalSharePopover = createPopover({
-      trigger: this.shareBtn,
-      content: (container) => {
+    this.modalSharePopover = createPopover(
+      this.shareBtn,
+      ({ container }) => {
         if (!this.activeVideo) {
           container.innerHTML = "";
           return;
@@ -3316,10 +3323,14 @@ export class VideoModal {
         if (panel) {
           container.appendChild(panel);
         }
+        return panel;
       },
-      placement: "top", // or "top-start" based on layout
-      offset: 8,
-    });
+      {
+        placement: "top", // or "top-start" based on layout
+        offset: 8,
+        document: this.document,
+      }
+    );
   }
 
   refreshModalMoreMenuPanel() {
