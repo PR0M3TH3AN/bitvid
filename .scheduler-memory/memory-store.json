@@ -17,7 +17,7 @@
       "importance": 0.4,
       "embedding_id": null,
       "created_at": 1772043447415,
-      "last_seen": 1772335100834,
+      "last_seen": 1772414664424,
       "source": "scheduler-retrieve",
       "ttl_days": null,
       "merged_into": null,
@@ -143,7 +143,7 @@
       "importance": 0.8,
       "embedding_id": null,
       "created_at": 1772157945667,
-      "last_seen": 1772335100834,
+      "last_seen": 1772414664424,
       "source": "agent-output",
       "ttl_days": null,
       "merged_into": null,
@@ -194,7 +194,7 @@
       "importance": 0.8,
       "embedding_id": null,
       "created_at": 1772161488465,
-      "last_seen": 1772335100834,
+      "last_seen": 1772414664424,
       "source": "agent-output",
       "ttl_days": null,
       "merged_into": null,
@@ -245,7 +245,83 @@
       "importance": 0.8,
       "embedding_id": null,
       "created_at": 1772335125235,
-      "last_seen": 1772335125235,
+      "last_seen": 1772414664424,
+      "source": "agent-output",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "0a01349d-517b-4441-9564-7d7da367faac",
+    {
+      "schema_version": 1,
+      "id": "0a01349d-517b-4441-9564-7d7da367faac",
+      "agent_id": "scheduler-memory-daily",
+      "session_id": "session-mm8hxfq5",
+      "type": "batch_window",
+      "content": "Memory retrieval seed for daily :: scheduler memory retrieval",
+      "summary": "Memory retrieval seed for daily :: scheduler memory retrieval",
+      "tags": [
+        "scheduler",
+        "daily",
+        "retrieve"
+      ],
+      "importance": 0.4,
+      "embedding_id": null,
+      "created_at": 1772414664413,
+      "last_seen": 1772414664424,
+      "source": "scheduler-retrieve",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "3089877f-3390-475d-86aa-aa2614f3cf9b",
+    {
+      "schema_version": 1,
+      "id": "3089877f-3390-475d-86aa-aa2614f3cf9b",
+      "agent_id": "deps-security-agent",
+      "session_id": "session-mm8i4v72",
+      "type": "batch_window",
+      "content": "Memory retrieval seed for daily :: Deps Security Agent",
+      "summary": "Memory retrieval seed for daily :: Deps Security Agent",
+      "tags": [
+        "scheduler",
+        "daily",
+        "retrieve"
+      ],
+      "importance": 0.4,
+      "embedding_id": null,
+      "created_at": 1772415011054,
+      "last_seen": 1772415011066,
+      "source": "scheduler-retrieve",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "f9c3dfbc-f620-4074-bd43-672688c02993",
+    {
+      "schema_version": 1,
+      "id": "f9c3dfbc-f620-4074-bd43-672688c02993",
+      "agent_id": "deps-security-agent",
+      "session_id": "session-mm8i64ps",
+      "type": "batch_window",
+      "content": "# Memory Update — deps-security-agent — 2026-03-02\n\n## Key findings\n- Dependencies audited successfully with no high-severity vulnerabilities discovered.\n\n## Patterns / reusable knowledge\n- Always run `npm audit` inside specific workspaces directly for accurate context boundaries.",
+      "summary": "# Memory Update — deps-security-agent — 2026-03-02\n\n## Key findings\n- Dependencies audited successfully with no high-severity vulnerabilities discovered.\n\n## Patterns / reusable knowledge\n- Always run `npm audit` inside specific workspaces directly for accurate context boundarie…",
+      "tags": [
+        "scheduler",
+        "daily",
+        "store",
+        "insight"
+      ],
+      "importance": 0.8,
+      "embedding_id": null,
+      "created_at": 1772415070049,
+      "last_seen": 1772415070049,
       "source": "agent-output",
       "ttl_days": null,
       "merged_into": null,
