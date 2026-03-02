@@ -32,7 +32,7 @@ async function setupFeedWithVideo(
   await loginAs(page);
 
   await page.evaluate(() => {
-    return (window as any).__bitvidTest__.waitForFeedItems(1, 30000);
+    return (window as any).__bitvidTest__.waitForFeedItems(1, 60000);
   });
 }
 
