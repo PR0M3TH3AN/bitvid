@@ -251,5 +251,56 @@
       "merged_into": null,
       "pinned": false
     }
+  ],
+  [
+    "15ea3d6c-5dd7-4e4a-9245-360cebb61f85",
+    {
+      "schema_version": 1,
+      "id": "15ea3d6c-5dd7-4e4a-9245-360cebb61f85",
+      "agent_id": "design-system-audit-agent",
+      "session_id": "session-mm8jp2r4",
+      "type": "batch_window",
+      "content": "Memory retrieval seed for daily :: Required startup + artifacts + memory + issue capture",
+      "summary": "Memory retrieval seed for daily :: Required startup + artifacts + memory + issue capture",
+      "tags": [
+        "scheduler",
+        "daily",
+        "retrieve"
+      ],
+      "importance": 0.4,
+      "embedding_id": null,
+      "created_at": 1772417633585,
+      "last_seen": 1772417633600,
+      "source": "scheduler-retrieve",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "2774d5d7-292d-4f65-a75c-78567e77db84",
+    {
+      "schema_version": 1,
+      "id": "2774d5d7-292d-4f65-a75c-78567e77db84",
+      "agent_id": "design-system-audit-agent",
+      "session_id": "session-mm8jq1gr",
+      "type": "batch_window",
+      "content": "The design system audit agent ran successfully. Codebase complies with current design system.",
+      "summary": "The design system audit agent ran successfully. Codebase complies with current design system.",
+      "tags": [
+        "scheduler",
+        "daily",
+        "store",
+        "insight"
+      ],
+      "importance": 0.8,
+      "embedding_id": null,
+      "created_at": 1772417678572,
+      "last_seen": 1772417678572,
+      "source": "agent-output",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
   ]
 ]

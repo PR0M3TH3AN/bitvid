@@ -1,0 +1,18 @@
+{
+  "cadence": "daily",
+  "operation": "retrieve",
+  "runId": "session-mm8jp2r4",
+  "servicePath": "src/services/memory/index.js#getRelevantMemories",
+  "inputs": {
+    "agentId": "design-system-audit-agent",
+    "promptPath": "torch/src/prompts/daily/design-system-audit-agent.md",
+    "promptIntent": "Required startup + artifacts + memory + issue capture",
+    "query": "scheduler | daily | agent | design-system-audit-agent | intent | Required startup + artifacts + memory + issue capture",
+    "events": 1
+  },
+  "outputs": {
+    "ingestedCount": 1,
+    "retrievedCount": 1
+  },
+  "status": "ok"
+}
