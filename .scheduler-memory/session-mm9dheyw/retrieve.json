@@ -1,0 +1,18 @@
+{
+  "cadence": "weekly",
+  "operation": "retrieve",
+  "runId": "session-mm9dheyw",
+  "servicePath": "src/services/memory/index.js#getRelevantMemories",
+  "inputs": {
+    "agentId": "bug-reproducer-agent",
+    "promptPath": "torch/src/prompts/weekly/bug-reproducer-agent.md",
+    "promptIntent": "Required startup + artifacts + memory + issue capture",
+    "query": "scheduler | weekly | agent | bug-reproducer-agent | intent | Required startup + artifacts + memory + issue capture",
+    "events": 1
+  },
+  "outputs": {
+    "ingestedCount": 1,
+    "retrievedCount": 1
+  },
+  "status": "ok"
+}
