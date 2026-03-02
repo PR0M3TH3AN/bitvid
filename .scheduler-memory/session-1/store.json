@@ -1,0 +1,20 @@
+{
+  "cadence": "daily",
+  "operation": "store",
+  "runId": "session-1",
+  "servicePath": "src/services/memory/index.js#ingestEvents",
+  "inputs": {
+    "agentId": "content-audit-agent",
+    "promptPath": "torch/src/prompts/daily/content-audit-agent.md",
+    "promptIntent": "Content Audit Agent",
+    "events": 1,
+    "sourceFile": "memory-update.md"
+  },
+  "outputs": {
+    "storedCount": 1,
+    "summaries": [
+      "- Simulated execution for content-audit-agent completed."
+    ]
+  },
+  "status": "ok"
+}
