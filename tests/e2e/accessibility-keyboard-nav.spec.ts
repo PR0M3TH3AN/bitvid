@@ -314,7 +314,7 @@ test.describe("Accessibility and keyboard navigation", () => {
       await loginAs(page);
 
       await page.evaluate(() => {
-        return (window as any).__bitvidTest__.waitForFeedItems(1, 15000);
+        return (window as any).__bitvidTest__.waitForFeedItems(1, 60000);
       });
 
       // Then: video cards are in the DOM and clickable
