@@ -1,0 +1,18 @@
+{
+  "cadence": "daily",
+  "operation": "retrieve",
+  "runId": "session-1",
+  "servicePath": "src/services/memory/index.js#getRelevantMemories",
+  "inputs": {
+    "agentId": "content-audit-agent",
+    "promptPath": "torch/src/prompts/daily/content-audit-agent.md",
+    "promptIntent": "Content Audit Agent",
+    "query": "scheduler | daily | agent | content-audit-agent | intent | Content Audit Agent",
+    "events": 1
+  },
+  "outputs": {
+    "ingestedCount": 1,
+    "retrievedCount": 1
+  },
+  "status": "ok"
+}

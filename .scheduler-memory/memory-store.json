@@ -251,5 +251,82 @@
       "merged_into": null,
       "pinned": false
     }
+  ],
+  [
+    "7f34f2b9-ebf6-4f14-8f68-821aaaafc126",
+    {
+      "schema_version": 1,
+      "id": "7f34f2b9-ebf6-4f14-8f68-821aaaafc126",
+      "agent_id": "content-audit-agent",
+      "session_id": "session-1",
+      "type": "batch_window",
+      "content": "Memory retrieval seed for daily :: Content Audit Agent",
+      "summary": "Memory retrieval seed for daily :: Content Audit Agent",
+      "tags": [
+        "scheduler",
+        "daily",
+        "retrieve"
+      ],
+      "importance": 0.4,
+      "embedding_id": null,
+      "created_at": 1772410756318,
+      "last_seen": 1772410756328,
+      "source": "scheduler-retrieve",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "cfb38581-9539-46a7-8c9a-a347cc7d8745",
+    {
+      "schema_version": 1,
+      "id": "cfb38581-9539-46a7-8c9a-a347cc7d8745",
+      "agent_id": "content-audit-agent",
+      "session_id": "session-1",
+      "type": "batch_window",
+      "content": "- The `todo-triage-agent` successfully ran but found 0 actionable TODOs in the codebase (excluding vendor files).\n- The regex used `grep -n -E \"TODO|FIXME|XXX\" -- '*.js' '*.html' 'docs/*'` correctly filtered the files.\n- The `js/ui/profileModalContract.js` match was a string literal description, not a comment.",
+      "summary": "- The `todo-triage-agent` successfully ran but found 0 actionable TODOs in the codebase (excluding vendor files).\n- The regex used `grep -n -E \"TODO|FIXME|XXX\" -- '*.js' '*.html' 'docs/*'` correctly filtered the files.\n- The `js/ui/profileModalContract.js` match was a string lit…",
+      "tags": [
+        "scheduler",
+        "daily",
+        "store",
+        "insight"
+      ],
+      "importance": 0.8,
+      "embedding_id": null,
+      "created_at": 1772410765893,
+      "last_seen": 1772410765893,
+      "source": "agent-output",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "7f6b2f2d-4f44-4db3-a5b7-317bb9ff7bfb",
+    {
+      "schema_version": 1,
+      "id": "7f6b2f2d-4f44-4db3-a5b7-317bb9ff7bfb",
+      "agent_id": "content-audit-agent",
+      "session_id": "session-1",
+      "type": "batch_window",
+      "content": "- Simulated execution for content-audit-agent completed.",
+      "summary": "- Simulated execution for content-audit-agent completed.",
+      "tags": [
+        "scheduler",
+        "daily",
+        "store",
+        "insight"
+      ],
+      "importance": 0.8,
+      "embedding_id": null,
+      "created_at": 1772410772183,
+      "last_seen": 1772410772183,
+      "source": "agent-output",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
   ]
 ]
