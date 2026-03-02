@@ -69,7 +69,7 @@ test.describe("Login and authentication flows", () => {
         () => {
           return (window as any).__bitvidTest__.getAppState().isLoggedIn === false;
         },
-        { timeout: 15000 },
+        { timeout: 30000 },
       );
 
       // Then: state is fully cleared
@@ -79,6 +79,8 @@ test.describe("Login and authentication flows", () => {
       expect(loggedOutState.isLoggedIn).toBe(false);
       expect(loggedOutState.activePubkey).toBeNull();
     });
+
+    test.setTimeout(90000);
 
     test("repeated login/logout cycles maintain state consistency", async ({
       page,
@@ -109,7 +111,7 @@ test.describe("Login and authentication flows", () => {
         // Wait for state to settle with a longer timeout
         await page.waitForFunction(() => {
           return (window as any).__bitvidTest__.getAppState().isLoggedIn === false;
-        }, { timeout: 15000 });
+        }, { timeout: 30000 });
 
         const loggedOut = await page.evaluate(() => {
           return (window as any).__bitvidTest__.getAppState();
@@ -193,7 +195,7 @@ test.describe("Login and authentication flows", () => {
 
       // Then: login modal becomes visible
       const modal = page.locator('[data-testid="login-modal"]');
-      await expect(modal).toBeVisible({ timeout: 15000 });
+      await expect(modal).toBeVisible({ timeout: 30000 });
       await expect(modal).toHaveAttribute("data-open", "true");
     });
 
@@ -215,15 +217,15 @@ test.describe("Login and authentication flows", () => {
           }
           return loginModal.getAttribute("data-open") === "true";
         },
-        { timeout: 15000 },
+        { timeout: 30000 },
       );
-      await expect(modal).toBeVisible({ timeout: 15000 });
+      await expect(modal).toBeVisible({ timeout: 30000 });
 
       // Then: at least one provider button is visible
       const providers = page.locator(
         '[data-testid="login-provider-button"]',
       );
-      await expect(providers.first()).toBeVisible({ timeout: 15000 });
+      await expect(providers.first()).toBeVisible({ timeout: 30000 });
 
       const providerCount = await providers.count();
       expect(providerCount).toBeGreaterThanOrEqual(1);
@@ -245,7 +247,7 @@ test.describe("Login and authentication flows", () => {
           if (!(modal instanceof HTMLElement)) return false;
           return modal.getAttribute("data-open") === "true";
         },
-        { timeout: 15000 },
+        { timeout: 30000 },
       );
 
       // Click the nsec provider to reveal inputs

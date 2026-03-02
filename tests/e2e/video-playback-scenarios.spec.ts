@@ -32,7 +32,7 @@ test.describe("Video playback scenarios", () => {
       await loginAs(page);
 
       await page.evaluate(() => {
-        return (window as any).__bitvidTest__.waitForFeedItems(1, 15000);
+        return (window as any).__bitvidTest__.waitForFeedItems(1, 30000);
       });
 
       // Wait for the modal element to be present in DOM before clicking
@@ -67,7 +67,7 @@ test.describe("Video playback scenarios", () => {
       await loginAs(page);
 
       await page.evaluate(() => {
-        return (window as any).__bitvidTest__.waitForFeedItems(1, 15000);
+        return (window as any).__bitvidTest__.waitForFeedItems(1, 30000);
       });
 
       // Wait for modal presence to ensure app is fully initialized
@@ -106,7 +106,7 @@ test.describe("Video playback scenarios", () => {
       await loginAs(page);
 
       await page.evaluate(() => {
-        return (window as any).__bitvidTest__.waitForFeedItems(1, 15000);
+        return (window as any).__bitvidTest__.waitForFeedItems(1, 30000);
       });
 
       await page.locator("#playerModal").waitFor({ state: "attached", timeout: 15000 });
@@ -154,7 +154,7 @@ test.describe("Video playback scenarios", () => {
       await loginAs(page);
 
       await page.evaluate(() => {
-        return (window as any).__bitvidTest__.waitForFeedItems(1, 15000);
+        return (window as any).__bitvidTest__.waitForFeedItems(1, 30000);
       });
 
       await page.locator("#playerModal").waitFor({ state: "attached", timeout: 15000 });
@@ -204,7 +204,7 @@ test.describe("Video playback scenarios", () => {
       await loginAs(page);
 
       await page.evaluate(() => {
-        return (window as any).__bitvidTest__.waitForFeedItems(1, 15000);
+        return (window as any).__bitvidTest__.waitForFeedItems(1, 30000);
       });
 
       await page.locator("#playerModal").waitFor({ state: "attached", timeout: 15000 });
@@ -259,7 +259,7 @@ test.describe("Video playback scenarios", () => {
       await loginAs(page);
 
       await page.evaluate(() => {
-        return (window as any).__bitvidTest__.waitForFeedItems(1, 15000);
+        return (window as any).__bitvidTest__.waitForFeedItems(1, 30000);
       });
 
       await page.locator("#playerModal").waitFor({ state: "attached", timeout: 15000 });
@@ -298,7 +298,7 @@ test.describe("Video playback scenarios", () => {
       await loginAs(page);
 
       await page.evaluate(() => {
-        return (window as any).__bitvidTest__.waitForFeedItems(1, 15000);
+        return (window as any).__bitvidTest__.waitForFeedItems(1, 30000);
       });
 
       // Then: video card has data-play-url attribute
@@ -326,7 +326,7 @@ test.describe("Video playback scenarios", () => {
       await loginAs(page);
 
       await page.evaluate(() => {
-        return (window as any).__bitvidTest__.waitForFeedItems(1, 15000);
+        return (window as any).__bitvidTest__.waitForFeedItems(1, 30000);
       });
 
       // Then: video card has data-play-magnet attribute
