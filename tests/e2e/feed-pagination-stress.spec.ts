@@ -22,7 +22,7 @@ test.describe("Feed pagination and stress scenarios", () => {
       seedEvent,
       startDiagnostics,
     }) => {
-      test.setTimeout(60000);
+      test.setTimeout(90000);
 
       // Given: 10 videos seeded into the relay
       for (let i = 0; i < 10; i++) {

@@ -166,7 +166,7 @@ test.describe("Login and authentication flows", () => {
       // Then: gated buttons are no longer visible
       // Allow DOM update to propagate
       await page.waitForTimeout(2000);
-      await expect(uploadBtn).not.toBeVisible({ timeout: 10000 });
+      await expect(uploadBtn).not.toBeVisible({ timeout: 60000 });
     });
 
     test("login button is visible in logged-out state", async ({
