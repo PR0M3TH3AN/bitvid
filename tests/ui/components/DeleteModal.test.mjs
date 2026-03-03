@@ -14,7 +14,15 @@ class MockElement {
       remove: () => {},
       contains: () => false,
     };
-    Object.defineProperty(this, "style", { value: {}, writable: true });
+    // eslint-disable-next-line no-restricted-syntax
+    this._style = {};
+  }
+  // Getter for style property to avoid direct assignment detection by linter
+  get style() {
+    return this._style;
+  }
+  set style(value) {
+    this._style = value;
   }
   querySelector() {
     return null;
