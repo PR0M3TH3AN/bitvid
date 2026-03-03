@@ -117,7 +117,7 @@
       "importance": 0.4,
       "embedding_id": null,
       "created_at": 1772150678854,
-      "last_seen": 1772335100834,
+      "last_seen": 1772565269272,
       "source": "scheduler-retrieve",
       "ttl_days": null,
       "merged_into": null,
@@ -168,7 +168,7 @@
       "importance": 0.8,
       "embedding_id": null,
       "created_at": 1772157945667,
-      "last_seen": 1772335100834,
+      "last_seen": 1772565269272,
       "source": "agent-output",
       "ttl_days": null,
       "merged_into": null,
@@ -219,7 +219,7 @@
       "importance": 0.8,
       "embedding_id": null,
       "created_at": 1772161488465,
-      "last_seen": 1772335100834,
+      "last_seen": 1772565269272,
       "source": "agent-output",
       "ttl_days": null,
       "merged_into": null,
@@ -270,7 +270,7 @@
       "importance": 0.8,
       "embedding_id": null,
       "created_at": 1772335125235,
-      "last_seen": 1772335125235,
+      "last_seen": 1772565269272,
       "source": "agent-output",
       "ttl_days": null,
       "merged_into": null,
@@ -322,6 +322,82 @@
       "embedding_id": null,
       "created_at": 1772467721169,
       "last_seen": 1772467721169,
+      "source": "agent-output",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "612b62c0-353b-4f2e-9d7f-24b84731fc99",
+    {
+      "schema_version": 1,
+      "id": "612b62c0-353b-4f2e-9d7f-24b84731fc99",
+      "agent_id": "scheduler-memory-daily",
+      "session_id": "session-mmazlf64",
+      "type": "batch_window",
+      "content": "Memory retrieval seed for daily :: scheduler memory retrieval",
+      "summary": "Memory retrieval seed for daily :: scheduler memory retrieval",
+      "tags": [
+        "scheduler",
+        "daily",
+        "retrieve"
+      ],
+      "importance": 0.4,
+      "embedding_id": null,
+      "created_at": 1772565269260,
+      "last_seen": 1772565269272,
+      "source": "scheduler-retrieve",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "6dca3a34-d81e-4401-a671-72e0bf366ac8",
+    {
+      "schema_version": 1,
+      "id": "6dca3a34-d81e-4401-a671-72e0bf366ac8",
+      "agent_id": "load-test-agent",
+      "session_id": "session-mmazlkc4",
+      "type": "batch_window",
+      "content": "Memory retrieval seed for daily :: Load Test Agent",
+      "summary": "Memory retrieval seed for daily :: Load Test Agent",
+      "tags": [
+        "scheduler",
+        "daily",
+        "retrieve"
+      ],
+      "importance": 0.4,
+      "embedding_id": null,
+      "created_at": 1772565275956,
+      "last_seen": 1772565275967,
+      "source": "scheduler-retrieve",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "6efe6a64-d492-480e-a5ac-553a33188ff9",
+    {
+      "schema_version": 1,
+      "id": "6efe6a64-d492-480e-a5ac-553a33188ff9",
+      "agent_id": "load-test-agent",
+      "session_id": "session-mmazlybc",
+      "type": "batch_window",
+      "content": "- The `docs-code-investigator` successfully analyzed and documented `js/historyView.js`.\n- JSDoc annotations were appended to the `js/historyView.js` public API to adhere to the strict `no-behavioral-changes` constraint.\n- A comprehensive overview markdown file was successfully created at `docs/historyView-overview.md`.",
+      "summary": "- The `docs-code-investigator` successfully analyzed and documented `js/historyView.js`.\n- JSDoc annotations were appended to the `js/historyView.js` public API to adhere to the strict `no-behavioral-changes` constraint.\n- A comprehensive overview markdown file was successfully …",
+      "tags": [
+        "scheduler",
+        "daily",
+        "store",
+        "insight"
+      ],
+      "importance": 0.8,
+      "embedding_id": null,
+      "created_at": 1772565294073,
+      "last_seen": 1772565294073,
       "source": "agent-output",
       "ttl_days": null,
       "merged_into": null,
