@@ -30,19 +30,23 @@ test.describe("video modal share button", () => {
         // Force loaded state and hydrate
         const playerModal = document.getElementById("playerModal");
         if (playerModal) {
+            videoModal.document = document;
             videoModal.loaded = true;
             videoModal.hydrate(playerModal);
 
             // Mock an active video so the share menu has data
-            videoModal.activeVideo = {
+            const activeVideo = {
                 id: "test-video-id",
                 title: "Test Video",
                 url: "https://example.com/video.mp4",
                 magnet: "magnet:?xt=urn:btih:test",
             };
 
+            videoModal.shareNostrAuthState = { isLoggedIn: true, hasSigner: true };
+
             // Open the modal
-            videoModal.open(videoModal.activeVideo);
+            videoModal.open(activeVideo);
+            videoModal.setShareEnabled(true);
         }
 
         window.__videoModal = videoModal;
@@ -53,9 +57,10 @@ test.describe("video modal share button", () => {
     const modal = page.locator("#playerModal");
     await expect(modal).not.toHaveClass(/hidden/);
 
-    // Click share button
+    // Ensure modal is visible and click share button
     const shareBtn = page.locator("#shareBtn");
     await expect(shareBtn).toBeVisible();
+
     await shareBtn.click();
 
     // Expect popover to be open
