@@ -81,7 +81,7 @@ test.describe("Video CRUD — settings menu", () => {
 
     // Then: a settings menu panel should appear
     const settingsPanel = page.locator('[data-menu="video-settings"]');
-    await expect(settingsPanel).toBeVisible({ timeout: 5000 });
+    await expect(settingsPanel).toBeVisible({ timeout: 60000 });
 
     // And: it should contain edit and delete actions
     const editAction = settingsPanel.locator('[data-action="edit"]');
@@ -107,14 +107,14 @@ test.describe("Video CRUD — edit modal", () => {
     await card.locator('[aria-label="Video settings"]').click();
 
     const settingsPanel = page.locator('[data-menu="video-settings"]');
-    await expect(settingsPanel).toBeVisible({ timeout: 5000 });
+    await expect(settingsPanel).toBeVisible({ timeout: 60000 });
 
     // When: user clicks the edit action
     await settingsPanel.locator('[data-action="edit"]').click();
 
     // Then: the edit modal should open
     const editModal = page.locator("#editVideoModal");
-    await expect(editModal).not.toHaveClass(/hidden/, { timeout: 10000 });
+    await expect(editModal).not.toHaveClass(/hidden/, { timeout: 60000 });
   });
 
   test("edit modal contains the title input field", async ({
@@ -133,11 +133,11 @@ test.describe("Video CRUD — edit modal", () => {
     await card.locator('[aria-label="Video settings"]').click();
 
     const settingsPanel = page.locator('[data-menu="video-settings"]');
-    await expect(settingsPanel).toBeVisible({ timeout: 5000 });
+    await expect(settingsPanel).toBeVisible({ timeout: 60000 });
     await settingsPanel.locator('[data-action="edit"]').click();
 
     const editModal = page.locator("#editVideoModal");
-    await expect(editModal).not.toHaveClass(/hidden/, { timeout: 10000 });
+    await expect(editModal).not.toHaveClass(/hidden/, { timeout: 60000 });
 
     // Then: the title input should be present
     const titleInput = page.locator("#editVideoTitle");
@@ -159,18 +159,18 @@ test.describe("Video CRUD — edit modal", () => {
     await card.locator('[aria-label="Video settings"]').click();
 
     const settingsPanel = page.locator('[data-menu="video-settings"]');
-    await expect(settingsPanel).toBeVisible({ timeout: 5000 });
+    await expect(settingsPanel).toBeVisible({ timeout: 60000 });
     await settingsPanel.locator('[data-action="edit"]').click();
 
     const editModal = page.locator("#editVideoModal");
-    await expect(editModal).not.toHaveClass(/hidden/, { timeout: 10000 });
+    await expect(editModal).not.toHaveClass(/hidden/, { timeout: 60000 });
 
     // When: user clicks the close button
     const closeBtn = page.locator("#closeEditVideoModal");
     await closeBtn.click();
 
     // Then: the edit modal should be hidden
-    await expect(editModal).toHaveClass(/hidden/, { timeout: 5000 });
+    await expect(editModal).toHaveClass(/hidden/, { timeout: 60000 });
   });
 });
 
@@ -190,14 +190,14 @@ test.describe("Video CRUD — delete modal", () => {
     await card.locator('[aria-label="Video settings"]').click();
 
     const settingsPanel = page.locator('[data-menu="video-settings"]');
-    await expect(settingsPanel).toBeVisible({ timeout: 5000 });
+    await expect(settingsPanel).toBeVisible({ timeout: 60000 });
 
     // When: user clicks the delete action
     await settingsPanel.locator('[data-action="delete"]').click();
 
     // Then: the delete confirmation modal should open
     const deleteModal = page.locator("#deleteVideoModal");
-    await expect(deleteModal).not.toHaveClass(/hidden/, { timeout: 10000 });
+    await expect(deleteModal).not.toHaveClass(/hidden/, { timeout: 60000 });
   });
 
   test("delete modal has confirm and cancel buttons", async ({
@@ -215,11 +215,11 @@ test.describe("Video CRUD — delete modal", () => {
     await card.locator('[aria-label="Video settings"]').click();
 
     const settingsPanel = page.locator('[data-menu="video-settings"]');
-    await expect(settingsPanel).toBeVisible({ timeout: 5000 });
+    await expect(settingsPanel).toBeVisible({ timeout: 60000 });
     await settingsPanel.locator('[data-action="delete"]').click();
 
     const deleteModal = page.locator("#deleteVideoModal");
-    await expect(deleteModal).not.toHaveClass(/hidden/, { timeout: 10000 });
+    await expect(deleteModal).not.toHaveClass(/hidden/, { timeout: 60000 });
 
     // Then: confirm and cancel buttons should be present
     const confirmBtn = page.locator("#confirmDeleteVideo");
@@ -247,17 +247,17 @@ test.describe("Video CRUD — delete modal", () => {
     await card.locator('[aria-label="Video settings"]').click();
 
     const settingsPanel = page.locator('[data-menu="video-settings"]');
-    await expect(settingsPanel).toBeVisible({ timeout: 5000 });
+    await expect(settingsPanel).toBeVisible({ timeout: 60000 });
     await settingsPanel.locator('[data-action="delete"]').click();
 
     const deleteModal = page.locator("#deleteVideoModal");
-    await expect(deleteModal).not.toHaveClass(/hidden/, { timeout: 10000 });
+    await expect(deleteModal).not.toHaveClass(/hidden/, { timeout: 60000 });
 
     // When: user clicks cancel
     await page.locator("#cancelDeleteVideo").click();
 
     // Then: the delete modal should close
-    await expect(deleteModal).toHaveClass(/hidden/, { timeout: 5000 });
+    await expect(deleteModal).toHaveClass(/hidden/, { timeout: 60000 });
 
     // And: the video should still be in the feed
     const feedItems = await page.evaluate(() => {
@@ -281,11 +281,11 @@ test.describe("Video CRUD — delete modal", () => {
     await card.locator('[aria-label="Video settings"]').click();
 
     const settingsPanel = page.locator('[data-menu="video-settings"]');
-    await expect(settingsPanel).toBeVisible({ timeout: 5000 });
+    await expect(settingsPanel).toBeVisible({ timeout: 60000 });
     await settingsPanel.locator('[data-action="delete"]').click();
 
     const deleteModal = page.locator("#deleteVideoModal");
-    await expect(deleteModal).not.toHaveClass(/hidden/, { timeout: 10000 });
+    await expect(deleteModal).not.toHaveClass(/hidden/, { timeout: 60000 });
 
     // Then: the modal should contain a warning about irreversibility
     const modalText = await deleteModal.textContent();

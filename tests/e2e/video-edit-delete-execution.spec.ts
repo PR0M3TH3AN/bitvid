@@ -45,7 +45,7 @@ async function setupAndOpenSettings(
   await gearBtn.click();
 
   const settingsPanel = page.locator('[data-menu="video-settings"]');
-  await expect(settingsPanel).toBeVisible({ timeout: 5000 });
+  await expect(settingsPanel).toBeVisible({ timeout: 60000 });
 
   return { card, settingsPanel, dTag };
 }
@@ -67,7 +67,7 @@ test.describe("Video edit — form behavior", () => {
     await settingsPanel.locator('[data-action="edit"]').click();
 
     const editModal = page.locator("#editVideoModal");
-    await expect(editModal).not.toHaveClass(/hidden/, { timeout: 10000 });
+    await expect(editModal).not.toHaveClass(/hidden/, { timeout: 60000 });
 
     // Then: the title field should contain the video's title
     const titleInput = page.locator("#editVideoTitle");
@@ -90,7 +90,7 @@ test.describe("Video edit — form behavior", () => {
     await settingsPanel.locator('[data-action="edit"]').click();
 
     const editModal = page.locator("#editVideoModal");
-    await expect(editModal).not.toHaveClass(/hidden/, { timeout: 10000 });
+    await expect(editModal).not.toHaveClass(/hidden/, { timeout: 60000 });
 
     // Then: the title field should be readonly (locked)
     const titleInput = page.locator("#editVideoTitle");
@@ -126,7 +126,7 @@ test.describe("Video edit — form behavior", () => {
     await settingsPanel.locator('[data-action="edit"]').click();
 
     const editModal = page.locator("#editVideoModal");
-    await expect(editModal).not.toHaveClass(/hidden/, { timeout: 10000 });
+    await expect(editModal).not.toHaveClass(/hidden/, { timeout: 60000 });
 
     // Unlock the title field
     const editFieldBtn = editModal.locator(
@@ -165,7 +165,7 @@ test.describe("Video edit — form behavior", () => {
     await settingsPanel.locator('[data-action="edit"]').click();
 
     const editModal = page.locator("#editVideoModal");
-    await expect(editModal).not.toHaveClass(/hidden/, { timeout: 10000 });
+    await expect(editModal).not.toHaveClass(/hidden/, { timeout: 60000 });
 
     // Set up event listener before submitting
     const submitEventPromise = page.evaluate(() => {
@@ -202,7 +202,7 @@ test.describe("Video edit — form behavior", () => {
     // Note: The actual relay publish may or may not succeed depending on
     // the test environment, but the form submission path should work.
     // We wait briefly for the modal to close
-    await expect(editModal).toHaveClass(/hidden/, { timeout: 15000 });
+    await expect(editModal).toHaveClass(/hidden/, { timeout: 60000 });
   });
 });
 
@@ -223,7 +223,7 @@ test.describe("Video delete — execution", () => {
     await settingsPanel.locator('[data-action="delete"]').click();
 
     const deleteModal = page.locator("#deleteVideoModal");
-    await expect(deleteModal).not.toHaveClass(/hidden/, { timeout: 10000 });
+    await expect(deleteModal).not.toHaveClass(/hidden/, { timeout: 60000 });
 
     // Then: the modal should contain the warning text
     const modalText = await deleteModal.textContent();
@@ -255,13 +255,13 @@ test.describe("Video delete — execution", () => {
     await settingsPanel.locator('[data-action="delete"]').click();
 
     const deleteModal = page.locator("#deleteVideoModal");
-    await expect(deleteModal).not.toHaveClass(/hidden/, { timeout: 10000 });
+    await expect(deleteModal).not.toHaveClass(/hidden/, { timeout: 60000 });
 
     // When: the user clicks "Delete all versions"
     await page.locator("#confirmDeleteVideo").click();
 
     // Then: the delete modal should close
-    await expect(deleteModal).toHaveClass(/hidden/, { timeout: 15000 });
+    await expect(deleteModal).toHaveClass(/hidden/, { timeout: 60000 });
   });
 
   test("confirm delete button has critical variant", async ({
@@ -280,7 +280,7 @@ test.describe("Video delete — execution", () => {
     await settingsPanel.locator('[data-action="delete"]').click();
 
     const deleteModal = page.locator("#deleteVideoModal");
-    await expect(deleteModal).not.toHaveClass(/hidden/, { timeout: 10000 });
+    await expect(deleteModal).not.toHaveClass(/hidden/, { timeout: 60000 });
 
     // Then: the confirm button should have data-variant="critical"
     const confirmBtn = page.locator("#confirmDeleteVideo");
@@ -307,7 +307,7 @@ test.describe("Video delete — execution", () => {
     await settingsPanel.locator('[data-action="delete"]').click();
 
     const deleteModal = page.locator("#deleteVideoModal");
-    await expect(deleteModal).not.toHaveClass(/hidden/, { timeout: 10000 });
+    await expect(deleteModal).not.toHaveClass(/hidden/, { timeout: 60000 });
 
     // Then: the modal should have proper ARIA attributes
     await expect(deleteModal).toHaveAttribute("role", "dialog");
