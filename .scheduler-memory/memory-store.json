@@ -253,25 +253,50 @@
     }
   ],
   [
-    "525c80bb-88e5-4ba6-b7de-14d4e3a67afb",
+    "5c5ebf15-a900-4d49-9e06-dfc42f41a7d1",
     {
       "schema_version": 1,
-      "id": "525c80bb-88e5-4ba6-b7de-14d4e3a67afb",
-      "agent_id": "docs-alignment-agent",
-      "session_id": "session-mm9ie85o",
+      "id": "5c5ebf15-a900-4d49-9e06-dfc42f41a7d1",
+      "agent_id": "bug-reproducer-agent",
+      "session_id": "session-mm9dheyw",
+      "type": "batch_window",
+      "content": "Memory retrieval seed for weekly :: Required startup + artifacts + memory + issue capture",
+      "summary": "Memory retrieval seed for weekly :: Required startup + artifacts + memory + issue capture",
+      "tags": [
+        "scheduler",
+        "weekly",
+        "retrieve"
+      ],
+      "importance": 0.4,
+      "embedding_id": null,
+      "created_at": 1772467664649,
+      "last_seen": 1772467664661,
+      "source": "scheduler-retrieve",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "61a3df52-20b2-444e-82fe-d7f9a5274949",
+    {
+      "schema_version": 1,
+      "id": "61a3df52-20b2-444e-82fe-d7f9a5274949",
+      "agent_id": "bug-reproducer-agent",
+      "session_id": "session-mm9dimkw",
       "type": "batch_window",
       "content": "- The `todo-triage-agent` successfully ran but found 0 actionable TODOs in the codebase (excluding vendor files).\n- The regex used `grep -n -E \"TODO|FIXME|XXX\" -- '*.js' '*.html' 'docs/*'` correctly filtered the files.\n- The `js/ui/profileModalContract.js` match was a string literal description, not a comment.",
       "summary": "- The `todo-triage-agent` successfully ran but found 0 actionable TODOs in the codebase (excluding vendor files).\n- The regex used `grep -n -E \"TODO|FIXME|XXX\" -- '*.js' '*.html' 'docs/*'` correctly filtered the files.\n- The `js/ui/profileModalContract.js` match was a string lit…",
       "tags": [
         "scheduler",
-        "daily",
+        "weekly",
         "store",
         "insight"
       ],
       "importance": 0.8,
       "embedding_id": null,
-      "created_at": 1772475913933,
-      "last_seen": 1772475913933,
+      "created_at": 1772467721169,
+      "last_seen": 1772467721169,
       "source": "agent-output",
       "ttl_days": null,
       "merged_into": null,
