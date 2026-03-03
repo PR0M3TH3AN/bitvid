@@ -251,5 +251,81 @@
       "merged_into": null,
       "pinned": false
     }
+  ],
+  [
+    "3b5cc2f1-bf31-4155-917c-7c5b2b0e538b",
+    {
+      "schema_version": 1,
+      "id": "3b5cc2f1-bf31-4155-917c-7c5b2b0e538b",
+      "agent_id": "docs-agent",
+      "session_id": "session-mm9zwf97",
+      "type": "batch_window",
+      "content": "Memory retrieval seed for daily :: scheduler memory retrieval",
+      "summary": "Memory retrieval seed for daily :: scheduler memory retrieval",
+      "tags": [
+        "scheduler",
+        "daily",
+        "retrieve"
+      ],
+      "importance": 0.4,
+      "embedding_id": null,
+      "created_at": 1772505316412,
+      "last_seen": 1772505403714,
+      "source": "scheduler-retrieve",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "c78baccf-beba-42d2-8508-89bf2c1bb8da",
+    {
+      "schema_version": 1,
+      "id": "c78baccf-beba-42d2-8508-89bf2c1bb8da",
+      "agent_id": "docs-agent",
+      "session_id": "session-mm9zyam0",
+      "type": "batch_window",
+      "content": "Memory retrieval seed for daily :: Required startup + artifacts + memory + issue capture",
+      "summary": "Memory retrieval seed for daily :: Required startup + artifacts + memory + issue capture",
+      "tags": [
+        "scheduler",
+        "daily",
+        "retrieve"
+      ],
+      "importance": 0.4,
+      "embedding_id": null,
+      "created_at": 1772505403704,
+      "last_seen": 1772505403714,
+      "source": "scheduler-retrieve",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "b03ae4f9-95cd-4a2e-b7b7-edcdaa85fd43",
+    {
+      "schema_version": 1,
+      "id": "b03ae4f9-95cd-4a2e-b7b7-edcdaa85fd43",
+      "agent_id": "docs-agent",
+      "session_id": "session-mma01mip",
+      "type": "batch_window",
+      "content": "- The `todo-triage-agent` successfully ran but found 0 actionable TODOs in the codebase (excluding vendor files).\n- The regex used `grep -n -E \"TODO|FIXME|XXX\" -- '*.js' '*.html' 'docs/*'` correctly filtered the files.\n- The `js/ui/profileModalContract.js` match was a string literal description, not a comment.",
+      "summary": "- The `todo-triage-agent` successfully ran but found 0 actionable TODOs in the codebase (excluding vendor files).\n- The regex used `grep -n -E \"TODO|FIXME|XXX\" -- '*.js' '*.html' 'docs/*'` correctly filtered the files.\n- The `js/ui/profileModalContract.js` match was a string lit…",
+      "tags": [
+        "scheduler",
+        "daily",
+        "store",
+        "insight"
+      ],
+      "importance": 0.8,
+      "embedding_id": null,
+      "created_at": 1772505559106,
+      "last_seen": 1772505559106,
+      "source": "agent-output",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
   ]
 ]

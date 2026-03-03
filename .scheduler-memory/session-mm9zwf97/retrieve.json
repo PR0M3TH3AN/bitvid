@@ -1,0 +1,18 @@
+{
+  "cadence": "daily",
+  "operation": "retrieve",
+  "runId": "session-mm9zwf97",
+  "servicePath": "src/services/memory/index.js#getRelevantMemories",
+  "inputs": {
+    "agentId": "docs-agent",
+    "promptPath": "src/prompts/daily/docs-agent.md",
+    "promptIntent": "scheduler memory retrieval",
+    "query": "scheduler | daily | agent | docs-agent | intent | scheduler memory retrieval",
+    "events": 1
+  },
+  "outputs": {
+    "ingestedCount": 1,
+    "retrievedCount": 1
+  },
+  "status": "ok"
+}
