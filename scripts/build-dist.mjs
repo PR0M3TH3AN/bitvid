@@ -10,6 +10,7 @@ const FILES_TO_COPY = [
   'embed.html',
   '_redirects',
   '_headers',
+  'netlify.toml',
   'site.webmanifest',
   'sw.min.js'
 ];
@@ -60,7 +61,7 @@ function copyFile(src, dest) {
       console.error('Failed to list source directory:', e);
     }
 
-    if (['_headers', '_redirects', 'index.html'].includes(path.basename(src))) {
+    if (['_headers', '_redirects', 'index.html', 'netlify.toml'].includes(path.basename(src))) {
       throw new Error(message);
     }
   }
