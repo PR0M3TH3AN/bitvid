@@ -327,5 +327,56 @@
       "merged_into": null,
       "pinned": false
     }
+  ],
+  [
+    "40c00363-e5be-4ab8-a2dc-5daddcb87445",
+    {
+      "schema_version": 1,
+      "id": "40c00363-e5be-4ab8-a2dc-5daddcb87445",
+      "agent_id": "perf-agent",
+      "session_id": "session-mmb62kue",
+      "type": "batch_window",
+      "content": "Memory retrieval seed for daily :: Required startup + artifacts + memory + issue capture",
+      "summary": "Memory retrieval seed for daily :: Required startup + artifacts + memory + issue capture",
+      "tags": [
+        "scheduler",
+        "daily",
+        "retrieve"
+      ],
+      "importance": 0.4,
+      "embedding_id": null,
+      "created_at": 1772576147462,
+      "last_seen": 1772576147474,
+      "source": "scheduler-retrieve",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "a4b6773f-013d-4d25-918f-e7e1bc4739d1",
+    {
+      "schema_version": 1,
+      "id": "a4b6773f-013d-4d25-918f-e7e1bc4739d1",
+      "agent_id": "perf-agent",
+      "session_id": "session-mmb64qxh",
+      "type": "batch_window",
+      "content": "Executed perf-agent daily tasks: read baselines, created context files, ran search patterns, and drafted daily-perf-report-2026-03-03.md.",
+      "summary": "Executed perf-agent daily tasks: read baselines, created context files, ran search patterns, and drafted daily-perf-report-2026-03-03.md.",
+      "tags": [
+        "scheduler",
+        "daily",
+        "store",
+        "insight"
+      ],
+      "importance": 0.8,
+      "embedding_id": null,
+      "created_at": 1772576248662,
+      "last_seen": 1772576248662,
+      "source": "agent-output",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
   ]
 ]

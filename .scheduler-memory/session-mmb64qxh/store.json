@@ -1,0 +1,20 @@
+{
+  "cadence": "daily",
+  "operation": "store",
+  "runId": "session-mmb64qxh",
+  "servicePath": "src/services/memory/index.js#ingestEvents",
+  "inputs": {
+    "agentId": "perf-agent",
+    "promptPath": "torch/src/prompts/daily/perf-agent.md",
+    "promptIntent": "Required startup + artifacts + memory + issue capture",
+    "events": 1,
+    "sourceFile": "memory-update.md"
+  },
+  "outputs": {
+    "storedCount": 1,
+    "summaries": [
+      "Executed perf-agent daily tasks: read baselines, created context files, ran search patterns, and drafted daily-perf-report-2026-03-03.md."
+    ]
+  },
+  "status": "ok"
+}
