@@ -1,0 +1,18 @@
+{
+  "cadence": "daily",
+  "operation": "retrieve",
+  "runId": "session-mm9vknwf",
+  "servicePath": "src/services/memory/index.js#getRelevantMemories",
+  "inputs": {
+    "agentId": "deps-security-agent",
+    "promptPath": "torch/src/prompts/daily/deps-security-agent.md",
+    "promptIntent": "Deps Security Agent",
+    "query": "scheduler | daily | agent | deps-security-agent | intent | Deps Security Agent",
+    "events": 1
+  },
+  "outputs": {
+    "ingestedCount": 1,
+    "retrievedCount": 3
+  },
+  "status": "ok"
+}

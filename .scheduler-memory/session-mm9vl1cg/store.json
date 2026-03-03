@@ -1,0 +1,20 @@
+{
+  "cadence": "daily",
+  "operation": "store",
+  "runId": "session-mm9vl1cg",
+  "servicePath": "src/services/memory/index.js#ingestEvents",
+  "inputs": {
+    "agentId": "deps-security-agent",
+    "promptPath": "torch/src/prompts/daily/deps-security-agent.md",
+    "promptIntent": "Deps Security Agent",
+    "events": 1,
+    "sourceFile": "memory-update.md"
+  },
+  "outputs": {
+    "storedCount": 1,
+    "summaries": [
+      "- Initialized deps-security-agent to assess current dependencies.\n- Analyzed 5 vulnerabilities (1 moderate, 4 high).\n- Generated npm-audit and npm-outdated reports."
+    ]
+  },
+  "status": "ok"
+}
