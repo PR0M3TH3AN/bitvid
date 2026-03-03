@@ -1160,6 +1160,16 @@ function refreshRegisteredHistoryCards(video, context, pointerKeys = null) {
   });
 }
 
+/**
+ * Creates a DOM article element representing a single watch history entry.
+ *
+ * @param {Object} options
+ * @param {Object} options.item - The history item metadata (contains pointerKey, watchedAt, etc.).
+ * @param {Object} options.video - The associated video object.
+ * @param {Object} options.profile - The creator's profile object.
+ * @param {string} [options.variant] - UI variant (e.g., "compact").
+ * @returns {HTMLElement} The created article element representing the history card.
+ */
 export function buildHistoryCard({ item, video, profile, variant }) {
   const isCompact = variant === "compact" || variant === "modal";
 
@@ -1433,6 +1443,12 @@ export function buildHistoryCard({ item, video, profile, variant }) {
   return article;
 }
 
+/**
+ * Factory function that creates a stateful renderer object to manage the history grid.
+ *
+ * @param {Object} [config={}] - Overrides for DOM selectors, fetch strategies, and batch sizes.
+ * @returns {Object} An object with lifecycle methods (init, refresh, loadMore, destroy) and event handlers.
+ */
 export function createWatchHistoryRenderer(config = {}) {
   let hasLoggedFeedRegistrationFallback = false;
   const {
@@ -2594,6 +2610,12 @@ export function createWatchHistoryRenderer(config = {}) {
 
 const watchHistoryRenderer = createWatchHistoryRenderer();
 
+/**
+ * Entry point intended to be called when the watch history page/view is initialized.
+ * Attaches info popovers and initializes the default watch history renderer.
+ *
+ * @returns {Promise<void>}
+ */
 export async function initHistoryView() {
   const infoTrigger = document.getElementById("historyInfoTrigger");
   if (infoTrigger) {

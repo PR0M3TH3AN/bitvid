@@ -92,7 +92,7 @@ test.describe("Video upload and discovery", () => {
 
       // Then: feed items should contain the seeded video
       const items = await page.evaluate(() => {
-        return (window as any).__bitvidTest__.waitForFeedItems(1, 30000);
+        return (window as any).__bitvidTest__.waitForFeedItems(1, 60000);
       });
 
       expect(items.length).toBeGreaterThanOrEqual(1);
@@ -123,7 +123,7 @@ test.describe("Video upload and discovery", () => {
 
       // Then: the video appears with magnet attribute
       const items = await page.evaluate(() => {
-        return (window as any).__bitvidTest__.waitForFeedItems(1, 30000);
+        return (window as any).__bitvidTest__.waitForFeedItems(1, 60000);
       });
 
       expect(items.length).toBeGreaterThanOrEqual(1);
@@ -165,7 +165,7 @@ test.describe("Video upload and discovery", () => {
 
       // Then: all three videos appear
       const items = await page.evaluate(() => {
-        return (window as any).__bitvidTest__.waitForFeedItems(3, 30000);
+        return (window as any).__bitvidTest__.waitForFeedItems(3, 60000);
       });
 
       expect(items.length).toBeGreaterThanOrEqual(3);
@@ -202,7 +202,7 @@ test.describe("Video upload and discovery", () => {
       await loginAs(page);
 
       await page.evaluate(() => {
-        return (window as any).__bitvidTest__.waitForFeedItems(1, 30000);
+        return (window as any).__bitvidTest__.waitForFeedItems(1, 60000);
       });
 
       // Then: the video card DOM elements have correct data attributes

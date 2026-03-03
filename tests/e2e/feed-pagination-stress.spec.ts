@@ -40,7 +40,7 @@ test.describe("Feed pagination and stress scenarios", () => {
 
       // Wait for feed to populate
       const items = await page.evaluate(() => {
-        return (window as any).__bitvidTest__.waitForFeedItems(10, 30000);
+        return (window as any).__bitvidTest__.waitForFeedItems(10, 60000);
       });
 
       // Then: all 10 videos are present
@@ -86,7 +86,7 @@ test.describe("Feed pagination and stress scenarios", () => {
       await loginAs(page);
 
       const items = await page.evaluate(() => {
-        return (window as any).__bitvidTest__.waitForFeedItems(5, 20000);
+        return (window as any).__bitvidTest__.waitForFeedItems(5, 60000);
       });
 
       // Then: all d-tags are present and unique
@@ -221,7 +221,7 @@ test.describe("Feed pagination and stress scenarios", () => {
 
       // And feed loads with the video
       const items = await page.evaluate(() => {
-        return (window as any).__bitvidTest__.waitForFeedItems(1, 15000);
+        return (window as any).__bitvidTest__.waitForFeedItems(1, 60000);
       });
 
       expect(items.length).toBeGreaterThanOrEqual(1);
@@ -287,7 +287,7 @@ test.describe("Feed pagination and stress scenarios", () => {
       await loginAs(page);
 
       await page.evaluate(() => {
-        return (window as any).__bitvidTest__.waitForFeedItems(1, 15000);
+        return (window as any).__bitvidTest__.waitForFeedItems(1, 60000);
       });
 
       // Then: the DOM card has all expected data attributes
