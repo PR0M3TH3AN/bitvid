@@ -251,5 +251,107 @@
       "merged_into": null,
       "pinned": false
     }
+  ],
+  [
+    "39680acf-43a6-4b4c-ad13-c13f6f9d81cf",
+    {
+      "schema_version": 1,
+      "id": "39680acf-43a6-4b4c-ad13-c13f6f9d81cf",
+      "agent_id": "deps-security-agent",
+      "session_id": "session-mm9v3usl",
+      "type": "batch_window",
+      "content": "Memory retrieval seed for daily :: Deps Security Agent",
+      "summary": "Memory retrieval seed for daily :: Deps Security Agent",
+      "tags": [
+        "scheduler",
+        "daily",
+        "retrieve"
+      ],
+      "importance": 0.4,
+      "embedding_id": null,
+      "created_at": 1772497265061,
+      "last_seen": 1772498049290,
+      "source": "scheduler-retrieve",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "45c057da-6843-4fc8-84a3-9b377af31510",
+    {
+      "schema_version": 1,
+      "id": "45c057da-6843-4fc8-84a3-9b377af31510",
+      "agent_id": "deps-security-agent",
+      "session_id": "session-mm9v45xj",
+      "type": "batch_window",
+      "content": "- The `todo-triage-agent` successfully ran but found 0 actionable TODOs in the codebase (excluding vendor files).\n- The regex used `grep -n -E \"TODO|FIXME|XXX\" -- '*.js' '*.html' 'docs/*'` correctly filtered the files.\n- The `js/ui/profileModalContract.js` match was a string literal description, not a comment.",
+      "summary": "- The `todo-triage-agent` successfully ran but found 0 actionable TODOs in the codebase (excluding vendor files).\n- The regex used `grep -n -E \"TODO|FIXME|XXX\" -- '*.js' '*.html' 'docs/*'` correctly filtered the files.\n- The `js/ui/profileModalContract.js` match was a string lit…",
+      "tags": [
+        "scheduler",
+        "daily",
+        "store",
+        "insight"
+      ],
+      "importance": 0.8,
+      "embedding_id": null,
+      "created_at": 1772497279496,
+      "last_seen": 1772498049290,
+      "source": "agent-output",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "29a50579-4a49-4fb3-90b8-ef18ec13603d",
+    {
+      "schema_version": 1,
+      "id": "29a50579-4a49-4fb3-90b8-ef18ec13603d",
+      "agent_id": "deps-security-agent",
+      "session_id": "session-mm9vknwf",
+      "type": "batch_window",
+      "content": "Memory retrieval seed for daily :: Deps Security Agent",
+      "summary": "Memory retrieval seed for daily :: Deps Security Agent",
+      "tags": [
+        "scheduler",
+        "daily",
+        "retrieve"
+      ],
+      "importance": 0.4,
+      "embedding_id": null,
+      "created_at": 1772498049279,
+      "last_seen": 1772498049290,
+      "source": "scheduler-retrieve",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "19f39a18-fbc9-4e66-9a51-fc0fd7e04acf",
+    {
+      "schema_version": 1,
+      "id": "19f39a18-fbc9-4e66-9a51-fc0fd7e04acf",
+      "agent_id": "deps-security-agent",
+      "session_id": "session-mm9vl1cg",
+      "type": "batch_window",
+      "content": "- Initialized deps-security-agent to assess current dependencies.\n- Analyzed 5 vulnerabilities (1 moderate, 4 high).\n- Generated npm-audit and npm-outdated reports.",
+      "summary": "- Initialized deps-security-agent to assess current dependencies.\n- Analyzed 5 vulnerabilities (1 moderate, 4 high).\n- Generated npm-audit and npm-outdated reports.",
+      "tags": [
+        "scheduler",
+        "daily",
+        "store",
+        "insight"
+      ],
+      "importance": 0.8,
+      "embedding_id": null,
+      "created_at": 1772498066705,
+      "last_seen": 1772498066705,
+      "source": "agent-output",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
   ]
 ]
