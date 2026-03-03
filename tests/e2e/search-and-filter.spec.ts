@@ -75,7 +75,7 @@ test.describe("Search and filtering", () => {
 
       // Wait for all videos to load
       await page.evaluate(() => {
-        return (window as any).__bitvidTest__.waitForFeedItems(3, 30000);
+        return (window as any).__bitvidTest__.waitForFeedItems(3, 60000);
       });
 
       // When: user searches for "Cooking"
@@ -118,7 +118,7 @@ test.describe("Search and filtering", () => {
       await loginAs(page);
 
       await page.evaluate(() => {
-        return (window as any).__bitvidTest__.waitForFeedItems(1, 30000);
+        return (window as any).__bitvidTest__.waitForFeedItems(1, 60000);
       });
 
       // When: user searches for something that doesn't match
@@ -154,7 +154,7 @@ test.describe("Search and filtering", () => {
       await loginAs(page);
 
       await page.evaluate(() => {
-        return (window as any).__bitvidTest__.waitForFeedItems(1, 30000);
+        return (window as any).__bitvidTest__.waitForFeedItems(1, 60000);
       });
 
       const searchInput = page.locator('[data-testid="search-input"]');

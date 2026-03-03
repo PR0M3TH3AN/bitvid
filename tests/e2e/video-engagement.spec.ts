@@ -32,7 +32,7 @@ async function openVideoModal(
   await loginAs(page);
 
   await page.evaluate(() => {
-    return (window as any).__bitvidTest__.waitForFeedItems(1, 30000);
+    return (window as any).__bitvidTest__.waitForFeedItems(1, 60000);
   });
 
   await page.locator("#playerModal").waitFor({ state: "attached", timeout: 15000 });

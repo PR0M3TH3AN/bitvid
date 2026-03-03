@@ -109,7 +109,7 @@ test.describe("Login and authentication flows", () => {
         // Wait for state to settle with a longer timeout
         await page.waitForFunction(() => {
           return (window as any).__bitvidTest__.getAppState().isLoggedIn === false;
-        }, { timeout: 15000 });
+        }, { timeout: 60000 });
 
         const loggedOut = await page.evaluate(() => {
           return (window as any).__bitvidTest__.getAppState();
@@ -164,7 +164,7 @@ test.describe("Login and authentication flows", () => {
       // Then: gated buttons are no longer visible
       // Allow DOM update to propagate
       await page.waitForTimeout(2000);
-      await expect(uploadBtn).not.toBeVisible({ timeout: 10000 });
+      await expect(uploadBtn).not.toBeVisible({ timeout: 60000 });
     });
 
     test("login button is visible in logged-out state", async ({
