@@ -1,0 +1,114 @@
+<!-- views/dev/agent-dashboard.html -->
+<!DOCTYPE html>
+<html lang="en" data-ds="new">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dev Tools Dashboard &bull; bitvid</title>
+  </head>
+  <body>
+    <section class="bv-stack max-w-7xl mx-auto px-4 py-6">
+      <header class="card p-md">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 class="text-xl font-semibold text-text-strong">
+              TORCH Dashboard
+            </h1>
+            <p class="text-sm text-muted mt-1">
+              This Dev Tools view now embeds the canonical TORCH dashboard so it
+              stays aligned with the active TORCH system.
+            </p>
+          </div>
+          <a
+            id="openDashboardLink"
+            href="https://torch.thepr0m3th3an.net/dashboard/"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="btn btn-primary"
+          >
+            Open in New Tab
+          </a>
+        </div>
+        <p class="text-xs text-muted mt-3 mono">
+          Source:
+          <a
+            class="text-info hover:text-info-strong"
+            href="https://torch.thepr0m3th3an.net/dashboard/"
+            target="_blank"
+            rel="noopener noreferrer"
+            >torch.thepr0m3th3an.net/dashboard</a
+          >
+        </p>
+      </header>
+
+      <article class="card p-md">
+        <iframe
+          id="torchDashboardFrame"
+          title="TORCH Dashboard"
+          class="w-full rounded-md border border-border h-[80vh] max-h-[980px]"
+          loading="lazy"
+          referrerpolicy="no-referrer"
+        ></iframe>
+      </article>
+    </section>
+
+    <script type="module">
+      const DASHBOARD_BASE_URL = "https://torch.thepr0m3th3an.net/dashboard/";
+      const DEFAULT_NAMESPACE = "torch-722a667c";
+      const DEFAULT_HASHTAG = "torch-722a667c-agent-lock";
+      const DEFAULT_RELAYS = [
+        "wss://relay.damus.io",
+        "wss://nos.lol",
+        "wss://relay.primal.net",
+      ];
+
+      function readDashboardPreferences() {
+        try {
+          const raw = localStorage.getItem("torch_dashboard_prefs");
+          return raw ? JSON.parse(raw) : {};
+        } catch {
+          return {};
+        }
+      }
+
+      function normalizeString(value, fallback) {
+        const trimmed = String(value || "").trim();
+        return trimmed || fallback;
+      }
+
+      function normalizeRelays(value) {
+        const list = Array.isArray(value) ? value : [];
+        const parsed = list.map((item) => String(item || "").trim()).filter(Boolean);
+        return parsed.length > 0 ? parsed : DEFAULT_RELAYS;
+      }
+
+      function buildDashboardUrl() {
+        const prefs = readDashboardPreferences();
+
+        const namespace = normalizeString(prefs.namespace, DEFAULT_NAMESPACE);
+        const hashtag = normalizeString(
+          prefs.hashtag,
+          `${namespace}-agent-lock`
+        );
+        const relays = normalizeRelays(prefs.relays);
+
+        const url = new URL(DASHBOARD_BASE_URL);
+        url.searchParams.set("namespace", namespace);
+        url.searchParams.set("hashtag", hashtag);
+        url.searchParams.set("relays", relays.join(","));
+        return url.toString();
+      }
+
+      const dashboardUrl = buildDashboardUrl();
+      const openDashboardLink = document.getElementById("openDashboardLink");
+      const frame = document.getElementById("torchDashboardFrame");
+
+      if (openDashboardLink) {
+        openDashboardLink.href = dashboardUrl;
+      }
+      if (frame) {
+        frame.src = dashboardUrl;
+      }
+    </script>
+  </body>
+</html>
