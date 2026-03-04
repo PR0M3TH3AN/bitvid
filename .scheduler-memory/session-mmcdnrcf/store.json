@@ -1,7 +1,7 @@
 {
   "cadence": "weekly",
   "operation": "store",
-  "runId": "session-mmc8fa42",
+  "runId": "session-mmcdnrcf",
   "servicePath": "src/services/memory/index.js#ingestEvents",
   "inputs": {
     "agentId": "changelog-agent",

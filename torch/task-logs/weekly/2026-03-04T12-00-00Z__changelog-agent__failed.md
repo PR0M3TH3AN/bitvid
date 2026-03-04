@@ -13,4 +13,4 @@ Validation checks failed during run. Did not call `lock:complete`.
 `npm run test:visual`
 
 ## Reason
-Visual regression tests failed, specifically: `[visual] › tests/visual/kitchen-sink.spec.ts:41:5 › design system kitchen sink › renders default theme without regressions`. The received diff ratio was `0.014291668653924713` which exceeds the expected `0.001`.
+Visual regression tests failed during CI execution. `tests/visual/kitchen-sink.spec.ts` renders default theme without regressions failed.
