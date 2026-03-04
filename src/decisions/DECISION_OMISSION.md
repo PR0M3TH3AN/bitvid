@@ -1,0 +1,1 @@
+This file was deliberately omitted by `style-agent` as no modifications were made that necessitate decision documentation.

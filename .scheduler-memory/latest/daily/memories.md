@@ -1,15 +1,3 @@
-### 1. [2026-03-02] (scheduler, daily, retrieve)
+### 1. [2026-03-04] (scheduler, daily, retrieve)
 
-Memory retrieval seed for daily :: scheduler memory retrieval
-
----
-
-### 2. [2026-02-25] (scheduler, daily, retrieve)
-
-Memory retrieval seed for daily :: scheduler memory retrieval
-
----
-
-### 3. [2026-02-26] (scheduler, daily, retrieve)
-
-Memory retrieval seed for daily :: scheduler memory retrieval
+Memory retrieval seed for daily :: Required startup + artifacts + memory + issue capture
