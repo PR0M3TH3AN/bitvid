@@ -327,5 +327,56 @@
       "merged_into": null,
       "pinned": false
     }
+  ],
+  [
+    "106065f6-e016-48d9-bafe-d66eab8a59a6",
+    {
+      "schema_version": 1,
+      "id": "106065f6-e016-48d9-bafe-d66eab8a59a6",
+      "agent_id": "scheduler-update-agent",
+      "session_id": "session-mmcjjx8g",
+      "type": "batch_window",
+      "content": "Memory retrieval seed for daily :: Required startup + artifacts + memory + issue capture",
+      "summary": "Memory retrieval seed for daily :: Required startup + artifacts + memory + issue capture",
+      "tags": [
+        "scheduler",
+        "daily",
+        "retrieve"
+      ],
+      "importance": 0.4,
+      "embedding_id": null,
+      "created_at": 1772659257856,
+      "last_seen": 1772659257866,
+      "source": "scheduler-retrieve",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "3b7a0f9f-b870-4530-ab41-16bf826901c8",
+    {
+      "schema_version": 1,
+      "id": "3b7a0f9f-b870-4530-ab41-16bf826901c8",
+      "agent_id": "scheduler-update-agent",
+      "session_id": "session-mmcjuzsj",
+      "type": "batch_window",
+      "content": "Learnings from scheduler-update-agent run:\n- Verified that `torch/src/prompts/daily-scheduler.md`, `torch/src/prompts/weekly-scheduler.md`, and `torch/src/prompts/roster.json` are fully in sync with the prompt files on disk. No modifications were needed.\n- Emitted omission justifications for state files to `torch/src/context/` since this run resulted in no changes.",
+      "summary": "Learnings from scheduler-update-agent run:\n- Verified that `torch/src/prompts/daily-scheduler.md`, `torch/src/prompts/weekly-scheduler.md`, and `torch/src/prompts/roster.json` are fully in sync with the prompt files on disk. No modifications were needed.\n- Emitted omission justi…",
+      "tags": [
+        "scheduler",
+        "daily",
+        "store",
+        "insight"
+      ],
+      "importance": 0.8,
+      "embedding_id": null,
+      "created_at": 1772659774389,
+      "last_seen": 1772659774389,
+      "source": "agent-output",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
   ]
 ]
