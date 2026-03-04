@@ -497,6 +497,7 @@ function getFeedItems() {
 function waitForFeedItems(minCount = 1, timeoutMs = 15000) {
   return new Promise((resolve, reject) => {
     const start = Date.now();
+    const scheduleNextCheck = () => setTimeout(check, 50);
 
     function check() {
       const items = getFeedItems();
@@ -512,7 +513,7 @@ function waitForFeedItems(minCount = 1, timeoutMs = 15000) {
         );
         return;
       }
-      requestAnimationFrame(check);
+      scheduleNextCheck();
     }
 
     check();
@@ -525,6 +526,7 @@ function waitForFeedItems(minCount = 1, timeoutMs = 15000) {
 function waitForSelector(selector, timeoutMs = STANDARD_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
     const start = Date.now();
+    const scheduleNextCheck = () => setTimeout(check, 50);
 
     function check() {
       const el = document.querySelector(selector);
@@ -538,7 +540,7 @@ function waitForSelector(selector, timeoutMs = STANDARD_TIMEOUT_MS) {
         );
         return;
       }
-      requestAnimationFrame(check);
+      scheduleNextCheck();
     }
 
     check();
