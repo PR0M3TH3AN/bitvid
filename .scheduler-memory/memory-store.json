@@ -327,5 +327,56 @@
       "merged_into": null,
       "pinned": false
     }
+  ],
+  [
+    "82eecd0a-3f6a-49e2-804f-4fc677258f3a",
+    {
+      "schema_version": 1,
+      "id": "82eecd0a-3f6a-49e2-804f-4fc677258f3a",
+      "agent_id": "changelog-agent",
+      "session_id": "session-mmc86fpg",
+      "type": "batch_window",
+      "content": "Memory retrieval seed for weekly :: Required startup + artifacts + memory + issue capture",
+      "summary": "Memory retrieval seed for weekly :: Required startup + artifacts + memory + issue capture",
+      "tags": [
+        "scheduler",
+        "weekly",
+        "retrieve"
+      ],
+      "importance": 0.4,
+      "embedding_id": null,
+      "created_at": 1772640152837,
+      "last_seen": 1772640152848,
+      "source": "scheduler-retrieve",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
+  ],
+  [
+    "f241eaaa-b0ee-47ea-a6c9-f28ac21058db",
+    {
+      "schema_version": 1,
+      "id": "f241eaaa-b0ee-47ea-a6c9-f28ac21058db",
+      "agent_id": "changelog-agent",
+      "session_id": "session-mmc8fa42",
+      "type": "batch_window",
+      "content": "# Memory Update: Weekly Changelog Generation\n- Executed `git log --pretty=format:'%h %s' --since='7 days ago' origin/main`.\n- Generated draft changes and appended to `CHANGELOG.md` correctly, finding the matching format in existing file.\n- `changelog-agent` prompt requires no other outputs for this step except `CHANGELOG.md` update (if it exists) and artifact creation in `src/`.",
+      "summary": "# Memory Update: Weekly Changelog Generation\n- Executed `git log --pretty=format:'%h %s' --since='7 days ago' origin/main`.\n- Generated draft changes and appended to `CHANGELOG.md` correctly, finding the matching format in existing file.\n- `changelog-agent` prompt requires no ot…",
+      "tags": [
+        "scheduler",
+        "weekly",
+        "store",
+        "insight"
+      ],
+      "importance": 0.8,
+      "embedding_id": null,
+      "created_at": 1772640565492,
+      "last_seen": 1772640565492,
+      "source": "agent-output",
+      "ttl_days": null,
+      "merged_into": null,
+      "pinned": false
+    }
   ]
 ]

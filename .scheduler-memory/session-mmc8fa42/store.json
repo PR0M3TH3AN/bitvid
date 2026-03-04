@@ -1,0 +1,20 @@
+{
+  "cadence": "weekly",
+  "operation": "store",
+  "runId": "session-mmc8fa42",
+  "servicePath": "src/services/memory/index.js#ingestEvents",
+  "inputs": {
+    "agentId": "changelog-agent",
+    "promptPath": "torch/src/prompts/weekly/changelog-agent.md",
+    "promptIntent": "Required startup + artifacts + memory + issue capture",
+    "events": 1,
+    "sourceFile": "memory-update.md"
+  },
+  "outputs": {
+    "storedCount": 1,
+    "summaries": [
+      "# Memory Update: Weekly Changelog Generation\n- Executed `git log --pretty=format:'%h %s' --since='7 days ago' origin/main`.\n- Generated draft changes and appended to `CHANGELOG.md` correctly, finding the matching format in existing file.\n- `changelog-agent` prompt requires no ot…"
+    ]
+  },
+  "status": "ok"
+}
