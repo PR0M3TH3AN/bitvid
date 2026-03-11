@@ -163,10 +163,10 @@ async function setupDmScenario() {
     },
     nip04Encrypt: (target, plaintext) =>
       // nip04.encrypt expects string private key (hex)
-      nostrTools.nip04.encrypt(privateKeyHex, target, plaintext),
+      nostrTools.nip04.encrypt(privateKey, target, plaintext),
     nip04Decrypt: (target, ciphertext) =>
       // nip04.decrypt expects string private key (hex)
-      nostrTools.nip04.decrypt(privateKeyHex, target, ciphertext),
+      nostrTools.nip04.decrypt(privateKey, target, ciphertext),
   });
 
   const senderSigner = createSigner(senderPrivateKey, senderPubkey, senderSecret);

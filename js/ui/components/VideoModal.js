@@ -3070,6 +3070,10 @@ export class VideoModal {
     this.setEmbedEnabled(hasVideo);
   }
 
+  get commentsRoot() {
+      return this.commentsController?.commentsRoot;
+  }
+
   setCommentsVisibility(visible) {
     const commentsRoot = this.playerModal?.querySelector(
       "[data-comments-root]"
@@ -3233,7 +3237,7 @@ export class VideoModal {
   }
 
   get commentComposerDefaultHint() {
-      return this.commentsController?.DEFAULT_COMPOSER_HINT || "Add a comment...";
+      return this.commentsController?.DEFAULT_COMPOSER_HINT || "Keep it respectful and follow the community guidelines.";
   }
 
   attachAmbientGlow() {
@@ -3257,7 +3261,7 @@ export class VideoModal {
       this.modalMoreBtn,
       ({ container }) => {
         if (!this.activeVideo) {
-          container.innerHTML = "";
+          container.textContent = "";
           return;
         }
         const panel = createVideoMoreMenuPanel({
@@ -3309,7 +3313,7 @@ export class VideoModal {
       this.shareBtn,
       ({ container }) => {
         if (!this.activeVideo) {
-          container.innerHTML = "";
+          container.textContent = "";
           return;
         }
         const panel = createVideoShareMenuPanel({
@@ -3338,7 +3342,7 @@ export class VideoModal {
         // Re-render panel content if open
         const container = this.modalMoreMenuPanel.parentElement;
         if(container) {
-            container.innerHTML = "";
+            container.textContent = "";
             const panel = createVideoMoreMenuPanel({
                 document: this.document,
                 video: this.activeVideo,
