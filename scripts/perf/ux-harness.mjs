@@ -76,7 +76,7 @@ async function main() {
       version: 3,
       title: `Harness Video ${i}`,
       videoRootId: dTag,
-      mode: "dev",
+      mode: "live",
       isPrivate: false,
       deleted: false,
       url: `https://example.com/v${i}.mp4`,

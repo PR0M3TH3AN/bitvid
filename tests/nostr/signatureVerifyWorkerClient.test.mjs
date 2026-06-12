@@ -17,6 +17,7 @@ class FakeWorker {
     (this.listeners[type] ||= []).push(fn);
   }
   postMessage(msg) {
+    if (FakeWorker.silent) return; // model a hung worker that never responds
     // Respond asynchronously, echoing as valid only the ids in FakeWorker.validIds
     // (or all ids if validIds is null), to mimic real verification.
     setTimeout(() => {
@@ -25,10 +26,14 @@ class FakeWorker {
       for (const fn of this.listeners.message) fn({ data: { id: msg.id, ok: true, validIds } });
     }, 0);
   }
-  terminate() {}
+  terminate() {
+    FakeWorker.terminated += 1;
+  }
 }
 FakeWorker.instances = [];
 FakeWorker.validIds = null;
+FakeWorker.silent = false;
+FakeWorker.terminated = 0;
 
 describe("signatureVerifyWorkerClient", () => {
   let verifyEventsInWorker;
@@ -37,6 +42,8 @@ describe("signatureVerifyWorkerClient", () => {
     globalThis.Worker = FakeWorker;
     FakeWorker.instances = [];
     FakeWorker.validIds = null;
+    FakeWorker.silent = false;
+    FakeWorker.terminated = 0;
     // Fresh module each test so the singleton worker is rebuilt against FakeWorker.
     const mod = await import(`../../js/nostr/signatureVerifyWorkerClient.js?bust=${Math.random()}`);
     verifyEventsInWorker = mod.verifyEventsInWorker;
@@ -44,6 +51,23 @@ describe("signatureVerifyWorkerClient", () => {
 
   afterEach(() => {
     delete globalThis.Worker;
+  });
+
+  it("a hung worker must not hang the caller — it times out and falls back", async () => {
+    FakeWorker.silent = true; // worker never responds
+    const events = [{ id: "a".repeat(64) }, { id: "b".repeat(64) }];
+    const started = Date.now();
+    // Short timeout so the test is fast; the point is it RESOLVES, not hangs,
+    // and disables the worker so the next batch doesn't pay the timeout again.
+    const result = await verifyEventsInWorker(events, { timeoutMs: 80 });
+    assert.ok(result instanceof Set, "must resolve to a Set, not hang");
+    assert.ok(Date.now() - started < 2000, "must resolve promptly via fallback");
+    assert.ok(FakeWorker.terminated >= 1, "hung worker should be terminated/disabled");
+
+    // Subsequent call must skip the worker entirely (no new instance created).
+    const before = FakeWorker.instances.length;
+    await verifyEventsInWorker([{ id: "c".repeat(64) }], { timeoutMs: 80 });
+    assert.equal(FakeWorker.instances.length, before, "worker stays disabled after a failure");
   });
 
   it("resolves with the set of ids the worker reports valid", async () => {
