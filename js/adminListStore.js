@@ -576,6 +576,11 @@ async function fetchLatestListEvent(filter, contextLabel = "admin-list") {
           pubkey,
           dTag,
           relayUrls: relays,
+          // Force a full fetch: admin lists are replaceable events whose
+          // created_at doesn't advance, so a persisted lastSeen would gate
+          // since=lastSeen+1 and perpetually hide the current event across
+          // reloads. See tests/nostr/relayBatchFetcherReplaceable.test.mjs.
+          since: 0,
         }),
         timeoutPromise,
       ]);
