@@ -141,7 +141,13 @@ export class ConnectionManager {
     }
 
     const creation = Promise.resolve().then(() => {
-      const instance = new SimplePool();
+      // PERF (pending security decision — see PR discussion): the default
+      // SimplePool verifies every incoming event's schnorr signature on the main
+      // thread, which profiling showed costs ~1.2s of blocking CPU during feed
+      // load / tab switches (it dropped to ~16ms when skipped). Skipping trusts
+      // relays not to forge authorship. Alternatives: verify in a Web Worker, or
+      // only skip for the user's own trustedRelayURLs.
+      const instance = new SimplePool({ verifyEvent: () => true });
 
       if (typeof instance.ensureRelay === "function") {
         const originalEnsureRelay = instance.ensureRelay.bind(instance);

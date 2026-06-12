@@ -76,19 +76,27 @@ const deletedEvent = {
   })
 };
 
+// Virtualize the off-thread signature verifier: treat every seeded test event as
+// valid (the seeds are synthetic and unsigned). This isolates the buffer's
+// batching/commit logic from real schnorr verification while preserving the
+// "only valid ids are committed" contract.
+const passthroughVerify = async (events) => new Set(events.map((e) => e.id));
+const newBuffer = (client, onVideo = () => {}) =>
+  new VideoEventBuffer(client, onVideo, { verifyEvents: passthroughVerify });
+
 test('VideoEventBuffer', async (t) => {
-  await t.test('Push and Flush', () => {
+  await t.test('Push and Flush', async () => {
     const client = new MockClient();
     let onVideoCalls = [];
     const onVideo = (videos) => onVideoCalls.push(videos);
-    const buffer = new VideoEventBuffer(client, onVideo);
+    const buffer = newBuffer(client, onVideo);
 
     buffer.push(validEvent);
     assert.equal(buffer.buffer.length, 1);
     assert.notEqual(buffer.flushTimerId, null);
 
-    // Force flush
-    buffer.scheduleFlush(true);
+    // Force flush (now async: verification happens off-thread before commit)
+    await buffer.scheduleFlush(true);
     assert.equal(buffer.buffer.length, 0);
     assert.equal(client.allEvents.size, 1);
     assert.equal(client.activeMap.size, 1);
@@ -99,30 +107,30 @@ test('VideoEventBuffer', async (t) => {
     assert.equal(client.activeMap.get("root1").id, validEvent.id);
   });
 
-  await t.test('Latest Wins', () => {
+  await t.test('Latest Wins', async () => {
     const client = new MockClient();
     let onVideoCalls = [];
     const onVideo = (videos) => onVideoCalls.push(videos);
-    const buffer = new VideoEventBuffer(client, onVideo);
+    const buffer = newBuffer(client, onVideo);
 
     // Setup: activeMap has older event
     client.activeMap.set("root1", { ...validEvent, created_at: 1000, videoRootId: "root1" });
 
     buffer.push(newerEvent);
-    buffer.scheduleFlush(true); // Force flush
+    await buffer.scheduleFlush(true); // Force flush
 
     // Should update because newerEvent.created_at (2000) > 1000
     assert.equal(client.activeMap.get("root1").id, newerEvent.id);
     assert.equal(client.activeMap.get("root1").created_at, 2000);
   });
 
-  await t.test('Tombstone Handling', () => {
+  await t.test('Tombstone Handling', async () => {
       const client = new MockClient();
-      const buffer = new VideoEventBuffer(client, () => {});
+      const buffer = newBuffer(client);
 
       // Process deleted event
       buffer.push(deletedEvent);
-      buffer.scheduleFlush(true);
+      await buffer.scheduleFlush(true);
 
       // Should verify tombstone recorded
       assert.ok(client.tombstones.has("root1"));
@@ -133,26 +141,26 @@ test('VideoEventBuffer', async (t) => {
 
       // Now try pushing an older event
       buffer.push(newerEvent); // created_at 2000 < 3000
-      buffer.scheduleFlush(true);
+      await buffer.scheduleFlush(true);
 
       // Should be guarded by tombstone
       assert.ok(!client.activeMap.has("root1"));
   });
 
-  await t.test('Cleanup', () => {
+  await t.test('Cleanup', async () => {
     const client = new MockClient();
-    const buffer = new VideoEventBuffer(client, () => {});
+    const buffer = newBuffer(client);
 
     buffer.push(validEvent);
     assert.notEqual(buffer.flushTimerId, null);
 
-    buffer.cleanup();
+    await buffer.cleanup();
     assert.equal(buffer.flushTimerId, null);
     assert.equal(buffer.buffer.length, 0); // Should have flushed
     assert.equal(client.allEvents.size, 1);
   });
 
-  await t.test('Visibility Gating', () => {
+  await t.test('Visibility Gating', async () => {
     // Mock document
     const originalDocument = global.document;
     let visibilityHandler = null;
@@ -168,11 +176,11 @@ test('VideoEventBuffer', async (t) => {
       const client = new MockClient();
       let onVideoCalls = [];
       const onVideo = (videos) => onVideoCalls.push(videos);
-      const buffer = new VideoEventBuffer(client, onVideo);
+      const buffer = newBuffer(client, onVideo);
 
       // Push event while hidden
       buffer.push(validEvent);
-      buffer.scheduleFlush(true);
+      await buffer.scheduleFlush(true);
 
       // Should NOT have called onVideo yet
       assert.equal(onVideoCalls.length, 0);

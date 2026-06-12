@@ -3337,17 +3337,20 @@ export class NostrClient {
     // We collect events here instead of processing them instantly to avoid
     // 1000s of React re-renders during the initial relay dump.
     // The buffer acts as a pressure valve between the network and the UI.
-    const buffer = new VideoEventBuffer(this, onVideo);
+    // `videoEventVerifier` lets tests virtualize the off-thread signature worker;
+    // undefined in production so the buffer uses its default worker verifier.
+    const buffer = new VideoEventBuffer(this, onVideo, {
+      verifyEvents: this.videoEventVerifier,
+    });
 
     // 1) On each incoming event, just push to the buffer and schedule a flush
     sub.on("event", (event) => {
       buffer.push(event);
     });
 
-    // You can still use sub.on("eose") if needed
-    sub.on("eose", () => {
-      buffer.handleEose();
-    });
+    // You can still use sub.on("eose") if needed. Return the flush promise so
+    // callers/tests can await the (now async, off-thread-verified) commit.
+    sub.on("eose", () => buffer.handleEose());
 
     // Return the subscription object if you need to unsub manually later
     const originalUnsub =
