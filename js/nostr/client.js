@@ -3321,7 +3321,17 @@ export class NostrClient {
 
     devLogger.log("[subscribeVideos] Subscribing with filter:", filter);
 
-    const sub = this.pool.sub(this.getHealthyRelays(this.relays), [filter]);
+    // Mirror the empty-relay fallback used by the fetch paths above: if no relays
+    // are currently healthy (e.g. the initial 5s connect probe timed out on a
+    // cold first load), fall back to the default relay set instead of subscribing
+    // to ZERO relays. A zero-relay subscription silently never delivers events
+    // and never self-heals when relays reconnect in the background, which forces
+    // the user to refresh the page before the feed loads anything.
+    const healthyRelays = sanitizeRelayList(this.getHealthyRelays(this.relays));
+    const relaysToUse = healthyRelays.length
+      ? healthyRelays
+      : Array.from(DEFAULT_RELAY_URLS);
+    const sub = this.pool.sub(relaysToUse, [filter]);
 
     // BUFFERING STATE
     // We collect events here instead of processing them instantly to avoid
