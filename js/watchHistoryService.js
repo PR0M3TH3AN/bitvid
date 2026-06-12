@@ -1301,15 +1301,21 @@ async function loadLatest(actorInput, options = {}) {
   );
   refreshPromise.catch(() => {});
 
+  // Return the best available items immediately — in-memory cache, else the
+  // persisted localStorage snapshot. The in-memory caches are empty after a page
+  // reload, so without the persisted fallback the For You feed would suppress
+  // nothing until the (slow) background network refresh completes. Persisted
+  // items were previously valid; the background refresh corrects them.
+  const immediateItems = getCachedSnapshotItems(actorKey);
   devLogger.info(
     "[watchHistoryService] Returning immediately; watch history refreshing in background.",
     {
     actor: actorKey,
-    itemCount: cacheEntry?.items?.length || 0,
+    itemCount: immediateItems.length,
     }
   );
 
-  return mergeQueuedItemsIfNeeded(actorKey, cacheEntry?.items || []);
+  return mergeQueuedItemsIfNeeded(actorKey, immediateItems);
 }
 
 async function getFingerprint(actorInput) {
