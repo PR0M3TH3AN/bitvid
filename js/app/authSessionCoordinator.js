@@ -11,6 +11,7 @@
 
 import { clearDecryptionSchemeCache } from "../nostr/decryptionSchemeCache.js";
 import { clearWatchHistoryConversationKeyCache } from "../nostr/watchHistory.js";
+import watchHistoryService from "../watchHistoryService.js";
 import { FEED_TYPES } from "../constants.js";
 
 /**
@@ -418,6 +419,26 @@ export function createAuthSessionCoordinator(deps) {
         };
 
         const parallelListTasks = [];
+
+        // Eagerly warm watch history in the background on login (NOT awaited /
+        // not in parallelListTasks — the feed must never wait for it). loadLatest
+        // schedules the background refresh, which emits "fingerprint" so the For
+        // You feed re-runs (see feedCoordinator) to suppress watched videos.
+        // Without this it only loaded when For You or the history tab was opened.
+        if (
+          activePubkey &&
+          watchHistoryService &&
+          typeof watchHistoryService.loadLatest === "function"
+        ) {
+          Promise.resolve(
+            watchHistoryService.loadLatest(activePubkey, { allowStale: true }),
+          ).catch((error) => {
+            devLogger.warn(
+              "[auth] Background watch-history preload failed:",
+              error,
+            );
+          });
+        }
 
         if (
           activePubkey &&
