@@ -460,6 +460,14 @@ class AccessControl {
     return this.whitelistEnabled;
   }
 
+  // True once we have usable lists to filter with — either a completed refresh
+  // or admin state hydrated synchronously from the localStorage cache at
+  // construction. Callers use this to avoid blocking the feed on a remote
+  // refresh when cached lists already allow accurate canAccess() checks.
+  isHydrated() {
+    return this.hasLoaded === true || this._hydratedFromCache === true;
+  }
+
   isSuperAdmin(npub) {
     const normalized = normalizeNpub(npub);
     return normalized ? normalized === ADMIN_SUPER_NPUB : false;

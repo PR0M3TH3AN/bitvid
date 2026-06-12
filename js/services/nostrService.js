@@ -1556,17 +1556,17 @@ export class NostrService {
   }
 
   async ensureAccessControlReady() {
-    if (!this.accessControl || typeof this.accessControl.waitForReady !== "function") {
-      return;
-    }
-
+    const ac = this.accessControl;
+    if (!ac) return;
+    // Block on the remote admin fetch only on a first-ever cold whitelist load;
+    // else the hydrated cache is accurate, so refresh in bg (handlers re-filter).
+    const hydrated = ac.isHydrated?.() ?? ac.hasLoaded === true;
+    const block = !hydrated && (ac.whitelistMode?.() ?? false);
+    const ready = block ? ac.waitForReady : ac.ensureReady || ac.waitForReady;
     try {
-      await this.accessControl.waitForReady();
+      if (typeof ready === "function") await ready.call(ac);
     } catch (error) {
-      userLogger.warn(
-        "[nostrService] Failed to ensure access control lists are ready:",
-        error
-      );
+      userLogger.warn("[nostrService] access control ready failed:", error);
     }
   }
 
