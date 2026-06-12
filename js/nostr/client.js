@@ -42,6 +42,7 @@ import {
   resolveStoragePointerValue,
 } from "../utils/storagePointer.js";
 import { RelayBatchFetcher } from "./relayBatchFetcher.js";
+import { createPersistedPlaintextCache } from "./persistedPlaintextCache.js";
 import {
   createWatchHistoryManager,
   normalizePointerInput,
@@ -348,6 +349,13 @@ function cloneEventForCache(event) {
 
 const DM_DECRYPT_CACHE_LIMIT = 256;
 const DM_EVENT_KINDS = Object.freeze([4, 1059]);
+
+// Persisted (across reloads) cache of decrypted DM results keyed by the immutable
+// DM event id. DM events never change, so caching the decrypted result means a
+// reload re-decrypts only messages we haven't seen — skipping the (serialized,
+// slow) nip-07 extension for the rest. Stored as JSON of the decrypt result;
+// cleared on logout via clearDmDecryptCache().
+const dmPlaintextCache = createPersistedPlaintextCache("bitvid:dmDecrypted:v1", 1000);
 
 function buildDmFilters(actorPubkey, { since, until, limit } = {}) {
   const normalizedActor = normalizeActorKey(actorPubkey);
@@ -1140,6 +1148,7 @@ export class NostrClient {
     if (this.dmDecryptCache) {
       this.dmDecryptCache.clear();
     }
+    dmPlaintextCache.clear();
   }
 
   async ensureDmDecryptor() {
@@ -1350,6 +1359,20 @@ export class NostrClient {
       if (cached) {
         return cached;
       }
+      // Persisted result from a prior session — avoids re-hitting the extension
+      // to decrypt the same immutable DM on every reload.
+      const persisted = dmPlaintextCache.get(eventId);
+      if (persisted) {
+        try {
+          const parsed = JSON.parse(persisted);
+          if (parsed && parsed.ok) {
+            this.dmDecryptCache.set(eventId, parsed);
+            return parsed;
+          }
+        } catch (_) {
+          // fall through to a fresh decrypt
+        }
+      }
     }
 
     const decryptDM = await this.ensureDmDecryptor();
@@ -1368,6 +1391,11 @@ export class NostrClient {
 
     if (result?.ok && eventId) {
       this.dmDecryptCache.set(eventId, result);
+      try {
+        dmPlaintextCache.set(eventId, JSON.stringify(result));
+      } catch (_) {
+        // result not serializable — skip persisting
+      }
     }
 
     return result;
@@ -1436,6 +1464,8 @@ export class NostrClient {
         settled = true;
         if (timeoutId) clearTimeout(timeoutId);
         sub.unsub();
+        // Persist any newly-decrypted DM results once, after the batch.
+        dmPlaintextCache.flush();
         messages.sort((a, b) => (b?.timestamp || 0) - (a?.timestamp || 0));
         resolve(messages);
       };

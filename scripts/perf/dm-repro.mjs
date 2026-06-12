@@ -23,6 +23,9 @@ const PEER_SK = generateSecretKey();
 const PEER_PK = getPublicKey(PEER_SK);
 
 let extCalls = {};
+function resetExtCalls() {
+  extCalls = {};
+}
 let queue = Promise.resolve();
 function viaExtension(method, fn) {
   extCalls[method] = (extCalls[method] || 0) + 1;
@@ -83,47 +86,47 @@ async function main() {
     };
   }, relayUrl);
 
-  const page = await context.newPage();
-  const logs = [];
-  page.on("console", (m) => logs.push(`[${m.type()}] ${m.text()}`.slice(0, 300)));
-  page.on("pageerror", (e) => logs.push(`[pageerror] ${String(e).split("\n")[0]}`));
-
-  await page.goto(`${APP}/?__test__=1&__testRelays__=${encodeURIComponent(relayUrl)}`, { waitUntil: "domcontentloaded" });
-  await page.waitForFunction(() => typeof window.__bitvidTest__ === "object", { timeout: 20000 }).catch(() => {});
-  await page.evaluate((url) => window.__bitvidTest__?.setTestRelays?.([url], { persist: false }), relayUrl).catch(() => {});
-
-  // Login via fake extension.
-  try {
-    await page.click('[data-testid="login-button"]', { timeout: 8000 });
-    await page.waitForSelector('[data-testid="login-modal"]', { timeout: 8000 });
-    const extBtn = page.getByRole("button", { name: /extension|nip-?07|browser/i }).first();
-    if (await extBtn.count()) await extBtn.click({ timeout: 5000 });
-    else await page.locator('[data-testid="login-provider-button"]').first().click({ timeout: 5000 });
-  } catch (_) {}
-  await page.waitForFunction(async () => (await window.__bitvidTest__?.getAppState?.())?.isLoggedIn === true, { timeout: 15000 }).catch(() => {});
-
-  // Probe: list DMs directly via the client.
-  const result = await page.evaluate(async (userPk) => {
-    const c = window.__bitvidTest__?.nostrClient;
-    if (!c || typeof c.listDirectMessages !== "function") return { ok: false, reason: "no-listDirectMessages" };
+  async function session(label) {
+    const page = await context.newPage();
+    await page.goto(`${APP}/?__test__=1&__testRelays__=${encodeURIComponent(relayUrl)}`, { waitUntil: "domcontentloaded" });
+    await page.waitForFunction(() => typeof window.__bitvidTest__ === "object", { timeout: 20000 }).catch(() => {});
+    await page.evaluate((url) => window.__bitvidTest__?.setTestRelays?.([url], { persist: false }), relayUrl).catch(() => {});
     try {
-      const msgs = await c.listDirectMessages(userPk, { timeoutMs: 8000 });
-      return {
-        ok: true,
-        count: Array.isArray(msgs) ? msgs.length : 0,
-        sample: Array.isArray(msgs) ? msgs.slice(0, 3).map((m) => ({ ok: m?.ok, text: (m?.text || m?.content || "").slice(0, 40), from: (m?.pubkey || "").slice(0, 8) })) : null,
-      };
-    } catch (e) {
-      return { ok: false, reason: String(e).split("\n")[0] };
-    }
-  }, USER_PK);
+      await page.click('[data-testid="login-button"]', { timeout: 8000 });
+      await page.waitForSelector('[data-testid="login-modal"]', { timeout: 8000 });
+      const extBtn = page.getByRole("button", { name: /extension|nip-?07|browser/i }).first();
+      if (await extBtn.count()) await extBtn.click({ timeout: 5000 });
+      else await page.locator('[data-testid="login-provider-button"]').first().click({ timeout: 5000 });
+    } catch (_) {}
+    await page.waitForFunction(async () => (await window.__bitvidTest__?.getAppState?.())?.isLoggedIn === true, { timeout: 15000 }).catch(() => {});
+    const result = await page.evaluate(async (userPk) => {
+      const c = window.__bitvidTest__?.nostrClient;
+      if (!c || typeof c.listDirectMessages !== "function") return { ok: false, reason: "no-listDirectMessages" };
+      try {
+        const msgs = await c.listDirectMessages(userPk, { timeoutMs: 8000 });
+        return { ok: true, count: Array.isArray(msgs) ? msgs.length : 0 };
+      } catch (e) {
+        return { ok: false, reason: String(e).split("\n")[0] };
+      }
+    }, USER_PK);
+    await page.waitForTimeout(1000);
+    await page.close();
+    return result;
+  }
 
+  resetExtCalls();
+  const cold = await session("cold");
+  const coldCalls = { ...extCalls };
+  resetExtCalls();
+  const warm = await session("warm");
+  const warmCalls = { ...extCalls };
+
+  const dCold = coldCalls["nip04.decrypt"] || 0;
+  const dWarm = warmCalls["nip04.decrypt"] || 0;
   console.log("\n================ DM REPRO ================");
-  console.log(`listDirectMessages: ${JSON.stringify(result)}`);
-  console.log(`Extension calls: ${JSON.stringify(extCalls)}`);
-  const dm = logs.filter((l) => /dm|message|decrypt|permission|nip04|nip44|error|warn|fail|unavailable/i.test(l)).slice(0, 25);
-  console.log(`\nConsole (DM-related):`);
-  dm.forEach((l) => console.log("  " + l));
+  console.log(`COLD: ${JSON.stringify(cold)} | extension calls: ${JSON.stringify(coldCalls)}`);
+  console.log(`WARM: ${JSON.stringify(warm)} | extension calls: ${JSON.stringify(warmCalls)}`);
+  console.log(`nip04.decrypt: cold=${dCold} warm=${dWarm} -> persist cache ${dWarm < dCold ? "WORKS ✓" : "no effect"} (saved ${dCold - dWarm} extension calls)`);
   console.log("=========================================\n");
 
   await browser.close();

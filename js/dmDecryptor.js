@@ -558,6 +558,12 @@ async function decryptLegacyDm(event, decryptors, actorPubkey) {
     if (!normalized || seenRemotes.has(normalized)) {
       return;
     }
+    // Skip the actor's own key: a NIP-04 conversation key is derived with the
+    // *other* party, so decrypting against self is always a wasted (slow,
+    // serialized) extension round-trip.
+    if (normalizedActor && normalized === normalizedActor) {
+      return;
+    }
     seenRemotes.add(normalized);
     remoteCandidates.push(normalized);
   };
