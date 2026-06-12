@@ -213,7 +213,7 @@ function ensureDecryptCandidates(rawCandidates) {
     .filter(Boolean);
 }
 
-function orderDecryptors(candidates, hints, { preferGiftWrap = false } = {}) {
+function orderDecryptors(candidates, hints, { preferGiftWrap = false, preferLegacy = false } = {}) {
   if (!candidates.length) {
     return [];
   }
@@ -250,14 +250,14 @@ function orderDecryptors(candidates, hints, { preferGiftWrap = false } = {}) {
   };
 
   return [...candidates].sort((a, b) => {
-    if (a.priority !== b.priority) {
-      return a.priority - b.priority;
-    }
-
-    const aRank = desiredSchemeRank(a.scheme);
-    const bRank = desiredSchemeRank(b.scheme);
-    if (aRank !== bRank) {
-      return aRank - bRank;
+    // Legacy (kind 4) DMs are always NIP-04 — try nip04 candidates first so we
+    // don't burn a (serialized, slow) extension round-trip on nip44 first.
+    if (preferLegacy) {
+      const aL = a.scheme === "nip04" ? 0 : 1;
+      const bL = b.scheme === "nip04" ? 0 : 1;
+      if (aL !== bL) {
+        return aL - bL;
+      }
     }
 
     if (preferGiftWrap) {
@@ -266,6 +266,16 @@ function orderDecryptors(candidates, hints, { preferGiftWrap = false } = {}) {
       if (aWrapScore !== bWrapScore) {
         return aWrapScore - bWrapScore;
       }
+    }
+
+    if (a.priority !== b.priority) {
+      return a.priority - b.priority;
+    }
+
+    const aRank = desiredSchemeRank(a.scheme);
+    const bRank = desiredSchemeRank(b.scheme);
+    if (aRank !== bRank) {
+      return aRank - bRank;
     }
 
     return 0;
@@ -538,7 +548,7 @@ async function decryptLegacyDm(event, decryptors, actorPubkey) {
     });
   }
 
-  const ordered = orderDecryptors(decryptors, hints);
+  const ordered = orderDecryptors(decryptors, hints, { preferLegacy: true });
   const errors = [];
 
   const remoteCandidates = [];
@@ -604,28 +614,29 @@ async function decryptLegacyDm(event, decryptors, actorPubkey) {
     }
   };
 
-  const attempts = [];
+  // Try candidates sequentially and STOP at the first success. Racing every
+  // (decryptor x remote) combination in parallel looked fast, but the nip-07
+  // extension serializes calls — so racing N combinations just queued N slow
+  // extension round-trips per message (the legacy DM history was ~12 extension
+  // calls per message). With nip04 ordered first and the remote party first, the
+  // first attempt normally succeeds, so this is ~1 call per message with no
+  // worse latency-to-first-success on the serialized extension.
   for (const decryptor of ordered) {
     for (const remotePubkey of remoteCandidates) {
-      attempts.push(attemptDecryption(decryptor, remotePubkey));
+      try {
+        return await attemptDecryption(decryptor, remotePubkey);
+      } catch (failure) {
+        errors.push(failure);
+      }
     }
   }
 
-  // Race all decryption attempts to return the first successful result
-  // This significantly reduces latency compared to sequential attempts
-  try {
-    return await raceOrdered(attempts);
-  } catch (aggregateError) {
-    const aggregatedErrors = aggregateError.errors || [];
-    errors.push(...aggregatedErrors);
-
-    return buildDecryptResult({
-      ok: false,
-      event,
-      actorPubkey,
-      errors,
-    });
-  }
+  return buildDecryptResult({
+    ok: false,
+    event,
+    actorPubkey,
+    errors,
+  });
 }
 
 export async function decryptDM(event, context = {}) {
