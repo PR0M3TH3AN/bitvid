@@ -10,6 +10,7 @@
  */
 
 import { clearDecryptionSchemeCache } from "../nostr/decryptionSchemeCache.js";
+import { clearWatchHistoryConversationKeyCache } from "../nostr/watchHistory.js";
 import { FEED_TYPES } from "../constants.js";
 
 /**
@@ -881,6 +882,7 @@ export function createAuthSessionCoordinator(deps) {
       this.resetHashtagPreferencesState();
       this.resetPermissionPromptState();
       clearDecryptionSchemeCache();
+      clearWatchHistoryConversationKeyCache();
       this.updateAuthLoadingState({ profile: "idle", lists: "idle", dms: "idle" });
 
       try {
