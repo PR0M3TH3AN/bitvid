@@ -1278,7 +1278,7 @@ async function loadLatest(actorInput, options = {}) {
     return mergeQueuedItemsIfNeeded(actorKey, resolved);
   }
 
-  if (!allowStale || !hasCachedItems) {
+  if (!allowStale) {
     const resolved = await scheduleWatchHistoryRefresh(
       actorKey,
       cacheEntry,
@@ -1287,6 +1287,13 @@ async function loadLatest(actorInput, options = {}) {
     return mergeQueuedItemsIfNeeded(actorKey, resolved);
   }
 
+  // allowStale callers (e.g. the For You feed) must NEVER block on the full
+  // fetch — even on a cold load with no cache. Previously this path awaited the
+  // refresh whenever there were no cached items, so the feed froze behind the
+  // entire ~1500-item watch-history resolution. Instead, kick the refresh off in
+  // the background and return immediately with whatever is already available
+  // (cached items, else the local queue). These callers re-run when the later
+  // "fingerprint" event fires with the resolved history.
   const refreshPromise = scheduleWatchHistoryRefresh(
     actorKey,
     cacheEntry,
@@ -1295,14 +1302,14 @@ async function loadLatest(actorInput, options = {}) {
   refreshPromise.catch(() => {});
 
   devLogger.info(
-    "[watchHistoryService] Returning stale watch list items while refresh is pending.",
+    "[watchHistoryService] Returning immediately; watch history refreshing in background.",
     {
     actor: actorKey,
     itemCount: cacheEntry?.items?.length || 0,
     }
   );
 
-  return mergeQueuedItemsIfNeeded(actorKey, cacheEntry.items || []);
+  return mergeQueuedItemsIfNeeded(actorKey, cacheEntry?.items || []);
 }
 
 async function getFingerprint(actorInput) {
