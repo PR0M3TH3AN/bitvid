@@ -33,6 +33,11 @@ import {
 } from "../utils/pointerNormalization.js";
 import { pMap } from "../utils/asyncUtils.js";
 import { selectNewestListEvent } from "./listEventOrdering.js";
+import {
+  getCachedChunkPlaintext,
+  setCachedChunkPlaintext,
+  flushDecryptedChunkCache,
+} from "./watchHistoryDecryptCache.js";
 
 export { normalizePointerInput, pointerKey };
 
@@ -2042,6 +2047,11 @@ class WatchHistoryManager {
               return [];
             }
             let plaintext = looksLikeJsonStructure(ciphertext) ? ciphertext : "";
+            // Reuse a previously-decrypted plaintext for this immutable chunk
+            // event id instead of round-tripping to the nip-07 extension again.
+            if (!plaintext) {
+              plaintext = getCachedChunkPlaintext(event.id) || "";
+            }
             if (!plaintext) {
               plaintext = await decryptWatchHistoryCiphertext(
                 {
@@ -2054,6 +2064,9 @@ class WatchHistoryManager {
                 },
                 toolkitCacheRef,
               );
+              if (plaintext) {
+                setCachedChunkPlaintext(event.id, plaintext);
+              }
             }
             if (!plaintext) {
               return [];
@@ -2066,6 +2079,7 @@ class WatchHistoryManager {
           },
           { concurrency: 5 },
         );
+        flushDecryptedChunkCache();
         decryptedItems.push(...chunkResults.flat());
       } catch (error) {
         devLogger.warn("[nostr] Failed to fetch watch history chunks:", error);
@@ -2091,17 +2105,24 @@ class WatchHistoryManager {
 
       let payloadContent = ciphertext;
       if (!looksLikeJsonStructure(payloadContent) && canAttemptDecrypt) {
-        const decrypted = await decryptWatchHistoryCiphertext(
-          {
-            event,
-            ciphertext: payloadContent,
-            actorKey,
-            decryptSigner,
-            sessionPrivateKey,
-            deps: this.deps,
-          },
-          toolkitCacheRef,
-        );
+        let decrypted = getCachedChunkPlaintext(event.id) || "";
+        if (!decrypted) {
+          decrypted = await decryptWatchHistoryCiphertext(
+            {
+              event,
+              ciphertext: payloadContent,
+              actorKey,
+              decryptSigner,
+              sessionPrivateKey,
+              deps: this.deps,
+            },
+            toolkitCacheRef,
+          );
+          if (decrypted) {
+            setCachedChunkPlaintext(event.id, decrypted);
+            flushDecryptedChunkCache();
+          }
+        }
         if (decrypted) {
           payloadContent = decrypted;
         }

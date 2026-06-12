@@ -11,6 +11,7 @@
 
 import { clearDecryptionSchemeCache } from "../nostr/decryptionSchemeCache.js";
 import { clearWatchHistoryConversationKeyCache } from "../nostr/watchHistory.js";
+import { clearWatchHistoryDecryptedChunkCache } from "../nostr/watchHistoryDecryptCache.js";
 import watchHistoryService from "../watchHistoryService.js";
 import { FEED_TYPES } from "../constants.js";
 
@@ -420,11 +421,9 @@ export function createAuthSessionCoordinator(deps) {
 
         const parallelListTasks = [];
 
-        // Eagerly warm watch history in the background on login (NOT awaited /
-        // not in parallelListTasks — the feed must never wait for it). loadLatest
-        // schedules the background refresh, which emits "fingerprint" so the For
-        // You feed re-runs (see feedCoordinator) to suppress watched videos.
-        // Without this it only loaded when For You or the history tab was opened.
+        // Eagerly warm watch history in the background on login (NOT awaited).
+        // loadLatest schedules the refresh, which emits "fingerprint" so the For
+        // You feed re-runs (feedCoordinator) to suppress watched videos.
         if (
           activePubkey &&
           watchHistoryService &&
@@ -904,6 +903,7 @@ export function createAuthSessionCoordinator(deps) {
       this.resetPermissionPromptState();
       clearDecryptionSchemeCache();
       clearWatchHistoryConversationKeyCache();
+      clearWatchHistoryDecryptedChunkCache();
       this.updateAuthLoadingState({ profile: "idle", lists: "idle", dms: "idle" });
 
       try {
