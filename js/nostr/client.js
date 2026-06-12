@@ -577,6 +577,8 @@ export class NostrClient {
       },
     });
     this.dmDecryptCache = new LRUCache({ maxSize: DM_DECRYPT_CACHE_LIMIT });
+    // event id -> in-flight decrypt promise (coalesces concurrent decrypts).
+    this.dmDecryptInFlight = new Map();
     this.dmDecryptor = null;
     this.dmDecryptorPromise = null;
     this.isInitialized = false;
@@ -1373,32 +1375,53 @@ export class NostrClient {
           // fall through to a fresh decrypt
         }
       }
-    }
-
-    const decryptDM = await this.ensureDmDecryptor();
-    const context = await this.buildDmDecryptContext(actorPubkey);
-
-    let result;
-    try {
-      result = await decryptDM(event, context);
-    } catch (error) {
-      devLogger.warn("[nostr] DM decryptor threw unexpectedly.", {
-        error: sanitizeDecryptError(error),
-        event: summarizeDmEventForLog(event),
-      });
-      throw error;
-    }
-
-    if (result?.ok && eventId) {
-      this.dmDecryptCache.set(eventId, result);
-      try {
-        dmPlaintextCache.set(eventId, JSON.stringify(result));
-      } catch (_) {
-        // result not serializable — skip persisting
+      // Coalesce concurrent decrypts of the SAME event. Multiple subscribers
+      // (history list, notifications) often process an event at once; without
+      // this they each hit the (serialized, slow) extension before the cache
+      // fills, multiplying extension round-trips per message.
+      const inFlight = this.dmDecryptInFlight.get(eventId);
+      if (inFlight) {
+        return inFlight;
       }
     }
 
-    return result;
+    const decryptPromise = (async () => {
+      const decryptDM = await this.ensureDmDecryptor();
+      const context = await this.buildDmDecryptContext(actorPubkey);
+
+      let result;
+      try {
+        result = await decryptDM(event, context);
+      } catch (error) {
+        devLogger.warn("[nostr] DM decryptor threw unexpectedly.", {
+          error: sanitizeDecryptError(error),
+          event: summarizeDmEventForLog(event),
+        });
+        throw error;
+      }
+
+      if (result?.ok && eventId) {
+        this.dmDecryptCache.set(eventId, result);
+        try {
+          dmPlaintextCache.set(eventId, JSON.stringify(result));
+        } catch (_) {
+          // result not serializable — skip persisting
+        }
+      }
+
+      return result;
+    })();
+
+    if (eventId) {
+      this.dmDecryptInFlight.set(eventId, decryptPromise);
+    }
+    try {
+      return await decryptPromise;
+    } finally {
+      if (eventId) {
+        this.dmDecryptInFlight.delete(eventId);
+      }
+    }
   }
 
   /**
