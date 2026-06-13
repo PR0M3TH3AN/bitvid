@@ -3766,6 +3766,15 @@ class Application {
   }
 
   /**
+   * Subscribe the For You feed to background watch-history resolution so it
+   * re-runs (suppressing watched videos, applying tags) once history loads.
+   */
+  subscribeWatchHistoryFeedRefresh(...args) {
+    this._initCoordinators();
+    return this._feed.subscribeWatchHistoryFeedRefresh(...args);
+  }
+
+  /**
    * Register the "kids" feed pipeline.
    */
   registerKidsFeed(...args) {

@@ -1271,6 +1271,45 @@ export function createFeedCoordinator(deps) {
       return this.feedTelemetryState?.activeFeed === FEED_TYPES.FOR_YOU;
     },
 
+    // Watch history loads in the background (the For You feed no longer blocks on
+    // it). When a refresh resolves and emits "fingerprint", re-run the For You
+    // feed so newly-resolved watched videos are suppressed and watch-history tags
+    // are applied. Debounced and gated to when the For You feed is active.
+    subscribeWatchHistoryFeedRefresh() {
+      if (
+        this._watchHistoryFeedUnsub ||
+        !watchHistoryService ||
+        typeof watchHistoryService.subscribe !== "function"
+      ) {
+        return;
+      }
+      let debounceId = null;
+      this._watchHistoryFeedUnsub = watchHistoryService.subscribe(
+        "fingerprint",
+        () => {
+          if (!this.isForYouFeedActive()) {
+            return;
+          }
+          if (debounceId) {
+            clearTimeout(debounceId);
+          }
+          debounceId = setTimeout(() => {
+            debounceId = null;
+            Promise.resolve(
+              this.refreshFeed(FEED_TYPES.FOR_YOU, {
+                reason: "watch-history-resolved",
+              }),
+            ).catch((error) => {
+              devLogger.warn(
+                "[feedCoordinator] Failed to refresh For You after watch-history update:",
+                error,
+              );
+            });
+          }, 400);
+        },
+      );
+    },
+
     updateFeedTelemetryMetadata(feedName = "", items = [], metadata = {}) {
       if (!this.isFeedActive(feedName)) {
         return;

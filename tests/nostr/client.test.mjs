@@ -33,6 +33,10 @@ describe("NostrClient", () => {
     client.pool = mockPool;
     client.isInitialized = true; // Skip init network calls
     client.relays = ["wss://relay.example.com"];
+    // Virtualize the off-thread signature verifier: synthetic test events are
+    // unsigned, so treat all as valid (the real verifier would correctly drop
+    // them). Production keeps the default worker verifier.
+    client.videoEventVerifier = async (events) => new Set(events.map((e) => e.id));
   });
 
   afterEach(() => {

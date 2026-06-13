@@ -33,6 +33,11 @@ import {
 } from "../utils/pointerNormalization.js";
 import { pMap } from "../utils/asyncUtils.js";
 import { selectNewestListEvent } from "./listEventOrdering.js";
+import {
+  getCachedChunkPlaintext,
+  setCachedChunkPlaintext,
+  flushDecryptedChunkCache,
+} from "./watchHistoryDecryptCache.js";
 
 export { normalizePointerInput, pointerKey };
 
@@ -483,6 +488,25 @@ function hexToBytesCompat(hex, tools = null) {
   return bytes;
 }
 
+// Memoizes NIP-44 conversation keys across an entire load. Deriving a
+// conversation key is an ECDH operation (~12ms each in-bundle); without this
+// cache the watch-history decrypt path re-derived the *same* key once per
+// encrypted chunk (~150x for a full 1,500-item history), synchronously blocking
+// the main thread for seconds. The key depends only on (scheme, privateKey,
+// target), so it is safe to compute once and reuse. Cleared on logout alongside
+// the decryption-scheme cache.
+//
+// @type {Map<string, unknown>}
+const conversationKeyCache = new Map();
+
+/**
+ * Clear all memoized NIP-44 conversation keys. Must be called on logout/identity
+ * change so a derived shared secret never outlives its session.
+ */
+export function clearWatchHistoryConversationKeyCache() {
+  conversationKeyCache.clear();
+}
+
 function createNip44CipherSuite(tools, privateKeyHex, targetPubkeyHex) {
   if (!tools || !privateKeyHex || !targetPubkeyHex) {
     return null;
@@ -516,10 +540,12 @@ function createNip44CipherSuite(tools, privateKeyHex, targetPubkeyHex) {
     typeof nip44v2.decrypt === "function" &&
     typeof nip44v2?.utils?.getConversationKey === "function"
   ) {
-    let cachedKey = null;
+    const v2CacheKey = `v2:${normalizedPrivateKey}:${normalizedTarget}`;
     const ensureKey = () => {
+      let cachedKey = conversationKeyCache.get(v2CacheKey);
       if (!cachedKey) {
         cachedKey = nip44v2.utils.getConversationKey(privateKeyBytes, normalizedTarget);
+        conversationKeyCache.set(v2CacheKey, cachedKey);
       }
       return cachedKey;
     };
@@ -544,10 +570,12 @@ function createNip44CipherSuite(tools, privateKeyHex, targetPubkeyHex) {
     typeof nip44?.decrypt === "function" &&
     typeof legacyGetConversationKey === "function"
   ) {
-    let cachedKey = null;
+    const legacyCacheKey = `legacy:${normalizedPrivateKey}:${normalizedTarget}`;
     const ensureLegacyKey = () => {
+      let cachedKey = conversationKeyCache.get(legacyCacheKey);
       if (!cachedKey) {
         cachedKey = legacyGetConversationKey(privateKeyBytes, normalizedTarget);
+        conversationKeyCache.set(legacyCacheKey, cachedKey);
       }
       return cachedKey;
     };
@@ -2019,6 +2047,11 @@ class WatchHistoryManager {
               return [];
             }
             let plaintext = looksLikeJsonStructure(ciphertext) ? ciphertext : "";
+            // Reuse a previously-decrypted plaintext for this immutable chunk
+            // event id instead of round-tripping to the nip-07 extension again.
+            if (!plaintext) {
+              plaintext = getCachedChunkPlaintext(event.id) || "";
+            }
             if (!plaintext) {
               plaintext = await decryptWatchHistoryCiphertext(
                 {
@@ -2031,6 +2064,9 @@ class WatchHistoryManager {
                 },
                 toolkitCacheRef,
               );
+              if (plaintext) {
+                setCachedChunkPlaintext(event.id, plaintext);
+              }
             }
             if (!plaintext) {
               return [];
@@ -2043,6 +2079,7 @@ class WatchHistoryManager {
           },
           { concurrency: 5 },
         );
+        flushDecryptedChunkCache();
         decryptedItems.push(...chunkResults.flat());
       } catch (error) {
         devLogger.warn("[nostr] Failed to fetch watch history chunks:", error);
@@ -2068,17 +2105,24 @@ class WatchHistoryManager {
 
       let payloadContent = ciphertext;
       if (!looksLikeJsonStructure(payloadContent) && canAttemptDecrypt) {
-        const decrypted = await decryptWatchHistoryCiphertext(
-          {
-            event,
-            ciphertext: payloadContent,
-            actorKey,
-            decryptSigner,
-            sessionPrivateKey,
-            deps: this.deps,
-          },
-          toolkitCacheRef,
-        );
+        let decrypted = getCachedChunkPlaintext(event.id) || "";
+        if (!decrypted) {
+          decrypted = await decryptWatchHistoryCiphertext(
+            {
+              event,
+              ciphertext: payloadContent,
+              actorKey,
+              decryptSigner,
+              sessionPrivateKey,
+              deps: this.deps,
+            },
+            toolkitCacheRef,
+          );
+          if (decrypted) {
+            setCachedChunkPlaintext(event.id, decrypted);
+            flushDecryptedChunkCache();
+          }
+        }
         if (decrypted) {
           payloadContent = decrypted;
         }
@@ -2329,4 +2373,5 @@ export const watchHistoryHelpers = {
   serializeWatchHistoryItems,
   computeWatchHistoryFingerprintForItems,
   extractPointerItemsFromEvent,
+  createNip44CipherSuite,
 };

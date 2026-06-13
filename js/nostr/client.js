@@ -42,6 +42,7 @@ import {
   resolveStoragePointerValue,
 } from "../utils/storagePointer.js";
 import { RelayBatchFetcher } from "./relayBatchFetcher.js";
+import { createPersistedPlaintextCache } from "./persistedPlaintextCache.js";
 import {
   createWatchHistoryManager,
   normalizePointerInput,
@@ -349,6 +350,13 @@ function cloneEventForCache(event) {
 const DM_DECRYPT_CACHE_LIMIT = 256;
 const DM_EVENT_KINDS = Object.freeze([4, 1059]);
 
+// Persisted (across reloads) cache of decrypted DM results keyed by the immutable
+// DM event id. DM events never change, so caching the decrypted result means a
+// reload re-decrypts only messages we haven't seen — skipping the (serialized,
+// slow) nip-07 extension for the rest. Stored as JSON of the decrypt result;
+// cleared on logout via clearDmDecryptCache().
+const dmPlaintextCache = createPersistedPlaintextCache("bitvid:dmDecrypted:v1", 1000);
+
 function buildDmFilters(actorPubkey, { since, until, limit } = {}) {
   const normalizedActor = normalizeActorKey(actorPubkey);
   const filters = [];
@@ -569,6 +577,8 @@ export class NostrClient {
       },
     });
     this.dmDecryptCache = new LRUCache({ maxSize: DM_DECRYPT_CACHE_LIMIT });
+    // event id -> in-flight decrypt promise (coalesces concurrent decrypts).
+    this.dmDecryptInFlight = new Map();
     this.dmDecryptor = null;
     this.dmDecryptorPromise = null;
     this.isInitialized = false;
@@ -1140,6 +1150,7 @@ export class NostrClient {
     if (this.dmDecryptCache) {
       this.dmDecryptCache.clear();
     }
+    dmPlaintextCache.clear();
   }
 
   async ensureDmDecryptor() {
@@ -1350,27 +1361,67 @@ export class NostrClient {
       if (cached) {
         return cached;
       }
+      // Persisted result from a prior session — avoids re-hitting the extension
+      // to decrypt the same immutable DM on every reload.
+      const persisted = dmPlaintextCache.get(eventId);
+      if (persisted) {
+        try {
+          const parsed = JSON.parse(persisted);
+          if (parsed && parsed.ok) {
+            this.dmDecryptCache.set(eventId, parsed);
+            return parsed;
+          }
+        } catch (_) {
+          // fall through to a fresh decrypt
+        }
+      }
+      // Coalesce concurrent decrypts of the SAME event. Multiple subscribers
+      // (history list, notifications) often process an event at once; without
+      // this they each hit the (serialized, slow) extension before the cache
+      // fills, multiplying extension round-trips per message.
+      const inFlight = this.dmDecryptInFlight.get(eventId);
+      if (inFlight) {
+        return inFlight;
+      }
     }
 
-    const decryptDM = await this.ensureDmDecryptor();
-    const context = await this.buildDmDecryptContext(actorPubkey);
+    const decryptPromise = (async () => {
+      const decryptDM = await this.ensureDmDecryptor();
+      const context = await this.buildDmDecryptContext(actorPubkey);
 
-    let result;
+      let result;
+      try {
+        result = await decryptDM(event, context);
+      } catch (error) {
+        devLogger.warn("[nostr] DM decryptor threw unexpectedly.", {
+          error: sanitizeDecryptError(error),
+          event: summarizeDmEventForLog(event),
+        });
+        throw error;
+      }
+
+      if (result?.ok && eventId) {
+        this.dmDecryptCache.set(eventId, result);
+        try {
+          dmPlaintextCache.set(eventId, JSON.stringify(result));
+        } catch (_) {
+          // result not serializable — skip persisting
+        }
+      }
+
+      return result;
+    })();
+
+    if (eventId) {
+      this.dmDecryptInFlight.set(eventId, decryptPromise);
+    }
     try {
-      result = await decryptDM(event, context);
-    } catch (error) {
-      devLogger.warn("[nostr] DM decryptor threw unexpectedly.", {
-        error: sanitizeDecryptError(error),
-        event: summarizeDmEventForLog(event),
-      });
-      throw error;
+      return await decryptPromise;
+    } finally {
+      if (eventId) {
+        this.dmDecryptInFlight.delete(eventId);
+      }
     }
-
-    if (result?.ok && eventId) {
-      this.dmDecryptCache.set(eventId, result);
-    }
-
-    return result;
   }
 
   /**
@@ -1436,6 +1487,8 @@ export class NostrClient {
         settled = true;
         if (timeoutId) clearTimeout(timeoutId);
         sub.unsub();
+        // Persist any newly-decrypted DM results once, after the batch.
+        dmPlaintextCache.flush();
         messages.sort((a, b) => (b?.timestamp || 0) - (a?.timestamp || 0));
         resolve(messages);
       };
@@ -3321,23 +3374,36 @@ export class NostrClient {
 
     devLogger.log("[subscribeVideos] Subscribing with filter:", filter);
 
-    const sub = this.pool.sub(this.getHealthyRelays(this.relays), [filter]);
+    // Mirror the empty-relay fallback used by the fetch paths above: if no relays
+    // are currently healthy (e.g. the initial 5s connect probe timed out on a
+    // cold first load), fall back to the default relay set instead of subscribing
+    // to ZERO relays. A zero-relay subscription silently never delivers events
+    // and never self-heals when relays reconnect in the background, which forces
+    // the user to refresh the page before the feed loads anything.
+    const healthyRelays = sanitizeRelayList(this.getHealthyRelays(this.relays));
+    const relaysToUse = healthyRelays.length
+      ? healthyRelays
+      : Array.from(DEFAULT_RELAY_URLS);
+    const sub = this.pool.sub(relaysToUse, [filter]);
 
     // BUFFERING STATE
     // We collect events here instead of processing them instantly to avoid
     // 1000s of React re-renders during the initial relay dump.
     // The buffer acts as a pressure valve between the network and the UI.
-    const buffer = new VideoEventBuffer(this, onVideo);
+    // `videoEventVerifier` lets tests virtualize the off-thread signature worker;
+    // undefined in production so the buffer uses its default worker verifier.
+    const buffer = new VideoEventBuffer(this, onVideo, {
+      verifyEvents: this.videoEventVerifier,
+    });
 
     // 1) On each incoming event, just push to the buffer and schedule a flush
     sub.on("event", (event) => {
       buffer.push(event);
     });
 
-    // You can still use sub.on("eose") if needed
-    sub.on("eose", () => {
-      buffer.handleEose();
-    });
+    // You can still use sub.on("eose") if needed. Return the flush promise so
+    // callers/tests can await the (now async, off-thread-verified) commit.
+    sub.on("eose", () => buffer.handleEose());
 
     // Return the subscription object if you need to unsub manually later
     const originalUnsub =

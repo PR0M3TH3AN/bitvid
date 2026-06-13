@@ -275,6 +275,8 @@ export default class ApplicationBootstrap {
     app.registerExploreFeed();
     app.registerSubscriptionsFeed();
     app.registerWatchHistoryFeed();
+    // Re-run the For You feed when background watch-history resolution completes.
+    app.subscribeWatchHistoryFeedRefresh();
 
     app.watchHistoryController = new WatchHistoryController({
       watchHistoryService,

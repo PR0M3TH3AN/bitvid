@@ -6,6 +6,7 @@ import { NostrService } from "../js/services/nostrService.js";
 await (async function testDeleteFlowPublishesDeletionFlag() {
   localStorage.clear();
   const client = new NostrClient();
+  client.videoEventVerifier = async (events) => new Set(events.map((e) => e.id));
   client.hydrateVideoHistory = async () => {};
 
   const pubkey = "0000000000000000000000000000000000000000000000000000000000000001";
@@ -219,7 +220,7 @@ await (async function testDeleteFlowPublishesDeletionFlag() {
 
   handlers.event(deleteEvent);
   if (typeof handlers.eose === "function") {
-    handlers.eose();
+    await handlers.eose();
   }
 
   assert.equal(
@@ -246,6 +247,7 @@ await (async function testDeleteFlowPublishesDeletionFlag() {
 await (async function testTombstonePersistenceAcrossSaveRestore() {
   localStorage.clear();
   const client = new NostrClient();
+  client.videoEventVerifier = async (events) => new Set(events.map((e) => e.id));
   const videoRootId = "root-persist";
   const activeKey = `ROOT:${videoRootId}`;
 
@@ -272,6 +274,7 @@ await (async function testTombstonePersistenceAcrossSaveRestore() {
   await client.saveLocalData("test", { immediate: true });
 
   const restored = new NostrClient();
+  restored.videoEventVerifier = async (events) => new Set(events.map((e) => e.id));
   await restored.restoreLocalData();
 
   assert.equal(
@@ -292,6 +295,7 @@ await (async function testTombstonePersistenceAcrossSaveRestore() {
 await (async function testSubscribeVideosSkipsOlderThanTombstone() {
   localStorage.clear();
   const client = new NostrClient();
+  client.videoEventVerifier = async (events) => new Set(events.map((e) => e.id));
   client.populateNip71MetadataForVideos = async () => {};
 
   const seenUpdates = [];
@@ -342,7 +346,7 @@ await (async function testSubscribeVideosSkipsOlderThanTombstone() {
 
   handlers.event(deleteEvent);
   if (typeof handlers.eose === "function") {
-    handlers.eose();
+    await handlers.eose();
   }
 
   const activeKey = `ROOT:${videoRootId}`;
@@ -377,7 +381,7 @@ await (async function testSubscribeVideosSkipsOlderThanTombstone() {
 
   handlers.event(olderEvent);
   if (typeof handlers.eose === "function") {
-    handlers.eose();
+    await handlers.eose();
   }
 
   assert.equal(

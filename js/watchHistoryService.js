@@ -663,6 +663,7 @@ async function updateFingerprintCache(actorKey, items) {
     items
   );
   const entry = state.fingerprintCache.get(actorKey) || {};
+  const previousFingerprint = entry.fingerprint;
   const nextEntry = {
     ...entry,
     items: Array.isArray(items) ? items : [],
@@ -671,7 +672,17 @@ async function updateFingerprintCache(actorKey, items) {
   };
   delete nextEntry.promise;
   state.fingerprintCache.set(actorKey, nextEntry);
-  emit("fingerprint", { actor: actorKey, fingerprint, items: nextEntry.items });
+  // Only emit when the fingerprint actually CHANGED. Emitting unconditionally
+  // created an infinite loop: the For You feed listens for "fingerprint" and
+  // re-runs refreshFeed -> loadLatest -> updateFingerprintCache -> emit, which
+  // pegged the CPU with a full feed rebuild every ~400ms.
+  if (fingerprint !== previousFingerprint) {
+    emit("fingerprint", {
+      actor: actorKey,
+      fingerprint,
+      items: nextEntry.items,
+    });
+  }
   return fingerprint;
 }
 
@@ -1278,7 +1289,7 @@ async function loadLatest(actorInput, options = {}) {
     return mergeQueuedItemsIfNeeded(actorKey, resolved);
   }
 
-  if (!allowStale || !hasCachedItems) {
+  if (!allowStale) {
     const resolved = await scheduleWatchHistoryRefresh(
       actorKey,
       cacheEntry,
@@ -1287,6 +1298,13 @@ async function loadLatest(actorInput, options = {}) {
     return mergeQueuedItemsIfNeeded(actorKey, resolved);
   }
 
+  // allowStale callers (e.g. the For You feed) must NEVER block on the full
+  // fetch — even on a cold load with no cache. Previously this path awaited the
+  // refresh whenever there were no cached items, so the feed froze behind the
+  // entire ~1500-item watch-history resolution. Instead, kick the refresh off in
+  // the background and return immediately with whatever is already available
+  // (cached items, else the local queue). These callers re-run when the later
+  // "fingerprint" event fires with the resolved history.
   const refreshPromise = scheduleWatchHistoryRefresh(
     actorKey,
     cacheEntry,
@@ -1294,15 +1312,21 @@ async function loadLatest(actorInput, options = {}) {
   );
   refreshPromise.catch(() => {});
 
+  // Return the best available items immediately — in-memory cache, else the
+  // persisted localStorage snapshot. The in-memory caches are empty after a page
+  // reload, so without the persisted fallback the For You feed would suppress
+  // nothing until the (slow) background network refresh completes. Persisted
+  // items were previously valid; the background refresh corrects them.
+  const immediateItems = getCachedSnapshotItems(actorKey);
   devLogger.info(
-    "[watchHistoryService] Returning stale watch list items while refresh is pending.",
+    "[watchHistoryService] Returning immediately; watch history refreshing in background.",
     {
     actor: actorKey,
-    itemCount: cacheEntry?.items?.length || 0,
+    itemCount: immediateItems.length,
     }
   );
 
-  return mergeQueuedItemsIfNeeded(actorKey, cacheEntry.items || []);
+  return mergeQueuedItemsIfNeeded(actorKey, immediateItems);
 }
 
 async function getFingerprint(actorInput) {
@@ -1324,13 +1348,16 @@ async function getFingerprint(actorInput) {
   }
   const fingerprint = await nostrClient.getWatchHistoryFingerprint(actorKey);
   const ttl = Math.max(0, Number(WATCH_HISTORY_CACHE_TTL_MS) || 0);
+  const previousFingerprint = cacheEntry?.fingerprint;
   const nextEntry = {
     ...(cacheEntry || {}),
     fingerprint,
     expiresAt: now + ttl,
   };
   state.fingerprintCache.set(actorKey, nextEntry);
-  emit("fingerprint", { actor: actorKey, fingerprint });
+  if (fingerprint !== previousFingerprint) {
+    emit("fingerprint", { actor: actorKey, fingerprint });
+  }
   return fingerprint;
 }
 

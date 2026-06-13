@@ -9,18 +9,34 @@ import { isDevMode } from "../config.js";
 import { devLogger, userLogger } from "../utils/logger.js";
 import { convertEventToVideo } from "./nip71.js";
 
+// Default: trust relays for the public video feed (no per-event signature
+// verification). Verifying every feed event off-thread proved fragile (it could
+// hang/blank the feed and added load latency), so it is opt-in: pass a
+// `verifyEvents` function (e.g. verifyEventsInWorker) to re-enable it.
+const trustAllVerifier = (events) =>
+  Promise.resolve(new Set((events || []).map((e) => e && e.id).filter(Boolean)));
+
 export class VideoEventBuffer {
   /**
    * @param {import("./client.js").NostrClient} client - The parent client instance (for state access).
    * @param {function(object[]): void} onVideo - The UI callback to fire with batched updates.
+   * @param {{ verifyEvents?: (events: object[]) => Promise<Set<string>> }} [options]
+   *   Optional signature verifier (returns the set of valid event ids). Defaults
+   *   to trusting relays (no verification) for the public feed.
    */
-  constructor(client, onVideo) {
+  constructor(client, onVideo, options = {}) {
     this.client = client;
     this.onVideo = onVideo;
     this.buffer = [];
     this.invalidEvents = [];
     this.flushTimerId = null;
     this.FLUSH_DEBOUNCE_MS = 75;
+    this._verifyEvents =
+      typeof options.verifyEvents === "function"
+        ? options.verifyEvents
+        : trustAllVerifier;
+    // Tracks the in-flight verify+commit so callers/tests can await a flush.
+    this._flushPromise = Promise.resolve();
 
     // Buffer updates while hidden to avoid UI thrashing
     this.pendingVideos = [];
@@ -48,21 +64,21 @@ export class VideoEventBuffer {
   scheduleFlush(immediate = false) {
     if (this.flushTimerId) {
       if (!immediate) {
-        return;
+        return this._flushPromise;
       }
       clearTimeout(this.flushTimerId);
       this.flushTimerId = null;
     }
 
     if (immediate) {
-      this.flush();
-      return;
+      return this.flush();
     }
 
     this.flushTimerId = setTimeout(() => {
       this.flushTimerId = null;
       this.flush();
     }, this.FLUSH_DEBOUNCE_MS);
+    return this._flushPromise;
   }
 
   /**
@@ -83,6 +99,40 @@ export class VideoEventBuffer {
 
     const toProcess = this.buffer;
     this.buffer = [];
+    // The relay pool no longer verifies signatures on the main thread (that cost
+    // ~1.2s during feed load). Verify this batch off-thread and commit only the
+    // events that pass; fail closed (drop the batch) on total verification
+    // failure rather than rendering unverified content. Returns the in-flight
+    // promise so callers/tests can await commit completion.
+    this._flushPromise = this._verifyAndCommit(toProcess);
+    return this._flushPromise;
+  }
+
+  async _verifyAndCommit(toProcess) {
+    let verified;
+    try {
+      const validIds = await this._verifyEvents(toProcess);
+      verified = toProcess.filter((evt) => evt && evt.id && validIds.has(evt.id));
+      const dropped = toProcess.length - verified.length;
+      if (dropped > 0) {
+        devLogger.warn(
+          `[VideoEventBuffer] Dropped ${dropped} event(s) with invalid/unverifiable signatures.`,
+        );
+      }
+    } catch (error) {
+      devLogger.error(
+        "[VideoEventBuffer] Signature verification failed; dropping batch:",
+        error,
+      );
+      return;
+    }
+    if (!verified.length) {
+      return;
+    }
+    this._commitVerifiedBatch(verified);
+  }
+
+  _commitVerifiedBatch(toProcess) {
     const updatedVideos = [];
 
     for (const evt of toProcess) {
@@ -198,7 +248,7 @@ export class VideoEventBuffer {
     devLogger.log(
       "[subscribeVideos] Reached EOSE for all relays (historical load done)"
     );
-    this.scheduleFlush(true);
+    return this.scheduleFlush(true);
   }
 
   /**
@@ -214,6 +264,6 @@ export class VideoEventBuffer {
       document.removeEventListener("visibilitychange", this.handleVisibilityChange);
     }
     // Ensure any straggling events are flushed before tearing down.
-    this.flush();
+    return this.flush();
   }
 }

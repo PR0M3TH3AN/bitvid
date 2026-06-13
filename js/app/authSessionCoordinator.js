@@ -10,6 +10,8 @@
  */
 
 import { clearDecryptionSchemeCache } from "../nostr/decryptionSchemeCache.js";
+import { clearWatchHistoryConversationKeyCache } from "../nostr/watchHistory.js";
+import { clearWatchHistoryDecryptedChunkCache } from "../nostr/watchHistoryDecryptCache.js";
 import { FEED_TYPES } from "../constants.js";
 
 /**
@@ -489,6 +491,14 @@ export function createAuthSessionCoordinator(deps) {
         }
 
         const taskOutcomes = await Promise.all(parallelListTasks);
+
+        // NOTE: watch history is intentionally NOT eagerly preloaded on login.
+        // A cold watch history is ~150+ serialized nip-07 decrypts; preloading it
+        // here (even after the lists) saturated the extension and starved the
+        // profile modal's hashtag/subscription/DM loads. It now loads lazily when
+        // the For You feed or History view is opened. Re-enable an eager preload
+        // only once the cold-load decrypt cost is reduced (see task: ~180 calls).
+
         const requiredTaskOutcomes = taskOutcomes.filter((outcome) =>
           ["blocks", "subscriptions", "hashtags"].includes(outcome.name),
         );
@@ -881,6 +891,8 @@ export function createAuthSessionCoordinator(deps) {
       this.resetHashtagPreferencesState();
       this.resetPermissionPromptState();
       clearDecryptionSchemeCache();
+      clearWatchHistoryConversationKeyCache();
+      clearWatchHistoryDecryptedChunkCache();
       this.updateAuthLoadingState({ profile: "idle", lists: "idle", dms: "idle" });
 
       try {
