@@ -421,24 +421,6 @@ export function createAuthSessionCoordinator(deps) {
 
         const parallelListTasks = [];
 
-        // Eagerly warm watch history in the background on login (NOT awaited).
-        // loadLatest schedules the refresh, which emits "fingerprint" so the For
-        // You feed re-runs (feedCoordinator) to suppress watched videos.
-        if (
-          activePubkey &&
-          watchHistoryService &&
-          typeof watchHistoryService.loadLatest === "function"
-        ) {
-          Promise.resolve(
-            watchHistoryService.loadLatest(activePubkey, { allowStale: true }),
-          ).catch((error) => {
-            devLogger.warn(
-              "[auth] Background watch-history preload failed:",
-              error,
-            );
-          });
-        }
-
         if (
           activePubkey &&
           typeof this.authService.loadBlocksForPubkey === "function"
@@ -510,6 +492,24 @@ export function createAuthSessionCoordinator(deps) {
         }
 
         const taskOutcomes = await Promise.all(parallelListTasks);
+
+        // Warm watch history AFTER the critical lists decrypt: the serialized
+        // nip-07 extension + a cold watch history (~150+ decrypts) starved them.
+        if (
+          activePubkey &&
+          watchHistoryService &&
+          typeof watchHistoryService.loadLatest === "function"
+        ) {
+          Promise.resolve(
+            watchHistoryService.loadLatest(activePubkey, { allowStale: true }),
+          ).catch((error) => {
+            devLogger.warn(
+              "[auth] Background watch-history preload failed:",
+              error,
+            );
+          });
+        }
+
         const requiredTaskOutcomes = taskOutcomes.filter((outcome) =>
           ["blocks", "subscriptions", "hashtags"].includes(outcome.name),
         );
