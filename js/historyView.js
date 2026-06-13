@@ -1521,12 +1521,9 @@ export function createWatchHistoryRenderer(config = {}) {
           );
         }
       }
-      // The History view shows the user's FULL history (all months), unlike the
-      // feed's automatic load which only decrypts recent months for speed.
       const items = await watchHistoryService.loadLatest(actorInput, {
         allowStale: !forceRefresh,
         forceRefresh,
-        recentMonthsLimit: 0,
       });
       const normalized = normalizeHistoryItems(items);
       return { items: normalized, metadata: { engine: "service-fallback" } };

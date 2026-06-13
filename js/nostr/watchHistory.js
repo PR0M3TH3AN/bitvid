@@ -41,10 +41,6 @@ import {
 
 export { normalizePointerInput, pointerKey };
 
-// Recent monthly watch-history snapshots to decrypt on load (1 nip-07 call each).
-// Override per-call with recentMonthsLimit (0 = all, e.g. the History view).
-const RECENT_MONTHS_DECRYPT_LIMIT = 6;
-
 /**
  * Domain utilities for watch-history interactions. This module owns pointer
  * normalization/serialization, chunking, fingerprint hashing, persistence,
@@ -1993,17 +1989,6 @@ class WatchHistoryManager {
       return await loadFromStorage();
     }
 
-    // Decrypt only the most recent months by default (see constant above).
-    const recentMonthsLimit = Number.isFinite(options?.recentMonthsLimit)
-      ? Math.floor(options.recentMonthsLimit)
-      : RECENT_MONTHS_DECRYPT_LIMIT;
-    if (recentMonthsLimit > 0 && pointerEvents.length > recentMonthsLimit) {
-      pointerEvents = [...pointerEvents]
-        .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0))
-        .slice(0, recentMonthsLimit);
-      eventToProcess = pointerEvents;
-    }
-
     // Determine snapshotId from the latest event (prioritizing monthly)
     const latestEvent = selectNewestListEvent(eventToProcess);
 
@@ -2232,7 +2217,6 @@ class WatchHistoryManager {
 
     const fetchResult = await this.fetch(resolvedActor, {
       forceRefresh: options.forceRefresh || false,
-      recentMonthsLimit: options.recentMonthsLimit,
     });
     const merged = mergeWatchHistoryItemsWithFallback(
       {

@@ -1015,10 +1015,7 @@ function scheduleWatchHistoryRefresh(actorKey, cacheEntry = {}, options = {}) {
     if (!permissionResult.ok) {
       throw permissionResult.error;
     }
-    return nostrClient.resolveWatchHistory(actorKey, {
-      forceRefresh: true,
-      recentMonthsLimit: options?.recentMonthsLimit,
-    });
+    return nostrClient.resolveWatchHistory(actorKey, { forceRefresh: true });
   })()
     .then((resolvedItems) => updateFingerprintCache(actorKey, resolvedItems))
     .then(() => {
