@@ -12,7 +12,6 @@
 import { clearDecryptionSchemeCache } from "../nostr/decryptionSchemeCache.js";
 import { clearWatchHistoryConversationKeyCache } from "../nostr/watchHistory.js";
 import { clearWatchHistoryDecryptedChunkCache } from "../nostr/watchHistoryDecryptCache.js";
-import watchHistoryService from "../watchHistoryService.js";
 import { FEED_TYPES } from "../constants.js";
 
 /**
@@ -493,22 +492,12 @@ export function createAuthSessionCoordinator(deps) {
 
         const taskOutcomes = await Promise.all(parallelListTasks);
 
-        // Warm watch history AFTER the critical lists decrypt: the serialized
-        // nip-07 extension + a cold watch history (~150+ decrypts) starved them.
-        if (
-          activePubkey &&
-          watchHistoryService &&
-          typeof watchHistoryService.loadLatest === "function"
-        ) {
-          Promise.resolve(
-            watchHistoryService.loadLatest(activePubkey, { allowStale: true }),
-          ).catch((error) => {
-            devLogger.warn(
-              "[auth] Background watch-history preload failed:",
-              error,
-            );
-          });
-        }
+        // NOTE: watch history is intentionally NOT eagerly preloaded on login.
+        // A cold watch history is ~150+ serialized nip-07 decrypts; preloading it
+        // here (even after the lists) saturated the extension and starved the
+        // profile modal's hashtag/subscription/DM loads. It now loads lazily when
+        // the For You feed or History view is opened. Re-enable an eager preload
+        // only once the cold-load decrypt cost is reduced (see task: ~180 calls).
 
         const requiredTaskOutcomes = taskOutcomes.filter((outcome) =>
           ["blocks", "subscriptions", "hashtags"].includes(outcome.name),
