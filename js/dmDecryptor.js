@@ -219,6 +219,7 @@ function orderDecryptors(candidates, hints, { preferGiftWrap = false, preferLega
   }
 
   const algorithms = Array.isArray(hints?.algorithms) ? hints.algorithms : [];
+  const hasHints = algorithms.length > 0;
   const algorithmRanks = new Map();
   algorithms.forEach((algorithm, index) => {
     if (!algorithmRanks.has(algorithm)) {
@@ -250,14 +251,18 @@ function orderDecryptors(candidates, hints, { preferGiftWrap = false, preferLega
   };
 
   return [...candidates].sort((a, b) => {
-    // Legacy (kind 4) DMs are always NIP-04 — try nip04 candidates first so we
-    // don't burn a (serialized, slow) extension round-trip on nip44 first.
-    if (preferLegacy) {
-      const aL = a.scheme === "nip04" ? 0 : 1;
-      const bL = b.scheme === "nip04" ? 0 : 1;
-      if (aL !== bL) {
-        return aL - bL;
+    // Explicit per-event encryption hints (the "encrypted" tag) always win, even
+    // for legacy kind-4 events: if the sender told us the scheme, honor it.
+    if (hasHints) {
+      const aHinted = desiredSchemeRank(a.scheme);
+      const bHinted = desiredSchemeRank(b.scheme);
+      if (aHinted !== bHinted) {
+        return aHinted - bHinted;
       }
+    }
+
+    if (a.priority !== b.priority) {
+      return a.priority - b.priority;
     }
 
     if (preferGiftWrap) {
@@ -268,8 +273,15 @@ function orderDecryptors(candidates, hints, { preferGiftWrap = false, preferLega
       }
     }
 
-    if (a.priority !== b.priority) {
-      return a.priority - b.priority;
+    // Legacy (kind 4) default: with no explicit hint, kind-4 DMs are NIP-04, so
+    // try nip04 first and don't burn a (serialized, slow) nip-07 round-trip on
+    // nip44. Only flips the default — an explicit hint above already took over.
+    if (preferLegacy && !hasHints) {
+      const aL = a.scheme === "nip04" ? 0 : 1;
+      const bL = b.scheme === "nip04" ? 0 : 1;
+      if (aL !== bL) {
+        return aL - bL;
+      }
     }
 
     const aRank = desiredSchemeRank(a.scheme);
@@ -553,18 +565,21 @@ async function decryptLegacyDm(event, decryptors, actorPubkey) {
 
   const remoteCandidates = [];
   const seenRemotes = new Set();
+  let selfCandidate = null;
   const registerRemote = (candidate) => {
     const normalized = normalizeHex(candidate);
     if (!normalized || seenRemotes.has(normalized)) {
       return;
     }
-    // Skip the actor's own key: a NIP-04 conversation key is derived with the
-    // *other* party, so decrypting against self is always a wasted (slow,
-    // serialized) extension round-trip.
+    seenRemotes.add(normalized);
+    // A NIP-04 conversation key is derived with the *other* party, so trying the
+    // actor's own key is normally a wasted (slow, serialized) extension
+    // round-trip. Defer self to the end so we only attempt it as a fallback —
+    // but keep it, because note-to-self DMs have no other counterparty.
     if (normalizedActor && normalized === normalizedActor) {
+      selfCandidate = normalized;
       return;
     }
-    seenRemotes.add(normalized);
     remoteCandidates.push(normalized);
   };
 
@@ -578,6 +593,10 @@ async function decryptLegacyDm(event, decryptors, actorPubkey) {
 
   for (const recipient of recipients) {
     registerRemote(recipient?.pubkey);
+  }
+
+  if (selfCandidate) {
+    remoteCandidates.push(selfCandidate);
   }
 
   const attemptDecryption = async (decryptor, remotePubkey) => {
