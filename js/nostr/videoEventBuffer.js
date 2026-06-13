@@ -8,15 +8,21 @@
 import { isDevMode } from "../config.js";
 import { devLogger, userLogger } from "../utils/logger.js";
 import { convertEventToVideo } from "./nip71.js";
-import { verifyEventsInWorker } from "./signatureVerifyWorkerClient.js";
+
+// Default: trust relays for the public video feed (no per-event signature
+// verification). Verifying every feed event off-thread proved fragile (it could
+// hang/blank the feed and added load latency), so it is opt-in: pass a
+// `verifyEvents` function (e.g. verifyEventsInWorker) to re-enable it.
+const trustAllVerifier = (events) =>
+  Promise.resolve(new Set((events || []).map((e) => e && e.id).filter(Boolean)));
 
 export class VideoEventBuffer {
   /**
    * @param {import("./client.js").NostrClient} client - The parent client instance (for state access).
    * @param {function(object[]): void} onVideo - The UI callback to fire with batched updates.
    * @param {{ verifyEvents?: (events: object[]) => Promise<Set<string>> }} [options]
-   *   Injectable signature verifier (returns the set of valid event ids).
-   *   Defaults to the off-main-thread worker; tests can pass a passthrough.
+   *   Optional signature verifier (returns the set of valid event ids). Defaults
+   *   to trusting relays (no verification) for the public feed.
    */
   constructor(client, onVideo, options = {}) {
     this.client = client;
@@ -28,7 +34,7 @@ export class VideoEventBuffer {
     this._verifyEvents =
       typeof options.verifyEvents === "function"
         ? options.verifyEvents
-        : verifyEventsInWorker;
+        : trustAllVerifier;
     // Tracks the in-flight verify+commit so callers/tests can await a flush.
     this._flushPromise = Promise.resolve();
 
