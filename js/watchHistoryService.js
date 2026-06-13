@@ -663,6 +663,7 @@ async function updateFingerprintCache(actorKey, items) {
     items
   );
   const entry = state.fingerprintCache.get(actorKey) || {};
+  const previousFingerprint = entry.fingerprint;
   const nextEntry = {
     ...entry,
     items: Array.isArray(items) ? items : [],
@@ -671,7 +672,17 @@ async function updateFingerprintCache(actorKey, items) {
   };
   delete nextEntry.promise;
   state.fingerprintCache.set(actorKey, nextEntry);
-  emit("fingerprint", { actor: actorKey, fingerprint, items: nextEntry.items });
+  // Only emit when the fingerprint actually CHANGED. Emitting unconditionally
+  // created an infinite loop: the For You feed listens for "fingerprint" and
+  // re-runs refreshFeed -> loadLatest -> updateFingerprintCache -> emit, which
+  // pegged the CPU with a full feed rebuild every ~400ms.
+  if (fingerprint !== previousFingerprint) {
+    emit("fingerprint", {
+      actor: actorKey,
+      fingerprint,
+      items: nextEntry.items,
+    });
+  }
   return fingerprint;
 }
 
@@ -1337,13 +1348,16 @@ async function getFingerprint(actorInput) {
   }
   const fingerprint = await nostrClient.getWatchHistoryFingerprint(actorKey);
   const ttl = Math.max(0, Number(WATCH_HISTORY_CACHE_TTL_MS) || 0);
+  const previousFingerprint = cacheEntry?.fingerprint;
   const nextEntry = {
     ...(cacheEntry || {}),
     fingerprint,
     expiresAt: now + ttl,
   };
   state.fingerprintCache.set(actorKey, nextEntry);
-  emit("fingerprint", { actor: actorKey, fingerprint });
+  if (fingerprint !== previousFingerprint) {
+    emit("fingerprint", { actor: actorKey, fingerprint });
+  }
   return fingerprint;
 }
 
