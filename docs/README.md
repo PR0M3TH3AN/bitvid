@@ -15,6 +15,7 @@ Welcome to the bitvid documentation. This directory contains detailed architectu
 - **[Nostr Event Schemas](./nostr-event-schemas.md)**: The definitive catalogue of all Nostr event kinds and data structures used by bitvid.
 - **[DM Privacy Model](./dm-privacy-model.md)**: How Direct Messages are handled, including NIP-17 relays and privacy controls.
 - **[NIP-46 Client Overview](./nip46-client-overview.md)**: Details on the NIP-46 remote signer implementation.
+- **[Batch-Capable nip-07 Extension Proposal](./bitvid-nip07-extension-proposal.md)**: Exploratory design for a signer extension that parallelizes bulk decryption (DMs, watch history) without exposing keys.
 
 ## Moderation & Safety
 
