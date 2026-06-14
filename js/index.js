@@ -2,6 +2,7 @@
 
 import { validateInstanceConfig } from "../config/validate-config.js";
 import "./bufferPolyfill.js";
+import "./devReqMonitor.js"; // dev-only relay REQ-rate monitor (localhost only)
 import {
   getApplication,
   setApplication,
