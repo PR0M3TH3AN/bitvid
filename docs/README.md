@@ -5,6 +5,7 @@ Welcome to the bitvid documentation. This directory contains detailed architectu
 ## Core Systems
 
 - **[Application Coordinators](./app-coordinators.md)**: Overview of the coordinator pattern used to manage app-wide state and services.
+- **[Data-Flow Refactor — Dev Plan & Spec](./architecture-refactor.md)**: The incremental plan to put all subsystems on a shared, governed relay/data foundation (SubscriptionManager, stores, unidirectional flow).
 - **[Authentication Architecture](./auth-architecture.md)**: How session management, login flows, and signer integration work.
 - **[Feed Engine](./feed-engine.md)**: The pipeline for fetching, filtering, scoring, and sorting video feeds.
 - **[Playback & Fallback](./playback-fallback.md)**: The URL-first playback strategy with WebTorrent fallback orchestration.
