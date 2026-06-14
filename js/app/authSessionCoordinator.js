@@ -775,6 +775,27 @@ export function createAuthSessionCoordinator(deps) {
         }
       }
 
+      // Only reload the feed when the block set ACTUALLY changed. "blocks-loaded"
+      // fires on every (re)fetch — including no-op refetches — and a forced
+      // reload re-fetches the lists, which re-emit "blocks-loaded": an
+      // unconditional reload here is a self-sustaining loop (KNOWN_BUGS #2).
+      let nextSignature = "";
+      try {
+        const blocked =
+          typeof userBlocks?.getBlockedPubkeys === "function"
+            ? userBlocks.getBlockedPubkeys()
+            : [];
+        nextSignature = Array.isArray(blocked)
+          ? blocked.slice().sort().join(",")
+          : String(blocked || "");
+      } catch (error) {
+        devLogger.warn("[Application] Failed to read block set signature:", error);
+      }
+      if (nextSignature === this._blocksRefreshSignature) {
+        return;
+      }
+      this._blocksRefreshSignature = nextSignature;
+
       try {
         void this.onVideosShouldRefresh({ reason: "blocks-loaded" });
       } catch (error) {

@@ -269,5 +269,9 @@ The mock harness lied because it used **one perfect relay**. New fixtures:
       Each keeps a manager-less fallback for tests. (Follow-ups: live profile
       subscription + comment/reaction events — lower volume; multi-line lint gap
       KNOWN_BUGS #3.)
-- [ ] P5 AppState + Coordinator + unidirectional flow
+- [~] P5 AppState + Coordinator + unidirectional flow — IN PROGRESS: emit-on-
+      change sweep done (handleBlocksLoaded reloads only on block-set change →
+      KNOWN_BUGS #2 FIXED). Remaining: normalized AppState + render decoupled
+      from event ordering (fixes disclaimer-empty-grid #1; needs real-browser
+      repro) — a large app.js rewrite to stage carefully.
 - [ ] P6 cleanup + config relay-set trim + final docs

@@ -25,15 +25,12 @@ refactor work in that doc — these are defects.
   decoupled from event ordering. Could not reproduce headlessly (real-relay
   feed returned nothing in the sandbox); reproduce in a real browser first.
 
-### 2. Residual full-feed reload loop on list-loaded signals
-- **Severity:** low–medium (bounded by the 2s throttle, but wasteful — re-fetches
-  lists ~every 2s while signals keep arriving).
-- **Where:** `js/app/authSessionCoordinator.js` `handleBlocksLoaded` (and peers)
-  call `onVideosShouldRefresh` **unconditionally**; the forced reload re-fetches
-  the lists, which re-emit "loaded".
-- **Fix:** P5 — only trigger a reload when the underlying list data actually
-  changed (emit-on-change at the list-loaded sources + collapse the refresh
-  triggers into the Coordinator).
+### 2. Residual full-feed reload loop on list-loaded signals — FIXED (P5)
+- **Status:** RESOLVED 2026-06-14. `handleBlocksLoaded` now reloads the feed
+  only when the block-set signature actually changes (emit-on-change guard);
+  `handleRelaysLoaded` only refreshes the relay UI (never the feed), and
+  `handleHashtagPreferencesChange` already deduped by signature. Regression test:
+  `tests/app/blocks-loaded-reload-guard.test.mjs` (cheat-resistant).
 
 ### 3. Direct-pool-access lint still misses MULTI-LINE access
 - **Severity:** low (tooling gap — weakens the L1 chokepoint guarantee).
@@ -76,6 +73,12 @@ refactor, but should be triaged. Not in `KNOWN_ISSUES.md`.
 - `writeStoredNip07Permissions` / `clearStoredNip07Permissions` fail under Node
   (no real `localStorage`). Likely environmental — provide a localStorage shim
   (see `tests/test-helpers/setup-localstorage.mjs`) or guard the test.
+
+### 9. `tests/app/hydrate-sidebar-navigation.test.mjs`
+- Fails at the pre-session baseline (`4bd9503c`). Triage.
+
+### 10. `tests/app/is-user-logged-in.test.mjs`
+- Fails at the pre-session baseline (`4bd9503c`). Triage.
 
 ---
 

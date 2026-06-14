@@ -43,7 +43,7 @@ const GRANDFATHERED = {
   "js/nostr/nip46Client.js": 2102,
   "js/state/cache.js": 1827,
   "js/app/feedCoordinator.js": 1767,
-  "js/app/authSessionCoordinator.js": 1743,
+  "js/app/authSessionCoordinator.js": 1803,
   "js/ui/components/RevertModal.js": 1663,
   "js/payments/nwcClient.js": 1642,
   "js/ui/moreMenuController.js": 1601,
