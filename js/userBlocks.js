@@ -752,6 +752,14 @@ class UserBlockListManager {
   }
 
   stopBlockListSubscription() {
+    if (this.blockListSubscriptionHandle) {
+      try {
+        this.blockListSubscriptionHandle.close();
+      } catch (error) {
+        devLogger.warn("[UserBlockList] Failed to close block-list subscription handle", error);
+      }
+      this.blockListSubscriptionHandle = null;
+    }
     if (this.blockListSubscriptionKey) {
       relaySubscriptionService.stopSubscription(
         this.blockListSubscriptionKey,
@@ -774,6 +782,23 @@ class UserBlockListManager {
       { kinds: [KIND_MUTE_LIST], authors: [normalized] },
       { kinds: [30002], authors: [normalized], "#d": [BLOCK_LIST_IDENTIFIER] },
     ];
+
+    // Route through the L1 SubscriptionManager when available (dedup + reconnect
+    // re-issue); fall back to relaySubscriptionService in manager-less envs.
+    const manager =
+      typeof nostrClient.getSubscriptionManager === "function"
+        ? nostrClient.getSubscriptionManager()
+        : null;
+    if (manager) {
+      this.blockListSubscriptionHandle = manager.subscribe({
+        key,
+        relays,
+        filters,
+        label: "block-list",
+        onEvent: (event) => this.handleBlockListEvent(event),
+      });
+      return this.blockListSubscriptionHandle;
+    }
 
     return relaySubscriptionService.ensureSubscription({
       key,
