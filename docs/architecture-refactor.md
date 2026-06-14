@@ -260,10 +260,8 @@ The mock harness lied because it used **one perfect relay**. New fixtures:
       ranking deferred — the cap covers the immediate amplifier)
 - [x] P2 moderation reports batched + re-enabled (single SubscriptionManager
       sub over the active id set; trusted-mute subs already batched-by-author)
-- [ ] P3 view counts batched + re-enabled — requires restructuring
-      js/viewCounter.js from per-pointer hydrate/live into ONE batched
-      kind-30079 query bucketed by `#a`, then flip the VideoListView
-      circuit-breaker back on
+- [x] P3 view counts batched + re-enabled — viewCounter shares ONE kind-30079
+      sub + backfill bucketed by `#a`; watch page opts into exact NIP-45 COUNT
 - [ ] P4 lists via stores (follows/hashtags/blocks/watch-history/profiles)
 - [ ] P5 AppState + Coordinator + unidirectional flow
 - [ ] P6 cleanup + config relay-set trim + final docs
