@@ -58,10 +58,40 @@ import {
  * trusted social graph (follows).
  */
 
-// Temporary kill-switch for per-video live report subscriptions. Real-env logs
-// showed these fan out O(videos × relays) and storm relays (~1000 REQ/s),
-// starving list decryption. Re-enable once batched (single REQ for all ids).
-const MODERATION_REPORT_SUBS_ENABLED = false;
+// Live kind-1984 report subscriptions. Previously one sub PER VIDEO fanned
+// O(videos × relays) and stormed relays (~1000 REQ/s). Now batched into a single
+// SubscriptionManager subscription over the whole active id set, so this is back
+// on. (Set false to fall back to the disabled state for debugging.)
+const MODERATION_REPORT_SUBS_ENABLED = true;
+
+// Max event ids per kind-1984 filter chunk. nostr REQ allows multiple filters in
+// one subscription, so a large active set becomes a few chunks in ONE sub —
+// still O(1) subscriptions, not O(ids).
+const REPORT_BATCH_SIZE = 200;
+
+function setsEqual(a, b) {
+  if (a === b) return true;
+  if (!(a instanceof Set) || !(b instanceof Set) || a.size !== b.size) return false;
+  for (const v of a) {
+    if (!b.has(v)) return false;
+  }
+  return true;
+}
+
+// Build kind-1984 report filters for a set of event ids, chunked so no single
+// filter carries an unbounded "#e" array.
+function buildReportFilters(ids) {
+  const list = Array.isArray(ids) ? ids : Array.from(ids || []);
+  const filters = [];
+  for (let i = 0; i < list.length; i += REPORT_BATCH_SIZE) {
+    filters.push({
+      kinds: [1984],
+      "#e": list.slice(i, i + REPORT_BATCH_SIZE),
+      limit: 500,
+    });
+  }
+  return filters;
+}
 
 export class ModerationService {
   /**
@@ -1596,14 +1626,10 @@ export class ModerationService {
   }
 
   async setActiveEventIds(ids = []) {
-    // CIRCUIT-BREAKER (confirmed against real env): one live kind-1984 report
-    // subscription PER VIDEO, fanned across ~20 relays and re-issued on every
-    // flaky-relay reconnect, produced ~1000 REQ/s and starved list decryption.
-    // Stays disabled until replaced by a single batched subscription (one REQ
-    // with "#e":[...all ids]) targeting only healthy relays. See refactor plan.
     if (!MODERATION_REPORT_SUBS_ENABLED) {
       return;
     }
+
     const nextIds = new Set();
     if (Array.isArray(ids) || ids instanceof Set) {
       for (const value of ids) {
@@ -1613,6 +1639,78 @@ export class ModerationService {
         }
       }
     }
+
+    // Skip redundant work when the visible set is unchanged (the feed stage
+    // calls this on every run).
+    const prevIds = this.activeEventIds instanceof Set ? this.activeEventIds : new Set();
+    if (setsEqual(prevIds, nextIds)) {
+      return;
+    }
+
+    const manager =
+      typeof this.nostrClient?.getSubscriptionManager === "function"
+        ? this.nostrClient.getSubscriptionManager()
+        : null;
+
+    // Fallback for environments without the SubscriptionManager (tests/mocks):
+    // keep the legacy per-id behavior so those paths are unaffected.
+    if (!manager) {
+      return this._setActiveEventIdsLegacy(nextIds, prevIds);
+    }
+
+    this.activeEventIds = nextIds;
+
+    if (nextIds.size === 0) {
+      if (this._reportSubHandle) {
+        this._reportSubHandle.close();
+        this._reportSubHandle = null;
+      }
+      return;
+    }
+
+    const idArray = Array.from(nextIds);
+    const filters = buildReportFilters(idArray);
+
+    // ONE live batched subscription over the whole active set, updated in place
+    // as the set changes (no teardown/resubscribe churn).
+    if (this._reportSubHandle) {
+      this._reportSubHandle.update({ filters });
+    } else {
+      this._reportSubHandle = manager.subscribe({
+        key: "moderation:reports",
+        label: "reports",
+        filters,
+        onEvent: (event) => this.ingestReportEvent(event),
+      });
+    }
+
+    // Backfill history for only the newly-added ids — one batched list().
+    const newIds = idArray.filter((id) => !prevIds.has(id));
+    if (newIds.length) {
+      try {
+        const events = await manager.list({ filters: buildReportFilters(newIds) });
+        if (Array.isArray(events)) {
+          for (const event of events) {
+            this.ingestReportEvent(event);
+          }
+        }
+      } catch (error) {
+        this.log("[moderationService] batched report backfill failed", error);
+      }
+    }
+  }
+
+  // Legacy per-id path, retained only for environments without a
+  // SubscriptionManager (unit tests / mock clients). The real app uses the
+  // batched path above.
+  async _setActiveEventIdsLegacy(nextIds, prevIds = null) {
+    const previous =
+      prevIds instanceof Set
+        ? prevIds
+        : this.activeEventIds instanceof Set
+        ? this.activeEventIds
+        : new Set();
+    void previous;
 
     for (const existing of Array.from(this.activeSubscriptions.keys())) {
       if (!nextIds.has(existing)) {
@@ -1630,9 +1728,11 @@ export class ModerationService {
         continue;
       }
       const promise = this.subscribeToReports(id);
-      tasks.push(promise.catch((error) => {
-        this.log(`(moderationService) failed to subscribe to reports for ${id}`, error);
-      }));
+      tasks.push(
+        promise.catch((error) => {
+          this.log(`(moderationService) failed to subscribe to reports for ${id}`, error);
+        }),
+      );
     }
 
     this.activeEventIds = nextIds;
@@ -1647,11 +1747,22 @@ export class ModerationService {
       return;
     }
 
+    // With the batched subscription the report *data* is unchanged by a trust
+    // graph update (same event ids); callers already recompute summaries. Just
+    // ensure the single live subscription is (re)issued for its current set.
+    if (this._reportSubHandle) {
+      this._reportSubHandle.update({ filters: buildReportFilters(Array.from(this.activeEventIds)) });
+      return;
+    }
+
+    // Legacy path (no SubscriptionManager): tear down + re-subscribe via the
+    // public (overridable) method. Clear activeEventIds first so the
+    // unchanged-set guard in setActiveEventIds doesn't short-circuit the rebuild.
     const ids = Array.from(this.activeEventIds);
     for (const id of ids) {
       this.teardownReportSubscription(id);
     }
-
+    this.activeEventIds = new Set();
     await this.setActiveEventIds(ids);
   }
 
