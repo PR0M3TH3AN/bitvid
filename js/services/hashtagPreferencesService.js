@@ -325,6 +325,14 @@ class HashtagPreferencesService {
   }
 
   stopHashtagPreferencesSubscription() {
+    if (this.subscriptionHandle) {
+      try {
+        this.subscriptionHandle.close();
+      } catch (error) {
+        devLogger.warn(`${LOG_PREFIX} Failed to close hashtag subscription handle`, error);
+      }
+      this.subscriptionHandle = null;
+    }
     if (this.subscriptionKey) {
       relaySubscriptionService.stopSubscription(this.subscriptionKey, "reset");
       this.subscriptionKey = null;
@@ -352,6 +360,23 @@ class HashtagPreferencesService {
 
     const key = `hashtags:${normalized}`;
     this.subscriptionKey = key;
+
+    // Route through the L1 SubscriptionManager when available (dedup + reconnect
+    // re-issue); fall back to relaySubscriptionService in manager-less envs.
+    const manager =
+      typeof nostrClient.getSubscriptionManager === "function"
+        ? nostrClient.getSubscriptionManager()
+        : null;
+    if (manager) {
+      this.subscriptionHandle = manager.subscribe({
+        key,
+        relays,
+        filters,
+        label: "hashtag-preferences",
+        onEvent: (event) => this.handleHashtagPreferencesEvent(event),
+      });
+      return this.subscriptionHandle;
+    }
 
     return relaySubscriptionService.ensureSubscription({
       key,

@@ -851,6 +851,14 @@ class SubscriptionsManager {
   }
 
   stopSubscriptionListSubscription() {
+    if (this.subscriptionHandle) {
+      try {
+        this.subscriptionHandle.close();
+      } catch (error) {
+        devLogger.warn("[SubscriptionsManager] Failed to close subscription handle", error);
+      }
+      this.subscriptionHandle = null;
+    }
     if (this.subscriptionKey) {
       relaySubscriptionService.stopSubscription(this.subscriptionKey, "reset");
       this.subscriptionKey = null;
@@ -873,6 +881,24 @@ class SubscriptionsManager {
         "#d": [SUBSCRIPTION_LIST_IDENTIFIER],
       },
     ];
+
+    // Route through the L1 SubscriptionManager when available: centralized
+    // dedup + reconnect re-issue (so the follows list self-heals after a relay
+    // drop). Falls back to relaySubscriptionService in manager-less envs.
+    const manager =
+      typeof nostrClient.getSubscriptionManager === "function"
+        ? nostrClient.getSubscriptionManager()
+        : null;
+    if (manager) {
+      this.subscriptionHandle = manager.subscribe({
+        key,
+        relays,
+        filters,
+        label: "subscription-list",
+        onEvent: (event) => this.handleSubscriptionListEvent(event),
+      });
+      return this.subscriptionHandle;
+    }
 
     return relaySubscriptionService.ensureSubscription({
       key,
