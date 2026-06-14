@@ -227,6 +227,8 @@ import {
 } from "./videoPayloadBuilder.js";
 import { inferMimeTypeFromUrl } from "../utils/mime.js";
 import { VideoEventBuffer } from "./videoEventBuffer.js";
+import { createSubscriptionManager } from "./subscriptionManager.js";
+import { RelaySubscriptionService } from "../services/relaySubscriptionService.js";
 
 // Max relays the client will SUBSCRIBE/read from at once. Bounds the REQ
 // fan-out regardless of how large a user's NIP-65 relay list is. Writes are not
@@ -3388,6 +3390,25 @@ export class NostrClient {
    * @param {number} [options.limit] - Max number of events to request from relays.
    * @returns {import("nostr-tools").Sub} The subscription object. Call `unsub()` to stop listening.
    */
+  // Lazily create the L1 SubscriptionManager bound to this client's pool and a
+  // health-gated default relay set (matching subscribeVideos' historical
+  // healthy-or-default fallback). See docs/architecture-refactor.md.
+  getSubscriptionManager() {
+    if (!this._subscriptionManager) {
+      this._subscriptionManager = createSubscriptionManager({
+        getPool: () => this.pool,
+        getDefaultRelays: () => {
+          const healthy = sanitizeRelayList(this.getHealthyRelays(this.relays));
+          return healthy.length ? healthy : Array.from(DEFAULT_RELAY_URLS);
+        },
+        // Own registry, isolated from the global singleton (which other
+        // subsystems use for their own keys) and from other client instances.
+        subscriptions: new RelaySubscriptionService(),
+      });
+    }
+    return this._subscriptionManager;
+  }
+
   subscribeVideos(onVideo, options = {}) {
     const { since, until, limit } = options;
     const latestCachedCreatedAt = this.getLatestCachedCreatedAt();
@@ -3416,18 +3437,6 @@ export class NostrClient {
 
     devLogger.log("[subscribeVideos] Subscribing with filter:", filter);
 
-    // Mirror the empty-relay fallback used by the fetch paths above: if no relays
-    // are currently healthy (e.g. the initial 5s connect probe timed out on a
-    // cold first load), fall back to the default relay set instead of subscribing
-    // to ZERO relays. A zero-relay subscription silently never delivers events
-    // and never self-heals when relays reconnect in the background, which forces
-    // the user to refresh the page before the feed loads anything.
-    const healthyRelays = sanitizeRelayList(this.getHealthyRelays(this.relays));
-    const relaysToUse = healthyRelays.length
-      ? healthyRelays
-      : Array.from(DEFAULT_RELAY_URLS);
-    const sub = this.pool.sub(relaysToUse, [filter]);
-
     // BUFFERING STATE
     // We collect events here instead of processing them instantly to avoid
     // 1000s of React re-renders during the initial relay dump.
@@ -3438,34 +3447,36 @@ export class NostrClient {
       verifyEvents: this.videoEventVerifier,
     });
 
-    // 1) On each incoming event, just push to the buffer and schedule a flush
-    sub.on("event", (event) => {
-      buffer.push(event);
+    // Route through the L1 SubscriptionManager: it resolves a health-gated
+    // relay set (healthy-or-default fallback, so the feed never subscribes to
+    // zero relays), dedups, and registers this sub for centralized re-issue on
+    // relay reconnect. Relays are NOT passed explicitly so reconnect re-resolves
+    // the currently-healthy set.
+    const handle = this.getSubscriptionManager().subscribe({
+      key: "feed:videos",
+      label: "subscribeVideos",
+      filters: [filter],
+      onEvent: (event) => buffer.push(event),
+      onEose: () => buffer.handleEose(),
     });
 
-    // You can still use sub.on("eose") if needed. Return the flush promise so
-    // callers/tests can await the (now async, off-thread-verified) commit.
-    sub.on("eose", () => buffer.handleEose());
-
-    // Return the subscription object if you need to unsub manually later
-    const originalUnsub =
-      typeof sub.unsub === "function" ? sub.unsub.bind(sub) : () => {};
+    // Preserve the legacy subscription contract: callers hold the return value
+    // and call .unsub() to tear down.
     let unsubscribed = false;
-    sub.unsub = () => {
-      if (unsubscribed) {
-        return;
-      }
-      unsubscribed = true;
-      buffer.cleanup();
-      try {
-        return originalUnsub();
-      } catch (err) {
-        userLogger.error("[subscribeVideos] Failed to unsub from pool:", err);
-        return undefined;
-      }
+    return {
+      unsub: () => {
+        if (unsubscribed) {
+          return;
+        }
+        unsubscribed = true;
+        buffer.cleanup();
+        try {
+          handle.close();
+        } catch (err) {
+          userLogger.error("[subscribeVideos] Failed to close subscription:", err);
+        }
+      },
     };
-
-    return sub;
   }
 
   /**
