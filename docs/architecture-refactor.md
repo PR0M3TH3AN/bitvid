@@ -262,11 +262,12 @@ The mock harness lied because it used **one perfect relay**. New fixtures:
       sub over the active id set; trusted-mute subs already batched-by-author)
 - [x] P3 view counts batched + re-enabled — viewCounter shares ONE kind-30079
       sub + backfill bucketed by `#a`; watch page opts into exact NIP-45 COUNT
-- [~] P4 lists via stores (follows/hashtags/blocks/watch-history/profiles)
-      — IN PROGRESS: direct-pool-access lint hardened + re-baselined (22 files);
-      watch-history fetch routed through L1. Remaining: profiles
-      (profileMetadataService — note multi-line lint gap, KNOWN_BUGS #3),
-      follows/hashtags (swap relaySubscriptionService → L1 for reconnect
-      registry), blocks (userBlocks fetch).
+- [x] P4 lists via L1 — watch-history fetch, follows (kind 30000), hashtag-prefs
+      (30015/30005), block list (10000/30002), and profile fetch (kind 0) all
+      routed through the SubscriptionManager (dedup + reconnect re-issue;
+      health-gated relays). Lint chokepoint hardened + re-baselined (22 files).
+      Each keeps a manager-less fallback for tests. (Follow-ups: live profile
+      subscription + comment/reaction events — lower volume; multi-line lint gap
+      KNOWN_BUGS #3.)
 - [ ] P5 AppState + Coordinator + unidirectional flow
 - [ ] P6 cleanup + config relay-set trim + final docs
