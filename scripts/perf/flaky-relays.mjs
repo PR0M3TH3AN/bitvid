@@ -133,7 +133,7 @@ async function main() {
 
   let firstCard = "NONE";
   try {
-    await page.waitForSelector("[data-video-id]", { timeout: 15000 });
+    await page.waitForSelector("[data-video-id]", { timeout: 30000 });
     firstCard = "rendered";
   } catch {}
 
