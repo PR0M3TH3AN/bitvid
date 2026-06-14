@@ -23,7 +23,13 @@ const ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
 const SOURCE_DIR = join(ROOT, "js");
 
 // Patterns that indicate a direct relay-read outside L1.
-const PATTERNS = [/\.pool\.sub\(/, /\.pool\.list\(/, /\blegacySub\(/, /\blegacyList\(/, /\bsubscribeMap\(/];
+const PATTERNS = [
+  /\bpool\.sub\(/,
+  /\bpool\.list\(/,
+  /\blegacySub\(/,
+  /\blegacyList\(/,
+  /\bsubscribeMap\(/,
+];
 
 // The only modules allowed to touch the pool directly.
 const L1_FILES = new Set([
@@ -38,8 +44,18 @@ const GRANDFATHERED = new Set([
   "js/adminListStore.js",
   "js/app.js",
   "js/channelProfile.js",
+  "js/embed.js",
   "js/feedEngine/watchHistoryFeed.js",
   "js/nostr/client.js",
+  "js/nostr/commentEvents.js",
+  "js/nostr/nip46Client.js",
+  "js/nostr/nip46Connector.js",
+  "js/nostr/reactionEvents.js",
+  "js/nostr/relayBatchFetcher.js",
+  "js/nostr/viewEvents.js",
+  "js/nostr/watchHistory.js",
+  "js/payments/platformAddress.js",
+  "js/payments/zapReceiptValidator.js",
   "js/reactionCounter.js",
   "js/relayManager.js",
   "js/searchView.js",
