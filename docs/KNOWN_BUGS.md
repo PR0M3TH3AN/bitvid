@@ -35,15 +35,15 @@ refactor work in that doc — these are defects.
   changed (emit-on-change at the list-loaded sources + collapse the refresh
   triggers into the Coordinator).
 
-### 3. Direct-pool-access lint misses bare `pool.sub(` / `pool.list(`
+### 3. Direct-pool-access lint still misses MULTI-LINE access
 - **Severity:** low (tooling gap — weakens the L1 chokepoint guarantee).
-- **Where:** `scripts/check-direct-pool-access.mjs` — regex only matches member
-  access `.pool.sub(`. Bare local-variable calls slip through, e.g.
-  `js/nostr/viewEvents.js` and `js/nostr/relayBatchFetcher.js` use `pool.sub(` /
-  `pool.list(` and are NOT currently flagged or allowlisted.
-- **Fix:** broaden the regex to also catch `\bpool\.(sub|list)\(`, then
-  re-baseline the allowlist (add the now-detected files). Do this alongside P4
-  so the allowlist still only shrinks.
+- **Status:** partially fixed — the regex now catches bare `pool.sub(` /
+  `pool.list(` (re-baselined to 22 files). Still MISSES access split across
+  lines, e.g. `js/services/profileMetadataService.js` writes `nostr.pool`
+  newline `.list(` — so profiles is an unflagged fetch source.
+- **Fix:** normalize whitespace before matching (collapse `\.pool\s*\n\s*\.list`)
+  or move to an AST/`grep -A1` check. Add profileMetadataService (and any other
+  multi-line offenders) to the allowlist once detected.
 
 ### 4. Interim relay cap is static, not liveness-ranked
 - **Severity:** low (acceptable interim).
