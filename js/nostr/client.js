@@ -500,6 +500,7 @@ export class NostrClient {
     this.nip71Cache = new Map();
     this.watchHistory = createWatchHistoryManager({
       getPool: () => this.pool,
+      getSubscriptionManager: () => this.getSubscriptionManager(),
       getActivePubkey: () => this.pubkey,
       getSessionActor: () => this.sessionActor,
       ensureSessionActor: () => this.ensureSessionActor(),

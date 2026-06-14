@@ -1925,6 +1925,16 @@ class WatchHistoryManager {
       };
     }
     const pool = typeof this.deps.getPool === "function" ? this.deps.getPool() : null;
+    // Route relay reads through the L1 SubscriptionManager when available
+    // (deduped + health-gated); fall back to the raw pool otherwise.
+    const subscriptionManager =
+      typeof this.deps.getSubscriptionManager === "function"
+        ? this.deps.getSubscriptionManager()
+        : null;
+    const listEvents = (relays, filters) =>
+      subscriptionManager
+        ? subscriptionManager.list({ filters, relays })
+        : pool.list(relays, filters);
     if (!pool) {
       devLogger.warn(
         "[nostr] Cannot fetch watch history because relay pool is unavailable. Returning cached values.",
@@ -1966,7 +1976,7 @@ class WatchHistoryManager {
           limit,
         },
       ];
-      const results = await pool.list(readRelays, filters);
+      const results = await listEvents(readRelays, filters);
       pointerEvents = Array.isArray(results)
         ? results
           .flat()
@@ -2029,7 +2039,7 @@ class WatchHistoryManager {
     let decryptedItems = [];
     if (chunkIdentifiers.length && canAttemptDecrypt) {
       try {
-        const results = await pool.list(readRelays, [
+        const results = await listEvents(readRelays, [
           {
             kinds: [WATCH_HISTORY_KIND],
             authors: [actorKey],
