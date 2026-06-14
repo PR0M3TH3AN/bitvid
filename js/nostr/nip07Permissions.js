@@ -41,11 +41,27 @@ export const NIP07_PRIORITY = Object.freeze({
 });
 
 class Nip07RequestQueue {
-  constructor(maxConcurrent = 2) {
+  // `reservedForForeground` slots are kept available for non-background
+  // (priority > LOW) work, so a flood of LOW-priority background decrypts
+  // (DM backfill, watch-history months) can never occupy every slot and
+  // starve the feed-driving lists. Background work is therefore capped at
+  // `maxConcurrent - reservedForForeground` concurrent slots (min 1).
+  constructor(maxConcurrent = 2, reservedForForeground = 1) {
     this.queue = [];
     this.maxConcurrent =
       Number.isFinite(maxConcurrent) && maxConcurrent > 0 ? maxConcurrent : 2;
+    const reserved =
+      Number.isFinite(reservedForForeground) && reservedForForeground >= 0
+        ? Math.floor(reservedForForeground)
+        : 1;
+    // Never reserve so much that background work could never run.
+    this.backgroundConcurrencyCap = Math.max(1, this.maxConcurrent - reserved);
     this.activeCount = 0;
+    this.backgroundActiveCount = 0;
+  }
+
+  isBackground(priority) {
+    return Number.isFinite(priority) && priority <= NIP07_PRIORITY.LOW;
   }
 
   enqueue(task, priority = NIP07_PRIORITY.NORMAL) {
@@ -72,10 +88,27 @@ class Nip07RequestQueue {
     if (this.activeCount >= this.maxConcurrent) return;
 
     while (this.activeCount < this.maxConcurrent && this.queue.length > 0) {
+      // Peek the highest-priority item. The queue is sorted priority-desc, so
+      // if the head is background-class and the background cap is already
+      // saturated, every remaining item is background too — stop, keeping the
+      // free slot(s) reserved for any foreground work that arrives later.
+      const head = this.queue[0];
+      const headIsBackground = this.isBackground(head.priority);
+      if (
+        headIsBackground &&
+        this.backgroundActiveCount >= this.backgroundConcurrencyCap
+      ) {
+        break;
+      }
+
       const item = this.queue.shift();
       if (!item) break;
 
+      const itemIsBackground = this.isBackground(item.priority);
       this.activeCount++;
+      if (itemIsBackground) {
+        this.backgroundActiveCount++;
+      }
       const { task, resolve, reject } = item;
 
       // We don't await the task here to allow parallelism loop to continue
@@ -89,6 +122,9 @@ class Nip07RequestQueue {
         })
         .finally(() => {
           this.activeCount--;
+          if (itemIsBackground) {
+            this.backgroundActiveCount--;
+          }
           this.process();
         });
     }

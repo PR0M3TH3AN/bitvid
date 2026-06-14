@@ -57,6 +57,12 @@ import {
  * are determined by aggregating reports (NIP-56) and mutes (NIP-51) from the user's
  * trusted social graph (follows).
  */
+
+// Temporary kill-switch for per-video live report subscriptions. Real-env logs
+// showed these fan out O(videos × relays) and storm relays (~1000 REQ/s),
+// starving list decryption. Re-enable once batched (single REQ for all ids).
+const MODERATION_REPORT_SUBS_ENABLED = false;
+
 export class ModerationService {
   /**
    * @param {object} options
@@ -191,6 +197,16 @@ export class ModerationService {
   }
 
   rebuildTrustedContacts(nextContacts = new Set(), { previous = null } = {}) {
+    // Snapshot the trusted set BEFORE we rebuild so we can detect whether it
+    // actually changed. Emitting "contacts" unconditionally caused a tight loop:
+    // profileModalController listens for "contacts" -> populateFriendsList ->
+    // ensureViewerContactsLoaded -> (empty contacts) -> fetchTrustedContacts ->
+    // clearTrustedMuteTracking -> rebuildTrustedContacts(empty) -> emit again,
+    // spinning the CPU and flooding relays with kind-3 REQs on every login.
+    const priorTrusted =
+      this.trustedContacts instanceof Set
+        ? new Set(this.trustedContacts)
+        : new Set();
     const sanitized = new Set();
 
     if (nextContacts instanceof Set || Array.isArray(nextContacts)) {
@@ -222,8 +238,24 @@ export class ModerationService {
     this.trustedContacts = seededNext;
 
     this.updateTrustedSeedOnlyStatus();
-    this.emit("contacts", { size: seededNext.size });
-    this.recomputeAllSummaries();
+
+    // Only notify/recompute when the trusted set actually changed. This breaks
+    // the emit -> fetch -> emit loop above while still firing on real changes
+    // (first population, follows/unfollows, seed updates).
+    let changed = priorTrusted.size !== seededNext.size;
+    if (!changed) {
+      for (const value of seededNext) {
+        if (!priorTrusted.has(value)) {
+          changed = true;
+          break;
+        }
+      }
+    }
+
+    if (changed) {
+      this.emit("contacts", { size: seededNext.size });
+      this.recomputeAllSummaries();
+    }
     this.reconcileTrustedMuteSubscriptions(previousContacts, seededNext);
   }
 
@@ -1564,6 +1596,14 @@ export class ModerationService {
   }
 
   async setActiveEventIds(ids = []) {
+    // CIRCUIT-BREAKER (confirmed against real env): one live kind-1984 report
+    // subscription PER VIDEO, fanned across ~20 relays and re-issued on every
+    // flaky-relay reconnect, produced ~1000 REQ/s and starved list decryption.
+    // Stays disabled until replaced by a single batched subscription (one REQ
+    // with "#e":[...all ids]) targeting only healthy relays. See refactor plan.
+    if (!MODERATION_REPORT_SUBS_ENABLED) {
+      return;
+    }
     const nextIds = new Set();
     if (Array.isArray(ids) || ids instanceof Set) {
       for (const value of ids) {

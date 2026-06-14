@@ -1252,7 +1252,12 @@ export class NostrClient {
           (pubkey, ciphertext, options) =>
             activeSigner.nip44Decrypt(pubkey, ciphertext, {
               ...options,
-              priority: NIP07_PRIORITY.NORMAL,
+              // DM decryption is background-class ("load whenever"): it must
+              // never compete with the feed-driving lists (hashtags,
+              // subscriptions, watch history) or block/moderation lists for the
+              // serialized extension. LOW confines the DM backfill flood to the
+              // single unreserved queue slot. See nip07Permissions.js.
+              priority: NIP07_PRIORITY.LOW,
             }),
           {
             priority: -20,
@@ -1270,7 +1275,8 @@ export class NostrClient {
           (pubkey, ciphertext, options) =>
             activeSigner.nip04Decrypt(pubkey, ciphertext, {
               ...options,
-              priority: NIP07_PRIORITY.NORMAL,
+              // Background-class — see the nip44 candidate above.
+              priority: NIP07_PRIORITY.LOW,
             }),
           {
             priority: -10,

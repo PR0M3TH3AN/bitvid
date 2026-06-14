@@ -199,6 +199,11 @@ const UNSUPPORTED_BTITH_MESSAGE =
 const VIDEO_EVENT_KIND = 30078;
 
 const RELAY_UI_BATCH_DELAY_MS = 250;
+
+// Minimum gap between forced full-feed reloads triggered by list-change signals
+// (blocks/subscriptions/hashtag prefs). Coalesces bursts so they cannot drive a
+// self-sustaining reload loop. See onVideosShouldRefresh.
+const VIDEO_REFRESH_COOLDOWN_MS = 2000;
 /**
  * Simple IntersectionObserver-based lazy loader for images (or videos).
  *
@@ -2499,6 +2504,33 @@ class Application {
   }
 
   async onVideosShouldRefresh({ reason } = {}) {
+    // Coalesce bursts of "should refresh" signals into at most one forced reload
+    // per cooldown window. List loads (blocks, subscriptions, hashtag prefs) each
+    // emit a change that lands here, and a forced reload re-fetches those very
+    // lists — under relay load they re-emit "change", which without this throttle
+    // produced a self-sustaining feed-reload loop that flooded relays with REQs
+    // (moderation/view re-subscriptions) and pegged the CPU. Leading edge runs
+    // immediately so the UI stays responsive; further signals within the window
+    // collapse into a single trailing reload.
+    const now = Date.now();
+    const cooldown = VIDEO_REFRESH_COOLDOWN_MS;
+    if (
+      this._lastShouldRefreshAt &&
+      now - this._lastShouldRefreshAt < cooldown
+    ) {
+      this._pendingShouldRefreshReason = reason || this._pendingShouldRefreshReason;
+      if (!this._shouldRefreshTrailingTimer) {
+        const wait = Math.max(50, cooldown - (now - this._lastShouldRefreshAt));
+        this._shouldRefreshTrailingTimer = setTimeout(() => {
+          this._shouldRefreshTrailingTimer = null;
+          const pendingReason = this._pendingShouldRefreshReason;
+          this._pendingShouldRefreshReason = null;
+          this.onVideosShouldRefresh({ reason: pendingReason });
+        }, wait);
+      }
+      return;
+    }
+    this._lastShouldRefreshAt = now;
     try {
       await this.refreshAllVideoGrids({ reason, forceMainReload: true });
     } catch (error) {

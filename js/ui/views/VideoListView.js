@@ -1151,6 +1151,11 @@ export class VideoListView {
   }
 
   ensureViewCountSubscription(pointerInfo) {
+    // CIRCUIT-BREAKER (confirmed against real env): one live kind-30079 view
+    // subscription per card, fanned across ~20 relays, contributed ~880 REQ/s.
+    // Disabled until batched into a single count query. See refactor plan.
+    return null;
+    // eslint-disable-next-line no-unreachable
     if (!pointerInfo || !pointerInfo.key || !pointerInfo.pointer) {
       return null;
     }
