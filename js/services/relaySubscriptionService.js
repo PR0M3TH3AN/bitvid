@@ -89,7 +89,7 @@ function buildSignature({ relays, filters }) {
   });
 }
 
-class RelaySubscriptionService {
+export class RelaySubscriptionService {
   constructor() {
     this.subscriptions = new Map();
   }
