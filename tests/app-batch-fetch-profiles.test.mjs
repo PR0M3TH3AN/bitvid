@@ -107,9 +107,22 @@ test("batchFetchProfiles handles fast and failing relays", async () => {
   // console.log("poolListCalls.length:", poolListCalls.length);
   // console.log("nostrClient.relays:", nostrClient.relays);
 
-  assert.equal(poolListCalls.length, 2, "expected a query per relay");
+  // Spec correction (SCN-profiles-batched): profile fetches are now BATCHED
+  // through the L1 SubscriptionManager — ONE query across all relays instead of
+  // one query per relay. The pool merges per-relay results and tolerates a
+  // failing relay internally, so the fast relay's profile still renders.
+  assert.equal(
+    poolListCalls.length,
+    1,
+    "expected a single batched query across all relays",
+  );
 
   const [fastCall] = poolListCalls;
+  assert.deepEqual(
+    fastCall.relays,
+    [FAST_RELAY, FAIL_RELAY],
+    "batched query should target all configured relays",
+  );
   assert.deepEqual(
     fastCall.filters[0].authors,
     [VALID_PUBKEY],

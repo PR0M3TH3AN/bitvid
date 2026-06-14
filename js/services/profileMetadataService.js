@@ -106,61 +106,64 @@ async function performProfileFetch({
 
   const newestProfiles = new Map();
 
-  const results = await Promise.allSettled(
-    relayUrls.map((relayUrl) =>
-      nostr.pool
-        .list([relayUrl], [filter])
-        .then((events) => ({ relayUrl, events }))
-    )
-  );
+  // Prefer the L1 SubscriptionManager: ONE deduped, health-gated list() across
+  // all relays (the pool merges per-relay results) instead of a manual
+  // per-relay fan-out. Falls back to the legacy per-relay path in manager-less
+  // environments (tests / mock clients).
+  const manager =
+    typeof nostr.getSubscriptionManager === "function"
+      ? nostr.getSubscriptionManager()
+      : null;
 
-  results.forEach((result, index) => {
-    const relayUrl =
-      result.status === "fulfilled"
-        ? result.value.relayUrl
-        : relayUrls[index];
+  let events = [];
+  if (manager) {
+    try {
+      const result = await manager.list({ filters: [filter], relays: relayUrls });
+      events = Array.isArray(result) ? result : [];
+    } catch (error) {
+      logger.warn("[profileMetadata] Batched profile fetch failed:", error);
+    }
+  } else {
+    const results = await Promise.allSettled(
+      relayUrls.map((relayUrl) =>
+        nostr.pool
+          .list([relayUrl], [filter])
+          .then((relayEvents) => ({ relayUrl, relayEvents }))
+      )
+    );
+    results.forEach((result, index) => {
+      if (result.status !== "fulfilled") {
+        logger.warn(
+          `[profileMetadata] Failed to fetch profiles from relay ${relayUrls[index]}:`,
+          result.reason,
+        );
+        return;
+      }
+      if (Array.isArray(result.value.relayEvents)) {
+        events.push(...result.value.relayEvents);
+      }
+    });
+  }
 
-    if (result.status !== "fulfilled") {
-      logger.warn(
-        `[profileMetadata] Failed to fetch profiles from relay ${relayUrl}:`,
-        result.reason,
-      );
-      return;
+  for (const event of events) {
+    const pubkey = normalizePubkey(event?.pubkey);
+    if (!pubkey) {
+      continue;
     }
 
-    const events = Array.isArray(result.value.events)
-      ? result.value.events
-      : [];
-    if (!events.length) {
-      return;
+    const createdAt = Number.isFinite(event?.created_at) ? event.created_at : 0;
+    const previous = newestProfiles.get(pubkey);
+    if (previous && previous.createdAt >= createdAt) {
+      continue;
     }
 
-    for (const event of events) {
-      const pubkey = normalizePubkey(event?.pubkey);
-      if (!pubkey) {
-        continue;
-      }
-
-      const createdAt = Number.isFinite(event?.created_at)
-        ? event.created_at
-        : 0;
-      const previous = newestProfiles.get(pubkey);
-      if (previous && previous.createdAt >= createdAt) {
-        continue;
-      }
-
-      const profile = parseProfileEvent(event, defaultProfileImage);
-      if (!profile) {
-        continue;
-      }
-
-      newestProfiles.set(pubkey, {
-        createdAt,
-        profile,
-        event,
-      });
+    const profile = parseProfileEvent(event, defaultProfileImage);
+    if (!profile) {
+      continue;
     }
-  });
+
+    newestProfiles.set(pubkey, { createdAt, profile, event });
+  }
 
   return newestProfiles;
 }
