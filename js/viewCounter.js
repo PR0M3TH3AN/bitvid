@@ -42,6 +42,221 @@ const pointerListeners = new Map();
 let persistTimer = null;
 let nextTokenId = 1;
 
+// ---- Batched relay transport (P3 — docs/architecture-refactor.md) ----
+// All grid view-count lookups share ONE kind-30079 live subscription and ONE
+// backfill list() over the active pointer set, bucketed back to per-pointer
+// state. This replaces the per-card relay subscription that stormed O(cards ×
+// relays). Falls back to the legacy per-pointer path when no SubscriptionManager
+// is available (unit tests / mock clients). The watch page additionally runs an
+// exact NIP-45 COUNT for its single pointer (opt-in via options.exact).
+const VIEW_EVENT_KIND = 30079;
+const VIEW_FILTER_BATCH = 200;
+const activeKeys = new Set();
+const hydratedKeys = new Set();
+let batchedLiveHandle = null;
+let batchedLiveSignature = "";
+let liveRefreshTimer = null;
+const backfillPending = new Set();
+let backfillTimer = null;
+
+function getSubscriptionManager() {
+  try {
+    return typeof nostrClient?.getSubscriptionManager === "function"
+      ? nostrClient.getSubscriptionManager()
+      : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function buildViewFilters(keys, sinceSeconds) {
+  const aVals = [];
+  const eVals = [];
+  for (const key of keys) {
+    const pointer = pointerListeners.get(key)?.pointer;
+    if (!pointer || typeof pointer.value !== "string") {
+      continue;
+    }
+    (pointer.type === "a" ? aVals : eVals).push(pointer.value);
+  }
+  const filters = [];
+  const pushChunks = (tag, vals) => {
+    for (let i = 0; i < vals.length; i += VIEW_FILTER_BATCH) {
+      const filter = { kinds: [VIEW_EVENT_KIND], "#t": ["view"] };
+      filter[tag] = vals.slice(i, i + VIEW_FILTER_BATCH);
+      if (Number.isFinite(sinceSeconds)) {
+        filter.since = sinceSeconds;
+      }
+      filters.push(filter);
+    }
+  };
+  pushChunks("#a", aVals);
+  pushChunks("#e", eVals);
+  return filters;
+}
+
+// Map a batched kind-30079 event back to the active pointer key it belongs to.
+function resolveEventKey(event) {
+  if (!event || !Array.isArray(event.tags)) {
+    return null;
+  }
+  for (const tag of event.tags) {
+    if (!Array.isArray(tag) || tag.length < 2) {
+      continue;
+    }
+    const [label, value] = tag;
+    if ((label === "a" || label === "e") && typeof value === "string") {
+      const key = `${label}:${value.trim()}`;
+      if (activeKeys.has(key)) {
+        return key;
+      }
+    }
+  }
+  return null;
+}
+
+function applyBatchedEvent(event) {
+  const key = resolveEventKey(event);
+  if (!key) {
+    return;
+  }
+  if (applyEventToState(key, event)) {
+    schedulePersist();
+    notifyHandlers(key);
+  }
+}
+
+function scheduleLiveRefresh() {
+  if (liveRefreshTimer) {
+    return;
+  }
+  liveRefreshTimer = setTimeout(() => {
+    liveRefreshTimer = null;
+    refreshBatchedLiveSubscription();
+  }, 0);
+}
+
+function refreshBatchedLiveSubscription() {
+  const manager = getSubscriptionManager();
+  if (!manager) {
+    return;
+  }
+  if (!activeKeys.size) {
+    if (batchedLiveHandle) {
+      batchedLiveHandle.close();
+      batchedLiveHandle = null;
+      batchedLiveSignature = "";
+    }
+    return;
+  }
+  const since =
+    Math.floor(Date.now() / 1000) - Math.max(1, VIEW_COUNT_DEDUPE_WINDOW_SECONDS);
+  const filters = buildViewFilters(activeKeys, since);
+  if (!filters.length) {
+    return;
+  }
+  const signature = JSON.stringify(filters);
+  if (batchedLiveHandle && signature === batchedLiveSignature) {
+    return;
+  }
+  batchedLiveSignature = signature;
+  if (batchedLiveHandle) {
+    batchedLiveHandle.update({ filters });
+  } else {
+    batchedLiveHandle = manager.subscribe({
+      key: "viewcounts:live",
+      label: "view-counts",
+      filters,
+      onEvent: (event) => applyBatchedEvent(event),
+    });
+  }
+  for (const key of activeKeys) {
+    setPointerStatus(key, "live");
+  }
+}
+
+function scheduleBackfill(key) {
+  backfillPending.add(key);
+  if (backfillTimer) {
+    return;
+  }
+  backfillTimer = setTimeout(() => {
+    backfillTimer = null;
+    runBatchedBackfill();
+  }, 0);
+}
+
+async function runBatchedBackfill() {
+  const manager = getSubscriptionManager();
+  if (!manager) {
+    return;
+  }
+  const keys = Array.from(backfillPending).filter(
+    (k) => activeKeys.has(k) && !hydratedKeys.has(k),
+  );
+  backfillPending.clear();
+  if (!keys.length) {
+    return;
+  }
+  for (const key of keys) {
+    setPointerStatus(key, "hydrating");
+  }
+  const since =
+    Math.floor(Date.now() / 1000) - VIEW_COUNT_BACKFILL_MAX_DAYS * SECONDS_PER_DAY;
+  const filters = buildViewFilters(keys, since);
+  let events = [];
+  try {
+    events = await manager.list({ filters });
+  } catch (error) {
+    userLogger.warn("[viewCounter] Batched view backfill failed:", error);
+  }
+  if (Array.isArray(events)) {
+    for (const event of events) {
+      applyBatchedEvent(event);
+    }
+  }
+  for (const key of keys) {
+    hydratedKeys.add(key);
+    const state = ensurePointerState(key);
+    state.lastSyncedAt = Date.now();
+    setPointerStatus(key, batchedLiveHandle ? "live" : "idle");
+  }
+  schedulePersist();
+}
+
+// Exact NIP-45 COUNT for a single pointer (watch page). Cheap — one pointer,
+// no storm — and accurate where a viewer might actually scrutinize the number.
+async function exactCountForPointer(key, pointer, options = {}) {
+  try {
+    const result = await countVideoViewEventsApi(pointer, {
+      relays: options.relays,
+      signal: options.signal,
+    });
+    const best = Number.isFinite(result?.best?.count)
+      ? Number(result.best.count)
+      : Number.isFinite(result?.total)
+      ? Number(result.total)
+      : null;
+    if (best === null) {
+      return;
+    }
+    const state = ensurePointerState(key);
+    if (result && typeof result === "object") {
+      state.partial = Boolean(result.partial);
+    }
+    if (best > state.total) {
+      state.total = best;
+      state.lastSyncedAt = Date.now();
+    }
+    schedulePersist();
+    notifyHandlers(key);
+  } catch (error) {
+    if (error?.name !== "AbortError") {
+      userLogger.warn("[viewCounter] Exact view count failed:", error);
+    }
+  }
+}
+
 restoreCacheSnapshot();
 
 /**
@@ -537,6 +752,14 @@ async function hydratePointer(key, listeners) {
 }
 
 function ensureHydration(key, listeners) {
+  // Batched path: one shared backfill list() over the active pointer set.
+  if (getSubscriptionManager()) {
+    if (!hydratedKeys.has(key)) {
+      scheduleBackfill(key);
+    }
+    return;
+  }
+  // Legacy per-pointer fallback (no SubscriptionManager — tests / mocks).
   if (!listeners.hydrationPromise) {
     listeners.hydrationPromise = hydratePointer(key, listeners).finally(() => {
       listeners.hydrationPromise = null;
@@ -553,6 +776,13 @@ function ensureHydration(key, listeners) {
 }
 
 function ensureLiveSubscription(key, listeners) {
+  // Batched path: the single shared live subscription already covers this key
+  // (added to activeKeys on subscribe); just (re)issue it, coalesced.
+  if (getSubscriptionManager()) {
+    scheduleLiveRefresh();
+    return;
+  }
+  // Legacy per-pointer fallback (no SubscriptionManager — tests / mocks).
   if (listeners.liveUnsub || !listeners.handlers.size) {
     return;
   }
@@ -603,6 +833,7 @@ export function subscribeToVideoViewCount(pointerInput, handler, options = {}) {
   const { key, pointer } = canonicalizePointer(pointerInput);
   const listeners = ensurePointerListeners(key, pointer);
   listeners.options = mergeListenerOptions(listeners.options, options);
+  activeKeys.add(key);
   const token = `token-${nextTokenId++}`;
   listeners.handlers.set(token, handler);
   const state = ensurePointerState(key);
@@ -618,6 +849,10 @@ export function subscribeToVideoViewCount(pointerInput, handler, options = {}) {
   }
   ensureHydration(key, listeners);
   ensureLiveSubscription(key, listeners);
+  // Watch page (single video) opts into an exact NIP-45 COUNT for accuracy.
+  if (options && options.exact && getSubscriptionManager()) {
+    void exactCountForPointer(key, pointer, options);
+  }
   return token;
 }
 
@@ -631,8 +866,17 @@ export function unsubscribeFromVideoViewCount(pointerInput, token) {
     return;
   }
   listeners.handlers.delete(token);
-  if (!listeners.handlers.size && listeners.liveUnsub) {
-    listeners.liveUnsub();
+  if (!listeners.handlers.size) {
+    if (listeners.liveUnsub) {
+      listeners.liveUnsub(); // legacy per-pointer sub
+    }
+    // Batched path: drop from the active set and re-issue the shared sub so it
+    // no longer covers this pointer. State stays cached in pointerStates.
+    if (activeKeys.delete(key)) {
+      hydratedKeys.delete(key);
+      pointerListeners.delete(key);
+      scheduleLiveRefresh();
+    }
   }
 }
 

@@ -169,7 +169,7 @@ export function createModalCoordinator(deps) {
             }
             latestViewEl.dataset.viewCountState = status;
           }
-        });
+        }, { exact: true });
 
         this.modalViewCountUnsub = () => {
           try {
