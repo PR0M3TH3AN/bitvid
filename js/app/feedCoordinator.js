@@ -34,6 +34,8 @@ export function createFeedCoordinator(deps) {
     createDedupeByRootStage,
     createExploreDiversitySorter,
     createExploreScorerStage,
+    createForYouScorerStage,
+    createForYouScoreSorter,
     createKidsAudienceFilterStage,
     createKidsScorerStage,
     createKidsScoreSorter,
@@ -158,9 +160,11 @@ export function createFeedCoordinator(deps) {
         return this.feedEngine.registerFeed(FEED_TYPES.FOR_YOU, {
           source: createActiveNostrSource({ service: this.nostrService }),
           stages: [
-            // Note: Tag-preference filtering is consolidated in createTagPreferenceFilterStage
-            // so each feed has a single source of truth for interest-based inclusion/ranking.
-            createTagPreferenceFilterStage(),
+            // For You is INCLUSIVE + RANKED (docs/feed-algo-audit.md): interests
+            // BOOST rather than exclude, so the feed is never empty. We only drop
+            // disinterested tags here (enforceInterests:false); the ranking by
+            // follows + interest/watch affinity + freshness happens in the scorer.
+            createTagPreferenceFilterStage({ enforceInterests: false }),
             createBlacklistFilterStage({
               shouldIncludeVideo: (video, options) =>
                 this.nostrService.shouldIncludeVideo(video, options),
@@ -177,8 +181,9 @@ export function createFeedCoordinator(deps) {
               trustedReportHideThreshold: resolveThresholdFromApp("trustedSpamHideThreshold"),
             }),
             createResolvePostedAtStage(),
+            createForYouScorerStage(),
           ],
-          sorter: createChronologicalSorter(),
+          sorter: createForYouScoreSorter(),
           hooks: {
             timestamps: {
               getKnownVideoPostedAt: (video) => this.getKnownVideoPostedAt(video),
@@ -526,6 +531,34 @@ export function createFeedCoordinator(deps) {
       const preferencesAvailable = preferenceSource?.dataReady === true;
       const moderationThresholds = this.getActiveModerationThresholds();
 
+      // Follows drive the For You ranking (follows-boost in the scorer).
+      let subscriptionAuthors = [];
+      try {
+        if (subscriptions && typeof subscriptions.getSubscribedAuthors === "function") {
+          const authors = subscriptions.getSubscribedAuthors();
+          if (Array.isArray(authors)) {
+            subscriptionAuthors = authors.filter(
+              (a) => typeof a === "string" && a,
+            );
+          }
+        }
+      } catch (error) {
+        devLogger.warn("[feedCoordinator] Failed to read subscribed authors:", error);
+      }
+
+      // Watch-topic affinity signal (reuse the Explore source if present).
+      const whTagSource =
+        this.exploreDataService &&
+        typeof this.exploreDataService.getWatchHistoryTagCounts === "function"
+          ? this.exploreDataService.getWatchHistoryTagCounts()
+          : this.watchHistoryTagCounts;
+      const watchHistoryTagCounts =
+        whTagSource instanceof Map
+          ? new Map(whTagSource)
+          : whTagSource && typeof whTagSource === "object"
+          ? { ...whTagSource }
+          : undefined;
+
       const watchedKeys = new Set();
       if (Array.isArray(watchHistoryItems)) {
         for (const item of watchHistoryItems) {
@@ -542,6 +575,8 @@ export function createFeedCoordinator(deps) {
       return {
         blacklistedEventIds: blacklist,
         isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
+        subscriptionAuthors,
+        watchHistoryTagCounts,
         tagPreferences: {
           interests: Array.isArray(interests) ? [...interests] : [],
           disinterests: Array.isArray(disinterests) ? [...disinterests] : [],

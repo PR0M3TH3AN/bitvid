@@ -449,3 +449,130 @@ export function createExploreScorerStage({ stageName = "explore-scorer", ...opti
     return items;
   };
 }
+
+// For You weights — UNLIKE Explore (which rewards novelty/discovery), For You
+// rewards affinity to who you follow and what you like/watch, plus freshness.
+const FOR_YOU_WEIGHTS = Object.freeze({
+  follows: 0.4, // author is in your subscriptions
+  affinity: 0.35, // cosine similarity to your interests + watch-topic profile
+  freshness: 0.25, // recency decay
+  disinterestOverlap: 0.3, // penalty for disinterested tags
+});
+
+/**
+ * For You scorer (docs/feed-algo-audit.md). Inclusive + ranked: it scores (never
+ * filters) so the feed is never empty — when you have no follows/interests/
+ * history, score == freshness and it falls back to "recent". Reuses Explore's
+ * vector/similarity/freshness helpers; adds a follows-boost.
+ */
+export function createForYouScorerStage({
+  stageName = "for-you-scorer",
+  weights: weightOverrides,
+  ...options
+} = {}) {
+  const weights = {
+    ...FOR_YOU_WEIGHTS,
+    ...(isPlainObject(weightOverrides) ? weightOverrides : {}),
+  };
+
+  return async function forYouScorerStage(items = [], context = {}) {
+    if (!Array.isArray(items) || items.length === 0) {
+      return items;
+    }
+
+    const tagPreferences = context?.runtime?.tagPreferences;
+    const interests = normalizeTagSet(tagPreferences?.interests);
+    const disinterests = normalizeTagSet(tagPreferences?.disinterests);
+    const historyCounts = normalizeTagCountMap(context?.runtime?.watchHistoryTagCounts);
+    const historyWeights = buildHistoryWeights(historyCounts);
+    const userVector = combineUserVector({ interests, disinterests, historyWeights });
+    const idfMap = context?.runtime?.exploreTagIdf;
+    const follows = toSet(context?.runtime?.subscriptionAuthors);
+    const freshnessHalfLifeDays = resolveFreshnessHalfLife(options, context);
+    const now = resolveNow(context);
+
+    for (const item of items) {
+      if (!item || typeof item !== "object") {
+        continue;
+      }
+      const video = item.video;
+      if (!video || typeof video !== "object") {
+        continue;
+      }
+
+      const videoVector = buildVideoVector(video, idfMap);
+      const totalVideoWeight = Array.from(videoVector.values()).reduce(
+        (sum, value) => sum + (Number.isFinite(value) ? value : 0),
+        0,
+      );
+
+      const affinity = Math.max(0, cosineSimilarity(userVector, videoVector));
+
+      let disinterestOverlap = 0;
+      if (disinterests.size > 0 && videoVector.size > 0 && totalVideoWeight > 0) {
+        let disinterestWeight = 0;
+        for (const [tag, weight] of videoVector.entries()) {
+          if (disinterests.has(tag)) {
+            disinterestWeight += weight;
+          }
+        }
+        disinterestOverlap = clamp01(disinterestWeight / totalVideoWeight);
+      }
+
+      const followsMatch =
+        typeof video.pubkey === "string" && follows.has(video.pubkey) ? 1 : 0;
+
+      let freshness = 0;
+      const createdAt = resolveTimestamp(video);
+      if (createdAt && freshnessHalfLifeDays > 0) {
+        const ageDays = Math.max(0, now - createdAt) / 86400;
+        freshness = clamp01(Math.exp(-ageDays / freshnessHalfLifeDays));
+      }
+
+      const score = clamp01(
+        weights.follows * followsMatch +
+          weights.affinity * affinity +
+          weights.freshness * freshness -
+          weights.disinterestOverlap * disinterestOverlap,
+      );
+
+      if (!isPlainObject(item.metadata)) {
+        item.metadata = {};
+      }
+      item.metadata.forYouScore = score;
+      item.metadata.forYouComponents = {
+        followsMatch,
+        affinity,
+        freshness,
+        disinterestOverlap,
+      };
+
+      const videoId = typeof video.id === "string" ? video.id : null;
+      const pubkey = typeof video.pubkey === "string" ? video.pubkey : null;
+      const positives = [
+        { key: "follows", value: weights.follows * followsMatch },
+        { key: "affinity", value: weights.affinity * affinity },
+        { key: "freshness", value: weights.freshness * freshness },
+      ];
+      let dominant = positives[0];
+      for (const component of positives) {
+        if (component.value > dominant.value) {
+          dominant = component;
+        }
+      }
+      if (dominant.value > 0) {
+        context?.addWhy?.({
+          stage: stageName,
+          type: "score",
+          reason: dominant.key,
+          value: dominant.value,
+          score,
+          videoId,
+          pubkey,
+        });
+      }
+    }
+
+    return items;
+  };
+}

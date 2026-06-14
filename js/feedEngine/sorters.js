@@ -3,6 +3,54 @@
 import { normalizeHashtag } from "../utils/hashtagNormalization.js";
 import { markAsNormalized } from "./utils.js";
 
+// Ranks by the For You score (set by createForYouScorerStage): score desc,
+// trusted-muted last, recency as the tiebreak. Reuses the same muted-last rule
+// as the chronological sorter so behavior is consistent across feeds.
+export function createForYouScoreSorter() {
+  return function forYouScoreSorter(items = [], context = {}) {
+    if (!Array.isArray(items)) {
+      return [];
+    }
+    void context;
+    const copy = [...items];
+
+    const isMuted = (entry) =>
+      entry?.metadata?.moderation?.trustedMuted === true ||
+      entry?.video?.moderation?.trustedMuted === true;
+
+    const scoreOf = (entry) => {
+      const score = Number(entry?.metadata?.forYouScore);
+      return Number.isFinite(score) ? score : 0;
+    };
+
+    const timestampOf = (entry) => {
+      const video = entry?.video;
+      if (!video || typeof video !== "object") {
+        return Number.NEGATIVE_INFINITY;
+      }
+      const root = Number(video.rootCreatedAt);
+      if (Number.isFinite(root)) return Math.floor(root);
+      const created = Number(video.created_at);
+      return Number.isFinite(created) ? Math.floor(created) : Number.NEGATIVE_INFINITY;
+    };
+
+    copy.sort((a, b) => {
+      const aMuted = isMuted(a);
+      const bMuted = isMuted(b);
+      if (aMuted !== bMuted) {
+        return aMuted ? 1 : -1;
+      }
+      const scoreDiff = scoreOf(b) - scoreOf(a);
+      if (scoreDiff !== 0) {
+        return scoreDiff;
+      }
+      return timestampOf(b) - timestampOf(a);
+    });
+
+    return copy;
+  };
+}
+
 export function createChronologicalSorter({
   direction = "desc",
   postedAtResolver,

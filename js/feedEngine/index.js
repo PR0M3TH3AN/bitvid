@@ -10,11 +10,12 @@ export {
   createModerationStage,
   createResolvePostedAtStage,
 } from "./stages.js";
-export { createExploreScorerStage } from "./exploreScoring.js";
+export { createExploreScorerStage, createForYouScorerStage } from "./exploreScoring.js";
 export { createKidsScorerStage } from "./kidsScoring.js";
 export { createKidsAudienceFilterStage } from "./kidsAudienceFilterStage.js";
 export {
   createChronologicalSorter,
+  createForYouScoreSorter,
   createExploreDiversitySorter,
   createKidsScoreSorter,
 } from "./sorters.js";

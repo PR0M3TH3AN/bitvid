@@ -35,7 +35,26 @@ Runtime inputs (`buildForYouFeedRuntime`): `blacklistedEventIds`,
 
 So the refactor's payoff is real: these lists now load and *do* shape For You.
 
-## Gaps (the deliverable)
+## Resolution (2026-06-14)
+
+Product decision: **For You = inclusive + ranked**. Implemented:
+- New `createForYouScorerStage` (in `exploreScoring.js`) scores each video by
+  **follows-boost + interest/watch-topic affinity + freshness − disinterest**
+  (reusing Explore's vector/similarity/freshness helpers; affinity uses the
+  combined interests+watch-history user vector).
+- New `createForYouScoreSorter` ranks by that score (muted last, recency tiebreak).
+- `registerForYouFeed`: interests now **boost** instead of exclude
+  (`enforceInterests:false`); scorer added; chronological sorter replaced.
+- `buildForYouFeedRuntime` now supplies `subscriptionAuthors` (follows) and
+  `watchHistoryTagCounts`.
+- Result: **G1 follows, G2 ranking, G3 inclusivity (never empty), G4 watch-topic
+  affinity, G5 blending — all addressed.** Cheat-resistant tests in
+  `tests/for-you-scorer.test.mjs`.
+
+Tuning of the weights is a follow-up (currently follows .4 / affinity .35 /
+freshness .25 / disinterest .3).
+
+## Gaps (original audit)
 
 ### G1 — Follows/subscriptions have ZERO effect on For You  *(highest impact)*
 For You's source is `createActiveNostrSource` (all videos); the runtime passes no
