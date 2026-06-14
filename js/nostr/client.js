@@ -228,6 +228,29 @@ import {
 import { inferMimeTypeFromUrl } from "../utils/mime.js";
 import { VideoEventBuffer } from "./videoEventBuffer.js";
 
+// Max relays the client will SUBSCRIBE/read from at once. Bounds the REQ
+// fan-out regardless of how large a user's NIP-65 relay list is. Writes are not
+// capped (see applyRelayPreferences). Interim until RelayHealth ranks relays by
+// liveness — see docs/architecture-refactor.md.
+const MAX_SUBSCRIBE_RELAYS = 6;
+
+// Return at most MAX_SUBSCRIBE_RELAYS urls, prioritizing the bundled known-good
+// defaults (which are large, reliable aggregators) ahead of arbitrary NIP-65
+// entries, then filling with the remaining urls in their original order.
+function capSubscribeRelays(urls) {
+  const list = Array.isArray(urls) ? urls.filter((u) => typeof u === "string" && u) : [];
+  if (list.length <= MAX_SUBSCRIBE_RELAYS) {
+    return Array.from(new Set(list));
+  }
+  const defaults = new Set(DEFAULT_RELAY_URLS);
+  const prioritized = [];
+  const rest = [];
+  for (const url of list) {
+    (defaults.has(url) ? prioritized : rest).push(url);
+  }
+  return Array.from(new Set([...prioritized, ...rest])).slice(0, MAX_SUBSCRIBE_RELAYS);
+}
+
 function normalizeProfileFromEvent(event) {
   if (!event || !event.content) return null;
   try {
@@ -861,9 +884,22 @@ export class NostrClient {
         : effectiveAll
     );
 
-    this.relays = effectiveAll.length ? effectiveAll : Array.from(RELAY_URLS);
-    this.readRelays = sanitizedRead.length ? sanitizedRead : Array.from(this.relays);
-    this.writeRelays = sanitizedWrite.length ? sanitizedWrite : Array.from(this.relays);
+    // Cap the SUBSCRIPTION/read set. A user's NIP-65 list can carry ~20 relays,
+    // most dead; subscribing on all of them is the dominant REQ-storm amplifier
+    // (every subsystem fans every query across all relays and re-fires on each
+    // flaky-relay reconnect). Reads go to a bounded core (known-good defaults
+    // prioritized); WRITES still fan out to the full set so publish reach is
+    // unaffected. This is the interim trim until RelayHealth ranks by liveness
+    // (see docs/architecture-refactor.md, P1).
+    const cappedRead = capSubscribeRelays(effectiveAll);
+
+    this.relays = cappedRead.length ? cappedRead : Array.from(RELAY_URLS);
+    this.readRelays = sanitizedRead.length
+      ? capSubscribeRelays(sanitizedRead)
+      : Array.from(this.relays);
+    this.writeRelays = sanitizedWrite.length
+      ? sanitizedWrite
+      : Array.from(effectiveAll.length ? effectiveAll : RELAY_URLS);
   }
 
   getWatchHistoryCacheTtlMs() {
