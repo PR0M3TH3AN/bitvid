@@ -255,7 +255,9 @@ The mock harness lied because it used **one perfect relay**. New fixtures:
 
 ## 8. Tracking checklist
 - [x] P0 stabilize + instrument
-- [ ] P1 SubscriptionManager + RelayHealth + lint guard + video-feed pilot
+- [x] P1 SubscriptionManager + lint guard + video-feed pilot
+      (interim RelayHealth = read-relay cap in `client.js`; full liveness
+      ranking deferred — the cap covers the immediate amplifier)
 - [ ] P2 moderation reports batched + re-enabled
 - [ ] P3 view counts batched + re-enabled
 - [ ] P4 lists via stores (follows/hashtags/blocks/watch-history/profiles)
