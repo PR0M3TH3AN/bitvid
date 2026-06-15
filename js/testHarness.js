@@ -472,6 +472,15 @@ function getAppState() {
         }
       : null,
     decryptBehavior: { ...activeDecryptBehavior },
+    lists: {
+      // Observable list-decrypt outcomes for harnesses validating the cold-login
+      // decrypt path (see scripts/perf/nip07-channel-sim.mjs / KNOWN_BUGS #0).
+      blocksLoaded: Boolean(userBlocks?.loaded),
+      blockedPubkeys:
+        typeof userBlocks?.getBlockedPubkeys === "function"
+          ? userBlocks.getBlockedPubkeys()
+          : [],
+    },
   };
 }
 

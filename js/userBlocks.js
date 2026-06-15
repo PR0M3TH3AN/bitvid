@@ -95,6 +95,35 @@ const BACKGROUND_DECRYPT_TIMEOUT_MS = 8000;
 // PERF: Reduced from 10s to 3s for faster recovery during login.
 const DECRYPT_RETRY_DELAY_MS = 3000;
 const MAX_DECRYPT_RETRY_DELAY_MS = 30000;
+
+// Transient decrypt failures that must KEEP the stale list and RETRY in the
+// background (the channel/extension recovers shortly), rather than giving up
+// permanently. Besides our own timeout, this covers a severed nip-07 message
+// port ("message channel closed" — KNOWN_BUGS #0) and the circuit breaker's
+// fast-fail while it probes for recovery. Without this, a brief channel drop
+// during the login burst abandons the block list until a page refresh, even
+// though the channel comes back seconds later.
+const TRANSIENT_DECRYPT_ERROR_CODES = new Set([
+  "user-blocklist-decrypt-timeout",
+  "nip07-channel-unresponsive",
+]);
+const TRANSIENT_DECRYPT_MESSAGE_PATTERNS = [
+  "message channel closed",
+  "could not establish connection",
+  "receiving end does not exist",
+  "extension context invalidated",
+  "connection lost",
+  "channel is unresponsive",
+];
+function isTransientDecryptError(error) {
+  if (!error) return false;
+  if (error.code && TRANSIENT_DECRYPT_ERROR_CODES.has(error.code)) {
+    return true;
+  }
+  const message =
+    typeof error.message === "string" ? error.message.toLowerCase() : "";
+  return TRANSIENT_DECRYPT_MESSAGE_PATTERNS.some((p) => message.includes(p));
+}
 function computeRetryDelay(baseDelayMs, attempt) {
   const normalizedAttempt = Number.isFinite(attempt) && attempt > 0 ? Math.floor(attempt) : 0;
   const multiplier = 2 ** normalizedAttempt;
@@ -1453,8 +1482,29 @@ class UserBlockListManager {
                 decryptedText = result.plaintext;
                 setLastSuccessfulScheme(normalized, result.scheme);
               }
-            } catch {
-              // All schemes failed — decryptedText stays empty
+            } catch (aggregateError) {
+              // Promise.any rejects with an AggregateError once EVERY scheme
+              // failed. If any failure was a transient channel/extension error
+              // (a severed message port, breaker fast-fail, etc.) we must NOT
+              // swallow it and return [] — that silently misreads a brief
+              // channel drop as "the user has no blocks" and never retries
+              // (KNOWN_BUGS #0). Re-throw so applyEvents keeps the stale list
+              // and schedules a background retry; once the channel recovers the
+              // retry succeeds. Genuine decrypt mismatches (wrong key/content)
+              // still fall through to the empty result.
+              const subErrors =
+                aggregateError && Array.isArray(aggregateError.errors)
+                  ? aggregateError.errors
+                  : [aggregateError];
+              const transient = subErrors.find((e) => isTransientDecryptError(e));
+              if (transient) {
+                if (!transient.signerStatus) {
+                  transient.signerStatus = signerStatus;
+                }
+                throw transient;
+              }
+              // All schemes failed for non-transient reasons — decryptedText
+              // stays empty (treated as "no blocks").
             }
           }
 
@@ -1552,7 +1602,10 @@ class UserBlockListManager {
             emitStatus({ status: "settled" });
             return;
           }
-          if (decryptionError.code === "user-blocklist-decrypt-timeout") {
+          if (isTransientDecryptError(decryptionError)) {
+            const isTimeout =
+              decryptionError.code === "user-blocklist-decrypt-timeout";
+            const reason = isTimeout ? "decrypt-timeout" : "channel-unavailable";
             const signerStatus = decryptionError.signerStatus || resolveSignerStatus();
             const recoveredPrivateBlocks = new Set(previousState.privateBlocks);
             const recoveredPublicMutes = new Set([
@@ -1566,14 +1619,14 @@ class UserBlockListManager {
               Number.isFinite(newestCreatedAt) ? newestCreatedAt : previousState.blockEventCreatedAt;
             applySets(recoveredPrivateBlocks, recoveredPublicMutes, {
               source,
-              reason: "decrypt-timeout-partial",
+              reason: `${reason}-partial`,
               events: [newestStandard?.id, newestLegacy?.id].filter(Boolean),
             });
             this.loaded = true;
 
             emitStatus({
               status: "stale",
-              reason: "decrypt-timeout",
+              reason,
               signerStatus,
               source,
               blockedPubkeys: Array.from(this.blockedPubkeys),
@@ -1581,9 +1634,12 @@ class UserBlockListManager {
             emitStatus({ status: "settled" });
 
             userLogger.warn(
-              "[UserBlockList] Decryption timed out; keeping stale list and retrying in background.",
+              isTimeout
+                ? "[UserBlockList] Decryption timed out; keeping stale list and retrying in background."
+                : "[UserBlockList] Signer channel unavailable; keeping stale list and retrying in background.",
               {
                 signerStatus,
+                reason,
                 events: [newestStandard?.id, newestLegacy?.id].filter(Boolean),
               },
             );

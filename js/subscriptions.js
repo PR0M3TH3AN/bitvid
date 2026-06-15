@@ -60,6 +60,41 @@ const DECRYPT_TIMEOUT_MS = 15000;
 const DECRYPT_RETRY_DELAY_MS = 1500;
 const MAX_DECRYPT_RETRY_DELAY_MS = 30000;
 
+// Transient decrypt failures that must RETRY rather than give up: our own
+// timeout, a severed nip-07 message port ("message channel closed"), and the
+// circuit breaker's fast-fail. Without this a brief channel drop during the
+// login burst abandons the subscription list until a refresh (KNOWN_BUGS #0).
+const TRANSIENT_DECRYPT_ERROR_CODES = new Set([
+  "subscriptions-decrypt-timeout",
+  "nip07-channel-unresponsive",
+]);
+const TRANSIENT_DECRYPT_MESSAGE_PATTERNS = [
+  "message channel closed",
+  "could not establish connection",
+  "receiving end does not exist",
+  "extension context invalidated",
+  "connection lost",
+  "channel is unresponsive",
+];
+function isTransientDecryptError(error) {
+  if (!error) return false;
+  if (error.code && TRANSIENT_DECRYPT_ERROR_CODES.has(error.code)) return true;
+  const message =
+    typeof error.message === "string" ? error.message.toLowerCase() : "";
+  if (TRANSIENT_DECRYPT_MESSAGE_PATTERNS.some((p) => message.includes(p))) {
+    return true;
+  }
+  const nested = Array.isArray(error.errors)
+    ? error.errors
+    : Array.isArray(error.cause)
+      ? error.cause
+      : null;
+  if (nested) {
+    return nested.some((entry) => isTransientDecryptError(entry?.error || entry));
+  }
+  return false;
+}
+
 function computeRetryDelay(baseDelayMs, attempt) {
   const normalizedAttempt =
     Number.isFinite(attempt) && attempt > 0 ? Math.floor(attempt) : 0;
@@ -690,7 +725,9 @@ class SubscriptionsManager {
       if (!decryptResult.ok) {
         this.lastLoadError = decryptResult.error || null;
         this.uiReady = true;
-        if (decryptResult.error?.code === "subscriptions-decrypt-timeout") {
+        if (isTransientDecryptError(decryptResult.error)) {
+          // Channel/timeout failures recover shortly — retry instead of
+          // abandoning the subscription list until a page refresh.
           this.scheduleDecryptRetry(normalizedUserPubkey, decryptResult.error, {
             allowPermissionPrompt,
             signerReadinessGate,
