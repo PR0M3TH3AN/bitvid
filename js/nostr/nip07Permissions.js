@@ -35,6 +35,13 @@ export const DEFAULT_NIP07_PERMISSION_METHODS = Object.freeze([
 ]);
 
 export const NIP07_PRIORITY = Object.freeze({
+  // CRITICAL is reserved for establishing the signer channel itself (the
+  // permission/enable handshake behind the readiness gate). It must outrank
+  // list decryption (HIGH): otherwise a flood of HIGH-priority decrypts jumps
+  // ahead of the gate in the queue and starves it, so the channel never gets
+  // warmed and every decrypt keeps timing out (the real-env ~48s "signer-ready"
+  // — KNOWN_BUGS #0).
+  CRITICAL: 20,
   HIGH: 10,
   NORMAL: 5,
   LOW: 1,
@@ -590,6 +597,9 @@ export async function requestEnablePermissions(
             ...variantTimeoutOverrides,
             // Interactive grant — never gated by (and can heal) the breaker.
             bypassCircuitBreaker: true,
+            // Establishing the channel must outrank list decryption so the
+            // handshake isn't starved by a flood of HIGH-priority decrypts.
+            priority: NIP07_PRIORITY.CRITICAL,
           },
         );
         return true;

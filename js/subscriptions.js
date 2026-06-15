@@ -1148,7 +1148,7 @@ class SubscriptionsManager {
     // decrypt calls should complete within 1-2s. 5s accommodates slow
     // extensions while still failing fast enough for scheme fallback.
     const nip07DecryptTimeoutMs = allowPermissionPrompt
-      ? 12000
+      ? 6000
       : SHORT_TIMEOUT_MS;
     const signerDecryptOptions = {
       priority: NIP07_PRIORITY.NORMAL,

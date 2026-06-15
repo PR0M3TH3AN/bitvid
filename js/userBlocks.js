@@ -953,11 +953,13 @@ class UserBlockListManager {
       : allowPermissionPrompt
       ? DECRYPT_TIMEOUT_MS
       : BACKGROUND_DECRYPT_TIMEOUT_MS;
-    // PERF: Previous 3s no-prompt timeout was too aggressive — extensions that
-    // have already granted permission still need time to decrypt. 8s gives a
-    // realistic window while still failing faster than the full 15s interactive
-    // timeout.
-    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 15000 : 8000;
+    // A healthy nip04/nip44 decrypt is local crypto (~1s). The login-time value
+    // was 15s purely to tolerate a slow first-grant prompt — but permissions are
+    // pre-granted by the readiness gate, so a 15s timeout just monopolizes one of
+    // the two NIP-07 queue slots on a doomed call, starving the gate (real-env
+    // ~48s signer-ready — KNOWN_BUGS #0). 6s still tolerates a slow extension
+    // while freeing the slot ~2.5x faster.
+    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 6000 : 6000;
     const emitStatus = (detail) => {
       if (!detail || typeof detail !== "object") {
         return;

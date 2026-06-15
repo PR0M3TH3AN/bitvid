@@ -1094,7 +1094,7 @@ class HashtagPreferencesService {
     // gate guarantees the extension is ready before decryption starts, so
     // decrypt calls should complete within 1-2s. 5s accommodates slow
     // extensions while still failing fast for scheme fallback.
-    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 12000 : SHORT_TIMEOUT_MS;
+    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 6000 : SHORT_TIMEOUT_MS;
     const signerDecryptOptions = {
       priority: NIP07_PRIORITY.NORMAL,
       timeoutMs: nip07DecryptTimeoutMs,
