@@ -29,16 +29,21 @@ refactor work in that doc — these are defects.
   dozens of failing connections churn the main thread and starve the nip-07
   extension's postMessage round-trips → permission/decrypt calls fail or time out.
 - **Partial mitigation shipped:** hashtag + subscription decrypt timeout 6s→15s.
-- **Proper fix (next):** RelayHealth — bound the SUBSCRIBE/read set to a small,
-  liveness-ranked healthy core that ALWAYS includes the reliable default
-  aggregators, applied centrally so every subsystem (blocks, hashtags, subs,
-  profiles, batch fetcher) reads from it; writes stay uncapped. Plus decrypt
-  resilience: don't hard-fail DMs on a transient permission miss (retry).
-  NOTE: a first attempt (`capReadRelays`) was reverted — capping the block-list
-  read path broke the security-critical `user-blocks` integration test (it
-  orchestrates per-relay block hydration), so this needs a test-aware rework.
-  Repro: `scripts/perf/disclaimer-repro.mjs` shape; real-env console is the
-  source of truth.
+- **Relay-storm fix SHIPPED (2026-06-14):** `capReadRelays` (in `js/nostr/toolkit.js`)
+  bounds every read/subscribe path to `MAX_SUBSCRIBE_RELAYS = 8`, applied centrally
+  at the chokepoints — `client.js` `applyRelayPreferences` (this.relays/readRelays)
+  and `relayBatchFetcher.js` `fetchListIncrementally` (used by blocks, subs,
+  hashtags). Writes stay uncapped. The helper is **user-relays-first** (a user's
+  own relays are where their data authoritatively lives, and small fast-path
+  limits would otherwise crowd them out — the bug that broke the first attempt)
+  while RESERVING `RESERVED_DEFAULT_RELAY_SLOTS = 2` for the reliable default
+  aggregators so the "~20 personal relays, all dead" case still reaches a live
+  relay. Test-aware: under test the reserved core is the test-relay override, so
+  harnesses stay isolated. Regression coverage: `tests/relay-subscribe-cap.test.mjs`
+  (bounded + reserved-defaults + writes-uncapped), and the spec-corrected
+  `user-blocks`, `subscriptions-manager`, and `nostr/client` fetch tests.
+- **Still deferred:** liveness-ranked health (see #4) and DM decrypt resilience
+  (don't hard-fail DMs on a transient permission miss — retry).
 
 ### 1. Logged-out: video grid stays empty until a manual refresh
 - **Severity:** medium (first-load UX, logged-out).
@@ -73,11 +78,14 @@ refactor work in that doc — these are defects.
 
 ### 4. Interim relay cap is static, not liveness-ranked
 - **Severity:** low (acceptable interim).
-- **Where:** `js/nostr/client.js` `capSubscribeRelays` — keeps the first 6
-  relays (known-good defaults prioritized) but does NOT re-rank by live health.
-  If a user's first relays are dead, reads degrade until other paths recover.
-- **Fix:** P1's deferred `RelayHealth` — rank the subscribe set by rolling
-  liveness and re-resolve on health changes.
+- **Where:** `js/nostr/toolkit.js` `capReadRelays` — bounds the read/subscribe
+  set to 8 (user relays first, 2 slots reserved for reliable defaults) but does
+  NOT re-rank by live health. If a user's first 6 relays are dead, reads lean on
+  the 2 reserved defaults until other paths recover; the dead ones still get a
+  (bounded) connection attempt each cold load.
+- **Fix:** P1's deferred `RelayHealth` — rank the bounded set by rolling liveness
+  and re-resolve on health changes, so dead relays drop out of the read set
+  entirely instead of consuming slots.
 
 ---
 

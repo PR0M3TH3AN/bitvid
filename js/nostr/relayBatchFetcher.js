@@ -2,7 +2,7 @@ import { isDevMode } from "../config.js";
 import { devLogger } from "../utils/logger.js";
 import { withRequestTimeout } from "../utils/asyncUtils.js";
 import { normalizeNostrPubkey, sanitizeRelayList } from "./nip46Client.js";
-import { DEFAULT_RELAY_URLS, RELAY_URLS } from "./toolkit.js";
+import { DEFAULT_RELAY_URLS, RELAY_URLS, capReadRelays } from "./toolkit.js";
 import { STANDARD_TIMEOUT_MS } from "../constants.js";
 
 export class RelayBatchFetcher {
@@ -29,9 +29,17 @@ export class RelayBatchFetcher {
       throw new Error("Invalid pubkey for fetchListIncrementally");
     }
 
-    const relaysToUse = Array.isArray(relayUrls) && relayUrls.length
-      ? relayUrls
-      : this.client.relays;
+    // Bound the candidate set to a healthy core that ALWAYS includes the
+    // reliable defaults. Callers pass a user's full ~20-relay NIP-65 list (most
+    // dead); on a cold load none are marked unhealthy yet, so without this the
+    // fetcher would pick the first-N dead relays and the flood of failed
+    // connections would destabilize the nip-07 extension and time out list
+    // decryption. (See KNOWN_BUGS #0.)
+    const relaysToUse = capReadRelays(
+      Array.isArray(relayUrls) && relayUrls.length
+        ? relayUrls
+        : this.client.relays,
+    );
     const sanitizedRequestedRelays = sanitizeRelayList(relaysToUse);
 
     const healthyCandidates = this.client.getHealthyRelays(sanitizedRequestedRelays);

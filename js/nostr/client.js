@@ -119,6 +119,7 @@ import {
 import {
   DEFAULT_RELAY_URLS,
   RELAY_URLS,
+  capReadRelays,
   ensureNostrTools,
   getCachedNostrTools,
   nostrToolsBootstrapFailure,
@@ -230,28 +231,11 @@ import { VideoEventBuffer } from "./videoEventBuffer.js";
 import { createSubscriptionManager } from "./subscriptionManager.js";
 import { RelaySubscriptionService } from "../services/relaySubscriptionService.js";
 
-// Max relays the client will SUBSCRIBE/read from at once. Bounds the REQ
-// fan-out regardless of how large a user's NIP-65 relay list is. Writes are not
-// capped (see applyRelayPreferences). Interim until RelayHealth ranks relays by
-// liveness — see docs/architecture-refactor.md.
-const MAX_SUBSCRIBE_RELAYS = 6;
-
-// Return at most MAX_SUBSCRIBE_RELAYS urls, prioritizing the bundled known-good
-// defaults (which are large, reliable aggregators) ahead of arbitrary NIP-65
-// entries, then filling with the remaining urls in their original order.
-function capSubscribeRelays(urls) {
-  const list = Array.isArray(urls) ? urls.filter((u) => typeof u === "string" && u) : [];
-  if (list.length <= MAX_SUBSCRIBE_RELAYS) {
-    return Array.from(new Set(list));
-  }
-  const defaults = new Set(DEFAULT_RELAY_URLS);
-  const prioritized = [];
-  const rest = [];
-  for (const url of list) {
-    (defaults.has(url) ? prioritized : rest).push(url);
-  }
-  return Array.from(new Set([...prioritized, ...rest])).slice(0, MAX_SUBSCRIBE_RELAYS);
-}
+// capReadRelays (shared, in toolkit) bounds the read set AND always includes the
+// reliable defaults — even when a user's NIP-65 list contains none of them — so
+// reads aren't stuck on the user's (frequently dead) personal relays. Writes are
+// not capped (see applyRelayPreferences).
+const capSubscribeRelays = capReadRelays;
 
 function normalizeProfileFromEvent(event) {
   if (!event || !event.content) return null;

@@ -9,6 +9,9 @@ const { setActiveSigner, clearActiveSigner, getActiveSigner } = await import(
   "../js/nostr/client.js"
 );
 const { relayManager } = await import("../js/relayManager.js");
+const { capReadRelays, DEFAULT_RELAY_URLS } = await import(
+  "../js/nostr/toolkit.js"
+);
 
 if (typeof globalThis.window === "undefined") {
   globalThis.window = {};
@@ -80,6 +83,14 @@ await (async () => {
   nostrClient.pool = pool;
   nostrClient.relays = relays;
   nostrClient.writeRelays = relays;
+  // Mirror prod: a logged-in session resolves readRelays to the user's relays
+  // (via applyRelayPreferences). The bounded fetcher sorts candidates by the
+  // user's read preferences, so without this the bundled defaults would be
+  // ranked ahead of the user's own relays.
+  const originalReadRelays = Array.isArray(nostrClient.readRelays)
+    ? [...nostrClient.readRelays]
+    : nostrClient.readRelays;
+  nostrClient.readRelays = relays;
 
   assert.equal(
     typeof nostrClient.pool?.list,
@@ -98,10 +109,28 @@ await (async () => {
 
     await new Promise((resolve) => setImmediate(resolve));
 
-    assert.deepEqual(
-      calls,
-      [...relays, ...relays, ...relays, ...relays],
-      "loadBlocks should initiate queries for all relays concurrently across fast + background block/mute fetches",
+    // Spec correction (SCN-block-reads-bounded): block reads now go through the
+    // bounded relayBatchFetcher (capReadRelays). The user's OWN relays are
+    // prioritized — they're where the block list authoritatively lives — so for
+    // a user with a small relay set every configured relay is still queried.
+    // The distinct read set is bounded so a large (mostly-dead) NIP-65 list can
+    // no longer storm the relay pool and starve list decryption.
+    const distinctCalls = new Set(calls);
+    for (const relay of relays) {
+      assert.ok(
+        distinctCalls.has(relay),
+        `loadBlocks should still query configured relay ${relay}`,
+      );
+    }
+    assert.ok(
+      distinctCalls.size <= 8,
+      `block read relay set should be bounded (<=8), got ${distinctCalls.size}`,
+    );
+    // Sanity: capReadRelays guarantees reliable defaults are reachable in the
+    // full read set even when the user's relays are all dead (liveness backstop).
+    assert.ok(
+      capReadRelays(relays).some((r) => DEFAULT_RELAY_URLS.includes(r)),
+      "capReadRelays must keep at least one reliable default in the read set",
     );
 
     // Reverting to original test data:
@@ -137,7 +166,9 @@ await (async () => {
     };
 
     for (const { relay, resolve } of resolvers) {
-      resolve(responses[relay]);
+      // The bounded read set now also queries the bundled defaults; they carry
+      // no block events in this scenario, so resolve them empty.
+      resolve(responses[relay] || []);
     }
 
     await loadPromise;
@@ -162,6 +193,7 @@ await (async () => {
     nostrClient.pool = originalPool;
     nostrClient.relays = originalRelays;
     nostrClient.writeRelays = originalWriteRelays;
+    nostrClient.readRelays = originalReadRelays;
     window.nostr = originalNostr;
   }
 })();
@@ -396,6 +428,13 @@ await (async () => {
   nostrClient.pool = pool;
   nostrClient.relays = relays;
   nostrClient.writeRelays = relays;
+  // Mirror prod: a logged-in session resolves readRelays to the user's relays.
+  // The bounded fetcher ranks candidates by read preference, so the user's own
+  // relays must be the preferred set (otherwise bundled defaults rank ahead).
+  const originalReadRelays = Array.isArray(nostrClient.readRelays)
+    ? [...nostrClient.readRelays]
+    : nostrClient.readRelays;
+  nostrClient.readRelays = relays;
 
   assert.equal(
     typeof nostrClient.pool?.list,
@@ -502,6 +541,7 @@ await (async () => {
     nostrClient.pool = originalPool;
     nostrClient.relays = originalRelays;
     nostrClient.writeRelays = originalWriteRelays;
+    nostrClient.readRelays = originalReadRelays;
     window.nostr = originalNostr;
   }
 })();

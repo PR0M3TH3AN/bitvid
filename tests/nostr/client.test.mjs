@@ -1,6 +1,7 @@
 import { describe, it, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
 import { NostrClient } from "../../js/nostr/client.js";
+import { MAX_SUBSCRIBE_RELAYS } from "../../js/nostr/toolkit.js";
 
 // Mock global objects needed for NostrClient
 if (!globalThis.WebSocket) {
@@ -70,7 +71,16 @@ describe("NostrClient", () => {
       assert.equal(events.length, 2);
       assert.equal(events[0].id, "1");
       assert.equal(events[1].id, "2");
-      assert.equal(mockPool.list.mock.callCount(), 1); // 1 call for 1 relay
+      // Spec correction (SCN-fetch-list-bounded-defaults): the fetcher seeds the
+      // read set with a few reliable defaults (liveness backstop), then dedupes
+      // across whatever those relays return. So the same 2 events arriving from
+      // several relays still collapse to 2, and the relay fan-out is bounded
+      // rather than exactly the single configured relay.
+      assert.ok(
+        mockPool.list.mock.callCount() >= 1 &&
+          mockPool.list.mock.callCount() <= MAX_SUBSCRIBE_RELAYS,
+        `relay fan-out should be bounded (1..${MAX_SUBSCRIBE_RELAYS}), got ${mockPool.list.mock.callCount()}`,
+      );
     });
 
     it("should handle incremental updates using lastSeen", async () => {

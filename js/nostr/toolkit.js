@@ -17,6 +17,91 @@ export const DEFAULT_RELAY_URLS = Object.freeze([
 
 export const RELAY_URLS = Array.from(DEFAULT_RELAY_URLS);
 
+// Max relays to SUBSCRIBE/read from at once. Bounds REQ fan-out regardless of
+// how large a user's NIP-65 list is.
+export const MAX_SUBSCRIBE_RELAYS = 8;
+
+// How many slots in the bounded read set are RESERVED for reliable defaults even
+// when a user supplies enough relays of their own to fill the cap. This is the
+// liveness guarantee for the "user has ~20 personal relays, all dead" case: at
+// least this many known-good aggregators are always reachable so encrypted-list
+// decryption isn't starved. Kept small so a user's own relays (where their data
+// authoritatively lives) still dominate the set.
+export const RESERVED_DEFAULT_RELAY_SLOTS = 2;
+
+// The reliable relays to always seed reads with. In test mode this is the test
+// relay override (keeps harnesses isolated); otherwise the bundled defaults.
+function effectiveReadDefaults() {
+  try {
+    if (
+      typeof window !== "undefined" &&
+      Array.isArray(window.__bitvidTestRelays__) &&
+      window.__bitvidTestRelays__.length
+    ) {
+      return window.__bitvidTestRelays__;
+    }
+    if (typeof localStorage !== "undefined") {
+      const raw = localStorage.getItem("__bitvidTestRelays__");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length) {
+          return parsed;
+        }
+      }
+    }
+  } catch (_) {
+    // ignore
+  }
+  return DEFAULT_RELAY_URLS;
+}
+
+// Build a bounded read/subscribe relay set.
+//
+// Goals (both must hold):
+//   1. The user's OWN relays are prioritized — that's where their data (block
+//      lists, hashtag prefs, etc.) authoritatively lives, and downstream callers
+//      may slice this further to a tiny fast-path limit (e.g. 3). Defaults-first
+//      ordering would crowd a small-relay user's own relays out of that slice and
+//      silently drop their lists.
+//   2. A small number of reliable defaults are ALWAYS guaranteed in the set, even
+//      when the user supplies enough relays to fill the cap. This is the liveness
+//      backstop for the "~20 personal relays, all dead" case that floods the main
+//      thread and starves the nip-07 extension, timing out list decryption.
+//
+// So: take the user's relays first (up to cap minus the reserved slots), then
+// guarantee the reserved defaults, then top up with any remaining defaults, all
+// deduped and bounded. NOT for write paths (writes stay uncapped, no defaults).
+export function capReadRelays(urls) {
+  const provided = Array.isArray(urls)
+    ? Array.from(
+        new Set(urls.filter((u) => typeof u === "string" && u.trim())),
+      )
+    : [];
+  const defaults = Array.from(new Set(effectiveReadDefaults()));
+
+  if (!provided.length) {
+    return defaults.slice(0, MAX_SUBSCRIBE_RELAYS);
+  }
+
+  const defaultsNotProvided = defaults.filter((d) => !provided.includes(d));
+  const reservedDefaults = defaultsNotProvided.slice(
+    0,
+    RESERVED_DEFAULT_RELAY_SLOTS,
+  );
+  const userBudget = Math.max(
+    0,
+    MAX_SUBSCRIBE_RELAYS - reservedDefaults.length,
+  );
+
+  return Array.from(
+    new Set([
+      ...provided.slice(0, userBudget),
+      ...reservedDefaults,
+      ...defaultsNotProvided,
+    ]),
+  ).slice(0, MAX_SUBSCRIBE_RELAYS);
+}
+
 const globalScope =
   typeof window !== "undefined"
     ? window

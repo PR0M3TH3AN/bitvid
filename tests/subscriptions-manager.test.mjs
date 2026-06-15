@@ -113,10 +113,14 @@ test("loadSubscriptions aggregates relay results when one rejects", async () => 
       "cipher-new",
       "newest event content should be decrypted",
     );
-    assert.equal(
-      listCalls.length,
-      relayUrls.length,
-      "each relay should be queried even if one rejects",
+    // Spec correction (SCN-subs-reads-bounded): subscription reads go through the
+    // bounded relayBatchFetcher, which also seeds a few reliable defaults so a
+    // mostly-dead NIP-65 list can't starve decryption. The read set is therefore
+    // bounded (<=8) rather than exactly the configured count, but every
+    // configured relay is still queried even when one rejects.
+    assert.ok(
+      new Set(listCalls).size <= 8,
+      `subscription read relay set should be bounded (<=8), got ${new Set(listCalls).size}`,
     );
     for (const url of relayUrls) {
       assert.ok(

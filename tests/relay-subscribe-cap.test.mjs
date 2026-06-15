@@ -12,10 +12,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 const { nostrClient } = await import("../js/nostrClientFacade.js");
-const { DEFAULT_RELAY_URLS } = await import("../js/nostr/toolkit.js");
+const { DEFAULT_RELAY_URLS, RESERVED_DEFAULT_RELAY_SLOTS } = await import(
+  "../js/nostr/toolkit.js"
+);
 
-test("subscribe/read relays are capped; write relays are not", () => {
-  const many = [
+test("subscribe/read relays are capped and ALWAYS include defaults; writes are not", () => {
+  // A user's NIP-65 list of dead relays that contains NONE of the bundled
+  // defaults — the real-env failure mode that starved decryption.
+  const deadList = [
     "wss://dead1.example",
     "wss://dead2.example",
     "wss://dead3.example",
@@ -24,34 +28,39 @@ test("subscribe/read relays are capped; write relays are not", () => {
     "wss://dead6.example",
     "wss://dead7.example",
     "wss://dead8.example",
-    ...DEFAULT_RELAY_URLS, // known-good, listed last on purpose
+    "wss://dead9.example",
+    "wss://dead10.example",
   ];
 
-  nostrClient.applyRelayPreferences({ all: many, write: many });
+  nostrClient.applyRelayPreferences({ all: deadList, write: deadList });
 
   // Read/subscribe set is bounded.
   assert.ok(
-    nostrClient.relays.length <= 6,
-    `read set should be capped (<=6), got ${nostrClient.relays.length}`,
+    nostrClient.relays.length <= 8,
+    `read set should be capped (<=8), got ${nostrClient.relays.length}`,
+  );
+
+  // Reliable defaults must be present EVEN THOUGH none were in the user's list —
+  // otherwise reads point only at the user's dead relays and decryption starves.
+  // The cap reserves a small guaranteed core for defaults (the rest of the set
+  // stays the user's own relays, which is where their data authoritatively
+  // lives), so at least RESERVED_DEFAULT_RELAY_SLOTS defaults must survive.
+  const survivingDefaults = DEFAULT_RELAY_URLS.filter((url) =>
+    nostrClient.relays.includes(url),
   );
   assert.ok(
-    nostrClient.readRelays.length <= 6,
-    `readRelays should be capped (<=6), got ${nostrClient.readRelays.length}`,
+    survivingDefaults.length >= RESERVED_DEFAULT_RELAY_SLOTS,
+    `read set must keep >=${RESERVED_DEFAULT_RELAY_SLOTS} reliable defaults, got ${survivingDefaults.length}`,
   );
 
-  // Known-good defaults are prioritized into the capped read set despite being
-  // listed last in the input.
-  for (const url of DEFAULT_RELAY_URLS) {
-    assert.ok(
-      nostrClient.relays.includes(url),
-      `known-good default ${url} should survive the cap`,
-    );
-  }
-
-  // Writes are NOT capped — publish reach preserved.
+  // Writes are NOT capped and must NOT be forced to include defaults.
   assert.equal(
     nostrClient.writeRelays.length,
-    new Set(many).size,
-    "write set must include every configured relay",
+    new Set(deadList).size,
+    "write set must be the full configured set (publish reach preserved)",
+  );
+  assert.ok(
+    !nostrClient.writeRelays.includes(DEFAULT_RELAY_URLS[0]),
+    "defaults must not be injected into the write set",
   );
 });
