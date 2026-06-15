@@ -11,6 +11,35 @@ refactor work in that doc — these are defects.
 
 ## Open
 
+### 0. Encrypted lists (hashtags, DMs, blocks) fail to DECRYPT on login  *(top priority)*
+- **Severity:** high — the user's recurring "hashtags/DMs/watch-history don't
+  load in the profile modal."
+- **Diagnosed from real-env console (2026-06-14):** the lists are *fetched* (e.g.
+  block events `Array(2)`) but **decryption fails**, three different ways:
+  - DMs: `DM decryption helpers are unavailable` (`client.js` listDirectMessages
+    → `buildDmDecryptContext` returns 0 decryptors → hard throw, no retry). Happens
+    when `ensureExtensionPermissions` returns `ok:false`.
+  - Blocks: `Decryption timed out; signerStatus: 'missing'/'unknown'`
+    (`userBlocks.js` applyEvents) — the signer/decrypt capability isn't resolved.
+  - Hashtags: `Decryption timed out after 6s` (`hashtagPreferencesService.js`).
+- **Root cause (strong):** a relay-connection STORM. On cold load the app opens
+  WebSockets to the user's full ~20-relay NIP-65 list (most **dead**) because
+  subsystems build relay lists from `relayManager.getReadRelayUrls()` +
+  `getWriteRelayUrls()` (uncapped) — e.g. `userBlocks.loadBlocksInternal`. The
+  dozens of failing connections churn the main thread and starve the nip-07
+  extension's postMessage round-trips → permission/decrypt calls fail or time out.
+- **Partial mitigation shipped:** hashtag + subscription decrypt timeout 6s→15s.
+- **Proper fix (next):** RelayHealth — bound the SUBSCRIBE/read set to a small,
+  liveness-ranked healthy core that ALWAYS includes the reliable default
+  aggregators, applied centrally so every subsystem (blocks, hashtags, subs,
+  profiles, batch fetcher) reads from it; writes stay uncapped. Plus decrypt
+  resilience: don't hard-fail DMs on a transient permission miss (retry).
+  NOTE: a first attempt (`capReadRelays`) was reverted — capping the block-list
+  read path broke the security-critical `user-blocks` integration test (it
+  orchestrates per-relay block hydration), so this needs a test-aware rework.
+  Repro: `scripts/perf/disclaimer-repro.mjs` shape; real-env console is the
+  source of truth.
+
 ### 1. Logged-out: video grid stays empty until a manual refresh
 - **Severity:** medium (first-load UX, logged-out).
 - **Where:** initial feed render path (`js/index.js` disclaimer flow →

@@ -42,11 +42,11 @@ const LOG_PREFIX = "[HashtagPreferences]";
 const HASHTAG_IDENTIFIER = "bitvid:tag-preferences";
 
 const DEFAULT_VERSION = 1;
-// PERF: Reduced from 10s to 6s — the signer is guaranteed ready before list
-// loading starts (authSessionCoordinator waits for the permission pre-grant),
-// so decryption should succeed within 2-3s. 6s is generous enough for slow
-// relays while still failing fast for scheme fallback.
-const DECRYPT_TIMEOUT_MS = 6000;
+// Cold-load decryption competes with other encrypted lists for the serialized
+// nip-07 extension, and the main thread can be busy connecting to relays. 6s
+// proved too aggressive on real accounts (lists timed out and showed empty);
+// 15s matches the block-list timeout and lets decryption complete under load.
+const DECRYPT_TIMEOUT_MS = 15000;
 // PERF: Reduced from 3s to 1.5s — extensions that already granted permission
 // should recover near-instantly. Shorter delay speeds up the login path.
 const DECRYPT_RETRY_DELAY_MS = NETWORK_RETRY_DELAY_MS;

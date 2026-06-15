@@ -53,7 +53,7 @@ const SUBSCRIPTION_SET_KIND =
 // so decryption should succeed within 2-3s. 6s is generous enough for slow
 // relays while still failing fast enough for the scheme fallback to try the
 // next decryption method without stalling the login path.
-const DECRYPT_TIMEOUT_MS = 6000;
+const DECRYPT_TIMEOUT_MS = 15000;
 // PERF: Reduced from 3s to 1.5s — extensions that already granted permission
 // should recover near-instantly. The shorter delay prevents unnecessary wait
 // time during the critical login path when the first decrypt attempt fails.
