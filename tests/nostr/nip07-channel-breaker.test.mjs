@@ -32,6 +32,13 @@ const successOp = async () => "ok";
 const respondingErrorOp = async () => {
   throw new Error("user rejected");
 };
+// A severed content-script port: rejects synchronously with a channel-death
+// message. This is the real-env dead-channel signal (KNOWN_BUGS #0).
+const channelClosedOp = async () => {
+  throw new Error(
+    "A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received",
+  );
+};
 
 // Small timeout so "hangs to full timeout" is fast in the test; no retry
 // extension so each attempt is exactly one timeout window.
@@ -91,6 +98,30 @@ test("a successful probe closes the circuit (recovery without refresh)", async (
     state.consecutiveTimeouts,
     0,
     "the timeout streak must reset on success",
+  );
+});
+
+test("'message channel closed' errors open the circuit (fast, no 15s waits)", async () => {
+  resetNip07ChannelBreaker();
+
+  // A severed port rejects FAST (no timeout wait). These must count toward
+  // opening the circuit — otherwise the real-env dead channel never trips it.
+  for (let i = 0; i < CIRCUIT_TIMEOUT_THRESHOLD; i++) {
+    await swallow(runNip07WithRetry(channelClosedOp, FAST));
+  }
+  assert.equal(
+    getNip07ChannelBreakerState().open,
+    true,
+    "consecutive 'message channel closed' errors must open the circuit",
+  );
+
+  // And once open, further calls fast-fail rather than re-hitting the dead port.
+  await swallow(runNip07WithRetry(channelClosedOp, FAST)); // consume probe slot
+  const fastErr = await swallow(runNip07WithRetry(channelClosedOp, FAST));
+  assert.equal(
+    fastErr.code,
+    "nip07-channel-unresponsive",
+    "calls after a channel-death streak must fast-fail",
   );
 });
 

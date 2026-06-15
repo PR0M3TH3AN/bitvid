@@ -222,9 +222,29 @@ function recordChannelTimeout() {
   }
 }
 
-// Non-timeout failures (e.g. user rejection, explicit extension errors) mean the
-// channel IS alive and responding — clear the timeout streak so we don't open on
-// unrelated errors.
+// Some non-timeout failures are actually dead-channel signals, NOT "the
+// extension answered with an error." When the content-script message port is
+// severed the call rejects synchronously with one of these messages — which is
+// the very condition the breaker exists for, so they must count TOWARD opening
+// the circuit (not reset it). Matching the real-env "message channel closed"
+// case (KNOWN_BUGS #0) is the whole point.
+const CHANNEL_DEATH_PATTERNS = [
+  "message channel closed",
+  "could not establish connection",
+  "receiving end does not exist",
+  "extension context invalidated",
+  "connection lost",
+];
+function isChannelDeathError(error) {
+  const message =
+    error && typeof error.message === "string" ? error.message.toLowerCase() : "";
+  if (!message) return false;
+  return CHANNEL_DEATH_PATTERNS.some((pattern) => message.includes(pattern));
+}
+
+// A non-timeout failure where the extension genuinely RESPONDED (e.g. user
+// rejection, "permission denied", unsupported method) means the channel is
+// alive — clear the timeout streak so we don't open on unrelated errors.
 function recordChannelResponsiveFailure() {
   channelBreaker.consecutiveTimeouts = 0;
 }
@@ -453,8 +473,14 @@ export async function runNip07WithRetry(
         error.message === NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE;
 
       if (!isTimeoutError) {
-        // The extension responded (with an error) — the channel is alive.
-        onResponsiveFailure();
+        // A severed message port rejects with a channel-death message — that IS
+        // the dead-channel condition, so count it toward opening the circuit.
+        // Any other error means the extension actually responded (channel alive).
+        if (isChannelDeathError(error)) {
+          onTimeout();
+        } else {
+          onResponsiveFailure();
+        }
         throw error;
       }
 
@@ -485,7 +511,7 @@ export async function runNip07WithRetry(
         const retryTimedOut =
           retryError instanceof Error &&
           retryError.message === NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE;
-        if (retryTimedOut) {
+        if (retryTimedOut || isChannelDeathError(retryError)) {
           onTimeout();
         } else {
           onResponsiveFailure();
