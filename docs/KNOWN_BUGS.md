@@ -42,8 +42,28 @@ refactor work in that doc — these are defects.
   harnesses stay isolated. Regression coverage: `tests/relay-subscribe-cap.test.mjs`
   (bounded + reserved-defaults + writes-uncapped), and the spec-corrected
   `user-blocks`, `subscriptions-manager`, and `nostr/client` fetch tests.
-- **Still deferred:** liveness-ranked health (see #4) and DM decrypt resilience
-  (don't hard-fail DMs on a transient permission miss — retry).
+- **Real-env follow-up (2026-06-15 console):** the relay cap WORKED (every sub
+  now fans out to exactly 8 relays) but exposed the true blocker: under the
+  post-login burst the nip-07 extension's message port drops ("message channel
+  closed"), after which EVERY decrypt hangs to its ~15s timeout, each list
+  service retries forever, and the app never recovers without a page refresh
+  (CPU pinned — "fans at max"). The signer-readiness gate also took ~67s.
+  Two-part fix in progress ("cut the burst, then add a safety net"):
+  - **Burst reduction (SHIPPED, increment 1):** stop eagerly loading DM history
+    at login (`authSessionCoordinator` `dmStatePromise` now defers; DMs load
+    lazily when the Messages tab opens). Removes a 50-message decrypt burst that
+    competed for the channel. Test: `tests/app/login-defers-dms.test.mjs`.
+  - **Channel circuit breaker (SHIPPED, increment 2):** `js/nostr/nip07Permissions.js`
+    now opens a circuit after `CIRCUIT_TIMEOUT_THRESHOLD` consecutive call
+    timeouts — subsequent calls fail FAST (`code: "nip07-channel-unresponsive"`)
+    instead of each hanging ~15s, so the per-list retry loops stop pinning the
+    CPU. A single periodic probe detects recovery; one success closes the
+    circuit (no refresh). Responsive errors don't open it; interactive permission
+    prompts bypass it. Test: `tests/nostr/nip07-channel-breaker.test.mjs`.
+- **Still open:** further burst reduction (collapse each list's multi-variant
+  fan-out into one multi-filter REQ per relay; investigate the ~67s signer gate);
+  liveness-ranked relay health (see #4); DM decrypt resilience (don't hard-fail
+  DMs on a transient permission miss — retry).
 
 ### 1. Logged-out: video grid stays empty until a manual refresh
 - **Severity:** medium (first-load UX, logged-out).

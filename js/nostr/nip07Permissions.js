@@ -140,6 +140,95 @@ class Nip07RequestQueue {
 // manifests as "message channel closed" and repeated decrypt timeouts.
 const requestQueue = new Nip07RequestQueue(2);
 
+export const NIP07_CHANNEL_UNRESPONSIVE_ERROR_MESSAGE =
+  "The NIP-07 signer channel is unresponsive. It usually recovers shortly; if it persists, refresh the page or re-open your extension.";
+
+// Circuit breaker for a dead/unresponsive nip-07 message channel.
+//
+// Real-env failure mode (KNOWN_BUGS #0): under the post-login burst the
+// extension's single content-script message port drops ("message channel
+// closed"). After that EVERY decrypt call hangs to its full timeout (~15s).
+// Each list service (blocks, hashtags, subscriptions, watch history)
+// independently retries on that timeout, so the app sits in a permanent loop of
+// 15s-blocking extension calls — pinning the CPU ("fans at max") and never
+// recovering until a manual page refresh.
+//
+// The breaker converts that into: a few timeouts OPEN the circuit, after which
+// calls fail FAST (no 15s wait) so the retry loops become cheap and the CPU
+// settles. While open, a single periodic PROBE is allowed through to detect
+// recovery; one success CLOSES the circuit and normal decryption resumes — no
+// refresh required. Interactive permission prompts bypass the breaker so a user
+// taking their time at the extension UI can never trip or be blocked by it.
+const CIRCUIT_TIMEOUT_THRESHOLD = 3; // consecutive timeouts before opening
+const CIRCUIT_OPEN_MS = 30_000; // how long the circuit stays open
+const CIRCUIT_PROBE_INTERVAL_MS = 8_000; // min spacing between recovery probes
+const channelBreaker = {
+  consecutiveTimeouts: 0,
+  openUntil: 0,
+  lastProbeAt: 0,
+};
+
+export function getNip07ChannelBreakerState() {
+  const now = Date.now();
+  return {
+    open: channelBreaker.openUntil > now,
+    consecutiveTimeouts: channelBreaker.consecutiveTimeouts,
+    openUntil: channelBreaker.openUntil,
+  };
+}
+
+export function resetNip07ChannelBreaker() {
+  channelBreaker.consecutiveTimeouts = 0;
+  channelBreaker.openUntil = 0;
+  channelBreaker.lastProbeAt = 0;
+}
+
+function isCircuitOpen(now) {
+  return channelBreaker.openUntil > now;
+}
+
+// While open, allow exactly one probe per CIRCUIT_PROBE_INTERVAL_MS so we can
+// detect recovery without re-flooding the channel.
+function claimProbeSlot(now) {
+  if (now - channelBreaker.lastProbeAt >= CIRCUIT_PROBE_INTERVAL_MS) {
+    channelBreaker.lastProbeAt = now;
+    return true;
+  }
+  return false;
+}
+
+function recordChannelSuccess() {
+  const wasOpen = channelBreaker.openUntil > Date.now();
+  channelBreaker.consecutiveTimeouts = 0;
+  channelBreaker.openUntil = 0;
+  if (wasOpen) {
+    userLogger.info(
+      "[nostr] NIP-07 signer channel recovered; resuming normal requests.",
+    );
+  }
+}
+
+function recordChannelTimeout() {
+  channelBreaker.consecutiveTimeouts += 1;
+  if (
+    channelBreaker.consecutiveTimeouts >= CIRCUIT_TIMEOUT_THRESHOLD &&
+    channelBreaker.openUntil <= Date.now()
+  ) {
+    channelBreaker.openUntil = Date.now() + CIRCUIT_OPEN_MS;
+    userLogger.warn(
+      `[nostr] NIP-07 signer channel unresponsive after ${channelBreaker.consecutiveTimeouts} timeouts; ` +
+        `failing fast for ${CIRCUIT_OPEN_MS / 1000}s and probing for recovery.`,
+    );
+  }
+}
+
+// Non-timeout failures (e.g. user rejection, explicit extension errors) mean the
+// channel IS alive and responding — clear the timeout streak so we don't open on
+// unrelated errors.
+function recordChannelResponsiveFailure() {
+  channelBreaker.consecutiveTimeouts = 0;
+}
+
 export function getEnableVariantTimeoutMs() {
   const overrideValue =
     typeof globalThis !== "undefined" &&
@@ -301,27 +390,78 @@ export async function runNip07WithRetry(
     timeoutMs = NIP07_LOGIN_TIMEOUT_MS,
     retryMultiplier = 2,
     priority = NIP07_PRIORITY.NORMAL,
+    // Interactive permission prompts bypass the circuit breaker: a user taking
+    // their time at the extension UI is not a dead channel, and the prompt must
+    // always be allowed through (and can itself heal the channel).
+    bypassCircuitBreaker = false,
   } = {},
 ) {
   // We wrap the entire retry logic in a queue task to ensure only one
   // request hits the extension at a time (per slot).
   const executeTask = async () => {
+    // Circuit breaker: when the channel has been declared unresponsive, fail
+    // fast (no multi-second hang) for everything except a single periodic probe
+    // — this stops the per-list retry loops from pinning the CPU on a dead
+    // channel, while still detecting recovery without a page refresh.
+    let isProbe = false;
+    if (!bypassCircuitBreaker) {
+      const now = Date.now();
+      if (isCircuitOpen(now)) {
+        if (claimProbeSlot(now)) {
+          isProbe = true;
+        } else {
+          const fastFail = new Error(
+            NIP07_CHANNEL_UNRESPONSIVE_ERROR_MESSAGE,
+          );
+          fastFail.code = "nip07-channel-unresponsive";
+          throw fastFail;
+        }
+      }
+    }
+
     // We wrap the operation invocation to ensure it returns a fresh promise each time
     // we attempt it. This is critical for retries: if the first attempt stalls (dropped
     // by extension), re-awaiting the same promise would just keep waiting on the dead request.
     const invokeOperation = () => Promise.resolve(operation());
 
+    const onResult = (result) => {
+      if (!bypassCircuitBreaker) {
+        recordChannelSuccess();
+      }
+      return result;
+    };
+    const onTimeout = () => {
+      if (!bypassCircuitBreaker) {
+        recordChannelTimeout();
+      }
+    };
+    const onResponsiveFailure = () => {
+      if (!bypassCircuitBreaker) {
+        recordChannelResponsiveFailure();
+      }
+    };
+
     try {
-      return await withNip07Timeout(invokeOperation, {
+      const result = await withNip07Timeout(invokeOperation, {
         timeoutMs,
         message: NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE,
       });
+      return onResult(result);
     } catch (error) {
       const isTimeoutError =
         error instanceof Error &&
         error.message === NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE;
 
-      if (!isTimeoutError || retryMultiplier <= 1) {
+      if (!isTimeoutError) {
+        // The extension responded (with an error) — the channel is alive.
+        onResponsiveFailure();
+        throw error;
+      }
+
+      // A probe that times out leaves the circuit open; don't waste a longer
+      // retry on a channel we already believe is dead.
+      if (retryMultiplier <= 1 || isProbe) {
+        onTimeout();
         throw error;
       }
 
@@ -335,10 +475,23 @@ export async function runNip07WithRetry(
       );
 
       // On retry, we invoke operation() again to send a fresh request to the extension.
-      return withNip07Timeout(invokeOperation, {
-        timeoutMs: extendedTimeout,
-        message: NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE,
-      });
+      try {
+        const result = await withNip07Timeout(invokeOperation, {
+          timeoutMs: extendedTimeout,
+          message: NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE,
+        });
+        return onResult(result);
+      } catch (retryError) {
+        const retryTimedOut =
+          retryError instanceof Error &&
+          retryError.message === NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE;
+        if (retryTimedOut) {
+          onTimeout();
+        } else {
+          onResponsiveFailure();
+        }
+        throw retryError;
+      }
     }
   };
 
@@ -409,6 +562,8 @@ export async function requestEnablePermissions(
           {
             label: `extension.${methodName}`,
             ...variantTimeoutOverrides,
+            // Interactive grant — never gated by (and can heal) the breaker.
+            bypassCircuitBreaker: true,
           },
         );
         return true;
@@ -463,6 +618,11 @@ export const __testExports = {
   writeStoredNip07Permissions,
   clearStoredNip07Permissions,
   normalizePermissionMethod,
+  getNip07ChannelBreakerState,
+  resetNip07ChannelBreaker,
+  CIRCUIT_TIMEOUT_THRESHOLD,
+  CIRCUIT_OPEN_MS,
+  CIRCUIT_PROBE_INTERVAL_MS,
 };
 
 export function waitForNip07Extension(timeoutMs = NIP07_EXTENSION_WAIT_TIMEOUT_MS) {

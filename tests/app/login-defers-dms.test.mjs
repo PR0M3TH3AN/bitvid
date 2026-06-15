@@ -12,10 +12,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-// Minimal browser shim: handleAuthLogin reads window.location.search.
+// Minimal browser shim: handleAuthLogin reads window.location.search. The unit
+// suite shares one process, so a sibling test may have already installed a
+// window (possibly without a usable location, or carrying a "?v=" param that
+// routes login differently) — normalize it for this scenario either way.
 if (typeof globalThis.window === "undefined") {
-  globalThis.window = { location: { search: "", href: "http://localhost/" } };
+  globalThis.window = {};
 }
+globalThis.window.location = { search: "", href: "http://localhost/" };
 
 const { createAuthSessionCoordinator } = await import(
   "../../js/app/authSessionCoordinator.js"
@@ -104,6 +108,12 @@ function makeCoordinator({ loadDirectMessages, refreshUnreadDmIndicator }) {
 }
 
 test("login does not eagerly load DM history; it is deferred", async () => {
+  // Re-normalize at call time in case a sibling test mutated window/location.
+  if (typeof globalThis.window === "undefined") {
+    globalThis.window = {};
+  }
+  globalThis.window.location = { search: "", href: "http://localhost/" };
+
   let loadDmCalls = 0;
   let unreadIndicatorCalls = 0;
   const coord = makeCoordinator({
