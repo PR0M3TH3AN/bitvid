@@ -618,31 +618,19 @@ export function createAuthSessionCoordinator(deps) {
         return listSyncDetail;
       });
 
-      // DMs can wait for profile since they need encryption context.
+      // DMs are intentionally NOT eagerly loaded at login. A cold DM load
+      // (limit: 50) is a burst of nip-07 decrypts that competes with the
+      // feed-driving lists (blocks/subscriptions/hashtags) for the SAME
+      // single-threaded extension channel during the fragile post-login
+      // handshake window — under load that channel drops ("message channel
+      // closed") and every subsequent decrypt times out until a page refresh.
+      // DMs are lower priority (the user isn't viewing Messages at login) and
+      // already load lazily when the Messages tab is opened
+      // (ProfileDirectMessageActions.populateProfileMessages). The lightweight
+      // unread indicator (refreshUnreadDmIndicator, above) still runs so the
+      // badge is accurate without decrypting the full conversation history.
       const dmStatePromise = profileStatePromise.then(() => {
-        if (
-          activePubkey &&
-          this.nostrService &&
-          typeof this.nostrService.loadDirectMessages === "function"
-        ) {
-          return this.nostrService
-            .loadDirectMessages({
-              actorPubkey: activePubkey,
-              limit: 50,
-              initialLoad: true,
-            })
-            .then(() => {
-              this.updateAuthLoadingState({ dms: "ready" });
-            })
-            .catch((error) => {
-              devLogger.warn(
-                "[Application] Failed to load direct messages during login:",
-                error,
-              );
-              this.updateAuthLoadingState({ dms: "error" });
-            });
-        }
-        this.updateAuthLoadingState({ dms: "idle" });
+        this.updateAuthLoadingState({ dms: "deferred" });
         return Promise.resolve();
       });
 
