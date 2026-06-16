@@ -5157,12 +5157,22 @@ export class ProfileModalController {
 
     this.renderSavedProfiles();
 
-    // Trigger aggressive parallel fetches
+    // Warm blocks + subscriptions, but go through ensureLoaded() (not the raw
+    // loadBlocks/loadSubscriptions) so these COALESCE with the auth coordinator's
+    // login-time list loads instead of issuing a second, ungated fetch. The
+    // direct calls here each kicked off an independent relay round-trip,
+    // doubling the cold-login kind-30000/10000 REQ burst (KNOWN_BUGS #0).
     if (activePubkey) {
-      if (this.services.userBlocks) {
+      if (this.services.userBlocks?.ensureLoaded) {
+        this.services.userBlocks.ensureLoaded(activePubkey).catch(noop);
+      } else if (this.services.userBlocks?.loadBlocks) {
         this.services.userBlocks.loadBlocks(activePubkey).catch(noop);
       }
-      if (this.subscriptionsService) {
+      if (this.subscriptionsService?.ensureLoaded) {
+        this.subscriptionsService
+          .ensureLoaded(activePubkey, { allowPermissionPrompt: false })
+          .catch(noop);
+      } else if (this.subscriptionsService?.loadSubscriptions) {
         this.subscriptionsService
           .loadSubscriptions(activePubkey, { allowPermissionPrompt: false })
           .catch(noop);

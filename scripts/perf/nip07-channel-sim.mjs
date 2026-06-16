@@ -226,7 +226,7 @@ async function main() {
     if (text.includes("nip07-channel-unresponsive")) signals.channelUnresponsive += 1;
     if (text.includes("DM decryption helpers are unavailable")) signals.dmHelpersUnavailable += 1;
     if (DEBUG && /UserBlockList|Hashtag|Subscriptions|Decryption|signer|channel|direct message/i.test(text)) {
-      console.log("PAGE>", text.slice(0, 200));
+      console.log("PAGE>", text.slice(0, 500));
     }
   };
 

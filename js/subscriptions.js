@@ -398,6 +398,9 @@ class SubscriptionsManager {
     this.subsEventCreatedAt = null;
     // Last live-subscription event id we triggered a refresh for (loop guard).
     this._lastHandledListEventId = null;
+    // Most recently fetched list ciphertext, reused by decrypt retries so they
+    // don't re-query relays.
+    this._pendingDecryptEvent = null;
     this.currentUserPubkey = null;
     this.uiReady = false;
     this.dataReady = false;
@@ -517,7 +520,13 @@ class SubscriptionsManager {
       if (this.currentUserPubkey && this.currentUserPubkey !== normalized) {
         return;
       }
-      this.updateFromRelays(normalized, options).catch((retryError) => {
+      // Reuse the already-fetched ciphertext so the retry only re-runs the
+      // DECRYPT (no redundant relay fetch). Fall back to a full fetch only if we
+      // somehow have no pending event cached.
+      const retryOptions = this._pendingDecryptEvent
+        ? { ...options, cachedDecryptEvent: this._pendingDecryptEvent }
+        : options;
+      this.updateFromRelays(normalized, retryOptions).catch((retryError) => {
         userLogger.warn("[SubscriptionsManager] Decryption retry failed:", retryError);
       });
     }, retryDelayMs);
@@ -573,79 +582,95 @@ class SubscriptionsManager {
           );
         }
       }
-      this.ensureSubscriptionListSubscription(normalizedUserPubkey, relayUrls);
+      // DECRYPT-RETRY FAST PATH: a retry re-uses the ciphertext we already
+      // fetched rather than re-querying relays. The relay data hasn't changed
+      // between attempts — only signer availability has — so re-fetching on
+      // every retry just floods the cold-login burst with redundant kind-30000
+      // REQs (KNOWN_BUGS #0). Only the initial load (and a genuinely new live
+      // event) hits the network.
+      let hadCachedSnapshot = false;
+      let mergedEvents = [];
+      const retryEvent =
+        options?.cachedDecryptEvent && options.cachedDecryptEvent.id
+          ? options.cachedDecryptEvent
+          : null;
 
-      // Use incremental fetch helper
-      const cachedSnapshot = parseCachedSubscriptionSnapshot(
-        profileCache.getProfileData(normalizedUserPubkey, "subscriptions"),
-      );
-      const hadCachedSnapshot = cachedSnapshot.hasSnapshot;
-      const shouldForceFullFetch = !cachedSnapshot.hasSnapshot;
-      const incrementalSince = shouldForceFullFetch
-        ? 0
-        : computeIncrementalSinceWithOverlap(cachedSnapshot.createdAt, 1);
+      if (retryEvent) {
+        mergedEvents = [retryEvent];
+      } else {
+        this.ensureSubscriptionListSubscription(normalizedUserPubkey, relayUrls);
 
-      // Fetch user and session actor subscription lists in parallel to reduce
-      // total relay wait time during login.
-      const fetchPromises = [
-        nostrClient.fetchListIncrementally({
-          kind: SUBSCRIPTION_SET_KIND,
-          pubkey: normalizedUserPubkey,
-          dTag: SUBSCRIPTION_LIST_IDENTIFIER,
-          relayUrls,
-          since: incrementalSince,
-          timeoutMs: 12000,
-        }),
-      ];
-
-      const normalizedSessionActorPubkey = normalizeNostrPubkey(
-        nostrClient?.sessionActor?.pubkey,
-      );
-      const shouldFetchSessionActor =
-        normalizedSessionActorPubkey &&
-        normalizedSessionActorPubkey !== normalizedUserPubkey;
-      if (shouldFetchSessionActor) {
-        const sessionCachedSnapshot = parseCachedSubscriptionSnapshot(
-          profileCache.getProfileData(
-            normalizedSessionActorPubkey,
-            "subscriptions",
-          ),
+        // Use incremental fetch helper
+        const cachedSnapshot = parseCachedSubscriptionSnapshot(
+          profileCache.getProfileData(normalizedUserPubkey, "subscriptions"),
         );
-        const shouldForceSessionFetch = !sessionCachedSnapshot.hasSnapshot;
-        const sessionSince = shouldForceSessionFetch
+        hadCachedSnapshot = cachedSnapshot.hasSnapshot;
+        const shouldForceFullFetch = !cachedSnapshot.hasSnapshot;
+        const incrementalSince = shouldForceFullFetch
           ? 0
-          : computeIncrementalSinceWithOverlap(sessionCachedSnapshot.createdAt, 1);
-        fetchPromises.push(
+          : computeIncrementalSinceWithOverlap(cachedSnapshot.createdAt, 1);
+
+        // Fetch user and session actor subscription lists in parallel to reduce
+        // total relay wait time during login.
+        const fetchPromises = [
           nostrClient.fetchListIncrementally({
             kind: SUBSCRIPTION_SET_KIND,
-            pubkey: normalizedSessionActorPubkey,
+            pubkey: normalizedUserPubkey,
             dTag: SUBSCRIPTION_LIST_IDENTIFIER,
             relayUrls,
-            since: sessionSince,
+            since: incrementalSince,
             timeoutMs: 12000,
           }),
+        ];
+
+        const normalizedSessionActorPubkey = normalizeNostrPubkey(
+          nostrClient?.sessionActor?.pubkey,
         );
-      }
-
-      const fetchResults = await Promise.all(fetchPromises);
-      let events = fetchResults[0] || [];
-      if (shouldFetchSessionActor && fetchResults[1]?.length) {
-        events = events.concat(fetchResults[1]);
-      }
-
-      const mergedEvents = [];
-      if (events.length) {
-        const deduped = new Map();
-        for (const event of events) {
-          if (!event || typeof event !== "object" || !event.id) {
-            continue;
-          }
-          const existing = deduped.get(event.id);
-          if (!existing || (event.created_at ?? 0) > (existing.created_at ?? 0)) {
-            deduped.set(event.id, event);
-          }
+        const shouldFetchSessionActor =
+          normalizedSessionActorPubkey &&
+          normalizedSessionActorPubkey !== normalizedUserPubkey;
+        if (shouldFetchSessionActor) {
+          const sessionCachedSnapshot = parseCachedSubscriptionSnapshot(
+            profileCache.getProfileData(
+              normalizedSessionActorPubkey,
+              "subscriptions",
+            ),
+          );
+          const shouldForceSessionFetch = !sessionCachedSnapshot.hasSnapshot;
+          const sessionSince = shouldForceSessionFetch
+            ? 0
+            : computeIncrementalSinceWithOverlap(sessionCachedSnapshot.createdAt, 1);
+          fetchPromises.push(
+            nostrClient.fetchListIncrementally({
+              kind: SUBSCRIPTION_SET_KIND,
+              pubkey: normalizedSessionActorPubkey,
+              dTag: SUBSCRIPTION_LIST_IDENTIFIER,
+              relayUrls,
+              since: sessionSince,
+              timeoutMs: 12000,
+            }),
+          );
         }
-        mergedEvents.push(...deduped.values());
+
+        const fetchResults = await Promise.all(fetchPromises);
+        let events = fetchResults[0] || [];
+        if (shouldFetchSessionActor && fetchResults[1]?.length) {
+          events = events.concat(fetchResults[1]);
+        }
+
+        if (events.length) {
+          const deduped = new Map();
+          for (const event of events) {
+            if (!event || typeof event !== "object" || !event.id) {
+              continue;
+            }
+            const existing = deduped.get(event.id);
+            if (!existing || (event.created_at ?? 0) > (existing.created_at ?? 0)) {
+              deduped.set(event.id, event);
+            }
+          }
+          mergedEvents.push(...deduped.values());
+        }
       }
 
       if (!mergedEvents.length) {
@@ -691,6 +716,10 @@ class SubscriptionsManager {
       if (!newest) {
         return;
       }
+
+      // Cache the ciphertext so a decrypt retry can re-attempt WITHOUT another
+      // relay round-trip (see the retry fast-path above).
+      this._pendingDecryptEvent = newest;
 
       // Any event returned here is effectively "new information" (or re-fetched full state).
       // fetchListIncrementally already handles the "newer than last sync" logic per relay,
@@ -870,6 +899,7 @@ class SubscriptionsManager {
     this.subsEventId = null;
     this.subsEventCreatedAt = null;
     this._lastHandledListEventId = null;
+    this._pendingDecryptEvent = null;
     this.currentUserPubkey = null;
     this.uiReady = false;
     this.dataReady = false;
