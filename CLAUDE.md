@@ -310,6 +310,18 @@ const dTag = event.tags.find(t => t[0] === 'd')?.[1];
 // WRONG: Don't use logical IDs like videoRootId for relay lookups
 ```
 
+### NIP-07 Signer Reliability (hard-won)
+
+The #1 cause of "DMs / hashtags / watch-history / lists won't load after login" is an **unresponsive NIP-07 signer**, not bitvid. The extension's MV3 background worker can die and `window.nostr` calls then hang forever — no client change fixes a dead signer. **Diagnose with a raw `window.nostr` probe** (`getPublicKey → nip04.encrypt → nip04.decrypt`) in the console; if that hangs, it's the extension (recommend nos2x/Alby). See `AGENTS.md` §17 and `docs/KNOWN_BUGS.md` #0.
+
+Resilience invariants — **do not regress**:
+
+1. **Cap relay fan-out** (`js/nostr/toolkit.js` `capReadRelays`, ≤8, user-relays-first + 2 reserved defaults) — an uncapped cold-login REQ storm starves the single-threaded signer.
+2. **Circuit breaker** on consecutive NIP-07 timeouts (`js/nostr/nip07Permissions.js`) — fast-fail instead of hanging; channel-death counts toward opening; permission prompts bypass.
+3. **Never swallow a transient decrypt error as `[]`** — re-throw channel-death/timeout so retries run (returning empty = "user has no lists" + no retry).
+4. **Generous decrypt budget** (~25–30s/call) — a 6s timeout kills slow signers mid-decrypt.
+5. **Lazy modal population** — don't render every profile panel into a closed modal at login; populate per-pane on open (`selectPane`).
+
 ---
 
 ## Testing & Validation: Scenario-First, Cheat-Resistant (Dark Factory Rules)
