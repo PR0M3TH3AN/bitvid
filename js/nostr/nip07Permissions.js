@@ -13,6 +13,16 @@ const NIP07_PERMISSIONS_STORAGE_KEY = "bitvid:nip07:permissions";
 // still allowing manual overrides via __BITVID_NIP07_ENABLE_VARIANT_TIMEOUT_MS__.
 const DEFAULT_ENABLE_VARIANT_TIMEOUT_MS = 45_000;
 
+// Timeout for the SPECIFIC (silent, payload-carrying) permission variants we
+// probe before the no-arg prompt. This is NOT a "fail fast" budget: real
+// extensions REJECT a payload shape they don't support almost immediately, and
+// a fast rejection moves us to the next variant right away. The timeout only
+// bounds a variant that HANGS — so a tiny 3s cap added no real safety against
+// unsupported variants but DID kill slow-but-responsive signers mid-grant,
+// forcing 3 wasted attempts before the prompt variant succeeded (~25s of dead
+// time on a 16s/call signer in the channel-sim). Give it real room.
+const SPECIFIC_VARIANT_TIMEOUT_MS = 20_000;
+
 export const DEFAULT_NIP07_ENCRYPTION_METHODS = Object.freeze([
   // Encryption helpers — request both legacy NIP-04 and modern NIP-44 upfront
   "nip04.encrypt",
@@ -569,11 +579,16 @@ export async function requestEnablePermissions(
   let lastError = null;
   const runPermissionMethod = async (methodName, method) => {
     for (const options of permissionVariants) {
-      // Specific permission payloads should fail fast; prompt-based no-arg calls
-      // get a longer timeout so users have time to confirm in extension UI.
+      // Specific (silent) payload variants get a generous bound so a slow signer
+      // can actually answer the FIRST supported one (unsupported shapes still
+      // reject fast and fall through immediately). The no-arg prompt variant
+      // gets the full window so users have time to confirm in the extension UI.
       const variantTimeoutOverrides = options
         ? {
-            timeoutMs: Math.min(3000, getEnableVariantTimeoutMs()),
+            timeoutMs: Math.min(
+              SPECIFIC_VARIANT_TIMEOUT_MS,
+              getEnableVariantTimeoutMs(),
+            ),
             retryMultiplier: 1,
           }
         : {
