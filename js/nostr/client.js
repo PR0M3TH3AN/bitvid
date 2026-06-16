@@ -1264,12 +1264,17 @@ export class NostrClient {
       }
     }
 
-    if (activeSigner && extensionPermissionResult?.ok !== false) {
-      const capabilities = resolveSignerCapabilities(activeSigner);
-      if (
-        capabilities.nip44 &&
-        typeof activeSigner.nip44Decrypt === "function"
-      ) {
+    // Register the active signer's decryptors by METHOD EXISTENCE, not by the
+    // dynamic capabilities getter or the permission-request result. The getter
+    // probes window.nostr for injected nip04/nip44 modules and gives false
+    // negatives (lazy injection, or providers like nos2x that expose decrypt
+    // methods which validate at call time) — the list services already learned
+    // this. Hard-gating here returned ZERO decryptors and made the DM load throw
+    // "DM decryption helpers are unavailable" even though the signer decrypts
+    // everything else fine (KNOWN_BUGS #0). The permission request above still
+    // runs (it can grant), it just no longer blocks decryptor registration.
+    if (activeSigner) {
+      if (typeof activeSigner.nip44Decrypt === "function") {
         addCandidate(
           "nip44",
           (pubkey, ciphertext, options) =>
@@ -1289,10 +1294,7 @@ export class NostrClient {
           },
         );
       }
-      if (
-        capabilities.nip04 &&
-        typeof activeSigner.nip04Decrypt === "function"
-      ) {
+      if (typeof activeSigner.nip04Decrypt === "function") {
         addCandidate(
           "nip04",
           (pubkey, ciphertext, options) =>

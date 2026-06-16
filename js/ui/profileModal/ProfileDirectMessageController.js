@@ -599,6 +599,10 @@ export class ProfileDirectMessageController {
     return this.actions.pauseProfileMessages(...args);
   }
 
+  handleDmConversationSelect(...args) {
+    return this.actions.handleDmConversationSelect(...args);
+  }
+
   handleSendDmRequest(...args) {
     return this.actions.handleSendDmRequest(...args);
   }
