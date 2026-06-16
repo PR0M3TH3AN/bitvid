@@ -54,7 +54,13 @@ const MODES = {
   dead: { latency: 400, maxInflight: 1, dropCooldown: 10 ** 9 },
 };
 const HEALTHY = MODES.healthy;
-const TARGET = MODES[MODE] || MODES.overload;
+const TARGET = { ...(MODES[MODE] || MODES.overload) };
+// Allow overriding the per-call latency to model a genuinely slow extension
+// (the real-env case: signer present but every decrypt sits in the nip-07
+// queue long enough to blow the 15s service timeout).
+if (Number.isFinite(Number(process.env.LATENCY_MS))) {
+  TARGET.latency = Number(process.env.LATENCY_MS);
+}
 
 const USER_SK = Uint8Array.from(Buffer.from("11".repeat(32), "hex"));
 const USER_PK = getPublicKey(USER_SK);

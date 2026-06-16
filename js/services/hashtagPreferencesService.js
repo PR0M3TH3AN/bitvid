@@ -46,11 +46,14 @@ const DEFAULT_VERSION = 1;
 // nip-07 extension, and the main thread can be busy connecting to relays. 6s
 // proved too aggressive on real accounts (lists timed out and showed empty);
 // 15s matches the block-list timeout and lets decryption complete under load.
-const DECRYPT_TIMEOUT_MS = 15000;
+// Generous decrypt budget: real extensions can take 15-25s to answer a nip-07
+// decrypt under cold-login load even though the crypto is instant. A tighter
+// budget times out mid-flight and retries forever (KNOWN_BUGS #0).
+const DECRYPT_TIMEOUT_MS = 30000;
 // PERF: Reduced from 3s to 1.5s — extensions that already granted permission
 // should recover near-instantly. Shorter delay speeds up the login path.
 const DECRYPT_RETRY_DELAY_MS = NETWORK_RETRY_DELAY_MS;
-const MAX_DECRYPT_RETRY_DELAY_MS = 30000;
+const MAX_DECRYPT_RETRY_DELAY_MS = 60000;
 
 // Transient decrypt failures that must RETRY in the background rather than give
 // up: our own timeout, a severed nip-07 message port ("message channel closed"),
@@ -1130,11 +1133,11 @@ class HashtagPreferencesService {
       sources.set(scheme, source);
     };
 
-    // PERF: Reduced no-prompt timeout from 8s to 5s — the signer readiness
-    // gate guarantees the extension is ready before decryption starts, so
-    // decrypt calls should complete within 1-2s. 5s accommodates slow
-    // extensions while still failing fast for scheme fallback.
-    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 6000 : SHORT_TIMEOUT_MS;
+    // Per-call nip-07 decrypt budget. A short value kills in-progress decrypts
+    // on slow extensions (15-25s under cold-login load), so the list never
+    // decrypts and retries forever. Give the interactive call real room; the
+    // background refresh stays tighter for fast scheme fallback.
+    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 25000 : 10000;
     const signerDecryptOptions = {
       priority: NIP07_PRIORITY.NORMAL,
       timeoutMs: nip07DecryptTimeoutMs,

@@ -89,12 +89,21 @@ const FAST_BLOCKLIST_RELAY_LIMIT = 3;
 const FAST_BLOCKLIST_TIMEOUT_MS = 2500;
 const BACKGROUND_BLOCKLIST_TIMEOUT_MS = 6000;
 const MAX_BACKGROUND_BLOCKLIST_RELAY_LIMIT = 24;
-// Keep interactive decrypt timeout above extension retry timeout window.
-const DECRYPT_TIMEOUT_MS = Math.max(STANDARD_TIMEOUT_MS, 15000);
-const BACKGROUND_DECRYPT_TIMEOUT_MS = 8000;
+// Decrypt timeout budget. A nip-07 decrypt is a postMessage round-trip to the
+// extension's (single-threaded, possibly sleeping) service worker — under
+// cold-login load real extensions can take 15-25s to answer even though the
+// crypto itself is instant. The harness (scripts/perf/nip07-channel-sim.mjs)
+// shows lists fail to load the moment per-call latency crosses this budget, so
+// keep it generous (30s) to give a slow-but-responsive signer room to complete
+// rather than timing out and retrying forever (KNOWN_BUGS #0).
+const DECRYPT_TIMEOUT_MS = Math.max(STANDARD_TIMEOUT_MS, 30000);
+const BACKGROUND_DECRYPT_TIMEOUT_MS = 12000;
 // PERF: Reduced from 10s to 3s for faster recovery during login.
 const DECRYPT_RETRY_DELAY_MS = 3000;
-const MAX_DECRYPT_RETRY_DELAY_MS = 30000;
+// Cap the exponential backoff well above the decrypt budget so a persistently
+// unresponsive signer settles into an occasional heartbeat instead of pinning
+// the extension/CPU every ~15s indefinitely.
+const MAX_DECRYPT_RETRY_DELAY_MS = 60000;
 
 // Transient decrypt failures that must KEEP the stale list and RETRY in the
 // background (the channel/extension recovers shortly), rather than giving up
@@ -982,13 +991,12 @@ class UserBlockListManager {
       : allowPermissionPrompt
       ? DECRYPT_TIMEOUT_MS
       : BACKGROUND_DECRYPT_TIMEOUT_MS;
-    // A healthy nip04/nip44 decrypt is local crypto (~1s). The login-time value
-    // was 15s purely to tolerate a slow first-grant prompt — but permissions are
-    // pre-granted by the readiness gate, so a 15s timeout just monopolizes one of
-    // the two NIP-07 queue slots on a doomed call, starving the gate (real-env
-    // ~48s signer-ready — KNOWN_BUGS #0). 6s still tolerates a slow extension
-    // while freeing the slot ~2.5x faster.
-    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 6000 : 6000;
+    // Per-call nip-07 decrypt budget. A 6s value (tried earlier) killed
+    // in-progress decrypts on slow extensions that legitimately need 15-25s to
+    // answer under cold-login load, so the list never decrypted and retried
+    // forever. Give the call real room (interactive 25s, background 12s) — it
+    // sits below the service-level DECRYPT_TIMEOUT_MS backstop.
+    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 25000 : 12000;
     const emitStatus = (detail) => {
       if (!detail || typeof detail !== "object") {
         return;

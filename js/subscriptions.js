@@ -53,12 +53,15 @@ const SUBSCRIPTION_SET_KIND =
 // so decryption should succeed within 2-3s. 6s is generous enough for slow
 // relays while still failing fast enough for the scheme fallback to try the
 // next decryption method without stalling the login path.
-const DECRYPT_TIMEOUT_MS = 15000;
+// Generous decrypt budget: real extensions can take 15-25s to answer a nip-07
+// decrypt under cold-login load even though the crypto is instant. A tighter
+// budget times out mid-flight and retries forever (KNOWN_BUGS #0).
+const DECRYPT_TIMEOUT_MS = 30000;
 // PERF: Reduced from 3s to 1.5s — extensions that already granted permission
 // should recover near-instantly. The shorter delay prevents unnecessary wait
 // time during the critical login path when the first decrypt attempt fails.
 const DECRYPT_RETRY_DELAY_MS = 1500;
-const MAX_DECRYPT_RETRY_DELAY_MS = 30000;
+const MAX_DECRYPT_RETRY_DELAY_MS = 60000;
 
 // Transient decrypt failures that must RETRY rather than give up: our own
 // timeout, a severed nip-07 message port ("message channel closed"), and the
@@ -1240,13 +1243,13 @@ class SubscriptionsManager {
       decryptors.set(scheme, handler);
     };
 
-    // PERF: Reduced no-prompt timeout from 8s to 5s — the signer readiness
-    // gate now guarantees the extension is ready before decryption starts, so
-    // decrypt calls should complete within 1-2s. 5s accommodates slow
-    // extensions while still failing fast enough for scheme fallback.
+    // Per-call nip-07 decrypt budget. A short value kills in-progress decrypts
+    // on slow extensions (15-25s under cold-login load), so the list never
+    // decrypts and retries forever. Give the interactive call real room; the
+    // background refresh stays tighter for fast scheme fallback.
     const nip07DecryptTimeoutMs = allowPermissionPrompt
-      ? 6000
-      : SHORT_TIMEOUT_MS;
+      ? 25000
+      : 10000;
     const signerDecryptOptions = {
       priority: NIP07_PRIORITY.NORMAL,
       timeoutMs: nip07DecryptTimeoutMs,
