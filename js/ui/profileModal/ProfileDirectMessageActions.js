@@ -88,7 +88,7 @@ export class ProfileDirectMessageActions {
         }
       },
       onPublishRelays: async (urls) => {
-        return this.handleDmSettingsPublish(urls);
+        return this.controller.handleDmSettingsPublish(urls);
       },
     });
   }
@@ -170,7 +170,7 @@ export class ProfileDirectMessageActions {
       const previewUrl =
         typeof URL !== "undefined" ? URL.createObjectURL(file) : "";
       this.controller.dmAttachmentQueue.push({
-        id: this.generateAttachmentId(file),
+        id: this.mainController.generateAttachmentId(file),
         file,
         name: file.name,
         type: file.type || "application/octet-stream",
@@ -182,7 +182,7 @@ export class ProfileDirectMessageActions {
     });
 
     input.value = "";
-    this.renderAttachmentQueue();
+    this.mainController.renderAttachmentQueue();
   }
 
   async handleSendProfileMessage() {
@@ -250,7 +250,7 @@ export class ProfileDirectMessageActions {
       let attachmentPayloads = [];
       if (hasAttachments) {
         try {
-          attachmentPayloads = await this.uploadAttachmentQueue(
+          attachmentPayloads = await this.mainController.uploadAttachmentQueue(
             this.controller.helper.resolveActiveDmActor(),
           );
         } catch (error) {
@@ -279,7 +279,7 @@ export class ProfileDirectMessageActions {
 
       if (result?.ok) {
         input.value = "";
-        this.resetAttachmentQueue({ clearInput: true });
+        this.mainController.resetAttachmentQueue({ clearInput: true });
         this.mainController.showSuccess("Message sent.");
         if (this.controller.enableNip17RelayWarning && result?.warning === "dm-relays-fallback") {
           this.mainController.showStatus(
@@ -294,7 +294,7 @@ export class ProfileDirectMessageActions {
       const errorCode =
         typeof result?.error === "string" ? result.error : "unknown";
       userLogger.warn("[profileModal] Failed to send direct message:", errorCode);
-      this.mainController.showError(this.describeDirectMessageSendError(errorCode));
+      this.mainController.showError(this.controller.describeDirectMessageSendError(errorCode));
     } catch (error) {
       userLogger.error("[profileModal] Unexpected DM send failure:", error);
       this.mainController.showError("Unable to send message. Please try again.");
@@ -322,7 +322,7 @@ export class ProfileDirectMessageActions {
       this.setDirectMessageRecipient(remote, { reason: "thread-select" });
     }
 
-    this.setFocusedDmConversation(conversationId);
+    this.controller.setFocusedDmConversation(conversationId);
 
     await this.controller.renderer.renderDmAppShell(this.controller.directMessagesCache, {
       actorPubkey: actor,
@@ -364,7 +364,7 @@ export class ProfileDirectMessageActions {
     const recipient = this.controller.helper.resolveRemoteForConversationId(conversationId, actor);
     const messages = this.controller.helper.getDirectMessagesForConversation(conversationId, actor);
     if (recipient && messages.length) {
-      void this.maybePublishReadReceipt(messages, {
+      void this.controller.maybePublishReadReceipt(messages, {
         recipientPubkey: recipient,
       });
     }
@@ -425,7 +425,7 @@ export class ProfileDirectMessageActions {
       const recipient = this.controller.helper.resolveRemoteForConversationId(conversationId, actor);
       const messages = this.controller.helper.getDirectMessagesForConversation(conversationId, actor);
       if (recipient && messages.length) {
-        void this.maybePublishReadReceipt(messages, {
+        void this.controller.maybePublishReadReceipt(messages, {
           recipientPubkey: recipient,
         });
       }
@@ -561,7 +561,7 @@ export class ProfileDirectMessageActions {
         const errorCode =
           typeof result?.error === "string" ? result.error : "unknown";
         userLogger.warn("[profileModal] Failed to send direct message:", errorCode);
-        this.mainController.showError(this.describeDirectMessageSendError(errorCode));
+        this.mainController.showError(this.controller.describeDirectMessageSendError(errorCode));
         this.controller.dmComposerState = "error";
       }
     } catch (error) {
@@ -582,7 +582,7 @@ export class ProfileDirectMessageActions {
 
     const actor = this.controller.helper.resolveActiveDmActor();
     if (!actor) {
-      this.clearProfileMessages();
+      this.mainController.clearProfileMessages();
       return;
     }
 
