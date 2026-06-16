@@ -396,6 +396,8 @@ class SubscriptionsManager {
     this.subscribedPubkeys = new Set();
     this.subsEventId = null;
     this.subsEventCreatedAt = null;
+    // Last live-subscription event id we triggered a refresh for (loop guard).
+    this._lastHandledListEventId = null;
     this.currentUserPubkey = null;
     this.uiReady = false;
     this.dataReady = false;
@@ -867,6 +869,7 @@ class SubscriptionsManager {
     this.subscribedPubkeys.clear();
     this.subsEventId = null;
     this.subsEventCreatedAt = null;
+    this._lastHandledListEventId = null;
     this.currentUserPubkey = null;
     this.uiReady = false;
     this.dataReady = false;
@@ -951,6 +954,33 @@ class SubscriptionsManager {
     const normalized = normalizeHexPubkey(event?.pubkey);
     if (!normalized || normalized !== this.currentUserPubkey) {
       return;
+    }
+
+    // Emit-on-change guard: the live subscription re-delivers our OWN list event
+    // every time updateFromRelays re-fetches it, so refreshing on every event
+    // forms a self-sustaining loop (fetch → relay echoes the event → handler →
+    // fetch …) that floods the login burst with redundant kind-30000 REQs
+    // (KNOWN_BUGS #0). Skip when the event is one we've already acted on (by id)
+    // or is not newer than what we've applied. The id check matters DURING the
+    // cold-login window where subsEventCreatedAt isn't set yet (decrypt still in
+    // flight) — without it the loop iterates several times before settling.
+    const incomingCreatedAt = Number.isFinite(event?.created_at)
+      ? event.created_at
+      : 0;
+    const knownCreatedAt = Number.isFinite(this.subsEventCreatedAt)
+      ? this.subsEventCreatedAt
+      : 0;
+    if (event?.id && event.id === this.subsEventId) {
+      return; // exact event we already hold
+    }
+    if (event?.id && event.id === this._lastHandledListEventId) {
+      return; // already triggered a refresh for this exact event
+    }
+    if (incomingCreatedAt <= knownCreatedAt && knownCreatedAt > 0) {
+      return; // not newer than what we've already applied
+    }
+    if (event?.id) {
+      this._lastHandledListEventId = event.id;
     }
 
     this.updateFromRelays(normalized, { allowPermissionPrompt: false })

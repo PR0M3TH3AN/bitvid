@@ -209,6 +209,8 @@ async function main() {
     dmHelpersUnavailable: 0,
   };
   const reqBurst = {}; // kind -> count, captured during the login window
+  const reqSig = {}; // filter signature -> count, to surface redundant queries
+  const subsReqTimes = []; // ms-since-login of each kind-30000 REQ (redundancy timing)
   let loginAt = Date.now();
   let measuringReq = true;
 
@@ -238,6 +240,10 @@ async function main() {
         const msg = JSON.parse(p);
         for (const f of msg.slice(2)) {
           for (const k of f.kinds || ["?"]) reqBurst[k] = (reqBurst[k] || 0) + 1;
+          const otherKeys = Object.keys(f).filter((x) => x !== "kinds" && x !== "authors").sort().join(",");
+          const sig = `kinds=${(f.kinds || []).join("|")}${otherKeys ? " " + otherKeys : ""}${f.authors ? " authors=" + f.authors.length : ""}`;
+          reqSig[sig] = (reqSig[sig] || 0) + 1;
+          if ((f.kinds || []).includes(30000)) subsReqTimes.push(Date.now() - loginAt);
         }
       } catch (_) {}
     });
@@ -298,6 +304,10 @@ async function main() {
   report(`time -> signer-ready   : ${signals.signerReadyAt ?? "NEVER"} ms`);
   report(`time -> lists-sync done: ${signals.listsSyncCompleteAt ?? "NEVER"} ms`);
   report(`login REQ burst (~10s) : ${reqTotal} frames  [${reqTop}]`);
+  const sigTop = Object.entries(reqSig).sort((a, b) => b[1] - a[1]).slice(0, 12);
+  report("top REQ filters (count → filter):");
+  for (const [sig, n] of sigTop) report(`    ${String(n).padStart(4)}  ${sig}`);
+  report(`kind-30000 REQ times(ms): [${subsReqTimes.join(", ")}]`);
   report(`decrypt timeouts logged: ${signals.decryptTimeouts}`);
   report(`channel drops injected : ${drops}`);
   report(`breaker opened / recov : ${signals.breakerOpened} / ${signals.breakerRecovered}`);

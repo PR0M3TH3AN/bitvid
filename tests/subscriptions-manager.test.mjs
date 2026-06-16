@@ -1377,3 +1377,40 @@ test("loadSubscriptions uses overlap window and deterministic latest-event tie-b
     profileCache.activePubkey = null;
   }
 });
+
+test("handleSubscriptionListEvent does not re-trigger on the live-sub echo (loop guard)", () => {
+  const SubscriptionsManager = subscriptions.constructor;
+  const manager = new SubscriptionsManager();
+  const actor = "1".repeat(64);
+  manager.currentUserPubkey = actor;
+
+  // Stand in for the relay fetch/decrypt refresh so we can count invocations
+  // without touching the network. The real loop is: live sub delivers our own
+  // kind-30000 event -> handler -> updateFromRelays -> re-fetch -> relay echoes
+  // the SAME event -> handler -> ... The guard must break that.
+  let refreshCalls = 0;
+  manager.updateFromRelays = async () => {
+    refreshCalls += 1;
+  };
+
+  const listEvent = { id: "evt-A", pubkey: actor, created_at: 1000 };
+
+  // First delivery of a brand-new list event => exactly one refresh.
+  manager.handleSubscriptionListEvent(listEvent);
+  assert.equal(refreshCalls, 1, "first delivery of a new list event refreshes once");
+
+  // The live subscription re-delivers the SAME event (the echo). Must NOT refresh.
+  manager.handleSubscriptionListEvent({ ...listEvent });
+  manager.handleSubscriptionListEvent({ ...listEvent });
+  assert.equal(refreshCalls, 1, "echoes of the same event id must not re-refresh");
+
+  // An older event must also be ignored once we've applied a newer one.
+  manager.subsEventId = "evt-A";
+  manager.subsEventCreatedAt = 1000;
+  manager.handleSubscriptionListEvent({ id: "evt-older", pubkey: actor, created_at: 500 });
+  assert.equal(refreshCalls, 1, "an older list event must not trigger a refresh");
+
+  // A genuinely NEWER event DOES refresh again.
+  manager.handleSubscriptionListEvent({ id: "evt-B", pubkey: actor, created_at: 2000 });
+  assert.equal(refreshCalls, 2, "a newer list event triggers exactly one more refresh");
+});
