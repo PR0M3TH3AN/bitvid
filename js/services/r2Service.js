@@ -19,6 +19,7 @@
 import {
   buildR2Key,
   buildPublicUrl,
+  computeStorageContentHash,
 } from "../r2.js";
 import {
   sanitizeBucketName,
@@ -872,6 +873,12 @@ class R2Service {
     const keyIdentifier = await resolveUploadIdentifier({ infoHash, file });
     const normalizedInfoHash = normalizeInfoHash(infoHash || keyIdentifier);
     const hasValidInfoHash = isValidInfoHash(normalizedInfoHash);
+    // When no info-hash is available, derive a content-based namespace so two
+    // distinct URL-first uploads that share a filename can't overwrite each
+    // other. Kept separate from keyIdentifier so magnet generation still keys
+    // off the real info-hash only.
+    const storageIdentifier =
+      keyIdentifier || (file ? await computeStorageContentHash(file) : "");
 
     let bucketResult = null;
     try {
@@ -909,7 +916,7 @@ class R2Service {
     this.setCloudflareUploadStatus(statusMessage, "info");
 
     // Use forced keys if provided, otherwise generate them
-    const key = forcedVideoKey || buildR2Key(npub, file, keyIdentifier);
+    const key = forcedVideoKey || buildR2Key(npub, file, storageIdentifier);
     const publicUrl = forcedVideoUrl || buildPublicUrl(bucketEntry.publicBaseUrl, key);
 
     const buildTorrentKey = () => {

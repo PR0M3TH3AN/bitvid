@@ -1,6 +1,6 @@
 import { ensureS3SdkLoaded, makeS3Client } from "../storage/s3-client.js";
 import { multipartUpload } from "../storage/s3-multipart.js";
-import { buildR2Key } from "../r2.js";
+import { buildR2Key, computeStorageContentHash } from "../r2.js";
 import {
   buildS3ObjectUrl,
   getCorsOrigins,
@@ -35,6 +35,7 @@ const defaultDeps = {
   makeS3Client,
   multipartUpload,
   buildR2Key,
+  computeStorageContentHash,
   buildS3ObjectUrl,
   getCorsOrigins,
   prepareS3Connection,
@@ -276,6 +277,13 @@ export class S3UploadService {
       });
       const normalizedInfoHash = normalizeInfoHash(infoHash || keyIdentifier);
       const hasValidInfoHash = isValidInfoHash(normalizedInfoHash);
+      // When no info-hash is available, derive a content-based namespace so two
+      // distinct URL-first uploads that share a filename can't overwrite each
+      // other. Kept separate from keyIdentifier so magnet generation still keys
+      // off the real info-hash only.
+      const storageIdentifier =
+        keyIdentifier ||
+        (file ? await this.deps.computeStorageContentHash(file) : "");
 
       const s3 = this.deps.makeS3Client({
         endpoint: normalized.endpoint,
@@ -287,7 +295,7 @@ export class S3UploadService {
 
       const key =
         forcedVideoKey ||
-        this.deps.buildR2Key(npub, file, keyIdentifier);
+        this.deps.buildR2Key(npub, file, storageIdentifier);
       const publicUrl =
         forcedVideoUrl ||
         this.deps.buildS3ObjectUrl({
