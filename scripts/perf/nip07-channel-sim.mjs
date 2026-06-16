@@ -1,54 +1,71 @@
-// Deterministic NIP-07 CHANNEL simulation harness.
+// Deterministic NIP-07 CHANNEL simulation harness (multi-list).
 //
 // Reproduces the real-env cold-login failure (KNOWN_BUGS #0) WITHOUT a real
 // browser extension, so fixes can be validated locally instead of round-tripping
 // through a user's wallet. A fake window.nostr (backed by real nostr-tools
 // crypto) models a configurable message-channel:
 //
-//   MODE=healthy   fast, never drops (baseline — lists should decrypt)
+//   MODE=healthy   fast, never drops (baseline — every list should decrypt)
 //   MODE=slow      every call delayed (overwhelmed but alive)
 //   MODE=overload  drops the channel under concurrent load ("message channel
 //                  closed"), recovers after a cooldown — the real failure
-//   MODE=dead      drops on first overload and never recovers (refresh-only)
+//   MODE=dead      drops on first overload and (mostly) never recovers
 //
-// It seeds the user's encrypted lists (block list + watch history) so login
-// triggers genuine decrypt contention against the signer-readiness handshake,
-// then reports the things the real console showed: time-to-signer-ready, whether
-// the circuit breaker opened/recovered, decrypt-timeout count, and which lists
-// actually loaded.
+// Session 1 runs on a HEALTHY channel and publishes the user's encrypted lists
+// (block list + subscription list + hashtag interests) via the real services.
+// Session 2 runs under MODE and reports, for EACH list, whether it decrypted —
+// plus time-to-signer-ready, the login REQ burst (per kind), decrypt timeouts,
+// and breaker activity.
 //
 // Usage:
-//   MODE=overload APP=http://localhost:3000 node scripts/perf/nip07-channel-sim.mjs
-//   for m in healthy slow overload dead; do MODE=$m node scripts/perf/nip07-channel-sim.mjs; done
+//   MODE=overload node scripts/perf/nip07-channel-sim.mjs
+//   for m in healthy slow overload; do MODE=$m node scripts/perf/nip07-channel-sim.mjs; done
 
 import { chromium } from "playwright";
+import { writeFileSync } from "node:fs";
 import { startRelay } from "../agent/simple-relay.mjs";
 import { finalizeEvent, getPublicKey, nip04 } from "nostr-tools";
 import * as nip44 from "nostr-tools/nip44";
+
+// Verdict is mirrored to this file (in addition to stdout) so results survive
+// stdout buffering / early exit when piped or backgrounded.
+const REPORT_PATH = process.env.REPORT || "./nip07-sim-report.txt";
+const report = (text) => {
+  console.log(text);
+  try {
+    writeFileSync(REPORT_PATH, text + "\n", { flag: "a" });
+  } catch (_) {}
+};
+try {
+  writeFileSync(REPORT_PATH, "");
+} catch (_) {}
 
 const APP = process.env.APP || "http://localhost:3000";
 const MODE = (process.env.MODE || "overload").toLowerCase();
 const WS_PORT = Number(process.env.WS_PORT ?? 8974);
 const VIDEOS = Number(process.env.VIDEOS ?? 12);
-const OBSERVE_MS = Number(process.env.OBSERVE_MS ?? 40000);
+const OBSERVE_MS = Number(process.env.OBSERVE_MS ?? 45000);
+const DEBUG = process.env.DEBUG === "1";
 
-// Channel models per mode. LATENCY_MS = per-call delay; MAX_INFLIGHT = how many
-// concurrent extension calls before the port "drops"; DROP_COOLDOWN_MS = how long
-// the dropped channel stays dead before recovering.
 const MODES = {
   healthy: { latency: 80, maxInflight: 99, dropCooldown: 0 },
   slow: { latency: 2500, maxInflight: 99, dropCooldown: 0 },
   overload: { latency: 400, maxInflight: 1, dropCooldown: 4000 },
   dead: { latency: 400, maxInflight: 1, dropCooldown: 10 ** 9 },
 };
-const channel = MODES[MODE] || MODES.overload;
+const HEALTHY = MODES.healthy;
+const TARGET = MODES[MODE] || MODES.overload;
 
 const USER_SK = Uint8Array.from(Buffer.from("11".repeat(32), "hex"));
 const USER_PK = getPublicKey(USER_SK);
+const SUBSCRIBED_PK = "c".repeat(64);
+const BLOCKED_PK = "b".repeat(64);
+const HASHTAG = "bitcoin";
 const CHANNEL_CLOSED_MESSAGE =
   "A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received";
 
-// --- channel model state (Node side) ---
+// --- channel model (Node side); `channel` is swapped between sessions ---
+let channel = HEALTHY;
 let pending = 0;
 let droppedUntil = 0;
 let extCalls = {};
@@ -57,12 +74,10 @@ let drops = 0;
 function viaChannel(method, fn) {
   extCalls[method] = (extCalls[method] || 0) + 1;
   const now = Date.now();
-  // Already-dropped channel: reject fast (the severed port).
   if (now < droppedUntil) {
     drops += 1;
     return Promise.reject(new Error(CHANNEL_CLOSED_MESSAGE));
   }
-  // Concurrency overload trips the drop.
   if (pending >= channel.maxInflight && channel.dropCooldown > 0) {
     droppedUntil = now + channel.dropCooldown;
     drops += 1;
@@ -71,9 +86,7 @@ function viaChannel(method, fn) {
   pending += 1;
   return (async () => {
     try {
-      if (channel.latency > 0) {
-        await new Promise((r) => setTimeout(r, channel.latency));
-      }
+      if (channel.latency > 0) await new Promise((r) => setTimeout(r, channel.latency));
       return await fn();
     } finally {
       pending -= 1;
@@ -83,65 +96,15 @@ function viaChannel(method, fn) {
 
 const convKey = (peerPk) => nip44.v2.utils.getConversationKey(USER_SK, peerPk);
 
-function seedEncryptedBlockList(relay, createdAt) {
-  // A blocked pubkey the app must reveal by decrypting the kind-10000 mute list.
-  const blocked = "b".repeat(64);
-  const plaintext = JSON.stringify({ blockedPubkeys: [blocked] });
-  const content = nip04.encrypt(USER_SK, USER_PK, plaintext);
-  relay.seedEvent(
-    finalizeEvent(
-      {
-        kind: 10000,
-        created_at: createdAt,
-        tags: [["encrypted", "nip04"]],
-        content,
-      },
-      USER_SK,
-    ),
-  );
-  return blocked;
-}
-
-async function main() {
-  const relay = startRelay(WS_PORT, { httpPort: false });
-  const relayUrl = `ws://127.0.0.1:${WS_PORT}`;
-  const now = Math.floor(Date.now() / 1000);
-
-  relay.seedEvent(
-    finalizeEvent(
-      { kind: 10002, created_at: now, tags: [["r", relayUrl]], content: "" },
-      USER_SK,
-    ),
-  );
-  for (let i = 0; i < VIDEOS; i++) {
-    const dTag = `seed-${i}`;
-    relay.seedEvent(
-      finalizeEvent(
-        {
-          kind: 30078,
-          created_at: now - i * 60,
-          tags: [["d", dTag], ["t", "video"], ["title", `Sim Video ${i}`], ["url", `https://example.com/v${i}.mp4`]],
-          content: JSON.stringify({ version: 3, title: `Sim Video ${i}`, videoRootId: dTag, mode: "live", isPrivate: false, deleted: false, url: `https://example.com/v${i}.mp4` }),
-        },
-        USER_SK,
-      ),
-    );
-  }
-  const expectedBlocked = seedEncryptedBlockList(relay, now);
-
-  const browser = await chromium.launch({ headless: process.env.HEADLESS !== "0" });
+async function makeContext(browser, relayUrl) {
   const context = await browser.newContext();
-
   await context.exposeBinding("__extGetPublicKey", () => viaChannel("getPublicKey", () => USER_PK));
   await context.exposeBinding("__extSignEvent", (_s, e) => viaChannel("signEvent", () => finalizeEvent({ ...e, pubkey: USER_PK }, USER_SK)));
   await context.exposeBinding("__extNip04Encrypt", (_s, pk, t) => viaChannel("nip04.encrypt", () => nip04.encrypt(USER_SK, pk, t)));
   await context.exposeBinding("__extNip04Decrypt", (_s, pk, ct) => viaChannel("nip04.decrypt", () => nip04.decrypt(USER_SK, pk, ct)));
   await context.exposeBinding("__extNip44Encrypt", (_s, pk, t) => viaChannel("nip44.encrypt", () => nip44.v2.encrypt(t, convKey(pk))));
   await context.exposeBinding("__extNip44Decrypt", (_s, pk, ct) => viaChannel("nip44.decrypt", () => nip44.v2.decrypt(ct, convKey(pk))));
-  // enable()/getRelays are answered through the SAME channel so the handshake
-  // competes with decrypts exactly as it does in the real extension.
   await context.exposeBinding("__extEnable", () => viaChannel("enable", () => true));
-
   await context.addInitScript((url) => {
     localStorage.setItem("hasSeenDisclaimer", "true");
     localStorage.setItem("__bitvidTestMode__", "1");
@@ -161,55 +124,132 @@ async function main() {
       },
     };
   }, relayUrl);
+  return context;
+}
 
-  const testUrl = `${APP}/?__test__=1&__testRelays__=${encodeURIComponent(relayUrl)}`;
-
-  // --- console signal capture ---
-  const signals = {
-    signerReadyAt: null,
-    listsSyncCompleteAt: null,
-    decryptTimeouts: 0,
-    breakerOpened: 0,
-    breakerRecovered: 0,
-    channelUnresponsive: 0,
-  };
-  let loginAt = 0;
-  const onConsole = (text) => {
-    if (text.includes("[signer-ready]") && signals.signerReadyAt === null) {
-      signals.signerReadyAt = Date.now() - loginAt;
-    }
-    if (text.includes("[lists-sync-complete]") && signals.listsSyncCompleteAt === null) {
-      signals.listsSyncCompleteAt = Date.now() - loginAt;
-    }
-    if (text.includes("Decryption timed out") || text.includes("keeping stale list")) {
-      signals.decryptTimeouts += 1;
-    }
-    if (text.includes("signer channel unresponsive")) signals.breakerOpened += 1;
-    if (text.includes("signer channel recovered")) signals.breakerRecovered += 1;
-    if (text.includes("nip07-channel-unresponsive")) signals.channelUnresponsive += 1;
-  };
-
-  const DEBUG = process.env.DEBUG === "1";
+async function login(context, relayUrl, { onConsole } = {}) {
   const page = await context.newPage();
-  page.on("console", (msg) => {
-    try {
-      const t = msg.text();
-      onConsole(t);
-      if (DEBUG && /UserBlockList|Decryption|scheduleDecrypt|stale|channel|signer/i.test(t)) {
-        console.log("PAGE>", t.slice(0, 200));
-      }
-    } catch (_) {}
-  });
-
-  await page.goto(testUrl, { waitUntil: "domcontentloaded" });
+  if (onConsole) page.on("console", (m) => { try { onConsole(m.text(), page); } catch (_) {} });
+  await page.goto(`${APP}/?__test__=1&__testRelays__=${encodeURIComponent(relayUrl)}`, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => typeof window.__bitvidTest__ === "object", { timeout: 20000 }).catch(() => {});
   await page.evaluate((url) => window.__bitvidTest__?.setTestRelays?.([url], { persist: false }), relayUrl).catch(() => {});
   await page.evaluate(() => {
     const c = window.__bitvidTest__?.nostrClient;
     if (c) c.videoEventVerifier = async (events) => new Set((events || []).map((e) => e && e.id).filter(Boolean));
   }).catch(() => {});
+  try {
+    await page.click('[data-testid="login-button"]', { timeout: 8000 });
+    await page.waitForSelector('[data-testid="login-modal"]', { timeout: 8000 });
+    const extBtn = page.getByRole("button", { name: /extension|nip-?07|browser/i }).first();
+    if (await extBtn.count()) await extBtn.click({ timeout: 5000 });
+    else await page.locator('[data-testid="login-provider-button"]').first().click({ timeout: 5000 });
+  } catch (_) {}
+  await page.waitForFunction(
+    async () => (await window.__bitvidTest__?.getAppState?.())?.isLoggedIn === true,
+    { timeout: 20000 },
+  ).catch(() => {});
+  return page;
+}
 
-  // Trigger the REAL nip-07 login path.
+async function main() {
+  const relay = startRelay(WS_PORT, { httpPort: false });
+  const relayUrl = `ws://127.0.0.1:${WS_PORT}`;
+  const now = Math.floor(Date.now() / 1000);
+
+  relay.seedEvent(finalizeEvent({ kind: 10002, created_at: now, tags: [["r", relayUrl]], content: "" }, USER_SK));
+  for (let i = 0; i < VIDEOS; i++) {
+    const dTag = `seed-${i}`;
+    relay.seedEvent(finalizeEvent({
+      kind: 30078,
+      created_at: now - i * 60,
+      tags: [["d", dTag], ["t", "video"], ["title", `Sim Video ${i}`], ["url", `https://example.com/v${i}.mp4`]],
+      content: JSON.stringify({ version: 3, title: `Sim Video ${i}`, videoRootId: dTag, mode: "live", isPrivate: false, deleted: false, url: `https://example.com/v${i}.mp4` }),
+    }, USER_SK));
+  }
+
+  const browser = await chromium.launch({ headless: process.env.HEALTHLESS !== "0" && process.env.HEADLESS !== "0" });
+
+  // ---- Session 1: healthy channel, publish the user's encrypted lists ----
+  channel = HEALTHY;
+  const ctx1 = await makeContext(browser, relayUrl);
+  const page1 = await ctx1.newPage();
+  await page1.goto(`${APP}/?__test__=1&__testRelays__=${encodeURIComponent(relayUrl)}`, { waitUntil: "domcontentloaded" });
+  await page1.waitForFunction(() => typeof window.__bitvidTest__ === "object", { timeout: 20000 }).catch(() => {});
+  await page1.evaluate((url) => window.__bitvidTest__?.setTestRelays?.([url], { persist: false }), relayUrl).catch(() => {});
+  // Programmatic login with the SAME key the fake extension uses, so session 2
+  // (NIP-07) reads back the very lists session 1 publishes. Far more reliable
+  // than driving the login modal for the seed phase.
+  const USER_SK_HEX = Buffer.from(USER_SK).toString("hex");
+  await page1.evaluate(async (sk) => window.__bitvidTest__?.loginWithNsec?.(sk), USER_SK_HEX).catch((e) => report(`session1 login error: ${e.message}`));
+  await page1.waitForFunction(
+    async () => {
+      const st = await window.__bitvidTest__?.getAppState?.();
+      return Boolean(st?.isLoggedIn && st?.activePubkey);
+    },
+    { timeout: 15000 },
+  ).catch(() => {});
+  const seedResult = await page1.evaluate(
+    async (args) => window.__bitvidTest__?.seedTestLists?.(args),
+    { blockedPubkey: BLOCKED_PK, subscribedPubkey: SUBSCRIBED_PK, hashtag: HASHTAG },
+  ).catch((e) => ({ ok: false, reason: e.message }));
+  await page1.waitForTimeout(2500); // let publishes settle on the relay
+  await ctx1.close();
+
+  if (!seedResult?.ok) {
+    console.warn("⚠ seedTestLists did not fully succeed:", JSON.stringify(seedResult));
+  }
+
+  // ---- Session 2: target channel, observe cold-login decrypt ----
+  channel = TARGET;
+  pending = 0; droppedUntil = 0; extCalls = {}; drops = 0;
+
+  const signals = {
+    signerReadyAt: null, listsSyncCompleteAt: null,
+    decryptTimeouts: 0, breakerOpened: 0, breakerRecovered: 0, channelUnresponsive: 0,
+    dmHelpersUnavailable: 0,
+  };
+  const reqBurst = {}; // kind -> count, captured during the login window
+  let loginAt = Date.now();
+  let measuringReq = true;
+
+  const ctx2 = await makeContext(browser, relayUrl);
+  // Capture outgoing REQ frames per kind during the login burst window.
+  ctx2.on("page", () => {});
+  const onConsole = (text) => {
+    if (text.includes("[signer-ready]") && signals.signerReadyAt === null) signals.signerReadyAt = Date.now() - loginAt;
+    if (text.includes("[lists-sync-complete]") && signals.listsSyncCompleteAt === null) signals.listsSyncCompleteAt = Date.now() - loginAt;
+    if (text.includes("Decryption timed out") || text.includes("keeping stale list") || text.includes("channel unavailable")) signals.decryptTimeouts += 1;
+    if (text.includes("signer channel unresponsive")) signals.breakerOpened += 1;
+    if (text.includes("signer channel recovered")) signals.breakerRecovered += 1;
+    if (text.includes("nip07-channel-unresponsive")) signals.channelUnresponsive += 1;
+    if (text.includes("DM decryption helpers are unavailable")) signals.dmHelpersUnavailable += 1;
+    if (DEBUG && /UserBlockList|Hashtag|Subscriptions|Decryption|signer|channel|direct message/i.test(text)) {
+      console.log("PAGE>", text.slice(0, 200));
+    }
+  };
+
+  const page = await ctx2.newPage();
+  page.on("console", (m) => { try { onConsole(m.text()); } catch (_) {} });
+  page.on("websocket", (ws) => {
+    ws.on("framesent", (d) => {
+      const p = typeof d.payload === "string" ? d.payload : "";
+      if (!measuringReq || !p.startsWith('["REQ"')) return;
+      try {
+        const msg = JSON.parse(p);
+        for (const f of msg.slice(2)) {
+          for (const k of f.kinds || ["?"]) reqBurst[k] = (reqBurst[k] || 0) + 1;
+        }
+      } catch (_) {}
+    });
+  });
+
+  await page.goto(`${APP}/?__test__=1&__testRelays__=${encodeURIComponent(relayUrl)}`, { waitUntil: "domcontentloaded" });
+  await page.waitForFunction(() => typeof window.__bitvidTest__ === "object", { timeout: 20000 }).catch(() => {});
+  await page.evaluate((url) => window.__bitvidTest__?.setTestRelays?.([url], { persist: false }), relayUrl).catch(() => {});
+  await page.evaluate(() => {
+    const c = window.__bitvidTest__?.nostrClient;
+    if (c) c.videoEventVerifier = async (events) => new Set((events || []).map((e) => e && e.id).filter(Boolean));
+  }).catch(() => {});
   loginAt = Date.now();
   try {
     await page.click('[data-testid="login-button"]', { timeout: 8000 });
@@ -220,57 +260,67 @@ async function main() {
   } catch (e) {
     console.warn("login click failed:", e.message);
   }
+  await page.waitForFunction(async () => (await window.__bitvidTest__?.getAppState?.())?.isLoggedIn === true, { timeout: 20000 }).catch(() => {});
 
-  await page.waitForFunction(
-    async () => (await window.__bitvidTest__?.getAppState?.())?.isLoggedIn === true,
-    { timeout: 20000 },
-  ).catch(() => {});
+  // Stop counting REQ burst after the first ~10s (login settle window).
+  setTimeout(() => { measuringReq = false; }, 10000);
 
-  // Observe the post-login window.
-  await page.waitForTimeout(OBSERVE_MS);
+  // Probe DMs the way the Messages tab does (lazy load).
+  await page.waitForTimeout(Math.min(OBSERVE_MS, 12000));
+  const dmProbe = await page.evaluate(async () => {
+    const c = window.__bitvidTest__?.nostrClient;
+    if (!c || typeof c.listDirectMessages !== "function") return { ok: false, reason: "no-listDirectMessages" };
+    try {
+      const msgs = await c.listDirectMessages();
+      return { ok: true, count: Array.isArray(msgs) ? msgs.length : 0 };
+    } catch (e) {
+      return { ok: false, reason: e?.message || String(e) };
+    }
+  }).catch((e) => ({ ok: false, reason: e.message }));
 
-  // Did the block list actually decrypt? (the seeded blocked pubkey appears)
-  const blockedLoaded = await page.evaluate(async (expected) => {
-    const state = await window.__bitvidTest__?.getAppState?.();
-    const blocked = state?.lists?.blockedPubkeys || [];
-    return Array.isArray(blocked) && blocked.includes(expected);
-  }, expectedBlocked).catch(() => false);
+  // Wait out the rest of the observation window for retries to land.
+  await page.waitForTimeout(Math.max(0, OBSERVE_MS - 12000));
 
-  const verdict = {
-    mode: MODE,
-    channel,
-    timeToSignerReadyMs: signals.signerReadyAt,
-    timeToListsSyncMs: signals.listsSyncCompleteAt,
-    decryptTimeouts: signals.decryptTimeouts,
-    breakerOpened: signals.breakerOpened,
-    breakerRecovered: signals.breakerRecovered,
-    fastFailsObserved: signals.channelUnresponsive,
-    channelDropsInjected: drops,
-    blockListDecrypted: blockedLoaded,
-    extCalls,
+  const finalLists = await page.evaluate(async () => (await window.__bitvidTest__.getAppState()).lists).catch(() => ({}));
+  const decrypted = {
+    blocks: Array.isArray(finalLists.blockedPubkeys) && finalLists.blockedPubkeys.includes("b".repeat(64)),
+    subscriptions: Array.isArray(finalLists.subscribedPubkeys) && finalLists.subscribedPubkeys.includes("c".repeat(64)),
+    hashtags: Array.isArray(finalLists.hashtagInterests) && finalLists.hashtagInterests.includes(HASHTAG),
   };
 
-  console.log("\n================ NIP-07 CHANNEL SIM ================");
-  console.log(`MODE=${MODE}  latency=${channel.latency}ms maxInflight=${channel.maxInflight} dropCooldown=${channel.dropCooldown}ms`);
-  console.log(`time → signer-ready    : ${verdict.timeToSignerReadyMs ?? "NEVER"} ms`);
-  console.log(`time → lists-sync done : ${verdict.timeToListsSyncMs ?? "NEVER"} ms`);
-  console.log(`decrypt timeouts logged: ${verdict.decryptTimeouts}`);
-  console.log(`channel drops injected : ${verdict.channelDropsInjected}`);
-  console.log(`breaker opened / recov : ${verdict.breakerOpened} / ${verdict.breakerRecovered}`);
-  console.log(`fast-fails observed    : ${verdict.fastFailsObserved}`);
-  console.log(`BLOCK LIST DECRYPTED   : ${verdict.blockListDecrypted ? "YES ✓" : "NO ✗"}`);
-  console.log("ext calls:", JSON.stringify(extCalls));
-  console.log("===================================================\n");
+  const reqTotal = Object.values(reqBurst).reduce((s, n) => s + n, 0);
+  const reqTop = Object.entries(reqBurst).sort((a, b) => b[1] - a[1]).slice(0, 8)
+    .map(([k, n]) => `kind ${k}=${n}`).join(", ");
 
-  await page.close();
+  report("\n================ NIP-07 CHANNEL SIM (multi-list) ================");
+  report(`MODE=${MODE}  latency=${channel.latency}ms maxInflight=${channel.maxInflight} dropCooldown=${channel.dropCooldown}ms`);
+  report(`seed(session1)         : ${JSON.stringify(seedResult)}`);
+  report(`time -> signer-ready   : ${signals.signerReadyAt ?? "NEVER"} ms`);
+  report(`time -> lists-sync done: ${signals.listsSyncCompleteAt ?? "NEVER"} ms`);
+  report(`login REQ burst (~10s) : ${reqTotal} frames  [${reqTop}]`);
+  report(`decrypt timeouts logged: ${signals.decryptTimeouts}`);
+  report(`channel drops injected : ${drops}`);
+  report(`breaker opened / recov : ${signals.breakerOpened} / ${signals.breakerRecovered}`);
+  report(`---- LISTS DECRYPTED ----`);
+  report(`  blocks               : ${decrypted.blocks ? "YES" : "NO"}`);
+  report(`  subscriptions        : ${decrypted.subscriptions ? "YES" : "NO"}`);
+  report(`  hashtags             : ${decrypted.hashtags ? "YES" : "NO"}`);
+  report(`  DMs (probe)          : ${dmProbe.ok ? `OK (${dmProbe.count})` : `FAIL - ${dmProbe.reason}`}`);
+  report("ext calls: " + JSON.stringify(extCalls));
+  report("=================================================================\n");
+
+  await ctx2.close();
   await browser.close();
   if (typeof relay.close === "function") await relay.close();
-  // Exit non-zero for the "should have worked but didn't" cases so this can gate CI later.
-  const expectedToLoad = MODE === "healthy" || MODE === "overload";
-  process.exit(expectedToLoad && !verdict.blockListDecrypted ? 1 : 0);
+
+  // Gate: on healthy/overload every list SHOULD decrypt. Use process.exitCode
+  // (not process.exit) so buffered stdout fully flushes when piped/redirected.
+  const expectAll = MODE === "healthy" || MODE === "overload";
+  const allLists = decrypted.blocks && decrypted.subscriptions && decrypted.hashtags;
+  process.exitCode = expectAll && !allLists ? 1 : 0;
 }
 
 main().catch((e) => {
-  console.error("nip07-channel-sim failed:", e);
-  process.exit(1);
+  report(`nip07-channel-sim FAILED: ${e?.stack || e?.message || e}`);
+  process.exitCode = 1;
 });

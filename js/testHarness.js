@@ -14,6 +14,8 @@
 import { nostrClient } from "./nostrClientFacade.js";
 import { relayManager } from "./relayManager.js";
 import { userBlocks, USER_BLOCK_EVENTS } from "./userBlocks.js";
+import { subscriptions } from "./subscriptions.js";
+import hashtagPreferences from "./services/hashtagPreferencesService.js";
 import {
   registerSigner,
   setActiveSigner,
@@ -480,8 +482,58 @@ function getAppState() {
         typeof userBlocks?.getBlockedPubkeys === "function"
           ? userBlocks.getBlockedPubkeys()
           : [],
+      subscriptionsLoaded: Boolean(subscriptions?.loaded),
+      subscribedPubkeys:
+        subscriptions?.subscribedPubkeys instanceof Set
+          ? Array.from(subscriptions.subscribedPubkeys)
+          : [],
+      hashtagsLoaded: Boolean(hashtagPreferences?.loaded),
+      hashtagInterests:
+        typeof hashtagPreferences?.getInterests === "function"
+          ? hashtagPreferences.getInterests()
+          : hashtagPreferences?.interests instanceof Set
+            ? Array.from(hashtagPreferences.interests)
+            : [],
     },
   };
+}
+
+/**
+ * Publish the user's encrypted lists via the REAL services so a later session
+ * must fetch + decrypt them on cold login. Used by the channel-sim harness to
+ * exercise every list-decrypt path (blocks/subscriptions/hashtags), not just
+ * hand-seeded events. Must be called while logged in on a healthy channel.
+ */
+async function seedTestLists({
+  blockedPubkey,
+  subscribedPubkey,
+  hashtag,
+} = {}) {
+  // The logged-in pubkey is canonical on the client; getActiveSigner() (registry)
+  // is not populated for a NIP-07 extension login.
+  const signer = getActiveSigner();
+  const actor =
+    nostrClient?.pubkey ||
+    signer?.pubkey ||
+    nostrClient?.signerManager?.getActiveSigner?.()?.pubkey ||
+    null;
+  const result = { actor, blocked: false, subscribed: false, hashtag: false };
+  if (!actor) {
+    return { ok: false, reason: "no-active-signer", ...result };
+  }
+  if (blockedPubkey && typeof userBlocks?.addBlock === "function") {
+    await userBlocks.addBlock(blockedPubkey, actor);
+    result.blocked = true;
+  }
+  if (subscribedPubkey && typeof subscriptions?.addChannel === "function") {
+    await subscriptions.addChannel(subscribedPubkey, actor);
+    result.subscribed = true;
+  }
+  if (hashtag && typeof hashtagPreferences?.addInterest === "function") {
+    await hashtagPreferences.addInterest(hashtag);
+    result.hashtag = true;
+  }
+  return { ok: true, ...result };
 }
 
 /**
@@ -772,6 +824,7 @@ export function installTestHarness() {
     getListSyncEvents,
     clearListSyncEvents,
     waitForListSyncEvent,
+    seedTestLists,
 
     // Expose nostrClient for advanced test scenarios
     get nostrClient() {
