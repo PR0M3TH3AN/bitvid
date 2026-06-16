@@ -60,10 +60,37 @@ refactor work in that doc — these are defects.
     CPU. A single periodic probe detects recovery; one success closes the
     circuit (no refresh). Responsive errors don't open it; interactive permission
     prompts bypass it. Test: `tests/nostr/nip07-channel-breaker.test.mjs`.
-- **Still open:** further burst reduction (collapse each list's multi-variant
-  fan-out into one multi-filter REQ per relay; investigate the ~67s signer gate);
-  liveness-ranked relay health (see #4); DM decrypt resilience (don't hard-fail
-  DMs on a transient permission miss — retry).
+- **Resilience shipped (increments 3-6):** user-relays-first relay cap with
+  reserved defaults; transient-decrypt → retry (channel-death/timeout no longer
+  swallowed as "empty"); fetch/decrypt decouple + ProfileModalController
+  ensureLoaded (cut the login REQ burst); subscription refresh-loop guard;
+  generous decrypt budget (30s) + 60s backoff cap so a slow-but-responsive
+  signer completes; permission-handshake variant timeout 3s→20s so slow signers
+  aren't killed mid-grant.
+- **DEFINITIVE root cause for "lists never load" (2026-06-16):** confirmed with a
+  raw `window.nostr` probe in the user's browser — a single clean
+  `getPublicKey → nip04.encrypt → nip04.decrypt` that bypasses ALL of bitvid
+  **hung forever**, and the extension's own console showed
+  `ObjectMultiplex - orphaned data for stream "background-liveness"` +
+  `malformed chunk` + `MaxListenersExceededWarning`. i.e. the NIP-07 extension's
+  content-script ↔ background-service-worker channel was dead/orphaned (classic
+  MV3 worker death). This is an EXTENSION/environment failure, not a bitvid bug —
+  no client change can force an unresponsive signer to answer. Fix is user-side:
+  reload/unlock the extension + refresh.
+- **Client mitigation (SHIPPED):** `js/utils/signerHealthNotice.js` — after a few
+  consecutive list-decrypt timeouts with `signerStatus: "present"`, emit ONE
+  rate-limited, actionable user notice ("signer isn't responding to decryption —
+  unlock/reload your extension and refresh") instead of a silent forever-retry.
+  Wired into blocks/hashtags/subscriptions; reset on any decrypt success.
+  Test: `tests/signer-health-notice.test.mjs`.
+- **Harness (`scripts/perf/nip07-channel-sim.mjs`):** with a LATENCY override it
+  proves the client now loads all lists for signers answering up to the decrypt
+  budget; lists only fail once per-call latency exceeds the budget (i.e. the
+  signer is the wall, not the client).
+- **Still open:** liveness-ranked relay health (see #4); DM decrypt resilience
+  (don't hard-fail DMs on a transient permission miss — retry); optional nip-07
+  queue concurrency bump for slow signers (risks channel drops on some
+  providers — opt-in).
 
 ### 1. Logged-out: video grid stays empty until a manual refresh
 - **Severity:** medium (first-load UX, logged-out).

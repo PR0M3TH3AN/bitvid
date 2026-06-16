@@ -27,6 +27,10 @@ import { getApplication } from "./applicationContext.js";
 import { VideoListView } from "./ui/views/VideoListView.js";
 import { ALLOW_NSFW_CONTENT } from "./config.js";
 import { devLogger, userLogger } from "./utils/logger.js";
+import {
+  noteSignerDecryptTimeout,
+  noteSignerDecryptSuccess,
+} from "./utils/signerHealthNotice.js";
 import moderationService from "./services/moderationService.js";
 import nostrService from "./services/nostrService.js";
 import { profileCache } from "./state/profileCache.js";
@@ -761,7 +765,11 @@ class SubscriptionsManager {
         this.uiReady = true;
         if (isTransientDecryptError(decryptResult.error)) {
           // Channel/timeout failures recover shortly — retry instead of
-          // abandoning the subscription list until a page refresh.
+          // abandoning the subscription list until a page refresh. A present
+          // signer that won't answer feeds the shared unresponsive notice.
+          if (decryptResult.error?.code === "subscriptions-decrypt-timeout") {
+            noteSignerDecryptTimeout("subscriptions");
+          }
           this.scheduleDecryptRetry(normalizedUserPubkey, decryptResult.error, {
             allowPermissionPrompt,
             signerReadinessGate,
@@ -837,6 +845,7 @@ class SubscriptionsManager {
       }
 
       this.decryptRetryAttempt = 0;
+      noteSignerDecryptSuccess();
 
       const decryptedStr = decryptResult.plaintext;
       const normalized = parseSubscriptionPlaintext(decryptedStr);

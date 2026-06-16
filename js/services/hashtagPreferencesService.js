@@ -15,6 +15,10 @@ import {
   assertAnyRelayAccepted,
 } from "../nostrPublish.js";
 import { userLogger, devLogger } from "../utils/logger.js";
+import {
+  noteSignerDecryptTimeout,
+  noteSignerDecryptSuccess,
+} from "../utils/signerHealthNotice.js";
 import { sanitizeRelayList } from "../nostr/nip46Client.js";
 import { normalizeHashtag } from "../utils/hashtagNormalization.js";
 import { profileCache } from "../state/profileCache.js";
@@ -950,7 +954,12 @@ class HashtagPreferencesService {
 
       if (isTransientDecryptError(decryptResult.error)) {
         // Channel/timeout failures recover shortly — keep any cached prefs and
-        // retry instead of giving up until a page refresh.
+        // retry instead of giving up until a page refresh. If the signer is
+        // present but simply not answering, surface the shared unresponsive
+        // notice so the user knows to reload/unlock their extension.
+        if (decryptResult.error?.code === "hashtag-preferences-decrypt-timeout") {
+          noteSignerDecryptTimeout("hashtags");
+        }
         this.scheduleDecryptRetry(normalized, decryptResult.error, {
           allowPermissionPrompt,
           signerReadinessGate,
@@ -1023,6 +1032,7 @@ class HashtagPreferencesService {
       this.loadedFromCache = false;
       this.lastSuccessfulSyncAt = Date.now();
       this.decryptRetryAttempt = 0;
+      noteSignerDecryptSuccess();
       if (this.backgroundLoading) {
         this.backgroundLoading = false;
       }

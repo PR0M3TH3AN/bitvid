@@ -12,6 +12,10 @@ import {
   KIND_MUTE_LIST,
 } from "./nostrEventSchemas.js";
 import { devLogger, userLogger } from "./utils/logger.js";
+import {
+  noteSignerDecryptTimeout,
+  noteSignerDecryptSuccess,
+} from "./utils/signerHealthNotice.js";
 import { STANDARD_TIMEOUT_MS, MAX_BLOCKLIST_ENTRIES } from "./constants.js";
 import {
   publishEventToRelays,
@@ -1651,6 +1655,12 @@ class UserBlockListManager {
                 events: [newestStandard?.id, newestLegacy?.id].filter(Boolean),
               },
             );
+            // Signer reported present but didn't answer — feed the shared
+            // "signer unresponsive" notice so the user gets told to reload/unlock
+            // their extension instead of silently retrying forever.
+            if (signerStatus === "present") {
+              noteSignerDecryptTimeout("blocks");
+            }
             this.scheduleDecryptRetry(normalized, {
               error: decryptionError,
               signerStatus,
@@ -1692,6 +1702,7 @@ class UserBlockListManager {
           events: [newestStandard?.id, newestLegacy?.id].filter(Boolean),
         });
         this.decryptRetryAttempt = 0;
+        noteSignerDecryptSuccess();
 
         if (effectiveReason === "empty-events") {
            emitStatus({ status: "applied-empty", event: newestOverall, source });
