@@ -16,3 +16,6 @@ TEST_LOG.mdtest_logs/nip-hits.txt
 !artifacts/audit/
 !artifacts/audit/*.md
 !artifacts/audit/*.json
+
+# Vercel CLI local link/state
+.vercel
