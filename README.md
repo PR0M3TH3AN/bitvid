@@ -30,7 +30,9 @@
 
 1. **Visit the Site**: Navigate to the live instance of **bitvid** (e.g., `[https://bitvid.network](https://bitvid.network)`).
 2. **Login with Nostr**:
-   - Use a compatible Nostr browser extension or manually input your public key.
+   - Use a compatible NIP-07 browser extension or manually input your public key.
+   - For the most reliable experience we recommend a well-maintained signer such as [nos2x](https://github.com/fiatjaf/nos2x) or [Alby](https://getalby.com/). Encrypted features (DMs, hashtag preferences, watch history, block/subscription lists) require the extension to respond to decryption requests.
+   - **Troubleshooting:** if those encrypted lists never finish loading after login, bitvid will surface a notice — your extension's signer is likely locked or its background worker went to sleep. Unlock/reload the extension and refresh the page. (bitvid caps relay fan-out and fast-fails an unresponsive signer so the tab no longer pins the CPU while waiting.)
 
 ### Upload a video
 

@@ -9,9 +9,12 @@ refactor work in that doc — these are defects.
 
 ---
 
-## Open
+## Tracked
 
-### 0. Encrypted lists (hashtags, DMs, blocks) fail to DECRYPT on login  *(top priority)*
+> Status is per-entry (RESOLVED / FIXED / Open). Items #3 and #4 below remain
+> open; #0, #1, and #2 are resolved and kept here for provenance.
+
+### 0. Encrypted lists (hashtags, DMs, blocks) fail to DECRYPT on login — RESOLVED (2026-06-16)
 - **Severity:** high — the user's recurring "hashtags/DMs/watch-history don't
   load in the profile modal."
 - **Diagnosed from real-env console (2026-06-14):** the lists are *fetched* (e.g.
@@ -87,10 +90,37 @@ refactor work in that doc — these are defects.
   proves the client now loads all lists for signers answering up to the decrypt
   budget; lists only fail once per-call latency exceeds the budget (i.e. the
   signer is the wall, not the client).
-- **Still open:** liveness-ranked relay health (see #4); DM decrypt resilience
-  (don't hard-fail DMs on a transient permission miss — retry); optional nip-07
-  queue concurrency bump for slow signers (risks channel drops on some
-  providers — opt-in).
+- **DM decrypt resilience (SHIPPED):** `buildDmDecryptContext` now gates on
+  method existence (`typeof activeSigner.nip44Decrypt === "function"`) rather than
+  a possibly-stale `extensionPermissionResult`/capability snapshot, so DMs no
+  longer hard-fail with "DM decryption helpers are unavailable" on a transient
+  permission miss. Also fixed the Controller→Actions wrong-receiver bugs that made
+  opening a conversation throw "… is not a function"
+  (`ProfileDirectMessageController`/`ProfileDirectMessageActions`). Tests:
+  `tests/dm-decrypt-context.test.mjs`, `tests/dm-conversation-select.test.mjs`.
+- **Post-login UI freeze (SHIPPED, 2026-06-16):** once a responsive signer (nos2x)
+  made decryption instant, `profileModalController.handleAuthLogin` rendered EVERY
+  profile panel at login (friends list + per-contact avatars, subscriptions,
+  blocks, relays, wallet, hashtags, storage) into a CLOSED modal — one main-thread
+  burst that froze the tab for ~10-15s and stopped the profile panel from opening.
+  Fixed by deferring panel rendering to `selectPane()` (lazy per-pane on open;
+  added the missing `friends` case) and gating the block/subscription/contacts
+  "change" re-renders on `isProfileModalOpen()`. DM-identity setup stays eager.
+- **CONFIRMED RESOLVED in real env (2026-06-16):** after the user switched from
+  KeysBand (dead MV3 worker) to **nos2x**, real-browser logs show DMs (NIP-04 +
+  NIP-44), watch history (kind 30078), and contact/subscription lists all
+  decrypting in milliseconds with no timeouts, no `signerStatus: missing`, no
+  channel-death, and no forever-retry. The whole resilience stack
+  (relay cap → DM defer → circuit breaker → transient-retry → decrypt budget →
+  signer-health notice → DM receiver fixes → post-login freeze fix) is validated
+  against the user's real vault. Moving #0 to resolved.
+- **Still open (follow-ups, lower priority):** liveness-ranked relay health
+  (see #4); optional nip-07 queue concurrency bump for slow signers (risks
+  channel drops on some providers — opt-in); optional DM decrypt efficiency —
+  bitvid currently tries BOTH `nip44.decrypt` and `nip04.decrypt` per message
+  (half log expected `invalid base64`/`invalid payload length` errors), which
+  could be halved by routing on the `?iv=` (NIP-04) ciphertext marker. Benign;
+  only worth doing if large-mailbox DM load feels slow.
 
 ### 1. Logged-out: video grid stays empty until a manual refresh — FIXED (2026-06-16)
 - **Severity:** medium (first-load UX, logged-out).
