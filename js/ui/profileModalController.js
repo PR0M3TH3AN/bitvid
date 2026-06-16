@@ -269,7 +269,13 @@ export class ProfileModalController {
         this.unsubscribeModerationContacts = this.moderationService.on(
           "contacts",
           () => {
-            void this.populateFriendsList();
+            // Only re-render the friends list if the modal is open; otherwise
+            // selectPane("friends") repopulates it on demand. Avoids rendering
+            // (and avatar-fetching) the whole contact list into a closed panel
+            // during the post-login contacts burst.
+            if (this.isProfileModalOpen()) {
+              void this.populateFriendsList();
+            }
             updateTrustStats();
           },
         );
@@ -542,7 +548,12 @@ export class ProfileModalController {
       typeof this.services.userBlocks.on === "function"
     ) {
       this.services.userBlocks.on("change", () => {
-        this.populateBlockedList();
+        // Re-render the blocked pane only when the modal is open; selectPane
+        // repopulates it on demand. Avoids rendering into a closed panel during
+        // the post-login block-list load.
+        if (this.isProfileModalOpen()) {
+          this.populateBlockedList();
+        }
       });
     }
   }
@@ -1206,6 +1217,37 @@ export class ProfileModalController {
   }
 
 
+
+  // Whether the profile modal is currently visible. Used to avoid rendering
+  // profile-panel content into a CLOSED modal (e.g. the eager population that
+  // jammed the main thread right after login — KNOWN_BUGS #0 post-login freeze).
+  isProfileModalOpen() {
+    const root =
+      this.profileModalRoot instanceof HTMLElement
+        ? this.profileModalRoot
+        : this.profileModal instanceof HTMLElement
+          ? this.profileModal
+          : null;
+    return (
+      !!root &&
+      !root.classList.contains("hidden") &&
+      root.getAttribute("aria-hidden") !== "true"
+    );
+  }
+
+  // Render every profile panel at once. Only worth doing when the modal is
+  // actually open — otherwise rely on selectPane() to lazily populate each pane
+  // as it's shown.
+  populateOpenProfilePanels() {
+    this.populateBlockedList();
+    void this.populateSubscriptionsList();
+    void this.populateFriendsList();
+    this.relayController.populateProfileRelays();
+    this.walletController.refreshWalletPaneState();
+    this.hashtagController.populateHashtagPreferences();
+    void this.storageController.populateStoragePane();
+    void this.refreshDmRelayPreferences({ force: true });
+  }
 
   setMessagesUnreadIndicator(visible) {
     if (!(this.dmController.profileMessagesUnreadDot instanceof HTMLElement)) {
@@ -3251,6 +3293,10 @@ export class ProfileModalController {
           this.services.userBlocks.loadBlocks(activeHex).catch(noop);
         }
         this.populateBlockedList();
+      } else if (target === "friends") {
+        // The friends pane has no other lazy-populate trigger now that login no
+        // longer eagerly renders it, so populate it on selection.
+        void this.populateFriendsList();
       } else if (target === "safety") {
         this.refreshModerationSettingsUi();
         this.syncLinkPreviewSettingsUi();
@@ -3501,7 +3547,13 @@ export class ProfileModalController {
       this.subscriptionsBackgroundLoading = false;
     }
 
-    void this.populateSubscriptionsList();
+    // Re-render the subscriptions pane only when the modal is open (status
+    // bookkeeping above stays unconditional); selectPane repopulates it on
+    // demand, so we don't render into a closed panel during the post-login
+    // subscription-list load.
+    if (this.isProfileModalOpen()) {
+      void this.populateSubscriptionsList();
+    }
     this.refreshSubscriptionsBackgroundStatus();
   }
 
@@ -5179,35 +5231,46 @@ export class ProfileModalController {
       }
     }
 
-    this.populateBlockedList();
-    void this.populateSubscriptionsList();
-    void this.populateFriendsList();
-    this.relayController.populateProfileRelays();
-    this.walletController.refreshWalletPaneState();
-    this.hashtagController.populateHashtagPreferences();
-    void this.storageController.populateStoragePane();
+    // DM identity is cheap state setup needed for the background unread
+    // indicator + DM subscription, so it stays eager.
     this.handleActiveDmIdentityChanged(activePubkey);
-    void this.refreshDmRelayPreferences({ force: true });
 
-    // Ensure critical state is settled if possible, but don't block initial rendering
-    Promise.all([walletPromise, adminPromise, postLoginPromise])
-      .then(() => {
-        // Re-run population to ensure any late-arriving data is reflected
-        this.populateBlockedList();
-        void this.populateSubscriptionsList();
-        void this.populateFriendsList();
-        this.relayController.populateProfileRelays();
-        this.walletController.refreshWalletPaneState();
-        this.hashtagController.populateHashtagPreferences();
-        void this.storageController.populateStoragePane();
-        void this.refreshDmRelayPreferences({ force: true });
-      })
-      .catch((error) => {
+    // Profile-PANEL rendering is deferred: each pane lazily populates when it's
+    // shown (selectPane), so eagerly rendering all of them at login paints into
+    // CLOSED panels — friends-list avatars, subscriptions, blocks, storage,
+    // relays — and jams the main thread right after login (the ~10-15s "profile
+    // panel won't open / site frozen" report). Only do the eager pass when the
+    // modal is already open (e.g. switching accounts with it visible);
+    // otherwise open()/selectPane handles it on demand.
+    const settleLoginData = Promise.all([
+      walletPromise,
+      adminPromise,
+      postLoginPromise,
+    ]);
+
+    if (this.isProfileModalOpen()) {
+      this.populateOpenProfilePanels();
+      settleLoginData
+        .then(() => {
+          if (this.isProfileModalOpen()) {
+            this.populateOpenProfilePanels();
+          }
+        })
+        .catch((error) => {
+          userLogger.warn(
+            "[profileModal] Failed to hydrate deferred login data:",
+            error,
+          );
+        });
+    } else {
+      // Keep the collaborators' promises observed even when we skip rendering.
+      settleLoginData.catch((error) => {
         userLogger.warn(
-          "[profileModal] Failed to hydrate deferred login data:",
+          "[profileModal] Failed to settle login data:",
           error,
         );
       });
+    }
 
     return true;
   }
