@@ -1274,6 +1274,27 @@ async function bootstrapInterface() {
 
   window.addEventListener("hashchange", handleHashChange);
 
+  // The feed view loads here while the disclaimer (opened above for first-time
+  // visitors) holds the background inert, so its initial grid render is dropped.
+  // When the user dismisses the disclaimer the background becomes interactive
+  // again — re-load the feed so the grid populates without a manual refresh
+  // (KNOWN_BUGS #1). Fires only when a shown disclaimer is dismissed; returning
+  // visitors never see it, so there's no redundant reload for them.
+  document.addEventListener(
+    "bitvid:disclaimer-dismissed",
+    () => {
+      if (application && typeof application.loadVideos === "function") {
+        Promise.resolve(application.loadVideos(true)).catch((error) => {
+          devLogger.warn(
+            "[Interface] Failed to reload feed after disclaimer dismissed:",
+            error,
+          );
+        });
+      }
+    },
+    { once: true },
+  );
+
   await handleHashChange();
 
   disclaimerModal.show();

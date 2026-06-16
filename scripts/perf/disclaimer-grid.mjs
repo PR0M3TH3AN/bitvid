@@ -19,23 +19,39 @@ page.on("pageerror", (e) => logs.push(`[pageerror] ${String(e).split("\n")[0]}`)
 
 await page.goto(APP, { waitUntil: "domcontentloaded", timeout: 30000 });
 
-// Wait for disclaimer modal to appear.
-await page.waitForTimeout(3000);
+// Wait for the disclaimer accept button to actually exist (loadDisclaimer is async).
+await page.waitForSelector("#acceptDisclaimer", { timeout: 15000 }).catch(() => {});
+await page.waitForTimeout(1500);
 const hadDisclaimer = await page.evaluate(() => {
   const m = document.getElementById("disclaimerModal");
-  return !!m && getComputedStyle(m).display !== "none" && m.offsetParent !== null;
+  if (!m) return false;
+  const cs = getComputedStyle(m);
+  // Detect via several common "shown" mechanisms, not just display.
+  return (
+    m.offsetParent !== null ||
+    cs.display !== "none" ||
+    m.classList.contains("is-open") ||
+    m.getAttribute("aria-hidden") === "false" ||
+    !m.hasAttribute("hidden")
+  );
 });
 const beforeDismiss = await cardCount(page);
 
-// Dismiss the disclaimer (click its primary/accept button).
+// Dismiss the disclaimer via its real accept button.
 let clicked = false;
 try {
-  const btn = page.locator('#disclaimerModal button, [data-testid="disclaimer-accept"]').first();
+  const btn = page.locator("#acceptDisclaimer").first();
   if (await btn.count()) { await btn.click({ timeout: 4000 }); clicked = true; }
 } catch (_) {}
 
-await page.waitForTimeout(6000);
-const afterDismiss = await cardCount(page);
+// Poll the grid for up to ~15s AFTER dismiss — captures "never renders".
+const timeline = [];
+for (let i = 0; i < 15; i++) {
+  await page.waitForTimeout(1000);
+  timeline.push(await cardCount(page));
+}
+const afterDismiss = timeline[timeline.length - 1];
+console.log("post-dismiss card timeline (1s steps):", timeline.join(","));
 
 // Now reload and re-check (the "refresh fixes it" path).
 await page.reload({ waitUntil: "domcontentloaded" });

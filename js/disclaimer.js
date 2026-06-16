@@ -42,6 +42,15 @@ class DisclaimerModal {
       this.modal.classList.add("hidden");
     }
     localStorage.setItem("hasSeenDisclaimer", "true");
+    // The feed view mounts/renders DURING boot while this disclaimer is open and
+    // the background is inert/hidden, so the initial grid render is dropped and
+    // never recovers without a manual refresh (KNOWN_BUGS #1). Now that the
+    // background is interactive again, tell the app to (re)render the feed.
+    try {
+      document.dispatchEvent(new CustomEvent("bitvid:disclaimer-dismissed"));
+    } catch (_) {
+      // CustomEvent unavailable (non-browser) — nothing to notify.
+    }
   }
 
   show() {

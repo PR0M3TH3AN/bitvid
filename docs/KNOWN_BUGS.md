@@ -92,19 +92,26 @@ refactor work in that doc — these are defects.
   queue concurrency bump for slow signers (risks channel drops on some
   providers — opt-in).
 
-### 1. Logged-out: video grid stays empty until a manual refresh
+### 1. Logged-out: video grid stays empty until a manual refresh — FIXED (2026-06-16)
 - **Severity:** medium (first-load UX, logged-out).
-- **Where:** initial feed render path (`js/index.js` disclaimer flow →
-  `viewManager` → `feedCoordinator`); rendering is a side-effect of event
-  ordering.
 - **Symptom:** logged out, after dismissing the disclaimer the grid doesn't
   populate until the page is refreshed.
-- **Root cause (suspected):** the grid paints as a side-effect of a data event
-  that can fire before the grid container is mounted (render coupled to event
-  ordering, not to state).
-- **Fix:** P5 — unidirectional flow: render from AppState whenever it changes,
-  decoupled from event ordering. Could not reproduce headlessly (real-relay
-  feed returned nothing in the sandbox); reproduce in a real browser first.
+- **Root cause (CONFIRMED via repro):** boot order in `bootstrapInterface`
+  (`js/index.js`) opens the disclaimer (which makes the background inert via
+  `staticModalAccessibility`), THEN `await handleHashChange()` loads the feed
+  view and renders into that inert/hidden background — so the mount/render is
+  dropped — and dismissing the disclaimer never re-triggered a render.
+- **Fix (SHIPPED):** `disclaimer.js` `hide()` dispatches a
+  `bitvid:disclaimer-dismissed` event; `index.js` listens once and calls
+  `application.loadVideos(true)` so the feed re-renders into the now-interactive
+  background. Fires only when a shown disclaimer is dismissed (returning
+  visitors are unaffected).
+- **Repro/regression (`scripts/perf/disclaimer-grid.mjs`):** fresh context, real
+  relays; waits for `#acceptDisclaimer`, dismisses, then polls the grid for 15s.
+  Before: post-dismiss card timeline `0,0,0,…`, only a reload showed 132. After:
+  `132,132,…` immediately on dismiss. (The earlier "couldn't reproduce
+  headlessly" was because the harness didn't actually wait for/raise the
+  disclaimer; once it does, the bug is deterministic.)
 
 ### 2. Residual full-feed reload loop on list-loaded signals — FIXED (P5)
 - **Status:** RESOLVED 2026-06-14. `handleBlocksLoaded` now reloads the feed
