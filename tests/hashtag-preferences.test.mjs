@@ -180,8 +180,17 @@ test(
   },
 );
 
+// Spec correction (was "load retries decryptors when hinted scheme fails"):
+// the old test stubbed an impossible scenario — the SAME ciphertext decrypting
+// under nip04 after nip44 "failed". A real NIP-04 payload (carrying "?iv=") can
+// only be decrypted by nip04, and a NIP-44 payload only by nip44, so the other
+// family never succeeds on a given ciphertext. Decryption now routes by the
+// ciphertext format and does NOT race the non-matching family — which also
+// avoids a wasted published RPC under a NIP-46 remote signer. This asserts the
+// real contract: the ciphertext format wins even over a misleading `encrypted`
+// tag, and only the matching decryptor is invoked.
 test(
-  "load retries decryptors when hinted scheme fails",
+  "load routes decryption by ciphertext format (ignores a misleading tag)",
   { concurrency: false },
   async () => {
     const pubkey = "d".repeat(64);
@@ -190,7 +199,7 @@ test(
     setActiveSigner({
       nip44Decrypt: async () => {
         attempts.push("nip44");
-        throw new Error("nip44 failed");
+        throw new Error("nip44 must not be attempted for a nip04 (?iv=) payload");
       },
       nip04Decrypt: async () => {
         attempts.push("nip04");
@@ -209,8 +218,9 @@ test(
             id: "evt-retry",
             created_at: 300,
             pubkey,
-            content: "cipher", // never decrypted successfully by nip44
-            tags: [["encrypted", "nip44 nip04"]],
+            // NIP-04 ciphertext format ("?iv=") but a misleading "nip44" tag.
+            content: "deadbeefdeadbeef?iv=cafebabecafebabe",
+            tags: [["encrypted", "nip44"]],
           },
         ];
       },
@@ -221,7 +231,9 @@ test(
 
     await hashtagPreferences.load(pubkey);
 
-    assert.deepEqual(attempts, ["nip44", "nip04"]);
+    // Only nip04 is tried — the "?iv=" format overrides the misleading tag, and
+    // nip44 is never invoked (no wasted attempt / wasted NIP-46 RPC).
+    assert.deepEqual(attempts, ["nip04"]);
     assert.deepEqual(hashtagPreferences.getInterests(), ["retry"]);
     assert.deepEqual(hashtagPreferences.getDisinterests(), []);
   },

@@ -1473,8 +1473,23 @@ class UserBlockListManager {
             try {
               const getSchemeFamily = (s) =>
                 s === "nip44" || s === "nip44_v2" ? "nip44" : s;
+              // Route by ciphertext format: a NIP-04 payload carries the "?iv="
+              // marker and can ONLY be decrypted by nip04; everything else is
+              // nip44. Racing the non-matching family is wasted work — and under
+              // a NIP-46 remote signer each attempt is a separately PUBLISHED
+              // relay RPC, so racing both families floods the relay
+              // ("rate-limited: noting too much") and stalls decryption. Restrict
+              // the probe to the matching family (fall back to all if unknown).
+              const formatFamily =
+                typeof ev.content === "string" && ev.content.includes("?iv=")
+                  ? "nip04"
+                  : "nip44";
+              const matchingOrder = order.filter(
+                (scheme) => getSchemeFamily(scheme) === formatFamily,
+              );
+              const probeOrder = matchingOrder.length ? matchingOrder : order;
               const seenFamilies = new Set();
-              const attempts = order
+              const attempts = probeOrder
                 .map((scheme) => {
                   const family = getSchemeFamily(scheme);
                   if (seenFamilies.has(family)) return null;

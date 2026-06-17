@@ -1298,7 +1298,20 @@ class HashtagPreferencesService {
       s === "nip44" || s === "nip44_v2" ? "nip44" : s;
     const seenFamilies = new Set();
     const attemptSchemes = [];
-    const attempts = order
+    // Route by ciphertext format: only the family matching the payload can
+    // decrypt it (NIP-04 carries "?iv="; otherwise NIP-44). Racing the other
+    // family is wasted work — and under a NIP-46 remote signer it's a wasted
+    // PUBLISHED relay RPC that floods the relay ("rate-limited") and stalls
+    // decryption. Restrict the probe to the matching family.
+    const formatFamily =
+      typeof ciphertext === "string" && ciphertext.includes("?iv=")
+        ? "nip04"
+        : "nip44";
+    const matchingOrder = order.filter(
+      (scheme) => getSchemeFamily(scheme) === formatFamily,
+    );
+    const probeOrder = matchingOrder.length ? matchingOrder : order;
+    const attempts = probeOrder
       .map((scheme) => {
         const family = getSchemeFamily(scheme);
         if (seenFamilies.has(family)) return null;
