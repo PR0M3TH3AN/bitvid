@@ -18,6 +18,8 @@ const { R2Service } = await import("../../js/services/r2Service.js");
 
 const BASE = "https://pub.bitvid.network";
 const CREDS = {
+  provider: "cloudflare_r2",
+  accountId: "acct",
   accessKeyId: "AK",
   secretAccessKey: "SK",
   bucket: "my-bucket",
@@ -28,8 +30,16 @@ const CREDS = {
 
 function buildService(creds, deleteImpl) {
   const deleted = [];
+  const clients = []; // records which client builder was used (r2 vs s3) + args
   const svc = new R2Service({
-    makeR2Client: () => ({ __mock: true }),
+    makeR2Client: (args) => {
+      clients.push({ kind: "r2", args });
+      return { __mock: "r2" };
+    },
+    makeS3Client: (args) => {
+      clients.push({ kind: "s3", args });
+      return { __mock: "s3" };
+    },
     deleteObject:
       deleteImpl ||
       (async ({ key }) => {
@@ -37,11 +47,11 @@ function buildService(creds, deleteImpl) {
       }),
   });
   svc.resolveConnection = async () => creds;
-  return { svc, deleted };
+  return { svc, deleted, clients };
 }
 
-test("deletes the video, its .torrent, and the thumbnail for an owned video", async () => {
-  const { svc, deleted } = buildService(CREDS);
+test("deletes the video, its .torrent, and the thumbnail for an owned video (R2)", async () => {
+  const { svc, deleted, clients } = buildService(CREDS);
   const res = await svc.deleteVideoStorage({
     npub: "npub1owner",
     videos: [
@@ -54,6 +64,33 @@ test("deletes the video, its .torrent, and the thumbnail for an owned video", as
     new Set(["u/np/h/clip.mp4", "u/np/h/clip.torrent", "u/np/h/clip.thumb.jpg"]),
   );
   assert.equal(res.deleted.length, 3);
+  // R2 connection => R2 (path-style) client.
+  assert.equal(clients[0]?.kind, "r2");
+});
+
+test("uses a forcePathStyle-aware S3 client for a generic-S3 connection", async () => {
+  // No accountId, non-R2 provider, virtual-hosted-style bucket.
+  const s3Creds = {
+    provider: "s3",
+    accessKeyId: "AK",
+    secretAccessKey: "SK",
+    bucket: "my-bucket",
+    publicBaseUrl: BASE,
+    endpoint: "https://s3.us-east-1.amazonaws.com",
+    region: "us-east-1",
+    forcePathStyle: false,
+  };
+  const { svc, deleted, clients } = buildService(s3Creds);
+  const res = await svc.deleteVideoStorage({
+    npub: "npub1owner",
+    videos: [{ url: `${BASE}/u/np/h/clip.mp4` }],
+  });
+  assert.equal(res.skipped, false);
+  assert.ok(deleted.includes("u/np/h/clip.mp4"), "deletes the S3 object");
+  // Generic S3 => S3 client built with the connection's forcePathStyle (not forced).
+  assert.equal(clients[0]?.kind, "s3");
+  assert.equal(clients[0]?.args.forcePathStyle, false);
+  assert.equal(clients[0]?.args.endpoint, "https://s3.us-east-1.amazonaws.com");
 });
 
 test("skips entirely when storage is locked (no credentials available)", async () => {

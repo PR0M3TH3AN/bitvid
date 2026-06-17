@@ -18,6 +18,10 @@ import {
   VIDEO_NOTE_ERROR_CODES,
 } from "./videoNotePayload.js";
 import { calculateTorrentInfoHash } from "../utils/torrentHash.js";
+import {
+  isLikelyCorsError,
+  buildGenericCorsGuidance,
+} from "../utils/uploadErrorHints.js";
 
 const STATUS_VARIANTS = new Set(["info", "success", "error", "warning"]);
 const INFO_HASH_PATTERN = /^[a-f0-9]{40}$/;
@@ -510,10 +514,15 @@ export class S3UploadService {
       return Boolean(published);
     } catch (err) {
       this.deps.userLogger.error("S3 upload failed:", err);
-      this.setUploadStatus(
-        err?.message ? `Upload failed: ${err.message}` : "Upload failed.",
-        "error"
-      );
+      let message = err?.message
+        ? `Upload failed: ${err.message}`
+        : "Upload failed.";
+      // A CORS rejection during the browser PUT/POST is an opaque "Failed to
+      // fetch" — attach actionable guidance (parity with the R2 path).
+      if (isLikelyCorsError(err)) {
+        message += ` ${buildGenericCorsGuidance({ endpoint: normalized?.endpoint })}`;
+      }
+      this.setUploadStatus(message, "error");
       return false;
     } finally {
       this.setUploading(false);

@@ -45,6 +45,7 @@ import {
   collectVideoStorageKeys,
 } from "../utils/storagePointer.js";
 import { safeEncodeNpub } from "../utils/nostrHelpers.js";
+import { isLikelyCorsError } from "../utils/uploadErrorHints.js";
 import {
   getVideoNoteErrorMessage,
   normalizeVideoNotePayload,
@@ -103,24 +104,9 @@ function buildCorsGuidance({ accountId } = {}) {
   ].join(" ");
 }
 
-/**
- * A browser CORS preflight/rejection surfaces as an opaque network error
- * ("Failed to fetch" / "NetworkError" / Safari's "Load failed") with no HTTP
- * status — indistinguishable from a real network drop. We treat these as
- * likely-CORS so the upload path can attach actionable guidance instead of a
- * bare "Failed to fetch".
- */
-export function isLikelyCorsError(err) {
-  const message = (
-    (err && (err.message || err.toString && err.toString())) ||
-    ""
-  ).toLowerCase();
-  return (
-    message.includes("failed to fetch") ||
-    message.includes("networkerror") ||
-    message.includes("load failed")
-  );
-}
+// Shared CORS-error classifier (also used by s3UploadService). Re-exported here
+// for backward compatibility with existing imports/tests.
+export { isLikelyCorsError };
 
 function createDefaultSettings() {
   return {
@@ -163,6 +149,7 @@ function safeDecodeNpub(npub) {
 export class R2Service {
   constructor({
     makeR2Client: makeR2ClientOverride,
+    makeS3Client: makeS3ClientOverride,
     multipartUpload: multipartUploadOverride,
     ensureBucketExists: ensureBucketExistsOverride,
     ensureBucketCors: ensureBucketCorsOverride,
@@ -171,6 +158,7 @@ export class R2Service {
     this.listeners = new Map();
     this.cloudflareSettings = null;
     this.makeR2Client = makeR2ClientOverride || makeR2Client;
+    this.makeS3Client = makeS3ClientOverride || makeS3Client;
     this.multipartUpload = multipartUploadOverride || multipartUpload;
     this.ensureBucketExists = ensureBucketExistsOverride || ensureBucketExists;
     this.ensureBucketCors = ensureBucketCorsOverride || ensureBucketCors;
@@ -260,13 +248,29 @@ export class R2Service {
     let s3;
     try {
       await ensureS3SdkLoaded();
-      s3 = this.makeR2Client({
-        accountId: settings.accountId,
-        endpoint: settings.endpoint,
-        accessKeyId,
-        secretAccessKey,
-        region: settings.region,
-      });
+      // Provider-aware client: Cloudflare R2 is always path-style; a generic S3
+      // bucket may be virtual-hosted-style, so honor the connection's
+      // forcePathStyle (mirrors uploadFile). Using makeR2Client unconditionally
+      // here forced path-style and broke cleanup for vhost-style S3 buckets.
+      const useR2 =
+        settings.provider === "cloudflare_r2" || Boolean(settings.accountId);
+      if (useR2) {
+        s3 = this.makeR2Client({
+          accountId: settings.accountId,
+          endpoint: settings.endpoint,
+          accessKeyId,
+          secretAccessKey,
+          region: settings.region,
+        });
+      } else {
+        s3 = this.makeS3Client({
+          endpoint: settings.endpoint,
+          region: settings.region,
+          accessKeyId,
+          secretAccessKey,
+          forcePathStyle: Boolean(settings.forcePathStyle),
+        });
+      }
     } catch (err) {
       devLogger.warn(
         "[R2Service] deleteVideoStorage: failed to build storage client:",

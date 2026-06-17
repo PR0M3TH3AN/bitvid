@@ -44,8 +44,11 @@ Backlog from the R2 audit. Branch: `unstable` (promote down to beta/main later).
   - Note: this is for the *bitvid app* zone, separate from per-user R2 buckets.
 
 ## Open — follow-ups to the cleanup work we just shipped
-- [ ] **Generic S3 cleanup**: `deleteVideoStorage` uses `makeR2Client` (R2/path-style).
-      Add a generic-S3 path so `s3UploadService` users' deletes/edits also clean up.
+- [x] **Generic S3 cleanup** — DONE: `deleteVideoStorage` is now provider-aware
+      (uses `makeS3Client` honoring the connection's `forcePathStyle` for non-R2),
+      so generic-S3 deletes/edits clean up too. Also brought S3 to upload-failure
+      CORS-guidance parity (shared `js/utils/uploadErrorHints.js`). Generic-S3 is
+      now at functional parity with R2 for upload/publish/cleanup.
 - [ ] **All-versions delete cleanup**: delete currently cleans the target video's object;
       superseded versions from *past* edits (pre-`33c701aa`) are not retroactively cleaned.
       Consider enumerating all cached versions for a `videoRootId` on full delete.
