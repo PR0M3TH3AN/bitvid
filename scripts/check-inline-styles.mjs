@@ -28,7 +28,6 @@ const IGNORED_DIRS = new Set([
   "test-results",
   "bitvid-working-webtorrent",
   "scripts/agent",
-  "torch",
 ]);
 
 const DIST_SCAN_PREFIXES = new Set([

@@ -252,44 +252,14 @@ When you create a PR or start work, leave a clear signal:
 - **PR title prefix**: Use a descriptive prefix like `[nostr-core]`, `[playback]`, `[ui]`, `[ci]` so the scope is visible at a glance.
 - **PR description**: Include a "Files Modified" section listing the key files touched, so other agents can quickly detect conflicts.
 
-### Task Claiming Protocol (TORCH)
+### Task Coordination
 
-Task coordination uses **TORCH** (Task Orchestration via Relay-Coordinated Handoff) — a decentralized locking protocol built on Nostr. Agents publish ephemeral lock events to public relays; locks auto-expire via NIP-40. No tokens, no secrets, no git push required. Works across all platforms (Claude Code, Codex, Jules). See `torch/TORCH.md` for the full protocol documentation.
-
-**Before starting any task:**
-
-1. **Check for existing claims:**
-   ```bash
-   node torch/bin/torch-lock.mjs check --cadence <daily|weekly>
-   ```
-   Returns JSON with `locked` (claimed agents) and `available` (free agents) arrays. If an agent appears in the `locked` list, **skip it**.
-
-2. **Claim the task:**
-   ```bash
-   AGENT_PLATFORM=<jules|claude-code|codex> \
-   node torch/bin/torch-lock.mjs lock \
-     --agent <agent-name> \
-     --cadence <daily|weekly>
-   ```
-   The script generates an ephemeral keypair, publishes a lock event to public Nostr relays, and performs a built-in race check. The key is used once and discarded. Locks auto-expire after 2 hours (configurable via `NOSTR_LOCK_TTL`).
-
-   - **Exit 0** = lock acquired, begin work.
-   - **Exit 3** = race lost, another agent claimed first. Go back to step 1.
-   - **Exit 2** = relay error. Write a `_failed.md` log and stop.
-
-3. **View all active locks** (optional, for debugging):
-   ```bash
-   node torch/bin/torch-lock.mjs list
-   ```
-
-**Scheduler agents:** Daily and weekly scheduler agents must follow this protocol in addition to their directory-based rotation logic (`task-logs/daily/` and `task-logs/weekly/`). The lock check happens _after_ determining the next task but _before_ executing it. See the scheduler prompts for the specific implementation steps.
-
-### TORCH Memory Integration
-
-You have access to the TORCH memory system.
-
-1. **READ:** Check `.scheduler-memory/latest/${cadence}/memories.md` for past learnings.
-2. **WRITE:** Before exiting, save new insights to `memory-update.md` so future runs can learn from this session.
+> The previous TORCH relay-locking protocol (and its `torch/` tooling) has been
+> removed. Coordinate via GitHub instead: before starting, check open PRs
+> (`gh pr list` or the GitHub API) for overlap on the same subsystem, and use a
+> descriptive PR title prefix so scope is visible. Don't run two agents on the
+> same subsystem simultaneously, and keep `js/app.js` single-writer (see the
+> Multi-Agent Coordination rules above).
 
 ### Currently In-Flight Work
 
@@ -716,8 +686,3 @@ Please read these documents next.
 And if you need to create new nostr kinds please keep the logic centralized there in `nostrEventSchemas.js` and the `nostr-event-schemas.md` up to date.
 
 **End of AGENTS.md**
-
-## TORCH Memory Integration
-You have access to the TORCH memory system.
-1. READ: Check `.scheduler-memory/latest/${cadence}/memories.md` for past learnings.
-2. WRITE: Before exiting, save new insights to `memory-update.md` so future runs can learn from this session.

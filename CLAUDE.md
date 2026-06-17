@@ -569,13 +569,6 @@ When assigning work to agents:
 - Review and merge agent PRs promptly to keep the queue short — stale PRs compound conflicts
 - Use PR title prefixes (`[nostr-core]`, `[ui]`, `[playback]`, etc.) to make scope visible
 
-### TORCH Memory Integration
-
-You have access to the TORCH memory system.
-
-1. **READ:** Check `.scheduler-memory/latest/${cadence}/memories.md` for past learnings.
-2. **WRITE:** Before exiting, save new insights to `memory-update.md` so future runs can learn from this session.
-
 ---
 
 ## Key Documentation
@@ -589,7 +582,6 @@ You have access to the TORCH memory system.
 | `docs/playback-fallback.md` | URL-first strategy |
 | `docs/moderation/README.md` | Moderation system |
 | `docs/logging.md` | Logger usage |
-| `torch/TORCH.md` | TORCH distributed task locking protocol |
 | `context/` / `todo/` / `decisions/` / `test_logs/` | Agent persistent state files (see AGENTS.md §15) |
 
 ---
@@ -648,8 +640,3 @@ Validation: Must have `title` + at least one of `url` or `magnet`.
 5. **Token-first styling** — no raw colors, no inline styles
 6. **Keep magnets raw** — decode only at playback time
 7. **Document rollback steps** — especially for playback changes
-
-## TORCH Memory Integration
-You have access to the TORCH memory system.
-1. READ: Check `.scheduler-memory/latest/${cadence}/memories.md` for past learnings.
-2. WRITE: Before exiting, save new insights to `memory-update.md` so future runs can learn from this session.

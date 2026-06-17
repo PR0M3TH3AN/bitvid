@@ -1,1 +1,0 @@
-Not needed. Telemetry agent found no opt-in logs to process.
