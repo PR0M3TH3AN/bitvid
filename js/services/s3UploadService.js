@@ -321,6 +321,11 @@ export class S3UploadService {
       let statusMessage = `Uploading to ${normalized.bucket}…`;
       this.setUploadStatus(statusMessage, "info");
 
+      // Track optional-asset failures so the user gets a visible signal instead
+      // of a silently-missing thumbnail/torrent (Cloudflare-upload #5).
+      let thumbnailFailed = false;
+      let torrentFailed = false;
+
       if (thumbnailFile) {
         this.setUploadStatus("Uploading thumbnail...", "info");
         const thumbExt = thumbnailFile.name.split(".").pop() || "jpg";
@@ -349,6 +354,11 @@ export class S3UploadService {
           this.deps.userLogger.warn(
             "Thumbnail upload failed, continuing with video...",
             err
+          );
+          thumbnailFailed = true;
+          this.setUploadStatus(
+            "Thumbnail upload failed — publishing without it.",
+            "warning"
           );
         }
       }
@@ -403,6 +413,11 @@ export class S3UploadService {
           this.deps.userLogger.warn(
             "Torrent metadata upload failed, continuing...",
             err
+          );
+          torrentFailed = true;
+          this.setUploadStatus(
+            "Torrent upload failed — publishing URL-first without the .torrent.",
+            "warning"
           );
         }
       }
@@ -481,7 +496,16 @@ export class S3UploadService {
       });
 
       if (published) {
-        this.setUploadStatus(`Published ${publicUrl}`, "success");
+        const caveats = [];
+        if (thumbnailFailed) caveats.push("thumbnail");
+        if (torrentFailed) caveats.push("torrent");
+        const suffix = caveats.length
+          ? ` (note: ${caveats.join(" & ")} upload failed)`
+          : "";
+        this.setUploadStatus(
+          `Published ${publicUrl}${suffix}`,
+          caveats.length ? "warning" : "success"
+        );
       }
       return Boolean(published);
     } catch (err) {

@@ -949,6 +949,11 @@ class R2Service {
         region: effectiveSettings.region,
       });
 
+      // Track optional-asset failures so the user gets a visible signal instead
+      // of a silently-missing thumbnail/torrent (Cloudflare-upload #5).
+      let thumbnailFailed = false;
+      let torrentFailed = false;
+
       if (thumbnailFile) {
         this.setCloudflareUploadStatus("Uploading thumbnail...", "info");
         const thumbExt = thumbnailFile.name.split('.').pop() || 'jpg';
@@ -970,6 +975,11 @@ class R2Service {
           }
         } catch (err) {
           userLogger.warn("Thumbnail upload failed, continuing with video...", err);
+          thumbnailFailed = true;
+          this.setCloudflareUploadStatus(
+            "Thumbnail upload failed — publishing without it.",
+            "warning"
+          );
         }
       }
 
@@ -1009,6 +1019,11 @@ class R2Service {
           }
         } catch (err) {
           userLogger.warn("Torrent metadata upload failed, continuing...", err);
+          torrentFailed = true;
+          this.setCloudflareUploadStatus(
+            "Torrent upload failed — publishing URL-first without the .torrent.",
+            "warning"
+          );
         }
       }
 
@@ -1107,9 +1122,15 @@ class R2Service {
 
         publishOutcome = Boolean(published);
         if (publishOutcome) {
+          const caveats = [];
+          if (thumbnailFailed) caveats.push("thumbnail");
+          if (torrentFailed) caveats.push("torrent");
+          const suffix = caveats.length
+            ? ` (note: ${caveats.join(" & ")} upload failed)`
+            : "";
           this.setCloudflareUploadStatus(
-            `Published ${publicUrl}`,
-            "success"
+            `Published ${publicUrl}${suffix}`,
+            caveats.length ? "warning" : "success"
           );
         }
       }
