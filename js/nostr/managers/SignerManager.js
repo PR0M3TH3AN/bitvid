@@ -643,6 +643,85 @@ export class SignerManager {
     });
   }
 
+  /**
+   * Prepares a NIP-46 `nostrconnect://` handshake: generates an ephemeral client
+   * keypair and builds the connection URI the user shares with their remote
+   * signer (link/QR). The returned handshake is then handed to
+   * connectRemoteSigner(). This is the "generate connect link" login path; it was
+   * previously only implemented on the unused Nip46Connector, so the client's
+   * `prepareRemoteSignerHandshake` proxy had nothing to call.
+   *
+   * @param {object} [params]
+   * @param {object} [params.metadata]
+   * @param {string[]} [params.relays]
+   * @param {string} [params.secret]
+   * @param {string} [params.permissions]
+   * @returns {Promise<object>} handshake { connectionString, clientPrivateKey, clientPublicKey, relays, secret, permissions, metadata }
+   */
+  async prepareRemoteSignerHandshake({ metadata, relays, secret, permissions } = {}) {
+    const tools = await ensureNostrTools();
+    if (
+      !tools ||
+      typeof tools.generateSecretKey !== "function" ||
+      typeof tools.getPublicKey !== "function"
+    ) {
+      throw new Error(
+        "Nostr tools are unavailable; cannot prepare a remote signer handshake.",
+      );
+    }
+
+    const secretKey = tools.generateSecretKey();
+    const clientPrivateKey = Array.from(secretKey)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    const clientPublicKey = tools.getPublicKey(secretKey);
+
+    const sanitizedMetadata = sanitizeNip46Metadata(metadata);
+    const requestedPermissions =
+      typeof permissions === "string" && permissions.trim()
+        ? permissions.trim()
+        : "";
+    const resolvedRelays = resolveNip46Relays(relays, this.client?.relays);
+    const handshakeSecret =
+      typeof secret === "string" && secret.trim()
+        ? secret.trim()
+        : generateNip46Secret();
+
+    const params = [];
+    for (const relay of resolvedRelays) {
+      params.push(`relay=${encodeURIComponent(relay)}`);
+    }
+    if (handshakeSecret) {
+      params.push(`secret=${encodeURIComponent(handshakeSecret)}`);
+    }
+    if (requestedPermissions) {
+      params.push(`perms=${encodeURIComponent(requestedPermissions)}`);
+    }
+    for (const [key, value] of Object.entries(sanitizedMetadata)) {
+      params.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
+    }
+    const query = params.length ? `?${params.join("&")}` : "";
+    const uri = `nostrconnect://${clientPublicKey}${query}`;
+
+    devLogger.debug("[nostr] Prepared remote signer handshake", {
+      clientPublicKey: summarizeHexForLog(clientPublicKey),
+      relays: resolvedRelays,
+      permissions: requestedPermissions || null,
+    });
+
+    return {
+      type: "client",
+      connectionString: uri,
+      uri,
+      clientPrivateKey,
+      clientPublicKey,
+      relays: resolvedRelays,
+      secret: handshakeSecret,
+      permissions: requestedPermissions,
+      metadata: sanitizedMetadata,
+    };
+  }
+
   async connectRemoteSigner({
     connectionString,
     remember = true,

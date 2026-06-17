@@ -2694,6 +2694,10 @@ export class NostrClient {
     return this.signerManager.installNip46Client(client, options);
   }
 
+  async prepareRemoteSignerHandshake(params) {
+    return this.signerManager.prepareRemoteSignerHandshake(params);
+  }
+
   async connectRemoteSigner(params) {
     return this.signerManager.connectRemoteSigner(params);
   }
