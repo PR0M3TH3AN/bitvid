@@ -7,7 +7,9 @@ import {
   createWatchHistoryManager,
   fetchWatchHistory,
   getWatchHistoryCacheTtlMs,
+  getWatchHistoryDeferredChunkCount,
   getWatchHistoryStorage,
+  resolveWatchHistory,
 } from "../../js/nostr/watchHistory.js";
 import { WATCH_HISTORY_KIND } from "../../js/config.js";
 import { NOTE_TYPES } from "../../js/nostrEventSchemas.js";
@@ -556,6 +558,110 @@ test("fetchWatchHistory caps uncached chunk decryption to chunkDecryptLimit, new
     );
   } finally {
     manager.clear();
+  }
+});
+
+test("resolveWatchHistory threads chunkDecryptLimit and records the deferred chunk count", async () => {
+  // resolve() returns a bare items array (its sole caller depends on that), so
+  // the "more older chunks available" signal is exposed via a per-actor
+  // side-channel the service reads to decide whether to offer "load older".
+  const actorHex = "8".repeat(64);
+  const newCipher = "cmVzb2x2ZS1uZXctY2lwaGVy"; // base64, no "?iv=" => nip44
+  const oldCipher = "cmVzb2x2ZS1vbGQtY2lwaGVy";
+
+  const pointerEvent = {
+    id: "pointer-resolve-cap",
+    pubkey: actorHex,
+    created_at: 1_700_600_000,
+    content: JSON.stringify({
+      version: 2,
+      snapshot: "snap-resolve",
+      items: [],
+      chunkIndex: 0,
+      totalChunks: 2,
+    }),
+    tags: [
+      ["snapshot", "snap-resolve"],
+      ["a", `${WATCH_HISTORY_KIND}:${actorHex}:chunk-r-new`],
+      ["a", `${WATCH_HISTORY_KIND}:${actorHex}:chunk-r-old`],
+    ],
+  };
+  const newChunk = {
+    id: "chunk-r-new-id",
+    pubkey: actorHex,
+    created_at: 1_700_600_200,
+    content: newCipher,
+    tags: [["d", "chunk-r-new"], ["encrypted", "nip44"]],
+  };
+  const oldChunk = {
+    id: "chunk-r-old-id",
+    pubkey: actorHex,
+    created_at: 1_700_500_000,
+    content: oldCipher,
+    tags: [["d", "chunk-r-old"], ["encrypted", "nip44"]],
+  };
+
+  const signer = {
+    nip44Decrypt: async (_pubkey, payload) =>
+      JSON.stringify({
+        version: 2,
+        items: [
+          {
+            type: "e",
+            value: payload === newCipher ? "r-new" : "r-old",
+            watchedAt: payload === newCipher ? 200 : 100,
+          },
+        ],
+      }),
+  };
+
+  let listCall = 0;
+  const pool = {
+    async list() {
+      listCall += 1;
+      if (listCall === 1) {
+        return [pointerEvent];
+      }
+      return [oldChunk, newChunk];
+    },
+  };
+
+  const manager = createWatchHistoryManager({
+    getActivePubkey: () => actorHex,
+    resolveActiveSigner: () => signer,
+    shouldRequestExtensionPermissions: () => false,
+    getPool: () => pool,
+    getReadRelays: () => ["wss://relay.example"],
+  });
+
+  try {
+    assert.equal(
+      getWatchHistoryDeferredChunkCount(manager, actorHex),
+      0,
+      "no deferred chunks before any fetch",
+    );
+    const items = await resolveWatchHistory(manager, actorHex, {
+      forceRefresh: true,
+      chunkDecryptLimit: 1,
+    });
+    assert.ok(Array.isArray(items), "resolve must still return a bare items array");
+    assert.deepStrictEqual(
+      items.map((item) => item.value),
+      ["r-new"],
+      "only the newest chunk's items should resolve under the cap",
+    );
+    assert.equal(
+      getWatchHistoryDeferredChunkCount(manager, actorHex),
+      1,
+      "the deferred side-channel should report the older chunk",
+    );
+  } finally {
+    manager.clear();
+    assert.equal(
+      getWatchHistoryDeferredChunkCount(manager, actorHex),
+      0,
+      "clear() must reset the deferred chunk side-channel",
+    );
   }
 });
 

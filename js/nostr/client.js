@@ -61,6 +61,7 @@ import {
   removeWatchHistoryItem as removeWatchHistoryItemWithManager,
   fetchWatchHistory as fetchWatchHistoryWithManager,
   resolveWatchHistory as resolveWatchHistoryWithManager,
+  getWatchHistoryDeferredChunkCount as getWatchHistoryDeferredChunkCountFromManager,
 } from "./watchHistory.js";
 import {
   buildVideoPostEvent,
@@ -976,6 +977,12 @@ export class NostrClient {
       this.watchHistory,
       actorInput,
       options,
+    );
+  }
+  getWatchHistoryDeferredChunkCount(actorInput) {
+    return getWatchHistoryDeferredChunkCountFromManager(
+      this.watchHistory,
+      actorInput,
     );
   }
   async listVideoViewEvents(pointer, options = {}) {

@@ -962,6 +962,10 @@ class WatchHistoryManager {
     this.cacheTtlMs = 0;
     this.fingerprints = new Map();
     this.lastCreatedAt = 0;
+    // Per-actor count of older chunks left undecrypted by the last bounded
+    // fetch (see fetch()'s chunkDecryptLimit). Read by the service to decide
+    // whether to offer "load older".
+    this.deferredChunkCounts = new Map();
 
     profileCache.subscribe((event, detail) => {
       if (event === "profileChanged") {
@@ -2314,7 +2318,18 @@ class WatchHistoryManager {
 
     const fetchResult = await this.fetch(resolvedActor, {
       forceRefresh: options.forceRefresh || false,
+      ...(options.chunkDecryptLimit !== undefined
+        ? { chunkDecryptLimit: options.chunkDecryptLimit }
+        : {}),
     });
+    // Surface how many older chunks were left undecrypted so the service can
+    // decide whether to offer "load older". Stored per-actor side-channel so
+    // resolve() can keep returning a plain items array (its sole caller relies
+    // on that contract).
+    this.setDeferredChunkCount(
+      actorKey,
+      Number(fetchResult?.deferredChunkCount) || 0,
+    );
     const merged = mergeWatchHistoryItemsWithFallback(
       {
         version: 2,
@@ -2386,8 +2401,26 @@ class WatchHistoryManager {
     this.cache.clear();
     this.fingerprints.clear();
     this.refreshPromises.clear();
+    this.deferredChunkCounts.clear();
     this.lastCreatedAt = 0;
     this.storage = null;
+  }
+
+  setDeferredChunkCount(actorInput, count) {
+    const actorKey = normalizeActorKey(actorInput);
+    if (!actorKey) {
+      return;
+    }
+    const normalized = Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
+    this.deferredChunkCounts.set(actorKey, normalized);
+  }
+
+  getDeferredChunkCount(actorInput) {
+    const actorKey = normalizeActorKey(actorInput);
+    if (!actorKey) {
+      return 0;
+    }
+    return this.deferredChunkCounts.get(actorKey) || 0;
   }
 }
 
@@ -2446,6 +2479,10 @@ export function fetchWatchHistory(manager, actorInput, options = {}) {
 
 export function resolveWatchHistory(manager, actorInput, options = {}) {
   return manager.resolve(actorInput, options);
+}
+
+export function getWatchHistoryDeferredChunkCount(manager, actorInput) {
+  return manager.getDeferredChunkCount(actorInput);
 }
 
 /**
