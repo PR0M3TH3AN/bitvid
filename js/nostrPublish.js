@@ -68,12 +68,12 @@ export function publishEventToRelay(pool, url, event, options = {}) {
 
   return new Promise((resolve) => {
     let settled = false;
-    const finalize = (success, error = null) => {
+    const finalize = (success, error = null, optimistic = false) => {
       if (settled) {
         return;
       }
       settled = true;
-      resolve({ url, success, error });
+      resolve({ url, success, error, optimistic });
     };
 
     const timeoutId = setTimeout(() => {
@@ -149,8 +149,16 @@ export function publishEventToRelay(pool, url, event, options = {}) {
       return;
     }
 
+    // No confirmation channel: the relay handle exposed neither an ok/failed
+    // event nor a thenable. We still optimistically report success for legacy
+    // "seen"-only relays, but mark the result `optimistic` and log it so a
+    // silently-unconfirmed publish is traceable rather than indistinguishable
+    // from a real relay ack (publish audit #3).
     clearTimeout(timeoutId);
-    finalize(true);
+    devLogger.warn(
+      `[nostrPublish] Optimistic (unconfirmed) publish success for ${url}: relay gave no ok/failed/then signal.`,
+    );
+    finalize(true, null, true);
   });
 }
 
