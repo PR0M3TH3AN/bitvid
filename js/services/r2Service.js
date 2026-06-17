@@ -870,6 +870,18 @@ class R2Service {
     this.updateCloudflareProgress(0);
     this.setCloudflareUploading(true);
 
+    // Computing the torrent info-hash (and the content-hash fallback) reads the
+    // ENTIRE file before the upload starts and before any progress is emitted —
+    // on multi-GB videos that's a long, silent pause that looks like a freeze.
+    // Surface a status so the user knows work is happening.
+    const willHashFile = Boolean(file) && !isValidInfoHash(normalizeInfoHash(infoHash));
+    if (willHashFile) {
+      this.setCloudflareUploadStatus(
+        "Analyzing video (large files can take a moment)…",
+        "info",
+      );
+    }
+
     const keyIdentifier = await resolveUploadIdentifier({ infoHash, file });
     const normalizedInfoHash = normalizeInfoHash(infoHash || keyIdentifier);
     const hasValidInfoHash = isValidInfoHash(normalizedInfoHash);
