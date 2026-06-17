@@ -65,6 +65,15 @@ when the connection moved into `SignerManager`):
       `useStoredRemoteSigner` ignored the `validator`, so NIP-46 logins bypassed
       the block/allow gate. Now enforced before the signer is activated, and a
       blocked stored session is forgotten (`<this commit>`).
+- [x] **nostrconnect:// (QR) connect-link flow** implemented — `_waitForRemoteSignerHandshake`
+      ported into SignerManager (`ef660927`).
+- [x] **Decrypt RPC fan-out (slice A)** — list services (blocks/subs/hashtags) now
+      route decryption by ciphertext format instead of racing nip04+nip44, halving
+      cold-load NIP-46 RPCs and stopping the relay rate-limit flood (`8ab8dde7`).
+- [ ] **DMs + watch history bulk decrypt (slice B)**: opening these still bulk-decrypts
+      dozens of items through the serial 250ms NIP-46 queue (slow / rate-limited).
+      Needs incremental decrypt+render (visible-first, stream the rest, progress, no
+      hard-fail). The user's original complaint; larger UI/flow change.
 - [ ] **Silent auto-restore skips validation**: `scheduleStoredRemoteSignerRestore`
       calls `useStoredRemoteSigner({ silent: true })` with NO validator, so on app
       startup a since-blocked pubkey's stored session can reconnect unchecked.
