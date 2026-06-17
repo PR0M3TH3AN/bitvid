@@ -1,4 +1,5 @@
 import { devLogger } from "../utils/logger.js";
+import r2Service from "../services/r2Service.js";
 
 export default class EditModalController {
   constructor({ services, state, ui, callbacks, helpers }) {
@@ -90,6 +91,34 @@ export default class EditModalController {
         updatedData,
         pubkey,
       });
+
+      // Best-effort: if the hosted video URL was genuinely replaced, the old
+      // R2/S3 object (and its .torrent) is now orphaned — remove it. We require
+      // both URLs to be non-empty and different so we never delete an object
+      // that's still referenced (e.g. via a magnet web-seed when the URL was
+      // merely cleared). Thumbnails are intentionally left alone here to avoid
+      // deleting one the new note still points at. Never blocks the edit.
+      try {
+        const oldUrl = detail.video?.url || "";
+        const newUrl = updatedData?.url || "";
+        if (updatedData?.urlEdited && oldUrl && newUrl && oldUrl !== newUrl) {
+          const cleanup = await r2Service.deleteVideoStorage({
+            videos: [{ url: oldUrl }],
+            pubkey,
+          });
+          if (cleanup?.deleted?.length) {
+            devLogger.log(
+              `[edit] Removed ${cleanup.deleted.length} superseded storage object(s).`
+            );
+          }
+        }
+      } catch (cleanupErr) {
+        devLogger.warn(
+          "[edit] Storage cleanup failed (edit still succeeded):",
+          cleanupErr
+        );
+      }
+
       await this.callbacks.loadVideos();
 
       const videosMap = this.state.getVideosMap();
