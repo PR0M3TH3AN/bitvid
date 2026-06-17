@@ -21,12 +21,21 @@ import { ONE_MINUTE_MS } from "./constants.js";
 const LOCAL_STORAGE_QUEUE_KEY = "bitvid:watch-history:queue:v1";
 const SESSION_STORAGE_VERSION = 1;
 const POINTER_THROTTLE_MS = ONE_MINUTE_MS;
+// On a cold load (nothing cached to show) we decrypt only the newest chunks up
+// front so the UI renders quickly instead of freezing behind a deep history;
+// the rest are filled in the background. Monthly chunks, so ~3 covers recent
+// activity for the first paint.
+const WATCH_HISTORY_INITIAL_CHUNK_DECRYPT_LIMIT = 3;
+
 const state = {
   restored: false,
   queues: new Map(),
   inflightSnapshots: new Map(),
   fingerprintCache: new Map(),
   listeners: new Map(),
+  // Actors with an in-flight background backfill of deferred (older) chunks,
+  // so we never launch two at once for the same actor.
+  chunkBackfills: new Set(),
 };
 
 function getLoggedInActorKey() {
@@ -1009,6 +1018,40 @@ async function snapshot(items, options = {}) {
   return run;
 }
 
+function maybeBackfillDeferredChunks(actorKey) {
+  if (!actorKey || state.chunkBackfills.has(actorKey)) {
+    return;
+  }
+  const deferred =
+    typeof nostrClient.getWatchHistoryDeferredChunkCount === "function"
+      ? Number(nostrClient.getWatchHistoryDeferredChunkCount(actorKey)) || 0
+      : 0;
+  if (deferred <= 0) {
+    return;
+  }
+  state.chunkBackfills.add(actorKey);
+  devLogger.info("[watchHistoryService] Backfilling deferred watch history chunks.", {
+    actor: actorKey,
+    deferred,
+  });
+  // Full decrypt pass (no chunk cap). Already-decrypted chunks are served from
+  // cache, so only the deferred older chunks incur signer RPCs. The resulting
+  // larger item set changes the fingerprint, which emits "fingerprint" and lets
+  // listeners (e.g. the history view) re-render with the complete history.
+  Promise.resolve()
+    .then(() => nostrClient.resolveWatchHistory(actorKey, { forceRefresh: true }))
+    .then((fullItems) => updateFingerprintCache(actorKey, fullItems))
+    .catch((error) => {
+      devLogger.warn(
+        "[watchHistoryService] Deferred chunk backfill failed:",
+        error,
+      );
+    })
+    .finally(() => {
+      state.chunkBackfills.delete(actorKey);
+    });
+}
+
 function scheduleWatchHistoryRefresh(actorKey, cacheEntry = {}, options = {}) {
   if (!actorKey) {
     return Promise.resolve([]);
@@ -1018,6 +1061,15 @@ function scheduleWatchHistoryRefresh(actorKey, cacheEntry = {}, options = {}) {
     return cacheEntry.promise;
   }
 
+  // Cold load = nothing cached to show yet, which is exactly when a deep
+  // history would freeze the first render. Bound the first decrypt pass to the
+  // newest chunks and backfill the rest in the background. On a warm refresh we
+  // already have items on screen, so resolve the full history directly to avoid
+  // a transient "history shrank then grew" flicker.
+  const hasCachedItems =
+    Array.isArray(cacheEntry?.items) && cacheEntry.items.length > 0;
+  const useBoundedFirstPass = !hasCachedItems;
+
   const promise = (async () => {
     const permissionResult = await ensureWatchHistoryExtensionPermissions(
       actorKey,
@@ -1026,10 +1078,20 @@ function scheduleWatchHistoryRefresh(actorKey, cacheEntry = {}, options = {}) {
     if (!permissionResult.ok) {
       throw permissionResult.error;
     }
-    return nostrClient.resolveWatchHistory(actorKey, { forceRefresh: true });
+    return nostrClient.resolveWatchHistory(actorKey, {
+      forceRefresh: true,
+      ...(useBoundedFirstPass
+        ? { chunkDecryptLimit: WATCH_HISTORY_INITIAL_CHUNK_DECRYPT_LIMIT }
+        : {}),
+    });
   })()
     .then((resolvedItems) => updateFingerprintCache(actorKey, resolvedItems))
     .then(() => {
+      if (useBoundedFirstPass) {
+        // Older chunks were skipped to render fast; fill them in the background
+        // (paced by the serial NIP-46 queue) and emit when done.
+        maybeBackfillDeferredChunks(actorKey);
+      }
       const latest = state.fingerprintCache.get(actorKey);
       return latest?.items || [];
     })
@@ -1367,6 +1429,7 @@ function resetProgress(actorInput) {
     state.queues.delete(actorKey);
     state.fingerprintCache.delete(actorKey);
     state.inflightSnapshots.delete(actorKey);
+    state.chunkBackfills.delete(actorKey);
     persistQueueState();
     notifyQueueChange(actorKey);
     return;
@@ -1374,6 +1437,7 @@ function resetProgress(actorInput) {
   state.queues.clear();
   state.fingerprintCache.clear();
   state.inflightSnapshots.clear();
+  state.chunkBackfills.clear();
   persistQueueState();
   emit("queue-changed", { actor: null, items: [] });
 }
