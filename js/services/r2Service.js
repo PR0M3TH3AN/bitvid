@@ -42,7 +42,9 @@ import { userLogger, devLogger } from "../utils/logger.js";
 import {
   buildStoragePointerValue,
   buildStoragePrefixFromKey,
+  collectVideoStorageKeys,
 } from "../utils/storagePointer.js";
+import { safeEncodeNpub } from "../utils/nostrHelpers.js";
 import {
   getVideoNoteErrorMessage,
   normalizeVideoNotePayload,
@@ -139,7 +141,7 @@ function safeDecodeNpub(npub) {
   return null;
 }
 
-class R2Service {
+export class R2Service {
   constructor({
     makeR2Client: makeR2ClientOverride,
     multipartUpload: multipartUploadOverride,
@@ -154,6 +156,117 @@ class R2Service {
     this.ensureBucketExists = ensureBucketExistsOverride || ensureBucketExists;
     this.ensureBucketCors = ensureBucketCorsOverride || ensureBucketCors;
     this.deleteObject = deleteObjectOverride || deleteObject;
+  }
+
+  /**
+   * Best-effort deletion of the R2/S3 objects backing one or more video notes
+   * (the video file, its sibling `.torrent`, and the thumbnail). Used so that
+   * deleting/superseding a video also removes its bytes from storage instead of
+   * leaving them publicly downloadable forever.
+   *
+   * Safety: only objects whose URL lives under the owner's configured bucket
+   * public base URL are touched (external links are ignored), and the method
+   * NEVER throws — storage cleanup must not block note deletion. Returns a
+   * summary describing what happened.
+   *
+   * @param {object} params
+   * @param {Array|object} params.videos - parsed video note(s) with url/thumbnail
+   * @param {string} [params.npub] - owner npub (preferred)
+   * @param {string} [params.pubkey] - owner hex pubkey (encoded to npub if npub absent)
+   * @param {object} [params.credentials] - pre-resolved connection settings
+   * @returns {Promise<{deleted:string[],failed:Array,skipped:boolean,reason:string}>}
+   */
+  async deleteVideoStorage({
+    videos = [],
+    npub = "",
+    pubkey = "",
+    credentials = null,
+  } = {}) {
+    const list = (Array.isArray(videos) ? videos : [videos]).filter(
+      (entry) => entry && typeof entry === "object"
+    );
+    const summary = { deleted: [], failed: [], skipped: false, reason: "" };
+    const skip = (reason) => {
+      summary.skipped = true;
+      summary.reason = reason;
+      return summary;
+    };
+
+    if (!list.length) {
+      return skip("no-videos");
+    }
+
+    let resolvedNpub = (npub || "").trim();
+    if (!resolvedNpub && pubkey) {
+      resolvedNpub = safeEncodeNpub(pubkey) || "";
+    }
+
+    let settings = credentials;
+    if (!settings && resolvedNpub) {
+      try {
+        settings = await this.resolveConnection(resolvedNpub);
+      } catch (err) {
+        devLogger.warn(
+          "[R2Service] deleteVideoStorage: failed to resolve connection:",
+          err
+        );
+      }
+    }
+    if (!settings) {
+      return skip("no-connection");
+    }
+
+    const accessKeyId = (settings.accessKeyId || "").trim();
+    const secretAccessKey = (settings.secretAccessKey || "").trim();
+    const bucket = (settings.bucket || "").trim();
+    const publicBaseUrl = (
+      settings.publicBaseUrl ||
+      settings.baseDomain ||
+      ""
+    ).trim();
+
+    if (!accessKeyId || !secretAccessKey) {
+      // Storage is locked / keys unavailable — can't delete without them.
+      return skip("storage-locked");
+    }
+    if (!bucket || !publicBaseUrl) {
+      return skip("missing-bucket-or-base-url");
+    }
+
+    const keys = collectVideoStorageKeys({ videos: list, publicBaseUrl });
+    if (!keys.length) {
+      return skip("no-matching-objects");
+    }
+
+    let s3;
+    try {
+      await ensureS3SdkLoaded();
+      s3 = this.makeR2Client({
+        accountId: settings.accountId,
+        endpoint: settings.endpoint,
+        accessKeyId,
+        secretAccessKey,
+        region: settings.region,
+      });
+    } catch (err) {
+      devLogger.warn(
+        "[R2Service] deleteVideoStorage: failed to build storage client:",
+        err
+      );
+      return skip("client-error");
+    }
+
+    for (const key of keys) {
+      try {
+        // deleteObject already treats 404/NoSuchKey as success.
+        await this.deleteObject({ s3, bucket, key });
+        summary.deleted.push(key);
+      } catch (err) {
+        summary.failed.push({ key, error: err?.message || String(err) });
+        devLogger.warn(`[R2Service] Failed to delete storage object ${key}:`, err);
+      }
+    }
+    return summary;
   }
 
   on(event, handler) {

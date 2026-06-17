@@ -4538,6 +4538,28 @@ class Application {
         confirm: false,
       });
 
+      // Best-effort: remove the underlying R2/S3 object(s) now that the note(s)
+      // are gone, so the file isn't left publicly downloadable. This never
+      // blocks the delete — failures are logged only.
+      try {
+        const cleanup = await r2Service.deleteVideoStorage({
+          videos: [targetVideo],
+          pubkey: this.pubkey,
+        });
+        if (cleanup?.deleted?.length) {
+          devLogger.log(
+            `[delete] Removed ${cleanup.deleted.length} storage object(s) for the deleted video.`
+          );
+        } else if (cleanup?.skipped) {
+          devLogger.log(`[delete] Storage cleanup skipped: ${cleanup.reason}.`);
+        }
+      } catch (cleanupErr) {
+        devLogger.warn(
+          "[delete] Storage cleanup failed (note deletion still succeeded):",
+          cleanupErr
+        );
+      }
+
       await this.loadVideos();
       this.showSuccess("All versions deleted successfully!");
       this.deleteModal.close();
