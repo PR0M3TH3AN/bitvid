@@ -177,6 +177,11 @@ export async function multipartUpload({
   if (!file) {
     throw new Error("File is required");
   }
+  // A 0-byte file produces a multipart upload with zero parts, which S3/R2
+  // rejects with a cryptic CompleteMultipartUpload error. Fail fast and clearly.
+  if (typeof file.size === "number" && file.size === 0) {
+    throw new Error("File is empty (0 bytes). Choose a non-empty file to upload.");
+  }
 
   const {
     CreateMultipartUploadCommand,
