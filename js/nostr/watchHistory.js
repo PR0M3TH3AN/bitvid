@@ -677,7 +677,39 @@ function determineWatchHistoryDecryptionOrder(
     }
   }
 
-  return prioritized.length ? prioritized : available;
+  const ordered = prioritized.length ? prioritized : available;
+
+  // Strictly format-route by the ciphertext shape, which is authoritative.
+  // NIP-04 ciphertext always carries a literal "?iv=" marker; NIP-44 is plain
+  // base64. The opposite family can NEVER decrypt a given ciphertext, so trying
+  // it is a guaranteed-wasted decrypt — and under a NIP-46 remote signer each
+  // wasted decrypt is a *published* relay RPC that burns the serial request
+  // queue and risks the relay rate limit ("noting too much"). Dropping the
+  // non-matching family halves cold-load NIP-46 decrypt RPCs for watch history,
+  // mirroring the list-decrypt routing in userBlocks/subscriptions/hashtags.
+  // Trust the ciphertext over a possibly-misleading "encrypted" tag.
+  const normalizedCiphertext =
+    typeof ciphertext === "string" ? ciphertext.trim() : "";
+  if (normalizedCiphertext) {
+    const formatFamily = normalizedCiphertext.includes("?iv=")
+      ? "nip04"
+      : "nip44";
+    const matching = ordered.filter(
+      (scheme) => watchHistorySchemeFamily(scheme) === formatFamily,
+    );
+    // Safety: never strand the only available decryptor. If nothing matches the
+    // detected format (e.g. a contrived/legacy payload), fall back to the full
+    // ordered list rather than returning an empty attempt set.
+    if (matching.length) {
+      return matching;
+    }
+  }
+
+  return ordered;
+}
+
+function watchHistorySchemeFamily(scheme) {
+  return scheme === "nip04" ? "nip04" : "nip44";
 }
 
 async function resolveNostrToolkit(deps = {}, cacheRef = null) {

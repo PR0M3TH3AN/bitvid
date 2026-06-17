@@ -372,6 +372,84 @@ test("fetchWatchHistory decrypts encrypted pointer events with nip44 signer supp
   }
 });
 
+test("fetchWatchHistory routes decryption by ciphertext format and never tries the non-matching family (ignores a misleading encrypted tag)", async () => {
+  // A NIP-44 payload is plain base64 with NO "?iv=" marker. NIP-04 ciphertext
+  // always carries "?iv=". Here the event is *mislabeled* with an
+  // ["encrypted","nip04"] tag, but the ciphertext shape is authoritative.
+  // Under a NIP-46 remote signer, every decrypt attempt is a published relay
+  // RPC, so attempting the impossible nip04 family would be a wasted RPC that
+  // burns the serial queue / risks the rate limit. The decryptor must route by
+  // format and attempt ONLY nip44 — never nip04.
+  const actorHex = "6".repeat(64);
+  const ciphertext = "bmlwNDQtbWlzbGFiZWxlZC1wYXlsb2Fk"; // base64, no "?iv="
+  let nip04Calls = 0;
+  let nip44Calls = 0;
+
+  const pointerEvent = {
+    id: "pointer-mislabeled",
+    pubkey: actorHex,
+    created_at: 1_700_300_000,
+    content: ciphertext,
+    tags: [
+      ["encrypted", "nip04"], // deliberately misleading
+      ["a", "30078:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:fallback"],
+      ["d", "watch-history-month"],
+    ],
+  };
+
+  const signer = {
+    // If routing were broken, the misleading tag would put nip04 first and this
+    // decoy would "succeed" with the wrong data — the assertions below catch it.
+    nip04Decrypt: async () => {
+      nip04Calls += 1;
+      return JSON.stringify({
+        version: 2,
+        items: [{ type: "e", value: "WRONG-nip04-decoy", watchedAt: 1 }],
+      });
+    },
+    nip44Decrypt: async (pubkey, payload) => {
+      nip44Calls += 1;
+      assert.equal(pubkey, actorHex, "nip44 decrypt should target the actor pubkey");
+      assert.equal(payload, ciphertext, "nip44 decrypt should receive the ciphertext");
+      return JSON.stringify({
+        version: 2,
+        items: [{ type: "e", value: "correct-nip44-decrypt", watchedAt: 77 }],
+      });
+    },
+  };
+
+  const pool = {
+    async list() {
+      return [pointerEvent];
+    },
+  };
+
+  const manager = createWatchHistoryManager({
+    getActivePubkey: () => actorHex,
+    resolveActiveSigner: () => signer,
+    shouldRequestExtensionPermissions: () => false,
+    getPool: () => pool,
+    getReadRelays: () => ["wss://relay.example"],
+  });
+
+  try {
+    const result = await fetchWatchHistory(manager, actorHex, { forceRefresh: true });
+    assert.equal(
+      nip04Calls,
+      0,
+      "nip04 must NEVER be attempted for a nip44-shaped ciphertext (wasted NIP-46 RPC)",
+    );
+    assert.equal(nip44Calls, 1, "nip44 decrypt should be attempted exactly once");
+    assert.deepStrictEqual(
+      result.items.map((item) => item.value),
+      ["correct-nip44-decrypt"],
+      "the nip44 plaintext must be used, not the nip04 decoy",
+    );
+  } finally {
+    manager.clear();
+  }
+});
+
 test("publishWatchHistorySnapshot uses injected nostr-tools helpers when signer cannot encrypt", async () => {
   const actorPubkey = "f".repeat(64);
   const sessionPrivateKey = "a".repeat(64);
