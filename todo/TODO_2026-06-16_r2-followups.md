@@ -70,10 +70,21 @@ when the connection moved into `SignerManager`):
 - [x] **Decrypt RPC fan-out (slice A)** — list services (blocks/subs/hashtags) now
       route decryption by ciphertext format instead of racing nip04+nip44, halving
       cold-load NIP-46 RPCs and stopping the relay rate-limit flood (`8ab8dde7`).
-- [ ] **DMs + watch history bulk decrypt (slice B)**: opening these still bulk-decrypts
-      dozens of items through the serial 250ms NIP-46 queue (slow / rate-limited).
-      Needs incremental decrypt+render (visible-first, stream the rest, progress, no
-      hard-fail). The user's original complaint; larger UI/flow change.
+- [x] **Per-item decrypt efficiency (slice B, part 1)** — audited DMs + watch history.
+      - **DMs**: already optimal. `decryptDM` kind-routes (1059 → gift-wrap/nip44-only,
+        4 → legacy); `decryptLegacyDm` orders nip04-first for kind-4 and iterates
+        **sequentially, stopping at first success** (~1 RPC/msg) + caches + coalesces
+        + worker-offloads. No cross-family RPC waste to cut.
+      - **Watch history**: was NOT strictly format-routed (matching family first but the
+        other family kept as a fallback → a transient failure on the right family fired a
+        wasted RPC on the impossible family). Fixed: `determineWatchHistoryDecryptionOrder`
+        now filters to the ciphertext-implied family (slice-A parity) — `cd614876`.
+- [ ] **Bulk incremental decrypt+render (slice B, part 2)**: opening DMs / watch history
+      still decrypts *dozens* of items through the serial 250ms NIP-46 queue, so the wall
+      time is inherently N × (queue delay + relay round-trip). Per-item efficiency is now
+      done; what remains is the UX/flow change: decrypt+render visible-first, stream the
+      rest with progress, and never hard-fail the whole list on a transient rate-limit
+      (keep partial results + retry). Larger UI change — the user's original complaint.
 - [ ] **Silent auto-restore skips validation**: `scheduleStoredRemoteSignerRestore`
       calls `useStoredRemoteSigner({ silent: true })` with NO validator, so on app
       startup a since-blocked pubkey's stored session can reconnect unchecked.
