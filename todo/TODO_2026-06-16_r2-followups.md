@@ -13,18 +13,29 @@ Backlog from the R2 audit. Branch: `unstable` (promote down to beta/main later).
 
 ## Open — R2 areas not yet audited/built
 
-### 1. Credential security review (highest priority)
-- [ ] Audit how browser-held S3/R2 keys are stored in IndexedDB (the README's own warning).
-  - Files: `js/services/storageService.js`, `js/r2.js` (legacy settings), `js/ui/profileModal/ProfileStorageController.js`.
-  - Check: encryption at rest, unlock/lock model (`storageService.isUnlocked`), in-memory exposure window, what `resolveConnection` returns when locked, whether secrets can leak to logs/telemetry.
-  - Confirm the "trusted operator only" assumption is actually enforced/communicated in the UI.
+### 1. Credential security review — DONE (2026-06-17, `200e5cec`)
+- [x] Audited browser-held S3/R2 key storage. Verdict: **sound** — envelope encryption
+      (AES-GCM-256 payload + fresh IV; master key encrypted to-self via the Nostr signer,
+      NIP-44/NIP-04), in-memory master key cleared on logout, no secret logging, legacy
+      plaintext migrated then cleared, secrets never in plaintext `meta`. Locked-in by a
+      scan-the-whole-record regression test.
+- [ ] Hardening (optional, post-launch): **idle auto-lock** — master key currently stays
+      in memory the whole session after unlock. Add an idle/timeout auto-`lock(pubkey)`.
+- [ ] Confirm the production CSP is strict (the real defense for in-memory keys / XSS).
 
-### 2. Bucket / custom-domain provisioning
-- [ ] Audit `ensureBucketConfigForNpub` (`r2Service.js`) + `js/storage/r2-mgmt.js`
-      (`ensureBucket`, `putCors`, `attachCustomDomainAndWait`, `setManagedDomain`,
-      `deriveShortSubdomain`) for correctness + failure handling.
-  - Check: Cloudflare management **API token** scope/usage, partial-failure recovery,
-    CORS rule correctness, idempotency, what happens when the user pre-created the bucket.
+### 2. Bucket / custom-domain provisioning — partially audited (2026-06-17)
+- [x] CORS provisioning reviewed: `ensureBucketConfigForNpub` auto-creates the bucket +
+      sets CORS best-effort (S3 `PutBucketCors`); the connection test (`verifyPublicAccess`)
+      does a real browser upload+fetch and surfaces `buildCorsGuidance` on the opaque
+      "Failed to fetch". Gap fixed: the **direct upload** path now also attaches CORS
+      guidance via `isLikelyCorsError` (`<this commit>`), for users who skip the test.
+- [ ] Still to check: `r2-mgmt.js` (`attachCustomDomainAndWait`, `setManagedDomain`,
+      `deriveShortSubdomain`) — the managed-domain path; Cloudflare API-token scope;
+      idempotency; partial-failure recovery. Note: token-based bucket creation/domain
+      mgmt is marked deprecated in `ensureBucketConfigForNpub` — confirm it's fully unused.
+- [ ] CORS replace-not-merge: `PutBucketCors` overwrites the whole config with only the
+      current origin, so a bucket used from multiple bitvid origins keeps only the last.
+      Consider merging existing origins.
 
 ### 3. CDN purge integration
 - [ ] `scripts/purge-cloudflare-changed.mjs` uses `CLOUDFLARE_ZONE_ID` + `CLOUDFLARE_API_TOKEN`

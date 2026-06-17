@@ -103,6 +103,25 @@ function buildCorsGuidance({ accountId } = {}) {
   ].join(" ");
 }
 
+/**
+ * A browser CORS preflight/rejection surfaces as an opaque network error
+ * ("Failed to fetch" / "NetworkError" / Safari's "Load failed") with no HTTP
+ * status — indistinguishable from a real network drop. We treat these as
+ * likely-CORS so the upload path can attach actionable guidance instead of a
+ * bare "Failed to fetch".
+ */
+export function isLikelyCorsError(err) {
+  const message = (
+    (err && (err.message || err.toString && err.toString())) ||
+    ""
+  ).toLowerCase();
+  return (
+    message.includes("failed to fetch") ||
+    message.includes("networkerror") ||
+    message.includes("load failed")
+  );
+}
+
 function createDefaultSettings() {
   return {
     accountId: "",
@@ -1251,10 +1270,16 @@ export class R2Service {
       return publishOutcome;
     } catch (err) {
       userLogger.error("Cloudflare upload failed:", err);
-      this.setCloudflareUploadStatus(
-        err?.message ? `Upload failed: ${err.message}` : "Upload failed.",
-        "error"
-      );
+      let message = err?.message
+        ? `Upload failed: ${err.message}`
+        : "Upload failed.";
+      // A CORS rejection during the browser PUT/POST looks like an opaque
+      // "Failed to fetch" — attach actionable guidance so users who skipped the
+      // connection test still know what to fix (the #1 first-upload failure).
+      if (isLikelyCorsError(err)) {
+        message += ` ${buildCorsGuidance({ accountId })}`;
+      }
+      this.setCloudflareUploadStatus(message, "error");
       return false;
     } finally {
       this.setCloudflareUploading(false);
