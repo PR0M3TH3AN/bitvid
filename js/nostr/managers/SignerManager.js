@@ -39,6 +39,10 @@ import {
   resolveNip46Relays,
   encodeHexToNpub,
   generateNip46Secret,
+  NIP46_RPC_KIND,
+  NIP46_HANDSHAKE_TIMEOUT_MS,
+  attemptDecryptNip46HandshakePayload,
+  normalizeNostrPubkey,
 } from "../nip46Client.js";
 
 import {
@@ -740,6 +744,203 @@ export class SignerManager {
     }
   }
 
+  /**
+   * Waits for a remote signer to acknowledge a `nostrconnect://` handshake.
+   * Subscribes to NIP-46 RPC events addressed to the client pubkey; the first
+   * acknowledgement (matching the handshake secret, or a generic ack) reveals
+   * the remote signer's pubkey, which is needed before the RPC client can be
+   * constructed. Ported from the (unused) Nip46Connector.
+   *
+   * @returns {Promise<{remotePubkey:string, eventPubkey:string, response:object, algorithm:string}>}
+   */
+  async _waitForRemoteSignerHandshake({
+    clientPrivateKey,
+    clientPublicKey,
+    relays,
+    secret,
+    onAuthUrl,
+    onStatus,
+    timeoutMs,
+  } = {}) {
+    const normalizedClientPublicKey = normalizeNostrPubkey(clientPublicKey);
+    if (!normalizedClientPublicKey) {
+      throw new Error(
+        "A client public key is required to await the remote signer handshake.",
+      );
+    }
+    if (
+      !clientPrivateKey ||
+      typeof clientPrivateKey !== "string" ||
+      !HEX64_REGEX.test(clientPrivateKey)
+    ) {
+      throw new Error(
+        "A client private key is required to await the remote signer handshake.",
+      );
+    }
+
+    const resolvedRelays = resolveNip46Relays(relays, this.client?.relays);
+    if (!resolvedRelays.length) {
+      throw new Error("No relays available to complete the remote signer handshake.");
+    }
+
+    const pool = await this.client.ensurePool();
+    const filters = [
+      { kinds: [NIP46_RPC_KIND], "#p": [normalizedClientPublicKey] },
+    ];
+    const waitTimeout =
+      Number.isFinite(timeoutMs) && timeoutMs > 0
+        ? timeoutMs
+        : NIP46_HANDSHAKE_TIMEOUT_MS;
+
+    const coerceStructuredString = (value) => {
+      if (typeof value === "string") {
+        return value.trim();
+      }
+      if (Array.isArray(value)) {
+        for (const entry of value) {
+          const candidate = coerceStructuredString(entry);
+          if (candidate) return candidate;
+        }
+        return "";
+      }
+      if (value && typeof value === "object") {
+        for (const key of ["secret", "message", "status", "result", "url"]) {
+          if (Object.prototype.hasOwnProperty.call(value, key)) {
+            const candidate = coerceStructuredString(value[key]);
+            if (candidate) return candidate;
+          }
+        }
+      }
+      return "";
+    };
+
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      let subscription;
+      let timeoutId;
+      const cleanup = () => {
+        if (settled) return;
+        settled = true;
+        this.pendingHandshakeCancel = null;
+        try {
+          subscription?.unsub?.();
+        } catch (error) {
+          // ignore subscription cleanup failures
+        }
+        if (timeoutId) clearTimeout(timeoutId);
+      };
+
+      // Allow the UI (modal close / disconnect) to abort the wait.
+      this.pendingHandshakeCancel = () => {
+        cleanup();
+        const error = new Error("Remote signer connection cancelled.");
+        error.code = "login-cancelled";
+        reject(error);
+      };
+
+      timeoutId = setTimeout(() => {
+        cleanup();
+        const error = new Error(
+          "Timed out waiting for the remote signer to acknowledge the connection.",
+        );
+        error.code = "nip46-handshake-timeout";
+        reject(error);
+      }, waitTimeout);
+
+      try {
+        subscription = pool.sub(resolvedRelays, filters);
+      } catch (error) {
+        cleanup();
+        reject(error);
+        return;
+      }
+
+      subscription.on("event", (event) => {
+        if (settled || !event || event.kind !== NIP46_RPC_KIND) {
+          return;
+        }
+        const eventRemotePubkey = normalizeNostrPubkey(event.pubkey);
+        const candidateRemotePubkeys = eventRemotePubkey ? [eventRemotePubkey] : [];
+
+        const decryptHandshake =
+          this._decryptHandshakePayload || attemptDecryptNip46HandshakePayload;
+        Promise.resolve()
+          .then(() =>
+            decryptHandshake({
+              clientPrivateKey,
+              candidateRemotePubkeys,
+              ciphertext: event.content,
+            }),
+          )
+          .then((payloadResult) => {
+            let parsed;
+            try {
+              parsed = JSON.parse(payloadResult?.plaintext ?? "");
+            } catch (error) {
+              return;
+            }
+
+            const resultValue = coerceStructuredString(parsed?.result);
+            const errorValue = coerceStructuredString(parsed?.error);
+
+            // auth_url challenge: surface to the UI and keep waiting.
+            if (resultValue === "auth_url" && errorValue) {
+              if (typeof onAuthUrl === "function") {
+                try {
+                  onAuthUrl(errorValue, {
+                    phase: "handshake",
+                    remotePubkey: payloadResult?.remotePubkey || eventRemotePubkey || "",
+                    requestId: typeof parsed?.id === "string" ? parsed.id : "",
+                  });
+                } catch (callbackError) {
+                  devLogger.warn("[nostr] Handshake auth_url callback threw:", callbackError);
+                }
+              }
+              return;
+            }
+
+            // Match the handshake secret (or accept a generic ack).
+            if (secret) {
+              const normalizedResult = resultValue ? resultValue.toLowerCase() : "";
+              if (resultValue !== secret && normalizedResult !== "ack") return;
+            } else if (resultValue) {
+              if (!["ack", "ok", "success"].includes(resultValue.toLowerCase())) return;
+            }
+
+            cleanup();
+            if (typeof onStatus === "function") {
+              try {
+                onStatus({
+                  phase: "handshake",
+                  state: "acknowledged",
+                  message: "Remote signer acknowledged the connect request.",
+                  remotePubkey: payloadResult?.remotePubkey || eventRemotePubkey || "",
+                });
+              } catch (callbackError) {
+                devLogger.warn("[nostr] Handshake status callback threw:", callbackError);
+              }
+            }
+            resolve({
+              remotePubkey: payloadResult?.remotePubkey || eventRemotePubkey || "",
+              eventPubkey: eventRemotePubkey || "",
+              response: parsed,
+              algorithm: normalizeNip46EncryptionAlgorithm(payloadResult?.algorithm),
+            });
+          })
+          .catch((error) => {
+            devLogger.warn(
+              "[nostr] Failed to decrypt remote signer handshake payload:",
+              error,
+            );
+          });
+      });
+
+      subscription.on("eose", () => {
+        // no-op: handshake responses are push-based
+      });
+    });
+  }
+
   async connectRemoteSigner({
     connectionString,
     remember = true,
@@ -833,11 +1034,39 @@ export class SignerManager {
 
     await this.client.ensurePool();
 
+    // A nostrconnect:// link is client-initiated: the remote signer's pubkey is
+    // unknown until the user's signer scans the QR / opens the link and
+    // acknowledges. Wait for that ACK to learn the remote pubkey before building
+    // the RPC client (which requires it). bunker:// URIs already carry it.
+    let remotePubkey = parsed.remotePubkey;
+    if (!remotePubkey && parsed.type === "client") {
+      const clientPublicKey =
+        providedClientPublicKey || parsed.clientPublicKey || "";
+      handleStatus({
+        phase: "handshake",
+        state: "waiting",
+        message: "Waiting for your signer to approve the connection…",
+      });
+      const ack = await this._waitForRemoteSignerHandshake({
+        clientPrivateKey,
+        clientPublicKey,
+        relays: resolveNip46Relays(parsed.relays, providedRelays),
+        secret: providedSecret || parsed.secret,
+        onAuthUrl: handleAuthChallenge,
+        onStatus: handleStatus,
+        timeoutMs: handshakeTimeoutMs,
+      });
+      remotePubkey = ack.remotePubkey;
+      if (!remotePubkey) {
+        throw new Error("Remote signer did not provide a usable pubkey.");
+      }
+    }
+
     this.nip46Client = new Nip46RpcClient({
         nostrClient: this.client,
         relays: resolveNip46Relays(parsed.relays, providedRelays),
         clientPrivateKey: clientPrivateKey,
-        remotePubkey: parsed.remotePubkey,
+        remotePubkey,
         secret: providedSecret || parsed.secret,
         signEvent: signEventWithPrivateKey,
     });
@@ -1002,6 +1231,14 @@ export class SignerManager {
   }
 
   async disconnectRemoteSigner({ keepStored = false } = {}) {
+    // Abort an in-flight nostrconnect:// handshake wait, if any.
+    if (typeof this.pendingHandshakeCancel === "function") {
+      try {
+        this.pendingHandshakeCancel();
+      } catch (error) {
+        // ignore cancel errors
+      }
+    }
     if (this.nip46Client) {
       if (typeof this.nip46Client.destroy === 'function') {
           this.nip46Client.destroy();
