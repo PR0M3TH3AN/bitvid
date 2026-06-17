@@ -450,6 +450,115 @@ test("fetchWatchHistory routes decryption by ciphertext format and never tries t
   }
 });
 
+test("fetchWatchHistory caps uncached chunk decryption to chunkDecryptLimit, newest chunk first", async () => {
+  // A deep watch history references many monthly chunks. Under a NIP-46 remote
+  // signer each uncached chunk decrypt is a serialized published RPC, so we cap
+  // how many we decrypt up front and spend that budget on the *newest* chunks.
+  // The older chunks are deferred (reported via deferredChunkCount) for an
+  // on-demand "load older" pass.
+  const actorHex = "7".repeat(64);
+  const newCipher = "bmV3LWNodW5rLWNpcGhlcnRleHQ"; // base64, no "?iv=" => nip44
+  const oldCipher = "b2xkLWNodW5rLWNpcGhlcnRleHQ";
+
+  const pointerEvent = {
+    id: "pointer-cap",
+    pubkey: actorHex,
+    created_at: 1_700_500_000,
+    content: JSON.stringify({
+      version: 2,
+      snapshot: "snap-cap",
+      items: [],
+      chunkIndex: 0,
+      totalChunks: 2,
+    }),
+    tags: [
+      ["snapshot", "snap-cap"],
+      ["a", `${WATCH_HISTORY_KIND}:${actorHex}:chunk-new`],
+      ["a", `${WATCH_HISTORY_KIND}:${actorHex}:chunk-old`],
+    ],
+  };
+
+  const newChunk = {
+    id: "chunk-new-id",
+    pubkey: actorHex,
+    created_at: 1_700_500_200, // newer
+    content: newCipher,
+    tags: [["d", "chunk-new"], ["encrypted", "nip44"]],
+  };
+  const oldChunk = {
+    id: "chunk-old-id",
+    pubkey: actorHex,
+    created_at: 1_700_400_000, // older
+    content: oldCipher,
+    tags: [["d", "chunk-old"], ["encrypted", "nip44"]],
+  };
+
+  const decryptedPayloads = [];
+  const signer = {
+    nip44Decrypt: async (pubkey, payload) => {
+      decryptedPayloads.push(payload);
+      if (payload === newCipher) {
+        return JSON.stringify({
+          version: 2,
+          items: [{ type: "e", value: "from-new-chunk", watchedAt: 200 }],
+        });
+      }
+      return JSON.stringify({
+        version: 2,
+        items: [{ type: "e", value: "from-old-chunk", watchedAt: 100 }],
+      });
+    },
+  };
+
+  let listCall = 0;
+  const pool = {
+    async list() {
+      listCall += 1;
+      if (listCall === 1) {
+        return [pointerEvent];
+      }
+      return [oldChunk, newChunk]; // relay returns out of recency order
+    },
+  };
+
+  const manager = createWatchHistoryManager({
+    getActivePubkey: () => actorHex,
+    resolveActiveSigner: () => signer,
+    shouldRequestExtensionPermissions: () => false,
+    getPool: () => pool,
+    getReadRelays: () => ["wss://relay.example"],
+  });
+
+  try {
+    const result = await fetchWatchHistory(manager, actorHex, {
+      forceRefresh: true,
+      chunkDecryptLimit: 1,
+    });
+    assert.equal(
+      decryptedPayloads.length,
+      1,
+      "only one chunk should be decrypted under chunkDecryptLimit: 1",
+    );
+    assert.equal(
+      decryptedPayloads[0],
+      newCipher,
+      "the newest chunk (highest created_at) must be the one decrypted",
+    );
+    assert.equal(
+      result.deferredChunkCount,
+      1,
+      "the older chunk should be reported as deferred",
+    );
+    assert.deepStrictEqual(
+      result.items.map((item) => item.value),
+      ["from-new-chunk"],
+      "only the newest chunk's items should be present under the cap",
+    );
+  } finally {
+    manager.clear();
+  }
+});
+
 test("publishWatchHistorySnapshot uses injected nostr-tools helpers when signer cannot encrypt", async () => {
   const actorPubkey = "f".repeat(64);
   const sessionPrivateKey = "a".repeat(64);

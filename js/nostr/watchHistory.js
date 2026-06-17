@@ -1838,6 +1838,19 @@ class WatchHistoryManager {
   }
 
   async fetch(actorInput, options = {}) {
+    // Bound how many *uncached* watch-history chunks we decrypt up front. Each
+    // uncached chunk decrypt is a signer round-trip — and under a NIP-46 remote
+    // signer it is a published relay RPC routed through the serial 250ms queue,
+    // so a deep history (many monthly chunks) blocks the first render and risks
+    // the relay rate limit. Default is unlimited (no behavior change); callers
+    // opt into a finite limit and decrypt older chunks newest-first on demand.
+    // Already-cached and plaintext chunks are always decrypted (they cost no
+    // RPC) and never count against the limit.
+    const chunkDecryptLimitRaw = Number(options?.chunkDecryptLimit);
+    const chunkDecryptLimit =
+      Number.isFinite(chunkDecryptLimitRaw) && chunkDecryptLimitRaw >= 0
+        ? Math.floor(chunkDecryptLimitRaw)
+        : Infinity;
     const actorCandidates = [actorInput];
     if (typeof this.deps.getActivePubkey === "function") {
       actorCandidates.push(this.deps.getActivePubkey());
@@ -2069,6 +2082,7 @@ class WatchHistoryManager {
     const toolkitCacheRef = { current: null };
 
     let decryptedItems = [];
+    let deferredChunkCount = 0;
     if (chunkIdentifiers.length && canAttemptDecrypt) {
       try {
         const results = await listEvents(readRelays, [
@@ -2078,9 +2092,40 @@ class WatchHistoryManager {
             "#d": chunkIdentifiers,
           },
         ]);
-        const chunkEvents = Array.isArray(results)
+        const allChunkEvents = Array.isArray(results)
           ? results.flat().filter((event) => event && typeof event === "object")
           : [];
+
+        // Decrypt newest chunks first so the most recent history is the part we
+        // spend the (bounded) decrypt budget on. A chunk is "free" when its
+        // content is already plaintext or its plaintext is cached — those never
+        // count against the limit. Only uncached, genuinely-encrypted chunks
+        // consume the budget; any beyond it are deferred (the caller can request
+        // older chunks later, which re-uses the chunk cache for the rest).
+        const sortedChunkEvents = [...allChunkEvents].sort(
+          (a, b) => (Number(b?.created_at) || 0) - (Number(a?.created_at) || 0),
+        );
+        const chunkEvents = [];
+        let uncachedBudget = chunkDecryptLimit;
+        for (const event of sortedChunkEvents) {
+          const ciphertext =
+            typeof event.content === "string" ? event.content : "";
+          const isFree =
+            !ciphertext ||
+            looksLikeJsonStructure(ciphertext) ||
+            Boolean(getCachedChunkPlaintext(event.id));
+          if (isFree) {
+            chunkEvents.push(event);
+            continue;
+          }
+          if (uncachedBudget > 0) {
+            uncachedBudget -= 1;
+            chunkEvents.push(event);
+          } else {
+            deferredChunkCount += 1;
+          }
+        }
+
         const chunkResults = await pMap(
           chunkEvents,
           async (event) => {
@@ -2221,7 +2266,17 @@ class WatchHistoryManager {
     };
     this.cache.set(actorKey, entry);
     this.persistEntry(actorKey, entry);
-    return { pointerEvent: latestEvent, items: flatItems, snapshotId: "" };
+    return {
+      pointerEvent: latestEvent,
+      items: flatItems,
+      snapshotId: "",
+      // Number of older encrypted chunks left undecrypted because the caller
+      // capped the per-fetch decrypt budget. >0 means "more history available
+      // on demand"; the caller can re-fetch with a larger chunkDecryptLimit
+      // (already-decrypted chunks are served from cache, so only the newly
+      // requested older chunks cost RPCs).
+      deferredChunkCount,
+    };
   }
 
   async resolve(actorInput, options = {}) {
