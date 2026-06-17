@@ -79,12 +79,24 @@ when the connection moved into `SignerManager`):
         other family kept as a fallback → a transient failure on the right family fired a
         wasted RPC on the impossible family). Fixed: `determineWatchHistoryDecryptionOrder`
         now filters to the ciphertext-implied family (slice-A parity) — `cd614876`.
-- [ ] **Bulk incremental decrypt+render (slice B, part 2)**: opening DMs / watch history
-      still decrypts *dozens* of items through the serial 250ms NIP-46 queue, so the wall
-      time is inherently N × (queue delay + relay round-trip). Per-item efficiency is now
-      done; what remains is the UX/flow change: decrypt+render visible-first, stream the
-      rest with progress, and never hard-fail the whole list on a transient rate-limit
-      (keep partial results + retry). Larger UI change — the user's original complaint.
+- [x] **Bulk incremental decrypt+render (slice B, part 2)** — DONE.
+      - **DMs**: already fully incremental + partial-resilient (no work needed).
+        `listDirectMessages` streams each decrypted message via `onMessage` ->
+        `applyDirectMessage` -> emits `directMessages:message`/`:updated` (live re-render);
+        per-event decrypt failures are caught/skipped and a batch failure returns the
+        existing cache (never hard-fails).
+      - **Watch history**: now renders recent history fast on cold load and backfills the
+        rest in the background. Manager: newest-first chunk ordering + `chunkDecryptLimit`
+        (counts only uncached chunks) + `deferredChunkCount`/side-channel (`11ff205f`,
+        `362016ea`). Service: cold load decrypts newest 3 chunks first, then a single
+        background pass backfills deferred chunks and emits `fingerprint` (history view
+        already re-renders on it); warm refresh stays unbounded to avoid a shrink/grow
+        flicker (`70ce597a`). Serial NIP-46 queue paces the backfill — no rate-limit flood.
+      - Chose background auto-backfill over strict scroll-triggered lazy loading (the
+        latter needs risky feed-engine + cursor-pagination surgery on the shared
+        loadLatest path). The manager foundation supports a finite limit + deferred
+        reporting, so strict on-scroll remains a clean post-launch follow-up if the
+        eventual full-history RPC cost is ever a concern.
 - [ ] **Silent auto-restore skips validation**: `scheduleStoredRemoteSignerRestore`
       calls `useStoredRemoteSigner({ silent: true })` with NO validator, so on app
       startup a since-blocked pubkey's stored session can reconnect unchecked.
