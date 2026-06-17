@@ -50,3 +50,33 @@ test("generates a fresh keypair each call", async () => {
   assert.notEqual(a.clientPublicKey, b.clientPublicKey, "each handshake is a new ephemeral key");
   assert.notEqual(a.secret, b.secret);
 });
+
+// Scenario (SCN-nip46-access-control): remote-signer logins must enforce the
+// access-control validator before activating the signer, so a blocked /
+// non-permitted pubkey can't log in via a remote signer (this was dropped when
+// the connection logic moved off the unused Nip46Connector into SignerManager).
+test("a validator that throws (blocked pubkey) rejects the login", async () => {
+  const mgr = makeManager();
+  await assert.rejects(
+    () =>
+      mgr._enforceRemoteSignerValidator(() => {
+        throw new Error("Your account has been blocked on this platform.");
+      }, "blockedpub"),
+    /blocked/i,
+  );
+});
+
+test("a validator returning false rejects with an access-denied code", async () => {
+  const mgr = makeManager();
+  await assert.rejects(
+    () => mgr._enforceRemoteSignerValidator(() => false, "pub"),
+    (err) => err?.code === "remote-signer-access-denied",
+  );
+});
+
+test("a passing validator (true) and no validator are both allowed", async () => {
+  const mgr = makeManager();
+  await mgr._enforceRemoteSignerValidator(() => true, "pub"); // resolves
+  await mgr._enforceRemoteSignerValidator(null, "pub"); // no-op
+  await mgr._enforceRemoteSignerValidator(undefined, "pub"); // no-op
+});

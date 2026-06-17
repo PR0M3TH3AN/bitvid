@@ -55,6 +55,22 @@ Backlog from the R2 audit. Branch: `unstable` (promote down to beta/main later).
 - [ ] **Edit thumbnail cleanup**: currently skipped to avoid deleting a still-referenced
       thumbnail. Could diff old vs new thumbnail URL and clean the old one when it changed.
 
+## NIP-46 (remote signer) login — 2026-06-17
+Two regressions (logic that lived only on the now-unused `Nip46Connector`, lost
+when the connection moved into `SignerManager`):
+- [x] **`prepareRemoteSignerHandshake` missing** — the "generate connect link"
+      path threw "is not a function". Implemented on `SignerManager` + proxied on
+      `NostrClient` (`92d8fabf`).
+- [x] **Access-control validator dropped** — `connectRemoteSigner` /
+      `useStoredRemoteSigner` ignored the `validator`, so NIP-46 logins bypassed
+      the block/allow gate. Now enforced before the signer is activated, and a
+      blocked stored session is forgotten (`<this commit>`).
+- [ ] **Silent auto-restore skips validation**: `scheduleStoredRemoteSignerRestore`
+      calls `useStoredRemoteSigner({ silent: true })` with NO validator, so on app
+      startup a since-blocked pubkey's stored session can reconnect unchecked.
+      Fix: have it pass an `accessControl`-backed validator (SignerManager would
+      need access to it).
+
 ## Unrelated parking lot (from the infra tangent)
 - [ ] Vercel dashboard: set production branch `bitvid-unstable`→`unstable`, `bitvid-beta`→`beta`
       (so pushes deploy to prod, not preview). Then redeploy `bitvid-unstable` to current HEAD.

@@ -722,6 +722,24 @@ export class SignerManager {
     };
   }
 
+  /**
+   * Runs the access-control validator against a remote signer's resolved user
+   * pubkey. The validator (from the auth provider) throws on denial (blocked /
+   * not permitted) or returns false; either rejects the login. No-op when no
+   * validator is supplied.
+   */
+  async _enforceRemoteSignerValidator(validator, userPubkey) {
+    if (typeof validator !== "function") {
+      return;
+    }
+    const isValid = await validator(userPubkey);
+    if (isValid === false) {
+      const error = new Error("Access denied.");
+      error.code = "remote-signer-access-denied";
+      throw error;
+    }
+  }
+
   async connectRemoteSigner({
     connectionString,
     remember = true,
@@ -735,6 +753,7 @@ export class SignerManager {
     onStatus,
     handshakeTimeoutMs,
     passphrase,
+    validator,
   } = {}) {
     const parsed = parseNip46ConnectionString(connectionString);
     if (!parsed) {
@@ -855,6 +874,11 @@ export class SignerManager {
         }
 
         const userPubkey = await this.nip46Client.getUserPubkey();
+
+        // Enforce access control BEFORE activating the signer, so a blocked /
+        // non-permitted pubkey can't establish a session via a remote signer.
+        await this._enforceRemoteSignerValidator(validator, userPubkey);
+
         this.pubkey = userPubkey;
 
         this.setActiveSigner(this.nip46Client.getActiveSigner());
@@ -875,6 +899,10 @@ export class SignerManager {
     const passphrase =
       typeof normalizedOptions.passphrase === "string"
         ? normalizedOptions.passphrase
+        : null;
+    const validator =
+      typeof normalizedOptions.validator === "function"
+        ? normalizedOptions.validator
         : null;
 
     let stored = readStoredNip46Session();
@@ -934,6 +962,11 @@ export class SignerManager {
         // Just verify we can ping or get pubkey
         await this.nip46Client.ensureSubscription();
         const pubkey = await this.nip46Client.getUserPubkey();
+
+        // Re-check access control when restoring a stored session, so a pubkey
+        // that has since been blocked can't silently reconnect.
+        await this._enforceRemoteSignerValidator(validator, pubkey);
+
         this.pubkey = pubkey;
 
         this.setActiveSigner(this.nip46Client.getActiveSigner());
@@ -942,7 +975,9 @@ export class SignerManager {
     } catch (err) {
         this.nip46Client = null;
         this.emitRemoteSignerChange({ state: "error", error: err });
-        if (forgetOnError) {
+        // Always forget a stored session that was rejected by access control —
+        // no point keeping a blocked pubkey's session to retry.
+        if (forgetOnError || err?.code === "remote-signer-access-denied") {
             clearStoredNip46Session();
         }
         throw err;
