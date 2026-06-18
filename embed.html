@@ -2,6 +2,17 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!--
+      Content-Security-Policy for the embeddable player. Same strict script-src
+      as index.html (same inline theme-bootstrap hash). frame-ancestors is left
+      unset on purpose: this page is meant to be embedded anywhere. If you
+      change the inline theme script below, update the sha256 hash here
+      (tests/csp-policy.test.mjs enforces this).
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'sha256-dnv/l3q8gLqdw0etekr5/atoIRbM/wSVSgQjZEsC7G0=' https://cdn.jsdelivr.net https://esm.sh; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: blob:; media-src 'self' https: blob: mediastream:; connect-src 'self' https: wss: blob: data:; worker-src 'self' blob:; font-src 'self' data:; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; manifest-src 'self'"
+    />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>bitvid | Embed</title>
 
