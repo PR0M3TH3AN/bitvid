@@ -6,7 +6,12 @@ import { JSDOM } from "jsdom";
 import DiscussionCountService, {
   COUNT_UNSUPPORTED_TITLE,
 } from "../js/services/discussionCountService.js";
-import { COMMENT_EVENT_KIND } from "../js/nostr/commentEvents.js";
+import { getAllowedCommentKinds } from "../js/nostr/commentTargetNormalizer.js";
+
+// SPEC CHANGE: the discussion-count badge now counts the same kinds the thread
+// displays (NIP-22 kind 1111 + legacy kind 1) instead of only 1111, so it no
+// longer undercounts threads that contain legacy comments.
+const COMMENT_KINDS = getAllowedCommentKinds();
 
 function createDomWithCountElement(videoId) {
   const dom = new JSDOM(`
@@ -39,17 +44,17 @@ async function testRefreshCountsCachesResults() {
       assert.equal(filters.length, 3, "should request id, uppercase, and address filters");
       const [eventFilter, uppercaseFilter, addressFilter] = filters;
       assert.deepEqual(eventFilter, {
-        kinds: [COMMENT_EVENT_KIND],
+        kinds: COMMENT_KINDS,
         "#E": ["count-video-1"],
       });
       assert.deepEqual(uppercaseFilter, {
-        kinds: [COMMENT_EVENT_KIND],
+        kinds: COMMENT_KINDS,
         "#A": ["30078:pubkey-1:identifier-1"],
         "#K": ["30078"],
         "#P": ["pubkey-1"],
       });
       assert.deepEqual(addressFilter, {
-        kinds: [COMMENT_EVENT_KIND],
+        kinds: COMMENT_KINDS,
         "#A": ["30078:pubkey-1:identifier-1"],
       });
       return {
@@ -122,17 +127,17 @@ async function testUnsupportedRelaysUpdateDomState() {
       assert.equal(filters.length, 3, "unsupported relays should still receive all filters");
       const [eventFilter, uppercaseFilter, addressFilter] = filters;
       assert.deepEqual(eventFilter, {
-        kinds: [COMMENT_EVENT_KIND],
+        kinds: COMMENT_KINDS,
         "#E": ["unsupported-video"],
       });
       assert.deepEqual(uppercaseFilter, {
-        kinds: [COMMENT_EVENT_KIND],
+        kinds: COMMENT_KINDS,
         "#A": ["30078:pubkey-2:identifier-2"],
         "#K": ["30078"],
         "#P": ["pubkey-2"],
       });
       assert.deepEqual(addressFilter, {
-        kinds: [COMMENT_EVENT_KIND],
+        kinds: COMMENT_KINDS,
         "#A": ["30078:pubkey-2:identifier-2"],
       });
       return {
