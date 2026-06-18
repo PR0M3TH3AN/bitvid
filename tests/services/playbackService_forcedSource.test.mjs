@@ -131,6 +131,86 @@ describe("PlaybackService Forced Source Logic", () => {
     assert.equal(playViaWebTorrent.mock.callCount(), 0);
   });
 
+  test("Hosted playback clears crossOrigin so a CORS-less CDN URL still plays", async () => {
+    // Simulate a leftover crossOrigin from a prior WebTorrent attempt on the
+    // reused <video> element. Direct hosted playback must not require CORS, or
+    // CDNs/redirect targets without Access-Control-Allow-Origin fail the load
+    // with MEDIA_ERR_SRC_NOT_SUPPORTED ("source not supported or blocked").
+    video.crossOrigin = "anonymous";
+    video.setAttribute("crossorigin", "anonymous");
+
+    const probeUrl = mock.fn(async () => ({ outcome: "good", status: 200 }));
+    const playViaWebTorrent = mock.fn(async () => ({ infoHash: "123" }));
+
+    const session = service.createSession({
+      url: "https://archive.org/download/x/My Video (1080p).mp4",
+      magnet: "magnet:?xt=urn:btih:123",
+      videoElement: video,
+      probeUrl,
+      playViaWebTorrent,
+      forcedSource: "url",
+    });
+
+    const startPromise = session.start();
+    mock.timers.tick(50);
+    await new Promise((resolve) => process.nextTick(resolve));
+
+    // By the time the hosted source is assigned, CORS must be cleared.
+    assert.equal(video.crossOrigin, null, "crossOrigin property cleared");
+    assert.equal(
+      video.getAttribute("crossorigin"),
+      null,
+      "crossorigin attribute removed",
+    );
+
+    video.dispatchEvent(new window.Event("playing"));
+    await new Promise((resolve) => process.nextTick(resolve));
+    const result = await startPromise;
+    assert.equal(result.source, "url", "hosted URL plays");
+    assert.equal(playViaWebTorrent.mock.callCount(), 0, "no torrent fallback");
+  });
+
+  test("CDN-first: a torrent-first instance still plays the URL first when one exists", async () => {
+    // Even with a torrent-first instance default, a video that ALSO has a hosted
+    // URL should play the URL immediately (instant/reliable) instead of waiting
+    // on a P2P cold start. WebTorrent is reserved for URL-less videos.
+    const torrentFirstService = new PlaybackService({
+      logger: () => {},
+      isValidMagnetUri: () => true,
+      playbackStartTimeout: 100,
+      urlFirstEnabled: false, // torrent-first instance
+    });
+
+    const probeUrl = mock.fn(async () => ({ outcome: "good", status: 200 }));
+    const playViaWebTorrent = mock.fn(async () => ({ infoHash: "123" }));
+
+    const session = torrentFirstService.createSession({
+      url: "https://cdn.example.com/v.mp4",
+      magnet: "magnet:?xt=urn:btih:123",
+      videoElement: video,
+      probeUrl,
+      playViaWebTorrent,
+    });
+
+    const startPromise = session.start();
+    mock.timers.tick(10);
+    await new Promise((resolve) => process.nextTick(resolve));
+    video.dispatchEvent(new window.Event("playing"));
+    await new Promise((resolve) => process.nextTick(resolve));
+    const result = await startPromise;
+
+    assert.equal(
+      result.source,
+      "url",
+      "URL plays first despite a torrent-first instance",
+    );
+    assert.equal(
+      playViaWebTorrent.mock.callCount(),
+      0,
+      "WebTorrent is NOT attempted when a hosted URL exists",
+    );
+  });
+
   test("Forced Source 'url': Does NOT fallback to Torrent even if URL fails (probe bad)", async () => {
     const probeUrl = mock.fn(async () => {
       return { outcome: "bad", status: 404 };

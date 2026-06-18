@@ -136,7 +136,13 @@ describe("PlaybackService Ordering", () => {
       assert.equal(result.source, "torrent");
     });
 
-    test("urlFirstEnabled=false: Tries Torrent first, succeeds", async () => {
+    // SPEC CHANGE: dual-source videos are now CDN-first (see PlaybackSession
+    // execute(): `if (httpsUrl) tryUrlFirst = true`). A torrent-first instance
+    // default no longer forces P2P when a hosted URL is also available, because
+    // waiting on a P2P cold start when a working CDN exists was the slow/flaky
+    // path users hit. WebTorrent is now reserved for URL-less videos (and
+    // explicit forcedSource: "torrent", covered below).
+    test("urlFirstEnabled=false but a hosted URL exists: CDN-first plays the URL", async () => {
       const service = new PlaybackService({
         logger: () => {},
         urlFirstEnabled: false,
@@ -154,48 +160,48 @@ describe("PlaybackService Ordering", () => {
         playViaWebTorrent,
       });
 
-      const result = await session.start();
+      const startPromise = session.start();
+      await new Promise((resolve) => process.nextTick(resolve));
+      await new Promise((resolve) => process.nextTick(resolve));
+      video.dispatchEvent(new window.Event("playing"));
+      const result = await startPromise;
 
-      assert.equal(playViaWebTorrent.mock.callCount(), 1, "Should call torrent first");
-      assert.equal(probeUrl.mock.callCount(), 0, "Should NOT probe URL");
-      assert.equal(result.source, "torrent");
+      assert.equal(
+        playViaWebTorrent.mock.callCount(),
+        0,
+        "Should NOT use torrent when a hosted URL exists",
+      );
+      assert.equal(probeUrl.mock.callCount(), 1, "Should probe the URL first");
+      assert.equal(result.source, "url");
     });
 
-    test("urlFirstEnabled=false: Tries Torrent first, fails (throws), falls back to URL", async () => {
+    test("urlFirstEnabled=false with NO hosted URL: uses WebTorrent", async () => {
       const service = new PlaybackService({
         logger: () => {},
         urlFirstEnabled: false,
         isValidMagnetUri: () => true,
-        torrentClient: { cleanup: mock.fn() } // Mock cleanup
       });
 
       const probeUrl = mock.fn(async () => ({ outcome: "good", status: 200 }));
-      const playViaWebTorrent = mock.fn(async () => {
-        throw new Error("Torrent failed");
-      });
+      const playViaWebTorrent = mock.fn(async () => ({ infoHash: "123" }));
 
       const session = service.createSession({
-        url: "https://example.com/vid.mp4",
+        url: "",
         magnet: "magnet:?xt=urn:btih:123",
         videoElement: video,
         probeUrl,
         playViaWebTorrent,
       });
 
-      const startPromise = session.start();
+      const result = await session.start();
 
-      // Wait for async operations
-      await new Promise(resolve => process.nextTick(resolve));
-      await new Promise(resolve => process.nextTick(resolve));
-
-      // Simulate successful playback for URL
-      video.dispatchEvent(new window.Event("playing"));
-
-      const result = await startPromise;
-
-      assert.equal(playViaWebTorrent.mock.callCount(), 1, "Should call torrent first");
-      assert.equal(probeUrl.mock.callCount(), 1, "Should fallback to probe URL");
-      assert.equal(result.source, "url");
+      assert.equal(
+        playViaWebTorrent.mock.callCount(),
+        1,
+        "Should use WebTorrent when there is no URL to prefer",
+      );
+      assert.equal(probeUrl.mock.callCount(), 0, "No URL to probe");
+      assert.equal(result.source, "torrent");
     });
 
     test("forcedSource=torrent overrides urlFirstEnabled=true", async () => {

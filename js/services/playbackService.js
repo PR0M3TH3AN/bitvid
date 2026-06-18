@@ -898,6 +898,20 @@ class PlaybackSession extends SimpleEventEmitter {
         }
         activeVideoEl.src = "";
         activeVideoEl.srcObject = null;
+        // Direct hosted playback must NOT require CORS. A leftover
+        // crossOrigin="anonymous" (e.g. set by a prior WebTorrent attempt on
+        // this reused element) makes the browser issue a CORS request that many
+        // CDNs — and redirect targets like archive.org's storage nodes — do not
+        // answer with Access-Control-Allow-Origin, so the load dies with
+        // MEDIA_ERR_SRC_NOT_SUPPORTED ("source not supported or blocked"). We
+        // never read pixels from the hosted <video>, so clear it and let any
+        // URL play.
+        try {
+          activeVideoEl.removeAttribute("crossorigin");
+        } catch (err) {
+          // ignore
+        }
+        activeVideoEl.crossOrigin = null;
         try {
           activeVideoEl.load();
         } catch (err) {
@@ -1086,6 +1100,14 @@ class PlaybackSession extends SimpleEventEmitter {
           };
 
           try {
+            // Guarantee the direct load is CORS-free regardless of how we got
+            // here (see resetVideoElement) so any hosted URL plays reliably.
+            try {
+              activeVideoEl.removeAttribute("crossorigin");
+            } catch (err) {
+              // ignore
+            }
+            activeVideoEl.crossOrigin = null;
             activeVideoEl.src = httpsUrl;
             const playPromise = activeVideoEl.play();
             if (playPromise && typeof playPromise.catch === "function") {
@@ -1180,6 +1202,13 @@ class PlaybackSession extends SimpleEventEmitter {
       // --- Execution Flow ---
 
       let tryUrlFirst = this.service.urlFirstEnabled;
+      // CDN-first for dual-source videos: whenever a hosted URL is available,
+      // play it first for instant, reliable startup. WebTorrent is reserved for
+      // videos that have no URL (or when the viewer explicitly forces P2P). This
+      // intentionally takes precedence over a torrent-first instance default,
+      // because waiting on a P2P cold-start when a working CDN exists is the
+      // slow, flaky path users were hitting.
+      if (httpsUrl) tryUrlFirst = true;
       if (forcedSource === "url") tryUrlFirst = true;
       if (forcedSource === "torrent") tryUrlFirst = false;
 
@@ -1223,9 +1252,11 @@ class PlaybackSession extends SimpleEventEmitter {
         // Try Torrent First
         if (this.magnetForPlayback) {
           try {
-            // If we have a fallback URL, use the effective timeout.
-            // Otherwise, we must wait indefinitely for peers because there is no plan B.
-            const torrentTimeout = httpsUrl ? effectiveTimeout : 0;
+            // We only reach the torrent-first path when there is no hosted URL
+            // to fall back to (CDN-first handles the dual-source case above) or
+            // the viewer explicitly forced P2P. Either way there is no plan B,
+            // so wait indefinitely for peers rather than abandoning playback.
+            const torrentTimeout = 0;
 
             // Wrap Torrent attempt in timeout
             const torrentResult = await withTimeout(
