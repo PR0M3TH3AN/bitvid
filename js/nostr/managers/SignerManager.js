@@ -58,6 +58,7 @@ import { createPrivateKeyCipherClosures } from "../signerHelpers.js";
 import { queueSignEvent } from "../signRequestQueue.js";
 import { signEventWithPrivateKey } from "../publishHelpers.js";
 import { ensureNostrTools, getCachedNostrTools } from "../toolkit.js";
+import { accessControl } from "../../accessControl.js";
 
 export function resolveSignerCapabilities(signer) {
   const fallback = {
@@ -1213,6 +1214,29 @@ export class SignerManager {
     }
   }
 
+  // Access-control gate for restoring a stored signer. Waits for the admin
+  // lists to load (so the decision is accurate on a cold start) and throws if
+  // the pubkey is no longer allowed, matching the fresh-login/connect paths.
+  // useStoredRemoteSigner clears the stored session when this rejects.
+  buildAccessControlValidator() {
+    return async (pubkey) => {
+      try {
+        if (typeof accessControl.waitForReady === "function") {
+          await accessControl.waitForReady();
+        }
+      } catch (error) {
+        // If readiness can't be confirmed, fall through to the live check.
+      }
+      if (!accessControl.canAccess(pubkey)) {
+        if (accessControl.isBlacklisted(pubkey)) {
+          throw new Error("Your account has been blocked on this platform.");
+        }
+        throw new Error("Access restricted to admins and moderators only.");
+      }
+      return true;
+    };
+  }
+
   async scheduleStoredRemoteSignerRestore() {
     const stored = readStoredNip46Session();
     if (!stored) {
@@ -1221,7 +1245,13 @@ export class SignerManager {
 
     const decryptAndConnect = async () => {
       try {
-        await this.useStoredRemoteSigner({ silent: true });
+        // Enforce access control on the silent startup restore too — without a
+        // validator a since-blocked pubkey's stored session would reconnect
+        // unchecked.
+        await this.useStoredRemoteSigner({
+          silent: true,
+          validator: this.buildAccessControlValidator(),
+        });
       } catch (err) {
         devLogger.warn("Failed to restore remote signer", err);
       }
