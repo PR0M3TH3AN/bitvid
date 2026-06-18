@@ -1272,3 +1272,139 @@ test(
     assert.equal(unsubscribeCalled, true, "teardown should invoke subscription cleanup");
   },
 );
+
+// --- NIP-09 deletions ---
+
+test("CommentThreadService removes a comment deleted by its own author (NIP-09)", async () => {
+  setImprovedCommentFetchingEnabled(false);
+  const videoId = DEFAULT_VIDEO_ID;
+  const authorA = "1".repeat(64);
+  const authorB = "2".repeat(64);
+  const topId = "b".repeat(64);
+  const replyId = "c".repeat(64);
+
+  const top = createComment({ id: topId, pubkey: authorA, createdAt: 100, videoId });
+  const reply = createComment({
+    id: replyId,
+    pubkey: authorB,
+    createdAt: 101,
+    parentId: topId,
+    videoId,
+  });
+  const deletion = {
+    id: "d".repeat(64),
+    kind: 5,
+    pubkey: authorA,
+    created_at: 102,
+    content: "",
+    tags: [["e", topId]],
+  };
+
+  const service = new CommentThreadService({
+    fetchVideoComments: async () => [top, reply],
+    subscribeVideoComments: () => () => {},
+    fetchDeletionEvents: async () => [deletion],
+  });
+
+  try {
+    await service.loadThread({ video: createBaseVideo() });
+    const snap = service.getSnapshot();
+    assert.equal(
+      snap.commentsById.has(topId),
+      false,
+      "an author-signed deletion removes the comment",
+    );
+    const rootChildren = snap.childrenByParent.get(null) || [];
+    assert.equal(
+      rootChildren.includes(topId),
+      false,
+      "deleted comment is gone from the root list",
+    );
+    assert.equal(
+      rootChildren.length,
+      0,
+      "no top-level comments remain after deleting the only one",
+    );
+    assert.equal(
+      rootChildren.includes(replyId),
+      false,
+      "the orphaned reply is not promoted to the root",
+    );
+  } finally {
+    service.teardown();
+    setImprovedCommentFetchingEnabled(true);
+  }
+});
+
+test("CommentThreadService ignores a deletion not signed by the comment author", async () => {
+  setImprovedCommentFetchingEnabled(false);
+  const videoId = DEFAULT_VIDEO_ID;
+  const authorA = "1".repeat(64);
+  const attacker = "9".repeat(64);
+  const topId = "b".repeat(64);
+
+  const top = createComment({ id: topId, pubkey: authorA, createdAt: 100, videoId });
+  const forgedDeletion = {
+    id: "e".repeat(64),
+    kind: 5,
+    pubkey: attacker,
+    created_at: 103,
+    content: "",
+    tags: [["e", topId]],
+  };
+
+  const service = new CommentThreadService({
+    fetchVideoComments: async () => [top],
+    subscribeVideoComments: () => () => {},
+    fetchDeletionEvents: async () => [forgedDeletion],
+  });
+
+  try {
+    await service.loadThread({ video: createBaseVideo() });
+    const snap = service.getSnapshot();
+    assert.equal(
+      snap.commentsById.has(topId),
+      true,
+      "a deletion from a non-author must NOT remove the comment",
+    );
+    assert.deepEqual(
+      snap.childrenByParent.get(null),
+      [topId],
+      "the comment stays in the root list",
+    );
+  } finally {
+    service.teardown();
+    setImprovedCommentFetchingEnabled(true);
+  }
+});
+
+test("CommentThreadService suppresses a comment that arrives after its author's deletion", async () => {
+  const videoId = DEFAULT_VIDEO_ID;
+  const authorA = "1".repeat(64);
+  const topId = "b".repeat(64);
+
+  const service = new CommentThreadService({ subscribeVideoComments: () => () => {} });
+  service.videoEventId = videoId;
+
+  const deletion = {
+    id: "d".repeat(64),
+    kind: 5,
+    pubkey: authorA,
+    created_at: 102,
+    content: "",
+    tags: [["e", topId]],
+  };
+  const top = createComment({ id: topId, pubkey: authorA, createdAt: 100, videoId });
+
+  // Deletion arrives BEFORE the comment (out-of-order relays).
+  service.processIncomingEvent(deletion, { isInitial: false });
+  service.processIncomingEvent(top, { isInitial: false });
+
+  const snap = service.getSnapshot();
+  assert.equal(
+    snap.commentsById.has(topId),
+    false,
+    "a comment is suppressed if its author's deletion was already seen",
+  );
+  service.teardown();
+});

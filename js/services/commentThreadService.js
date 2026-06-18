@@ -46,6 +46,13 @@ function normalizeKind(value) {
   return "";
 }
 
+// NIP-09 deletion request.
+const DELETION_EVENT_KIND = 5;
+
+function isDeletionEvent(event) {
+  return normalizeKind(event?.kind) === String(DELETION_EVENT_KIND);
+}
+
 function toParentKey(parentId) {
   return parentId ? parentId : ROOT_PARENT_KEY;
 }
@@ -105,6 +112,7 @@ export default class CommentThreadService {
     app = null,
     fetchVideoComments = null,
     subscribeVideoComments = null,
+    fetchDeletionEvents = null,
     getProfileCacheEntry = null,
     batchFetchProfiles = null,
     limit = DEFAULT_INITIAL_LIMIT,
@@ -114,6 +122,10 @@ export default class CommentThreadService {
     this.nostrClient = nostrClient;
     this.fetchVideoComments = fetchVideoComments;
     this.subscribeVideoComments = subscribeVideoComments;
+    this.fetchDeletionEvents =
+      typeof fetchDeletionEvents === "function"
+        ? fetchDeletionEvents
+        : (ids, opts) => this._defaultFetchDeletions(ids, opts);
 
     if (!this.fetchVideoComments && this.nostrClient) {
       const clientFetcher = this.nostrClient.fetchVideoComments;
@@ -162,6 +174,9 @@ export default class CommentThreadService {
     this.metaById = new Map();
     this.childrenByParent = new Map();
     this.childrenByParent.set(ROOT_PARENT_KEY, []);
+    // NIP-09: target comment id -> Set of pubkeys that requested its deletion.
+    // A comment is treated as deleted only when its own author appears here.
+    this.deletionsByTarget = new Map();
     this.profileCache = new Map();
     this.profileQueue = new Set();
     this.profileHydrationTimer = null;
@@ -305,6 +320,11 @@ export default class CommentThreadService {
         this.processIncomingEvent(event, { emitReorder: true });
       });
     }
+
+    // Honor NIP-09 deletions: drop comments whose author has since requested
+    // their removal. Applied during the (silent) initial pass; the emit below
+    // renders the final, deletions-applied thread.
+    await this.fetchAndApplyDeletions();
 
     this.emitThreadReady();
 
@@ -656,6 +676,21 @@ export default class CommentThreadService {
       return;
     }
 
+    if (result.type === "skipped-deleted") {
+      return;
+    }
+
+    if (result.type === "deletion") {
+      // A removal can't be expressed as an append; re-render the thread when a
+      // comment actually disappeared (skip during the initial cache replay /
+      // bulk load, which emits once at the end).
+      if (!isInitial && result.removed) {
+        this.persistCommentCache();
+        this.emitThreadReady();
+      }
+      return;
+    }
+
     if (!isInitial && result.type === "insert") {
       this.emitAppend(result);
       return;
@@ -677,6 +712,10 @@ export default class CommentThreadService {
     const eventId = normalizeHexId(event.id);
     if (!eventId) {
       return null;
+    }
+
+    if (isDeletionEvent(event)) {
+      return this.applyDeletion(event);
     }
 
     const parentId = this.extractParentId(event);
@@ -702,6 +741,13 @@ export default class CommentThreadService {
     }
 
     const existingMeta = this.metaById.get(eventId);
+
+    // The comment may arrive after we already saw its author's deletion
+    // request (out-of-order relays). Honor the deletion and don't surface it.
+    if (!existingMeta && this.isCommentDeleted(eventId, pubkey)) {
+      return { type: "skipped-deleted", eventId };
+    }
+
     this.eventsById.set(eventId, event);
     this.metaById.set(eventId, { parentKey, createdAt });
 
@@ -757,6 +803,134 @@ export default class CommentThreadService {
     }
 
     return "";
+  }
+
+  // The comment ids a NIP-09 kind-5 request asks to delete (its `e` tags).
+  extractDeletionTargets(event) {
+    const tags = Array.isArray(event?.tags) ? event.tags : [];
+    const ids = [];
+    for (const tag of tags) {
+      if (!Array.isArray(tag) || tag.length < 2 || tag[0] !== "e") {
+        continue;
+      }
+      const id = normalizeHexId(tag[1]);
+      if (id && !ids.includes(id)) {
+        ids.push(id);
+      }
+    }
+    return ids;
+  }
+
+  isCommentDeleted(eventId, authorPubkey) {
+    if (!eventId || !authorPubkey) {
+      return false;
+    }
+    const deleters = this.deletionsByTarget.get(eventId);
+    return Boolean(deleters && deleters.has(authorPubkey));
+  }
+
+  // Apply a NIP-09 deletion request. A comment is only removed when the
+  // deletion is signed by the comment's own author (you can't delete someone
+  // else's comment). Deletions are also remembered so a comment that arrives
+  // afterwards (out-of-order relays) is suppressed on insert.
+  applyDeletion(event) {
+    const deleter = normalizePubkey(event.pubkey);
+    if (!deleter) {
+      return { type: "deletion", removed: false };
+    }
+    const targets = this.extractDeletionTargets(event);
+    let removed = false;
+    for (const targetId of targets) {
+      let deleters = this.deletionsByTarget.get(targetId);
+      if (!deleters) {
+        deleters = new Set();
+        this.deletionsByTarget.set(targetId, deleters);
+      }
+      deleters.add(deleter);
+
+      const existing = this.eventsById.get(targetId);
+      if (existing && normalizePubkey(existing.pubkey) === deleter) {
+        this.removeComment(targetId);
+        removed = true;
+      }
+    }
+    return { type: "deletion", removed };
+  }
+
+  removeComment(eventId) {
+    const meta = this.metaById.get(eventId);
+    if (meta) {
+      this.removeFromParentList(meta.parentKey, eventId);
+      this.metaById.delete(eventId);
+    }
+    this.eventsById.delete(eventId);
+    // Replies to a removed comment become unreachable from the root and so are
+    // hidden along with their deleted parent; their child list is left in place
+    // but never walked by getSnapshot().
+  }
+
+  async fetchAndApplyDeletions() {
+    const commentIds = Array.from(this.eventsById.keys());
+    if (!commentIds.length || typeof this.fetchDeletionEvents !== "function") {
+      return;
+    }
+    let deletionEvents = [];
+    try {
+      deletionEvents = await this.fetchDeletionEvents(commentIds, {
+        relays: this.activeRelays,
+      });
+    } catch (error) {
+      logDev(
+        this.logger?.dev,
+        "[commentThread] Failed to fetch comment deletions:",
+        error,
+      );
+      return;
+    }
+    if (Array.isArray(deletionEvents)) {
+      for (const deletionEvent of deletionEvents) {
+        this.processIncomingEvent(deletionEvent, { isInitial: true });
+      }
+    }
+  }
+
+  async _defaultFetchDeletions(commentIds, { relays } = {}) {
+    const pool = this.nostrClient?.pool;
+    if (
+      !pool ||
+      typeof pool.list !== "function" ||
+      !Array.isArray(commentIds) ||
+      !commentIds.length
+    ) {
+      return [];
+    }
+    const relayList =
+      Array.isArray(relays) && relays.length
+        ? relays
+        : Array.isArray(this.nostrClient?.relays)
+          ? this.nostrClient.relays
+          : [];
+    if (!relayList.length) {
+      return [];
+    }
+    try {
+      const results = await pool.list(relayList, [
+        { kinds: [DELETION_EVENT_KIND], "#e": commentIds },
+      ]);
+      if (!Array.isArray(results)) {
+        return [];
+      }
+      return results
+        .flat()
+        .filter((event) => event && typeof event === "object");
+    } catch (error) {
+      logDev(
+        this.logger?.dev,
+        "[commentThread] Default deletion fetch failed:",
+        error,
+      );
+      return [];
+    }
   }
 
   extractRootIdentifier(event) {
