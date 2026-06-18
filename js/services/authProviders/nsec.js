@@ -3,7 +3,7 @@ import { accessControl } from "../../accessControl.js";
 const PROVIDER_ID = "nsec";
 const PROVIDER_LABEL = "nsec or seed (direct private key)";
 const PROVIDER_DESCRIPTION =
-  "Paste an nsec, hex key, or BIP-39 seed. Keep it encrypted on this device if you choose.";
+  "Paste an nsec or hex private key. Keep it encrypted on this device if you choose.";
 const PROVIDER_CAPABILITIES = Object.freeze([
   Object.freeze({
     id: "signing",
@@ -92,6 +92,18 @@ export default {
 
     const normalized = normalizeOptions(options);
 
+    // Access gate enforced before any signer is activated, for both fresh
+    // logins and stored-key unlocks.
+    const validator = (pubkey) => {
+      if (!accessControl.canAccess(pubkey)) {
+        if (accessControl.isBlacklisted(pubkey)) {
+          throw new Error("Your account has been blocked on this platform.");
+        }
+        throw new Error("Access restricted to admins and moderators users only.");
+      }
+      return true;
+    };
+
     if (normalized.unlockStored) {
       if (typeof nostrClient.unlockStoredSessionActor !== "function") {
         const error = new Error("Stored key unlock is not supported.");
@@ -106,7 +118,10 @@ export default {
         throw error;
       }
 
-      const unlockResult = await nostrClient.unlockStoredSessionActor(suppliedPassphrase);
+      const unlockResult = await nostrClient.unlockStoredSessionActor(
+        suppliedPassphrase,
+        { validator },
+      );
       const unlockedPubkey = normalizePubkey(unlockResult);
 
       return {
@@ -132,16 +147,6 @@ export default {
       error.code = "passphrase-required";
       throw error;
     }
-
-    const validator = (pubkey) => {
-      if (!accessControl.canAccess(pubkey)) {
-        if (accessControl.isBlacklisted(pubkey)) {
-          throw new Error("Your account has been blocked on this platform.");
-        }
-        throw new Error("Access restricted to admins and moderators users only.");
-      }
-      return true;
-    };
 
     const registrationResult = await nostrClient.registerPrivateKeySigner({
       privateKey,

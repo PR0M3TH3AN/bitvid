@@ -2508,19 +2508,190 @@ export class NostrClient {
    * @param {string} [opts.pubkey] - Optional hex public key.
    * @returns {object} The created signer adapter.
    */
-  async registerPrivateKeySigner(opts) {
+  async registerPrivateKeySigner(opts = {}) {
     const adapter = await createNsecAdapter(opts);
+
+    // Enforce access control (blacklist / whitelist) BEFORE activating the
+    // signer. The validator was previously accepted but ignored, so nsec login
+    // bypassed the access gate that NIP-07 and NIP-46 logins enforce.
+    if (typeof opts.validator === "function") {
+      try {
+        opts.validator(adapter.pubkey);
+      } catch (error) {
+        // Don't leave a since-blocked key persisted on this device.
+        try {
+          clearStoredSessionActorEntry();
+        } catch (cleanupError) {
+          devLogger.warn(
+            "[nostr] Failed to clear stored session after access denial:",
+            cleanupError,
+          );
+        }
+        throw error;
+      }
+    }
+
     this.signerManager.setActiveSigner(adapter);
 
     if (opts.privateKey && typeof opts.privateKey === "string") {
+      const normalizedPrivateKey = opts.privateKey.trim().toLowerCase();
       this.sessionActor = {
         pubkey: adapter.pubkey,
-        privateKey: opts.privateKey.trim().toLowerCase(),
+        privateKey: normalizedPrivateKey,
         source: "nsec",
       };
+
+      // Persist the key, encrypted with the user's passphrase, when they opted
+      // to remember it. Uses the canonical { privateKeyEncrypted, encryption }
+      // shape that readStoredSessionActorEntry / decryptSessionPrivateKey
+      // expect — the previous shape was silently rejected, so "remember this
+      // key" never actually stored anything.
+      if (
+        opts.persist === true &&
+        typeof opts.passphrase === "string" &&
+        opts.passphrase.trim()
+      ) {
+        try {
+          const encrypted = await encryptSessionPrivateKey(
+            normalizedPrivateKey,
+            opts.passphrase,
+          );
+          persistSessionActorEntry({
+            pubkey: adapter.pubkey,
+            privateKeyEncrypted: encrypted.ciphertext,
+            encryption: {
+              salt: encrypted.salt,
+              iv: encrypted.iv,
+              iterations: encrypted.iterations,
+              hash: encrypted.hash,
+              algorithm: encrypted.algorithm,
+              version: encrypted.version,
+            },
+          });
+          this.sessionActor.persisted = true;
+        } catch (error) {
+          devLogger.warn("[nostr] Failed to persist private key signer:", error);
+        }
+      }
     }
 
     return adapter;
+  }
+
+  // Metadata about a stored, passphrase-encrypted nsec session (no secrets).
+  // The login modal reads `hasEncryptedKey` to offer the "unlock saved key"
+  // flow; without this the unlock UI never appeared.
+  getStoredSessionActorMetadata() {
+    let entry = null;
+    try {
+      entry = readStoredSessionActorEntry();
+    } catch (error) {
+      devLogger.warn(
+        "[nostr] Failed to read stored session actor metadata:",
+        error,
+      );
+      return null;
+    }
+    if (!entry || !entry.privateKeyEncrypted || !entry.encryption) {
+      return null;
+    }
+    return {
+      hasEncryptedKey: true,
+      pubkey: typeof entry.pubkey === "string" ? entry.pubkey : "",
+      source: "nsec",
+      createdAt: Number.isFinite(entry.createdAt) ? entry.createdAt : null,
+    };
+  }
+
+  // Restore a persisted nsec session by decrypting it with the user's
+  // passphrase and re-activating the signer via the same path as fresh login.
+  // The access-control validator is enforced before activation, and a
+  // now-blocked key is forgotten.
+  async unlockStoredSessionActor(passphrase, { validator } = {}) {
+    if (typeof passphrase !== "string" || !passphrase.trim()) {
+      const error = new Error("A passphrase is required to unlock the saved key.");
+      error.code = "passphrase-required";
+      throw error;
+    }
+
+    const entry = readStoredSessionActorEntry();
+    if (!entry || !entry.privateKeyEncrypted || !entry.encryption) {
+      const error = new Error("There is no saved key to unlock.");
+      error.code = "no-stored-session";
+      throw error;
+    }
+
+    const storedPubkey =
+      typeof entry.pubkey === "string" && HEX64_REGEX.test(entry.pubkey.toLowerCase())
+        ? entry.pubkey.toLowerCase()
+        : "";
+    if (storedPubkey && typeof validator === "function") {
+      try {
+        validator(storedPubkey);
+      } catch (error) {
+        try {
+          clearStoredSessionActorEntry();
+        } catch (cleanupError) {
+          devLogger.warn(
+            "[nostr] Failed to clear stored session after access denial:",
+            cleanupError,
+          );
+        }
+        throw error;
+      }
+    }
+
+    let privateKeyHex = "";
+    try {
+      privateKeyHex = await decryptSessionPrivateKey(
+        {
+          privateKeyEncrypted: entry.privateKeyEncrypted,
+          encryption: entry.encryption,
+        },
+        passphrase,
+      );
+    } catch (error) {
+      const failure = new Error(
+        "Failed to unlock the saved key. Check your passphrase and try again.",
+      );
+      failure.code =
+        error?.code === "decrypt-failed" ? "decrypt-failed" : "unlock-failed";
+      failure.cause = error;
+      throw failure;
+    }
+
+    const normalizedPrivateKey =
+      typeof privateKeyHex === "string" ? privateKeyHex.trim().toLowerCase() : "";
+    if (!HEX64_REGEX.test(normalizedPrivateKey)) {
+      const error = new Error("The saved key is corrupt and cannot be used.");
+      error.code = "stored-key-invalid";
+      throw error;
+    }
+
+    let pubkey = storedPubkey;
+    if (!pubkey) {
+      const tools = (await ensureNostrTools()) || getCachedNostrTools();
+      if (tools && typeof tools.getPublicKey === "function") {
+        pubkey = tools.getPublicKey(normalizedPrivateKey);
+      }
+    }
+
+    const adapter = await this.registerPrivateKeySigner({
+      privateKey: normalizedPrivateKey,
+      pubkey,
+      persist: false,
+      validator,
+    });
+
+    if (this.sessionActor && typeof this.sessionActor === "object") {
+      this.sessionActor.persisted = true;
+    }
+
+    const resolvedPubkey =
+      (adapter && typeof adapter.pubkey === "string" && adapter.pubkey) ||
+      pubkey ||
+      "";
+    return { pubkey: resolvedPubkey };
   }
 
   /**
