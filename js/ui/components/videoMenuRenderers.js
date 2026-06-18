@@ -316,6 +316,13 @@ export function createVideoShareMenuPanel({
   hasSigner = false,
   hasMagnet = false,
   hasCdn = false,
+  // Optional builder for forced-source test deep links: fn('torrent'|'url') ->
+  // a `?v=<nevent>&playback=...` URL (or "" when unavailable). When provided,
+  // the menu offers "Copy WebTorrent URL" / "Copy CDN URL" items that copy a
+  // link which always plays via that source — handy for testing one path
+  // consistently. `clipboard` is injectable for tests.
+  buildForcedSourceUrl = null,
+  clipboard = null,
   designSystem = null,
 } = {}) {
   const doc = resolveDocument(documentRef);
@@ -368,6 +375,71 @@ export function createVideoShareMenuPanel({
     cdnBtn.disabled = true;
     cdnBtn.classList.add("opacity-50", "cursor-not-allowed");
     cdnBtn.title = "No CDN link available";
+  }
+
+  // Forced-source test deep links. Self-contained: they copy a link via the
+  // injected builder + clipboard rather than routing through the shared menu
+  // dispatch, so they work regardless of how the share popover is wired.
+  if (typeof buildForcedSourceUrl === "function") {
+    const resolveClipboard = () =>
+      clipboard ||
+      (typeof navigator !== "undefined" ? navigator.clipboard : null);
+
+    const wireForcedCopy = (button, playback, available, unavailableTitle) => {
+      if (!available) {
+        button.disabled = true;
+        button.classList.add("opacity-50", "cursor-not-allowed");
+        button.title = unavailableTitle;
+        return;
+      }
+      const originalText = button.textContent;
+      button.addEventListener("click", async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const url = buildForcedSourceUrl(playback) || "";
+        if (!url) {
+          return;
+        }
+        const clip = resolveClipboard();
+        try {
+          if (clip && typeof clip.writeText === "function") {
+            await clip.writeText(url);
+          }
+          button.textContent = "Copied!";
+        } catch (error) {
+          button.textContent = "Copy failed";
+        }
+        if (typeof setTimeout === "function") {
+          setTimeout(() => {
+            button.textContent = originalText;
+          }, 1200);
+        }
+      });
+    };
+
+    const torrentLinkBtn = appendMenuAction(doc, list, {
+      text: "Copy WebTorrent URL",
+      action: "copy-webtorrent-url",
+      dataset: { eventId: metadata.id },
+    });
+    wireForcedCopy(
+      torrentLinkBtn,
+      "torrent",
+      hasMagnet,
+      "No WebTorrent source for this video",
+    );
+
+    const cdnLinkBtn = appendMenuAction(doc, list, {
+      text: "Copy CDN URL",
+      action: "copy-cdn-url",
+      dataset: { eventId: metadata.id },
+    });
+    wireForcedCopy(
+      cdnLinkBtn,
+      "url",
+      hasCdn,
+      "No CDN source for this video",
+    );
   }
 
   return panel;

@@ -126,3 +126,171 @@ describe("TorrentClient Handlers", () => {
         assert.strictEqual(torrent._opts.announce[0], "ws://good.com", "Should keep good tracker");
     });
 });
+
+// --- Hardened streaming behavior (audit follow-ups) ---
+
+class SelectableFile {
+    constructor(name, length) {
+        this.name = name;
+        this.length = length;
+        this.selected = false;
+        this.deselected = false;
+    }
+    select() { this.selected = true; }
+    deselect() { this.deselected = true; }
+    streamTo(elem) { elem.src = "blob:mock-stream"; }
+}
+
+class MultiFileTorrent extends EventEmitter {
+    constructor(files, { numPeers = 1 } = {}) {
+        super();
+        this.files = files;
+        this.numPeers = numPeers;
+        this._opts = {};
+    }
+    destroy() {}
+}
+
+function freshClient() {
+    const c = new TorrentClient();
+    c.log = () => {};
+    return c;
+}
+
+describe("TorrentClient streaming hardening", () => {
+    it("streams the LARGEST playable file and deselects the rest (multi-file)", () => {
+        const client = freshClient();
+        const small = new SelectableFile("sample.mp4", 100);
+        const big = new SelectableFile("feature.mp4", 100000);
+        const other = new SelectableFile("readme.txt", 5);
+        const torrent = new MultiFileTorrent([small, big, other]);
+        const videoElement = new MockVideoElement();
+
+        client.handleTorrentStream(torrent, videoElement, () => {}, () => {}, "chrome");
+
+        assert.strictEqual(big.selected, true, "largest video file is selected");
+        assert.strictEqual(small.deselected, true, "smaller video file is deselected");
+        assert.strictEqual(other.deselected, true, "non-video file is deselected");
+        assert.strictEqual(videoElement.src, "blob:mock-stream", "streamTo ran on the chosen file");
+    });
+
+    it("does NOT resolve until the video is actually ready to play", async () => {
+        const client = freshClient();
+        // streamTo here does NOT advance readyState or emit canplay.
+        const file = { name: "v.mp4", length: 10, streamTo: (el) => { el.src = "blob:x"; } };
+        const torrent = new MultiFileTorrent([file]);
+        const videoElement = new MockVideoElement();
+
+        let resolved = false;
+        client.handleTorrentStream(torrent, videoElement, () => { resolved = true; }, () => {}, "chrome");
+
+        await new Promise((r) => setTimeout(r, 20));
+        assert.strictEqual(resolved, false, "no premature success while playback is not viable");
+        assert.strictEqual(client.currentTorrent, torrent, "currentTorrent set up front so cleanup can tear it down");
+
+        // Once real playback data arrives, it resolves.
+        videoElement.emit("loadeddata");
+        assert.strictEqual(resolved, true, "resolves once playback is viable");
+    });
+
+    it("pre-playback torrent error rejects (so the caller can fall back)", async () => {
+        const client = freshClient();
+        const file = { name: "v.mp4", length: 10, streamTo: (el) => { el.src = "blob:x"; } };
+        const torrent = new MultiFileTorrent([file]);
+        const videoElement = new MockVideoElement();
+
+        let rejected = null;
+        let resolved = false;
+        client.handleTorrentStream(torrent, videoElement, () => { resolved = true; }, (e) => { rejected = e; }, "chrome");
+
+        torrent.emit("error", new Error("swarm dead"));
+        assert.ok(rejected, "rejects before playback starts");
+        assert.strictEqual(resolved, false, "does not also resolve");
+    });
+
+    it("post-playback torrent error goes to onPlaybackError, not a dead reject", async () => {
+        const client = freshClient();
+        const file = { name: "v.mp4", length: 10, streamTo: (el) => { el.src = "blob:x"; } };
+        const torrent = new MultiFileTorrent([file]);
+        const videoElement = new MockVideoElement();
+
+        const playbackErrors = [];
+        let rejectedAfter = false;
+        client.handleTorrentStream(
+            torrent,
+            videoElement,
+            () => {},
+            () => { rejectedAfter = true; },
+            "chrome",
+            { onPlaybackError: (e) => playbackErrors.push(e) }
+        );
+
+        videoElement.emit("canplay"); // becomes ready -> resolved
+        torrent.emit("error", new Error("peers dropped"));
+
+        assert.strictEqual(playbackErrors.length, 1, "post-start error surfaced via hook");
+        assert.strictEqual(rejectedAfter, false, "promise was already settled; no dead reject");
+    });
+
+    it("surfaces a stall via onStall when playback buffers without progress", async () => {
+        const client = freshClient();
+        const file = { name: "v.mp4", length: 10, streamTo: (el) => { el.src = "blob:x"; } };
+        const torrent = new MultiFileTorrent([file], { numPeers: 0 });
+        const videoElement = new MockVideoElement();
+
+        const stalls = [];
+        client.handleTorrentStream(
+            torrent,
+            videoElement,
+            () => {},
+            () => {},
+            "chrome",
+            { onStall: (info) => stalls.push(info), stallMs: 15 }
+        );
+
+        videoElement.emit("canplay"); // ready
+        videoElement.emit("waiting"); // buffering with no progress
+        await new Promise((r) => setTimeout(r, 40));
+
+        assert.strictEqual(stalls.length, 1, "stall surfaced once");
+        assert.strictEqual(stalls[0].peers, 0, "stall reports current peer count");
+    });
+
+    it("clears the stall timer when playback progresses", async () => {
+        const client = freshClient();
+        const file = { name: "v.mp4", length: 10, streamTo: (el) => { el.src = "blob:x"; } };
+        const torrent = new MultiFileTorrent([file]);
+        const videoElement = new MockVideoElement();
+
+        const stalls = [];
+        client.handleTorrentStream(
+            torrent, videoElement, () => {}, () => {}, "chrome",
+            { onStall: (i) => stalls.push(i), stallMs: 30 }
+        );
+        videoElement.emit("canplay");
+        videoElement.emit("waiting");
+        await new Promise((r) => setTimeout(r, 10));
+        videoElement.emit("timeupdate"); // progress -> clears the pending stall
+        await new Promise((r) => setTimeout(r, 40));
+
+        assert.strictEqual(stalls.length, 0, "no stall fired because playback resumed");
+    });
+
+    it("does not leak <video> listeners across streams (reused element)", () => {
+        const client = freshClient();
+        const videoElement = new MockVideoElement();
+        const mk = () => new MultiFileTorrent([
+            { name: "v.mp4", length: 10, streamTo: (el) => { el.src = "blob:x"; } },
+        ]);
+
+        client.handleTorrentStream(mk(), videoElement, () => {}, () => {}, "chrome");
+        client.handleTorrentStream(mk(), videoElement, () => {}, () => {}, "chrome");
+        client.handleTorrentStream(mk(), videoElement, () => {}, () => {}, "chrome");
+
+        assert.strictEqual(
+            videoElement.listenerCount("error"),
+            1,
+            "previous streams' error listeners are torn down (no accumulation)",
+        );
+    });
+});
