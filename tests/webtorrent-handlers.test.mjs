@@ -293,4 +293,45 @@ describe("TorrentClient streaming hardening", () => {
             "previous streams' error listeners are torn down (no accumulation)",
         );
     });
+
+    it("attaches the hosted CDN URL as a webseed for a SINGLE-file torrent", () => {
+        const client = freshClient();
+        const torrent = new MultiFileTorrent([
+            { name: "v.mp4", length: 1000, streamTo: (el) => { el.src = "blob:x"; } },
+        ]);
+        const added = [];
+        torrent.addWebSeed = (url) => added.push(url);
+        const videoElement = new MockVideoElement();
+
+        client.handleTorrentStream(torrent, videoElement, () => {}, () => {}, "chrome", {
+            hostedUrlWebSeed: "https://cdn.example.com/v.mp4",
+        });
+
+        assert.deepEqual(
+            added,
+            ["https://cdn.example.com/v.mp4"],
+            "a single-file torrent gets the hosted URL as a webseed",
+        );
+    });
+
+    it("does NOT attach the hosted CDN URL for a MULTI-file torrent (no doubled-URL flood)", () => {
+        const client = freshClient();
+        const torrent = new MultiFileTorrent([
+            { name: "feature.mp4", length: 100000, streamTo: (el) => { el.src = "blob:x"; } },
+            { name: "extra.mp4", length: 100 },
+        ]);
+        const added = [];
+        torrent.addWebSeed = (url) => added.push(url);
+        const videoElement = new MockVideoElement();
+
+        client.handleTorrentStream(torrent, videoElement, () => {}, () => {}, "chrome", {
+            hostedUrlWebSeed: "https://cdn.example.com/feature.mp4",
+        });
+
+        assert.equal(
+            added.length,
+            0,
+            "a multi-file torrent must NOT get a file-pointing webseed (it would double + 404)",
+        );
+    });
 });

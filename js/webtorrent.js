@@ -796,6 +796,12 @@ export class TorrentClient {
       hooks && Number.isFinite(hooks.stallMs) && hooks.stallMs > 0
         ? hooks.stallMs
         : TORRENT_PLAYBACK_STALL_MS;
+    const hostedUrlWebSeed =
+      hooks &&
+      typeof hooks.hostedUrlWebSeed === "string" &&
+      /^https?:\/\//i.test(hooks.hostedUrlWebSeed.trim())
+        ? hooks.hostedUrlWebSeed.trim()
+        : "";
 
     // Chrome-specific: Prune demo web seeds/trackers that chronically trip Chromium CORS
     // and deliberately mutate `torrent._opts` as a sanctioned WebTorrent workaround.
@@ -850,6 +856,26 @@ export class TorrentClient {
         file.select();
       } catch (err) {
         this.log(`File selection failed (${context} path; non-fatal):`, err);
+      }
+    }
+
+    // Attach the hosted CDN URL as a webseed ONLY for single-file torrents.
+    // A standalone hosted-file URL is a valid BEP19 webseed only when the
+    // torrent is a single file (the URL maps directly to it). For a multi-file
+    // torrent, WebTorrent treats the URL as a base directory and appends
+    // "<torrent name>/<file path>", producing a doubled URL that 404s on every
+    // request — the webseed flood. Adding it post-metadata (when files.length
+    // is known) avoids that entirely. Magnet-declared `ws=` webseeds are passed
+    // separately via urlList and untouched.
+    if (
+      hostedUrlWebSeed &&
+      files.length === 1 &&
+      typeof torrent.addWebSeed === "function"
+    ) {
+      try {
+        torrent.addWebSeed(hostedUrlWebSeed);
+      } catch (err) {
+        this.log(`Failed to attach hosted webseed (${context} path):`, err);
       }
     }
 
@@ -1106,7 +1132,14 @@ export class TorrentClient {
 
       const isFirefoxBrowser = this.isFirefox();
       const streamHooks =
-        opts && typeof opts.hooks === "object" && opts.hooks ? opts.hooks : {};
+        opts && typeof opts.hooks === "object" && opts.hooks
+          ? { ...opts.hooks }
+          : {};
+      // Hosted CDN URL to use as a single-file webseed (handleTorrentStream
+      // attaches it post-metadata, only when the torrent is a single file).
+      if (typeof opts?.hostedUrlWebSeed === "string" && opts.hostedUrlWebSeed) {
+        streamHooks.hostedUrlWebSeed = opts.hostedUrlWebSeed;
+      }
       const candidateUrls = Array.isArray(opts?.urlList)
         ? opts.urlList
             .map((entry) => (typeof entry === "string" ? entry.trim() : ""))

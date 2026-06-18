@@ -362,7 +362,7 @@ export function createPlaybackCoordinator(deps) {
 
     async playViaWebTorrent(
       magnet,
-      { fallbackMagnet = "", urlList = [] } = {}
+      { fallbackMagnet = "", urlList = [], hostedUrlWebSeed = "" } = {}
     ) {
       const sanitizedUrlList = Array.isArray(urlList)
         ? urlList
@@ -371,6 +371,11 @@ export function createPlaybackCoordinator(deps) {
             )
             .filter((entry) => /^https?:\/\//i.test(entry))
         : [];
+      const sanitizedHostedWebSeed =
+        typeof hostedUrlWebSeed === "string" &&
+        /^https?:\/\//i.test(hostedUrlWebSeed.trim())
+          ? hostedUrlWebSeed.trim()
+          : "";
 
       const attemptStream = async (candidate) => {
         const trimmedCandidate =
@@ -418,6 +423,7 @@ export function createPlaybackCoordinator(deps) {
           this.modalVideo,
           {
             urlList: sanitizedUrlList,
+            hostedUrlWebSeed: sanitizedHostedWebSeed,
             hooks: {
               // Surface a mid-stream stall instead of silently freezing on a
               // buffering frame: tell the user whether the swarm is just slow

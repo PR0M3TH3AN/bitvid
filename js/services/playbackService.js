@@ -868,10 +868,12 @@ class PlaybackSession extends SimpleEventEmitter {
         webSeedCandidates.push(trimmed);
       };
 
-      if (httpsUrl) {
-        addWebSeedCandidate(httpsUrl);
-      }
-
+      // NOTE: the hosted CDN URL is intentionally NOT added here. As a
+      // WebTorrent `urlList` entry it is only valid for single-file torrents;
+      // for multi-file torrents WebTorrent appends the torrent's internal path
+      // and floods the network with doubled, 404-ing requests. It is forwarded
+      // separately as `hostedUrlWebSeed` and attached post-metadata only when
+      // the torrent is a single file (see TorrentClient.handleTorrentStream).
       const magnetWebSeeds = extractWebSeedsFromMagnet(this.magnetForPlayback);
       if (magnetWebSeeds.length > 0) {
         magnetWebSeeds.forEach((seed) => addWebSeedCandidate(seed));
@@ -948,6 +950,7 @@ class PlaybackSession extends SimpleEventEmitter {
           torrentInstance = await playViaWebTorrent(this.magnetForPlayback, {
             fallbackMagnet: this.fallbackMagnet,
             urlList: webSeedCandidates,
+            hostedUrlWebSeed: httpsUrl,
           });
         } catch (err) {
           const errorMessage = getTorrentErrorMessage(err);
