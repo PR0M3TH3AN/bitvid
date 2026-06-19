@@ -34,6 +34,42 @@ function normalizeString(value) {
   return String(value ?? "").trim();
 }
 
+/**
+ * Normalize a web seed field into an ordered, deduped list of trimmed URLs.
+ * Accepts an array (multi-webseed forms) or a string that may carry several
+ * URLs separated by newlines/commas (a single textarea field). Preserving the
+ * full list lets a video declare multiple independent webseeds (e.g. a CDN
+ * plus a backup origin) instead of collapsing to a single `ws`.
+ *
+ * @param {string|string[]} value
+ * @returns {string[]}
+ */
+function normalizeWebSeedList(value) {
+  const out = [];
+  const seen = new Set();
+  const push = (entry) => {
+    if (typeof entry !== "string") {
+      return;
+    }
+    const trimmed = entry.trim();
+    if (!trimmed) {
+      return;
+    }
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    out.push(trimmed);
+  };
+  if (Array.isArray(value)) {
+    value.forEach(push);
+  } else if (typeof value === "string") {
+    value.split(/[\r\n,]+/).forEach(push);
+  }
+  return out;
+}
+
 function normalizeSha256Hex(value) {
   if (value === undefined || value === null) {
     return "";
@@ -342,7 +378,7 @@ export function normalizeVideoNotePayload(input) {
   const magnet = normalizeString(legacyPayload?.magnet || "");
   const thumbnail = normalizeString(legacyPayload?.thumbnail || "");
   const description = normalizeString(legacyPayload?.description || "");
-  const ws = normalizeString(legacyPayload?.ws || "");
+  const wsValues = normalizeWebSeedList(legacyPayload?.ws);
   const xs = normalizeString(legacyPayload?.xs || "");
   const storagePointer = normalizeStoragePointer(
     legacyPayload?.storagePointer || legacyPayload?.storage || ""
@@ -415,10 +451,7 @@ export function normalizeVideoNotePayload(input) {
   }
 
   if (legacyFormData.magnet) {
-    const wsList = [];
-    if (ws) {
-      wsList.push(ws);
-    }
+    const wsList = [...wsValues];
     if (legacyFormData.url && /^https?:\/\//i.test(legacyFormData.url)) {
       wsList.push(legacyFormData.url);
     }

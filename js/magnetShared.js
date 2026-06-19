@@ -421,3 +421,38 @@ export function extractMagnetHints(rawValue) {
   }
   return hints;
 }
+
+/**
+ * Extract every web seed (`ws=`) URL from a magnet, in order, deduped
+ * case-insensitively. Unlike {@link extractMagnetHints} (which returns only the
+ * first `ws`), this surfaces the full set so callers can round-trip a magnet
+ * that carries multiple independent webseeds without silently dropping the
+ * extras.
+ *
+ * @param {string} rawValue
+ * @returns {string[]} Deduped web seed URLs in magnet order.
+ */
+export function extractAllWebSeeds(rawValue) {
+  const { params } = normalizeMagnetInput(rawValue);
+  const seeds = [];
+  const seen = new Set();
+  for (const param of params) {
+    if (param.lowerKey !== "ws") {
+      continue;
+    }
+    const value =
+      typeof (param.decoded || param.value) === "string"
+        ? (param.decoded || param.value).trim()
+        : "";
+    if (!value) {
+      continue;
+    }
+    const key = value.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    seeds.push(value);
+  }
+  return seeds;
+}
