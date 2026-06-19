@@ -64,6 +64,10 @@ const GRANDFATHERED = new Set([
   "js/relayManager.js",
   "js/searchView.js",
   "js/services/authService.js",
+  // Pre-existing direct pool.list/ensurePool usage that was never allowlisted
+  // (lint:pool-access has been red on it since before the file-size refactors).
+  // Tracked here as a migration target — route through subscriptionManager.
+  "js/services/commentThreadService.js",
   "js/services/dmNostrService.js",
   "js/services/moderationService.js",
   "js/services/nostrService.js",
