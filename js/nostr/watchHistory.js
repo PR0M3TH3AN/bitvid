@@ -14,6 +14,13 @@ import {
   NOTE_TYPES,
 } from "../nostrEventSchemas.js";
 import { CACHE_POLICIES } from "./cachePolicies.js";
+import {
+  sanitizeWatchHistoryMetadata,
+  serializeWatchHistoryItems,
+  bytesToHex,
+  looksLikeJsonStructure,
+  hexToBytesCompat,
+} from "./watchHistoryCodec.js";
 import { publishEventToRelays } from "../nostrPublish.js";
 import {
   RELAY_URLS,
@@ -368,55 +375,6 @@ function canonicalizeWatchHistoryItems(rawItems, maxItems = WATCH_HISTORY_MAX_IT
   return buckets;
 }
 
-function sanitizeWatchHistoryMetadata(metadata) {
-  return {};
-}
-
-function serializeWatchHistoryItems(items) {
-  if (!Array.isArray(items) || items.length === 0) {
-    return "[]";
-  }
-  const normalized = items
-    .map((item) => {
-      const type = item?.type === "a" ? "a" : "e";
-      const value = typeof item?.value === "string" ? item.value : "";
-      if (!type || !value) {
-        return null;
-      }
-      const relay =
-        typeof item?.relay === "string" && item.relay.trim()
-          ? item.relay.trim()
-          : undefined;
-      const watchedAt = Number.isFinite(item?.watchedAt)
-        ? Math.max(0, Math.floor(item.watchedAt))
-        : undefined;
-      const payload = { type, value };
-      if (relay) {
-        payload.relay = relay;
-      }
-      if (watchedAt !== undefined) {
-        payload.watchedAt = watchedAt;
-      }
-      const resumeAt = Number.isFinite(item?.resumeAt)
-        ? Math.max(0, Math.floor(item.resumeAt))
-        : undefined;
-      if (resumeAt !== undefined) {
-        payload.resumeAt = resumeAt;
-      }
-      if (item?.completed === true) {
-        payload.completed = true;
-      }
-      return payload;
-    })
-    .filter(Boolean);
-  return JSON.stringify(normalized);
-}
-
-function bytesToHex(bytes) {
-  return Array.from(bytes)
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
 
 async function computeWatchHistoryFingerprintForItems(itemsOrBuckets) {
   // Check if buckets
@@ -452,40 +410,6 @@ async function computeWatchHistoryFingerprintForItems(itemsOrBuckets) {
     }
   }
   return `fallback:${serialized}`;
-}
-
-function looksLikeJsonStructure(content) {
-  if (typeof content !== "string") {
-    return false;
-  }
-  const trimmed = content.trim();
-  if (!trimmed) {
-    return false;
-  }
-  const first = trimmed[0];
-  return first === "{" || first === "[";
-}
-
-function hexToBytesCompat(hex, tools = null) {
-  if (typeof hex !== "string") {
-    throw new Error("Invalid hex input.");
-  }
-  const trimmed = hex.trim();
-  if (!trimmed || trimmed.length % 2 !== 0) {
-    throw new Error("Invalid hex input.");
-  }
-  if (tools?.utils && typeof tools.utils.hexToBytes === "function") {
-    return tools.utils.hexToBytes(trimmed);
-  }
-  const bytes = new Uint8Array(trimmed.length / 2);
-  for (let index = 0; index < trimmed.length; index += 2) {
-    const byte = Number.parseInt(trimmed.slice(index, index + 2), 16);
-    if (Number.isNaN(byte)) {
-      throw new Error("Invalid hex input.");
-    }
-    bytes[index / 2] = byte;
-  }
-  return bytes;
 }
 
 // Memoizes NIP-44 conversation keys across an entire load. Deriving a
