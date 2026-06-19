@@ -4,16 +4,23 @@ import logger, { devLogger, userLogger } from "../utils/logger.js";
 import { normalizeHexId, normalizeHexPubkey } from "../utils/hex.js";
 import { buildVideoAddressPointer } from "../utils/videoPointer.js";
 import { COMMENT_EVENT_KIND } from "../nostr/commentEvents.js";
-import { FEATURE_IMPROVED_COMMENT_FETCHING, FIVE_MINUTES_MS } from "../constants.js";
+import { FEATURE_IMPROVED_COMMENT_FETCHING } from "../constants.js";
+import {
+  getCommentCacheKey as cacheGetCommentCacheKey,
+  handleCommentCacheError as cacheHandleCommentCacheError,
+  getCachedComments as cacheGetCachedComments,
+  cacheComments as cacheCacheComments,
+  removeCommentCache as cacheRemoveCommentCache,
+  clearCommentCache as cacheClearCommentCache,
+  persistCommentCache as cachePersistCommentCache,
+  serializeCommentsForCache as cacheSerializeCommentsForCache,
+} from "./commentThreadCache.js";
 
 const ROOT_PARENT_KEY = "__root__";
 const DEFAULT_INITIAL_LIMIT = 40;
 const DEFAULT_HYDRATION_DEBOUNCE_MS = 25;
 const PROFILE_FETCH_MAX_ATTEMPTS = 3;
 const PROFILE_FETCH_BACKOFF_MS = 50;
-const COMMENT_CACHE_PREFIX = "bitvid:comments:";
-const COMMENT_CACHE_TTL_MS = FIVE_MINUTES_MS;
-const COMMENT_CACHE_VERSION = 2;
 
 function toPositiveInteger(value, fallback) {
   const numeric = Number(value);
@@ -400,237 +407,35 @@ export default class CommentThreadService {
   }
 
   getCommentCacheKey(videoEventId) {
-    const normalized = normalizeHexId(videoEventId);
-    if (!normalized) {
-      return "";
-    }
-
-    return `${COMMENT_CACHE_PREFIX}${normalized.toLowerCase()}`;
+    return cacheGetCommentCacheKey(videoEventId);
   }
 
   handleCommentCacheError(context, videoEventId, error) {
-    this.commentCacheDiagnostics = {
-      ...this.commentCacheDiagnostics,
-      storageUnavailable: true,
-    };
-
-    const message =
-      typeof videoEventId === "string" && videoEventId.trim()
-        ? `[commentThread] Failed to ${context} comment cache for ${videoEventId}.`
-        : `[commentThread] Failed to ${context} comment cache.`;
-
-    if (this.logger?.user?.warn) {
-      this.logger.user.warn(message, error);
-    } else if (this.logger?.warn) {
-      this.logger.warn(message, error);
-    }
-
-    if (this.logger?.dev?.warn && this.logger.dev !== this.logger.user) {
-      this.logger.dev.warn(message, error);
-    }
+    return cacheHandleCommentCacheError(this, context, videoEventId, error);
   }
 
   getCachedComments(videoEventId) {
-    if (
-      !FEATURE_IMPROVED_COMMENT_FETCHING ||
-      typeof localStorage === "undefined"
-    ) {
-      return null;
-    }
-
-    const cacheKey = this.getCommentCacheKey(videoEventId);
-    if (!cacheKey) {
-      logDev(
-        this.logger?.dev,
-        "[commentThread] Comment cache skipped: invalid video id.",
-      );
-      return null;
-    }
-
-    let raw = null;
-    try {
-      raw = localStorage.getItem(cacheKey);
-    } catch (error) {
-      this.handleCommentCacheError("read", videoEventId, error);
-      return null;
-    }
-
-    if (raw === null) {
-      logDev(
-        this.logger?.dev,
-        `[commentThread] Comment cache miss for ${videoEventId}: no entry present.`,
-      );
-      return null;
-    }
-
-    try {
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== "object") {
-        logDev(
-          this.logger?.dev,
-          `[commentThread] Comment cache rejected for ${videoEventId}: malformed payload.`,
-        );
-        this.removeCommentCache(cacheKey);
-        return null;
-      }
-
-      const cacheVersion = Number.isFinite(parsed.version)
-        ? Number(parsed.version)
-        : null;
-
-      if (cacheVersion !== COMMENT_CACHE_VERSION) {
-        logDev(
-          this.logger?.dev,
-          `[commentThread] Comment cache rejected for ${videoEventId}: version ${cacheVersion} != ${COMMENT_CACHE_VERSION}.`,
-        );
-        this.removeCommentCache(cacheKey);
-        return null;
-      }
-
-      const comments = Array.isArray(parsed.comments)
-        ? parsed.comments
-        : null;
-      const timestamp = Number(parsed.timestamp);
-
-      if (
-        Array.isArray(comments) &&
-        Number.isFinite(timestamp) &&
-        Date.now() - timestamp <= COMMENT_CACHE_TTL_MS
-      ) {
-        logDev(
-          this.logger?.dev,
-          `[commentThread] Loaded ${comments.length} cached comments for ${videoEventId}.`,
-        );
-        return comments;
-      }
-
-      logDev(
-        this.logger?.dev,
-        `[commentThread] Comment cache rejected for ${videoEventId}: entry expired.`,
-      );
-      this.removeCommentCache(cacheKey);
-    } catch (error) {
-      if (this.logger?.warn) {
-        this.logger.warn(
-          `[commentThread] Failed to parse cached comments for ${videoEventId}:`,
-          error,
-        );
-      }
-      logDev(
-        this.logger?.dev,
-        `[commentThread] Comment cache rejected for ${videoEventId}: parse error.`,
-      );
-      this.removeCommentCache(cacheKey);
-    }
-
-    return null;
+    return cacheGetCachedComments(this, videoEventId);
   }
 
   cacheComments(videoEventId, comments) {
-    if (
-      !FEATURE_IMPROVED_COMMENT_FETCHING ||
-      typeof localStorage === "undefined" ||
-      !Array.isArray(comments)
-    ) {
-      return;
-    }
-
-    const cacheKey = this.getCommentCacheKey(videoEventId);
-    if (!cacheKey) {
-      return;
-    }
-
-    try {
-      localStorage.setItem(
-        cacheKey,
-        JSON.stringify({
-          version: COMMENT_CACHE_VERSION,
-          comments,
-          timestamp: Date.now(),
-        }),
-      );
-      logDev(
-        this.logger?.dev,
-        `[commentThread] Cached ${comments.length} comments for ${videoEventId}.`,
-      );
-    } catch (error) {
-      this.handleCommentCacheError("write", videoEventId, error);
-    }
+    return cacheCacheComments(this, videoEventId, comments);
   }
 
   removeCommentCache(cacheKey) {
-    if (!cacheKey || typeof localStorage === "undefined") {
-      return;
-    }
-
-    try {
-      localStorage.removeItem(cacheKey);
-    } catch (error) {
-      if (this.logger?.warn) {
-        this.logger.warn(
-          `[commentThread] Failed to clear cached comments for ${cacheKey}:`,
-          error,
-        );
-      }
-    }
+    return cacheRemoveCommentCache(this, cacheKey);
   }
 
   clearCommentCache(videoEventId = null) {
-    if (!FEATURE_IMPROVED_COMMENT_FETCHING || typeof localStorage === "undefined") {
-      return;
-    }
-
-    if (videoEventId) {
-      this.removeCommentCache(this.getCommentCacheKey(videoEventId));
-      return;
-    }
-
-    try {
-      const keys = Object.keys(localStorage);
-      keys
-        .filter((key) => key.startsWith(COMMENT_CACHE_PREFIX))
-        .forEach((key) => this.removeCommentCache(key));
-    } catch (error) {
-      if (this.logger?.warn) {
-        this.logger.warn(
-          "[commentThread] Failed to clear comment cache:",
-          error,
-        );
-      }
-    }
+    return cacheClearCommentCache(this, videoEventId);
   }
 
   persistCommentCache() {
-    if (!FEATURE_IMPROVED_COMMENT_FETCHING || !this.videoEventId) {
-      return;
-    }
-
-    const comments = this.serializeCommentsForCache();
-    this.cacheComments(this.videoEventId, comments);
+    return cachePersistCommentCache(this);
   }
 
   serializeCommentsForCache() {
-    const events = Array.from(this.eventsById.values());
-    return events.sort((a, b) => {
-      const aTime = Number.isFinite(a?.created_at) ? a.created_at : 0;
-      const bTime = Number.isFinite(b?.created_at) ? b.created_at : 0;
-      if (aTime !== bTime) {
-        return aTime - bTime;
-      }
-
-      const aId = normalizeHexId(a?.id);
-      const bId = normalizeHexId(b?.id);
-      if (aId && bId) {
-        return aId.localeCompare(bId);
-      }
-      if (aId) {
-        return -1;
-      }
-      if (bId) {
-        return 1;
-      }
-      return 0;
-    });
+    return cacheSerializeCommentsForCache(this);
   }
 
   startSubscription(target, options = {}) {
