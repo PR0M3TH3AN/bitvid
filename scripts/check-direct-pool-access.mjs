@@ -52,6 +52,10 @@ const GRANDFATHERED = new Set([
   "js/nostr/nip46Connector.js",
   "js/nostr/reactionEvents.js",
   "js/nostr/relayBatchFetcher.js",
+  // Inherited verbatim from SignerManager._waitForRemoteSignerHandshake during
+  // file-size decomposition (the pool.sub usage pre-dates this split). Migration
+  // target like the rest — route through subscriptionManager when touched.
+  "js/nostr/signerRemoteHandshake.js",
   "js/nostr/viewEvents.js",
   "js/nostr/watchHistory.js",
   "js/payments/platformAddress.js",
