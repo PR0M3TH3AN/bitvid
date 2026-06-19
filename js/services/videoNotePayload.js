@@ -47,25 +47,30 @@ function normalizeString(value) {
 function normalizeWebSeedList(value) {
   const out = [];
   const seen = new Set();
+  // Each entry may itself carry several URLs separated by newlines/commas (a
+  // textarea field), so split every entry regardless of whether the caller
+  // passed an array or a single string.
   const push = (entry) => {
     if (typeof entry !== "string") {
       return;
     }
-    const trimmed = entry.trim();
-    if (!trimmed) {
-      return;
+    for (const piece of entry.split(/[\r\n,]+/)) {
+      const trimmed = piece.trim();
+      if (!trimmed) {
+        continue;
+      }
+      const key = trimmed.toLowerCase();
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      out.push(trimmed);
     }
-    const key = trimmed.toLowerCase();
-    if (seen.has(key)) {
-      return;
-    }
-    seen.add(key);
-    out.push(trimmed);
   };
   if (Array.isArray(value)) {
     value.forEach(push);
   } else if (typeof value === "string") {
-    value.split(/[\r\n,]+/).forEach(push);
+    push(value);
   }
   return out;
 }

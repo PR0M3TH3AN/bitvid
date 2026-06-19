@@ -1073,7 +1073,13 @@ export class UploadModal {
              metadata.storagePointer =
                  this.videoUploadState.storagePointer ||
                  deriveStoragePointerFromUrl(metadata.url, providerLabel);
-             metadata.ws = this.videoUploadState.url; // WebSeed is same as R2 URL
+             // The R2/CDN url is the primary webseed; any additional backup
+             // webseeds the uploader entered (one per line) follow it.
+             // normalizeVideoNotePayload splits + dedupes this list.
+             metadata.ws = [
+               this.videoUploadState.url,
+               this.inputs.ws?.value || "",
+             ];
              metadata.xs = this.torrentState.url || "";
 
              // NIP-71 IMETA for the main video

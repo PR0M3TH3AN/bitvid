@@ -376,8 +376,9 @@
                      <!-- Additional Technical Sections (Web Seeds, etc) -->
                      <div class="grid gap-3 md:grid-cols-2">
                          <div class="space-y-2">
-                             <label class="block text-xs font-medium text-muted-strong">Web Seed (ws)</label>
-                             <input id="input-ws" type="url" class="input text-sm" placeholder="https://..." />
+                             <label class="block text-xs font-medium text-muted-strong">Web seeds (one per line)</label>
+                             <textarea id="input-ws" rows="2" class="textarea text-sm" placeholder="https://cdn.example.com/video.mp4&#10;https://backup.example.com/video.mp4"></textarea>
+                             <p class="text-xs text-muted">Add a backup origin so the swarm can keep streaming if the primary is overloaded. Each must serve the exact same file.</p>
                          </div>
                           <div class="space-y-2">
                              <label class="block text-xs font-medium text-muted-strong">Torrent File (xs)</label>

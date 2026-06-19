@@ -81,6 +81,25 @@ test("a single webseed string still works (back-compat)", () => {
   assert.equal(payload.legacyFormData.ws, SEED_A);
 });
 
+test("upload-modal shape ([primaryUrl, textarea]) yields primary-first, all split", () => {
+  // This mirrors exactly what UploadModal hands over in upload mode: the CDN
+  // url as the primary entry, followed by the raw multi-line textarea value.
+  const cdn = "https://cdn.example.com/video.mp4";
+  const { payload } = normalizeVideoNotePayload({
+    title: "Upload shape",
+    url: cdn,
+    magnet: MAGNET,
+    ws: [cdn, `${SEED_A}\n${SEED_B}`],
+  });
+
+  const seeds = extractAllWebSeeds(payload.legacyFormData.magnet);
+  assert.ok(seeds.includes(cdn), "CDN url carried");
+  assert.ok(seeds.includes(SEED_A), "first backup webseed carried");
+  assert.ok(seeds.includes(SEED_B), "second backup webseed carried");
+  // CDN stays the primary (first) seed.
+  assert.equal(payload.legacyFormData.ws, cdn);
+});
+
 test("duplicate webseeds are not written twice", () => {
   const { payload } = normalizeVideoNotePayload({
     title: "Dupe seed",
