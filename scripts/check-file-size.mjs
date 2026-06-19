@@ -52,7 +52,7 @@ const GRANDFATHERED = {
   "js/services/hashtagPreferencesService.js": 1434,
   "js/nostr/publishHelpers.js": 1415,
   "js/index.js": 1412,
-  "js/watchHistoryService.js": 1395,
+  "js/watchHistoryService.js": 1386,
   "js/app/playbackCoordinator.js": 1376,
   "js/feedEngine/stages.js": 1370,
   "js/ui/views/VideoListView.js": 1359,
