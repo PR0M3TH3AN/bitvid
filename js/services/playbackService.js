@@ -1,7 +1,10 @@
 import { userLogger } from "../utils/logger.js";
-import { safeDecodeURIComponent } from "../utils/safeDecode.js";
 import { PLAYBACK_START_TIMEOUT } from "../constants.js";
 import { getCurrentVideo, setCurrentVideo } from "../state/appState.js";
+import {
+  SimpleEventEmitter,
+  extractWebSeedsFromMagnet,
+} from "./playbackHelpers.js";
 // js/services/playbackService.js
 
 /**
@@ -21,46 +24,6 @@ import { getCurrentVideo, setCurrentVideo } from "../state/appState.js";
  *   old session is cancelled and doesn't overwrite the new one.
  */
 
-class SimpleEventEmitter {
-  constructor(logger = null) {
-    this.logger = typeof logger === "function" ? logger : null;
-    this.listeners = new Map();
-  }
-
-  on(eventName, handler) {
-    if (typeof handler !== "function") {
-      return () => {};
-    }
-    if (!this.listeners.has(eventName)) {
-      this.listeners.set(eventName, new Set());
-    }
-    const handlers = this.listeners.get(eventName);
-    handlers.add(handler);
-    return () => {
-      handlers.delete(handler);
-      if (!handlers.size) {
-        this.listeners.delete(eventName);
-      }
-    };
-  }
-
-  emit(eventName, detail) {
-    const handlers = this.listeners.get(eventName);
-    if (!handlers || !handlers.size) {
-      return;
-    }
-    for (const handler of Array.from(handlers)) {
-      try {
-        handler(detail);
-      } catch (err) {
-        if (this.logger) {
-          this.logger("[PlaybackService] Listener error", err);
-        }
-      }
-    }
-  }
-}
-
 const HOSTED_URL_SUCCESS_MESSAGE = "✅ Streaming from hosted URL";
 const DEFAULT_UNSUPPORTED_BTITH_MESSAGE =
   "This magnet link is missing a compatible BitTorrent v1 info hash.";
@@ -68,44 +31,6 @@ const AUTH_STATUS_CODES = new Set([401, 403]);
 const SSL_ERROR_PATTERN = /(ssl|cert|certificate)/i;
 const CORS_ERROR_PATTERN = /cors/i;
 const PROBE_CACHE_TTL_MS = 45000;
-const WEBSEED_PARAM_KEYS = new Set(["ws", "webseed"]);
-
-const extractWebSeedsFromMagnet = (magnetUri) => {
-  if (typeof magnetUri !== "string") {
-    return [];
-  }
-  const trimmed = magnetUri.trim();
-  if (!trimmed) {
-    return [];
-  }
-  const [withoutFragment] = trimmed.split("#", 1);
-  const [, query = ""] = withoutFragment.split("?", 2);
-  if (!query) {
-    return [];
-  }
-
-  const webSeeds = [];
-  for (const segment of query.split("&")) {
-    if (!segment) {
-      continue;
-    }
-    const [rawKey, rawValue = ""] = segment.split("=", 2);
-    if (!rawKey) {
-      continue;
-    }
-    const key = rawKey.trim().toLowerCase();
-    if (!WEBSEED_PARAM_KEYS.has(key)) {
-      continue;
-    }
-    const decodedValue = safeDecodeURIComponent(rawValue.replace(/\+/g, "%20"));
-    const candidate = decodedValue.trim();
-    if (candidate) {
-      webSeeds.push(candidate);
-    }
-  }
-  return webSeeds;
-};
-
 const getHostedUrlFailureDetails = (probeResult = {}) => {
   const outcome = probeResult?.outcome || "error";
   const status = Number.isFinite(probeResult?.status)
