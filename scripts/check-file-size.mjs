@@ -36,7 +36,7 @@ const GRANDFATHERED = {
   "js/ui/loginModalController.js": 2552,
   "js/historyView.js": 2613,
   "js/services/moderationService.js": 2512,
-  "js/subscriptions.js": 2426,
+  "js/subscriptions.js": 2361,
   "js/userBlocks.js": 2428,
   "js/services/nostrService.js": 2227,
   "js/nostr/watchHistory.js": 2388,
