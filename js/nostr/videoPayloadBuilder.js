@@ -457,7 +457,15 @@ export function prepareVideoEditPayload(params) {
     ? [["s", storagePointer], ...nip71Tags]
     : nip71Tags;
 
-  const createdAt = Math.floor(Date.now() / 1000);
+  // A replaceable event only wins if its created_at is strictly greater than
+  // the version it replaces (NIP-01 keeps the highest created_at; ties go to
+  // the lowest id). A device clock that's behind, or a second edit within the
+  // same second, would otherwise produce an edit that relays silently keep
+  // BEHIND the original. Guarantee monotonicity against the base event.
+  const baseCreatedAt = Number.isFinite(baseEvent?.created_at)
+    ? Math.floor(baseEvent.created_at)
+    : 0;
+  const createdAt = Math.max(Math.floor(Date.now() / 1000), baseCreatedAt + 1);
 
   const event = buildVideoPostEvent({
     pubkey: userPubkeyLower,

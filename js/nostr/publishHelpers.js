@@ -1402,9 +1402,18 @@ export function buildRevertVideoPayload({
   });
   const additionalTags = storagePointer ? [["s", storagePointer]] : [];
 
+  // The deletion tombstone must REPLACE the version it deletes, so its
+  // created_at has to be strictly greater (NIP-01 keeps the highest created_at).
+  // With a behind clock this would otherwise be older than the original and the
+  // relay would keep serving the live video to everyone else. Guarantee it.
+  const baseCreatedAt = Number.isFinite(baseEvent?.created_at)
+    ? Math.floor(baseEvent.created_at)
+    : 0;
+  const createdAt = Math.max(Math.floor(Date.now() / 1000), baseCreatedAt + 1);
+
   return buildVideoPostEvent({
     pubkey,
-    created_at: Math.floor(Date.now() / 1000),
+    created_at: createdAt,
     dTagValue: stableDTag,
     content: contentObject,
     additionalTags,

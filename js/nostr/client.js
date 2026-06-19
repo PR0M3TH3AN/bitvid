@@ -2964,6 +2964,9 @@ export class NostrClient {
       baseEvent = {
         id: fetched.id,
         pubkey: fetched.pubkey,
+        // Carry created_at so the tombstone can be made strictly newer than the
+        // version it replaces (see buildRevertVideoPayload monotonicity guard).
+        created_at: fetched.created_at,
           content: JSON.stringify({
             version: fetched.version,
             deleted: fetched.deleted,
@@ -3188,6 +3191,9 @@ export class NostrClient {
           {
             id: vid.id,
             pubkey: vid.pubkey,
+            // Preserve the original timestamp so the tombstone is published with
+            // a strictly-newer created_at and actually replaces the live version.
+            created_at: vid.created_at,
             content: JSON.stringify(contentPayload),
             tags: Array.isArray(vid.tags) ? vid.tags : [],
           },
