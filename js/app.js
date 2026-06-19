@@ -647,6 +647,7 @@ class Application {
         userBlocks,
         subscriptions,
         hashtagPreferences,
+        watchHistoryService,
         storageService,
         relayManager,
         torrentClient,

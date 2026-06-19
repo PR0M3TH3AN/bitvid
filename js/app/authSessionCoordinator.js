@@ -15,6 +15,44 @@ import { clearWatchHistoryDecryptedChunkCache } from "../nostr/watchHistoryDecry
 import { FEED_TYPES } from "../constants.js";
 
 /**
+ * Kick a background watch-history refresh after login, once the feed-driving
+ * lists have already finished decrypting.
+ *
+ * `loadLatest({ allowStale: true })` returns immediately and runs the
+ * chunk-capped refresh in the background, so this is strictly fire-and-forget:
+ * it must never block, await, or throw into the login path. The For You feed
+ * re-runs on the watch-history "fingerprint" event once the refresh resolves.
+ *
+ * @param {object} args
+ * @param {{ loadLatest?: Function }} [args.watchHistoryService]
+ * @param {string} [args.activePubkey]
+ * @param {{ warn?: Function }} [args.devLogger]
+ * @returns {boolean} Whether a preload was scheduled.
+ */
+export function schedulePostLoginWatchHistoryPreload({
+  watchHistoryService,
+  activePubkey,
+  devLogger,
+} = {}) {
+  if (!activePubkey || typeof watchHistoryService?.loadLatest !== "function") {
+    return false;
+  }
+
+  Promise.resolve()
+    .then(() =>
+      watchHistoryService.loadLatest(activePubkey, { allowStale: true }),
+    )
+    .catch((error) => {
+      devLogger?.warn?.(
+        "[Application] Background watch-history preload after login failed:",
+        error,
+      );
+    });
+
+  return true;
+}
+
+/**
  * @param {object} deps - Injected dependencies.
  * @returns {object} Methods to be bound to the Application instance.
  */
@@ -27,6 +65,7 @@ export function createAuthSessionCoordinator(deps) {
     userBlocks,
     subscriptions,
     hashtagPreferences,
+    watchHistoryService,
     storageService,
     relayManager,
     torrentClient,
@@ -492,13 +531,6 @@ export function createAuthSessionCoordinator(deps) {
 
         const taskOutcomes = await Promise.all(parallelListTasks);
 
-        // NOTE: watch history is intentionally NOT eagerly preloaded on login.
-        // A cold watch history is ~150+ serialized nip-07 decrypts; preloading it
-        // here (even after the lists) saturated the extension and starved the
-        // profile modal's hashtag/subscription/DM loads. It now loads lazily when
-        // the For You feed or History view is opened. Re-enable an eager preload
-        // only once the cold-load decrypt cost is reduced (see task: ~180 calls).
-
         const requiredTaskOutcomes = taskOutcomes.filter((outcome) =>
           ["blocks", "subscriptions", "hashtags"].includes(outcome.name),
         );
@@ -615,6 +647,23 @@ export function createAuthSessionCoordinator(deps) {
           pubkey: activePubkey,
           authLoadingState: this.authLoadingState,
         });
+
+        // Warm the watch history in the background now that the feed-driving
+        // lists (blocks/subscriptions/hashtags) have finished decrypting. This
+        // runs AFTER the required lists — never concurrently — so it does not
+        // re-introduce the signer starvation that previously made this an
+        // intentionally-deferred load. The cold load is now bounded to a few
+        // decrypts + deferred backfill (not the old ~150 serialized decrypts),
+        // so the For You feed's suppression and tag-affinity are ready by the
+        // time the user reaches it instead of waiting until the For You /
+        // History view is opened. Fire-and-forget: the feed re-runs on the
+        // watch-history "fingerprint" event.
+        schedulePostLoginWatchHistoryPreload({
+          watchHistoryService,
+          activePubkey,
+          devLogger,
+        });
+
         return listSyncDetail;
       });
 
