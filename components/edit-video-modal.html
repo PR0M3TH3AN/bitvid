@@ -676,15 +676,15 @@
 
           <div class="space-y-1">
             <label for="editVideoWs" class="block text-sm font-medium text-text">
-              Web seed (ws=)
+              Web seeds (ws=, one per line)
             </label>
             <div class="flex flex-col gap-2 sm:flex-row">
-              <input
-                type="url"
+              <textarea
                 id="editVideoWs"
-                class="flex-1 input"
-                placeholder="https://cdn.example.com/video.mp4"
-              />
+                rows="2"
+                class="flex-1 textarea"
+                placeholder="https://cdn.example.com/video.mp4&#10;https://backup.example.com/video.mp4"
+              ></textarea>
               <button
                 type="button"
                 class="btn-ghost focus-ring hidden text-xs font-semibold uppercase tracking-wide"
@@ -693,6 +693,10 @@
                 Edit field
               </button>
             </div>
+            <p class="text-xs text-muted">
+              Add a backup origin so the swarm keeps streaming if the primary is
+              overloaded. Each must serve the exact same file.
+            </p>
           </div>
 
           <div class="space-y-1">

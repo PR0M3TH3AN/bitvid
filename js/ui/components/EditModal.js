@@ -1,4 +1,9 @@
-import { extractMagnetHints } from "../../magnetShared.js";
+import {
+  extractMagnetHints,
+  extractAllWebSeeds,
+  normalizeWebSeedList,
+  setMagnetWebSeeds,
+} from "../../magnetShared.js";
 import { normalizeAndAugmentMagnet } from "../../magnetUtils.js";
 import { createModalAccessibility } from "./modalAccessibility.js";
 import { Nip71FormManager } from "./nip71FormManager.js";
@@ -413,7 +418,13 @@ export class EditModal {
 
     const magnetSource = video.magnet || video.rawMagnet || "";
     const magnetHints = extractMagnetHints(magnetSource);
-    const effectiveWs = video.ws || magnetHints.ws || "";
+    // Surface every web seed the magnet carries (one per line), not just the
+    // first, so the editor can see and manage backup origins without silently
+    // dropping them.
+    const magnetWebSeeds = extractAllWebSeeds(magnetSource);
+    const effectiveWs = magnetWebSeeds.length
+      ? magnetWebSeeds.join("\n")
+      : video.ws || magnetHints.ws || "";
     const effectiveXs = video.xs || magnetHints.xs || "";
     const enableCommentsValue =
       typeof video.enableComments === "boolean" ? video.enableComments : true;
@@ -1039,13 +1050,23 @@ export class EditModal {
     }
 
     if (finalMagnet) {
+      // When the web seed list was manually edited, replace the magnet's full
+      // ws= set with exactly what's in the field — this is what makes removal
+      // actually stick (append-only normalization would leave deleted seeds
+      // behind). Otherwise leave whatever seeds the magnet already carries
+      // (including those from a freshly pasted magnet) untouched.
+      if (wsWasManuallyEdited) {
+        finalMagnet = setMagnetWebSeeds(finalMagnet, normalizeWebSeedList(newWs));
+      }
       const result = normalizeAndAugmentMagnet(finalMagnet, {
-        webSeed: finalWs,
+        webSeed: [],
         xs: finalXs,
       });
       finalMagnet = result.magnet;
+      // The content `ws` field stores the primary (first) seed; the magnet
+      // carries the complete set.
+      finalWs = extractAllWebSeeds(finalMagnet)[0] || "";
       const hints = extractMagnetHints(finalMagnet);
-      finalWs = hints.ws;
       finalXs = hints.xs;
     } else {
       finalWs = "";

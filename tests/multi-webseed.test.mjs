@@ -8,7 +8,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { extractAllWebSeeds } from "../js/magnetShared.js";
+import {
+  extractAllWebSeeds,
+  normalizeWebSeedList,
+  setMagnetWebSeeds,
+} from "../js/magnetShared.js";
 import { normalizeVideoNotePayload } from "../js/services/videoNotePayload.js";
 
 const BTIH = "a".repeat(40);
@@ -98,6 +102,44 @@ test("upload-modal shape ([primaryUrl, textarea]) yields primary-first, all spli
   assert.ok(seeds.includes(SEED_B), "second backup webseed carried");
   // CDN stays the primary (first) seed.
   assert.equal(payload.legacyFormData.ws, cdn);
+});
+
+test("setMagnetWebSeeds adds seeds to a magnet that has none", () => {
+  const out = setMagnetWebSeeds(MAGNET, [SEED_A, SEED_B]);
+  assert.deepEqual(extractAllWebSeeds(out), [SEED_A, SEED_B]);
+});
+
+test("setMagnetWebSeeds replaces the full set — a removed seed is gone", () => {
+  const withBoth = `${MAGNET}&ws=${encodeURIComponent(SEED_A)}&ws=${encodeURIComponent(
+    SEED_B,
+  )}`;
+  // Edit the list down to just SEED_A: SEED_B must not linger.
+  const out = setMagnetWebSeeds(withBoth, [SEED_A]);
+  const seeds = extractAllWebSeeds(out);
+  assert.deepEqual(seeds, [SEED_A]);
+  assert.ok(!seeds.includes(SEED_B), "removed webseed must be dropped from the magnet");
+});
+
+test("setMagnetWebSeeds with an empty list strips every webseed", () => {
+  const withBoth = `${MAGNET}&ws=${encodeURIComponent(SEED_A)}&ws=${encodeURIComponent(
+    SEED_B,
+  )}`;
+  assert.deepEqual(extractAllWebSeeds(setMagnetWebSeeds(withBoth, [])), []);
+});
+
+test("setMagnetWebSeeds preserves the info hash and accepts a multi-line string", () => {
+  const out = setMagnetWebSeeds(MAGNET, `${SEED_A}\n${SEED_B}`);
+  assert.ok(out.includes(`btih:${BTIH}`), "info hash must survive the rebuild");
+  assert.deepEqual(extractAllWebSeeds(out), [SEED_A, SEED_B]);
+});
+
+test("normalizeWebSeedList splits arrays and strings, deduped and ordered", () => {
+  assert.deepEqual(normalizeWebSeedList([SEED_A, `${SEED_B}\n${SEED_A}`]), [
+    SEED_A,
+    SEED_B,
+  ]);
+  assert.deepEqual(normalizeWebSeedList(`${SEED_A}, ${SEED_B}`), [SEED_A, SEED_B]);
+  assert.deepEqual(normalizeWebSeedList(""), []);
 });
 
 test("duplicate webseeds are not written twice", () => {

@@ -1,4 +1,4 @@
-import { extractMagnetHints } from "../magnetShared.js";
+import { extractMagnetHints, normalizeWebSeedList } from "../magnetShared.js";
 import { normalizeAndAugmentMagnet } from "../magnetUtils.js";
 import { infoHashFromMagnet } from "../magnets.js";
 import {
@@ -32,47 +32,6 @@ function normalizeString(value) {
     return Number.isFinite(value) ? String(value).trim() : "";
   }
   return String(value ?? "").trim();
-}
-
-/**
- * Normalize a web seed field into an ordered, deduped list of trimmed URLs.
- * Accepts an array (multi-webseed forms) or a string that may carry several
- * URLs separated by newlines/commas (a single textarea field). Preserving the
- * full list lets a video declare multiple independent webseeds (e.g. a CDN
- * plus a backup origin) instead of collapsing to a single `ws`.
- *
- * @param {string|string[]} value
- * @returns {string[]}
- */
-function normalizeWebSeedList(value) {
-  const out = [];
-  const seen = new Set();
-  // Each entry may itself carry several URLs separated by newlines/commas (a
-  // textarea field), so split every entry regardless of whether the caller
-  // passed an array or a single string.
-  const push = (entry) => {
-    if (typeof entry !== "string") {
-      return;
-    }
-    for (const piece of entry.split(/[\r\n,]+/)) {
-      const trimmed = piece.trim();
-      if (!trimmed) {
-        continue;
-      }
-      const key = trimmed.toLowerCase();
-      if (seen.has(key)) {
-        continue;
-      }
-      seen.add(key);
-      out.push(trimmed);
-    }
-  };
-  if (Array.isArray(value)) {
-    value.forEach(push);
-  } else if (typeof value === "string") {
-    push(value);
-  }
-  return out;
 }
 
 function normalizeSha256Hex(value) {
