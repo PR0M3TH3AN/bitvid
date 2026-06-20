@@ -679,7 +679,7 @@ export class ProfileModalController {
     this.navButtons.relays = document.getElementById("profileNavRelays") || null;
     this.navButtons.wallet = document.getElementById("profileNavWallet") || null;
     this.navButtons.storage = document.getElementById("profileNavStorage") || null;
-    this.navButtons.myVideos =
+    this.navButtons.myvideos =
       document.getElementById("profileNavMyVideos") || null;
     this.navButtons.hashtags =
       document.getElementById("profileNavHashtags") || null;
@@ -704,7 +704,7 @@ export class ProfileModalController {
     this.panes.relays = document.getElementById("profilePaneRelays") || null;
     this.panes.wallet = document.getElementById("profilePaneWallet") || null;
     this.panes.storage = document.getElementById("profilePaneStorage") || null;
-    this.panes.myVideos =
+    this.panes.myvideos =
       document.getElementById("profilePaneMyVideos") || null;
     this.panes.hashtags = document.getElementById("profilePaneHashtags") || null;
     this.panes.subscriptions =
@@ -3280,7 +3280,7 @@ export class ProfileModalController {
         this.walletController.refreshWalletPaneState();
       } else if (target === "storage") {
         this.storageController.populateStoragePane();
-      } else if (target === "myVideos") {
+      } else if (target === "myvideos") {
         void this.myVideosController.populate({ forceFetch: true });
       } else if (target === "hashtags") {
         this.hashtagController.populateHashtagPreferences();
