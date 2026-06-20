@@ -59,8 +59,19 @@ tests → `npm run build` + `npm run test:unit` green → commit + push.
 - [x] Confirmed the NIP-51 list publish already uses the WRITE relays
       (`publishRecords` → `getWriteRelays`), so it does NOT have the #1 relay-scope
       bug. The replace-semantics fix is the complete fix.
-- [ ] **Verify with the user** that removal sticks across reload (and the optimistic
-      re-render path doesn't flash the removed item back).
+- [x] **Second root cause found + fixed** (`fff2bef2`): reads UNION items across all
+      events relays return, and a publish only reports ok when ALL relays accept. With
+      a flaky relay list the reduced event reached some relays while others kept the
+      old copy; the reader deduped by event id, so stale+fresh versions of the same
+      month (d-tag) were unioned → removed items resurrected. Now
+      dedupeNewestPerReplaceableAddress keeps only the newest event per d-tag at both
+      read union sites. Live on unstable.bitvid.network (module verified served).
+- [ ] **Verify with the user** that removal now sticks across reload.
+- [ ] Known remaining edge case: clearing the LAST item of a month doesn't clear it
+      on relays — `publishMonthRecord` early-returns on an empty month
+      (`if (!items.length) return {ok:true}`), defeating updateWatchHistoryList's
+      "publish empty months to clear them" intent. Fix the write side to publish an
+      empty/tombstone month event so full clears propagate.
 - [ ] Add a scenario test: given N history entries, when one is deleted, then it is
       absent from the persisted list AND the rendered history view.
 
