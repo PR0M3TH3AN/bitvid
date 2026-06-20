@@ -121,6 +121,7 @@ import {
   DEFAULT_RELAY_URLS,
   RELAY_URLS,
   capReadRelays,
+  buildFeedRelaySet,
   ensureNostrTools,
   getCachedNostrTools,
   nostrToolsBootstrapFailure,
@@ -3574,7 +3575,11 @@ export class NostrClient {
         getPool: () => this.pool,
         getDefaultRelays: () => {
           const healthy = sanitizeRelayList(this.getHealthyRelays(this.relays));
-          return healthy.length ? healthy : Array.from(DEFAULT_RELAY_URLS);
+          // Guarantee reliable default aggregators are always in the feed set,
+          // even when the user's own relays survive the health filter but are
+          // actually dead — otherwise the feed subscribes to a fully-broken
+          // list and hangs forever on "Fetching…".
+          return buildFeedRelaySet(healthy, this.relays);
         },
         // Own registry, isolated from the global singleton (which other
         // subsystems use for their own keys) and from other client instances.

@@ -102,6 +102,28 @@ export function capReadRelays(urls) {
   ).slice(0, MAX_SUBSCRIBE_RELAYS);
 }
 
+// Build the relay set for the main video feed.
+//
+// The subtle failure this guards: a user whose own relays are all DEAD but not
+// yet probed (so they still pass the liveness filter) would otherwise have the
+// feed subscribe only to those dead relays and hang on "Fetching…" forever,
+// because the known-good defaults were never injected. capReadRelays always
+// reserves a couple of reliable aggregator slots, so routing the healthy set
+// through it guarantees the feed can reach live relays even when the user's
+// entire personal list is broken. Falls back to the full default set if nothing
+// survives at all.
+export function buildFeedRelaySet(healthyRelays, fallbackRelays = []) {
+  const healthy = Array.isArray(healthyRelays)
+    ? healthyRelays.filter((u) => typeof u === "string" && u.trim())
+    : [];
+  const fallback = Array.isArray(fallbackRelays)
+    ? fallbackRelays.filter((u) => typeof u === "string" && u.trim())
+    : [];
+  const base = healthy.length ? healthy : fallback;
+  const capped = capReadRelays(base);
+  return capped.length ? capped : Array.from(DEFAULT_RELAY_URLS);
+}
+
 const globalScope =
   typeof window !== "undefined"
     ? window
