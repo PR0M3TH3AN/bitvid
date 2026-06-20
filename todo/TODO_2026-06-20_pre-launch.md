@@ -81,8 +81,14 @@ tests → `npm run build` + `npm run test:unit` green → commit + push.
 - [x] **Logged-out / local-only delete** (`2f95d448`): snapshot no-op'd for
       local-only actors, so removing from the local queue did nothing. A replace
       snapshot now rewrites the local queue (replaceLocalQueue). Live.
+- [x] **All-relays false-failure fixed** (`565a9618`): publishMonthRecord reported
+      success only when EVERY write relay accepted, so on a 20+ relay list every
+      snapshot was "partial-relay-acceptance" -> ok:false -> the logged-in remove
+      threw "watch-history-snapshot-failed" (even though major relays accepted) AND
+      new watches never persisted. Now success = acceptedCount > 0. Live.
 - [ ] **Verify with the user**: logged-IN profile-pane delete + clear, AND
-      logged-OUT local delete + clear, all stick across reload.
+      logged-OUT local delete + clear, all stick across reload; AND that newly
+      watched videos now appear in history (was blocked by the same all-relays bug).
 - [ ] Backfill regression tests: a profile-pane wiring test (remove not routed to a
       no-op) — the existing profile-modal-controller test file has an unusual
       wrapper, so add carefully — plus a feed/view-level seed→delete→assert test.
