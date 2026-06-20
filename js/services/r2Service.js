@@ -154,17 +154,29 @@ export class R2Service {
       ""
     ).trim();
 
-    if (!accessKeyId || !secretAccessKey) {
-      // Storage is locked / keys unavailable — can't delete without them.
-      return skip("storage-locked");
-    }
-    if (!bucket || !publicBaseUrl) {
+    if (!publicBaseUrl) {
+      // Without the public base URL we can't tell which objects belong to this
+      // user's bucket, so there's nothing safe to remove.
       return skip("missing-bucket-or-base-url");
     }
 
+    // Determine the affected objects BEFORE the credentials check. publicBaseUrl
+    // is available even while storage is locked, so this lets us report
+    // "storage-locked" only when there are genuinely hosted objects to remove —
+    // an external-URL video (no matching objects) is never a false alarm.
     const keys = collectVideoStorageKeys({ videos: list, publicBaseUrl });
     if (!keys.length) {
       return skip("no-matching-objects");
+    }
+
+    if (!accessKeyId || !secretAccessKey) {
+      // There ARE objects to remove but storage is locked / keys unavailable —
+      // surface this distinctly so the caller can warn the user the hosted
+      // files were left behind.
+      return skip("storage-locked");
+    }
+    if (!bucket) {
+      return skip("missing-bucket-or-base-url");
     }
 
     let s3;

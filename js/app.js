@@ -4559,6 +4559,7 @@ class Application {
       // Best-effort: remove the underlying R2/S3 object(s) now that the note(s)
       // are gone, so the file isn't left publicly downloadable. This never
       // blocks the delete — failures are logged only.
+      let storageLockedRemnant = false;
       try {
         const cleanup = await r2Service.deleteVideoStorage({
           videos: [targetVideo],
@@ -4570,6 +4571,12 @@ class Application {
           );
         } else if (cleanup?.skipped) {
           devLogger.log(`[delete] Storage cleanup skipped: ${cleanup.reason}.`);
+          // The note is gone but the hosted file is still publicly downloadable
+          // because storage is locked. Warn the user so they can unlock and
+          // delete again (or remove it from their bucket manually).
+          if (cleanup.reason === "storage-locked") {
+            storageLockedRemnant = true;
+          }
         }
       } catch (cleanupErr) {
         devLogger.warn(
@@ -4580,6 +4587,12 @@ class Application {
 
       await this.loadVideos();
       this.showSuccess("All versions deleted successfully!");
+      if (storageLockedRemnant) {
+        this.showStatus(
+          "Heads up: the hosted file is still in your storage bucket because storage is locked. Unlock storage and delete again, or remove it from your bucket manually.",
+          { autoHideMs: 12000, showSpinner: false }
+        );
+      }
       this.deleteModal.close();
       this.forceRefreshAllProfiles();
     } catch (err) {
