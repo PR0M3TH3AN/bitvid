@@ -41,10 +41,18 @@ tests → `npm run build` + `npm run test:unit` green → commit + push.
       once the cache/mirror angles above are confirmed.
 
 ### 2. Watch history delete does not work at all
-- [ ] Audit the watch-history delete function — reportedly non-functional. Trace
-      `watchHistoryService` delete/clear → does it publish the updated NIP-51 list,
-      re-encrypt, and re-render? Check the signer/decrypt budget (single-threaded
-      NIP-07) and that an empty list isn't swallowed as a transient error.
+- [x] **Root cause found + fixed** (`5f19f536`): the removal path called
+      `watchHistoryService.snapshot(remaining, …)` but snapshot published WITHOUT
+      `replace:true`, and the default merges incoming items with the cached list —
+      so the removed item was merged straight back (no effect). Removing the last
+      item fell through to republishing the pending queue instead of clearing.
+      Fixed: snapshot honors `replace` (incl. empty = clear), both removal call
+      sites pass `replace:true`. Mutation-verified.
+- [x] Confirmed the NIP-51 list publish already uses the WRITE relays
+      (`publishRecords` → `getWriteRelays`), so it does NOT have the #1 relay-scope
+      bug. The replace-semantics fix is the complete fix.
+- [ ] **Verify with the user** that removal sticks across reload (and the optimistic
+      re-render path doesn't flash the removed item back).
 - [ ] Add a scenario test: given N history entries, when one is deleted, then it is
       absent from the persisted list AND the rendered history view.
 
