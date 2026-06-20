@@ -86,6 +86,8 @@ import { buildDmRelayListEvent, buildShareEvent } from "./nostrEventSchemas.js";
 import {
   publishEventToRelays,
   assertAnyRelayAccepted,
+  describePublishOutcome,
+  readRelayPublishSummary,
 } from "./nostrPublish.js";
 import {
   getActiveSigner,
@@ -3061,8 +3063,15 @@ class Application {
       return false;
     }
 
+    let relaySummary = null;
     try {
-      await this.nostrService.publishVideoNote(publishPayload, this.pubkey);
+      const publishResult = await this.nostrService.publishVideoNote(
+        publishPayload,
+        this.pubkey,
+      );
+      // The legacy (kind 30078) event carries the relay tally attached by
+      // publishVideo (non-enumerable, so it never hit the wire).
+      relaySummary = readRelayPublishSummary(publishResult?.legacy) || null;
     } catch (err) {
       devLogger.error("Failed to publish video:", err);
       this.showError("Failed to share video. Please try again later.");
@@ -3089,7 +3098,15 @@ class Application {
       );
     }
 
-    this.showSuccess("Video shared successfully!");
+    // Tell the user how many relays actually accepted the video, so a partial
+    // (or relay-list-wide) failure isn't hidden behind a generic confirmation.
+    const outcome = describePublishOutcome(relaySummary || {});
+    if (outcome.tone === "warning") {
+      this.showSuccess(outcome.message);
+      this.showStatus(outcome.message, { autoHideMs: 8000, showSpinner: false });
+    } else {
+      this.showSuccess(outcome.message);
+    }
 
     if (loadVideosError) {
       this.showStatus(

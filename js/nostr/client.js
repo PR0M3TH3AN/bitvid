@@ -107,6 +107,7 @@ import {
   publishEventToRelay,
   publishEventToRelays,
   assertAnyRelayAccepted,
+  attachRelayPublishSummary,
 } from "../nostrPublish.js";
 import {
   signEventWithPrivateKey,
@@ -2725,12 +2726,20 @@ export class NostrClient {
 
     try {
       // 1. Publish the primary Video Note (Kind 30078)
-      const { signedEvent } = await this.signAndPublishEvent(context.event, {
-        context: "video note",
-        logName: "Video note",
-        devLogLabel: "video note",
-        resolveActiveSigner: (p) => this.signerManager.resolveActiveSigner(p),
-      });
+      const { signedEvent, summary } = await this.signAndPublishEvent(
+        context.event,
+        {
+          context: "video note",
+          logName: "Video note",
+          devLogLabel: "video note",
+          resolveActiveSigner: (p) => this.signerManager.resolveActiveSigner(p),
+        },
+      );
+
+      // Stash a compact relay tally on the returned event (non-enumerable so it
+      // never leaks into serialization/relay logic) so the UI can report how
+      // many relays actually accepted the video.
+      attachRelayPublishSummary(signedEvent, summary);
 
       // 2. Publish NIP-94 Mirror (Kind 1063) if a hosted URL is present.
       await handlePublishNip94(this, signedEvent, context);
