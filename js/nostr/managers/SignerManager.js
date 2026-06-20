@@ -255,6 +255,33 @@ export class SignerManager {
       return raceWinner;
     }
 
+    // The registry has no signer yet (e.g. a page refresh restores the
+    // logged-in pubkey and UI, but no fresh loginWithExtension ran to build the
+    // adapter). Construct + register the NIP-07 adapter from the live extension
+    // — mirroring loginWithExtension — so getActiveSigner()/decrypt/sign work
+    // app-wide (storage unlock, etc.) instead of relying on per-call window.nostr
+    // fallbacks. Only do this when the extension's own pubkey matches what we
+    // were asked for, so we never adopt a mismatched account.
+    const resolvedPubkey = extensionPubkey || normalizedPubkey;
+    if (
+      resolvedPubkey &&
+      (!normalizedPubkey || resolvedPubkey === normalizedPubkey) &&
+      typeof extension.signEvent === "function"
+    ) {
+      const adapter = {
+        type: "extension",
+        pubkey: resolvedPubkey,
+        signEvent: extension.signEvent.bind(extension),
+        nip04: extension.nip04,
+        nip44: extension.nip44,
+      };
+      this.pubkey = resolvedPubkey;
+      this.setActiveSigner(adapter);
+      // Return through resolveActiveSigner so capability aliases
+      // (nip04Decrypt/nip44Decrypt) are hydrated onto the adapter.
+      return this.resolveActiveSigner(resolvedPubkey) || adapter;
+    }
+
     return null;
   }
 
