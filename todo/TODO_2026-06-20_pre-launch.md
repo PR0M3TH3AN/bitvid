@@ -71,11 +71,22 @@ tests → `npm run build` + `npm run test:unit` green → commit + push.
       empty month, so the clearing event updateWatchHistoryList intended was never
       published. Now an empty month publishes a newest EMPTY replaceable event for
       its d-tag, so the clear takes effect (and reads see it as empty). Live.
-- [ ] **Verify with the user** that single-item removal AND full clear both stick
-      across reload now (three fixes: replace semantics `5f19f536`, newest-per-d-tag
-      read `fff2bef2`, empty-month publish `a3799f3f`).
-- [ ] Add a feed/view-level scenario test (seed N entries → delete one / clear all →
-      assert absent from persisted list AND rendered history view).
+- [x] **THE actual bug for the profile pane** (`4c6415c2`): the profile modal's
+      history renderer overrode `remove` to route through onHistoryReady →
+      app.handleProfileHistoryEvent(), a no-op stub (`return null`) left from the
+      synced-vs-local refactor. So profile-pane deletes published NOTHING (card
+      vanished optimistically, reappeared on refresh) — which is why the earlier
+      three fixes (publish/read layer) never helped there. Removed the override so
+      it uses the working defaultRemoveHandler. Live.
+- [x] **Logged-out / local-only delete** (`2f95d448`): snapshot no-op'd for
+      local-only actors, so removing from the local queue did nothing. A replace
+      snapshot now rewrites the local queue (replaceLocalQueue). Live.
+- [ ] **Verify with the user**: logged-IN profile-pane delete + clear, AND
+      logged-OUT local delete + clear, all stick across reload.
+- [ ] Backfill regression tests: a profile-pane wiring test (remove not routed to a
+      no-op) — the existing profile-modal-controller test file has an unusual
+      wrapper, so add carefully — plus a feed/view-level seed→delete→assert test.
+      (Local + publish/read layers are already unit+mutation tested.)
 
 ### 3. Zaps system + platform-fee zap split
 - [ ] Audit the zap flow (NWC / `nwcClient.js`, `zapController.js`, `zapReceiptValidator.js`).
