@@ -327,20 +327,38 @@ async function defaultRemoveHandler({
         })
         .filter(Boolean)
     : [];
+  logWatchHistoryDebug("watch-history:remove", "info", "defaultRemoveHandler", {
+    actor,
+    sanitizedCount: sanitized.length,
+    values: sanitized.map((p) => p?.value).slice(0, 20),
+    hasSnapshot: typeof snapshot === "function",
+  });
   if (typeof snapshot === "function") {
     // Removal replaces the list — without this the snapshot would merge the
     // removed item back from cache and the deletion would have no effect.
-    await snapshot(sanitized, { actor, reason, replace: true });
+    const snapResult = await snapshot(sanitized, { actor, reason, replace: true });
+    logWatchHistoryDebug("watch-history:remove", "info", "defaultRemoveHandler snapshot", {
+      ok: snapResult?.ok,
+      empty: snapResult?.empty,
+      skipped: snapResult?.skipped,
+    });
   }
   try {
     if (typeof updateWatchHistoryList === "function") {
-      await updateWatchHistoryList(sanitized, {
+      const updateResult = await updateWatchHistoryList(sanitized, {
         actorPubkey: actor,
         replace: true,
         source: reason
       });
+      logWatchHistoryDebug("watch-history:remove", "info", "defaultRemoveHandler list update", {
+        ok: updateResult?.ok,
+        finalItemCount: updateResult?.items?.length,
+      });
     }
   } catch (error) {
+    logWatchHistoryDebug("watch-history:remove", "warn", "defaultRemoveHandler failed", {
+      error: error?.message || String(error),
+    });
     if (isDevEnv) {
       userLogger.warn("[historyView] Failed to update watch history list:", error);
     }
