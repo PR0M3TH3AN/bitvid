@@ -957,12 +957,12 @@ export class ProfileModalController {
       sessionWarningSelector: "#profileHistorySessionWarning",
       emptyCopy: "You haven’t watched any videos yet.",
       variant: "modal",
-      remove: (payload) =>
-        this.callbacks.onHistoryReady({
-          ...(typeof payload === "object" && payload ? payload : {}),
-          controller: this,
-          renderer: this.profileHistoryRenderer,
-        }),
+      // NOTE: do NOT override `remove` here. The previous override routed removal
+      // to onHistoryReady -> app.handleProfileHistoryEvent(), which is a no-op
+      // stub — so deleting an item in the profile history pane published nothing
+      // (the card vanished optimistically then reappeared on refresh). Falling
+      // through to the renderer's default `remove` uses the working
+      // defaultRemoveHandler (publishes the reduced list with replace:true).
     };
 
     return this.profileHistoryRendererConfig;
