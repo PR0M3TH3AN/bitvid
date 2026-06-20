@@ -40,6 +40,7 @@ import {
 } from "../utils/pointerNormalization.js";
 import { pMap } from "../utils/asyncUtils.js";
 import { selectNewestListEvent } from "./listEventOrdering.js";
+import { dedupeNewestPerReplaceableAddress } from "./watchHistoryDedup.js";
 import {
   getCachedChunkPlaintext,
   setCachedChunkPlaintext,
@@ -2030,9 +2031,10 @@ class WatchHistoryManager {
         // count against the limit. Only uncached, genuinely-encrypted chunks
         // consume the budget; any beyond it are deferred (the caller can request
         // older chunks later, which re-uses the chunk cache for the rest).
-        const sortedChunkEvents = [...allChunkEvents].sort(
-          (a, b) => (Number(b?.created_at) || 0) - (Number(a?.created_at) || 0),
-        );
+        // Keep only the NEWEST event per month (d-tag) so a lagging relay's
+        // stale copy can't resurrect removed items in the union. Newest-first,
+        // so the decrypt-budget ordering below is preserved.
+        const sortedChunkEvents = dedupeNewestPerReplaceableAddress(allChunkEvents);
         const chunkEvents = [];
         let uncachedBudget = chunkDecryptLimit;
         for (const event of sortedChunkEvents) {
@@ -2105,13 +2107,12 @@ class WatchHistoryManager {
     const eventsToProcess = Array.isArray(eventToProcess) ? eventToProcess : [eventToProcess];
     const collectedItems = [];
 
-    // Deduplicate events by ID
-    const uniqueEvents = new Map();
-    for (const ev of eventsToProcess) {
-        if (ev && ev.id) uniqueEvents.set(ev.id, ev);
-    }
+    // Deduplicate by replaceable address (newest per d-tag), NOT by id — a stale
+    // version of the same month from a lagging relay must not be unioned in
+    // alongside the fresh one (that resurrects removed items).
+    const uniqueEvents = dedupeNewestPerReplaceableAddress(eventsToProcess);
 
-    for (const event of uniqueEvents.values()) {
+    for (const event of uniqueEvents) {
       const fallbackPointers = extractPointerItemsFromEvent(event);
       const ciphertext = typeof event.content === "string" ? event.content : "";
 
