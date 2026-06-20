@@ -23,6 +23,8 @@ export class ProfileRelayController {
     this.addRelayButton = document.getElementById("addRelayBtn") || null;
     this.restoreRelaysButton = document.getElementById("restoreRelaysBtn") || null;
     this.relayHealthStatus = document.getElementById("relayHealthStatus") || null;
+    this.relayHealthSuggestion =
+      document.getElementById("relayHealthSuggestion") || null;
     this.relayHealthTelemetryToggle = document.getElementById("relayHealthTelemetryOptIn") || null;
     this.profileRelayRefreshBtn = document.getElementById("relayListRefreshBtn") || null;
     this.profileRestoreRelaysBtn = this.restoreRelaysButton;
@@ -82,9 +84,27 @@ export class ProfileRelayController {
       const info = document.createElement("div");
       info.className = "flex-1 min-w-0";
 
+      const urlRow = document.createElement("div");
+      urlRow.className = "flex items-center gap-2 flex-wrap";
+
       const urlEl = document.createElement("p");
       urlEl.className = "text-sm font-medium text-primary break-all";
       urlEl.textContent = entry.url;
+
+      // Live connectivity pill. Defaults to "Checking…" until a health snapshot
+      // arrives (updateRelayHealthIndicators sets the real state). Insecure
+      // cleartext ws:// relays (non-localhost) are blocked by the browser CSP,
+      // so flag them as such immediately — they will never connect.
+      const statusPill = document.createElement("span");
+      statusPill.dataset.role = "relay-status-pill";
+      if (this.isInsecureRelayUrl(entry.url)) {
+        this.applyStatusPill(statusPill, "blocked");
+      } else {
+        this.applyStatusPill(statusPill, "checking");
+      }
+
+      urlRow.appendChild(urlEl);
+      urlRow.appendChild(statusPill);
 
       const statusEl = document.createElement("p");
       statusEl.className = "mt-1 text-xs text-muted";
@@ -100,9 +120,19 @@ export class ProfileRelayController {
       health.className = "flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-2xs text-muted empty:hidden";
       health.dataset.role = "relay-health";
 
-      info.appendChild(urlEl);
+      // Actionable hint shown when a relay is unreachable/blocked.
+      const hint = document.createElement("p");
+      hint.className = "mt-1 text-2xs text-status-warning empty:hidden";
+      hint.dataset.role = "relay-hint";
+      if (this.isInsecureRelayUrl(entry.url)) {
+        hint.textContent =
+          "Insecure ws:// relay — blocked by the browser. Remove it or use a wss:// address.";
+      }
+
+      info.appendChild(urlRow);
       info.appendChild(statusEl);
       info.appendChild(health);
+      info.appendChild(hint);
 
       const actions = document.createElement("div");
       actions.className = "flex items-center gap-2";
@@ -135,6 +165,43 @@ export class ProfileRelayController {
     });
   }
 
+  // A cleartext ws:// relay that is NOT localhost/127.0.0.1 is blocked by the
+  // app's Content-Security-Policy (connect-src allows wss: and ws://localhost
+  // only), so it can never connect from the browser.
+  isInsecureRelayUrl(url) {
+    if (typeof url !== "string") {
+      return false;
+    }
+    const trimmed = url.trim().toLowerCase();
+    if (!trimmed.startsWith("ws://")) {
+      return false;
+    }
+    return !(
+      trimmed.startsWith("ws://localhost") ||
+      trimmed.startsWith("ws://127.0.0.1")
+    );
+  }
+
+  // Paint a status pill in place. State is one of:
+  // "online" | "offline" | "checking" | "blocked".
+  applyStatusPill(pill, state, detail = "") {
+    if (!(pill instanceof HTMLElement)) {
+      return;
+    }
+    const base =
+      "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-2xs font-semibold whitespace-nowrap";
+    const config = {
+      online: { cls: "bg-status-success/15 text-status-success", label: "● Online" },
+      offline: { cls: "bg-status-danger/15 text-status-danger", label: "● Offline" },
+      checking: { cls: "bg-surface-strong/40 text-muted", label: "● Checking…" },
+      blocked: { cls: "bg-status-danger/15 text-status-danger", label: "● Blocked" },
+    };
+    const chosen = config[state] || config.checking;
+    pill.className = `${base} ${chosen.cls}`;
+    pill.textContent = detail ? `${chosen.label} · ${detail}` : chosen.label;
+    pill.dataset.state = state;
+  }
+
   updateRelayHealthStatus(message = "") {
     if (!this.relayHealthStatus) {
       return;
@@ -153,6 +220,9 @@ export class ProfileRelayController {
       return;
     }
 
+    let deadCount = 0;
+    let totalCount = 0;
+
     snapshot.forEach((entry) => {
       const url = entry.url;
       const item = this.relayList.querySelector(
@@ -161,12 +231,58 @@ export class ProfileRelayController {
       if (!item) {
         return;
       }
+      totalCount += 1;
 
       const healthContainer = item.querySelector('[data-role="relay-health"]');
+      const pill = item.querySelector('[data-role="relay-status-pill"]');
+      const hint = item.querySelector('[data-role="relay-hint"]');
+
+      // Classify connectivity from the snapshot. A relay that has been checked
+      // (lastCheckedAt) and is not connected is dead; one never checked is still
+      // "checking". Insecure ws:// relays are blocked regardless.
+      const insecure = this.isInsecureRelayUrl(url);
+      const checked = Boolean(entry.lastCheckedAt);
+      let state;
+      if (insecure) {
+        state = "blocked";
+      } else if (entry.connected) {
+        state = "online";
+      } else if (checked) {
+        state = "offline";
+      } else {
+        state = "checking";
+      }
+
+      const isDead = state === "offline" || state === "blocked";
+      if (isDead) {
+        deadCount += 1;
+      }
+
+      if (pill) {
+        const detail =
+          state === "online" && Number.isFinite(entry.lastLatencyMs)
+            ? `${entry.lastLatencyMs}ms`
+            : "";
+        this.applyStatusPill(pill, state, detail);
+      }
+
+      // Draw attention to dead relays' Remove button so they're easy to spot.
+      const removeBtn = item.querySelector('button[data-variant="danger"]');
+      if (removeBtn instanceof HTMLElement) {
+        removeBtn.dataset.emphasis = isDead ? "true" : "false";
+      }
+
+      if (hint instanceof HTMLElement && !insecure) {
+        // (insecure hint is set at populate time and never changes)
+        hint.textContent =
+          state === "offline"
+            ? "Unreachable right now — consider removing it to speed up loading."
+            : "";
+      }
+
       if (!healthContainer) {
         return;
       }
-
       healthContainer.textContent = "";
 
       const createBadge = (label, value, colorClass) => {
@@ -197,6 +313,41 @@ export class ProfileRelayController {
         );
       }
     });
+
+    this.updateRelaySuggestion(deadCount, totalCount);
+  }
+
+  // Summary banner above the list: when relays are dead/blocked, nudge the user
+  // to clean up (and point at "Restore defaults" when the list is badly broken).
+  updateRelaySuggestion(deadCount, totalCount) {
+    const banner = this.relayHealthSuggestion;
+    if (!(banner instanceof HTMLElement)) {
+      return;
+    }
+    if (!deadCount || !totalCount) {
+      banner.classList.add("hidden");
+      banner.textContent = "";
+      return;
+    }
+
+    banner.textContent = "";
+    const headline = document.createElement("p");
+    headline.className = "font-semibold text-status-warning";
+    headline.textContent =
+      deadCount >= totalCount
+        ? `None of your ${totalCount} relays are reachable.`
+        : `${deadCount} of ${totalCount} relays are unreachable.`;
+    banner.appendChild(headline);
+
+    const tip = document.createElement("p");
+    tip.className = "mt-1 text-muted";
+    tip.textContent =
+      deadCount >= totalCount
+        ? "Videos can't load without a working relay. Use “Restore defaults” below, or add a healthy relay like wss://relay.damus.io or wss://nos.lol."
+        : "Removing unreachable relays speeds up loading. Look for the red “Offline” tags below.";
+    banner.appendChild(tip);
+
+    banner.classList.remove("hidden");
   }
 
   handleRelayHealthTelemetryToggle() {
@@ -286,7 +437,10 @@ export class ProfileRelayController {
 
     let result;
     try {
-      result = await this.runRelayOperation({
+      // runRelayOperation lives on the main ProfileModalController (it owns the
+      // onRelayOperation callback); it was not moved when relay logic was
+      // extracted into this controller, so it must be called via mainController.
+      result = await this.mainController.runRelayOperation({
         ...meta,
         activePubkey,
         skipPublishIfUnchanged,
