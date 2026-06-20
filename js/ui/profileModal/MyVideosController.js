@@ -3,6 +3,7 @@ import { nostrClient } from "../../nostrClientFacade.js";
 import { getApplication } from "../../applicationContext.js";
 import { collapseUserVideos } from "./myVideosData.js";
 import { classifyVideoHealth, isUrlUnderBase } from "./myVideosHealth.js";
+import { reconcileStorage } from "./myVideosReconcile.js";
 
 // Maps a health severity to a status-pill style, mirroring
 // ProfileRelayController.applyStatusPill so the look stays consistent.
@@ -31,8 +32,11 @@ export class MyVideosController {
     this.loadingEl = null;
     this.emptyEl = null;
     this.refreshBtn = null;
+    this.orphansSection = null;
+    this.orphanListEl = null;
     this.loading = false;
     this.publicBaseUrl = "";
+    this.pubkey = "";
   }
 
   cacheDomReferences() {
@@ -41,6 +45,10 @@ export class MyVideosController {
     this.loadingEl = document.getElementById("profileMyVideosLoading") || null;
     this.emptyEl = document.getElementById("profileMyVideosEmpty") || null;
     this.refreshBtn = document.getElementById("profileMyVideosRefreshBtn") || null;
+    this.orphansSection =
+      document.getElementById("profileMyVideosOrphans") || null;
+    this.orphanListEl =
+      document.getElementById("profileMyVideosOrphanList") || null;
   }
 
   registerEventListeners() {
@@ -99,6 +107,7 @@ export class MyVideosController {
     }
 
     this.loading = true;
+    this.pubkey = pubkey;
     this.setLoading(true);
     try {
       this.publicBaseUrl = await this.resolvePublicBaseUrl(pubkey);
@@ -119,9 +128,121 @@ export class MyVideosController {
       const rows = collapseUserVideos(all, pubkey);
       this.renderRows(rows);
       this.setSummary(this.buildSummary(rows));
+      // Bucket reconciliation runs after the note-side list is shown so the UI is
+      // responsive; it then layers missing-file pills + the orphan section on top.
+      void this.runReconciliation(rows, pubkey);
     } finally {
       this.loading = false;
       this.setLoading(false);
+    }
+  }
+
+  async runReconciliation(rows, pubkey) {
+    const r2Service = this.mainController.services?.r2Service;
+    if (!r2Service || typeof r2Service.listVideoStorageObjects !== "function") {
+      this.renderOrphans([]);
+      return;
+    }
+    let listing;
+    try {
+      listing = await r2Service.listVideoStorageObjects({ pubkey });
+    } catch (err) {
+      devLogger.warn("[myVideos] listVideoStorageObjects failed:", err);
+      this.renderOrphans([]);
+      return;
+    }
+    if (!listing || !listing.ok) {
+      // Locked storage etc. — nothing to reconcile against; leave note-side
+      // health as-is and hide the orphan section.
+      this.renderOrphans([]);
+      return;
+    }
+    const { missing, orphanKeys } = reconcileStorage({
+      videos: rows,
+      bucketKeys: listing.keys,
+      publicBaseUrl: this.publicBaseUrl,
+    });
+    for (const entry of missing) {
+      this.markRowMissing(entry.video);
+    }
+    this.renderOrphans(orphanKeys);
+  }
+
+  markRowMissing(video) {
+    if (!(this.listEl instanceof HTMLElement) || !video?.id) {
+      return;
+    }
+    const li = this.listEl.querySelector(
+      `li[data-video-id="${CSS.escape(video.id)}"]`,
+    );
+    const pill = li?.querySelector('[data-role="health-pill"]');
+    if (li instanceof HTMLElement) {
+      li.dataset.health = "missing-file";
+    }
+    if (pill instanceof HTMLElement) {
+      pill.className = `${PILL_BASE} ${PILL_BY_SEVERITY.warning}`;
+      pill.textContent = "Missing file";
+    }
+  }
+
+  renderOrphans(keys) {
+    const list = Array.isArray(keys) ? keys : [];
+    if (this.orphansSection instanceof HTMLElement) {
+      this.orphansSection.classList.toggle("hidden", list.length === 0);
+    }
+    if (!(this.orphanListEl instanceof HTMLElement)) {
+      return;
+    }
+    this.orphanListEl.replaceChildren();
+    for (const key of list) {
+      this.orphanListEl.appendChild(this.buildOrphanRow(key));
+    }
+  }
+
+  buildOrphanRow(key) {
+    const li = document.createElement("li");
+    li.className =
+      "card flex items-center justify-between gap-3 p-3 border border-border/60";
+
+    const label = document.createElement("span");
+    label.className = "truncate text-2xs text-muted font-mono";
+    label.textContent = key;
+    label.title = key;
+
+    const del = this.buildActionButton("Delete file", () => {
+      void this.handleDeleteOrphan(key);
+    }, true);
+
+    li.appendChild(label);
+    li.appendChild(del);
+    return li;
+  }
+
+  async handleDeleteOrphan(key) {
+    const r2Service = this.mainController.services?.r2Service;
+    if (!r2Service || typeof r2Service.deleteStorageKeys !== "function") {
+      return;
+    }
+    if (typeof window !== "undefined" && typeof window.confirm === "function") {
+      if (!window.confirm(`Permanently delete this file from your bucket?\n\n${key}`)) {
+        return;
+      }
+    }
+    let result;
+    try {
+      result = await r2Service.deleteStorageKeys({ keys: [key], pubkey: this.pubkey });
+    } catch (err) {
+      devLogger.warn("[myVideos] deleteStorageKeys failed:", err);
+      this.mainController.showError?.("Failed to delete the file. Please try again.");
+      return;
+    }
+    if (result?.ok && result.deleted?.length) {
+      this.mainController.showSuccess?.("Removed the orphaned file from your bucket.");
+      void this.populate({ forceFetch: false });
+    } else if (result?.reason === "storage-locked") {
+      this.mainController.showError?.("Unlock storage first, then delete the file.");
+    } else {
+      this.mainController.showError?.("Failed to delete the file. Please try again.");
     }
   }
 
@@ -182,6 +303,9 @@ export class MyVideosController {
     const li = document.createElement("li");
     li.className = "card flex items-center gap-3 p-3 border border-border/60";
     li.dataset.health = health.status;
+    if (typeof video.id === "string" && video.id) {
+      li.dataset.videoId = video.id;
+    }
 
     li.appendChild(this.buildThumb(video));
 
@@ -199,6 +323,7 @@ export class MyVideosController {
     const pill = document.createElement("span");
     pill.className = `${PILL_BASE} ${PILL_BY_SEVERITY[health.severity] || PILL_BY_SEVERITY.info}`;
     pill.textContent = health.label;
+    pill.dataset.role = "health-pill";
 
     titleRow.appendChild(title);
     titleRow.appendChild(pill);
