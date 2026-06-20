@@ -1,6 +1,7 @@
 // components/UploadModal.js
 import { createModalAccessibility } from "./modalAccessibility.js";
 import { Nip71FormManager } from "./nip71FormManager.js";
+import { MediaUploader } from "./mediaUploader.js";
 import { devLogger, userLogger } from "../../utils/logger.js";
 import {
   getVideoNoteErrorMessage,
@@ -73,6 +74,15 @@ export class UploadModal {
       typeof getCurrentPubkey === "function" ? getCurrentPubkey : null;
     this.safeEncodeNpub =
       typeof safeEncodeNpub === "function" ? safeEncodeNpub : () => "";
+    // Shared storage+torrent upload core (also used by the Edit modal).
+    this.mediaUploader = new MediaUploader({
+      r2Service: this.r2Service,
+      s3Service: this.s3Service,
+      storageService: this.storageService,
+      getCurrentPubkey: () =>
+        this.getCurrentPubkey ? this.getCurrentPubkey() : null,
+      safeEncodeNpub: (pubkey) => this.safeEncodeNpub(pubkey),
+    });
     this.eventTarget =
       eventTarget instanceof EventTarget ? eventTarget : new EventTarget();
     this.container = container || null;
@@ -524,159 +534,36 @@ export class UploadModal {
       this.updateVideoProgress(0, "Preparing upload...");
 
       try {
-          // 1. Compute Identifier (Info Hash / Fingerprint) before generating keys
-          const identifier = await this.resolveUploadIdentifier(file);
-
-          if (this.videoUploadId !== currentUploadId) return; // Zombie guard
-
-          // 2. Prepare Upload (Get Creds & Bucket)
-          const pubkey = this.getCurrentPubkey();
-          const npub = this.safeEncodeNpub(pubkey);
-          const service = this.activeProvider === PROVIDERS.R2 || this.activeProvider === "cloudflare_r2"
-              ? this.r2Service
-              : this.s3Service;
-
-          const { settings, bucketEntry } = await service.prepareUpload(npub, { credentials: this.activeCredentials });
-
-          if (this.videoUploadId !== currentUploadId) return; // Zombie guard
-
-          // 3. Determine Keys
-          const videoKey = buildR2Key(npub, file, identifier);
-          const baseDomain = bucketEntry.publicBaseUrl;
-
-          // Note: buildPublicUrl works for both if the base is clean
-          // For S3, buildS3ObjectUrl might be safer if we have complex paths, but prepareUpload standardizes on publicBaseUrl
-          let videoPublicUrl = "";
-          if (this.activeProvider === PROVIDERS.R2 || this.activeProvider === "cloudflare_r2") {
-               videoPublicUrl = buildPublicUrl(baseDomain, videoKey);
-          } else {
-               videoPublicUrl = buildS3ObjectUrl({
-                   publicBaseUrl: baseDomain,
-                   key: videoKey,
-                   // For S3 we might need forcePathStyle if publicBaseUrl isn't set, but prepareUpload enforces it.
-               });
-          }
-
-          // 3. Start Video Upload
-          this.updateVideoProgress(0, "Uploading video...");
-          devLogger.debug("UploadModal uploadFile settings presence", {
-              hasAccountId: Boolean(settings.accountId),
-              hasEndpoint: Boolean(settings.endpoint),
-              hasProvider: Boolean(settings.provider),
-              hasRegion: Boolean(settings.region),
-              hasAccessKeyId: Boolean(settings.accessKeyId),
-              hasSecretAccessKey: Boolean(settings.secretAccessKey),
-              hasForcePathStyle: settings.forcePathStyle !== undefined,
-          });
-          const uploadPromise = service.uploadFile({
-              file,
-              bucket: bucketEntry.bucket,
-              key: videoKey,
-              // Spread settings carefully
-              accountId: settings.accountId,
-              endpoint: settings.endpoint,
-              provider: settings.provider || this.activeProvider || "cloudflare_r2",
-              region: settings.region,
-              accessKeyId: settings.accessKeyId,
-              secretAccessKey: settings.secretAccessKey,
-              forcePathStyle: settings.forcePathStyle,
-              createBucketIfMissing: true,
-              onProgress: (fraction) => {
+          const result = await this.mediaUploader.uploadVideo(file, {
+              provider: this.activeProvider,
+              credentials: this.activeCredentials,
+              onProgress: ({ fraction, label }) => {
                   if (this.videoUploadId === currentUploadId) {
-                      this.updateVideoProgress(fraction);
+                      this.updateVideoProgress(fraction, label || undefined);
                   }
-              }
+              },
           });
-
-          // 4. Calculate Info Hash (Parallel if possible, but JS single thread limits this.
-          // Since createTorrentMetadata reads the file, it might contend with upload read.
-          // Let's do it concurrently and hope the browser handles file I/O well.
-          this.updateVideoProgress(null, "Uploading & Calculating Hash...");
-
-          const torrentPromise = this.generateTorrentMetadata({ file, videoPublicUrl });
-
-          const [uploadResult, torrentResult] = await Promise.all([uploadPromise, torrentPromise]);
 
           if (this.videoUploadId !== currentUploadId) return; // Zombie guard
 
           // Video Complete
           this.videoUploadState.status = 'complete';
-          this.videoUploadState.url = videoPublicUrl;
-          this.videoUploadState.key = videoKey;
-          const storagePrefix = buildStoragePrefixFromKey({
-              publicBaseUrl: baseDomain,
-              key: videoKey,
-          });
-          const providerLabel =
-              this.activeProvider === PROVIDERS.R2 || this.activeProvider === "cloudflare_r2"
-                ? "r2"
-                : "s3";
-          this.videoUploadState.storagePointer = buildStoragePointerValue({
-              provider: providerLabel,
-              prefix: storagePrefix,
-          });
-          if (this.results.videoUrl) this.results.videoUrl.value = videoPublicUrl;
-          this.updateVideoProgress(1, "Video uploaded.");
+          this.videoUploadState.url = result.url;
+          this.videoUploadState.key = result.key;
+          this.videoUploadState.storagePointer = result.storagePointer;
+          if (this.results.videoUrl) this.results.videoUrl.value = result.url;
 
-          // 5. Handle Torrent Result & Upload .torrent file
-          if (torrentResult.hasValidInfoHash && torrentResult.torrentFile) {
-              const baseKey = videoKey.replace(/\.[^/.]+$/, "");
-              const torrentKey = (baseKey && baseKey !== videoKey) ? `${baseKey}.torrent` : `${videoKey}.torrent`;
-
-              let torrentPublicUrl = "";
-              if (this.activeProvider === PROVIDERS.R2 || this.activeProvider === "cloudflare_r2") {
-                   torrentPublicUrl = buildPublicUrl(baseDomain, torrentKey);
-              } else {
-                   torrentPublicUrl = buildS3ObjectUrl({ publicBaseUrl: baseDomain, key: torrentKey });
-              }
-
-              this.updateVideoProgress(1, "Uploading torrent metadata...");
-
-              devLogger.debug("UploadModal uploadFile settings presence", {
-                  hasAccountId: Boolean(settings.accountId),
-                  hasEndpoint: Boolean(settings.endpoint),
-                  hasProvider: Boolean(settings.provider),
-                  hasRegion: Boolean(settings.region),
-                  hasAccessKeyId: Boolean(settings.accessKeyId),
-                  hasSecretAccessKey: Boolean(settings.secretAccessKey),
-                  hasForcePathStyle: settings.forcePathStyle !== undefined,
-              });
-              await service.uploadFile({
-                  file: torrentResult.torrentFile,
-                  bucket: bucketEntry.bucket,
-                  key: torrentKey,
-                  accountId: settings.accountId,
-                  endpoint: settings.endpoint,
-                  provider: settings.provider || this.activeProvider || "cloudflare_r2",
-                  region: settings.region,
-                  accessKeyId: settings.accessKeyId,
-                  secretAccessKey: settings.secretAccessKey,
-                  forcePathStyle: settings.forcePathStyle,
-                  createBucketIfMissing: true,
-              });
-
-              if (this.videoUploadId !== currentUploadId) return; // Zombie guard
-
+          if (result.hasValidInfoHash) {
               this.torrentState.status = 'complete';
-              this.torrentState.infoHash = torrentResult.infoHash;
-              this.torrentState.url = torrentPublicUrl;
-              this.torrentState.file = torrentResult.torrentFile;
+              this.torrentState.infoHash = result.infoHash;
+              this.torrentState.url = result.torrentUrl;
+              this.torrentState.file = result.torrentFile;
+              this.torrentState.magnet = result.magnet;
 
-              // Construct Magnet
-              const encodedDn = encodeURIComponent(file.name);
-              const encodedWs = encodeURIComponent(videoPublicUrl);
-              const encodedXs = encodeURIComponent(torrentPublicUrl);
-              const magnet = `magnet:?xt=urn:btih:${torrentResult.infoHash}&dn=${encodedDn}&ws=${encodedWs}&xs=${encodedXs}`;
-
-              this.torrentState.magnet = magnet;
-
-              if (this.results.magnet) this.results.magnet.value = magnet;
-              if (this.results.torrentUrl) this.results.torrentUrl.value = torrentPublicUrl;
-
-              this.updateVideoProgress(1, "Ready to publish!");
+              if (this.results.magnet) this.results.magnet.value = result.magnet;
+              if (this.results.torrentUrl) this.results.torrentUrl.value = result.torrentUrl;
           } else {
               this.torrentState.status = 'skipped'; // Failed hash or invalid
-              this.updateVideoProgress(1, "Upload complete (No torrent fallback).");
               if (this.results.magnet) this.results.magnet.value = "Not available (Info Hash failed)";
               if (this.results.torrentUrl) this.results.torrentUrl.value = "Not available";
           }
@@ -725,58 +612,18 @@ export class UploadModal {
       this.updateThumbnailProgress(0, "Uploading thumbnail...");
 
       try {
-          const pubkey = this.getCurrentPubkey();
-          const npub = this.safeEncodeNpub(pubkey);
-          const service = this.activeProvider === PROVIDERS.R2 || this.activeProvider === "cloudflare_r2"
-              ? this.r2Service
-              : this.s3Service;
-
-          const { settings, bucketEntry } = await service.prepareUpload(npub, { credentials: this.activeCredentials });
-
-          if (this.thumbnailUploadId !== currentUploadId) return;
-
-          // Derive Key (randomish or based on file)
-          // We don't have the video key here easily if video isn't selected yet.
-          // Use a standalone key structure: npub/thumbnails/timestamp-name
-          const timestamp = Date.now();
-          const cleanName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
-          const key = `${npub}/thumbnails/${timestamp}-${cleanName}`;
-
-          const baseDomain = bucketEntry.publicBaseUrl;
-          let publicUrl = "";
-          if (this.activeProvider === PROVIDERS.R2 || this.activeProvider === "cloudflare_r2") {
-              publicUrl = buildPublicUrl(baseDomain, key);
-          } else {
-              publicUrl = buildS3ObjectUrl({ publicBaseUrl: baseDomain, key });
-          }
-
-          devLogger.debug("UploadModal uploadFile settings presence", {
-              hasAccountId: Boolean(settings.accountId),
-              hasEndpoint: Boolean(settings.endpoint),
-              hasProvider: Boolean(settings.provider),
-              hasRegion: Boolean(settings.region),
-              hasAccessKeyId: Boolean(settings.accessKeyId),
-              hasSecretAccessKey: Boolean(settings.secretAccessKey),
-              hasForcePathStyle: settings.forcePathStyle !== undefined,
-          });
-          await service.uploadFile({
+          const { url: publicUrl } = await this.mediaUploader.uploadThumbnail(
               file,
-              bucket: bucketEntry.bucket,
-              key,
-              accountId: settings.accountId,
-              endpoint: settings.endpoint,
-              provider: settings.provider || this.activeProvider || "cloudflare_r2",
-              region: settings.region,
-              accessKeyId: settings.accessKeyId,
-              secretAccessKey: settings.secretAccessKey,
-              forcePathStyle: settings.forcePathStyle,
-              createBucketIfMissing: true,
-              onProgress: (fraction) => {
-                  if (this.thumbnailUploadId === currentUploadId) {
-                      this.updateThumbnailProgress(fraction);
-                  }
-              }
-          });
+              {
+                  provider: this.activeProvider,
+                  credentials: this.activeCredentials,
+                  onProgress: (fraction) => {
+                      if (this.thumbnailUploadId === currentUploadId) {
+                          this.updateThumbnailProgress(fraction);
+                      }
+                  },
+              },
+          );
 
           if (this.thumbnailUploadId !== currentUploadId) return;
 
