@@ -62,6 +62,7 @@ import {
   safeDecodeNpub,
   verifyPublicAccess as verifyPublicAccessHelper,
   listVideoStorageObjects as listVideoStorageObjectsHelper,
+  deleteStorageKeys as deleteStorageKeysHelper,
 } from "./r2ServiceHelpers.js";
 
 const STATUS_VARIANTS = new Set(["info", "success", "error", "warning"]);
@@ -237,6 +238,14 @@ export class R2Service {
    */
   async listVideoStorageObjects(args = {}) {
     return listVideoStorageObjectsHelper(this, args);
+  }
+
+  /**
+   * Delete specific bucket object keys (orphan cleanup). Unlock-gated; returns
+   * { ok, deleted, failed, reason }.
+   */
+  async deleteStorageKeys(args = {}) {
+    return deleteStorageKeysHelper(this, args);
   }
 
   on(event, handler) {

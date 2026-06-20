@@ -238,15 +238,9 @@ export function buildProviderClient(settings, { makeR2Client, makeS3Client } = {
   });
 }
 
-/**
- * List the object keys under a user's storage prefix (u/<npub>/). `ctx` is the
- * R2Service instance (resolveConnection / makeR2Client / makeS3Client /
- * listObjects). Unlock-gated; returns { ok, reason, keys }.
- */
-export async function listVideoStorageObjects(
-  ctx,
-  { npub = "", pubkey = "", credentials = null } = {},
-) {
+// Shared unlock-gated connection+client resolution for the storage-maintenance
+// helpers. Returns { settings, s3, bucket } on success or { reason } on failure.
+async function resolveStorageClient(ctx, { npub, pubkey, credentials }) {
   let resolvedNpub = (npub || "").trim();
   if (!resolvedNpub && pubkey) {
     resolvedNpub = safeEncodeNpub(pubkey) || "";
@@ -256,37 +250,82 @@ export async function listVideoStorageObjects(
     try {
       settings = await ctx.resolveConnection(resolvedNpub);
     } catch (err) {
-      devLogger.warn("[R2Service] listVideoStorageObjects: resolve failed:", err);
+      devLogger.warn("[R2Service] storage client resolve failed:", err);
     }
   }
   if (!settings) {
-    return { ok: false, reason: "no-connection", keys: [] };
+    return { reason: "no-connection" };
   }
   if (
     !(settings.accessKeyId || "").trim() ||
     !(settings.secretAccessKey || "").trim()
   ) {
-    return { ok: false, reason: "storage-locked", keys: [] };
+    return { reason: "storage-locked" };
   }
   const bucket = (settings.bucket || "").trim();
   if (!bucket) {
-    return { ok: false, reason: "missing-bucket", keys: [] };
+    return { reason: "missing-bucket" };
   }
-  let s3;
   try {
     const ensureSdk =
       typeof ctx.ensureS3SdkLoaded === "function"
         ? ctx.ensureS3SdkLoaded
         : ensureS3SdkLoaded;
     await ensureSdk();
-    s3 = buildProviderClient(settings, {
+    const s3 = buildProviderClient(settings, {
       makeR2Client: ctx.makeR2Client,
       makeS3Client: ctx.makeS3Client,
     });
+    return { settings, s3, bucket, resolvedNpub };
   } catch (err) {
-    devLogger.warn("[R2Service] listVideoStorageObjects: client build failed:", err);
-    return { ok: false, reason: "client-error", keys: [] };
+    devLogger.warn("[R2Service] storage client build failed:", err);
+    return { reason: "client-error" };
   }
+}
+
+/**
+ * Delete specific bucket object keys (orphan cleanup from the My Videos tab).
+ * Unlock-gated; returns { ok, deleted, failed, reason }.
+ */
+export async function deleteStorageKeys(ctx, { keys = [], npub = "", pubkey = "", credentials = null } = {}) {
+  const list = (Array.isArray(keys) ? keys : []).filter(
+    (k) => typeof k === "string" && k.trim(),
+  );
+  if (!list.length) {
+    return { ok: false, reason: "no-keys", deleted: [], failed: [] };
+  }
+  const resolved = await resolveStorageClient(ctx, { npub, pubkey, credentials });
+  if (resolved.reason) {
+    return { ok: false, reason: resolved.reason, deleted: [], failed: [] };
+  }
+  const { s3, bucket } = resolved;
+  const deleted = [];
+  const failed = [];
+  for (const key of list) {
+    try {
+      await ctx.deleteObject({ s3, bucket, key });
+      deleted.push(key);
+    } catch (err) {
+      failed.push({ key, error: err?.message || String(err) });
+    }
+  }
+  return { ok: true, deleted, failed, reason: "" };
+}
+
+/**
+ * List the object keys under a user's storage prefix (u/<npub>/). `ctx` is the
+ * R2Service instance (resolveConnection / makeR2Client / makeS3Client /
+ * listObjects). Unlock-gated; returns { ok, reason, keys }.
+ */
+export async function listVideoStorageObjects(
+  ctx,
+  { npub = "", pubkey = "", credentials = null } = {},
+) {
+  const resolved = await resolveStorageClient(ctx, { npub, pubkey, credentials });
+  if (resolved.reason) {
+    return { ok: false, reason: resolved.reason, keys: [] };
+  }
+  const { s3, bucket, resolvedNpub } = resolved;
   try {
     const keys = await ctx.listObjects({
       s3,
