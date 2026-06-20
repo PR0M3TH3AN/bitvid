@@ -19,6 +19,14 @@ tests → `npm run build` + `npm run test:unit` green → commit + push.
 - [x] **Feed never blank**: always reserve live default relays in the feed set — `de515462` (+ spec test `6b63625d`)
 - [x] **Publish feedback**: "published to N/M relays" outcome toast — `3f4299a8`
 - [x] **Delete safety**: warn when a hosted file is left behind by locked storage — `f0eecec0`
+- [x] **Video delete propagation**: tombstones publish to write relays — `afb6200b`
+- [x] **Watch-history delete**: replace (not merge) semantics — `5f19f536`
+- [x] **My Videos tab** (Phase 1 + 2): per-video health (no-source/dead/deleted),
+      thumbnails, Edit/Delete, bucket reconciliation (missing-file + orphan cleanup)
+      — `8cb03d23`…`9d3a0df0`
+- [x] **CI**: visual-regression moved to its own job so it no longer blocks deploy — `73a06069`
+- [x] **Vercel**: disable auto-deploy for `unstable`; deploy on demand via
+      `vercel deploy --prod` — `ba1f492f`
 
 ## Open — high priority (launch-blocking candidates)
 
@@ -87,10 +95,10 @@ tests → `npm run build` + `npm run test:unit` green → commit + push.
 - [ ] Run `npm run test:visual` after layout changes; update baselines deliberately.
 
 ### 8. Orphan storage garbage-collection tool
-- [ ] Add a "clean up unused files" action in storage settings — there are already
-      orphans from earlier failed/empty-thumbnail uploads and pre-fix edits/deletes.
-      List bucket objects not referenced by any of the user's current notes; offer
-      a guarded bulk delete (only under the user's `publicBaseUrl`).
+- [x] **Largely delivered by the My Videos tab** (`9d3a0df0`): lists bucket objects no
+      live note references and offers per-file delete (under the user's prefix only).
+- [ ] Remaining (optional): a one-click **bulk** "delete all orphans" action, and/or
+      surfacing the same control from the Storage settings pane.
 
 ### 9. Cap the cold-login relay-REQ storm further
 - [ ] Investigate the ~117 REQ/s spike at login. Respect the `capReadRelays` invariant
@@ -112,3 +120,34 @@ tests → `npm run build` + `npm run test:unit` green → commit + push.
 - [ ] After this batch soaks and the high-priority items land, promote `unstable → beta`
       for hosted-domain QA (per the release pipeline in CLAUDE.md). Never push directly
       to beta/main — always promote from the previous stage.
+
+## Open — My Videos tab follow-ups (deferred from the build)
+
+### 13. My Videos enhancements
+- [ ] **Restore (un-delete) action** for deleted rows — republish a prior live version
+      so a tombstoned video can be brought back from the management tab.
+- [ ] **`info.json` sidecar on upload** — write a small metadata file next to each
+      uploaded object (title, event id, root id, date) so orphaned files can be
+      identified by name even after their note is gone from relays. PRIVACY GUARD:
+      skip private videos (the bucket is public) or only mirror already-public fields.
+      Path-based reconciliation stays the baseline (sidecar is additive, future-only).
+- [ ] Show orphan **size/last-modified** (from the ListObjectsV2 metadata) on orphan
+      rows to make triage easier; consider grouping by folder.
+- [ ] Replace the `window.confirm` on orphan delete with the app's confirm/modal for
+      a consistent, less jarring destructive-action UX.
+- [ ] External (non-bucket) URL liveness is unverifiable from the browser — currently
+      left "OK/unverifiable" on purpose. Optionally add a server-side/HEAD check later
+      if false-confidence becomes a problem.
+
+## Open — deploy / CI infra (from this session)
+
+### 14. Deploy workflow + CI gate health
+- [ ] **On-demand deploy is now the norm for `unstable`** (auto-deploy disabled).
+      Deploy with `vercel deploy --prod` (repo is linked to `bitvid-unstable`). Decide
+      whether to apply the same `git.deploymentEnabled:false` to `beta`, and whether to
+      ever set the Vercel **Production Branch = unstable** if auto-deploy is wanted again.
+- [ ] **Visual-regression baseline is environment-sensitive / stale** (committed
+      baseline from 2026-03 vs current CI Chromium/font rendering → ~1.4% diff). It's
+      no longer deploy-blocking (own job) but the job is red. Regenerate the baseline
+      inside CI's environment (or pin fonts / run visual in a fixed container) so it's
+      a trustworthy gate again — relates to #11.
