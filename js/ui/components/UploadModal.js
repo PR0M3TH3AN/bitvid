@@ -1042,7 +1042,14 @@ export class UploadModal {
       const metadata = {
           title: this.inputs.title?.value?.trim() || "",
           description: this.inputs.description?.value?.trim() || "",
-          thumbnail: this.inputs.thumbnail?.value?.trim() || "",
+          // Prefer an uploaded thumbnail's URL: selecting a thumbnail file
+          // clears+disables the text input (see the file-picker handler), so
+          // inputs.thumbnail.value is empty for file uploads. Fall back to a
+          // pasted URL when no file was uploaded.
+          thumbnail:
+            this.thumbnailUploadState?.url ||
+            this.inputs.thumbnail?.value?.trim() ||
+            "",
           enableComments: this.toggles.comments?.checked || true,
           ...audienceFlags,
 
