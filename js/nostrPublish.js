@@ -131,6 +131,34 @@ export function publishEventToRelay(pool, url, event, options = {}) {
         }
       }
 
+      // nostr-tools SimplePool.publish(relays, event) returns an ARRAY of
+      // per-relay promises (one per url). Each MUST be consumed or a relay that
+      // rejects ("blocked", "auth-required", "publish timed out", websocket
+      // error, …) surfaces as an uncaught promise rejection. With a large/flaky
+      // relay list that floods the event loop and can freeze the tab. We pass a
+      // single [url], so the array has one promise; allSettled never rejects, so
+      // every rejection is consumed here.
+      if (Array.isArray(pub)) {
+        Promise.allSettled(pub).then((settled) => {
+          clearTimeout(timeoutId);
+          const anyOk = settled.some((entry) => entry.status === "fulfilled");
+          if (anyOk) {
+            finalize(true);
+            return;
+          }
+          const firstRejection = settled.find(
+            (entry) => entry.status === "rejected",
+          );
+          finalize(
+            false,
+            firstRejection?.reason instanceof Error
+              ? firstRejection.reason
+              : new Error(String(firstRejection?.reason || "publish failed")),
+          );
+        });
+        return;
+      }
+
       if (pub && typeof pub.then === "function") {
         pub
           .then(() => {
