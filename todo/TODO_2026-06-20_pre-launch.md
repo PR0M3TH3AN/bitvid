@@ -164,3 +164,44 @@ tests → `npm run build` + `npm run test:unit` green → commit + push.
       no longer deploy-blocking (own job) but the job is red. Regenerate the baseline
       inside CI's environment (or pin fonts / run visual in a fixed container) so it's
       a trustworthy gate again — relates to #11.
+
+## Open — enhancements (security-sensitive)
+
+### 15. Encrypted cross-login sync of storage credentials + NWC wallet (opt-in)
+Goal: optionally sync the S3/R2 storage credentials AND the NWC zap wallet URI
+across logins/devices via an encrypted Nostr note, unlocked by the logged-in
+signer — so users don't re-enter them on every device. **Opt-in only; off by
+default.**
+
+Design / approach:
+- [ ] Publish as **NIP-78 app data** (kind 30078) replaceable events with stable,
+      namespaced d-tags (e.g. `bitvid:storage-connections`, `bitvid:nwc`). Content
+      **NIP-44-encrypted to self** (own pubkey); fall back to NIP-04 only if the
+      signer lacks NIP-44 (NIP-46 remote signers especially).
+- [ ] **Storage creds are already self-encrypted** today
+      (`storageService._encryptMasterKey` → envelope: AES-GCM master key encrypted
+      to self). Cleanest path: transport the EXISTING encrypted record as the note
+      content (no new crypto); on another device, pull it and unlock with the
+      signer. The NWC URI is a bearer secret stored locally via
+      `nwcSettingsService` — encrypt it to self before publishing.
+- [ ] **Reuse the relay/replaceable lessons from this session**: publish to the
+      WRITE relays (not the capped read set) so the sync reaches everywhere; bump
+      created_at strictly-newer; on read take the **newest event per d-tag** (don't
+      union stale copies) — mirror `getDeletePublishRelays` + the watch-history
+      dedup so a stale device can't clobber newer creds.
+- [ ] **UX**: a per-item "Sync to my Nostr account (encrypted)" toggle in the
+      Storage and Wallet panes; on login, if a synced note exists, offer to pull +
+      unlock. Local remains source of truth on-device; sync is additive.
+- [ ] **Clear/disable**: deleting the synced note must actually clear it on relays
+      (apply the empty-replaceable-publish lesson from `a3799f3f`).
+
+Threat model / cautions (write these into the feature + docs):
+- The encrypted blob lives on PUBLIC relays: NIP-44 hides contents but not the
+  fact that this pubkey stores bitvid creds. Acceptable, but document it.
+- Anyone who compromises the user's Nostr key can decrypt these (same trust root
+  as everything else they sign) — make the opt-in copy explicit about that.
+- NWC URI = spending capability; treat as highest-sensitivity. Consider a
+  confirm + "this lets any device with your key spend from this wallet" warning.
+- Never log decrypted creds; clear in-memory copies on logout (existing rule).
+- Decryption goes through the (single-threaded) signer — respect the NIP-07/46
+  decrypt budget + circuit-breaker invariants; don't block login on it.
