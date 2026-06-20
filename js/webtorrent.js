@@ -184,6 +184,11 @@ export class TorrentClient {
         const addOptions = {
           announce: trackers,
           maxWebConns: safeMaxWebConns,
+          // A probe only needs to detect that >=1 peer/webseed exists, so cap
+          // peer connections hard. Without this WebTorrent defaults to 55 per
+          // torrent — multiplied across concurrent probes that floods the
+          // browser with connections (freeze/crash).
+          maxConns: 4,
         };
         /**
          * CRITICAL: We pass the webseed URL (if present) to the client via `urlList`.
@@ -933,7 +938,10 @@ export class TorrentClient {
             .filter((entry) => /^https?:\/\//i.test(entry))
         : [];
 
-      const chromeOptions = { strategy: "sequential" };
+      // Cap peer connections for the streaming torrent too. 30 is plenty to
+      // saturate playback bandwidth while avoiding the WebRTC-handshake storm
+      // that can peg the main thread (WebTorrent's default is 55).
+      const chromeOptions = { strategy: "sequential", maxConns: 30 };
       /**
        * CRITICAL: Passing `urlList` ensures the client can stream from the webseed.
        * Without this, videos with 0 P2P peers will fail to play even if a valid

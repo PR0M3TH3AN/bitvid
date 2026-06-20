@@ -230,7 +230,12 @@ function queueProbe(magnet, cacheKey, priority = 0, webSeeds = []) {
 
 const PROBE_CACHE_TTL_MS = FIVE_MINUTES_MS;
 const PROBE_TIMEOUT_MS = 20000;
-const PROBE_CONCURRENCY = 96;
+// Each probe is a real WebTorrent swarm join (tracker announces + peer
+// connections), NOT a cheap ping. At 96 concurrent, loading/scrolling the feed
+// opened hundreds-to-thousands of simultaneous WebSocket/WebRTC connections,
+// pegging the main thread and exhausting memory (freeze + tab crash). Keep this
+// small — badges still populate, just a few at a time.
+const PROBE_CONCURRENCY = 4;
 const PROBE_POLL_COUNT = 3;
 
 class ProbeQueue {
