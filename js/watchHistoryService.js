@@ -426,6 +426,30 @@ function clearQueue(actorKey) {
   notifyQueueChange(actorKey);
 }
 
+// Replace the local watch-history queue with exactly `items` (used by a
+// local-only REPLACE snapshot, i.e. a logged-out removal/clear). Source of truth
+// for local history is loadLatest -> collectQueueItems(queue), so this is what
+// makes a local delete persist.
+function replaceLocalQueue(actorKey, items) {
+  const queue = ensureQueue(actorKey);
+  queue.items.clear();
+  queue.throttle.clear();
+  const now = Date.now();
+  for (const item of Array.isArray(items) ? items : []) {
+    const pointer = normalizePointerInput(item);
+    if (!pointer) {
+      continue;
+    }
+    const key = pointerKey(pointer);
+    if (!key) {
+      continue;
+    }
+    queue.items.set(key, { pointer, addedAt: now, updatedAt: now });
+  }
+  persistQueueState();
+  notifyQueueChange(actorKey);
+}
+
 function pruneQueueAfterSnapshot(actorKey, queue, keysToClear, snapshotStart) {
   if (!actorKey || !queue) {
     return;
@@ -794,6 +818,15 @@ async function snapshot(items, options = {}) {
   }
 
   if (!isFeatureEnabled(actorKey)) {
+    // Local-only actors (logged out / session) keep watch history in the local
+    // queue, not on relays. A REPLACE snapshot (i.e. a removal/clear) must
+    // rewrite that queue so the deletion actually sticks — otherwise the removed
+    // item lingers locally and reappears on reload. Normal watch-tracking adds
+    // still flow through the queue via recordVideoView.
+    if (replace && Array.isArray(items)) {
+      replaceLocalQueue(actorKey, items);
+      return { ok: true, local: true, reason: "local-replaced", itemCount: items.length };
+    }
     devLogger.debug(
       "[watchHistoryService] Snapshot skipped because this actor is limited to local watch history.",
       {
