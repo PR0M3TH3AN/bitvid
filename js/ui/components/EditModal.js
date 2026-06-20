@@ -7,6 +7,9 @@ import {
 import { normalizeAndAugmentMagnet } from "../../magnetUtils.js";
 import { createModalAccessibility } from "./modalAccessibility.js";
 import { Nip71FormManager } from "./nip71FormManager.js";
+import { MediaUploader } from "./mediaUploader.js";
+import { initEditModalUpload } from "./editModalUpload.js";
+import { devLogger } from "../../utils/logger.js";
 
 export class EditModal {
   constructor({
@@ -15,7 +18,13 @@ export class EditModal {
     sanitizers = {},
     escapeHtml,
     showError,
+    showSuccess,
     getMode,
+    r2Service = null,
+    s3Service = null,
+    storageService = null,
+    getCurrentPubkey = null,
+    safeEncodeNpub = null,
     eventTarget,
     container,
   } = {}) {
@@ -25,6 +34,20 @@ export class EditModal {
       typeof setGlobalModalState === "function" ? setGlobalModalState : () => {};
     this.escapeHtml = typeof escapeHtml === "function" ? escapeHtml : (value) => `${value ?? ""}`;
     this.showError = typeof showError === "function" ? showError : () => {};
+    this.showSuccess = typeof showSuccess === "function" ? showSuccess : () => {};
+    // Storage upload wiring (mirrors UploadModal) so Edit can re-upload files.
+    this.storageService = storageService || null;
+    this.getCurrentPubkey =
+      typeof getCurrentPubkey === "function" ? getCurrentPubkey : null;
+    this.mediaUploader = new MediaUploader({
+      r2Service,
+      s3Service,
+      storageService,
+      getCurrentPubkey: () =>
+        this.getCurrentPubkey ? this.getCurrentPubkey() : null,
+      safeEncodeNpub:
+        typeof safeEncodeNpub === "function" ? safeEncodeNpub : (p) => p,
+    });
     this.getMode =
       typeof getMode === "function"
         ? getMode
@@ -196,6 +219,10 @@ export class EditModal {
 
     const nip71Context = this.form || context;
     this.nip71FormManager.registerSection(this.nip71SectionKey, nip71Context);
+
+    // Wire optional "Replace file" upload controls (thumbnail + video). All the
+    // glue lives in editModalUpload.js to keep this module within budget.
+    initEditModalUpload(this, context);
   }
 
   setupModalAccessibility() {

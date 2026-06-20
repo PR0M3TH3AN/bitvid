@@ -109,6 +109,11 @@ export default class ModalManager {
           magnet: (value) => (typeof value === "string" ? value.trim() : ""),
           checkbox: (value) => !!value,
         },
+        // Storage services so the Edit modal can re-upload thumbnail/video files
+        // (same wiring as the Upload modal).
+        r2Service: app.r2Service,
+        s3Service: app.s3Service,
+        storageService: this.services.storageService,
       },
       utilities: {
         removeTrackingScripts,
@@ -117,6 +122,9 @@ export default class ModalManager {
       },
       callbacks: {
         showError: (message) => app.showError(message),
+        showSuccess: (message) => app.showSuccess(message),
+        getCurrentPubkey: () => app.pubkey,
+        safeEncodeNpub: (pubkey) => app.safeEncodeNpub(pubkey),
         onSubmit: (event) => app.handleEditModalSubmit(event),
         onCancel: () => app.showError(""),
       },

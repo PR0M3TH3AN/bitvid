@@ -672,6 +672,26 @@
                 Edit field
               </button>
             </div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <input type="file" id="editVideoFile" accept="video/*" class="hidden" />
+              <button
+                type="button"
+                id="editVideoFileBtn"
+                class="btn-ghost focus-ring text-xs"
+              >
+                Replace video file…
+              </button>
+              <p
+                id="editVideoUploadStatus"
+                class="text-2xs text-muted empty:hidden"
+                role="status"
+                aria-live="polite"
+              ></p>
+            </div>
+            <p class="text-xs text-muted">
+              Uploading a new file replaces the URL, magnet, and torrent hints.
+              Requires unlocked storage.
+            </p>
           </div>
 
           <div class="space-y-1">
@@ -759,6 +779,22 @@
               >
                 Edit field
               </button>
+            </div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <input type="file" id="editThumbnailFile" accept="image/*" class="hidden" />
+              <button
+                type="button"
+                id="editThumbnailFileBtn"
+                class="btn-ghost focus-ring text-xs"
+              >
+                Replace thumbnail file…
+              </button>
+              <p
+                id="editThumbnailUploadStatus"
+                class="text-2xs text-muted empty:hidden"
+                role="status"
+                aria-live="polite"
+              ></p>
             </div>
           </div>
 

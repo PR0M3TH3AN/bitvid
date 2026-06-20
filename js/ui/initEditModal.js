@@ -14,6 +14,9 @@ export function initEditModal({
   const {
     getMode = null,
     sanitizers = {},
+    r2Service = null,
+    s3Service = null,
+    storageService = null,
   } = services;
 
   const {
@@ -24,6 +27,9 @@ export function initEditModal({
 
   const {
     showError = null,
+    showSuccess = null,
+    getCurrentPubkey = null,
+    safeEncodeNpub = null,
     onSubmit = null,
     onCancel = null,
   } = callbacks;
@@ -36,9 +42,15 @@ export function initEditModal({
       removeTrackingScripts: removeTrackingScriptsFn,
       setGlobalModalState: setGlobalModalStateFn,
       showError,
+      showSuccess,
       getMode,
       sanitizers,
       escapeHtml,
+      r2Service,
+      s3Service,
+      storageService,
+      getCurrentPubkey,
+      safeEncodeNpub,
       eventTarget: events,
       container,
     });
