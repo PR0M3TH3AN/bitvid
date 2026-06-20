@@ -1,5 +1,6 @@
 import { devLogger } from "../../utils/logger.js";
 import { nostrClient } from "../../nostrClientFacade.js";
+import { getApplication } from "../../applicationContext.js";
 import { collapseUserVideos } from "./myVideosData.js";
 import { classifyVideoHealth, isUrlUnderBase } from "./myVideosHealth.js";
 
@@ -179,9 +180,10 @@ export class MyVideosController {
     });
 
     const li = document.createElement("li");
-    li.className =
-      "card flex items-center justify-between gap-3 p-3 border border-border/60";
+    li.className = "card flex items-center gap-3 p-3 border border-border/60";
     li.dataset.health = health.status;
+
+    li.appendChild(this.buildThumb(video));
 
     const info = document.createElement("div");
     info.className = "min-w-0 flex-1";
@@ -208,7 +210,74 @@ export class MyVideosController {
     info.appendChild(titleRow);
     info.appendChild(meta);
     li.appendChild(info);
+
+    li.appendChild(this.buildActions(video));
     return li;
+  }
+
+  buildThumb(video) {
+    const wrap = document.createElement("div");
+    wrap.className =
+      "h-12 w-20 shrink-0 overflow-hidden rounded bg-surface-strong/40";
+    const url = typeof video.thumbnail === "string" ? video.thumbnail.trim() : "";
+    if (url) {
+      const img = document.createElement("img");
+      img.className = "h-full w-full object-cover";
+      img.loading = "lazy";
+      img.alt = "";
+      img.src = url;
+      // A broken/missing thumbnail leaves the placeholder box rather than the
+      // browser's broken-image glyph.
+      img.addEventListener("error", () => img.remove());
+      wrap.appendChild(img);
+    }
+    return wrap;
+  }
+
+  buildActions(video) {
+    const actions = document.createElement("div");
+    actions.className = "flex items-center gap-2 shrink-0";
+    // Active videos can be edited or deleted. Cleaning up a DELETED video's
+    // orphaned file needs the bucket listing (the tombstone scrubbed its URL),
+    // so that action arrives in Phase 2 (storage reconciliation).
+    if (!video.deleted) {
+      actions.appendChild(
+        this.buildActionButton("Edit", () => this.handleEdit(video)),
+      );
+      actions.appendChild(
+        this.buildActionButton("Delete", () => this.handleDelete(video), true),
+      );
+    }
+    return actions;
+  }
+
+  buildActionButton(label, onClick, danger = false) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = danger
+      ? "btn-ghost focus-ring text-xs text-status-danger"
+      : "btn-ghost focus-ring text-xs";
+    btn.textContent = label;
+    btn.addEventListener("click", onClick);
+    return btn;
+  }
+
+  handleEdit(video) {
+    const app = getApplication();
+    // The edit modal is a separate top-level surface; close the (full-screen)
+    // profile modal first so it isn't hidden behind it.
+    this.mainController.hide();
+    if (app && typeof app.handleEditVideo === "function") {
+      void app.handleEditVideo({ video });
+    }
+  }
+
+  handleDelete(video) {
+    const app = getApplication();
+    this.mainController.hide();
+    if (app && typeof app.handleFullDeleteVideo === "function") {
+      void app.handleFullDeleteVideo({ video });
+    }
   }
 
   describeSource(video) {
