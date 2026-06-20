@@ -66,14 +66,16 @@ tests → `npm run build` + `npm run test:unit` green → commit + push.
       month (d-tag) were unioned → removed items resurrected. Now
       dedupeNewestPerReplaceableAddress keeps only the newest event per d-tag at both
       read union sites. Live on unstable.bitvid.network (module verified served).
-- [ ] **Verify with the user** that removal now sticks across reload.
-- [ ] Known remaining edge case: clearing the LAST item of a month doesn't clear it
-      on relays — `publishMonthRecord` early-returns on an empty month
-      (`if (!items.length) return {ok:true}`), defeating updateWatchHistoryList's
-      "publish empty months to clear them" intent. Fix the write side to publish an
-      empty/tombstone month event so full clears propagate.
-- [ ] Add a scenario test: given N history entries, when one is deleted, then it is
-      absent from the persisted list AND the rendered history view.
+- [x] **Third gap fixed** (`a3799f3f`): clearing the LAST item of a month (or
+      clearing all) didn't propagate — `publishMonthRecord` early-returned on an
+      empty month, so the clearing event updateWatchHistoryList intended was never
+      published. Now an empty month publishes a newest EMPTY replaceable event for
+      its d-tag, so the clear takes effect (and reads see it as empty). Live.
+- [ ] **Verify with the user** that single-item removal AND full clear both stick
+      across reload now (three fixes: replace semantics `5f19f536`, newest-per-d-tag
+      read `fff2bef2`, empty-month publish `a3799f3f`).
+- [ ] Add a feed/view-level scenario test (seed N entries → delete one / clear all →
+      assert absent from persisted list AND rendered history view).
 
 ### 3. Zaps system + platform-fee zap split
 - [ ] Audit the zap flow (NWC / `nwcClient.js`, `zapController.js`, `zapReceiptValidator.js`).
