@@ -222,7 +222,13 @@ export default class WatchHistoryController {
   }
 
   async handleWatchHistoryRemoval(payload = {}) {
-    if (!this.watchHistoryService?.isEnabled?.()) {
+    const synced = this.watchHistoryService?.isEnabled?.() === true;
+    // Logged-out / session actors aren't synced to relays, but their history
+    // lives in the LOCAL queue — removal must still work there. Only reject when
+    // neither synced nor local history is available.
+    const localOnly =
+      !synced && this.watchHistoryService?.supportsLocalHistory?.() === true;
+    if (!synced && !localOnly) {
       const error = new Error("watch-history-disabled");
       error.handled = true;
       this.showError("Watch history sync is not available right now.");
@@ -332,31 +338,38 @@ export default class WatchHistoryController {
         skipped: snapshotResult?.skipped,
       });
 
-      try {
-        const updateResult = await this.nostrClient?.updateWatchHistoryList?.(
-          normalizedItems,
-          {
-            actorPubkey: actorCandidate || undefined,
-            replace: true,
-            source: reason,
-          },
-        );
-        logWatchHistoryDebug("watch-history:remove", "info", "list update published", {
-          ok: updateResult?.ok,
-          finalItemCount: updateResult?.items?.length,
-        });
-      } catch (updateError) {
-        devLogger.warn(
-          "[watchHistoryController] Failed to update local watch history list:",
-          updateError,
-        );
-        logWatchHistoryDebug("watch-history:remove", "warn", "list update failed", {
-          error: updateError?.message || String(updateError),
-        });
+      // Only push to relays when synced. For local-only actors the snapshot
+      // above already rewrote the local queue (replaceLocalQueue); publishing a
+      // session-actor list to relays would be wrong.
+      if (synced) {
+        try {
+          const updateResult = await this.nostrClient?.updateWatchHistoryList?.(
+            normalizedItems,
+            {
+              actorPubkey: actorCandidate || undefined,
+              replace: true,
+              source: reason,
+            },
+          );
+          logWatchHistoryDebug("watch-history:remove", "info", "list update published", {
+            ok: updateResult?.ok,
+            finalItemCount: updateResult?.items?.length,
+          });
+        } catch (updateError) {
+          devLogger.warn(
+            "[watchHistoryController] Failed to update local watch history list:",
+            updateError,
+          );
+          logWatchHistoryDebug("watch-history:remove", "warn", "list update failed", {
+            error: updateError?.message || String(updateError),
+          });
+        }
       }
 
       this.showSuccess(
-        "Removed from encrypted history. Relay sync may take a moment.",
+        synced
+          ? "Removed from encrypted history. Relay sync may take a moment."
+          : "Removed from your local history.",
       );
 
       return { handledToasts: true, snapshot: snapshotResult };
