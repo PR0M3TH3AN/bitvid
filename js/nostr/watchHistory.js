@@ -1572,13 +1572,13 @@ class WatchHistoryManager {
       }
     }
     this.lastCreatedAt = createdAtCursor;
-    const partialAcceptance = anyPartial;
-    const success = acceptedCount === relays.length && !anyRejected;
+    // Durable if ANY relay accepted (reads take newest per d-tag); all-relays was a false failure on large lists.
+    const success = acceptedCount > 0;
     let errorCode = null;
     if (!success) {
       if (anyRejected) {
         errorCode = "publish-rejected";
-      } else if (partialAcceptance) {
+      } else if (anyPartial) {
         errorCode = "partial-relay-acceptance";
       }
     }
@@ -1597,7 +1597,7 @@ class WatchHistoryManager {
       },
       skippedCount: skipped.length,
       source: options.source || "manual",
-      partial: partialAcceptance,
+      partial: anyPartial,
     };
     if (!success && errorCode) {
       result.error = errorCode;
@@ -1607,7 +1607,7 @@ class WatchHistoryManager {
       actor: actorKey,
       monthIdentifier,
       success,
-      partialAcceptance,
+      partialAcceptance: anyPartial,
       error: result.error || null,
       acceptedCount,
     });
