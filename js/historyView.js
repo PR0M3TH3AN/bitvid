@@ -16,6 +16,7 @@ import {
 } from "./config.js";
 import { getApplication } from "./applicationContext.js";
 import { devLogger, userLogger } from "./utils/logger.js";
+import { logWatchHistoryDebug } from "./watchHistoryDebug.js";
 import {
   normalizeVideoModerationContext,
   applyModerationContextDatasets,
@@ -2321,6 +2322,13 @@ export function createWatchHistoryRenderer(config = {}) {
       });
     }
     const feedItems = Array.isArray(result?.items) ? result.items : [];
+    logWatchHistoryDebug("watch-history:read", "info", "loadHistory result", {
+      force: force === true,
+      itemCount: feedItems.length,
+      values: feedItems
+        .map((entry) => entry?.pointer?.value || entry?.value)
+        .slice(0, 20),
+    });
     const normalized = [];
     for (const entry of feedItems) {
       const pointer = normalizePointerInput(entry?.pointer || entry);
