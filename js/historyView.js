@@ -327,7 +327,9 @@ async function defaultRemoveHandler({
         .filter(Boolean)
     : [];
   if (typeof snapshot === "function") {
-    await snapshot(sanitized, { actor, reason });
+    // Removal replaces the list — without this the snapshot would merge the
+    // removed item back from cache and the deletion would have no effect.
+    await snapshot(sanitized, { actor, reason, replace: true });
   }
   try {
     if (typeof updateWatchHistoryList === "function") {

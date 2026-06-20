@@ -313,6 +313,8 @@ export default class WatchHistoryController {
       const snapshotResult = await this.watchHistoryService.snapshot(normalizedItems, {
         actor: actorCandidate || undefined,
         reason,
+        // Removal must replace the list, not merge the removed item back in.
+        replace: true,
       });
 
       try {

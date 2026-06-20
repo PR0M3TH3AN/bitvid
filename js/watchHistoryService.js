@@ -784,6 +784,10 @@ async function publishView(pointerInput, createdAt) {
 
 async function snapshot(items, options = {}) {
   const reason = typeof options.reason === "string" ? options.reason : "manual";
+  // Removal/clear paths must REPLACE the published list — otherwise the items the
+  // user just removed get merged back from the existing cache and the deletion
+  // silently has no effect. Adds (the default) keep merge semantics.
+  const replace = options.replace === true;
   const actorKey = resolveActorKey(options.actor);
   if (!actorKey) {
     return { ok: false, error: "missing-actor" };
@@ -810,11 +814,16 @@ async function snapshot(items, options = {}) {
     payloadItems = items
       .map((item) => normalizePointerInput(item))
       .filter(Boolean);
+  } else if (replace && Array.isArray(items)) {
+    // Explicit replace with an empty list = clear the history. Must NOT fall
+    // back to the pending queue (that would resurrect items just removed) and
+    // must still publish so relays drop the old list.
+    payloadItems = [];
   } else {
     payloadItems = collectQueueItems(actorKey);
   }
 
-  if (!payloadItems.length) {
+  if (!payloadItems.length && !replace) {
     const result = { ok: true, empty: true, actor: actorKey };
     emit("snapshot-empty", result);
     return result;
@@ -830,7 +839,7 @@ async function snapshot(items, options = {}) {
         )
       : new Set();
 
-  if (!items) {
+  if (!items && !replace) {
     const cachedItems = getCachedSnapshotItems(actorKey);
     if (cachedItems.length) {
       payloadItems = [...payloadItems, ...cachedItems];
@@ -854,6 +863,7 @@ async function snapshot(items, options = {}) {
       payloadItems,
       {
         actorPubkey: actorKey,
+        replace,
       }
     );
 
