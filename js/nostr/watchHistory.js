@@ -1302,7 +1302,8 @@ class WatchHistoryManager {
   }
 
   async publishMonthRecord(monthIdentifier, items, options = {}) {
-    if (!items || !items.length) return { ok: true };
+    // Empty month = "clear it": still publish a newest EMPTY event for the d-tag (skipping it left removed items live on relays).
+    items = Array.isArray(items) ? items : [];
 
     const pool = typeof this.deps.getPool === "function" ? this.deps.getPool() : null;
     if (!pool) {
