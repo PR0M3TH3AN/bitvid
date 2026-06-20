@@ -141,6 +141,23 @@ export function attachNipMethodAliases(signer) {
   }
 }
 
+// Build the plain NIP-07 signer adapter from a live `window.nostr`-style
+// extension. Shared by loginWithExtension and the refresh-restore path in
+// ensureActiveSignerForPubkey so the adapter shape stays identical. Capability
+// aliases (nip04Decrypt/nip44Decrypt) are hydrated later by resolveActiveSigner.
+export function buildExtensionSignerAdapter(extension, pubkey) {
+  return {
+    type: "extension",
+    pubkey,
+    signEvent:
+      typeof extension?.signEvent === "function"
+        ? extension.signEvent.bind(extension)
+        : undefined,
+    nip04: extension?.nip04,
+    nip44: extension?.nip44,
+  };
+}
+
 export function resolveActiveSigner(pubkey) {
   const signer = resolveActiveSignerFromRegistry(pubkey);
   hydrateExtensionSignerCapabilities(signer);

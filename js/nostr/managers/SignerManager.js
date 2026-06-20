@@ -30,6 +30,7 @@ import {
   hydrateExtensionSignerCapabilities,
   attachNipMethodAliases,
   resolveActiveSigner,
+  buildExtensionSignerAdapter,
 } from "../signerCapabilities.js";
 
 // Re-exported for existing importers (e.g. js/nostr/client.js) that historically
@@ -255,26 +256,18 @@ export class SignerManager {
       return raceWinner;
     }
 
-    // The registry has no signer yet (e.g. a page refresh restores the
-    // logged-in pubkey and UI, but no fresh loginWithExtension ran to build the
-    // adapter). Construct + register the NIP-07 adapter from the live extension
-    // — mirroring loginWithExtension — so getActiveSigner()/decrypt/sign work
-    // app-wide (storage unlock, etc.) instead of relying on per-call window.nostr
-    // fallbacks. Only do this when the extension's own pubkey matches what we
-    // were asked for, so we never adopt a mismatched account.
+    // Registry empty (e.g. page refresh restored the pubkey/UI but no fresh
+    // loginWithExtension ran): build + register the adapter from the live
+    // extension so getActiveSigner()/decrypt/sign work app-wide (storage unlock)
+    // rather than relying on per-call fallbacks. Guarded on a matching pubkey so
+    // we never adopt a different account.
     const resolvedPubkey = extensionPubkey || normalizedPubkey;
     if (
       resolvedPubkey &&
       (!normalizedPubkey || resolvedPubkey === normalizedPubkey) &&
       typeof extension.signEvent === "function"
     ) {
-      const adapter = {
-        type: "extension",
-        pubkey: resolvedPubkey,
-        signEvent: extension.signEvent.bind(extension),
-        nip04: extension.nip04,
-        nip44: extension.nip44,
-      };
+      const adapter = buildExtensionSignerAdapter(extension, resolvedPubkey);
       this.pubkey = resolvedPubkey;
       this.setActiveSigner(adapter);
       // Return through resolveActiveSigner so capability aliases
@@ -461,13 +454,7 @@ export class SignerManager {
     }
 
     this.pubkey = normalized;
-    const adapter = {
-        type: "extension",
-        pubkey: normalized,
-        signEvent: typeof extension.signEvent === "function" ? extension.signEvent.bind(extension) : undefined,
-        nip04: extension.nip04,
-        nip44: extension.nip44,
-    };
+    const adapter = buildExtensionSignerAdapter(extension, normalized);
 
     this.setActiveSigner(adapter);
     return { pubkey: normalized, signer: adapter };

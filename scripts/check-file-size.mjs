@@ -65,7 +65,7 @@ const GRANDFATHERED = {
   "js/ui/applicationBootstrap.js": 1163,
   "js/ui/components/EditModal.js": 1130,
   "js/services/commentThreadService.js": 1100,
-  "js/nostr/managers/SignerManager.js": 1106,
+  "js/nostr/managers/SignerManager.js": 1160,
   "js/nostr/nip46Connector.js": 1094,
   "js/ui/overlay/popoverEngine.js": 1070,
   "js/webtorrent.js": 1037,
