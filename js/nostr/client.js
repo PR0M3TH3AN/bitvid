@@ -1167,6 +1167,26 @@ export class NostrClient {
     return this.connectionManager.getHealthyRelays(candidates);
   }
 
+  /**
+   * Resolve the relay set for deletion/tombstone events.
+   *
+   * A delete MUST reach every relay the video could have been published to,
+   * otherwise relays outside the set keep serving the original event and the
+   * "deleted" video resurrects on the next load. Normal publishes use the
+   * (uncapped) write set, but the delete paths historically used `this.relays`
+   * — the CAPPED read set (≤8) — so a video published broadly was only
+   * tombstoned on a subset. Mirror publishVideo: prefer the write set, fall
+   * back to the read set, then the bundled defaults.
+   */
+  getDeletePublishRelays() {
+    const write = sanitizeRelayList(
+      Array.isArray(this.writeRelays) && this.writeRelays.length
+        ? this.writeRelays
+        : this.relays,
+    );
+    return write.length ? write : Array.from(RELAY_URLS);
+  }
+
   getDmDecryptCacheLimit() {
     return DM_DECRYPT_CACHE_LIMIT;
   }
@@ -3038,7 +3058,7 @@ export class NostrClient {
     const signedEvent = await queueSignEvent(signer, event);
     const publishResults = await publishEventToRelays(
       this.pool,
-      this.relays,
+      this.getDeletePublishRelays(),
       signedEvent
     );
 
@@ -3366,7 +3386,7 @@ export class NostrClient {
         const signedDelete = await queueSignEvent(signer, deleteEvent);
         const publishResults = await publishEventToRelays(
           this.pool,
-          this.relays,
+          this.getDeletePublishRelays(),
           signedDelete,
           { waitForAll: true }
         );
@@ -4308,4 +4328,3 @@ export {
   resolveActiveSigner,
   shouldRequestExtensionPermissions,
 };
-const a = 1
