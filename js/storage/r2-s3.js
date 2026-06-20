@@ -11,6 +11,7 @@ import {
   ensureBucketExists,
   ensureBucketCors,
   deleteObject,
+  listObjects,
   multipartUpload,
 } from "./s3-multipart.js";
 import { userLogger } from "../utils/logger.js";
@@ -181,4 +182,10 @@ export function makeR2Client({
   });
 }
 
-export { ensureBucketExists, ensureBucketCors, deleteObject, multipartUpload };
+export {
+  ensureBucketExists,
+  ensureBucketCors,
+  deleteObject,
+  listObjects,
+  multipartUpload,
+};

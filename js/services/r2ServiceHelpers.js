@@ -3,11 +3,13 @@
 // State-free helpers extracted from r2Service.js to keep that service under the
 // file-size budget. No behavior change.
 
-import { userLogger } from "../utils/logger.js";
+import { userLogger, devLogger } from "../utils/logger.js";
 import { calculateTorrentInfoHash } from "../utils/torrentHash.js";
 import { buildPublicUrl } from "../r2.js";
 import { sanitizeBucketName } from "../storage/r2-mgmt.js";
 import { truncateMiddle } from "../utils/formatters.js";
+import { safeEncodeNpub } from "../utils/nostrHelpers.js";
+import { ensureS3SdkLoaded } from "../storage/s3-client.js";
 
 const INFO_HASH_PATTERN = /^[a-f0-9]{40}$/;
 
@@ -205,5 +207,95 @@ export async function verifyPublicAccess(ctx, { settings, npub }) {
       errorMessage += ` ${buildCorsGuidance({ accountId })} Also verify that the Bucket Name exists and your API Token has 'Object Read & Write' permissions.`;
     }
     return { success: false, error: errorMessage };
+  }
+}
+
+/**
+ * Build a provider-aware S3 client from resolved connection settings.
+ * Cloudflare R2 always uses path-style (via makeR2Client); a generic S3 bucket
+ * honors the connection's forcePathStyle. Shared by storage list/delete paths.
+ */
+export function buildProviderClient(settings, { makeR2Client, makeS3Client } = {}) {
+  const accessKeyId = (settings?.accessKeyId || "").trim();
+  const secretAccessKey = (settings?.secretAccessKey || "").trim();
+  const useR2 =
+    settings?.provider === "cloudflare_r2" || Boolean(settings?.accountId);
+  if (useR2) {
+    return makeR2Client({
+      accountId: settings.accountId,
+      endpoint: settings.endpoint,
+      accessKeyId,
+      secretAccessKey,
+      region: settings.region,
+    });
+  }
+  return makeS3Client({
+    endpoint: settings.endpoint,
+    region: settings.region,
+    accessKeyId,
+    secretAccessKey,
+    forcePathStyle: Boolean(settings?.forcePathStyle),
+  });
+}
+
+/**
+ * List the object keys under a user's storage prefix (u/<npub>/). `ctx` is the
+ * R2Service instance (resolveConnection / makeR2Client / makeS3Client /
+ * listObjects). Unlock-gated; returns { ok, reason, keys }.
+ */
+export async function listVideoStorageObjects(
+  ctx,
+  { npub = "", pubkey = "", credentials = null } = {},
+) {
+  let resolvedNpub = (npub || "").trim();
+  if (!resolvedNpub && pubkey) {
+    resolvedNpub = safeEncodeNpub(pubkey) || "";
+  }
+  let settings = credentials;
+  if (!settings && resolvedNpub) {
+    try {
+      settings = await ctx.resolveConnection(resolvedNpub);
+    } catch (err) {
+      devLogger.warn("[R2Service] listVideoStorageObjects: resolve failed:", err);
+    }
+  }
+  if (!settings) {
+    return { ok: false, reason: "no-connection", keys: [] };
+  }
+  if (
+    !(settings.accessKeyId || "").trim() ||
+    !(settings.secretAccessKey || "").trim()
+  ) {
+    return { ok: false, reason: "storage-locked", keys: [] };
+  }
+  const bucket = (settings.bucket || "").trim();
+  if (!bucket) {
+    return { ok: false, reason: "missing-bucket", keys: [] };
+  }
+  let s3;
+  try {
+    const ensureSdk =
+      typeof ctx.ensureS3SdkLoaded === "function"
+        ? ctx.ensureS3SdkLoaded
+        : ensureS3SdkLoaded;
+    await ensureSdk();
+    s3 = buildProviderClient(settings, {
+      makeR2Client: ctx.makeR2Client,
+      makeS3Client: ctx.makeS3Client,
+    });
+  } catch (err) {
+    devLogger.warn("[R2Service] listVideoStorageObjects: client build failed:", err);
+    return { ok: false, reason: "client-error", keys: [] };
+  }
+  try {
+    const keys = await ctx.listObjects({
+      s3,
+      bucket,
+      prefix: resolvedNpub ? `u/${resolvedNpub}/` : "",
+    });
+    return { ok: true, keys };
+  } catch (err) {
+    devLogger.warn("[R2Service] listVideoStorageObjects: list failed:", err);
+    return { ok: false, reason: "list-error", keys: [] };
   }
 }

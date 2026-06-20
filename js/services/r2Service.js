@@ -35,6 +35,7 @@ import {
   ensureBucketCors,
   ensureBucketExists,
   deleteObject,
+  listObjects,
 } from "../storage/s3-multipart.js";
 import { ensureS3SdkLoaded, makeS3Client } from "../storage/s3-client.js";
 import { truncateMiddle } from "../utils/formatters.js";
@@ -60,6 +61,7 @@ import {
   createDefaultSettings,
   safeDecodeNpub,
   verifyPublicAccess as verifyPublicAccessHelper,
+  listVideoStorageObjects as listVideoStorageObjectsHelper,
 } from "./r2ServiceHelpers.js";
 
 const STATUS_VARIANTS = new Set(["info", "success", "error", "warning"]);
@@ -76,6 +78,7 @@ export class R2Service {
     ensureBucketExists: ensureBucketExistsOverride,
     ensureBucketCors: ensureBucketCorsOverride,
     deleteObject: deleteObjectOverride,
+    listObjects: listObjectsOverride,
   } = {}) {
     this.listeners = new Map();
     this.cloudflareSettings = null;
@@ -85,6 +88,7 @@ export class R2Service {
     this.ensureBucketExists = ensureBucketExistsOverride || ensureBucketExists;
     this.ensureBucketCors = ensureBucketCorsOverride || ensureBucketCors;
     this.deleteObject = deleteObjectOverride || deleteObject;
+    this.listObjects = listObjectsOverride || listObjects;
   }
 
   /**
@@ -224,6 +228,15 @@ export class R2Service {
       }
     }
     return summary;
+  }
+
+  /**
+   * List the object keys under the user's storage prefix (u/<npub>/) so the
+   * "My Videos" tab can reconcile notes against actual bucket contents. Unlock-
+   * gated (needs credentials); returns { ok, reason, keys }.
+   */
+  async listVideoStorageObjects(args = {}) {
+    return listVideoStorageObjectsHelper(this, args);
   }
 
   on(event, handler) {
