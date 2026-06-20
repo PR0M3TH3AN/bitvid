@@ -33,3 +33,8 @@
 - **Status:** Active (pre-existing — reproduced on pre-refactor commit `1b11cb1b`)
 - **Description:** "plays directly from HTML link (CDN mode)" fails on `--project=e2e-firefox` with `#modalVideo` `src` empty instead of the test's archive.org URL. The Chromium variant and the WebTorrent-fallback variant (`:63`) both pass. Firefox-headless-specific (external URL reachability/codec), not an app regression.
 - **Impact:** One Firefox-only e2e failure; CDN playback works on Chromium and in manual testing.
+
+### `uploadModal-reset.test.mjs` ("UploadModal Reset Logic") hangs/cancels
+- **Status:** Active (pre-existing — reproduced on pre-refactor commit `1b11cb1b`)
+- **Description:** The jsdom-based UploadModal reset suite intermittently fails with `cancelledByParent` / "Promise resolution is still pending but the event loop has already resolved" (~12s hang). It passes or fails depending on full-suite test ordering/timing (an async-hang flake, likely a torrent-metadata/upload promise not settling under the mocked services). Not a regression from the MediaUploader extraction — it fails identically on `1b11cb1b`.
+- **Impact:** One unit suite can report `not ok 1`; the runner still exits 0. Other tests unaffected.

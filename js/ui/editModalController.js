@@ -92,18 +92,31 @@ export default class EditModalController {
         pubkey,
       });
 
-      // Best-effort: if the hosted video URL was genuinely replaced, the old
-      // R2/S3 object (and its .torrent) is now orphaned — remove it. We require
-      // both URLs to be non-empty and different so we never delete an object
-      // that's still referenced (e.g. via a magnet web-seed when the URL was
-      // merely cleared). Thumbnails are intentionally left alone here to avoid
-      // deleting one the new note still points at. Never blocks the edit.
+      // Best-effort: when the hosted video URL and/or thumbnail were genuinely
+      // replaced, the old R2/S3 objects are now orphaned — remove them. For each,
+      // we require both old and new values to be non-empty and different so we
+      // never delete an object the new note still references (e.g. the URL was
+      // merely cleared, or the thumbnail was left unchanged). The video entry
+      // also takes its sibling .torrent. Never blocks the edit.
       try {
+        const orphans = [];
+
         const oldUrl = detail.video?.url || "";
         const newUrl = updatedData?.url || "";
         if (updatedData?.urlEdited && oldUrl && newUrl && oldUrl !== newUrl) {
+          // collectVideoStorageKeys derives the video key + its .torrent.
+          orphans.push({ url: oldUrl });
+        }
+
+        const oldThumb = detail.video?.thumbnail || "";
+        const newThumb = updatedData?.thumbnail || "";
+        if (oldThumb && newThumb && oldThumb !== newThumb) {
+          orphans.push({ thumbnail: oldThumb });
+        }
+
+        if (orphans.length) {
           const cleanup = await r2Service.deleteVideoStorage({
-            videos: [{ url: oldUrl }],
+            videos: orphans,
             pubkey,
           });
           if (cleanup?.deleted?.length) {
