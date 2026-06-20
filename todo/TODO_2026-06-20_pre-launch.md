@@ -205,3 +205,29 @@ Threat model / cautions (write these into the feature + docs):
 - Never log decrypted creds; clear in-memory copies on logout (existing rule).
 - Decryption goes through the (single-threaded) signer — respect the NIP-07/46
   decrypt budget + circuit-breaker invariants; don't block login on it.
+
+## Open — new content-type support (needs research first)
+
+> Note: live streams and short-form video are almost certainly NOT the same
+> thing — they're two different NIPs. Confirm the exact kinds/tags before building.
+
+### 16. Nostr live streams — watch-only (zap.stream, shosho.live)
+- [ ] Likely **NIP-53 Live Activities**: kind **30311** (live event; carries the
+      `streaming` URL — usually HLS .m3u8 — plus `status` live/planned/ended,
+      title, host `p` tags), and kind **1311** (live chat). zap.stream and
+      shosho.live publish these.
+- [ ] Watch-only scope: discover/list live (status=live) events, render the HLS
+      stream in the player, optionally show live chat (read). Publish / "go live"
+      is a later, separate effort.
+- [ ] Research: confirm NIP-53 kinds + tag shapes, how zap.stream vs shosho.live
+      populate `streaming`/`recording`, and HLS playback support in the player.
+
+### 17. Short-form / external NIP-71 video note support
+- [ ] Likely **NIP-71 Video Events** — the format Amethyst & co. use for "short
+      form" vertical video: kind **22** (short video) and kind **21** (normal
+      video). (Confirm current kinds; NIP-71 churned from the older 34235/34236.)
+- [ ] bitvid currently publishes its OWN kind 30078 + attaches NIP-71 metadata.
+      This item is about CONSUMING external NIP-71 notes (render them in the feed /
+      a short-form view) so bitvid can show video posted by other Nostr apps.
+- [ ] Research: confirm whether short-form is purely NIP-71 kind 22, how it maps
+      onto bitvid's video model (url/magnet/thumbnail), and the vertical/feed UX.
