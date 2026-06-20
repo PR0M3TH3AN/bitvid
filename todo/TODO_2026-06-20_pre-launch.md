@@ -23,16 +23,22 @@ tests → `npm run build` + `npm run test:unit` green → commit + push.
 ## Open — high priority (launch-blocking candidates)
 
 ### 1. Delete is not fully working — tombstoned videos still show in the UI
-- [ ] Deleted / tombstoned (NIP-09 + `deleted:true` replaceable) videos still appear
-      in the bitvid grids. Audit the full delete path end-to-end:
-      - Does the deletion event publish to enough relays? (relates to the new feed
-        relay-set reservation — confirm deletes reach the same relays reads use.)
-      - Is the local cache / `videosMap` purged on delete, and does the feed filter
-        honor `deleted` + kind-5 tombstones on reload?
-      - Are NIP-71 (kind 22) + NIP-94 (kind 1063) mirrors also tombstoned, or do they
-        resurrect the card?
-- [ ] Add regression tests asserting a tombstoned/deleted video is filtered out of
-      the active feed (cheat-resistant: seed event → delete → assert not rendered).
+- [x] **Root cause found + fixed** (`afb6200b`): deletes published only to the CAPPED
+      read set (<=8) while videos publish to the full write set, so relays outside
+      the subset kept serving the original → resurrection. Now both delete paths
+      (soft-delete tombstone + NIP-09) use `getDeletePublishRelays()` (write set).
+      Tombstone created_at was already bumped strictly-newer, so this closes the gap.
+- [ ] **Verify with the user** that zombies are gone after this fix. If any remain,
+      remaining suspects to audit:
+      - Is the local cache / `videosMap` + persisted `bitvid:filtered-videos:v1`
+        purged on delete, and does the feed filter honor `deleted` + tombstones on
+        an optimistic (cache-first) reload?
+      - Are NIP-71 (kind 22) + NIP-94 (kind 1063) mirrors also tombstoned, or can a
+        lingering mirror resurrect the card?
+      - getActiveKey mismatch between original (pubkey:dTag) and tombstone (ROOT:…)
+        for edge-case legacy videos.
+- [ ] Add a feed-level regression test (seed event → delete → assert not rendered)
+      once the cache/mirror angles above are confirmed.
 
 ### 2. Watch history delete does not work at all
 - [ ] Audit the watch-history delete function — reportedly non-functional. Trace
