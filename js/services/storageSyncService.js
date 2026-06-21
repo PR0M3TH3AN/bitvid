@@ -9,37 +9,11 @@
 
 import { encryptedSync as defaultEncryptedSync } from "../nostr/encryptedSyncFacade.js";
 import defaultStorageService from "./storageService.js";
+import { isSyncEnabled, setSyncEnabled } from "./settingsSyncFlags.js";
 import { userLogger } from "../utils/logger.js";
 
 export const STORAGE_SYNC_DTAG = "bitvid:storage-connections";
-const FLAG_STORAGE_KEY = "bitvid:settings-sync:v1";
-
-function readFlags() {
-  try {
-    if (typeof localStorage === "undefined") {
-      return {};
-    }
-    const raw = localStorage.getItem(FLAG_STORAGE_KEY);
-    if (!raw) {
-      return {};
-    }
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch (error) {
-    return {};
-  }
-}
-
-function writeFlags(flags) {
-  try {
-    if (typeof localStorage === "undefined") {
-      return;
-    }
-    localStorage.setItem(FLAG_STORAGE_KEY, JSON.stringify(flags || {}));
-  } catch (error) {
-    // Best-effort; the flag is a convenience, not a source of truth.
-  }
-}
+const SYNC_KIND = "storage";
 
 export function createStorageSyncService({
   encryptedSync = defaultEncryptedSync,
@@ -54,23 +28,11 @@ export function createStorageSyncService({
   }
 
   function isEnabled(pubkey) {
-    const key = normalizePubkey(pubkey);
-    if (!key) {
-      return false;
-    }
-    return readFlags()[key]?.storage === true;
+    return isSyncEnabled(normalizePubkey(pubkey), SYNC_KIND);
   }
 
   function setEnabledFlag(pubkey, enabled) {
-    const key = normalizePubkey(pubkey);
-    if (!key) {
-      return;
-    }
-    const flags = readFlags();
-    const entry = flags[key] && typeof flags[key] === "object" ? flags[key] : {};
-    entry.storage = enabled === true;
-    flags[key] = entry;
-    writeFlags(flags);
+    setSyncEnabled(normalizePubkey(pubkey), SYNC_KIND, enabled);
   }
 
   // Push the current local storage account record to the user's encrypted note.

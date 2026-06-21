@@ -836,6 +836,33 @@
                   role="status"
                   aria-live="polite"
                 ></p>
+
+                <div id="profileWalletSync" class="mt-2 rounded-lg border border-default p-4 space-y-3 hidden">
+                    <div class="space-y-1">
+                        <h4 class="text-sm font-semibold text-text">Cross-device sync</h4>
+                        <p class="text-xs text-muted">
+                            Save an <strong>encrypted</strong> copy of your wallet
+                            connection to your Nostr account so you can use it on other
+                            devices without re-pasting the URI.
+                        </p>
+                    </div>
+                    <label class="flex items-start gap-2 text-sm text-muted-strong">
+                        <input id="walletSyncToggle" type="checkbox" class="checkbox mt-0.5" />
+                        <span>Sync my wallet connection to my Nostr account (encrypted)</span>
+                    </label>
+                    <p class="text-xs text-status-danger">
+                        <strong>Spending warning:</strong> a wallet connect URI can spend
+                        from your wallet. The encrypted copy lives on public relays —
+                        anyone who controls your Nostr key could decrypt it and spend
+                        from this wallet. Only enable this if you accept that risk.
+                    </p>
+                    <div class="flex flex-wrap items-center gap-3">
+                        <button id="walletSyncRestoreBtn" type="button" class="btn-ghost focus-ring">
+                            Restore from my Nostr account
+                        </button>
+                    </div>
+                    <p id="walletSyncStatus" class="text-xs" role="status" aria-live="polite"></p>
+                </div>
               </div>
             </section>
 

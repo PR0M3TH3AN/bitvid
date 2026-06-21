@@ -1,5 +1,6 @@
 import { devLogger } from "../../utils/logger.js";
 import { NWC_URI_SCHEME } from "../profileModalContract.js";
+import { createWalletSyncService } from "../../services/walletSyncService.js";
 
 const noop = () => {};
 const SECRET_PLACEHOLDER = "*****";
@@ -15,6 +16,12 @@ export class ProfileWalletController {
     this.walletDisconnectButton = null;
     this.walletStatusText = null;
     this.walletPane = null;
+
+    this.walletSyncSection = null;
+    this.walletSyncToggle = null;
+    this.walletSyncRestoreBtn = null;
+    this.walletSyncStatus = null;
+    this._walletSyncService = null;
   }
 
   cacheDomReferences() {
@@ -25,6 +32,10 @@ export class ProfileWalletController {
     this.walletDisconnectButton = document.getElementById("profileWalletDisconnect") || null;
     this.walletStatusText = document.getElementById("profileWalletStatus") || null;
     this.walletPane = document.getElementById("profilePaneWallet") || null;
+    this.walletSyncSection = document.getElementById("profileWalletSync") || null;
+    this.walletSyncToggle = document.getElementById("walletSyncToggle") || null;
+    this.walletSyncRestoreBtn = document.getElementById("walletSyncRestoreBtn") || null;
+    this.walletSyncStatus = document.getElementById("walletSyncStatus") || null;
 
     // Backwards compatibility alias if needed by tests/external code
     this.mainController.profileWalletStatusText = this.walletStatusText;
@@ -67,6 +78,146 @@ export class ProfileWalletController {
       this.walletDisconnectButton.addEventListener("click", () => {
         void this.handleWalletDisconnect();
       });
+    }
+
+    if (this.walletSyncToggle instanceof HTMLElement) {
+      this.walletSyncToggle.addEventListener("change", () => {
+        void this.handleToggleSync();
+      });
+    }
+
+    if (this.walletSyncRestoreBtn instanceof HTMLElement) {
+      this.walletSyncRestoreBtn.addEventListener("click", () => {
+        void this.handleRestoreSync();
+      });
+    }
+  }
+
+  getWalletSyncService() {
+    if (!this._walletSyncService) {
+      this._walletSyncService = createWalletSyncService({
+        nwcSettings: this.mainController.services.nwcSettings,
+      });
+    }
+    return this._walletSyncService;
+  }
+
+  renderSyncSection(pubkey) {
+    if (!(this.walletSyncSection instanceof HTMLElement)) {
+      return;
+    }
+    const sync = this.getWalletSyncService();
+    if (!pubkey || !sync.isAvailable()) {
+      this.walletSyncSection.classList.add("hidden");
+      return;
+    }
+    this.walletSyncSection.classList.remove("hidden");
+    if (this.walletSyncToggle instanceof HTMLInputElement) {
+      this.walletSyncToggle.checked = sync.isEnabled(pubkey);
+    }
+    this.setSyncStatus("");
+  }
+
+  setSyncStatus(message, tone = "info") {
+    if (!(this.walletSyncStatus instanceof HTMLElement)) {
+      return;
+    }
+    this.walletSyncStatus.textContent = message || "";
+    const toneClass =
+      tone === "success"
+        ? "text-status-success"
+        : tone === "error"
+          ? "text-status-danger"
+          : "text-muted";
+    this.walletSyncStatus.className = `text-xs ${toneClass}`;
+  }
+
+  async handleToggleSync() {
+    const pubkey = this.mainController.normalizeHexPubkey(
+      this.mainController.getActivePubkey()
+    );
+    if (!pubkey) {
+      return;
+    }
+    const sync = this.getWalletSyncService();
+    const enabled =
+      this.walletSyncToggle instanceof HTMLInputElement
+        ? this.walletSyncToggle.checked
+        : false;
+    try {
+      if (enabled) {
+        // Spending capability — require explicit confirmation before publishing.
+        const confirmed =
+          typeof window !== "undefined" && typeof window.confirm === "function"
+            ? window.confirm(
+                "This publishes an ENCRYPTED copy of your wallet connection to public relays.\n\n" +
+                  "A wallet connect URI can SPEND from your wallet. Anyone who controls your " +
+                  "Nostr key could decrypt this and spend from this wallet.\n\nContinue?"
+              )
+            : true;
+        if (!confirmed) {
+          if (this.walletSyncToggle instanceof HTMLInputElement) {
+            this.walletSyncToggle.checked = false;
+          }
+          return;
+        }
+        this.setSyncStatus("Encrypting and publishing…");
+        const result = await sync.enable(pubkey);
+        if (result?.ok) {
+          this.setSyncStatus(
+            `Synced to ${result.accepted}/${result.total} relays.`,
+            "success"
+          );
+          this.mainController.showSuccess("Wallet connection synced (encrypted).");
+        } else {
+          if (this.walletSyncToggle instanceof HTMLInputElement) {
+            this.walletSyncToggle.checked = false;
+          }
+          await sync.disable(pubkey).catch(() => {});
+          this.setSyncStatus(
+            result?.error === "nothing-to-sync"
+              ? "Connect a wallet first, then enable sync."
+              : "Could not publish the encrypted copy. Try again.",
+            "error"
+          );
+        }
+      } else {
+        this.setSyncStatus("Removing the synced copy…");
+        await sync.disable(pubkey);
+        this.setSyncStatus("Sync turned off; the synced copy was cleared.");
+        this.mainController.showSuccess("Wallet sync turned off.");
+      }
+    } catch (error) {
+      devLogger.error("[ProfileModal] Wallet sync toggle failed:", error);
+      this.setSyncStatus("Sync failed. Please try again.", "error");
+    }
+  }
+
+  async handleRestoreSync() {
+    const pubkey = this.mainController.normalizeHexPubkey(
+      this.mainController.getActivePubkey()
+    );
+    if (!pubkey) {
+      return;
+    }
+    const sync = this.getWalletSyncService();
+    try {
+      this.setSyncStatus("Fetching and decrypting…");
+      const result = await sync.pull(pubkey);
+      if (result?.found && result.imported) {
+        this.setSyncStatus("Restored from your Nostr account.", "success");
+        this.mainController.showSuccess("Wallet connection restored.");
+        this.refreshWalletPaneState();
+      } else if (result?.found && !result.imported) {
+        this.setSyncStatus("Found a copy but could not import it.", "error");
+      } else if (result?.cleared) {
+        this.setSyncStatus("No synced wallet found (it was cleared).");
+      } else {
+        this.setSyncStatus("No synced wallet found on your account.");
+      }
+    } catch (error) {
+      devLogger.error("[ProfileModal] Wallet sync restore failed:", error);
+      this.setSyncStatus("Restore failed. Please try again.", "error");
     }
   }
 
@@ -151,6 +302,7 @@ export class ProfileWalletController {
         }
       }
       this.updateWalletStatus("Sign in to connect a wallet.", "info");
+      this.renderSyncSection("");
       this.applyWalletControlState();
       return;
     }
@@ -183,6 +335,9 @@ export class ProfileWalletController {
       this.updateWalletStatus("No wallet connected yet.", "info");
     }
 
+    this.renderSyncSection(
+      this.mainController.normalizeHexPubkey(this.mainController.getActivePubkey())
+    );
     this.applyWalletControlState();
   }
 
@@ -459,11 +614,35 @@ export class ProfileWalletController {
         finalVariant = "success";
         this.mainController.showSuccess("Wallet settings saved.");
         context.reason = "saved";
+        // Keep the encrypted synced copy current if the user opted in.
+        const sync = this.getWalletSyncService();
+        if (sync.isEnabled(normalizedActive)) {
+          try {
+            await sync.push(normalizedActive);
+          } catch (syncError) {
+            devLogger.warn(
+              "[ProfileModal] Wallet re-sync after save failed:",
+              syncError
+            );
+          }
+        }
       } else {
         finalStatus = "Wallet connection removed.";
         finalVariant = "info";
         this.mainController.showStatus("Wallet connection removed.");
         context.reason = "cleared";
+        // Don't leave a now-removed spending URI lingering (encrypted) on relays.
+        const sync = this.getWalletSyncService();
+        if (sync.isEnabled(normalizedActive)) {
+          try {
+            await sync.disable(normalizedActive);
+          } catch (syncError) {
+            devLogger.warn(
+              "[ProfileModal] Wallet sync clear after disconnect failed:",
+              syncError
+            );
+          }
+        }
       }
       context.success = true;
     } catch (error) {
