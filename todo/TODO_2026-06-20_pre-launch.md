@@ -190,27 +190,33 @@ across logins/devices via an encrypted Nostr note, unlocked by the logged-in
 signer — so users don't re-enter them on every device. **Opt-in only; off by
 default.**
 
+Status (2026-06-21): shared core + Storage end-to-end SHIPPED to unstable. NWC
+wallet sync and the offer-to-pull-on-login UX remain (next session).
+
 Design / approach:
-- [ ] Publish as **NIP-78 app data** (kind 30078) replaceable events with stable,
-      namespaced d-tags (e.g. `bitvid:storage-connections`, `bitvid:nwc`). Content
-      **NIP-44-encrypted to self** (own pubkey); fall back to NIP-04 only if the
-      signer lacks NIP-44 (NIP-46 remote signers especially).
-- [ ] **Storage creds are already self-encrypted** today
-      (`storageService._encryptMasterKey` → envelope: AES-GCM master key encrypted
-      to self). Cleanest path: transport the EXISTING encrypted record as the note
-      content (no new crypto); on another device, pull it and unlock with the
-      signer. The NWC URI is a bearer secret stored locally via
-      `nwcSettingsService` — encrypt it to self before publishing.
-- [ ] **Reuse the relay/replaceable lessons from this session**: publish to the
-      WRITE relays (not the capped read set) so the sync reaches everywhere; bump
-      created_at strictly-newer; on read take the **newest event per d-tag** (don't
-      union stale copies) — mirror `getDeletePublishRelays` + the watch-history
-      dedup so a stale device can't clobber newer creds.
-- [ ] **UX**: a per-item "Sync to my Nostr account (encrypted)" toggle in the
-      Storage and Wallet panes; on login, if a synced note exists, offer to pull +
-      unlock. Local remains source of truth on-device; sync is additive.
-- [ ] **Clear/disable**: deleting the synced note must actually clear it on relays
-      (apply the empty-replaceable-publish lesson from `a3799f3f`).
+- [x] Shared **core** `js/nostr/encryptedSync.js` (DI, unit-tested): NIP-78 app
+      data (kind 30078) replaceable events, namespaced d-tags, **NIP-44-encrypted
+      to self** with NIP-04 fallback. Facade `js/nostr/encryptedSyncFacade.js`
+      wires it to the live client/signer. (commits 0abb82b9, 6f7f4196, 7376ff91)
+- [x] **Storage creds**: re-encrypt the WHOLE on-disk account record to self
+      (its `meta` is plaintext — bucket/endpoint names — so transporting the bare
+      envelope would leak those). `storageService.exportAccountRecord` /
+      `importAccountRecord`; `storageSyncService` (d-tag `bitvid:storage-connections`).
+- [ ] **NWC URI** is a bearer SPENDING secret stored via `nwcSettingsService` —
+      encrypt to self before publishing under d-tag `bitvid:nwc`; gate behind an
+      explicit "any device with your key can spend from this wallet" confirm.
+- [x] **Relay/replaceable lessons applied**: publish to the WRITE relays
+      (`getDeletePublishRelays`), created_at forced strictly-newer, read takes the
+      **newest event per d-tag** (reads routed through the subscription manager,
+      not pool.list). NWC will reuse the same core.
+- [x] **Storage UX**: opt-in "Sync these settings to my Nostr account (encrypted)"
+      toggle + "Restore" button + public-relay/key-compromise warning in the
+      Storage pane (shown only when unlocked). Re-pushes on save when enabled.
+- [ ] **Wallet UX**: same toggle/restore in the Wallet pane (+ spend warning).
+- [ ] **Offer-to-pull on login**: on login, if a synced note exists, show a
+      one-time "Restore?" prompt (reuse `storageSyncService.pull` / the NWC pull).
+- [x] **Clear/disable**: `clear()` publishes a cleared marker so the wipe
+      propagates (empty-replaceable-publish lesson); `disable()` calls it.
 
 Threat model / cautions (write these into the feature + docs):
 - The encrypted blob lives on PUBLIC relays: NIP-44 hides contents but not the
