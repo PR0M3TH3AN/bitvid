@@ -2,6 +2,7 @@
 
 import { pointerKey, normalizePointerInput } from "../nostr/watchHistory.js";
 import { convertEventToVideo } from "../nostr/index.js";
+import { DEFAULT_VIDEO_KIND } from "../utils/videoPointer.js";
 import watchHistoryService from "../watchHistoryService.js";
 import nostrService from "../services/nostrService.js";
 import { nostrClient } from "../nostrClientFacade.js";
@@ -237,9 +238,16 @@ function resolveEventAddress(event) {
   if (!event || typeof event !== "object") {
     return "";
   }
-  const kind = Number(event.kind);
+  // Converted video objects (convertEventToVideo) carry tags/pubkey but NOT a
+  // `kind` field — only raw relay events do. Watch-history pointers are always
+  // video-kind addresses, so default to the video kind when it's absent.
+  // Without this, the cache-by-address scan produced "" for every cached video
+  // and never matched, forcing a relay round-trip that left freshly-watched
+  // videos (already sitting in allEvents) showing "Unknown".
+  const rawKind = Number(event.kind);
+  const kind = Number.isFinite(rawKind) ? rawKind : DEFAULT_VIDEO_KIND;
   const pubkey = typeof event.pubkey === "string" ? event.pubkey.toLowerCase() : "";
-  if (!Number.isFinite(kind) || !pubkey) {
+  if (!pubkey) {
     return "";
   }
   const dTag = event.tags?.find((t) => t[0] === "d" && t[1]);
@@ -266,7 +274,7 @@ function checkLocalCacheForVideo(pointer) {
   return null;
 }
 
-function createWatchHistoryHydrationStage() {
+export function createWatchHistoryHydrationStage() {
   return async function watchHistoryHydrationStage(items = [], context = {}) {
     debugInfo(`Starting hydration stage for ${items.length} items.`);
     const missing = [];
