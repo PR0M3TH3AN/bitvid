@@ -641,9 +641,13 @@ async function publishView(pointerInput, createdAt) {
     return viewResult;
   }
 
+  // Watch history belongs to the LOGGED-IN user. View events are signed by an
+  // anonymous session actor (privacy for the public counter), so using the view
+  // event's pubkey filed every logged-in watch under the session actor
+  // (local-only) — it never synced. Prefer the logged-in pubkey.
   let actorCandidate =
-    viewResult?.event?.pubkey ||
     nostrClient?.pubkey ||
+    viewResult?.event?.pubkey ||
     nostrClient?.sessionActor?.pubkey ||
     "";
   let actorKey = normalizeActorKey(actorCandidate);
@@ -713,11 +717,10 @@ async function publishView(pointerInput, createdAt) {
     }
   );
 
-  const normalizedLogged = normalizeActorKey(nostrClient?.pubkey);
-  const normalizedEventActor = normalizeActorKey(
-    viewResult?.event?.pubkey || actorCandidate
-  );
-  if (normalizedEventActor && normalizedEventActor !== normalizedLogged) {
+  // A watch is a local-only "session" entry only when nobody is logged in.
+  // (View events are always signed by the anonymous session actor, so comparing
+  // against the view actor wrongly flagged every logged-in watch as session.)
+  if (!normalizeActorKey(nostrClient?.pubkey)) {
     normalizedPointer.session = true;
   }
 
