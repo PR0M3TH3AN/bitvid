@@ -190,8 +190,9 @@ across logins/devices via an encrypted Nostr note, unlocked by the logged-in
 signer — so users don't re-enter them on every device. **Opt-in only; off by
 default.**
 
-Status (2026-06-21): shared core + Storage end-to-end SHIPPED to unstable. NWC
-wallet sync and the offer-to-pull-on-login UX remain (next session).
+Status (2026-06-21): COMPLETE — shipped to unstable. Core + Storage + NWC wallet
+sync + offer-to-pull-on-login all live. Follow-ups only: cross-device merge
+(restore currently REPLACES) and upgrading the login confirm() to a styled modal.
 
 Design / approach:
 - [x] Shared **core** `js/nostr/encryptedSync.js` (DI, unit-tested): NIP-78 app
@@ -202,9 +203,10 @@ Design / approach:
       (its `meta` is plaintext — bucket/endpoint names — so transporting the bare
       envelope would leak those). `storageService.exportAccountRecord` /
       `importAccountRecord`; `storageSyncService` (d-tag `bitvid:storage-connections`).
-- [ ] **NWC URI** is a bearer SPENDING secret stored via `nwcSettingsService` —
-      encrypt to self before publishing under d-tag `bitvid:nwc`; gate behind an
-      explicit "any device with your key can spend from this wallet" confirm.
+- [x] **NWC URI** is a bearer SPENDING secret stored via `nwcSettingsService` —
+      encrypted to self under d-tag `bitvid:nwc`; gated behind an explicit
+      window.confirm spend warning. `walletSyncService` + Wallet pane UI.
+      Disconnecting the wallet while synced also wipes the note.
 - [x] **Relay/replaceable lessons applied**: publish to the WRITE relays
       (`getDeletePublishRelays`), created_at forced strictly-newer, read takes the
       **newest event per d-tag** (reads routed through the subscription manager,
@@ -212,9 +214,10 @@ Design / approach:
 - [x] **Storage UX**: opt-in "Sync these settings to my Nostr account (encrypted)"
       toggle + "Restore" button + public-relay/key-compromise warning in the
       Storage pane (shown only when unlocked). Re-pushes on save when enabled.
-- [ ] **Wallet UX**: same toggle/restore in the Wallet pane (+ spend warning).
-- [ ] **Offer-to-pull on login**: on login, if a synced note exists, show a
-      one-time "Restore?" prompt (reuse `storageSyncService.pull` / the NWC pull).
+- [x] **Wallet UX**: toggle/restore in the Wallet pane + spend warning + confirm.
+- [x] **Offer-to-pull on login**: one-time per-pubkey prompt
+      (`settingsRestorePrompt` + `encryptedSync.exists` list-only peek), wired in
+      `app.maybeOfferSettingsRestore` (deferred, non-blocking). Reuses the pulls.
 - [x] **Clear/disable**: `clear()` publishes a cleared marker so the wipe
       propagates (empty-replaceable-publish lesson); `disable()` calls it.
 
