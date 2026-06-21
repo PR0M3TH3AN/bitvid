@@ -57,6 +57,9 @@ import {
 import watchHistoryService from "./watchHistoryService.js";
 import r2Service from "./services/r2Service.js";
 import storageService from "./services/storageService.js";
+import { storageSyncService } from "./services/storageSyncService.js";
+import { createWalletSyncService } from "./services/walletSyncService.js";
+import { createSettingsRestorePrompt } from "./services/settingsRestorePrompt.js";
 import {
   getVideoNoteErrorMessage,
   normalizeVideoNotePayload,
@@ -1624,6 +1627,57 @@ class Application {
         );
       }
     }
+
+    if (pubkey) {
+      // Best-effort, never blocks login: offer to restore encrypted settings
+      // synced from another device.
+      this.maybeOfferSettingsRestore(pubkey);
+    }
+  }
+
+  // One-time offer to restore encrypted storage/wallet settings on login (todo
+  // #15). Existence check is list-only (no decrypt); decryption happens only if
+  // the user accepts. Deferred so relays can connect first; failures are silent.
+  maybeOfferSettingsRestore(pubkey) {
+    const key =
+      this.normalizeHexPubkey(pubkey) ||
+      (typeof pubkey === "string" ? pubkey : "");
+    if (!key) {
+      return;
+    }
+    setTimeout(() => {
+      try {
+        if (!this._settingsRestorePrompt) {
+          this._settingsRestorePrompt = createSettingsRestorePrompt({
+            storageSync: storageSyncService,
+            walletSync: createWalletSyncService({
+              nwcSettings: this.nwcSettingsService,
+            }),
+          });
+        }
+        Promise.resolve(
+          this._settingsRestorePrompt.maybeOffer(key, {
+            onRestored: (items) => {
+              const hasStorage = items.includes("storage");
+              const hasWallet = items.includes("wallet");
+              const label =
+                hasStorage && hasWallet
+                  ? "storage and wallet settings"
+                  : hasWallet
+                    ? "wallet connection"
+                    : "storage settings";
+              this.showSuccess(
+                `Restored your ${label} from your Nostr account.`,
+              );
+            },
+          }),
+        ).catch((error) => {
+          devLogger.warn("[settingsRestore] offer failed:", error);
+        });
+      } catch (error) {
+        devLogger.warn("[settingsRestore] offer setup failed:", error);
+      }
+    }, 2000);
   }
 
   async handleLoginModalError(payload = {}) {

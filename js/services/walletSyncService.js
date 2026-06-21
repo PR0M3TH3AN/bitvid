@@ -48,6 +48,16 @@ export function createWalletSyncService({
     return payload;
   }
 
+  // Cheap check (no decrypt) for whether a synced note exists — for the
+  // login-restore prompt.
+  async function hasRemote() {
+    if (typeof encryptedSync.exists !== "function") {
+      return false;
+    }
+    const result = await encryptedSync.exists(WALLET_SYNC_DTAG);
+    return Boolean(result?.exists);
+  }
+
   async function push(pubkey) {
     const key = normalizePubkey(pubkey);
     if (!key) {
@@ -101,6 +111,7 @@ export function createWalletSyncService({
     WALLET_SYNC_DTAG,
     isAvailable,
     isEnabled,
+    hasRemote,
     push,
     pull,
     enable,

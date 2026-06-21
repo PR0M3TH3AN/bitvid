@@ -260,6 +260,48 @@ export function createEncryptedSyncManager(deps = {}) {
     return { found: true, payload, createdAt: newest.created_at, event: newest };
   }
 
+  // Cheap existence peek for the login-restore prompt: list-only, NO decrypt
+  // (does not spend the signer's decrypt budget). Returns whether a non-cleared
+  // note is present for the d-tag.
+  async function exists(dTag) {
+    const tag = normalizeDTag(dTag);
+    const pubkey = resolvePubkey();
+    if (!tag || !pubkey) {
+      return { exists: false };
+    }
+    const relays =
+      (typeof getReadRelays === "function" ? getReadRelays() : []) || [];
+    if (typeof listEvents !== "function" || !relays.length) {
+      return { exists: false };
+    }
+    let events = [];
+    try {
+      events = await listEvents(relays, [
+        { kinds: [APP_DATA_KIND], authors: [pubkey], "#d": [tag], limit: 20 },
+      ]);
+    } catch (err) {
+      return { exists: false, error: "fetch-failed" };
+    }
+    const newest = selectNewest(Array.isArray(events) ? events.flat() : []);
+    if (!newest) {
+      return { exists: false };
+    }
+    const rawContent =
+      typeof newest.content === "string" ? newest.content.trim() : "";
+    if (!rawContent) {
+      return { exists: false, cleared: true };
+    }
+    try {
+      const parsed = JSON.parse(rawContent);
+      if (parsed && parsed.cleared === true) {
+        return { exists: false, cleared: true };
+      }
+    } catch (err) {
+      // Unparseable content still counts as "something is there".
+    }
+    return { exists: true, createdAt: newest.created_at };
+  }
+
   async function clear(dTag, options = {}) {
     const tag = normalizeDTag(dTag);
     if (!tag) {
@@ -287,7 +329,7 @@ export function createEncryptedSyncManager(deps = {}) {
     return publishTemplate(template);
   }
 
-  return { isAvailable, push, pull, clear, APP_DATA_KIND };
+  return { isAvailable, push, pull, exists, clear, APP_DATA_KIND };
 }
 
 export default createEncryptedSyncManager;

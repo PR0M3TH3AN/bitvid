@@ -35,6 +35,16 @@ export function createStorageSyncService({
     setSyncEnabled(normalizePubkey(pubkey), SYNC_KIND, enabled);
   }
 
+  // Cheap check (no decrypt) for whether a synced note exists — for the
+  // login-restore prompt.
+  async function hasRemote() {
+    if (typeof encryptedSync.exists !== "function") {
+      return false;
+    }
+    const result = await encryptedSync.exists(STORAGE_SYNC_DTAG);
+    return Boolean(result?.exists);
+  }
+
   // Push the current local storage account record to the user's encrypted note.
   async function push(pubkey) {
     const key = normalizePubkey(pubkey);
@@ -90,6 +100,7 @@ export function createStorageSyncService({
     STORAGE_SYNC_DTAG,
     isAvailable,
     isEnabled,
+    hasRemote,
     push,
     pull,
     enable,
