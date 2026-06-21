@@ -29,6 +29,18 @@ export const encryptedSync = createEncryptedSyncManager({
       : [],
   getReadRelays: resolveReadRelays,
   getPool: () => nostrClient?.pool || null,
+  // Reads are routed through the subscription manager (deduped + health-gated),
+  // never pool.list directly (lint:pool-access).
+  listEvents: (relays, filters) => {
+    const manager =
+      typeof nostrClient?.getSubscriptionManager === "function"
+        ? nostrClient.getSubscriptionManager()
+        : null;
+    if (!manager || typeof manager.list !== "function") {
+      return Promise.resolve([]);
+    }
+    return manager.list({ filters, relays });
+  },
   publishEventToRelays,
   summarizePublishResults,
   signEvent: async (template) => {

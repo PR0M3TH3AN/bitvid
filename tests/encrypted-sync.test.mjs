@@ -78,6 +78,7 @@ function makeManager({ nip44 = true } = {}) {
     getWriteRelays: () => ["wss://write.relay"],
     getReadRelays: () => ["wss://read.relay"],
     getPool: () => relay,
+    listEvents: (relays, filters) => relay.list(relays, filters),
     publishEventToRelays,
     summarizePublishResults,
     signEvent: async (tpl) => ({

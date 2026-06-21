@@ -90,6 +90,7 @@ export function createEncryptedSyncManager(deps = {}) {
     getWriteRelays,
     getReadRelays,
     getPool,
+    listEvents,
     publishEventToRelays,
     summarizePublishResults,
     signEvent,
@@ -206,14 +207,15 @@ export function createEncryptedSyncManager(deps = {}) {
 
     const relays =
       (typeof getReadRelays === "function" ? getReadRelays() : []) || [];
-    const pool = typeof getPool === "function" ? getPool() : null;
-    if (!pool || !relays.length) {
+    if (typeof listEvents !== "function" || !relays.length) {
       return { found: false, error: "no-relays" };
     }
 
+    // Reads go through the injected listEvents (subscription manager in prod) —
+    // never pool.list directly (lint:pool-access).
     let events = [];
     try {
-      events = await pool.list(relays, [
+      events = await listEvents(relays, [
         { kinds: [APP_DATA_KIND], authors: [pubkey], "#d": [tag], limit: 20 },
       ]);
     } catch (err) {

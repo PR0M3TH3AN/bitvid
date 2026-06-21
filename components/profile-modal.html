@@ -942,6 +942,33 @@
                         </button>
                     </div>
                     <p id="storageFormStatus" class="text-sm" role="status" aria-live="polite"></p>
+
+                    <div id="profileStorageSync" class="mt-2 rounded-lg border border-default p-4 space-y-3 hidden">
+                        <div class="space-y-1">
+                            <h4 class="text-sm font-semibold text-text">Cross-device sync</h4>
+                            <p class="text-xs text-muted">
+                                Save an <strong>encrypted</strong> copy of these storage
+                                settings to your Nostr account so you don't have to
+                                re-enter them on other devices.
+                            </p>
+                        </div>
+                        <label class="flex items-start gap-2 text-sm text-muted-strong">
+                            <input id="storageSyncToggle" type="checkbox" class="checkbox mt-0.5" />
+                            <span>Sync these settings to my Nostr account (encrypted)</span>
+                        </label>
+                        <p class="text-xs text-status-warning">
+                            The encrypted copy lives on public relays. It is readable
+                            only with your Nostr key, but anyone who controls your key
+                            could decrypt it — and the relays can see that your account
+                            stores bitvid settings.
+                        </p>
+                        <div class="flex flex-wrap items-center gap-3">
+                            <button id="storageSyncRestoreBtn" type="button" class="btn-ghost focus-ring">
+                                Restore from my Nostr account
+                            </button>
+                        </div>
+                        <p id="storageSyncStatus" class="text-xs" role="status" aria-live="polite"></p>
+                    </div>
                 </div>
               </div>
             </section>
