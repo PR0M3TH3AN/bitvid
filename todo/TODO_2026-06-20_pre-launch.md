@@ -131,8 +131,16 @@ tests → `npm run build` + `npm run test:unit` green → commit + push.
       surfacing the same control from the Storage settings pane.
 
 ### 9. Cap the cold-login relay-REQ storm further
-- [ ] Investigate the ~117 REQ/s spike at login. Respect the `capReadRelays` invariant
-      everywhere fan-out happens; consider staggering subsystem subscriptions at login.
+- [x] **Biggest source fixed** (`a8e9f520`): the community-blacklist load fired one
+      kind-30000 REQ *per curator* (~28-32 parallel) at cold start. Collapsed into a
+      single batched multi-author REQ (`js/adminListBatch.js`), routed through the
+      subscription manager. This was the dominant `kind 30000` storm.
+- [x] **Relay `from_hex` REQ rejects fixed** (`733cb593`): one odd-length/non-hex
+      value in `ids/authors/#e/#p/#q` made strict relays reject a whole REQ; now
+      sanitized at the pool choke point (`normalizeFilterList`).
+- [ ] Re-measure the login REQ/s spike after these. If still high, look at remaining
+      fan-out (profiles kind 0, reports kind 1984, mute lists kind 10000) and consider
+      staggering subsystem subscriptions at login. Respect `capReadRelays` everywhere.
 
 ## Open — lower priority / infra
 
