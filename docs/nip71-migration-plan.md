@@ -46,6 +46,10 @@ kind for what bitvid does, and it's what Nostube/Goblinbox consume today.
   - `["origin", "bitvid", "<videoRootId>", "https://bitvid.network/?v=<nevent|naddr>"]`
     so other clients can attribute + deep-link back ("watch on bitvid").
   - Optionally `["a", "30078:<pubkey>:<videoRootId>"]` back-pointer (harmless elsewhere).
+- **bitvid never double-renders its own mirror.** Inside bitvid the 34235/36 is
+  merged onto its 30078 by `videoRootId` (`nip71Cache` already keys on it) — it is
+  metadata enrichment, never a second feed card. This dedup applies from Phase 1
+  (our own mirror), not just Phase 2 (foreign videos).
 
 ---
 
@@ -57,11 +61,14 @@ Sourced against NIP-71 + NIP-92 (`imeta`) + NIP-94 (file metadata fields).
 |---|---|---|
 | — | `["d", videoRootId]` | required for addressable; lockstep with 30078 |
 | `title` | `["title", …]` | required |
-| `description` | `.content` and `["alt", …]` | |
-| first publish time | `["published_at", …]` | **stable across edits** (no reordering elsewhere) |
+| `description` | `.content` (full description) | |
+| short text | `["alt", …]` | accessibility text — title / first line, NOT a dump of the full description |
+| first publish time | `["published_at", …]` | read from the ORIGINAL 30078 (root `created_at`/`published_at`); **stable across edits** so foreign clients don't reorder |
 | `url` (HTTPS) | `imeta url <…>` | primary playable source for foreign clients |
 | derived MIME | `imeta m <…>` | not stored today → derive from extension, default `video/mp4` |
 | `thumbnail` | `imeta image <…>` | |
+| `duration` (upload `#input-duration`) | `imeta duration <sec>` | already collected at upload — wire it through |
+| dimensions (probe at upload) | `imeta dim <w>x<h>` **+ 34235-vs-34236 selection** | not captured today → add a `loadedmetadata` probe |
 | `fileSha256` | `imeta x <…>` | |
 | `originalFileSha256` | `imeta ox <…>` | |
 | `magnet` | `imeta magnet <magnet:?xt=…&ws=…&xs=…>` | **standard NIP-94 field** — torrent-aware clients can use it |
@@ -79,6 +86,10 @@ Sourced against NIP-71 + NIP-92 (`imeta`) + NIP-94 (file metadata fields).
 2. **A hosted HTTPS `url` is required to mirror.** Foreign clients can't play a
    magnet-only video; bitvid's magnet still rides along (`magnet`/`i`) for
    torrent-aware clients, but `url` must be present or the toggle is disabled.
+3. **The `url` must be publicly reachable** (CORS + range requests) so other
+   clients can actually play it. Gate the toggle on bitvid's existing public-access
+   verification (`verifyPublicAccess`) — don't advertise a video elsewhere that
+   only bitvid can fetch.
 
 **Timestamp hygiene:** `created_at` = actual signing time; `published_at` = display
 time. (Avoids the future-`created_at` weirdness seen in some published events.)
@@ -121,27 +132,61 @@ Practical notes for conversion:
 
 ---
 
+## Discovery & relays (the part that decides if anyone sees it)
+
+A format-perfect mirror is **invisible** if it isn't on the relays other clients
+read. This is the #1 thing that makes or breaks interop, and it's a *relay* problem,
+not a format problem.
+
+- bitvid already has NIP-65 (`relayManager.publishRelayList`, kind 10002, + outbox
+  reads), and `publishVideo` targets `this.writeRelays`. The mirror must publish to
+  the user's **NIP-65 write relays (outbox model)** — that's where outbox-aware
+  clients (Amethyst, etc.) look for that author's content.
+- **Ensure the user has a published, accurate NIP-65 list** when they first enable
+  the mirror (publish kind 10002 if missing). Without it, outbox clients can't find
+  the video regardless of correctness.
+- Consider also fanning the mirror out to a small set of **well-known general/video
+  relays** so non-outbox clients (and search) can discover it. Keep this list short
+  and configurable; respect the relay-fan-out cap lessons (don't storm).
+- Relay reads for any future ingest go through the subscription manager
+  (lint:pool-access), never `pool.list` directly.
+
+---
+
 ## Phases
 
 ### Phase 0 — Retarget builders (no UX; flag stays off)
 - Point existing `buildNip71VideoEvent` at **34235/36 + `d`=`videoRootId`** (it
-  currently targets 21/22). Implement the field mapping incl. `magnet`/`i`/`ox`.
+  currently targets 21/22). Implement the field mapping incl. `magnet`/`i`/`ox`/
+  `duration` (already collected at upload).
 - Normal-vs-short selection: default 34235; choose 34236 when known-portrait
-  (dimensions when available; otherwise a manual "short" toggle).
+  (from captured dimensions; otherwise a manual "short" toggle).
 - Cheat-resistant tests: bitvid video → spec-valid 34235 event → round-trips back
   via `convertEventToVideo`; magnet/infohash present; private refused; url-less refused.
+- **Interop golden test**: assert the produced event matches the spec shape
+  (`d`/`title`/`published_at`/`imeta url`+`image`) so a foreign parser (Nostube-style)
+  can read it — guards against silent shape drift.
 
 ### Phase 1 — Outbound publish/edit/delete (the headline feature)
 - Edit form toggle: **"Also publish to other Nostr video apps (NIP-71)"** — off by
-  default, gated to public + HTTPS-url videos.
-- **Add a hashtags input** to the publish/edit form; write `["t", tag]` on **both**
-  the 30078 and the 34235/36 mirror (the feed already scores these — no algo change).
+  default, gated to **public + HTTPS-url + public-access-verified** videos.
+- Surface the same control in the **My Videos tab** (per-video mirror status +
+  toggle; it already lists owned videos with action buttons). Optional bulk
+  "make discoverable" there later.
+- **Capture dimensions at upload** (`loadedmetadata` probe) for 34235-vs-34236
+  selection + `imeta dim`; wire the existing `duration` through.
+- **Add a hashtags input**; write `["t", tag]` on **both** the 30078 and the mirror
+  (the feed already scores these — no algo change).
 - **Field conversion on edit/upgrade**: map all available 30078 fields into their
   NIP-71 homes per the mapping table (see "Converting existing videos").
-- Publish: 30078 (as today) **+** the 34235/36 mirror to the write-relay set
-  (reuse `getDeletePublishRelays` write set + the publish-outcome toast).
-- Lifecycle parity: **edit** updates both (same d-tag); **delete** NIP-09s both
-  addresses; **toggle-off** NIP-09s the mirror (removes it from other clients).
+- Publish: 30078 (as today) **+** the 34235/36 mirror to the user's **outbox
+  (NIP-65 write) relays**; publish a kind-10002 list first if the user has none
+  (see "Discovery & relays"). Reuse the publish-outcome toast.
+- Lifecycle parity: **edit** updates both (same d-tag); **delete** publishes a
+  NIP-09 (`kind 5`) referencing the mirror's `["a","34235:<pubkey>:<d>"]` (+ `k`),
+  AND empties the addressable event (empty-replace, the watch-history/encrypted-sync
+  lesson) so clients that ignore NIP-09 still see it cleared; **toggle-off** does the
+  same for the mirror only.
 - Mutation-verified lifecycle tests, then flip `FEATURE_PUBLISH_NIP71` on.
 
 ### Phase 1.5 — Discoverability glue (cheap, high interop value)
@@ -166,10 +211,11 @@ Practical notes for conversion:
 ---
 
 ## Enrichment backlog (nice-to-have, not v1)
-`dim`, `duration`, `bitrate`, `waveform`, multiple `imeta` variants + multi-audio
+`bitrate`, `waveform`, multiple resolution `imeta` variants + multi-audio
 (`ov`/language) tracks, `text-track` (WebVTT captions/subtitles/chapters),
-`segment` (chapters) — all need more captured at upload time. v1 ships the minimal
-spec-valid imeta (`url`/`m`/`image` + `magnet`/`i`) and grows from there.
+`segment` (chapters) — all need more captured/transcoded at upload time. v1 ships
+spec-valid imeta with `url`/`m`/`image`/`dim`/`duration`/`x` + `magnet`/`i`, and
+grows from there. (`dim`/`duration` are pulled into v1 — see Phase 1.)
 
 ---
 
