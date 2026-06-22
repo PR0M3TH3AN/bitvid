@@ -256,7 +256,9 @@ notes below. Summary:
   deprecated — current NIP-71 designates them for editable content.
 - WebTorrent rides standard NIP-94 `imeta` fields (`magnet`, `i`); private videos
   never mirrored; HTTPS `url` required to mirror.
-- [ ] Phase 0: retarget `buildNip71VideoEvent` to 34235/36 + field mapping + tests.
+- [x] Phase 0 (commit 0e2f683b): `buildNip71MirrorEvent` (js/nostr/nip71Mirror.js)
+      maps a bitvid video → addressable 34235/36 event; magnet/i/ox added to the
+      imeta builder+parser; mutation-verified tests. Flag still off, no UX.
 - [ ] Phase 1: opt-in toggle, publish/edit/delete lifecycle parity, flip
       `FEATURE_PUBLISH_NIP71` on.
 - [ ] Phase 1.5: NIP-89 handler reg (kind 31990 → "Open in bitvid" elsewhere);
