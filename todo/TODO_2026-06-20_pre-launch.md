@@ -268,10 +268,13 @@ notes below. Summary:
             mirror service via new FEATURE_NIP71_MIRROR flag (on) +
             nip71MirrorFlags (per-video opt-in). Ineligible videos show the reason
             (private / NSFW-blocked / no-url). LIVE on unstable.
-      - [ ] Remaining polish: auto-update the mirror when a video is edited in the
-            edit modal (currently the user re-toggles from My Videos); capture
-            dimensions at upload (short 34236 + imeta dim — defaults to 34235 now);
-            hashtags input → t tags (bitvid has no hashtags field yet).
+      - [x] Auto-sync (89d9a62b): mirror stays in lockstep on edit/delete,
+            event-driven via nostrService videos:edited/deleted (no nostrService
+            growth). Edit re-publishes (or unshares if now-private); delete tears
+            down + clears the flag.
+      - [ ] Remaining polish: capture dimensions at upload (short 34236 + imeta
+            dim — defaults to 34235 now); hashtags input → t tags (no hashtags
+            field yet); optional account-level "auto-share new public videos".
       - NOTE: legacy FEATURE_PUBLISH_NIP71 (videoPublisher.js auto-21/22) stays
         OFF/dormant — superseded by the opt-in 34235/36 mirror; clean up later.
 - [ ] Phase 1.5: NIP-89 handler reg (kind 31990 → "Open in bitvid" elsewhere);
