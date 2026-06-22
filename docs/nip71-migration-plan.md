@@ -68,7 +68,7 @@ Sourced against NIP-71 + NIP-92 (`imeta`) + NIP-94 (file metadata fields).
 | `infoHash` | `imeta i <infohash>` | **standard NIP-94 field** |
 | `ws` / `xs` | encoded into the `magnet` URI (`&ws=`/`&xs=`) | also kept on 30078 canonical |
 | `isNsfw` | `["content-warning", "<reason>"]` | standard |
-| hashtags (if/when added) | `["t", …]` (repeated) | bitvid has no hashtags field yet — future |
+| hashtags | `["t", <tag>]` (repeated) | written to **both** 30078 and the mirror; see "Hashtags & the feed" |
 | `isForKids`, `mode`, etc. | bitvid-namespaced extra tags | ignored by other clients |
 | — | `["client", "bitvid"]` | |
 
@@ -85,6 +85,42 @@ time. (Avoids the future-`created_at` weirdness seen in some published events.)
 
 ---
 
+## Hashtags & the feed (no algo changes)
+
+The explore/kids feed scoring **already** consumes NIP-71 hashtags:
+`js/feedEngine/exploreScoring.js` builds each video's tag vector from **both** the
+raw `["t", …]` tags on the event **and** `video.nip71.hashtags`, then matches it
+against the user's interests/disinterests vector. `nip71.js` already parses `t`
+tags into `metadata.hashtags` and merges NIP-71 metadata onto videos by
+`videoRootId` (`nip71Cache`). So a native 30078 video, a 34235/36 mirror, and an
+ingested foreign NIP-71 video all slot into the **same** hashtag-driven scoring —
+**the feed algorithm needs zero changes.**
+
+The only gap is **capture**: bitvid's current 30078 content schema has no per-video
+hashtags field (videos only get the topic tag `["t","video"]`). So the work is to
+add a hashtags input and emit `["t", tag]` on **both** events. This is part of
+Phase 1.
+
+## Converting existing videos (the edit/upgrade flow)
+
+Opting an existing video into NIP-71 is just an **edit**. When the publisher toggles
+the mirror on (or edits an already-mirrored video), bitvid maps every available
+30078 field into its NIP-71 home per the table above — title→`title`,
+description→`.content`/`alt`, url→`imeta url`, thumbnail→`imeta image`,
+magnet/infoHash→`imeta magnet`/`i`, nsfw→`content-warning`, hashtags→`t`, etc. —
+and writes the 34235/36 mirror with `d` = `videoRootId` so it stays addressable and
+lockstep-editable.
+
+Practical notes for conversion:
+- Existing videos have **no user hashtags yet**, so the edit form surfaces the new
+  hashtags input; tags the publisher adds are written to **both** the 30078 and the
+  mirror (keeping the feed unified, native + mirrored).
+- Conversion is non-destructive: the 30078 stays canonical; the mirror is additive.
+- Re-editing later updates both in lockstep (same `d`-tag); toggling off NIP-09s the
+  mirror only.
+
+---
+
 ## Phases
 
 ### Phase 0 — Retarget builders (no UX; flag stays off)
@@ -98,6 +134,10 @@ time. (Avoids the future-`created_at` weirdness seen in some published events.)
 ### Phase 1 — Outbound publish/edit/delete (the headline feature)
 - Edit form toggle: **"Also publish to other Nostr video apps (NIP-71)"** — off by
   default, gated to public + HTTPS-url videos.
+- **Add a hashtags input** to the publish/edit form; write `["t", tag]` on **both**
+  the 30078 and the 34235/36 mirror (the feed already scores these — no algo change).
+- **Field conversion on edit/upgrade**: map all available 30078 fields into their
+  NIP-71 homes per the mapping table (see "Converting existing videos").
 - Publish: 30078 (as today) **+** the 34235/36 mirror to the write-relay set
   (reuse `getDeletePublishRelays` write set + the publish-outcome toast).
 - Lifecycle parity: **edit** updates both (same d-tag); **delete** NIP-09s both
