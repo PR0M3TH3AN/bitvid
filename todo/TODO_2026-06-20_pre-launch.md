@@ -248,12 +248,18 @@ Threat model / cautions (write these into the feature + docs):
 - [ ] Research: confirm NIP-53 kinds + tag shapes, how zap.stream vs shosho.live
       populate `streaming`/`recording`, and HLS playback support in the player.
 
-### 17. Short-form / external NIP-71 video note support
-- [ ] Likely **NIP-71 Video Events** — the format Amethyst & co. use for "short
-      form" vertical video: kind **22** (short video) and kind **21** (normal
-      video). (Confirm current kinds; NIP-71 churned from the older 34235/34236.)
-- [ ] bitvid currently publishes its OWN kind 30078 + attaches NIP-71 metadata.
-      This item is about CONSUMING external NIP-71 notes (render them in the feed /
-      a short-form view) so bitvid can show video posted by other Nostr apps.
-- [ ] Research: confirm whether short-form is purely NIP-71 kind 22, how it maps
-      onto bitvid's video model (url/magnet/thumbnail), and the vertical/feed UX.
+### 17. NIP-71 interop (full plan in `docs/nip71-migration-plan.md`)
+Research done; decisions locked. **See the plan doc** — it supersedes the rough
+notes below. Summary:
+- Opt-in, off by default. Dual-event: keep canonical kind 30078; add an addressable
+  **34235/34236** mirror (`d`=`videoRootId`, edits in lockstep). 34235/36 are NOT
+  deprecated — current NIP-71 designates them for editable content.
+- WebTorrent rides standard NIP-94 `imeta` fields (`magnet`, `i`); private videos
+  never mirrored; HTTPS `url` required to mirror.
+- [ ] Phase 0: retarget `buildNip71VideoEvent` to 34235/36 + field mapping + tests.
+- [ ] Phase 1: opt-in toggle, publish/edit/delete lifecycle parity, flip
+      `FEATURE_PUBLISH_NIP71` on.
+- [ ] Phase 1.5: NIP-89 handler reg (kind 31990 → "Open in bitvid" elsewhere);
+      NIP-51 kind 30005 portable playlists.
+- [ ] Phase 2: inbound ingest of external NIP-71 videos (dedup, moderation, trust,
+      `origin` attribution, distinct discovery surface).
