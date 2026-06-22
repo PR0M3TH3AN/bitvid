@@ -764,7 +764,11 @@ export class ProfileWalletController {
       this.mainController.showError(detail);
     } finally {
       this.setWalletPaneBusy(false);
-      this.refreshWalletPaneState();
+      // Do NOT refreshWalletPaneState() here: it re-renders the form from SAVED
+      // settings and would wipe a URI the user typed but hasn't saved yet (then a
+      // subsequent Save sees an empty field and "removes" the wallet). Testing
+      // must preserve the entered value — only refresh the button state.
+      this.applyWalletControlState();
       if (finalStatus) {
         this.updateWalletStatus(finalStatus, finalVariant);
       }
