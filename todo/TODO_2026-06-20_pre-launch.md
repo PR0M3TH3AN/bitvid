@@ -264,10 +264,16 @@ notes below. Summary:
             gate (instance that forbids NSFW won't mirror it outward).
       - [x] 1b (58f19095): `remove` teardown — NIP-09 delete (both addressable
             kinds) + empty-replace tombstone.
-      - [ ] 1c: wire into the publish/edit/delete path + per-video opt-in flag.
-      - [ ] 1d: UI — toggle (edit modal + My Videos), dimension-probe capture,
-            hashtags input.
-      - [ ] 1e: flip `FEATURE_PUBLISH_NIP71` on.
+      - [x] 1c/1d (783c7df0): My Videos "Share to apps" opt-in toggle wired to the
+            mirror service via new FEATURE_NIP71_MIRROR flag (on) +
+            nip71MirrorFlags (per-video opt-in). Ineligible videos show the reason
+            (private / NSFW-blocked / no-url). LIVE on unstable.
+      - [ ] Remaining polish: auto-update the mirror when a video is edited in the
+            edit modal (currently the user re-toggles from My Videos); capture
+            dimensions at upload (short 34236 + imeta dim — defaults to 34235 now);
+            hashtags input → t tags (bitvid has no hashtags field yet).
+      - NOTE: legacy FEATURE_PUBLISH_NIP71 (videoPublisher.js auto-21/22) stays
+        OFF/dormant — superseded by the opt-in 34235/36 mirror; clean up later.
 - [ ] Phase 1.5: NIP-89 handler reg (kind 31990 → "Open in bitvid" elsewhere);
       NIP-51 kind 30005 portable playlists.
 - [ ] Phase 2: inbound ingest of external NIP-71 videos (dedup, moderation, trust,
