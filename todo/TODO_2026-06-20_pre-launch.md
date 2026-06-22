@@ -259,8 +259,15 @@ notes below. Summary:
 - [x] Phase 0 (commit 0e2f683b): `buildNip71MirrorEvent` (js/nostr/nip71Mirror.js)
       maps a bitvid video → addressable 34235/36 event; magnet/i/ox added to the
       imeta builder+parser; mutation-verified tests. Flag still off, no UX.
-- [ ] Phase 1: opt-in toggle, publish/edit/delete lifecycle parity, flip
-      `FEATURE_PUBLISH_NIP71` on.
+- [ ] Phase 1 (in progress):
+      - [x] 1a (e20191d6): `nip71MirrorService.publish` + the ALLOW_NSFW_CONTENT
+            gate (instance that forbids NSFW won't mirror it outward).
+      - [x] 1b (58f19095): `remove` teardown — NIP-09 delete (both addressable
+            kinds) + empty-replace tombstone.
+      - [ ] 1c: wire into the publish/edit/delete path + per-video opt-in flag.
+      - [ ] 1d: UI — toggle (edit modal + My Videos), dimension-probe capture,
+            hashtags input.
+      - [ ] 1e: flip `FEATURE_PUBLISH_NIP71` on.
 - [ ] Phase 1.5: NIP-89 handler reg (kind 31990 → "Open in bitvid" elsewhere);
       NIP-51 kind 30005 portable playlists.
 - [ ] Phase 2: inbound ingest of external NIP-71 videos (dedup, moderation, trust,
