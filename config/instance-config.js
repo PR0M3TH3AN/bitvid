@@ -246,8 +246,14 @@ export const ALLOW_NSFW_CONTENT = false;
  *
  * Set to `false` to disable all inbound NIP-71 ingest with a single switch if it
  * ever causes problems (spam, low-quality content, performance).
+ *
+ * NOTE: currently OFF by default. Ingest's data pipeline works, but surfacing a
+ * burst of ingested authors pushes bitvid's moderation/WoT stage to hydrate
+ * trust + report data for many cold authors at once, which storms relays and
+ * stalls the feed render. Re-enable once that hydration is bounded/non-blocking
+ * (or whitelisted authors are treated as pre-trusted). See the NIP-71 plan doc.
  */
-export const FEATURE_NIP71_INGEST = true;
+export const FEATURE_NIP71_INGEST = false;
 
 /**
  * Emergency fallback accounts for seeding the moderation graph.
