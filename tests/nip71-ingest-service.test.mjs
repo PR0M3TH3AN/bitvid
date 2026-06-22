@@ -99,6 +99,9 @@ function makeService(harness, extra = {}) {
     accessControl: harness.accessControl,
     featureEnabled: true,
     flushDelayMs: 0,
+    // Disable the hydration retry by default so each test is deterministic and
+    // leaves no dangling timers; the retry behavior is covered explicitly below.
+    maxOpenAttempts: 0,
     ...extra,
   });
 }
@@ -180,6 +183,25 @@ test("opens an unscoped (capped) subscription when whitelist mode is off", () =>
   const filters = h.capturedFilters;
   assert.ok(filters[0].authors === undefined, "no author scope when whitelist disabled");
   assert.ok(Number.isFinite(filters[0].limit), "still capped by a limit");
+});
+
+test("retries until the whitelist hydrates, then subscribes (no missed-emit race)", async () => {
+  // Simulates the real startup race: whitelist mode is on but the hex author
+  // set isn't populated yet at start(), and no change event is emitted.
+  const h = makeHarness({ whitelistOn: true, whitelist: [] });
+  const svc = makeService(h, { maxOpenAttempts: 5, openRetryDelayMs: 5 });
+  assert.equal(svc.start(), false, "cannot open yet — authors not hydrated");
+  assert.equal(h.capturedFilters, null);
+
+  // Authors hydrate a moment later, WITHOUT firing onWhitelistChange.
+  h.accessControl.getWhitelistPubkeys = () => ["aa", "bb"];
+
+  // Wait past a retry tick.
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  assert.ok(h.capturedFilters, "retry opened the subscription after hydration");
+  assert.deepEqual(h.capturedFilters[0].authors, ["aa", "bb"]);
+  svc.stop();
 });
 
 test("re-subscribes when the whitelist changes", () => {

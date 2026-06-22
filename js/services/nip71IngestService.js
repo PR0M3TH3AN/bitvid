@@ -25,6 +25,13 @@ import { devLogger } from "../utils/logger.js";
 const FLUSH_DEBOUNCE_MS = 200;
 const DEFAULT_LIMIT = 200;
 const SUBSCRIPTION_KEY = "nip71-ingest";
+// The admin whitelist hydrates asynchronously (remote fetch, then a second hex
+// rebuild once NostrTools loads) and does not always emit a change we can hook
+// (e.g. loaded-from-cache unchanged). So if the author scope isn't ready at
+// start, poll a bounded number of times until it is, instead of silently never
+// subscribing.
+const OPEN_RETRY_DELAY_MS = 2000;
+const MAX_OPEN_ATTEMPTS = 30; // ~60s of retries
 
 export function createNip71IngestService({
   nostrClient,
@@ -34,10 +41,14 @@ export function createNip71IngestService({
   logger = devLogger,
   flushDelayMs = FLUSH_DEBOUNCE_MS,
   limit = DEFAULT_LIMIT,
+  openRetryDelayMs = OPEN_RETRY_DELAY_MS,
+  maxOpenAttempts = MAX_OPEN_ATTEMPTS,
 } = {}) {
   let subscription = null;
   let buffer = [];
   let flushTimer = null;
+  let retryTimer = null;
+  let attemptsLeft = maxOpenAttempts;
   let offWhitelistChange = null;
   let started = false;
 
@@ -137,6 +148,10 @@ export function createNip71IngestService({
       }
     }
 
+    logger?.log?.(
+      `[nip71Ingest] flush: ${events.length} event(s) in, ${injected} injected`,
+    );
+
     if (injected > 0) {
       // Re-render through the existing reactive path. The payload is the
       // post-filter active list (whitelist/NSFW/etc. already applied); the feed
@@ -167,6 +182,7 @@ export function createNip71IngestService({
       return false;
     }
     started = true;
+    attemptsLeft = maxOpenAttempts;
 
     // Re-subscribe when the whitelist changes so the author scope stays current.
     if (typeof accessControl?.onWhitelistChange === "function") {
@@ -175,13 +191,34 @@ export function createNip71IngestService({
       });
     }
 
-    return openSubscription();
+    return attemptOpen();
+  }
+
+  // Open the subscription; if the author scope isn't ready yet (whitelist still
+  // hydrating), retry on a timer rather than giving up silently.
+  function attemptOpen() {
+    if (retryTimer) {
+      clearTimeout(retryTimer);
+      retryTimer = null;
+    }
+    if (subscription) {
+      return true;
+    }
+    const opened = openSubscription();
+    if (opened) {
+      return true;
+    }
+    if (started && attemptsLeft > 0) {
+      attemptsLeft -= 1;
+      retryTimer = setTimeout(attemptOpen, openRetryDelayMs);
+    }
+    return false;
   }
 
   function openSubscription() {
     const filters = resolveFilters();
     if (!filters) {
-      return false; // nothing to ingest (e.g. empty whitelist) — stay armed for re-subscribe
+      return false; // nothing to ingest yet (e.g. whitelist not hydrated) — retry
     }
     try {
       const manager = nostrClient.getSubscriptionManager();
@@ -196,6 +233,12 @@ export function createNip71IngestService({
           }
         },
       });
+      const authorCount = Array.isArray(filters[0]?.authors)
+        ? filters[0].authors.length
+        : "all";
+      logger?.log?.(
+        `[nip71Ingest] subscribed (authors: ${authorCount}, kinds: ${filters[0]?.kinds?.join(",")})`,
+      );
       return true;
     } catch (error) {
       logger?.warn?.("[nip71Ingest] subscribe failed", error);
@@ -208,6 +251,10 @@ export function createNip71IngestService({
     if (flushTimer) {
       clearTimeout(flushTimer);
       flushTimer = null;
+    }
+    if (retryTimer) {
+      clearTimeout(retryTimer);
+      retryTimer = null;
     }
     buffer = [];
     if (subscription && typeof subscription.close === "function") {
@@ -225,7 +272,8 @@ export function createNip71IngestService({
       return false;
     }
     closeSubscription();
-    return openSubscription();
+    attemptsLeft = maxOpenAttempts;
+    return attemptOpen();
   }
 
   function stop() {
