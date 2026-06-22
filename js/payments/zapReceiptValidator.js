@@ -1,7 +1,11 @@
 // js/payments/zapReceiptValidator.js
 
 import { nostrToolsReady } from "../nostrToolsBootstrap.js";
-import { normalizeToolkitCandidate, readToolkitFromScope } from "../nostr/toolkit.js";
+import {
+  normalizeToolkitCandidate,
+  readToolkitFromScope,
+  shimLegacySimplePoolMethods,
+} from "../nostr/toolkit.js";
 import { userLogger } from "../utils/logger.js";
 import { bech32, bytesToHex, sha256 } from "../../vendor/crypto-helpers.bundle.min.js";
 
@@ -212,6 +216,37 @@ function buildValidationResult({
   };
 }
 
+// Build the relay pool used to fetch the zap receipt. nostr-tools 2.x SimplePool
+// no longer exposes .list(), so a freshly constructed pool can't query — which
+// made receipt validation always fail with "Unable to initialize a relay pool"
+// after an otherwise-successful zap. Apply the app's legacy .list shim (unless a
+// listEvents override supplies its own fetch path).
+export function resolveReceiptListPool(tools, overrides = {}) {
+  let pool = null;
+  try {
+    if (typeof overrides.createPool === "function") {
+      pool = overrides.createPool(tools);
+    } else if (tools && typeof tools.SimplePool === "function") {
+      pool = new tools.SimplePool();
+    }
+  } catch (error) {
+    userLogger.warn("[zapReceiptValidator] Failed to create SimplePool instance.", error);
+    return null;
+  }
+  if (
+    pool &&
+    typeof pool.list !== "function" &&
+    typeof overrides.listEvents !== "function"
+  ) {
+    try {
+      shimLegacySimplePoolMethods(pool);
+    } catch (error) {
+      userLogger.warn("[zapReceiptValidator] Failed to shim SimplePool.list.", error);
+    }
+  }
+  return pool;
+}
+
 export async function validateZapReceipt(context = {}, overrides = {}) {
   const {
     zapRequest,
@@ -330,19 +365,11 @@ export async function validateZapReceipt(context = {}, overrides = {}) {
     });
   }
 
-  let pool;
-  try {
-    if (typeof overrides.createPool === "function") {
-      pool = overrides.createPool(tools);
-    } else if (typeof tools.SimplePool === "function") {
-      pool = new tools.SimplePool();
-    }
-  } catch (error) {
-    userLogger.warn("[zapReceiptValidator] Failed to create SimplePool instance.", error);
-    pool = null;
-  }
-
-  if (!pool || typeof pool.list !== "function") {
+  const pool = resolveReceiptListPool(tools, overrides);
+  const canListEvents =
+    typeof overrides.listEvents === "function" ||
+    (pool && typeof pool.list === "function");
+  if (!pool || !canListEvents) {
     return buildValidationResult({
       status: "failed",
       reason: "Unable to initialize a relay pool for receipt validation.",
