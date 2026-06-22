@@ -22,6 +22,7 @@ import {
 } from "./nostrEventSchemas.js";
 import { CACHE_POLICIES, STORAGE_TIERS } from "./nostr/cachePolicies.js";
 import { publishEventToRelay } from "./nostrPublish.js";
+import { fetchBatchedReferenceEvents } from "./adminListBatch.js";
 
 const ADMIN_STATE_CACHE_VERSION = 1;
 const ADMIN_STATE_CACHE_KEY = `bitvid_admin_state_v${ADMIN_STATE_CACHE_VERSION}`;
@@ -688,25 +689,24 @@ async function loadCommunityBlacklistEntries() {
     return [];
   }
 
-  const results = await Promise.all(
-    references.map(async (reference) => {
-      try {
-        const event = await fetchLatestListEvent(
-          { "#d": [reference.dTag], authors: [reference.authorHex] },
-          reference.dTag,
-        );
-        return event ? extractNpubsFromEvent(event) : [];
-      } catch (error) {
-        devLogger.warn(
-          `[adminListStore] Failed to load community blacklist ${reference.dTag}:`,
-          error,
-        );
-        return [];
-      }
-    })
-  );
-
-  return results.flat();
+  // Batch all curator blacklists into ONE REQ instead of one-per-curator — this
+  // was the cold-start kind-30000 relay storm. Best-effort: on failure we return
+  // nothing and the cached admin state (readCachedAdminState) carries over.
+  try {
+    const matched = await fetchBatchedReferenceEvents({
+      references,
+      listEvents: (args) => requireNostrClient().getSubscriptionManager().list(args),
+      relays: ensureNostrReady(),
+      timeoutMs: SHORT_TIMEOUT_MS,
+    });
+    return matched.flatMap((event) => extractNpubsFromEvent(event));
+  } catch (error) {
+    devLogger.warn(
+      "[adminListStore] Batched community blacklist fetch failed:",
+      error,
+    );
+    return [];
+  }
 }
 
 function buildListEvent(listKey, npubs, actorHex) {
