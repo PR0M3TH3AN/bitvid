@@ -102,6 +102,8 @@ function makeService(harness, extra = {}) {
     // Disable the hydration retry by default so each test is deterministic and
     // leaves no dangling timers; the retry behavior is covered explicitly below.
     maxOpenAttempts: 0,
+    // Emit refreshes synchronously (no throttle timer) for deterministic tests.
+    refreshThrottleMs: 0,
     ...extra,
   });
 }
@@ -214,6 +216,23 @@ test("re-subscribes when the whitelist changes", () => {
   h.accessControl.getWhitelistPubkeys = () => ["aa", "cc"];
   h.triggerWhitelistChange();
   assert.deepEqual(h.capturedFilters[0].authors, ["aa", "cc"], "subscription re-scoped after change");
+});
+
+test("coalesces refresh signals so an event burst can't storm the feed", () => {
+  const h = makeHarness();
+  const svc = makeService(h, { refreshThrottleMs: 10000 });
+  svc.start();
+
+  h.fireEvent(foreignEvent({ id: "a", kind: 34235, tags: [["d", "ra"], ["title", "A"], ["imeta", "url https://e/a.mp4", "m video/mp4"]] }));
+  svc.flush();
+  h.fireEvent(foreignEvent({ id: "b", kind: 34235, tags: [["d", "rb"], ["title", "B"], ["imeta", "url https://e/b.mp4", "m video/mp4"]] }));
+  svc.flush();
+
+  const refreshes = h.emitted.filter((e) => e.name === "videos:updated");
+  assert.equal(refreshes.length, 1, "only one immediate refresh within the throttle window");
+  // Both videos still landed in the store regardless of the throttled signal.
+  assert.ok(h.activeMap.has("ROOT:ra") && h.activeMap.has("ROOT:rb"));
+  svc.stop();
 });
 
 test("FEATURE_NIP71_INGEST off makes the service completely inert", () => {

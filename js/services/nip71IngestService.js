@@ -20,9 +20,13 @@ import {
   buildVideoFromNip71Event,
   NIP71_KINDS,
 } from "../nostr/nip71IngestAdapter.js";
-import { devLogger } from "../utils/logger.js";
+import { devLogger, userLogger } from "../utils/logger.js";
 
 const FLUSH_DEBOUNCE_MS = 200;
+// Coalesce ingest-driven feed refreshes so a burst of incoming events can't
+// trigger a re-render/re-subscription storm. The injected videos are already in
+// the active store; this only controls how often we *signal* the feed.
+const REFRESH_THROTTLE_MS = 8000;
 const DEFAULT_LIMIT = 200;
 const SUBSCRIPTION_KEY = "nip71-ingest";
 // The admin whitelist hydrates asynchronously (remote fetch, then a second hex
@@ -43,6 +47,7 @@ export function createNip71IngestService({
   limit = DEFAULT_LIMIT,
   openRetryDelayMs = OPEN_RETRY_DELAY_MS,
   maxOpenAttempts = MAX_OPEN_ATTEMPTS,
+  refreshThrottleMs = REFRESH_THROTTLE_MS,
 } = {}) {
   let subscription = null;
   let buffer = [];
@@ -51,6 +56,8 @@ export function createNip71IngestService({
   let attemptsLeft = maxOpenAttempts;
   let offWhitelistChange = null;
   let started = false;
+  let lastRefreshAt = 0;
+  let pendingRefreshTimer = null;
 
   function isAvailable() {
     return (
@@ -148,33 +155,57 @@ export function createNip71IngestService({
       }
     }
 
-    logger?.log?.(
+    // Visible (not dev-gated) so ingest is observable in any build while we
+    // stabilize the feature.
+    userLogger.info(
       `[nip71Ingest] flush: ${events.length} event(s) in, ${injected} injected`,
     );
 
     if (injected > 0) {
-      // Re-render through the existing reactive path. The payload is the
-      // post-filter active list (whitelist/NSFW/etc. already applied); the feed
-      // re-reads getFilteredActiveVideos itself, so this just signals "refresh".
-      let videos = [];
-      try {
-        videos =
-          typeof nostrService?.getFilteredActiveVideos === "function"
-            ? nostrService.getFilteredActiveVideos()
-            : [];
-      } catch (error) {
-        logger?.warn?.("[nip71Ingest] getFilteredActiveVideos failed", error);
-      }
-      if (typeof nostrService?.emit === "function") {
-        nostrService.emit("videos:updated", {
-          videos,
-          deleted: [],
-          reason: "nip71-ingest",
-        });
-      }
+      requestRefresh();
     }
 
     return injected;
+  }
+
+  // Signal the feed to re-render, throttled so a burst of ingested events can't
+  // drive a re-render/re-subscription storm. The injected videos already live in
+  // the active store; the feed re-reads getFilteredActiveVideos itself, so this
+  // is purely a "refresh now" nudge.
+  function requestRefresh() {
+    if (pendingRefreshTimer) {
+      return;
+    }
+    const now = Date.now();
+    const elapsed = now - lastRefreshAt;
+    if (elapsed >= refreshThrottleMs) {
+      emitRefresh();
+      return;
+    }
+    pendingRefreshTimer = setTimeout(() => {
+      pendingRefreshTimer = null;
+      emitRefresh();
+    }, refreshThrottleMs - elapsed);
+  }
+
+  function emitRefresh() {
+    lastRefreshAt = Date.now();
+    let videos = [];
+    try {
+      videos =
+        typeof nostrService?.getFilteredActiveVideos === "function"
+          ? nostrService.getFilteredActiveVideos()
+          : [];
+    } catch (error) {
+      logger?.warn?.("[nip71Ingest] getFilteredActiveVideos failed", error);
+    }
+    if (typeof nostrService?.emit === "function") {
+      nostrService.emit("videos:updated", {
+        videos,
+        deleted: [],
+        reason: "nip71-ingest",
+      });
+    }
   }
 
   function start() {
@@ -236,7 +267,7 @@ export function createNip71IngestService({
       const authorCount = Array.isArray(filters[0]?.authors)
         ? filters[0].authors.length
         : "all";
-      logger?.log?.(
+      userLogger.info(
         `[nip71Ingest] subscribed (authors: ${authorCount}, kinds: ${filters[0]?.kinds?.join(",")})`,
       );
       return true;
@@ -255,6 +286,10 @@ export function createNip71IngestService({
     if (retryTimer) {
       clearTimeout(retryTimer);
       retryTimer = null;
+    }
+    if (pendingRefreshTimer) {
+      clearTimeout(pendingRefreshTimer);
+      pendingRefreshTimer = null;
     }
     buffer = [];
     if (subscription && typeof subscription.close === "function") {
