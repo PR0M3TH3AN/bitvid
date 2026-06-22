@@ -147,17 +147,74 @@ function normalizeRelayList(relays) {
     .filter((relay) => relay);
 }
 
+// Filter fields that relays hex-decode (from_hex) and therefore MUST contain
+// 64-char lowercase hex. A single malformed/odd-length entry makes strict relays
+// (e.g. primal) reject the whole REQ with "uneven size input to from_hex",
+// silently dropping that subscription's results.
+const HEX64_FILTER_FIELDS = ["ids", "authors", "#e", "#p", "#q"];
+const HEX64_PATTERN = /^[0-9a-f]{64}$/;
+
+// Strip invalid hex from the hex-only filter fields so one bad value can't get a
+// whole REQ rejected. Returns the sanitized filter, or null if a hex field that
+// had entries ends up empty (the query would be meaningless/over-broad without
+// them, so the filter is dropped rather than silently widened).
+export function sanitizeHexFilterFields(filter) {
+  if (!filter || typeof filter !== "object") {
+    return filter;
+  }
+  let sanitized = filter;
+  for (const field of HEX64_FILTER_FIELDS) {
+    const values = filter[field];
+    if (!Array.isArray(values) || values.length === 0) {
+      continue;
+    }
+    const kept = [];
+    for (const value of values) {
+      const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+      if (HEX64_PATTERN.test(normalized)) {
+        kept.push(normalized);
+      }
+    }
+    const changed =
+      kept.length !== values.length || kept.some((value, i) => value !== values[i]);
+    if (!changed) {
+      continue;
+    }
+    const droppedCount = values.length - kept.length;
+    if (droppedCount > 0) {
+      devLogger.warn(
+        `[toolkit] dropped ${droppedCount} invalid hex value(s) from filter "${field}"` +
+          ` (kinds: ${Array.isArray(filter.kinds) ? filter.kinds.join(",") : "?"})`,
+      );
+    }
+    if (kept.length === 0) {
+      return null; // a once-populated hex field is now empty — drop the filter
+    }
+    if (sanitized === filter) {
+      sanitized = { ...filter };
+    }
+    sanitized[field] = kept;
+  }
+  return sanitized;
+}
+
 function normalizeFilterList(filters) {
   if (!filters) {
     return [];
   }
+  let list;
   if (!Array.isArray(filters)) {
     if (typeof filters === "object" && filters !== null) {
-      return [filters];
+      list = [filters];
+    } else {
+      return [];
     }
-    return [];
+  } else {
+    list = filters.filter((candidate) => candidate && typeof candidate === "object");
   }
-  return filters.filter((candidate) => candidate && typeof candidate === "object");
+  return list
+    .map((filter) => sanitizeHexFilterFields(filter))
+    .filter((filter) => filter && typeof filter === "object");
 }
 
 function safeInvoke(handler, args, contextLabel) {

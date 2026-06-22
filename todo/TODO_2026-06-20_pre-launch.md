@@ -283,5 +283,29 @@ notes below. Summary:
         OFF/dormant — superseded by the opt-in 34235/36 mirror; clean up later.
 - [ ] Phase 1.5: NIP-89 handler reg (kind 31990 → "Open in bitvid" elsewhere);
       NIP-51 kind 30005 portable playlists.
-- [ ] Phase 2: inbound ingest of external NIP-71 videos (dedup, moderation, trust,
-      `origin` attribution, distinct discovery surface).
+- [x] Phase 2: inbound ingest of external NIP-71 videos — LIVE on unstable.
+      - `js/nostr/nip71IngestAdapter.js` (foreign 21/22/34235/34236 → bitvid video;
+        content-warning→isNsfw; skips bitvid mirrors; surfaces nip71.publishedAt),
+        `js/services/nip71IngestService.js` (whitelist-scoped subscription,
+        hydration retry, deferred-until-feed-ready, throttled refresh),
+        wired in applicationBootstrap. Admin toggle `FEATURE_NIP71_INGEST`
+        (instance-config) default ON.
+      - Whitelist model: ingest is scoped to whitelisted authors and reuses the
+        existing render-time filter (whitelist/NSFW/blacklist/private). When the
+        admin disables whitelist mode, ingest opens to all authors (capped).
+      - KEY FIX: the feed's resolve-posted-at stage was firing a per-video
+        hydrateVideoHistory() network fetch for each ingested video (no kind-30078
+        history exists) → relay storm + feed hang. Fixed by surfacing
+        nip71.publishedAt so the stage short-circuits.
+      - Verified live: Goblinbox (Nostube) content renders; liveness check works.
+
+### 17b. Channel Profile wall shows only bitvid videos, not NIP-71 (LAUNCH-BLOCKER)
+- [ ] The channel-profile grid (`js/channelProfile.js`, ~line 5387) fetches ONLY
+      `{ kinds:[30078], authors:[pubkey], "#t":["video"] }`, so a creator's
+      NIP-71 videos (kinds 21/22/34235/34236 — incl. their Nostube uploads) never
+      appear on their profile wall even though they show in the main feed via
+      ingest. Fix: also fetch the author's NIP-71 video kinds and merge them
+      (convert via `buildVideoFromNip71Event`, skip bitvid mirrors, dedupe by
+      videoRootId, native-30078 wins a shared root — same precedence as ingest).
+      Consider reusing the ingested videos already in `nostrClient.allEvents` for
+      that author rather than a fresh fetch.
