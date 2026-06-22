@@ -74,4 +74,24 @@ export function resolveMirrorToggle({ enabled, eligibility } = {}) {
   return { action: "publish" };
 }
 
+// Lifecycle decisions for keeping an opted-in mirror in sync (used by the
+// nostrService edit/delete hooks). Pure so they're cheat-resistant to test.
+//
+// On EDIT of a mirrored video: re-publish if still eligible; if it became
+// ineligible (e.g. flipped private), pull the mirror down and clear the flag.
+export function resolveEditSync({ featureOn, enabled, eligible } = {}) {
+  if (featureOn !== true || enabled !== true) {
+    return { action: "none" };
+  }
+  return eligible === true ? { action: "publish" } : { action: "unshare" };
+}
+
+// On DELETE of a mirrored video: remove the mirror and clear the flag.
+export function resolveDeleteSync({ featureOn, enabled } = {}) {
+  if (featureOn !== true || enabled !== true) {
+    return { action: "none" };
+  }
+  return { action: "unshare" };
+}
+
 export const NIP71_MIRROR_FLAG_KEY = FLAG_KEY;

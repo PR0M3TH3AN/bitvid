@@ -8,6 +8,8 @@ import {
   isMirrorEnabled,
   setMirrorEnabled,
   resolveMirrorToggle,
+  resolveEditSync,
+  resolveDeleteSync,
 } from "../js/services/nip71MirrorFlags.js";
 
 const PK = "a".repeat(64);
@@ -53,4 +55,20 @@ test("resolveMirrorToggle: off + ineligible => blocked with reason", () => {
     resolveMirrorToggle({ enabled: false }),
     { action: "blocked", reason: "ineligible" },
   );
+});
+
+test("resolveEditSync: keeps a mirrored video in lockstep, unshares when ineligible", () => {
+  // not mirrored, or feature off → do nothing
+  assert.deepEqual(resolveEditSync({ featureOn: true, enabled: false, eligible: true }), { action: "none" });
+  assert.deepEqual(resolveEditSync({ featureOn: false, enabled: true, eligible: true }), { action: "none" });
+  // mirrored + still eligible → re-publish (no drift)
+  assert.deepEqual(resolveEditSync({ featureOn: true, enabled: true, eligible: true }), { action: "publish" });
+  // mirrored but became ineligible (e.g. now private) → pull it down
+  assert.deepEqual(resolveEditSync({ featureOn: true, enabled: true, eligible: false }), { action: "unshare" });
+});
+
+test("resolveDeleteSync: removes the mirror only when it was shared", () => {
+  assert.deepEqual(resolveDeleteSync({ featureOn: true, enabled: true }), { action: "unshare" });
+  assert.deepEqual(resolveDeleteSync({ featureOn: true, enabled: false }), { action: "none" });
+  assert.deepEqual(resolveDeleteSync({ featureOn: false, enabled: true }), { action: "none" });
 });

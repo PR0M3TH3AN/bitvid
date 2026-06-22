@@ -17,6 +17,7 @@ import hashtagPreferences, {
 import NwcSettingsService from "../services/nwcSettingsService.js";
 import nostrService from "../services/nostrService.js";
 import storageService from "../services/storageService.js";
+import { initNip71MirrorSync } from "../services/nip71MirrorSync.js";
 import watchHistoryService from "../watchHistoryService.js";
 import r2Service from "../services/r2Service.js";
 import s3UploadService from "../services/s3UploadService.js";
@@ -849,6 +850,9 @@ export default class ApplicationBootstrap {
         app.videoSubscription = subscription || null;
       }),
     );
+    // Keep an opted-in NIP-71 mirror in lockstep on edit/delete (event-driven so
+    // nostrService stays untouched).
+    nostrUnsubscribes.push(initNip71MirrorSync(app.nostrService));
     nostrUnsubscribes.push(
       app.nostrService.on("directMessages:notification", () => {
         void app.refreshUnreadDmIndicator({ reason: "dm-notification" });
