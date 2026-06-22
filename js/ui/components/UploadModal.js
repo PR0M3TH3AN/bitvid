@@ -1,6 +1,7 @@
 // components/UploadModal.js
 import { createModalAccessibility } from "./modalAccessibility.js";
 import { Nip71FormManager } from "./nip71FormManager.js";
+import { probeVideoMetadata } from "../../utils/videoProbe.js";
 import { MediaUploader } from "./mediaUploader.js";
 import { devLogger, userLogger } from "../../utils/logger.js";
 import {
@@ -483,9 +484,34 @@ export class UploadModal {
 
   // --- Immediate Upload Handlers ---
 
+  // Best-effort: read the file's dimensions/duration so we can persist them
+  // (orientation → 34236 short selection + a future "shorts" feed). Never blocks
+  // upload; failures just leave the metadata unset.
+  async captureVideoMetadata(file) {
+      this.capturedMetadata = null;
+      if (!file || typeof URL === "undefined" || typeof URL.createObjectURL !== "function") {
+          return;
+      }
+      const objectUrl = URL.createObjectURL(file);
+      try {
+          this.capturedMetadata = await probeVideoMetadata(objectUrl);
+      } catch (error) {
+          this.capturedMetadata = null;
+      } finally {
+          try {
+              URL.revokeObjectURL(objectUrl);
+          } catch (revokeError) {
+              // ignore
+          }
+      }
+  }
+
   async handleVideoSelection(e) {
       const file = e.target.files?.[0];
       if (!file) return;
+
+      // Probe dimensions/duration in the background while the upload proceeds.
+      void this.captureVideoMetadata(file);
 
       if (!this.storageConfigured) {
           alert("Please configure storage before selecting a file.");
@@ -899,6 +925,12 @@ export class UploadModal {
             "",
           enableComments: this.toggles.comments?.checked || true,
           ...audienceFlags,
+
+          // Auto-captured at file-select (best-effort; absent ⇒ omitted). Drives
+          // 34236 short selection + a future "shorts" feed (height > width).
+          width: this.capturedMetadata?.width || 0,
+          height: this.capturedMetadata?.height || 0,
+          duration: this.capturedMetadata?.duration || 0,
 
           // These might be empty depending on mode, filled below
           url: "",

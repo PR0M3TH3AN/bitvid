@@ -8,6 +8,18 @@ import { inferMimeTypeFromUrl } from "../utils/mime.js";
 import { normalizeHashtag } from "../utils/hashtagNormalization.js";
 import { devLogger } from "../utils/logger.js";
 
+// Pixel dimensions: positive integer or 0 (= "unknown / omit").
+export function normalizeVideoDimension(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
+// Duration in seconds: positive (float ok) or 0 (= omit).
+export function normalizeVideoDuration(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
 // Normalize free-form hashtag input (array or comma/space string) to a deduped,
 // lowercased list. Drops the reserved "video" topic tag and caps the count.
 export function sanitizeVideoHashtags(input) {
@@ -189,6 +201,21 @@ export async function prepareVideoPublishPayload(videoPayload, pubkey, { timesta
     const hashtags = sanitizeVideoHashtags(videoData.hashtags);
     if (hashtags.length) {
       contentObject.hashtags = hashtags;
+    }
+
+    // Captured-at-upload dimensions/duration: persist so a video's orientation is
+    // known durably (drives 34236 short selection + a future "shorts" feed filter).
+    const width = normalizeVideoDimension(videoData.width);
+    const height = normalizeVideoDimension(videoData.height);
+    const duration = normalizeVideoDuration(videoData.duration);
+    if (width) {
+      contentObject.width = width;
+    }
+    if (height) {
+      contentObject.height = height;
+    }
+    if (duration) {
+      contentObject.duration = duration;
     }
 
     const nip71Tags = buildNip71MetadataTags(
@@ -483,6 +510,20 @@ export function prepareVideoEditPayload(params) {
     contentObject.hashtags = hashtags;
   }
   const hashtagTags = hashtags.map((tag) => ["t", tag]);
+
+  // Preserve captured dimensions/duration across edits (prefer edited values).
+  const width = normalizeVideoDimension(updatedData?.width ?? baseEvent.width);
+  const height = normalizeVideoDimension(updatedData?.height ?? baseEvent.height);
+  const duration = normalizeVideoDuration(updatedData?.duration ?? baseEvent.duration);
+  if (width) {
+    contentObject.width = width;
+  }
+  if (height) {
+    contentObject.height = height;
+  }
+  if (duration) {
+    contentObject.duration = duration;
+  }
 
   let metadataForTags =
     nip71Metadata && typeof nip71Metadata === "object" ? nip71Metadata : null;

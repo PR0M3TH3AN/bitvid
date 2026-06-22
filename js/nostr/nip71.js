@@ -1520,6 +1520,15 @@ export function convertEventToVideo(event = {}) {
         .filter((value) => typeof value === "string" && value.trim())
         .map((value) => value.trim())
     : [];
+  const toPositiveInt = (value) => {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : undefined;
+  };
+  const width = toPositiveInt(parsedContent.width);
+  const height = toPositiveInt(parsedContent.height);
+  const durationValue = Number(parsedContent.duration);
+  const duration =
+    Number.isFinite(durationValue) && durationValue > 0 ? durationValue : undefined;
   const videoRootId = safeTrim(parsedContent.videoRootId) || event.id;
   const wsField = safeTrim(parsedContent.ws);
   const xsField = safeTrim(parsedContent.xs);
@@ -1624,6 +1633,9 @@ export function convertEventToVideo(event = {}) {
     mode,
     deleted,
     hashtags,
+    width,
+    height,
+    duration,
     ws,
     xs,
     storagePointer,
