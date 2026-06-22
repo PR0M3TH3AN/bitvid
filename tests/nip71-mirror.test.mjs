@@ -139,6 +139,24 @@ test("explicit short flag overrides dimension inference", async () => {
   assert.equal(landscapeButShort.event.kind, NIP71_SHORT_VIDEO_KIND);
 });
 
+test("mirror sources hashtags from nip71.hashtags when video.hashtags is absent", async () => {
+  const v = baseVideo({ hashtags: undefined, nip71: { hashtags: ["alpha", "beta"] } });
+  const res = buildNip71MirrorEvent(v);
+  const tTags = res.event.tags.filter((t) => t[0] === "t").map((t) => t[1]).sort();
+  assert.deepEqual(tTags, ["alpha", "beta"]);
+});
+
+test("mirror sources hashtags from raw `t` tags, dropping the internal 'video' topic", async () => {
+  const v = baseVideo({
+    hashtags: undefined,
+    tags: [["t", "video"], ["t", "Gamestr"], ["t", "gamestr"], ["d", "root-123"]],
+  });
+  const res = buildNip71MirrorEvent(v);
+  const tTags = res.event.tags.filter((t) => t[0] === "t").map((t) => t[1]);
+  assert.ok(!tTags.includes("video"), "must not leak the bitvid 'video' topic tag");
+  assert.deepEqual(tTags, ["gamestr"], "deduped + lowercased");
+});
+
 test("deriveVideoMime maps common extensions and defaults to mp4", async () => {
   assert.equal(deriveVideoMime("https://x/y.webm"), "video/webm");
   assert.equal(deriveVideoMime("https://x/y.m3u8?token=1"), "application/x-mpegURL");

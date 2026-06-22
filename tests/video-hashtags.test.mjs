@@ -9,6 +9,7 @@ import test from "node:test";
 import {
   sanitizeVideoHashtags,
   prepareVideoPublishPayload,
+  prepareVideoEditPayload,
 } from "../js/nostr/videoPayloadBuilder.js";
 import { convertEventToVideo } from "../js/nostr/nip71.js";
 
@@ -56,4 +57,32 @@ test("no hashtags → no content.hashtags", async () => {
   const { event } = await publish({ videoRootId: "root-3" });
   const content = JSON.parse(event.content);
   assert.equal(content.hashtags, undefined);
+});
+
+function edit(baseHashtags, updatedData) {
+  return prepareVideoEditPayload({
+    baseEvent: {
+      id: "e1",
+      videoRootId: "root-9",
+      title: "Old",
+      url: "https://cdn.example.com/v.mp4",
+      hashtags: baseHashtags,
+      created_at: 1000,
+      tags: [],
+    },
+    originalEventStub: { id: "e1" },
+    updatedData,
+    userPubkey: PUBKEY,
+    resolveEventDTag: () => "root-9",
+  });
+}
+
+test("editing WITHOUT a hashtags field preserves the existing hashtags", () => {
+  const { contentObject } = edit(["alpha", "beta"], { title: "New title" });
+  assert.deepEqual(contentObject.hashtags, ["alpha", "beta"], "not stripped on edit");
+});
+
+test("editing WITH hashtags overrides them", () => {
+  const { contentObject } = edit(["alpha"], { hashtags: ["gamma", "delta"] });
+  assert.deepEqual(contentObject.hashtags, ["gamma", "delta"]);
 });

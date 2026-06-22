@@ -46,6 +46,35 @@ export function deriveVideoMime(url) {
   return VIDEO_MIME_BY_EXT[ext] || "video/mp4";
 }
 
+// Hashtags can live in several places depending on how the video was authored:
+// bitvid's own `hashtags`, the parsed NIP-71 metadata (`nip71.hashtags`), or the
+// raw `t` tags on the 30078 (produced by the upload form's NIP-71 hashtag editor).
+// Source from whichever is present so a shared video stays categorized elsewhere.
+// Drops bitvid's internal "video" topic tag and dedupes (case-insensitive).
+function resolveHashtags(video) {
+  let raw = [];
+  if (Array.isArray(video.hashtags) && video.hashtags.length) {
+    raw = video.hashtags;
+  } else if (Array.isArray(video.nip71?.hashtags) && video.nip71.hashtags.length) {
+    raw = video.nip71.hashtags;
+  } else if (Array.isArray(video.tags)) {
+    raw = video.tags
+      .filter((t) => Array.isArray(t) && t[0] === "t" && typeof t[1] === "string")
+      .map((t) => t[1]);
+  }
+  const out = [];
+  const seen = new Set();
+  for (const value of raw) {
+    const tag = str(value).toLowerCase();
+    if (!tag || tag === "video" || seen.has(tag)) {
+      continue;
+    }
+    seen.add(tag);
+    out.push(tag);
+  }
+  return out;
+}
+
 function normalizePublishedAt(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric) || numeric <= 0) {
@@ -114,9 +143,7 @@ export function buildNip71MirrorEvent(video, options = {}) {
     duration: Number.isFinite(duration) && duration > 0 ? duration : undefined,
   };
 
-  const hashtags = Array.isArray(video.hashtags)
-    ? video.hashtags.map(str).filter(Boolean)
-    : [];
+  const hashtags = resolveHashtags(video);
 
   const metadata = {
     title,

@@ -474,6 +474,16 @@ export function prepareVideoEditPayload(params) {
     contentObject.xs = finalXs;
   }
 
+  // Prefer edited hashtags, else preserve the base event's so an edit that omits
+  // the field never strips them.
+  const hashtags = sanitizeVideoHashtags(
+    updatedData?.hashtags !== undefined ? updatedData.hashtags : baseEvent.hashtags,
+  );
+  if (hashtags.length) {
+    contentObject.hashtags = hashtags;
+  }
+  const hashtagTags = hashtags.map((tag) => ["t", tag]);
+
   let metadataForTags =
     nip71Metadata && typeof nip71Metadata === "object" ? nip71Metadata : null;
   if (!metadataForTags) {
@@ -489,9 +499,11 @@ export function prepareVideoEditPayload(params) {
 
   const nip71Tags = buildNip71MetadataTags(metadataForTags);
 
-  const additionalTags = storagePointer
-    ? [["s", storagePointer], ...nip71Tags]
-    : nip71Tags;
+  const additionalTags = [
+    ...(storagePointer ? [["s", storagePointer]] : []),
+    ...hashtagTags,
+    ...nip71Tags,
+  ];
 
   // A replaceable event only wins if its created_at is strictly greater than
   // the version it replaces (NIP-01 keeps the highest created_at; ties go to
