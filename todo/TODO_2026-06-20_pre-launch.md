@@ -272,9 +272,13 @@ notes below. Summary:
             event-driven via nostrService videos:edited/deleted (no nostrService
             growth). Edit re-publishes (or unshares if now-private); delete tears
             down + clears the flag.
-      - [ ] Remaining polish: capture dimensions at upload (short 34236 + imeta
-            dim — defaults to 34235 now); hashtags input → t tags (no hashtags
-            field yet); optional account-level "auto-share new public videos".
+      - [x] Hashtags (a1bf7b15, e793b359): the upload modal's existing NIP-71
+            hashtag editor already emits `t` tags (feed scoring reads them); the
+            mirror now carries them too (from t tags / nip71.hashtags). So
+            publish + feed + mirror hashtags all work.
+      - [ ] Remaining polish (low value): capture dimensions at upload (short 34236
+            + imeta dim — defaults to 34235 now); optional account-level
+            "auto-share new public videos".
       - NOTE: legacy FEATURE_PUBLISH_NIP71 (videoPublisher.js auto-21/22) stays
         OFF/dormant — superseded by the opt-in 34235/36 mirror; clean up later.
 - [ ] Phase 1.5: NIP-89 handler reg (kind 31990 → "Open in bitvid" elsewhere);
