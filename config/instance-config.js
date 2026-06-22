@@ -235,6 +235,21 @@ export const DEFAULT_WHITELIST_MODE_ENABLED = true;
 export const ALLOW_NSFW_CONTENT = false;
 
 /**
+ * Whether the client ingests NIP-71 video events published by *other* Nostr
+ * apps (kinds 21/22 and addressable 34235/34236) and surfaces them in bitvid's
+ * feeds.
+ *
+ * Defaults to `true` so bitvid discovers videos from the wider Nostr ecosystem
+ * (Nostube, Flotilla, etc.). bitvid's own outbound mirrors are skipped to avoid
+ * duplicate listings, and ingested NSFW content still respects
+ * `ALLOW_NSFW_CONTENT` plus the standard trust/blacklist/mute gating.
+ *
+ * Set to `false` to disable all inbound NIP-71 ingest with a single switch if it
+ * ever causes problems (spam, low-quality content, performance).
+ */
+export const FEATURE_NIP71_INGEST = true;
+
+/**
  * Emergency fallback accounts for seeding the moderation graph.
  *
  * Runtime moderation now derives its trust seeds from the Super Admin and the
