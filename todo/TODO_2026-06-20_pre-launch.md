@@ -317,12 +317,10 @@ notes below. Summary:
       - Verified live: Goblinbox (Nostube) content renders; liveness check works.
 
 ### 17b. Channel Profile wall shows only bitvid videos, not NIP-71 (LAUNCH-BLOCKER)
-- [ ] The channel-profile grid (`js/channelProfile.js`, ~line 5387) fetches ONLY
-      `{ kinds:[30078], authors:[pubkey], "#t":["video"] }`, so a creator's
-      NIP-71 videos (kinds 21/22/34235/34236 — incl. their Nostube uploads) never
-      appear on their profile wall even though they show in the main feed via
-      ingest. Fix: also fetch the author's NIP-71 video kinds and merge them
-      (convert via `buildVideoFromNip71Event`, skip bitvid mirrors, dedupe by
-      videoRootId, native-30078 wins a shared root — same precedence as ingest).
-      Consider reusing the ingested videos already in `nostrClient.allEvents` for
-      that author rather than a fresh fetch.
+- [x] **Fixed** (`js/channelProfileVideos.js`): the channel grid now fetches the
+      author's NIP-71 videos (kinds 21/22/34235/34236) alongside kind-30078 via
+      `buildChannelVideoFilters`, and `convertChannelEvent` routes NIP-71 events
+      through `buildVideoFromNip71Event` (skips bitvid mirrors). Existing
+      dedupe-by-root + canAccess in `buildRenderableChannelVideos` handle
+      precedence/gating. Logic extracted to a helper so channelProfile.js stayed
+      under its size cap. Tests + mutation-verified.

@@ -1,7 +1,7 @@
 // js/channelProfile.js
 
 import { nostrClient } from "./nostrClientFacade.js";
-import { convertEventToVideo as sharedConvertEventToVideo } from "./nostr/index.js";
+import { convertChannelEvent, buildChannelVideoFilters } from "./channelProfileVideos.js";
 import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
 import { subscriptions } from "./subscriptions.js";
 import { attachHealthBadges } from "./gridHealth.js";
@@ -4461,7 +4461,7 @@ function normalizeRenderableChannelVideo(entry) {
     typeof entry.kind === "number";
 
   if (looksLikeRawEvent) {
-    const converted = sharedConvertEventToVideo(entry);
+    const converted = convertChannelEvent(entry);
     if (converted && !converted.invalid) {
       return converted;
     }
@@ -5382,13 +5382,8 @@ async function loadUserVideos(pubkey) {
   });
 
   try {
-    // 1) Build filter for videos from this pubkey
-    const filter = {
-      kinds: [30078],
-      authors: [pubkey],
-      "#t": ["video"],
-      limit: 200
-    };
+    // 1) Build filters for this pubkey's videos: native kind-30078 + NIP-71.
+    const filters = buildChannelVideoFilters(pubkey);
 
     // 2) Collect raw events from all relays
     const events = [];
@@ -5401,7 +5396,7 @@ async function loadUserVideos(pubkey) {
       try {
         const fallbackEvents = await nostrClient.pool.list(
           Array.from(DEFAULT_RELAY_URLS),
-          [filter]
+          filters
         );
         if (Array.isArray(fallbackEvents)) {
           events.push(...fallbackEvents);
@@ -5412,7 +5407,7 @@ async function loadUserVideos(pubkey) {
     } else {
       const settled = await pMapSettled(
         relayList,
-        (url) => nostrClient.pool.list([url], [filter]),
+        (url) => nostrClient.pool.list([url], filters),
         { concurrency: RELAY_BACKGROUND_CONCURRENCY }
       );
       settled.forEach((result, index) => {
