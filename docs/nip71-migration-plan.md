@@ -169,7 +169,9 @@ not a format problem.
 
 ### Phase 1 — Outbound publish/edit/delete (the headline feature)
 - Edit form toggle: **"Also publish to other Nostr video apps (NIP-71)"** — off by
-  default, gated to **public + HTTPS-url + public-access-verified** videos.
+  default, gated to **public + HTTPS-url + public-access-verified** videos, and
+  **not offered for `isNsfw` videos when `ALLOW_NSFW_CONTENT=false`** (see
+  "Moderation, web-of-trust, mute/block & NSFW").
 - Surface the same control in the **My Videos tab** (per-video mirror status +
   toggle; it already lists owned videos with action buttons). Optional bulk
   "make discoverable" there later.
@@ -207,6 +209,41 @@ not a format problem.
   existing moderation.
 - (Cross-client comments/zaps via NIP-22 `kind:1111` addressed to the 34235 event
   is a further follow-on — bitvid comments currently target 30078.)
+
+---
+
+## Moderation, web-of-trust, mute/block & NSFW (audited 2026-06-22)
+
+The existing controls key on **author pubkey** and **event id**, so they apply to
+NIP-71 videos automatically — *as long as ingested videos flow through the same feed
+pipeline*. One real gap (inbound NSFW) + one config-respect (outbound).
+
+**Outbound (Phase 1):**
+- [ ] Respect the site `ALLOW_NSFW_CONTENT` config (`config/instance-config.js`,
+      default `false`): when false, **do not offer/allow the mirror for `isNsfw`
+      videos** — an instance that won't surface NSFW shouldn't publish it outward.
+      The pure builder stays config-agnostic and always sets `content-warning` when
+      NSFW; gate at the call site.
+- Mute/block/WoT/admin-blacklist don't newly apply outbound — it's the user's own
+  content (a blacklisted user can't publish anyway).
+
+**Inbound (Phase 2) — the real moderation work:**
+- [ ] **`content-warning` → `isNsfw`**: `mergeNip71MetadataIntoVideo` does NOT
+      currently map a NIP-71 `content-warning` to `video.isNsfw`. The site NSFW
+      filter keys on `isNsfw`, so foreign NSFW would bypass it. Map it in the ingest
+      path so `ALLOW_NSFW_CONTENT=false` filters foreign NSFW too.
+- [ ] **Same pipeline, no bypass**: route every ingested video through the existing
+      stages — `blacklist-filter` (`shouldIncludeVideo`: admin/event-id blacklist +
+      blocked authors), `moderation` (admin whitelist/blacklist + trusted-mute /
+      trusted-report thresholds = web-of-trust), watch-history suppression,
+      kids-audience, NSFW. These key on pubkey/id, so mute lists (NIP-51 kind 10000),
+      blocks, admin lists, and WoT thresholds catch foreign authors automatically.
+- [ ] **Trust gate for strangers**: don't surface unknown/untrusted foreign authors
+      by default — apply the same trust-seed / web-of-trust gating native videos get
+      (consider requiring author ∈ WoT, or a stricter default threshold for ingest).
+- **Kids feed is already safe**: `kidsAudienceFilterStage` is allowlist-based
+  (`isForKids !== true` ⇒ excluded) and also drops `isNsfw` + disallowed
+  content-warnings, so foreign videos (no `isForKids`) never enter the kids feed.
 
 ---
 
