@@ -3351,9 +3351,15 @@ class Application {
         typeof sessionActor?.source === "string"
           ? sessionActor.source.trim()
           : "";
+      // The anonymous view-event actor is created with source "session" (see
+      // SignerManager.ensureSessionActor). It's telemetry, NOT an alternate login
+      // identity, so it must not disqualify a real login — otherwise watching any
+      // video flips isUserLoggedIn() to false and breaks zaps/etc. Only a managed
+      // real source (e.g. "nsec") for a DIFFERENT pubkey disqualifies.
+      const isManagedSource = Boolean(declaredSource) && declaredSource !== "session";
       const isPersisted = sessionActor?.persisted === true;
 
-      if (!hasEmbeddedPrivateKey || declaredSource || isPersisted) {
+      if (!hasEmbeddedPrivateKey || isManagedSource || isPersisted) {
         return false;
       }
     }
