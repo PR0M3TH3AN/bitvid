@@ -15,6 +15,24 @@ NIP-71 videos. Decisions below were made with the maintainer; see "Decisions".
 1. **Kind: addressable `34235` (normal) / `34236` (short).**
 2. **Opt-in, off by default** — per-video toggle; private videos never mirrored.
 3. **Scope: outbound first, inbound later** (Phase 1 vs Phase 2).
+4. **Dual-event model (decided 2026-06-22), NOT single-canonical.** Considered
+   collapsing to one note type by making bitvid's canonical video event itself
+   kind 34235/36. Verdict: keep kind 30078 canonical + an additive mirror.
+   - *Why a single note is appealing:* one event, no drift, fully discoverable.
+   - *Why we're not doing it (yet):* (a) **private videos can't be public NIP-71**
+     (no encryption) so they'd stay 30078 regardless — "one note for everything"
+     is impossible, only "one note for public"; (b) **kind 30078 is the addressing
+     root** — `30078:pubkey:d` is referenced by watch-history pointers, comments,
+     reactions, view counts, playlists, naddr deep-links, and moderation, plus
+     hardcoded video subscription filters (`nostrService.VIDEO_KIND`,
+     `videoPointer.DEFAULT_VIDEO_KIND`, `kinds:[30078]` across client/channel/
+     search). Switching the canonical kind ripples through all of them and needs a
+     forward-only dual-read migration. Not worth the risk for the interop win.
+   - *Accepted trade-off:* two events per shared video; the mirror can drift from
+     the canonical, so the lifecycle must keep them in sync (auto re-publish on
+     edit / remove on delete) — see Phase 1 polish.
+   - The Phase 0/1 builder+parser are reusable if we ever revisit single-canonical
+     (they'd become bitvid's native 34235 read/write layer).
 
 ### Why 34235/34236 (research-validated)
 
