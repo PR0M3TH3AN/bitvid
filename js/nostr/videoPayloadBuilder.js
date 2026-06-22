@@ -5,7 +5,32 @@ import { buildNip71MetadataTags, extractNip71MetadataFromTags } from "./nip71.js
 import { buildVideoPostEvent } from "../nostrEventSchemas.js";
 import { computeSha256HexFromValue } from "../utils/cryptoUtils.js";
 import { inferMimeTypeFromUrl } from "../utils/mime.js";
+import { normalizeHashtag } from "../utils/hashtagNormalization.js";
 import { devLogger } from "../utils/logger.js";
+
+// Normalize free-form hashtag input (array or comma/space string) to a deduped,
+// lowercased list. Drops the reserved "video" topic tag and caps the count.
+export function sanitizeVideoHashtags(input) {
+  const raw = Array.isArray(input)
+    ? input
+    : typeof input === "string"
+      ? input.split(/[\s,]+/)
+      : [];
+  const out = [];
+  const seen = new Set();
+  for (const item of raw) {
+    const tag = normalizeHashtag(item);
+    if (!tag || tag === "video" || seen.has(tag)) {
+      continue;
+    }
+    seen.add(tag);
+    out.push(tag);
+    if (out.length >= 20) {
+      break;
+    }
+  }
+  return out;
+}
 
 export function extractVideoPublishPayload(rawPayload) {
   let videoData = rawPayload;
@@ -161,13 +186,24 @@ export async function prepareVideoPublishPayload(videoPayload, pubkey, { timesta
       contentObject.xs = finalXs;
     }
 
+    const hashtags = sanitizeVideoHashtags(videoData.hashtags);
+    if (hashtags.length) {
+      contentObject.hashtags = hashtags;
+    }
+
     const nip71Tags = buildNip71MetadataTags(
       nip71Metadata && typeof nip71Metadata === "object" ? nip71Metadata : null
     );
 
-    const additionalTags = storagePointer
-      ? [["s", storagePointer], ...nip71Tags]
-      : nip71Tags;
+    // Emit hashtags as `t` tags on the 30078 so bitvid's own feed scoring (and
+    // relay queries) pick them up, in addition to persisting them in content.
+    const hashtagTags = hashtags.map((tag) => ["t", tag]);
+
+    const additionalTags = [
+      ...(storagePointer ? [["s", storagePointer]] : []),
+      ...hashtagTags,
+      ...nip71Tags,
+    ];
 
     const event = buildVideoPostEvent({
       pubkey: normalizedPubkey,

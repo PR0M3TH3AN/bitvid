@@ -1515,6 +1515,11 @@ export function convertEventToVideo(event = {}) {
   const isPrivate = parsedContent.isPrivate === true;
   const isNsfw = parsedContent.isNsfw === true;
   const isForKids = parsedContent.isForKids === true && !isNsfw;
+  const hashtags = Array.isArray(parsedContent.hashtags)
+    ? parsedContent.hashtags
+        .filter((value) => typeof value === "string" && value.trim())
+        .map((value) => value.trim())
+    : [];
   const videoRootId = safeTrim(parsedContent.videoRootId) || event.id;
   const wsField = safeTrim(parsedContent.ws);
   const xsField = safeTrim(parsedContent.xs);
@@ -1618,6 +1623,7 @@ export function convertEventToVideo(event = {}) {
     description,
     mode,
     deleted,
+    hashtags,
     ws,
     xs,
     storagePointer,
