@@ -18,6 +18,7 @@ import NwcSettingsService from "../services/nwcSettingsService.js";
 import nostrService from "../services/nostrService.js";
 import storageService from "../services/storageService.js";
 import { initNip71MirrorSync } from "../services/nip71MirrorSync.js";
+import { createNip71IngestService } from "../services/nip71IngestService.js";
 import watchHistoryService from "../watchHistoryService.js";
 import r2Service from "../services/r2Service.js";
 import s3UploadService from "../services/s3UploadService.js";
@@ -853,6 +854,24 @@ export default class ApplicationBootstrap {
     // Keep an opted-in NIP-71 mirror in lockstep on edit/delete (event-driven so
     // nostrService stays untouched).
     nostrUnsubscribes.push(initNip71MirrorSync(app.nostrService));
+
+    // Inbound NIP-71 ingest: pull video events published by other Nostr apps
+    // (scoped to whitelisted authors while whitelist mode is on) and surface
+    // them in the feed. Gated by FEATURE_NIP71_INGEST. Best-effort.
+    const nip71IngestService = createNip71IngestService({
+      nostrClient,
+      nostrService: app.nostrService,
+      accessControl,
+    });
+    app.nip71IngestService = nip71IngestService;
+    if (nip71IngestService.isAvailable()) {
+      try {
+        nip71IngestService.start();
+      } catch (error) {
+        devLogger.warn("[applicationBootstrap] NIP-71 ingest start failed", error);
+      }
+      nostrUnsubscribes.push(() => nip71IngestService.stop());
+    }
     nostrUnsubscribes.push(
       app.nostrService.on("directMessages:notification", () => {
         void app.refreshUnreadDmIndicator({ reason: "dm-notification" });

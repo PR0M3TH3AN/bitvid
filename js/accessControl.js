@@ -492,6 +492,12 @@ class AccessControl {
     return Array.from(this.whitelist);
   }
 
+  // Hex-encoded whitelist pubkeys (resolved from npubs). Used by NIP-71 ingest
+  // to scope its relay subscription to authors this instance already allows.
+  getWhitelistPubkeys() {
+    return Array.from(this.whitelistPubkeys);
+  }
+
   getBlacklist() {
     return Array.from(this.blacklist);
   }
