@@ -138,9 +138,18 @@ tests → `npm run build` + `npm run test:unit` green → commit + push.
 - [x] **Relay `from_hex` REQ rejects fixed** (`733cb593`): one odd-length/non-hex
       value in `ids/authors/#e/#p/#q` made strict relays reject a whole REQ; now
       sanitized at the pool choke point (`normalizeFilterList`).
-- [ ] Re-measure the login REQ/s spike after these. If still high, look at remaining
-      fan-out (profiles kind 0, reports kind 1984, mute lists kind 10000) and consider
-      staggering subsystem subscriptions at login. Respect `capReadRelays` everywhere.
+- [ ] **Remaining: logged-IN cold-start WoT/social-graph fan-out** (~94-104 REQ/s,
+      bracketed by `[lists-sync-start]`…`[lists-sync-complete]`). Logged-OUT is now
+      clean. The spike is per-contact hydration over the user's ~25 follows/trusted
+      contacts: `kind 30000` (follow sets), `30002` (block lists), `30005/30015`
+      (interest sets), `10050` (DM relay hints), plus `0` (profiles). NOTE: mutes
+      (`kind 10000`) are ALREADY batched (moderationService.refreshTrustedMuteSubscriptions,
+      one multi-author filter). Fix = apply the same multi-author batching to the
+      other per-contact fetches (userBlocks 30002, hashtagPreferences 30005/30015,
+      follow-set/contacts hydration 30000, DM 10050) and/or DEFER non-feed-critical
+      ones (DM relays, interest sets) until after first render. Multi-subsystem +
+      sensitive (trust) → do as a dedicated perf pass, not a rushed change.
+      Source still to pin: the loop issuing 30000/30002/30005/30015 per contact.
 
 ## Open — lower priority / infra
 
