@@ -97,8 +97,42 @@ versions both exist on relays. Dedup must land before/with on-boarding.
      provenance tag for dedup + attribution.
   5. (Optional, symmetric) since it's now a normal bitvid video, the existing
      outbound mirror/auto-share can keep the NIP-71 side in lockstep going forward.
+- **Import modes (decision):** offer both
+  - **Full import (re-host):** file copied to the creator's storage → bitvid-managed
+    (CDN url under their bucket), normal storage tooling applies.
+  - **Reference import (no re-host):** publish a 30078 that keeps the **external**
+    URL (lighter, no storage cost). The video is now a bitvid note but its file is
+    **externally managed** — see storage-provenance below.
+
 - **Result:** the bitvid 30078 is now canonical; Phase-1 dedup hides the original
-  foreign event everywhere; the creator gets CDN + WebTorrent + bitvid features.
+  foreign event everywhere; the creator gets bitvid features + (full import) CDN +
+  WebTorrent, or (reference import) discovery without re-hosting.
+
+### Storage provenance — flag externally-managed imports
+
+Any imported (or otherwise bitvid-converted) video whose file was **not** produced
+by our storage system must be explicitly flagged as **externally managed** so the
+storage tooling never treats it as a bitvid-owned object.
+
+- **Today:** `isUrlUnderBase(url, publicBaseUrl)` (myVideosHealth.js) already
+  classifies bucket vs external ("Hosted URL" vs "External URL"), and
+  `reconcileStorage` only matches files under the base. So a reference-imported
+  external URL is *mostly* handled by the heuristic.
+- **Add (durable + explicit):** stamp the on-boarded note as externally managed
+  rather than relying solely on the URL-vs-base heuristic (which breaks if the
+  creator changes their storage base, or an external host coincidentally matches).
+  Carry it on the video object (e.g. `externalStorage: true`, derived from the
+  `imported-from`/reference-import path) and, where appropriate, on the event.
+- **All storage surfaces must honor it:**
+  - **My Videos health:** show an "External URL / externally managed" badge; never
+    flag as missing-from-bucket.
+  - **Orphan reconciliation:** exclude — never list as an orphan, never offer
+    bucket delete for a file we don't own.
+  - **Delete flow:** suppress the "a hosted file is left behind" storage-cleanup
+    warning for externally-managed videos (there's nothing in our bucket to clean).
+  - **Liveness:** external URL stays "unverifiable" (existing behavior).
+- **Full import** sets `externalStorage: false` (it IS in the creator's bucket) and
+  behaves like any native upload.
 - **Guards:**
   - Only the **same-pubkey** creator can import their own videos (signer == author).
   - Never import NSFW outward against `ALLOW_NSFW_CONTENT` (mirror the existing

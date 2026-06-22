@@ -329,10 +329,18 @@ CDN url + WebTorrent (bitvid extras come free), one-shot import + re-run button.
       history) collapses dupes. Pure + mutation-tested. Needed regardless of
       on-boarding (independent dual-posts already double up).
 - [ ] **Phase 2: creator-initiated import** — discover the logged-in creator's own
-      NIP-71 videos lacking a bitvid version; re-host the file to THEIR storage
-      (CDN) + optional WebTorrent seed; publish a kind-30078 signed by them with an
-      `["imported-from", <orig>]` provenance tag. Same-pubkey-only guard;
-      ALLOW_NSFW gate; reuses ingest adapter + storage/upload + videoPublisher.
+      NIP-71 videos lacking a bitvid version; offer FULL import (re-host to THEIR
+      storage + optional WebTorrent) or REFERENCE import (keep external URL, no
+      re-host); publish a kind-30078 signed by them with an `["imported-from", <orig>]`
+      provenance tag. Same-pubkey-only guard; ALLOW_NSFW gate; reuses ingest adapter
+      + storage/upload + videoPublisher.
+- [ ] **Phase 2b: externally-managed storage flag** — imports NOT produced by our
+      storage system (reference imports / external URLs) must be explicitly flagged
+      (`externalStorage: true`, durable — not just the `isUrlUnderBase` heuristic) so
+      storage tooling never treats them as bitvid-owned: My Videos shows an external
+      badge (never "missing from bucket"), orphan reconciliation excludes them, the
+      delete "hosted file left behind" warning is suppressed, liveness stays
+      unverifiable. Full (re-hosted) imports set the flag false.
 
 ### 17b. Channel Profile wall shows only bitvid videos, not NIP-71 (LAUNCH-BLOCKER)
 - [x] **Fixed** (`js/channelProfileVideos.js`): the channel grid now fetches the
