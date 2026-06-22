@@ -182,37 +182,31 @@ async function main() {
 
     const signedVideo = finalizeEvent(videoEvent, sk);
 
-    // Inject and publish via harness/client
+    // Inject and publish the externally-signed event through the app's pool to
+    // verify pool -> relay connectivity.
     const pubResult = await page.evaluate(async (evt) => {
-      // Use client directly to publish
       const client = window.__bitvidTest__.nostrClient;
-      // We can use signAndPublishEvent if we want to test that flow,
-      // but since we signed it externally (to avoid exposing key to window if not needed, though we just did loginWithNsec),
-      // let's just publish.
-      // Wait, we logged in, so the client has the signer.
-      // Let's use the client to sign and publish to exercise the full stack.
-
-      // Construct unsigned event for client to sign
-      const unsigned = { ...evt };
-      delete unsigned.id;
-      delete unsigned.sig;
-      delete unsigned.pubkey; // client adds this
-
-      // Actually, let's use the raw event we signed externally to be sure it's valid first?
-      // No, verifying the APP flow means using the APP's signer.
-
-      // But `nostrClient` API might be `publishEvent(event)` taking a signed event.
-      // Let's check `js/nostr/client.js` or `nostrClientFacade`.
-      // `publishEvent(event)` usually takes signed event.
-      // `signAndPublishEvent(event)` takes unsigned.
-
-      // Let's use `publishEvent` with our externally signed event to test connectivity first.
       const pool = client.pool;
-      const relays = client.writeRelays;
-      return Promise.any(relays.map((url) => pool.publish([url], evt)));
+      const relays = client.writeRelays || [];
+      // SimplePool.publish(relays, event) returns an ARRAY of per-relay
+      // promises — it must be awaited directly. (The old code wrapped each url
+      // in its own publish() and then Promise.any'd the resulting arrays, which
+      // resolves on the array object immediately without awaiting the publish
+      // and silently swallows publish errors.)
+      const settled = await Promise.allSettled(pool.publish(relays, evt));
+      return {
+        relays,
+        fulfilled: settled.filter((r) => r.status === "fulfilled").length,
+        errors: settled
+          .filter((r) => r.status === "rejected")
+          .map((r) => String(r.reason)),
+      };
     }, signedVideo);
 
-    log("Publish command sent.");
+    log(
+      `Publish sent to [${pubResult.relays.join(", ")}] — ${pubResult.fulfilled} ok` +
+        (pubResult.errors.length ? `, errors: ${pubResult.errors.join("; ")}` : "")
+    );
     // Verify on relay side
     await new Promise((r) => setTimeout(r, 1000)); // Give it a sec
     const relayEvents = relayServer ? relayServer.getEvents() : null;

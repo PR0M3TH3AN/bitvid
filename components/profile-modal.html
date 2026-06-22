@@ -161,6 +161,28 @@
                 Storage
               </button>
               <button
+                id="profileNavMyVideos"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneMyVideos"
+                aria-selected="false"
+              >
+                <svg
+                  class="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 4h16v16H4V4zm0 5h16M9 4v16m6-16v16"
+                  />
+                </svg>
+                My Videos
+              </button>
+              <button
                 id="profileNavHashtags"
                 type="button"
                 class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
@@ -720,6 +742,12 @@
                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path><path d="M16 21h5v-5"></path></svg>
                 </button>
               </div>
+              <div
+                id="relayHealthSuggestion"
+                class="hidden card border border-status-warning/40 bg-status-warning/10 p-3 text-xs text-text"
+                role="status"
+                aria-live="polite"
+              ></div>
               <ul id="relayList" class="grid-stack" data-orientation="vertical"></ul>
               <div class="space-y-2 px-1">
                 <label
@@ -808,6 +836,33 @@
                   role="status"
                   aria-live="polite"
                 ></p>
+
+                <div id="profileWalletSync" class="mt-2 rounded-lg border border-default p-4 space-y-3 hidden">
+                    <div class="space-y-1">
+                        <h4 class="text-sm font-semibold text-text">Cross-device sync</h4>
+                        <p class="text-xs text-muted">
+                            Save an <strong>encrypted</strong> copy of your wallet
+                            connection to your Nostr account so you can use it on other
+                            devices without re-pasting the URI.
+                        </p>
+                    </div>
+                    <label class="flex items-start gap-2 text-sm text-muted-strong">
+                        <input id="walletSyncToggle" type="checkbox" class="checkbox mt-0.5" />
+                        <span>Sync my wallet connection to my Nostr account (encrypted)</span>
+                    </label>
+                    <p class="text-xs text-status-danger">
+                        <strong>Spending warning:</strong> a wallet connect URI can spend
+                        from your wallet. The encrypted copy lives on public relays —
+                        anyone who controls your Nostr key could decrypt it and spend
+                        from this wallet. Only enable this if you accept that risk.
+                    </p>
+                    <div class="flex flex-wrap items-center gap-3">
+                        <button id="walletSyncRestoreBtn" type="button" class="btn-ghost focus-ring">
+                            Restore from my Nostr account
+                        </button>
+                    </div>
+                    <p id="walletSyncStatus" class="text-xs" role="status" aria-live="polite"></p>
+                </div>
               </div>
             </section>
 
@@ -914,7 +969,97 @@
                         </button>
                     </div>
                     <p id="storageFormStatus" class="text-sm" role="status" aria-live="polite"></p>
+
+                    <div id="profileStorageSync" class="mt-2 rounded-lg border border-default p-4 space-y-3 hidden">
+                        <div class="space-y-1">
+                            <h4 class="text-sm font-semibold text-text">Cross-device sync</h4>
+                            <p class="text-xs text-muted">
+                                Save an <strong>encrypted</strong> copy of these storage
+                                settings to your Nostr account so you don't have to
+                                re-enter them on other devices.
+                            </p>
+                        </div>
+                        <label class="flex items-start gap-2 text-sm text-muted-strong">
+                            <input id="storageSyncToggle" type="checkbox" class="checkbox mt-0.5" />
+                            <span>Sync these settings to my Nostr account (encrypted)</span>
+                        </label>
+                        <p class="text-xs text-status-warning">
+                            The encrypted copy lives on public relays. It is readable
+                            only with your Nostr key, but anyone who controls your key
+                            could decrypt it — and the relays can see that your account
+                            stores bitvid settings.
+                        </p>
+                        <div class="flex flex-wrap items-center gap-3">
+                            <button id="storageSyncRestoreBtn" type="button" class="btn-ghost focus-ring">
+                                Restore from my Nostr account
+                            </button>
+                        </div>
+                        <p id="storageSyncStatus" class="text-xs" role="status" aria-live="polite"></p>
+                    </div>
                 </div>
+              </div>
+            </section>
+
+            <section
+              id="profilePaneMyVideos"
+              class="profile-pane hidden space-y-4"
+              role="tabpanel"
+              aria-labelledby="profileNavMyVideos"
+            >
+              <p class="text-sm text-muted">
+                Every video you’ve published, with health checks so you can spot
+                broken or orphaned items and keep your library and storage tidy.
+              </p>
+              <div class="flex items-center justify-between gap-3">
+                <h3 class="text-base font-semibold text-text">My Videos</h3>
+                <button
+                  id="profileMyVideosRefreshBtn"
+                  type="button"
+                  class="btn-ghost btn-icon"
+                  data-size="sm"
+                  aria-label="Refresh my videos"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path><path d="M16 21h5v-5"></path></svg>
+                </button>
+              </div>
+              <p
+                id="profileMyVideosSummary"
+                class="text-sm text-muted"
+                role="status"
+                aria-live="polite"
+              ></p>
+              <p
+                id="profileMyVideosLoading"
+                class="text-sm text-muted hidden"
+                role="status"
+                aria-live="polite"
+              >
+                Loading your videos…
+              </p>
+              <div
+                id="profileMyVideosEmpty"
+                class="card border border-dashed border-border/60 p-6 text-center text-sm text-muted hidden"
+              >
+                You haven’t published any videos yet.
+              </div>
+              <ul
+                id="profileMyVideosList"
+                class="grid-stack"
+                data-orientation="vertical"
+              ></ul>
+              <div id="profileMyVideosOrphans" class="space-y-2 hidden">
+                <h4 class="text-sm font-semibold text-text">
+                  Orphaned storage objects
+                </h4>
+                <p class="text-2xs text-muted">
+                  Files in your bucket that no current video references — safe to
+                  remove to reclaim space.
+                </p>
+                <ul
+                  id="profileMyVideosOrphanList"
+                  class="grid-stack"
+                  data-orientation="vertical"
+                ></ul>
               </div>
             </section>
 

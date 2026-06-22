@@ -16,6 +16,7 @@ import {
 } from "./config.js";
 import { getApplication } from "./applicationContext.js";
 import { devLogger, userLogger } from "./utils/logger.js";
+import { logWatchHistoryDebug } from "./watchHistoryDebug.js";
 import {
   normalizeVideoModerationContext,
   applyModerationContextDatasets,
@@ -326,18 +327,38 @@ async function defaultRemoveHandler({
         })
         .filter(Boolean)
     : [];
+  logWatchHistoryDebug("watch-history:remove", "info", "defaultRemoveHandler", {
+    actor,
+    sanitizedCount: sanitized.length,
+    values: sanitized.map((p) => p?.value).slice(0, 20),
+    hasSnapshot: typeof snapshot === "function",
+  });
   if (typeof snapshot === "function") {
-    await snapshot(sanitized, { actor, reason });
+    // Removal replaces the list — without this the snapshot would merge the
+    // removed item back from cache and the deletion would have no effect.
+    const snapResult = await snapshot(sanitized, { actor, reason, replace: true });
+    logWatchHistoryDebug("watch-history:remove", "info", "defaultRemoveHandler snapshot", {
+      ok: snapResult?.ok,
+      empty: snapResult?.empty,
+      skipped: snapResult?.skipped,
+    });
   }
   try {
     if (typeof updateWatchHistoryList === "function") {
-      await updateWatchHistoryList(sanitized, {
+      const updateResult = await updateWatchHistoryList(sanitized, {
         actorPubkey: actor,
         replace: true,
         source: reason
       });
+      logWatchHistoryDebug("watch-history:remove", "info", "defaultRemoveHandler list update", {
+        ok: updateResult?.ok,
+        finalItemCount: updateResult?.items?.length,
+      });
     }
   } catch (error) {
+    logWatchHistoryDebug("watch-history:remove", "warn", "defaultRemoveHandler failed", {
+      error: error?.message || String(error),
+    });
     if (isDevEnv) {
       userLogger.warn("[historyView] Failed to update watch history list:", error);
     }
@@ -2319,6 +2340,13 @@ export function createWatchHistoryRenderer(config = {}) {
       });
     }
     const feedItems = Array.isArray(result?.items) ? result.items : [];
+    logWatchHistoryDebug("watch-history:read", "info", "loadHistory result", {
+      force: force === true,
+      itemCount: feedItems.length,
+      values: feedItems
+        .map((entry) => entry?.pointer?.value || entry?.value)
+        .slice(0, 20),
+    });
     const normalized = [];
     for (const entry of feedItems) {
       const pointer = normalizePointerInput(entry?.pointer || entry);

@@ -1,6 +1,6 @@
 import { devLogger } from "../utils/logger.js";
 import { buildVideoAddressPointer } from "../utils/videoPointer.js";
-import { COMMENT_EVENT_KIND } from "../nostr/commentEvents.js";
+import { getAllowedCommentKinds } from "../nostr/commentTargetNormalizer.js";
 
 const DEFAULT_MAX_DISCUSSION_COUNT_VIDEOS = 24;
 const COUNT_UNSUPPORTED_TITLE = "Relay does not support NIP-45 COUNT queries.";
@@ -131,17 +131,22 @@ export default class DiscussionCountService {
       return [];
     }
 
+    // Count the same kinds the thread actually displays (NIP-22 kind 1111 plus
+    // legacy kind 1). Counting only 1111 made the badge undercount threads that
+    // contain legacy comments.
+    const commentKinds = getAllowedCommentKinds();
+
     const filters = [];
     const eventId = typeof video.id === "string" ? video.id.trim() : "";
     if (eventId) {
-      filters.push({ kinds: [COMMENT_EVENT_KIND], "#E": [eventId] });
+      filters.push({ kinds: commentKinds, "#E": [eventId] });
     }
 
     const address = buildVideoAddressPointer(video);
     const rootIdentifier =
       typeof video.videoRootId === "string" ? video.videoRootId.trim() : "";
 
-    const uppercaseFilter = { kinds: [COMMENT_EVENT_KIND] };
+    const uppercaseFilter = { kinds: commentKinds };
     let hasUppercasePointer = false;
 
     if (rootIdentifier) {
@@ -184,7 +189,7 @@ export default class DiscussionCountService {
     }
 
     if (address) {
-      filters.push({ kinds: [COMMENT_EVENT_KIND], "#A": [address] });
+      filters.push({ kinds: commentKinds, "#A": [address] });
     }
 
     return filters;

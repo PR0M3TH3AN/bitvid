@@ -2721,6 +2721,10 @@
     color: var(--text-primary);
     line-height: 1.6;
     word-break: break-word;
+    /* Comment content is inserted as a single text node, so preserve the
+       author's line breaks/paragraphs instead of collapsing them into one
+       run-on line. pre-wrap keeps newlines while still wrapping long lines. */
+    white-space: pre-wrap;
   }
 
   .comment-thread__actions {

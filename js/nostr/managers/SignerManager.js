@@ -24,8 +24,22 @@ import {
   getActiveSigner as getActiveSignerFromRegistry,
   clearActiveSigner as clearActiveSignerInRegistry,
   logoutSigner as logoutSignerFromRegistry,
-  resolveActiveSigner as resolveActiveSignerFromRegistry,
 } from "../../nostrClientRegistry.js";
+import {
+  resolveSignerCapabilities,
+  hydrateExtensionSignerCapabilities,
+  attachNipMethodAliases,
+  resolveActiveSigner,
+  buildExtensionSignerAdapter,
+} from "../signerCapabilities.js";
+
+// Re-exported for existing importers (e.g. js/nostr/client.js) that historically
+// imported these from SignerManager.
+export {
+  resolveSignerCapabilities,
+  hydrateExtensionSignerCapabilities,
+  attachNipMethodAliases,
+};
 
 import {
   readStoredNip46Session,
@@ -39,6 +53,10 @@ import {
   resolveNip46Relays,
   encodeHexToNpub,
   generateNip46Secret,
+  NIP46_RPC_KIND,
+  NIP46_HANDSHAKE_TIMEOUT_MS,
+  attemptDecryptNip46HandshakePayload,
+  normalizeNostrPubkey,
 } from "../nip46Client.js";
 
 import {
@@ -54,206 +72,8 @@ import { createPrivateKeyCipherClosures } from "../signerHelpers.js";
 import { queueSignEvent } from "../signRequestQueue.js";
 import { signEventWithPrivateKey } from "../publishHelpers.js";
 import { ensureNostrTools, getCachedNostrTools } from "../toolkit.js";
-
-export function resolveSignerCapabilities(signer) {
-  const fallback = {
-    sign: false,
-    nip44: false,
-    nip04: false,
-  };
-
-  if (!signer || typeof signer !== "object") {
-    return fallback;
-  }
-
-  const capabilities =
-    signer.capabilities && typeof signer.capabilities === "object"
-      ? signer.capabilities
-      : {};
-
-  return {
-    sign:
-      (typeof capabilities.sign === "boolean" && capabilities.sign) ||
-      typeof signer.signEvent === "function",
-    nip44:
-      (typeof capabilities.nip44 === "boolean" && capabilities.nip44) ||
-      typeof signer.nip44Encrypt === "function" ||
-      typeof signer.nip44Decrypt === "function",
-    nip04:
-      (typeof capabilities.nip04 === "boolean" && capabilities.nip04) ||
-      typeof signer.nip04Encrypt === "function" ||
-      typeof signer.nip04Decrypt === "function",
-  };
-}
-
-export function hydrateExtensionSignerCapabilities(signer) {
-  if (!signer || typeof signer !== "object") {
-    return;
-  }
-
-  const signerType = typeof signer.type === "string" ? signer.type : "";
-  if (signerType !== "extension" && signerType !== "nip07") {
-    return;
-  }
-
-  const extension =
-    typeof window !== "undefined" && window && window.nostr ? window.nostr : null;
-  if (!extension) {
-    return;
-  }
-
-  if (typeof signer.signEvent !== "function" && extension.signEvent) {
-    if (typeof extension.signEvent === "function") {
-      signer.signEvent = extension.signEvent.bind(extension);
-    }
-  }
-
-  if (!signer.nip04 && extension.nip04) {
-    signer.nip04 = extension.nip04;
-  }
-
-  if (!signer.nip44 && extension.nip44) {
-    signer.nip44 = extension.nip44;
-  }
-}
-
-export function attachNipMethodAliases(signer) {
-  if (!signer || typeof signer !== "object") {
-    return;
-  }
-
-  const nip04 =
-    signer && typeof signer.nip04 === "object" && signer.nip04 !== null
-      ? signer.nip04
-      : null;
-  if (nip04) {
-    const encrypt =
-      typeof nip04.encrypt === "function" ? nip04.encrypt.bind(nip04) : null;
-    const decrypt =
-      typeof nip04.decrypt === "function" ? nip04.decrypt.bind(nip04) : null;
-
-    if (encrypt && typeof signer.nip04Encrypt !== "function") {
-      signer.nip04Encrypt = (targetPubkey, plaintext) =>
-        encrypt(targetPubkey, plaintext);
-    }
-
-    if (decrypt && typeof signer.nip04Decrypt !== "function") {
-      signer.nip04Decrypt = (actorPubkey, ciphertext) =>
-        decrypt(actorPubkey, ciphertext);
-    }
-  }
-
-  const nip44 =
-    signer && typeof signer.nip44 === "object" && signer.nip44 !== null
-      ? signer.nip44
-      : null;
-  if (nip44) {
-    const v2 =
-      typeof nip44.v2 === "object" && nip44.v2 !== null ? nip44.v2 : null;
-
-    const encrypt = (() => {
-      if (typeof signer.nip44Encrypt === "function") {
-        return null;
-      }
-      if (typeof v2?.encrypt === "function") {
-        return v2.encrypt.bind(v2);
-      }
-      if (typeof nip44.encrypt === "function") {
-        return nip44.encrypt.bind(nip44);
-      }
-      return null;
-    })();
-
-    const decrypt = (() => {
-      if (typeof signer.nip44Decrypt === "function") {
-        return null;
-      }
-      if (typeof v2?.decrypt === "function") {
-        return v2.decrypt.bind(v2);
-      }
-      if (typeof nip44.decrypt === "function") {
-        return nip44.decrypt.bind(nip44);
-      }
-      return null;
-    })();
-
-    if (encrypt) {
-      signer.nip44Encrypt = (targetPubkey, plaintext) =>
-        encrypt(targetPubkey, plaintext);
-    }
-
-    if (decrypt) {
-      signer.nip44Decrypt = (actorPubkey, ciphertext) =>
-        decrypt(actorPubkey, ciphertext);
-    }
-  }
-}
-
-function resolveActiveSigner(pubkey) {
-  const signer = resolveActiveSignerFromRegistry(pubkey);
-  hydrateExtensionSignerCapabilities(signer);
-  attachNipMethodAliases(signer);
-  if (signer && typeof signer === "object") {
-    const capsDescriptor = Object.getOwnPropertyDescriptor(
-      signer,
-      "capabilities",
-    );
-    const isGetter = capsDescriptor && typeof capsDescriptor.get === "function";
-
-    if (!isGetter) {
-      signer.capabilities = resolveSignerCapabilities(signer);
-    }
-  }
-  return signer;
-}
-
-const PERMISSION_STATUS_AUTO_HIDE_MS = 12_000;
-const ENCRYPTION_METHOD_PREFIXES = ["nip04.", "nip44."];
-
-function hasEncryptionPermissionMethods(methods) {
-  if (!Array.isArray(methods)) {
-    return false;
-  }
-  return methods.some((method) =>
-    ENCRYPTION_METHOD_PREFIXES.some((prefix) => method.startsWith(prefix)),
-  );
-}
-
-function hasSigningPermissionMethods(methods) {
-  if (!Array.isArray(methods)) {
-    return false;
-  }
-  return methods.some(
-    (method) => method === "sign_event" || method === "get_public_key",
-  );
-}
-
-function resolvePermissionStatusMessage(methods, context) {
-  const normalizedContext =
-    typeof context === "string" ? context.trim().toLowerCase() : "";
-
-  if (normalizedContext === "dm") {
-    return "Approve the extension prompt to enable encrypted direct messages.";
-  }
-  if (normalizedContext === "lists") {
-    return "Approve the extension prompt to access your encrypted lists.";
-  }
-
-  const includesEncryption = hasEncryptionPermissionMethods(methods);
-  const includesSigning = hasSigningPermissionMethods(methods);
-
-  if (includesEncryption && includesSigning) {
-    return "Approve the extension prompt to enable signing and encrypted features (DMs, subscriptions, block lists).";
-  }
-  if (includesEncryption) {
-    return "Approve the extension prompt to enable encrypted features like DMs and private lists.";
-  }
-  if (includesSigning) {
-    return "Approve the extension prompt to enable signing.";
-  }
-
-  return "Approve the extension prompt to continue.";
-}
+import { accessControl } from "../../accessControl.js";
+import { waitForRemoteSignerHandshake } from "../signerRemoteHandshake.js";
 
 export class SignerManager {
   constructor(client) {
@@ -436,6 +256,25 @@ export class SignerManager {
       return raceWinner;
     }
 
+    // Registry empty (e.g. page refresh restored the pubkey/UI but no fresh
+    // loginWithExtension ran): build + register the adapter from the live
+    // extension so getActiveSigner()/decrypt/sign work app-wide (storage unlock)
+    // rather than relying on per-call fallbacks. Guarded on a matching pubkey so
+    // we never adopt a different account.
+    const resolvedPubkey = extensionPubkey || normalizedPubkey;
+    if (
+      resolvedPubkey &&
+      (!normalizedPubkey || resolvedPubkey === normalizedPubkey) &&
+      typeof extension.signEvent === "function"
+    ) {
+      const adapter = buildExtensionSignerAdapter(extension, resolvedPubkey);
+      this.pubkey = resolvedPubkey;
+      this.setActiveSigner(adapter);
+      // Return through resolveActiveSigner so capability aliases
+      // (nip04Decrypt/nip44Decrypt) are hydrated onto the adapter.
+      return this.resolveActiveSigner(resolvedPubkey) || adapter;
+    }
+
     return null;
   }
 
@@ -615,13 +454,7 @@ export class SignerManager {
     }
 
     this.pubkey = normalized;
-    const adapter = {
-        type: "extension",
-        pubkey: normalized,
-        signEvent: typeof extension.signEvent === "function" ? extension.signEvent.bind(extension) : undefined,
-        nip04: extension.nip04,
-        nip44: extension.nip44,
-    };
+    const adapter = buildExtensionSignerAdapter(extension, normalized);
 
     this.setActiveSigner(adapter);
     return { pubkey: normalized, signer: adapter };
@@ -643,6 +476,116 @@ export class SignerManager {
     });
   }
 
+  /**
+   * Prepares a NIP-46 `nostrconnect://` handshake: generates an ephemeral client
+   * keypair and builds the connection URI the user shares with their remote
+   * signer (link/QR). The returned handshake is then handed to
+   * connectRemoteSigner(). This is the "generate connect link" login path; it was
+   * previously only implemented on the unused Nip46Connector, so the client's
+   * `prepareRemoteSignerHandshake` proxy had nothing to call.
+   *
+   * @param {object} [params]
+   * @param {object} [params.metadata]
+   * @param {string[]} [params.relays]
+   * @param {string} [params.secret]
+   * @param {string} [params.permissions]
+   * @returns {Promise<object>} handshake { connectionString, clientPrivateKey, clientPublicKey, relays, secret, permissions, metadata }
+   */
+  async prepareRemoteSignerHandshake({ metadata, relays, secret, permissions } = {}) {
+    const tools = await ensureNostrTools();
+    if (
+      !tools ||
+      typeof tools.generateSecretKey !== "function" ||
+      typeof tools.getPublicKey !== "function"
+    ) {
+      throw new Error(
+        "Nostr tools are unavailable; cannot prepare a remote signer handshake.",
+      );
+    }
+
+    const secretKey = tools.generateSecretKey();
+    const clientPrivateKey = Array.from(secretKey)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    const clientPublicKey = tools.getPublicKey(secretKey);
+
+    const sanitizedMetadata = sanitizeNip46Metadata(metadata);
+    const requestedPermissions =
+      typeof permissions === "string" && permissions.trim()
+        ? permissions.trim()
+        : "";
+    const resolvedRelays = resolveNip46Relays(relays, this.client?.relays);
+    const handshakeSecret =
+      typeof secret === "string" && secret.trim()
+        ? secret.trim()
+        : generateNip46Secret();
+
+    const params = [];
+    for (const relay of resolvedRelays) {
+      params.push(`relay=${encodeURIComponent(relay)}`);
+    }
+    if (handshakeSecret) {
+      params.push(`secret=${encodeURIComponent(handshakeSecret)}`);
+    }
+    if (requestedPermissions) {
+      params.push(`perms=${encodeURIComponent(requestedPermissions)}`);
+    }
+    for (const [key, value] of Object.entries(sanitizedMetadata)) {
+      params.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
+    }
+    const query = params.length ? `?${params.join("&")}` : "";
+    const uri = `nostrconnect://${clientPublicKey}${query}`;
+
+    devLogger.debug("[nostr] Prepared remote signer handshake", {
+      clientPublicKey: summarizeHexForLog(clientPublicKey),
+      relays: resolvedRelays,
+      permissions: requestedPermissions || null,
+    });
+
+    return {
+      type: "client",
+      connectionString: uri,
+      uri,
+      clientPrivateKey,
+      clientPublicKey,
+      relays: resolvedRelays,
+      secret: handshakeSecret,
+      permissions: requestedPermissions,
+      metadata: sanitizedMetadata,
+    };
+  }
+
+  /**
+   * Runs the access-control validator against a remote signer's resolved user
+   * pubkey. The validator (from the auth provider) throws on denial (blocked /
+   * not permitted) or returns false; either rejects the login. No-op when no
+   * validator is supplied.
+   */
+  async _enforceRemoteSignerValidator(validator, userPubkey) {
+    if (typeof validator !== "function") {
+      return;
+    }
+    const isValid = await validator(userPubkey);
+    if (isValid === false) {
+      const error = new Error("Access denied.");
+      error.code = "remote-signer-access-denied";
+      throw error;
+    }
+  }
+
+  /**
+   * Waits for a remote signer to acknowledge a `nostrconnect://` handshake.
+   * Subscribes to NIP-46 RPC events addressed to the client pubkey; the first
+   * acknowledgement (matching the handshake secret, or a generic ack) reveals
+   * the remote signer's pubkey, which is needed before the RPC client can be
+   * constructed. Ported from the (unused) Nip46Connector.
+   *
+   * @returns {Promise<{remotePubkey:string, eventPubkey:string, response:object, algorithm:string}>}
+   */
+  async _waitForRemoteSignerHandshake(options = {}) {
+    return waitForRemoteSignerHandshake(this, options);
+  }
+
   async connectRemoteSigner({
     connectionString,
     remember = true,
@@ -656,6 +599,7 @@ export class SignerManager {
     onStatus,
     handshakeTimeoutMs,
     passphrase,
+    validator,
   } = {}) {
     const parsed = parseNip46ConnectionString(connectionString);
     if (!parsed) {
@@ -735,11 +679,39 @@ export class SignerManager {
 
     await this.client.ensurePool();
 
+    // A nostrconnect:// link is client-initiated: the remote signer's pubkey is
+    // unknown until the user's signer scans the QR / opens the link and
+    // acknowledges. Wait for that ACK to learn the remote pubkey before building
+    // the RPC client (which requires it). bunker:// URIs already carry it.
+    let remotePubkey = parsed.remotePubkey;
+    if (!remotePubkey && parsed.type === "client") {
+      const clientPublicKey =
+        providedClientPublicKey || parsed.clientPublicKey || "";
+      handleStatus({
+        phase: "handshake",
+        state: "waiting",
+        message: "Waiting for your signer to approve the connection…",
+      });
+      const ack = await this._waitForRemoteSignerHandshake({
+        clientPrivateKey,
+        clientPublicKey,
+        relays: resolveNip46Relays(parsed.relays, providedRelays),
+        secret: providedSecret || parsed.secret,
+        onAuthUrl: handleAuthChallenge,
+        onStatus: handleStatus,
+        timeoutMs: handshakeTimeoutMs,
+      });
+      remotePubkey = ack.remotePubkey;
+      if (!remotePubkey) {
+        throw new Error("Remote signer did not provide a usable pubkey.");
+      }
+    }
+
     this.nip46Client = new Nip46RpcClient({
         nostrClient: this.client,
         relays: resolveNip46Relays(parsed.relays, providedRelays),
         clientPrivateKey: clientPrivateKey,
-        remotePubkey: parsed.remotePubkey,
+        remotePubkey,
         secret: providedSecret || parsed.secret,
         signEvent: signEventWithPrivateKey,
     });
@@ -776,6 +748,11 @@ export class SignerManager {
         }
 
         const userPubkey = await this.nip46Client.getUserPubkey();
+
+        // Enforce access control BEFORE activating the signer, so a blocked /
+        // non-permitted pubkey can't establish a session via a remote signer.
+        await this._enforceRemoteSignerValidator(validator, userPubkey);
+
         this.pubkey = userPubkey;
 
         this.setActiveSigner(this.nip46Client.getActiveSigner());
@@ -796,6 +773,10 @@ export class SignerManager {
     const passphrase =
       typeof normalizedOptions.passphrase === "string"
         ? normalizedOptions.passphrase
+        : null;
+    const validator =
+      typeof normalizedOptions.validator === "function"
+        ? normalizedOptions.validator
         : null;
 
     let stored = readStoredNip46Session();
@@ -855,6 +836,11 @@ export class SignerManager {
         // Just verify we can ping or get pubkey
         await this.nip46Client.ensureSubscription();
         const pubkey = await this.nip46Client.getUserPubkey();
+
+        // Re-check access control when restoring a stored session, so a pubkey
+        // that has since been blocked can't silently reconnect.
+        await this._enforceRemoteSignerValidator(validator, pubkey);
+
         this.pubkey = pubkey;
 
         this.setActiveSigner(this.nip46Client.getActiveSigner());
@@ -863,11 +849,36 @@ export class SignerManager {
     } catch (err) {
         this.nip46Client = null;
         this.emitRemoteSignerChange({ state: "error", error: err });
-        if (forgetOnError) {
+        // Always forget a stored session that was rejected by access control —
+        // no point keeping a blocked pubkey's session to retry.
+        if (forgetOnError || err?.code === "remote-signer-access-denied") {
             clearStoredNip46Session();
         }
         throw err;
     }
+  }
+
+  // Access-control gate for restoring a stored signer. Waits for the admin
+  // lists to load (so the decision is accurate on a cold start) and throws if
+  // the pubkey is no longer allowed, matching the fresh-login/connect paths.
+  // useStoredRemoteSigner clears the stored session when this rejects.
+  buildAccessControlValidator() {
+    return async (pubkey) => {
+      try {
+        if (typeof accessControl.waitForReady === "function") {
+          await accessControl.waitForReady();
+        }
+      } catch (error) {
+        // If readiness can't be confirmed, fall through to the live check.
+      }
+      if (!accessControl.canAccess(pubkey)) {
+        if (accessControl.isBlacklisted(pubkey)) {
+          throw new Error("Your account has been blocked on this platform.");
+        }
+        throw new Error("Access restricted to admins and moderators only.");
+      }
+      return true;
+    };
   }
 
   async scheduleStoredRemoteSignerRestore() {
@@ -878,7 +889,13 @@ export class SignerManager {
 
     const decryptAndConnect = async () => {
       try {
-        await this.useStoredRemoteSigner({ silent: true });
+        // Enforce access control on the silent startup restore too — without a
+        // validator a since-blocked pubkey's stored session would reconnect
+        // unchecked.
+        await this.useStoredRemoteSigner({
+          silent: true,
+          validator: this.buildAccessControlValidator(),
+        });
       } catch (err) {
         devLogger.warn("Failed to restore remote signer", err);
       }
@@ -888,6 +905,14 @@ export class SignerManager {
   }
 
   async disconnectRemoteSigner({ keepStored = false } = {}) {
+    // Abort an in-flight nostrconnect:// handshake wait, if any.
+    if (typeof this.pendingHandshakeCancel === "function") {
+      try {
+        this.pendingHandshakeCancel();
+      } catch (error) {
+        // ignore cancel errors
+      }
+    }
     if (this.nip46Client) {
       if (typeof this.nip46Client.destroy === 'function') {
           this.nip46Client.destroy();

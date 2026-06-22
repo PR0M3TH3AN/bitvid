@@ -58,5 +58,27 @@ describe('js/nostr/utils.js', () => {
         const key = getActiveKey(video);
         assert.strictEqual(key, 'LEGACY:note-789');
       });
+
+    test('a synthesized LEGACY: root keys the same as the bare legacy event', () => {
+      // The deletion builder synthesizes videoRootId = "LEGACY:<pubkey>:<dTag>"
+      // for legacy videos. Its tombstone must map to the SAME key as the
+      // original legacy event (which has no videoRootId), or the zombie is never
+      // suppressed.
+      const original = { id: 'note-1', pubkey: 'pk1', tags: [['d', 'd-val']] };
+      const deletion = {
+        id: 'note-2',
+        pubkey: 'pk1',
+        tags: [['d', 'd-val']],
+        videoRootId: 'LEGACY:pk1:d-val',
+      };
+      const originalKey = getActiveKey(original);
+      const deletionKey = getActiveKey(deletion);
+      assert.strictEqual(originalKey, 'pk1:d-val');
+      assert.strictEqual(
+        deletionKey,
+        originalKey,
+        'legacy deletion tombstone must share the original event key',
+      );
+    });
   });
 });

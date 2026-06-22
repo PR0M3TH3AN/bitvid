@@ -68,12 +68,12 @@ export function publishEventToRelay(pool, url, event, options = {}) {
 
   return new Promise((resolve) => {
     let settled = false;
-    const finalize = (success, error = null) => {
+    const finalize = (success, error = null, optimistic = false) => {
       if (settled) {
         return;
       }
       settled = true;
-      resolve({ url, success, error });
+      resolve({ url, success, error, optimistic });
     };
 
     const timeoutId = setTimeout(() => {
@@ -131,6 +131,34 @@ export function publishEventToRelay(pool, url, event, options = {}) {
         }
       }
 
+      // nostr-tools SimplePool.publish(relays, event) returns an ARRAY of
+      // per-relay promises (one per url). Each MUST be consumed or a relay that
+      // rejects ("blocked", "auth-required", "publish timed out", websocket
+      // error, …) surfaces as an uncaught promise rejection. With a large/flaky
+      // relay list that floods the event loop and can freeze the tab. We pass a
+      // single [url], so the array has one promise; allSettled never rejects, so
+      // every rejection is consumed here.
+      if (Array.isArray(pub)) {
+        Promise.allSettled(pub).then((settled) => {
+          clearTimeout(timeoutId);
+          const anyOk = settled.some((entry) => entry.status === "fulfilled");
+          if (anyOk) {
+            finalize(true);
+            return;
+          }
+          const firstRejection = settled.find(
+            (entry) => entry.status === "rejected",
+          );
+          finalize(
+            false,
+            firstRejection?.reason instanceof Error
+              ? firstRejection.reason
+              : new Error(String(firstRejection?.reason || "publish failed")),
+          );
+        });
+        return;
+      }
+
       if (pub && typeof pub.then === "function") {
         pub
           .then(() => {
@@ -149,8 +177,16 @@ export function publishEventToRelay(pool, url, event, options = {}) {
       return;
     }
 
+    // No confirmation channel: the relay handle exposed neither an ok/failed
+    // event nor a thenable. We still optimistically report success for legacy
+    // "seen"-only relays, but mark the result `optimistic` and log it so a
+    // silently-unconfirmed publish is traceable rather than indistinguishable
+    // from a real relay ack (publish audit #3).
     clearTimeout(timeoutId);
-    finalize(true);
+    devLogger.warn(
+      `[nostrPublish] Optimistic (unconfirmed) publish success for ${url}: relay gave no ok/failed/then signal.`,
+    );
+    finalize(true, null, true);
   });
 }
 
@@ -225,6 +261,78 @@ export function summarizePublishResults(results = []) {
   }
 
   return { accepted, failed };
+}
+
+// Non-enumerable key so the tally rides along with a signed event without ever
+// polluting JSON.stringify / relay payloads.
+export const RELAY_PUBLISH_SUMMARY_KEY = "__relayPublishSummary";
+
+/**
+ * Reduce a {accepted, failed} publish summary to a compact {accepted, total}
+ * tally and stash it on the event (non-enumerable). Best-effort: a frozen or
+ * non-object event is left untouched.
+ */
+export function attachRelayPublishSummary(event, summary) {
+  if (!event || typeof event !== "object") {
+    return event;
+  }
+  const accepted = Array.isArray(summary?.accepted) ? summary.accepted.length : 0;
+  const failed = Array.isArray(summary?.failed) ? summary.failed.length : 0;
+  try {
+    Object.defineProperty(event, RELAY_PUBLISH_SUMMARY_KEY, {
+      value: { accepted, total: accepted + failed },
+      enumerable: false,
+      configurable: true,
+      writable: true,
+    });
+  } catch (_) {
+    // ignore — the tally is purely informational.
+  }
+  return event;
+}
+
+/** Read back the compact tally attached by attachRelayPublishSummary, if any. */
+export function readRelayPublishSummary(event) {
+  if (!event || typeof event !== "object") {
+    return null;
+  }
+  const tally = event[RELAY_PUBLISH_SUMMARY_KEY];
+  return tally && typeof tally === "object" ? tally : null;
+}
+
+/**
+ * Turn a relay-publish tally into a user-facing message + tone, so the UI can
+ * tell the user how many relays actually accepted their video instead of an
+ * opaque "shared successfully" that hides partial/total failure.
+ *
+ * @param {{ accepted?: number, total?: number }} tally
+ * @returns {{ tone: "success"|"warning"|"error", message: string }}
+ */
+export function describePublishOutcome({ accepted = 0, total = 0 } = {}) {
+  const a = Number.isFinite(accepted) ? Math.max(0, Math.floor(accepted)) : 0;
+  const t = Number.isFinite(total) ? Math.max(0, Math.floor(total)) : 0;
+
+  // No relay count available — fall back to the generic confirmation.
+  if (t <= 0) {
+    return { tone: "success", message: "Video shared successfully!" };
+  }
+  if (a <= 0) {
+    return {
+      tone: "error",
+      message:
+        "Video could not be published to any relay. Check your relay list and try again.",
+    };
+  }
+  if (a < t) {
+    return {
+      tone: "warning",
+      message: `Video published to ${a} of ${t} relays — some relays rejected it.`,
+    };
+  }
+  return {
+    tone: "success",
+    message: `Video published to ${a} ${a === 1 ? "relay" : "relays"}!`,
+  };
 }
 
 export function assertAnyRelayAccepted(results = [], options = {}) {

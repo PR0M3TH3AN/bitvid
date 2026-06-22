@@ -190,9 +190,46 @@ function injectVersionInfo() {
         }
       }
     }
+
+    // Return the build-derived service worker cache version so the SW + meta
+    // can be stamped with the same hash (see stampServiceWorkerVersion).
+    return `bitvid-sw-${date}-${hash.slice(0, 8)}`;
   } catch (error) {
     console.error('Failed to inject version info:', error);
     process.exit(1);
+  }
+}
+
+// The service worker cache key (and the informational meta in the entry HTML)
+// was a hand-bumped date string, so caches only invalidated when someone
+// remembered to change it. Stamp it with the build hash at build time so EVERY
+// content change produces a new cache name -> the SW's activate step drops the
+// stale cache automatically. We rewrite only the dist artifacts, leaving the
+// committed (minified) source untouched so the sw-compat guard and unit tests
+// that reference the source value are unaffected.
+const SW_VERSION_PATTERN = /bitvid-sw-\d{4}-\d{2}-\d{2}(?:-[0-9a-f]{6,})?/g;
+const SW_VERSIONED_DIST_FILES = ['sw.min.js', 'index.html', 'embed.html'];
+
+function stampServiceWorkerVersion(version) {
+  if (!version || !/^bitvid-sw-/.test(version)) {
+    throw new Error(`Refusing to stamp an invalid service worker version: ${version}`);
+  }
+  console.log(`Stamping service worker cache version: ${version}`);
+  for (const file of SW_VERSIONED_DIST_FILES) {
+    const filePath = path.join(DIST, file);
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`Cannot stamp SW version: dist/${file} is missing.`);
+    }
+    const original = fs.readFileSync(filePath, 'utf8');
+    const matches = original.match(SW_VERSION_PATTERN);
+    if (!matches || matches.length === 0) {
+      throw new Error(
+        `Cannot stamp SW version: no 'bitvid-sw-*' cache key found in dist/${file}. ` +
+        'The service worker cache-busting contract changed — update build-dist.mjs.'
+      );
+    }
+    fs.writeFileSync(filePath, original.replace(SW_VERSION_PATTERN, version));
+    console.log(`  ${file}: stamped ${matches.length} reference(s)`);
   }
 }
 
@@ -257,7 +294,8 @@ function main() {
   console.log('Rewriting HTML entry points with hashed assets...');
   rewriteEntryHtmlAssetPaths(manifest);
 
-  injectVersionInfo();
+  const swVersion = injectVersionInfo();
+  stampServiceWorkerVersion(swVersion);
 
   console.log('Build complete.');
 }

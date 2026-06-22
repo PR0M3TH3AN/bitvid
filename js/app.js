@@ -57,6 +57,9 @@ import {
 import watchHistoryService from "./watchHistoryService.js";
 import r2Service from "./services/r2Service.js";
 import storageService from "./services/storageService.js";
+import { storageSyncService } from "./services/storageSyncService.js";
+import { createWalletSyncService } from "./services/walletSyncService.js";
+import { createSettingsRestorePrompt } from "./services/settingsRestorePrompt.js";
 import {
   getVideoNoteErrorMessage,
   normalizeVideoNotePayload,
@@ -86,6 +89,8 @@ import { buildDmRelayListEvent, buildShareEvent } from "./nostrEventSchemas.js";
 import {
   publishEventToRelays,
   assertAnyRelayAccepted,
+  describePublishOutcome,
+  readRelayPublishSummary,
 } from "./nostrPublish.js";
 import {
   getActiveSigner,
@@ -647,6 +652,7 @@ class Application {
         userBlocks,
         subscriptions,
         hashtagPreferences,
+        watchHistoryService,
         storageService,
         relayManager,
         torrentClient,
@@ -1621,6 +1627,57 @@ class Application {
         );
       }
     }
+
+    if (pubkey) {
+      // Best-effort, never blocks login: offer to restore encrypted settings
+      // synced from another device.
+      this.maybeOfferSettingsRestore(pubkey);
+    }
+  }
+
+  // One-time offer to restore encrypted storage/wallet settings on login (todo
+  // #15). Existence check is list-only (no decrypt); decryption happens only if
+  // the user accepts. Deferred so relays can connect first; failures are silent.
+  maybeOfferSettingsRestore(pubkey) {
+    const key =
+      this.normalizeHexPubkey(pubkey) ||
+      (typeof pubkey === "string" ? pubkey : "");
+    if (!key) {
+      return;
+    }
+    setTimeout(() => {
+      try {
+        if (!this._settingsRestorePrompt) {
+          this._settingsRestorePrompt = createSettingsRestorePrompt({
+            storageSync: storageSyncService,
+            walletSync: createWalletSyncService({
+              nwcSettings: this.nwcSettingsService,
+            }),
+          });
+        }
+        Promise.resolve(
+          this._settingsRestorePrompt.maybeOffer(key, {
+            onRestored: (items) => {
+              const hasStorage = items.includes("storage");
+              const hasWallet = items.includes("wallet");
+              const label =
+                hasStorage && hasWallet
+                  ? "storage and wallet settings"
+                  : hasWallet
+                    ? "wallet connection"
+                    : "storage settings";
+              this.showSuccess(
+                `Restored your ${label} from your Nostr account.`,
+              );
+            },
+          }),
+        ).catch((error) => {
+          devLogger.warn("[settingsRestore] offer failed:", error);
+        });
+      } catch (error) {
+        devLogger.warn("[settingsRestore] offer setup failed:", error);
+      }
+    }, 2000);
   }
 
   async handleLoginModalError(payload = {}) {
@@ -3060,8 +3117,15 @@ class Application {
       return false;
     }
 
+    let relaySummary = null;
     try {
-      await this.nostrService.publishVideoNote(publishPayload, this.pubkey);
+      const publishResult = await this.nostrService.publishVideoNote(
+        publishPayload,
+        this.pubkey,
+      );
+      // The legacy (kind 30078) event carries the relay tally attached by
+      // publishVideo (non-enumerable, so it never hit the wire).
+      relaySummary = readRelayPublishSummary(publishResult?.legacy) || null;
     } catch (err) {
       devLogger.error("Failed to publish video:", err);
       this.showError("Failed to share video. Please try again later.");
@@ -3088,7 +3152,15 @@ class Application {
       );
     }
 
-    this.showSuccess("Video shared successfully!");
+    // Tell the user how many relays actually accepted the video, so a partial
+    // (or relay-list-wide) failure isn't hidden behind a generic confirmation.
+    const outcome = describePublishOutcome(relaySummary || {});
+    if (outcome.tone === "warning") {
+      this.showSuccess(outcome.message);
+      this.showStatus(outcome.message, { autoHideMs: 8000, showSpinner: false });
+    } else {
+      this.showSuccess(outcome.message);
+    }
 
     if (loadVideosError) {
       this.showStatus(
@@ -3279,9 +3351,15 @@ class Application {
         typeof sessionActor?.source === "string"
           ? sessionActor.source.trim()
           : "";
+      // The anonymous view-event actor is created with source "session" (see
+      // SignerManager.ensureSessionActor). It's telemetry, NOT an alternate login
+      // identity, so it must not disqualify a real login — otherwise watching any
+      // video flips isUserLoggedIn() to false and breaks zaps/etc. Only a managed
+      // real source (e.g. "nsec") for a DIFFERENT pubkey disqualifies.
+      const isManagedSource = Boolean(declaredSource) && declaredSource !== "session";
       const isPersisted = sessionActor?.persisted === true;
 
-      if (!hasEmbeddedPrivateKey || declaredSource || isPersisted) {
+      if (!hasEmbeddedPrivateKey || isManagedSource || isPersisted) {
         return false;
       }
     }
@@ -4538,8 +4616,43 @@ class Application {
         confirm: false,
       });
 
+      // Best-effort: remove the underlying R2/S3 object(s) now that the note(s)
+      // are gone, so the file isn't left publicly downloadable. This never
+      // blocks the delete — failures are logged only.
+      let storageLockedRemnant = false;
+      try {
+        const cleanup = await r2Service.deleteVideoStorage({
+          videos: [targetVideo],
+          pubkey: this.pubkey,
+        });
+        if (cleanup?.deleted?.length) {
+          devLogger.log(
+            `[delete] Removed ${cleanup.deleted.length} storage object(s) for the deleted video.`
+          );
+        } else if (cleanup?.skipped) {
+          devLogger.log(`[delete] Storage cleanup skipped: ${cleanup.reason}.`);
+          // The note is gone but the hosted file is still publicly downloadable
+          // because storage is locked. Warn the user so they can unlock and
+          // delete again (or remove it from their bucket manually).
+          if (cleanup.reason === "storage-locked") {
+            storageLockedRemnant = true;
+          }
+        }
+      } catch (cleanupErr) {
+        devLogger.warn(
+          "[delete] Storage cleanup failed (note deletion still succeeded):",
+          cleanupErr
+        );
+      }
+
       await this.loadVideos();
       this.showSuccess("All versions deleted successfully!");
+      if (storageLockedRemnant) {
+        this.showStatus(
+          "Heads up: the hosted file is still in your storage bucket because storage is locked. Unlock storage and delete again, or remove it from your bucket manually.",
+          { autoHideMs: 12000, showSpinner: false }
+        );
+      }
       this.deleteModal.close();
       this.forceRefreshAllProfiles();
     } catch (err) {

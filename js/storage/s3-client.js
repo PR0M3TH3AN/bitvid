@@ -28,6 +28,7 @@ function assignAwsSdk(module) {
     DeleteObjectCommand: module.DeleteObjectCommand,
     PutObjectCommand: module.PutObjectCommand,
     GetObjectCommand: module.GetObjectCommand,
+    ListObjectsV2Command: module.ListObjectsV2Command,
   };
 }
 

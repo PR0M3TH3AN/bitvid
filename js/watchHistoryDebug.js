@@ -1,7 +1,5 @@
 // js/watchHistoryDebug.js
 
-import { devLogger } from "./utils/logger.js";
-
 const WATCH_HISTORY_DEBUG_STORAGE_KEY =
   "bitvid:debug:watch-history";
 
@@ -170,10 +168,19 @@ export function logWatchHistoryDebug(namespace, level, message, details) {
     return;
   }
 
+  // Route to console directly (not devLogger) so these opt-in diagnostics are
+  // visible in PRODUCTION builds too — the whole point of the flag is to debug
+  // issues on the hosted site, where devLogger is suppressed.
+  const consoleScope =
+    globalScope && globalScope.console ? globalScope.console : null;
+  const sink = consoleScope || (typeof console !== "undefined" ? console : null);
+  if (!sink) {
+    return;
+  }
   const methodName =
-    typeof level === "string" && level && typeof devLogger[level] === "function"
+    typeof level === "string" && level && typeof sink[level] === "function"
       ? level
-      : typeof devLogger.info === "function"
+      : typeof sink.info === "function"
         ? "info"
         : "log";
 
@@ -181,13 +188,13 @@ export function logWatchHistoryDebug(namespace, level, message, details) {
 
   try {
     if (details && typeof details === "object") {
-      devLogger[methodName](prefix, details);
+      sink[methodName](prefix, details);
     } else {
-      devLogger[methodName](prefix);
+      sink[methodName](prefix);
     }
   } catch (error) {
-    if (typeof devLogger.log === "function") {
-      devLogger.log(prefix);
+    if (typeof sink.log === "function") {
+      sink.log(prefix);
     }
   }
 }

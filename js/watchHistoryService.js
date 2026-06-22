@@ -1,10 +1,6 @@
 // js/watchHistoryService.js
 
-import {
-  getActiveSigner,
-  nostrClient,
-  requestDefaultExtensionPermissions,
-} from "./nostrClientFacade.js";
+import { nostrClient } from "./nostrClientFacade.js";
 import {
   normalizePointerInput,
   pointerKey,
@@ -14,124 +10,34 @@ import {
   WATCH_HISTORY_CACHE_TTL_MS,
   WATCH_HISTORY_MAX_ITEMS,
 } from "./config.js";
-import { getApplication } from "./applicationContext.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import { ONE_MINUTE_MS } from "./constants.js";
+import {
+  getLoggedInActorKey,
+  getSessionActorKey,
+  ensureWatchHistoryExtensionPermissions,
+} from "./watchHistoryActorHelpers.js";
 
 const LOCAL_STORAGE_QUEUE_KEY = "bitvid:watch-history:queue:v1";
 const SESSION_STORAGE_VERSION = 1;
 const POINTER_THROTTLE_MS = ONE_MINUTE_MS;
+// On a cold load (nothing cached to show) we decrypt only the newest chunks up
+// front so the UI renders quickly instead of freezing behind a deep history;
+// the rest are filled in the background. Monthly chunks, so ~3 covers recent
+// activity for the first paint.
+const WATCH_HISTORY_INITIAL_CHUNK_DECRYPT_LIMIT = 3;
+
 const state = {
   restored: false,
   queues: new Map(),
   inflightSnapshots: new Map(),
   fingerprintCache: new Map(),
   listeners: new Map(),
+  // Actors with an in-flight background backfill of deferred (older) chunks,
+  // so we never launch two at once for the same actor.
+  chunkBackfills: new Set(),
 };
 
-function getLoggedInActorKey() {
-  const direct = normalizeActorKey(nostrClient?.pubkey);
-  if (direct) {
-    return direct;
-  }
-
-  if (typeof window !== "undefined") {
-    const appCandidate =
-      getApplication() || null;
-    if (appCandidate && typeof appCandidate === "object") {
-      if (typeof appCandidate.normalizeHexPubkey === "function") {
-        try {
-          const normalized = appCandidate.normalizeHexPubkey(
-            appCandidate.pubkey
-          );
-          if (normalized) {
-            return normalizeActorKey(normalized);
-          }
-        } catch (error) {
-          devLogger.warn(
-            "[watchHistoryService] Failed to normalize app login pubkey:",
-            error
-          );
-        }
-      }
-
-      if (typeof appCandidate.pubkey === "string" && appCandidate.pubkey) {
-        const fallback = normalizeActorKey(appCandidate.pubkey);
-        if (fallback) {
-          return fallback;
-        }
-      }
-    }
-  }
-
-  return "";
-}
-
-function getSessionActorKey() {
-  const logged = getLoggedInActorKey();
-  if (logged) {
-    return "";
-  }
-  return normalizeActorKey(nostrClient?.sessionActor?.pubkey);
-}
-
-async function ensureWatchHistoryExtensionPermissions(actorKey, options = {}) {
-  const normalizedActor = normalizeActorKey(actorKey);
-  if (!normalizedActor) {
-    return { ok: true };
-  }
-
-  const loggedActor = normalizeActorKey(nostrClient?.pubkey);
-  if (!loggedActor || loggedActor !== normalizedActor) {
-    return { ok: true };
-  }
-
-  const allowPermissionPrompt = options?.allowPermissionPrompt !== false;
-
-  // FIX: Always attempt to resolve the signer regardless of allowPermissionPrompt.
-  // ensureActiveSignerForPubkey does not prompt the user — it only resolves an
-  // already-injected extension or returns the existing signer.
-  let signer = getActiveSigner();
-  if (
-    !signer && typeof nostrClient?.ensureActiveSignerForPubkey === "function"
-  ) {
-    signer = await nostrClient.ensureActiveSignerForPubkey(normalizedActor);
-  }
-
-  const canSign = typeof signer?.canSign === "function"
-    ? signer.canSign()
-    : typeof signer?.signEvent === "function";
-  // FIX: NIP-07 adapters use type "nip07", not "extension". Both types
-  // represent browser extension signers that need permission pre-granting.
-  if (!canSign || (signer?.type !== "extension" && signer?.type !== "nip07")) {
-    return { ok: true };
-  }
-
-  if (!allowPermissionPrompt) {
-    return { ok: true };
-  }
-
-  const permissionResult = await requestDefaultExtensionPermissions();
-  if (permissionResult.ok) {
-    return { ok: true };
-  }
-
-  const message =
-    "Approve your NIP-07 extension to sync watch history.";
-  const error = new Error(message);
-  error.code = "watch-history-extension-permission-denied";
-  error.cause = permissionResult.error;
-
-  userLogger.warn(
-    "[watchHistoryService] Extension denied decrypt permission required for watch history.",
-    {
-      actor: normalizeActorKey(actorKey) || null,
-      error: permissionResult.error,
-    },
-  );
-
-  return { ok: false, error };
-}
 
 function resolveEffectiveActorKey(actorInput) {
   const supplied =
@@ -520,6 +426,30 @@ function clearQueue(actorKey) {
   notifyQueueChange(actorKey);
 }
 
+// Replace the local watch-history queue with exactly `items` (used by a
+// local-only REPLACE snapshot, i.e. a logged-out removal/clear). Source of truth
+// for local history is loadLatest -> collectQueueItems(queue), so this is what
+// makes a local delete persist.
+function replaceLocalQueue(actorKey, items) {
+  const queue = ensureQueue(actorKey);
+  queue.items.clear();
+  queue.throttle.clear();
+  const now = Date.now();
+  for (const item of Array.isArray(items) ? items : []) {
+    const pointer = normalizePointerInput(item);
+    if (!pointer) {
+      continue;
+    }
+    const key = pointerKey(pointer);
+    if (!key) {
+      continue;
+    }
+    queue.items.set(key, { pointer, addedAt: now, updatedAt: now });
+  }
+  persistQueueState();
+  notifyQueueChange(actorKey);
+}
+
 function pruneQueueAfterSnapshot(actorKey, queue, keysToClear, snapshotStart) {
   if (!actorKey || !queue) {
     return;
@@ -711,9 +641,13 @@ async function publishView(pointerInput, createdAt) {
     return viewResult;
   }
 
+  // Watch history belongs to the LOGGED-IN user. View events are signed by an
+  // anonymous session actor (privacy for the public counter), so using the view
+  // event's pubkey filed every logged-in watch under the session actor
+  // (local-only) — it never synced. Prefer the logged-in pubkey.
   let actorCandidate =
-    viewResult?.event?.pubkey ||
     nostrClient?.pubkey ||
+    viewResult?.event?.pubkey ||
     nostrClient?.sessionActor?.pubkey ||
     "";
   let actorKey = normalizeActorKey(actorCandidate);
@@ -783,11 +717,10 @@ async function publishView(pointerInput, createdAt) {
     }
   );
 
-  const normalizedLogged = normalizeActorKey(nostrClient?.pubkey);
-  const normalizedEventActor = normalizeActorKey(
-    viewResult?.event?.pubkey || actorCandidate
-  );
-  if (normalizedEventActor && normalizedEventActor !== normalizedLogged) {
+  // A watch is a local-only "session" entry only when nobody is logged in.
+  // (View events are always signed by the anonymous session actor, so comparing
+  // against the view actor wrongly flagged every logged-in watch as session.)
+  if (!normalizeActorKey(nostrClient?.pubkey)) {
     normalizedPointer.session = true;
   }
 
@@ -878,12 +811,25 @@ async function publishView(pointerInput, createdAt) {
 
 async function snapshot(items, options = {}) {
   const reason = typeof options.reason === "string" ? options.reason : "manual";
+  // Removal/clear paths must REPLACE the published list — otherwise the items the
+  // user just removed get merged back from the existing cache and the deletion
+  // silently has no effect. Adds (the default) keep merge semantics.
+  const replace = options.replace === true;
   const actorKey = resolveActorKey(options.actor);
   if (!actorKey) {
     return { ok: false, error: "missing-actor" };
   }
 
   if (!isFeatureEnabled(actorKey)) {
+    // Local-only actors (logged out / session) keep watch history in the local
+    // queue, not on relays. A REPLACE snapshot (i.e. a removal/clear) must
+    // rewrite that queue so the deletion actually sticks — otherwise the removed
+    // item lingers locally and reappears on reload. Normal watch-tracking adds
+    // still flow through the queue via recordVideoView.
+    if (replace && Array.isArray(items)) {
+      replaceLocalQueue(actorKey, items);
+      return { ok: true, local: true, reason: "local-replaced", itemCount: items.length };
+    }
     devLogger.debug(
       "[watchHistoryService] Snapshot skipped because this actor is limited to local watch history.",
       {
@@ -904,11 +850,16 @@ async function snapshot(items, options = {}) {
     payloadItems = items
       .map((item) => normalizePointerInput(item))
       .filter(Boolean);
+  } else if (replace && Array.isArray(items)) {
+    // Explicit replace with an empty list = clear the history. Must NOT fall
+    // back to the pending queue (that would resurrect items just removed) and
+    // must still publish so relays drop the old list.
+    payloadItems = [];
   } else {
     payloadItems = collectQueueItems(actorKey);
   }
 
-  if (!payloadItems.length) {
+  if (!payloadItems.length && !replace) {
     const result = { ok: true, empty: true, actor: actorKey };
     emit("snapshot-empty", result);
     return result;
@@ -924,7 +875,7 @@ async function snapshot(items, options = {}) {
         )
       : new Set();
 
-  if (!items) {
+  if (!items && !replace) {
     const cachedItems = getCachedSnapshotItems(actorKey);
     if (cachedItems.length) {
       payloadItems = [...payloadItems, ...cachedItems];
@@ -948,6 +899,7 @@ async function snapshot(items, options = {}) {
       payloadItems,
       {
         actorPubkey: actorKey,
+        replace,
       }
     );
 
@@ -1009,6 +961,40 @@ async function snapshot(items, options = {}) {
   return run;
 }
 
+function maybeBackfillDeferredChunks(actorKey) {
+  if (!actorKey || state.chunkBackfills.has(actorKey)) {
+    return;
+  }
+  const deferred =
+    typeof nostrClient.getWatchHistoryDeferredChunkCount === "function"
+      ? Number(nostrClient.getWatchHistoryDeferredChunkCount(actorKey)) || 0
+      : 0;
+  if (deferred <= 0) {
+    return;
+  }
+  state.chunkBackfills.add(actorKey);
+  devLogger.info("[watchHistoryService] Backfilling deferred watch history chunks.", {
+    actor: actorKey,
+    deferred,
+  });
+  // Full decrypt pass (no chunk cap). Already-decrypted chunks are served from
+  // cache, so only the deferred older chunks incur signer RPCs. The resulting
+  // larger item set changes the fingerprint, which emits "fingerprint" and lets
+  // listeners (e.g. the history view) re-render with the complete history.
+  Promise.resolve()
+    .then(() => nostrClient.resolveWatchHistory(actorKey, { forceRefresh: true }))
+    .then((fullItems) => updateFingerprintCache(actorKey, fullItems))
+    .catch((error) => {
+      devLogger.warn(
+        "[watchHistoryService] Deferred chunk backfill failed:",
+        error,
+      );
+    })
+    .finally(() => {
+      state.chunkBackfills.delete(actorKey);
+    });
+}
+
 function scheduleWatchHistoryRefresh(actorKey, cacheEntry = {}, options = {}) {
   if (!actorKey) {
     return Promise.resolve([]);
@@ -1018,6 +1004,15 @@ function scheduleWatchHistoryRefresh(actorKey, cacheEntry = {}, options = {}) {
     return cacheEntry.promise;
   }
 
+  // Cold load = nothing cached to show yet, which is exactly when a deep
+  // history would freeze the first render. Bound the first decrypt pass to the
+  // newest chunks and backfill the rest in the background. On a warm refresh we
+  // already have items on screen, so resolve the full history directly to avoid
+  // a transient "history shrank then grew" flicker.
+  const hasCachedItems =
+    Array.isArray(cacheEntry?.items) && cacheEntry.items.length > 0;
+  const useBoundedFirstPass = !hasCachedItems;
+
   const promise = (async () => {
     const permissionResult = await ensureWatchHistoryExtensionPermissions(
       actorKey,
@@ -1026,10 +1021,20 @@ function scheduleWatchHistoryRefresh(actorKey, cacheEntry = {}, options = {}) {
     if (!permissionResult.ok) {
       throw permissionResult.error;
     }
-    return nostrClient.resolveWatchHistory(actorKey, { forceRefresh: true });
+    return nostrClient.resolveWatchHistory(actorKey, {
+      forceRefresh: true,
+      ...(useBoundedFirstPass
+        ? { chunkDecryptLimit: WATCH_HISTORY_INITIAL_CHUNK_DECRYPT_LIMIT }
+        : {}),
+    });
   })()
     .then((resolvedItems) => updateFingerprintCache(actorKey, resolvedItems))
     .then(() => {
+      if (useBoundedFirstPass) {
+        // Older chunks were skipped to render fast; fill them in the background
+        // (paced by the serial NIP-46 queue) and emit when done.
+        maybeBackfillDeferredChunks(actorKey);
+      }
       const latest = state.fingerprintCache.get(actorKey);
       return latest?.items || [];
     })
@@ -1367,6 +1372,7 @@ function resetProgress(actorInput) {
     state.queues.delete(actorKey);
     state.fingerprintCache.delete(actorKey);
     state.inflightSnapshots.delete(actorKey);
+    state.chunkBackfills.delete(actorKey);
     persistQueueState();
     notifyQueueChange(actorKey);
     return;
@@ -1374,6 +1380,7 @@ function resetProgress(actorInput) {
   state.queues.clear();
   state.fingerprintCache.clear();
   state.inflightSnapshots.clear();
+  state.chunkBackfills.clear();
   persistQueueState();
   emit("queue-changed", { actor: null, items: [] });
 }

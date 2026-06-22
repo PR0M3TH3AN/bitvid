@@ -19,6 +19,7 @@
 import {
   buildR2Key,
   buildPublicUrl,
+  computeStorageContentHash,
 } from "../r2.js";
 import {
   sanitizeBucketName,
@@ -34,6 +35,7 @@ import {
   ensureBucketCors,
   ensureBucketExists,
   deleteObject,
+  listObjects,
 } from "../storage/s3-multipart.js";
 import { ensureS3SdkLoaded, makeS3Client } from "../storage/s3-client.js";
 import { truncateMiddle } from "../utils/formatters.js";
@@ -41,118 +43,209 @@ import { userLogger, devLogger } from "../utils/logger.js";
 import {
   buildStoragePointerValue,
   buildStoragePrefixFromKey,
+  collectVideoStorageKeys,
 } from "../utils/storagePointer.js";
+import { safeEncodeNpub } from "../utils/nostrHelpers.js";
+import { isLikelyCorsError } from "../utils/uploadErrorHints.js";
 import {
   getVideoNoteErrorMessage,
   normalizeVideoNotePayload,
   VIDEO_NOTE_ERROR_CODES,
 } from "./videoNotePayload.js";
 import storageService from "./storageService.js";
-import { calculateTorrentInfoHash } from "../utils/torrentHash.js";
+import {
+  normalizeInfoHash,
+  isValidInfoHash,
+  resolveUploadIdentifier,
+  buildCorsGuidance,
+  createDefaultSettings,
+  safeDecodeNpub,
+  verifyPublicAccess as verifyPublicAccessHelper,
+  listVideoStorageObjects as listVideoStorageObjectsHelper,
+  deleteStorageKeys as deleteStorageKeysHelper,
+} from "./r2ServiceHelpers.js";
 
 const STATUS_VARIANTS = new Set(["info", "success", "error", "warning"]);
-const INFO_HASH_PATTERN = /^[a-f0-9]{40}$/;
 
-function normalizeInfoHash(value) {
-  return typeof value === "string" ? value.trim().toLowerCase() : "";
-}
+// Shared CORS-error classifier (also used by s3UploadService). Re-exported here
+// for backward compatibility with existing imports/tests.
+export { isLikelyCorsError };
 
-function isValidInfoHash(value) {
-  return INFO_HASH_PATTERN.test(value);
-}
-
-async function resolveUploadIdentifier({ infoHash = "", file = null } = {}) {
-  const normalizedInfoHash = normalizeInfoHash(infoHash);
-  if (isValidInfoHash(normalizedInfoHash)) {
-    return normalizedInfoHash;
-  }
-  if (!file) {
-    return "";
-  }
-  try {
-    const computedHash = await calculateTorrentInfoHash(file);
-    const normalizedComputed = normalizeInfoHash(computedHash);
-    if (isValidInfoHash(normalizedComputed)) {
-      return normalizedComputed;
-    }
-  } catch (err) {
-    userLogger.warn("Failed to precompute info hash for storage key:", err);
-  }
-  return "";
-}
-
-function buildCorsGuidance({ accountId } = {}) {
-  const origin =
-    typeof window !== "undefined" && window.location
-      ? window.location.origin
-      : "";
-  const originLabel = origin && origin !== "null" ? origin : "<your-app-origin>";
-  const endpoint = accountId
-    ? `https://${accountId}.r2.cloudflarestorage.com`
-    : "https://<account>.r2.cloudflarestorage.com";
-
-  return [
-    "This is likely a CORS issue.",
-    `Configure CORS on the R2 S3 API endpoint (${endpoint}) — not just the public domain.`,
-    `Add AllowedOrigins: ${originLabel} (and any other origins),`,
-    "AllowedMethods: GET, HEAD, PUT, POST, DELETE, OPTIONS,",
-    "and AllowedHeaders: *.",
-  ].join(" ");
-}
-
-function createDefaultSettings() {
-  return {
-    accountId: "",
-    accessKeyId: "",
-    secretAccessKey: "",
-    baseDomain: "", // Now interpreted as the public URL base
-    buckets: {},
-  };
-}
-
-function safeDecodeNpub(npub) {
-  if (typeof npub !== "string") {
-    return null;
-  }
-  const trimmed = npub.trim();
-  if (!trimmed) {
-    return null;
-  }
-  if (!trimmed.startsWith("npub1")) {
-    return null;
-  }
-  try {
-    if (
-      typeof window !== "undefined" &&
-      window.NostrTools &&
-      window.NostrTools.nip19
-    ) {
-      const { type, data } = window.NostrTools.nip19.decode(trimmed);
-      if (type === "npub") {
-        return data;
-      }
-    }
-  } catch (err) {
-    // Ignore decode errors
-  }
-  return null;
-}
-
-class R2Service {
+export class R2Service {
   constructor({
     makeR2Client: makeR2ClientOverride,
+    makeS3Client: makeS3ClientOverride,
     multipartUpload: multipartUploadOverride,
     ensureBucketExists: ensureBucketExistsOverride,
     ensureBucketCors: ensureBucketCorsOverride,
     deleteObject: deleteObjectOverride,
+    listObjects: listObjectsOverride,
   } = {}) {
     this.listeners = new Map();
     this.cloudflareSettings = null;
     this.makeR2Client = makeR2ClientOverride || makeR2Client;
+    this.makeS3Client = makeS3ClientOverride || makeS3Client;
     this.multipartUpload = multipartUploadOverride || multipartUpload;
     this.ensureBucketExists = ensureBucketExistsOverride || ensureBucketExists;
     this.ensureBucketCors = ensureBucketCorsOverride || ensureBucketCors;
     this.deleteObject = deleteObjectOverride || deleteObject;
+    this.listObjects = listObjectsOverride || listObjects;
+  }
+
+  /**
+   * Best-effort deletion of the R2/S3 objects backing one or more video notes
+   * (the video file, its sibling `.torrent`, and the thumbnail). Used so that
+   * deleting/superseding a video also removes its bytes from storage instead of
+   * leaving them publicly downloadable forever.
+   *
+   * Safety: only objects whose URL lives under the owner's configured bucket
+   * public base URL are touched (external links are ignored), and the method
+   * NEVER throws — storage cleanup must not block note deletion. Returns a
+   * summary describing what happened.
+   *
+   * @param {object} params
+   * @param {Array|object} params.videos - parsed video note(s) with url/thumbnail
+   * @param {string} [params.npub] - owner npub (preferred)
+   * @param {string} [params.pubkey] - owner hex pubkey (encoded to npub if npub absent)
+   * @param {object} [params.credentials] - pre-resolved connection settings
+   * @returns {Promise<{deleted:string[],failed:Array,skipped:boolean,reason:string}>}
+   */
+  async deleteVideoStorage({
+    videos = [],
+    npub = "",
+    pubkey = "",
+    credentials = null,
+  } = {}) {
+    const list = (Array.isArray(videos) ? videos : [videos]).filter(
+      (entry) => entry && typeof entry === "object"
+    );
+    const summary = { deleted: [], failed: [], skipped: false, reason: "" };
+    const skip = (reason) => {
+      summary.skipped = true;
+      summary.reason = reason;
+      return summary;
+    };
+
+    if (!list.length) {
+      return skip("no-videos");
+    }
+
+    let resolvedNpub = (npub || "").trim();
+    if (!resolvedNpub && pubkey) {
+      resolvedNpub = safeEncodeNpub(pubkey) || "";
+    }
+
+    let settings = credentials;
+    if (!settings && resolvedNpub) {
+      try {
+        settings = await this.resolveConnection(resolvedNpub);
+      } catch (err) {
+        devLogger.warn(
+          "[R2Service] deleteVideoStorage: failed to resolve connection:",
+          err
+        );
+      }
+    }
+    if (!settings) {
+      return skip("no-connection");
+    }
+
+    const accessKeyId = (settings.accessKeyId || "").trim();
+    const secretAccessKey = (settings.secretAccessKey || "").trim();
+    const bucket = (settings.bucket || "").trim();
+    const publicBaseUrl = (
+      settings.publicBaseUrl ||
+      settings.baseDomain ||
+      ""
+    ).trim();
+
+    if (!publicBaseUrl) {
+      // Without the public base URL we can't tell which objects belong to this
+      // user's bucket, so there's nothing safe to remove.
+      return skip("missing-bucket-or-base-url");
+    }
+
+    // Determine the affected objects BEFORE the credentials check. publicBaseUrl
+    // is available even while storage is locked, so this lets us report
+    // "storage-locked" only when there are genuinely hosted objects to remove —
+    // an external-URL video (no matching objects) is never a false alarm.
+    const keys = collectVideoStorageKeys({ videos: list, publicBaseUrl });
+    if (!keys.length) {
+      return skip("no-matching-objects");
+    }
+
+    if (!accessKeyId || !secretAccessKey) {
+      // There ARE objects to remove but storage is locked / keys unavailable —
+      // surface this distinctly so the caller can warn the user the hosted
+      // files were left behind.
+      return skip("storage-locked");
+    }
+    if (!bucket) {
+      return skip("missing-bucket-or-base-url");
+    }
+
+    let s3;
+    try {
+      await ensureS3SdkLoaded();
+      // Provider-aware client: Cloudflare R2 is always path-style; a generic S3
+      // bucket may be virtual-hosted-style, so honor the connection's
+      // forcePathStyle (mirrors uploadFile). Using makeR2Client unconditionally
+      // here forced path-style and broke cleanup for vhost-style S3 buckets.
+      const useR2 =
+        settings.provider === "cloudflare_r2" || Boolean(settings.accountId);
+      if (useR2) {
+        s3 = this.makeR2Client({
+          accountId: settings.accountId,
+          endpoint: settings.endpoint,
+          accessKeyId,
+          secretAccessKey,
+          region: settings.region,
+        });
+      } else {
+        s3 = this.makeS3Client({
+          endpoint: settings.endpoint,
+          region: settings.region,
+          accessKeyId,
+          secretAccessKey,
+          forcePathStyle: Boolean(settings.forcePathStyle),
+        });
+      }
+    } catch (err) {
+      devLogger.warn(
+        "[R2Service] deleteVideoStorage: failed to build storage client:",
+        err
+      );
+      return skip("client-error");
+    }
+
+    for (const key of keys) {
+      try {
+        // deleteObject already treats 404/NoSuchKey as success.
+        await this.deleteObject({ s3, bucket, key });
+        summary.deleted.push(key);
+      } catch (err) {
+        summary.failed.push({ key, error: err?.message || String(err) });
+        devLogger.warn(`[R2Service] Failed to delete storage object ${key}:`, err);
+      }
+    }
+    return summary;
+  }
+
+  /**
+   * List the object keys under the user's storage prefix (u/<npub>/) so the
+   * "My Videos" tab can reconcile notes against actual bucket contents. Unlock-
+   * gated (needs credentials); returns { ok, reason, keys }.
+   */
+  async listVideoStorageObjects(args = {}) {
+    return listVideoStorageObjectsHelper(this, args);
+  }
+
+  /**
+   * Delete specific bucket object keys (orphan cleanup). Unlock-gated; returns
+   * { ok, deleted, failed, reason }.
+   */
+  async deleteStorageKeys(args = {}) {
+    return deleteStorageKeysHelper(this, args);
   }
 
   on(event, handler) {
@@ -602,112 +695,7 @@ class R2Service {
    * @returns {Promise<{success: boolean, error?: string}>}
    */
   async verifyPublicAccess({ settings, npub }) {
-    if (!settings || !npub) {
-      return { success: false, error: "Missing settings or npub." };
-    }
-
-    const { accountId, accessKeyId, secretAccessKey, baseDomain } = settings;
-    if (!accountId || !accessKeyId || !secretAccessKey || !baseDomain) {
-      return { success: false, error: "Incomplete credentials or missing public URL." };
-    }
-
-    const bucketName =
-      settings.bucket || settings.meta?.bucket || sanitizeBucketName(npub);
-    const verifyKey = `.verify-${Date.now()}-${Math.random().toString(36).substring(7)}.txt`;
-    const verifyContent = "bitvid-verification";
-    const publicUrl = buildPublicUrl(baseDomain, verifyKey);
-
-    userLogger.info(
-      `[R2] Verifying access for Bucket: '${bucketName}' in Account: '${truncateMiddle(accountId, 6)}'`
-    );
-
-    try {
-      // 1. Initialize S3
-      const s3 = this.makeR2Client({
-        accountId,
-        accessKeyId,
-        secretAccessKey,
-        endpoint: settings.endpoint,
-        region: settings.region,
-      });
-
-      // 2. Ensure bucket (best effort)
-      try {
-        await this.ensureBucketExists({
-          s3,
-          bucket: bucketName,
-          region: settings.region,
-        });
-      } catch (setupErr) {
-        userLogger.warn("Bucket creation/check warning during verification:", setupErr);
-        // Continue, assuming bucket might already exist and be configured
-      }
-
-      // 3. Ensure CORS (best effort)
-      try {
-        const corsOrigins = this.getCorsOrigins();
-        if (corsOrigins.length > 0) {
-          await this.ensureBucketCors({
-            s3,
-            bucket: bucketName,
-            origins: corsOrigins,
-            region: settings.region,
-          });
-        }
-      } catch (corsErr) {
-        userLogger.warn("CORS setup warning during verification:", corsErr);
-      }
-
-      // 4. Upload Test File
-      const file = new File([verifyContent], "verify.txt", { type: "text/plain" });
-      await this.multipartUpload({
-        s3,
-        bucket: bucketName,
-        key: verifyKey,
-        file,
-        contentType: "text/plain",
-        createBucketIfMissing: true,
-        region: settings.region,
-      });
-
-      // 4. Verify Public Access (Fetch)
-      // Wait a moment for propagation (R2 is usually instant-ish but helpful to wait)
-      await new Promise((r) => setTimeout(r, 500));
-
-      const response = await fetch(publicUrl, { method: "GET", cache: "no-cache" });
-
-      if (!response.ok) {
-        // Cleanup attempt
-        try { await this.deleteObject({ s3, bucket: bucketName, key: verifyKey }); } catch (e) {}
-
-        if (response.status === 404) {
-           return { success: false, error: "File not found. Check your Public Bucket URL." };
-        }
-        return { success: false, error: `Public access failed (HTTP ${response.status}). Is the bucket public?` };
-      }
-
-      const text = await response.text();
-
-      // Cleanup
-      try { await this.deleteObject({ s3, bucket: bucketName, key: verifyKey }); } catch (e) {}
-
-      if (text.trim() !== verifyContent) {
-        return { success: false, error: "Content mismatch. URL might be pointing elsewhere." };
-      }
-
-      return { success: true };
-
-    } catch (err) {
-      userLogger.error("Verification failed:", err);
-      let errorMessage = err.message || "Unknown error during verification.";
-      if (
-        errorMessage.includes("Failed to fetch") ||
-        errorMessage.includes("NetworkError")
-      ) {
-        errorMessage += ` ${buildCorsGuidance({ accountId })} Also verify that the Bucket Name exists and your API Token has 'Object Read & Write' permissions.`;
-      }
-      return { success: false, error: errorMessage };
-    }
+    return verifyPublicAccessHelper(this, { settings, npub });
   }
 
   async updateCloudflareBucketPreview({ hasPubkey = false, npub = "" } = {}) {
@@ -869,9 +857,27 @@ class R2Service {
     this.updateCloudflareProgress(0);
     this.setCloudflareUploading(true);
 
+    // Computing the torrent info-hash (and the content-hash fallback) reads the
+    // ENTIRE file before the upload starts and before any progress is emitted —
+    // on multi-GB videos that's a long, silent pause that looks like a freeze.
+    // Surface a status so the user knows work is happening.
+    const willHashFile = Boolean(file) && !isValidInfoHash(normalizeInfoHash(infoHash));
+    if (willHashFile) {
+      this.setCloudflareUploadStatus(
+        "Analyzing video (large files can take a moment)…",
+        "info",
+      );
+    }
+
     const keyIdentifier = await resolveUploadIdentifier({ infoHash, file });
     const normalizedInfoHash = normalizeInfoHash(infoHash || keyIdentifier);
     const hasValidInfoHash = isValidInfoHash(normalizedInfoHash);
+    // When no info-hash is available, derive a content-based namespace so two
+    // distinct URL-first uploads that share a filename can't overwrite each
+    // other. Kept separate from keyIdentifier so magnet generation still keys
+    // off the real info-hash only.
+    const storageIdentifier =
+      keyIdentifier || (file ? await computeStorageContentHash(file) : "");
 
     let bucketResult = null;
     try {
@@ -909,7 +915,7 @@ class R2Service {
     this.setCloudflareUploadStatus(statusMessage, "info");
 
     // Use forced keys if provided, otherwise generate them
-    const key = forcedVideoKey || buildR2Key(npub, file, keyIdentifier);
+    const key = forcedVideoKey || buildR2Key(npub, file, storageIdentifier);
     const publicUrl = forcedVideoUrl || buildPublicUrl(bucketEntry.publicBaseUrl, key);
 
     const buildTorrentKey = () => {
@@ -929,6 +935,11 @@ class R2Service {
         endpoint: effectiveSettings.endpoint,
         region: effectiveSettings.region,
       });
+
+      // Track optional-asset failures so the user gets a visible signal instead
+      // of a silently-missing thumbnail/torrent (Cloudflare-upload #5).
+      let thumbnailFailed = false;
+      let torrentFailed = false;
 
       if (thumbnailFile) {
         this.setCloudflareUploadStatus("Uploading thumbnail...", "info");
@@ -951,6 +962,11 @@ class R2Service {
           }
         } catch (err) {
           userLogger.warn("Thumbnail upload failed, continuing with video...", err);
+          thumbnailFailed = true;
+          this.setCloudflareUploadStatus(
+            "Thumbnail upload failed — publishing without it.",
+            "warning"
+          );
         }
       }
 
@@ -990,6 +1006,11 @@ class R2Service {
           }
         } catch (err) {
           userLogger.warn("Torrent metadata upload failed, continuing...", err);
+          torrentFailed = true;
+          this.setCloudflareUploadStatus(
+            "Torrent upload failed — publishing URL-first without the .torrent.",
+            "warning"
+          );
         }
       }
 
@@ -1088,9 +1109,15 @@ class R2Service {
 
         publishOutcome = Boolean(published);
         if (publishOutcome) {
+          const caveats = [];
+          if (thumbnailFailed) caveats.push("thumbnail");
+          if (torrentFailed) caveats.push("torrent");
+          const suffix = caveats.length
+            ? ` (note: ${caveats.join(" & ")} upload failed)`
+            : "";
           this.setCloudflareUploadStatus(
-            `Published ${publicUrl}`,
-            "success"
+            `Published ${publicUrl}${suffix}`,
+            caveats.length ? "warning" : "success"
           );
         }
       }
@@ -1098,10 +1125,16 @@ class R2Service {
       return publishOutcome;
     } catch (err) {
       userLogger.error("Cloudflare upload failed:", err);
-      this.setCloudflareUploadStatus(
-        err?.message ? `Upload failed: ${err.message}` : "Upload failed.",
-        "error"
-      );
+      let message = err?.message
+        ? `Upload failed: ${err.message}`
+        : "Upload failed.";
+      // A CORS rejection during the browser PUT/POST looks like an opaque
+      // "Failed to fetch" — attach actionable guidance so users who skipped the
+      // connection test still know what to fix (the #1 first-upload failure).
+      if (isLikelyCorsError(err)) {
+        message += ` ${buildCorsGuidance({ accountId })}`;
+      }
+      this.setCloudflareUploadStatus(message, "error");
       return false;
     } finally {
       this.setCloudflareUploading(false);

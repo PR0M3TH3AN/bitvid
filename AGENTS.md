@@ -63,6 +63,15 @@ For any nostr related work, please review the nip documentation located in /docs
 5. **Telemetry hooks:** Keep existing analytics/logging untouched unless instructed. If you add new modal states, annotate them clearly in code comments.
 6. **Modal regressions:** If validation or helper wiring breaks in Main, disable new feature flags and ship a revert PR immediately. Note the rollback steps in AGENTS.md for posterity.
 
+### 4a. Cloudflare/S3 upload-path gotchas (audited 2026-06-16)
+
+* **Two near-identical upload services exist** — `js/services/r2Service.js` (Cloudflare R2) and `js/services/s3UploadService.js` (generic S3). They share `buildR2Key`, `resolveUploadIdentifier`, and the magnet build but are *copies*. **Any fix to one must be mirrored in the other** or they silently drift.
+* **Storage-key collisions = data loss — FIXED 2026-06-16.** `buildR2Key` (`js/r2.js`) builds `u/<npub>/<namespace>/<slug>.<ext>` where `namespace` used to fall back to the literal `"uploads"` and `slug` to `"video"` (e.g. a non-ASCII filename, or no info-hash) — so a URL-first upload with no info-hash and a duplicate filename overwrote the previous object while the old note still pointed at that URL. WebTorrent uploads were always safe (info-hash namespaces the key = content-addressed). Fix: `computeStorageContentHash(file)` (`js/r2.js`) derives a content-based namespace when no info-hash is available (full SHA-256 for ≤512 MB, sampled metadata+edge fingerprint above that to avoid buffering huge files), wired into **both** `r2Service` and `s3UploadService`. Test: `tests/storage-key-collision.test.mjs`. **If you add a third upload path, reuse `computeStorageContentHash`.**
+* **Whole-file hash before upload.** When the modal doesn't pre-seed an info-hash, `resolveUploadIdentifier` runs `calculateTorrentInfoHash(file)`, which reads the *entire* file before the upload begins and before any progress is emitted — on multi-GB files this looks like a hang. Emit a "preparing/hashing" status or parallelize.
+* **Publish can report success unconfirmed.** `publishEventToRelay` (`js/nostrPublish.js`) has an optimistic-success fallthrough when the relay handle exposes no `on()`/`then()` — a note may show "Published" with no relay ACK. Don't tighten blindly (legacy `seen`-only relays rely on it), but log it.
+* **Silent partial failures.** Thumbnail and `.torrent` upload failures are caught and `warn`-only; the video note still publishes with no user signal. Empty (0-byte) files hit `CompleteMultipartUpload` with `Parts:[]` and surface a cryptic error — guard `file.size === 0`.
+* **Object cleanup (deletes/edits).** `R2Service.deleteVideoStorage()` removes the backing objects so "deleted" videos aren't left publicly downloadable. Contract to preserve: it's **best-effort and never throws** (must not block note deletion), it derives keys via `collectVideoStorageKeys()` and **only ever touches URLs under the owner's bucket base** (never external/3rd-party URLs), and it skips cleanly when storage is locked/credential-less. Wired into delete (`app.handleDeleteModalConfirm`) and edit-with-replaced-URL (`editModalController.handleSubmit`). Edit cleanup intentionally does **not** delete thumbnails (the new note may still reference them) and only fires when both old and new URLs are present and different.
+
 ---
 
 ## 5. Manual QA Checklist
@@ -244,44 +253,14 @@ When you create a PR or start work, leave a clear signal:
 - **PR title prefix**: Use a descriptive prefix like `[nostr-core]`, `[playback]`, `[ui]`, `[ci]` so the scope is visible at a glance.
 - **PR description**: Include a "Files Modified" section listing the key files touched, so other agents can quickly detect conflicts.
 
-### Task Claiming Protocol (TORCH)
+### Task Coordination
 
-Task coordination uses **TORCH** (Task Orchestration via Relay-Coordinated Handoff) — a decentralized locking protocol built on Nostr. Agents publish ephemeral lock events to public relays; locks auto-expire via NIP-40. No tokens, no secrets, no git push required. Works across all platforms (Claude Code, Codex, Jules). See `torch/TORCH.md` for the full protocol documentation.
-
-**Before starting any task:**
-
-1. **Check for existing claims:**
-   ```bash
-   node torch/bin/torch-lock.mjs check --cadence <daily|weekly>
-   ```
-   Returns JSON with `locked` (claimed agents) and `available` (free agents) arrays. If an agent appears in the `locked` list, **skip it**.
-
-2. **Claim the task:**
-   ```bash
-   AGENT_PLATFORM=<jules|claude-code|codex> \
-   node torch/bin/torch-lock.mjs lock \
-     --agent <agent-name> \
-     --cadence <daily|weekly>
-   ```
-   The script generates an ephemeral keypair, publishes a lock event to public Nostr relays, and performs a built-in race check. The key is used once and discarded. Locks auto-expire after 2 hours (configurable via `NOSTR_LOCK_TTL`).
-
-   - **Exit 0** = lock acquired, begin work.
-   - **Exit 3** = race lost, another agent claimed first. Go back to step 1.
-   - **Exit 2** = relay error. Write a `_failed.md` log and stop.
-
-3. **View all active locks** (optional, for debugging):
-   ```bash
-   node torch/bin/torch-lock.mjs list
-   ```
-
-**Scheduler agents:** Daily and weekly scheduler agents must follow this protocol in addition to their directory-based rotation logic (`task-logs/daily/` and `task-logs/weekly/`). The lock check happens _after_ determining the next task but _before_ executing it. See the scheduler prompts for the specific implementation steps.
-
-### TORCH Memory Integration
-
-You have access to the TORCH memory system.
-
-1. **READ:** Check `.scheduler-memory/latest/${cadence}/memories.md` for past learnings.
-2. **WRITE:** Before exiting, save new insights to `memory-update.md` so future runs can learn from this session.
+> The previous TORCH relay-locking protocol (and its `torch/` tooling) has been
+> removed. Coordinate via GitHub instead: before starting, check open PRs
+> (`gh pr list` or the GitHub API) for overlap on the same subsystem, and use a
+> descriptive PR title prefix so scope is visible. Don't run two agents on the
+> same subsystem simultaneously, and keep `js/app.js` single-writer (see the
+> Multi-Agent Coordination rules above).
 
 ### Currently In-Flight Work
 
@@ -682,6 +661,22 @@ This agent’s goal is NOT “make CI green.” Its goal is “make the suite re
 
 ---
 
+## 17. NIP-07 Signer Reliability & Encrypted-List Loading (hard-won, 2026-06-16)
+
+The single biggest source of "DMs / hashtags / watch-history / block & subscription lists won't load after login" is **not** bitvid — it's an **unresponsive NIP-07 signer**. The extension's MV3 background service-worker can die or its content-script↔worker channel can orphan, after which raw `window.nostr` calls hang forever. No client change can force a dead signer to answer.
+
+* **Diagnose first, don't guess.** Run a single raw `window.nostr` probe in the page console (`getPublicKey → nip04.encrypt → nip04.decrypt`) that bypasses bitvid entirely. If *that* hangs, it's the extension/environment. Recommend a well-maintained signer (nos2x, Alby); KeysBand's dead worker was the root cause and switching to nos2x fixed everything.
+* **Resilience invariants — do not regress these** (see `docs/KNOWN_BUGS.md` #0 for the full history and the files):
+  1. **Cap relay fan-out** (`js/nostr/toolkit.js` `capReadRelays`, ≤8, user-relays-first + 2 reserved default slots). An uncapped cold-login REQ storm to ~20 dead NIP-65 relays starves the single-threaded signer's postMessage round-trips.
+  2. **Circuit breaker** on the NIP-07 channel (`js/nostr/nip07Permissions.js`): after N consecutive *timeouts* fast-fail instead of hanging ~15s each. Channel-death errors must count toward opening (not reset it); interactive permission prompts bypass it; one periodic probe detects recovery.
+  3. **Never swallow a transient decrypt error as an empty result.** Re-throw channel-death/timeout sub-errors so the retry path runs — returning `[]` turns "signer is slow" into "user has no blocks/lists" and kills retries.
+  4. **Generous decrypt budget** (~25–30s/call, ~60s backoff cap); a 6s timeout kills slow-but-responsive signers mid-decrypt. Handshake variant timeout is ~20s for the same reason.
+  5. **One actionable user notice** (`js/utils/signerHealthNotice.js`) after a few timeouts with `signerStatus: "present"` — not a silent forever-retry.
+* **Don't render into closed modals at login.** Once a responsive signer makes decryption instant, eagerly populating every profile panel at login (friends avatars, subscriptions, blocks, DM summaries) freezes the main thread ~10–15s. Populate each pane lazily on open (`selectPane`) and gate data-change re-render listeners on "is the view open".
+* **Deterministic testing.** Reproduce signer-dependent bugs headlessly with a fake `window.nostr` (Playwright `exposeBinding` + `addInitScript`) + a mock relay + configurable channel models (healthy/slow/overload/dead, latency override). See `scripts/perf/nip07-channel-sim.mjs`.
+
+---
+
 ## Next
 
 Please read these documents next.
@@ -692,8 +687,3 @@ Please read these documents next.
 And if you need to create new nostr kinds please keep the logic centralized there in `nostrEventSchemas.js` and the `nostr-event-schemas.md` up to date.
 
 **End of AGENTS.md**
-
-## TORCH Memory Integration
-You have access to the TORCH memory system.
-1. READ: Check `.scheduler-memory/latest/${cadence}/memories.md` for past learnings.
-2. WRITE: Before exiting, save new insights to `memory-update.md` so future runs can learn from this session.

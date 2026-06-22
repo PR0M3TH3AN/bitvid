@@ -61,6 +61,7 @@ import {
   removeWatchHistoryItem as removeWatchHistoryItemWithManager,
   fetchWatchHistory as fetchWatchHistoryWithManager,
   resolveWatchHistory as resolveWatchHistoryWithManager,
+  getWatchHistoryDeferredChunkCount as getWatchHistoryDeferredChunkCountFromManager,
 } from "./watchHistory.js";
 import {
   buildVideoPostEvent,
@@ -106,6 +107,7 @@ import {
   publishEventToRelay,
   publishEventToRelays,
   assertAnyRelayAccepted,
+  attachRelayPublishSummary,
 } from "../nostrPublish.js";
 import {
   signEventWithPrivateKey,
@@ -120,6 +122,7 @@ import {
   DEFAULT_RELAY_URLS,
   RELAY_URLS,
   capReadRelays,
+  buildFeedRelaySet,
   ensureNostrTools,
   getCachedNostrTools,
   nostrToolsBootstrapFailure,
@@ -978,6 +981,12 @@ export class NostrClient {
       options,
     );
   }
+  getWatchHistoryDeferredChunkCount(actorInput) {
+    return getWatchHistoryDeferredChunkCountFromManager(
+      this.watchHistory,
+      actorInput,
+    );
+  }
   async listVideoViewEvents(pointer, options = {}) {
     return listVideoViewEventsForClient(this, pointer, options);
   }
@@ -1156,6 +1165,26 @@ export class NostrClient {
 
   getHealthyRelays(candidates) {
     return this.connectionManager.getHealthyRelays(candidates);
+  }
+
+  /**
+   * Resolve the relay set for deletion/tombstone events.
+   *
+   * A delete MUST reach every relay the video could have been published to,
+   * otherwise relays outside the set keep serving the original event and the
+   * "deleted" video resurrects on the next load. Normal publishes use the
+   * (uncapped) write set, but the delete paths historically used `this.relays`
+   * — the CAPPED read set (≤8) — so a video published broadly was only
+   * tombstoned on a subset. Mirror publishVideo: prefer the write set, fall
+   * back to the read set, then the bundled defaults.
+   */
+  getDeletePublishRelays() {
+    const write = sanitizeRelayList(
+      Array.isArray(this.writeRelays) && this.writeRelays.length
+        ? this.writeRelays
+        : this.relays,
+    );
+    return write.length ? write : Array.from(RELAY_URLS);
   }
 
   getDmDecryptCacheLimit() {
@@ -2501,19 +2530,190 @@ export class NostrClient {
    * @param {string} [opts.pubkey] - Optional hex public key.
    * @returns {object} The created signer adapter.
    */
-  async registerPrivateKeySigner(opts) {
+  async registerPrivateKeySigner(opts = {}) {
     const adapter = await createNsecAdapter(opts);
+
+    // Enforce access control (blacklist / whitelist) BEFORE activating the
+    // signer. The validator was previously accepted but ignored, so nsec login
+    // bypassed the access gate that NIP-07 and NIP-46 logins enforce.
+    if (typeof opts.validator === "function") {
+      try {
+        opts.validator(adapter.pubkey);
+      } catch (error) {
+        // Don't leave a since-blocked key persisted on this device.
+        try {
+          clearStoredSessionActorEntry();
+        } catch (cleanupError) {
+          devLogger.warn(
+            "[nostr] Failed to clear stored session after access denial:",
+            cleanupError,
+          );
+        }
+        throw error;
+      }
+    }
+
     this.signerManager.setActiveSigner(adapter);
 
     if (opts.privateKey && typeof opts.privateKey === "string") {
+      const normalizedPrivateKey = opts.privateKey.trim().toLowerCase();
       this.sessionActor = {
         pubkey: adapter.pubkey,
-        privateKey: opts.privateKey.trim().toLowerCase(),
+        privateKey: normalizedPrivateKey,
         source: "nsec",
       };
+
+      // Persist the key, encrypted with the user's passphrase, when they opted
+      // to remember it. Uses the canonical { privateKeyEncrypted, encryption }
+      // shape that readStoredSessionActorEntry / decryptSessionPrivateKey
+      // expect — the previous shape was silently rejected, so "remember this
+      // key" never actually stored anything.
+      if (
+        opts.persist === true &&
+        typeof opts.passphrase === "string" &&
+        opts.passphrase.trim()
+      ) {
+        try {
+          const encrypted = await encryptSessionPrivateKey(
+            normalizedPrivateKey,
+            opts.passphrase,
+          );
+          persistSessionActorEntry({
+            pubkey: adapter.pubkey,
+            privateKeyEncrypted: encrypted.ciphertext,
+            encryption: {
+              salt: encrypted.salt,
+              iv: encrypted.iv,
+              iterations: encrypted.iterations,
+              hash: encrypted.hash,
+              algorithm: encrypted.algorithm,
+              version: encrypted.version,
+            },
+          });
+          this.sessionActor.persisted = true;
+        } catch (error) {
+          devLogger.warn("[nostr] Failed to persist private key signer:", error);
+        }
+      }
     }
 
     return adapter;
+  }
+
+  // Metadata about a stored, passphrase-encrypted nsec session (no secrets).
+  // The login modal reads `hasEncryptedKey` to offer the "unlock saved key"
+  // flow; without this the unlock UI never appeared.
+  getStoredSessionActorMetadata() {
+    let entry = null;
+    try {
+      entry = readStoredSessionActorEntry();
+    } catch (error) {
+      devLogger.warn(
+        "[nostr] Failed to read stored session actor metadata:",
+        error,
+      );
+      return null;
+    }
+    if (!entry || !entry.privateKeyEncrypted || !entry.encryption) {
+      return null;
+    }
+    return {
+      hasEncryptedKey: true,
+      pubkey: typeof entry.pubkey === "string" ? entry.pubkey : "",
+      source: "nsec",
+      createdAt: Number.isFinite(entry.createdAt) ? entry.createdAt : null,
+    };
+  }
+
+  // Restore a persisted nsec session by decrypting it with the user's
+  // passphrase and re-activating the signer via the same path as fresh login.
+  // The access-control validator is enforced before activation, and a
+  // now-blocked key is forgotten.
+  async unlockStoredSessionActor(passphrase, { validator } = {}) {
+    if (typeof passphrase !== "string" || !passphrase.trim()) {
+      const error = new Error("A passphrase is required to unlock the saved key.");
+      error.code = "passphrase-required";
+      throw error;
+    }
+
+    const entry = readStoredSessionActorEntry();
+    if (!entry || !entry.privateKeyEncrypted || !entry.encryption) {
+      const error = new Error("There is no saved key to unlock.");
+      error.code = "no-stored-session";
+      throw error;
+    }
+
+    const storedPubkey =
+      typeof entry.pubkey === "string" && HEX64_REGEX.test(entry.pubkey.toLowerCase())
+        ? entry.pubkey.toLowerCase()
+        : "";
+    if (storedPubkey && typeof validator === "function") {
+      try {
+        validator(storedPubkey);
+      } catch (error) {
+        try {
+          clearStoredSessionActorEntry();
+        } catch (cleanupError) {
+          devLogger.warn(
+            "[nostr] Failed to clear stored session after access denial:",
+            cleanupError,
+          );
+        }
+        throw error;
+      }
+    }
+
+    let privateKeyHex = "";
+    try {
+      privateKeyHex = await decryptSessionPrivateKey(
+        {
+          privateKeyEncrypted: entry.privateKeyEncrypted,
+          encryption: entry.encryption,
+        },
+        passphrase,
+      );
+    } catch (error) {
+      const failure = new Error(
+        "Failed to unlock the saved key. Check your passphrase and try again.",
+      );
+      failure.code =
+        error?.code === "decrypt-failed" ? "decrypt-failed" : "unlock-failed";
+      failure.cause = error;
+      throw failure;
+    }
+
+    const normalizedPrivateKey =
+      typeof privateKeyHex === "string" ? privateKeyHex.trim().toLowerCase() : "";
+    if (!HEX64_REGEX.test(normalizedPrivateKey)) {
+      const error = new Error("The saved key is corrupt and cannot be used.");
+      error.code = "stored-key-invalid";
+      throw error;
+    }
+
+    let pubkey = storedPubkey;
+    if (!pubkey) {
+      const tools = (await ensureNostrTools()) || getCachedNostrTools();
+      if (tools && typeof tools.getPublicKey === "function") {
+        pubkey = tools.getPublicKey(normalizedPrivateKey);
+      }
+    }
+
+    const adapter = await this.registerPrivateKeySigner({
+      privateKey: normalizedPrivateKey,
+      pubkey,
+      persist: false,
+      validator,
+    });
+
+    if (this.sessionActor && typeof this.sessionActor === "object") {
+      this.sessionActor.persisted = true;
+    }
+
+    const resolvedPubkey =
+      (adapter && typeof adapter.pubkey === "string" && adapter.pubkey) ||
+      pubkey ||
+      "";
+    return { pubkey: resolvedPubkey };
   }
 
   /**
@@ -2546,12 +2746,20 @@ export class NostrClient {
 
     try {
       // 1. Publish the primary Video Note (Kind 30078)
-      const { signedEvent } = await this.signAndPublishEvent(context.event, {
-        context: "video note",
-        logName: "Video note",
-        devLogLabel: "video note",
-        resolveActiveSigner: (p) => this.signerManager.resolveActiveSigner(p),
-      });
+      const { signedEvent, summary } = await this.signAndPublishEvent(
+        context.event,
+        {
+          context: "video note",
+          logName: "Video note",
+          devLogLabel: "video note",
+          resolveActiveSigner: (p) => this.signerManager.resolveActiveSigner(p),
+        },
+      );
+
+      // Stash a compact relay tally on the returned event (non-enumerable so it
+      // never leaks into serialization/relay logic) so the UI can report how
+      // many relays actually accepted the video.
+      attachRelayPublishSummary(signedEvent, summary);
 
       // 2. Publish NIP-94 Mirror (Kind 1063) if a hosted URL is present.
       await handlePublishNip94(this, signedEvent, context);
@@ -2694,6 +2902,10 @@ export class NostrClient {
     return this.signerManager.installNip46Client(client, options);
   }
 
+  async prepareRemoteSignerHandshake(params) {
+    return this.signerManager.prepareRemoteSignerHandshake(params);
+  }
+
   async connectRemoteSigner(params) {
     return this.signerManager.connectRemoteSigner(params);
   }
@@ -2782,6 +2994,9 @@ export class NostrClient {
       baseEvent = {
         id: fetched.id,
         pubkey: fetched.pubkey,
+        // Carry created_at so the tombstone can be made strictly newer than the
+        // version it replaces (see buildRevertVideoPayload monotonicity guard).
+        created_at: fetched.created_at,
           content: JSON.stringify({
             version: fetched.version,
             deleted: fetched.deleted,
@@ -2843,7 +3058,7 @@ export class NostrClient {
     const signedEvent = await queueSignEvent(signer, event);
     const publishResults = await publishEventToRelays(
       this.pool,
-      this.relays,
+      this.getDeletePublishRelays(),
       signedEvent
     );
 
@@ -3006,6 +3221,9 @@ export class NostrClient {
           {
             id: vid.id,
             pubkey: vid.pubkey,
+            // Preserve the original timestamp so the tombstone is published with
+            // a strictly-newer created_at and actually replaces the live version.
+            created_at: vid.created_at,
             content: JSON.stringify(contentPayload),
             tags: Array.isArray(vid.tags) ? vid.tags : [],
           },
@@ -3168,7 +3386,7 @@ export class NostrClient {
         const signedDelete = await queueSignEvent(signer, deleteEvent);
         const publishResults = await publishEventToRelays(
           this.pool,
-          this.relays,
+          this.getDeletePublishRelays(),
           signedDelete,
           { waitForAll: true }
         );
@@ -3386,7 +3604,11 @@ export class NostrClient {
         getPool: () => this.pool,
         getDefaultRelays: () => {
           const healthy = sanitizeRelayList(this.getHealthyRelays(this.relays));
-          return healthy.length ? healthy : Array.from(DEFAULT_RELAY_URLS);
+          // Guarantee reliable default aggregators are always in the feed set,
+          // even when the user's own relays survive the health filter but are
+          // actually dead — otherwise the feed subscribes to a fully-broken
+          // list and hangs forever on "Fetching…".
+          return buildFeedRelaySet(healthy, this.relays);
         },
         // Own registry, isolated from the global singleton (which other
         // subsystems use for their own keys) and from other client instances.
@@ -4106,4 +4328,3 @@ export {
   resolveActiveSigner,
   shouldRequestExtensionPermissions,
 };
-const a = 1

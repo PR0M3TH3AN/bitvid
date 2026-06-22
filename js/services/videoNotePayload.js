@@ -1,4 +1,4 @@
-import { extractMagnetHints } from "../magnetShared.js";
+import { extractMagnetHints, normalizeWebSeedList } from "../magnetShared.js";
 import { normalizeAndAugmentMagnet } from "../magnetUtils.js";
 import { infoHashFromMagnet } from "../magnets.js";
 import {
@@ -342,7 +342,7 @@ export function normalizeVideoNotePayload(input) {
   const magnet = normalizeString(legacyPayload?.magnet || "");
   const thumbnail = normalizeString(legacyPayload?.thumbnail || "");
   const description = normalizeString(legacyPayload?.description || "");
-  const ws = normalizeString(legacyPayload?.ws || "");
+  const wsValues = normalizeWebSeedList(legacyPayload?.ws);
   const xs = normalizeString(legacyPayload?.xs || "");
   const storagePointer = normalizeStoragePointer(
     legacyPayload?.storagePointer || legacyPayload?.storage || ""
@@ -415,10 +415,7 @@ export function normalizeVideoNotePayload(input) {
   }
 
   if (legacyFormData.magnet) {
-    const wsList = [];
-    if (ws) {
-      wsList.push(ws);
-    }
+    const wsList = [...wsValues];
     if (legacyFormData.url && /^https?:\/\//i.test(legacyFormData.url)) {
       wsList.push(legacyFormData.url);
     }

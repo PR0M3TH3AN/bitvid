@@ -220,4 +220,61 @@ describe("StorageService", () => {
     assert.strictEqual(c1.meta.defaultForUploads, false);
     assert.strictEqual(c2.meta.defaultForUploads, true);
   });
+
+  // Scenario (SCN-secrets-never-at-rest-plaintext):
+  //   Pre-launch credential-security invariant — a user's S3/R2 secret (and
+  //   access key id) must NEVER be persisted in plaintext anywhere in the stored
+  //   record (not in the encrypted payload, not leaked into plaintext meta), and
+  //   listConnections() (the unauthenticated/metadata view) must not expose them.
+  //   Cheat-resistant: scans the ENTIRE serialized at-rest record for the secret
+  //   strings, so passing requires real encryption, not a narrower field check.
+  test("secrets never appear in plaintext anywhere in the at-rest record", async () => {
+    await storageService.unlock(pubkey, { signer: mockSigner });
+
+    const SECRET = "S3CR3T-do-not-persist-7f3a9c";
+    const ACCESS_KEY = "AKIA-PUBLIC-ID-do-not-persist-1b2c3d";
+
+    await storageService.saveConnection(
+      pubkey,
+      "conn_secret",
+      {
+        provider: PROVIDERS.R2,
+        accessKeyId: ACCESS_KEY,
+        secretAccessKey: SECRET,
+        accountId: "acct-123",
+      },
+      { label: "My R2", bucket: "my-bucket", publicBaseUrl: "https://cdn.example" },
+    );
+
+    // Serialize the WHOLE persisted account (meta + encrypted blob + everything).
+    const account = await storageService._getAccount(pubkey);
+    const atRest = JSON.stringify(account);
+
+    assert.ok(
+      !atRest.includes(SECRET),
+      "secretAccessKey must never be stored in plaintext at rest",
+    );
+    assert.ok(
+      !atRest.includes(ACCESS_KEY),
+      "accessKeyId must never be stored in plaintext at rest",
+    );
+    // The encrypted payload must actually exist (encryption happened).
+    assert.ok(account.connections.conn_secret.encrypted.cipher);
+
+    // The metadata view must not expose secrets either.
+    const listed = JSON.stringify(await storageService.listConnections(pubkey));
+    assert.ok(!listed.includes(SECRET) && !listed.includes(ACCESS_KEY),
+      "listConnections() must not expose secrets");
+
+    // Sanity: round-trips correctly while unlocked.
+    const got = await storageService.getConnection(pubkey, "conn_secret");
+    assert.strictEqual(got.secretAccessKey, SECRET);
+
+    // And once locked, the plaintext secret is no longer reachable.
+    storageService.lock(pubkey);
+    await assert.rejects(
+      () => storageService.getConnection(pubkey, "conn_secret"),
+      /Storage is locked/,
+    );
+  });
 });

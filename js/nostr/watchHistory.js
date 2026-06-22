@@ -14,6 +14,13 @@ import {
   NOTE_TYPES,
 } from "../nostrEventSchemas.js";
 import { CACHE_POLICIES } from "./cachePolicies.js";
+import {
+  sanitizeWatchHistoryMetadata,
+  serializeWatchHistoryItems,
+  bytesToHex,
+  looksLikeJsonStructure,
+  hexToBytesCompat,
+} from "./watchHistoryCodec.js";
 import { publishEventToRelays } from "../nostrPublish.js";
 import {
   RELAY_URLS,
@@ -33,6 +40,7 @@ import {
 } from "../utils/pointerNormalization.js";
 import { pMap } from "../utils/asyncUtils.js";
 import { selectNewestListEvent } from "./listEventOrdering.js";
+import { dedupeNewestPerReplaceableAddress } from "./watchHistoryDedup.js";
 import {
   getCachedChunkPlaintext,
   setCachedChunkPlaintext,
@@ -368,55 +376,6 @@ function canonicalizeWatchHistoryItems(rawItems, maxItems = WATCH_HISTORY_MAX_IT
   return buckets;
 }
 
-function sanitizeWatchHistoryMetadata(metadata) {
-  return {};
-}
-
-function serializeWatchHistoryItems(items) {
-  if (!Array.isArray(items) || items.length === 0) {
-    return "[]";
-  }
-  const normalized = items
-    .map((item) => {
-      const type = item?.type === "a" ? "a" : "e";
-      const value = typeof item?.value === "string" ? item.value : "";
-      if (!type || !value) {
-        return null;
-      }
-      const relay =
-        typeof item?.relay === "string" && item.relay.trim()
-          ? item.relay.trim()
-          : undefined;
-      const watchedAt = Number.isFinite(item?.watchedAt)
-        ? Math.max(0, Math.floor(item.watchedAt))
-        : undefined;
-      const payload = { type, value };
-      if (relay) {
-        payload.relay = relay;
-      }
-      if (watchedAt !== undefined) {
-        payload.watchedAt = watchedAt;
-      }
-      const resumeAt = Number.isFinite(item?.resumeAt)
-        ? Math.max(0, Math.floor(item.resumeAt))
-        : undefined;
-      if (resumeAt !== undefined) {
-        payload.resumeAt = resumeAt;
-      }
-      if (item?.completed === true) {
-        payload.completed = true;
-      }
-      return payload;
-    })
-    .filter(Boolean);
-  return JSON.stringify(normalized);
-}
-
-function bytesToHex(bytes) {
-  return Array.from(bytes)
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
 
 async function computeWatchHistoryFingerprintForItems(itemsOrBuckets) {
   // Check if buckets
@@ -452,40 +411,6 @@ async function computeWatchHistoryFingerprintForItems(itemsOrBuckets) {
     }
   }
   return `fallback:${serialized}`;
-}
-
-function looksLikeJsonStructure(content) {
-  if (typeof content !== "string") {
-    return false;
-  }
-  const trimmed = content.trim();
-  if (!trimmed) {
-    return false;
-  }
-  const first = trimmed[0];
-  return first === "{" || first === "[";
-}
-
-function hexToBytesCompat(hex, tools = null) {
-  if (typeof hex !== "string") {
-    throw new Error("Invalid hex input.");
-  }
-  const trimmed = hex.trim();
-  if (!trimmed || trimmed.length % 2 !== 0) {
-    throw new Error("Invalid hex input.");
-  }
-  if (tools?.utils && typeof tools.utils.hexToBytes === "function") {
-    return tools.utils.hexToBytes(trimmed);
-  }
-  const bytes = new Uint8Array(trimmed.length / 2);
-  for (let index = 0; index < trimmed.length; index += 2) {
-    const byte = Number.parseInt(trimmed.slice(index, index + 2), 16);
-    if (Number.isNaN(byte)) {
-      throw new Error("Invalid hex input.");
-    }
-    bytes[index / 2] = byte;
-  }
-  return bytes;
 }
 
 // Memoizes NIP-44 conversation keys across an entire load. Deriving a
@@ -677,7 +602,39 @@ function determineWatchHistoryDecryptionOrder(
     }
   }
 
-  return prioritized.length ? prioritized : available;
+  const ordered = prioritized.length ? prioritized : available;
+
+  // Strictly format-route by the ciphertext shape, which is authoritative.
+  // NIP-04 ciphertext always carries a literal "?iv=" marker; NIP-44 is plain
+  // base64. The opposite family can NEVER decrypt a given ciphertext, so trying
+  // it is a guaranteed-wasted decrypt — and under a NIP-46 remote signer each
+  // wasted decrypt is a *published* relay RPC that burns the serial request
+  // queue and risks the relay rate limit ("noting too much"). Dropping the
+  // non-matching family halves cold-load NIP-46 decrypt RPCs for watch history,
+  // mirroring the list-decrypt routing in userBlocks/subscriptions/hashtags.
+  // Trust the ciphertext over a possibly-misleading "encrypted" tag.
+  const normalizedCiphertext =
+    typeof ciphertext === "string" ? ciphertext.trim() : "";
+  if (normalizedCiphertext) {
+    const formatFamily = normalizedCiphertext.includes("?iv=")
+      ? "nip04"
+      : "nip44";
+    const matching = ordered.filter(
+      (scheme) => watchHistorySchemeFamily(scheme) === formatFamily,
+    );
+    // Safety: never strand the only available decryptor. If nothing matches the
+    // detected format (e.g. a contrived/legacy payload), fall back to the full
+    // ordered list rather than returning an empty attempt set.
+    if (matching.length) {
+      return matching;
+    }
+  }
+
+  return ordered;
+}
+
+function watchHistorySchemeFamily(scheme) {
+  return scheme === "nip04" ? "nip04" : "nip44";
 }
 
 async function resolveNostrToolkit(deps = {}, cacheRef = null) {
@@ -930,6 +887,10 @@ class WatchHistoryManager {
     this.cacheTtlMs = 0;
     this.fingerprints = new Map();
     this.lastCreatedAt = 0;
+    // Per-actor count of older chunks left undecrypted by the last bounded
+    // fetch (see fetch()'s chunkDecryptLimit). Read by the service to decide
+    // whether to offer "load older".
+    this.deferredChunkCounts = new Map();
 
     profileCache.subscribe((event, detail) => {
       if (event === "profileChanged") {
@@ -1341,7 +1302,8 @@ class WatchHistoryManager {
   }
 
   async publishMonthRecord(monthIdentifier, items, options = {}) {
-    if (!items || !items.length) return { ok: true };
+    // Empty month = "clear it": still publish a newest EMPTY event for the d-tag (skipping it left removed items live on relays).
+    items = Array.isArray(items) ? items : [];
 
     const pool = typeof this.deps.getPool === "function" ? this.deps.getPool() : null;
     if (!pool) {
@@ -1610,13 +1572,13 @@ class WatchHistoryManager {
       }
     }
     this.lastCreatedAt = createdAtCursor;
-    const partialAcceptance = anyPartial;
-    const success = acceptedCount === relays.length && !anyRejected;
+    // Durable if ANY relay accepted (reads take newest per d-tag); all-relays was a false failure on large lists.
+    const success = acceptedCount > 0;
     let errorCode = null;
     if (!success) {
       if (anyRejected) {
         errorCode = "publish-rejected";
-      } else if (partialAcceptance) {
+      } else if (anyPartial) {
         errorCode = "partial-relay-acceptance";
       }
     }
@@ -1635,7 +1597,7 @@ class WatchHistoryManager {
       },
       skippedCount: skipped.length,
       source: options.source || "manual",
-      partial: partialAcceptance,
+      partial: anyPartial,
     };
     if (!success && errorCode) {
       result.error = errorCode;
@@ -1645,7 +1607,7 @@ class WatchHistoryManager {
       actor: actorKey,
       monthIdentifier,
       success,
-      partialAcceptance,
+      partialAcceptance: anyPartial,
       error: result.error || null,
       acceptedCount,
     });
@@ -1806,6 +1768,19 @@ class WatchHistoryManager {
   }
 
   async fetch(actorInput, options = {}) {
+    // Bound how many *uncached* watch-history chunks we decrypt up front. Each
+    // uncached chunk decrypt is a signer round-trip — and under a NIP-46 remote
+    // signer it is a published relay RPC routed through the serial 250ms queue,
+    // so a deep history (many monthly chunks) blocks the first render and risks
+    // the relay rate limit. Default is unlimited (no behavior change); callers
+    // opt into a finite limit and decrypt older chunks newest-first on demand.
+    // Already-cached and plaintext chunks are always decrypted (they cost no
+    // RPC) and never count against the limit.
+    const chunkDecryptLimitRaw = Number(options?.chunkDecryptLimit);
+    const chunkDecryptLimit =
+      Number.isFinite(chunkDecryptLimitRaw) && chunkDecryptLimitRaw >= 0
+        ? Math.floor(chunkDecryptLimitRaw)
+        : Infinity;
     const actorCandidates = [actorInput];
     if (typeof this.deps.getActivePubkey === "function") {
       actorCandidates.push(this.deps.getActivePubkey());
@@ -2037,6 +2012,7 @@ class WatchHistoryManager {
     const toolkitCacheRef = { current: null };
 
     let decryptedItems = [];
+    let deferredChunkCount = 0;
     if (chunkIdentifiers.length && canAttemptDecrypt) {
       try {
         const results = await listEvents(readRelays, [
@@ -2046,9 +2022,41 @@ class WatchHistoryManager {
             "#d": chunkIdentifiers,
           },
         ]);
-        const chunkEvents = Array.isArray(results)
+        const allChunkEvents = Array.isArray(results)
           ? results.flat().filter((event) => event && typeof event === "object")
           : [];
+
+        // Decrypt newest chunks first so the most recent history is the part we
+        // spend the (bounded) decrypt budget on. A chunk is "free" when its
+        // content is already plaintext or its plaintext is cached — those never
+        // count against the limit. Only uncached, genuinely-encrypted chunks
+        // consume the budget; any beyond it are deferred (the caller can request
+        // older chunks later, which re-uses the chunk cache for the rest).
+        // Keep only the NEWEST event per month (d-tag) so a lagging relay's
+        // stale copy can't resurrect removed items in the union. Newest-first,
+        // so the decrypt-budget ordering below is preserved.
+        const sortedChunkEvents = dedupeNewestPerReplaceableAddress(allChunkEvents);
+        const chunkEvents = [];
+        let uncachedBudget = chunkDecryptLimit;
+        for (const event of sortedChunkEvents) {
+          const ciphertext =
+            typeof event.content === "string" ? event.content : "";
+          const isFree =
+            !ciphertext ||
+            looksLikeJsonStructure(ciphertext) ||
+            Boolean(getCachedChunkPlaintext(event.id));
+          if (isFree) {
+            chunkEvents.push(event);
+            continue;
+          }
+          if (uncachedBudget > 0) {
+            uncachedBudget -= 1;
+            chunkEvents.push(event);
+          } else {
+            deferredChunkCount += 1;
+          }
+        }
+
         const chunkResults = await pMap(
           chunkEvents,
           async (event) => {
@@ -2100,13 +2108,12 @@ class WatchHistoryManager {
     const eventsToProcess = Array.isArray(eventToProcess) ? eventToProcess : [eventToProcess];
     const collectedItems = [];
 
-    // Deduplicate events by ID
-    const uniqueEvents = new Map();
-    for (const ev of eventsToProcess) {
-        if (ev && ev.id) uniqueEvents.set(ev.id, ev);
-    }
+    // Deduplicate by replaceable address (newest per d-tag), NOT by id — a stale
+    // version of the same month from a lagging relay must not be unioned in
+    // alongside the fresh one (that resurrects removed items).
+    const uniqueEvents = dedupeNewestPerReplaceableAddress(eventsToProcess);
 
-    for (const event of uniqueEvents.values()) {
+    for (const event of uniqueEvents) {
       const fallbackPointers = extractPointerItemsFromEvent(event);
       const ciphertext = typeof event.content === "string" ? event.content : "";
 
@@ -2189,7 +2196,17 @@ class WatchHistoryManager {
     };
     this.cache.set(actorKey, entry);
     this.persistEntry(actorKey, entry);
-    return { pointerEvent: latestEvent, items: flatItems, snapshotId: "" };
+    return {
+      pointerEvent: latestEvent,
+      items: flatItems,
+      snapshotId: "",
+      // Number of older encrypted chunks left undecrypted because the caller
+      // capped the per-fetch decrypt budget. >0 means "more history available
+      // on demand"; the caller can re-fetch with a larger chunkDecryptLimit
+      // (already-decrypted chunks are served from cache, so only the newly
+      // requested older chunks cost RPCs).
+      deferredChunkCount,
+    };
   }
 
   async resolve(actorInput, options = {}) {
@@ -2227,7 +2244,18 @@ class WatchHistoryManager {
 
     const fetchResult = await this.fetch(resolvedActor, {
       forceRefresh: options.forceRefresh || false,
+      ...(options.chunkDecryptLimit !== undefined
+        ? { chunkDecryptLimit: options.chunkDecryptLimit }
+        : {}),
     });
+    // Surface how many older chunks were left undecrypted so the service can
+    // decide whether to offer "load older". Stored per-actor side-channel so
+    // resolve() can keep returning a plain items array (its sole caller relies
+    // on that contract).
+    this.setDeferredChunkCount(
+      actorKey,
+      Number(fetchResult?.deferredChunkCount) || 0,
+    );
     const merged = mergeWatchHistoryItemsWithFallback(
       {
         version: 2,
@@ -2299,8 +2327,26 @@ class WatchHistoryManager {
     this.cache.clear();
     this.fingerprints.clear();
     this.refreshPromises.clear();
+    this.deferredChunkCounts.clear();
     this.lastCreatedAt = 0;
     this.storage = null;
+  }
+
+  setDeferredChunkCount(actorInput, count) {
+    const actorKey = normalizeActorKey(actorInput);
+    if (!actorKey) {
+      return;
+    }
+    const normalized = Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
+    this.deferredChunkCounts.set(actorKey, normalized);
+  }
+
+  getDeferredChunkCount(actorInput) {
+    const actorKey = normalizeActorKey(actorInput);
+    if (!actorKey) {
+      return 0;
+    }
+    return this.deferredChunkCounts.get(actorKey) || 0;
   }
 }
 
@@ -2359,6 +2405,10 @@ export function fetchWatchHistory(manager, actorInput, options = {}) {
 
 export function resolveWatchHistory(manager, actorInput, options = {}) {
   return manager.resolve(actorInput, options);
+}
+
+export function getWatchHistoryDeferredChunkCount(manager, actorInput) {
+  return manager.getDeferredChunkCount(actorInput);
 }
 
 /**

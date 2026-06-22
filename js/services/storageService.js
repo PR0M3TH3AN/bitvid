@@ -612,6 +612,42 @@ export class StorageService {
   }
 
   /**
+   * Exports the raw on-disk account record for a pubkey, for opt-in encrypted
+   * cross-login sync (todo #15). The record is already self-protected
+   * (encryptedMasterKey envelope + per-connection AES-GCM payloads) but its
+   * `meta` is plaintext (bucket/endpoint names), so callers MUST re-encrypt the
+   * whole record to self before publishing. Returns null when nothing is stored.
+   */
+  async exportAccountRecord(pubkey) {
+    if (!pubkey) {
+      return null;
+    }
+    const account = await this._getAccount(pubkey);
+    return account || null;
+  }
+
+  /**
+   * Imports an account record previously exported via {@link exportAccountRecord}
+   * (e.g. pulled from the user's encrypted Nostr note on a second device). The
+   * record is encrypted-to-self by the SAME pubkey, so its envelope unlocks with
+   * the same signer. This REPLACES the local record for the pubkey; the next
+   * unlock decrypts the imported master key. (Merge across devices is a follow-up.)
+   */
+  async importAccountRecord(pubkey, record) {
+    if (!pubkey) {
+      throw new Error("Pubkey required to import storage account record.");
+    }
+    if (!record || typeof record !== "object" || !record.encryptedMasterKey) {
+      throw new Error("Invalid storage account record.");
+    }
+    const toSave = { ...record, pubkey };
+    await this._saveAccount(toSave);
+    // Drop any in-memory master key so the next unlock uses the imported envelope.
+    this.lock(pubkey);
+    return toSave;
+  }
+
+  /**
    * Sets a connection as default for uploads (updates metadata).
    */
   async setDefaultConnection(pubkey, connectionId) {

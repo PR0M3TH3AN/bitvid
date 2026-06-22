@@ -170,6 +170,88 @@ test('createVideoShareMenuPanel - magnet/cdn logic', () => {
   assert.ok(cdnBtn.disabled, 'CDN button should be disabled');
 });
 
+test('createVideoShareMenuPanel - forced-source deep links copy via builder', async () => {
+  const { document } = setupDom();
+  const video = { id: 'v1' };
+
+  const built = [];
+  const copied = [];
+  const buildForcedSourceUrl = (playback) => {
+    built.push(playback);
+    return `https://bitvid.test/?v=nevent1&playback=${playback}`;
+  };
+  const clipboard = {
+    writeText: async (text) => {
+      copied.push(text);
+    },
+  };
+
+  const panel = createVideoShareMenuPanel({
+    document,
+    video,
+    hasMagnet: true,
+    hasCdn: true,
+    buildForcedSourceUrl,
+    clipboard,
+  });
+
+  const torrentBtn = panel.querySelector('[data-action="copy-webtorrent-url"]');
+  const cdnBtn = panel.querySelector('[data-action="copy-cdn-url"]');
+  assert.ok(torrentBtn, 'WebTorrent URL item should exist');
+  assert.ok(cdnBtn, 'CDN URL item should exist');
+  assert.ok(!torrentBtn.disabled, 'WebTorrent URL enabled when a magnet exists');
+  assert.ok(!cdnBtn.disabled, 'CDN URL enabled when a CDN url exists');
+
+  torrentBtn.click();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.deepEqual(built, ['torrent'], 'builder asked for the torrent source');
+  assert.deepEqual(
+    copied,
+    ['https://bitvid.test/?v=nevent1&playback=torrent'],
+    'the forced-torrent deep link is copied to the clipboard',
+  );
+});
+
+test('createVideoShareMenuPanel - forced-source items disabled (with message) when source missing', () => {
+  const { document } = setupDom();
+
+  const panel = createVideoShareMenuPanel({
+    document,
+    video: { id: 'v1' },
+    hasMagnet: false,
+    hasCdn: true,
+    buildForcedSourceUrl: () => 'https://bitvid.test/?v=nevent1&playback=torrent',
+  });
+
+  const torrentBtn = panel.querySelector('[data-action="copy-webtorrent-url"]');
+  assert.ok(torrentBtn.disabled, 'WebTorrent URL disabled when no magnet');
+  assert.match(
+    torrentBtn.title,
+    /no webtorrent source/i,
+    'disabled WebTorrent URL explains why',
+  );
+
+  const cdnBtn = panel.querySelector('[data-action="copy-cdn-url"]');
+  assert.ok(!cdnBtn.disabled, 'CDN URL enabled when a CDN url exists');
+});
+
+test('createVideoShareMenuPanel - no forced-source items without a builder', () => {
+  const { document } = setupDom();
+  const panel = createVideoShareMenuPanel({
+    document,
+    video: { id: 'v1' },
+    hasMagnet: true,
+    hasCdn: true,
+  });
+  assert.equal(
+    panel.querySelector('[data-action="copy-webtorrent-url"]'),
+    null,
+    'no WebTorrent URL item when no builder is provided',
+  );
+});
+
 test('createChannelProfileMenuPanel - basic actions', () => {
   const { document } = setupDom();
   const panel = createChannelProfileMenuPanel({

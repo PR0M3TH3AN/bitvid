@@ -672,19 +672,39 @@
                 Edit field
               </button>
             </div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <input type="file" id="editVideoFile" accept="video/*" class="hidden" />
+              <button
+                type="button"
+                id="editVideoFileBtn"
+                class="btn-ghost focus-ring text-xs"
+              >
+                Replace video file…
+              </button>
+              <p
+                id="editVideoUploadStatus"
+                class="text-2xs text-muted empty:hidden"
+                role="status"
+                aria-live="polite"
+              ></p>
+            </div>
+            <p class="text-xs text-muted">
+              Uploading a new file replaces the URL, magnet, and torrent hints.
+              Requires unlocked storage.
+            </p>
           </div>
 
           <div class="space-y-1">
             <label for="editVideoWs" class="block text-sm font-medium text-text">
-              Web seed (ws=)
+              Web seeds (ws=, one per line)
             </label>
             <div class="flex flex-col gap-2 sm:flex-row">
-              <input
-                type="url"
+              <textarea
                 id="editVideoWs"
-                class="flex-1 input"
-                placeholder="https://cdn.example.com/video.mp4"
-              />
+                rows="2"
+                class="flex-1 textarea"
+                placeholder="https://cdn.example.com/video.mp4&#10;https://backup.example.com/video.mp4"
+              ></textarea>
               <button
                 type="button"
                 class="btn-ghost focus-ring hidden text-xs font-semibold uppercase tracking-wide"
@@ -693,6 +713,10 @@
                 Edit field
               </button>
             </div>
+            <p class="text-xs text-muted">
+              Add a backup origin so the swarm keeps streaming if the primary is
+              overloaded. Each must serve the exact same file.
+            </p>
           </div>
 
           <div class="space-y-1">
@@ -755,6 +779,22 @@
               >
                 Edit field
               </button>
+            </div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <input type="file" id="editThumbnailFile" accept="image/*" class="hidden" />
+              <button
+                type="button"
+                id="editThumbnailFileBtn"
+                class="btn-ghost focus-ring text-xs"
+              >
+                Replace thumbnail file…
+              </button>
+              <p
+                id="editThumbnailUploadStatus"
+                class="text-2xs text-muted empty:hidden"
+                role="status"
+                aria-live="polite"
+              ></p>
             </div>
           </div>
 

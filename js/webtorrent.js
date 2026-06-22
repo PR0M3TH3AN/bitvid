@@ -20,144 +20,28 @@
 
 import WebTorrent from "./webtorrent.min.js";
 import { WSS_TRACKERS } from "./constants.js";
-import { safeDecodeURIComponent } from "./utils/safeDecode.js";
+import {
+  compareServiceWorkerScripts,
+  normalizeTrackerList,
+  appendProbeTrackers,
+  normalizeNumber,
+  toError,
+  requestClientsClaim as requestClientsClaimHelper,
+  waitForActiveController as waitForActiveControllerHelper,
+} from "./webtorrentHelpers.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import { emit } from "./embedDiagnostics.js";
 
 const DEFAULT_PROBE_TRACKERS = Object.freeze([...WSS_TRACKERS]);
 const SERVICE_WORKER_PATH = "/sw.min.js";
 const SERVICE_WORKER_SCOPE = "/";
+// Once torrent playback has actually started, treat this long without any
+// playback progress (while buffering) as a stall worth surfacing to the caller.
+const TORRENT_PLAYBACK_STALL_MS = 12000;
+// Files the player can actually decode. Used to pick the file to stream from a
+// multi-file torrent (largest match wins) and to deselect the rest.
+const PLAYABLE_VIDEO_PATTERN = /\.(mp4|m4v|webm|mkv|mov|ogv|ogg)$/i;
 
-function compareServiceWorkerScripts(a = "", b = "") {
-  if (a === b) {
-    return true;
-  }
-
-  try {
-    const aUrl = new URL(a, window.location.origin);
-    const bUrl = new URL(b, window.location.origin);
-    return aUrl.pathname === bUrl.pathname;
-  } catch {
-    return false;
-  }
-}
-
-function normalizeTrackerList(trackers) {
-  const normalized = [];
-  const seen = new Set();
-  if (!Array.isArray(trackers)) {
-    return normalized;
-  }
-  trackers.forEach((tracker) => {
-    if (typeof tracker !== "string") {
-      return;
-    }
-    const trimmed = tracker.trim();
-    if (!trimmed || !/^wss:\/\//i.test(trimmed)) {
-      return;
-    }
-    const lower = trimmed.toLowerCase();
-    if (seen.has(lower)) {
-      return;
-    }
-    seen.add(lower);
-    normalized.push(trimmed);
-  });
-  return normalized;
-}
-
-function appendProbeTrackers(magnetURI, trackers) {
-  if (typeof magnetURI !== "string") {
-    return { magnet: "", appended: false, hasProbeTrackers: false };
-  }
-
-  const trimmedMagnet = magnetURI.trim();
-  if (!trimmedMagnet) {
-    return { magnet: "", appended: false, hasProbeTrackers: false };
-  }
-
-  const probeTrackers = normalizeTrackerList(trackers);
-  if (!probeTrackers.length) {
-    return {
-      magnet: trimmedMagnet,
-      appended: false,
-      hasProbeTrackers: false,
-    };
-  }
-
-  const trackerSet = new Set();
-  const [withoutFragment, fragment = ""] = trimmedMagnet.split("#", 2);
-  const [, queryPart = ""] = withoutFragment.split("?", 2);
-
-  if (queryPart) {
-    queryPart
-      .split("&")
-      .map((segment) => segment.trim())
-      .filter(Boolean)
-      .forEach((segment) => {
-        const [rawKey, rawValue = ""] = segment.split("=", 2);
-        if (!rawKey || rawKey.trim().toLowerCase() !== "tr") {
-          return;
-        }
-        const decoded = safeDecodeURIComponent(rawValue).trim().toLowerCase();
-        if (decoded) {
-          trackerSet.add(decoded);
-        }
-      });
-  }
-
-  const normalizedProbe = probeTrackers.map((url) => url.toLowerCase());
-  const hadProbeTracker = normalizedProbe.some((url) => trackerSet.has(url));
-
-  const toAppend = [];
-  probeTrackers.forEach((tracker, index) => {
-    const normalizedTracker = normalizedProbe[index];
-    if (trackerSet.has(normalizedTracker)) {
-      return;
-    }
-    trackerSet.add(normalizedTracker);
-    toAppend.push(`tr=${encodeURIComponent(tracker)}`);
-  });
-
-  if (!toAppend.length) {
-    return {
-      magnet: trimmedMagnet,
-      appended: false,
-      hasProbeTrackers: hadProbeTracker,
-    };
-  }
-
-  const separator = queryPart ? "&" : "?";
-  const augmented = `${withoutFragment}${separator}${toAppend.join("&")}`;
-  const finalMagnet = fragment
-    ? `${augmented}#${fragment}`
-    : augmented;
-
-  return {
-    magnet: finalMagnet,
-    appended: true,
-    hasProbeTrackers: true,
-  };
-}
-
-function normalizeNumber(value, fallback = 0) {
-  const coerced = Number(value);
-  if (Number.isFinite(coerced)) {
-    return coerced;
-  }
-  return fallback;
-}
-
-function toError(err) {
-  if (err instanceof Error) {
-    return err;
-  }
-  try {
-    return new Error(String(err));
-  } catch (stringifyError) {
-    return new Error("Unknown error");
-  }
-}
 
 export class TorrentClient {
   constructor({ webTorrentClass } = {}) {
@@ -300,6 +184,11 @@ export class TorrentClient {
         const addOptions = {
           announce: trackers,
           maxWebConns: safeMaxWebConns,
+          // A probe only needs to detect that >=1 peer/webseed exists, so cap
+          // peer connections hard. Without this WebTorrent defaults to 55 per
+          // torrent — multiplied across concurrent probes that floods the
+          // browser with connections (freeze/crash).
+          maxConns: 4,
         };
         /**
          * CRITICAL: We pass the webseed URL (if present) to the client via `urlList`.
@@ -537,102 +426,11 @@ export class TorrentClient {
    * guard — wait for `controllerchange` whenever `controller` is still null.
    */
   requestClientsClaim(registration = this.swRegistration) {
-    if (!("serviceWorker" in navigator)) {
-      return;
-    }
-
-    try {
-      const activeWorker = registration?.active;
-      if (!activeWorker) {
-        return;
-      }
-
-      // Some Chromium builds require an explicit startMessages() call before a
-      // yet-to-claim worker will accept postMessage traffic. Calling it is a
-      // harmless no-op elsewhere.
-      if (navigator.serviceWorker.startMessages) {
-        navigator.serviceWorker.startMessages();
-      }
-
-      activeWorker.postMessage({ type: "ENSURE_CLIENTS_CLAIM" });
-    } catch (err) {
-      this.log("Failed to request clients.claim():", err);
-    }
+    return requestClientsClaimHelper(this, registration);
   }
 
   async waitForActiveController(registration = this.swRegistration) {
-    if (!("serviceWorker" in navigator)) {
-      return null;
-    }
-
-    if (navigator.serviceWorker.controller) {
-      return navigator.serviceWorker.controller;
-    }
-
-    this.requestClientsClaim(registration);
-
-    return new Promise((resolve, reject) => {
-      let timeoutId = null;
-      let pollId = null;
-
-      const cleanup = () => {
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-          timeoutId = null;
-        }
-        if (pollId) {
-          clearInterval(pollId);
-          pollId = null;
-        }
-        navigator.serviceWorker.removeEventListener(
-          "controllerchange",
-          onControllerChange
-        );
-      };
-
-      const maybeResolve = () => {
-        const controller = navigator.serviceWorker.controller;
-        if (controller) {
-          cleanup();
-          resolve(controller);
-          return true;
-        }
-        return false;
-      };
-
-      const onControllerChange = () => {
-        if (maybeResolve()) {
-          return;
-        }
-        // If we received a controllerchange event but still don't have a
-        // controller it usually means the new worker hasn't claimed this page
-        // yet. Ask it again to be safe.
-        this.requestClientsClaim(registration);
-      };
-
-      timeoutId = setTimeout(() => {
-        cleanup();
-        reject(new Error("Service worker controller claim timeout"));
-      }, this.TIMEOUT_DURATION);
-
-      pollId = setInterval(() => {
-        if (maybeResolve()) {
-          return;
-        }
-        this.requestClientsClaim(registration);
-      }, 500);
-
-      navigator.serviceWorker.addEventListener(
-        "controllerchange",
-        onControllerChange
-      );
-
-      // One last check in case the controller appeared between the earlier
-      // synchronous guard and the promise wiring above.
-      if (!maybeResolve()) {
-        this.requestClientsClaim(registration);
-      }
-    });
+    return waitForActiveControllerHelper(this, registration);
   }
 
   async setupServiceWorker() {
@@ -775,10 +573,27 @@ export class TorrentClient {
     videoElement,
     resolve,
     reject,
-    context = "chrome"
+    context = "chrome",
+    hooks = {}
   ) {
     const isChrome = context === "chrome";
     const isFirefox = context === "firefox";
+    const onStall =
+      hooks && typeof hooks.onStall === "function" ? hooks.onStall : null;
+    const onPlaybackError =
+      hooks && typeof hooks.onPlaybackError === "function"
+        ? hooks.onPlaybackError
+        : null;
+    const stallMs =
+      hooks && Number.isFinite(hooks.stallMs) && hooks.stallMs > 0
+        ? hooks.stallMs
+        : TORRENT_PLAYBACK_STALL_MS;
+    const hostedUrlWebSeed =
+      hooks &&
+      typeof hooks.hostedUrlWebSeed === "string" &&
+      /^https?:\/\//i.test(hooks.hostedUrlWebSeed.trim())
+        ? hooks.hostedUrlWebSeed.trim()
+        : "";
 
     // Chrome-specific: Prune demo web seeds/trackers that chronically trip Chromium CORS
     // and deliberately mutate `torrent._opts` as a sanctioned WebTorrent workaround.
@@ -809,24 +624,190 @@ export class TorrentClient {
       });
     }
 
-    const file = torrent.files.find((f) => /\.(mp4|webm|mkv)$/i.test(f.name));
+    // Stream only the *largest* decodable video file. `.find()` picked whatever
+    // came first (could be a sample clip), and leaving the other files selected
+    // makes WebTorrent download the whole multi-file torrent — wasting the
+    // swarm on data we never play.
+    const files = Array.isArray(torrent.files) ? torrent.files : [];
+    const videoFiles = files.filter((f) =>
+      PLAYABLE_VIDEO_PATTERN.test((f && f.name) || "")
+    );
+    const file = videoFiles
+      .slice()
+      .sort((a, b) => (Number(b?.length) || 0) - (Number(a?.length) || 0))[0];
     if (!file) {
       return reject(new Error("No compatible video file found in torrent"));
+    }
+    if (typeof file.select === "function") {
+      try {
+        for (const other of files) {
+          if (other !== file && typeof other.deselect === "function") {
+            other.deselect();
+          }
+        }
+        file.select();
+      } catch (err) {
+        this.log(`File selection failed (${context} path; non-fatal):`, err);
+      }
+    }
+
+    // Attach the hosted CDN URL as a webseed ONLY for single-file torrents.
+    // A standalone hosted-file URL is a valid BEP19 webseed only when the
+    // torrent is a single file (the URL maps directly to it). For a multi-file
+    // torrent, WebTorrent treats the URL as a base directory and appends
+    // "<torrent name>/<file path>", producing a doubled URL that 404s on every
+    // request — the webseed flood. Adding it post-metadata (when files.length
+    // is known) avoids that entirely. Magnet-declared `ws=` webseeds are passed
+    // separately via urlList and untouched.
+    if (
+      hostedUrlWebSeed &&
+      files.length === 1 &&
+      typeof torrent.addWebSeed === "function"
+    ) {
+      try {
+        torrent.addWebSeed(hostedUrlWebSeed);
+      } catch (err) {
+        this.log(`Failed to attach hosted webseed (${context} path):`, err);
+      }
     }
 
     // Satisfy autoplay requirements and keep cross-origin chunks usable (e.g., for snapshots).
     videoElement.crossOrigin = "anonymous";
 
-    videoElement.addEventListener("error", (e) => {
-      this.log(`Video error (${context} path):`, e.target.error);
-    });
+    // The modal reuses a single <video> across plays, so listeners added here
+    // would otherwise accumulate. Track them and tear down a previous stream's
+    // listeners before wiring this one.
+    if (typeof this._teardownTorrentStreamListeners === "function") {
+      try {
+        this._teardownTorrentStreamListeners();
+      } catch (err) {
+        // ignore
+      }
+    }
+
+    let settled = false;
+    let stallTimerId = null;
+    const videoListeners = [];
+    const addVideoListener = (eventName, handler, options) => {
+      videoElement.addEventListener(eventName, handler, options);
+      videoListeners.push([eventName, handler]);
+    };
+    const onTorrentError = (err) => {
+      this.log(`Torrent error (${context} path):`, err);
+      if (!settled) {
+        // Pre-playback failure: reject so the caller can fall back (e.g. URL).
+        settled = true;
+        teardown();
+        reject(err);
+        return;
+      }
+      // Post-playback failure: the success promise is long gone, so surface it
+      // through the hook instead of a dead reject().
+      if (onPlaybackError) {
+        try {
+          onPlaybackError(toError(err));
+        } catch (hookErr) {
+          this.log("onPlaybackError hook threw:", hookErr);
+        }
+      }
+    };
+    const teardown = () => {
+      if (stallTimerId) {
+        clearTimeout(stallTimerId);
+        stallTimerId = null;
+      }
+      for (const [eventName, handler] of videoListeners) {
+        try {
+          videoElement.removeEventListener(eventName, handler);
+        } catch (err) {
+          // ignore
+        }
+      }
+      videoListeners.length = 0;
+      if (torrent && typeof torrent.removeListener === "function") {
+        try {
+          torrent.removeListener("error", onTorrentError);
+        } catch (err) {
+          // ignore
+        }
+      }
+      if (this._teardownTorrentStreamListeners === teardown) {
+        this._teardownTorrentStreamListeners = null;
+      }
+    };
+    this._teardownTorrentStreamListeners = teardown;
+
+    const onVideoError = () => {
+      this.log(`Video error (${context} path):`, videoElement.error);
+    };
+    addVideoListener("error", onVideoError);
 
     const tryStart = () => {
       this.attemptAutoplay(videoElement, context);
     };
+    addVideoListener("canplay", tryStart, { once: true });
+    addVideoListener("loadeddata", tryStart, { once: true });
 
-    videoElement.addEventListener("canplay", tryStart, { once: true });
-    videoElement.addEventListener("loadeddata", tryStart, { once: true });
+    // Resolve only when playback is actually viable (first frame / can play),
+    // NOT the instant streamTo() is called. Previously success was declared
+    // synchronously, so a swarm that fetched metadata but could never sustain
+    // playback was reported as a success — the caller cleared its fallback
+    // timeout and the user was left on a frozen frame with no recovery. Waiting
+    // for a real readiness signal lets the caller's playback timeout fall back
+    // to the hosted URL (or surface "no peers") for a dead/too-slow swarm.
+    const markReady = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve(torrent);
+    };
+    addVideoListener("loadeddata", markReady, { once: true });
+    addVideoListener("canplay", markReady, { once: true });
+    addVideoListener("playing", markReady, { once: true });
+
+    // Mid-stream stall detection: if playback buffers without progress for a
+    // sustained window, notify via the hook (so the UI can say "waiting for
+    // peers" instead of silently freezing). Progress clears the timer.
+    const armStallTimer = () => {
+      if (stallTimerId) {
+        clearTimeout(stallTimerId);
+      }
+      stallTimerId = setTimeout(() => {
+        stallTimerId = null;
+        const peers = Math.max(
+          0,
+          Math.floor(normalizeNumber(torrent?.numPeers, 0))
+        );
+        this.log(
+          `Torrent playback stalled (${context} path); peers=${peers}.`
+        );
+        if (onStall) {
+          try {
+            onStall({ peers });
+          } catch (hookErr) {
+            this.log("onStall hook threw:", hookErr);
+          }
+        }
+      }, stallMs);
+    };
+    const clearStallTimer = () => {
+      if (stallTimerId) {
+        clearTimeout(stallTimerId);
+        stallTimerId = null;
+      }
+    };
+    addVideoListener("waiting", armStallTimer);
+    addVideoListener("stalled", armStallTimer);
+    addVideoListener("timeupdate", clearStallTimer);
+    addVideoListener("playing", clearStallTimer);
+
+    // Set this up front (not gated on readiness) so cleanup() can always tear
+    // down the torrent even if playback never becomes ready and the caller
+    // times out.
+    this.currentTorrent = torrent;
+
+    torrent.on("error", onTorrentError);
 
     try {
       const streamOptions = {};
@@ -835,21 +816,19 @@ export class TorrentClient {
       }
       file.streamTo(videoElement, streamOptions);
 
-      // If the video is already ready (e.g. from cache or fast load), try starting immediately
+      // Already buffered enough (cache/fast load): start + mark ready now.
       if (videoElement.readyState >= 3) {
         tryStart();
+        markReady();
       }
-      this.currentTorrent = torrent;
-      resolve(torrent);
     } catch (err) {
       this.log(`Streaming error (${context} path):`, err);
-      reject(err);
+      if (!settled) {
+        settled = true;
+        teardown();
+        reject(err);
+      }
     }
-
-    torrent.on("error", (err) => {
-      this.log(`Torrent error (${context} path):`, err);
-      reject(err);
-    });
   }
 
   async destroyWithTimeout(
@@ -944,13 +923,25 @@ export class TorrentClient {
       }
 
       const isFirefoxBrowser = this.isFirefox();
+      const streamHooks =
+        opts && typeof opts.hooks === "object" && opts.hooks
+          ? { ...opts.hooks }
+          : {};
+      // Hosted CDN URL to use as a single-file webseed (handleTorrentStream
+      // attaches it post-metadata, only when the torrent is a single file).
+      if (typeof opts?.hostedUrlWebSeed === "string" && opts.hostedUrlWebSeed) {
+        streamHooks.hostedUrlWebSeed = opts.hostedUrlWebSeed;
+      }
       const candidateUrls = Array.isArray(opts?.urlList)
         ? opts.urlList
             .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
             .filter((entry) => /^https?:\/\//i.test(entry))
         : [];
 
-      const chromeOptions = { strategy: "sequential" };
+      // Cap peer connections for the streaming torrent too. 30 is plenty to
+      // saturate playback bandwidth while avoiding the WebRTC-handshake storm
+      // that can peg the main thread (WebTorrent's default is 55).
+      const chromeOptions = { strategy: "sequential", maxConns: 30 };
       /**
        * CRITICAL: Passing `urlList` ensures the client can stream from the webseed.
        * Without this, videos with 0 P2P peers will fail to play even if a valid
@@ -969,14 +960,28 @@ export class TorrentClient {
             { ...chromeOptions, maxWebConns: 4 },
             (torrent) => {
               this.log("Torrent added (Firefox path):", torrent.name);
-              this.handleTorrentStream(torrent, videoElement, resolve, reject, "firefox");
+              this.handleTorrentStream(
+                torrent,
+                videoElement,
+                resolve,
+                reject,
+                "firefox",
+                streamHooks
+              );
             }
           );
         } else {
           this.log("Starting torrent download (Chrome path)");
           this.client.add(magnetURI, chromeOptions, (torrent) => {
             this.log("Torrent added (Chrome path):", torrent.name);
-            this.handleTorrentStream(torrent, videoElement, resolve, reject, "chrome");
+            this.handleTorrentStream(
+              torrent,
+              videoElement,
+              resolve,
+              reject,
+              "chrome",
+              streamHooks
+            );
           });
         }
       });
@@ -993,6 +998,15 @@ export class TorrentClient {
    */
   async cleanup() {
     try {
+      if (typeof this._teardownTorrentStreamListeners === "function") {
+        try {
+          this._teardownTorrentStreamListeners();
+        } catch (err) {
+          // ignore
+        }
+        this._teardownTorrentStreamListeners = null;
+      }
+
       if (this.currentTorrent) {
         try {
           await this.destroyWithTimeout(this.currentTorrent, {

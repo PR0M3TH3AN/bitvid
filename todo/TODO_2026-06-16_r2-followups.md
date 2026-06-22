@@ -1,0 +1,109 @@
+# TODO — Cloudflare R2 system follow-ups (2026-06-16)
+
+Backlog from the R2 audit. Branch: `unstable` (promote down to beta/main later).
+
+## Done (for context — don't redo)
+- [x] Upload audit #1 — content-address storage keys (no URL-first overwrite) — `066d98fe`
+- [x] Upload audit #2 — "Analyzing" status during pre-upload hashing — `6b603cc2`
+- [x] Upload audit #3 — flag/log optimistic (unconfirmed) relay publishes — `ac1dcff1`
+- [x] Upload audit #4 — fail fast on 0-byte files — `04ae0ec4`
+- [x] Upload audit #5 — surface thumbnail/.torrent upload failures — `3d6ffe99`
+- [x] R2 object cleanup on **delete** (`R2Service.deleteVideoStorage`) — `95b51b6e`
+- [x] R2 object cleanup on **edit** (URL replaced) — `33c701aa`
+
+## Open — R2 areas not yet audited/built
+
+### 1. Credential security review — DONE (2026-06-17, `200e5cec`)
+- [x] Audited browser-held S3/R2 key storage. Verdict: **sound** — envelope encryption
+      (AES-GCM-256 payload + fresh IV; master key encrypted to-self via the Nostr signer,
+      NIP-44/NIP-04), in-memory master key cleared on logout, no secret logging, legacy
+      plaintext migrated then cleared, secrets never in plaintext `meta`. Locked-in by a
+      scan-the-whole-record regression test.
+- [ ] Hardening (optional, post-launch): **idle auto-lock** — master key currently stays
+      in memory the whole session after unlock. Add an idle/timeout auto-`lock(pubkey)`.
+- [ ] Confirm the production CSP is strict (the real defense for in-memory keys / XSS).
+
+### 2. Bucket / custom-domain provisioning — partially audited (2026-06-17)
+- [x] CORS provisioning reviewed: `ensureBucketConfigForNpub` auto-creates the bucket +
+      sets CORS best-effort (S3 `PutBucketCors`); the connection test (`verifyPublicAccess`)
+      does a real browser upload+fetch and surfaces `buildCorsGuidance` on the opaque
+      "Failed to fetch". Gap fixed: the **direct upload** path now also attaches CORS
+      guidance via `isLikelyCorsError` (`<this commit>`), for users who skip the test.
+- [ ] Still to check: `r2-mgmt.js` (`attachCustomDomainAndWait`, `setManagedDomain`,
+      `deriveShortSubdomain`) — the managed-domain path; Cloudflare API-token scope;
+      idempotency; partial-failure recovery. Note: token-based bucket creation/domain
+      mgmt is marked deprecated in `ensureBucketConfigForNpub` — confirm it's fully unused.
+- [ ] CORS replace-not-merge: `PutBucketCors` overwrites the whole config with only the
+      current origin, so a bucket used from multiple bitvid origins keeps only the last.
+      Consider merging existing origins.
+
+### 3. CDN purge integration
+- [ ] `scripts/purge-cloudflare-changed.mjs` uses `CLOUDFLARE_ZONE_ID` + `CLOUDFLARE_API_TOKEN`
+      to purge changed `files`. It is **not wired into** the upload/edit/delete flows.
+  - Decide: should publishing a new build / replacing an object trigger a targeted purge?
+  - Note: this is for the *bitvid app* zone, separate from per-user R2 buckets.
+
+## Open — follow-ups to the cleanup work we just shipped
+- [x] **Generic S3 cleanup** — DONE: `deleteVideoStorage` is now provider-aware
+      (uses `makeS3Client` honoring the connection's `forcePathStyle` for non-R2),
+      so generic-S3 deletes/edits clean up too. Also brought S3 to upload-failure
+      CORS-guidance parity (shared `js/utils/uploadErrorHints.js`). Generic-S3 is
+      now at functional parity with R2 for upload/publish/cleanup.
+- [ ] **All-versions delete cleanup**: delete currently cleans the target video's object;
+      superseded versions from *past* edits (pre-`33c701aa`) are not retroactively cleaned.
+      Consider enumerating all cached versions for a `videoRootId` on full delete.
+- [ ] **Edit thumbnail cleanup**: currently skipped to avoid deleting a still-referenced
+      thumbnail. Could diff old vs new thumbnail URL and clean the old one when it changed.
+
+## NIP-46 (remote signer) login — 2026-06-17
+Two regressions (logic that lived only on the now-unused `Nip46Connector`, lost
+when the connection moved into `SignerManager`):
+- [x] **`prepareRemoteSignerHandshake` missing** — the "generate connect link"
+      path threw "is not a function". Implemented on `SignerManager` + proxied on
+      `NostrClient` (`92d8fabf`).
+- [x] **Access-control validator dropped** — `connectRemoteSigner` /
+      `useStoredRemoteSigner` ignored the `validator`, so NIP-46 logins bypassed
+      the block/allow gate. Now enforced before the signer is activated, and a
+      blocked stored session is forgotten (`<this commit>`).
+- [x] **nostrconnect:// (QR) connect-link flow** implemented — `_waitForRemoteSignerHandshake`
+      ported into SignerManager (`ef660927`).
+- [x] **Decrypt RPC fan-out (slice A)** — list services (blocks/subs/hashtags) now
+      route decryption by ciphertext format instead of racing nip04+nip44, halving
+      cold-load NIP-46 RPCs and stopping the relay rate-limit flood (`8ab8dde7`).
+- [x] **Per-item decrypt efficiency (slice B, part 1)** — audited DMs + watch history.
+      - **DMs**: already optimal. `decryptDM` kind-routes (1059 → gift-wrap/nip44-only,
+        4 → legacy); `decryptLegacyDm` orders nip04-first for kind-4 and iterates
+        **sequentially, stopping at first success** (~1 RPC/msg) + caches + coalesces
+        + worker-offloads. No cross-family RPC waste to cut.
+      - **Watch history**: was NOT strictly format-routed (matching family first but the
+        other family kept as a fallback → a transient failure on the right family fired a
+        wasted RPC on the impossible family). Fixed: `determineWatchHistoryDecryptionOrder`
+        now filters to the ciphertext-implied family (slice-A parity) — `cd614876`.
+- [x] **Bulk incremental decrypt+render (slice B, part 2)** — DONE.
+      - **DMs**: already fully incremental + partial-resilient (no work needed).
+        `listDirectMessages` streams each decrypted message via `onMessage` ->
+        `applyDirectMessage` -> emits `directMessages:message`/`:updated` (live re-render);
+        per-event decrypt failures are caught/skipped and a batch failure returns the
+        existing cache (never hard-fails).
+      - **Watch history**: now renders recent history fast on cold load and backfills the
+        rest in the background. Manager: newest-first chunk ordering + `chunkDecryptLimit`
+        (counts only uncached chunks) + `deferredChunkCount`/side-channel (`11ff205f`,
+        `362016ea`). Service: cold load decrypts newest 3 chunks first, then a single
+        background pass backfills deferred chunks and emits `fingerprint` (history view
+        already re-renders on it); warm refresh stays unbounded to avoid a shrink/grow
+        flicker (`70ce597a`). Serial NIP-46 queue paces the backfill — no rate-limit flood.
+      - Chose background auto-backfill over strict scroll-triggered lazy loading (the
+        latter needs risky feed-engine + cursor-pagination surgery on the shared
+        loadLatest path). The manager foundation supports a finite limit + deferred
+        reporting, so strict on-scroll remains a clean post-launch follow-up if the
+        eventual full-history RPC cost is ever a concern.
+- [ ] **Silent auto-restore skips validation**: `scheduleStoredRemoteSignerRestore`
+      calls `useStoredRemoteSigner({ silent: true })` with NO validator, so on app
+      startup a since-blocked pubkey's stored session can reconnect unchecked.
+      Fix: have it pass an `accessControl`-backed validator (SignerManager would
+      need access to it).
+
+## Unrelated parking lot (from the infra tangent)
+- [ ] Vercel dashboard: set production branch `bitvid-unstable`→`unstable`, `bitvid-beta`→`beta`
+      (so pushes deploy to prod, not preview). Then redeploy `bitvid-unstable` to current HEAD.
+- [ ] Optionally delete the `backup/{beta,main}-pre-unstable-sync` tags once confident.

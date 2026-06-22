@@ -5,6 +5,7 @@ import {
 } from "../nostr/watchHistory.js";
 import { normalizeDesignSystemContext } from "../designSystem.js";
 import { devLogger } from "../utils/logger.js";
+import { logWatchHistoryDebug } from "../watchHistoryDebug.js";
 
 const noop = () => {};
 
@@ -221,7 +222,13 @@ export default class WatchHistoryController {
   }
 
   async handleWatchHistoryRemoval(payload = {}) {
-    if (!this.watchHistoryService?.isEnabled?.()) {
+    const synced = this.watchHistoryService?.isEnabled?.() === true;
+    // Logged-out / session actors aren't synced to relays, but their history
+    // lives in the LOCAL queue — removal must still work there. Only reject when
+    // neither synced nor local history is available.
+    const localOnly =
+      !synced && this.watchHistoryService?.supportsLocalHistory?.() === true;
+    if (!synced && !localOnly) {
       const error = new Error("watch-history-disabled");
       error.handled = true;
       this.showError("Watch history sync is not available right now.");
@@ -307,33 +314,71 @@ export default class WatchHistoryController {
       });
     }
 
+    logWatchHistoryDebug("watch-history:remove", "info", "removal requested", {
+      removedPointerKey,
+      itemsSource: Array.isArray(payload.items) && payload.items.length
+        ? "renderer"
+        : "loadLatest",
+      remainingCount: normalizedItems.length,
+      remainingValues: normalizedItems.map((p) => p?.value).slice(0, 20),
+    });
+
     this.showSuccess("Removing from history…");
 
     try {
       const snapshotResult = await this.watchHistoryService.snapshot(normalizedItems, {
         actor: actorCandidate || undefined,
         reason,
+        // Removal must replace the list, not merge the removed item back in.
+        replace: true,
+      });
+      logWatchHistoryDebug("watch-history:remove", "info", "snapshot published", {
+        ok: snapshotResult?.ok,
+        empty: snapshotResult?.empty,
+        skipped: snapshotResult?.skipped,
       });
 
-      try {
-        await this.nostrClient?.updateWatchHistoryList?.(normalizedItems, {
-          actorPubkey: actorCandidate || undefined,
-          replace: true,
-          source: reason,
-        });
-      } catch (updateError) {
-        devLogger.warn(
-          "[watchHistoryController] Failed to update local watch history list:",
-          updateError,
-        );
+      // Only push to relays when synced. For local-only actors the snapshot
+      // above already rewrote the local queue (replaceLocalQueue); publishing a
+      // session-actor list to relays would be wrong.
+      if (synced) {
+        try {
+          const updateResult = await this.nostrClient?.updateWatchHistoryList?.(
+            normalizedItems,
+            {
+              actorPubkey: actorCandidate || undefined,
+              replace: true,
+              source: reason,
+            },
+          );
+          logWatchHistoryDebug("watch-history:remove", "info", "list update published", {
+            ok: updateResult?.ok,
+            finalItemCount: updateResult?.items?.length,
+          });
+        } catch (updateError) {
+          devLogger.warn(
+            "[watchHistoryController] Failed to update local watch history list:",
+            updateError,
+          );
+          logWatchHistoryDebug("watch-history:remove", "warn", "list update failed", {
+            error: updateError?.message || String(updateError),
+          });
+        }
       }
 
       this.showSuccess(
-        "Removed from encrypted history. Relay sync may take a moment.",
+        synced
+          ? "Removed from encrypted history. Relay sync may take a moment."
+          : "Removed from your local history.",
       );
 
       return { handledToasts: true, snapshot: snapshotResult };
     } catch (error) {
+      logWatchHistoryDebug("watch-history:remove", "warn", "removal publish failed", {
+        error: error?.message || String(error),
+        retryable: error?.result?.retryable,
+        result: error?.result || null,
+      });
       let message = "Failed to remove from history. Please try again.";
       if (error?.result?.retryable) {
         message =

@@ -89,6 +89,54 @@ jobs:
           path: artifacts/dist-hashes-current.json
           if-no-files-found: error
 
+
+  # Visual regression runs as its own job so an environment-sensitive pixel diff
+  # (CI Chromium/font rendering can differ from the committed baseline) reports a
+  # failure WITHOUT blocking the build job — and therefore without blocking the
+  # deploy-cache-state CDN purge below. Real build/lint failures still gate the
+  # deploy via the build job.
+  visual-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        node-version: [22]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Cache npm directory
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ matrix.node-version }}-npm-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-${{ matrix.node-version }}-npm-
+
+      - name: Cache node_modules
+        id: node-modules-cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-${{ matrix.node-version }}-modules-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-${{ matrix.node-version }}-modules-
+
+      - name: Install dependencies
+        if: steps.node-modules-cache.outputs.cache-hit != 'true'
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
       - name: Run visual regression tests
         id: visual
         run: npm run test:visual

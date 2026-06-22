@@ -7,7 +7,9 @@ import {
   createWatchHistoryManager,
   fetchWatchHistory,
   getWatchHistoryCacheTtlMs,
+  getWatchHistoryDeferredChunkCount,
   getWatchHistoryStorage,
+  resolveWatchHistory,
 } from "../../js/nostr/watchHistory.js";
 import { WATCH_HISTORY_KIND } from "../../js/config.js";
 import { NOTE_TYPES } from "../../js/nostrEventSchemas.js";
@@ -369,6 +371,297 @@ test("fetchWatchHistory decrypts encrypted pointer events with nip44 signer supp
     );
   } finally {
     manager.clear();
+  }
+});
+
+test("fetchWatchHistory routes decryption by ciphertext format and never tries the non-matching family (ignores a misleading encrypted tag)", async () => {
+  // A NIP-44 payload is plain base64 with NO "?iv=" marker. NIP-04 ciphertext
+  // always carries "?iv=". Here the event is *mislabeled* with an
+  // ["encrypted","nip04"] tag, but the ciphertext shape is authoritative.
+  // Under a NIP-46 remote signer, every decrypt attempt is a published relay
+  // RPC, so attempting the impossible nip04 family would be a wasted RPC that
+  // burns the serial queue / risks the rate limit. The decryptor must route by
+  // format and attempt ONLY nip44 — never nip04.
+  const actorHex = "6".repeat(64);
+  const ciphertext = "bmlwNDQtbWlzbGFiZWxlZC1wYXlsb2Fk"; // base64, no "?iv="
+  let nip04Calls = 0;
+  let nip44Calls = 0;
+
+  const pointerEvent = {
+    id: "pointer-mislabeled",
+    pubkey: actorHex,
+    created_at: 1_700_300_000,
+    content: ciphertext,
+    tags: [
+      ["encrypted", "nip04"], // deliberately misleading
+      ["a", "30078:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:fallback"],
+      ["d", "watch-history-month"],
+    ],
+  };
+
+  const signer = {
+    // If routing were broken, the misleading tag would put nip04 first and this
+    // decoy would "succeed" with the wrong data — the assertions below catch it.
+    nip04Decrypt: async () => {
+      nip04Calls += 1;
+      return JSON.stringify({
+        version: 2,
+        items: [{ type: "e", value: "WRONG-nip04-decoy", watchedAt: 1 }],
+      });
+    },
+    nip44Decrypt: async (pubkey, payload) => {
+      nip44Calls += 1;
+      assert.equal(pubkey, actorHex, "nip44 decrypt should target the actor pubkey");
+      assert.equal(payload, ciphertext, "nip44 decrypt should receive the ciphertext");
+      return JSON.stringify({
+        version: 2,
+        items: [{ type: "e", value: "correct-nip44-decrypt", watchedAt: 77 }],
+      });
+    },
+  };
+
+  const pool = {
+    async list() {
+      return [pointerEvent];
+    },
+  };
+
+  const manager = createWatchHistoryManager({
+    getActivePubkey: () => actorHex,
+    resolveActiveSigner: () => signer,
+    shouldRequestExtensionPermissions: () => false,
+    getPool: () => pool,
+    getReadRelays: () => ["wss://relay.example"],
+  });
+
+  try {
+    const result = await fetchWatchHistory(manager, actorHex, { forceRefresh: true });
+    assert.equal(
+      nip04Calls,
+      0,
+      "nip04 must NEVER be attempted for a nip44-shaped ciphertext (wasted NIP-46 RPC)",
+    );
+    assert.equal(nip44Calls, 1, "nip44 decrypt should be attempted exactly once");
+    assert.deepStrictEqual(
+      result.items.map((item) => item.value),
+      ["correct-nip44-decrypt"],
+      "the nip44 plaintext must be used, not the nip04 decoy",
+    );
+  } finally {
+    manager.clear();
+  }
+});
+
+test("fetchWatchHistory caps uncached chunk decryption to chunkDecryptLimit, newest chunk first", async () => {
+  // A deep watch history references many monthly chunks. Under a NIP-46 remote
+  // signer each uncached chunk decrypt is a serialized published RPC, so we cap
+  // how many we decrypt up front and spend that budget on the *newest* chunks.
+  // The older chunks are deferred (reported via deferredChunkCount) for an
+  // on-demand "load older" pass.
+  const actorHex = "7".repeat(64);
+  const newCipher = "bmV3LWNodW5rLWNpcGhlcnRleHQ"; // base64, no "?iv=" => nip44
+  const oldCipher = "b2xkLWNodW5rLWNpcGhlcnRleHQ";
+
+  const pointerEvent = {
+    id: "pointer-cap",
+    pubkey: actorHex,
+    created_at: 1_700_500_000,
+    content: JSON.stringify({
+      version: 2,
+      snapshot: "snap-cap",
+      items: [],
+      chunkIndex: 0,
+      totalChunks: 2,
+    }),
+    tags: [
+      ["snapshot", "snap-cap"],
+      ["a", `${WATCH_HISTORY_KIND}:${actorHex}:chunk-new`],
+      ["a", `${WATCH_HISTORY_KIND}:${actorHex}:chunk-old`],
+    ],
+  };
+
+  const newChunk = {
+    id: "chunk-new-id",
+    pubkey: actorHex,
+    created_at: 1_700_500_200, // newer
+    content: newCipher,
+    tags: [["d", "chunk-new"], ["encrypted", "nip44"]],
+  };
+  const oldChunk = {
+    id: "chunk-old-id",
+    pubkey: actorHex,
+    created_at: 1_700_400_000, // older
+    content: oldCipher,
+    tags: [["d", "chunk-old"], ["encrypted", "nip44"]],
+  };
+
+  const decryptedPayloads = [];
+  const signer = {
+    nip44Decrypt: async (pubkey, payload) => {
+      decryptedPayloads.push(payload);
+      if (payload === newCipher) {
+        return JSON.stringify({
+          version: 2,
+          items: [{ type: "e", value: "from-new-chunk", watchedAt: 200 }],
+        });
+      }
+      return JSON.stringify({
+        version: 2,
+        items: [{ type: "e", value: "from-old-chunk", watchedAt: 100 }],
+      });
+    },
+  };
+
+  let listCall = 0;
+  const pool = {
+    async list() {
+      listCall += 1;
+      if (listCall === 1) {
+        return [pointerEvent];
+      }
+      return [oldChunk, newChunk]; // relay returns out of recency order
+    },
+  };
+
+  const manager = createWatchHistoryManager({
+    getActivePubkey: () => actorHex,
+    resolveActiveSigner: () => signer,
+    shouldRequestExtensionPermissions: () => false,
+    getPool: () => pool,
+    getReadRelays: () => ["wss://relay.example"],
+  });
+
+  try {
+    const result = await fetchWatchHistory(manager, actorHex, {
+      forceRefresh: true,
+      chunkDecryptLimit: 1,
+    });
+    assert.equal(
+      decryptedPayloads.length,
+      1,
+      "only one chunk should be decrypted under chunkDecryptLimit: 1",
+    );
+    assert.equal(
+      decryptedPayloads[0],
+      newCipher,
+      "the newest chunk (highest created_at) must be the one decrypted",
+    );
+    assert.equal(
+      result.deferredChunkCount,
+      1,
+      "the older chunk should be reported as deferred",
+    );
+    assert.deepStrictEqual(
+      result.items.map((item) => item.value),
+      ["from-new-chunk"],
+      "only the newest chunk's items should be present under the cap",
+    );
+  } finally {
+    manager.clear();
+  }
+});
+
+test("resolveWatchHistory threads chunkDecryptLimit and records the deferred chunk count", async () => {
+  // resolve() returns a bare items array (its sole caller depends on that), so
+  // the "more older chunks available" signal is exposed via a per-actor
+  // side-channel the service reads to decide whether to offer "load older".
+  const actorHex = "8".repeat(64);
+  const newCipher = "cmVzb2x2ZS1uZXctY2lwaGVy"; // base64, no "?iv=" => nip44
+  const oldCipher = "cmVzb2x2ZS1vbGQtY2lwaGVy";
+
+  const pointerEvent = {
+    id: "pointer-resolve-cap",
+    pubkey: actorHex,
+    created_at: 1_700_600_000,
+    content: JSON.stringify({
+      version: 2,
+      snapshot: "snap-resolve",
+      items: [],
+      chunkIndex: 0,
+      totalChunks: 2,
+    }),
+    tags: [
+      ["snapshot", "snap-resolve"],
+      ["a", `${WATCH_HISTORY_KIND}:${actorHex}:chunk-r-new`],
+      ["a", `${WATCH_HISTORY_KIND}:${actorHex}:chunk-r-old`],
+    ],
+  };
+  const newChunk = {
+    id: "chunk-r-new-id",
+    pubkey: actorHex,
+    created_at: 1_700_600_200,
+    content: newCipher,
+    tags: [["d", "chunk-r-new"], ["encrypted", "nip44"]],
+  };
+  const oldChunk = {
+    id: "chunk-r-old-id",
+    pubkey: actorHex,
+    created_at: 1_700_500_000,
+    content: oldCipher,
+    tags: [["d", "chunk-r-old"], ["encrypted", "nip44"]],
+  };
+
+  const signer = {
+    nip44Decrypt: async (_pubkey, payload) =>
+      JSON.stringify({
+        version: 2,
+        items: [
+          {
+            type: "e",
+            value: payload === newCipher ? "r-new" : "r-old",
+            watchedAt: payload === newCipher ? 200 : 100,
+          },
+        ],
+      }),
+  };
+
+  let listCall = 0;
+  const pool = {
+    async list() {
+      listCall += 1;
+      if (listCall === 1) {
+        return [pointerEvent];
+      }
+      return [oldChunk, newChunk];
+    },
+  };
+
+  const manager = createWatchHistoryManager({
+    getActivePubkey: () => actorHex,
+    resolveActiveSigner: () => signer,
+    shouldRequestExtensionPermissions: () => false,
+    getPool: () => pool,
+    getReadRelays: () => ["wss://relay.example"],
+  });
+
+  try {
+    assert.equal(
+      getWatchHistoryDeferredChunkCount(manager, actorHex),
+      0,
+      "no deferred chunks before any fetch",
+    );
+    const items = await resolveWatchHistory(manager, actorHex, {
+      forceRefresh: true,
+      chunkDecryptLimit: 1,
+    });
+    assert.ok(Array.isArray(items), "resolve must still return a bare items array");
+    assert.deepStrictEqual(
+      items.map((item) => item.value),
+      ["r-new"],
+      "only the newest chunk's items should resolve under the cap",
+    );
+    assert.equal(
+      getWatchHistoryDeferredChunkCount(manager, actorHex),
+      1,
+      "the deferred side-channel should report the older chunk",
+    );
+  } finally {
+    manager.clear();
+    assert.equal(
+      getWatchHistoryDeferredChunkCount(manager, actorHex),
+      0,
+      "clear() must reset the deferred chunk side-channel",
+    );
   }
 });
 

@@ -1,7 +1,15 @@
-import { extractMagnetHints } from "../../magnetShared.js";
+import {
+  extractMagnetHints,
+  extractAllWebSeeds,
+  normalizeWebSeedList,
+  setMagnetWebSeeds,
+} from "../../magnetShared.js";
 import { normalizeAndAugmentMagnet } from "../../magnetUtils.js";
 import { createModalAccessibility } from "./modalAccessibility.js";
 import { Nip71FormManager } from "./nip71FormManager.js";
+import { MediaUploader } from "./mediaUploader.js";
+import { initEditModalUpload } from "./editModalUpload.js";
+import { devLogger } from "../../utils/logger.js";
 
 export class EditModal {
   constructor({
@@ -10,7 +18,13 @@ export class EditModal {
     sanitizers = {},
     escapeHtml,
     showError,
+    showSuccess,
     getMode,
+    r2Service = null,
+    s3Service = null,
+    storageService = null,
+    getCurrentPubkey = null,
+    safeEncodeNpub = null,
     eventTarget,
     container,
   } = {}) {
@@ -20,6 +34,20 @@ export class EditModal {
       typeof setGlobalModalState === "function" ? setGlobalModalState : () => {};
     this.escapeHtml = typeof escapeHtml === "function" ? escapeHtml : (value) => `${value ?? ""}`;
     this.showError = typeof showError === "function" ? showError : () => {};
+    this.showSuccess = typeof showSuccess === "function" ? showSuccess : () => {};
+    // Storage upload wiring (mirrors UploadModal) so Edit can re-upload files.
+    this.storageService = storageService || null;
+    this.getCurrentPubkey =
+      typeof getCurrentPubkey === "function" ? getCurrentPubkey : null;
+    this.mediaUploader = new MediaUploader({
+      r2Service,
+      s3Service,
+      storageService,
+      getCurrentPubkey: () =>
+        this.getCurrentPubkey ? this.getCurrentPubkey() : null,
+      safeEncodeNpub:
+        typeof safeEncodeNpub === "function" ? safeEncodeNpub : (p) => p,
+    });
     this.getMode =
       typeof getMode === "function"
         ? getMode
@@ -191,6 +219,10 @@ export class EditModal {
 
     const nip71Context = this.form || context;
     this.nip71FormManager.registerSection(this.nip71SectionKey, nip71Context);
+
+    // Wire optional "Replace file" upload controls (thumbnail + video). All the
+    // glue lives in editModalUpload.js to keep this module within budget.
+    initEditModalUpload(this, context);
   }
 
   setupModalAccessibility() {
@@ -413,7 +445,13 @@ export class EditModal {
 
     const magnetSource = video.magnet || video.rawMagnet || "";
     const magnetHints = extractMagnetHints(magnetSource);
-    const effectiveWs = video.ws || magnetHints.ws || "";
+    // Surface every web seed the magnet carries (one per line), not just the
+    // first, so the editor can see and manage backup origins without silently
+    // dropping them.
+    const magnetWebSeeds = extractAllWebSeeds(magnetSource);
+    const effectiveWs = magnetWebSeeds.length
+      ? magnetWebSeeds.join("\n")
+      : video.ws || magnetHints.ws || "";
     const effectiveXs = video.xs || magnetHints.xs || "";
     const enableCommentsValue =
       typeof video.enableComments === "boolean" ? video.enableComments : true;
@@ -1039,13 +1077,23 @@ export class EditModal {
     }
 
     if (finalMagnet) {
+      // When the web seed list was manually edited, replace the magnet's full
+      // ws= set with exactly what's in the field — this is what makes removal
+      // actually stick (append-only normalization would leave deleted seeds
+      // behind). Otherwise leave whatever seeds the magnet already carries
+      // (including those from a freshly pasted magnet) untouched.
+      if (wsWasManuallyEdited) {
+        finalMagnet = setMagnetWebSeeds(finalMagnet, normalizeWebSeedList(newWs));
+      }
       const result = normalizeAndAugmentMagnet(finalMagnet, {
-        webSeed: finalWs,
+        webSeed: [],
         xs: finalXs,
       });
       finalMagnet = result.magnet;
+      // The content `ws` field stores the primary (first) seed; the magnet
+      // carries the complete set.
+      finalWs = extractAllWebSeeds(finalMagnet)[0] || "";
       const hints = extractMagnetHints(finalMagnet);
-      finalWs = hints.ws;
       finalXs = hints.xs;
     } else {
       finalWs = "";

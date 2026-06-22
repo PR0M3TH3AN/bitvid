@@ -1,7 +1,10 @@
 import { userLogger } from "../utils/logger.js";
-import { safeDecodeURIComponent } from "../utils/safeDecode.js";
 import { PLAYBACK_START_TIMEOUT } from "../constants.js";
 import { getCurrentVideo, setCurrentVideo } from "../state/appState.js";
+import {
+  SimpleEventEmitter,
+  extractWebSeedsFromMagnet,
+} from "./playbackHelpers.js";
 // js/services/playbackService.js
 
 /**
@@ -21,46 +24,6 @@ import { getCurrentVideo, setCurrentVideo } from "../state/appState.js";
  *   old session is cancelled and doesn't overwrite the new one.
  */
 
-class SimpleEventEmitter {
-  constructor(logger = null) {
-    this.logger = typeof logger === "function" ? logger : null;
-    this.listeners = new Map();
-  }
-
-  on(eventName, handler) {
-    if (typeof handler !== "function") {
-      return () => {};
-    }
-    if (!this.listeners.has(eventName)) {
-      this.listeners.set(eventName, new Set());
-    }
-    const handlers = this.listeners.get(eventName);
-    handlers.add(handler);
-    return () => {
-      handlers.delete(handler);
-      if (!handlers.size) {
-        this.listeners.delete(eventName);
-      }
-    };
-  }
-
-  emit(eventName, detail) {
-    const handlers = this.listeners.get(eventName);
-    if (!handlers || !handlers.size) {
-      return;
-    }
-    for (const handler of Array.from(handlers)) {
-      try {
-        handler(detail);
-      } catch (err) {
-        if (this.logger) {
-          this.logger("[PlaybackService] Listener error", err);
-        }
-      }
-    }
-  }
-}
-
 const HOSTED_URL_SUCCESS_MESSAGE = "✅ Streaming from hosted URL";
 const DEFAULT_UNSUPPORTED_BTITH_MESSAGE =
   "This magnet link is missing a compatible BitTorrent v1 info hash.";
@@ -68,44 +31,6 @@ const AUTH_STATUS_CODES = new Set([401, 403]);
 const SSL_ERROR_PATTERN = /(ssl|cert|certificate)/i;
 const CORS_ERROR_PATTERN = /cors/i;
 const PROBE_CACHE_TTL_MS = 45000;
-const WEBSEED_PARAM_KEYS = new Set(["ws", "webseed"]);
-
-const extractWebSeedsFromMagnet = (magnetUri) => {
-  if (typeof magnetUri !== "string") {
-    return [];
-  }
-  const trimmed = magnetUri.trim();
-  if (!trimmed) {
-    return [];
-  }
-  const [withoutFragment] = trimmed.split("#", 1);
-  const [, query = ""] = withoutFragment.split("?", 2);
-  if (!query) {
-    return [];
-  }
-
-  const webSeeds = [];
-  for (const segment of query.split("&")) {
-    if (!segment) {
-      continue;
-    }
-    const [rawKey, rawValue = ""] = segment.split("=", 2);
-    if (!rawKey) {
-      continue;
-    }
-    const key = rawKey.trim().toLowerCase();
-    if (!WEBSEED_PARAM_KEYS.has(key)) {
-      continue;
-    }
-    const decodedValue = safeDecodeURIComponent(rawValue.replace(/\+/g, "%20"));
-    const candidate = decodedValue.trim();
-    if (candidate) {
-      webSeeds.push(candidate);
-    }
-  }
-  return webSeeds;
-};
-
 const getHostedUrlFailureDetails = (probeResult = {}) => {
   const outcome = probeResult?.outcome || "error";
   const status = Number.isFinite(probeResult?.status)
@@ -868,10 +793,12 @@ class PlaybackSession extends SimpleEventEmitter {
         webSeedCandidates.push(trimmed);
       };
 
-      if (httpsUrl) {
-        addWebSeedCandidate(httpsUrl);
-      }
-
+      // NOTE: the hosted CDN URL is intentionally NOT added here. As a
+      // WebTorrent `urlList` entry it is only valid for single-file torrents;
+      // for multi-file torrents WebTorrent appends the torrent's internal path
+      // and floods the network with doubled, 404-ing requests. It is forwarded
+      // separately as `hostedUrlWebSeed` and attached post-metadata only when
+      // the torrent is a single file (see TorrentClient.handleTorrentStream).
       const magnetWebSeeds = extractWebSeedsFromMagnet(this.magnetForPlayback);
       if (magnetWebSeeds.length > 0) {
         magnetWebSeeds.forEach((seed) => addWebSeedCandidate(seed));
@@ -898,6 +825,20 @@ class PlaybackSession extends SimpleEventEmitter {
         }
         activeVideoEl.src = "";
         activeVideoEl.srcObject = null;
+        // Direct hosted playback must NOT require CORS. A leftover
+        // crossOrigin="anonymous" (e.g. set by a prior WebTorrent attempt on
+        // this reused element) makes the browser issue a CORS request that many
+        // CDNs — and redirect targets like archive.org's storage nodes — do not
+        // answer with Access-Control-Allow-Origin, so the load dies with
+        // MEDIA_ERR_SRC_NOT_SUPPORTED ("source not supported or blocked"). We
+        // never read pixels from the hosted <video>, so clear it and let any
+        // URL play.
+        try {
+          activeVideoEl.removeAttribute("crossorigin");
+        } catch (err) {
+          // ignore
+        }
+        activeVideoEl.crossOrigin = null;
         try {
           activeVideoEl.load();
         } catch (err) {
@@ -934,6 +875,7 @@ class PlaybackSession extends SimpleEventEmitter {
           torrentInstance = await playViaWebTorrent(this.magnetForPlayback, {
             fallbackMagnet: this.fallbackMagnet,
             urlList: webSeedCandidates,
+            hostedUrlWebSeed: httpsUrl,
           });
         } catch (err) {
           const errorMessage = getTorrentErrorMessage(err);
@@ -1086,6 +1028,14 @@ class PlaybackSession extends SimpleEventEmitter {
           };
 
           try {
+            // Guarantee the direct load is CORS-free regardless of how we got
+            // here (see resetVideoElement) so any hosted URL plays reliably.
+            try {
+              activeVideoEl.removeAttribute("crossorigin");
+            } catch (err) {
+              // ignore
+            }
+            activeVideoEl.crossOrigin = null;
             activeVideoEl.src = httpsUrl;
             const playPromise = activeVideoEl.play();
             if (playPromise && typeof playPromise.catch === "function") {
@@ -1180,6 +1130,13 @@ class PlaybackSession extends SimpleEventEmitter {
       // --- Execution Flow ---
 
       let tryUrlFirst = this.service.urlFirstEnabled;
+      // CDN-first for dual-source videos: whenever a hosted URL is available,
+      // play it first for instant, reliable startup. WebTorrent is reserved for
+      // videos that have no URL (or when the viewer explicitly forces P2P). This
+      // intentionally takes precedence over a torrent-first instance default,
+      // because waiting on a P2P cold-start when a working CDN exists is the
+      // slow, flaky path users were hitting.
+      if (httpsUrl) tryUrlFirst = true;
       if (forcedSource === "url") tryUrlFirst = true;
       if (forcedSource === "torrent") tryUrlFirst = false;
 
@@ -1223,9 +1180,11 @@ class PlaybackSession extends SimpleEventEmitter {
         // Try Torrent First
         if (this.magnetForPlayback) {
           try {
-            // If we have a fallback URL, use the effective timeout.
-            // Otherwise, we must wait indefinitely for peers because there is no plan B.
-            const torrentTimeout = httpsUrl ? effectiveTimeout : 0;
+            // We only reach the torrent-first path when there is no hosted URL
+            // to fall back to (CDN-first handles the dual-source case above) or
+            // the viewer explicitly forced P2P. Either way there is no plan B,
+            // so wait indefinitely for peers rather than abandoning playback.
+            const torrentTimeout = 0;
 
             // Wrap Torrent attempt in timeout
             const torrentResult = await withTimeout(

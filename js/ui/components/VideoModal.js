@@ -3290,6 +3290,35 @@ export class VideoModal {
     );
   }
 
+  /**
+   * Build a `?v=<nevent>&playback=<source>` deep link for the given video that
+   * forces a specific playback path (used by the share-menu "Copy WebTorrent
+   * URL" / "Copy CDN URL" items). Returns "" if a link can't be built.
+   * @param {object} video
+   * @param {'torrent'|'url'} playback
+   * @returns {string}
+   */
+  buildForcedSourceShareUrl(video, playback) {
+    const eventId =
+      video && typeof video.id === "string" ? video.id.trim() : "";
+    if (!eventId) {
+      return "";
+    }
+    const win = this.window || globalThis;
+    const neventEncode = win?.NostrTools?.nip19?.neventEncode;
+    const loc = win?.location;
+    if (typeof neventEncode !== "function" || !loc) {
+      return "";
+    }
+    try {
+      const nevent = neventEncode({ id: eventId });
+      const base = `${loc.origin}${loc.pathname}`;
+      return `${base}?v=${encodeURIComponent(nevent)}&playback=${playback}`;
+    } catch (error) {
+      return "";
+    }
+  }
+
   setupModalSharePopover() {
     if (!this.playerModal || !this.shareBtn) {
       return;
@@ -3319,6 +3348,8 @@ export class VideoModal {
           hasSigner: this.shareNostrAuthState.hasSigner,
           hasMagnet: Boolean(this.modalMoreMenuContext.playbackMagnet), // Re-use magnet from context
           hasCdn: Boolean(this.modalMoreMenuContext.playbackUrl),
+          buildForcedSourceUrl: (playback) =>
+            this.buildForcedSourceShareUrl(this.activeVideo, playback),
         });
         if (panel) {
           container.appendChild(panel);

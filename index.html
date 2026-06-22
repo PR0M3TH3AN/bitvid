@@ -2,6 +2,25 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!--
+      Content-Security-Policy: defense-in-depth against XSS. The critical
+      directive is script-src, which is strict — only same-origin scripts, the
+      hash of the inline theme-bootstrap below, and the nostr-tools CDN
+      fallbacks (js/nostrToolsBootstrap.js). No 'unsafe-inline'/'unsafe-eval'
+      (verified: no bundle uses eval/Function/wasm). This blocks injected
+      script and object elements, inline handlers (none exist), and base-tag
+      hijack, so an injected payload cannot execute and read the in-memory
+      storage master key / signer / DM plaintext. connect/img/media stay broad
+      because relays, R2/S3 endpoints, and video/thumbnail URLs are
+      user/content defined. If you change the inline theme script below, update
+      the sha256 hash here (tests/csp-policy.test.mjs enforces this).
+      NOTE: any future view loaded by js/viewManager.js must use external-src
+      script tags (script-src 'self'), not inline scripts.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'sha256-dnv/l3q8gLqdw0etekr5/atoIRbM/wSVSgQjZEsC7G0=' https://cdn.jsdelivr.net https://esm.sh; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: blob:; media-src 'self' https: blob: mediastream:; connect-src 'self' https: wss: ws://localhost:* ws://127.0.0.1:* blob: data:; worker-src 'self' blob:; font-src 'self' data:; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; manifest-src 'self'"
+    />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>bitvid | Decentralized Video Sharing</title>
 

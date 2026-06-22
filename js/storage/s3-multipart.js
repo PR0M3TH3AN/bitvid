@@ -155,6 +155,41 @@ export async function deleteObject({ s3, bucket, key } = {}) {
   }
 }
 
+/**
+ * List object keys under a prefix, following pagination. Returns plain key
+ * strings. `maxKeys` is a safety cap so an enormous bucket can't run unbounded.
+ */
+export async function listObjects({ s3, bucket, prefix = "", maxKeys = 5000 } = {}) {
+  if (!s3 || !bucket) {
+    throw new Error("Missing required parameters for listObjects");
+  }
+
+  const { ListObjectsV2Command } = requireAwsSdk();
+  const keys = [];
+  let continuationToken;
+
+  do {
+    const response = await s3.send(
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: prefix || undefined,
+        ContinuationToken: continuationToken,
+      })
+    );
+    const contents = Array.isArray(response?.Contents) ? response.Contents : [];
+    for (const item of contents) {
+      if (item && typeof item.Key === "string" && item.Key) {
+        keys.push(item.Key);
+      }
+    }
+    continuationToken = response?.IsTruncated
+      ? response.NextContinuationToken
+      : undefined;
+  } while (continuationToken && keys.length < maxKeys);
+
+  return keys;
+}
+
 export async function multipartUpload({
   s3,
   bucket,
@@ -176,6 +211,11 @@ export async function multipartUpload({
   }
   if (!file) {
     throw new Error("File is required");
+  }
+  // A 0-byte file produces a multipart upload with zero parts, which S3/R2
+  // rejects with a cryptic CompleteMultipartUpload error. Fail fast and clearly.
+  if (typeof file.size === "number" && file.size === 0) {
+    throw new Error("File is empty (0 bytes). Choose a non-empty file to upload.");
   }
 
   const {

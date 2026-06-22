@@ -1,4 +1,9 @@
-import { userLogger } from "./utils/logger.js";
+import { userLogger, devLogger } from "./utils/logger.js";
+import {
+  computeSha256HexFromValue,
+  valueToUint8Array,
+  getSharedTextEncoder,
+} from "./utils/cryptoUtils.js";
 const DB_NAME = "bitvidSettings";
 const DB_VERSION = 1;
 const STORE_NAME = "kv";
@@ -240,6 +245,76 @@ export function buildPublicUrl(baseUrl, key) {
     .map((segment) => encodeURIComponent(segment))
     .join("/");
   return `${sanitizedBase}/${encodedKey}`;
+}
+
+// Above this size we fingerprint metadata + sampled edges instead of hashing the
+// whole file, so we never buffer a multi-GB video in memory (which would freeze
+// the main thread). Only reached on the rare path where a torrent info-hash is
+// unavailable.
+const STORAGE_FULL_HASH_MAX_BYTES = 512 * 1024 * 1024; // 512 MB
+const STORAGE_FINGERPRINT_SAMPLE_BYTES = 256 * 1024; // 256 KB head + tail
+
+async function fingerprintLargeFile(file, size) {
+  const encoder = getSharedTextEncoder();
+  const metaString = `${file?.name || ""} ${size} ${
+    Number(file?.lastModified) || 0
+  }`;
+  const meta = encoder ? encoder.encode(metaString) : new Uint8Array();
+  const canSlice = typeof file?.slice === "function";
+  const headBlob = canSlice
+    ? file.slice(0, Math.min(STORAGE_FINGERPRINT_SAMPLE_BYTES, size))
+    : null;
+  const tailBlob = canSlice
+    ? file.slice(Math.max(0, size - STORAGE_FINGERPRINT_SAMPLE_BYTES))
+    : null;
+  const head = headBlob ? await valueToUint8Array(headBlob) : null;
+  const tail = tailBlob ? await valueToUint8Array(tailBlob) : null;
+  const parts = [meta, head, tail].filter(Boolean);
+  const total = parts.reduce((sum, part) => sum + part.length, 0);
+  const combined = new Uint8Array(total);
+  let offset = 0;
+  for (const part of parts) {
+    combined.set(part, offset);
+    offset += part.length;
+  }
+  return computeSha256HexFromValue(combined);
+}
+
+/**
+ * Derives a deterministic, content-based namespace component for a storage key
+ * when no torrent info-hash is available. Prevents distinct URL-first uploads
+ * that share a filename from overwriting each other - the `buildR2Key`
+ * `"uploads"` fallback was a silent data-loss path.
+ *
+ * Small/medium files use a full SHA-256 of the bytes (idempotent + collision
+ * safe). Files larger than `STORAGE_FULL_HASH_MAX_BYTES` use a SHA-256
+ * fingerprint over name/size/mtime + sampled head & tail bytes, so we never
+ * buffer a huge file in memory. Returns "" only if the file can't be read at
+ * all (callers must then supply their own uniqueness).
+ *
+ * @param {Blob|File} file
+ * @returns {Promise<string>}
+ */
+export async function computeStorageContentHash(file) {
+  if (!file) {
+    return "";
+  }
+  try {
+    const size = Number(file.size) || 0;
+    if (size > 0 && size <= STORAGE_FULL_HASH_MAX_BYTES) {
+      const hex = await computeSha256HexFromValue(file);
+      if (hex) {
+        return `sha256${hex}`;
+      }
+    }
+    const fingerprint = await fingerprintLargeFile(file, size);
+    if (fingerprint) {
+      return `fp${fingerprint}`;
+    }
+  } catch (error) {
+    devLogger.warn("[r2] Failed to derive content hash for storage key:", error);
+  }
+  return "";
 }
 
 export { sanitizeBaseDomain };

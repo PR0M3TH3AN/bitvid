@@ -1,4 +1,5 @@
 import { devLogger } from "../utils/logger.js";
+import r2Service from "../services/r2Service.js";
 
 export default class EditModalController {
   constructor({ services, state, ui, callbacks, helpers }) {
@@ -90,6 +91,47 @@ export default class EditModalController {
         updatedData,
         pubkey,
       });
+
+      // Best-effort: when the hosted video URL and/or thumbnail were genuinely
+      // replaced, the old R2/S3 objects are now orphaned — remove them. For each,
+      // we require both old and new values to be non-empty and different so we
+      // never delete an object the new note still references (e.g. the URL was
+      // merely cleared, or the thumbnail was left unchanged). The video entry
+      // also takes its sibling .torrent. Never blocks the edit.
+      try {
+        const orphans = [];
+
+        const oldUrl = detail.video?.url || "";
+        const newUrl = updatedData?.url || "";
+        if (updatedData?.urlEdited && oldUrl && newUrl && oldUrl !== newUrl) {
+          // collectVideoStorageKeys derives the video key + its .torrent.
+          orphans.push({ url: oldUrl });
+        }
+
+        const oldThumb = detail.video?.thumbnail || "";
+        const newThumb = updatedData?.thumbnail || "";
+        if (oldThumb && newThumb && oldThumb !== newThumb) {
+          orphans.push({ thumbnail: oldThumb });
+        }
+
+        if (orphans.length) {
+          const cleanup = await r2Service.deleteVideoStorage({
+            videos: orphans,
+            pubkey,
+          });
+          if (cleanup?.deleted?.length) {
+            devLogger.log(
+              `[edit] Removed ${cleanup.deleted.length} superseded storage object(s).`
+            );
+          }
+        }
+      } catch (cleanupErr) {
+        devLogger.warn(
+          "[edit] Storage cleanup failed (edit still succeeded):",
+          cleanupErr
+        );
+      }
+
       await this.callbacks.loadVideos();
 
       const videosMap = this.state.getVideosMap();

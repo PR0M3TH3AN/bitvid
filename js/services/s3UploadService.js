@@ -1,6 +1,6 @@
 import { ensureS3SdkLoaded, makeS3Client } from "../storage/s3-client.js";
 import { multipartUpload } from "../storage/s3-multipart.js";
-import { buildR2Key } from "../r2.js";
+import { buildR2Key, computeStorageContentHash } from "../r2.js";
 import {
   buildS3ObjectUrl,
   getCorsOrigins,
@@ -18,6 +18,10 @@ import {
   VIDEO_NOTE_ERROR_CODES,
 } from "./videoNotePayload.js";
 import { calculateTorrentInfoHash } from "../utils/torrentHash.js";
+import {
+  isLikelyCorsError,
+  buildGenericCorsGuidance,
+} from "../utils/uploadErrorHints.js";
 
 const STATUS_VARIANTS = new Set(["info", "success", "error", "warning"]);
 const INFO_HASH_PATTERN = /^[a-f0-9]{40}$/;
@@ -35,6 +39,7 @@ const defaultDeps = {
   makeS3Client,
   multipartUpload,
   buildR2Key,
+  computeStorageContentHash,
   buildS3ObjectUrl,
   getCorsOrigins,
   prepareS3Connection,
@@ -270,12 +275,31 @@ export class S3UploadService {
     try {
       await this.deps.ensureS3SdkLoaded();
 
+      // Computing the torrent info-hash (and the content-hash fallback) reads the
+      // ENTIRE file before the upload starts and before any progress is emitted —
+      // on multi-GB videos that's a long, silent pause that looks like a freeze.
+      const willHashFile =
+        Boolean(file) && !isValidInfoHash(normalizeInfoHash(infoHash));
+      if (willHashFile) {
+        this.setUploadStatus(
+          "Analyzing video (large files can take a moment)…",
+          "info",
+        );
+      }
+
       const keyIdentifier = await this._resolveUploadIdentifier({
         infoHash,
         file,
       });
       const normalizedInfoHash = normalizeInfoHash(infoHash || keyIdentifier);
       const hasValidInfoHash = isValidInfoHash(normalizedInfoHash);
+      // When no info-hash is available, derive a content-based namespace so two
+      // distinct URL-first uploads that share a filename can't overwrite each
+      // other. Kept separate from keyIdentifier so magnet generation still keys
+      // off the real info-hash only.
+      const storageIdentifier =
+        keyIdentifier ||
+        (file ? await this.deps.computeStorageContentHash(file) : "");
 
       const s3 = this.deps.makeS3Client({
         endpoint: normalized.endpoint,
@@ -287,7 +311,7 @@ export class S3UploadService {
 
       const key =
         forcedVideoKey ||
-        this.deps.buildR2Key(npub, file, keyIdentifier);
+        this.deps.buildR2Key(npub, file, storageIdentifier);
       const publicUrl =
         forcedVideoUrl ||
         this.deps.buildS3ObjectUrl({
@@ -300,6 +324,11 @@ export class S3UploadService {
 
       let statusMessage = `Uploading to ${normalized.bucket}…`;
       this.setUploadStatus(statusMessage, "info");
+
+      // Track optional-asset failures so the user gets a visible signal instead
+      // of a silently-missing thumbnail/torrent (Cloudflare-upload #5).
+      let thumbnailFailed = false;
+      let torrentFailed = false;
 
       if (thumbnailFile) {
         this.setUploadStatus("Uploading thumbnail...", "info");
@@ -329,6 +358,11 @@ export class S3UploadService {
           this.deps.userLogger.warn(
             "Thumbnail upload failed, continuing with video...",
             err
+          );
+          thumbnailFailed = true;
+          this.setUploadStatus(
+            "Thumbnail upload failed — publishing without it.",
+            "warning"
           );
         }
       }
@@ -383,6 +417,11 @@ export class S3UploadService {
           this.deps.userLogger.warn(
             "Torrent metadata upload failed, continuing...",
             err
+          );
+          torrentFailed = true;
+          this.setUploadStatus(
+            "Torrent upload failed — publishing URL-first without the .torrent.",
+            "warning"
           );
         }
       }
@@ -461,15 +500,29 @@ export class S3UploadService {
       });
 
       if (published) {
-        this.setUploadStatus(`Published ${publicUrl}`, "success");
+        const caveats = [];
+        if (thumbnailFailed) caveats.push("thumbnail");
+        if (torrentFailed) caveats.push("torrent");
+        const suffix = caveats.length
+          ? ` (note: ${caveats.join(" & ")} upload failed)`
+          : "";
+        this.setUploadStatus(
+          `Published ${publicUrl}${suffix}`,
+          caveats.length ? "warning" : "success"
+        );
       }
       return Boolean(published);
     } catch (err) {
       this.deps.userLogger.error("S3 upload failed:", err);
-      this.setUploadStatus(
-        err?.message ? `Upload failed: ${err.message}` : "Upload failed.",
-        "error"
-      );
+      let message = err?.message
+        ? `Upload failed: ${err.message}`
+        : "Upload failed.";
+      // A CORS rejection during the browser PUT/POST is an opaque "Failed to
+      // fetch" — attach actionable guidance (parity with the R2 path).
+      if (isLikelyCorsError(err)) {
+        message += ` ${buildGenericCorsGuidance({ endpoint: normalized?.endpoint })}`;
+      }
+      this.setUploadStatus(message, "error");
       return false;
     } finally {
       this.setUploading(false);

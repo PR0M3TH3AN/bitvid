@@ -4,16 +4,23 @@ import logger, { devLogger, userLogger } from "../utils/logger.js";
 import { normalizeHexId, normalizeHexPubkey } from "../utils/hex.js";
 import { buildVideoAddressPointer } from "../utils/videoPointer.js";
 import { COMMENT_EVENT_KIND } from "../nostr/commentEvents.js";
-import { FEATURE_IMPROVED_COMMENT_FETCHING, FIVE_MINUTES_MS } from "../constants.js";
+import { FEATURE_IMPROVED_COMMENT_FETCHING } from "../constants.js";
+import {
+  getCommentCacheKey as cacheGetCommentCacheKey,
+  handleCommentCacheError as cacheHandleCommentCacheError,
+  getCachedComments as cacheGetCachedComments,
+  cacheComments as cacheCacheComments,
+  removeCommentCache as cacheRemoveCommentCache,
+  clearCommentCache as cacheClearCommentCache,
+  persistCommentCache as cachePersistCommentCache,
+  serializeCommentsForCache as cacheSerializeCommentsForCache,
+} from "./commentThreadCache.js";
 
 const ROOT_PARENT_KEY = "__root__";
 const DEFAULT_INITIAL_LIMIT = 40;
 const DEFAULT_HYDRATION_DEBOUNCE_MS = 25;
 const PROFILE_FETCH_MAX_ATTEMPTS = 3;
 const PROFILE_FETCH_BACKOFF_MS = 50;
-const COMMENT_CACHE_PREFIX = "bitvid:comments:";
-const COMMENT_CACHE_TTL_MS = FIVE_MINUTES_MS;
-const COMMENT_CACHE_VERSION = 2;
 
 function toPositiveInteger(value, fallback) {
   const numeric = Number(value);
@@ -44,6 +51,13 @@ function normalizeKind(value) {
     return value.trim();
   }
   return "";
+}
+
+// NIP-09 deletion request.
+const DELETION_EVENT_KIND = 5;
+
+function isDeletionEvent(event) {
+  return normalizeKind(event?.kind) === String(DELETION_EVENT_KIND);
 }
 
 function toParentKey(parentId) {
@@ -105,6 +119,7 @@ export default class CommentThreadService {
     app = null,
     fetchVideoComments = null,
     subscribeVideoComments = null,
+    fetchDeletionEvents = null,
     getProfileCacheEntry = null,
     batchFetchProfiles = null,
     limit = DEFAULT_INITIAL_LIMIT,
@@ -114,6 +129,10 @@ export default class CommentThreadService {
     this.nostrClient = nostrClient;
     this.fetchVideoComments = fetchVideoComments;
     this.subscribeVideoComments = subscribeVideoComments;
+    this.fetchDeletionEvents =
+      typeof fetchDeletionEvents === "function"
+        ? fetchDeletionEvents
+        : (ids, opts) => this._defaultFetchDeletions(ids, opts);
 
     if (!this.fetchVideoComments && this.nostrClient) {
       const clientFetcher = this.nostrClient.fetchVideoComments;
@@ -162,6 +181,9 @@ export default class CommentThreadService {
     this.metaById = new Map();
     this.childrenByParent = new Map();
     this.childrenByParent.set(ROOT_PARENT_KEY, []);
+    // NIP-09: target comment id -> Set of pubkeys that requested its deletion.
+    // A comment is treated as deleted only when its own author appears here.
+    this.deletionsByTarget = new Map();
     this.profileCache = new Map();
     this.profileQueue = new Set();
     this.profileHydrationTimer = null;
@@ -306,6 +328,11 @@ export default class CommentThreadService {
       });
     }
 
+    // Honor NIP-09 deletions: drop comments whose author has since requested
+    // their removal. Applied during the (silent) initial pass; the emit below
+    // renders the final, deletions-applied thread.
+    await this.fetchAndApplyDeletions();
+
     this.emitThreadReady();
 
     if (this.profileHydrationTimer) {
@@ -380,237 +407,35 @@ export default class CommentThreadService {
   }
 
   getCommentCacheKey(videoEventId) {
-    const normalized = normalizeHexId(videoEventId);
-    if (!normalized) {
-      return "";
-    }
-
-    return `${COMMENT_CACHE_PREFIX}${normalized.toLowerCase()}`;
+    return cacheGetCommentCacheKey(videoEventId);
   }
 
   handleCommentCacheError(context, videoEventId, error) {
-    this.commentCacheDiagnostics = {
-      ...this.commentCacheDiagnostics,
-      storageUnavailable: true,
-    };
-
-    const message =
-      typeof videoEventId === "string" && videoEventId.trim()
-        ? `[commentThread] Failed to ${context} comment cache for ${videoEventId}.`
-        : `[commentThread] Failed to ${context} comment cache.`;
-
-    if (this.logger?.user?.warn) {
-      this.logger.user.warn(message, error);
-    } else if (this.logger?.warn) {
-      this.logger.warn(message, error);
-    }
-
-    if (this.logger?.dev?.warn && this.logger.dev !== this.logger.user) {
-      this.logger.dev.warn(message, error);
-    }
+    return cacheHandleCommentCacheError(this, context, videoEventId, error);
   }
 
   getCachedComments(videoEventId) {
-    if (
-      !FEATURE_IMPROVED_COMMENT_FETCHING ||
-      typeof localStorage === "undefined"
-    ) {
-      return null;
-    }
-
-    const cacheKey = this.getCommentCacheKey(videoEventId);
-    if (!cacheKey) {
-      logDev(
-        this.logger?.dev,
-        "[commentThread] Comment cache skipped: invalid video id.",
-      );
-      return null;
-    }
-
-    let raw = null;
-    try {
-      raw = localStorage.getItem(cacheKey);
-    } catch (error) {
-      this.handleCommentCacheError("read", videoEventId, error);
-      return null;
-    }
-
-    if (raw === null) {
-      logDev(
-        this.logger?.dev,
-        `[commentThread] Comment cache miss for ${videoEventId}: no entry present.`,
-      );
-      return null;
-    }
-
-    try {
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== "object") {
-        logDev(
-          this.logger?.dev,
-          `[commentThread] Comment cache rejected for ${videoEventId}: malformed payload.`,
-        );
-        this.removeCommentCache(cacheKey);
-        return null;
-      }
-
-      const cacheVersion = Number.isFinite(parsed.version)
-        ? Number(parsed.version)
-        : null;
-
-      if (cacheVersion !== COMMENT_CACHE_VERSION) {
-        logDev(
-          this.logger?.dev,
-          `[commentThread] Comment cache rejected for ${videoEventId}: version ${cacheVersion} != ${COMMENT_CACHE_VERSION}.`,
-        );
-        this.removeCommentCache(cacheKey);
-        return null;
-      }
-
-      const comments = Array.isArray(parsed.comments)
-        ? parsed.comments
-        : null;
-      const timestamp = Number(parsed.timestamp);
-
-      if (
-        Array.isArray(comments) &&
-        Number.isFinite(timestamp) &&
-        Date.now() - timestamp <= COMMENT_CACHE_TTL_MS
-      ) {
-        logDev(
-          this.logger?.dev,
-          `[commentThread] Loaded ${comments.length} cached comments for ${videoEventId}.`,
-        );
-        return comments;
-      }
-
-      logDev(
-        this.logger?.dev,
-        `[commentThread] Comment cache rejected for ${videoEventId}: entry expired.`,
-      );
-      this.removeCommentCache(cacheKey);
-    } catch (error) {
-      if (this.logger?.warn) {
-        this.logger.warn(
-          `[commentThread] Failed to parse cached comments for ${videoEventId}:`,
-          error,
-        );
-      }
-      logDev(
-        this.logger?.dev,
-        `[commentThread] Comment cache rejected for ${videoEventId}: parse error.`,
-      );
-      this.removeCommentCache(cacheKey);
-    }
-
-    return null;
+    return cacheGetCachedComments(this, videoEventId);
   }
 
   cacheComments(videoEventId, comments) {
-    if (
-      !FEATURE_IMPROVED_COMMENT_FETCHING ||
-      typeof localStorage === "undefined" ||
-      !Array.isArray(comments)
-    ) {
-      return;
-    }
-
-    const cacheKey = this.getCommentCacheKey(videoEventId);
-    if (!cacheKey) {
-      return;
-    }
-
-    try {
-      localStorage.setItem(
-        cacheKey,
-        JSON.stringify({
-          version: COMMENT_CACHE_VERSION,
-          comments,
-          timestamp: Date.now(),
-        }),
-      );
-      logDev(
-        this.logger?.dev,
-        `[commentThread] Cached ${comments.length} comments for ${videoEventId}.`,
-      );
-    } catch (error) {
-      this.handleCommentCacheError("write", videoEventId, error);
-    }
+    return cacheCacheComments(this, videoEventId, comments);
   }
 
   removeCommentCache(cacheKey) {
-    if (!cacheKey || typeof localStorage === "undefined") {
-      return;
-    }
-
-    try {
-      localStorage.removeItem(cacheKey);
-    } catch (error) {
-      if (this.logger?.warn) {
-        this.logger.warn(
-          `[commentThread] Failed to clear cached comments for ${cacheKey}:`,
-          error,
-        );
-      }
-    }
+    return cacheRemoveCommentCache(this, cacheKey);
   }
 
   clearCommentCache(videoEventId = null) {
-    if (!FEATURE_IMPROVED_COMMENT_FETCHING || typeof localStorage === "undefined") {
-      return;
-    }
-
-    if (videoEventId) {
-      this.removeCommentCache(this.getCommentCacheKey(videoEventId));
-      return;
-    }
-
-    try {
-      const keys = Object.keys(localStorage);
-      keys
-        .filter((key) => key.startsWith(COMMENT_CACHE_PREFIX))
-        .forEach((key) => this.removeCommentCache(key));
-    } catch (error) {
-      if (this.logger?.warn) {
-        this.logger.warn(
-          "[commentThread] Failed to clear comment cache:",
-          error,
-        );
-      }
-    }
+    return cacheClearCommentCache(this, videoEventId);
   }
 
   persistCommentCache() {
-    if (!FEATURE_IMPROVED_COMMENT_FETCHING || !this.videoEventId) {
-      return;
-    }
-
-    const comments = this.serializeCommentsForCache();
-    this.cacheComments(this.videoEventId, comments);
+    return cachePersistCommentCache(this);
   }
 
   serializeCommentsForCache() {
-    const events = Array.from(this.eventsById.values());
-    return events.sort((a, b) => {
-      const aTime = Number.isFinite(a?.created_at) ? a.created_at : 0;
-      const bTime = Number.isFinite(b?.created_at) ? b.created_at : 0;
-      if (aTime !== bTime) {
-        return aTime - bTime;
-      }
-
-      const aId = normalizeHexId(a?.id);
-      const bId = normalizeHexId(b?.id);
-      if (aId && bId) {
-        return aId.localeCompare(bId);
-      }
-      if (aId) {
-        return -1;
-      }
-      if (bId) {
-        return 1;
-      }
-      return 0;
-    });
+    return cacheSerializeCommentsForCache(this);
   }
 
   startSubscription(target, options = {}) {
@@ -656,6 +481,21 @@ export default class CommentThreadService {
       return;
     }
 
+    if (result.type === "skipped-deleted") {
+      return;
+    }
+
+    if (result.type === "deletion") {
+      // A removal can't be expressed as an append; re-render the thread when a
+      // comment actually disappeared (skip during the initial cache replay /
+      // bulk load, which emits once at the end).
+      if (!isInitial && result.removed) {
+        this.persistCommentCache();
+        this.emitThreadReady();
+      }
+      return;
+    }
+
     if (!isInitial && result.type === "insert") {
       this.emitAppend(result);
       return;
@@ -677,6 +517,10 @@ export default class CommentThreadService {
     const eventId = normalizeHexId(event.id);
     if (!eventId) {
       return null;
+    }
+
+    if (isDeletionEvent(event)) {
+      return this.applyDeletion(event);
     }
 
     const parentId = this.extractParentId(event);
@@ -702,6 +546,13 @@ export default class CommentThreadService {
     }
 
     const existingMeta = this.metaById.get(eventId);
+
+    // The comment may arrive after we already saw its author's deletion
+    // request (out-of-order relays). Honor the deletion and don't surface it.
+    if (!existingMeta && this.isCommentDeleted(eventId, pubkey)) {
+      return { type: "skipped-deleted", eventId };
+    }
+
     this.eventsById.set(eventId, event);
     this.metaById.set(eventId, { parentKey, createdAt });
 
@@ -757,6 +608,134 @@ export default class CommentThreadService {
     }
 
     return "";
+  }
+
+  // The comment ids a NIP-09 kind-5 request asks to delete (its `e` tags).
+  extractDeletionTargets(event) {
+    const tags = Array.isArray(event?.tags) ? event.tags : [];
+    const ids = [];
+    for (const tag of tags) {
+      if (!Array.isArray(tag) || tag.length < 2 || tag[0] !== "e") {
+        continue;
+      }
+      const id = normalizeHexId(tag[1]);
+      if (id && !ids.includes(id)) {
+        ids.push(id);
+      }
+    }
+    return ids;
+  }
+
+  isCommentDeleted(eventId, authorPubkey) {
+    if (!eventId || !authorPubkey) {
+      return false;
+    }
+    const deleters = this.deletionsByTarget.get(eventId);
+    return Boolean(deleters && deleters.has(authorPubkey));
+  }
+
+  // Apply a NIP-09 deletion request. A comment is only removed when the
+  // deletion is signed by the comment's own author (you can't delete someone
+  // else's comment). Deletions are also remembered so a comment that arrives
+  // afterwards (out-of-order relays) is suppressed on insert.
+  applyDeletion(event) {
+    const deleter = normalizePubkey(event.pubkey);
+    if (!deleter) {
+      return { type: "deletion", removed: false };
+    }
+    const targets = this.extractDeletionTargets(event);
+    let removed = false;
+    for (const targetId of targets) {
+      let deleters = this.deletionsByTarget.get(targetId);
+      if (!deleters) {
+        deleters = new Set();
+        this.deletionsByTarget.set(targetId, deleters);
+      }
+      deleters.add(deleter);
+
+      const existing = this.eventsById.get(targetId);
+      if (existing && normalizePubkey(existing.pubkey) === deleter) {
+        this.removeComment(targetId);
+        removed = true;
+      }
+    }
+    return { type: "deletion", removed };
+  }
+
+  removeComment(eventId) {
+    const meta = this.metaById.get(eventId);
+    if (meta) {
+      this.removeFromParentList(meta.parentKey, eventId);
+      this.metaById.delete(eventId);
+    }
+    this.eventsById.delete(eventId);
+    // Replies to a removed comment become unreachable from the root and so are
+    // hidden along with their deleted parent; their child list is left in place
+    // but never walked by getSnapshot().
+  }
+
+  async fetchAndApplyDeletions() {
+    const commentIds = Array.from(this.eventsById.keys());
+    if (!commentIds.length || typeof this.fetchDeletionEvents !== "function") {
+      return;
+    }
+    let deletionEvents = [];
+    try {
+      deletionEvents = await this.fetchDeletionEvents(commentIds, {
+        relays: this.activeRelays,
+      });
+    } catch (error) {
+      logDev(
+        this.logger?.dev,
+        "[commentThread] Failed to fetch comment deletions:",
+        error,
+      );
+      return;
+    }
+    if (Array.isArray(deletionEvents)) {
+      for (const deletionEvent of deletionEvents) {
+        this.processIncomingEvent(deletionEvent, { isInitial: true });
+      }
+    }
+  }
+
+  async _defaultFetchDeletions(commentIds, { relays } = {}) {
+    const pool = this.nostrClient?.pool;
+    if (
+      !pool ||
+      typeof pool.list !== "function" ||
+      !Array.isArray(commentIds) ||
+      !commentIds.length
+    ) {
+      return [];
+    }
+    const relayList =
+      Array.isArray(relays) && relays.length
+        ? relays
+        : Array.isArray(this.nostrClient?.relays)
+          ? this.nostrClient.relays
+          : [];
+    if (!relayList.length) {
+      return [];
+    }
+    try {
+      const results = await pool.list(relayList, [
+        { kinds: [DELETION_EVENT_KIND], "#e": commentIds },
+      ]);
+      if (!Array.isArray(results)) {
+        return [];
+      }
+      return results
+        .flat()
+        .filter((event) => event && typeof event === "object");
+    } catch (error) {
+      logDev(
+        this.logger?.dev,
+        "[commentThread] Default deletion fetch failed:",
+        error,
+      );
+      return [];
+    }
   }
 
   extractRootIdentifier(event) {

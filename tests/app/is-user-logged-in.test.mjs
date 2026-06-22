@@ -112,6 +112,31 @@ test("isUserLoggedIn ignores anonymous session actor mismatches", () => {
   }
 });
 
+test("isUserLoggedIn allows the anonymous view-event session actor (source 'session')", () => {
+  // Regression: watching a video creates an anonymous view-event actor with
+  // source "session" and a different pubkey. It must NOT log the user out (which
+  // broke zaps with "Log in and connect a wallet").
+  const previousPubkey = nostrClient.pubkey;
+  const previousSessionActor = nostrClient.sessionActor;
+
+  try {
+    const pubkey = "1".repeat(64);
+    nostrClient.pubkey = pubkey;
+    nostrClient.sessionActor = {
+      pubkey: "2".repeat(64),
+      privateKey: "3".repeat(64),
+      source: "session",
+      createdAt: Date.now(),
+    };
+
+    const app = createTestApp(pubkey);
+    assert.equal(app.isUserLoggedIn(), true);
+  } finally {
+    nostrClient.pubkey = previousPubkey;
+    nostrClient.sessionActor = previousSessionActor;
+  }
+});
+
 test("isUserLoggedIn rejects mismatched managed session actors", () => {
   const previousPubkey = nostrClient.pubkey;
   const previousSessionActor = nostrClient.sessionActor;

@@ -421,3 +421,104 @@ export function extractMagnetHints(rawValue) {
   }
   return hints;
 }
+
+/**
+ * Extract every web seed (`ws=`) URL from a magnet, in order, deduped
+ * case-insensitively. Unlike {@link extractMagnetHints} (which returns only the
+ * first `ws`), this surfaces the full set so callers can round-trip a magnet
+ * that carries multiple independent webseeds without silently dropping the
+ * extras.
+ *
+ * @param {string} rawValue
+ * @returns {string[]} Deduped web seed URLs in magnet order.
+ */
+export function extractAllWebSeeds(rawValue) {
+  const { params } = normalizeMagnetInput(rawValue);
+  const seeds = [];
+  const seen = new Set();
+  for (const param of params) {
+    if (param.lowerKey !== "ws") {
+      continue;
+    }
+    const value =
+      typeof (param.decoded || param.value) === "string"
+        ? (param.decoded || param.value).trim()
+        : "";
+    if (!value) {
+      continue;
+    }
+    const key = value.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    seeds.push(value);
+  }
+  return seeds;
+}
+
+/**
+ * Normalize a web seed field into an ordered, deduped list of trimmed URLs.
+ * Accepts an array (e.g. [primaryUrl, textareaValue]) or a string, and splits
+ * every entry on newlines/commas so a single multi-line textarea expands into
+ * the full set. Lets a video declare multiple independent webseeds instead of
+ * collapsing to one.
+ *
+ * @param {string|string[]} value
+ * @returns {string[]}
+ */
+export function normalizeWebSeedList(value) {
+  const out = [];
+  const seen = new Set();
+  const push = (entry) => {
+    if (typeof entry !== "string") {
+      return;
+    }
+    for (const piece of entry.split(/[\r\n,]+/)) {
+      const trimmed = piece.trim();
+      if (!trimmed) {
+        continue;
+      }
+      const key = trimmed.toLowerCase();
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      out.push(trimmed);
+    }
+  };
+  if (Array.isArray(value)) {
+    value.forEach(push);
+  } else if (typeof value === "string") {
+    push(value);
+  }
+  return out;
+}
+
+/**
+ * Replace the complete set of web seeds (`ws=`) on a magnet with exactly the
+ * provided list. Unlike {@link ensureWebSeeds} (append-only), this first drops
+ * every existing `ws=` param, giving the edit form true add/remove semantics —
+ * a seed the user deleted from the list is actually removed from the magnet
+ * instead of lingering.
+ *
+ * @param {string} rawValue
+ * @param {string|string[]} seeds
+ * @param {{ allowHttp?: boolean, logger?: Function }} [options]
+ * @returns {string} The rebuilt magnet (or the canonical input when not a magnet).
+ */
+export function setMagnetWebSeeds(rawValue, seeds, { allowHttp = false, logger } = {}) {
+  const { initial, canonicalValue, isMagnet, normalizedScheme, fragment, params } =
+    normalizeMagnetInput(rawValue);
+  if (!initial) {
+    return "";
+  }
+  if (!isMagnet) {
+    return canonicalValue;
+  }
+  const kept = params.filter((param) => param.lowerKey !== "ws");
+  params.length = 0;
+  params.push(...kept);
+  ensureWebSeeds(params, normalizeWebSeedList(seeds), { allowHttp, logger });
+  return buildMagnetUri(normalizedScheme, params, fragment);
+}

@@ -310,6 +310,18 @@ const dTag = event.tags.find(t => t[0] === 'd')?.[1];
 // WRONG: Don't use logical IDs like videoRootId for relay lookups
 ```
 
+### NIP-07 Signer Reliability (hard-won)
+
+The #1 cause of "DMs / hashtags / watch-history / lists won't load after login" is an **unresponsive NIP-07 signer**, not bitvid. The extension's MV3 background worker can die and `window.nostr` calls then hang forever — no client change fixes a dead signer. **Diagnose with a raw `window.nostr` probe** (`getPublicKey → nip04.encrypt → nip04.decrypt`) in the console; if that hangs, it's the extension (recommend nos2x/Alby). See `AGENTS.md` §17 and `docs/KNOWN_BUGS.md` #0.
+
+Resilience invariants — **do not regress**:
+
+1. **Cap relay fan-out** (`js/nostr/toolkit.js` `capReadRelays`, ≤8, user-relays-first + 2 reserved defaults) — an uncapped cold-login REQ storm starves the single-threaded signer.
+2. **Circuit breaker** on consecutive NIP-07 timeouts (`js/nostr/nip07Permissions.js`) — fast-fail instead of hanging; channel-death counts toward opening; permission prompts bypass.
+3. **Never swallow a transient decrypt error as `[]`** — re-throw channel-death/timeout so retries run (returning empty = "user has no lists" + no retry).
+4. **Generous decrypt budget** (~25–30s/call) — a 6s timeout kills slow signers mid-decrypt.
+5. **Lazy modal population** — don't render every profile panel into a closed modal at login; populate per-pane on open (`selectPane`).
+
 ---
 
 ## Testing & Validation: Scenario-First, Cheat-Resistant (Dark Factory Rules)
@@ -557,13 +569,6 @@ When assigning work to agents:
 - Review and merge agent PRs promptly to keep the queue short — stale PRs compound conflicts
 - Use PR title prefixes (`[nostr-core]`, `[ui]`, `[playback]`, etc.) to make scope visible
 
-### TORCH Memory Integration
-
-You have access to the TORCH memory system.
-
-1. **READ:** Check `.scheduler-memory/latest/${cadence}/memories.md` for past learnings.
-2. **WRITE:** Before exiting, save new insights to `memory-update.md` so future runs can learn from this session.
-
 ---
 
 ## Key Documentation
@@ -577,7 +582,6 @@ You have access to the TORCH memory system.
 | `docs/playback-fallback.md` | URL-first strategy |
 | `docs/moderation/README.md` | Moderation system |
 | `docs/logging.md` | Logger usage |
-| `torch/TORCH.md` | TORCH distributed task locking protocol |
 | `context/` / `todo/` / `decisions/` / `test_logs/` | Agent persistent state files (see AGENTS.md §15) |
 
 ---
@@ -636,8 +640,3 @@ Validation: Must have `title` + at least one of `url` or `magnet`.
 5. **Token-first styling** — no raw colors, no inline styles
 6. **Keep magnets raw** — decode only at playback time
 7. **Document rollback steps** — especially for playback changes
-
-## TORCH Memory Integration
-You have access to the TORCH memory system.
-1. READ: Check `.scheduler-memory/latest/${cadence}/memories.md` for past learnings.
-2. WRITE: Before exiting, save new insights to `memory-update.md` so future runs can learn from this session.

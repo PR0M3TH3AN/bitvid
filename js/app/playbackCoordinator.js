@@ -10,6 +10,28 @@
  */
 
 /**
+ * Normalize a deep-link / caller "force this playback source" value to the
+ * canonical 'url' | 'torrent' the playback pipeline understands, or null when
+ * unset/unrecognized. Accepts a few friendly aliases (the in-modal toggle
+ * labels CDN/P2P, plus webtorrent/hosted) so shared links are forgiving.
+ * @param {unknown} value
+ * @returns {'url' | 'torrent' | null}
+ */
+export function normalizeForcedSource(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (["torrent", "p2p", "webtorrent", "magnet"].includes(normalized)) {
+    return "torrent";
+  }
+  if (["url", "cdn", "hosted", "http", "https"].includes(normalized)) {
+    return "url";
+  }
+  return null;
+}
+
+/**
  * @param {object} deps - Injected dependencies.
  * @returns {object} Methods to be bound to the Application instance.
  */
@@ -47,6 +69,14 @@ export function createPlaybackCoordinator(deps) {
       const maybeNevent = urlParams.get("v");
       if (!maybeNevent) return; // no link param
 
+      // Optional deep-link override that forces a playback source, mirroring the
+      // embed player's `playback` param. Lets you test a specific path
+      // consistently: `?v=<nevent>&playback=torrent` always streams via
+      // WebTorrent, `&playback=url` always uses the hosted CDN URL. If the
+      // requested source is missing for the video, playVideoByEventId surfaces
+      // a message instead of silently using the other source.
+      const forcedSource = normalizeForcedSource(urlParams.get("playback"));
+
       try {
         const decoded = window.NostrTools.nip19.decode(maybeNevent);
         if (decoded.type === "nevent" && decoded.data.id) {
@@ -58,13 +88,13 @@ export function createPlaybackCoordinator(deps) {
           // 1) check local map
           let localMatch = this.videosMap.get(eventId);
           if (localMatch) {
-            this.playVideoByEventId(eventId, { relay });
+            this.playVideoByEventId(eventId, { relay, forcedSource });
           } else {
             // 2) fallback => getOldEventById
             this.getOldEventById(eventId)
               .then((video) => {
                 if (video) {
-                  this.playVideoByEventId(eventId, { relay });
+                  this.playVideoByEventId(eventId, { relay, forcedSource });
                 } else {
                   this.showError("No matching video found for that link.");
                 }
@@ -332,7 +362,7 @@ export function createPlaybackCoordinator(deps) {
 
     async playViaWebTorrent(
       magnet,
-      { fallbackMagnet = "", urlList = [] } = {}
+      { fallbackMagnet = "", urlList = [], hostedUrlWebSeed = "" } = {}
     ) {
       const sanitizedUrlList = Array.isArray(urlList)
         ? urlList
@@ -341,6 +371,11 @@ export function createPlaybackCoordinator(deps) {
             )
             .filter((entry) => /^https?:\/\//i.test(entry))
         : [];
+      const sanitizedHostedWebSeed =
+        typeof hostedUrlWebSeed === "string" &&
+        /^https?:\/\//i.test(hostedUrlWebSeed.trim())
+          ? hostedUrlWebSeed.trim()
+          : "";
 
       const attemptStream = async (candidate) => {
         const trimmedCandidate =
@@ -386,7 +421,38 @@ export function createPlaybackCoordinator(deps) {
         const torrentInstance = await torrentClient.streamVideo(
           cacheBustedMagnet,
           this.modalVideo,
-          { urlList: sanitizedUrlList }
+          {
+            urlList: sanitizedUrlList,
+            hostedUrlWebSeed: sanitizedHostedWebSeed,
+            hooks: {
+              // Surface a mid-stream stall instead of silently freezing on a
+              // buffering frame: tell the user whether the swarm is just slow
+              // or has no seeders at all.
+              onStall: ({ peers } = {}) => {
+                if (!this.videoModal) {
+                  return;
+                }
+                this.videoModal.updateStatus(
+                  peers > 0
+                    ? "Buffering — the swarm is slow right now."
+                    : "Waiting for peers — this video may have no active seeders."
+                );
+              },
+              // A torrent error after playback started can't reject the (already
+              // settled) start promise, so report it here.
+              onPlaybackError: (error) => {
+                this.log(
+                  "[playViaWebTorrent] Torrent error during playback:",
+                  error
+                );
+                if (this.videoModal) {
+                  this.videoModal.updateStatus(
+                    "WebTorrent playback hit an error — the swarm may have dropped."
+                  );
+                }
+              },
+            },
+          }
         );
 
         if (torrentClient.isServiceWorkerUnavailable()) {
@@ -799,6 +865,29 @@ export function createPlaybackCoordinator(deps) {
       };
       if (hasTrigger) {
         playbackOptions.trigger = this.lastModalTrigger;
+      }
+
+      // Honor a forced-source deep link (e.g. ?playback=torrent). If the video
+      // actually has that source, force it so the test path is deterministic.
+      // If it does not, tell the user clearly and fall back to normal selection
+      // rather than opening a dead player.
+      const requestedSource = normalizeForcedSource(hint.forcedSource);
+      if (requestedSource === "torrent") {
+        if (sanitizedMagnet) {
+          playbackOptions.forcedSource = "torrent";
+        } else {
+          this.showError(
+            "This video has no WebTorrent source — nothing to stream over P2P.",
+          );
+        }
+      } else if (requestedSource === "url") {
+        if (trimmedUrl) {
+          playbackOptions.forcedSource = "url";
+        } else {
+          this.showError(
+            "This video has no hosted CDN URL — only a WebTorrent source is available.",
+          );
+        }
       }
 
       let playbackPromise = null;
