@@ -2,6 +2,7 @@
 
 import { nostrClient } from "./nostrClientFacade.js";
 import { convertChannelEvent, buildChannelVideoFilters } from "./channelProfileVideos.js";
+import { dedupeVideos } from "./utils/videoDeduper.js";
 import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
 import { subscriptions } from "./subscriptions.js";
 import { attachHealthBadges } from "./gridHealth.js";
@@ -4512,7 +4513,7 @@ function buildRenderableChannelVideos({ events = [], app } = {}) {
 
   const newestByRoot =
     app?.dedupeVideosByRoot?.(uniqueVideos) ??
-    dedupeToNewestByRoot(uniqueVideos);
+    dedupeVideos(uniqueVideos);
 
   let videos = newestByRoot.filter((video) => !video.deleted);
   videos = videos.filter((video) => {

@@ -56,6 +56,7 @@ export function createPlaybackCoordinator(deps) {
     fetchProfileMetadata,
     ensureProfileMetadataSubscription,
     dedupeToNewestByRoot,
+    dedupeVideos,
     buildServiceWorkerFallbackStatus,
     sanitizeProfileMediaUrl,
     UNSUPPORTED_BTITH_MESSAGE,
@@ -216,7 +217,11 @@ export function createPlaybackCoordinator(deps) {
       if (!Array.isArray(videos) || videos.length === 0) {
         return [];
       }
-      return dedupeToNewestByRoot(videos);
+      // Root-dedupe AND collapse cross-ecosystem duplicates (prefer bitvid). This
+      // is the shared chokepoint for the feed stage + channel/search grids.
+      return typeof dedupeVideos === "function"
+        ? dedupeVideos(videos)
+        : dedupeToNewestByRoot(videos);
     },
 
     autoplayModalVideo() {

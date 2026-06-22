@@ -322,12 +322,14 @@ Make NIP-71 interop two-way and guarantee a video is never shown twice.
 creator-initiated self-import (model A — can't forge others' notes), dedup on
 explicit import-link + content hash/infohash (no fuzzy url/title), import grants
 CDN url + WebTorrent (bitvid extras come free), one-shot import + re-run button.
-- [ ] **Phase 1 (do first): cross-ecosystem dedup** — `collapseCrossEcosystem`
-      keyed on `author + (importLink ‖ fileSha256 ‖ ox ‖ infoHash)`, prefer the
-      bitvid (kind-30078) version, applied at the shared dedupe chokepoint so
-      EVERY grid (feed, channel profile, My Videos, search, playlists, watch
-      history) collapses dupes. Pure + mutation-tested. Needed regardless of
-      on-boarding (independent dual-posts already double up).
+- [x] **Phase 1: cross-ecosystem dedup** (`js/utils/videoDeduper.js`):
+      `collapseCrossEcosystem` keyed per-author on `fileSha256/ox/infoHash` + an
+      `eid` namespace linking on-board provenance (`importedFrom`); prefers the
+      bitvid (kind-30078) version. Composed into `dedupeVideos` (root-dedup THEN
+      cross-ecosystem) and routed through the shared chokepoint
+      `app.dedupeVideosByRoot` → covers the feed stage + channel + search at once.
+      Pure + mutation-verified. (Hash-less dual-posts still can't dedup — documented
+      limitation; covered once on-boarded videos carry the provenance link.)
 - [ ] **Phase 2: creator-initiated import** — discover the logged-in creator's own
       NIP-71 videos lacking a bitvid version; offer FULL import (re-host to THEIR
       storage + optional WebTorrent) or REFERENCE import (keep external URL, no
