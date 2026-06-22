@@ -114,7 +114,79 @@ export function createNip71MirrorService({
     };
   }
 
-  return { isAvailable, canMirror, publish };
+  // Tear down the mirror (on delete, or when the user toggles sync off). Belt-and-
+  // suspenders per the plan: a NIP-09 delete referencing BOTH addressable kinds
+  // (robust to a since-changed orientation), AND an empty-replace tombstone so
+  // clients that cache addressable events but ignore NIP-09 still see it cleared.
+  async function remove(video, options = {}) {
+    if (!isAvailable()) {
+      return { ok: false, error: "unavailable" };
+    }
+    const pubkey = str(video?.pubkey) || getActivePubkey();
+    const root = str(video?.videoRootId);
+    if (!pubkey || !root) {
+      return { ok: false, error: "invalid" };
+    }
+
+    const createdAt = Math.floor(now() / 1000);
+    const reason = str(options.reason) || "Removed NIP-71 mirror";
+
+    const deleteEvent = {
+      kind: 5,
+      pubkey,
+      created_at: createdAt,
+      content: reason,
+      tags: [
+        ["a", `34235:${pubkey}:${root}`],
+        ["a", `34236:${pubkey}:${root}`],
+        ["k", "34235"],
+        ["k", "34236"],
+      ],
+    };
+
+    const width = Number(video?.width);
+    const height = Number(video?.height);
+    const portrait =
+      Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0 && height > width;
+    const tombstoneKind =
+      options.short === true || (options.short !== false && portrait) ? 34236 : 34235;
+    const tombstone = {
+      kind: tombstoneKind,
+      pubkey,
+      created_at: createdAt,
+      // No imeta → nothing plays; title kept so the entry reads as removed.
+      tags: [["d", root], ["title", str(video?.title) || "[removed]"], ["client", "bitvid"]],
+      content: "",
+    };
+
+    const relays = getWriteRelays() || [];
+    const pool = getPool();
+    if (!pool || !relays.length) {
+      return { ok: false, error: "no-relays" };
+    }
+
+    let publishedOk = 0;
+    let total = 0;
+    for (const template of [deleteEvent, tombstone]) {
+      total += 1;
+      let signed;
+      try {
+        signed = await signEvent(template);
+      } catch (error) {
+        userLogger.warn("[nip71Mirror] Failed to sign teardown event:", error);
+        continue;
+      }
+      const results = await publishEventToRelays(pool, relays, signed);
+      const { accepted } = summarizePublishResults(results);
+      if (accepted.length > 0) {
+        publishedOk += 1;
+      }
+    }
+
+    return { ok: publishedOk > 0, published: publishedOk, total };
+  }
+
+  return { isAvailable, canMirror, publish, remove };
 }
 
 export const nip71MirrorService = createNip71MirrorService();

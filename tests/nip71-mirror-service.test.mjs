@@ -105,3 +105,43 @@ test("publish is unavailable without a signer / pubkey", async () => {
   assert.equal(result.ok, false);
   assert.equal(result.error, "unavailable");
 });
+
+test("remove() publishes a NIP-09 delete (both addressable kinds) AND a tombstone", async () => {
+  const { service, relay } = makeService();
+  const result = await service.remove(baseVideo());
+  assert.equal(result.ok, true);
+  assert.equal(relay.events.length, 2, "delete + empty-replace tombstone");
+
+  const del = relay.events.find((e) => e.kind === 5);
+  assert.ok(del, "must publish a NIP-09 kind-5 delete");
+  const aTags = del.tags.filter((t) => t[0] === "a").map((t) => t[1]).sort();
+  assert.deepEqual(aTags, [
+    `34235:${PUBKEY}:root-1`,
+    `34236:${PUBKEY}:root-1`,
+  ], "delete references both addressable kinds (orientation-robust)");
+  const kTags = del.tags.filter((t) => t[0] === "k").map((t) => t[1]).sort();
+  assert.deepEqual(kTags, ["34235", "34236"]);
+
+  const tomb = relay.events.find((e) => e.kind === 34235 || e.kind === 34236);
+  assert.ok(tomb, "must publish an empty-replace tombstone");
+  assert.equal(tomb.tags.find((t) => t[0] === "d")[1], "root-1", "same d-tag");
+  assert.equal(
+    tomb.tags.some((t) => t[0] === "imeta"),
+    false,
+    "tombstone has no playable imeta",
+  );
+});
+
+test("remove() tombstone uses the short kind for portrait videos", async () => {
+  const { service, relay } = makeService();
+  await service.remove(baseVideo({ width: 1080, height: 1920 }));
+  const tomb = relay.events.find((e) => e.kind === 34235 || e.kind === 34236);
+  assert.equal(tomb.kind, 34236, "portrait => 34236 tombstone");
+});
+
+test("remove() is unavailable without a signer", async () => {
+  const { service } = makeService({ available: false });
+  const result = await service.remove(baseVideo());
+  assert.equal(result.ok, false);
+  assert.equal(result.error, "unavailable");
+});
