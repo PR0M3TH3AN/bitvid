@@ -214,6 +214,16 @@ export class ProfileStorageController {
     this.updateStorageFormVisibility();
   }
 
+  confirmSyncOverwrite() {
+    if (typeof window === "undefined" || typeof window.confirm !== "function") {
+      return true;
+    }
+    return window.confirm(
+      "A newer copy of your storage settings is on your account (changed on " +
+        "another device). Overwrite it with this one?"
+    );
+  }
+
   renderSyncSection(pubkey) {
     if (!(this.storageSyncSection instanceof HTMLElement)) {
       return;
@@ -259,13 +269,20 @@ export class ProfileStorageController {
     try {
       if (enabled) {
         this.setSyncStatus("Encrypting and publishing…");
-        const result = await storageSyncService.enable(pubkey);
+        const result = await storageSyncService.enable(pubkey, {
+          confirmOverwrite: () => this.confirmSyncOverwrite(),
+        });
         if (result?.ok) {
           this.setSyncStatus(
             `Synced to ${result.accepted}/${result.total} relays.`,
             "success"
           );
           this.mainController.showSuccess("Storage settings synced (encrypted).");
+        } else if (result?.conflict) {
+          // User declined to overwrite a newer copy from another device.
+          this.setSyncStatus(
+            "Kept the newer copy on your account. Use Restore to pull it, or save again to overwrite.",
+          );
         } else {
           // Roll the toggle back so it reflects reality.
           if (this.storageSyncToggle instanceof HTMLInputElement) {
@@ -723,12 +740,19 @@ export class ProfileStorageController {
       this.setStorageFormStatus("Connection saved.", "success");
       this.mainController.showSuccess("Storage connection saved.");
 
-      // Keep the encrypted synced copy current if the user opted in.
+      // Keep the encrypted synced copy current if the user opted in. Warn before
+      // overwriting a newer copy changed on another device.
       if (storageSyncService.isEnabled(pubkey)) {
         try {
-          const syncResult = await storageSyncService.push(pubkey);
+          const syncResult = await storageSyncService.push(pubkey, {
+            confirmOverwrite: () => this.confirmSyncOverwrite(),
+          });
           if (syncResult?.ok) {
             this.setSyncStatus("Synced copy updated.", "success");
+          } else if (syncResult?.conflict) {
+            this.setSyncStatus(
+              "Synced copy on your account is newer — not overwritten.",
+            );
           }
         } catch (syncError) {
           devLogger.warn("[ProfileModal] Storage re-sync after save failed:", syncError);

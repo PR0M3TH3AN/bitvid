@@ -12,6 +12,7 @@
 
 import { encryptedSync as defaultEncryptedSync } from "../nostr/encryptedSyncFacade.js";
 import { isSyncEnabled, setSyncEnabled } from "./settingsSyncFlags.js";
+import { pushWithConflictCheck } from "./syncConflict.js";
 import { userLogger } from "../utils/logger.js";
 
 export const WALLET_SYNC_DTAG = "bitvid:nwc";
@@ -58,7 +59,7 @@ export function createWalletSyncService({
     return Boolean(result?.exists);
   }
 
-  async function push(pubkey) {
+  async function push(pubkey, { confirmOverwrite } = {}) {
     const key = normalizePubkey(pubkey);
     if (!key) {
       return { ok: false, error: "missing-pubkey" };
@@ -67,7 +68,14 @@ export function createWalletSyncService({
     if (!payload.nwcUri) {
       return { ok: false, error: "nothing-to-sync" };
     }
-    return encryptedSync.push(WALLET_SYNC_DTAG, payload);
+    return pushWithConflictCheck({
+      encryptedSync,
+      dTag: WALLET_SYNC_DTAG,
+      kind: SYNC_KIND,
+      pubkey: key,
+      payload,
+      confirmOverwrite,
+    });
   }
 
   async function pull(pubkey) {
@@ -97,9 +105,9 @@ export function createWalletSyncService({
     return { ...result, imported: true };
   }
 
-  async function enable(pubkey) {
+  async function enable(pubkey, options = {}) {
     setEnabledFlag(pubkey, true);
-    return push(pubkey);
+    return push(pubkey, options);
   }
 
   async function disable(pubkey) {

@@ -37,6 +37,9 @@ function makeSyncTwin() {
   return {
     calls: { push: [], pull: 0, clear: 0 },
     isAvailable: () => true,
+    async exists() {
+      return { exists: Boolean(note) && !note.cleared, createdAt: 0 };
+    },
     async push(dTag, payload) {
       this.calls.push.push({ dTag, payload });
       note = { payload };

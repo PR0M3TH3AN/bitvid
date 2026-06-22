@@ -10,6 +10,7 @@
 import { encryptedSync as defaultEncryptedSync } from "../nostr/encryptedSyncFacade.js";
 import defaultStorageService from "./storageService.js";
 import { isSyncEnabled, setSyncEnabled } from "./settingsSyncFlags.js";
+import { pushWithConflictCheck } from "./syncConflict.js";
 import { userLogger } from "../utils/logger.js";
 
 export const STORAGE_SYNC_DTAG = "bitvid:storage-connections";
@@ -46,7 +47,7 @@ export function createStorageSyncService({
   }
 
   // Push the current local storage account record to the user's encrypted note.
-  async function push(pubkey) {
+  async function push(pubkey, { confirmOverwrite } = {}) {
     const key = normalizePubkey(pubkey);
     if (!key) {
       return { ok: false, error: "missing-pubkey" };
@@ -61,7 +62,14 @@ export function createStorageSyncService({
     if (!record) {
       return { ok: false, error: "nothing-to-sync" };
     }
-    return encryptedSync.push(STORAGE_SYNC_DTAG, record);
+    return pushWithConflictCheck({
+      encryptedSync,
+      dTag: STORAGE_SYNC_DTAG,
+      kind: SYNC_KIND,
+      pubkey: key,
+      payload: record,
+      confirmOverwrite,
+    });
   }
 
   // Pull the encrypted note and import it into local storage. Returns the
@@ -85,9 +93,9 @@ export function createStorageSyncService({
   }
 
   // Turn sync on: remember the choice and push immediately.
-  async function enable(pubkey) {
+  async function enable(pubkey, options = {}) {
     setEnabledFlag(pubkey, true);
-    return push(pubkey);
+    return push(pubkey, options);
   }
 
   // Turn sync off: remember the choice and wipe the published note.

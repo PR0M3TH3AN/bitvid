@@ -55,4 +55,28 @@ export function setSyncEnabled(pubkey, kind, enabled) {
   writeFlags(flags);
 }
 
+// Remember the created_at of the note we last published, per pubkey+kind, so a
+// later save can detect when the relay copy is NEWER (another device changed it)
+// and warn before overwriting.
+export function getSyncPushedAt(pubkey, kind) {
+  const key = normalizePubkey(pubkey);
+  if (!key || !kind) {
+    return 0;
+  }
+  const value = Number(readFlags()[key]?.[`${kind}PushedAt`]);
+  return Number.isFinite(value) ? value : 0;
+}
+
+export function setSyncPushedAt(pubkey, kind, createdAt) {
+  const key = normalizePubkey(pubkey);
+  if (!key || !kind) {
+    return;
+  }
+  const flags = readFlags();
+  const entry = flags[key] && typeof flags[key] === "object" ? flags[key] : {};
+  entry[`${kind}PushedAt`] = Number(createdAt) || 0;
+  flags[key] = entry;
+  writeFlags(flags);
+}
+
 export const SETTINGS_SYNC_FLAG_KEY = FLAG_STORAGE_KEY;

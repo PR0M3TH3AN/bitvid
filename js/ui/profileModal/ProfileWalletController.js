@@ -102,6 +102,16 @@ export class ProfileWalletController {
     return this._walletSyncService;
   }
 
+  confirmSyncOverwrite() {
+    if (typeof window === "undefined" || typeof window.confirm !== "function") {
+      return true;
+    }
+    return window.confirm(
+      "A newer copy of your wallet connection is on your account (changed on " +
+        "another device). Overwrite it with this one?"
+    );
+  }
+
   renderSyncSection(pubkey) {
     if (!(this.walletSyncSection instanceof HTMLElement)) {
       return;
@@ -162,13 +172,21 @@ export class ProfileWalletController {
           return;
         }
         this.setSyncStatus("Encrypting and publishing…");
-        const result = await sync.enable(pubkey);
+        const result = await sync.enable(pubkey, {
+          confirmOverwrite: () => this.confirmSyncOverwrite(),
+        });
         if (result?.ok) {
           this.setSyncStatus(
             `Synced to ${result.accepted}/${result.total} relays.`,
             "success"
           );
           this.mainController.showSuccess("Wallet connection synced (encrypted).");
+        } else if (result?.conflict) {
+          // User declined to overwrite a newer copy from another device. Keep
+          // sync on (flag set) and the newer remote intact.
+          this.setSyncStatus(
+            "Kept the newer copy on your account. Use Restore to pull it, or save again to overwrite.",
+          );
         } else {
           if (this.walletSyncToggle instanceof HTMLInputElement) {
             this.walletSyncToggle.checked = false;
@@ -614,11 +632,19 @@ export class ProfileWalletController {
         finalVariant = "success";
         this.mainController.showSuccess("Wallet settings saved.");
         context.reason = "saved";
-        // Keep the encrypted synced copy current if the user opted in.
+        // Keep the encrypted synced copy current if the user opted in. Warn
+        // before overwriting a newer copy changed on another device.
         const sync = this.getWalletSyncService();
         if (sync.isEnabled(normalizedActive)) {
           try {
-            await sync.push(normalizedActive);
+            const syncResult = await sync.push(normalizedActive, {
+              confirmOverwrite: () => this.confirmSyncOverwrite(),
+            });
+            if (syncResult?.conflict) {
+              this.setSyncStatus(
+                "Synced copy on your account is newer — not overwritten.",
+              );
+            }
           } catch (syncError) {
             devLogger.warn(
               "[ProfileModal] Wallet re-sync after save failed:",
