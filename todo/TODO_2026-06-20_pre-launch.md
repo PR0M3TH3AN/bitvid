@@ -316,6 +316,24 @@ notes below. Summary:
         nip71.publishedAt so the stage short-circuits.
       - Verified live: Goblinbox (Nostube) content renders; liveness check works.
 
+### 17c. NIP-71 on-boarding + cross-ecosystem dedup (IMPORTANT — full plan in docs/nip71-onboarding-plan.md)
+Make NIP-71 interop two-way and guarantee a video is never shown twice.
+**See `docs/nip71-onboarding-plan.md` for the full dev plan.** Locked decisions:
+creator-initiated self-import (model A — can't forge others' notes), dedup on
+explicit import-link + content hash/infohash (no fuzzy url/title), import grants
+CDN url + WebTorrent (bitvid extras come free), one-shot import + re-run button.
+- [ ] **Phase 1 (do first): cross-ecosystem dedup** — `collapseCrossEcosystem`
+      keyed on `author + (importLink ‖ fileSha256 ‖ ox ‖ infoHash)`, prefer the
+      bitvid (kind-30078) version, applied at the shared dedupe chokepoint so
+      EVERY grid (feed, channel profile, My Videos, search, playlists, watch
+      history) collapses dupes. Pure + mutation-tested. Needed regardless of
+      on-boarding (independent dual-posts already double up).
+- [ ] **Phase 2: creator-initiated import** — discover the logged-in creator's own
+      NIP-71 videos lacking a bitvid version; re-host the file to THEIR storage
+      (CDN) + optional WebTorrent seed; publish a kind-30078 signed by them with an
+      `["imported-from", <orig>]` provenance tag. Same-pubkey-only guard;
+      ALLOW_NSFW gate; reuses ingest adapter + storage/upload + videoPublisher.
+
 ### 17b. Channel Profile wall shows only bitvid videos, not NIP-71 (LAUNCH-BLOCKER)
 - [x] **Fixed** (`js/channelProfileVideos.js`): the channel grid now fetches the
       author's NIP-71 videos (kinds 21/22/34235/34236) alongside kind-30078 via
