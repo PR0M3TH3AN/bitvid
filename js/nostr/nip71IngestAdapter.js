@@ -153,6 +153,18 @@ export function buildVideoFromNip71Event(event = {}) {
   const dTag = dTagFromEvent(event);
   const videoRootId = dTag || trimString(event.id);
 
+  // The feed's resolve-posted-at stage fetches per-video kind-30078 history when
+  // a timestamp isn't already known. Foreign NIP-71 videos have no such history,
+  // so without a posted-at the feed would fire a blocking history fetch per
+  // ingested video (a relay storm that stalls the render). Surface the NIP-71
+  // published_at (falling back to created_at) so the feed short-circuits.
+  const createdAt = Number.isFinite(event.created_at) ? Math.floor(event.created_at) : 0;
+  const publishedAtNum = Number(metadata.publishedAt);
+  const publishedAt =
+    Number.isFinite(publishedAtNum) && publishedAtNum > 0
+      ? Math.floor(publishedAtNum)
+      : createdAt;
+
   return {
     id: event.id,
     videoRootId,
@@ -181,7 +193,10 @@ export function buildVideoFromNip71Event(event = {}) {
     infoJsonUrl: "",
     enableComments: true,
     pubkey: trimString(event.pubkey),
-    created_at: Number.isFinite(event.created_at) ? event.created_at : 0,
+    created_at: createdAt,
+    // Lets the feed's resolve-posted-at stage short-circuit instead of fetching
+    // non-existent kind-30078 history for foreign videos.
+    nip71: { publishedAt },
     tags: Array.isArray(event.tags) ? event.tags : [],
     // Provenance markers so the rest of the app can distinguish ingested videos
     // from native bitvid uploads (e.g. to hide WebTorrent-only affordances).

@@ -56,6 +56,25 @@ test("maps a foreign NIP-71 event to a playable bitvid video", () => {
   assert.equal(v.isPrivate, false);
 });
 
+test("surfaces nip71.publishedAt so the feed skips per-video history fetches", () => {
+  // The published_at tag becomes nip71.publishedAt (feed resolve-posted-at uses
+  // it to avoid a blocking kind-30078 history fetch per ingested video).
+  const withPublished = buildVideoFromNip71Event(
+    foreignEvent({
+      tags: [
+        ["title", "Has published_at"],
+        ["published_at", "1700000123"],
+        ["imeta", "url https://example.com/v.mp4", "m video/mp4"],
+      ],
+    }),
+  );
+  assert.equal(withPublished.nip71.publishedAt, 1700000123);
+
+  // Falls back to created_at when there's no published_at tag.
+  const noPublished = buildVideoFromNip71Event(foreignEvent({ created_at: 1699999999 }));
+  assert.equal(noPublished.nip71.publishedAt, 1699999999);
+});
+
 test("content-warning maps to isNsfw so the NSFW gate applies", () => {
   const clean = buildVideoFromNip71Event(foreignEvent());
   assert.equal(clean.isNsfw, false);
