@@ -858,6 +858,12 @@ export default class ApplicationBootstrap {
     // Inbound NIP-71 ingest: pull video events published by other Nostr apps
     // (scoped to whitelisted authors while whitelist mode is on) and surface
     // them in the feed. Gated by FEATURE_NIP71_INGEST. Best-effort.
+    //
+    // Deferred until the native feed has rendered once: injecting foreign
+    // authors triggers the moderation/WoT stage to hydrate their social graph
+    // (kind 30000), which during cold-start competes with the initial feed load
+    // and can stall it. Starting after the first videos:updated keeps ingest off
+    // the critical path; a fallback timer covers the empty-feed case.
     const nip71IngestService = createNip71IngestService({
       nostrClient,
       nostrService: app.nostrService,
@@ -865,11 +871,7 @@ export default class ApplicationBootstrap {
     });
     app.nip71IngestService = nip71IngestService;
     if (nip71IngestService.isAvailable()) {
-      try {
-        nip71IngestService.start();
-      } catch (error) {
-        devLogger.warn("[applicationBootstrap] NIP-71 ingest start failed", error);
-      }
+      nip71IngestService.startWhenFeedReady();
       nostrUnsubscribes.push(() => nip71IngestService.stop());
     }
     nostrUnsubscribes.push(

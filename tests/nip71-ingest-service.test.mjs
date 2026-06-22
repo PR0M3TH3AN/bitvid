@@ -43,9 +43,16 @@ function makeHarness({ whitelistOn = false, whitelist = [] } = {}) {
     getActiveKey: activeKey,
     getSubscriptionManager: () => manager,
   };
+  const feedListeners = new Set();
   const nostrService = {
     emit(name, detail) {
       emitted.push({ name, detail });
+    },
+    on(name, fn) {
+      if (name === "videos:updated") {
+        feedListeners.add(fn);
+      }
+      return () => feedListeners.delete(fn);
     },
     getFilteredActiveVideos: () => Array.from(activeMap.values()),
   };
@@ -72,6 +79,7 @@ function makeHarness({ whitelistOn = false, whitelist = [] } = {}) {
     },
     fireEvent: (e) => onEvent?.(e),
     triggerWhitelistChange: () => whitelistListener?.(),
+    triggerFeedReady: () => feedListeners.forEach((fn) => fn({})),
     nostrClient,
     nostrService,
     accessControl,
@@ -216,6 +224,30 @@ test("re-subscribes when the whitelist changes", () => {
   h.accessControl.getWhitelistPubkeys = () => ["aa", "cc"];
   h.triggerWhitelistChange();
   assert.deepEqual(h.capturedFilters[0].authors, ["aa", "cc"], "subscription re-scoped after change");
+});
+
+test("startWhenFeedReady defers subscription until the native feed renders", () => {
+  const h = makeHarness({ whitelistOn: true, whitelist: ["aa"] });
+  const svc = makeService(h, { feedReadyFallbackMs: 100000 });
+
+  assert.equal(svc.startWhenFeedReady(), true);
+  assert.equal(h.capturedFilters, null, "does not subscribe during cold-start");
+
+  // Native feed renders -> first videos:updated -> ingest starts now.
+  h.triggerFeedReady();
+  assert.ok(h.capturedFilters, "subscribes once the feed is ready");
+  assert.deepEqual(h.capturedFilters[0].authors, ["aa"]);
+  svc.stop();
+});
+
+test("startWhenFeedReady falls back to starting if the feed never emits", async () => {
+  const h = makeHarness({ whitelistOn: true, whitelist: ["aa"] });
+  const svc = makeService(h, { feedReadyFallbackMs: 5 });
+  svc.startWhenFeedReady();
+  assert.equal(h.capturedFilters, null);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.ok(h.capturedFilters, "fallback timer started ingest");
+  svc.stop();
 });
 
 test("coalesces refresh signals so an event burst can't storm the feed", () => {

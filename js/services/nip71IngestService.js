@@ -36,6 +36,11 @@ const SUBSCRIPTION_KEY = "nip71-ingest";
 // subscribing.
 const OPEN_RETRY_DELAY_MS = 2000;
 const MAX_OPEN_ATTEMPTS = 30; // ~60s of retries
+// Defer the first subscription until the native feed has rendered (signalled by
+// the first videos:updated). Injecting foreign authors hydrates their WoT graph
+// (kind 30000), which during cold-start competes with the initial feed load; a
+// fallback covers the empty-feed case where no videos:updated ever fires.
+const FEED_READY_FALLBACK_MS = 12000;
 
 export function createNip71IngestService({
   nostrClient,
@@ -48,6 +53,7 @@ export function createNip71IngestService({
   openRetryDelayMs = OPEN_RETRY_DELAY_MS,
   maxOpenAttempts = MAX_OPEN_ATTEMPTS,
   refreshThrottleMs = REFRESH_THROTTLE_MS,
+  feedReadyFallbackMs = FEED_READY_FALLBACK_MS,
 } = {}) {
   let subscription = null;
   let buffer = [];
@@ -58,6 +64,9 @@ export function createNip71IngestService({
   let started = false;
   let lastRefreshAt = 0;
   let pendingRefreshTimer = null;
+  let deferArmed = false;
+  let deferTimer = null;
+  let offFeedReady = null;
 
   function isAvailable() {
     return (
@@ -199,6 +208,13 @@ export function createNip71IngestService({
     } catch (error) {
       logger?.warn?.("[nip71Ingest] getFilteredActiveVideos failed", error);
     }
+    // Confirm ingested videos survive the feed filter (whitelist/NSFW/etc.).
+    const foreignCount = Array.isArray(videos)
+      ? videos.filter((v) => v?.source === "nip71-ingest").length
+      : 0;
+    userLogger.info(
+      `[nip71Ingest] refresh: ${foreignCount} ingested of ${videos.length} in filtered feed`,
+    );
     if (typeof nostrService?.emit === "function") {
       nostrService.emit("videos:updated", {
         videos,
@@ -206,6 +222,35 @@ export function createNip71IngestService({
         reason: "nip71-ingest",
       });
     }
+  }
+
+  // Defer the first start until the native feed has rendered (first
+  // videos:updated), with a fallback timer for the empty-feed case. Keeps ingest
+  // off the cold-start critical path.
+  function startWhenFeedReady() {
+    if (started || deferArmed || !isAvailable()) {
+      return false;
+    }
+    deferArmed = true;
+
+    const begin = () => {
+      if (typeof offFeedReady === "function") {
+        offFeedReady();
+        offFeedReady = null;
+      }
+      if (deferTimer) {
+        clearTimeout(deferTimer);
+        deferTimer = null;
+      }
+      deferArmed = false;
+      start();
+    };
+
+    if (typeof nostrService?.on === "function") {
+      offFeedReady = nostrService.on("videos:updated", begin);
+    }
+    deferTimer = setTimeout(begin, feedReadyFallbackMs);
+    return true;
   }
 
   function start() {
@@ -313,6 +358,19 @@ export function createNip71IngestService({
 
   function stop() {
     closeSubscription();
+    if (typeof offFeedReady === "function") {
+      try {
+        offFeedReady();
+      } catch (error) {
+        // best-effort
+      }
+      offFeedReady = null;
+    }
+    if (deferTimer) {
+      clearTimeout(deferTimer);
+      deferTimer = null;
+    }
+    deferArmed = false;
     if (typeof offWhitelistChange === "function") {
       try {
         offWhitelistChange();
@@ -326,6 +384,7 @@ export function createNip71IngestService({
 
   return {
     isAvailable,
+    startWhenFeedReady,
     start,
     stop,
     restart,
