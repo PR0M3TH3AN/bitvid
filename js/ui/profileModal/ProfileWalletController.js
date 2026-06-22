@@ -631,18 +631,13 @@ export class ProfileWalletController {
         finalVariant = "info";
         this.mainController.showStatus("Wallet connection removed.");
         context.reason = "cleared";
-        // Don't leave a now-removed spending URI lingering (encrypted) on relays.
-        const sync = this.getWalletSyncService();
-        if (sync.isEnabled(normalizedActive)) {
-          try {
-            await sync.disable(normalizedActive);
-          } catch (syncError) {
-            devLogger.warn(
-              "[ProfileModal] Wallet sync clear after disconnect failed:",
-              syncError
-            );
-          }
-        }
+        // NOTE: deliberately do NOT clear the remote synced note here. An empty
+        // save happens routinely (e.g. saving before the wallet has hydrated /
+        // been restored on a fresh device), and wiping the encrypted note on
+        // relays would destroy a good copy that another device relies on. The
+        // remote note is only ever changed via the explicit sync toggle
+        // (enable/disable) or a successful save (push). Toggling sync off is the
+        // single, deliberate way to clear the remote.
       }
       context.success = true;
     } catch (error) {
