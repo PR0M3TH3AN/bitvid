@@ -37,6 +37,7 @@ test("initNip71MirrorSync subscribes to edit+delete events, idempotently", () =>
   const off = initNip71MirrorSync(svc);
   assert.equal(events["videos:edited"]?.length, 1, "subscribes to videos:edited");
   assert.equal(events["videos:deleted"]?.length, 1, "subscribes to videos:deleted");
+  assert.equal(events["videos:published"]?.length, 1, "subscribes to videos:published");
 
   initNip71MirrorSync(svc); // guard prevents double-registration
   assert.equal(events["videos:edited"].length, 1, "no double-register");

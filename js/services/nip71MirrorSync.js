@@ -6,13 +6,53 @@
 
 import { FEATURE_NIP71_MIRROR } from "../constants.js";
 import { nip71MirrorService } from "./nip71MirrorService.js";
+import { convertEventToVideo } from "../nostr/index.js";
 import {
   isMirrorEnabled,
   setMirrorEnabled,
+  isAutoShareEnabled,
   resolveEditSync,
   resolveDeleteSync,
+  resolvePublishSync,
 } from "./nip71MirrorFlags.js";
 import { devLogger } from "../utils/logger.js";
+
+// On publish of a NEW video, auto-mirror it when the account opted into
+// "auto-share new public videos" and it's eligible. Sets the per-video flag so
+// later edits/deletes keep it in sync. Best-effort.
+export async function syncNip71MirrorAfterPublish(detail = {}) {
+  const pubkey = typeof detail?.pubkey === "string" ? detail.pubkey : "";
+  const legacyEvent = detail?.result?.legacy;
+  if (!pubkey || !legacyEvent || typeof legacyEvent !== "object") {
+    return;
+  }
+  let video;
+  try {
+    video = convertEventToVideo(legacyEvent);
+  } catch (error) {
+    return;
+  }
+  if (!video || video.invalid || !video.videoRootId) {
+    return;
+  }
+  const withPubkey = { ...video, pubkey };
+  const decision = resolvePublishSync({
+    featureOn: FEATURE_NIP71_MIRROR,
+    autoShare: isAutoShareEnabled(pubkey),
+    eligible: nip71MirrorService.canMirror(withPubkey).ok,
+  });
+  if (decision.action !== "publish") {
+    return;
+  }
+  try {
+    const result = await nip71MirrorService.publish(withPubkey);
+    if (result?.ok) {
+      setMirrorEnabled(pubkey, video.videoRootId, true);
+    }
+  } catch (error) {
+    devLogger.warn("[nip71MirrorSync] auto-share publish failed", error);
+  }
+}
 
 export async function syncNip71MirrorAfterEdit({ updatedData, pubkey } = {}) {
   if (!updatedData || typeof updatedData !== "object") {
@@ -61,10 +101,14 @@ export function initNip71MirrorSync(nostrService) {
   const offDelete = nostrService.on("videos:deleted", ({ videoRootId, video, pubkey } = {}) => {
     void syncNip71MirrorAfterDelete({ videoRootId, video, pubkey });
   });
+  const offPublish = nostrService.on("videos:published", (detail) => {
+    void syncNip71MirrorAfterPublish(detail);
+  });
   return () => {
     registered = false;
     if (typeof offEdit === "function") offEdit();
     if (typeof offDelete === "function") offDelete();
+    if (typeof offPublish === "function") offPublish();
   };
 }
 

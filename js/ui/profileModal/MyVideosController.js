@@ -10,6 +10,8 @@ import {
   isMirrorEnabled,
   setMirrorEnabled,
   resolveMirrorToggle,
+  isAutoShareEnabled,
+  setAutoShareEnabled,
 } from "../../services/nip71MirrorFlags.js";
 
 const MIRROR_REASON_TEXT = {
@@ -48,6 +50,8 @@ export class MyVideosController {
     this.refreshBtn = null;
     this.orphansSection = null;
     this.orphanListEl = null;
+    this.autoShareRow = null;
+    this.autoShareInput = null;
     this.loading = false;
     this.publicBaseUrl = "";
     this.pubkey = "";
@@ -63,6 +67,10 @@ export class MyVideosController {
       document.getElementById("profileMyVideosOrphans") || null;
     this.orphanListEl =
       document.getElementById("profileMyVideosOrphanList") || null;
+    this.autoShareRow =
+      document.getElementById("profileMyVideosAutoShareRow") || null;
+    this.autoShareInput =
+      document.getElementById("profileMyVideosAutoShare") || null;
   }
 
   registerEventListeners() {
@@ -70,6 +78,26 @@ export class MyVideosController {
       this.refreshBtn.addEventListener("click", () => {
         void this.populate({ forceFetch: true });
       });
+    }
+    if (this.autoShareInput instanceof HTMLInputElement) {
+      this.autoShareInput.addEventListener("change", () => {
+        const pubkey = this.getPubkey();
+        if (!pubkey) {
+          return;
+        }
+        setAutoShareEnabled(pubkey, this.autoShareInput.checked === true);
+      });
+    }
+  }
+
+  refreshAutoShareToggle(pubkey) {
+    if (!(this.autoShareRow instanceof HTMLElement)) {
+      return;
+    }
+    const eligible = FEATURE_NIP71_MIRROR && !!pubkey;
+    this.autoShareRow.classList.toggle("hidden", !eligible);
+    if (eligible && this.autoShareInput instanceof HTMLInputElement) {
+      this.autoShareInput.checked = isAutoShareEnabled(pubkey);
     }
   }
 
@@ -114,6 +142,7 @@ export class MyVideosController {
       return;
     }
     const pubkey = this.getPubkey();
+    this.refreshAutoShareToggle(pubkey);
     if (!pubkey) {
       this.renderRows([]);
       this.setSummary("");

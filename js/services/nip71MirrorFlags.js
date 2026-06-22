@@ -5,6 +5,7 @@
 // relays.
 
 const FLAG_KEY = "bitvid:nip71-mirror:v1";
+const AUTO_SHARE_KEY = "bitvid:nip71-autoshare:v1";
 
 function readFlags() {
   try {
@@ -72,6 +73,56 @@ export function resolveMirrorToggle({ enabled, eligibility } = {}) {
     return { action: "blocked", reason: eligibility?.reason || "ineligible" };
   }
   return { action: "publish" };
+}
+
+// Account-level "auto-share new public videos" preference (per pubkey, off by
+// default). When on, newly published eligible public videos are mirrored
+// automatically — no per-video opt-in needed.
+function readAutoShare() {
+  try {
+    if (typeof localStorage === "undefined") {
+      return {};
+    }
+    const raw = localStorage.getItem(AUTO_SHARE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (error) {
+    return {};
+  }
+}
+
+export function isAutoShareEnabled(pubkey) {
+  const pk = norm(pubkey);
+  return pk ? readAutoShare()[pk] === true : false;
+}
+
+export function setAutoShareEnabled(pubkey, enabled) {
+  const pk = norm(pubkey);
+  if (!pk) {
+    return;
+  }
+  const map = readAutoShare();
+  if (enabled === true) {
+    map[pk] = true;
+  } else {
+    delete map[pk];
+  }
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(AUTO_SHARE_KEY, JSON.stringify(map));
+    }
+  } catch (error) {
+    // best-effort
+  }
+}
+
+// On publish of a NEW video: mirror it only when auto-share is on AND it's
+// eligible (public + hosted URL + allowed). Otherwise do nothing.
+export function resolvePublishSync({ featureOn, autoShare, eligible } = {}) {
+  if (featureOn !== true || autoShare !== true) {
+    return { action: "none" };
+  }
+  return eligible === true ? { action: "publish" } : { action: "none" };
 }
 
 // Lifecycle decisions for keeping an opted-in mirror in sync (used by the

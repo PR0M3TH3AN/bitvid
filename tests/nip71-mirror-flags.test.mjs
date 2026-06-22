@@ -10,6 +10,9 @@ import {
   resolveMirrorToggle,
   resolveEditSync,
   resolveDeleteSync,
+  isAutoShareEnabled,
+  setAutoShareEnabled,
+  resolvePublishSync,
 } from "../js/services/nip71MirrorFlags.js";
 
 const PK = "a".repeat(64);
@@ -71,4 +74,21 @@ test("resolveDeleteSync: removes the mirror only when it was shared", () => {
   assert.deepEqual(resolveDeleteSync({ featureOn: true, enabled: true }), { action: "unshare" });
   assert.deepEqual(resolveDeleteSync({ featureOn: true, enabled: false }), { action: "none" });
   assert.deepEqual(resolveDeleteSync({ featureOn: false, enabled: true }), { action: "none" });
+});
+
+test("auto-share preference persists per pubkey, off by default", () => {
+  localStorage.clear();
+  assert.equal(isAutoShareEnabled(PK), false);
+  setAutoShareEnabled(PK, true);
+  assert.equal(isAutoShareEnabled(PK), true);
+  assert.equal(isAutoShareEnabled("c".repeat(64)), false, "scoped per pubkey");
+  setAutoShareEnabled(PK, false);
+  assert.equal(isAutoShareEnabled(PK), false);
+});
+
+test("resolvePublishSync: auto-mirror a new video only when auto-share on AND eligible", () => {
+  assert.deepEqual(resolvePublishSync({ featureOn: true, autoShare: true, eligible: true }), { action: "publish" });
+  assert.deepEqual(resolvePublishSync({ featureOn: true, autoShare: true, eligible: false }), { action: "none" });
+  assert.deepEqual(resolvePublishSync({ featureOn: true, autoShare: false, eligible: true }), { action: "none" });
+  assert.deepEqual(resolvePublishSync({ featureOn: false, autoShare: true, eligible: true }), { action: "none" });
 });
