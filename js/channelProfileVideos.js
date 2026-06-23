@@ -27,3 +27,59 @@ export function convertChannelEvent(entry) {
   }
   return sharedConvertEventToVideo(entry);
 }
+
+// ---- Per-channel persisted cache (instant cold-load paint) -------------------
+// Mirrors the main feed's optimistic cache: on a cold hard-refresh of a profile,
+// render the last-seen videos from localStorage BEFORE relays connect, then the
+// live fetch replaces them. Keyed per author; bounded so storage can't grow
+// without limit.
+
+const CHANNEL_CACHE_KEY = "bitvid:channel-videos:v1";
+const MAX_CACHED_CHANNELS = 20;
+const MAX_VIDEOS_PER_CHANNEL = 60;
+
+function normPubkey(pubkey) {
+  return typeof pubkey === "string" ? pubkey.trim().toLowerCase() : "";
+}
+
+function readChannelCacheMap() {
+  try {
+    if (typeof localStorage === "undefined") return {};
+    const raw = localStorage.getItem(CHANNEL_CACHE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (error) {
+    return {};
+  }
+}
+
+export function loadCachedChannelVideos(pubkey) {
+  const pk = normPubkey(pubkey);
+  if (!pk) return [];
+  const entry = readChannelCacheMap()[pk];
+  return entry && Array.isArray(entry.videos) ? entry.videos : [];
+}
+
+export function saveCachedChannelVideos(pubkey, videos) {
+  const pk = normPubkey(pubkey);
+  if (!pk || !Array.isArray(videos) || typeof localStorage === "undefined") {
+    return;
+  }
+  try {
+    const map = readChannelCacheMap();
+    // Drop the heavy raw `tags` array — the render + dedupe paths use parsed
+    // top-level fields; the live fetch restores full objects moments later.
+    const slim = videos.slice(0, MAX_VIDEOS_PER_CHANNEL).map(({ tags, ...rest }) => rest);
+    map[pk] = { videos: slim, ts: Date.now() };
+    const keys = Object.keys(map);
+    if (keys.length > MAX_CACHED_CHANNELS) {
+      keys
+        .sort((a, b) => (map[a]?.ts || 0) - (map[b]?.ts || 0))
+        .slice(0, keys.length - MAX_CACHED_CHANNELS)
+        .forEach((k) => delete map[k]);
+    }
+    localStorage.setItem(CHANNEL_CACHE_KEY, JSON.stringify(map));
+  } catch (error) {
+    // best-effort; cache is non-critical
+  }
+}

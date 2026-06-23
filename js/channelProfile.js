@@ -1,7 +1,7 @@
 // js/channelProfile.js
 
 import { nostrClient } from "./nostrClientFacade.js";
-import { convertChannelEvent, buildChannelVideoFilters } from "./channelProfileVideos.js";
+import { convertChannelEvent, buildChannelVideoFilters, loadCachedChannelVideos, saveCachedChannelVideos } from "./channelProfileVideos.js";
 import { dedupeVideos } from "./utils/videoDeduper.js";
 import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
 import { subscriptions } from "./subscriptions.js";
@@ -5353,10 +5353,13 @@ async function loadUserVideos(pubkey) {
 
   let renderedFromCache = false;
   if (container) {
+    // In-memory cache (warm) first; else the persisted per-channel cache so a
+    // COLD hard-refresh paints last-seen videos before relays connect.
     const cachedEvents = getCachedChannelVideoEvents(pubkey);
-    if (cachedEvents.length) {
+    const cacheSource = cachedEvents.length ? cachedEvents : loadCachedChannelVideos(pubkey);
+    if (cacheSource.length) {
       const cachedVideos = buildRenderableChannelVideos({
-        events: cachedEvents,
+        events: cacheSource,
         app
       });
       if (cachedVideos.length) {
@@ -5438,6 +5441,7 @@ async function loadUserVideos(pubkey) {
     }
 
     const videos = buildRenderableChannelVideos({ events, app });
+    saveCachedChannelVideos(pubkey, videos);
     const rendered = await renderChannelVideosFromList({
       videos,
       container,

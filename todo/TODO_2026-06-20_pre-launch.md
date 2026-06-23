@@ -355,8 +355,11 @@ has a persisted cache; channel/search now render optimistically from
       manager's streaming + render incrementally (first-relay-wins), like the main
       feed's buffered subscription. Extract the fetch into `channelProfileVideos.js`
       (channelProfile.js is at its size cap).
-- [ ] **Per-channel persisted cache** for instant revisits (mirror the main feed's
-      `bitvid:filtered-videos` optimistic cache, keyed per author).
+- [x] **Per-channel persisted cache** (`channelProfileVideos.js`,
+      `bitvid:channel-videos:v1`): cold hard-refresh of a profile now paints the
+      last-seen videos from localStorage before relays connect, then the live fetch
+      replaces them. Bounded (60 videos/channel, 20 channels LRU), strips raw tags.
+      Tests + mutation-verified.
 - [ ] **My Videos: include NIP-71** in its `allEvents` read so a creator's own
       cross-posted videos appear in management too (reuse the cross-ecosystem
       dedupe so the bitvid version wins).
