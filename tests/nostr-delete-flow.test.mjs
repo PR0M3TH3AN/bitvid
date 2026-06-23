@@ -1,9 +1,11 @@
 import "./test-helpers/setup-localstorage.mjs";
 import assert from "node:assert/strict";
+import test from "node:test";
 import { NostrClient } from "../js/nostr/client.js";
 import { NostrService } from "../js/services/nostrService.js";
+import { VideoEventBuffer } from "../js/nostr/videoEventBuffer.js";
 
-await (async function testDeleteFlowPublishesDeletionFlag() {
+test("delete flow publishes the deletion flag and surfaces relay failures", async () => {
   localStorage.clear();
   const client = new NostrClient();
   client.videoEventVerifier = async (events) => new Set(events.map((e) => e.id));
@@ -48,7 +50,12 @@ await (async function testDeleteFlowPublishesDeletionFlag() {
   });
 
   client.ensureExtensionPermissions = async () => ({ ok: true });
+  // Deletes publish to the WRITE set via getDeletePublishRelays() (the afb6200b
+  // relay-scope fix), NOT client.relays. writeRelays defaults to the bundled
+  // relays, so the fail-relay must be configured here or the injected failure is
+  // never exercised and the "surface relay failures" assertions silently pass.
   client.relays = ["wss://relay.ok", "wss://relay.fail"];
+  client.writeRelays = ["wss://relay.ok", "wss://relay.fail"];
   client.rawEvents.set(baseVideo.id, {
     id: baseVideo.id,
     kind: 30078,
@@ -189,44 +196,41 @@ await (async function testDeleteFlowPublishesDeletionFlag() {
     created_at: baseVideo.created_at,
   });
 
+  // Live-stream guard. subscribeVideos routes relay events through a
+  // VideoEventBuffer (via the SubscriptionManager); we drive that real buffer
+  // directly here. A deletion event arriving on the stream must clear the active
+  // map entry and advance the tombstone, and must never surface as a *live*
+  // video. (Note: under the current architecture a deletion DOES surface to the
+  // callback marked deleted:true so the UI can remove the card — the obsolete
+  // pre-buffer expectation of "no callback at all" was incorrect.)
   const seenUpdates = [];
-  const handlers = {};
-  const fakeSub = {
-    on(type, handler) {
-      handlers[type] = handler;
+  const buffer = new VideoEventBuffer(
+    client,
+    (videos) => {
+      if (Array.isArray(videos)) {
+        seenUpdates.push(...videos);
+      }
     },
-    unsub() {},
-  };
-
-  client.pool = {
-    sub() {
-      return fakeSub;
-    },
-  };
-
-  client.subscribeVideos((videos) => {
-    if (Array.isArray(videos)) {
-      seenUpdates.push(...videos);
-    }
-  });
+    { verifyEvents: client.videoEventVerifier },
+  );
 
   const deleteEvent = {
     id: "delete-event-1",
+    kind: 30078,
     pubkey,
     created_at: revertEvents[0].created_at + 100,
     content: revertCalls[0].content,
     tags: baseVideo.tags,
   };
 
-  handlers.event(deleteEvent);
-  if (typeof handlers.eose === "function") {
-    await handlers.eose();
-  }
+  buffer.push(deleteEvent);
+  await buffer.scheduleFlush(true);
 
   assert.equal(
-    seenUpdates.length,
+    seenUpdates.filter((video) => video.id === deleteEvent.id && !video.deleted)
+      .length,
     0,
-    "deleted events should not trigger subscription callbacks",
+    "a deletion event must not surface as a live (non-deleted) video",
   );
   assert.equal(
     client.activeMap.has(activeKey),
@@ -242,9 +246,9 @@ await (async function testDeleteFlowPublishesDeletionFlag() {
     "subscription delete event should update tombstone",
   );
   delete window.nostr;
-})();
+});
 
-await (async function testTombstonePersistenceAcrossSaveRestore() {
+test("tombstone persists across save/restore", async () => {
   localStorage.clear();
   const client = new NostrClient();
   client.videoEventVerifier = async (events) => new Set(events.map((e) => e.id));
@@ -290,34 +294,30 @@ await (async function testTombstonePersistenceAcrossSaveRestore() {
     false,
     "restored tombstoned video should not populate activeMap",
   );
-})();
+});
 
-await (async function testSubscribeVideosSkipsOlderThanTombstone() {
+test("buffered feed guards events older than a tombstone (no resurrection)", async () => {
+  // subscribeVideos streams relay events through a VideoEventBuffer; we drive the
+  // real buffer + real NostrClient here (the buffer's own unit test mocks the
+  // client's tombstone guard, so this is the integration-level check). A delete
+  // event seeds the tombstone; an OLDER non-deleted event arriving afterward must
+  // be guarded (marked deleted, kept out of activeMap) so it can never resurrect
+  // the video as live.
   localStorage.clear();
   const client = new NostrClient();
   client.videoEventVerifier = async (events) => new Set(events.map((e) => e.id));
   client.populateNip71MetadataForVideos = async () => {};
 
   const seenUpdates = [];
-  const handlers = {};
-  const fakeSub = {
-    on(type, handler) {
-      handlers[type] = handler;
+  const buffer = new VideoEventBuffer(
+    client,
+    (videos) => {
+      if (Array.isArray(videos)) {
+        seenUpdates.push(...videos);
+      }
     },
-    unsub() {},
-  };
-
-  client.pool = {
-    sub() {
-      return fakeSub;
-    },
-  };
-
-  client.subscribeVideos((videos) => {
-    if (Array.isArray(videos)) {
-      seenUpdates.push(...videos);
-    }
-  });
+    { verifyEvents: client.videoEventVerifier },
+  );
 
   const pubkey = "PUBKEY789";
   const videoRootId = "root-sub";
@@ -328,6 +328,7 @@ await (async function testSubscribeVideosSkipsOlderThanTombstone() {
 
   const deleteEvent = {
     id: "delete-event-guard",
+    kind: 30078,
     pubkey,
     created_at: 1_700_100_000,
     content: JSON.stringify({
@@ -344,10 +345,8 @@ await (async function testSubscribeVideosSkipsOlderThanTombstone() {
     tags,
   };
 
-  handlers.event(deleteEvent);
-  if (typeof handlers.eose === "function") {
-    await handlers.eose();
-  }
+  buffer.push(deleteEvent);
+  await buffer.scheduleFlush(true);
 
   const activeKey = `ROOT:${videoRootId}`;
   assert.equal(
@@ -363,6 +362,7 @@ await (async function testSubscribeVideosSkipsOlderThanTombstone() {
 
   const olderEvent = {
     id: "older-event",
+    kind: 30078,
     pubkey,
     created_at: deleteEvent.created_at - 60,
     content: JSON.stringify({
@@ -379,15 +379,14 @@ await (async function testSubscribeVideosSkipsOlderThanTombstone() {
     tags,
   };
 
-  handlers.event(olderEvent);
-  if (typeof handlers.eose === "function") {
-    await handlers.eose();
-  }
+  buffer.push(olderEvent);
+  await buffer.scheduleFlush(true);
 
   assert.equal(
-    seenUpdates.length,
+    seenUpdates.filter((video) => video.id === olderEvent.id && !video.deleted)
+      .length,
     0,
-    "older events published after tombstone should not trigger callbacks",
+    "a tombstone-guarded older event must not surface as a live video",
   );
 
   const storedOlder = client.allEvents.get(olderEvent.id);
@@ -397,9 +396,9 @@ await (async function testSubscribeVideosSkipsOlderThanTombstone() {
     false,
     "older event should not repopulate the active map",
   );
-})();
+});
 
-await (async function testNostrServiceBubblesDeleteFailures() {
+test("nostrService bubbles delete + revert relay failures", async () => {
   const service = new NostrService();
   const pubkey = "PUBKEY123";
   const videoRootId = "root-service";
@@ -485,6 +484,4 @@ await (async function testNostrServiceBubblesDeleteFailures() {
     "wss://relay.fail",
     "delete failures should include the failing relay url",
   );
-})();
-
-console.log("nostr delete flow tests passed");
+});

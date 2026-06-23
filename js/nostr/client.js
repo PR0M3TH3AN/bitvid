@@ -42,6 +42,10 @@ import {
   resolveStoragePointerValue,
 } from "../utils/storagePointer.js";
 import { RelayBatchFetcher } from "./relayBatchFetcher.js";
+// Single source of truth for active-key derivation. The tombstone/zombie-guard
+// logic below relies on it, and a stale local copy (missing the LEGACY: guard)
+// caused deleted legacy videos to resurrect — keep this imported, not duplicated.
+import { getActiveKey } from "./utils.js";
 import { createPersistedPlaintextCache } from "./persistedPlaintextCache.js";
 import {
   createWatchHistoryManager,
@@ -405,17 +409,6 @@ function buildDmFilters(actorPubkey, { since, until, limit } = {}) {
   }
 
   return filters;
-}
-
-function getActiveKey(video) {
-  if (video.videoRootId) {
-    return `ROOT:${video.videoRootId}`;
-  }
-  const dTag = video.tags?.find((t) => t[0] === "d");
-  if (dTag) {
-    return `${video.pubkey}:${dTag[1]}`;
-  }
-  return `LEGACY:${video.id}`;
 }
 
 export {
