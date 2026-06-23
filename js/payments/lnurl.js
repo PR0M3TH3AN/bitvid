@@ -306,6 +306,48 @@ export async function fetchPayServiceData(url, { fetcher } = {}) {
   };
 }
 
+// Browser-side reachability probe for a Lightning address. Does exactly what a
+// zapper's browser would do — resolve the address and fetch its LNURL pay-service
+// data. If that fails (host offline, TLS-broken, or — most common — missing CORS
+// headers), nobody can zap this address from a static client like bitvid either.
+// Use it to proactively warn a creator at wallet-connect time.
+// Returns: { ok, reason, address, allowsNostr }.
+//   reason: "ok" | "invalid-address" | "lnurl-unreachable" | "no-nostr" | <error msg>
+export async function checkLightningAddressZappable(address, { fetcher } = {}) {
+  let resolved;
+  try {
+    resolved = resolveLightningAddress(address);
+  } catch (error) {
+    return {
+      ok: false,
+      reason: "invalid-address",
+      address: typeof address === "string" ? address.trim() : "",
+    };
+  }
+
+  try {
+    const metadata = await fetchPayServiceData(resolved.url, { fetcher });
+    // Reachable from a browser. A pay endpoint that doesn't advertise Nostr can
+    // still take a normal payment but won't produce a zap receipt — surface it.
+    if (metadata && metadata.allowsNostr !== true) {
+      return {
+        ok: true,
+        reason: "no-nostr",
+        address: resolved.address,
+        allowsNostr: false,
+      };
+    }
+    return { ok: true, reason: "ok", address: resolved.address, allowsNostr: true };
+  } catch (error) {
+    return {
+      ok: false,
+      reason: error?.code || (typeof error?.message === "string" ? error.message : "lnurl-unreachable"),
+      address: resolved.address,
+      error,
+    };
+  }
+}
+
 export function validateInvoiceAmount(metadata, amountSats) {
   if (!metadata || typeof metadata !== "object") {
     throw new Error("LNURL metadata is required to validate invoice amounts.");

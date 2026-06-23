@@ -1,6 +1,7 @@
 import { devLogger } from "../../utils/logger.js";
 import { NWC_URI_SCHEME } from "../profileModalContract.js";
 import { createWalletSyncService } from "../../services/walletSyncService.js";
+import { runWalletZappabilityCheck } from "./walletZappabilityCheck.js";
 
 const noop = () => {};
 const SECRET_PLACEHOLDER = "*****";
@@ -632,6 +633,11 @@ export class ProfileWalletController {
         finalVariant = "success";
         this.mainController.showSuccess("Wallet settings saved.");
         context.reason = "saved";
+        // Proactively check whether THIS creator's own Lightning address is
+        // reachable from a browser. If their LNURL host is offline or blocks
+        // browser requests (no CORS), nobody can zap them on bitvid — warn now.
+        // Non-blocking: the network probe must not delay the save.
+        void this.warnIfLightningAddressUnzappable(normalizedActive);
         // Keep the encrypted synced copy current if the user opted in. Warn
         // before overwriting a newer copy changed on another device.
         const sync = this.getWalletSyncService();
@@ -689,6 +695,12 @@ export class ProfileWalletController {
     }
 
     return context;
+  }
+
+  // Warn the creator if their OWN Lightning address can't be reached from a browser
+  // (delegated; runs after a successful wallet save). See walletZappabilityCheck.js.
+  async warnIfLightningAddressUnzappable(pubkey) {
+    return runWalletZappabilityCheck(this, pubkey);
   }
 
   async handleWalletTest() {
