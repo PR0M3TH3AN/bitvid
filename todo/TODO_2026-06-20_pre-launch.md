@@ -106,11 +106,23 @@ tests → `npm run build` + `npm run test:unit` green → commit + push.
       double-counting, and resilience to dead relays (now that feed defaults are
       reserved, ensure view reads/writes use a sane relay set too).
 
-### 5. Card-hide / video-liveness check
-- [ ] Audit the card-hide system that gates a card on a video-liveness probe
-      (`gridHealth.js`, probe concurrency now 4). Confirm: dead URL/magnet hides the
-      card correctly, a live video is never falsely hidden, and the probe can't
-      stampede connections (regression risk from the freeze fix).
+### 5. Card-hide / video-liveness check — full plan in docs/video-liveness-plan.md
+Audited (2026-06-23). Finding: the hide/show **policy is already correct**
+(`cardSourceVisibility.js` hides only when neither CDN nor WebTorrent is healthy;
+un-hides when WebTorrent flips green). The real gaps:
+- [ ] **Speed**: `URL_PROBE_TIMEOUT_MS=8s` (+retry) and WebTorrent probe 20s mean
+      unplayable cards stay *visible* (pending isn't hidden) for seconds. Tune
+      timeouts + concurrency for a faster verdict.
+- [ ] **Probe accuracy**: the CDN check races an opaque `HEAD no-cors` (status
+      unreadable for cross-origin NIP-71 CDNs). Use the **video-element probe**
+      (`confirmPlayable`, actually loads media) as the card verdict.
+- [ ] **Multi-source**: ingest adapter keeps ONE url; NIP-71 events can list
+      multiple imeta (mirrors / alternate media). Capture all video sources +
+      magnet; probe/play them in order; healthy if ANY plays, offline only if ALL
+      fail. (Example: Walker/THE Bitcoin Podcast event — mp4 + mp3 imeta.)
+- [ ] **Decision**: show-pending (current) vs hide-until-verified for foreign
+      ingested videos (so unplayable strangers never flash in). Recommend
+      hide-until-verified for foreign, show-pending for bitvid-native.
 
 ## Open — medium priority
 
