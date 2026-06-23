@@ -115,11 +115,17 @@ side action bar). Both share `js/ui/overlay/popoverEngine.js`.
   `left`, `top`, and its DOM parent (is it under `#uiOverlay` at body level or
   still nested in the modal?).
 
-### 3. Zaps system + platform-fee zap split
-- [ ] Audit the zap flow (NWC / `nwcClient.js`, `zapController.js`, `zapReceiptValidator.js`).
-- [ ] Verify the platform-fee split: correct recipients, correct percentages, rounding,
-      and that the fee can't silently swallow the whole zap or be bypassed.
-- [ ] Confirm zap-receipt validation (kind 9735) is accurate before crediting.
+### 3. Zaps system + platform-fee zap split — full plan in docs/zap-audit-plan.md
+Audit started 2026-06-23. See the doc for architecture map + findings. Summary:
+- [x] **Send-error softened** (`dd1ce113`): recipient LNURL unreachable/CORS now
+      shows a clear message, not raw "Failed to fetch".
+- [ ] **CORS / LNURL proxy decision** (the real reliability fix — static client
+      can't fetch CORS-less LNURL hosts; many zaps fail). Top of the next session.
+- [ ] **Popover positioning (3a)**, **platform-fee split correctness** (incl. the
+      earlier "fee landed in my own wallet" report + self-zap edge), **receipt
+      validation (9735)**, **NWC budget/retry UX**, **general clunkiness**.
+- [x] Comment box confirmed WORKING (the "message doesn't work" was the popover
+      mis-position making it hard to use — see 3a).
 
 ### 4. View counter accuracy & reliability
 - [ ] Audit the view-counter system (`viewEvents.js`, `reactionCounter.js`) for
@@ -170,6 +176,15 @@ un-hides when WebTorrent flips green). The real gaps:
       kind-30000 REQ *per curator* (~28-32 parallel) at cold start. Collapsed into a
       single batched multi-author REQ (`js/adminListBatch.js`), routed through the
       subscription manager. This was the dominant `kind 30000` storm.
+- [ ] **VERIFY the batching actually reduced it.** A later logged-OUT load
+      (2026-06-23 00:45) STILL showed `kind 30000=32` — either that build wasn't
+      loaded, or there's ANOTHER kind-30000 source besides
+      `loadCommunityBlacklistEntries` (admin editor/whitelist/blacklist lists? a
+      per-author follow-set fetch?). Re-check on a fresh hard-refresh; if still ~32,
+      trace the actual emitter.
+- [ ] **`from_hex` source not root-caused.** The sanitizer (`733cb593`) defends +
+      dev-logs `[toolkit] dropped N invalid hex value(s) from filter "<field>"` —
+      watch that log to find which subscription ships the odd-length hex, fix at source.
 - [x] **Relay `from_hex` REQ rejects fixed** (`733cb593`): one odd-length/non-hex
       value in `ids/authors/#e/#p/#q` made strict relays reject a whole REQ; now
       sanitized at the pool choke point (`normalizeFilterList`).
