@@ -163,6 +163,21 @@ Audit started 2026-06-23. See the doc for architecture map + findings. Summary:
 - [x] **Popover positioning (3a)** — FIXED (see 3a).
 - [x] **In-flight status + form-reset polish (2026-06-23)** — "Sending…" no longer
       mis-toned as a warning; success path fully resets the form (`resetZapForm`).
+- [ ] **"Have to click the Zap button ~3 times before it opens" — STILL BROKEN.**
+      First attempt (2026-06-23) made a mid-open click a no-op instead of canceling
+      the in-flight open (`video-modal/zapController.js`) — but the user confirms it
+      still takes ~3 clicks, so the toggle-parity theory was wrong / incomplete. Real
+      cause still to find. Suspects to check live: the popover engine's global
+      `pointerdown` capture handler closing the just-opened panel; the open() promise
+      never resolving (so every click hits the in-flight branch and is ignored — would
+      need the panel's `isOpen`/state to be stuck); `activePopoverInstance` closing it;
+      or a focus/`autoUpdate` race. Instrument: log each click's `isZapDialogOpen()` +
+      `modalZapOpenPromise` + engine `isOpen` to see what state each click sees.
+- [x] **Receipt success-reporting + discovery FIXED (2026-06-23)** — a paid zap whose
+      kind-9735 receipt couldn't be validated was shown as a red error; now it's a
+      success-with-note (the NWC preimage proves payment). Receipt lookup now queries
+      the reliably-indexed `#e/#a/#p` tags (not the unindexed `#bolt11`) and polls a
+      few times for a late receipt. See docs/zap-audit-plan.md.
 - [x] **Platform-fee fallback verified no-bypass** — junk override falls back to the
       configured fee, not 0.
 - [ ] **CORS / LNURL proxy decision** (NEEDS A DECISION — the remaining reliability
@@ -203,6 +218,47 @@ un-hides when WebTorrent flips green). The real gaps:
 - [ ] **Remaining — hide-until-verified for foreign/ingested** (decision): so
       unplayable strangers never briefly flash before the probe hides them
       (bitvid-native stays show-pending). UX policy change in cardSourceVisibility.
+
+### 18. Embed button / modal on the video player does not open — BUG
+- [ ] The "Embed" action in the video-modal action bar does nothing / the embed
+      modal (`components/embed-video-modal.html`, `#embedVideoModal`) never opens.
+      Unlike the zap popover (3a), embed is a full modal, not an anchored popover, so
+      this is a separate wiring/trigger bug. Trace the embed button's click handler
+      → modal-open call; confirm the modal element is registered with the modal
+      manager and that the open path isn't short-circuited. Verify the snippet
+      (CDN / P2P source toggle, width/height, copy-to-clipboard) renders once open.
+
+### 19. Direct messages: can read but cannot SEND — deep audit (BUG)
+- [ ] DMs are pulled in and readable, but sending appears to do nothing / fails.
+      Do a focused audit of the send path (compose → encrypt → sign → publish):
+      NIP-17/gift-wrap vs NIP-04 path selection, the signer's encrypt budget /
+      circuit-breaker, which write relays the DM publishes to (and whether any
+      accept), and the optimistic-vs-confirmed UI state. Reuse the
+      `tests/dm-*` suites and add a send→publish→assert-accepted regression. (Note:
+      the NIP-07 signer reliability invariants in AGENTS.md §17 apply — a dead
+      extension worker can make sends hang silently.)
+
+### 20. Feed / grid loading reliability — some videos missing (BUG)
+Two related intermittent symptoms; likely the same root cause (a one-shot,
+all-relays-settle fetch that drops slow-relay results — see 17d).
+- [ ] **Profile / Channel page sometimes doesn't pull in all of a creator's videos.**
+- [ ] **Paginating between video-grid pages sometimes doesn't pull in all videos.**
+- [ ] Audit the channel/search/grid fetch for: relays that EOSE late being dropped,
+      pagination cursor gaps, dedup discarding valid items, and cache-vs-live
+      reconciliation. Switch the bespoke loaders to the streaming subscription path
+      (first-relay-wins, incremental render) per **17d**. Add coverage that a slow
+      relay's late events still land in the grid.
+
+### 21. "For You" feed: verify it actually personalizes (AUDIT)
+- [ ] The "For You" grid looks identical to "Recently added" and "Explore" —
+      confirm whether it is genuinely filtering/ranking by the logged-in user's
+      profile signals (followed hashtags, subscriptions/follows, watch history) or
+      silently falling back to chronological/explore output. Trace the feed-engine
+      stage wiring for the "For You" source: are the personalization stages
+      (hashtag preference, follow-set, watch-history affinity) actually registered
+      and weighted for this grid, and is the user's data loaded before it renders?
+      If it's mis-wired, fix; either way add a test that personalized input changes
+      the ordering vs. the chronological feed.
 
 ## Open — medium priority
 
@@ -255,6 +311,40 @@ un-hides when WebTorrent flips green). The real gaps:
       ones (DM relays, interest sets) until after first render. Multi-subsystem +
       sensitive (trust) → do as a dedicated perf pass, not a rushed change.
       Source still to pin: the loop issuing 30000/30002/30005/30015 per contact.
+
+### 22. Anti-spam: validate npub on application / submission forms
+- [ ] Application/submission forms accept too much spam. Require the submitter's
+      identifier to be a valid `npub` (NIP-19) — regex/decoder validation client-side
+      so submission only succeeds for a well-formed npub (and normalize to hex for
+      storage). Reject/disable submit otherwise with a clear inline error. Pairs with
+      #23 (the submissions should become structured data, not DMs).
+
+### 23. Admin submissions tab — structured submissions + approve/deny UI (SCALING)
+- [ ] Replace the current DM-based submission flow with **custom structured data**
+      (a dedicated Nostr event kind / addressable record, or app data) instead of
+      free-form DMs, so submissions are parseable and actionable.
+- [ ] Add an **Admin → Submissions tab** with a nicely formatted UI: each submission
+      rendered with its fields and an **Approve / Deny** action that applies the
+      corresponding change (add to whitelist, add to blacklist, etc.) without manual
+      list-editing. This is foundational for scaling moderation as the platform grows.
+- [ ] Define the submission schema + the admin action → list-mutation mapping; reuse
+      the existing admin list stores (whitelist/blacklist) for the writes.
+
+### 24. User-level allowlist override for the Web-of-Trust mute list
+- [ ] Let a user keep (and import) a personal **allowlist** that the client ALWAYS
+      shows content from, overriding the inherited WoT/trusted-mute list. So even if a
+      trusted curator mutes an author, the user can force that author's content to
+      appear in their own feeds. Persist it (NIP-51 list, encrypted/opt-in), make it
+      importable, and apply it at the render-time moderation filter as a final
+      allow-override after the WoT mute/block checks.
+
+### 25. Per-video / per-event admin block list (granular moderation)
+- [ ] Today admin moderation is essentially a "ban hammer" (author/community level).
+      Add a **per-event (per-video) block list** so an admin can hide a SINGLE
+      offending video without blocking the whole author. Define the per-event block
+      record (kind/addressable + the event id / address it targets), wire it into the
+      render-time filter alongside the existing author/community blacklist, and expose
+      it in the moderation UI (and eventually the #23 admin tab).
 
 ## Open — lower priority / infra
 
@@ -416,6 +506,13 @@ Threat model / cautions (write these into the feature + docs):
 > Note: live streams and short-form video are almost certainly NOT the same
 > thing — they're two different NIPs. Confirm the exact kinds/tags before building.
 
+> **Shared requirement for #16 + #16b:** each is a NEW left **sidebar tab**, and each
+> must be independently **enable/disable-able from the instance config file**
+> (`config/instance-config.js`, like the existing feature flags). When a tab is
+> disabled it must be completely absent — no tab, no subscriptions, no trace — exactly
+> as if it were never added (the current default state). Build both behind their own
+> config flags from the start.
+
 ### 16. Nostr live streams — watch-only (zap.stream, shosho.live)
 - [ ] Likely **NIP-53 Live Activities**: kind **30311** (live event; carries the
       `streaming` URL — usually HLS .m3u8 — plus `status` live/planned/ended,
@@ -424,8 +521,25 @@ Threat model / cautions (write these into the feature + docs):
 - [ ] Watch-only scope: discover/list live (status=live) events, render the HLS
       stream in the player, optionally show live chat (read). Publish / "go live"
       is a later, separate effort.
+- [ ] New **"Live" sidebar tab**, gated behind a config flag (see shared
+      requirement above) — disabled by default until shipped.
 - [ ] Research: confirm NIP-53 kinds + tag shapes, how zap.stream vs shosho.live
       populate `streaming`/`recording`, and HLS playback support in the player.
+
+### 16b. Nostr short-form video notes — watch-only (new sidebar tab)
+- [ ] Short-form (vertical/portrait) video is **NIP-71 kind 22** (the short-form
+      counterpart to kind 21 normal video) — distinct from live streams. bitvid
+      already ingests NIP-71 (see #17), so much of the parsing exists; this is about
+      a dedicated **"Shorts" sidebar tab** with a short-form-appropriate UI (vertical
+      player, swipe/next feel) that lists kind-22 notes.
+- [ ] Gated behind its own config flag (see shared requirement above) — disabled by
+      default until shipped.
+- [ ] Research: confirm kind-22 tag shape vs kind 21, and whether to reuse the
+      NIP-71 ingest adapter / feed pipeline or a dedicated shorts feed.
+- OPEN QUESTIONS for the maintainer (raised 2026-06-23): (1) Should "Shorts" pull
+      from the SAME whitelisted authors as the main feed, or its own discovery scope?
+      (2) Does short-form need its own moderation/NSFW handling, or inherit the
+      existing filters? (3) Same for "Live" — scope of who/what is listed?
 
 ### 17. NIP-71 interop (full plan in `docs/nip71-migration-plan.md`)
 Research done; decisions locked. **See the plan doc** — it supersedes the rough
