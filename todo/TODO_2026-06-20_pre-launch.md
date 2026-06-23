@@ -344,6 +344,26 @@ CDN url + WebTorrent (bitvid extras come free), one-shot import + re-run button.
       delete "hosted file left behind" warning is suppressed, liveness stays
       unverifiable. Full (re-hosted) imports set the flag false.
 
+### 17d. Unified video-grid loading (streaming + optimistic) — follow-ups
+Goal: every grid loads with the same fast UX. Status: cross-ecosystem dedup
+(17c Phase 1) is live at the shared chokepoint; main feed already streams +
+has a persisted cache; channel/search now render optimistically from
+`allEvents` (incl. ingested NIP-71). Remaining:
+- [ ] **Streaming channel/search fetch.** `loadUserVideos` does a one-shot
+      `pMapSettled(relays, pool.list)` and renders only after ALL relays settle,
+      so a slow relay holds up the grid (~2-3s). Switch to the subscription
+      manager's streaming + render incrementally (first-relay-wins), like the main
+      feed's buffered subscription. Extract the fetch into `channelProfileVideos.js`
+      (channelProfile.js is at its size cap).
+- [ ] **Per-channel persisted cache** for instant revisits (mirror the main feed's
+      `bitvid:filtered-videos` optimistic cache, keyed per author).
+- [ ] **My Videos: include NIP-71** in its `allEvents` read so a creator's own
+      cross-posted videos appear in management too (reuse the cross-ecosystem
+      dedupe so the bitvid version wins).
+- [ ] **Consolidate** the bespoke loaders (channel/search/My Videos) behind one
+      shared streaming grid source so future grids inherit streaming + optimistic +
+      dedupe for free.
+
 ### 17b. Channel Profile wall shows only bitvid videos, not NIP-71 (LAUNCH-BLOCKER)
 - [x] **Fixed** (`js/channelProfileVideos.js`): the channel grid now fetches the
       author's NIP-71 videos (kinds 21/22/34235/34236) alongside kind-30078 via

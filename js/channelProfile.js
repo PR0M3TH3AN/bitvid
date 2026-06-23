@@ -4428,10 +4428,10 @@ function getCachedChannelVideoEvents(pubkey) {
     }
   });
 
-  if (rawMatches.length) {
-    return rawMatches;
-  }
-
+  // Include processed videos from allEvents too (raw 30078 first so they win the
+  // id-dedupe downstream): this surfaces ingested NIP-71 videos for the author so
+  // their wall renders optimistically on revisit / when the feed already loaded
+  // them. Cross-ecosystem dedupe collapses any overlap.
   const processedMatches = collectMatches(
     nostrClient?.allEvents,
     (callback) => {
@@ -4448,7 +4448,7 @@ function getCachedChannelVideoEvents(pubkey) {
     }
   );
 
-  return processedMatches;
+  return [...rawMatches, ...processedMatches];
 }
 
 function normalizeRenderableChannelVideo(entry) {
