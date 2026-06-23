@@ -7,6 +7,7 @@ import test from "node:test";
 import {
   buildVideoFromNip71Event,
   isBitvidMirrorEvent,
+  collectVideoSources,
 } from "../js/nostr/nip71IngestAdapter.js";
 
 const SHA = "a".repeat(64);
@@ -143,6 +144,71 @@ test("rejects non-NIP-71 kinds", () => {
   const v = buildVideoFromNip71Event(foreignEvent({ kind: 30078 }));
   assert.equal(v.invalid, true);
   assert.equal(v.reason, "not a NIP-71 video kind");
+});
+
+test("collectVideoSources keeps video urls in order, excludes audio/image, dedupes", () => {
+  const sources = collectVideoSources([
+    { url: "https://a/v.mp4", m: "video/mp4", x: "a".repeat(64), dim: "1920x1080", duration: "120" },
+    { url: "https://a/v.mp3", m: "audio/mpeg" },
+    { url: "https://b/v.webm", m: "video/webm" },
+    { url: "https://a/v.mp4", m: "video/mp4" }, // dup
+    { url: "https://c/untyped" }, // untyped accepted
+    { url: "https://a/thumb.jpg", m: "image/jpeg" },
+  ]);
+  assert.deepEqual(
+    sources.map((s) => s.url),
+    ["https://a/v.mp4", "https://b/v.webm", "https://c/untyped"],
+  );
+  assert.equal(sources[0].sha256, "a".repeat(64));
+  assert.equal(sources[0].dim, "1920x1080");
+  assert.equal(sources[0].duration, 120);
+});
+
+test("real Walker/podcast event (mp4 + mp3 imeta): one video source, mp3 excluded", () => {
+  const event = {
+    id: "a425040161016e64245282037c179bcb4aaaf1ce98024c9d7c59b32aabe1c3d2",
+    pubkey: "b7ed68b062de6b4a12e51fd5285c1e1e0ed0e5128cda93ab11b4150b55ed32fc",
+    kind: 21,
+    created_at: 1781815633,
+    content: "Privacy isn't about having something to hide…",
+    tags: [
+      ["title", "The Praxeology of Privacy"],
+      ["published_at", "1781815633"],
+      [
+        "imeta",
+        "url https://relay.towardsliberty.com/84751f62.mp4",
+        "x 84751f62034f7396a75c0ba5096964cee2a4d65a076f655b43b6324b0fbefecd",
+        "m video/mp4",
+        "duration 5556",
+        "image https://relay.towardsliberty.com/a2e8159.jpg",
+      ],
+      [
+        "imeta",
+        "url https://relay.towardsliberty.com/2885921.mp3",
+        "m audio/mpeg",
+        "duration 5556",
+      ],
+      ["t", "bitcoin"],
+    ],
+  };
+  const v = buildVideoFromNip71Event(event);
+  assert.equal(v.invalid, false);
+  assert.equal(v.url, "https://relay.towardsliberty.com/84751f62.mp4");
+  assert.equal(v.sources.length, 1, "only the video imeta becomes a source");
+  assert.equal(v.sources[0].url, "https://relay.towardsliberty.com/84751f62.mp4");
+});
+
+test("multiple video mirrors all become sources (fail-over)", () => {
+  const v = buildVideoFromNip71Event({
+    id: "e", pubkey: "p", kind: 22, created_at: 1,
+    content: "",
+    tags: [
+      ["title", "Mirrored"],
+      ["imeta", "url https://m1/v.mp4", "m video/mp4"],
+      ["imeta", "url https://m2/v.mp4", "m video/mp4"],
+    ],
+  });
+  assert.deepEqual(v.sources.map((s) => s.url), ["https://m1/v.mp4", "https://m2/v.mp4"]);
 });
 
 test("extracts a webtorrent magnet + infohash when present", () => {

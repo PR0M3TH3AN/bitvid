@@ -36,7 +36,10 @@ export const DEFAULT_CACHE_TTL_MS = FIVE_MINUTES_MS;
 export const PROFILE_CACHE_TTL_MS = TEN_MINUTES_MS;
 export const URL_HEALTH_TTL_MS = FORTY_FIVE_MINUTES_MS;
 export const URL_HEALTH_RETRY_MS = FIVE_MINUTES_MS;
-export const URL_PROBE_TIMEOUT_MS = 8 * ONE_SECOND_MS;
+// Per-source playability probe budget. Kept tight so a dead host yields a fast
+// verdict (and the card hides quickly) — a slow-but-valid CDN still gets a retry
+// via URL_HEALTH/RETRY paths. Lowered from 8s.
+export const URL_PROBE_TIMEOUT_MS = 4 * ONE_SECOND_MS;
 
 function coerceNonNegativeInteger(value, fallback) {
   const numeric = Number(value);

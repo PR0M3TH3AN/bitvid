@@ -110,19 +110,21 @@ tests → `npm run build` + `npm run test:unit` green → commit + push.
 Audited (2026-06-23). Finding: the hide/show **policy is already correct**
 (`cardSourceVisibility.js` hides only when neither CDN nor WebTorrent is healthy;
 un-hides when WebTorrent flips green). The real gaps:
-- [ ] **Speed**: `URL_PROBE_TIMEOUT_MS=8s` (+retry) and WebTorrent probe 20s mean
-      unplayable cards stay *visible* (pending isn't hidden) for seconds. Tune
-      timeouts + concurrency for a faster verdict.
-- [ ] **Probe accuracy**: the CDN check races an opaque `HEAD no-cors` (status
-      unreadable for cross-origin NIP-71 CDNs). Use the **video-element probe**
-      (`confirmPlayable`, actually loads media) as the card verdict.
-- [ ] **Multi-source**: ingest adapter keeps ONE url; NIP-71 events can list
-      multiple imeta (mirrors / alternate media). Capture all video sources +
-      magnet; probe/play them in order; healthy if ANY plays, offline only if ALL
-      fail. (Example: Walker/THE Bitcoin Podcast event — mp4 + mp3 imeta.)
-- [ ] **Decision**: show-pending (current) vs hide-until-verified for foreign
-      ingested videos (so unplayable strangers never flash in). Recommend
-      hide-until-verified for foreign, show-pending for bitvid-native.
+- [x] **Speed** (`URL_PROBE_TIMEOUT_MS` 8s → 4s): dead hosts yield a fast verdict
+      so unplayable cards hide quickly. WebTorrent probe stays generous (swarm).
+- [x] **Probe accuracy**: confirmed the card probe already uses the video-element
+      probe (`confirmPlayable:true`, actually loads media) — accurate, not the
+      opaque HEAD. No change needed.
+- [x] **Multi-source**: ingest adapter exposes `sources` (all video imeta urls;
+      `collectVideoSources`); `urlHealthController.probeUrlList` probes them in
+      order — healthy as soon as one plays, offline only if all fail. So a dead
+      primary host no longer hides a video with a working mirror.
+- [ ] **Remaining — player fail-over at play time**: the *liveness* now tries all
+      sources, but actual playback should also fail over to the next source if the
+      chosen one dies mid-load (playbackService consumes `video.sources`).
+- [ ] **Remaining — hide-until-verified for foreign/ingested** (decision): so
+      unplayable strangers never briefly flash before the probe hides them
+      (bitvid-native stays show-pending). UX policy change in cardSourceVisibility.
 
 ## Open — medium priority
 

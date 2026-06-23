@@ -80,6 +80,43 @@ function pickPrimaryVariant(imeta) {
   return imeta.find((variant) => trimString(variant?.magnet)) || null;
 }
 
+function isVideoVariant(variant) {
+  if (!trimString(variant?.url)) {
+    return false;
+  }
+  const m = trimString(variant?.m).toLowerCase();
+  // Accept explicit video/* and untyped variants; exclude audio/image/etc.
+  return m === "" || m.startsWith("video/");
+}
+
+// All playable video URLs from a NIP-71 event's imeta variants, in order, so the
+// player + liveness probe can fail over if one host is down. Audio/image
+// variants are excluded. De-duplicated by url.
+export function collectVideoSources(imeta) {
+  const out = [];
+  const seen = new Set();
+  for (const variant of Array.isArray(imeta) ? imeta : []) {
+    if (!isVideoVariant(variant)) {
+      continue;
+    }
+    const url = trimString(variant.url);
+    if (!url || seen.has(url)) {
+      continue;
+    }
+    seen.add(url);
+    const durationNum = Number(variant.duration);
+    out.push({
+      url,
+      mimeType: trimString(variant.m),
+      sha256: trimString(variant.x),
+      dim: trimString(variant.dim),
+      duration:
+        Number.isFinite(durationNum) && durationNum > 0 ? durationNum : undefined,
+    });
+  }
+  return out;
+}
+
 /**
  * Convert a foreign NIP-71 event into a bitvid video object.
  *
@@ -153,6 +190,9 @@ export function buildVideoFromNip71Event(event = {}) {
   const dTag = dTagFromEvent(event);
   const videoRootId = dTag || trimString(event.id);
 
+  // All playable video URLs (mirrors) for fail-over at probe + play time.
+  const sources = collectVideoSources(metadata.imeta);
+
   // The feed's resolve-posted-at stage fetches per-video kind-30078 history when
   // a timestamp isn't already known. Foreign NIP-71 videos have no such history,
   // so without a posted-at the feed would fire a blocking history fetch per
@@ -174,6 +214,7 @@ export function buildVideoFromNip71Event(event = {}) {
     isForKids: false,
     title,
     url,
+    sources,
     magnet,
     rawMagnet: magnet ? rawMagnet : "",
     infoHash,
