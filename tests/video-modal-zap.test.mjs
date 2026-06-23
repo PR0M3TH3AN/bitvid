@@ -773,7 +773,10 @@ await (async () => {
 })();
 
 await (async () => {
-  // Test: validation failure surfaces warning and resets form
+  // Test: a PAID share whose 9735 receipt couldn't be validated is reported as a
+  // SUCCESS (with a soft "couldn't confirm the receipt" note), NOT an error. The
+  // payment already returned a preimage — proof the invoice was paid — so the
+  // missing on-relay receipt must not be surfaced as a failure.
   const validationReceipts = [
     {
       recipientType: "creator",
@@ -824,27 +827,39 @@ await (async () => {
   );
 
   const lastStatus = modalStub.statusMessages[modalStub.statusMessages.length - 1];
-  assert.equal(lastStatus.tone, "warning", "validation failure should emit warning status");
+  assert.equal(
+    lastStatus.tone,
+    "success",
+    "a paid-but-unvalidated receipt is a success, not a warning",
+  );
   assert.match(
     lastStatus.message,
-    /awaiting validated zap receipt/i,
-    "status message should highlight missing validated receipt",
+    /sent 750 sats/i,
+    "status should confirm the payment amount",
+  );
+  assert.match(
+    lastStatus.message,
+    /couldn't confirm the zap receipt/i,
+    "status should note the receipt couldn't be confirmed (soft, non-failure)",
   );
 
   assert.equal(
     modalStub.resetForms.length,
     initialResetCount + 1,
-    "zap form should reset after validation warning",
+    "zap form should reset after a successful send",
   );
+  // A completing send records TWO completion-state changes: a reset to false at
+  // the start of sendZap, then true at the terminal success path. The meaningful
+  // invariant is the end state == true, asserted next.
   assert.equal(
     modalStub.completedStates.length,
-    initialCompleted + 1,
-    "completion state should record the validation attempt",
+    initialCompleted + 2,
+    "completion state should reset at start then mark the send completed",
   );
   assert.equal(
     modalStub.completedStates[modalStub.completedStates.length - 1],
     true,
-    "validation warning should mark zap attempt as completed",
+    "a successful (receipt-unconfirmed) send should be marked completed",
   );
 
   app.destroy();
@@ -932,7 +947,10 @@ const { VideoModal } = await import("../js/ui/components/VideoModal.js");
 
 (() => {
   const modal = new VideoModal({ document: documentStub, setGlobalModalState: noop });
-  modal.modalZapReceipts = new DummyElement();
+  // renderZapReceipts delegates to the inner zapController, which renders into ITS
+  // own modalZapReceipts element (the VideoModal -> sub-controller refactor); set
+  // and assert on the controller's element, not the outer modal's.
+  const receiptsEl = (modal.zapController.modalZapReceipts = new DummyElement());
 
   const receipts = [
     {
@@ -949,15 +967,15 @@ const { VideoModal } = await import("../js/ui/components/VideoModal.js");
 
   modal.renderZapReceipts(receipts, { partial: false });
 
-  assert.equal(modal.modalZapReceipts.children.length, 1, "validated receipt should render one entry");
-  const entry = modal.modalZapReceipts.children[0];
+  assert.equal(receiptsEl.children.length, 1, "validated receipt should render one entry");
+  const entry = receiptsEl.children[0];
   const header = entry.children[0];
   assert.equal(header.children[1].textContent, "Validated", "validated receipt should flag status");
 })();
 
 (() => {
   const modal = new VideoModal({ document: documentStub, setGlobalModalState: noop });
-  modal.modalZapReceipts = new DummyElement();
+  const receiptsEl = (modal.zapController.modalZapReceipts = new DummyElement());
 
   const receipts = [
     {
@@ -975,11 +993,11 @@ const { VideoModal } = await import("../js/ui/components/VideoModal.js");
   modal.renderZapReceipts(receipts, { partial: true });
 
   assert.equal(
-    modal.modalZapReceipts.children.length,
+    receiptsEl.children.length,
     1,
     "validation failure should render a single warning entry",
   );
-  const warning = modal.modalZapReceipts.children[0];
+  const warning = receiptsEl.children[0];
   assert.match(
     warning.textContent,
     /no validated zap receipts yet/i,
