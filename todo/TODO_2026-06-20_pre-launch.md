@@ -94,6 +94,27 @@ tests → `npm run build` + `npm run test:unit` green → commit + push.
       wrapper, so add carefully — plus a feed/view-level seed→delete→assert test.
       (Local + publish/read layers are already unit+mutation tested.)
 
+### 3a. Video-modal popover mis-positioning (zap + embed) — BUG
+Confirmed via screenshots: the zap/embed popovers OPEN and are fully functional
+(comment box, amount, send all render) but appear anchored to the far LEFT of the
+content column instead of `bottom-end` under the button (which is in the right-
+side action bar). Both share `js/ui/overlay/popoverEngine.js`.
+- Leading cause: the engine only portals a panel into the body-level overlay root
+  `if (!panel.isConnected)`. The zap/embed panels are pre-existing connected
+  elements INSIDE the modal, so they're NOT portaled out, and `position:fixed`
+  resolves against an in-modal containing block (something in the modal subtree
+  has transform/filter/contain) → horizontal offset.
+- Ruled out: positioning CSS present in built css; floating-ui local bundle loads;
+  panel class correct (`.popover__panel`/`.popover-panel` share the rule).
+- Fix (do carefully — shared engine drives every popover): either portal connected
+  in-modal panels out to `#uiOverlay` on open (and restore/clean on close without
+  losing the element for re-open), OR remove the containing-block ancestor in the
+  modal subtree. VERIFY non-modal popovers (card "⋯" menu, feed-settings gear,
+  FeedInfoPopover) still position correctly after the change.
+- To pin exactly: inspect `#modalZapDialog` while open — computed `position`,
+  `left`, `top`, and its DOM parent (is it under `#uiOverlay` at body level or
+  still nested in the modal?).
+
 ### 3. Zaps system + platform-fee zap split
 - [ ] Audit the zap flow (NWC / `nwcClient.js`, `zapController.js`, `zapReceiptValidator.js`).
 - [ ] Verify the platform-fee split: correct recipients, correct percentages, rounding,
