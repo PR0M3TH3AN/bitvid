@@ -26,7 +26,7 @@ const FLUSH_DEBOUNCE_MS = 200;
 // Coalesce ingest-driven feed refreshes so a burst of incoming events can't
 // trigger a re-render/re-subscription storm. The injected videos are already in
 // the active store; this only controls how often we *signal* the feed.
-const REFRESH_THROTTLE_MS = 8000;
+const REFRESH_THROTTLE_MS = 2500;
 const DEFAULT_LIMIT = 200;
 const SUBSCRIPTION_KEY = "nip71-ingest";
 // The admin whitelist hydrates asynchronously (remote fetch, then a second hex
@@ -157,10 +157,22 @@ export function createNip71IngestService({
       }
     }
 
-    let injected = 0;
+    const injectedVideos = [];
     for (const video of newestByRoot.values()) {
       if (injectVideo(video)) {
-        injected += 1;
+        injectedVideos.push(video);
+      }
+    }
+    const injected = injectedVideos.length;
+
+    // Also cache into nostrService.videosMap so ingested videos persist and show
+    // up in the author-scoped feeds + the optimistic/persisted render paths — not
+    // just the live activeMap engine run. Keeps NIP-71 present across navigation.
+    if (injected > 0 && typeof nostrService?.cacheVideos === "function") {
+      try {
+        nostrService.cacheVideos(injectedVideos);
+      } catch (error) {
+        logger?.warn?.("[nip71Ingest] cacheVideos failed", error);
       }
     }
 

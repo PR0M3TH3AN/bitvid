@@ -44,6 +44,7 @@ function makeHarness({ whitelistOn = false, whitelist = [] } = {}) {
     getSubscriptionManager: () => manager,
   };
   const feedListeners = new Set();
+  const cached = [];
   const nostrService = {
     emit(name, detail) {
       emitted.push({ name, detail });
@@ -55,6 +56,7 @@ function makeHarness({ whitelistOn = false, whitelist = [] } = {}) {
       return () => feedListeners.delete(fn);
     },
     getFilteredActiveVideos: () => Array.from(activeMap.values()),
+    cacheVideos: (videos) => cached.push(...videos),
   };
   const accessControl = {
     whitelistMode: () => whitelistOn,
@@ -71,6 +73,7 @@ function makeHarness({ whitelistOn = false, whitelist = [] } = {}) {
     activeMap,
     allEvents,
     emitted,
+    cached,
     get capturedFilters() {
       return capturedFilters;
     },
@@ -134,6 +137,16 @@ test("ingests a foreign NIP-71 video into the active store and signals a refresh
   const refresh = h.emitted.find((e) => e.name === "videos:updated");
   assert.ok(refresh, "emits videos:updated");
   assert.equal(refresh.detail.reason, "nip71-ingest");
+});
+
+test("caches injected videos into nostrService (persisted/author-feed paths)", () => {
+  const h = makeHarness();
+  const svc = makeService(h);
+  svc.start();
+  h.fireEvent(foreignEvent({ id: "e1", title: "Hello" }));
+  svc.flush();
+  assert.equal(h.cached.length, 1, "injected video forwarded to cacheVideos");
+  assert.equal(h.cached[0].id, "e1");
 });
 
 test("never clobbers a native bitvid video sharing the same root", () => {
