@@ -70,10 +70,19 @@ test("resolveEditSync: keeps a mirrored video in lockstep, unshares when ineligi
   assert.deepEqual(resolveEditSync({ featureOn: true, enabled: true, eligible: false }), { action: "unshare" });
 });
 
-test("resolveDeleteSync: removes the mirror only when it was shared", () => {
+test("resolveDeleteSync: attempts teardown whenever the feature is on, regardless of the local flag", () => {
+  // Spec correction: the previous expectation gated teardown on the local
+  // `enabled` flag (enabled:false -> none). That flag is browser-local only, so
+  // a video shared on one device and deleted from another (or after a cache
+  // clear) would skip teardown and orphan the NIP-71 mirror on other apps. The
+  // teardown (NIP-09 + empty tombstone) is idempotent, so delete must attempt it
+  // whenever the feature is on. `enabled` is intentionally ignored for delete.
   assert.deepEqual(resolveDeleteSync({ featureOn: true, enabled: true }), { action: "unshare" });
-  assert.deepEqual(resolveDeleteSync({ featureOn: true, enabled: false }), { action: "none" });
+  assert.deepEqual(resolveDeleteSync({ featureOn: true, enabled: false }), { action: "unshare" });
+  assert.deepEqual(resolveDeleteSync({ featureOn: true, enabled: undefined }), { action: "unshare" });
+  // The feature flag still fully gates it: a build with the mirror off never publishes.
   assert.deepEqual(resolveDeleteSync({ featureOn: false, enabled: true }), { action: "none" });
+  assert.deepEqual(resolveDeleteSync({ featureOn: false, enabled: false }), { action: "none" });
 });
 
 test("auto-share preference persists per pubkey, off by default", () => {
