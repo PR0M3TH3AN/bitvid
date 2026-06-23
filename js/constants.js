@@ -6,6 +6,7 @@ import {
   DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD as CONFIG_DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
   DEFAULT_PLAYBACK_SOURCE,
   DEFAULT_PLAYBACK_START_TIMEOUT,
+  FEATURE_NIP71_INGEST as CONFIG_FEATURE_NIP71_INGEST,
   IS_DEV_MODE,
 } from "./config.js";
 
@@ -35,7 +36,10 @@ export const DEFAULT_CACHE_TTL_MS = FIVE_MINUTES_MS;
 export const PROFILE_CACHE_TTL_MS = TEN_MINUTES_MS;
 export const URL_HEALTH_TTL_MS = FORTY_FIVE_MINUTES_MS;
 export const URL_HEALTH_RETRY_MS = FIVE_MINUTES_MS;
-export const URL_PROBE_TIMEOUT_MS = 8 * ONE_SECOND_MS;
+// Per-source playability probe budget. Kept tight so a dead host yields a fast
+// verdict (and the card hides quickly) — a slow-but-valid CDN still gets a retry
+// via URL_HEALTH/RETRY paths. Lowered from 8s.
+export const URL_PROBE_TIMEOUT_MS = 4 * ONE_SECOND_MS;
 
 function coerceNonNegativeInteger(value, fallback) {
   const numeric = Number(value);
@@ -182,6 +186,12 @@ const DEFAULT_FLAGS = Object.freeze({
   URL_FIRST_ENABLED: DEFAULT_PLAYBACK_SOURCE !== "torrent", // try URL before magnet in the player
   FEATURE_WATCH_HISTORY_V2: true,
   FEATURE_PUBLISH_NIP71: false,
+  // Opt-in NIP-71 *mirror* (addressable 34235/36) managed per-video from the
+  // My Videos tab. Independent of FEATURE_PUBLISH_NIP71 (legacy 21/22 auto-publish).
+  FEATURE_NIP71_MIRROR: true,
+  // Inbound ingest of NIP-71 videos published by other Nostr apps. Sourced from
+  // the admin instance config so a deployer flips it in one place.
+  FEATURE_NIP71_INGEST: CONFIG_FEATURE_NIP71_INGEST !== false,
   FEATURE_HASHTAG_PREFERENCES: false,
   FEATURE_SEARCH_FILTERS: Boolean(IS_DEV_MODE),
   FEATURE_TRUST_SEEDS: true, // Rollback: disable to drop baseline trust seeds without code changes.
@@ -202,6 +212,8 @@ const runtimeFlags = (() => {
     URL_FIRST_ENABLED: DEFAULT_FLAGS.URL_FIRST_ENABLED,
     FEATURE_WATCH_HISTORY_V2: DEFAULT_FLAGS.FEATURE_WATCH_HISTORY_V2,
     FEATURE_PUBLISH_NIP71: DEFAULT_FLAGS.FEATURE_PUBLISH_NIP71,
+    FEATURE_NIP71_MIRROR: DEFAULT_FLAGS.FEATURE_NIP71_MIRROR,
+    FEATURE_NIP71_INGEST: DEFAULT_FLAGS.FEATURE_NIP71_INGEST,
     FEATURE_HASHTAG_PREFERENCES: DEFAULT_FLAGS.FEATURE_HASHTAG_PREFERENCES,
     FEATURE_SEARCH_FILTERS: DEFAULT_FLAGS.FEATURE_SEARCH_FILTERS,
     FEATURE_TRUST_SEEDS: DEFAULT_FLAGS.FEATURE_TRUST_SEEDS,
@@ -231,6 +243,16 @@ export let FEATURE_WATCH_HISTORY_V2 = coerceBoolean(
 export let FEATURE_PUBLISH_NIP71 = coerceBoolean(
   runtimeFlags.FEATURE_PUBLISH_NIP71,
   DEFAULT_FLAGS.FEATURE_PUBLISH_NIP71
+);
+
+export let FEATURE_NIP71_MIRROR = coerceBoolean(
+  runtimeFlags.FEATURE_NIP71_MIRROR,
+  DEFAULT_FLAGS.FEATURE_NIP71_MIRROR
+);
+
+export let FEATURE_NIP71_INGEST = coerceBoolean(
+  runtimeFlags.FEATURE_NIP71_INGEST,
+  DEFAULT_FLAGS.FEATURE_NIP71_INGEST
 );
 
 export let FEATURE_HASHTAG_PREFERENCES = coerceBoolean(

@@ -4,6 +4,22 @@ import { getApplication } from "../../applicationContext.js";
 import { collapseUserVideos } from "./myVideosData.js";
 import { classifyVideoHealth, isUrlUnderBase } from "./myVideosHealth.js";
 import { reconcileStorage } from "./myVideosReconcile.js";
+import { FEATURE_NIP71_MIRROR } from "../../constants.js";
+import { nip71MirrorService } from "../../services/nip71MirrorService.js";
+import {
+  isMirrorEnabled,
+  setMirrorEnabled,
+  resolveMirrorToggle,
+  isAutoShareEnabled,
+  setAutoShareEnabled,
+} from "../../services/nip71MirrorFlags.js";
+
+const MIRROR_REASON_TEXT = {
+  private: "Private videos can't be shared to other apps.",
+  "nsfw-blocked": "NSFW videos aren't shared from this instance.",
+  "no-url": "Needs a hosted (HTTPS) URL to appear on other apps.",
+  invalid: "This video can't be mirrored.",
+};
 
 // Maps a health severity to a status-pill style, mirroring
 // ProfileRelayController.applyStatusPill so the look stays consistent.
@@ -34,6 +50,8 @@ export class MyVideosController {
     this.refreshBtn = null;
     this.orphansSection = null;
     this.orphanListEl = null;
+    this.autoShareRow = null;
+    this.autoShareInput = null;
     this.loading = false;
     this.publicBaseUrl = "";
     this.pubkey = "";
@@ -49,6 +67,10 @@ export class MyVideosController {
       document.getElementById("profileMyVideosOrphans") || null;
     this.orphanListEl =
       document.getElementById("profileMyVideosOrphanList") || null;
+    this.autoShareRow =
+      document.getElementById("profileMyVideosAutoShareRow") || null;
+    this.autoShareInput =
+      document.getElementById("profileMyVideosAutoShare") || null;
   }
 
   registerEventListeners() {
@@ -56,6 +78,26 @@ export class MyVideosController {
       this.refreshBtn.addEventListener("click", () => {
         void this.populate({ forceFetch: true });
       });
+    }
+    if (this.autoShareInput instanceof HTMLInputElement) {
+      this.autoShareInput.addEventListener("change", () => {
+        const pubkey = this.getPubkey();
+        if (!pubkey) {
+          return;
+        }
+        setAutoShareEnabled(pubkey, this.autoShareInput.checked === true);
+      });
+    }
+  }
+
+  refreshAutoShareToggle(pubkey) {
+    if (!(this.autoShareRow instanceof HTMLElement)) {
+      return;
+    }
+    const eligible = FEATURE_NIP71_MIRROR && !!pubkey;
+    this.autoShareRow.classList.toggle("hidden", !eligible);
+    if (eligible && this.autoShareInput instanceof HTMLInputElement) {
+      this.autoShareInput.checked = isAutoShareEnabled(pubkey);
     }
   }
 
@@ -100,6 +142,7 @@ export class MyVideosController {
       return;
     }
     const pubkey = this.getPubkey();
+    this.refreshAutoShareToggle(pubkey);
     if (!pubkey) {
       this.renderRows([]);
       this.setSummary("");
@@ -369,11 +412,81 @@ export class MyVideosController {
       actions.appendChild(
         this.buildActionButton("Edit", () => this.handleEdit(video)),
       );
+      const mirrorBtn = this.buildMirrorButton(video);
+      if (mirrorBtn) {
+        actions.appendChild(mirrorBtn);
+      }
       actions.appendChild(
         this.buildActionButton("Delete", () => this.handleDelete(video), true),
       );
     }
     return actions;
+  }
+
+  // Opt-in "publish to other Nostr video apps (NIP-71)" toggle. Reflects the
+  // per-video opt-in flag; disabled (with a reason) for ineligible videos.
+  buildMirrorButton(video) {
+    if (!FEATURE_NIP71_MIRROR) {
+      return null;
+    }
+    const enabled = isMirrorEnabled(this.pubkey, video?.videoRootId);
+    const eligibility = nip71MirrorService.canMirror(video);
+    if (!enabled && eligibility.ok !== true) {
+      const reason = MIRROR_REASON_TEXT[eligibility.reason] || "Can't be shared.";
+      const btn = this.buildActionButton("Share off", () => {
+        this.mainController.showStatus?.(reason);
+      });
+      btn.disabled = true;
+      btn.title = reason;
+      btn.classList.add("opacity-50");
+      return btn;
+    }
+    return this.buildActionButton(
+      enabled ? "Shared ✓" : "Share to apps",
+      (event) => this.handleToggleMirror(video, event?.currentTarget || null),
+    );
+  }
+
+  async handleToggleMirror(video, btn) {
+    const enabled = isMirrorEnabled(this.pubkey, video?.videoRootId);
+    const eligibility = nip71MirrorService.canMirror(video);
+    const decision = resolveMirrorToggle({ enabled, eligibility });
+
+    if (decision.action === "blocked") {
+      this.mainController.showError?.(
+        MIRROR_REASON_TEXT[decision.reason] || "This video can't be shared.",
+      );
+      return;
+    }
+    if (btn) {
+      btn.disabled = true;
+    }
+    try {
+      if (decision.action === "publish") {
+        const result = await nip71MirrorService.publish(video);
+        if (result?.ok) {
+          setMirrorEnabled(this.pubkey, video.videoRootId, true);
+          this.mainController.showSuccess?.(
+            `Shared to other Nostr apps (${result.accepted}/${result.total} relays).`,
+          );
+        } else {
+          this.mainController.showError?.(
+            "Couldn't share this video. Please try again.",
+          );
+        }
+      } else {
+        const result = await nip71MirrorService.remove(video);
+        setMirrorEnabled(this.pubkey, video.videoRootId, false);
+        this.mainController.showSuccess?.(
+          result?.ok ? "Removed from other Nostr apps." : "Stopped sharing locally.",
+        );
+      }
+    } catch (error) {
+      devLogger.warn("[myVideos] mirror toggle failed:", error);
+      this.mainController.showError?.("Sharing action failed. Please try again.");
+    } finally {
+      void this.populate({ forceFetch: true });
+    }
   }
 
   buildActionButton(label, onClick, danger = false) {

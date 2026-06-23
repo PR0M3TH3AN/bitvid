@@ -5,7 +5,44 @@ import { buildNip71MetadataTags, extractNip71MetadataFromTags } from "./nip71.js
 import { buildVideoPostEvent } from "../nostrEventSchemas.js";
 import { computeSha256HexFromValue } from "../utils/cryptoUtils.js";
 import { inferMimeTypeFromUrl } from "../utils/mime.js";
+import { normalizeHashtag } from "../utils/hashtagNormalization.js";
 import { devLogger } from "../utils/logger.js";
+
+// Pixel dimensions: positive integer or 0 (= "unknown / omit").
+export function normalizeVideoDimension(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
+// Duration in seconds: positive (float ok) or 0 (= omit).
+export function normalizeVideoDuration(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+// Normalize free-form hashtag input (array or comma/space string) to a deduped,
+// lowercased list. Drops the reserved "video" topic tag and caps the count.
+export function sanitizeVideoHashtags(input) {
+  const raw = Array.isArray(input)
+    ? input
+    : typeof input === "string"
+      ? input.split(/[\s,]+/)
+      : [];
+  const out = [];
+  const seen = new Set();
+  for (const item of raw) {
+    const tag = normalizeHashtag(item);
+    if (!tag || tag === "video" || seen.has(tag)) {
+      continue;
+    }
+    seen.add(tag);
+    out.push(tag);
+    if (out.length >= 20) {
+      break;
+    }
+  }
+  return out;
+}
 
 export function extractVideoPublishPayload(rawPayload) {
   let videoData = rawPayload;
@@ -161,13 +198,39 @@ export async function prepareVideoPublishPayload(videoPayload, pubkey, { timesta
       contentObject.xs = finalXs;
     }
 
+    const hashtags = sanitizeVideoHashtags(videoData.hashtags);
+    if (hashtags.length) {
+      contentObject.hashtags = hashtags;
+    }
+
+    // Captured-at-upload dimensions/duration: persist so a video's orientation is
+    // known durably (drives 34236 short selection + a future "shorts" feed filter).
+    const width = normalizeVideoDimension(videoData.width);
+    const height = normalizeVideoDimension(videoData.height);
+    const duration = normalizeVideoDuration(videoData.duration);
+    if (width) {
+      contentObject.width = width;
+    }
+    if (height) {
+      contentObject.height = height;
+    }
+    if (duration) {
+      contentObject.duration = duration;
+    }
+
     const nip71Tags = buildNip71MetadataTags(
       nip71Metadata && typeof nip71Metadata === "object" ? nip71Metadata : null
     );
 
-    const additionalTags = storagePointer
-      ? [["s", storagePointer], ...nip71Tags]
-      : nip71Tags;
+    // Emit hashtags as `t` tags on the 30078 so bitvid's own feed scoring (and
+    // relay queries) pick them up, in addition to persisting them in content.
+    const hashtagTags = hashtags.map((tag) => ["t", tag]);
+
+    const additionalTags = [
+      ...(storagePointer ? [["s", storagePointer]] : []),
+      ...hashtagTags,
+      ...nip71Tags,
+    ];
 
     const event = buildVideoPostEvent({
       pubkey: normalizedPubkey,
@@ -438,6 +501,30 @@ export function prepareVideoEditPayload(params) {
     contentObject.xs = finalXs;
   }
 
+  // Prefer edited hashtags, else preserve the base event's so an edit that omits
+  // the field never strips them.
+  const hashtags = sanitizeVideoHashtags(
+    updatedData?.hashtags !== undefined ? updatedData.hashtags : baseEvent.hashtags,
+  );
+  if (hashtags.length) {
+    contentObject.hashtags = hashtags;
+  }
+  const hashtagTags = hashtags.map((tag) => ["t", tag]);
+
+  // Preserve captured dimensions/duration across edits (prefer edited values).
+  const width = normalizeVideoDimension(updatedData?.width ?? baseEvent.width);
+  const height = normalizeVideoDimension(updatedData?.height ?? baseEvent.height);
+  const duration = normalizeVideoDuration(updatedData?.duration ?? baseEvent.duration);
+  if (width) {
+    contentObject.width = width;
+  }
+  if (height) {
+    contentObject.height = height;
+  }
+  if (duration) {
+    contentObject.duration = duration;
+  }
+
   let metadataForTags =
     nip71Metadata && typeof nip71Metadata === "object" ? nip71Metadata : null;
   if (!metadataForTags) {
@@ -453,9 +540,11 @@ export function prepareVideoEditPayload(params) {
 
   const nip71Tags = buildNip71MetadataTags(metadataForTags);
 
-  const additionalTags = storagePointer
-    ? [["s", storagePointer], ...nip71Tags]
-    : nip71Tags;
+  const additionalTags = [
+    ...(storagePointer ? [["s", storagePointer]] : []),
+    ...hashtagTags,
+    ...nip71Tags,
+  ];
 
   // A replaceable event only wins if its created_at is strictly greater than
   // the version it replaces (NIP-01 keeps the highest created_at; ties go to

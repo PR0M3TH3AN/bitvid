@@ -94,11 +94,38 @@ tests → `npm run build` + `npm run test:unit` green → commit + push.
       wrapper, so add carefully — plus a feed/view-level seed→delete→assert test.
       (Local + publish/read layers are already unit+mutation tested.)
 
-### 3. Zaps system + platform-fee zap split
-- [ ] Audit the zap flow (NWC / `nwcClient.js`, `zapController.js`, `zapReceiptValidator.js`).
-- [ ] Verify the platform-fee split: correct recipients, correct percentages, rounding,
-      and that the fee can't silently swallow the whole zap or be bypassed.
-- [ ] Confirm zap-receipt validation (kind 9735) is accurate before crediting.
+### 3a. Video-modal popover mis-positioning (zap + embed) — BUG
+Confirmed via screenshots: the zap/embed popovers OPEN and are fully functional
+(comment box, amount, send all render) but appear anchored to the far LEFT of the
+content column instead of `bottom-end` under the button (which is in the right-
+side action bar). Both share `js/ui/overlay/popoverEngine.js`.
+- Leading cause: the engine only portals a panel into the body-level overlay root
+  `if (!panel.isConnected)`. The zap/embed panels are pre-existing connected
+  elements INSIDE the modal, so they're NOT portaled out, and `position:fixed`
+  resolves against an in-modal containing block (something in the modal subtree
+  has transform/filter/contain) → horizontal offset.
+- Ruled out: positioning CSS present in built css; floating-ui local bundle loads;
+  panel class correct (`.popover__panel`/`.popover-panel` share the rule).
+- Fix (do carefully — shared engine drives every popover): either portal connected
+  in-modal panels out to `#uiOverlay` on open (and restore/clean on close without
+  losing the element for re-open), OR remove the containing-block ancestor in the
+  modal subtree. VERIFY non-modal popovers (card "⋯" menu, feed-settings gear,
+  FeedInfoPopover) still position correctly after the change.
+- To pin exactly: inspect `#modalZapDialog` while open — computed `position`,
+  `left`, `top`, and its DOM parent (is it under `#uiOverlay` at body level or
+  still nested in the modal?).
+
+### 3. Zaps system + platform-fee zap split — full plan in docs/zap-audit-plan.md
+Audit started 2026-06-23. See the doc for architecture map + findings. Summary:
+- [x] **Send-error softened** (`dd1ce113`): recipient LNURL unreachable/CORS now
+      shows a clear message, not raw "Failed to fetch".
+- [ ] **CORS / LNURL proxy decision** (the real reliability fix — static client
+      can't fetch CORS-less LNURL hosts; many zaps fail). Top of the next session.
+- [ ] **Popover positioning (3a)**, **platform-fee split correctness** (incl. the
+      earlier "fee landed in my own wallet" report + self-zap edge), **receipt
+      validation (9735)**, **NWC budget/retry UX**, **general clunkiness**.
+- [x] Comment box confirmed WORKING (the "message doesn't work" was the popover
+      mis-position making it hard to use — see 3a).
 
 ### 4. View counter accuracy & reliability
 - [ ] Audit the view-counter system (`viewEvents.js`, `reactionCounter.js`) for
@@ -106,11 +133,25 @@ tests → `npm run build` + `npm run test:unit` green → commit + push.
       double-counting, and resilience to dead relays (now that feed defaults are
       reserved, ensure view reads/writes use a sane relay set too).
 
-### 5. Card-hide / video-liveness check
-- [ ] Audit the card-hide system that gates a card on a video-liveness probe
-      (`gridHealth.js`, probe concurrency now 4). Confirm: dead URL/magnet hides the
-      card correctly, a live video is never falsely hidden, and the probe can't
-      stampede connections (regression risk from the freeze fix).
+### 5. Card-hide / video-liveness check — full plan in docs/video-liveness-plan.md
+Audited (2026-06-23). Finding: the hide/show **policy is already correct**
+(`cardSourceVisibility.js` hides only when neither CDN nor WebTorrent is healthy;
+un-hides when WebTorrent flips green). The real gaps:
+- [x] **Speed** (`URL_PROBE_TIMEOUT_MS` 8s → 4s): dead hosts yield a fast verdict
+      so unplayable cards hide quickly. WebTorrent probe stays generous (swarm).
+- [x] **Probe accuracy**: confirmed the card probe already uses the video-element
+      probe (`confirmPlayable:true`, actually loads media) — accurate, not the
+      opaque HEAD. No change needed.
+- [x] **Multi-source**: ingest adapter exposes `sources` (all video imeta urls;
+      `collectVideoSources`); `urlHealthController.probeUrlList` probes them in
+      order — healthy as soon as one plays, offline only if all fail. So a dead
+      primary host no longer hides a video with a working mirror.
+- [ ] **Remaining — player fail-over at play time**: the *liveness* now tries all
+      sources, but actual playback should also fail over to the next source if the
+      chosen one dies mid-load (playbackService consumes `video.sources`).
+- [ ] **Remaining — hide-until-verified for foreign/ingested** (decision): so
+      unplayable strangers never briefly flash before the probe hides them
+      (bitvid-native stays show-pending). UX policy change in cardSourceVisibility.
 
 ## Open — medium priority
 
@@ -131,8 +172,34 @@ tests → `npm run build` + `npm run test:unit` green → commit + push.
       surfacing the same control from the Storage settings pane.
 
 ### 9. Cap the cold-login relay-REQ storm further
-- [ ] Investigate the ~117 REQ/s spike at login. Respect the `capReadRelays` invariant
-      everywhere fan-out happens; consider staggering subsystem subscriptions at login.
+- [x] **Biggest source fixed** (`a8e9f520`): the community-blacklist load fired one
+      kind-30000 REQ *per curator* (~28-32 parallel) at cold start. Collapsed into a
+      single batched multi-author REQ (`js/adminListBatch.js`), routed through the
+      subscription manager. This was the dominant `kind 30000` storm.
+- [ ] **VERIFY the batching actually reduced it.** A later logged-OUT load
+      (2026-06-23 00:45) STILL showed `kind 30000=32` — either that build wasn't
+      loaded, or there's ANOTHER kind-30000 source besides
+      `loadCommunityBlacklistEntries` (admin editor/whitelist/blacklist lists? a
+      per-author follow-set fetch?). Re-check on a fresh hard-refresh; if still ~32,
+      trace the actual emitter.
+- [ ] **`from_hex` source not root-caused.** The sanitizer (`733cb593`) defends +
+      dev-logs `[toolkit] dropped N invalid hex value(s) from filter "<field>"` —
+      watch that log to find which subscription ships the odd-length hex, fix at source.
+- [x] **Relay `from_hex` REQ rejects fixed** (`733cb593`): one odd-length/non-hex
+      value in `ids/authors/#e/#p/#q` made strict relays reject a whole REQ; now
+      sanitized at the pool choke point (`normalizeFilterList`).
+- [ ] **Remaining: logged-IN cold-start WoT/social-graph fan-out** (~94-104 REQ/s,
+      bracketed by `[lists-sync-start]`…`[lists-sync-complete]`). Logged-OUT is now
+      clean. The spike is per-contact hydration over the user's ~25 follows/trusted
+      contacts: `kind 30000` (follow sets), `30002` (block lists), `30005/30015`
+      (interest sets), `10050` (DM relay hints), plus `0` (profiles). NOTE: mutes
+      (`kind 10000`) are ALREADY batched (moderationService.refreshTrustedMuteSubscriptions,
+      one multi-author filter). Fix = apply the same multi-author batching to the
+      other per-contact fetches (userBlocks 30002, hashtagPreferences 30005/30015,
+      follow-set/contacts hydration 30000, DM 10050) and/or DEFER non-feed-critical
+      ones (DM relays, interest sets) until after first render. Multi-subsystem +
+      sensitive (trust) → do as a dedicated perf pass, not a rushed change.
+      Source still to pin: the loop issuing 30000/30002/30005/30015 per contact.
 
 ## Open — lower priority / infra
 
@@ -248,12 +315,113 @@ Threat model / cautions (write these into the feature + docs):
 - [ ] Research: confirm NIP-53 kinds + tag shapes, how zap.stream vs shosho.live
       populate `streaming`/`recording`, and HLS playback support in the player.
 
-### 17. Short-form / external NIP-71 video note support
-- [ ] Likely **NIP-71 Video Events** — the format Amethyst & co. use for "short
-      form" vertical video: kind **22** (short video) and kind **21** (normal
-      video). (Confirm current kinds; NIP-71 churned from the older 34235/34236.)
-- [ ] bitvid currently publishes its OWN kind 30078 + attaches NIP-71 metadata.
-      This item is about CONSUMING external NIP-71 notes (render them in the feed /
-      a short-form view) so bitvid can show video posted by other Nostr apps.
-- [ ] Research: confirm whether short-form is purely NIP-71 kind 22, how it maps
-      onto bitvid's video model (url/magnet/thumbnail), and the vertical/feed UX.
+### 17. NIP-71 interop (full plan in `docs/nip71-migration-plan.md`)
+Research done; decisions locked. **See the plan doc** — it supersedes the rough
+notes below. Summary:
+- Opt-in, off by default. Dual-event: keep canonical kind 30078; add an addressable
+  **34235/34236** mirror (`d`=`videoRootId`, edits in lockstep). 34235/36 are NOT
+  deprecated — current NIP-71 designates them for editable content.
+- WebTorrent rides standard NIP-94 `imeta` fields (`magnet`, `i`); private videos
+  never mirrored; HTTPS `url` required to mirror.
+- [x] Phase 0 (commit 0e2f683b): `buildNip71MirrorEvent` (js/nostr/nip71Mirror.js)
+      maps a bitvid video → addressable 34235/36 event; magnet/i/ox added to the
+      imeta builder+parser; mutation-verified tests. Flag still off, no UX.
+- [ ] Phase 1 (in progress):
+      - [x] 1a (e20191d6): `nip71MirrorService.publish` + the ALLOW_NSFW_CONTENT
+            gate (instance that forbids NSFW won't mirror it outward).
+      - [x] 1b (58f19095): `remove` teardown — NIP-09 delete (both addressable
+            kinds) + empty-replace tombstone.
+      - [x] 1c/1d (783c7df0): My Videos "Share to apps" opt-in toggle wired to the
+            mirror service via new FEATURE_NIP71_MIRROR flag (on) +
+            nip71MirrorFlags (per-video opt-in). Ineligible videos show the reason
+            (private / NSFW-blocked / no-url). LIVE on unstable.
+      - [x] Auto-sync (89d9a62b): mirror stays in lockstep on edit/delete,
+            event-driven via nostrService videos:edited/deleted (no nostrService
+            growth). Edit re-publishes (or unshares if now-private); delete tears
+            down + clears the flag.
+      - [x] Hashtags (a1bf7b15, e793b359): the upload modal's existing NIP-71
+            hashtag editor already emits `t` tags (feed scoring reads them); the
+            mirror now carries them too (from t tags / nip71.hashtags). So
+            publish + feed + mirror hashtags all work.
+      - [ ] Remaining polish (low value): capture dimensions at upload (short 34236
+            + imeta dim — defaults to 34235 now); optional account-level
+            "auto-share new public videos".
+      - NOTE: legacy FEATURE_PUBLISH_NIP71 (videoPublisher.js auto-21/22) stays
+        OFF/dormant — superseded by the opt-in 34235/36 mirror; clean up later.
+- [ ] Phase 1.5: NIP-89 handler reg (kind 31990 → "Open in bitvid" elsewhere);
+      NIP-51 kind 30005 portable playlists.
+- [x] Phase 2: inbound ingest of external NIP-71 videos — LIVE on unstable.
+      - `js/nostr/nip71IngestAdapter.js` (foreign 21/22/34235/34236 → bitvid video;
+        content-warning→isNsfw; skips bitvid mirrors; surfaces nip71.publishedAt),
+        `js/services/nip71IngestService.js` (whitelist-scoped subscription,
+        hydration retry, deferred-until-feed-ready, throttled refresh),
+        wired in applicationBootstrap. Admin toggle `FEATURE_NIP71_INGEST`
+        (instance-config) default ON.
+      - Whitelist model: ingest is scoped to whitelisted authors and reuses the
+        existing render-time filter (whitelist/NSFW/blacklist/private). When the
+        admin disables whitelist mode, ingest opens to all authors (capped).
+      - KEY FIX: the feed's resolve-posted-at stage was firing a per-video
+        hydrateVideoHistory() network fetch for each ingested video (no kind-30078
+        history exists) → relay storm + feed hang. Fixed by surfacing
+        nip71.publishedAt so the stage short-circuits.
+      - Verified live: Goblinbox (Nostube) content renders; liveness check works.
+
+### 17c. NIP-71 on-boarding + cross-ecosystem dedup (IMPORTANT — full plan in docs/nip71-onboarding-plan.md)
+Make NIP-71 interop two-way and guarantee a video is never shown twice.
+**See `docs/nip71-onboarding-plan.md` for the full dev plan.** Locked decisions:
+creator-initiated self-import (model A — can't forge others' notes), dedup on
+explicit import-link + content hash/infohash (no fuzzy url/title), import grants
+CDN url + WebTorrent (bitvid extras come free), one-shot import + re-run button.
+- [x] **Phase 1: cross-ecosystem dedup** (`js/utils/videoDeduper.js`):
+      `collapseCrossEcosystem` keyed per-author on `fileSha256/ox/infoHash` + an
+      `eid` namespace linking on-board provenance (`importedFrom`); prefers the
+      bitvid (kind-30078) version. Composed into `dedupeVideos` (root-dedup THEN
+      cross-ecosystem) and routed through the shared chokepoint
+      `app.dedupeVideosByRoot` → covers the feed stage + channel + search at once.
+      Pure + mutation-verified. (Hash-less dual-posts still can't dedup — documented
+      limitation; covered once on-boarded videos carry the provenance link.)
+- [ ] **Phase 2: creator-initiated import** — discover the logged-in creator's own
+      NIP-71 videos lacking a bitvid version; offer FULL import (re-host to THEIR
+      storage + optional WebTorrent) or REFERENCE import (keep external URL, no
+      re-host); publish a kind-30078 signed by them with an `["imported-from", <orig>]`
+      provenance tag. Same-pubkey-only guard; ALLOW_NSFW gate; reuses ingest adapter
+      + storage/upload + videoPublisher.
+- [ ] **Phase 2b: externally-managed storage flag** — imports NOT produced by our
+      storage system (reference imports / external URLs) must be explicitly flagged
+      (`externalStorage: true`, durable — not just the `isUrlUnderBase` heuristic) so
+      storage tooling never treats them as bitvid-owned: My Videos shows an external
+      badge (never "missing from bucket"), orphan reconciliation excludes them, the
+      delete "hosted file left behind" warning is suppressed, liveness stays
+      unverifiable. Full (re-hosted) imports set the flag false.
+
+### 17d. Unified video-grid loading (streaming + optimistic) — follow-ups
+Goal: every grid loads with the same fast UX. Status: cross-ecosystem dedup
+(17c Phase 1) is live at the shared chokepoint; main feed already streams +
+has a persisted cache; channel/search now render optimistically from
+`allEvents` (incl. ingested NIP-71). Remaining:
+- [ ] **Streaming channel/search fetch.** `loadUserVideos` does a one-shot
+      `pMapSettled(relays, pool.list)` and renders only after ALL relays settle,
+      so a slow relay holds up the grid (~2-3s). Switch to the subscription
+      manager's streaming + render incrementally (first-relay-wins), like the main
+      feed's buffered subscription. Extract the fetch into `channelProfileVideos.js`
+      (channelProfile.js is at its size cap).
+- [x] **Per-channel persisted cache** (`channelProfileVideos.js`,
+      `bitvid:channel-videos:v1`): cold hard-refresh of a profile now paints the
+      last-seen videos from localStorage before relays connect, then the live fetch
+      replaces them. Bounded (60 videos/channel, 20 channels LRU), strips raw tags.
+      Tests + mutation-verified.
+- [ ] **My Videos: include NIP-71** in its `allEvents` read so a creator's own
+      cross-posted videos appear in management too (reuse the cross-ecosystem
+      dedupe so the bitvid version wins).
+- [ ] **Consolidate** the bespoke loaders (channel/search/My Videos) behind one
+      shared streaming grid source so future grids inherit streaming + optimistic +
+      dedupe for free.
+
+### 17b. Channel Profile wall shows only bitvid videos, not NIP-71 (LAUNCH-BLOCKER)
+- [x] **Fixed** (`js/channelProfileVideos.js`): the channel grid now fetches the
+      author's NIP-71 videos (kinds 21/22/34235/34236) alongside kind-30078 via
+      `buildChannelVideoFilters`, and `convertChannelEvent` routes NIP-71 events
+      through `buildVideoFromNip71Event` (skips bitvid mirrors). Existing
+      dedupe-by-root + canAccess in `buildRenderableChannelVideos` handle
+      precedence/gating. Logic extracted to a helper so channelProfile.js stayed
+      under its size cap. Tests + mutation-verified.

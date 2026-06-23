@@ -176,6 +176,12 @@ function normalizeNip71Kind(value) {
   if (numeric === 22) {
     return 22;
   }
+  if (numeric === 34235) {
+    return 34235;
+  }
+  if (numeric === 34236) {
+    return 34236;
+  }
   return 21;
 }
 
@@ -199,6 +205,9 @@ function buildImetaTags(variants) {
     const dim = stringFromInput(variant.dim);
     const url = stringFromInput(variant.url);
     const x = stringFromInput(variant.x);
+    const ox = stringFromInput(variant.ox);
+    const magnet = stringFromInput(variant.magnet);
+    const infohash = stringFromInput(variant.i);
     const rawMime = stringFromInput(variant.m);
     const mime = rawMime ? rawMime.toLowerCase() : "";
     const duration = formatNonNegativeNumber(variant.duration, {
@@ -221,6 +230,9 @@ function buildImetaTags(variants) {
       !dim &&
       !url &&
       !x &&
+      !ox &&
+      !magnet &&
+      !infohash &&
       !mime &&
       !duration &&
       !bitrate &&
@@ -241,8 +253,18 @@ function buildImetaTags(variants) {
     if (x) {
       entries.push(`x ${x}`);
     }
+    if (ox) {
+      entries.push(`ox ${ox}`);
+    }
     if (mime) {
       entries.push(`m ${mime}`);
+    }
+    // WebTorrent rides standard NIP-94 imeta fields so torrent-aware clients can use it.
+    if (magnet) {
+      entries.push(`magnet ${magnet}`);
+    }
+    if (infohash) {
+      entries.push(`i ${infohash}`);
     }
     if (duration) {
       entries.push(`duration ${duration}`);
@@ -456,6 +478,15 @@ function parseImetaTag(tag) {
       case "x":
         variant.x = parsed.value;
         break;
+      case "ox":
+        variant.ox = parsed.value;
+        break;
+      case "magnet":
+        variant.magnet = parsed.value;
+        break;
+      case "i":
+        variant.i = parsed.value;
+        break;
       case "m":
         variant.m = parsed.value;
         break;
@@ -489,6 +520,9 @@ function parseImetaTag(tag) {
     Boolean(variant.dim) ||
     Boolean(variant.url) ||
     Boolean(variant.x) ||
+    Boolean(variant.ox) ||
+    Boolean(variant.magnet) ||
+    Boolean(variant.i) ||
     Boolean(variant.m) ||
     (variant.duration !== undefined && variant.duration !== null && variant.duration !== "") ||
     (variant.bitrate !== undefined && variant.bitrate !== null && variant.bitrate !== "") ||
@@ -1481,6 +1515,20 @@ export function convertEventToVideo(event = {}) {
   const isPrivate = parsedContent.isPrivate === true;
   const isNsfw = parsedContent.isNsfw === true;
   const isForKids = parsedContent.isForKids === true && !isNsfw;
+  const hashtags = Array.isArray(parsedContent.hashtags)
+    ? parsedContent.hashtags
+        .filter((value) => typeof value === "string" && value.trim())
+        .map((value) => value.trim())
+    : [];
+  const toPositiveInt = (value) => {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : undefined;
+  };
+  const width = toPositiveInt(parsedContent.width);
+  const height = toPositiveInt(parsedContent.height);
+  const durationValue = Number(parsedContent.duration);
+  const duration =
+    Number.isFinite(durationValue) && durationValue > 0 ? durationValue : undefined;
   const videoRootId = safeTrim(parsedContent.videoRootId) || event.id;
   const wsField = safeTrim(parsedContent.ws);
   const xsField = safeTrim(parsedContent.xs);
@@ -1584,6 +1632,10 @@ export function convertEventToVideo(event = {}) {
     description,
     mode,
     deleted,
+    hashtags,
+    width,
+    height,
+    duration,
     ws,
     xs,
     storagePointer,

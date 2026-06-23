@@ -135,7 +135,7 @@ import resolveVideoPointer, {
   buildVideoAddressPointer,
 } from "./utils/videoPointer.js";
 import { isValidMagnetUri } from "./utils/magnetValidators.js";
-import { dedupeToNewestByRoot } from "./utils/videoDeduper.js";
+import { dedupeToNewestByRoot, dedupeVideos } from "./utils/videoDeduper.js";
 import { buildServiceWorkerFallbackStatus } from "./utils/serviceWorkerFallbackMessages.js";
 import { batchFetchProfilesFromRelays } from "./utils/profileBatchFetcher.js";
 import {
@@ -633,6 +633,7 @@ class Application {
         fetchProfileMetadata,
         ensureProfileMetadataSubscription,
         dedupeToNewestByRoot,
+        dedupeVideos,
         buildServiceWorkerFallbackStatus,
         sanitizeProfileMediaUrl,
         UNSUPPORTED_BTITH_MESSAGE,

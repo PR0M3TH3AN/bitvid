@@ -152,6 +152,21 @@ export default class UrlHealthController {
 
     this.updateUrlHealthBadge(badgeEl, { status: "checking" }, eventId);
 
+    // Try the primary url plus any additional NIP-71 source mirrors, so one dead
+    // host doesn't mark a video offline when an alternate plays.
+    const sources = Array.isArray(video?.sources) ? video.sources : [];
+    const candidateUrls = [];
+    const seenUrls = new Set();
+    for (const candidate of [
+      trimmedUrl,
+      ...sources.map((s) => (s && typeof s.url === "string" ? s.url.trim() : "")),
+    ]) {
+      if (candidate && !seenUrls.has(candidate)) {
+        seenUrls.add(candidate);
+        candidateUrls.push(candidate);
+      }
+    }
+
     const probeOptions = { confirmPlayable: true };
     const getInFlight = this.state.getInFlightUrlProbe;
     const existingProbe =
@@ -175,7 +190,7 @@ export default class UrlHealthController {
       return;
     }
 
-    const probePromise = this.probeUrl(trimmedUrl, probeOptions)
+    const probePromise = this.probeUrlList(candidateUrls, probeOptions)
       .then((result) => {
         const outcome = result?.outcome || "error";
         let entry;
@@ -339,6 +354,36 @@ export default class UrlHealthController {
         }
       }
     }
+  }
+
+  // Probe several candidate URLs (mirrors) in order; "ok" as soon as one is
+  // playable, "timeout" if none played but at least one timed out, else
+  // "offline". Lets a video with a dead primary host survive on a live mirror.
+  async probeUrlList(urls, options = {}) {
+    const list = Array.isArray(urls)
+      ? urls.filter((u) => typeof u === "string" && u.trim())
+      : [];
+    if (!list.length) {
+      return { outcome: "error" };
+    }
+    let sawTimeout = false;
+    for (const url of list) {
+      let result;
+      try {
+        result = await this.probeUrl(url, options);
+      } catch (err) {
+        this.logger.warn(`[probeUrlList] probe threw for ${url}:`, err);
+        continue;
+      }
+      const outcome = result?.outcome;
+      if (outcome === "ok") {
+        return { outcome: "ok", url };
+      }
+      if (outcome === "timeout") {
+        sawTimeout = true;
+      }
+    }
+    return { outcome: sawTimeout ? "timeout" : "offline" };
   }
 
   async probeUrl(url, options = {}) {

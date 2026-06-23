@@ -232,10 +232,23 @@ export async function fetchPayServiceData(url, { fetcher } = {}) {
   const targetUrl = sanitizeUrl(url);
   const fetchFn = ensureFetchFunction(fetcher);
 
-  const response = await fetchFn(targetUrl, {
-    method: "GET",
-    headers: { Accept: "application/json" },
-  });
+  let response;
+  try {
+    response = await fetchFn(targetUrl, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    });
+  } catch (error) {
+    // Browser fetch rejects (TypeError "Failed to fetch") when the recipient's
+    // Lightning endpoint is unreachable or — common for LNURL — doesn't send CORS
+    // headers. Surface a clear, actionable message instead of the raw error.
+    const friendly = new Error(
+      "Couldn't reach this recipient's Lightning address. It may be offline or blocking browser requests.",
+    );
+    friendly.cause = error;
+    friendly.code = "lnurl-unreachable";
+    throw friendly;
+  }
 
   if (!response.ok) {
     throw new Error(`Failed to load LNURL metadata (${response.status}).`);
