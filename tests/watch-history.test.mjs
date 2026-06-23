@@ -1183,142 +1183,98 @@ async function testWatchHistoryPartialRelayRetry() {
       "write relays should include all configured endpoints",
     );
 
-    const attemptPlans = [
-      {
-        "wss://relay.one": true,
-        "wss://relay.two": true,
-        "wss://relay.three": false,
-      },
-      {
-        "wss://relay.one": true,
-        "wss://relay.two": false,
-        "wss://relay.three": true,
-      },
-      {
-        "wss://relay.one": true,
-        "wss://relay.two": true,
-        "wss://relay.three": true,
-      },
-    ];
+    // Partial acceptance: 2 of 3 write relays accept, one rejects — on a single
+    // attempt (no escalation). The relay set is stable across calls.
+    const acceptPlan = {
+      "wss://relay.one": true,
+      "wss://relay.two": true,
+      "wss://relay.three": false,
+    };
 
     poolHarness.setResolver(({ relays }) => {
       const relayUrl = Array.isArray(relays) && relays.length ? relays[0] : "";
-      const index = Math.min(
-        Math.max(currentAttempt, 1) - 1,
-        attemptPlans.length - 1,
-      );
-      const plan = attemptPlans[index] || {};
-      const accept = plan?.[relayUrl];
-      if (accept) {
-        return { ok: true };
-      }
-      return { ok: false, error: new Error(`reject-${relayUrl || "unknown"}`) };
+      return acceptPlan[relayUrl]
+        ? { ok: true }
+        : { ok: false, error: new Error(`reject-${relayUrl || "unknown"}`) };
     });
 
-    const scheduledRuns = [];
-    nostrClient.scheduleWatchHistoryRepublish = (snapshotId, operation) => {
-      const promise = (async () => {
-        let attempt = 1;
-        let result = null;
-        for (; attempt <= attemptPlans.length + 1; attempt += 1) {
-          result = await operation(attempt);
-          if (result?.ok || !result?.retryable) {
-            break;
-          }
-        }
-        return result;
-      })();
-      scheduledRuns.push({ snapshotId, promise });
+    let republishScheduled = false;
+    nostrClient.scheduleWatchHistoryRepublish = () => {
+      republishScheduled = true;
       return { attempt: 1, delay: 0 };
     };
 
+    // Spec correction (565a9618 / pre-launch TODO #2): a watch-history snapshot is
+    // durable as soon as ANY write relay accepts it (reads take the newest event
+    // per d-tag). Partial acceptance must therefore SUCCEED — not throw, not mark
+    // the result retryable, not schedule a republish, and not leave the pointer
+    // queued. Previously this asserted the opposite (throw + retry until EVERY
+    // relay accepts), which was exactly the all-relays false-failure bug.
     let thrownError = null;
+    let result = null;
     try {
-      await watchHistoryService.snapshot(null, { actor, reason: "partial-test" });
+      result = await watchHistoryService.snapshot(null, {
+        actor,
+        reason: "partial-test",
+      });
     } catch (error) {
       thrownError = error;
     }
 
-    assert(thrownError, "snapshot should throw when partial acceptance occurs");
-    // In new bucket logic, publishRecords calls publishMonthRecord for each month.
-    // If one fails, it returns retryable=true.
-    // The error might not be 'partial-relay-acceptance' if it's a mix of results.
-    // But let's check what we get. The thrownError.result is the result object.
-
     assert.equal(
-      thrownError?.result?.retryable,
-      true,
-      "partial failures should be marked retryable",
+      thrownError,
+      null,
+      "partial acceptance (>=1 relay) must NOT throw — the snapshot is durable",
     );
-    // Error code might vary or be absent in composite result if not explicitly set.
-    // In WatchHistoryManager.publishRecords, we don't set a global error code if some succeed and some fail.
-    // But we set partial=true if any call had partial success?
-    // Actually publishRecords aggregates results.
-
-    // Let's relax the check for specific error string if it's undefined, but ensure retryable is true.
-    if (thrownError?.result?.error) {
-        assert.equal(
-          thrownError?.result?.error,
-          "partial-relay-acceptance",
-          "partial failures should expose the partial acceptance error code",
-        );
-    }
-    // assert(thrownError?.result?.partial, "result should report partial acceptance");
-    // publishRecords doesn't return 'partial' property at top level in current implementation, check results.
-
-    // In publishRecords, results is an array of results for each month.
-    // We need to look into `thrownError.result.results`.
-    const results = thrownError?.result?.results || [];
-    const firstMonthResult = results[0];
-    const initialPointerStatus =
-      firstMonthResult?.publishResults?.relayStatus?.pointer || [];
-
-    assert(
-      initialPointerStatus.some((entry) => entry && entry.success === false),
-      "initial relay status should capture pointer rejections",
+    assert(result?.ok, "snapshot should report success on partial acceptance");
+    assert.equal(
+      result?.retryable,
+      false,
+      "a successful partial snapshot is not retryable",
     );
-
+    assert.equal(
+      republishScheduled,
+      false,
+      "no republish should be scheduled when the snapshot already succeeded",
+    );
     assert(
       attemptIndex >= 1,
-      "initial snapshot attempt should increment the attempt counter",
-    );
-    assert.equal(
-      scheduledRuns.length,
-      1,
-      "partial failure should schedule a republish operation",
+      "snapshot should issue exactly the publish attempt (counter incremented)",
     );
 
-    const finalResult = await scheduledRuns[0].promise;
-    assert(finalResult?.ok, "republish attempts should converge to success");
-    assert(
-      attemptIndex >= 3,
-      "republish loop should retry until every relay accepts",
-    );
-    // Again, partial is not on top level. Check results.
-    const finalResults = finalResult?.results || [];
-    const finalFirstMonth = finalResults[0];
-
+    const monthResult = (result?.results || [])[0];
+    assert(monthResult, "snapshot result should include the month record result");
     assert.equal(
-      finalFirstMonth?.partial,
-      false,
-      "final result should not mark the publish as partial",
+      monthResult.partial,
+      true,
+      "the month result should be flagged partial (one relay rejected)",
     );
 
-    const finalPointerStatus =
-      finalFirstMonth?.publishResults?.relayStatus?.pointer || [];
-    assert.equal(
-      finalPointerStatus.filter((entry) => entry?.success).length,
-      relaySet.length,
-      "final pointer publish should succeed on all relays",
+    const pointerStatus =
+      monthResult?.publishResults?.relayStatus?.pointer || [];
+    const acceptedRelays = pointerStatus
+      .filter((entry) => entry?.success)
+      .map((entry) => entry.url)
+      .sort();
+    const rejectedRelays = pointerStatus
+      .filter((entry) => entry && entry.success === false)
+      .map((entry) => entry.url);
+    assert.deepEqual(
+      acceptedRelays,
+      ["wss://relay.one", "wss://relay.two"],
+      "the accepting relays should be captured in the pointer relay status",
     );
-    // Chunk status check is legacy, removed or adapted?
-    // Monthly records don't have separate chunks (except if we split months which we don't do anymore).
+    assert.deepEqual(
+      rejectedRelays,
+      ["wss://relay.three"],
+      "the rejecting relay should be captured in the pointer relay status",
+    );
 
     const remainingQueue = watchHistoryService.getQueuedPointers(actor);
     assert.equal(
       remainingQueue.length,
       0,
-      "queue should remain empty after successful retries",
+      "queue should be emptied — the pointer was durably published",
     );
   } finally {
     nostrClient.scheduleWatchHistoryRepublish = originalSchedule;
@@ -1540,7 +1496,12 @@ async function testWatchHistoryServiceIntegration() {
   const originalWatchHistoryCacheTtl = nostrClient.watchHistoryCacheTtlMs;
 
   try {
-    nostrClient.pubkey = "npub-logged";
+    // Watch history files under the LOGGED-IN pubkey (publishView prefers
+    // nostrClient.pubkey over the session actor), so the logged-in user and the
+    // actor whose history we query must be the same — matching the convention used
+    // by every other test here. (Was "npub-logged" — never asserted — which keyed
+    // the queue away from the `actor` the assertions query.)
+    nostrClient.pubkey = actor;
     nostrClient.sessionActor = { pubkey: actor, privateKey: "service-priv", source: "nsec" };
     nostrClient.ensureSessionActor = async () => actor;
     nostrClient.watchHistoryLastCreatedAt = 0;
@@ -1629,10 +1590,14 @@ async function testWatchHistoryServiceIntegration() {
     // As per new requirement, history only has IDs. Video metadata must be hydrated separately if needed.
     assert.equal(resolvedVideo, null, "decrypted history should NOT include pointer video (IDs only)");
     assert(resolvedItems[0].watchedAt >= resolvedItems[1].watchedAt);
-    assert.equal(
+    // A logged-in user's watch is NOT a local-only "session" entry. The session
+    // flag is set only when nobody is logged in (publishView); previously logged-in
+    // watches were wrongly flagged session=true by comparing against the view
+    // actor. This actor is logged in, so the flag must round-trip as falsy.
+    assert.notEqual(
       resolvedItems[0].session,
       true,
-      "session flag should persist through publish and load",
+      "a logged-in user's watch must not be flagged session (local-only)",
     );
 
     const afterFingerprint = await watchHistoryService.getFingerprint(actor);
