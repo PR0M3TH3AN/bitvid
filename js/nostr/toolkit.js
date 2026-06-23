@@ -151,7 +151,11 @@ function normalizeRelayList(relays) {
 // 64-char lowercase hex. A single malformed/odd-length entry makes strict relays
 // (e.g. primal) reject the whole REQ with "uneven size input to from_hex",
 // silently dropping that subscription's results.
-const HEX64_FILTER_FIELDS = ["ids", "authors", "#e", "#p", "#q"];
+// Includes the NIP-22 UPPERCASE root-scope tags #E (root event id) and #P (root
+// author pubkey) — relays hex-decode these too, and the kind-1111 comment
+// subscriptions query by them, so an odd-length value there was bypassing the
+// sanitizer and getting the whole REQ rejected with "uneven size input to from_hex".
+const HEX64_FILTER_FIELDS = ["ids", "authors", "#e", "#p", "#q", "#E", "#P"];
 const HEX64_PATTERN = /^[0-9a-f]{64}$/;
 
 // Strip invalid hex from the hex-only filter fields so one bad value can't get a

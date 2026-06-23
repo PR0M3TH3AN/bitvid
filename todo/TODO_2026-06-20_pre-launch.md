@@ -233,9 +233,13 @@ un-hides when WebTorrent flips green). The real gaps:
       `loadCommunityBlacklistEntries` (admin editor/whitelist/blacklist lists? a
       per-author follow-set fetch?). Re-check on a fresh hard-refresh; if still ~32,
       trace the actual emitter.
-- [ ] **`from_hex` source not root-caused.** The sanitizer (`733cb593`) defends +
-      dev-logs `[toolkit] dropped N invalid hex value(s) from filter "<field>"` —
-      watch that log to find which subscription ships the odd-length hex, fix at source.
+- [x] **`from_hex` root-caused + FIXED (2026-06-23).** The sanitizer
+      (`HEX64_FILTER_FIELDS`, toolkit.js) covered `ids/authors/#e/#p/#q` but NOT the
+      NIP-22 UPPERCASE root tags `#E`/`#P`, which relays also hex-decode and which
+      the kind-1111 comment subscriptions (`commentEvents.js`) query by. An
+      odd-length root event-id/author there bypassed the sanitizer and got the whole
+      REQ rejected ("uneven size input to from_hex"). Added `#E`/`#P` to the
+      sanitized fields; test in `tests/filter-hex-sanitize.test.mjs`.
 - [x] **Relay `from_hex` REQ rejects fixed** (`733cb593`): one odd-length/non-hex
       value in `ids/authors/#e/#p/#q` made strict relays reject a whole REQ; now
       sanitized at the pool choke point (`normalizeFilterList`).
