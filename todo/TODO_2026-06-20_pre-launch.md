@@ -163,16 +163,20 @@ Audit started 2026-06-23. See the doc for architecture map + findings. Summary:
 - [x] **Popover positioning (3a)** — FIXED (see 3a).
 - [x] **In-flight status + form-reset polish (2026-06-23)** — "Sending…" no longer
       mis-toned as a warning; success path fully resets the form (`resetZapForm`).
-- [ ] **"Have to click the Zap button ~3 times before it opens" — STILL BROKEN.**
-      First attempt (2026-06-23) made a mid-open click a no-op instead of canceling
-      the in-flight open (`video-modal/zapController.js`) — but the user confirms it
-      still takes ~3 clicks, so the toggle-parity theory was wrong / incomplete. Real
-      cause still to find. Suspects to check live: the popover engine's global
-      `pointerdown` capture handler closing the just-opened panel; the open() promise
-      never resolving (so every click hits the in-flight branch and is ignored — would
-      need the panel's `isOpen`/state to be stuck); `activePopoverInstance` closing it;
-      or a focus/`autoUpdate` race. Instrument: log each click's `isZapDialogOpen()` +
-      `modalZapOpenPromise` + engine `isOpen` to see what state each click sees.
+- [x] **"Have to click the Zap button ~3-4 times before it opens" — ROOT-CAUSED +
+      FIXED (2026-06-23).** Diagnosed with click instrumentation: the button is
+      intentionally `hidden`+`disabled` until the creator's Lightning address resolves
+      (a profile fetch, ~2s) — but `.video-modal__action-button` sets
+      `display: inline-flex`, which OVERRODE the UA `[hidden] { display:none }`, so the
+      button rendered and looked clickable while still a disabled no-op. Disabled
+      buttons don't fire `click`, so the first clicks did nothing until it flipped
+      enabled. Fix: `.video-modal__action-button[hidden] { display:none }`
+      (`css/tailwind.source.css`) so the zap button only appears once it's
+      enabled/ready (restores the intended "show zap only when zappable" design). The
+      earlier in-flight-open toggle tweak was harmless but NOT the cause. VERIFY live:
+      the zap button appears a moment after the modal loads and opens on first click.
+      FOLLOW-UP (optional UX): the ~2s appear-delay is the creator-profile fetch; could
+      show the button immediately and resolve the address lazily if the delay annoys.
 - [x] **Receipt success-reporting + discovery FIXED (2026-06-23)** — a paid zap whose
       kind-9735 receipt couldn't be validated was shown as a red error; now it's a
       success-with-note (the NWC preimage proves payment). Receipt lookup now queries

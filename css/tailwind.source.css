@@ -2590,6 +2590,14 @@
     border-style: solid;
   }
 
+  /* `display: inline-flex` above overrides the UA `[hidden] { display: none }`,
+     which left the zap button visible (and clickable-looking) while it was still
+     `hidden`+`disabled` during load — users clicked a dead button repeatedly. Make
+     the hidden attribute win so the button only appears once it's enabled/ready. */
+  .video-modal__action-button[hidden] {
+    display: none;
+  }
+
   .video-modal__action-label {
     @apply hidden sm:inline;
   }
