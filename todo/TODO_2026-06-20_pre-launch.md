@@ -36,17 +36,37 @@ tests → `npm run build` + `npm run test:unit` green → commit + push.
       the subset kept serving the original → resurrection. Now both delete paths
       (soft-delete tombstone + NIP-09) use `getDeletePublishRelays()` (write set).
       Tombstone created_at was already bumped strictly-newer, so this closes the gap.
-- [ ] **Verify with the user** that zombies are gone after this fix. If any remain,
-      remaining suspects to audit:
-      - Is the local cache / `videosMap` + persisted `bitvid:filtered-videos:v1`
-        purged on delete, and does the feed filter honor `deleted` + tombstones on
-        an optimistic (cache-first) reload?
-      - Are NIP-71 (kind 22) + NIP-94 (kind 1063) mirrors also tombstoned, or can a
-        lingering mirror resurrect the card?
-      - getActiveKey mismatch between original (pubkey:dTag) and tombstone (ROOT:…)
-        for edge-case legacy videos.
-- [ ] Add a feed-level regression test (seed event → delete → assert not rendered)
-      once the cache/mirror angles above are confirmed.
+- [x] **getActiveKey mismatch — ROOT-CAUSED + FIXED (2026-06-23).** `js/nostr/client.js`
+      carried a STALE local duplicate of `getActiveKey` (added before the LEGACY guard
+      landed in `js/nostr/utils.js` at `1b11cb1b`). The tombstone machinery
+      (`recordTombstone`/`isOlderThanTombstone`/`applyTombstoneGuard`) used the local
+      copy, so a deleted legacy video (synthesized `videoRootId = LEGACY:<pubkey>:<dTag>`)
+      keyed its tombstone as `ROOT:LEGACY:…` while a bare zombie from a relay keyed as
+      `<pubkey>:<dTag>` → guard never matched → resurrection. Fix: client.js now imports
+      the single canonical `getActiveKey` from utils.js (duplicate deleted). Regression
+      test added in `tests/nostr/client.test.mjs` ("tombstone guard (legacy zombie
+      suppression)") — in the CI suite.
+- [x] **Cache / optimistic-reload angle — audited, OK.** `js/nostr/videoEventBuffer.js`
+      checks tombstones + `deleted` on every buffered event (cache-first reload honors
+      deletions; lines ~89, 156–172).
+- [x] **Mirror-resurrection angle — audited + GAP FIXED (2026-06-23).**
+      `js/services/nip71MirrorSync.js` listens on `videos:deleted` →
+      `nip71MirrorService.remove()` (NIP-09 on BOTH addressable kinds 34235/34236 +
+      empty-replace tombstone). Legacy auto-21/22 publisher stays dormant.
+      GAP: teardown was gated on the per-video opt-in flag, which is **browser-local
+      only** (`bitvid:nip71-mirror:v1`). A video shared on one device and deleted
+      from another (or after a cache clear) skipped teardown → the NIP-71 mirror
+      orphaned on other apps. Fixed in `resolveDeleteSync` (`js/services/
+      nip71MirrorFlags.js`): delete now ALWAYS attempts teardown when
+      FEATURE_NIP71_MIRROR is on, ignoring the local flag (remove() is idempotent —
+      NIP-09 + empty tombstone are no-ops if no mirror exists). The flag still gates
+      the UI toggle; the feature flag still fully gates publishing. Spec-corrected
+      unit test + sync-level spy tests (cross-device teardown + best-effort no-throw)
+      in `tests/nip71-mirror-flags.test.mjs` + `tests/nip71-mirror-sync.test.mjs`.
+- [ ] **Verify with the user** that zombies are gone on the live site after these fixes
+      (the getActiveKey fix needs `npm run build` + redeploy to unstable to take effect).
+- [ ] (Nice-to-have) Add a feed/view-level seed→delete→assert-not-rendered test now that
+      the client-level guard + buffer tombstone paths are covered by unit tests.
 
 ### 2. Watch history delete does not work at all
 - [x] **Root cause found + fixed** (`5f19f536`): the removal path called
@@ -93,37 +113,68 @@ tests → `npm run build` + `npm run test:unit` green → commit + push.
       no-op) — the existing profile-modal-controller test file has an unusual
       wrapper, so add carefully — plus a feed/view-level seed→delete→assert test.
       (Local + publish/read layers are already unit+mutation tested.)
+- [x] **"1970-01" month bucketing FIXED (2026-06-23).** Legacy/migrated history items
+      with no real `watchedAt` were siloed into a literal `1970-01` month event
+      (kind 30079) that self-perpetuated (read back as 0 → re-bucketed → re-published
+      with 0). `canonicalizeWatchHistoryItems` now derives a STABLE watch time from
+      the pointer d-tag's embedded ms-timestamp (the video creation time) and
+      backfills it, so those items land in a real month and the 0→1970 loop stops.
+      Only truly undecodable pointers still use the epoch bucket. Helper
+      `deriveWatchedAtFromPointer` + `tests/watch-history-bucketing.test.mjs`. NOTE:
+      the old `1970-01` event already on relays is left as harmless stale data (not
+      recreated); actively clearing it was declined as extra surgery.
 
-### 3a. Video-modal popover mis-positioning (zap + embed) — BUG
-Confirmed via screenshots: the zap/embed popovers OPEN and are fully functional
-(comment box, amount, send all render) but appear anchored to the far LEFT of the
-content column instead of `bottom-end` under the button (which is in the right-
-side action bar). Both share `js/ui/overlay/popoverEngine.js`.
-- Leading cause: the engine only portals a panel into the body-level overlay root
-  `if (!panel.isConnected)`. The zap/embed panels are pre-existing connected
-  elements INSIDE the modal, so they're NOT portaled out, and `position:fixed`
-  resolves against an in-modal containing block (something in the modal subtree
-  has transform/filter/contain) → horizontal offset.
-- Ruled out: positioning CSS present in built css; floating-ui local bundle loads;
-  panel class correct (`.popover__panel`/`.popover-panel` share the rule).
-- Fix (do carefully — shared engine drives every popover): either portal connected
-  in-modal panels out to `#uiOverlay` on open (and restore/clean on close without
-  losing the element for re-open), OR remove the containing-block ancestor in the
-  modal subtree. VERIFY non-modal popovers (card "⋯" menu, feed-settings gear,
-  FeedInfoPopover) still position correctly after the change.
-- To pin exactly: inspect `#modalZapDialog` while open — computed `position`,
-  `left`, `top`, and its DOM parent (is it under `#uiOverlay` at body level or
-  still nested in the modal?).
+### 3a. Video-modal popover mis-positioning (zap) — FIXED 2026-06-23
+The zap popover (`#modalZapDialog`) opened functional but anchored to the modal
+edge instead of `bottom-end` under its trigger.
+- [x] **Root cause confirmed + fixed** in the shared engine
+      (`js/ui/overlay/popoverEngine.js`). The zap render fn returns the PRE-EXISTING
+      in-modal `#modalZapDialog` verbatim (`() => this.modalZapDialog`,
+      `zapController.js`). The engine only appended panels to the body-level portal
+      `if (!panel.isConnected)`, so this already-connected panel was never moved
+      out; its `position: fixed` then resolved against a transformed/contained modal
+      ancestor → edge anchoring. Fix: the engine now `relocatePanelToPortal()` on
+      open (records the panel's origin: parent + nextSibling, moves it into the
+      `#uiOverlay` portal) and `restorePanelToOrigin()` on close (and via destroy),
+      so the host DOM stays intact and re-open works. Fresh portal-owned panels
+      (card "⋯" menu, share/more menus, feed-settings gear) are unaffected — they're
+      already appended to the portal, so relocate is a no-op for them.
+      Style-safe: `#modalZapDialog` uses the same `popover__panel card …` classes the
+      already-portaled menus use; no `.modal`-descendant CSS. Regression test in
+      `tests/ui/popoverEngine.test.mjs` ("relocates a pre-existing in-host panel …");
+      all 9 engine tests + the menu-controller tests pass; build green.
+- [ ] **Verify with the user** on the live site after deploy that the zap popover
+      now opens `bottom-end` under the Zap button (and re-opens correctly).
+- NOTE: the "embed" in the original report is a separate full modal
+      (`components/embed-video-modal.html`, `#embedVideoModal`), NOT an anchored
+      popover, so it isn't affected by this engine bug. The share/copy menu uses a
+      fresh portaled panel and already positions correctly. If any other pre-existing
+      in-modal panel is found mis-positioned, this same engine fix now covers it.
 
 ### 3. Zaps system + platform-fee zap split — full plan in docs/zap-audit-plan.md
 Audit started 2026-06-23. See the doc for architecture map + findings. Summary:
 - [x] **Send-error softened** (`dd1ce113`): recipient LNURL unreachable/CORS now
       shows a clear message, not raw "Failed to fetch".
-- [ ] **CORS / LNURL proxy decision** (the real reliability fix — static client
-      can't fetch CORS-less LNURL hosts; many zaps fail). Top of the next session.
-- [ ] **Popover positioning (3a)**, **platform-fee split correctness** (incl. the
-      earlier "fee landed in my own wallet" report + self-zap edge), **receipt
-      validation (9735)**, **NWC budget/retry UX**, **general clunkiness**.
+- [x] **NWC connection bug FIXED (2026-06-23, launch-blocker)** — `parseNwcUri`
+      passed a hex secret to nostr-tools `getPublicKey` (needs bytes) → NWC connect
+      threw `expected Uint8Array` and failed entirely. Now hex→bytes. Guarded by
+      `tests/nwc-parse-uri.test.mjs`. **This likely explains a lot of the "errors on
+      send".** VERIFY live: connect a wallet + send a zap end-to-end.
+- [x] **Popover positioning (3a)** — FIXED (see 3a).
+- [x] **In-flight status + form-reset polish (2026-06-23)** — "Sending…" no longer
+      mis-toned as a warning; success path fully resets the form (`resetZapForm`).
+- [x] **Platform-fee fallback verified no-bypass** — junk override falls back to the
+      configured fee, not 0.
+- [ ] **CORS / LNURL proxy decision** (NEEDS A DECISION — the remaining reliability
+      fix). A static client can't fetch CORS-less LNURL hosts; options: (a) small
+      Vercel edge proxy that fetches LNURL pay-data + invoice and returns with CORS
+      [recommended — what web wallets do]; (b) document the limit / CORS-only hosts;
+      (c) route LN-address resolution via the connected NWC wallet. See
+      docs/zap-audit-plan.md. NOTE: with NWC now connecting, re-test how many sends
+      actually fail on CORS vs were just the NWC bug.
+- [ ] **Remaining audit items**: platform-fee split correctness (the earlier "fee
+      landed in my own wallet" report + self-zap / creator==platform edge), receipt
+      validation (9735), NWC budget/retry UX, general clunkiness.
 - [x] Comment box confirmed WORKING (the "message doesn't work" was the popover
       mis-position making it hard to use — see 3a).
 
@@ -212,6 +263,63 @@ un-hides when WebTorrent flips green). The real gaps:
       hangs/cancels (jsdom/webtorrent async-hang flake; documented in KNOWN_ISSUES,
       reproduced on pre-refactor `1b11cb1b`). Make it deterministic so it can be a
       trusted release gate. Audit e2e parallel-load flakiness too.
+
+### 11b. SILENTLY-EXCLUDED unit tests — 20 files never run in CI (found 2026-06-23)
+`scripts/run-unit-tests.mjs` only collects `*.test.mjs|*.test.js` files whose
+**content contains `node:test`** (line ~54). 20 test files use bare `assert` +
+top-level await instead, so the runner skips them WITHOUT WARNING and they are
+referenced by no other CI script. They rot invisibly (this is how the delete-flow
+test below was failing on `main` unnoticed).
+- [x] **`tests/nostr-delete-flow.test.mjs` — FIXED + brought into CI** (converted to
+      node:test; stale write-relay config + removed-pool.sub subscription harness
+      corrected; see TEST_INTEGRITY.md 2026-06-23).
+- [ ] **Add a guard so this can't recur**: make `run-unit-tests.mjs` emit a visible
+      WARNING (or fail) when it finds a `*.test.{mjs,js}` lacking a `node:test` import,
+      listing each skipped file. (Decide warn-vs-fail — fail would immediately red-CI
+      on the ~11 broken files below until they're triaged.)
+- [x] **Runner guard SHIPPED (2026-06-23).** `scripts/run-unit-tests.mjs` now collects
+      EVERY `*.test.{mjs,js}` (no more node:test content filter) and runs both styles.
+      Known-broken files are listed in an explicit `QUARANTINE` map — loudly reported
+      on every run (never silently skipped), and a stale-entry check flags any
+      quarantine path that no longer exists. The 10 PASSING orphans below now run in
+      CI automatically (no per-file conversion needed).
+      - PASS, now in CI: `nostr-view-event-bindings`, `nostr-rebroadcast-guard`,
+        `watch-history-feed`, `subscriptions-feed`, `discussion-count-service`,
+        `feed-engine`, `zap-split`, `nostr-view-events`,
+        `watchHistory/watch-history-telemetry`, `unit/ui/thumbnailBinder`.
+- [ ] **Triage + un-quarantine the 10 broken files** (first-error diagnosis 2026-06-23;
+      each needs the stale-vs-real-bug investigation the delete-flow file got):
+      - `watch-history` (#2) — DONE + UN-QUARANTINED 2026-06-23. Three stale tests,
+        all spec-corrected to shipped behavior (see TEST_INTEGRITY.md):
+        (1) `testWatchHistoryPartialRelayRetry` asserted snapshot THROWS on partial
+        acceptance (contradicting `565a9618`) → now asserts success / no-throw /
+        no-republish / queue-emptied; (2) `testWatchHistoryServiceIntegration` set a
+        logged-in pubkey different from the queried actor (history files under the
+        logged-in pubkey now) → aligned; (3) same test asserted `session===true` for a
+        logged-in watch (the pre-fix bug) → corrected to `session!==true`. The full
+        2669-line file passes via the CI runner and was removed from QUARANTINE.
+      - `nostr-boost-actions` — "Missing expected exception" (likely stale: expects a
+        throw the code no longer makes).
+      - `view-counter` (#4) — "view event should append the session tag when
+        requested" (stale-or-real; investigate with #4).
+      - `zap-shared-state` (#3) — ✅ DONE + UN-QUARANTINED 2026-06-23: stale fee-fallback
+        test (expected 0; the function correctly falls back to the configured default so
+        a junk override can't bypass the fee) — corrected.
+      - `video-modal-zap` (#3) — ✅ DONE + UN-QUARANTINED 2026-06-23: surfaced TWO real
+        zap bugs (in-flight status mis-toned `warning`→`neutral`; success path now uses
+        the holistic `resetZapForm`) + spec/harness fixes (completion-count reset+complete;
+        receipt render asserts on the inner zapController's element after the
+        VideoModal→sub-controller refactor).
+      - `nwc-client` (#3) — REAL production bug FIXED 2026-06-23: `parseNwcUri` passed a
+        hex secret to nostr-tools `getPublicKey` (needs bytes) → NWC connection broken.
+        Fixed + guarded by the real-tools `tests/nwc-parse-uri.test.mjs`. The mock-based
+        `nwc-client.test.mjs` STAYS quarantined — its nostr-tools mock is shadowed by the
+        frozen canonical toolkit the bootstrap installs; needs a mock-injection rework.
+      - `nostr-count-fallback` — `TypeError: Cannot read 'has' of undefined` — likely
+        a stale harness mock missing a field.
+      - `admin-list-store` — community-blacklist merge mismatch.
+      - `nostr-publish-rejection` — rejection-path assertion.
+      - `user-blocks` — HANGS (async leak); needs a deterministic rewrite.
 
 ### 12. Promotion: `unstable → beta`
 - [ ] After this batch soaks and the high-priority items land, promote `unstable → beta`
