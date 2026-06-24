@@ -398,7 +398,7 @@ export function createFeedCoordinator(deps) {
             createResolvePostedAtStage(),
             createExploreScorerStage(),
           ],
-          sorter: createExploreDiversitySorter(),
+          sorter: createExploreDiversitySorter({ lambda: 0.5 }),
           hooks: {
             timestamps: {
               getKnownVideoPostedAt: (video) => this.getKnownVideoPostedAt(video),
@@ -531,20 +531,11 @@ export function createFeedCoordinator(deps) {
       const preferencesAvailable = preferenceSource?.dataReady === true;
       const moderationThresholds = this.getActiveModerationThresholds();
 
-      // Follows drive the For You ranking (follows-boost in the scorer).
-      let subscriptionAuthors = [];
-      try {
-        if (subscriptions && typeof subscriptions.getSubscribedAuthors === "function") {
-          const authors = subscriptions.getSubscribedAuthors();
-          if (Array.isArray(authors)) {
-            subscriptionAuthors = authors.filter(
-              (a) => typeof a === "string" && a,
-            );
-          }
-        }
-      } catch (error) {
-        devLogger.warn("[feedCoordinator] Failed to read subscribed authors:", error);
-      }
+      // Follows drive the For You ranking (follows-boost in the scorer). The
+      // refreshFeed caller wraps this in a try, so optional chaining is enough.
+      const subscriptionAuthors = (
+        subscriptions?.getSubscribedAuthors?.() || []
+      ).filter((a) => typeof a === "string" && a);
 
       // Watch-topic affinity signal (reuse the Explore source if present).
       const whTagSource =
@@ -671,6 +662,11 @@ export function createFeedCoordinator(deps) {
       return {
         blacklistedEventIds: blacklist,
         isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
+        // Explore leans new-to-you: the scorer applies a soft penalty to authors
+        // you already follow so non-followed creators surface.
+        subscriptionAuthors: (
+          subscriptions?.getSubscribedAuthors?.() || []
+        ).filter((a) => typeof a === "string" && a),
         tagPreferences: {
           interests: Array.isArray(interests) ? [...interests] : [],
           disinterests: Array.isArray(disinterests) ? [...disinterests] : [],
