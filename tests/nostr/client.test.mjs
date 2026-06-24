@@ -310,4 +310,60 @@ describe("NostrClient", () => {
       // and focus on `fetch`/`subscribe` which use `this.pool`.
     });
   });
+
+  describe("tombstone guard (legacy zombie suppression)", () => {
+    // Regression for pre-launch TODO #1 ("getActiveKey mismatch"). The deletion
+    // builder synthesizes videoRootId = "LEGACY:<pubkey>:<dTag>" for legacy
+    // videos with no real root, and deleteAllVersions keys the tombstone via the
+    // client's active-key derivation. A stale local copy of getActiveKey (missing
+    // the LEGACY: guard) keyed the tombstone as "ROOT:LEGACY:..." while a bare
+    // zombie copy of the original event (no videoRootId) keyed as
+    // "<pubkey>:<dTag>", so the guard never matched and deleted legacy videos
+    // resurrected. The client must derive both from the same canonical key.
+    it("suppresses a bare legacy zombie that matches a synthesized-root tombstone", () => {
+      const pubkey = "PUBKEY_LEGACY";
+      const dTag = "legacy-d-tag";
+
+      // The deletion record as written by deleteAllVersions.
+      const deletionRecord = {
+        id: "deletion-note",
+        pubkey,
+        created_at: 1_700_000_500,
+        videoRootId: `LEGACY:${pubkey}:${dTag}`,
+        tags: [["d", dTag]],
+      };
+
+      // The original/zombie event as parsed fresh from a relay: no videoRootId.
+      const zombie = {
+        id: "original-note",
+        pubkey,
+        created_at: 1_700_000_000, // strictly older than the tombstone
+        tags: [["d", dTag]],
+        deleted: false,
+      };
+
+      const deletionKey = client.getActiveKey(deletionRecord);
+      const zombieKey = client.getActiveKey(zombie);
+
+      assert.equal(
+        zombieKey,
+        `${pubkey}:${dTag}`,
+        "legacy events must key as pubkey:dTag, not ROOT:LEGACY:...",
+      );
+      assert.equal(
+        deletionKey,
+        zombieKey,
+        "synthesized LEGACY deletion must key identically to the bare event",
+      );
+
+      client.recordTombstone(deletionKey, deletionRecord.created_at);
+
+      assert.equal(
+        client.applyTombstoneGuard(zombie),
+        true,
+        "older legacy zombie must be guarded by the tombstone",
+      );
+      assert.equal(zombie.deleted, true, "zombie event must be marked deleted");
+    });
+  });
 });

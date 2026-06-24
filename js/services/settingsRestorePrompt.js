@@ -22,21 +22,37 @@ function readOffered() {
   }
 }
 
-function markOffered(pubkey) {
+// Per-pubkey, PER-ITEM offered state. Tracking only per-pubkey meant the first
+// item offered (usually storage) flagged the whole pubkey, so a wallet note
+// published later was never offered — "the wallet doesn't restore like storage".
+// Returns { storage?: true, wallet?: true }. Legacy boolean `true` (pre per-item)
+// is read as storage-only so existing users still get the wallet offer.
+function readOfferedKinds(pubkey) {
+  const entry = readOffered()[pubkey];
+  if (entry === true) {
+    return { storage: true };
+  }
+  return entry && typeof entry === "object" ? entry : {};
+}
+
+function markOffered(pubkey, kind) {
   try {
     if (typeof localStorage === "undefined") {
       return;
     }
     const map = readOffered();
-    map[pubkey] = true;
+    const current = map[pubkey] === true ? { storage: true } : map[pubkey];
+    const kinds = current && typeof current === "object" ? { ...current } : {};
+    kinds[kind] = true;
+    map[pubkey] = kinds;
     localStorage.setItem(OFFERED_KEY, JSON.stringify(map));
   } catch (error) {
     // Best-effort.
   }
 }
 
-function hasOffered(pubkey) {
-  return readOffered()[pubkey] === true;
+function hasOffered(pubkey, kind) {
+  return readOfferedKinds(pubkey)[kind] === true;
 }
 
 const ITEM_LABELS = {
@@ -53,7 +69,9 @@ export function createSettingsRestorePrompt({
       : false,
   logger = null,
 } = {}) {
-  // Items not already enabled on THIS device that have a remote copy to restore.
+  // Items not already enabled / not already offered on THIS device that have a
+  // remote copy to restore. Each kind is considered INDEPENDENTLY so a wallet note
+  // published after storage was already offered is still surfaced.
   async function collectCandidates(pubkey) {
     const candidates = [];
     const services = [
@@ -61,7 +79,11 @@ export function createSettingsRestorePrompt({
       ["wallet", walletSync],
     ];
     for (const [kind, service] of services) {
-      if (!service?.isAvailable?.() || service.isEnabled(pubkey)) {
+      if (
+        !service?.isAvailable?.() ||
+        service.isEnabled(pubkey) ||
+        hasOffered(pubkey, kind)
+      ) {
         continue;
       }
       try {
@@ -80,9 +102,6 @@ export function createSettingsRestorePrompt({
     if (!key) {
       return { offered: false, reason: "no-pubkey" };
     }
-    if (hasOffered(key)) {
-      return { offered: false, reason: "already-offered" };
-    }
 
     const candidates = await collectCandidates(key);
     if (!candidates.length) {
@@ -91,8 +110,11 @@ export function createSettingsRestorePrompt({
       return { offered: false, reason: "no-remote" };
     }
 
-    // We are about to prompt — mark so we never nag again on this device.
-    markOffered(key);
+    // We are about to prompt — mark EACH offered kind so we never nag again for it
+    // on this device (but other kinds stay eligible for a future login).
+    for (const kind of candidates) {
+      markOffered(key, kind);
+    }
 
     const list = candidates.map((kind) => ITEM_LABELS[kind]).join(" and ");
     const accepted = confirm(

@@ -45,3 +45,57 @@ test("a valid LNURL pay response parses (no false friendly error)", async () => 
   });
   assert.equal(meta.callback, "https://example.com/cb");
 });
+
+import { checkLightningAddressZappable } from "../js/payments/lnurl.js";
+
+// Helper: a fetcher that returns a valid LNURL pay-service-data JSON response.
+function okFetcher({ allowsNostr = true } = {}) {
+  return async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      tag: "payRequest",
+      callback: "https://host/callback",
+      minSendable: 1000,
+      maxSendable: 1000000,
+      metadata: "[]",
+      allowsNostr,
+      nostrPubkey: allowsNostr ? "a".repeat(64) : "",
+    }),
+  });
+}
+
+test("checkLightningAddressZappable: reachable + Nostr-enabled host -> ok", async () => {
+  const result = await checkLightningAddressZappable("name@host.example", {
+    fetcher: okFetcher({ allowsNostr: true }),
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.reason, "ok");
+  assert.equal(result.address, "name@host.example");
+});
+
+test("checkLightningAddressZappable: CORS/offline host -> not ok, coded", async () => {
+  const result = await checkLightningAddressZappable("name@host.example", {
+    fetcher: async () => {
+      throw new TypeError("Failed to fetch");
+    },
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, "lnurl-unreachable");
+  assert.equal(result.address, "name@host.example");
+});
+
+test("checkLightningAddressZappable: reachable but not Nostr-aware -> ok with no-nostr", async () => {
+  const result = await checkLightningAddressZappable("name@host.example", {
+    fetcher: okFetcher({ allowsNostr: false }),
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.reason, "no-nostr");
+  assert.equal(result.allowsNostr, false);
+});
+
+test("checkLightningAddressZappable: invalid address -> not ok", async () => {
+  const result = await checkLightningAddressZappable("", { fetcher: okFetcher() });
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, "invalid-address");
+});

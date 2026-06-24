@@ -158,3 +158,34 @@ test("explore scorer rewards novelty and new tag fraction", async () => {
   assert.equal(novel.novelty, 1);
   assert.equal(novel.newTagFraction, 1);
 });
+
+// Explore identity: "new-to-you". A creator you already follow gets a soft
+// penalty so non-followed creators surface, without filtering the feed empty.
+test("explore soft-penalizes authors you already follow", async () => {
+  const NOW = Math.floor(Date.now() / 1000);
+  const FOLLOWED = "f".repeat(64);
+  const STRANGER = "1".repeat(64);
+  const tags = [["t", "music"]];
+  const items = [
+    { video: { id: "stranger", pubkey: STRANGER, created_at: NOW, tags }, metadata: {} },
+    { video: { id: "followed", pubkey: FOLLOWED, created_at: NOW, tags }, metadata: {} },
+  ];
+
+  await createExploreScorerStage()(items, {
+    now: NOW,
+    runtime: {
+      subscriptionAuthors: [FOLLOWED],
+      tagPreferences: { interests: [], disinterests: [] },
+    },
+    addWhy() {},
+  });
+
+  const strangerScore = items[0].metadata.exploreScore;
+  const followedScore = items[1].metadata.exploreScore;
+  assert.ok(
+    followedScore < strangerScore,
+    `followed (${followedScore}) must score below an identical stranger (${strangerScore})`,
+  );
+  assert.equal(items[1].metadata.exploreComponents.followedMatch, 1);
+  assert.equal(items[0].metadata.exploreComponents.followedMatch, 0);
+});

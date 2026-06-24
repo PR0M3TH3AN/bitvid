@@ -100,6 +100,51 @@ function resolveRelayUrls(zapEvent) {
   return normalizeRelayList(relaysTag.slice(1));
 }
 
+// Build the relay query to FIND the zap receipt (kind 9735). The receipt copies
+// the zap request's #e (event) / #a (coordinate) / #p (recipient) tags, and those
+// are the tags relays actually index. A previous implementation filtered ONLY on
+// "#bolt11": [invoice] — but most relays do NOT index arbitrary tags like bolt11,
+// so the query returned nothing even when the receipt was published, and a
+// successful zap looked unconfirmed. Prefer the indexed anchors; the precise
+// match (author pubkey + bolt11 + description) still confirms the right receipt.
+export function buildReceiptFilters(parsedZapRequest, invoiceCandidate) {
+  const tags = Array.isArray(parsedZapRequest?.tags) ? parsedZapRequest.tags : [];
+  const findTag = (name) => {
+    const tag = tags.find(
+      (entry) =>
+        Array.isArray(entry) &&
+        entry[0] === name &&
+        typeof entry[1] === "string" &&
+        entry[1].trim()
+    );
+    return tag ? tag[1].trim() : "";
+  };
+
+  const recipient = findTag("p");
+  const eventId = findTag("e");
+  const coordinate = findTag("a");
+
+  const filter = { kinds: [ZAP_RECEIPT_KIND], limit: 20 };
+  if (eventId) {
+    filter["#e"] = [eventId];
+  } else if (coordinate) {
+    filter["#a"] = [coordinate];
+  }
+  if (recipient) {
+    filter["#p"] = [recipient];
+  }
+
+  // Last resort: no reliably-indexed anchor available — fall back to the bolt11
+  // tag (works only on relays that happen to index it).
+  if (!filter["#e"] && !filter["#a"] && !filter["#p"]) {
+    const bolt =
+      typeof invoiceCandidate === "string" ? invoiceCandidate.toLowerCase() : "";
+    return [{ kinds: [ZAP_RECEIPT_KIND], "#bolt11": [bolt], limit: 10 }];
+  }
+
+  return [filter];
+}
+
 function normalizeInvoiceValue(invoice) {
   if (typeof invoice !== "string") {
     return "";
@@ -377,44 +422,10 @@ export async function validateZapReceipt(context = {}, overrides = {}) {
     });
   }
 
-  const filters = [
-    {
-      kinds: [ZAP_RECEIPT_KIND],
-      "#bolt11": [invoiceCandidate.toLowerCase()],
-      limit: 10,
-    },
-  ];
-
-  let events = [];
-  try {
-    if (typeof overrides.listEvents === "function") {
-      events = await overrides.listEvents(pool, relayUrls, filters);
-    } else {
-      events = await pool.list(relayUrls, filters);
-    }
-  } catch (error) {
-    userLogger.warn("[zapReceiptValidator] Failed to fetch zap receipts from relays.", error);
-    events = [];
-  } finally {
-    try {
-      if (typeof pool.close === "function") {
-        pool.close(relayUrls);
-      }
-    } catch (error) {
-      // Ignore close errors.
-    }
-  }
-
-  if (!Array.isArray(events) || !events.length) {
-    return buildValidationResult({
-      status: "failed",
-      reason: "No zap receipt was published on the advertised relays.",
-      relays: relayUrls,
-    });
-  }
+  const filters = buildReceiptFilters(parsedZapRequest, invoiceCandidate);
 
   const normalizedBolt = invoiceCandidate.toLowerCase();
-  const successfulEvent = events.find((event) => {
+  const matchesReceipt = (event) => {
     if (!event || typeof event !== "object") {
       return false;
     }
@@ -447,14 +458,75 @@ export async function validateZapReceipt(context = {}, overrides = {}) {
     if (!descriptionTag) {
       return false;
     }
-    const descriptionValue = descriptionTag[1];
-    return descriptionValue === zapRequestString;
-  });
+    return descriptionTag[1] === zapRequestString;
+  };
+
+  // The recipient's Lightning service publishes the 9735 receipt asynchronously
+  // AFTER the invoice is paid — it can land a few seconds after our first query
+  // (which resolves on EOSE). One immediate lookup therefore misses slow receipts.
+  // Poll a few times with a short delay before giving up. Injectable for tests.
+  const attempts = Number.isFinite(overrides.receiptLookupAttempts)
+    ? Math.max(1, Math.floor(overrides.receiptLookupAttempts))
+    : 3;
+  const retryDelayMs = Number.isFinite(overrides.receiptLookupDelayMs)
+    ? Math.max(0, Math.floor(overrides.receiptLookupDelayMs))
+    : 1200;
+  const sleep =
+    typeof overrides.sleep === "function"
+      ? overrides.sleep
+      : (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  let successfulEvent = null;
+  let sawAnyEvents = false;
+  try {
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      if (attempt > 0 && retryDelayMs > 0) {
+        await sleep(retryDelayMs);
+      }
+
+      let events = [];
+      try {
+        if (typeof overrides.listEvents === "function") {
+          events = await overrides.listEvents(pool, relayUrls, filters);
+        } else {
+          events = await pool.list(relayUrls, filters);
+        }
+      } catch (error) {
+        userLogger.warn(
+          "[zapReceiptValidator] Failed to fetch zap receipts from relays.",
+          error,
+        );
+        events = [];
+      }
+
+      if (Array.isArray(events) && events.length) {
+        sawAnyEvents = true;
+        const match = events.find(matchesReceipt);
+        if (match) {
+          successfulEvent = match;
+          break;
+        }
+      }
+    }
+  } finally {
+    try {
+      if (typeof pool.close === "function") {
+        pool.close(relayUrls);
+      }
+    } catch (error) {
+      // Ignore close errors.
+    }
+  }
 
   if (!successfulEvent) {
     return buildValidationResult({
       status: "failed",
-      reason: "No compliant zap receipt matched the zap request.",
+      // Distinguish "nothing was there at all" from "events existed but none
+      // matched" — the latter is more suspicious; the former is usually just
+      // relay coverage/timing.
+      reason: sawAnyEvents
+        ? "No compliant zap receipt matched the zap request."
+        : "No zap receipt was published on the advertised relays.",
       relays: relayUrls,
     });
   }

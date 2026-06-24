@@ -1,6 +1,7 @@
 # Capacitor Native App Plan
 
-> **Status**: Planning
+> **Status**: ON HOLD (deferred 2026-06-23 — revisit after launch backlog clears)
+> **Status (original)**: Planning
 > **Platforms**: Android, iOS, Windows, macOS, Linux
 > **Framework**: [Capacitor](https://capacitorjs.com/) by Ionic
 > **Goal**: Ship bitvid as a native app on all major platforms while keeping a single codebase with the existing web/PWA deployment.

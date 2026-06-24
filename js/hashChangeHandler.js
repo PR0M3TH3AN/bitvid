@@ -1,5 +1,5 @@
 import { devLogger as defaultDevLogger, userLogger as defaultUserLogger } from "./utils/logger.js";
-import { FEED_TYPES } from "./constants.js";
+import { FEED_TYPES, FEATURE_TRENDING_FEED } from "./constants.js";
 
 const LEGACY_DOCS_VIEWS = {
   about: "about",
@@ -90,8 +90,12 @@ export function createHashChangeHandler({
 
     try {
       if (!match || !match[1]) {
+        // Logged in → personalized For You; logged out → Trending (the best
+        // not-personalized landing), falling back to Recent if Trending is off.
         const defaultViewName = resolveIsLoggedIn()
           ? FEED_TYPES.FOR_YOU
+          : FEATURE_TRENDING_FEED
+          ? FEED_TYPES.TRENDING
           : FEED_TYPES.RECENT;
 
         if (defaultViewName === currentViewName) {

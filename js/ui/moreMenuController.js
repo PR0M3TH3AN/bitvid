@@ -45,6 +45,7 @@ export default class MoreMenuController {
 
     this.callbacks = {
       getCurrentVideo: callbacks.getCurrentVideo || (() => null),
+      getVideoByEventId: callbacks.getVideoByEventId || (() => null),
       getCurrentUserNpub: callbacks.getCurrentUserNpub || (() => null),
       getCurrentUserPubkey: callbacks.getCurrentUserPubkey || (() => null),
       canCurrentUserManageBlacklist:
@@ -157,7 +158,7 @@ export default class MoreMenuController {
         ...(detail.dataset || {}),
         eventId: detail.dataset?.eventId || detail.video?.id || "",
       };
-      this.handleMoreMenuAction(detail.action, dataset);
+      this.handleMoreMenuAction(detail.action, dataset, detail.video || null);
     };
 
     if (typeof view.addEventListener === "function") {
@@ -1018,7 +1019,13 @@ export default class MoreMenuController {
         event.preventDefault();
         event.stopPropagation();
 
-        const context = button.getAttribute("data-context") || "card";
+        // The modal ⋯ trigger declares its context via `data-more-dropdown`
+        // ("modal"), not `data-context` — reading only the latter made it
+        // default to "card" and skip the modal video resolution below.
+        const context =
+          button.getAttribute("data-context") ||
+          button.getAttribute("data-more-dropdown") ||
+          "card";
 
         let video = null;
         let pointerInfo = null;
@@ -1027,6 +1034,11 @@ export default class MoreMenuController {
 
         if (context === "modal") {
           video = this.callbacks.getCurrentVideo();
+          // currentVideo can be null when the modal opened without playback
+          // starting (e.g. a deep link); fall back to the modal's activeVideo.
+          if (!video && this.videoModal?.activeVideo) {
+            video = this.videoModal.activeVideo;
+          }
           if (Array.isArray(video?.pointer) && video.pointer.length >= 2) {
             pointerInfo = { pointer: video.pointer };
           }
@@ -1160,6 +1172,37 @@ export default class MoreMenuController {
             this.callbacks.showSuccess("Video link copied to clipboard!"),
           )
           .catch(() => this.callbacks.showError("Failed to copy the link."));
+        break;
+      }
+      case "view-stats": {
+        // Prefer the card's own video; fall back to resolving it from the menu
+        // item's eventId (card popovers don't always carry the object), and only
+        // use the modal's current video for the modal context.
+        let targetVideo = video || null;
+        if (!targetVideo && dataset?.eventId) {
+          targetVideo =
+            this.callbacks.getVideoByEventId(dataset.eventId) || null;
+        }
+        if (!targetVideo && context === "modal") {
+          targetVideo = currentVideo || null;
+        }
+        if (!targetVideo) {
+          this.callbacks.showError("No video selected.");
+          break;
+        }
+        // Dismiss the menu, then open the public popularity chart (lazy-loaded).
+        try {
+          this.activePopover?.close?.();
+        } catch (error) {
+          // ignore
+        }
+        try {
+          const { openPopularityModal } = await import("../viewCountChart.js");
+          openPopularityModal({ video: targetVideo });
+        } catch (error) {
+          userLogger.warn("[MoreMenu] Failed to open popularity modal:", error);
+          this.callbacks.showError("Couldn’t open popularity.");
+        }
         break;
       }
       case "remove-history": {
@@ -1582,11 +1625,18 @@ export default class MoreMenuController {
         break;
       }
       case "event-details": {
+        // Card context passes the card's video; modal context falls back to the
+        // active video (the dispatch path doesn't carry the video object).
         let targetVideo = video;
         if (!targetVideo && context === "modal") {
           targetVideo = currentVideo;
         }
-
+        // Dismiss the menu before opening the details modal.
+        try {
+          this.activePopover?.close?.();
+        } catch (error) {
+          // ignore
+        }
         await this.callbacks.handleEventDetailsAction({
           eventId: dataset.eventId,
           video: targetVideo,

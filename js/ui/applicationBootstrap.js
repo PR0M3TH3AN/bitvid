@@ -24,7 +24,7 @@ import r2Service from "../services/r2Service.js";
 import s3UploadService from "../services/s3UploadService.js";
 import RelayHealthService from "../services/relayHealthService.js";
 import { createFeedEngine } from "../feedEngine/index.js";
-import { URL_FIRST_ENABLED, SHORT_TIMEOUT_MS } from "../constants.js";
+import { URL_FIRST_ENABLED, SHORT_TIMEOUT_MS, FEATURE_TRENDING_FEED } from "../constants.js";
 import { ALLOW_NSFW_CONTENT } from "../config.js";
 import { relayManager } from "../relayManager.js";
 import { userBlocks } from "../userBlocks.js";
@@ -275,6 +275,15 @@ export default class ApplicationBootstrap {
     app.registerForYouFeed();
     app.registerKidsFeed();
     app.registerExploreFeed();
+    if (FEATURE_TRENDING_FEED && typeof app.registerTrendingFeed === "function") {
+      app.registerTrendingFeed();
+    } else if (typeof document !== "undefined") {
+      // Flag off: hide the always-visible Trending sidebar link.
+      const trendingLink = document.getElementById("trendingLink");
+      if (trendingLink) {
+        trendingLink.classList.add("hidden");
+      }
+    }
     app.registerSubscriptionsFeed();
     app.registerWatchHistoryFeed();
     // Re-run the For You feed when background watch-history resolution completes.
@@ -666,6 +675,10 @@ export default class ApplicationBootstrap {
       designSystem: app.designSystemContext,
       callbacks: {
         getCurrentVideo: () => app.currentVideo,
+        getVideoByEventId: (eventId) =>
+          eventId && app.videosMap instanceof Map
+            ? app.videosMap.get(eventId) || null
+            : null,
         getCurrentUserNpub: () => app.getCurrentUserNpub(),
         getCurrentUserPubkey: () => app.pubkey,
         canCurrentUserManageBlacklist: () =>
@@ -685,10 +698,26 @@ export default class ApplicationBootstrap {
         handleEnsurePresenceAction: (payload) =>
           app.handleEnsurePresenceAction(payload),
         handleEventDetailsAction: (payload) => {
-          if (app.modalManager && app.modalManager.eventDetailsModal && payload?.video) {
-            app.modalManager.eventDetailsModal.open(payload.video);
+          const modal =
+            app.modalManager?.eventDetailsModal || app.eventDetailsModal || null;
+          if (!modal || typeof modal.open !== "function") {
+            app.showError?.("Event details are unavailable.");
+            return Promise.resolve();
           }
-          return Promise.resolve();
+          // Card popovers sometimes don't carry the video object on context, so
+          // resolve it from the menu item's eventId as a fallback (the object the
+          // grid already holds). This is what made the button silently no-op.
+          let video = payload?.video || null;
+          if (!video && payload?.eventId && app.videosMap instanceof Map) {
+            video = app.videosMap.get(payload.eventId) || null;
+          }
+          if (!video) {
+            app.showError?.("No video selected for event details.");
+            return Promise.resolve();
+          }
+          return Promise.resolve(modal.open(video)).catch((error) => {
+            devLogger.warn("[eventDetails] Failed to open event details:", error);
+          });
         },
         loadVideos: () => app.loadVideos(),
         refreshAllVideoGrids: (options) => app.refreshAllVideoGrids(options),

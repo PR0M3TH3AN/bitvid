@@ -518,6 +518,21 @@
     -webkit-backdrop-filter: blur(var(--overlay-backdrop-blur));
   }
 
+  .popularity-modal__backdrop {
+    z-index: var(--z-overlay-popover);
+    padding: var(--space-md);
+  }
+
+  .popularity-modal {
+    width: 100%;
+    max-width: var(--popularity-modal-max-width);
+  }
+
+  .popularity-modal__chart {
+    width: 100%;
+    height: var(--popularity-modal-chart-height);
+  }
+
   .popover-panel[data-variant="zap"],
   .popover__panel[data-variant="zap"] {
     background: var(--color-overlay-veil);
@@ -2588,6 +2603,14 @@
     padding-inline: var(--space-md);
     border-width: var(--border-width-hairline);
     border-style: solid;
+  }
+
+  /* `display: inline-flex` above overrides the UA `[hidden] { display: none }`,
+     which left the zap button visible (and clickable-looking) while it was still
+     `hidden`+`disabled` during load — users clicked a dead button repeatedly. Make
+     the hidden attribute win so the button only appears once it's enabled/ready. */
+  .video-modal__action-button[hidden] {
+    display: none;
   }
 
   .video-modal__action-label {
@@ -5189,9 +5212,17 @@
     outline: none;
   }
 
-  .dm-contact-row--active {
-    background: var(--surface-sunken);
-    border-color: var(--border-strong);
+  .dm-contact-row--active,
+  .dm-contact-row--active:hover,
+  .dm-contact-row--active:focus-visible {
+    background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+    border-color: color-mix(in srgb, var(--color-accent) 60%, var(--border-strong));
+    box-shadow: inset 3px 0 0 0 var(--color-accent);
+  }
+
+  .dm-contact-row--active .dm-contact-row__name {
+    color: var(--color-accent-strong);
+    font-weight: 700;
   }
 
   .dm-contact-row__content {

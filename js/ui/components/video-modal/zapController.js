@@ -116,8 +116,15 @@ export class ZapController {
         const popoverIsOpen = this.isZapDialogOpen();
 
         if (this.modalZapOpenPromise) {
-          this.modalZapPendingToggle = "close";
-          this.closeZapDialog({ silent: true, restoreFocus: false });
+          // An open is in flight. Only honor a click as "close" if the dialog is
+          // already visibly open; otherwise IGNORE the extra click. Canceling an
+          // in-flight open made rapid double-clicks net to "closed", so the popover
+          // needed many clicks to actually appear (the engine sets isOpen only
+          // after positioning, so a mid-open click reads as not-yet-open here).
+          if (popoverIsOpen) {
+            this.modalZapPendingToggle = "close";
+            this.closeZapDialog({ silent: true, restoreFocus: false });
+          }
           return;
         }
 

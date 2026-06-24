@@ -7,7 +7,10 @@
 import "./test-helpers/setup-localstorage.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { resolveReceiptListPool } from "../js/payments/zapReceiptValidator.js";
+import {
+  resolveReceiptListPool,
+  buildReceiptFilters,
+} from "../js/payments/zapReceiptValidator.js";
 
 // Mimics a nostr-tools 2.x SimplePool: instances have subscribeMany/close but NO
 // .list() (the method was removed in 2.x).
@@ -58,4 +61,43 @@ test("a listEvents override means the pool is left as-is (no shim required)", ()
 test("returns null when there is no SimplePool and no override", () => {
   const pool = resolveReceiptListPool({}, {});
   assert.equal(pool, null);
+});
+
+// Receipt discovery: a previous filter queried ONLY by "#bolt11", which most
+// relays don't index, so the receipt was never found and a successful zap looked
+// unconfirmed. buildReceiptFilters must query by the reliably-indexed #e/#a/#p.
+test("buildReceiptFilters: prefers #e (event) + #p (recipient), not #bolt11", () => {
+  const zapRequest = {
+    tags: [
+      ["p", "a".repeat(64)],
+      ["e", "c".repeat(64)],
+      ["amount", "900000"],
+      ["relays", "wss://relay.example"],
+    ],
+  };
+  const [filter] = buildReceiptFilters(zapRequest, "lnbc-invoice");
+  assert.deepEqual(filter.kinds, [9735]);
+  assert.deepEqual(filter["#e"], ["c".repeat(64)]);
+  assert.deepEqual(filter["#p"], ["a".repeat(64)]);
+  assert.ok(!filter["#bolt11"], "must not depend on the unindexed #bolt11 tag");
+});
+
+test("buildReceiptFilters: uses #a (coordinate) when there is no #e", () => {
+  const zapRequest = {
+    tags: [
+      ["p", "a".repeat(64)],
+      ["a", "30078:" + "a".repeat(64) + ":video-d-tag"],
+    ],
+  };
+  const [filter] = buildReceiptFilters(zapRequest, "lnbc-invoice");
+  assert.deepEqual(filter["#a"], ["30078:" + "a".repeat(64) + ":video-d-tag"]);
+  assert.ok(!filter["#e"]);
+  assert.deepEqual(filter["#p"], ["a".repeat(64)]);
+});
+
+test("buildReceiptFilters: falls back to #bolt11 only with no e/a/p anchor", () => {
+  const zapRequest = { tags: [["amount", "1000"]] };
+  const [filter] = buildReceiptFilters(zapRequest, "LNBC-Invoice");
+  assert.deepEqual(filter["#bolt11"], ["lnbc-invoice"]);
+  assert.deepEqual(filter.kinds, [9735]);
 });

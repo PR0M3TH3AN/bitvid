@@ -1,5 +1,7 @@
 # NIP-46 Roadmap & Features
 
+> **Status**: ON HOLD (deferred 2026-06-23 — current NIP-46 login is working well; revisit these enhancements later).
+
 This document outlines the current state of our NIP-46 (Nostr Connect) implementation and tracks future enhancements. The goal is to provide a seamless, secure, and user-friendly remote signing experience.
 
 ## Current State

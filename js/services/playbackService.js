@@ -522,6 +522,34 @@ class PlaybackSession extends SimpleEventEmitter {
     this.trimmedMagnet =
       typeof options.magnet === "string" ? options.magnet.trim() : "";
 
+    // Ordered, de-duped hosted sources to try in turn (primary URL first, then
+    // any mirrors from the video's imeta `sources`). Lets playback fail over to
+    // the next mirror when one is dead/stalls mid-load, before dropping to P2P.
+    this.hostedSourceCandidates = (() => {
+      const seen = new Set();
+      const list = [];
+      const add = (candidate) => {
+        // Accept plain URL strings or imeta `{ url, ... }` source objects.
+        const raw =
+          typeof candidate === "string"
+            ? candidate
+            : candidate && typeof candidate.url === "string"
+            ? candidate.url
+            : "";
+        const trimmed = typeof raw === "string" ? raw.trim() : "";
+        if (!trimmed) return;
+        const key = trimmed.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        list.push(trimmed);
+      };
+      add(this.sanitizedUrl);
+      if (Array.isArray(options.sources)) {
+        options.sources.forEach(add);
+      }
+      return list;
+    })();
+
     // The signature prevents duplicate work if the same video is requested again
     // while already loading/playing.
     this.requestSignature =
@@ -897,12 +925,14 @@ class PlaybackSession extends SimpleEventEmitter {
       };
 
       // --- Attempt URL Logic ---
-      const attemptHostedPlayback = async () => {
-        if (!httpsUrl) return null;
+      // candidateUrl defaults to the primary; the execution flow calls this once
+      // per hosted source so a dead/stalled mirror fails over to the next one.
+      const attemptHostedPlayback = async (candidateUrl = httpsUrl) => {
+        if (!candidateUrl) return null;
 
         this.emit("status", { message: "Checking hosted URL..." });
         this.service.log(
-          `[playVideoWithFallback] Probing hosted URL ${httpsUrl} (readyState=${activeVideoEl.readyState} networkState=${activeVideoEl.networkState}).`
+          `[playVideoWithFallback] Probing hosted URL ${candidateUrl} (readyState=${activeVideoEl.readyState} networkState=${activeVideoEl.networkState}).`
         );
 
         let hostedStatusResolved = false;
@@ -959,7 +989,7 @@ class PlaybackSession extends SimpleEventEmitter {
         );
 
         const probeResult = await this.service.probeHostedUrl({
-          url: httpsUrl,
+          url: candidateUrl,
           magnet: this.trimmedMagnet,
           probeUrl,
         });
@@ -1036,7 +1066,7 @@ class PlaybackSession extends SimpleEventEmitter {
               // ignore
             }
             activeVideoEl.crossOrigin = null;
-            activeVideoEl.src = httpsUrl;
+            activeVideoEl.src = candidateUrl;
             const playPromise = activeVideoEl.play();
             if (playPromise && typeof playPromise.catch === "function") {
               playPromise.catch((err) => {
@@ -1145,31 +1175,45 @@ class PlaybackSession extends SimpleEventEmitter {
       let hostedErrorMessage = "";
 
       if (tryUrlFirst) {
-        if (httpsUrl) {
-          // Wrap URL attempt in timeout
-          const urlResult = await withTimeout(
-            attemptHostedPlayback(),
-            effectiveTimeout,
-            "URL Playback"
-          );
+        if (this.hostedSourceCandidates.length) {
+          // Try each hosted source in turn; a dead/stalled one fails over to the
+          // next mirror before we drop to P2P.
+          let lastUrlResult = null;
+          for (let i = 0; i < this.hostedSourceCandidates.length; i += 1) {
+            const candidateUrl = this.hostedSourceCandidates[i];
+            const urlResult = await withTimeout(
+              attemptHostedPlayback(candidateUrl),
+              effectiveTimeout,
+              "URL Playback"
+            );
 
-          if (urlResult && urlResult.source === "url") {
-            return urlResult;
+            if (urlResult && urlResult.source === "url") {
+              return urlResult;
+            }
+
+            lastUrlResult = urlResult;
+            if (typeof urlResult?.errorMessage === "string") {
+              hostedErrorMessage = urlResult.errorMessage;
+            }
+
+            // Clean up watchdogs/listeners and reset the element before the next
+            // candidate (the single-attempt path relied on attemptTorrentPlayback
+            // to do this; the loop must do it between mirrors).
+            const moreCandidatesRemain =
+              i < this.hostedSourceCandidates.length - 1;
+            if (urlResult?.reason === "timeout" || moreCandidatesRemain) {
+              this.cleanupWatchdog();
+              cleanupHostedUrlStatusListeners();
+              resetVideoElement();
+            }
+            if (moreCandidatesRemain) {
+              this.service.log(
+                `[playVideoWithFallback] Hosted source ${candidateUrl} failed (${urlResult?.reason || "unknown"}); trying next mirror.`
+              );
+            }
           }
 
-          if (typeof urlResult?.errorMessage === "string") {
-            hostedErrorMessage = urlResult.errorMessage;
-          }
-
-          // If timeout or failure, proceed to fallback
-          if (urlResult?.reason === "timeout") {
-            // Need to ensure URL probing/playback is effectively cancelled
-            this.cleanupWatchdog();
-            cleanupHostedUrlStatusListeners();
-            resetVideoElement();
-          }
-
-          const fallbackReason = urlResult?.reason || "url-unavailable";
+          const fallbackReason = lastUrlResult?.reason || "url-unavailable";
           if (this.magnetForPlayback && forcedSource !== "url") {
             return await attemptTorrentPlayback(fallbackReason);
           }

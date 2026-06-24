@@ -329,7 +329,16 @@ function parseNwcUri(uri) {
   }
 
   const tools = assertNostrTools(["getPublicKey"]);
-  const clientPubkey = tools.getPublicKey(secretKey);
+  // nostr-tools >= 2.x requires the secret key as bytes (Uint8Array), not a hex
+  // string — passing hex throws "expected Uint8Array". Try hex first for forward/
+  // backward compat with toolkits that still accept it, then fall back to bytes.
+  // Without this, parseNwcUri throws and NWC wallet connection fails entirely.
+  let clientPubkey;
+  try {
+    clientPubkey = tools.getPublicKey(secretKey);
+  } catch (error) {
+    clientPubkey = tools.getPublicKey(hexToBytesCompat(secretKey));
+  }
 
   const queryParams = {};
   for (const [key, values] of additionalParams.entries()) {

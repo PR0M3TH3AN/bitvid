@@ -80,6 +80,8 @@
   --blur-modal-alert: 14px;
   --blur-thumbnail-blur: 18px;
   --modal-nav-backdrop-blur: 6px;
+  --popularity-modal-max-width: 28rem;
+  --popularity-modal-chart-height: 130px;
 
   --app-header-centerline-offset: calc(
     var(--space-sm) + (var(--space-2xl-plus) / 2)
