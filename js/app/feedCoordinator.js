@@ -848,14 +848,18 @@ export function createFeedCoordinator(deps) {
               );
             }
             runtime = this.buildForYouFeedRuntime({ watchHistoryItems });
+            // Keep the scorer/sorter's "your people first" order — without this
+            // VideoListView re-sorts chronologically and For You looks like Recent.
+            metadataModifier = (m) => ({ ...m, preserveOrder: true });
             break;
           }
           case FEED_TYPES.KIDS:
             runtime = this.buildKidsFeedRuntime();
             metadataModifier = (m) => {
-              if (runtime?.ageGroup && !m.ageGroup)
-                m.ageGroup = runtime.ageGroup;
-              return m;
+              const next = { ...m, preserveOrder: true };
+              if (runtime?.ageGroup && !next.ageGroup)
+                next.ageGroup = runtime.ageGroup;
+              return next;
             };
             break;
           case FEED_TYPES.EXPLORE:
@@ -869,6 +873,8 @@ export function createFeedCoordinator(deps) {
             break;
           case FEED_TYPES.TRENDING:
             runtime = buildTrendingFeedRuntime(this);
+            // Preserve the view-count ranking (otherwise re-sorted by date).
+            metadataModifier = (m) => ({ ...m, preserveOrder: true });
             break;
           case "recent":
             runtime = this.buildRecentFeedRuntime();

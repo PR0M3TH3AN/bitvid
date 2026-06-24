@@ -12,7 +12,7 @@
 import { clearDecryptionSchemeCache } from "../nostr/decryptionSchemeCache.js";
 import { clearWatchHistoryConversationKeyCache } from "../nostr/watchHistory.js";
 import { clearWatchHistoryDecryptedChunkCache } from "../nostr/watchHistoryDecryptCache.js";
-import { FEED_TYPES } from "../constants.js";
+import { FEED_TYPES, FEATURE_TRENDING_FEED } from "../constants.js";
 
 /**
  * Kick a background watch-history refresh after login, once the feed-driving
@@ -988,7 +988,11 @@ export function createAuthSessionCoordinator(deps) {
         typeof logoutView === "string" &&
         logoutView.trim().toLowerCase() === FEED_TYPES.FOR_YOU
       ) {
-        setHashView(FEED_TYPES.RECENT);
+        // For You is logged-in only; send logged-out users to the same landing
+        // as the default homepage — Trending (or Recent if Trending is off).
+        setHashView(
+          FEATURE_TRENDING_FEED ? FEED_TYPES.TRENDING : FEED_TYPES.RECENT
+        );
       }
 
       const activeModalVideo =
