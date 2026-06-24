@@ -575,6 +575,66 @@ async function testRelayCountAggregationUsesBestEstimate() {
   }
 }
 
+// The exact path (options.exact, watch page / popularity chart) must count the
+// cross-relay UNION of view events deduped by (viewer, window) — NOT the per-relay
+// NIP-45 COUNT, which returns the single relay with the most events and therefore
+// under-counts when views are spread across relays.
+async function testExactCountUnionsAcrossRelays() {
+  localStorage.clear();
+  harness.reset();
+  harness.resetMetrics();
+
+  const previousGetManager = nostrClient.getSubscriptionManager;
+  // exactCountForPointer only runs when a SubscriptionManager exists.
+  nostrClient.getSubscriptionManager = () => ({
+    list: async () => [],
+    subscribe: () => ({ close() {} }),
+    handleReconnect() {},
+  });
+
+  try {
+    const pointer = { type: "e", value: "view-counter-exact-union" };
+    const pointerKey = harness.pointerKeyFromInput(pointer);
+    const dayStart =
+      Math.floor(Math.floor(Date.now() / 1000) / 86400) * 86400;
+    // alice has two views in the same day (dedupe to 1) → 3 distinct (viewer,day):
+    // alice@d0, bob@d0, alice@d1.
+    harness.setEvents(pointerKey, [
+      { id: "e1", pubkey: "alice", created_at: dayStart + 10 },
+      { id: "e2", pubkey: "alice", created_at: dayStart + 20 },
+      { id: "e3", pubkey: "bob", created_at: dayStart + 30 },
+      { id: "e4", pubkey: "alice", created_at: dayStart - 86400 + 10 },
+    ]);
+    // A single relay's COUNT only saw 1 — the union must win.
+    harness.setCountTotal(pointerKey, {
+      total: 1,
+      best: { relay: "wss://relay.one", count: 1 },
+    });
+
+    const updates = [];
+    const token = subscribeToVideoViewCount(
+      pointer,
+      (state) => updates.push({ ...state }),
+      { exact: true },
+    );
+    try {
+      await flushPromises();
+      await flushPromises();
+      const final = updates.at(-1);
+      assert.ok(final, "expected an exact-count update");
+      assert.equal(
+        final.total,
+        3,
+        "exact count = cross-relay union deduped by (viewer,day), not the per-relay COUNT (1)",
+      );
+    } finally {
+      unsubscribeFromVideoViewCount(pointer, token);
+    }
+  } finally {
+    nostrClient.getSubscriptionManager = previousGetManager;
+  }
+}
+
 async function testLocalIngestNotifiesImmediately() {
   localStorage.clear();
   harness.reset();
@@ -1136,6 +1196,7 @@ await testHydrationSkipsStaleEventsAndRollsOff();
 await testLocalIngestNotifiesImmediately();
 await testUnsubscribeStopsCallbacks();
 await testRelayCountAggregationUsesBestEstimate();
+await testExactCountUnionsAcrossRelays();
 await testRecordVideoViewEmitsJsonPayload();
 await testSignAndPublishFallbackUsesSessionActor();
 await testHydrateHistoryPrefersRootEvent();

@@ -319,13 +319,17 @@ export function openPopularityModal({
 
   // Headline total: subscribe to the same counter the card uses (stable + cached).
   try {
-    countToken = subscribeToVideoViewCount(pointer, ({ total } = {}) => {
-      if (closed) return;
-      if (Number.isFinite(total)) {
-        counterTotal = Number(total);
-        renderHeadline();
-      }
-    });
+    countToken = subscribeToVideoViewCount(
+      pointer,
+      ({ total } = {}) => {
+        if (closed) return;
+        if (Number.isFinite(total)) {
+          counterTotal = Number(total);
+          renderHeadline();
+        }
+      },
+      { exact: true },
+    );
   } catch (error) {
     devLogger.warn("[popularity] Failed to subscribe to view count:", error);
   }

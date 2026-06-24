@@ -221,6 +221,22 @@ parameterized-replaceable event; (b) `exactCountForPointer` runs a NIP-45 COUNT
       boundary (map vs the `syncActiveVideoRootTimestamp` field step). Removed from
       the QUARANTINE map. Spec corrections logged in TEST_INTEGRITY.md
       (SCN-view-counter-legacy-path, SCN-hydrate-root-timestamp).
+- [x] **Cross-relay UNDER-count fixed (2026-06-24).** The "exact" path (watch page
+      + popularity chart) relied on the NIP-45 COUNT, but `countEventsAcrossRelays`
+      returns `bestEstimate` = the SINGLE relay with the most events — it can't
+      union across relays, so it under-counts when views are spread across relays
+      (e.g. card showed 19 while the chart's uncapped list union showed ~63).
+      `exactCountForPointer` now lists view events across ALL relays (uncapped, one
+      on-demand list — not a storm) and folds the UNION into the deduped
+      `dedupeBuckets` (one per viewer-window); total = the set size, so it's
+      accurate AND monotonic (never spuriously decreases). Per-relay COUNT is kept
+      only as a lower-bound floor when the list truncates (>2000), flagged partial.
+      The popularity modal now passes `{ exact: true }`, and since the count flows
+      through the shared pointer state, opening a video corrects its count
+      everywhere (grid cards converge). Test: `testExactCountUnionsAcrossRelays` in
+      `tests/view-counter.test.mjs`. NOTE: grid cards (no `exact`) still use the
+      §17-capped batched backfill (approximate, storm-safe) until the video is
+      opened — acceptable accuracy/cost tradeoff.
 - [x] **`reactionCounter.js` (likes/kind-7) audited — accurate, no fix needed.**
       It does NOT use NIP-45 COUNT; it lists kind-7 events and dedupes via
       `applyReactionToState` keyed by pubkey (one reaction per user, latest-wins),
@@ -468,6 +484,13 @@ toward freshness and looked identical. Gave each a structural identity:
 - [ ] FUTURE: benefits from the unified streaming grid (#17d); consider a time-
       windowed "trending" (views in the last N days) once view-over-time data (#26)
       lands, instead of all-time totals.
+
+### 31. ⋯ menu "Event Details" button does nothing (BUG)
+- [ ] The "Event Details" item in the video ⋯ (more) menu does not open / does
+      nothing when clicked. Trace its `data-action` → `handleMoreMenuAction` case
+      (vs `EventDetailsModal`): confirm the action name matches a case (likely a
+      missing/renamed case or a no-op like the embed/copy-magnet event-name
+      mismatches), wire it to open `EventDetailsModal`, and add a regression test.
 
 ### 28. Beacon torrent app stuck — spinner never resolves (BUG)
 - [ ] The torrent beacon app (`scripts/build:beacon` / `torrent/` integration) shows
