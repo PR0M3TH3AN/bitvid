@@ -198,12 +198,29 @@ Audit started 2026-06-23. See the doc for architecture map + findings. Summary:
       mis-position making it hard to use — see 3a).
 
 ### 4. View counter accuracy & reliability — DEEP AUDIT
-- [ ] **Deep audit of the whole view-counting system** (`viewEvents.js`,
-      `reactionCounter.js`, the quarantined `tests/view-counter.test.mjs`): accuracy
-      and reliability — dedup per viewer/session, relay aggregation, double-counting,
-      and resilience to dead relays (now that feed defaults are reserved, ensure view
-      reads/writes use a sane relay set too). This audit underpins the popularity
-      chart (#26) and the Trending tab (#27), so do it first / alongside them.
+Audit finding (2026-06-24): counts INFLATE. `viewCounter.js` dedupes locally by
+(viewer, time-window) correctly, but two things defeated it: (a)
+`generateViewEventDedupeTag` built the kind-30079 `d` tag with random entropy +
+exact timestamp, so every view was a UNIQUE event and relays could not dedupe the
+parameterized-replaceable event; (b) `exactCountForPointer` runs a NIP-45 COUNT
+(raw event count, no per-viewer dedupe) and bumped the displayed total UP to it
+(`max(deduped, raw)`). Net: reloads / multi-device / re-watches each added a view.
+- [x] **Root fix — deterministic, window-bucketed `d` tag** (`viewEvents.js`):
+      `scope:viewer:bucket`, no entropy. Kind-30079 view events are now genuinely
+      replaceable, so relays collapse a viewer's repeat views in a window into ONE
+      event → the NIP-45 COUNT is accurate AND scalable, and `max(deduped, raw)`
+      stops inflating. `buildViewEvent` no longer invents a random `d` tag
+      (`nostrEventSchemas.js`). Transition: pre-existing entropy events age out over
+      `VIEW_COUNT_BACKFILL_MAX_DAYS`. Tests: `tests/view-event-dedupe.test.mjs`
+      (same-window dedupe, next-window separate, per-viewer/per-video, no auto-d).
+- [ ] **Remaining triage of the quarantined `tests/view-counter.test.mjs`** (still
+      quarantined): the `d`-tag/session assertions now pass; it next fails on
+      `viewCounter.js` cache-TTL/hydration behavior (stale cache should re-fetch
+      fresh from relays). Separate from the accuracy root cause — triage + un-
+      quarantine as its own pass.
+- [ ] **`reactionCounter.js`** (likes/kind-7) not yet audited; same dedupe-by-
+      replaceable question may apply. Underpins the popularity chart (#26) /
+      Trending tab (#27).
 
 ### 5. Card-hide / video-liveness check — full plan in docs/video-liveness-plan.md
 Audited (2026-06-23). Finding: the hide/show **policy is already correct**

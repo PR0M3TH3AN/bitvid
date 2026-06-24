@@ -2199,11 +2199,11 @@ export function buildViewEvent(params) {
     tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
   }
 
-  const resolvedDedupeTag =
-    dedupeTag ||
-    (schema?.identifierTag?.name
-      ? Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)
-      : "");
+  // No random fallback: view events must be parameterized-replaceable on the
+  // exact d-tag the caller supplies (publishViewEvent computes a deterministic,
+  // window-bucketed one). A random d-tag here would make every view a unique
+  // event and defeat relay-side dedupe, inflating view counts (item #4 audit).
+  const resolvedDedupeTag = typeof dedupeTag === "string" ? dedupeTag : "";
 
   if (resolvedDedupeTag && schema?.identifierTag?.name) {
     const identifierName = schema.identifierTag.name;

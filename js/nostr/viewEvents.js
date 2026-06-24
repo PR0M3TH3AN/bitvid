@@ -145,11 +145,14 @@ function generateViewEventDedupeTag(actorPubkey, pointer, createdAtSeconds) {
     typeof actorPubkey === "string" && actorPubkey.trim()
       ? actorPubkey.trim().toLowerCase()
       : "anon";
-  const timestamp = Number.isFinite(createdAtSeconds)
-    ? Math.max(0, Math.floor(createdAtSeconds))
-    : Math.floor(Date.now() / 1000);
-  const entropy = generateViewEventEntropy();
-  return `${scope}:${normalizedActor}:${timestamp}:${entropy}`;
+  // DETERMINISTIC + window-bucketed. Kind-30079 view events are parameterized-
+  // replaceable (deduped by kind+pubkey+d-tag), so a stable d-tag per
+  // (viewer, video, dedupe-window) makes the relay collapse a viewer's repeat
+  // views in the same window into ONE event. That keeps both the NIP-45 COUNT and
+  // a list() accurate AND scalable. The old entropy+exact-timestamp tag made every
+  // view a unique event, defeating dedupe and inflating counts (item #4 audit).
+  const bucketIndex = deriveViewEventBucketIndex(createdAtSeconds);
+  return `${scope}:${normalizedActor}:${bucketIndex}`;
 }
 
 export function hasRecentViewPublish(scope, bucketIndex, actorPubkey) {
