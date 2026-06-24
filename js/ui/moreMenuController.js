@@ -157,7 +157,7 @@ export default class MoreMenuController {
         ...(detail.dataset || {}),
         eventId: detail.dataset?.eventId || detail.video?.id || "",
       };
-      this.handleMoreMenuAction(detail.action, dataset);
+      this.handleMoreMenuAction(detail.action, dataset, detail.video || null);
     };
 
     if (typeof view.addEventListener === "function") {
@@ -1176,7 +1176,7 @@ export default class MoreMenuController {
           // ignore
         }
         try {
-          const { openPopularityModal } = await import("../../viewCountChart.js");
+          const { openPopularityModal } = await import("../viewCountChart.js");
           openPopularityModal({ video: targetVideo });
         } catch (error) {
           userLogger.warn("[MoreMenu] Failed to open popularity modal:", error);

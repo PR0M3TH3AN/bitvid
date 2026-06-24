@@ -159,6 +159,9 @@ function el(doc, tag, className, text) {
   return node;
 }
 
+// At most one popularity modal open at a time.
+let activePopularityModal = null;
+
 // Opens the popularity modal for a video. Dependencies are injectable for tests.
 export function openPopularityModal({
   document: doc = typeof document !== "undefined" ? document : null,
@@ -173,6 +176,18 @@ export function openPopularityModal({
     return null;
   }
   const pointer = pointerInfo.pointer;
+
+  // Close any already-open popularity modal (proper cleanup of its subscription
+  // + listeners) so re-triggering — or two menu paths firing for one click —
+  // can't stack duplicates.
+  if (activePopularityModal) {
+    try {
+      activePopularityModal.close();
+    } catch (error) {
+      // ignore
+    }
+    activePopularityModal = null;
+  }
 
   const root = mount || doc.getElementById("uiOverlay") || doc.body;
   const backdrop = el(doc, "div", "ds-overlay-backdrop popularity-modal__backdrop");
@@ -255,6 +270,9 @@ export function openPopularityModal({
     }
     doc.removeEventListener("keydown", onKeydown, true);
     backdrop.remove();
+    if (activePopularityModal === handle) {
+      activePopularityModal = null;
+    }
   };
 
   function onKeydown(event) {
@@ -298,5 +316,7 @@ export function openPopularityModal({
     devLogger.warn("[popularity] Failed to subscribe to view events:", error);
   }
 
-  return { close };
+  const handle = { close };
+  activePopularityModal = handle;
+  return handle;
 }
