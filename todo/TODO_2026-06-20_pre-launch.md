@@ -324,6 +324,12 @@ toward freshness and looked identical. Gave each a structural identity:
       creators surface, and more variety via the diversity sorter (MMR λ 0.7→0.5).
       Test: explore follows-penalty in `tests/feed-engine/explore-scorer.test.mjs`.
 - [x] **Recent = chronological** (unchanged).
+- [x] **Render bug that masked ALL of the above (2026-06-24):** `VideoListView.render`
+      re-sorted the grid by date unless `metadata.preserveOrder` was set, and only
+      Explore set it — so For You's tiering and Kids' scoring were discarded at
+      render and shown chronologically (looking identical to Recent). Fixed by
+      setting `preserveOrder` for For You / Trending / Kids in the refreshFeed
+      cases. This is why the feed-identity work "didn't show" until now.
 - [ ] **Follow-up (optional):** Explore per-VIDEO "already watched" suppression
       (currently only topic-novelty, not per-video) — needs the watch-history
       preload wired into the Explore refresh like For You has. And a Trending tab
