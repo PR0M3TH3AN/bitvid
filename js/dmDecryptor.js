@@ -261,6 +261,21 @@ function orderDecryptors(candidates, hints, { preferGiftWrap = false, preferLega
       }
     }
 
+    // Legacy (kind 4) default: with no explicit hint, kind-4 DMs are NIP-04, so
+    // try nip04 first and don't burn a (serialized, slow) nip-07 round-trip on
+    // nip44. This MUST outrank `priority` below — the signer registers its nip44
+    // candidate at a lower (earlier) priority than nip04, so leaving priority to
+    // decide made every kind-4 message attempt nip44 first (guaranteed "invalid
+    // base64" on the ?iv= ciphertext) before falling back to nip04. Only flips
+    // the nip04-vs-nip44 default; an explicit hint above already took over.
+    if (preferLegacy && !hasHints) {
+      const aL = a.scheme === "nip04" ? 0 : 1;
+      const bL = b.scheme === "nip04" ? 0 : 1;
+      if (aL !== bL) {
+        return aL - bL;
+      }
+    }
+
     if (a.priority !== b.priority) {
       return a.priority - b.priority;
     }
@@ -270,17 +285,6 @@ function orderDecryptors(candidates, hints, { preferGiftWrap = false, preferLega
       const bWrapScore = b.supportsGiftWrap ? 0 : 1;
       if (aWrapScore !== bWrapScore) {
         return aWrapScore - bWrapScore;
-      }
-    }
-
-    // Legacy (kind 4) default: with no explicit hint, kind-4 DMs are NIP-04, so
-    // try nip04 first and don't burn a (serialized, slow) nip-07 round-trip on
-    // nip44. Only flips the default — an explicit hint above already took over.
-    if (preferLegacy && !hasHints) {
-      const aL = a.scheme === "nip04" ? 0 : 1;
-      const bL = b.scheme === "nip04" ? 0 : 1;
-      if (aL !== bL) {
-        return aL - bL;
       }
     }
 
