@@ -2974,6 +2974,37 @@ class Application {
       return false;
     }
 
+    // Direct messages require a signing identity. If nobody is logged in, prompt
+    // for login instead of silently opening an unusable messages tab.
+    if (!this.isUserLoggedIn()) {
+      this.showError(
+        "Please log in with your Nostr account to send a direct message.",
+      );
+      try {
+        if (
+          this.loginModalController &&
+          typeof this.loginModalController.openModal === "function" &&
+          this.loginModalController.openModal({})
+        ) {
+          return false;
+        }
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to open login modal for direct message:",
+          error,
+        );
+      }
+      Promise.resolve(
+        this.authService?.requestLogin?.({ allowAccountSelection: true }),
+      ).catch((error) => {
+        devLogger.warn(
+          "[Application] Direct message login request failed:",
+          error,
+        );
+      });
+      return false;
+    }
+
     this.setDmRecipientPubkey(normalized);
 
     if (this.profileController) {
