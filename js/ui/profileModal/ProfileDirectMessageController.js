@@ -623,6 +623,33 @@ export class ProfileDirectMessageController {
     return this.actions.handleSendProfileMessage(...args);
   }
 
+  // DM app-shell callbacks. The renderer wires these on `this.controller`, but the
+  // delegations were missing — so Send / mark-read / settings / toggles all threw
+  // "is not a function" and the app-shell DM UI couldn't send a message.
+  handleDmAppShellSendMessage(...args) {
+    return this.actions.handleDmAppShellSendMessage(...args);
+  }
+
+  handleDmConversationMarkRead(...args) {
+    return this.actions.handleDmConversationMarkRead(...args);
+  }
+
+  handleDmMarkAllConversationsRead(...args) {
+    return this.actions.handleDmMarkAllConversationsRead(...args);
+  }
+
+  handleReadReceiptsToggle(...args) {
+    return this.actions.handleReadReceiptsToggle(...args);
+  }
+
+  handleTypingIndicatorsToggle(...args) {
+    return this.actions.handleTypingIndicatorsToggle(...args);
+  }
+
+  openDmSettingsModal(...args) {
+    return this.actions.openDmSettingsModal(...args);
+  }
+
   handleAttachmentSelection(...args) {
     return this.actions.handleAttachmentSelection(...args);
   }

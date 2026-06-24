@@ -238,15 +238,17 @@ un-hides when WebTorrent flips green). The real gaps:
       popover fallback, so the standalone copy-magnet button was also dead. Now
       dispatches `"video:copy-magnet"`. Covered by the same regression test.
 
-### 19. Direct messages: can read but cannot SEND — deep audit (BUG)
-- [ ] DMs are pulled in and readable, but sending appears to do nothing / fails.
-      Do a focused audit of the send path (compose → encrypt → sign → publish):
-      NIP-17/gift-wrap vs NIP-04 path selection, the signer's encrypt budget /
-      circuit-breaker, which write relays the DM publishes to (and whether any
-      accept), and the optimistic-vs-confirmed UI state. Reuse the
-      `tests/dm-*` suites and add a send→publish→assert-accepted regression. (Note:
-      the NIP-07 signer reliability invariants in AGENTS.md §17 apply — a dead
-      extension worker can make sends hang silently.)
+### 19. Direct messages: can read but cannot SEND — FIXED 2026-06-23
+- [x] **Root cause: missing controller delegations.** Clicking Send threw
+      `this.controller.handleDmAppShellSendMessage is not a function`. The DM
+      app-shell renderer wires its callbacks on `this.controller` (the
+      `ProfileDirectMessageController`), but the controller was missing the
+      delegation methods that forward to `this.actions` — so Send AND mark-read,
+      mark-all-read, read-receipts/typing toggles, and open-settings all threw and
+      did nothing. Added the six delegations. The send path itself (encrypt → sign →
+      publish, NIP-04 default / NIP-17) was fine. Regression test
+      `tests/dm-controller-delegations.test.mjs`. VERIFY live: typing + Send actually
+      delivers a message.
 
 ### 20. Feed / grid loading reliability — some videos missing (BUG)
 Two related intermittent symptoms; likely the same root cause (a one-shot,
