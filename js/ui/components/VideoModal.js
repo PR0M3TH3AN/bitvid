@@ -3006,7 +3006,10 @@ export class VideoModal {
   }
 
   handleEmbedRequest() {
-    this.dispatch("action:embed", { video: this.activeVideo });
+    // ModalManager listens for "video:embed" (it opens EmbedVideoModal). The
+    // previous "action:embed" name had no listener, so the embed button did
+    // nothing — the event was dispatched into the void.
+    this.dispatch("video:embed", { video: this.activeVideo });
   }
 
   handleCreatorNavigation() {

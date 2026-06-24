@@ -1005,4 +1005,27 @@ const { VideoModal } = await import("../js/ui/components/VideoModal.js");
   );
 })();
 
+(() => {
+  // Regression (#18): the Embed button dispatched "action:embed", but ModalManager
+  // listens for "video:embed" (which opens EmbedVideoModal) — so embed did nothing.
+  // handleEmbedRequest must dispatch the name the manager actually listens for.
+  const modal = new VideoModal({ document: documentStub, setGlobalModalState: noop });
+  modal.activeVideo = { id: "vid-embed", pubkey: "p".repeat(64) };
+
+  let embedDetail = null;
+  modal.addEventListener("video:embed", (event) => {
+    embedDetail = event?.detail || null;
+  });
+  let staleFired = false;
+  modal.addEventListener("action:embed", () => {
+    staleFired = true;
+  });
+
+  modal.handleEmbedRequest();
+
+  assert.ok(embedDetail, 'embed must dispatch "video:embed" (the listened name)');
+  assert.equal(embedDetail.video?.id, "vid-embed", "carries the active video");
+  assert.equal(staleFired, false, 'must not use the dead "action:embed" name');
+})();
+
 process.exit(0);
