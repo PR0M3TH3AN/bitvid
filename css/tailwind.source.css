@@ -518,6 +518,21 @@
     -webkit-backdrop-filter: blur(var(--overlay-backdrop-blur));
   }
 
+  .popularity-modal__backdrop {
+    z-index: var(--z-overlay-popover);
+    padding: var(--space-md);
+  }
+
+  .popularity-modal {
+    width: 100%;
+    max-width: var(--popularity-modal-max-width);
+  }
+
+  .popularity-modal__chart {
+    width: 100%;
+    height: var(--popularity-modal-chart-height);
+  }
+
   .popover-panel[data-variant="zap"],
   .popover__panel[data-variant="zap"] {
     background: var(--color-overlay-veil);

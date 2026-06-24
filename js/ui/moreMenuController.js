@@ -1162,6 +1162,28 @@ export default class MoreMenuController {
           .catch(() => this.callbacks.showError("Failed to copy the link."));
         break;
       }
+      case "view-stats": {
+        const targetVideo =
+          video || (context === "modal" ? currentVideo : null) || currentVideo;
+        if (!targetVideo) {
+          this.callbacks.showError("No video selected.");
+          break;
+        }
+        // Dismiss the menu, then open the public popularity chart (lazy-loaded).
+        try {
+          this.activePopover?.close?.();
+        } catch (error) {
+          // ignore
+        }
+        try {
+          const { openPopularityModal } = await import("../../viewCountChart.js");
+          openPopularityModal({ video: targetVideo });
+        } catch (error) {
+          userLogger.warn("[MoreMenu] Failed to open popularity modal:", error);
+          this.callbacks.showError("Couldn’t open popularity.");
+        }
+        break;
+      }
       case "remove-history": {
         await this.callbacks.handleRemoveHistoryAction(dataset);
         break;

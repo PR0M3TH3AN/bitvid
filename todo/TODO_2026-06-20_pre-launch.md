@@ -431,11 +431,17 @@ toward freshness and looked identical. Gave each a structural identity:
       render-time filter alongside the existing author/community blacklist, and expose
       it in the moderation UI (and eventually the #23 admin tab).
 
-### 26. Video popularity / view-count chart (public, three-dots menu)
-- [ ] Surface a video's popularity from the view counter as a **chart of views over
-      time** that updates dynamically as more view events load in. Put it in the
-      video's **three-dots (⋯) menu** — view data is public, so any viewer can see it.
-      Depends on the #4 view-counter audit being trustworthy first.
+### 26. Video popularity / view-count chart (public, three-dots menu) — DONE 2026-06-24
+- [x] **Shipped.** A "Popularity" item in the ⋯ menu opens a public views-over-time
+      chart (`js/viewCountChart.js`). `buildViewCountTimeSeries` buckets the raw
+      kind-30079 view events by the counter's dedupe window (one view per viewer
+      per day) into a cumulative series; `buildViewCountChartSvg` renders a
+      token-colored (currentColor/`text-accent`) SVG area+line — no chart lib. The
+      modal fetches via `listVideoViewEventsWithDefaultClient`, shows the total,
+      and **updates live** by subscribing to `subscribeVideoViewEventsWithDefaultClient`
+      (debounced re-render); cleans up on close (Esc/backdrop/✕). Lazy-loaded from
+      the menu handler. Tests: `tests/view-count-chart.test.mjs`. Built on the
+      trustworthy #4 counts.
 - [ ] FUTURE: feed the same data into a **creator dashboard** showing the creator
       their videos' ranking + performance over time (separate, larger effort).
 
