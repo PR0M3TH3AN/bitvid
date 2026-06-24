@@ -867,6 +867,10 @@ export function createPlaybackCoordinator(deps) {
       const playbackOptions = {
         url: trimmedUrl,
         magnet: magnetInput,
+        // Hosted mirrors (NIP-71 imeta variants) to fail over to mid-load.
+        sources: Array.isArray(this.currentVideo?.sources)
+          ? this.currentVideo.sources
+          : [],
       };
       if (hasTrigger) {
         playbackOptions.trigger = this.lastModalTrigger;

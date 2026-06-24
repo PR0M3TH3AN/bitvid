@@ -242,9 +242,19 @@ un-hides when WebTorrent flips green). The real gaps:
       `collectVideoSources`); `urlHealthController.probeUrlList` probes them in
       order — healthy as soon as one plays, offline only if all fail. So a dead
       primary host no longer hides a video with a working mirror.
-- [ ] **Remaining — player fail-over at play time**: the *liveness* now tries all
-      sources, but actual playback should also fail over to the next source if the
-      chosen one dies mid-load (playbackService consumes `video.sources`).
+- [x] **Player fail-over at play time (2026-06-24).** Playback now tries each
+      hosted source in turn before dropping to P2P. The `PlaybackSession` builds an
+      ordered, de-duped `hostedSourceCandidates` (primary URL first, then the
+      video's imeta `sources`); `attemptHostedPlayback` takes a `candidateUrl` and
+      the url-first execution loop advances to the next mirror on probe-fail/stall/
+      timeout (cleaning up watchdogs + resetting the element between candidates),
+      only calling WebTorrent after all hosted mirrors fail. `sources` plumbed
+      coordinator → strategy → session; single-source videos behave exactly as
+      before. Tests: `tests/services/playbackService_multisource.test.mjs`
+      (candidate construction; the full async fail-over flow is covered by the
+      playbackService_order suite in CI). ROLLBACK: revert the loop in
+      `playbackService.js` to the single `attemptHostedPlayback()` call + drop the
+      `sources` plumbing.
 - [ ] **Remaining — hide-until-verified for foreign/ingested** (decision): so
       unplayable strangers never briefly flash before the probe hides them
       (bitvid-native stays show-pending). UX policy change in cardSourceVisibility.
