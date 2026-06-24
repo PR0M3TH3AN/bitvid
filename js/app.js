@@ -3936,6 +3936,11 @@ class Application {
     return this._feed.registerExploreFeed(...args);
   }
 
+  registerTrendingFeed(...args) {
+    this._initCoordinators();
+    return this._feed.registerTrendingFeed(...args);
+  }
+
   registerSubscriptionsFeed(...args) {
     this._initCoordinators();
     return this._feed.registerSubscriptionsFeed(...args);
@@ -3981,6 +3986,11 @@ class Application {
     return this._feed.refreshFeed(FEED_TYPES.EXPLORE, ...args);
   }
 
+  refreshTrendingFeed(...args) {
+    this._initCoordinators();
+    return this._feed.refreshFeed(FEED_TYPES.TRENDING, ...args);
+  }
+
   refreshRecentFeed(...args) {
     this._initCoordinators();
     return this._feed.refreshFeed("recent", ...args);
@@ -4022,6 +4032,11 @@ class Application {
   async loadExploreVideos(...args) {
     this._initCoordinators();
     return this._feed.loadExploreVideos(...args);
+  }
+
+  async loadTrendingVideos(...args) {
+    this._initCoordinators();
+    return this._feed.loadTrendingVideos(...args);
   }
 
   async loadOlderVideos(...args) {

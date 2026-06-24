@@ -10,6 +10,10 @@
  */
 
 import { FEED_TYPES, STANDARD_TIMEOUT_MS, MEDIUM_TIMEOUT_MS, DEBOUNCE_DELAY_MS } from "../constants.js";
+import {
+  registerTrendingFeed as registerTrendingFeedPipeline,
+  buildTrendingFeedRuntime,
+} from "../feedEngine/trendingFeed.js";
 
 /**
  * @param {object} deps - Injected dependencies.
@@ -863,6 +867,9 @@ export function createFeedCoordinator(deps) {
               return next;
             };
             break;
+          case FEED_TYPES.TRENDING:
+            runtime = buildTrendingFeedRuntime(this);
+            break;
           case "recent":
             runtime = this.buildRecentFeedRuntime();
             break;
@@ -1022,6 +1029,12 @@ export function createFeedCoordinator(deps) {
           refreshMethod = (opts) => this.refreshFeed(FEED_TYPES.EXPLORE, opts);
           shouldCheckRelayHealth = false;
           break;
+        case FEED_TYPES.TRENDING:
+          includeTags = false;
+          loadingMessage = "Fetching trending videos\u2026";
+          refreshMethod = (opts) => this.refreshFeed(FEED_TYPES.TRENDING, opts);
+          shouldCheckRelayHealth = false;
+          break;
         default:
           devLogger.warn(
             `[Application] Unknown feed type for loadFeedVideos: ${feedType}`,
@@ -1114,6 +1127,14 @@ export function createFeedCoordinator(deps) {
 
     async loadExploreVideos(forceFetch = false) {
       return this.loadFeedVideos(FEED_TYPES.EXPLORE, forceFetch);
+    },
+
+    registerTrendingFeed() {
+      return registerTrendingFeedPipeline(this);
+    },
+
+    async loadTrendingVideos(forceFetch = false) {
+      return this.loadFeedVideos(FEED_TYPES.TRENDING, forceFetch);
     },
 
     async loadOlderVideos(lastTimestamp) {

@@ -423,12 +423,29 @@ toward freshness and looked identical. Gave each a structural identity:
 - [ ] FUTURE: feed the same data into a **creator dashboard** showing the creator
       their videos' ranking + performance over time (separate, larger effort).
 
-### 27. "Trending" tab — recently-added sorted by view count
-- [ ] Add a new tab that is essentially "Recently added videos" **sorted by view
-      count** (call it "Trending" or similar) — a new sidebar grid that reuses the
-      recently-added source but ranks by views. Depends on reliable view counts (#4)
-      and benefits from the unified streaming grid (#17d). Gate behind a config flag
-      if it should be toggleable like the other new tabs.
+### 27. "Trending" tab — recently-added sorted by view count — DONE 2026-06-24
+- [x] **Shipped.** New `FEED_TYPES.TRENDING` tab: the active (recently-added)
+      source ranked by VIEW COUNT (recency tiebreak, trusted-muted last). Gated by
+      `FEATURE_TRENDING_FEED` (default ON; flag-off hides the sidebar link and skips
+      registration). Relies on the now-trustworthy view counts (#4).
+      - `createTrendingSorter` (sorters.js) reads counts from the injected
+        `runtime.getViewCount`, which resolves each video's pointer (the app's
+        canonical `deriveVideoPointerInfo`) against the shared viewCounter cache —
+        the same counts the grid cards already load.
+      - **Live re-rank:** `viewCounter` now emits a coalesced `onViewCountsChanged`
+        signal; while the Trending view is active it debounce-re-runs the feed
+        (cheap re-rank over the in-memory active set, no relay re-fetch), so the
+        order settles into true trending as counts stream in. Cold cache ⇒ reads as
+        recency, then improves.
+      - Pipeline extracted to `js/feedEngine/trendingFeed.js` (feedCoordinator is at
+        its size cap); thin delegations + a `getVideoViewCountSnapshot` export.
+      - Wiring: FEED_TYPES + flag, feedCoordinator load/refresh cases, app.js
+        wrappers, applicationBootstrap registration, viewManager init +
+        `js/trendingView.js`, `views/trending.html`, sidebar link.
+      - Tests: `tests/trending-sorter.test.mjs`.
+- [ ] FUTURE: benefits from the unified streaming grid (#17d); consider a time-
+      windowed "trending" (views in the last N days) once view-over-time data (#26)
+      lands, instead of all-time totals.
 
 ### 28. Beacon torrent app stuck — spinner never resolves (BUG)
 - [ ] The torrent beacon app (`scripts/build:beacon` / `torrent/` integration) shows

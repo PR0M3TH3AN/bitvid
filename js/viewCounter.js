@@ -39,6 +39,29 @@ const countVideoViewEventsApi = (pointer, options) =>
 const pointerStates = new Map();
 /** @type {Map<string, PointerListeners>} */
 const pointerListeners = new Map();
+
+// Global "any view count changed" listeners (used by the Trending feed to
+// debounce-re-rank as counts stream in). Coalesced so a burst of count arrivals
+// from the batched backfill fires one notification, not dozens.
+const globalChangeListeners = new Set();
+let globalChangeTimer = null;
+const VIEW_COUNT_GLOBAL_NOTIFY_DEBOUNCE_MS = 400;
+
+function scheduleGlobalChangeNotify() {
+  if (!globalChangeListeners.size || globalChangeTimer) {
+    return;
+  }
+  globalChangeTimer = setTimeout(() => {
+    globalChangeTimer = null;
+    for (const listener of Array.from(globalChangeListeners)) {
+      try {
+        listener();
+      } catch (error) {
+        userLogger.warn("[viewCounter] Global view-count listener threw:", error);
+      }
+    }
+  }, VIEW_COUNT_GLOBAL_NOTIFY_DEBOUNCE_MS);
+}
 let persistTimer = null;
 let nextTokenId = 1;
 
@@ -583,6 +606,9 @@ function ensurePointerListeners(key, pointer) {
 }
 
 function notifyHandlers(key) {
+  // Fire the global "counts changed" signal regardless of per-pointer listeners,
+  // so the Trending feed re-ranks even for cards it isn't directly subscribed to.
+  scheduleGlobalChangeNotify();
   const listeners = pointerListeners.get(key);
   if (!listeners || !listeners.handlers.size) {
     return;
@@ -915,4 +941,33 @@ export function formatViewCount(total) {
     return compactFormatter.format(value);
   }
   return String(value);
+}
+
+// Synchronous read of the cached, deduped view total for a pointer (or null if
+// not yet known). The Trending sorter uses this to rank the active feed by views
+// without subscribing to every pointer itself — counts are populated by the grid
+// cards' batched subscriptions into this same shared cache.
+export function getVideoViewCountSnapshot(pointerInput) {
+  try {
+    const { key } = canonicalizePointer(pointerInput);
+    if (!key) {
+      return null;
+    }
+    const state = pointerStates.get(key);
+    return state && Number.isFinite(state.total) ? Number(state.total) : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+// Subscribe to a coalesced "any view count changed" signal. Returns an
+// unsubscribe function. Used by the Trending feed to debounce-re-rank.
+export function onViewCountsChanged(listener) {
+  if (typeof listener !== "function") {
+    return () => {};
+  }
+  globalChangeListeners.add(listener);
+  return () => {
+    globalChangeListeners.delete(listener);
+  };
 }

@@ -3,6 +3,7 @@ import { initChannelProfileView } from "./channelProfile.js";
 import { initForYouView } from "./forYouView.js";
 import { initKidsView } from "./kidsView.js";
 import { initExploreView } from "./exploreView.js";
+import { initTrendingView } from "./trendingView.js";
 import { subscriptions } from "./subscriptions.js";
 import { getApplication } from "./applicationContext.js";
 import { applyDesignSystemAttributes } from "./designSystem.js";
@@ -133,6 +134,26 @@ export const viewInitRegistry = {
         app.mountVideoListView({ includeTags: false });
       }
       app.loadExploreVideos();
+    }
+    const refreshApp = getApplication();
+    if (refreshApp && typeof refreshApp.forceRefreshAllProfiles === "function") {
+      refreshApp.forceRefreshAllProfiles();
+    }
+  },
+  [FEED_TYPES.TRENDING]: () => {
+    const app = getApplication();
+    initTrendingView({
+      getApp: getApplication,
+      isActive: () =>
+        typeof window !== "undefined" &&
+        typeof window.location?.hash === "string" &&
+        window.location.hash.startsWith(`#view=${FEED_TYPES.TRENDING}`),
+    });
+    if (app && typeof app.loadTrendingVideos === "function") {
+      if (typeof app.mountVideoListView === "function") {
+        app.mountVideoListView({ includeTags: false });
+      }
+      app.loadTrendingVideos();
     }
     const refreshApp = getApplication();
     if (refreshApp && typeof refreshApp.forceRefreshAllProfiles === "function") {

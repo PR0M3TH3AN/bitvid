@@ -3,6 +3,62 @@
 import { normalizeHashtag } from "../utils/hashtagNormalization.js";
 import { markAsNormalized } from "./utils.js";
 
+// Ranks the active feed by VIEW COUNT (the "Trending" tab). Counts come from the
+// injected runtime.getViewCount(video) — the shared viewCounter cache populated
+// by the grid cards' per-card subscriptions. Unknown/not-yet-loaded counts are
+// treated as 0, so on a cold cache the feed reads as recency and settles into
+// true trending as counts stream in (the Trending view re-runs the feed on
+// viewCounter's debounced change signal). Trusted-muted always sinks last.
+export function createTrendingSorter() {
+  return function trendingSorter(items = [], context = {}) {
+    if (!Array.isArray(items)) {
+      return [];
+    }
+    const getViewCount =
+      typeof context?.runtime?.getViewCount === "function"
+        ? context.runtime.getViewCount
+        : () => 0;
+
+    const isMuted = (entry) =>
+      entry?.metadata?.moderation?.trustedMuted === true ||
+      entry?.video?.moderation?.trustedMuted === true;
+
+    const timestampOf = (entry) => {
+      const video = entry?.video;
+      if (!video || typeof video !== "object") {
+        return Number.NEGATIVE_INFINITY;
+      }
+      const root = Number(video.rootCreatedAt);
+      if (Number.isFinite(root)) return Math.floor(root);
+      const created = Number(video.created_at);
+      return Number.isFinite(created) ? Math.floor(created) : Number.NEGATIVE_INFINITY;
+    };
+
+    // Resolve each item's view count once (avoid O(n log n) cache lookups).
+    const viewsByItem = new Map();
+    for (const item of items) {
+      let total = 0;
+      try {
+        const value = getViewCount(item?.video);
+        total = Number.isFinite(value) ? Number(value) : 0;
+      } catch (error) {
+        total = 0;
+      }
+      viewsByItem.set(item, total);
+    }
+
+    const compare = (a, b) => {
+      const viewDiff = (viewsByItem.get(b) || 0) - (viewsByItem.get(a) || 0);
+      if (viewDiff !== 0) return viewDiff;
+      return timestampOf(b) - timestampOf(a);
+    };
+
+    const live = items.filter((entry) => !isMuted(entry));
+    const muted = items.filter((entry) => isMuted(entry));
+    return [...live.sort(compare), ...muted.sort(compare)];
+  };
+}
+
 // Round-robin interleave by author: one video per creator per pass, each pass in
 // the caller's pre-sorted order. Consecutive cards are from different creators,
 // so a feed reads as a varied "discovery" mix instead of a chronological wall —
