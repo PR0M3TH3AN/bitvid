@@ -267,7 +267,15 @@ un-hides when WebTorrent flips green). The real gaps:
 ### 20. Feed / grid loading reliability — some videos missing (BUG)
 Two related intermittent symptoms; likely the same root cause (a one-shot,
 all-relays-settle fetch that drops slow-relay results — see 17d).
-- [ ] **Profile / Channel page sometimes doesn't pull in all of a creator's videos.**
+- [x] **Profile / Channel page sometimes doesn't pull in all of a creator's
+      videos.** Root cause: `loadUserVideos` rendered ONLY the live fetch, which
+      REPLACES the grid — so when a relay holding a video transiently failed this
+      load, that video vanished even though it was known in memory/cache. Fixed by
+      unioning the live events with already-known events
+      (`mergeChannelVideoSources`, live-wins-on-id) before render, so the grid is a
+      superset and never shrinks; existing dedupe-by-root + access checks still
+      handle versioning/deletes. Regression: `tests/channel-video-merge.test.mjs`.
+      (Streaming/first-relay-wins UX is still the 17d follow-up.)
 - [ ] **Paginating between video-grid pages sometimes doesn't pull in all videos.**
 - [ ] Audit the channel/search/grid fetch for: relays that EOSE late being dropped,
       pagination cursor gaps, dedup discarding valid items, and cache-vs-live

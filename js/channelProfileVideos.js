@@ -28,6 +28,33 @@ export function convertChannelEvent(entry) {
   return sharedConvertEventToVideo(entry);
 }
 
+// Reconcile a fresh live fetch with already-known events (the in-memory video
+// store + persisted cache) so a transiently-failing relay can't SHRINK the grid.
+// The channel render replaces the container with the live set, so rendering only
+// what this load fetched drops any video whose sole relay timed out — the "some
+// of a creator's videos are missing" bug. Union the two by event id (live wins on
+// collision since it's the freshest copy); the caller's dedupe-by-root + access
+// checks still handle versioning, deletes, and precedence downstream.
+export function mergeChannelVideoSources(liveEvents, knownEvents) {
+  const byId = new Map();
+  const extras = [];
+  const add = (list) => {
+    if (!Array.isArray(list)) return;
+    for (const entry of list) {
+      if (!entry || typeof entry !== "object") continue;
+      const id = typeof entry.id === "string" ? entry.id : "";
+      if (!id) {
+        extras.push(entry);
+        continue;
+      }
+      if (!byId.has(id)) byId.set(id, entry);
+    }
+  };
+  add(liveEvents); // live first → wins on id collision
+  add(knownEvents);
+  return [...byId.values(), ...extras];
+}
+
 // ---- Per-channel persisted cache (instant cold-load paint) -------------------
 // Mirrors the main feed's optimistic cache: on a cold hard-refresh of a profile,
 // render the last-seen videos from localStorage BEFORE relays connect, then the
