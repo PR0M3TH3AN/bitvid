@@ -10,7 +10,7 @@ import {
   listVideoViewEvents,
   subscribeVideoViewEvents,
 } from "./nostrViewEventsFacade.js";
-import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
+import { DEFAULT_RELAY_URLS, capReadRelays } from "./nostr/toolkit.js";
 import { relayManager } from "./relayManager.js";
 import {
   buildSubscriptionListEvent,
@@ -730,6 +730,11 @@ class SubscriptionsManager {
       return null;
     }
 
+    // Bound the live follows-list subscription to the §17 read cap (≤8, user
+    // relays first + reserved defaults) so it doesn't fan out across the user's
+    // full NIP-65 set during the cold-login REQ storm.
+    const cappedRelays = capReadRelays(relays);
+
     const key = `subscriptions:${normalized}`;
     this.subscriptionKey = key;
 
@@ -751,7 +756,7 @@ class SubscriptionsManager {
     if (manager) {
       this.subscriptionHandle = manager.subscribe({
         key,
-        relays,
+        relays: cappedRelays,
         filters,
         label: "subscription-list",
         onEvent: (event) => this.handleSubscriptionListEvent(event),
@@ -762,7 +767,7 @@ class SubscriptionsManager {
     return relaySubscriptionService.ensureSubscription({
       key,
       pool: nostrClient.pool,
-      relays,
+      relays: cappedRelays,
       filters,
       label: "subscription-list",
       onEvent: (event) => this.handleSubscriptionListEvent(event),

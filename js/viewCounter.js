@@ -39,6 +39,29 @@ const countVideoViewEventsApi = (pointer, options) =>
 const pointerStates = new Map();
 /** @type {Map<string, PointerListeners>} */
 const pointerListeners = new Map();
+
+// Global "any view count changed" listeners (used by the Trending feed to
+// debounce-re-rank as counts stream in). Coalesced so a burst of count arrivals
+// from the batched backfill fires one notification, not dozens.
+const globalChangeListeners = new Set();
+let globalChangeTimer = null;
+const VIEW_COUNT_GLOBAL_NOTIFY_DEBOUNCE_MS = 400;
+
+function scheduleGlobalChangeNotify() {
+  if (!globalChangeListeners.size || globalChangeTimer) {
+    return;
+  }
+  globalChangeTimer = setTimeout(() => {
+    globalChangeTimer = null;
+    for (const listener of Array.from(globalChangeListeners)) {
+      try {
+        listener();
+      } catch (error) {
+        userLogger.warn("[viewCounter] Global view-count listener threw:", error);
+      }
+    }
+  }, VIEW_COUNT_GLOBAL_NOTIFY_DEBOUNCE_MS);
+}
 let persistTimer = null;
 let nextTokenId = 1;
 
@@ -226,35 +249,84 @@ async function runBatchedBackfill() {
 
 // Exact NIP-45 COUNT for a single pointer (watch page). Cheap — one pointer,
 // no storm — and accurate where a viewer might actually scrutinize the number.
+const EXACT_LIST_LIMIT = 2000;
+
+// Accurate single-pointer count (watch page / popularity chart). Lists view
+// events across ALL relays and dedupes by (viewer, window) — a true cross-relay
+// UNION. This replaces relying on the NIP-45 COUNT, which returns the single
+// relay with the most events (it can't union across relays) and therefore
+// UNDER-counts whenever views are spread across relays. The deduped set accrues
+// monotonically, so the number is accurate AND never spuriously decreases. For
+// extremely popular videos where the list truncates, the per-relay COUNT is used
+// as a lower-bound floor and the result is flagged partial.
 async function exactCountForPointer(key, pointer, options = {}) {
+  const sinceSeconds =
+    Math.floor(Date.now() / 1000) - VIEW_COUNT_BACKFILL_MAX_DAYS * SECONDS_PER_DAY;
+
+  let events;
   try {
-    const result = await countVideoViewEventsApi(pointer, {
+    events = await listVideoViewEventsApi(pointer, {
+      since: sinceSeconds,
+      limit: EXACT_LIST_LIMIT,
       relays: options.relays,
       signal: options.signal,
     });
-    const best = Number.isFinite(result?.best?.count)
-      ? Number(result.best.count)
-      : Number.isFinite(result?.total)
-      ? Number(result.total)
-      : null;
-    if (best === null) {
+  } catch (error) {
+    if (error?.name === "AbortError") {
       return;
     }
-    const state = ensurePointerState(key);
-    if (result && typeof result === "object") {
-      state.partial = Boolean(result.partial);
+    userLogger.warn("[viewCounter] Exact view count list failed:", error);
+    return;
+  }
+
+  const eventList = Array.isArray(events) ? events : [];
+  const truncated = eventList.length >= EXACT_LIST_LIMIT;
+
+  const state = ensurePointerState(key);
+  // Fold the union into the deduped bucket set (one entry per viewer-window).
+  for (const event of eventList) {
+    const bucketKey = deriveBucketKey(event) || deriveFallbackKey(event);
+    if (!bucketKey) {
+      continue;
     }
-    if (best > state.total) {
-      state.total = best;
-      state.lastSyncedAt = Date.now();
-    }
-    schedulePersist();
-    notifyHandlers(key);
-  } catch (error) {
-    if (error?.name !== "AbortError") {
-      userLogger.warn("[viewCounter] Exact view count failed:", error);
+    const createdAt = Number.isFinite(event?.created_at)
+      ? Number(event.created_at)
+      : Math.floor(Date.now() / 1000);
+    state.dedupeBuckets.set(bucketKey, createdAt);
+  }
+
+  let total = state.dedupeBuckets.size;
+  let partial = truncated;
+
+  if (truncated) {
+    try {
+      const result = await countVideoViewEventsApi(pointer, {
+        relays: options.relays,
+        signal: options.signal,
+      });
+      const best = Number.isFinite(result?.best?.count)
+        ? Number(result.best.count)
+        : Number.isFinite(result?.total)
+        ? Number(result.total)
+        : null;
+      if (Number.isFinite(best) && best > total) {
+        total = best;
+      }
+      partial = partial || Boolean(result?.partial);
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        return;
+      }
     }
   }
+
+  state.partial = partial;
+  if (total !== state.total) {
+    state.total = total;
+    state.lastSyncedAt = Date.now();
+  }
+  schedulePersist();
+  notifyHandlers(key);
 }
 
 restoreCacheSnapshot();
@@ -583,6 +655,9 @@ function ensurePointerListeners(key, pointer) {
 }
 
 function notifyHandlers(key) {
+  // Fire the global "counts changed" signal regardless of per-pointer listeners,
+  // so the Trending feed re-ranks even for cards it isn't directly subscribed to.
+  scheduleGlobalChangeNotify();
   const listeners = pointerListeners.get(key);
   if (!listeners || !listeners.handlers.size) {
     return;
@@ -915,4 +990,33 @@ export function formatViewCount(total) {
     return compactFormatter.format(value);
   }
   return String(value);
+}
+
+// Synchronous read of the cached, deduped view total for a pointer (or null if
+// not yet known). The Trending sorter uses this to rank the active feed by views
+// without subscribing to every pointer itself — counts are populated by the grid
+// cards' batched subscriptions into this same shared cache.
+export function getVideoViewCountSnapshot(pointerInput) {
+  try {
+    const { key } = canonicalizePointer(pointerInput);
+    if (!key) {
+      return null;
+    }
+    const state = pointerStates.get(key);
+    return state && Number.isFinite(state.total) ? Number(state.total) : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+// Subscribe to a coalesced "any view count changed" signal. Returns an
+// unsubscribe function. Used by the Trending feed to debounce-re-rank.
+export function onViewCountsChanged(listener) {
+  if (typeof listener !== "function") {
+    return () => {};
+  }
+  globalChangeListeners.add(listener);
+  return () => {
+    globalChangeListeners.delete(listener);
+  };
 }

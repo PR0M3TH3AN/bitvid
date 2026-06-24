@@ -65,7 +65,7 @@ test("declining the prompt restores nothing", async () => {
   assert.equal(storageSync.pulls, 0, "decline must not pull");
 });
 
-test("does not offer twice once it has prompted (per pubkey)", async () => {
+test("does not offer the SAME item twice once it has prompted", async () => {
   localStorage.clear();
   let confirmCount = 0;
   const prompt = createSettingsRestorePrompt({
@@ -79,9 +79,56 @@ test("does not offer twice once it has prompted (per pubkey)", async () => {
 
   await prompt.maybeOffer(PUBKEY);
   const second = await prompt.maybeOffer(PUBKEY);
-  assert.equal(confirmCount, 1, "must prompt only once");
+  assert.equal(confirmCount, 1, "must prompt only once for storage");
   assert.equal(second.offered, false);
-  assert.equal(second.reason, "already-offered");
+  // Storage was offered+marked, wallet has no remote copy -> no candidates remain.
+  assert.equal(second.reason, "no-remote");
+});
+
+test("offers the WALLET later even after storage was already offered (per-item)", async () => {
+  // Regression: a wallet note published AFTER storage was already offered must
+  // still be surfaced. The old per-pubkey flag flagged the whole account on the
+  // first offer, so the wallet never restored "like storage does".
+  localStorage.clear();
+  const offeredKinds = [];
+  const storageSync = makeSyncStub({ remote: true });
+  // Wallet has no remote copy yet on the first login, then appears later.
+  let walletRemote = false;
+  const walletSync = {
+    pulls: 0,
+    isAvailable: () => true,
+    isEnabled: () => false,
+    hasRemote: async () => walletRemote,
+    pull: async function () {
+      this.pulls += 1;
+      return { found: true, imported: true };
+    },
+  };
+  const prompt = createSettingsRestorePrompt({
+    storageSync,
+    walletSync,
+    confirm: (message) => {
+      offeredKinds.push(message);
+      return true;
+    },
+  });
+
+  const first = await prompt.maybeOffer(PUBKEY); // offers + restores storage only
+  assert.deepEqual(first.restored, ["storage"]);
+  assert.equal(walletSync.pulls, 0);
+
+  // Wallet sync gets set up on another device -> a note now exists.
+  walletRemote = true;
+  const second = await prompt.maybeOffer(PUBKEY);
+  assert.equal(second.offered, true, "wallet must still be offered on a later login");
+  assert.deepEqual(second.restored, ["wallet"]);
+  assert.equal(walletSync.pulls, 1, "wallet is pulled the first time it appears");
+  assert.equal(storageSync.pulls, 1, "storage is not pulled again");
+
+  // And it is not offered a third time.
+  const third = await prompt.maybeOffer(PUBKEY);
+  assert.equal(third.offered, false);
+  assert.equal(third.reason, "no-remote");
 });
 
 test("skips items already enabled on this device", async () => {

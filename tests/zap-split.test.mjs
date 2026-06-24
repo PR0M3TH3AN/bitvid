@@ -712,6 +712,7 @@ async function testValidateZapReceiptSuccess() {
     created_at: 1_700_000_000,
     tags: [
       ["p", "a".repeat(64)],
+      ["e", "c".repeat(64)],
       ["amount", String(900_000)],
       ["relays", ...relays],
     ],
@@ -735,7 +736,15 @@ async function testValidateZapReceiptSuccess() {
     SimplePool: class {
       async list(requestedRelays, filters) {
         assert.deepEqual(requestedRelays, relays);
-        assert.equal(filters[0]["#bolt11"][0], bolt11.toLowerCase());
+        // Receipts are queried by the reliably-indexed #e (event) + #p (recipient)
+        // tags, NOT #bolt11 (which most relays don't index — querying by it found
+        // nothing and made successful zaps look unconfirmed).
+        assert.deepEqual(filters[0]["#e"], ["c".repeat(64)]);
+        assert.deepEqual(filters[0]["#p"], ["a".repeat(64)]);
+        assert.ok(
+          !filters[0]["#bolt11"],
+          "must not depend on the unindexed #bolt11 tag to find the receipt",
+        );
         return [receiptEvent];
       }
       close() {}
@@ -759,6 +768,133 @@ async function testValidateZapReceiptSuccess() {
   assert.equal(result.status, "passed");
   assert.equal(result.event, receiptEvent);
   assert.deepEqual(result.checkedRelays, relays);
+}
+
+async function testValidateZapReceiptRetriesForLateReceipt() {
+  // The recipient's service publishes the 9735 receipt a moment AFTER payment, so
+  // it can be absent on the first lookup (which resolves on EOSE). The validator
+  // must poll a few times before giving up — here the receipt only appears on the
+  // 3rd lookup, and validation should still pass. `sleep` is stubbed so the test
+  // doesn't actually wait.
+  const relays = ["wss://relay.validation"];
+  const zapRequestEvent = {
+    kind: 9734,
+    pubkey: "f".repeat(64),
+    content: "",
+    created_at: 1_700_000_000,
+    tags: [
+      ["p", "a".repeat(64)],
+      ["e", "c".repeat(64)],
+      ["amount", String(900_000)],
+      ["relays", ...relays],
+    ],
+  };
+  const zapRequestString = JSON.stringify(zapRequestEvent);
+  const descriptionHash = validatorTesting.computeZapRequestHash(zapRequestString);
+  const bolt11 = buildTestBolt11Invoice({ amountCode: "9u", descriptionHashHex: descriptionHash });
+
+  const receiptEvent = {
+    kind: 9735,
+    pubkey: "b".repeat(64),
+    tags: [
+      ["bolt11", bolt11],
+      ["description", zapRequestString],
+    ],
+  };
+
+  let calls = 0;
+  let sleeps = 0;
+  const nostrTools = {
+    validateEvent: () => true,
+    verifyEvent: () => true,
+    SimplePool: class {
+      async list() {
+        calls += 1;
+        // Empty on the first two polls, receipt present on the third.
+        return calls >= 3 ? [receiptEvent] : [];
+      }
+      close() {}
+    },
+  };
+
+  const result = await validateZapReceipt(
+    {
+      zapRequest: zapRequestString,
+      amountSats: 900,
+      metadata: { nostrPubkey: receiptEvent.pubkey },
+      invoice: { invoice: bolt11 },
+      payment: { invoice: bolt11 },
+    },
+    {
+      nostrTools,
+      getAmountFromBolt11: () => 900,
+      receiptLookupAttempts: 3,
+      receiptLookupDelayMs: 5,
+      sleep: async () => {
+        sleeps += 1;
+      },
+    }
+  );
+
+  assert.equal(result.status, "passed", "a late receipt found on a retry validates");
+  assert.equal(calls, 3, "should poll until the receipt appears (3 lookups)");
+  assert.equal(sleeps, 2, "should wait between retries (2 delays for 3 attempts)");
+}
+
+async function testValidateZapReceiptGivesUpAfterRetries() {
+  // If no receipt ever appears, the validator gives up after its attempts with the
+  // benign "not published" reason (the caller treats a paid-but-unconfirmed zap as
+  // a success-with-note, not a failure).
+  const relays = ["wss://relay.validation"];
+  const zapRequestEvent = {
+    kind: 9734,
+    pubkey: "f".repeat(64),
+    content: "",
+    created_at: 1_700_000_000,
+    tags: [
+      ["p", "a".repeat(64)],
+      ["e", "c".repeat(64)],
+      ["amount", String(900_000)],
+      ["relays", ...relays],
+    ],
+  };
+  const zapRequestString = JSON.stringify(zapRequestEvent);
+  const descriptionHash = validatorTesting.computeZapRequestHash(zapRequestString);
+  const bolt11 = buildTestBolt11Invoice({ amountCode: "9u", descriptionHashHex: descriptionHash });
+
+  let calls = 0;
+  const nostrTools = {
+    validateEvent: () => true,
+    verifyEvent: () => true,
+    SimplePool: class {
+      async list() {
+        calls += 1;
+        return [];
+      }
+      close() {}
+    },
+  };
+
+  const result = await validateZapReceipt(
+    {
+      zapRequest: zapRequestString,
+      amountSats: 900,
+      metadata: { nostrPubkey: "b".repeat(64) },
+      invoice: { invoice: bolt11 },
+      payment: { invoice: bolt11 },
+    },
+    {
+      nostrTools,
+      getAmountFromBolt11: () => 900,
+      receiptLookupAttempts: 3,
+      receiptLookupDelayMs: 0,
+      sleep: async () => {},
+    }
+  );
+
+  assert.equal(result.status, "failed");
+  assert.match(result.reason, /no zap receipt was published/i);
+  assert.equal(calls, 3, "should exhaust all configured attempts");
 }
 
 async function testValidateZapReceiptRejectsMismatchedDescriptionHash() {
@@ -835,6 +971,8 @@ await testStringFeeOverride();
 await testPlatformShareFailure();
 await testValidateZapReceiptSuccess();
 await testValidateZapReceiptRejectsMismatchedDescriptionHash();
+await testValidateZapReceiptRetriesForLateReceipt();
+await testValidateZapReceiptGivesUpAfterRetries();
 testExtractDescriptionHashFromBolt11();
 
 console.log("zap-split tests passed");

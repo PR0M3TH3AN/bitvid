@@ -213,7 +213,9 @@ export default class ZapController {
 
     this.modalZapInFlight = true;
     this.videoModal?.setZapPending(true);
-    this.videoModal?.setZapStatus(`Sending ${roundedAmount} sats…`, "warning");
+    // In-flight/pending status is informational, not a warning — "warning" colored
+    // it alarmingly (text-warning-strong) and counted as a warning in the flow.
+    this.videoModal?.setZapStatus(`Sending ${roundedAmount} sats…`, "neutral");
     this.videoModal?.clearZapReceipts();
 
     try {
@@ -351,54 +353,37 @@ export default class ZapController {
         return validationStatus !== "passed";
       });
 
-      if (unvalidatedReceipts.length) {
-        this.videoModal?.renderZapReceipts(receipts, { partial: true });
-
-        const warningSummary = unvalidatedReceipts
-          .map((receipt) => {
-            const type = receipt.recipientType || receipt.type || "creator";
-            const label =
-              type === "platform" ? "Platform" : type === "creator" ? "Creator" : "Lightning";
-            const address =
-              typeof receipt.address === "string" && receipt.address
-                ? ` (${receipt.address})`
-                : "";
-            const reason =
-              typeof receipt.validation?.reason === "string" && receipt.validation.reason
-                ? ` — ${receipt.validation.reason}`
-                : " — Awaiting compliant receipt.";
-            return `${label}${address}${reason}`;
-          })
-          .join(" ");
-
-        const warningMessage = warningSummary
-          ? `Awaiting validated zap receipt. ${warningSummary}`
-          : "Awaiting validated zap receipt from the recipient.";
-
-        this.videoModal?.setZapStatus(warningMessage, "warning");
-        this.notifyError(warningMessage);
-
-        this.resetRetryState();
-        this.modalZapCommentValue = "";
-        this.videoModal?.resetZapForm({ amount: "", comment: "" });
-        this.videoModal?.setZapCompleted(true);
-        this.applyDefaultAmount();
-        return;
-      }
-
-      this.videoModal?.renderZapReceipts(receipts, { partial: false });
+      // NOTE: `unvalidatedReceipts` are shares whose PAYMENT SUCCEEDED but whose
+      // on-relay zap receipt (kind 9735) couldn't be validated. This is NOT a
+      // failure: the NWC payment already returned a preimage (proof the invoice
+      // was paid), and the 9735 is supplementary — the recipient's service may
+      // publish it to relays we don't watch, or late, or not at all. Treating it
+      // as an error wrongly told users a successful zap had failed. So we report
+      // SUCCESS and only append a soft, non-alarming note that the receipt
+      // couldn't be confirmed on relays.
+      this.videoModal?.renderZapReceipts(receipts, {
+        partial: unvalidatedReceipts.length > 0,
+      });
 
       const creatorShare = context.shares.creatorShare;
       const platformShare = context.shares.platformShare;
-      const summary = platformShare
+      let summary = platformShare
         ? `Sent ${context.shares.total} sats (creator ${creatorShare}, platform ${platformShare}).`
         : `Sent ${context.shares.total} sats to the creator.`;
+      if (unvalidatedReceipts.length) {
+        summary +=
+          " Payment went through; couldn't confirm the zap receipt on relays.";
+      }
       this.videoModal?.setZapStatus(summary, "success");
       this.notifySuccess("Zap sent successfully!");
 
       this.resetRetryState();
       this.modalZapCommentValue = "";
-      this.videoModal?.setZapComment("");
+      // Reset the whole form (amount + comment) after a successful send, matching
+      // the validation-warning terminal path above. Previously this only cleared
+      // the comment via setZapComment, leaving the form in a half-reset state
+      // inconsistent with the other post-send paths and the modal's reset API.
+      this.videoModal?.resetZapForm({ amount: "", comment: "" });
       this.videoModal?.setZapCompleted(true);
       this.applyDefaultAmount();
     } catch (error) {
@@ -486,9 +471,28 @@ export default class ZapController {
     const lightningAddress = this.getCurrentVideo()?.lightningAddress || "";
     if (lightningAddress) {
       try {
-        await fetchLightningMetadata(lightningAddress);
+        const entry = await fetchLightningMetadata(lightningAddress);
+        // Reachable from the browser. If the host doesn't advertise Nostr zaps,
+        // a payment may still go through but won't yield a zap receipt — note it.
+        if (entry?.metadata && entry.metadata.allowsNostr === false) {
+          this.videoModal?.setZapStatus(
+            "This creator's Lightning host doesn't advertise Nostr zaps — a payment may not produce a zap receipt.",
+            "warning",
+          );
+        }
       } catch (error) {
         devLogger.warn("[zap] Failed to preload creator metadata:", error);
+        // Passive heads-up to the zapper: if WE can't reach the creator's LNURL
+        // host from the browser, the actual zap will fail the same way. Surface it
+        // up front so they aren't surprised mid-send. (sendZap overwrites this with
+        // its own status once they try.)
+        if (error?.code === "lnurl-unreachable") {
+          this.videoModal?.setZapStatus(
+            "This creator's Lightning address can't be reached from a browser (its host may be " +
+              "offline or blocking browser requests), so zapping them on bitvid may fail.",
+            "warning",
+          );
+        }
       }
     }
 

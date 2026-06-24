@@ -242,6 +242,26 @@ export class ProfileDirectMessageController {
     this.updateMessageThreadSelection(nextRecipient);
 
     if (nextRecipient) {
+      // Make this recipient's conversation the active one so a freshly-selected
+      // recipient (e.g. the "Message" button for someone with no existing
+      // thread) isn't overridden by a stale activeDmConversationId pointing at
+      // the top of the inbox. setFocusedDmConversation only tracks read-state —
+      // activeDmConversationId is what buildDmConversationData reads to decide
+      // which thread the right-hand pane renders, so set it directly (mirroring
+      // handleDmConversationSelect).
+      const actor = this.helper.resolveActiveDmActor();
+      const conversationId = actor
+        ? this.helper.buildDmConversationId(actor, nextRecipient)
+        : "";
+      if (conversationId) {
+        this.activeDmConversationId = conversationId;
+        // Selecting a recipient explicitly (not the auto thread-default) means
+        // the user wants to see that thread — switch the mobile pane to it too.
+        if (reason !== "thread-default") {
+          this.dmMobileView = "thread";
+        }
+        this.setFocusedDmConversation(conversationId);
+      }
       void this.helper.ensureDmRecipientData(nextRecipient);
       this.renderer.setMessagesAnnouncement("Ready to message this recipient.");
     } else if (reason === "clear") {
@@ -623,6 +643,33 @@ export class ProfileDirectMessageController {
     return this.actions.handleSendProfileMessage(...args);
   }
 
+  // DM app-shell callbacks. The renderer wires these on `this.controller`, but the
+  // delegations were missing — so Send / mark-read / settings / toggles all threw
+  // "is not a function" and the app-shell DM UI couldn't send a message.
+  handleDmAppShellSendMessage(...args) {
+    return this.actions.handleDmAppShellSendMessage(...args);
+  }
+
+  handleDmConversationMarkRead(...args) {
+    return this.actions.handleDmConversationMarkRead(...args);
+  }
+
+  handleDmMarkAllConversationsRead(...args) {
+    return this.actions.handleDmMarkAllConversationsRead(...args);
+  }
+
+  handleReadReceiptsToggle(...args) {
+    return this.actions.handleReadReceiptsToggle(...args);
+  }
+
+  handleTypingIndicatorsToggle(...args) {
+    return this.actions.handleTypingIndicatorsToggle(...args);
+  }
+
+  openDmSettingsModal(...args) {
+    return this.actions.openDmSettingsModal(...args);
+  }
+
   handleAttachmentSelection(...args) {
     return this.actions.handleAttachmentSelection(...args);
   }
@@ -651,6 +698,14 @@ export class ProfileDirectMessageController {
 
   resolveActiveDmRecipient(...args) {
     return this.helper.resolveActiveDmRecipient(...args);
+  }
+
+  // ProfileModerationController calls dmController.resolveProfileSummaryForPubkey
+  // (and createCompactProfileSummary, already delegated below). The method lives on
+  // the helper, so without this delegation the moderation-settings UI threw
+  // "is not a function" on open.
+  resolveProfileSummaryForPubkey(...args) {
+    return this.helper.resolveProfileSummaryForPubkey(...args);
   }
 
   createCompactProfileSummary(...args) {

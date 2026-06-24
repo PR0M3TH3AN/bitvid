@@ -762,3 +762,143 @@ test("applies token-based sizing and arrow positioning", async () => {
 
   popover.destroy();
 });
+
+test("relocates a pre-existing in-host panel into the overlay portal on open and restores it on close", async () => {
+  // Regression for pre-launch TODO #3a: the in-modal zap/embed dialog is a
+  // pre-existing element returned verbatim by its render fn. It was never moved
+  // into the body-level portal, so its `position: fixed` resolved against a
+  // transformed/contained modal ancestor and the panel anchored to the modal edge
+  // instead of bottom-end under its trigger. The engine must relocate such panels
+  // into the portal on open (viewport-relative positioning) and restore them on
+  // close so the host DOM stays intact and re-open still works.
+  const trigger = documentRef.getElementById("trigger");
+  setupBoundingClientRect(trigger, {
+    x: 100,
+    y: 100,
+    top: 100,
+    bottom: 140,
+    left: 100,
+    right: 140,
+    width: 40,
+    height: 40,
+  });
+
+  const modal = documentRef.createElement("div");
+  modal.id = "host-modal";
+  const preExistingPanel = documentRef.createElement("div");
+  preExistingPanel.id = "zap-like-panel";
+  setupBoundingClientRect(preExistingPanel, {
+    x: 0,
+    y: 0,
+    top: 0,
+    bottom: 120,
+    left: 0,
+    right: 200,
+    width: 200,
+    height: 120,
+  });
+  const sibling = documentRef.createElement("span");
+  modal.appendChild(preExistingPanel);
+  modal.appendChild(sibling); // gives the panel a nextSibling to restore before
+  documentRef.body.appendChild(modal);
+
+  // render returns the pre-existing panel verbatim (does NOT append to container).
+  const popover = createPopover(trigger, () => preExistingPanel, {
+    document: documentRef,
+  });
+
+  assert.equal(
+    preExistingPanel.parentNode,
+    modal,
+    "panel starts in the host modal",
+  );
+
+  await popover.open();
+
+  const overlayRoot = documentRef.getElementById("uiOverlay");
+  const portal = overlayRoot.querySelector('[data-popover-portal="true"]');
+  assert.ok(portal, "portal should exist under the overlay root");
+  assert.equal(
+    preExistingPanel.parentNode,
+    portal,
+    "panel should be relocated into the body-level portal while open",
+  );
+
+  popover.close({ restoreFocus: false });
+
+  assert.equal(
+    preExistingPanel.parentNode,
+    modal,
+    "panel should be restored to the host modal on close",
+  );
+  assert.equal(
+    preExistingPanel.nextSibling,
+    sibling,
+    "panel should be restored to its original position (before its sibling)",
+  );
+
+  await popover.open();
+  assert.equal(
+    preExistingPanel.parentNode,
+    portal,
+    "panel should relocate again on re-open (element not lost)",
+  );
+
+  popover.destroy();
+  assert.equal(
+    preExistingPanel.parentNode,
+    modal,
+    "destroy should leave the app-owned panel back in its host, not remove it",
+  );
+});
+
+test("typing in a form field inside a panel is not hijacked by menu typeahead", async () => {
+  // Regression for pre-launch #3a/#3: the engine treats panels as ARIA menus and
+  // preventDefault'd single-character + arrow keys. For a panel with inputs (the
+  // zap comment/amount fields) that swallowed every keystroke -> "can't type in
+  // the popup". Keys originating from an editable control must pass through.
+  const trigger = documentRef.getElementById("trigger");
+  setupBoundingClientRect(trigger, {
+    x: 100, y: 100, top: 100, bottom: 140, left: 100, right: 140, width: 40, height: 40,
+  });
+
+  let panelRef;
+  let inputRef;
+  const popover = createPopover(
+    trigger,
+    ({ container }) => {
+      const panel = documentRef.createElement("div");
+      panel.className = "popover__panel";
+      setupBoundingClientRect(panel, {
+        x: 0, y: 0, top: 0, bottom: 120, left: 0, right: 200, width: 200, height: 120,
+      });
+      const input = documentRef.createElement("textarea");
+      panel.appendChild(input);
+      container.appendChild(panel);
+      panelRef = panel;
+      inputRef = input;
+      return panel;
+    },
+    { document: documentRef },
+  );
+
+  await popover.open();
+
+  // A printable character typed in the textarea must NOT be preventDefault'd.
+  const charEvent = new windowRef.KeyboardEvent("keydown", { key: "a", bubbles: true, cancelable: true });
+  inputRef.dispatchEvent(charEvent);
+  assert.equal(charEvent.defaultPrevented, false, "character keys must reach the input");
+
+  // Caret movement (ArrowLeft) inside the textarea must also pass through.
+  const arrowEvent = new windowRef.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true });
+  inputRef.dispatchEvent(arrowEvent);
+  assert.equal(arrowEvent.defaultPrevented, false, "caret keys must reach the input");
+
+  // Sanity: a non-editable target in the same panel is still handled as a menu
+  // (printable key is consumed for typeahead).
+  const menuKey = new windowRef.KeyboardEvent("keydown", { key: "x", bubbles: true, cancelable: true });
+  panelRef.dispatchEvent(menuKey);
+  assert.equal(menuKey.defaultPrevented, true, "menu typeahead still applies to non-editable targets");
+
+  popover.destroy();
+});

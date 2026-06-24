@@ -137,9 +137,18 @@ export function resolveEditSync({ featureOn, enabled, eligible } = {}) {
   return eligible === true ? { action: "publish" } : { action: "unshare" };
 }
 
-// On DELETE of a mirrored video: remove the mirror and clear the flag.
+// On DELETE of a video: always attempt to tear the mirror down whenever the
+// feature is on — do NOT gate on the local `enabled` flag. That flag lives only
+// in this browser's localStorage (see top of file), so trusting it here orphans
+// the NIP-71 mirror whenever the video was shared on one device/session and
+// deleted from another (or after the cache was cleared): the mirror keeps living
+// on other apps even though the bitvid video is gone. `remove()` is idempotent
+// and cheap (NIP-09 + empty tombstone are no-ops if no mirror exists), so an
+// unconditional teardown is safe. `enabled` is accepted for signature symmetry
+// with resolveEditSync but is intentionally ignored.
 export function resolveDeleteSync({ featureOn, enabled } = {}) {
-  if (featureOn !== true || enabled !== true) {
+  void enabled;
+  if (featureOn !== true) {
     return { action: "none" };
   }
   return { action: "unshare" };

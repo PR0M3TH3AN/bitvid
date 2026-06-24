@@ -197,6 +197,8 @@ export class PlaybackStrategyService {
     const session = this.playbackService.createSession({
       url: sanitizedUrl,
       magnet: trimmedMagnet,
+      // Hosted mirrors to fail over to when the primary URL dies mid-load.
+      sources: Array.isArray(options.sources) ? options.sources : [],
       requestSignature,
       videoElement: modalVideoEl,
       waitForCleanup: context.waitForCleanup,

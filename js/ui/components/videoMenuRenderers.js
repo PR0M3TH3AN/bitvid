@@ -187,6 +187,12 @@ export function createVideoMoreMenuPanel({
     dataset: { eventId: metadata.id, context },
   });
 
+  appendMenuAction(doc, list, {
+    text: "Popularity",
+    action: "view-stats",
+    dataset: { eventId: metadata.id, context },
+  });
+
   const baseBoostDataset = {
     eventId: metadata.id,
     author: metadata.pubkey,

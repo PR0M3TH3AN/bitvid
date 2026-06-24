@@ -1,7 +1,7 @@
 // js/channelProfile.js
 
 import { nostrClient } from "./nostrClientFacade.js";
-import { convertChannelEvent, buildChannelVideoFilters, loadCachedChannelVideos, saveCachedChannelVideos } from "./channelProfileVideos.js";
+import { convertChannelEvent, buildChannelVideoFilters, loadCachedChannelVideos, saveCachedChannelVideos, mergeChannelVideoSources } from "./channelProfileVideos.js";
 import { dedupeVideos } from "./utils/videoDeduper.js";
 import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
 import { subscriptions } from "./subscriptions.js";
@@ -5440,7 +5440,7 @@ async function loadUserVideos(pubkey) {
       return;
     }
 
-    const videos = buildRenderableChannelVideos({ events, app });
+    const videos = buildRenderableChannelVideos({ events: mergeChannelVideoSources(events, getCachedChannelVideoEvents(pubkey)), app });
     saveCachedChannelVideos(pubkey, videos);
     const rendered = await renderChannelVideosFromList({
       videos,

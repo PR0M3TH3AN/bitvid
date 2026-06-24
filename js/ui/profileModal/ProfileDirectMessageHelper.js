@@ -635,13 +635,49 @@ export class ProfileDirectMessageHelper {
       storedRecipient && actor
         ? this.buildDmConversationId(actor, storedRecipient)
         : "";
+
+    // If a recipient is explicitly selected but has no existing thread yet
+    // (e.g. the "Message" button on the profile of someone you've never DMed),
+    // synthesize an empty conversation so the UI focuses THEM. Without this the
+    // selected recipient falls through to fallbackConversationId and the inbox
+    // silently jumps to the top conversation — and any message you send goes to
+    // the wrong person.
+    if (
+      storedRecipient &&
+      storedConversationId &&
+      !conversationMap.has(storedConversationId) &&
+      !isRemoteBlocked(storedRecipient)
+    ) {
+      const summary = this.resolveProfileSummaryForPubkey(storedRecipient);
+      const recipientContext = this.buildDmRecipientContext(storedRecipient);
+      conversations.unshift({
+        id: storedConversationId,
+        name: summary.displayName,
+        preview: "No messages yet",
+        timestamp: "",
+        unreadCount: 0,
+        avatarSrc: summary.avatarSrc,
+        status: summary.status,
+        pubkey: storedRecipient,
+        lightningAddress: summary.lightningAddress,
+        relayHints: Array.isArray(recipientContext?.relayHints)
+          ? recipientContext.relayHints
+          : [],
+      });
+    }
+
     const preferredConversationId =
       this.controller.activeDmConversationId || storedConversationId;
     const fallbackConversationId = conversations[0]?.id || "";
-    const activeConversationId =
-      preferredConversationId && conversationMap.has(preferredConversationId)
-        ? preferredConversationId
-        : fallbackConversationId;
+    // A selected recipient with no messages yet won't be in conversationMap, but
+    // it IS a valid focus target (storedConversationId / the synthetic entry).
+    const preferredIsSelectable =
+      preferredConversationId &&
+      (conversationMap.has(preferredConversationId) ||
+        preferredConversationId === storedConversationId);
+    const activeConversationId = preferredIsSelectable
+      ? preferredConversationId
+      : fallbackConversationId;
     const activeThread = activeConversationId
       ? conversationMap.get(activeConversationId)
       : null;
@@ -649,7 +685,11 @@ export class ProfileDirectMessageHelper {
       activeThread?.remoteHex ||
       (activeConversationId
         ? this.resolveRemoteForConversationId(activeConversationId, actor)
-        : storedRecipient) ||
+        : null) ||
+      // A freshly-selected recipient has no messages, so it can't be resolved
+      // from the cache above — fall back to the stored recipient for the
+      // synthetic conversation so the composer targets the right person.
+      (activeConversationId === storedConversationId ? storedRecipient : null) ||
       null;
 
     if (activeConversationId && this.controller.activeDmConversationId !== activeConversationId) {

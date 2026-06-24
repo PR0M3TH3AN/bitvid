@@ -325,6 +325,12 @@ const harness = createMockNostrHarness();
 nostrClient.listVideoViewEvents = harness.listVideoViewEvents;
 nostrClient.countVideoViewEvents = harness.countVideoViewEvents;
 nostrClient.subscribeVideoViewEvents = harness.subscribeVideoViewEvents;
+// Exercise the legacy per-pointer hydrate/subscribe path — the one viewCounter.js
+// explicitly designates "for tests / mocks" and the one this harness mocks. In
+// production the singleton client has a SubscriptionManager (the batched path);
+// without pinning it to null here the real manager silently takes over and the
+// mocked legacy APIs never fire. See TEST_INTEGRITY.md (SCN-view-counter-legacy-path).
+nostrClient.getSubscriptionManager = () => null;
 
 const {
   initViewCounter,
@@ -417,7 +423,13 @@ async function testDedupesWithinWindow() {
 
   const pointer = { type: "e", value: "view-counter-dedupe" };
   const pointerKey = harness.pointerKeyFromInput(pointer);
-  const base = Math.floor(Date.now() / 1000);
+  // Align to a window-bucket boundary so both events are deterministically in the
+  // SAME fixed bucket (dedupe is floor(created_at / window), matching the
+  // replaceable view-event d-tag). With an unaligned base the +window/2 offset
+  // could straddle a boundary and land in different buckets (flaky).
+  const base =
+    Math.floor(Math.floor(Date.now() / 1000) / VIEW_COUNT_DEDUPE_WINDOW_SECONDS) *
+    VIEW_COUNT_DEDUPE_WINDOW_SECONDS;
   const events = [
     { id: "evt-1", pubkey: "pub-dedupe", created_at: base },
     {
@@ -560,6 +572,66 @@ async function testRelayCountAggregationUsesBestEstimate() {
     );
   } finally {
     unsubscribeFromVideoViewCount(pointer, token);
+  }
+}
+
+// The exact path (options.exact, watch page / popularity chart) must count the
+// cross-relay UNION of view events deduped by (viewer, window) — NOT the per-relay
+// NIP-45 COUNT, which returns the single relay with the most events and therefore
+// under-counts when views are spread across relays.
+async function testExactCountUnionsAcrossRelays() {
+  localStorage.clear();
+  harness.reset();
+  harness.resetMetrics();
+
+  const previousGetManager = nostrClient.getSubscriptionManager;
+  // exactCountForPointer only runs when a SubscriptionManager exists.
+  nostrClient.getSubscriptionManager = () => ({
+    list: async () => [],
+    subscribe: () => ({ close() {} }),
+    handleReconnect() {},
+  });
+
+  try {
+    const pointer = { type: "e", value: "view-counter-exact-union" };
+    const pointerKey = harness.pointerKeyFromInput(pointer);
+    const dayStart =
+      Math.floor(Math.floor(Date.now() / 1000) / 86400) * 86400;
+    // alice has two views in the same day (dedupe to 1) → 3 distinct (viewer,day):
+    // alice@d0, bob@d0, alice@d1.
+    harness.setEvents(pointerKey, [
+      { id: "e1", pubkey: "alice", created_at: dayStart + 10 },
+      { id: "e2", pubkey: "alice", created_at: dayStart + 20 },
+      { id: "e3", pubkey: "bob", created_at: dayStart + 30 },
+      { id: "e4", pubkey: "alice", created_at: dayStart - 86400 + 10 },
+    ]);
+    // A single relay's COUNT only saw 1 — the union must win.
+    harness.setCountTotal(pointerKey, {
+      total: 1,
+      best: { relay: "wss://relay.one", count: 1 },
+    });
+
+    const updates = [];
+    const token = subscribeToVideoViewCount(
+      pointer,
+      (state) => updates.push({ ...state }),
+      { exact: true },
+    );
+    try {
+      await flushPromises();
+      await flushPromises();
+      const final = updates.at(-1);
+      assert.ok(final, "expected an exact-count update");
+      assert.equal(
+        final.total,
+        3,
+        "exact count = cross-relay union deduped by (viewer,day), not the per-relay COUNT (1)",
+      );
+    } finally {
+      unsubscribeFromVideoViewCount(pointer, token);
+    }
+  } finally {
+    nostrClient.getSubscriptionManager = previousGetManager;
   }
 }
 
@@ -1014,15 +1086,26 @@ async function testHydrateHistoryPrefersRootEvent() {
       rootEvent.created_at,
       "root event should preserve its original created_at timestamp"
     );
-    assert.equal(
-      latestVideo.rootCreatedAt,
-      rootEvent.created_at,
-      "latest revision should inherit the root created_at timestamp"
-    );
+    // hydrateVideoHistory's contract is to populate the per-root created_at MAP
+    // (the earliest revision wins). Assert that directly.
     assert.equal(
       nostrClient.rootCreatedAtByRoot.get(rootId),
       rootEvent.created_at,
       "nostrClient should cache the earliest created_at per root"
+    );
+    // The active video's rootCreatedAt FIELD is applied by a separate step
+    // (syncActiveVideoRootTimestamp) — the unit boundary moved in a refactor, so
+    // drive the real pipeline rather than expecting hydrateVideoHistory to mutate
+    // the passed object. See TEST_INTEGRITY.md (SCN-hydrate-root-timestamp).
+    syncActiveVideoRootTimestamp({
+      activeVideo: latestVideo,
+      rootId,
+      timestamp: nostrClient.rootCreatedAtByRoot.get(rootId),
+    });
+    assert.equal(
+      latestVideo.rootCreatedAt,
+      rootEvent.created_at,
+      "latest revision inherits the root created_at after the timestamp sync step"
     );
   } finally {
     nostrClient.pool = originalPool;
@@ -1113,6 +1196,7 @@ await testHydrationSkipsStaleEventsAndRollsOff();
 await testLocalIngestNotifiesImmediately();
 await testUnsubscribeStopsCallbacks();
 await testRelayCountAggregationUsesBestEstimate();
+await testExactCountUnionsAcrossRelays();
 await testRecordVideoViewEmitsJsonPayload();
 await testSignAndPublishFallbackUsesSessionActor();
 await testHydrateHistoryPrefersRootEvent();

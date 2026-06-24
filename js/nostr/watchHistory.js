@@ -41,6 +41,7 @@ import {
 import { pMap } from "../utils/asyncUtils.js";
 import { selectNewestListEvent } from "./listEventOrdering.js";
 import { dedupeNewestPerReplaceableAddress } from "./watchHistoryDedup.js";
+import { bucketWatchHistoryItemsByMonth } from "./watchHistoryBucketing.js";
 import {
   getCachedChunkPlaintext,
   setCachedChunkPlaintext,
@@ -306,7 +307,7 @@ export function normalizeActorKey(actor) {
   return trimmed.toLowerCase();
 }
 
-function canonicalizeWatchHistoryItems(rawItems, maxItems = WATCH_HISTORY_MAX_ITEMS) {
+export function canonicalizeWatchHistoryItems(rawItems, maxItems = WATCH_HISTORY_MAX_ITEMS) {
   const seen = new Map();
   if (Array.isArray(rawItems)) {
     for (const candidate of rawItems) {
@@ -360,20 +361,7 @@ function canonicalizeWatchHistoryItems(rawItems, maxItems = WATCH_HISTORY_MAX_IT
     ? deduped
     : deduped.slice(0, Math.max(0, Math.floor(maxItems)));
 
-  const buckets = {};
-  for (const item of limited) {
-    const watchedAt = Number.isFinite(item.watchedAt) ? item.watchedAt : 0;
-    const date = new Date(watchedAt * 1000);
-    const year = date.getUTCFullYear();
-    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-    const key = (watchedAt > 0) ? `${year}-${month}` : "1970-01";
-
-    if (!buckets[key]) {
-      buckets[key] = [];
-    }
-    buckets[key].push(item);
-  }
-  return buckets;
+  return bucketWatchHistoryItemsByMonth(limited);
 }
 
 

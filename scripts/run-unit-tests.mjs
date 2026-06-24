@@ -1,11 +1,26 @@
 import { spawn } from "node:child_process";
-import { readdir, readFile } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 // Ensure NODE_ENV is set to "test" so that nostrToolsBootstrap.js uses the mock toolkit
 process.env.NODE_ENV = "test";
+
+// Quarantine: KNOWN-BROKEN unit test files that exist but currently fail or hang.
+// They are NOT silently dropped — they are loudly reported on every run so they
+// can't rot invisibly (the historical bug: the runner only collected files that
+// imported `node:test`, silently excluding ~20 bare-assert files; several were
+// failing on main, unnoticed). Each entry MUST cite why and link the triage item.
+// Remove an entry as soon as its file is fixed. See todo/TODO_2026-06-20_pre-launch.md todo-11b.
+const QUARANTINE = new Map([
+  ["tests/user-blocks.test.mjs", "HANG — triage todo-11b"],
+  ["tests/nostr-count-fallback.test.mjs", "FAIL — triage todo-11b"],
+  ["tests/admin-list-store.test.mjs", "FAIL — triage todo-11b"],
+  ["tests/nostr-boost-actions.test.mjs", "FAIL — triage todo-11b"],
+  ["tests/nwc-client.test.mjs", "FAIL — mocks nostr-tools but is shadowed by the frozen canonical toolkit the bootstrap installs (real @noble rejects the fake keys). The underlying production bug (parseNwcUri passed a hex secret to getPublicKey, which needs bytes — NWC connection broken) is FIXED and guarded by tests/nwc-parse-uri.test.mjs; this file needs a mock-injection rework. triage todo-11b (NWC / item #3)"],
+  ["tests/nostr-publish-rejection.test.mjs", "FAIL — triage todo-11b"],
+]);
 
 const rootDir = path.dirname(fileURLToPath(new URL("../package.json", import.meta.url)));
 const testsDir = path.join(rootDir, "tests");
@@ -50,10 +65,11 @@ async function collectTests(dir) {
       (entry.name.endsWith(".test.mjs") || entry.name.endsWith(".test.js"));
 
     if (isTestFile) {
-      const content = await readFile(fullPath, "utf8");
-      if (content.includes("node:test")) {
-        testFiles.push(fullPath);
-      }
+      // Collect EVERY test file. Both styles run fine through the spawn below:
+      // node:test files self-execute and exit non-zero on failure; bare top-level
+      // `assert` files throw on failure (also non-zero). Do not re-introduce a
+      // content-based include filter — that is what silently dropped files before.
+      testFiles.push(fullPath);
     }
   }
 }
@@ -92,7 +108,41 @@ async function run() {
     return;
   }
 
-  let selectedTests = testFiles;
+  // Partition off the quarantined (known-broken) files and report them loudly so
+  // they are never silently skipped. A stale entry (file deleted/renamed) is also
+  // surfaced so the list stays honest.
+  const quarantinedPresent = [];
+  let selectedTests = testFiles.filter((file) => {
+    const rel = path.relative(rootDir, file).split(path.sep).join("/");
+    if (QUARANTINE.has(rel)) {
+      quarantinedPresent.push(rel);
+      return false;
+    }
+    return true;
+  });
+
+  if (quarantinedPresent.length > 0) {
+    console.warn(
+      `\n⚠ ${quarantinedPresent.length} quarantined (known-broken) test file(s) SKIPPED — fix and remove from QUARANTINE (todo todo-11b):`,
+    );
+    for (const rel of quarantinedPresent.sort()) {
+      console.warn(`    • ${rel} — ${QUARANTINE.get(rel)}`);
+    }
+  }
+
+  const staleQuarantine = [...QUARANTINE.keys()].filter(
+    (rel) => !quarantinedPresent.includes(rel),
+  );
+  if (staleQuarantine.length > 0) {
+    console.warn(
+      `\n⚠ QUARANTINE lists ${staleQuarantine.length} file(s) that were not found — remove the stale entr${
+        staleQuarantine.length === 1 ? "y" : "ies"
+      }:`,
+    );
+    for (const rel of staleQuarantine.sort()) {
+      console.warn(`    • ${rel}`);
+    }
+  }
 
   if (filters.length > 0) {
     selectedTests = selectedTests.filter((file) =>

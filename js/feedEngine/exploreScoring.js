@@ -4,12 +4,13 @@ import { normalizeHashtag } from "../utils/hashtagNormalization.js";
 import { isPlainObject, toSet } from "./utils.js";
 
 const DEFAULT_WEIGHTS = Object.freeze({
-  novelty: 0.3,
-  freshness: 0.25,
+  novelty: 0.35, // reward topics outside your watch history (discovery)
+  freshness: 0.12, // Explore is discovery, not "what's new" — recency matters less
   historySimilarity: 0.2,
   newTagFraction: 0.1,
   popularityNorm: 0.1,
   disinterestOverlap: 0.25,
+  followedPenalty: 0.3, // deprioritize creators you already follow → new-to-you
 });
 
 const DEFAULT_FRESHNESS_HALF_LIFE_DAYS = 14;
@@ -319,6 +320,10 @@ export function createExploreScorerStage({ stageName = "explore-scorer", ...opti
     const popularityMax = resolvePopularityMax(options, context);
     const freshnessHalfLifeDays = resolveFreshnessHalfLife(options, context);
     const now = resolveNow(context);
+    // Soft penalty for creators you already follow so Explore leans toward
+    // creators that are NEW to you. A penalty (not a filter) keeps the feed full
+    // when you follow lots of people.
+    const follows = toSet(context?.runtime?.subscriptionAuthors);
 
     for (const item of items) {
       if (!item || typeof item !== "object") {
@@ -379,13 +384,17 @@ export function createExploreScorerStage({ stageName = "explore-scorer", ...opti
         freshness = clamp01(decay);
       }
 
+      const followedMatch =
+        typeof video.pubkey === "string" && follows.has(video.pubkey) ? 1 : 0;
+
       const score = clamp01(
         weights.novelty * novelty +
           weights.freshness * freshness +
           weights.historySimilarity * historySimilarityPositive +
           weights.newTagFraction * newTagFraction +
           weights.popularityNorm * popularityNorm -
-          weights.disinterestOverlap * disinterestOverlap,
+          weights.disinterestOverlap * disinterestOverlap -
+          (weights.followedPenalty || 0) * followedMatch,
       );
 
       if (!isPlainObject(item.metadata)) {
@@ -400,6 +409,7 @@ export function createExploreScorerStage({ stageName = "explore-scorer", ...opti
         historySimilarity,
         popularityNorm,
         freshness,
+        followedMatch,
         tags: Array.from(videoTags),
       };
 
@@ -458,6 +468,11 @@ const FOR_YOU_WEIGHTS = Object.freeze({
   freshness: 0.25, // recency decay
   disinterestOverlap: 0.3, // penalty for disinterested tags
 });
+
+// Affinity at/above this counts as a real interest match (tier 1), so
+// interest/watch-topic videos lead the feed alongside follows. Tuned low because
+// cosine affinity against a sparse user vector rarely gets near 1.
+const FOR_YOU_AFFINITY_TIER = 0.15;
 
 /**
  * For You scorer (docs/feed-algo-audit.md). Inclusive + ranked: it scores (never
@@ -540,6 +555,16 @@ export function createForYouScorerStage({
         item.metadata = {};
       }
       item.metadata.forYouScore = score;
+      // Tier drives "your people first": followed authors (2) and interest/
+      // watch-topic matches (1) lead the feed regardless of recency; everything
+      // else (0) ranks below by score. The sorter reads this; when NO item is
+      // tiered (logged-out / no follows / no interests) it falls back to a
+      // discovery ordering so For You never mirrors Recently-added.
+      item.metadata.forYouTier = followsMatch
+        ? 2
+        : affinity >= FOR_YOU_AFFINITY_TIER
+        ? 1
+        : 0;
       item.metadata.forYouComponents = {
         followsMatch,
         affinity,

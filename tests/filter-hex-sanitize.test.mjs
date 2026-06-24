@@ -62,3 +62,20 @@ test("ignores empty/absent hex fields", () => {
   const out = sanitizeHexFilterFields({ kinds: [1], authors: [] });
   assert.deepEqual(out, { kinds: [1], authors: [] });
 });
+
+test("sanitizes NIP-22 uppercase root tags #E/#P (kind-1111 comments)", () => {
+  // Relays hex-decode #E (root event id) and #P (root author pubkey) too. An
+  // odd-length value there previously bypassed the sanitizer and got the whole
+  // comment REQ rejected ("uneven size input to from_hex").
+  const out = sanitizeHexFilterFields({
+    kinds: [1111],
+    "#E": [HEX_A, ODD],
+    "#P": [HEX_B],
+    "#K": ["30078"], // a non-hex tag must be left untouched
+    "#A": ["30078:" + HEX_A + ":dtag"], // address tag is not hex-decoded
+  });
+  assert.deepEqual(out["#E"], [HEX_A], "drops the odd-length root event id");
+  assert.deepEqual(out["#P"], [HEX_B]);
+  assert.deepEqual(out["#K"], ["30078"], "#K (kind) untouched");
+  assert.deepEqual(out["#A"], ["30078:" + HEX_A + ":dtag"], "#A (address) untouched");
+});

@@ -2974,6 +2974,37 @@ class Application {
       return false;
     }
 
+    // Direct messages require a signing identity. If nobody is logged in, prompt
+    // for login instead of silently opening an unusable messages tab.
+    if (!this.isUserLoggedIn()) {
+      this.showError(
+        "Please log in with your Nostr account to send a direct message.",
+      );
+      try {
+        if (
+          this.loginModalController &&
+          typeof this.loginModalController.openModal === "function" &&
+          this.loginModalController.openModal({})
+        ) {
+          return false;
+        }
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to open login modal for direct message:",
+          error,
+        );
+      }
+      Promise.resolve(
+        this.authService?.requestLogin?.({ allowAccountSelection: true }),
+      ).catch((error) => {
+        devLogger.warn(
+          "[Application] Direct message login request failed:",
+          error,
+        );
+      });
+      return false;
+    }
+
     this.setDmRecipientPubkey(normalized);
 
     if (this.profileController) {
@@ -3905,6 +3936,11 @@ class Application {
     return this._feed.registerExploreFeed(...args);
   }
 
+  registerTrendingFeed(...args) {
+    this._initCoordinators();
+    return this._feed.registerTrendingFeed(...args);
+  }
+
   registerSubscriptionsFeed(...args) {
     this._initCoordinators();
     return this._feed.registerSubscriptionsFeed(...args);
@@ -3950,6 +3986,11 @@ class Application {
     return this._feed.refreshFeed(FEED_TYPES.EXPLORE, ...args);
   }
 
+  refreshTrendingFeed(...args) {
+    this._initCoordinators();
+    return this._feed.refreshFeed(FEED_TYPES.TRENDING, ...args);
+  }
+
   refreshRecentFeed(...args) {
     this._initCoordinators();
     return this._feed.refreshFeed("recent", ...args);
@@ -3991,6 +4032,11 @@ class Application {
   async loadExploreVideos(...args) {
     this._initCoordinators();
     return this._feed.loadExploreVideos(...args);
+  }
+
+  async loadTrendingVideos(...args) {
+    this._initCoordinators();
+    return this._feed.loadTrendingVideos(...args);
   }
 
   async loadOlderVideos(...args) {

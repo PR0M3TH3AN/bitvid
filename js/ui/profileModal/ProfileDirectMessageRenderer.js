@@ -566,11 +566,14 @@ export class ProfileDirectMessageRenderer {
       }
 
       const activeRecipient = this.controller.helper.resolveActiveDmRecipient();
-      const hasActiveRecipient =
-        activeRecipient &&
-        threadsToRender.some((thread) => thread.remoteHex === activeRecipient);
 
-      if (threadsToRender.length && !hasActiveRecipient) {
+      if (activeRecipient) {
+        // Respect an explicitly-selected recipient even if it has no thread yet
+        // (e.g. the "Message" button for someone you've never DMed). Defaulting
+        // to threadsToRender[0] here is what made the inbox jump to the top
+        // conversation instead of the person you chose.
+        this.updateMessageThreadSelection(activeRecipient);
+      } else if (threadsToRender.length) {
         this.controller.setDirectMessageRecipient(threadsToRender[0].remoteHex, {
           reason: "thread-default",
         });
@@ -579,8 +582,6 @@ export class ProfileDirectMessageRenderer {
           threadsToRender[0].remoteHex,
         );
         this.controller.setFocusedDmConversation(conversationId);
-      } else if (hasActiveRecipient) {
-        this.updateMessageThreadSelection(activeRecipient);
       }
 
       this.profileMessagesList.classList.remove("hidden");

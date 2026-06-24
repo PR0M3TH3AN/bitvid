@@ -6,6 +6,11 @@ import {
 } from "../../designSystem/metrics.js";
 import { ensureOverlayRoot } from "./overlayRoot.js";
 import {
+  isEditableTarget,
+  movePanelIntoPortal,
+  restorePanelToOrigin,
+} from "./popoverPanelDom.js";
+import {
   arrow as arrowMiddleware,
   autoUpdate,
   computePosition,
@@ -245,6 +250,9 @@ export function createPopover(trigger, render, options = {}) {
   let autoUpdateCleanup = null;
   let isOpen = false;
   let previousActiveElement = null;
+  // Origin of a pre-existing app-owned panel relocated into the portal on open
+  // (see movePanelIntoPortal); used to put it back on close/destroy.
+  let panelOrigin = null;
   let menuItemIdCounter = 0;
   const menuHandlers = {
     keydown: null,
@@ -582,6 +590,13 @@ export function createPopover(trigger, render, options = {}) {
       return;
     }
 
+    // Never hijack keys while the user types in a form field inside the panel
+    // (zap comment/amount, search boxes, etc.) — let characters and caret keys
+    // through instead of routing them to menu typeahead/navigation.
+    if (isEditableTarget(event.target)) {
+      return;
+    }
+
     menuState.items = findMenuItems(menuState.panel);
 
     switch (event.key) {
@@ -915,6 +930,13 @@ export function createPopover(trigger, render, options = {}) {
       overlayRoot.appendChild(portal);
     }
 
+    // Pull a pre-existing in-host panel out to the portal so fixed positioning is
+    // viewport-relative (fixes the zap/embed dialog anchoring to the modal edge).
+    const movedOrigin = movePanelIntoPortal(panel, portal);
+    if (movedOrigin) {
+      panelOrigin = movedOrigin;
+    }
+
     if (activePopoverInstance && activePopoverInstance !== api) {
       activePopoverInstance.close({ restoreFocus: false });
     }
@@ -991,6 +1013,11 @@ export function createPopover(trigger, render, options = {}) {
 
     setExpandedAttribute(anchor, false);
     resetTypeaheadBuffer();
+
+    // Return a relocated app-owned panel to its original DOM home (no-op for
+    // fresh portal-owned panels) so the host DOM stays intact and re-open works.
+    restorePanelToOrigin(panel, panelOrigin);
+    panelOrigin = null;
 
     if (restoreFocus && restoreFocusOnClose) {
       restoreTriggerFocus();

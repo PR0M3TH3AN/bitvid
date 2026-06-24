@@ -409,10 +409,15 @@ export class EventDetailsModal {
     this.currentIndex = 0;
     this.isLoadingHistory = true;
 
-    this.renderVersion(video);
-    this.updateNavigationState();
-
+    // Show the modal FIRST so a render hiccup can't leave the click looking dead;
+    // then populate it (guarded).
     openStaticModal(modal, { document: this.document });
+    try {
+      this.renderVersion(video);
+      this.updateNavigationState();
+    } catch (error) {
+      devLogger.error("[EventDetailsModal] Failed to render version:", error);
+    }
 
     // Fetch history
     try {

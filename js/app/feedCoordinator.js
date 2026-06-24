@@ -10,6 +10,10 @@
  */
 
 import { FEED_TYPES, STANDARD_TIMEOUT_MS, MEDIUM_TIMEOUT_MS, DEBOUNCE_DELAY_MS } from "../constants.js";
+import {
+  registerTrendingFeed as registerTrendingFeedPipeline,
+  buildTrendingFeedRuntime,
+} from "../feedEngine/trendingFeed.js";
 
 /**
  * @param {object} deps - Injected dependencies.
@@ -398,7 +402,7 @@ export function createFeedCoordinator(deps) {
             createResolvePostedAtStage(),
             createExploreScorerStage(),
           ],
-          sorter: createExploreDiversitySorter(),
+          sorter: createExploreDiversitySorter({ lambda: 0.5 }),
           hooks: {
             timestamps: {
               getKnownVideoPostedAt: (video) => this.getKnownVideoPostedAt(video),
@@ -531,20 +535,11 @@ export function createFeedCoordinator(deps) {
       const preferencesAvailable = preferenceSource?.dataReady === true;
       const moderationThresholds = this.getActiveModerationThresholds();
 
-      // Follows drive the For You ranking (follows-boost in the scorer).
-      let subscriptionAuthors = [];
-      try {
-        if (subscriptions && typeof subscriptions.getSubscribedAuthors === "function") {
-          const authors = subscriptions.getSubscribedAuthors();
-          if (Array.isArray(authors)) {
-            subscriptionAuthors = authors.filter(
-              (a) => typeof a === "string" && a,
-            );
-          }
-        }
-      } catch (error) {
-        devLogger.warn("[feedCoordinator] Failed to read subscribed authors:", error);
-      }
+      // Follows drive the For You ranking (follows-boost in the scorer). The
+      // refreshFeed caller wraps this in a try, so optional chaining is enough.
+      const subscriptionAuthors = (
+        subscriptions?.getSubscribedAuthors?.() || []
+      ).filter((a) => typeof a === "string" && a);
 
       // Watch-topic affinity signal (reuse the Explore source if present).
       const whTagSource =
@@ -671,6 +666,11 @@ export function createFeedCoordinator(deps) {
       return {
         blacklistedEventIds: blacklist,
         isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
+        // Explore leans new-to-you: the scorer applies a soft penalty to authors
+        // you already follow so non-followed creators surface.
+        subscriptionAuthors: (
+          subscriptions?.getSubscribedAuthors?.() || []
+        ).filter((a) => typeof a === "string" && a),
         tagPreferences: {
           interests: Array.isArray(interests) ? [...interests] : [],
           disinterests: Array.isArray(disinterests) ? [...disinterests] : [],
@@ -848,14 +848,18 @@ export function createFeedCoordinator(deps) {
               );
             }
             runtime = this.buildForYouFeedRuntime({ watchHistoryItems });
+            // Keep the scorer/sorter's "your people first" order — without this
+            // VideoListView re-sorts chronologically and For You looks like Recent.
+            metadataModifier = (m) => ({ ...m, preserveOrder: true });
             break;
           }
           case FEED_TYPES.KIDS:
             runtime = this.buildKidsFeedRuntime();
             metadataModifier = (m) => {
-              if (runtime?.ageGroup && !m.ageGroup)
-                m.ageGroup = runtime.ageGroup;
-              return m;
+              const next = { ...m, preserveOrder: true };
+              if (runtime?.ageGroup && !next.ageGroup)
+                next.ageGroup = runtime.ageGroup;
+              return next;
             };
             break;
           case FEED_TYPES.EXPLORE:
@@ -866,6 +870,11 @@ export function createFeedCoordinator(deps) {
               next.preserveOrder = true;
               return next;
             };
+            break;
+          case FEED_TYPES.TRENDING:
+            runtime = buildTrendingFeedRuntime(this);
+            // Preserve the view-count ranking (otherwise re-sorted by date).
+            metadataModifier = (m) => ({ ...m, preserveOrder: true });
             break;
           case "recent":
             runtime = this.buildRecentFeedRuntime();
@@ -1026,6 +1035,12 @@ export function createFeedCoordinator(deps) {
           refreshMethod = (opts) => this.refreshFeed(FEED_TYPES.EXPLORE, opts);
           shouldCheckRelayHealth = false;
           break;
+        case FEED_TYPES.TRENDING:
+          includeTags = false;
+          loadingMessage = "Fetching trending videos\u2026";
+          refreshMethod = (opts) => this.refreshFeed(FEED_TYPES.TRENDING, opts);
+          shouldCheckRelayHealth = false;
+          break;
         default:
           devLogger.warn(
             `[Application] Unknown feed type for loadFeedVideos: ${feedType}`,
@@ -1118,6 +1133,14 @@ export function createFeedCoordinator(deps) {
 
     async loadExploreVideos(forceFetch = false) {
       return this.loadFeedVideos(FEED_TYPES.EXPLORE, forceFetch);
+    },
+
+    registerTrendingFeed() {
+      return registerTrendingFeedPipeline(this);
+    },
+
+    async loadTrendingVideos(forceFetch = false) {
+      return this.loadFeedVideos(FEED_TYPES.TRENDING, forceFetch);
     },
 
     async loadOlderVideos(lastTimestamp) {
