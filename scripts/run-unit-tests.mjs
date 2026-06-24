@@ -15,7 +15,6 @@ process.env.NODE_ENV = "test";
 // Remove an entry as soon as its file is fixed. See todo/TODO_2026-06-20_pre-launch.md todo-11b.
 const QUARANTINE = new Map([
   ["tests/user-blocks.test.mjs", "HANG — triage todo-11b"],
-  ["tests/view-counter.test.mjs", "FAIL — triage todo-11b (view counter / item #4)"],
   ["tests/nostr-count-fallback.test.mjs", "FAIL — triage todo-11b"],
   ["tests/admin-list-store.test.mjs", "FAIL — triage todo-11b"],
   ["tests/nostr-boost-actions.test.mjs", "FAIL — triage todo-11b"],

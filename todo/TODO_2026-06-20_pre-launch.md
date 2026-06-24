@@ -213,14 +213,21 @@ parameterized-replaceable event; (b) `exactCountForPointer` runs a NIP-45 COUNT
       (`nostrEventSchemas.js`). Transition: pre-existing entropy events age out over
       `VIEW_COUNT_BACKFILL_MAX_DAYS`. Tests: `tests/view-event-dedupe.test.mjs`
       (same-window dedupe, next-window separate, per-viewer/per-video, no auto-d).
-- [ ] **Remaining triage of the quarantined `tests/view-counter.test.mjs`** (still
-      quarantined): the `d`-tag/session assertions now pass; it next fails on
-      `viewCounter.js` cache-TTL/hydration behavior (stale cache should re-fetch
-      fresh from relays). Separate from the accuracy root cause — triage + un-
-      quarantine as its own pass.
-- [ ] **`reactionCounter.js`** (likes/kind-7) not yet audited; same dedupe-by-
-      replaceable question may apply. Underpins the popularity chart (#26) /
-      Trending tab (#27).
+- [x] **`tests/view-counter.test.mjs` un-quarantined + green.** Triaged the whole
+      monolith: pinned the legacy hydrate/subscribe path (the batched
+      SubscriptionManager added later silently shadowed the mocks), made the
+      dedupe-window test bucket-aligned (was flaky on time-of-day), and corrected
+      the `hydrateVideoHistory` root-timestamp assertions to the refactored unit
+      boundary (map vs the `syncActiveVideoRootTimestamp` field step). Removed from
+      the QUARANTINE map. Spec corrections logged in TEST_INTEGRITY.md
+      (SCN-view-counter-legacy-path, SCN-hydrate-root-timestamp).
+- [x] **`reactionCounter.js` (likes/kind-7) audited — accurate, no fix needed.**
+      It does NOT use NIP-45 COUNT; it lists kind-7 events and dedupes via
+      `applyReactionToState` keyed by pubkey (one reaction per user, latest-wins),
+      with per-content totals. No raw-count inflation. (Kind-7 isn't replaceable,
+      so listing+dedupe is the only accurate model; the only limit is the
+      hydration cap for viral content — undercount, not inflate — a future
+      scalability nicety.) Underpins the popularity chart (#26) / Trending (#27).
 
 ### 5. Card-hide / video-liveness check — full plan in docs/video-liveness-plan.md
 Audited (2026-06-23). Finding: the hide/show **policy is already correct**
@@ -494,8 +501,12 @@ test below was failing on `main` unnoticed).
         2669-line file passes via the CI runner and was removed from QUARANTINE.
       - `nostr-boost-actions` — "Missing expected exception" (likely stale: expects a
         throw the code no longer makes).
-      - `view-counter` (#4) — "view event should append the session tag when
-        requested" (stale-or-real; investigate with #4).
+      - `view-counter` (#4) — ✅ DONE + UN-QUARANTINED 2026-06-24: the failures were
+        (a) the deterministic-d-tag accuracy fix (no more random `d` tag, so no
+        auto-`d` either), (b) the batched SubscriptionManager silently shadowing
+        the legacy mocks, (c) a time-of-day-flaky dedupe-window setup, and (d) a
+        moved root-timestamp unit boundary. All fixed; full file green. See
+        TEST_INTEGRITY.md.
       - `zap-shared-state` (#3) — ✅ DONE + UN-QUARANTINED 2026-06-23: stale fee-fallback
         test (expected 0; the function correctly falls back to the configured default so
         a junk override can't bypass the fee) — corrected.

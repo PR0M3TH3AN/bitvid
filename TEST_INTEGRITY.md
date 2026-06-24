@@ -345,3 +345,70 @@ test_integrity_note:
     did_relax_any_assertion: false
     if_true_explain_spec_basis: ""
 ```
+
+---
+
+```yaml
+test_integrity_note:
+  date: 2026-06-24
+  file: tests/view-counter.test.mjs
+  change_type: ["spec_correction", "flake_fix"]
+  scenarios:
+    - id: SCN-view-counter-legacy-path
+      given: "The view-counter unit harness mocks the legacy per-pointer view APIs (list/count/subscribe) on the singleton client"
+      when: "A pointer is subscribed and hydrated"
+      then: "viewCounter exercises the legacy per-pointer hydrate/subscribe path (the one viewCounter.js explicitly designates 'for tests / mocks'), so the mocked APIs actually fire"
+    - id: SCN-view-counter-dedupe-window-aligned
+      given: "Two views by the same viewer within one fixed dedupe window"
+      when: "Counted"
+      then: "They dedupe to one (floor(created_at/window) bucket, matching the replaceable view-event d-tag)"
+  observable_outcomes:
+    - "hydration triggers a list()/count() call (legacy path) instead of the batched SubscriptionManager path silently taking over"
+    - "two same-pubkey views in one aligned bucket yield total === 1"
+  determinism_controls:
+    - "nostrClient.getSubscriptionManager pinned to () => null so the path is deterministic"
+    - "the dedupe test's base timestamp is aligned to a window-bucket boundary (was Date.now(), which made the +window/2 offset straddle a boundary depending on time of day)"
+  anti_cheat_rationale:
+    prevents:
+      - "over-mocking internal logic"
+      - "retry/sleep-based flake masking"
+    note: "The batched SubscriptionManager path was added later (relay-storm work); the
+      test mocks the legacy APIs but never pinned getSubscriptionManager, so the real
+      singleton's manager took over and the mocks never fired. Pinning it to null restores
+      the intended (and code-designated 'tests/mocks') legacy-path coverage. The dedupe
+      assertion (count === 1) is unchanged — only its setup was made deterministic."
+  relaxation:
+    did_relax_any_assertion: false
+    if_true_explain_spec_basis: ""
+```
+
+---
+
+```yaml
+test_integrity_note:
+  date: 2026-06-24
+  file: tests/view-counter.test.mjs
+  change_type: ["spec_correction"]
+  scenarios:
+    - id: SCN-hydrate-root-timestamp
+      given: "A latest video revision whose root event is fetched by hydrateVideoHistory"
+      when: "History is hydrated, then the timestamp-sync step runs"
+      then: "rootCreatedAtByRoot caches the earliest (root) created_at, AND the active video's rootCreatedAt FIELD is set by syncActiveVideoRootTimestamp"
+  observable_outcomes:
+    - "nostrClient.rootCreatedAtByRoot.get(rootId) === root.created_at (hydrateVideoHistory's direct output)"
+    - "after syncActiveVideoRootTimestamp(...), latestVideo.rootCreatedAt === root.created_at"
+  determinism_controls:
+    - "pool.get returns a fixed root event; rootCreatedAtByRoot seeded empty"
+  anti_cheat_rationale:
+    prevents:
+      - "snapshot rubber-stamping"
+    note: "hydrateVideoHistory's contract is to populate the per-root created_at MAP; the
+      video OBJECT's rootCreatedAt field is applied by a separate util
+      (syncActiveVideoRootTimestamp) after a refactor moved that unit boundary. The test
+      previously expected hydrateVideoHistory to mutate the passed object directly, which it
+      no longer does. Corrected to assert the map (its real output) and to drive the sync
+      util for the field — stronger, not weaker (it now exercises the full real pipeline)."
+  relaxation:
+    did_relax_any_assertion: false
+    if_true_explain_spec_basis: ""
+```

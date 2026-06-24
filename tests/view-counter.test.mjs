@@ -325,6 +325,12 @@ const harness = createMockNostrHarness();
 nostrClient.listVideoViewEvents = harness.listVideoViewEvents;
 nostrClient.countVideoViewEvents = harness.countVideoViewEvents;
 nostrClient.subscribeVideoViewEvents = harness.subscribeVideoViewEvents;
+// Exercise the legacy per-pointer hydrate/subscribe path — the one viewCounter.js
+// explicitly designates "for tests / mocks" and the one this harness mocks. In
+// production the singleton client has a SubscriptionManager (the batched path);
+// without pinning it to null here the real manager silently takes over and the
+// mocked legacy APIs never fire. See TEST_INTEGRITY.md (SCN-view-counter-legacy-path).
+nostrClient.getSubscriptionManager = () => null;
 
 const {
   initViewCounter,
@@ -417,7 +423,13 @@ async function testDedupesWithinWindow() {
 
   const pointer = { type: "e", value: "view-counter-dedupe" };
   const pointerKey = harness.pointerKeyFromInput(pointer);
-  const base = Math.floor(Date.now() / 1000);
+  // Align to a window-bucket boundary so both events are deterministically in the
+  // SAME fixed bucket (dedupe is floor(created_at / window), matching the
+  // replaceable view-event d-tag). With an unaligned base the +window/2 offset
+  // could straddle a boundary and land in different buckets (flaky).
+  const base =
+    Math.floor(Math.floor(Date.now() / 1000) / VIEW_COUNT_DEDUPE_WINDOW_SECONDS) *
+    VIEW_COUNT_DEDUPE_WINDOW_SECONDS;
   const events = [
     { id: "evt-1", pubkey: "pub-dedupe", created_at: base },
     {
@@ -1014,15 +1026,26 @@ async function testHydrateHistoryPrefersRootEvent() {
       rootEvent.created_at,
       "root event should preserve its original created_at timestamp"
     );
-    assert.equal(
-      latestVideo.rootCreatedAt,
-      rootEvent.created_at,
-      "latest revision should inherit the root created_at timestamp"
-    );
+    // hydrateVideoHistory's contract is to populate the per-root created_at MAP
+    // (the earliest revision wins). Assert that directly.
     assert.equal(
       nostrClient.rootCreatedAtByRoot.get(rootId),
       rootEvent.created_at,
       "nostrClient should cache the earliest created_at per root"
+    );
+    // The active video's rootCreatedAt FIELD is applied by a separate step
+    // (syncActiveVideoRootTimestamp) — the unit boundary moved in a refactor, so
+    // drive the real pipeline rather than expecting hydrateVideoHistory to mutate
+    // the passed object. See TEST_INTEGRITY.md (SCN-hydrate-root-timestamp).
+    syncActiveVideoRootTimestamp({
+      activeVideo: latestVideo,
+      rootId,
+      timestamp: nostrClient.rootCreatedAtByRoot.get(rootId),
+    });
+    assert.equal(
+      latestVideo.rootCreatedAt,
+      rootEvent.created_at,
+      "latest revision inherits the root created_at after the timestamp sync step"
     );
   } finally {
     nostrClient.pool = originalPool;
