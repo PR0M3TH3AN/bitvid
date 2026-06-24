@@ -5197,9 +5197,17 @@
     outline: none;
   }
 
-  .dm-contact-row--active {
-    background: var(--surface-sunken);
-    border-color: var(--border-strong);
+  .dm-contact-row--active,
+  .dm-contact-row--active:hover,
+  .dm-contact-row--active:focus-visible {
+    background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+    border-color: color-mix(in srgb, var(--color-accent) 60%, var(--border-strong));
+    box-shadow: inset 3px 0 0 0 var(--color-accent);
+  }
+
+  .dm-contact-row--active .dm-contact-row__name {
+    color: var(--color-accent-strong);
+    font-weight: 700;
   }
 
   .dm-contact-row__content {
