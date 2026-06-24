@@ -49,3 +49,22 @@ test("controller delegates every DM app-shell callback to this.actions", () => {
     );
   }
 });
+
+test("controller delegates resolveProfileSummaryForPubkey to this.helper", () => {
+  // ProfileModerationController calls dmController.resolveProfileSummaryForPubkey;
+  // the method lives on the helper, so the controller must delegate it.
+  const proto = ProfileDirectMessageController.prototype;
+  assert.equal(typeof proto.resolveProfileSummaryForPubkey, "function");
+  const received = [];
+  const fake = {
+    helper: {
+      resolveProfileSummaryForPubkey: (...args) => {
+        received.push(args);
+        return "summary";
+      },
+    },
+  };
+  const result = proto.resolveProfileSummaryForPubkey.call(fake, "pubkey-x");
+  assert.equal(result, "summary");
+  assert.deepEqual(received[0], ["pubkey-x"]);
+});

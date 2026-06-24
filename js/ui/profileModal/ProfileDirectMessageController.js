@@ -680,6 +680,14 @@ export class ProfileDirectMessageController {
     return this.helper.resolveActiveDmRecipient(...args);
   }
 
+  // ProfileModerationController calls dmController.resolveProfileSummaryForPubkey
+  // (and createCompactProfileSummary, already delegated below). The method lives on
+  // the helper, so without this delegation the moderation-settings UI threw
+  // "is not a function" on open.
+  resolveProfileSummaryForPubkey(...args) {
+    return this.helper.resolveProfileSummaryForPubkey(...args);
+  }
+
   createCompactProfileSummary(...args) {
     return this.renderer.createCompactProfileSummary(...args);
   }
