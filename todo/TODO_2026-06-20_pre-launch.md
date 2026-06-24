@@ -485,12 +485,21 @@ toward freshness and looked identical. Gave each a structural identity:
       windowed "trending" (views in the last N days) once view-over-time data (#26)
       lands, instead of all-time totals.
 
-### 31. ⋯ menu "Event Details" button does nothing (BUG)
-- [ ] The "Event Details" item in the video ⋯ (more) menu does not open / does
-      nothing when clicked. Trace its `data-action` → `handleMoreMenuAction` case
-      (vs `EventDetailsModal`): confirm the action name matches a case (likely a
-      missing/renamed case or a no-op like the embed/copy-magnet event-name
-      mismatches), wire it to open `EventDetailsModal`, and add a regression test.
+### 31. ⋯ menu "Event Details" button does nothing (BUG) — fix landed, VERIFY
+The wiring is structurally intact (menu item `event-details` → handler case →
+`handleEventDetailsAction` → `EventDetailsModal.open`), so the failure was a
+SILENT one: `handleEventDetailsAction` only opened the modal `if (… && payload
+.video)` and never caught the async `open()` rejection, and `open()` ran the
+(throwable) `renderVersion` BEFORE actually showing the modal. Hardened:
+- [x] `handleEventDetailsAction` no longer fails silently — surfaces "No video
+      selected" / "unavailable", falls back to `app.eventDetailsModal`, and
+      `.catch()`es the open promise.
+- [x] `EventDetailsModal.open` now calls `openStaticModal` FIRST, then renders in
+      a try/catch, so a render hiccup can't leave the click looking dead.
+- [x] The ⋯ popover is dismissed before opening the modal.
+- [ ] **VERIFY live** (I couldn't repro by inspection): click ⋯ → Event Details on
+      a card AND in the video modal. If it still does nothing, the new visible
+      error / console warn will say exactly why (no video vs open() throw).
 
 ### 28. Beacon torrent app stuck — spinner never resolves (BUG)
 - [ ] The torrent beacon app (`scripts/build:beacon` / `torrent/` integration) shows

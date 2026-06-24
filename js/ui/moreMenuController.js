@@ -1604,11 +1604,18 @@ export default class MoreMenuController {
         break;
       }
       case "event-details": {
+        // Card context passes the card's video; modal context falls back to the
+        // active video (the dispatch path doesn't carry the video object).
         let targetVideo = video;
         if (!targetVideo && context === "modal") {
           targetVideo = currentVideo;
         }
-
+        // Dismiss the menu before opening the details modal.
+        try {
+          this.activePopover?.close?.();
+        } catch (error) {
+          // ignore
+        }
         await this.callbacks.handleEventDetailsAction({
           eventId: dataset.eventId,
           video: targetVideo,
