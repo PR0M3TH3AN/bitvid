@@ -1026,6 +1026,20 @@ const { VideoModal } = await import("../js/ui/components/VideoModal.js");
   assert.ok(embedDetail, 'embed must dispatch "video:embed" (the listened name)');
   assert.equal(embedDetail.video?.id, "vid-embed", "carries the active video");
   assert.equal(staleFired, false, 'must not use the dead "action:embed" name');
+
+  // Same bug class on copy-magnet: manager listens for "video:copy-magnet".
+  let copyDetail = null;
+  modal.addEventListener("video:copy-magnet", (event) => {
+    copyDetail = event?.detail || null;
+  });
+  let staleCopy = false;
+  modal.addEventListener("action:copy", () => {
+    staleCopy = true;
+  });
+  modal.handleCopyRequest();
+  assert.ok(copyDetail, 'copy must dispatch "video:copy-magnet" (the listened name)');
+  assert.equal(copyDetail.video?.id, "vid-embed", "carries the active video");
+  assert.equal(staleCopy, false, 'must not use the dead "action:copy" name');
 })();
 
 process.exit(0);

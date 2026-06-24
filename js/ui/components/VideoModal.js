@@ -2994,7 +2994,10 @@ export class VideoModal {
   }
 
   handleCopyRequest() {
-    this.dispatch("action:copy", { video: this.activeVideo });
+    // ModalManager listens for "video:copy-magnet" (it runs app.handleCopyMagnet).
+    // The previous "action:copy" name had no listener, so the copy-magnet button
+    // did nothing — same dead-event bug as the embed button.
+    this.dispatch("video:copy-magnet", { video: this.activeVideo });
   }
 
   handleShareRequest(event) {

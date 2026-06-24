@@ -232,11 +232,11 @@ un-hides when WebTorrent flips green). The real gaps:
       embed button fired an event into the void. (Share survives the same mismatch
       only because `shareBtn` also toggles a popover directly.) Now dispatches
       `"video:embed"`. Regression test in `tests/video-modal-zap.test.mjs`.
-- [ ] **Sibling bug (not yet fixed):** `handleCopyRequest` has the SAME mismatch —
-      dispatches `"action:copy"` with no listener (manager listens for
-      `"video:copy-magnet"`), and `#copyMagnetBtn` has no popover fallback. So the
-      standalone copy-magnet button is also dead. Lower urgency (copy is also
-      available in the share/⋯ menus), but fix it the same way when convenient.
+- [x] **Sibling bug FIXED (2026-06-23):** `handleCopyRequest` had the SAME mismatch —
+      dispatched `"action:copy"` with no listener (manager listens for
+      `"video:copy-magnet"` → `app.handleCopyMagnet`), and `#copyMagnetBtn` has no
+      popover fallback, so the standalone copy-magnet button was also dead. Now
+      dispatches `"video:copy-magnet"`. Covered by the same regression test.
 
 ### 19. Direct messages: can read but cannot SEND — deep audit (BUG)
 - [ ] DMs are pulled in and readable, but sending appears to do nothing / fails.
