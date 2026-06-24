@@ -10,7 +10,12 @@ import {
   subscribeVideoViewEventsWithDefaultClient,
 } from "./nostrViewEventsFacade.js";
 import { resolveVideoPointer } from "./utils/videoPointer.js";
-import { formatViewCount } from "./viewCounter.js";
+import {
+  formatViewCount,
+  subscribeToVideoViewCount,
+  unsubscribeFromVideoViewCount,
+} from "./viewCounter.js";
+import { VIEW_COUNT_BACKFILL_MAX_DAYS } from "./config.js";
 import { devLogger } from "./utils/logger.js";
 
 export const VIEW_CHART_WINDOW_SECONDS = 86400; // 1 day, matches the counter dedupe window
@@ -226,6 +231,8 @@ export function openPopularityModal({
   const eventsById = new Map();
   let closed = false;
   let unsubscribe = null;
+  let countToken = null;
+  let counterTotal = null;
   let rerenderTimer = null;
 
   const addEvent = (event) => {
@@ -235,22 +242,37 @@ export function openPopularityModal({
     return true;
   };
 
-  const render = () => {
+  // The headline number must match what the card / counter shows everywhere
+  // (the authoritative, deduped, cached viewCounter total) — NOT a separate count
+  // re-derived from a one-off relay list (which varies by relay response and
+  // window). The chart below shows only the time DISTRIBUTION of recorded views.
+  const renderHeadline = () => {
     if (closed) return;
-    const { series, total } = buildViewCountTimeSeries([...eventsById.values()]);
+    const total = Number.isFinite(counterTotal)
+      ? counterTotal
+      : buildViewCountTimeSeries([...eventsById.values()]).total;
+    if (!Number.isFinite(total)) {
+      return;
+    }
     totalLine.textContent =
       total > 0
         ? `${formatViewCount(total)} ${total === 1 ? "view" : "views"}`
         : "No views recorded yet.";
+  };
+
+  const renderChart = () => {
+    if (closed) return;
+    const { series } = buildViewCountTimeSeries([...eventsById.values()]);
     chartHost.textContent = "";
     chartHost.appendChild(buildViewCountChartSvg(doc, series));
+    renderHeadline();
   };
 
   const scheduleRender = () => {
     if (rerenderTimer) return;
     rerenderTimer = setTimeout(() => {
       rerenderTimer = null;
-      render();
+      renderChart();
     }, 250);
   };
 
@@ -264,6 +286,13 @@ export function openPopularityModal({
     if (typeof unsubscribe === "function") {
       try {
         unsubscribe();
+      } catch (error) {
+        // best effort
+      }
+    }
+    if (countToken != null) {
+      try {
+        unsubscribeFromVideoViewCount(pointer, countToken);
       } catch (error) {
         // best effort
       }
@@ -288,19 +317,32 @@ export function openPopularityModal({
   });
   doc.addEventListener("keydown", onKeydown, true);
 
-  // Initial fetch + live subscription.
+  // Headline total: subscribe to the same counter the card uses (stable + cached).
+  try {
+    countToken = subscribeToVideoViewCount(pointer, ({ total } = {}) => {
+      if (closed) return;
+      if (Number.isFinite(total)) {
+        counterTotal = Number(total);
+        renderHeadline();
+      }
+    });
+  } catch (error) {
+    devLogger.warn("[popularity] Failed to subscribe to view count:", error);
+  }
+
+  // Chart shape: list the recorded view events within the counter's backfill
+  // window so the distribution lines up with the headline's window.
+  const since =
+    Math.floor(Date.now() / 1000) - VIEW_COUNT_BACKFILL_MAX_DAYS * 86400;
   Promise.resolve()
-    .then(() => listViewEvents(pointer, {}))
+    .then(() => listViewEvents(pointer, { since }))
     .then((events) => {
       if (closed) return;
       (Array.isArray(events) ? events : []).forEach(addEvent);
-      render();
+      renderChart();
     })
     .catch((error) => {
       devLogger.warn("[popularity] Failed to load view events:", error);
-      if (!closed) {
-        totalLine.textContent = "Couldn’t load view data.";
-      }
     });
 
   try {
