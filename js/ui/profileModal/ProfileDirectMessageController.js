@@ -242,6 +242,17 @@ export class ProfileDirectMessageController {
     this.updateMessageThreadSelection(nextRecipient);
 
     if (nextRecipient) {
+      // Focus this recipient's conversation so a freshly-selected recipient
+      // (e.g. the "Message" button for someone with no existing thread) isn't
+      // overridden by a stale activeDmConversationId pointing at the top of the
+      // inbox.
+      const actor = this.helper.resolveActiveDmActor();
+      const conversationId = actor
+        ? this.helper.buildDmConversationId(actor, nextRecipient)
+        : "";
+      if (conversationId) {
+        this.setFocusedDmConversation(conversationId);
+      }
       void this.helper.ensureDmRecipientData(nextRecipient);
       this.renderer.setMessagesAnnouncement("Ready to message this recipient.");
     } else if (reason === "clear") {

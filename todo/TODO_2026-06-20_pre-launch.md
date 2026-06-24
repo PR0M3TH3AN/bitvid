@@ -249,6 +249,20 @@ un-hides when WebTorrent flips green). The real gaps:
       publish, NIP-04 default / NIP-17) was fine. Regression test
       `tests/dm-controller-delegations.test.mjs`. VERIFY live: typing + Send actually
       delivers a message.
+- [x] **Follow-up: "Message" button targeted the wrong person.** Clicking Message
+      on a profile (or anyone you'd never DMed) set the recipient, but
+      `buildDmConversationData` discarded it — a recipient with no existing thread
+      wasn't in `conversationMap`, so it fell back to `conversations[0]` (the top
+      conversation). The inbox silently jumped to the top thread and any message
+      sent went to THAT person ("says sent but I don't see it"). Fixes: (a)
+      `setDirectMessageRecipient` now focuses the selected recipient's
+      conversation; (b) `buildDmConversationData` synthesizes an empty
+      conversation for a selected-but-threadless recipient and honors it as active
+      (incl. `activeRemotePubkey` fallback for the composer target); (c) the legacy
+      `renderProfileMessages` list no longer clobbers a non-null recipient.
+      Regression: `tests/ui/dm-conversation-focus.test.mjs`. VERIFY live: Message a
+      brand-new person, confirm the thread opens on THEM and the sent message lands
+      in that conversation after refresh.
 
 ### 20. Feed / grid loading reliability — some videos missing (BUG)
 Two related intermittent symptoms; likely the same root cause (a one-shot,
