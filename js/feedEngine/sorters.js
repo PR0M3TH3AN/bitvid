@@ -3,20 +3,65 @@
 import { normalizeHashtag } from "../utils/hashtagNormalization.js";
 import { markAsNormalized } from "./utils.js";
 
-// Ranks by the For You score (set by createForYouScorerStage): score desc,
-// trusted-muted last, recency as the tiebreak. Reuses the same muted-last rule
-// as the chronological sorter so behavior is consistent across feeds.
+// Round-robin interleave by author: one video per creator per pass, each pass in
+// the caller's pre-sorted order. Consecutive cards are from different creators,
+// so a feed reads as a varied "discovery" mix instead of a chronological wall —
+// used for For You's no-signal fallback and Explore's diversity.
+export function interleaveByAuthor(items, { authorOf } = {}) {
+  if (!Array.isArray(items) || items.length < 3) {
+    return Array.isArray(items) ? [...items] : [];
+  }
+  const keyOf =
+    typeof authorOf === "function"
+      ? authorOf
+      : (entry) =>
+          typeof entry?.video?.pubkey === "string" ? entry.video.pubkey : "";
+
+  const buckets = new Map();
+  const order = [];
+  for (const item of items) {
+    const key = keyOf(item) || `__anon__${order.length}`;
+    if (!buckets.has(key)) {
+      buckets.set(key, []);
+      order.push(key);
+    }
+    buckets.get(key).push(item);
+  }
+
+  const result = [];
+  let remaining = items.length;
+  while (remaining > 0) {
+    for (const key of order) {
+      const bucket = buckets.get(key);
+      if (bucket && bucket.length) {
+        result.push(bucket.shift());
+        remaining -= 1;
+      }
+    }
+  }
+  return result;
+}
+
+// Ranks the For You feed "your people first": followed authors and interest/
+// watch-topic matches (forYouTier, set by the scorer) lead regardless of
+// recency, then everyone else by score. When NOTHING is tiered (logged-out / no
+// follows / no interests) it falls back to an author-interleaved discovery order
+// so the feed never mirrors Recently-added. Trusted-muted always sinks last.
 export function createForYouScoreSorter() {
   return function forYouScoreSorter(items = [], context = {}) {
     if (!Array.isArray(items)) {
       return [];
     }
     void context;
-    const copy = [...items];
 
     const isMuted = (entry) =>
       entry?.metadata?.moderation?.trustedMuted === true ||
       entry?.video?.moderation?.trustedMuted === true;
+
+    const tierOf = (entry) => {
+      const tier = Number(entry?.metadata?.forYouTier);
+      return Number.isFinite(tier) ? tier : 0;
+    };
 
     const scoreOf = (entry) => {
       const score = Number(entry?.metadata?.forYouScore);
@@ -34,20 +79,32 @@ export function createForYouScoreSorter() {
       return Number.isFinite(created) ? Math.floor(created) : Number.NEGATIVE_INFINITY;
     };
 
-    copy.sort((a, b) => {
-      const aMuted = isMuted(a);
-      const bMuted = isMuted(b);
-      if (aMuted !== bMuted) {
-        return aMuted ? 1 : -1;
-      }
-      const scoreDiff = scoreOf(b) - scoreOf(a);
-      if (scoreDiff !== 0) {
-        return scoreDiff;
-      }
-      return timestampOf(b) - timestampOf(a);
-    });
+    const live = items.filter((entry) => !isMuted(entry));
+    const muted = items.filter((entry) => isMuted(entry));
 
-    return copy;
+    const byScore = (a, b) => {
+      const scoreDiff = scoreOf(b) - scoreOf(a);
+      if (scoreDiff !== 0) return scoreDiff;
+      return timestampOf(b) - timestampOf(a);
+    };
+
+    const personalized = live.some((entry) => tierOf(entry) > 0);
+
+    let ordered;
+    if (personalized) {
+      // Tier desc, then score within tier. "Your people" rise to the top.
+      ordered = [...live].sort((a, b) => {
+        const tierDiff = tierOf(b) - tierOf(a);
+        if (tierDiff !== 0) return tierDiff;
+        return byScore(a, b);
+      });
+    } else {
+      // No signals → discovery fallback: score order, then interleave authors so
+      // it doesn't read as a chronological clone of Recently-added.
+      ordered = interleaveByAuthor([...live].sort(byScore));
+    }
+
+    return [...ordered, ...muted.sort(byScore)];
   };
 }
 
