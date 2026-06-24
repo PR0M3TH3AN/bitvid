@@ -225,14 +225,18 @@ un-hides when WebTorrent flips green). The real gaps:
       unplayable strangers never briefly flash before the probe hides them
       (bitvid-native stays show-pending). UX policy change in cardSourceVisibility.
 
-### 18. Embed button / modal on the video player does not open — BUG
-- [ ] The "Embed" action in the video-modal action bar does nothing / the embed
-      modal (`components/embed-video-modal.html`, `#embedVideoModal`) never opens.
-      Unlike the zap popover (3a), embed is a full modal, not an anchored popover, so
-      this is a separate wiring/trigger bug. Trace the embed button's click handler
-      → modal-open call; confirm the modal element is registered with the modal
-      manager and that the open path isn't short-circuited. Verify the snippet
-      (CDN / P2P source toggle, width/height, copy-to-clipboard) renders once open.
+### 18. Embed button / modal on the video player does not open — FIXED 2026-06-23
+- [x] **Root cause: event-name mismatch.** `VideoModal.handleEmbedRequest`
+      dispatched `"action:embed"`, but `ModalManager` listens for `"video:embed"`
+      (which opens `EmbedVideoModal`), and `dispatch()` does not remap names — so the
+      embed button fired an event into the void. (Share survives the same mismatch
+      only because `shareBtn` also toggles a popover directly.) Now dispatches
+      `"video:embed"`. Regression test in `tests/video-modal-zap.test.mjs`.
+- [ ] **Sibling bug (not yet fixed):** `handleCopyRequest` has the SAME mismatch —
+      dispatches `"action:copy"` with no listener (manager listens for
+      `"video:copy-magnet"`), and `#copyMagnetBtn` has no popover fallback. So the
+      standalone copy-magnet button is also dead. Lower urgency (copy is also
+      available in the share/⋯ menus), but fix it the same way when convenient.
 
 ### 19. Direct messages: can read but cannot SEND — deep audit (BUG)
 - [ ] DMs are pulled in and readable, but sending appears to do nothing / fails.
