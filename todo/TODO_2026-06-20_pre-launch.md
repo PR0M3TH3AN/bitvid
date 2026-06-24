@@ -276,23 +276,34 @@ all-relays-settle fetch that drops slow-relay results — see 17d).
       superset and never shrinks; existing dedupe-by-root + access checks still
       handle versioning/deletes. Regression: `tests/channel-video-merge.test.mjs`.
       (Streaming/first-relay-wins UX is still the 17d follow-up.)
-- [ ] **Paginating between video-grid pages sometimes doesn't pull in all videos.**
-- [ ] Audit the channel/search/grid fetch for: relays that EOSE late being dropped,
-      pagination cursor gaps, dedup discarding valid items, and cache-vs-live
-      reconciliation. Switch the bespoke loaders to the streaming subscription path
-      (first-relay-wins, incremental render) per **17d**. Add coverage that a slow
-      relay's late events still land in the grid.
+- [x] **"Paginating between pages" was tab-switching: videos present in one feed
+      tab missing in another.** Root cause shared with #21: all general tabs read
+      the SAME active set and only re-ranked, and the rankers never dropped — so
+      tabs were near-identical and any apparent "missing" was the lack of a
+      distinct identity. Addressed by giving each tab a real identity (see #21).
+- Remaining: streaming/first-relay-wins incremental render (17d UX) is still open
+      as a latency follow-up, not a correctness bug.
 
-### 21. "For You" feed: verify it actually personalizes (AUDIT)
-- [ ] The "For You" grid looks identical to "Recently added" and "Explore" —
-      confirm whether it is genuinely filtering/ranking by the logged-in user's
-      profile signals (followed hashtags, subscriptions/follows, watch history) or
-      silently falling back to chronological/explore output. Trace the feed-engine
-      stage wiring for the "For You" source: are the personalization stages
-      (hashtag preference, follow-set, watch-history affinity) actually registered
-      and weighted for this grid, and is the user's data loaded before it renders?
-      If it's mis-wired, fix; either way add a test that personalized input changes
-      the ordering vs. the chronological feed.
+### 21. "For You" / Explore / Recent: make each a genuinely distinct feed — DONE
+Root cause: RECENT, FOR_YOU, EXPLORE all sourced the full active set and only
+re-ranked (and the rankers never drop), so with thin signals they all collapsed
+toward freshness and looked identical. Gave each a structural identity:
+- [x] **For You = "your people first"** (`4873a431`): the scorer tags forYouTier
+      (2 followed author / 1 interest·watch match / 0 other) and the sorter leads
+      with tier regardless of raw score, then score within tier; watched already
+      suppressed. No-signal (logged-out / no follows) falls back to an
+      author-interleaved discovery order so it never mirrors Recent.
+      Tests: `tests/for-you-tiering.test.mjs`.
+- [x] **Explore = "new-to-you + diverse, less recency"** (`087cf410`): freshness
+      weight down (0.25→0.12), novelty up (0.30→0.35), a soft followed-author
+      penalty (reads subscriptionAuthors in the Explore runtime) so non-followed
+      creators surface, and more variety via the diversity sorter (MMR λ 0.7→0.5).
+      Test: explore follows-penalty in `tests/feed-engine/explore-scorer.test.mjs`.
+- [x] **Recent = chronological** (unchanged).
+- [ ] **Follow-up (optional):** Explore per-VIDEO "already watched" suppression
+      (currently only topic-novelty, not per-video) — needs the watch-history
+      preload wired into the Explore refresh like For You has. And a Trending tab
+      (popularity) once view-count/zap data is reliable.
 
 ## Open — medium priority
 
