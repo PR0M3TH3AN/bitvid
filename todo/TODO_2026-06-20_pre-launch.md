@@ -497,9 +497,24 @@ SILENT one: `handleEventDetailsAction` only opened the modal `if (… && payload
 - [x] `EventDetailsModal.open` now calls `openStaticModal` FIRST, then renders in
       a try/catch, so a render hiccup can't leave the click looking dead.
 - [x] The ⋯ popover is dismissed before opening the modal.
-- [ ] **VERIFY live** (I couldn't repro by inspection): click ⋯ → Event Details on
-      a card AND in the video modal. If it still does nothing, the new visible
-      error / console warn will say exactly why (no video vs open() throw).
+- [x] **Actual root cause (2nd live test):** BOTH Event Details and Popularity
+      reported "No video selected" from the **video modal's** ⋯ button. The modal
+      trigger declares its context as `data-more-dropdown="modal"`, but
+      `attachMoreMenuHandlers` read only `data-context` → defaulted to `"card"` →
+      skipped the modal-only video resolution → opened the popover with a **null
+      video**, so the panel's `data-event-id` was empty and every action failed.
+      The panel is built from `entry.context.video`, so this nulled the whole menu.
+      Fixes (all in `moreMenuController.js`):
+        1. Read context from `data-more-dropdown` as well as `data-context`.
+        2. Modal branch falls back to `this.videoModal.activeVideo` when
+           `getCurrentVideo()` is null (deep-link opens don't set playback's
+           currentVideo).
+        3. Defense-in-depth: `handleEventDetailsAction` resolves the video from
+           `app.videosMap.get(eventId)`, and `view-stats` uses a new
+           `getVideoByEventId` callback (dropping a risky `|| currentVideo`).
+      Regression tests added in `tests/more-menu-controller.test.mjs`.
+- [ ] **VERIFY live**: click ⋯ → Event Details AND ⋯ → Popularity in the video
+      modal AND on a grid/channel card; both should open the correct video.
 
 ### 28. Beacon torrent app stuck — spinner never resolves (BUG)
 - [ ] The torrent beacon app (`scripts/build:beacon` / `torrent/` integration) shows

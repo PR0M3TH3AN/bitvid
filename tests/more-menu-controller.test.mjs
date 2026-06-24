@@ -252,3 +252,110 @@ test('unmute-author removes creators from viewer mute list', async () => {
     ],
   ]);
 });
+
+// Regression: card popovers don't always carry the video object on the menu
+// context. The view-stats and event-details actions must resolve the video from
+// the menu item's eventId so the buttons work for cards (not just the modal).
+test('event-details forwards the eventId so the app can resolve a card video', async () => {
+  let received = null;
+  const controller = new MoreMenuController({
+    callbacks: {
+      getCurrentVideo: () => null,
+      handleEventDetailsAction: async (payload) => {
+        received = payload;
+      },
+      showError: (message) => {
+        throw new Error(`Unexpected error: ${message}`);
+      },
+    },
+  });
+
+  // video === null mimics entry.context.video being absent on a card popover.
+  await controller.handleMoreMenuAction(
+    'event-details',
+    { eventId: 'card-event-id', context: 'card' },
+    null,
+  );
+
+  assert.equal(received?.eventId, 'card-event-id');
+  assert.equal(received?.video, null);
+});
+
+test('view-stats looks the card video up by eventId instead of the modal video', async () => {
+  const resolvedVideo = { id: 'card-event-id', pubkey: 'authorhex' };
+  const lookups = [];
+  const controller = new MoreMenuController({
+    callbacks: {
+      // The old code used `|| currentVideo`, which would show this video's stats
+      // for any card whose popover lacked the object — the bug we're guarding.
+      getCurrentVideo: () => ({ id: 'wrong-modal-video' }),
+      getVideoByEventId: (eventId) => {
+        lookups.push(eventId);
+        return eventId === 'card-event-id' ? resolvedVideo : null;
+      },
+      showError: (message) => {
+        throw new Error(`Unexpected error: ${message}`);
+      },
+    },
+  });
+
+  // Drive the real action with no video object (card popover) in a DOM-less
+  // harness — openPopularityModal no-ops without a document, so we assert the
+  // controller resolved the right video by eventId before opening.
+  await controller.handleMoreMenuAction(
+    'view-stats',
+    { eventId: 'card-event-id', context: 'card' },
+    null,
+  );
+
+  assert.deepEqual(lookups, ['card-event-id']);
+});
+
+// Regression: the modal ⋯ trigger declares its context via `data-more-dropdown`
+// ("modal"), not `data-context`. Reading only `data-context` made it default to
+// "card" and skip modal video resolution, so the popover opened with a null
+// video and every action reported "No video selected." attachMoreMenuHandlers
+// must treat the trigger as modal context and resolve the modal's active video.
+test('modal ⋯ trigger resolves its video via data-more-dropdown + activeVideo fallback', async () => {
+  const activeVideo = { id: 'modal-video-id', pubkey: 'authorhex' };
+
+  const controller = new MoreMenuController({
+    callbacks: {
+      // currentVideo is null (e.g. deep-link open without playback) — the bug.
+      getCurrentVideo: () => null,
+      canCurrentUserManageBlacklist: () => false,
+    },
+  });
+  // The modal is the authoritative on-screen video source.
+  controller.setVideoModal({ activeVideo });
+  // Avoid the real DOM/popover engine; capture what toggleMoreMenu receives.
+  let toggled = null;
+  controller.toggleMoreMenu = (detail) => {
+    toggled = detail;
+  };
+  controller.ensureGlobalMoreMenuHandlers = () => {};
+  controller.getHTMLElementConstructor = () => null;
+  controller.document = {};
+
+  // Minimal trigger button mimicking the modal ⋯ markup.
+  let clickHandler = null;
+  const button = {
+    dataset: {},
+    getAttribute: (name) =>
+      name === 'data-more-dropdown' ? 'modal' : null,
+    addEventListener: (type, handler) => {
+      if (type === 'click') clickHandler = handler;
+    },
+  };
+  const container = {
+    querySelectorAll: () => [button],
+  };
+
+  controller.attachMoreMenuHandlers(container);
+  assert.equal(typeof clickHandler, 'function', 'click handler bound');
+
+  await clickHandler({ preventDefault() {}, stopPropagation() {} });
+
+  assert.equal(toggled?.context, 'modal');
+  assert.equal(toggled?.video, activeVideo);
+});

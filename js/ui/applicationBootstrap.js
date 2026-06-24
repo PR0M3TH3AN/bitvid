@@ -675,6 +675,10 @@ export default class ApplicationBootstrap {
       designSystem: app.designSystemContext,
       callbacks: {
         getCurrentVideo: () => app.currentVideo,
+        getVideoByEventId: (eventId) =>
+          eventId && app.videosMap instanceof Map
+            ? app.videosMap.get(eventId) || null
+            : null,
         getCurrentUserNpub: () => app.getCurrentUserNpub(),
         getCurrentUserPubkey: () => app.pubkey,
         canCurrentUserManageBlacklist: () =>
@@ -700,9 +704,14 @@ export default class ApplicationBootstrap {
             app.showError?.("Event details are unavailable.");
             return Promise.resolve();
           }
-          const video = payload?.video || null;
+          // Card popovers sometimes don't carry the video object on context, so
+          // resolve it from the menu item's eventId as a fallback (the object the
+          // grid already holds). This is what made the button silently no-op.
+          let video = payload?.video || null;
+          if (!video && payload?.eventId && app.videosMap instanceof Map) {
+            video = app.videosMap.get(payload.eventId) || null;
+          }
           if (!video) {
-            // Don't fail silently — this is the bug the ⋯ "Event Details" button hit.
             app.showError?.("No video selected for event details.");
             return Promise.resolve();
           }
