@@ -22,7 +22,7 @@ import {
 import { sanitizeRelayList } from "../nostr/nip46Client.js";
 import { normalizeHashtag } from "../utils/hashtagNormalization.js";
 import { profileCache } from "../state/profileCache.js";
-import { DEFAULT_RELAY_URLS } from "../nostr/toolkit.js";
+import { DEFAULT_RELAY_URLS, capReadRelays } from "../nostr/toolkit.js";
 import { relayManager } from "../relayManager.js";
 import {
   DEFAULT_NIP07_ENCRYPTION_METHODS,
@@ -686,7 +686,8 @@ class HashtagPreferencesService {
     }
 
     const readRelays = relayManager.getReadRelayUrls();
-    const relays = readRelays.length > 0 ? readRelays : Array.from(DEFAULT_RELAY_URLS);
+    // capReadRelays bounds to the §17 read cap (≤8) so this doesn't fan out across the full NIP-65 set at login.
+    const relays = capReadRelays(readRelays.length > 0 ? readRelays : Array.from(DEFAULT_RELAY_URLS));
     if (!relays.length) {
       if (wasLoadedForUser) {
         userLogger.warn(

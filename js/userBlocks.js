@@ -27,7 +27,7 @@ import {
   assertAnyRelayAccepted,
 } from "./nostrPublish.js";
 import { profileCache } from "./state/profileCache.js";
-import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
+import { DEFAULT_RELAY_URLS, capReadRelays } from "./nostr/toolkit.js";
 import { relayManager } from "./relayManager.js";
 import {
   DEFAULT_NIP07_ENCRYPTION_METHODS,
@@ -741,6 +741,12 @@ class UserBlockListManager {
       return null;
     }
 
+    // Bound the live block-list subscription to the §17 read cap (user relays
+    // first + reserved defaults, ≤8). Without this the subscription fanned out
+    // across the user's full NIP-65 set, a primary contributor to the cold-login
+    // REQ storm.
+    const cappedRelays = capReadRelays(relays);
+
     const key = `block-list:${normalized}`;
     this.blockListSubscriptionKey = key;
 
@@ -758,7 +764,7 @@ class UserBlockListManager {
     if (manager) {
       this.blockListSubscriptionHandle = manager.subscribe({
         key,
-        relays,
+        relays: cappedRelays,
         filters,
         label: "block-list",
         onEvent: (event) => this.handleBlockListEvent(event),
@@ -769,7 +775,7 @@ class UserBlockListManager {
     return relaySubscriptionService.ensureSubscription({
       key,
       pool: nostrClient.pool,
-      relays,
+      relays: cappedRelays,
       filters,
       label: "block-list",
       onEvent: (event) => this.handleBlockListEvent(event),
