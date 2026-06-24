@@ -197,11 +197,13 @@ Audit started 2026-06-23. See the doc for architecture map + findings. Summary:
 - [x] Comment box confirmed WORKING (the "message doesn't work" was the popover
       mis-position making it hard to use — see 3a).
 
-### 4. View counter accuracy & reliability
-- [ ] Audit the view-counter system (`viewEvents.js`, `reactionCounter.js`) for
-      accuracy and reliability — dedup per viewer/session, relay aggregation,
-      double-counting, and resilience to dead relays (now that feed defaults are
-      reserved, ensure view reads/writes use a sane relay set too).
+### 4. View counter accuracy & reliability — DEEP AUDIT
+- [ ] **Deep audit of the whole view-counting system** (`viewEvents.js`,
+      `reactionCounter.js`, the quarantined `tests/view-counter.test.mjs`): accuracy
+      and reliability — dedup per viewer/session, relay aggregation, double-counting,
+      and resilience to dead relays (now that feed defaults are reserved, ensure view
+      reads/writes use a sane relay set too). This audit underpins the popularity
+      chart (#26) and the Trending tab (#27), so do it first / alongside them.
 
 ### 5. Card-hide / video-liveness check — full plan in docs/video-liveness-plan.md
 Audited (2026-06-23). Finding: the hide/show **policy is already correct**
@@ -349,6 +351,44 @@ all-relays-settle fetch that drops slow-relay results — see 17d).
       record (kind/addressable + the event id / address it targets), wire it into the
       render-time filter alongside the existing author/community blacklist, and expose
       it in the moderation UI (and eventually the #23 admin tab).
+
+### 26. Video popularity / view-count chart (public, three-dots menu)
+- [ ] Surface a video's popularity from the view counter as a **chart of views over
+      time** that updates dynamically as more view events load in. Put it in the
+      video's **three-dots (⋯) menu** — view data is public, so any viewer can see it.
+      Depends on the #4 view-counter audit being trustworthy first.
+- [ ] FUTURE: feed the same data into a **creator dashboard** showing the creator
+      their videos' ranking + performance over time (separate, larger effort).
+
+### 27. "Trending" tab — recently-added sorted by view count
+- [ ] Add a new tab that is essentially "Recently added videos" **sorted by view
+      count** (call it "Trending" or similar) — a new sidebar grid that reuses the
+      recently-added source but ranks by views. Depends on reliable view counts (#4)
+      and benefits from the unified streaming grid (#17d). Gate behind a config flag
+      if it should be toggleable like the other new tabs.
+
+### 28. Beacon torrent app stuck — spinner never resolves (BUG)
+- [ ] The torrent beacon app (`scripts/build:beacon` / `torrent/` integration) shows
+      a spinner that never goes away. Trace the beacon's init/connect path: what the
+      spinner is waiting on (tracker/handshake/WebTorrent ready), whether it errors
+      silently, and whether it's related to the vendored `webtorrent.min.js`
+      `null.fill` crash (#10). Make it either resolve or fail visibly.
+
+### 29. Admin-whitelisted users bypass the Web-of-Trust (anti-abuse)
+- [ ] When an admin **whitelists** a user, that user's content should **bypass the
+      WoT mute/flag filtering** entirely — so people can't be silenced by others
+      maliciously flagging their content as bad. Apply the admin whitelist as an
+      allow-override at the render-time moderation filter (after WoT mute/block, like
+      the user-level allowlist in #24, but admin-scoped and authoritative).
+
+### 30. Blossom storage support (bring to par with R2 / S3)
+- [ ] Add **Blossom** (BUD-01/02 blob storage over Nostr) as a storage provider
+      alongside Cloudflare R2 and generic S3. Bring it to functional parity where
+      possible: upload, thumbnail, `.torrent`, public URL resolution, and
+      delete/edit cleanup. Slot it into the existing storage-provider abstraction
+      (`r2Service.js` / `storageService.js`) and the Storage settings pane; auth is
+      a signed Nostr event per Blossom rather than S3 keys. Research the BUD spec
+      coverage needed for bitvid's upload/delete flows.
 
 ## Open — lower priority / infra
 
@@ -517,18 +557,34 @@ Threat model / cautions (write these into the feature + docs):
 > as if it were never added (the current default state). Build both behind their own
 > config flags from the start.
 
-### 16. Nostr live streams — watch-only (zap.stream, shosho.live)
+### 16. Nostr live streams — INGEST / watch-only (zap.stream, shosho.live)
+> Ingesting live streams (watch others' streams) and PUBLISHING a stream
+> ("go live", #16c) are TWO separate functions and must each have their OWN config
+> flag — the maintainer wants to enable/disable ingest and publish independently.
 - [ ] Likely **NIP-53 Live Activities**: kind **30311** (live event; carries the
       `streaming` URL — usually HLS .m3u8 — plus `status` live/planned/ended,
       title, host `p` tags), and kind **1311** (live chat). zap.stream and
       shosho.live publish these.
 - [ ] Watch-only scope: discover/list live (status=live) events, render the HLS
-      stream in the player, optionally show live chat (read). Publish / "go live"
-      is a later, separate effort.
-- [ ] New **"Live" sidebar tab**, gated behind a config flag (see shared
-      requirement above) — disabled by default until shipped.
+      stream in the player, optionally show live chat (read).
+- [ ] New **"Live" sidebar tab**, gated behind its own INGEST config flag (see
+      shared requirement above) — disabled by default until shipped.
 - [ ] Research: confirm NIP-53 kinds + tag shapes, how zap.stream vs shosho.live
       populate `streaming`/`recording`, and HLS playback support in the player.
+
+### 16c. Publish live streams — "Go Live" from bitvid (like zap.stream)
+- [ ] Let users **broadcast their own stream** (camera / desktop / arbitrary source)
+      to Nostr via bitvid, the way zap.stream does: publish a NIP-53 kind-30311 live
+      event (status live → ended), push the media to a streaming endpoint (HLS), and
+      keep the event updated. This is the OUTBOUND counterpart to the #16 ingest.
+- [ ] **Separate config flag from ingest** — the maintainer wants to enable/disable
+      "go live" independently of watching live streams.
+- [ ] Develop a PLAN first (this is a large effort): the streaming pipeline
+      (getUserMedia/getDisplayMedia → encoder → HLS/WHIP ingest server), where the
+      media is hosted (zap.stream uses an external streaming server — bitvid likely
+      needs the same or a configurable endpoint), event lifecycle, and chat publish
+      (kind 1311). Note: pure-static bitvid can't host the media itself; identify the
+      streaming-server dependency early (relates to the CORS/edge constraints).
 
 ### 16b. Nostr short-form video notes — watch-only (new sidebar tab)
 - [ ] Short-form (vertical/portrait) video is **NIP-71 kind 22** (the short-form
