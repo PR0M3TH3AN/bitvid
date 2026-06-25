@@ -420,10 +420,25 @@ toward freshness and looked identical. Gave each a structural identity:
 
 ## Open — medium priority
 
-### 6. Test S3 (generic, non-R2) functions
-- [ ] End-to-end test the generic-S3 path (not just Cloudflare R2): upload, thumbnail,
-      `.torrent`, public-base-URL resolution, CORS guidance, and **delete/edit cleanup**
-      (provider-aware path-style). Confirm `forcePathStyle` is honored throughout.
+### 6. Test S3 (generic, non-R2) functions — DONE 2026-06-24
+- [x] **Audited; was more covered than it looked.** Already tested: upload/thumbnail/
+      `.torrent` (`s3UploadService.test.mjs`, `s3-upload-*`), CORS guidance
+      (`s3-upload-cors-guidance.test.mjs`), and **delete/edit cleanup provider-aware
+      path-style** — incl. the documented vhost bug (`r2-delete-video-storage.test.mjs`
+      asserts cleanup uses `forcePathStyle:false` for generic S3;
+      `s3-upload-publish-cleanup-integration.test.mjs` covers the full upload→delete
+      round-trip). `forcePathStyle` is plumbed through upload + delete.
+- [x] **Closed the real gap: public-URL resolution.** The upload tests *mock*
+      `buildS3ObjectUrl`, so the actual path-style/vhost URL logic in `js/storage/
+      s3-url.js` had no focused test. Added `tests/storage/s3-url.test.mjs` (11 pure-
+      function scenarios): path-style → bucket in PATH; vhost → bucket as host
+      subdomain (no double-prefix); endpoint path-prefix preserved; bare-endpoint
+      https upgrade; key/slash normalization; explicit `publicBaseUrl` wins; missing
+      inputs → "". Also covers `s3Service.derivePublicBaseUrl`/`buildS3ObjectUrl`.
+- [~] Provider forcePathStyle DEFAULTS (generic→path-style true, aws→vhost false) are
+      a 3-line internal config map (`resolveForcePathStyle`/`PROVIDER_TESTS`, not
+      exported); not unit-tested in isolation (would require exposing internals).
+      Behavior is exercised via the upload/delete tests above. Acceptable minor gap.
 
 ### 7. Mobile + video-card layout
 - [ ] Improve mobile layout and the video card layout.
