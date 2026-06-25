@@ -264,7 +264,7 @@ export const FEATURE_NIP71_INGEST = true;
  * `window.__BITVID_CARD_LIVENESS_POLICY__ = "hide-foreign"` in the console (then
  * refresh / scroll the grid). Invalid values fall back to "show-pending".
  */
-export const CARD_LIVENESS_POLICY = "show-pending";
+export const CARD_LIVENESS_POLICY = "hide-foreign";
 
 /**
  * IntersectionObserver `rootMargin` for the card liveness probes (URL + WebTorrent).
