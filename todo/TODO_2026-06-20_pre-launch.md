@@ -605,12 +605,29 @@ SILENT one: `handleEventDetailsAction` only opened the modal `if (… && payload
 - [ ] **VERIFY live**: open the beacon, paste a dead magnet → spinner should clear
       with a warning after ~30s instead of hanging; paste a live magnet → resolves.
 
-### 29. Admin-whitelisted users bypass the Web-of-Trust (anti-abuse)
-- [ ] When an admin **whitelists** a user, that user's content should **bypass the
-      WoT mute/flag filtering** entirely — so people can't be silenced by others
-      maliciously flagging their content as bad. Apply the admin whitelist as an
-      allow-override at the render-time moderation filter (after WoT mute/block, like
-      the user-level allowlist in #24, but admin-scoped and authoritative).
+### 29. Admin-whitelisted users bypass the Web-of-Trust (anti-abuse) — DEFERRED (YAGNI)
+**DECISION 2026-06-24: defer until there's a real brigading incident to scope against.**
+The premise is sound (an admin vouch is a stronger, non-brigadeable signal than
+crowd-sourced WoT mutes/flags), but it's a speculative anti-abuse feature and the
+right *scope* is best decided against a real case. Low risk to defer at small scale:
+WoT mutes come from *trusted* muters, so brigading requires coordinating people
+already inside the trust graph. **One caveat:** there's currently no admin override
+to rescue a creator who *does* get WoT-hidden, so if it happens, ship this promptly.
+
+**Scaffolding already exists — when needed, this is a small, localized change:**
+- `js/feedEngine/stages.js` (~1143): `adminWhitelist` is already computed per video
+  (`adminStatus?.whitelisted === true`) and there's an `adminWhitelistBypass = false`
+  placeholder right beside the hide decision (~1210-1229) + a `hideBypass` framework
+  (`"viewer-override"` / `"feed-policy"`). Wire `"admin-whitelist"` as another reason.
+- **Scope it correctly (the design refinements):**
+  1. Bypass only the **WoT mute/report HIDE** layer — that's the brigadeable part.
+  2. **Never** override a viewer's OWN block/mute — those are a separate, earlier
+     filter (`reason: "viewer-block"`, stages.js:934), so the bypass naturally won't.
+  3. **Open scope question** (decide against the real case): bypass *soft* report
+     categories (nudity/spam/general mutes) only and still HIDE hard/illegal
+     categories — vs. bypass everything. Categories ARE distinguished (`reportType`),
+     so either is feasible. Leaning soft-only so a whitelist can't force-show illegal.
+- [ ] When a real example appears: flip the placeholder with the scope above + tests.
 
 ### 30. Blossom storage support (bring to par with R2 / S3)
 - [ ] Add **Blossom** (BUD-01/02 blob storage over Nostr) as a storage provider
