@@ -2625,6 +2625,12 @@ export class VideoCard {
     if (this.video.pubkey) {
       this.root.dataset.ownerPubkey = this.video.pubkey;
     }
+    // Provenance flag for the liveness visibility policy: foreign/ingested videos
+    // (pulled in from other Nostr apps) can be hidden-until-verified separately
+    // from bitvid-native uploads. See cardSourceVisibility + CARD_LIVENESS_POLICY.
+    const isForeign =
+      this.video?.foreign === true || this.video?.source === "nip71-ingest";
+    this.root.dataset.foreign = isForeign ? "true" : "false";
   }
 
   applySourceDatasets() {

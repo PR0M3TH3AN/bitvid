@@ -959,6 +959,92 @@ function testExtractDescriptionHashFromBolt11() {
   assert.equal(extracted, descriptionHashHex);
 }
 
+// When the platform fee would be paid to the SAME Lightning address as the
+// creator, the split must collapse to a single full-amount payment instead of
+// sending two invoices to one wallet (extra routing fee + duplicate receipt).
+async function testCreatorEqualsPlatformCollapsesToOnePayment() {
+  globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = 30;
+  const { deps, getSendCalls, getValidatorCalls } = createDeps({
+    platformAddress: "creator@example.com", // identical to the creator below
+  });
+
+  const videoEvent = {
+    id: "event-id",
+    pubkey: "c".repeat(64),
+    lightningAddress: "Creator@example.com", // mixed case → must still collapse
+    tags: [["d", "pointer"]],
+    kind: 30078,
+  };
+
+  const result = await splitAndZap(
+    { videoEvent, amountSats: 1000, comment: "self-owned platform" },
+    deps
+  );
+
+  assert.equal(result.totalAmount, 1000);
+  assert.equal(result.creatorShare, 1000, "creator receives the full amount");
+  assert.equal(result.platformShare, 0, "no separate platform fee is split out");
+  assert.equal(result.receipts.length, 1, "exactly one payment is made");
+
+  const sendCalls = getSendCalls();
+  assert.equal(sendCalls.length, 1, "must not double-pay the same wallet");
+  assert.equal(sendCalls[0].amountSats, 1000);
+  assert.equal(
+    getValidatorCalls().length,
+    1,
+    "only one receipt to validate after collapsing"
+  );
+}
+
+// The split must never lose or invent sats: creatorShare + platformShare always
+// equals the total, and a fee that rounds below 1 sat falls entirely to the
+// creator rather than silently dropping value.
+async function testSplitRoundingPreservesEverySat() {
+  // 33% of 1000 = 330 exactly-floored; creator gets the remainder.
+  globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = 33;
+  {
+    const { deps, getSendCalls } = createDeps();
+    const videoEvent = {
+      id: "e1",
+      pubkey: "c".repeat(64),
+      lightningAddress: "creator@example.com",
+      tags: [["d", "p"]],
+      kind: 30078,
+    };
+    const result = await splitAndZap({ videoEvent, amountSats: 1000 }, deps);
+    assert.equal(result.platformShare, 330);
+    assert.equal(result.creatorShare, 670);
+    assert.equal(
+      result.creatorShare + result.platformShare,
+      result.totalAmount,
+      "no sats lost or invented"
+    );
+    const amounts = getSendCalls().map((c) => c.amountSats);
+    assert.deepEqual(amounts, [670, 330]);
+  }
+
+  // 10% of 5 sats floors to 0 → the whole zap goes to the creator as one payment.
+  globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = 10;
+  {
+    const { deps, getSendCalls } = createDeps();
+    const videoEvent = {
+      id: "e2",
+      pubkey: "c".repeat(64),
+      lightningAddress: "creator@example.com",
+      tags: [["d", "p"]],
+      kind: 30078,
+    };
+    const result = await splitAndZap({ videoEvent, amountSats: 5 }, deps);
+    assert.equal(result.platformShare, 0, "sub-1-sat fee is not charged");
+    assert.equal(result.creatorShare, 5);
+    const sendCalls = getSendCalls();
+    assert.equal(sendCalls.length, 1, "no zero-amount platform payment is sent");
+    assert.equal(sendCalls[0].amountSats, 5);
+  }
+}
+
+await testCreatorEqualsPlatformCollapsesToOnePayment();
+await testSplitRoundingPreservesEverySat();
 await testSplitMath();
 await testBech32LightningAddressZapTag();
 await testUrlLightningAddressZapTag();

@@ -151,7 +151,7 @@ edge instead of `bottom-end` under its trigger.
       fresh portaled panel and already positions correctly. If any other pre-existing
       in-modal panel is found mis-positioned, this same engine fix now covers it.
 
-### 3. Zaps system + platform-fee zap split — full plan in docs/zap-audit-plan.md
+### 3. Zaps system + platform-fee zap split — DONE 2026-06-24 (full plan in docs/zap-audit-plan.md)
 Audit started 2026-06-23. See the doc for architecture map + findings. Summary:
 - [x] **Send-error softened** (`dd1ce113`): recipient LNURL unreachable/CORS now
       shows a clear message, not raw "Failed to fetch".
@@ -184,16 +184,48 @@ Audit started 2026-06-23. See the doc for architecture map + findings. Summary:
       few times for a late receipt. See docs/zap-audit-plan.md.
 - [x] **Platform-fee fallback verified no-bypass** — junk override falls back to the
       configured fee, not 0.
-- [ ] **CORS / LNURL proxy decision** (NEEDS A DECISION — the remaining reliability
-      fix). A static client can't fetch CORS-less LNURL hosts; options: (a) small
-      Vercel edge proxy that fetches LNURL pay-data + invoice and returns with CORS
-      [recommended — what web wallets do]; (b) document the limit / CORS-only hosts;
-      (c) route LN-address resolution via the connected NWC wallet. See
-      docs/zap-audit-plan.md. NOTE: with NWC now connecting, re-test how many sends
-      actually fail on CORS vs were just the NWC bug.
-- [ ] **Remaining audit items**: platform-fee split correctness (the earlier "fee
-      landed in my own wallet" report + self-zap / creator==platform edge), receipt
-      validation (9735), NWC budget/retry UX, general clunkiness.
+- [x] **CORS / LNURL — DECIDED 2026-06-24: accept graceful degradation, no proxy.**
+      Keep the visual zappability flag (`walletZappabilityCheck` /
+      `lnurl-unreachable`) as the honest fallback when a recipient's LNURL host
+      sends no CORS headers. Rationale:
+        - Browser-enforced CORS can't be bypassed from page JS; the only universal
+          fix is a proxy, which **breaks the static/no-custody rule** AND adds a
+          real security surface (the proxy can swap the returned bolt11 → steal the
+          zap unless it verifies `description_hash`). Not worth it for a static app.
+        - The fee/receipt model is **fundamentally incompatible** with a CORS-blocked
+          recipient in a static client: the platform-fee split needs to fetch the
+          creator's invoice in-page, which is exactly what CORS blocks.
+        - WebLN was evaluated and rejected: its only CORS-bypassing primitive
+          (`webln.lnurl()`) **pays directly** — no NIP-57 receipt, no split, no
+          deterministic amount — so it degrades a zap into an unattributed tip and
+          bypasses the platform fee. Not acceptable as a silent fallback.
+      Net: the current behavior is the right answer for a static, no-custody client.
+- [x] **Remaining audit items — DONE 2026-06-24. #3 fully closed.**
+      - **Split correctness (`js/payments/zapSplit.js`):** `platformShare =
+        floor(amount*fee/100)`, `creatorShare = amount - platformShare` — the
+        creator always gets the remainder, so **no sats are lost or invented**; a
+        sub-1-sat fee rounds to 0 and the whole zap goes to the creator (no
+        zero-amount platform send). Fee is `clampPercent`-bounded to 0–100 and a
+        junk override falls back to the configured default (can't be bypassed or
+        swallow the zap). **Fixed the creator==platform edge:** when the platform
+        fee would pay the *same* Lightning address as the creator, the split now
+        collapses to a single full-amount payment (was sending two invoices to one
+        wallet → extra routing fee + duplicate receipt). Cheat-resistant tests
+        added in `tests/zap-split.test.mjs`
+        (`testCreatorEqualsPlatformCollapsesToOnePayment`,
+        `testSplitRoundingPreservesEverySat`).
+      - **"Fee landed in my own wallet" — NOT a bug (expected):** occurs when the
+        *sender is the platform operator* (the platform fee correctly returns to
+        them) or on a *self-zap* (you get your own creator share back). The fee
+        recipient is always the configured platform address, never the sender's.
+      - **Receipt validation (9735):** already fixed 2026-06-23 (author + bolt11 +
+        description-hash match, with polling for late receipts); confirmed green
+        (`tests/zap-receipt-pool.test.mjs`, validator tests in `zap-split`).
+      - **NWC budget/retry UX:** already actionable — detects budget-exhausted,
+        shows "Increase your wallet zap limit or reduce the platform fee, then
+        retry…" plus the remaining-share summary and a Retry button.
+      - **General clunkiness:** maintainer confirms the flow is working well;
+        closed as accepted.
 - [x] Comment box confirmed WORKING (the "message doesn't work" was the popover
       mis-position making it hard to use — see 3a).
 
@@ -271,9 +303,34 @@ un-hides when WebTorrent flips green). The real gaps:
       playbackService_order suite in CI). ROLLBACK: revert the loop in
       `playbackService.js` to the single `attemptHostedPlayback()` call + drop the
       `sources` plumbing.
-- [ ] **Remaining — hide-until-verified for foreign/ingested** (decision): so
-      unplayable strangers never briefly flash before the probe hides them
-      (bitvid-native stays show-pending). UX policy change in cardSourceVisibility.
+- [x] **Made the policy config-driven for live A/B testing (2026-06-24).** New
+      `CARD_LIVENESS_POLICY` (config/instance-config.js): `show-pending` (default,
+      unchanged) | `hide-foreign` (foreign/ingested hidden until a source verifies;
+      native stays show-pending) | `hide-all`. Owner's own cards always visible.
+      Flip it live without a rebuild: `window.__BITVID_CARD_LIVENESS_POLICY__ =
+      "hide-foreign"` then refresh/scroll. Implemented via a `data-foreign`
+      provenance flag on the card + `getCardLivenessPolicy()` in
+      `cardSourceVisibility.js`. Tests: three policy scenarios in
+      `tests/video-card-source-visibility.test.mjs` (also un-broke 3 pre-existing
+      VideoCard tests by adding the missing IntersectionObserver JSDOM stub).
+- [x] **Probe speed — prefetch ahead of scroll (2026-06-24).** Both liveness
+      probes were already viewport-gated (IntersectionObserver, on-screen-first,
+      WebTorrent priority-queued + concurrency-capped). Added a configurable
+      `LIVENESS_PROBE_PREFETCH_MARGIN` (default `600px`) applied to both observers'
+      `rootMargin`, so cards just below the fold verify before the user scrolls to
+      them — makes hide-until-verified feel instant. Override:
+      `window.__BITVID_LIVENESS_PREFETCH_MARGIN__`.
+- [x] **Deadlock fixed (2026-06-24).** First hide-foreign test made ALL foreign/
+      NIP-71 content vanish: a hide-until-verified card starts `display:none`, which
+      has no layout box, so the IntersectionObserver never fires for it → its
+      liveness probe never runs → it never gets a healthy verdict → hidden forever.
+      Fix: `cardNeedsEagerLivenessProbe()` + eager-probe such cards on
+      `onCardRegister` (fires regardless of visibility) in both `gridHealth` and
+      `urlHealthObserver`, instead of waiting for an intersection that can't happen.
+      Still concurrency-capped/priority-ordered; show-pending unchanged. Default is
+      now `hide-foreign`.
+- [ ] **DECIDE after live A/B**: confirm `hide-foreign` feels right (foreign cards
+      now verify-then-appear); else flip `CARD_LIVENESS_POLICY` in instance-config.
 
 ### 18. Embed button / modal on the video player does not open — FIXED 2026-06-23
 - [x] **Root cause: event-name mismatch.** `VideoModal.handleEmbedRequest`
@@ -363,10 +420,25 @@ toward freshness and looked identical. Gave each a structural identity:
 
 ## Open — medium priority
 
-### 6. Test S3 (generic, non-R2) functions
-- [ ] End-to-end test the generic-S3 path (not just Cloudflare R2): upload, thumbnail,
-      `.torrent`, public-base-URL resolution, CORS guidance, and **delete/edit cleanup**
-      (provider-aware path-style). Confirm `forcePathStyle` is honored throughout.
+### 6. Test S3 (generic, non-R2) functions — DONE 2026-06-24
+- [x] **Audited; was more covered than it looked.** Already tested: upload/thumbnail/
+      `.torrent` (`s3UploadService.test.mjs`, `s3-upload-*`), CORS guidance
+      (`s3-upload-cors-guidance.test.mjs`), and **delete/edit cleanup provider-aware
+      path-style** — incl. the documented vhost bug (`r2-delete-video-storage.test.mjs`
+      asserts cleanup uses `forcePathStyle:false` for generic S3;
+      `s3-upload-publish-cleanup-integration.test.mjs` covers the full upload→delete
+      round-trip). `forcePathStyle` is plumbed through upload + delete.
+- [x] **Closed the real gap: public-URL resolution.** The upload tests *mock*
+      `buildS3ObjectUrl`, so the actual path-style/vhost URL logic in `js/storage/
+      s3-url.js` had no focused test. Added `tests/storage/s3-url.test.mjs` (11 pure-
+      function scenarios): path-style → bucket in PATH; vhost → bucket as host
+      subdomain (no double-prefix); endpoint path-prefix preserved; bare-endpoint
+      https upgrade; key/slash normalization; explicit `publicBaseUrl` wins; missing
+      inputs → "". Also covers `s3Service.derivePublicBaseUrl`/`buildS3ObjectUrl`.
+- [~] Provider forcePathStyle DEFAULTS (generic→path-style true, aws→vhost false) are
+      a 3-line internal config map (`resolveForcePathStyle`/`PROVIDER_TESTS`, not
+      exported); not unit-tested in isolation (would require exposing internals).
+      Behavior is exercised via the upload/delete tests above. Acceptable minor gap.
 
 ### 7. Mobile + video-card layout
 - [ ] Improve mobile layout and the video card layout.
@@ -414,11 +486,22 @@ toward freshness and looked identical. Gave each a structural identity:
       Source still to pin: the loop issuing 30000/30002/30005/30015 per contact.
 
 ### 22. Anti-spam: validate npub on application / submission forms
-- [ ] Application/submission forms accept too much spam. Require the submitter's
-      identifier to be a valid `npub` (NIP-19) — regex/decoder validation client-side
-      so submission only succeeds for a well-formed npub (and normalize to hex for
-      storage). Reject/disable submit otherwise with a clear inline error. Pairs with
-      #23 (the submissions should become structured data, not DMs).
+- [x] **DONE 2026-06-24.** Added a shared, testable NIP-19 validator
+      (`js/utils/validateNpub.js`, exposes `window.validateNpubHex`) and wired it
+      into all four embed submission forms (`components/iframe_forms/`):
+        - **Application** (`applicantNpub`, required): submit is blocked unless the
+          npub decodes to a 64-char hex pubkey; the hex is also written into the
+          application body for canonical storage/whitelist matching.
+        - **Feature-request / bug-fix / feedback** (`userNpub`, optional): the npub
+          stays optional, but a non-empty value must be a valid npub or submit is
+          blocked with a clear inline error.
+      Validation decodes via the real nostr-tools `nip19` (checksum + prefix +
+      hex shape), so spam/free-text/`note1…`/tampered npubs are rejected.
+      Unit tests: `tests/validate-npub.test.mjs` (real nostr-tools). Pairs with #23
+      (submissions should become structured data, not DMs).
+- [ ] **VERIFY live**: open each form embed — application rejects a junk npub and
+      only sends with a valid npub1…; the optional forms send when the npub is
+      blank but reject a malformed one.
 
 ### 23. Admin submissions tab — structured submissions + approve/deny UI (SCALING)
 - [ ] Replace the current DM-based submission flow with **custom structured data**
@@ -516,19 +599,73 @@ SILENT one: `handleEventDetailsAction` only opened the modal `if (… && payload
 - [ ] **VERIFY live**: click ⋯ → Event Details AND ⋯ → Popularity in the video
       modal AND on a grid/channel card; both should open the correct video.
 
-### 28. Beacon torrent app stuck — spinner never resolves (BUG)
-- [ ] The torrent beacon app (`scripts/build:beacon` / `torrent/` integration) shows
-      a spinner that never goes away. Trace the beacon's init/connect path: what the
-      spinner is waiting on (tracker/handshake/WebTorrent ready), whether it errors
-      silently, and whether it's related to the vendored `webtorrent.min.js`
-      `null.fill` crash (#10). Make it either resolve or fail visibly.
+### 32. Whitelisted author's video won't play — "not from a whitelisted author" (BUG)
+Reported 2026-06-25: a video from a known-whitelisted author refused to play
+("This content is not from a whitelisted author." at `playbackCoordinator
+.playVideoByEventId`). The source URL was confirmed 100% healthy (HTTP 200,
+video/mp4, range + CORS `*`) — the block is the whitelist gate, not the source.
+- [x] **Root cause + fix: `canAccess` format asymmetry.** `accessControl` keeps the
+      whitelist in TWO sets — `whitelistPubkeys` (hex) and `whitelist` (npub) — and
+      `canAccess` checked only ONE based on the caller's input format (npub→npub set,
+      hex→hex set) without cross-deriving. `playbackCoordinator` passes the author's
+      **npub**, so it consulted only the npub set; if the entry was present in only
+      the hex set (e.g. the hex decode hadn't run / a normalization mismatch), a
+      genuinely whitelisted author read as "not allowed." Fixed `canAccess` to
+      cross-derive both forms and check BOTH sets (false-negatives only; a
+      non-whitelisted author is still denied). Tests:
+      `tests/access-control-canaccess.test.mjs`.
+- [x] Added a dev-gated diagnostic at the playback rejection
+      (`playbackCoordinator`) logging hex/npub, whitelistMode, set sizes, and
+      `inNpubSet`/`inHexSet` — so if it still denies, we know instantly whether the
+      author is genuinely off the list (→ then it's the separate "ingested foreign
+      content shown in a whitelist-mode feed but unplayable" question) vs a load race.
+- [ ] **VERIFY live**: replay the failing nevent. If it plays → fixed. If it still
+      denies, paste the new `[playback] access denied — whitelist diagnostic` line.
 
-### 29. Admin-whitelisted users bypass the Web-of-Trust (anti-abuse)
-- [ ] When an admin **whitelists** a user, that user's content should **bypass the
-      WoT mute/flag filtering** entirely — so people can't be silenced by others
-      maliciously flagging their content as bad. Apply the admin whitelist as an
-      allow-override at the render-time moderation filter (after WoT mute/block, like
-      the user-level allowlist in #24, but admin-scoped and authoritative).
+### 28. Beacon torrent app stuck — spinner never resolves (BUG) — FIXED 2026-06-24
+- [x] **Root cause:** the processing overlay (`torrent/app.js`) was gated on
+      WebTorrent's metadata-ready callback (`client.add(magnet, opts, cb)` /
+      `client.seed`). That callback only fires once metadata arrives from peers, so
+      a magnet with **no live seeders** never resolved it and the spinner span
+      forever — and a torrent that emits its own `'error'` (bad/duplicate magnet)
+      didn't always reach the client-level handler. (NOT the `null.fill` crash
+      (#10); the client constructs fine — this was a missing timeout/failure path.)
+- [x] **Fix:** added a watchdog around the overlay. `beginProcessing()` arms a
+      30s `PROCESSING_TIMEOUT_MS` timer; if the op hasn't completed it drops the
+      overlay and warns ("still searching for peers — it'll keep trying in the
+      background") while the torrent stays in the table and keeps announcing.
+      `handleTorrentReady`, the client error handler, and `destroy()` all clear the
+      watchdog. `addMagnet`/`seedFiles` now wrap `add`/`seed` in try/catch and
+      attach a per-torrent `'error'` listener so bad magnets fail visibly.
+- [x] **Tests:** `tests/torrent/beacon-watchdog.test.mjs` (JSDOM) — a no-peers
+      magnet drops the spinner + warns; a ready torrent resolves it and a stale
+      watchdog can't re-fire.
+- [ ] **VERIFY live**: open the beacon, paste a dead magnet → spinner should clear
+      with a warning after ~30s instead of hanging; paste a live magnet → resolves.
+
+### 29. Admin-whitelisted users bypass the Web-of-Trust (anti-abuse) — DEFERRED (YAGNI)
+**DECISION 2026-06-24: defer until there's a real brigading incident to scope against.**
+The premise is sound (an admin vouch is a stronger, non-brigadeable signal than
+crowd-sourced WoT mutes/flags), but it's a speculative anti-abuse feature and the
+right *scope* is best decided against a real case. Low risk to defer at small scale:
+WoT mutes come from *trusted* muters, so brigading requires coordinating people
+already inside the trust graph. **One caveat:** there's currently no admin override
+to rescue a creator who *does* get WoT-hidden, so if it happens, ship this promptly.
+
+**Scaffolding already exists — when needed, this is a small, localized change:**
+- `js/feedEngine/stages.js` (~1143): `adminWhitelist` is already computed per video
+  (`adminStatus?.whitelisted === true`) and there's an `adminWhitelistBypass = false`
+  placeholder right beside the hide decision (~1210-1229) + a `hideBypass` framework
+  (`"viewer-override"` / `"feed-policy"`). Wire `"admin-whitelist"` as another reason.
+- **Scope it correctly (the design refinements):**
+  1. Bypass only the **WoT mute/report HIDE** layer — that's the brigadeable part.
+  2. **Never** override a viewer's OWN block/mute — those are a separate, earlier
+     filter (`reason: "viewer-block"`, stages.js:934), so the bypass naturally won't.
+  3. **Open scope question** (decide against the real case): bypass *soft* report
+     categories (nudity/spam/general mutes) only and still HIDE hard/illegal
+     categories — vs. bypass everything. Categories ARE distinguished (`reportType`),
+     so either is feasible. Leaning soft-only so a whitelist can't force-show illegal.
+- [ ] When a real example appears: flip the placeholder with the scope above + tests.
 
 ### 30. Blossom storage support (bring to par with R2 / S3)
 - [ ] Add **Blossom** (BUD-01/02 blob storage over Nostr) as a storage provider

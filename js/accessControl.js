@@ -749,7 +749,39 @@ class AccessControl {
       }
     }
 
-    const normalized = normalizeNpub(npub);
+    let normalized = normalizeNpub(npub);
+
+    // Cross-derive the missing representation. `whitelistPubkeys`/`blacklistPubkeys`
+    // are hex-keyed while `whitelist`/`blacklist` are npub-keyed; both are built
+    // from the same admin lists, but a format mismatch between the caller's input
+    // and how a given entry was stored must NOT read as "not allowed". Filling in
+    // both forms lets the checks below consult both sets.
+    const accessTools =
+      (typeof window !== "undefined" ? window?.NostrTools : null) ||
+      (typeof globalThis !== "undefined" ? globalThis?.NostrTools : null) ||
+      null;
+    if (normalized && !hex && typeof accessTools?.nip19?.decode === "function") {
+      try {
+        const decoded = accessTools.nip19.decode(normalized);
+        if (decoded?.type === "npub") {
+          hex = normalizeHexKey(
+            typeof decoded.data === "string"
+              ? decoded.data
+              : bytesToHex(decoded.data)
+          );
+        }
+      } catch (error) {
+        // ignore — fall back to the npub-only checks
+      }
+    }
+    if (hex && !normalized && typeof accessTools?.nip19?.npubEncode === "function") {
+      try {
+        normalized = normalizeNpub(accessTools.nip19.npubEncode(hex));
+      } catch (error) {
+        // ignore — fall back to the hex-only checks
+      }
+    }
+
     if (!normalized) {
       if (!hex) {
         return false;

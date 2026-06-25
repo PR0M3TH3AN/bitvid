@@ -7,6 +7,8 @@ import {
   DEFAULT_PLAYBACK_SOURCE,
   DEFAULT_PLAYBACK_START_TIMEOUT,
   FEATURE_NIP71_INGEST as CONFIG_FEATURE_NIP71_INGEST,
+  CARD_LIVENESS_POLICY as CONFIG_CARD_LIVENESS_POLICY,
+  LIVENESS_PROBE_PREFETCH_MARGIN as CONFIG_LIVENESS_PROBE_PREFETCH_MARGIN,
   IS_DEV_MODE,
 } from "./config.js";
 
@@ -468,6 +470,64 @@ runtimeFlags.TRUSTED_SPAM_HIDE_THRESHOLD = TRUSTED_SPAM_HIDE_THRESHOLD;
 export function setUrlFirstEnabled(next) {
   runtimeFlags.URL_FIRST_ENABLED = next;
   return URL_FIRST_ENABLED;
+}
+
+// -----------------------------------------------------------------------------
+// Card liveness visibility policy (see config/instance-config.js). Resolved on
+// every read so it can be flipped live for A/B feel-testing via the console:
+//   window.__BITVID_CARD_LIVENESS_POLICY__ = "hide-foreign"   // then refresh/scroll
+// -----------------------------------------------------------------------------
+export const CARD_LIVENESS_POLICIES = Object.freeze([
+  "show-pending",
+  "hide-foreign",
+  "hide-all",
+]);
+
+function normalizeLivenessPolicy(value) {
+  return typeof value === "string" && CARD_LIVENESS_POLICIES.includes(value)
+    ? value
+    : null;
+}
+
+let cardLivenessPolicy =
+  normalizeLivenessPolicy(CONFIG_CARD_LIVENESS_POLICY) || "show-pending";
+
+export function getCardLivenessPolicy() {
+  const override =
+    typeof globalThis !== "undefined"
+      ? normalizeLivenessPolicy(globalThis.__BITVID_CARD_LIVENESS_POLICY__)
+      : null;
+  return override || cardLivenessPolicy;
+}
+
+export function setCardLivenessPolicy(next) {
+  const normalized = normalizeLivenessPolicy(next);
+  if (normalized) {
+    cardLivenessPolicy = normalized;
+    if (typeof globalThis !== "undefined") {
+      globalThis.__BITVID_CARD_LIVENESS_POLICY__ = normalized;
+    }
+  }
+  return cardLivenessPolicy;
+}
+
+// IntersectionObserver rootMargin for the liveness probes — lets cards just below
+// the fold probe ahead of the scroll. Live-overridable for tuning.
+const DEFAULT_LIVENESS_PREFETCH_MARGIN =
+  typeof CONFIG_LIVENESS_PROBE_PREFETCH_MARGIN === "string" &&
+  CONFIG_LIVENESS_PROBE_PREFETCH_MARGIN.trim()
+    ? CONFIG_LIVENESS_PROBE_PREFETCH_MARGIN.trim()
+    : "0px";
+
+export function getLivenessProbePrefetchMargin() {
+  const override =
+    typeof globalThis !== "undefined"
+      ? globalThis.__BITVID_LIVENESS_PREFETCH_MARGIN__
+      : null;
+  if (typeof override === "string" && override.trim()) {
+    return override.trim();
+  }
+  return DEFAULT_LIVENESS_PREFETCH_MARGIN;
 }
 
 export function setWssTrackers(next) {
