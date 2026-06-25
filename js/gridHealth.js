@@ -1,6 +1,9 @@
 import { createCardObserver } from "./dom/cardObserver.js";
 import { infoHashFromMagnet } from "./magnets.js";
-import { updateVideoCardSourceVisibility } from "./utils/cardSourceVisibility.js";
+import {
+  updateVideoCardSourceVisibility,
+  cardNeedsEagerLivenessProbe,
+} from "./utils/cardSourceVisibility.js";
 import { TorrentClient, torrentClient } from "./webtorrent.js";
 import { userLogger } from "./utils/logger.js";
 import {
@@ -532,9 +535,24 @@ const gridCardObserver = createCardObserver({
     const ratio = typeof entry.intersectionRatio === "number" ? entry.intersectionRatio : 0;
     return isIntersecting && ratio > 0;
   },
-  onCardRegister: ({ card }) => {
+  onCardRegister: ({ card, state }) => {
     if (!card.dataset.magnet) {
       setBadge(card, "unhealthy", { reason: "missing-source" });
+      return;
+    }
+    // Hide-until-verified cards start hidden, so the viewport observer can never
+    // fire for them — probe eagerly on register (still concurrency-capped) so
+    // they can be verified and revealed instead of staying hidden forever.
+    if (
+      cardNeedsEagerLivenessProbe(card) &&
+      state &&
+      state.pendingByCard instanceof WeakMap
+    ) {
+      handleCardVisible({
+        card,
+        pendingByCard: state.pendingByCard,
+        priority: PRIORITY_BASELINE,
+      });
     }
   },
   onCardVisible: ({ card, meta, state }) => {

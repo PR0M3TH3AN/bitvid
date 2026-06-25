@@ -2,7 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 
-import { updateVideoCardSourceVisibility } from "../js/utils/cardSourceVisibility.js";
+import {
+  updateVideoCardSourceVisibility,
+  cardNeedsEagerLivenessProbe,
+} from "../js/utils/cardSourceVisibility.js";
 import { setCardLivenessPolicy } from "../js/constants.js";
 import { VideoCard } from "../js/ui/components/VideoCard.js";
 
@@ -220,6 +223,31 @@ test("CARD_LIVENESS_POLICY=hide-all hides every pending non-owner card but never
   nativeCard.dataset.urlHealthState = "healthy";
   updateVideoCardSourceVisibility(nativeCard);
   assert.equal(nativeCard.hidden, false, "card appears once a source verifies");
+});
+
+// Hide-until-verified cards start display:none, so the viewport observer can't
+// fire for them — they must be eager-probed. This predicate gates that, and it
+// must mirror the visibility policy exactly so the right cards get probed.
+test("cardNeedsEagerLivenessProbe gates eager probing to hidden-until-verified cards", (t) => {
+  const { document } = setupDom(t);
+  t.after(() => setCardLivenessPolicy("show-pending"));
+
+  const foreign = makeCard(document, { foreign: "true" });
+  const native = makeCard(document, { foreign: "false" });
+  const owner = makeCard(document, { foreign: "true", owner: "true" });
+
+  setCardLivenessPolicy("show-pending");
+  assert.equal(cardNeedsEagerLivenessProbe(foreign), false, "show-pending never eager-probes");
+  assert.equal(cardNeedsEagerLivenessProbe(native), false);
+
+  setCardLivenessPolicy("hide-foreign");
+  assert.equal(cardNeedsEagerLivenessProbe(foreign), true, "foreign card is eager-probed");
+  assert.equal(cardNeedsEagerLivenessProbe(native), false, "native card stays viewport-gated");
+  assert.equal(cardNeedsEagerLivenessProbe(owner), false, "owner card is never gated");
+
+  setCardLivenessPolicy("hide-all");
+  assert.equal(cardNeedsEagerLivenessProbe(native), true, "hide-all eager-probes native too");
+  assert.equal(cardNeedsEagerLivenessProbe(owner), false, "owner card is never gated");
 });
 
 test("VideoCard.closeMoreMenu only restores focus when the trigger was expanded", (t) => {

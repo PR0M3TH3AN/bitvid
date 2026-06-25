@@ -320,8 +320,17 @@ un-hides when WebTorrent flips green). The real gaps:
       `rootMargin`, so cards just below the fold verify before the user scrolls to
       them — makes hide-until-verified feel instant. Override:
       `window.__BITVID_LIVENESS_PREFETCH_MARGIN__`.
-- [ ] **DECIDE after live A/B**: pick the default policy that feels best
-      (recommend `hide-foreign`) and set `CARD_LIVENESS_POLICY` in instance-config.
+- [x] **Deadlock fixed (2026-06-24).** First hide-foreign test made ALL foreign/
+      NIP-71 content vanish: a hide-until-verified card starts `display:none`, which
+      has no layout box, so the IntersectionObserver never fires for it → its
+      liveness probe never runs → it never gets a healthy verdict → hidden forever.
+      Fix: `cardNeedsEagerLivenessProbe()` + eager-probe such cards on
+      `onCardRegister` (fires regardless of visibility) in both `gridHealth` and
+      `urlHealthObserver`, instead of waiting for an intersection that can't happen.
+      Still concurrency-capped/priority-ordered; show-pending unchanged. Default is
+      now `hide-foreign`.
+- [ ] **DECIDE after live A/B**: confirm `hide-foreign` feels right (foreign cards
+      now verify-then-appear); else flip `CARD_LIVENESS_POLICY` in instance-config.
 
 ### 18. Embed button / modal on the video player does not open — FIXED 2026-06-23
 - [x] **Root cause: event-name mismatch.** `VideoModal.handleEmbedRequest`

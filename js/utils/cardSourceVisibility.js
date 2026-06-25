@@ -1,5 +1,27 @@
 import { getCardLivenessPolicy } from "../constants.js";
 
+/**
+ * Whether a card is governed by a hide-until-verified policy (so it starts hidden
+ * and must be PROBED to ever appear). Such cards can't rely on the viewport
+ * IntersectionObserver — a `display:none` card never intersects, so the probe
+ * must be kicked eagerly on register. Owner's own cards are always visible and
+ * never gated.
+ */
+export function cardNeedsEagerLivenessProbe(cardLike) {
+  const card = resolveCardElement(cardLike);
+  if (!card || card.dataset.ownerIsViewer === "true") {
+    return false;
+  }
+  const policy = getCardLivenessPolicy();
+  if (policy === "hide-all") {
+    return true;
+  }
+  if (policy === "hide-foreign") {
+    return card.dataset.foreign === "true";
+  }
+  return false;
+}
+
 function resolveCardElement(cardLike) {
   if (!cardLike) {
     return null;
