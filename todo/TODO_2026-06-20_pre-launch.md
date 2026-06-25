@@ -184,13 +184,22 @@ Audit started 2026-06-23. See the doc for architecture map + findings. Summary:
       few times for a late receipt. See docs/zap-audit-plan.md.
 - [x] **Platform-fee fallback verified no-bypass** — junk override falls back to the
       configured fee, not 0.
-- [ ] **CORS / LNURL proxy decision** (NEEDS A DECISION — the remaining reliability
-      fix). A static client can't fetch CORS-less LNURL hosts; options: (a) small
-      Vercel edge proxy that fetches LNURL pay-data + invoice and returns with CORS
-      [recommended — what web wallets do]; (b) document the limit / CORS-only hosts;
-      (c) route LN-address resolution via the connected NWC wallet. See
-      docs/zap-audit-plan.md. NOTE: with NWC now connecting, re-test how many sends
-      actually fail on CORS vs were just the NWC bug.
+- [x] **CORS / LNURL — DECIDED 2026-06-24: accept graceful degradation, no proxy.**
+      Keep the visual zappability flag (`walletZappabilityCheck` /
+      `lnurl-unreachable`) as the honest fallback when a recipient's LNURL host
+      sends no CORS headers. Rationale:
+        - Browser-enforced CORS can't be bypassed from page JS; the only universal
+          fix is a proxy, which **breaks the static/no-custody rule** AND adds a
+          real security surface (the proxy can swap the returned bolt11 → steal the
+          zap unless it verifies `description_hash`). Not worth it for a static app.
+        - The fee/receipt model is **fundamentally incompatible** with a CORS-blocked
+          recipient in a static client: the platform-fee split needs to fetch the
+          creator's invoice in-page, which is exactly what CORS blocks.
+        - WebLN was evaluated and rejected: its only CORS-bypassing primitive
+          (`webln.lnurl()`) **pays directly** — no NIP-57 receipt, no split, no
+          deterministic amount — so it degrades a zap into an unattributed tip and
+          bypasses the platform fee. Not acceptable as a silent fallback.
+      Net: the current behavior is the right answer for a static, no-custody client.
 - [ ] **Remaining audit items**: platform-fee split correctness (the earlier "fee
       landed in my own wallet" report + self-zap / creator==platform edge), receipt
       validation (9735), NWC budget/retry UX, general clunkiness.
