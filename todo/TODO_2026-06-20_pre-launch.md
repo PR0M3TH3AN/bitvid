@@ -516,12 +516,26 @@ SILENT one: `handleEventDetailsAction` only opened the modal `if (… && payload
 - [ ] **VERIFY live**: click ⋯ → Event Details AND ⋯ → Popularity in the video
       modal AND on a grid/channel card; both should open the correct video.
 
-### 28. Beacon torrent app stuck — spinner never resolves (BUG)
-- [ ] The torrent beacon app (`scripts/build:beacon` / `torrent/` integration) shows
-      a spinner that never goes away. Trace the beacon's init/connect path: what the
-      spinner is waiting on (tracker/handshake/WebTorrent ready), whether it errors
-      silently, and whether it's related to the vendored `webtorrent.min.js`
-      `null.fill` crash (#10). Make it either resolve or fail visibly.
+### 28. Beacon torrent app stuck — spinner never resolves (BUG) — FIXED 2026-06-24
+- [x] **Root cause:** the processing overlay (`torrent/app.js`) was gated on
+      WebTorrent's metadata-ready callback (`client.add(magnet, opts, cb)` /
+      `client.seed`). That callback only fires once metadata arrives from peers, so
+      a magnet with **no live seeders** never resolved it and the spinner span
+      forever — and a torrent that emits its own `'error'` (bad/duplicate magnet)
+      didn't always reach the client-level handler. (NOT the `null.fill` crash
+      (#10); the client constructs fine — this was a missing timeout/failure path.)
+- [x] **Fix:** added a watchdog around the overlay. `beginProcessing()` arms a
+      30s `PROCESSING_TIMEOUT_MS` timer; if the op hasn't completed it drops the
+      overlay and warns ("still searching for peers — it'll keep trying in the
+      background") while the torrent stays in the table and keeps announcing.
+      `handleTorrentReady`, the client error handler, and `destroy()` all clear the
+      watchdog. `addMagnet`/`seedFiles` now wrap `add`/`seed` in try/catch and
+      attach a per-torrent `'error'` listener so bad magnets fail visibly.
+- [x] **Tests:** `tests/torrent/beacon-watchdog.test.mjs` (JSDOM) — a no-peers
+      magnet drops the spinner + warns; a ready torrent resolves it and a stale
+      watchdog can't re-fire.
+- [ ] **VERIFY live**: open the beacon, paste a dead magnet → spinner should clear
+      with a warning after ~30s instead of hanging; paste a live magnet → resolves.
 
 ### 29. Admin-whitelisted users bypass the Web-of-Trust (anti-abuse)
 - [ ] When an admin **whitelists** a user, that user's content should **bypass the

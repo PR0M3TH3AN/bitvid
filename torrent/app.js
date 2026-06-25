@@ -12,6 +12,12 @@ const TRACKERS = [
 const TORRENT_OPTIONS = { announce: TRACKERS };
 const TRACKER_OPTIONS = { announce: TRACKERS };
 
+// A magnet with no live seeders never fires WebTorrent's metadata-ready
+// callback, so the processing overlay would otherwise spin forever. After this
+// long we drop the overlay and tell the user it's still trying in the
+// background (the torrent stays in the table and keeps announcing).
+const PROCESSING_TIMEOUT_MS = 30000;
+
 function formatBytes(num, speed = false) {
   if (typeof num !== "number" || Number.isNaN(num)) {
     return "";
@@ -208,9 +214,35 @@ export function createBeaconApp({
 
   const cleanupTasks = [];
   const intervalHandles = [];
+  let processingTimeoutId = null;
 
   function addCleanup(task) {
     cleanupTasks.push(task);
+  }
+
+  function clearProcessingWatchdog() {
+    if (processingTimeoutId !== null) {
+      view.clearTimeout(processingTimeoutId);
+      processingTimeoutId = null;
+    }
+  }
+
+  // Show the processing overlay and arm a watchdog so it can never hang
+  // forever: if the operation hasn't completed in time, drop the overlay and
+  // warn instead of leaving a dead spinner.
+  function beginProcessing() {
+    setProcessing(true);
+    clearProcessingWatchdog();
+    processingTimeoutId = view.setTimeout(() => {
+      processingTimeoutId = null;
+      if (!state.processing) {
+        return;
+      }
+      setProcessing(false);
+      toast?.warn(
+        "Still searching for peers — this is taking a while. It'll keep trying in the background.",
+      );
+    }, PROCESSING_TIMEOUT_MS);
   }
 
   function setProcessing(flag) {
@@ -359,6 +391,7 @@ export function createBeaconApp({
   }
 
   function handleTorrentReady(torrent, { isSeed = false } = {}) {
+    clearProcessingWatchdog();
     setProcessing(false);
     prepareTorrentFiles(torrent);
 
@@ -380,10 +413,20 @@ export function createBeaconApp({
       return;
     }
 
-    setProcessing(true);
-    client.add(trimmed, TORRENT_OPTIONS, (torrent) => {
-      handleTorrentReady(torrent, { isSeed: false });
-    });
+    beginProcessing();
+    let torrent;
+    try {
+      torrent = client.add(trimmed, TORRENT_OPTIONS, (added) => {
+        handleTorrentReady(added, { isSeed: false });
+      });
+    } catch (error) {
+      clearProcessingWatchdog();
+      setProcessing(false);
+      userLogger.error("[beacon] Failed to add magnet", error);
+      toast?.error(error?.message || "Couldn't add that magnet.");
+      return;
+    }
+    watchTorrentForFailure(torrent);
   }
 
   function seedFiles(files) {
@@ -391,10 +434,35 @@ export function createBeaconApp({
       return;
     }
 
-    setProcessing(true);
-    client.seed(files, TORRENT_OPTIONS, (torrent) => {
-      handleTorrentReady(torrent, { isSeed: true });
-      toast.success(`Seeding ${torrent.files.length} file(s)`);
+    beginProcessing();
+    let torrent;
+    try {
+      torrent = client.seed(files, TORRENT_OPTIONS, (seeded) => {
+        handleTorrentReady(seeded, { isSeed: true });
+        toast.success(`Seeding ${seeded.files.length} file(s)`);
+      });
+    } catch (error) {
+      clearProcessingWatchdog();
+      setProcessing(false);
+      userLogger.error("[beacon] Failed to seed files", error);
+      toast?.error(error?.message || "Couldn't seed those files.");
+      return;
+    }
+    watchTorrentForFailure(torrent);
+  }
+
+  // A torrent can emit its own 'error' (bad/duplicate magnet) without the
+  // client-level handler firing; surface it and drop the overlay so the add
+  // fails visibly instead of spinning.
+  function watchTorrentForFailure(torrent) {
+    if (!torrent || typeof torrent.once !== "function") {
+      return;
+    }
+    torrent.once("error", (error) => {
+      clearProcessingWatchdog();
+      setProcessing(false);
+      userLogger.error("[beacon] Torrent error", error);
+      toast?.error(error?.message || "That torrent could not be loaded.");
     });
   }
 
@@ -572,6 +640,7 @@ export function createBeaconApp({
     const errorHandler = (error) => {
       userLogger.error("[beacon] Torrent client error", error);
       toast?.error(error?.message || String(error));
+      clearProcessingWatchdog();
       setProcessing(false);
     };
     client.on("error", errorHandler);
@@ -610,6 +679,7 @@ export function createBeaconApp({
   }
 
   function destroy() {
+    clearProcessingWatchdog();
     intervalHandles.forEach((id) => view.clearInterval(id));
     intervalHandles.length = 0;
 
