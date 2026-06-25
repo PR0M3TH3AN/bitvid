@@ -151,7 +151,7 @@ edge instead of `bottom-end` under its trigger.
       fresh portaled panel and already positions correctly. If any other pre-existing
       in-modal panel is found mis-positioned, this same engine fix now covers it.
 
-### 3. Zaps system + platform-fee zap split — full plan in docs/zap-audit-plan.md
+### 3. Zaps system + platform-fee zap split — DONE 2026-06-24 (full plan in docs/zap-audit-plan.md)
 Audit started 2026-06-23. See the doc for architecture map + findings. Summary:
 - [x] **Send-error softened** (`dd1ce113`): recipient LNURL unreachable/CORS now
       shows a clear message, not raw "Failed to fetch".
@@ -200,9 +200,32 @@ Audit started 2026-06-23. See the doc for architecture map + findings. Summary:
           deterministic amount — so it degrades a zap into an unattributed tip and
           bypasses the platform fee. Not acceptable as a silent fallback.
       Net: the current behavior is the right answer for a static, no-custody client.
-- [ ] **Remaining audit items**: platform-fee split correctness (the earlier "fee
-      landed in my own wallet" report + self-zap / creator==platform edge), receipt
-      validation (9735), NWC budget/retry UX, general clunkiness.
+- [x] **Remaining audit items — DONE 2026-06-24. #3 fully closed.**
+      - **Split correctness (`js/payments/zapSplit.js`):** `platformShare =
+        floor(amount*fee/100)`, `creatorShare = amount - platformShare` — the
+        creator always gets the remainder, so **no sats are lost or invented**; a
+        sub-1-sat fee rounds to 0 and the whole zap goes to the creator (no
+        zero-amount platform send). Fee is `clampPercent`-bounded to 0–100 and a
+        junk override falls back to the configured default (can't be bypassed or
+        swallow the zap). **Fixed the creator==platform edge:** when the platform
+        fee would pay the *same* Lightning address as the creator, the split now
+        collapses to a single full-amount payment (was sending two invoices to one
+        wallet → extra routing fee + duplicate receipt). Cheat-resistant tests
+        added in `tests/zap-split.test.mjs`
+        (`testCreatorEqualsPlatformCollapsesToOnePayment`,
+        `testSplitRoundingPreservesEverySat`).
+      - **"Fee landed in my own wallet" — NOT a bug (expected):** occurs when the
+        *sender is the platform operator* (the platform fee correctly returns to
+        them) or on a *self-zap* (you get your own creator share back). The fee
+        recipient is always the configured platform address, never the sender's.
+      - **Receipt validation (9735):** already fixed 2026-06-23 (author + bolt11 +
+        description-hash match, with polling for late receipts); confirmed green
+        (`tests/zap-receipt-pool.test.mjs`, validator tests in `zap-split`).
+      - **NWC budget/retry UX:** already actionable — detects budget-exhausted,
+        shows "Increase your wallet zap limit or reduce the platform fee, then
+        retry…" plus the remaining-share summary and a Retry button.
+      - **General clunkiness:** maintainer confirms the flow is working well;
+        closed as accepted.
 - [x] Comment box confirmed WORKING (the "message doesn't work" was the popover
       mis-position making it hard to use — see 3a).
 
