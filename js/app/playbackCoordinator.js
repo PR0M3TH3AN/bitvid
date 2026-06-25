@@ -677,6 +677,18 @@ export function createPlaybackCoordinator(deps) {
       }
       const authorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
       if (!accessControl.canAccess(authorNpub)) {
+        // Dev diagnostic: pinpoint WHY access was denied (format mismatch vs the
+        // author genuinely not being on the list vs lists not loaded).
+        devLogger.warn("[playback] access denied — whitelist diagnostic", {
+          pubkey: video.pubkey,
+          authorNpub,
+          foreign: video.foreign === true || video.source === "nip71-ingest",
+          whitelistMode: accessControl.whitelistMode?.(),
+          whitelistNpubSize: accessControl.whitelist?.size,
+          whitelistHexSize: accessControl.whitelistPubkeys?.size,
+          inNpubSet: accessControl.whitelist?.has?.(authorNpub),
+          inHexSet: accessControl.whitelistPubkeys?.has?.(video.pubkey),
+        });
         if (accessControl.isBlacklisted(authorNpub)) {
           this.showError("This content has been removed or is not allowed.");
         } else if (accessControl.whitelistMode()) {

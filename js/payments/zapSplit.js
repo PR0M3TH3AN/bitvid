@@ -540,8 +540,8 @@ export async function splitAndZap(
   }
 
   const platformFee = clampPercent(getOverridePlatformFee());
-  const platformShare = Math.floor((amount * platformFee) / 100);
-  const creatorShare = amount - platformShare;
+  let platformShare = Math.floor((amount * platformFee) / 100);
+  let creatorShare = amount - platformShare;
 
   let platformAddress = null;
   if (platformShare > 0) {
@@ -550,6 +550,18 @@ export async function splitAndZap(
     );
     if (!platformAddress) {
       throw new Error("Platform Lightning address is unavailable.");
+    }
+
+    // When the platform fee would be paid to the very same Lightning address as
+    // the creator (e.g. the creator is the platform operator), splitting just
+    // sends two invoices to one wallet — extra routing fees and a confusing
+    // duplicate receipt for the same total. Collapse to a single full-amount
+    // payment to the creator; the recipient is unchanged and ends up with the
+    // same sats.
+    if (platformAddress.toLowerCase() === creatorAddress.toLowerCase()) {
+      creatorShare = amount;
+      platformShare = 0;
+      platformAddress = null;
     }
   }
 

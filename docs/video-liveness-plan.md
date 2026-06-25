@@ -57,11 +57,14 @@ but a WebTorrent source is live, keep the card.
   concurrency (it's cheap vs WebTorrent swarm joins).
 - WebTorrent `PROBE_TIMEOUT_MS` (20s): keep generous (swarm joins are slow) but
   ensure it runs in parallel and never blocks the CDN verdict.
-- DECISION NEEDED: **show-pending (current) vs hide-until-verified.** Showing
-  pending means a brief flash of soon-to-be-hidden dead cards; hide-until-verified
-  means good cards pop in after the probe. Recommend: keep show-pending for cards
-  with a *bitvid-native/whitelisted* source (fast/trusted), but **hide-until-verified
-  for foreign/ingested** videos (so unplayable strangers never flash in).
+- DECISION (2026-06-24): made **config-driven for live A/B testing** instead of
+  hard-coding one policy. `CARD_LIVENESS_POLICY` =
+  `show-pending` (default) | `hide-foreign` | `hide-all`, flippable live via
+  `window.__BITVID_CARD_LIVENESS_POLICY__`. Recommendation stands: `hide-foreign`
+  (native = show-pending, foreign/ingested = hidden-until-verified). Also added a
+  configurable probe prefetch margin (`LIVENESS_PROBE_PREFETCH_MARGIN`, default
+  600px) so cards verify before they scroll into view. Pick the final default
+  after feel-testing.
 
 ## Reuse map
 - `js/ui/urlHealthController.js` (probeUrl / probeUrlWithVideoElement) — make

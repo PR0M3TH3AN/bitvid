@@ -112,7 +112,26 @@ Pre-launch priority #3. The zap flow feels clunky and errors on send.
   use (see 3a), not a comment bug.
 - **Popover mis-positioning (zap + embed)** — see TODO 3a; shared `popoverEngine`.
 
-## To do (next session, in priority order)
+## Status: CLOSED 2026-06-24
+
+All audit items below are resolved:
+1. **CORS / LNURL** — DECIDED: accept graceful degradation, keep the visual
+   zappability flag, no proxy (breaks static rule + invoice-swap risk; WebLN's
+   only bypass pays directly with no receipt/split). See TODO #3.
+2. **Popover positioning (3a)** — FIXED (portaled to `#uiOverlay`).
+3. **Platform-fee split correctness** — AUDITED + FIXED. Rounding never loses
+   sats (creator gets the remainder); sub-1-sat fee → 0 and the whole zap goes to
+   the creator; fee `clampPercent`-bounded and junk override falls back to default;
+   **creator==platform collapses to one full-amount payment** (was double-paying).
+   "Fee landed in my own wallet" is expected (sender is the platform operator, or
+   self-zap), not a bug. Tests in `tests/zap-split.test.mjs`.
+4. **Receipt validation (9735)** — FIXED (author + bolt11 + description-hash match,
+   polling for late receipts). `tests/zap-receipt-pool.test.mjs`.
+5. **NWC budget/retry UX** — actionable budget-exhausted message + remaining-share
+   summary + Retry button.
+6. **General clunkiness** — maintainer confirms the flow works well; accepted.
+
+## To do (historical — completed)
 1. **CORS / LNURL proxy — DECISION: re-test first (2026-06-23).** Because the NWC
    connection was fully broken (hex secret → `getPublicKey`; fixed this session), an
    unknown share of the observed "send errors" were the NWC bug, NOT CORS. Plan:
