@@ -160,13 +160,25 @@ test("VideoCard hides cards without playable sources until a healthy CDN update 
   assert.equal(root.dataset.sourceVisibility, "visible", "visibility dataset should reflect the restored state");
 });
 
-function makeCard(document, { foreign = "false", owner = "false", url = "checking", stream = "checking" } = {}) {
+function makeCard(
+  document,
+  {
+    foreign = "false",
+    owner = "false",
+    url = "checking",
+    stream = "checking",
+    cdnUrl = "https://cdn.example/v.mp4", // pass "" for a WebTorrent-only card
+  } = {}
+) {
   const card = document.createElement("article");
   card.classList.add("card");
   card.dataset.ownerIsViewer = owner;
   card.dataset.foreign = foreign;
   card.dataset.urlHealthState = url;
   card.dataset.streamHealthState = stream;
+  if (cdnUrl) {
+    card.dataset.urlHealthUrl = encodeURIComponent(cdnUrl);
+  }
   document.body.appendChild(card);
   return card;
 }
@@ -223,6 +235,41 @@ test("CARD_LIVENESS_POLICY=hide-all hides every pending non-owner card but never
   nativeCard.dataset.urlHealthState = "healthy";
   updateVideoCardSourceVisibility(nativeCard);
   assert.equal(nativeCard.hidden, false, "card appears once a source verifies");
+});
+
+// WebTorrent-only foreign content must NOT get buried under hide-foreign: its
+// only signal is the slow/unreliable swarm probe (20s + 5min cache), so a
+// live-but-slow P2P video would otherwise stay hidden. It falls back to
+// show-pending instead (shown while checked, hidden only once confirmed dead).
+test("hide-foreign does not bury WebTorrent-only foreign cards (no CDN to verify fast)", (t) => {
+  const { document } = setupDom(t);
+  setCardLivenessPolicy("hide-foreign");
+  t.after(() => setCardLivenessPolicy("show-pending"));
+
+  // No CDN url → urlHealthState resolves to "offline"; stream probe still running.
+  const p2pCard = makeCard(document, {
+    foreign: "true",
+    cdnUrl: "",
+    url: "offline",
+    stream: "checking",
+  });
+  updateVideoCardSourceVisibility(p2pCard);
+  assert.equal(p2pCard.hidden, false, "P2P-only foreign card is shown while its swarm is checked, not buried");
+  assert.equal(
+    cardNeedsEagerLivenessProbe(p2pCard),
+    false,
+    "P2P-only card is show-pending, so it is not eager-probed",
+  );
+
+  // Only once the swarm probe also confirms it dead does it hide.
+  p2pCard.dataset.streamHealthState = "unhealthy";
+  updateVideoCardSourceVisibility(p2pCard);
+  assert.equal(p2pCard.hidden, true, "confirmed-dead P2P card finally hides");
+
+  // A CDN-backed foreign card, by contrast, IS hidden while its fast probe runs.
+  const cdnCard = makeCard(document, { foreign: "true", url: "checking", stream: "checking" });
+  updateVideoCardSourceVisibility(cdnCard);
+  assert.equal(cdnCard.hidden, true, "CDN-backed foreign card stays hidden during its fast probe");
 });
 
 // Hide-until-verified cards start display:none, so the viewport observer can't
