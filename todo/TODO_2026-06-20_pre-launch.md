@@ -599,6 +599,29 @@ SILENT one: `handleEventDetailsAction` only opened the modal `if (… && payload
 - [ ] **VERIFY live**: click ⋯ → Event Details AND ⋯ → Popularity in the video
       modal AND on a grid/channel card; both should open the correct video.
 
+### 32. Whitelisted author's video won't play — "not from a whitelisted author" (BUG)
+Reported 2026-06-25: a video from a known-whitelisted author refused to play
+("This content is not from a whitelisted author." at `playbackCoordinator
+.playVideoByEventId`). The source URL was confirmed 100% healthy (HTTP 200,
+video/mp4, range + CORS `*`) — the block is the whitelist gate, not the source.
+- [x] **Root cause + fix: `canAccess` format asymmetry.** `accessControl` keeps the
+      whitelist in TWO sets — `whitelistPubkeys` (hex) and `whitelist` (npub) — and
+      `canAccess` checked only ONE based on the caller's input format (npub→npub set,
+      hex→hex set) without cross-deriving. `playbackCoordinator` passes the author's
+      **npub**, so it consulted only the npub set; if the entry was present in only
+      the hex set (e.g. the hex decode hadn't run / a normalization mismatch), a
+      genuinely whitelisted author read as "not allowed." Fixed `canAccess` to
+      cross-derive both forms and check BOTH sets (false-negatives only; a
+      non-whitelisted author is still denied). Tests:
+      `tests/access-control-canaccess.test.mjs`.
+- [x] Added a dev-gated diagnostic at the playback rejection
+      (`playbackCoordinator`) logging hex/npub, whitelistMode, set sizes, and
+      `inNpubSet`/`inHexSet` — so if it still denies, we know instantly whether the
+      author is genuinely off the list (→ then it's the separate "ingested foreign
+      content shown in a whitelist-mode feed but unplayable" question) vs a load race.
+- [ ] **VERIFY live**: replay the failing nevent. If it plays → fixed. If it still
+      denies, paste the new `[playback] access denied — whitelist diagnostic` line.
+
 ### 28. Beacon torrent app stuck — spinner never resolves (BUG) — FIXED 2026-06-24
 - [x] **Root cause:** the processing overlay (`torrent/app.js`) was gated on
       WebTorrent's metadata-ready callback (`client.add(magnet, opts, cb)` /
