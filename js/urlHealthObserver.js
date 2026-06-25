@@ -1,8 +1,11 @@
 import { createCardObserver } from "./dom/cardObserver.js";
 import { safeDecodeURIComponent } from "./utils/safeDecode.js";
 import { userLogger } from "./utils/logger.js";
+import { getLivenessProbePrefetchMargin } from "./constants.js";
 
-const ROOT_MARGIN = "0px";
+// Prefetch margin lets cards just below the fold start probing before they scroll
+// into view, so they're verified by the time the user reaches them.
+const ROOT_MARGIN = getLivenessProbePrefetchMargin();
 const THRESHOLD = 0.25;
 
 const urlCardObserver = createCardObserver({

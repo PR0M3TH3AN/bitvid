@@ -1,3 +1,5 @@
+import { getCardLivenessPolicy } from "../constants.js";
+
 function resolveCardElement(cardLike) {
   if (!cardLike) {
     return null;
@@ -65,11 +67,22 @@ export function updateVideoCardSourceVisibility(cardLike) {
   const cdnHealthy = cdnState === "healthy";
   const streamHealthy = streamState === "healthy";
 
-  const shouldHide =
-    !cdnHealthy &&
-    !streamHealthy &&
-    !cdnPending &&
-    !streamPending;
+  // Liveness visibility policy (config/instance-config.js → CARD_LIVENESS_POLICY):
+  //   show-pending : show now, hide only once every source is confirmed dead.
+  //   hide-foreign : foreign/ingested cards stay hidden until a source is proven
+  //                  playable; native cards keep show-pending.
+  //   hide-all     : every non-owner card stays hidden until proven playable.
+  const policy = getCardLivenessPolicy();
+  const isForeign = card.dataset.foreign === "true";
+  const hideUntilVerified =
+    policy === "hide-all" || (policy === "hide-foreign" && isForeign);
+
+  const shouldHide = hideUntilVerified
+    ? // Hidden until at least one source proves playable (covers the pending
+      // window too, so a dead foreign stranger never flashes in).
+      !cdnHealthy && !streamHealthy
+    : // Default: only hide once every source has come back dead.
+      !cdnHealthy && !streamHealthy && !cdnPending && !streamPending;
 
   if (shouldHide) {
     if (!card.hidden) {

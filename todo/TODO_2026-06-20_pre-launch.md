@@ -303,9 +303,25 @@ un-hides when WebTorrent flips green). The real gaps:
       playbackService_order suite in CI). ROLLBACK: revert the loop in
       `playbackService.js` to the single `attemptHostedPlayback()` call + drop the
       `sources` plumbing.
-- [ ] **Remaining — hide-until-verified for foreign/ingested** (decision): so
-      unplayable strangers never briefly flash before the probe hides them
-      (bitvid-native stays show-pending). UX policy change in cardSourceVisibility.
+- [x] **Made the policy config-driven for live A/B testing (2026-06-24).** New
+      `CARD_LIVENESS_POLICY` (config/instance-config.js): `show-pending` (default,
+      unchanged) | `hide-foreign` (foreign/ingested hidden until a source verifies;
+      native stays show-pending) | `hide-all`. Owner's own cards always visible.
+      Flip it live without a rebuild: `window.__BITVID_CARD_LIVENESS_POLICY__ =
+      "hide-foreign"` then refresh/scroll. Implemented via a `data-foreign`
+      provenance flag on the card + `getCardLivenessPolicy()` in
+      `cardSourceVisibility.js`. Tests: three policy scenarios in
+      `tests/video-card-source-visibility.test.mjs` (also un-broke 3 pre-existing
+      VideoCard tests by adding the missing IntersectionObserver JSDOM stub).
+- [x] **Probe speed — prefetch ahead of scroll (2026-06-24).** Both liveness
+      probes were already viewport-gated (IntersectionObserver, on-screen-first,
+      WebTorrent priority-queued + concurrency-capped). Added a configurable
+      `LIVENESS_PROBE_PREFETCH_MARGIN` (default `600px`) applied to both observers'
+      `rootMargin`, so cards just below the fold verify before the user scrolls to
+      them — makes hide-until-verified feel instant. Override:
+      `window.__BITVID_LIVENESS_PREFETCH_MARGIN__`.
+- [ ] **DECIDE after live A/B**: pick the default policy that feels best
+      (recommend `hide-foreign`) and set `CARD_LIVENESS_POLICY` in instance-config.
 
 ### 18. Embed button / modal on the video player does not open — FIXED 2026-06-23
 - [x] **Root cause: event-name mismatch.** `VideoModal.handleEmbedRequest`

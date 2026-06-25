@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 
 import { updateVideoCardSourceVisibility } from "../js/utils/cardSourceVisibility.js";
+import { setCardLivenessPolicy } from "../js/constants.js";
 import { VideoCard } from "../js/ui/components/VideoCard.js";
 
 function setupDom(t) {
@@ -22,6 +23,7 @@ function setupDom(t) {
     "MouseEvent",
     "CustomEvent",
     "ResizeObserver",
+    "IntersectionObserver",
     "CSSStyleSheet",
     "requestAnimationFrame",
     "cancelAnimationFrame",
@@ -39,6 +41,21 @@ function setupDom(t) {
         observe() {}
         unobserve() {}
         disconnect() {}
+      };
+    } else if (
+      key === "IntersectionObserver" &&
+      typeof window[key] !== "function"
+    ) {
+      // JSDOM doesn't implement IntersectionObserver; VideoCard.observeViewport
+      // constructs one at build time. A no-op stub is enough for these tests.
+      window.IntersectionObserver = class {
+        constructor() {}
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+        takeRecords() {
+          return [];
+        }
       };
     }
     globalThis[key] = window[key];
@@ -138,6 +155,71 @@ test("VideoCard hides cards without playable sources until a healthy CDN update 
 
   assert.equal(root.hidden, false, "a healthy CDN update should unhide the card");
   assert.equal(root.dataset.sourceVisibility, "visible", "visibility dataset should reflect the restored state");
+});
+
+function makeCard(document, { foreign = "false", owner = "false", url = "checking", stream = "checking" } = {}) {
+  const card = document.createElement("article");
+  card.classList.add("card");
+  card.dataset.ownerIsViewer = owner;
+  card.dataset.foreign = foreign;
+  card.dataset.urlHealthState = url;
+  card.dataset.streamHealthState = stream;
+  document.body.appendChild(card);
+  return card;
+}
+
+test("CARD_LIVENESS_POLICY=show-pending keeps a pending foreign card visible (current behavior)", (t) => {
+  const { document } = setupDom(t);
+  setCardLivenessPolicy("show-pending");
+  t.after(() => setCardLivenessPolicy("show-pending"));
+
+  // Probes still running (checking) → the card shows; it only hides once every
+  // source is confirmed dead.
+  const card = makeCard(document, { foreign: "true", url: "checking", stream: "checking" });
+  updateVideoCardSourceVisibility(card);
+  assert.equal(card.hidden, false, "pending foreign card is visible under show-pending");
+
+  card.dataset.urlHealthState = "offline";
+  card.dataset.streamHealthState = "unhealthy";
+  updateVideoCardSourceVisibility(card);
+  assert.equal(card.hidden, true, "confirmed-dead card hides");
+});
+
+test("CARD_LIVENESS_POLICY=hide-foreign hides pending FOREIGN cards but shows pending NATIVE cards", (t) => {
+  const { document } = setupDom(t);
+  setCardLivenessPolicy("hide-foreign");
+  t.after(() => setCardLivenessPolicy("show-pending"));
+
+  const foreignCard = makeCard(document, { foreign: "true", url: "checking", stream: "checking" });
+  updateVideoCardSourceVisibility(foreignCard);
+  assert.equal(foreignCard.hidden, true, "foreign card stays hidden until a source verifies");
+
+  const nativeCard = makeCard(document, { foreign: "false", url: "checking", stream: "checking" });
+  updateVideoCardSourceVisibility(nativeCard);
+  assert.equal(nativeCard.hidden, false, "native card keeps show-pending behavior");
+
+  // A foreign card becomes visible the moment any source proves playable.
+  foreignCard.dataset.streamHealthState = "healthy";
+  updateVideoCardSourceVisibility(foreignCard);
+  assert.equal(foreignCard.hidden, false, "verified foreign card appears");
+});
+
+test("CARD_LIVENESS_POLICY=hide-all hides every pending non-owner card but never the owner's", (t) => {
+  const { document } = setupDom(t);
+  setCardLivenessPolicy("hide-all");
+  t.after(() => setCardLivenessPolicy("show-pending"));
+
+  const nativeCard = makeCard(document, { foreign: "false", url: "checking", stream: "checking" });
+  updateVideoCardSourceVisibility(nativeCard);
+  assert.equal(nativeCard.hidden, true, "even a native card hides until verified under hide-all");
+
+  const ownerCard = makeCard(document, { owner: "true", url: "checking", stream: "checking" });
+  updateVideoCardSourceVisibility(ownerCard);
+  assert.equal(ownerCard.hidden, false, "the owner's own card is always visible");
+
+  nativeCard.dataset.urlHealthState = "healthy";
+  updateVideoCardSourceVisibility(nativeCard);
+  assert.equal(nativeCard.hidden, false, "card appears once a source verifies");
 });
 
 test("VideoCard.closeMoreMenu only restores focus when the trigger was expanded", (t) => {

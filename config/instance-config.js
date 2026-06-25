@@ -250,6 +250,33 @@ export const ALLOW_NSFW_CONTENT = false;
 export const FEATURE_NIP71_INGEST = true;
 
 /**
+ * Card liveness visibility policy — what a non-owner video card does while its
+ * CDN/WebTorrent liveness probes are still running:
+ *   - "show-pending"  : show the card immediately, hide only if every source is
+ *                       confirmed dead (current behavior; can briefly flash a
+ *                       dead foreign card before the probe hides it).
+ *   - "hide-foreign"  : foreign/ingested cards stay hidden until a source is
+ *                       confirmed playable; bitvid-native/own cards show pending.
+ *   - "hide-all"      : every non-owner card stays hidden until confirmed playable.
+ * Owner's own uploads are always visible regardless of policy.
+ *
+ * Can be flipped live for A/B feel-testing without a rebuild by setting
+ * `window.__BITVID_CARD_LIVENESS_POLICY__ = "hide-foreign"` in the console (then
+ * refresh / scroll the grid). Invalid values fall back to "show-pending".
+ */
+export const CARD_LIVENESS_POLICY = "show-pending";
+
+/**
+ * IntersectionObserver `rootMargin` for the card liveness probes (URL + WebTorrent).
+ * "0px" probes a card only once it touches the viewport; a positive margin (e.g.
+ * "600px") probes cards that distance *below* the fold so they're verified before
+ * the user scrolls to them — makes hide-until-verified feel instant. Probes stay
+ * viewport-gated + concurrency-capped, so a larger margin only reorders work.
+ * Override live with `window.__BITVID_LIVENESS_PREFETCH_MARGIN__`.
+ */
+export const LIVENESS_PROBE_PREFETCH_MARGIN = "600px";
+
+/**
  * Emergency fallback accounts for seeding the moderation graph.
  *
  * Runtime moderation now derives its trust seeds from the Super Admin and the

@@ -13,7 +13,10 @@ import {
   getViewportCenter,
   PRIORITY_BASELINE,
 } from "./gridHealthLogic.js";
-import { FIVE_MINUTES_MS } from "./constants.js";
+import {
+  FIVE_MINUTES_MS,
+  getLivenessProbePrefetchMargin,
+} from "./constants.js";
 
 const badgeUpdateListeners = new Set();
 
@@ -34,7 +37,10 @@ function notifyBadgeUpdate(payload) {
   });
 }
 
-const ROOT_MARGIN = "200px 0px";
+// Configurable prefetch margin so cards probe ahead of the scroll (WebTorrent
+// probes stay concurrency-capped + priority-ordered, so a larger margin only
+// reorders work). Falls back to the existing 200px vertical prefetch.
+const ROOT_MARGIN = getLivenessProbePrefetchMargin() || "200px 0px";
 
 function now() {
   return Date.now();
