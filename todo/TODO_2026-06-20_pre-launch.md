@@ -414,11 +414,22 @@ toward freshness and looked identical. Gave each a structural identity:
       Source still to pin: the loop issuing 30000/30002/30005/30015 per contact.
 
 ### 22. Anti-spam: validate npub on application / submission forms
-- [ ] Application/submission forms accept too much spam. Require the submitter's
-      identifier to be a valid `npub` (NIP-19) — regex/decoder validation client-side
-      so submission only succeeds for a well-formed npub (and normalize to hex for
-      storage). Reject/disable submit otherwise with a clear inline error. Pairs with
-      #23 (the submissions should become structured data, not DMs).
+- [x] **DONE 2026-06-24.** Added a shared, testable NIP-19 validator
+      (`js/utils/validateNpub.js`, exposes `window.validateNpubHex`) and wired it
+      into all four embed submission forms (`components/iframe_forms/`):
+        - **Application** (`applicantNpub`, required): submit is blocked unless the
+          npub decodes to a 64-char hex pubkey; the hex is also written into the
+          application body for canonical storage/whitelist matching.
+        - **Feature-request / bug-fix / feedback** (`userNpub`, optional): the npub
+          stays optional, but a non-empty value must be a valid npub or submit is
+          blocked with a clear inline error.
+      Validation decodes via the real nostr-tools `nip19` (checksum + prefix +
+      hex shape), so spam/free-text/`note1…`/tampered npubs are rejected.
+      Unit tests: `tests/validate-npub.test.mjs` (real nostr-tools). Pairs with #23
+      (submissions should become structured data, not DMs).
+- [ ] **VERIFY live**: open each form embed — application rejects a junk npub and
+      only sends with a valid npub1…; the optional forms send when the npub is
+      blank but reject a malformed one.
 
 ### 23. Admin submissions tab — structured submissions + approve/deny UI (SCALING)
 - [ ] Replace the current DM-based submission flow with **custom structured data**

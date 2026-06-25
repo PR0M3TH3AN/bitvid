@@ -9,6 +9,8 @@
     <link rel="stylesheet" href="../../css/tailwind.generated.css" />
     <!-- Load nostr‑tools v2.17.0 -->
     <script src="https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js"></script>
+    <!-- Shared anti-spam npub validation (sets window.validateNpubHex) -->
+    <script type="module" src="../../js/utils/validateNpub.js"></script>
   </head>
   <body class="iframe-form" data-ds="new">
     <div class="container">
@@ -295,6 +297,21 @@
               const applicantNpub = document
                 .getElementById("applicantNpub")
                 .value.trim();
+
+              // Anti-spam: the application identifier must be a valid npub.
+              const applicantPubHex =
+                typeof window.validateNpubHex === "function"
+                  ? window.validateNpubHex(applicantNpub)
+                  : null;
+              if (!applicantPubHex) {
+                log(
+                  "Please enter a valid Nostr public key (npub1…) before submitting. Your application was not sent.",
+                  "error"
+                );
+                document.getElementById("applicantNpub")?.focus();
+                return;
+              }
+
               const contactMethod = document
                 .getElementById("contactMethod")
                 .value.trim();
@@ -353,6 +370,7 @@
 
 **1. Applicant Information**
 - **Nostr Public Key (npub):** ${applicantNpub}
+- **Pubkey (hex):** ${applicantPubHex}
 - **Preferred Contact Method:** ${contactMethod || "N/A"}
 - **Username or Alias:** ${username || "N/A"}
 
