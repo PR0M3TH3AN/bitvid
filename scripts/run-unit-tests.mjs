@@ -16,8 +16,6 @@ process.env.NODE_ENV = "test";
 const QUARANTINE = new Map([
   ["tests/user-blocks.test.mjs", "HANG — triage todo-11b"],
   ["tests/nostr-count-fallback.test.mjs", "FAIL — triage todo-11b"],
-  ["tests/admin-list-store.test.mjs", "FAIL — triage todo-11b"],
-  ["tests/nostr-boost-actions.test.mjs", "FAIL — triage todo-11b"],
   ["tests/nwc-client.test.mjs", "FAIL — mocks nostr-tools but is shadowed by the frozen canonical toolkit the bootstrap installs (real @noble rejects the fake keys). The underlying production bug (parseNwcUri passed a hex secret to getPublicKey, which needs bytes — NWC connection broken) is FIXED and guarded by tests/nwc-parse-uri.test.mjs; this file needs a mock-injection rework. triage todo-11b (NWC / item #3)"],
   ["tests/nostr-publish-rejection.test.mjs", "FAIL — triage todo-11b"],
 ]);

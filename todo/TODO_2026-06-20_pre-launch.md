@@ -722,8 +722,11 @@ test below was failing on `main` unnoticed).
         logged-in pubkey now) → aligned; (3) same test asserted `session===true` for a
         logged-in watch (the pre-fix bug) → corrected to `session!==true`. The full
         2669-line file passes via the CI runner and was removed from QUARANTINE.
-      - `nostr-boost-actions` — "Missing expected exception" (likely stale: expects a
-        throw the code no longer makes).
+      - `nostr-boost-actions` — ✅ DONE + UN-QUARANTINED 2026-06-25: STALE SPEC. The
+        test required `buildRepostEvent` to throw `/missing-event-relay/` with no relay
+        hint, but a relay hint is a NIP-18 SHOULD (not MUST) — the builder degrades to a
+        two-element `e` tag so a user can always repost. Replaced with an exact assertion
+        of the valid output (kind 16 + e/p/k tags). See TEST_INTEGRITY.md.
       - `view-counter` (#4) — ✅ DONE + UN-QUARANTINED 2026-06-24: the failures were
         (a) the deterministic-d-tag accuracy fix (no more random `d` tag, so no
         auto-`d` either), (b) the batched SubscriptionManager silently shadowing
@@ -745,7 +748,13 @@ test below was failing on `main` unnoticed).
         frozen canonical toolkit the bootstrap installs; needs a mock-injection rework.
       - `nostr-count-fallback` — `TypeError: Cannot read 'has' of undefined` — likely
         a stale harness mock missing a field.
-      - `admin-list-store` — community-blacklist merge mismatch.
+      - `admin-list-store` — ✅ DONE + UN-QUARANTINED 2026-06-25: STALE HARNESS (no
+        production change, no assertion weakened). Community curator lists are fetched via
+        the BATCHED SubscriptionManager (cold-start relay-storm fix) which the harness
+        didn't mock; the mock-"hex" curator values started with "npub" so
+        parseCommunityBlacklistReferences decoded them twice; and createListEvent omitted
+        the `d` tag that selectNewestEventsForReferences matches on. Fixed all three to be
+        faithful to production. See TEST_INTEGRITY.md.
       - `nostr-publish-rejection` — rejection-path assertion.
       - `user-blocks` — HANGS (async leak); needs a deterministic rewrite.
 

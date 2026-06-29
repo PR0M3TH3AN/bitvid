@@ -412,3 +412,49 @@ test_integrity_note:
     did_relax_any_assertion: false
     if_true_explain_spec_basis: ""
 ```
+
+---
+
+## 2026-06-25 — todo-11b triage: un-quarantine nostr-boost-actions + admin-list-store
+
+```yaml
+test_integrity_note:
+  change_type: ["spec_correction", "refactor_tests"]
+  scenarios:
+    - id: SCN-repost-optional-relay
+      given: "A repost is built with no relay hint available (buildRepostEvent, nostrEventSchemas.js)"
+      when: "buildRepostEvent({ eventId, authorPubkey, targetKind }) is called without eventRelay"
+      then: "It returns a VALID repost (kind 16 for a non-kind-1 target, two-element ['e', id] tag, ['p', author], ['k', kind]) instead of throwing"
+    - id: SCN-community-blacklist-merge-batched
+      given: "An admin community-blacklist sources list references two curator kind-30000 lists, each with p-tag members"
+      when: "loadAdminState() runs and fetches curator lists via the BATCHED SubscriptionManager path"
+      then: "adminState.blacklist merges the curator members with the direct entry (deduped, guards respected)"
+  observable_outcomes:
+    - "buildRepostEvent output shape (kind/tags) with no relay — asserted exactly, stricter than the old throws-check"
+    - "adminState.blacklist === [direct, communityMemberOne, communityMemberTwo]"
+  determinism_controls:
+    - "pure builder (no IO) for repost; in-memory list registry + mocked pool.list AND getSubscriptionManager for the admin store"
+  anti_cheat_rationale:
+    prevents:
+      - "hard-coded return value"
+      - "over-mocking internal logic"
+    note: |
+      nostr-boost-actions: STALE SPEC. The test required buildRepostEvent to throw
+      /missing-event-relay/ when no relay hint is given, but a relay hint is a NIP-18
+      SHOULD (not MUST). The builder intentionally degrades to a two-element `e` tag so a
+      user can always repost. Replaced the throws-assertion with an EXACT assertion of the
+      valid output (kind 16 + e/p/k tags) — strictly stronger.
+
+      admin-list-store: STALE HARNESS, no production change, no assertion weakened. Three
+      fidelity fixes so the test exercises the real batched community-blacklist path:
+      (1) curator lists are now fetched via the batched SubscriptionManager (cold-start
+      relay-storm fix), which the harness didn't mock — added a getSubscriptionManager().list
+      mock serving the same registry; (2) curator coordinates now use REAL 64-char hex
+      pubkeys (the old mock-"hex" started with "npub", so parseCommunityBlacklistReferences'
+      isHexPubkey()/npub branch decoded them twice and the batched filter no longer matched);
+      (3) createListEvent now emits a `d` tag (real kind-30000 lists always have one;
+      selectNewestEventsForReferences matches curator events to references by their d tag).
+  relaxation:
+    did_relax_any_assertion: false
+    if_true_explain_spec_basis: ""
+```
