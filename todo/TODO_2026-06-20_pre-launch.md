@@ -1098,3 +1098,21 @@ has a persisted cache; channel/search now render optimistically from
       dedupe-by-root + canAccess in `buildRenderableChannelVideos` handle
       precedence/gating. Logic extracted to a helper so channelProfile.js stayed
       under its size cap. Tests + mutation-verified.
+
+### 40. Dead @media queries: `var()` in media conditions is invalid (BUG, broad)
+Found 2026-06-25 while fixing the profile-modal mobile grid. Many media queries use
+`@media (max-width: calc(theme("screens.lg") - var(--breakpoint-edge-offset)))`.
+CSS custom properties are NOT allowed inside `@media` conditions — Chromium/Brave
+drop the ENTIRE block, so all those rules are DEAD (confirmed via matchMedia: the
+`var()` form returns false where it should match; the literal `calc(... - 0.02px)`
+works). The `--breakpoint-edge-offset` token was introduced to satisfy the
+design-token lint (no raw measurements), but it silently broke every media query
+that used it.
+- [ ] Audit all `var(--breakpoint-edge-offset)` (and any other `var()`) inside
+      `@media` conditions in `css/tailwind.source.css` and replace with a valid
+      literal-resolving form (e.g. `@media (max-width: theme("screens.lg"))`, which
+      compiles to a literal). The profile-modal nav grid (#7) already uses this.
+- [ ] Decide whether the token-lint should EXEMPT @media conditions (so the offset
+      token can stay) or whether to drop the offset pattern entirely.
+- [ ] Re-verify the responsive rules that were silently dead (e.g. the profile-modal
+      menu/pane-hide block, and the line ~1398/1433 player/modal rules).

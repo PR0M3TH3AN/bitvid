@@ -3139,10 +3139,16 @@
     .profile-modal__layout[data-mobile-view="pane"] .profile-modal__menu {
       display: none;
     }
+  }
 
-    /* Mobile: the profile tab nav (full-width menu view) becomes an app-grid —
-       icon tiles with the title centered below each icon, instead of the desktop
-       vertical list. Desktop (>=lg) keeps its vertical nav, unchanged. */
+  /* Mobile: the profile tab nav (full-width menu view) becomes an app-grid — icon
+     tiles with the title centered below each icon, instead of the desktop vertical
+     list. Desktop (>=lg) keeps its vertical nav (the min-width:lg rule below wins
+     at the exact breakpoint via source order). NOTE: the @media condition must NOT
+     use a CSS `var()` — custom properties are invalid inside media conditions and
+     Chromium drops the whole block. `theme("screens.lg")` resolves to a literal at
+     build time, which is valid. */
+  @media (max-width: theme("screens.lg")) {
     .profile-modal__nav {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
