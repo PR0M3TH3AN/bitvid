@@ -746,8 +746,10 @@ test below was failing on `main` unnoticed).
         Fixed + guarded by the real-tools `tests/nwc-parse-uri.test.mjs`. The mock-based
         `nwc-client.test.mjs` STAYS quarantined — its nostr-tools mock is shadowed by the
         frozen canonical toolkit the bootstrap installs; needs a mock-injection rework.
-      - `nostr-count-fallback` — `TypeError: Cannot read 'has' of undefined` — likely
-        a stale harness mock missing a field.
+      - `nostr-count-fallback` — ✅ DONE + UN-QUARANTINED 2026-06-25: STALE TEST after a
+        refactor. `countUnsupportedRelays` moved from `NostrClient` to its
+        `ConnectionManager`; the test read it off the client (undefined.has). Repointed the
+        assertion at `client.connectionManager.countUnsupportedRelays`. No behavior change.
       - `admin-list-store` — ✅ DONE + UN-QUARANTINED 2026-06-25: STALE HARNESS (no
         production change, no assertion weakened). Community curator lists are fetched via
         the BATCHED SubscriptionManager (cold-start relay-storm fix) which the harness
@@ -755,8 +757,15 @@ test below was failing on `main` unnoticed).
         parseCommunityBlacklistReferences decoded them twice; and createListEvent omitted
         the `d` tag that selectNewestEventsForReferences matches on. Fixed all three to be
         faithful to production. See TEST_INTEGRITY.md.
-      - `nostr-publish-rejection` — rejection-path assertion.
-      - `user-blocks` — HANGS (async leak); needs a deterministic rewrite.
+      - `nostr-publish-rejection` — STILL QUARANTINED. Partially diagnosed 2026-06-25:
+        multi-precondition setup. (1) `testPublishVideoNoteDefaultsToLiveModeInDev` needs
+        dev mode — set `globalThis.__BITVID_DEV_MODE_OVERRIDE__=true` BEFORE the first
+        (dynamic) config-importing import (~line 50). (2) The `publishNip71Video` sub-test
+        then fails — `publishVideo`'s NIP-71 invocation path needs FEATURE_PUBLISH_NIP71 /
+        condition triage; possibly more after. Quarantine note carries the steps.
+      - `nostr-publish-rejection`, `nwc-client`, `user-blocks` remain quarantined
+        (see QUARANTINE map in run-unit-tests.mjs for the precise reason on each).
+      - `user-blocks` — STILL QUARANTINED: HANGS (async leak); needs a deterministic rewrite.
 
 ### 12. Promotion: `unstable → beta`
 - [ ] After this batch soaks and the high-priority items land, promote `unstable → beta`

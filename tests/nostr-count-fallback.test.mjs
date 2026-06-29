@@ -178,8 +178,10 @@ async function testUnsupportedRelaySkipsWarningsAndFallsBack() {
 
     assert.equal(listCalls, 1, "fallback should query list once when COUNT fails");
     assert.equal(result?.fallback, true, "unsupported relay should trigger fallback");
+    // Unsupported-relay tracking moved from NostrClient to its ConnectionManager
+    // (the client only re-exposes pool/relays/etc.); assert on the manager.
     assert.ok(
-      client.countUnsupportedRelays.has(unsupportedRelay),
+      client.connectionManager.countUnsupportedRelays.has(unsupportedRelay),
       "unsupported relay should be remembered for future requests"
     );
     assert.equal(
