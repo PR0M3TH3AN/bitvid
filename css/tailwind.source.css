@@ -4714,51 +4714,6 @@
     justify-content: flex-start;
   }
 
-  /* Mobile (below the desktop breakpoint): render the OPEN (expanded) sidebar's
-     primary nav as an app-grid — icon tiles with the title centered below each
-     icon — instead of the desktop vertical list. Desktop and the collapsed icon
-     rail are unchanged. Scoped to `.sidebar-nav` so the footer "More" links are
-     untouched. Uses the sidebar-expanded prefix for specificity (no !important). */
-  @media (max-width: calc(theme("screens.lg") - var(--breakpoint-edge-offset))) {
-    body.sidebar-expanded #sidebar .sidebar-nav,
-    #sidebar.sidebar-expanded .sidebar-nav {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: var(--space-2xs);
-      align-items: start;
-    }
-
-    body.sidebar-expanded #sidebar .sidebar-nav .sidebar-nav-link,
-    #sidebar.sidebar-expanded .sidebar-nav .sidebar-nav-link {
-      flex-direction: column;
-      align-items: center;
-      justify-content: flex-start;
-      text-align: center;
-      gap: var(--space-2xs);
-      width: 100%;
-      min-height: 0;
-      padding-block: var(--space-xs);
-      padding-inline: var(--space-3xs);
-      /* the desktop hover slide is meaningless for centered tiles */
-      --sidebar-nav-translate-x: 0;
-    }
-
-    body.sidebar-expanded #sidebar .sidebar-nav .sidebar-nav-link .sidebar-text,
-    #sidebar.sidebar-expanded
-      .sidebar-nav
-      .sidebar-nav-link
-      .sidebar-text {
-      font-size: var(--font-size-2xs);
-      font-weight: 600;
-      line-height: 1.1;
-      text-align: center;
-      /* wrap at spaces, not mid-word (so "Recently Added" breaks cleanly) */
-      overflow-wrap: break-word;
-      word-break: normal;
-      hyphens: none;
-    }
-  }
-
   body.sidebar-collapsed #sidebar .sidebar-text,
   #sidebar.sidebar-collapsed .sidebar-text {
     display: none;

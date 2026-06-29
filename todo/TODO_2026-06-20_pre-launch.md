@@ -462,14 +462,6 @@ toward freshness and looked identical. Gave each a structural identity:
 - [ ] Improve mobile layout and the video card layout.
 - [ ] **Improve mobile UI** broadly (reiterated 2026-06-25) — not just the card: nav/
       sidebar, modals, the player, forms, and touch targets across the app.
-  - [x] **Mobile sidebar nav → app-grid (2026-06-25).** Below the desktop breakpoint
-        (<1024px), the OPEN/expanded sidebar's primary nav renders as a 3-column grid
-        of icon tiles with the title centered below each icon (app-grid feel), instead
-        of the desktop vertical list. Desktop + the collapsed icon rail are unchanged;
-        scoped to `.sidebar-nav` (footer "More" links untouched); token-only, no
-        `!important` (sidebar-expanded specificity). `css/tailwind.source.css`.
-        Validated live in-browser. (Option A: shows on the open mobile menu; an
-        always-on variant was deferred — would need the sidebar widened/overlaid.)
 - [ ] Consider removing the CDN/WebTorrent source badge from the card (clutter).
 - [ ] Run `npm run test:visual` after layout changes; update baselines deliberately.
 
