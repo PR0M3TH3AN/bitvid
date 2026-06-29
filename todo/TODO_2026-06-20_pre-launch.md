@@ -462,6 +462,13 @@ toward freshness and looked identical. Gave each a structural identity:
 - [ ] Improve mobile layout and the video card layout.
 - [ ] **Improve mobile UI** broadly (reiterated 2026-06-25) — not just the card: nav/
       sidebar, modals, the player, forms, and touch targets across the app.
+  - [x] **Profile modal tabs → app-grid on mobile (2026-06-25).** Below 1024px (the
+        full-width menu view), the profile modal's tab nav (`.profile-modal__nav`:
+        Account/Relays/Wallet/Storage/…) renders as a 3-column grid of icon tiles
+        with the title centered below each icon, instead of the vertical list.
+        Desktop keeps the vertical nav. Token-only; validated live in-browser.
+        `css/tailwind.source.css`. (NOTE: the sidebar is NOT a grid — an earlier
+        sidebar version was a misread and was reverted.)
 - [ ] Consider removing the CDN/WebTorrent source badge from the card (clutter).
 - [ ] Run `npm run test:visual` after layout changes; update baselines deliberately.
 
