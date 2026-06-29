@@ -3139,6 +3139,37 @@
     .profile-modal__layout[data-mobile-view="pane"] .profile-modal__menu {
       display: none;
     }
+
+    /* Mobile: the profile tab nav (full-width menu view) becomes an app-grid —
+       icon tiles with the title centered below each icon, instead of the desktop
+       vertical list. Desktop (>=lg) keeps its vertical nav, unchanged. */
+    .profile-modal__nav {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: var(--space-xs);
+    }
+
+    .profile-modal__nav > button {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      text-align: center;
+      gap: var(--space-2xs);
+      width: 100%;
+      padding-block: var(--space-sm);
+      padding-inline: var(--space-2xs);
+      /* wrap labels at spaces, not mid-word */
+      overflow-wrap: break-word;
+      word-break: normal;
+      hyphens: none;
+    }
+
+    /* slightly larger glyph for the tile */
+    .profile-modal__nav > button svg {
+      width: var(--space-lg);
+      height: var(--space-lg);
+    }
   }
 
   @media (min-width: theme("screens.lg")) {
