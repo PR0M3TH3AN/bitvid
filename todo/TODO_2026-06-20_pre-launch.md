@@ -30,6 +30,24 @@ tests → `npm run build` + `npm run test:unit` green → commit + push.
 
 ## Open — high priority (launch-blocking candidates)
 
+### 33. Login / profile / session persistence broken with NIP-46 (Amber) — AUDIT (BUG)
+Reported 2026-06-25. All symptoms observed with a **NIP-46 remote signer (Amber)**.
+Likely a shared root cause in session/identity persistence + multi-account handling.
+- [ ] **Lost login → "unknown user".** Sometimes the site loses who is logged in: the
+      profile shows "unknown user", the profile area renders weird, and no videos load.
+      Only a **logout + hard refresh** recovers it. (Session/identity state desync —
+      possibly the NIP-46 signer connection or the persisted pubkey dropping after a
+      refresh/idle, leaving the UI without a resolved identity.)
+- [ ] **Switching profiles doesn't work** for logged-in users (multi-account switch is
+      broken).
+- [ ] **Logout logs out everyone.** Logging out the current user appears to log out
+      **every** signed-in account, not just the active one (shared/global session state
+      instead of per-account).
+- [ ] **Audit the whole login + profile system + user persistence** across refresh and
+      repeat visits — especially the NIP-46 path: how the active pubkey + signer
+      connection are stored/restored, how multiple accounts are tracked, and how
+      logout scopes to one account. Produce a plan (likely `docs/`), then fix.
+
 ### 1. Delete is not fully working — tombstoned videos still show in the UI
 - [x] **Root cause found + fixed** (`afb6200b`): deletes published only to the CAPPED
       read set (<=8) while videos publish to the full write set, so relays outside
@@ -442,6 +460,8 @@ toward freshness and looked identical. Gave each a structural identity:
 
 ### 7. Mobile + video-card layout
 - [ ] Improve mobile layout and the video card layout.
+- [ ] **Improve mobile UI** broadly (reiterated 2026-06-25) — not just the card: nav/
+      sidebar, modals, the player, forms, and touch targets across the app.
 - [ ] Consider removing the CDN/WebTorrent source badge from the card (clutter).
 - [ ] Run `npm run test:visual` after layout changes; update baselines deliberately.
 
@@ -675,6 +695,58 @@ to rescue a creator who *does* get WoT-hidden, so if it happens, ship this promp
       (`r2Service.js` / `storageService.js`) and the Storage settings pane; auth is
       a signed Nostr event per Blossom rather than S3 keys. Research the BUD spec
       coverage needed for bitvid's upload/delete flows.
+
+### 34. NIP-71 mirror: videos show "not mirrored" + duplicate on re-mirror (BUG)
+Reported 2026-06-25. Relates to #17 (NIP-71 interop) / the bitvid→NIP-71 mirror.
+- [ ] **Mirrored videos report as NOT mirrored.** All videos were mirrored, but the UI
+      now shows them un-mirrored even though the NIP-71 mirror events exist. The
+      "is this mirrored?" detection is wrong/stale (likely the mirror-state lookup
+      doesn't find the existing kind-21/22 mirror, or a flag isn't persisted/derived).
+- [ ] **Re-mirroring creates DUPLICATES.** Because they read as un-mirrored, mirroring
+      again publishes a SECOND NIP-71 event, so NIP-71 clients show two copies of the
+      same video. The mirror should be idempotent (addressable/replaceable, or detect
+      the existing mirror and update it) instead of creating a duplicate.
+- [ ] Delete/un-mirror correctly removes BOTH copies (so the dedup key is shared) —
+      confirms the publish path is creating a true duplicate, not a distinct event.
+- [ ] Fix: make mirror detection reliable + the mirror publish idempotent. See
+      `js/nostr/nip71Mirror.js` / `js/services/nip71MirrorFlags.js`.
+
+### 35. Admin whitelisting tool is slow & cumbersome — improve with application forms
+- [ ] The current admin whitelist tool is slow and clunky to use. Improve the UX when
+      we integrate the **application/submission forms** (#22) and the **Admin
+      Submissions tab** (#23) — e.g. approve-an-application → add-to-whitelist in one
+      action, batch operations, and faster list mutation. Couples with #22/#23.
+
+### 36. Storage unlock doesn't work with nsec login (BUG)
+- [ ] With an **nsec** login, unlocking encrypted storage credentials fails. The
+      storage-unlock flow likely assumes a different signer/key path than the nsec
+      session provides. Audit the unlock path (`StorageService` master-key decrypt +
+      `js/services/authService.js`) for the nsec case so nsec users can use hosted
+      storage. (Relates to the credential-encryption work in #15.)
+
+### 37. Channel playlists — creator-curated custom note lists
+- [ ] Let creators build **playlists** (custom curated lists of their videos / notes)
+      surfaced on their channel. Likely a NIP-51 set (kind 30005 "curation sets" or a
+      bitvid-specific addressable list) referencing video events, with create/edit/
+      reorder UI on the channel page and a playlist view. Research the list shape +
+      where it slots into channel profile + the feed engine.
+
+### 38. Generic S3 doesn't work with Backblaze B2 — add B2 as a first-class provider
+- [ ] Backblaze **B2** fails under the generic-S3 path: B2's model doesn't map cleanly
+      onto the assumed endpoint / public-access-URL fields (one of them is derived
+      differently), so credentials fail to fetch/validate. Investigate B2's S3-compatible
+      endpoint + friendly-URL/`f000`-style download host, and likely add **B2 as its own
+      provider** (`PROVIDERS`) with B2-specific endpoint + public-URL derivation rather
+      than forcing it through generic S3. See `js/services/storageService.js` /
+      `s3Service.js` (provider abstraction from #6).
+
+### 39. Image uploads should prefer uploading to configured storage (UX)
+- [ ] Anywhere the user adds an image, prefer letting them **upload an image file to
+      their configured storage** (Cloudflare R2 / S3 / B2 / Blossom) and auto-grab the
+      resulting URL — rather than pasting a link. First target: the **profile image +
+      banner** in Edit Profile (upload → store → auto-fill the URL). Reuse the existing
+      upload pipeline (`s3UploadService` / thumbnail upload) and apply the same pattern
+      to other image inputs (thumbnails already do some of this).
 
 ## Open — lower priority / infra
 
