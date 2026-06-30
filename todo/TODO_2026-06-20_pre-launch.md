@@ -762,15 +762,23 @@ Reported 2026-06-25. Relates to #17 (NIP-71 interop) / the bitvid→NIP-71 mirro
          a video has dimensions on one mirror attempt but not another, the kind flips, so
          re-mirroring publishes the OTHER kind → two copies in NIP-71 clients. "Delete
          removes both" confirms the shared d-tag / two-kind duplicate.
-- [ ] **FIX PLAN:**
-      (a) **Idempotent publish:** before mirroring, query relays for an existing mirror
-          by author + `#d=videoRootId` across BOTH kinds; if one exists, REUSE its kind
-          (replace it) and delete any stray of the other kind. Going forward also make
-          the kind determination stable (don't flip to 34235 just because dims are absent
-          — fall back to the existing/previous kind).
-      (b) **Relay-truth detection:** derive "is mirrored" from the published events (the
-          query above), not just the local flag; keep the flag as a cache/hint only.
-      Reproduction-dependent (needs NIP-71 relay state) — verify on unstable after.
+- [x] **FIX (a) Idempotent publish + self-heal — DONE 2026-06-25.**
+      `nip71MirrorService.publish()` now looks up the author's existing mirror (both
+      kinds) via the SubscriptionManager chokepoint and **reuses the existing kind** so
+      a re-publish REPLACES the same addressable coordinate instead of creating the
+      cross-kind duplicate. If both kinds already exist (the bug's aftermath), it
+      **self-heals** by NIP-09-deleting the stale-kind coordinate. An explicit
+      `options.short` override still wins. Also added `findMirror(video)` (relay-truth
+      `{mirrored, kinds, duplicate}`). Dependency-injected; 4 new scenario tests in
+      `tests/nip71-mirror-service.test.mjs` (12/12 green); lint clean (no direct
+      pool.list — uses `getSubscriptionManager().list`).
+- [ ] **FIX (b) Relay-truth detection in the UI (follow-up).** Wire
+      `nip71MirrorService.findMirror` into `MyVideosController` (currently uses the
+      device-local `isMirrorEnabled` flag) so the toggle reflects the published events,
+      not just this device's flag — keep the flag as a cache/hint. Batch the lookups
+      across the My Videos list to avoid N relay queries.
+- [ ] **VERIFY on unstable with Amber:** re-mirror an already-mirrored video → it should
+      replace (one copy), and a previously-duplicated video should collapse to one.
 
 ### 35. Admin whitelisting tool is slow & cumbersome — improve with application forms
 - [ ] The current admin whitelist tool is slow and clunky to use. Improve the UX when
