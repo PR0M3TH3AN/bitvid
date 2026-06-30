@@ -898,6 +898,7 @@
                             <span class="mb-2 block font-medium">Provider</span>
                             <select id="storageProvider" class="input">
                                 <option value="cloudflare_r2" selected>Cloudflare R2</option>
+                                <option value="backblaze_b2">Backblaze B2</option>
                                 <option value="generic_s3">Custom S3</option>
                             </select>
                         </label>
@@ -905,6 +906,11 @@
                         <!-- R2 Helper -->
                         <div id="storageR2Helper" class="card border border-info/30 bg-info/10 p-3 text-xs text-info">
                             Enter your Cloudflare R2 credentials. Your Account ID (from dashboard) is used to connect. For Public Access URL, use your custom domain or R2.dev subdomain. Ensure the token has "Object Read & Write" permissions.
+                        </div>
+
+                        <!-- B2 Helper -->
+                        <div id="storageB2Helper" class="card border border-info/30 bg-info/10 p-3 text-xs text-info hidden">
+                            Enter your Backblaze B2 Application Key. Set Region to your bucket's region (e.g. us-west-004) — bitvid derives the endpoint and the public URL (https://&lt;bucket&gt;.s3.&lt;region&gt;.backblazeb2.com). Your bucket must be Public for playback; override the Public Access URL if you serve files from a custom domain/CDN.
                         </div>
 
                         <!-- S3 Helper -->

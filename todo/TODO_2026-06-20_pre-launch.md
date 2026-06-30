@@ -837,13 +837,32 @@ Reported 2026-06-25. Relates to #17 (NIP-71 interop) / the bitvid→NIP-71 mirro
       where it slots into channel profile + the feed engine.
 
 ### 38. Generic S3 doesn't work with Backblaze B2 — add B2 as a first-class provider
-- [ ] Backblaze **B2** fails under the generic-S3 path: B2's model doesn't map cleanly
-      onto the assumed endpoint / public-access-URL fields (one of them is derived
-      differently), so credentials fail to fetch/validate. Investigate B2's S3-compatible
-      endpoint + friendly-URL/`f000`-style download host, and likely add **B2 as its own
-      provider** (`PROVIDERS`) with B2-specific endpoint + public-URL derivation rather
-      than forcing it through generic S3. See `js/services/storageService.js` /
-      `s3Service.js` (provider abstraction from #6).
+- [x] **DONE 2026-06-30.** Added **Backblaze B2** as its own provider
+      (`PROVIDERS.B2 = "backblaze_b2"`). Root issue: B2's S3 endpoint is *region-scoped*
+      (`s3.<region>.backblazeb2.com`) and a public bucket is addressed virtual-hosted, so
+      the public download URL is `https://<bucket>.s3.<region>.backblazeb2.com/<key>` —
+      not derivable from a pasted generic-S3 endpoint. Implementation:
+      - `deriveB2Endpoint(region)` (`js/storage/s3-url.js`, re-exported from `s3Service`):
+        region → `https://s3.<region>.backblazeb2.com`; returns "" for `auto`/blank/pasted
+        host so callers can require a real region.
+      - `storageService`: `PROVIDERS.B2` + `resolveB2Endpoint` (explicit endpoint wins,
+        else derive from region) + a `PROVIDER_TESTS[B2]` handler (derived endpoint,
+        `forcePathStyle:false`).
+      - **Public URL strategy = S3-style virtual-hosted** (user-chosen): auto-derives to
+        `https://<bucket>.s3.<region>.backblazeb2.com`; an explicit Public Access URL
+        (custom domain/CDN) overrides it — the save path now passes the user's URL to
+        `prepareS3Connection` (also fixes generic-S3 silently ignoring a custom CDN URL).
+      - UI (`profile-modal.html` + `ProfileStorageController`): "Backblaze B2" option +
+        helper; for B2 the raw Endpoint field is hidden (region drives it), Region shows a
+        `us-west-004` example, force-path-style toggle hidden (B2 is virtual-hosted), and
+        save/test derive the endpoint from region (clear "enter your region" error if
+        missing). `UploadModal` shows B2-specific labels.
+      - Tests: `tests/storage-b2-provider.test.mjs` (8 — endpoint derivation, virtual-
+        hosted public URL, end-to-end validate, explicit override, object URLs). All
+        s3/storage suites green (50); build + lint clean.
+- [ ] **VERIFY live** with a real B2 Application Key + public bucket on unstable: pick
+      Backblaze B2, enter region (e.g. `us-west-004`) + bucket + key/secret, Test → passes;
+      upload a video → plays from `https://<bucket>.s3.<region>.backblazeb2.com/...`.
 
 ### 39. Image uploads should prefer uploading to configured storage (UX)
 - [ ] Anywhere the user adds an image, prefer letting them **upload an image file to

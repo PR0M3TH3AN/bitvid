@@ -867,6 +867,9 @@ export class UploadModal {
       if (provider === PROVIDERS.S3) {
           return "Amazon S3";
       }
+      if (provider === PROVIDERS.B2) {
+          return "Backblaze B2";
+      }
       return "S3 Compatible";
   }
 
@@ -880,6 +883,9 @@ export class UploadModal {
   getSummaryCopy(provider) {
       if (provider === PROVIDERS.R2 || provider === "cloudflare_r2") {
           return "Uploads will target your Cloudflare R2 bucket.";
+      }
+      if (provider === PROVIDERS.B2) {
+          return "Uploads will target your Backblaze B2 bucket.";
       }
       return "Uploads will target your S3-compatible bucket.";
   }

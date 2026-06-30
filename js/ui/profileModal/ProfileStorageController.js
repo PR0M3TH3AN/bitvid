@@ -3,6 +3,7 @@ import { PROVIDERS } from "../../services/storageService.js";
 import {
   prepareS3Connection,
   getCorsOrigins,
+  deriveB2Endpoint,
 } from "../../services/s3Service.js";
 import { getActiveSigner } from "../../nostr/client.js";
 import { DEFAULT_NIP07_ENCRYPTION_METHODS } from "../../nostr/nip07Permissions.js";
@@ -31,6 +32,7 @@ export class ProfileStorageController {
     this.storagePrefixWarning = null;
     this.storageDefaultInput = null;
     this.storageR2Helper = null;
+    this.storageB2Helper = null;
     this.storageS3Helper = null;
     this.storageForcePathStyleInput = null;
     this.storageForcePathStyleLabel = null;
@@ -63,6 +65,7 @@ export class ProfileStorageController {
     this.storagePrefixWarning = document.getElementById("storagePrefixWarning") || null;
     this.storageDefaultInput = document.getElementById("storageDefault") || null;
     this.storageR2Helper = document.getElementById("storageR2Helper") || null;
+    this.storageB2Helper = document.getElementById("storageB2Helper") || null;
     this.storageS3Helper = document.getElementById("storageS3Helper") || null;
     this.storageForcePathStyleInput = document.getElementById("storageForcePathStyle") || null;
     this.storageForcePathStyleLabel = document.getElementById("storageForcePathStyleLabel") || null;
@@ -403,6 +406,9 @@ export class ProfileStorageController {
   updateStorageFormVisibility() {
     const provider = this.storageProviderInput?.value || "cloudflare_r2";
     const isR2 = provider === "cloudflare_r2";
+    // B2 derives its endpoint from the region (s3.<region>.backblazeb2.com), so the
+    // raw Endpoint field is hidden and the region drives the connection.
+    const isB2 = provider === PROVIDERS.B2;
 
     if (this.storageEndpointInput) {
       const label =
@@ -416,6 +422,13 @@ export class ProfileStorageController {
         if (this.storagePrefixInput) {
           this.storagePrefixInput.placeholder = "https://pub-xxx.r2.dev";
         }
+      } else if (isB2) {
+        // Endpoint is derived from the region; hide the raw endpoint input.
+        this.storageEndpointInput.parentElement.classList.add("hidden");
+        if (this.storagePrefixInput) {
+          this.storagePrefixInput.placeholder =
+            "Optional — derived from region/bucket (or your CDN domain)";
+        }
       } else {
         if (label) label.textContent = "Endpoint URL";
         this.storageEndpointInput.placeholder = "https://s3.example.com";
@@ -427,24 +440,38 @@ export class ProfileStorageController {
       }
     }
 
+    // Region matters for B2 (drives the endpoint) and AWS-style S3; nudge the example.
+    if (this.storageRegionInput && isB2) {
+      this.storageRegionInput.placeholder = "us-west-004";
+    } else if (this.storageRegionInput) {
+      this.storageRegionInput.placeholder = "auto";
+    }
+
     if (this.storageR2Helper) {
-      if (isR2) this.storageR2Helper.classList.remove("hidden");
-      else this.storageR2Helper.classList.add("hidden");
+      this.storageR2Helper.classList.toggle("hidden", !isR2);
+    }
+
+    if (this.storageB2Helper) {
+      this.storageB2Helper.classList.toggle("hidden", !isB2);
     }
 
     if (this.storageS3Helper) {
-      if (!isR2) this.storageS3Helper.classList.remove("hidden");
-      else this.storageS3Helper.classList.add("hidden");
+      // Generic/custom S3 helper only — not R2, not B2 (each has its own helper).
+      this.storageS3Helper.classList.toggle("hidden", isR2 || isB2);
     }
 
     if (this.storageForcePathStyleLabel) {
-      if (!isR2)
-        this.storageForcePathStyleLabel.classList.remove("hidden", "flex");
-      else this.storageForcePathStyleLabel.classList.add("hidden");
-
-      if (!isR2) {
-        this.storageForcePathStyleLabel.classList.add("flex");
-      }
+      // Force-path-style is a generic-S3 knob; R2 (account-derived) and B2
+      // (virtual-hosted) fix it internally, so hide the toggle for both.
+      const showForcePathStyle = !isR2 && !isB2;
+      this.storageForcePathStyleLabel.classList.toggle(
+        "hidden",
+        !showForcePathStyle,
+      );
+      this.storageForcePathStyleLabel.classList.toggle(
+        "flex",
+        showForcePathStyle,
+      );
     }
   }
 
@@ -731,6 +758,18 @@ export class ProfileStorageController {
     const prefix = this.storagePrefixInput?.value?.trim() || "";
     const isDefault = this.storageDefaultInput?.checked || false;
 
+    // B2: the endpoint isn't entered — derive it from the region.
+    if (provider === PROVIDERS.B2) {
+      endpointOrAccount = deriveB2Endpoint(region);
+      if (!endpointOrAccount) {
+        this.setStorageFormStatus(
+          "Enter your Backblaze B2 region (e.g. us-west-004).",
+          "error",
+        );
+        return;
+      }
+    }
+
     if (!accessKeyId || !secretAccessKey || !bucket || !endpointOrAccount) {
       this.setStorageFormStatus("Please fill in all required fields.", "error");
       return;
@@ -772,6 +811,10 @@ export class ProfileStorageController {
           secretAccessKey,
           bucket,
           forcePathStyle,
+          // Honor an explicit Public Access URL (e.g. a B2 custom domain / CDN in front
+          // of the bucket); when blank, validateS3Connection derives it from the
+          // endpoint + bucket (for B2: https://<bucket>.s3.<region>.backblazeb2.com).
+          publicBaseUrl: prefix || undefined,
           origins: getCorsOrigins(),
         });
         endpointOrAccount = normalized.endpoint;
@@ -854,7 +897,7 @@ export class ProfileStorageController {
     }
 
     const provider = this.storageProviderInput?.value || "cloudflare_r2";
-    const endpointOrAccount = this.storageEndpointInput?.value?.trim() || "";
+    let endpointOrAccount = this.storageEndpointInput?.value?.trim() || "";
     const region = this.storageRegionInput?.value?.trim() || "auto";
     const accessKeyId = this.storageAccessKeyInput?.value?.trim() || "";
     const secretAccessKey = this.storageSecretKeyInput?.value?.trim() || "";
@@ -866,6 +909,18 @@ export class ProfileStorageController {
         : false;
 
     const publicBaseUrl = this.storagePrefixInput?.value?.trim() || "";
+
+    // B2: the endpoint isn't entered — derive it from the region.
+    if (provider === PROVIDERS.B2) {
+      endpointOrAccount = deriveB2Endpoint(region);
+      if (!endpointOrAccount) {
+        this.setStorageFormStatus(
+          "Enter your Backblaze B2 region (e.g. us-west-004) to test.",
+          "error",
+        );
+        return;
+      }
+    }
 
     if (!accessKeyId || !secretAccessKey || !endpointOrAccount) {
       this.setStorageFormStatus("Missing credentials for test.", "error");

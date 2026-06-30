@@ -2,6 +2,7 @@ import { userLogger } from "../utils/logger.js";
 import { clearLegacyR2Settings, loadLegacyR2Settings } from "../r2.js";
 import { bytesToHex } from "../../vendor/crypto-helpers.bundle.min.js";
 import { testS3Connection } from "../storage/r2-s3.js";
+import { deriveB2Endpoint } from "../storage/s3-url.js";
 
 const DB_NAME = "bitvid-storage";
 const DB_VERSION = 1;
@@ -33,6 +34,7 @@ export const PROVIDERS = Object.freeze({
   R2: "cloudflare_r2",
   S3: "aws_s3",
   GENERIC: "generic_s3",
+  B2: "backblaze_b2",
 });
 
 function resolveConnectionMeta(config) {
@@ -84,6 +86,16 @@ function resolveR2Endpoint(config) {
     return resolveEndpoint(config);
   }
   return `https://${accountId}.r2.cloudflarestorage.com`;
+}
+
+// Backblaze B2: prefer an explicit endpoint (lets a user override), otherwise derive
+// the region-scoped S3 endpoint (https://s3.<region>.backblazeb2.com) from the region.
+function resolveB2Endpoint(config) {
+  const explicit = resolveEndpoint(config);
+  if (explicit) {
+    return explicit;
+  }
+  return deriveB2Endpoint(resolveRegion(config));
 }
 
 function resolveForcePathStyle(config, fallback = false) {
@@ -140,6 +152,15 @@ const PROVIDER_TESTS = {
     testS3Connection(
       buildS3TestConfig(config, {
         forcePathStyle: resolveForcePathStyle(config, true),
+      })
+    ),
+  // B2 is addressed virtual-hosted-style; the public URL then derives to
+  // https://<bucket>.s3.<region>.backblazeb2.com (forcePathStyle false).
+  [PROVIDERS.B2]: (config) =>
+    testS3Connection(
+      buildS3TestConfig(config, {
+        endpoint: resolveB2Endpoint(config),
+        forcePathStyle: resolveForcePathStyle(config, false),
       })
     ),
 };
