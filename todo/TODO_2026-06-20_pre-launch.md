@@ -48,6 +48,35 @@ Likely a shared root cause in session/identity persistence + multi-account handl
       connection are stored/restored, how multiple accounts are tracked, and how
       logout scopes to one account. Produce a plan (likely `docs/`), then fix.
 
+- [x] **AUDIT done 2026-06-25 (code-level).** Architecture:
+      `js/state/cache.js` persists a list of **saved profiles** (`bitvid:savedProfiles:v1`)
+      + a single **active profile pubkey**. There is ONE active session at a time.
+      `SignerManager` (`js/nostr/managers/SignerManager.js`) holds a SINGLE shared
+      `this.nip46Client` (one remote-signer connection). Likely root cause for ALL three
+      symptoms: the single-shared `nip46Client` + per-profile restore/switch not being
+      multi-account-aware. Specifics:
+        - **Logout-logs-out-everyone:** `authService.logout()` IS registry-scoped
+          (`logoutSignerFromRegistry(previousPubkey)`), but `SignerManager.logout()`
+          calls `disconnectRemoteSigner()` which destroys the SHARED `nip46Client` — so
+          for NIP-46 every profile that depends on it loses its signer.
+        - **Switch-doesn't-work:** `authService.switchProfile` re-runs `requestLogin`
+          with `expectPubkey`; for NIP-46 the shared client must be re-established for the
+          target profile — if it doesn't reconnect, the new profile has no working signer.
+        - **Unknown-user-after-refresh:** `scheduleStoredRemoteSignerRestore` →
+          `useStoredRemoteSigner` silently fails (the catch logged via the gated
+          `devLogger`), leaving `this.pubkey` unresolved → UI shows "unknown user".
+- [x] **Diagnostics SHIPPED (2026-06-25, TEMP).** Added `[nip46-diag]` `userLogger`
+      traces (visible on unstable, where `devLogger` is gated off) at:
+      `scheduleStoredRemoteSignerRestore` (hasStored/storedPubkey + succeeded/FAILED),
+      `disconnectRemoteSigner` (keepStored/hadClient + caller stack),
+      `SignerManager.logout` (previousPubkey/hadRemoteClient), and
+      `authService.switchProfile` (from/to + whether requestLogin resolved the expected
+      pubkey). **Remove these once the fix lands.**
+- [ ] **NEXT: reproduce on the phone with Amber on unstable, paste the `[nip46-diag]`
+      console output**, then ship the targeted fix (likely: per-profile NIP-46 session
+      keyed by pubkey, don't tear the shared client on a scoped logout, and reconnect on
+      switch/restore).
+
 ### 1. Delete is not fully working — tombstoned videos still show in the UI
 - [x] **Root cause found + fixed** (`afb6200b`): deletes published only to the CAPPED
       read set (<=8) while videos publish to the full write set, so relays outside
