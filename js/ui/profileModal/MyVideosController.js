@@ -336,6 +336,9 @@ export class MyVideosController {
     for (const video of rows) {
       this.listEl.appendChild(this.buildRow(video));
     }
+    // After the synchronous render (which used the local flag), correct the mirror
+    // labels from relay truth in the background. Fire-and-forget.
+    this.refreshMirrorStates(rows);
   }
 
   buildRow(video) {
@@ -441,10 +444,63 @@ export class MyVideosController {
       btn.classList.add("opacity-50");
       return btn;
     }
-    return this.buildActionButton(
+    const btn = this.buildActionButton(
       enabled ? "Shared ✓" : "Share to apps",
       (event) => this.handleToggleMirror(video, event?.currentTarget || null),
     );
+    // Tag with the root so the batched relay-truth refresh can update this button.
+    const root = video?.videoRootId;
+    if (root) {
+      btn.dataset.mirrorRoot = String(root);
+    }
+    return btn;
+  }
+
+  // Relay-truth detection (#34): the per-row mirror label initially uses the
+  // device-local flag (synchronous), which can be stale/missing on a fresh device or
+  // after a cache clear. After render, look up the ACTUAL published mirror events
+  // (one batched query for the whole list), reconcile the local flag to match, and
+  // correct any button labels. Fire-and-forget — never blocks the render.
+  async refreshMirrorStates(videos) {
+    if (!FEATURE_NIP71_MIRROR || !this.pubkey) {
+      return;
+    }
+    if (typeof nip71MirrorService.findMirrors !== "function") {
+      return;
+    }
+    let states;
+    try {
+      states = await nip71MirrorService.findMirrors(videos);
+    } catch (error) {
+      // Detection is best-effort; the local flag remains as a hint.
+      return;
+    }
+    if (!(states instanceof Map) || !(this.listEl instanceof HTMLElement)) {
+      return;
+    }
+    for (const video of Array.isArray(videos) ? videos : []) {
+      const root = video?.videoRootId ? String(video.videoRootId) : "";
+      if (!root) {
+        continue;
+      }
+      const mirrored = states.get(root)?.mirrored === true;
+      // Reconcile the local flag so it's a correct cache going forward.
+      try {
+        setMirrorEnabled(this.pubkey, root, mirrored);
+      } catch (error) {
+        // ignore storage errors
+      }
+      const safeRoot =
+        typeof CSS !== "undefined" && typeof CSS.escape === "function"
+          ? CSS.escape(root)
+          : root.replace(/["\\]/g, "\\$&");
+      const btn = this.listEl.querySelector(
+        `[data-mirror-root="${safeRoot}"]`,
+      );
+      if (btn instanceof HTMLElement && !btn.disabled) {
+        btn.textContent = mirrored ? "Shared ✓" : "Share to apps";
+      }
+    }
   }
 
   async handleToggleMirror(video, btn) {

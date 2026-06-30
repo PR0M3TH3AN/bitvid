@@ -294,7 +294,45 @@ export function createNip71MirrorService({
     return { mirrored: kinds.length > 0, kinds, duplicate: kinds.length > 1 };
   }
 
-  return { isAvailable, canMirror, publish, remove, findMirror };
+  // Batched relay-truth detection for a list of videos (e.g. the My Videos grid):
+  // ONE query for all video roots instead of N. Returns Map<videoRootId,
+  // { mirrored, kinds, duplicate }>. Roots with no mirror are simply absent.
+  async function findMirrors(videos) {
+    const list = Array.isArray(videos) ? videos : [];
+    const pubkey = getActivePubkey();
+    const roots = [
+      ...new Set(list.map((v) => str(v?.videoRootId)).filter(Boolean)),
+    ];
+    const out = new Map();
+    if (!pubkey || !roots.length) {
+      return out;
+    }
+    // fetchExistingMirrors filters on a single #d; query each root but in one
+    // round via the shared lookup (the SubscriptionManager batches internally).
+    const results = await Promise.all(
+      roots.map(async (root) => {
+        const existing = await fetchExistingMirrors({ pubkey, root });
+        const kinds = [
+          ...new Set(
+            (Array.isArray(existing) ? existing : [])
+              .map((e) => e.kind)
+              .filter(Boolean),
+          ),
+        ];
+        return [root, kinds];
+      }),
+    );
+    for (const [root, kinds] of results) {
+      out.set(root, {
+        mirrored: kinds.length > 0,
+        kinds,
+        duplicate: kinds.length > 1,
+      });
+    }
+    return out;
+  }
+
+  return { isAvailable, canMirror, publish, remove, findMirror, findMirrors };
 }
 
 export const nip71MirrorService = createNip71MirrorService();

@@ -772,11 +772,18 @@ Reported 2026-06-25. Relates to #17 (NIP-71 interop) / the bitvid→NIP-71 mirro
       `{mirrored, kinds, duplicate}`). Dependency-injected; 4 new scenario tests in
       `tests/nip71-mirror-service.test.mjs` (12/12 green); lint clean (no direct
       pool.list — uses `getSubscriptionManager().list`).
-- [ ] **FIX (b) Relay-truth detection in the UI (follow-up).** Wire
-      `nip71MirrorService.findMirror` into `MyVideosController` (currently uses the
-      device-local `isMirrorEnabled` flag) so the toggle reflects the published events,
-      not just this device's flag — keep the flag as a cache/hint. Batch the lookups
-      across the My Videos list to avoid N relay queries.
+- [x] **FIX (b) Relay-truth detection in the UI — DONE 2026-06-29.** Added batched
+      `nip71MirrorService.findMirrors(videos)` → `Map<videoRootId, {mirrored, kinds,
+      duplicate}>` (one relay lookup per root via `Promise.all`, all through the
+      SubscriptionManager chokepoint). `MyVideosController.renderRows` now fires
+      `refreshMirrorStates(rows)` after the synchronous (local-flag) render: it looks up
+      relay truth, **reconciles the device-local flag to match** (so the flag becomes a
+      correct cache, not the source of truth), and corrects each mirror button's label
+      ("Shared ✓" / "Share to apps"). Buttons are tagged `data-mirror-root` for the
+      batched update. Fire-and-forget — never blocks render; detection failures fall back
+      to the local flag. 4 new behavioral tests in
+      `tests/my-videos-mirror-relay-truth.test.mjs` (jsdom: promote unmirrored→shared,
+      clear stale shared, per-row batch reconcile, button tagging); build + lint clean.
 - [ ] **VERIFY on unstable with Amber:** re-mirror an already-mirrored video → it should
       replace (one copy), and a previously-duplicated video should collapse to one.
 
