@@ -937,6 +937,18 @@ Reported 2026-06-25. Relates to #17 (NIP-71 interop) / the bitvid→NIP-71 mirro
       `tests/storage-connections.test.mjs` (7 — pure default/dup logic + integration:
       R2+B2 coexist with one default, re-default switch, legacy-`default` migration, and
       the export carries both). Storage + profile-modal suites 69/69; build + lint clean.
+- [x] **Upload wrong-service routing FIXED 2026-06-30 (multi-provider regression).** With
+      both B2 + Cloudflare configured, an upload could fail with **"S3 endpoint is
+      required."** when the upload modal's tracked `activeProvider` drifted out of sync
+      with `activeCredentials` (user: "selector on Backblaze but the modal set for
+      Cloudflare") — an R2 connection (accountId, no endpoint) got routed through the S3
+      service. Fix: `MediaUploader.uploadVideo`/`uploadThumbnail` now route by the
+      CREDENTIALS' own provider (`credentials.provider || meta.provider || provider`), so
+      a stale modal provider can't pick the wrong service. Test:
+      `tests/media-uploader-provider-routing.test.mjs` (4). Build + lint clean.
+- [ ] **Follow-up (cosmetic):** the upload modal's summary provider label can still show
+      a stale provider until reloaded — refresh `loadFromStorage` when the storage default
+      changes in the Storage pane (functional routing is already correct).
 
 ### 39. Image uploads should prefer uploading to configured storage (UX)
 - [x] **Profile image + banner upload — FIXED 2026-06-30.** The UI was already wired
