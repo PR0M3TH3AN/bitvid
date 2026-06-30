@@ -523,6 +523,41 @@ toward freshness and looked identical. Gave each a structural identity:
         Build + lint clean; affected suites green. NOTE: `npm run build`/`lint` do NOT
         parse JS — verify migrations by importing the module / running its test.
 
+### 42. Admin whitelist edit fails with nsec / NIP-46 (only NIP-07 worked) — FIXED
+- [x] **DONE 2026-06-30.** Editing the admin whitelist/blacklist worked with a NIP-07
+      extension but silently failed with nsec and NIP-46 (Amber). Root cause:
+      `adminListStore.persistNostrState` signed with `window.nostr.signEvent` directly
+      (and required `requestDefaultExtensionPermissions`), so non-extension logins threw
+      "nostr-extension-missing". Fix: sign with the **active signer**
+      (`getActiveSigner()` from the registry — works for extension/nsec/NIP-46, all expose
+      `signEvent`), and only run the extension-permission prompt when the signer is an
+      extension (`type === "extension"/"nip07"`). Regression test added to
+      `tests/admin-list-store.test.mjs` (nsec signer used while `window.nostr.signEvent`
+      throws). Build + lint clean.
+- [ ] **AUDIT (follow-up):** sweep EVERY place that signs an event and confirm it uses the
+      active-signer path (`getActiveSigner().signEvent` / the client's sign helper), NOT
+      `window.nostr` directly. `window.nostr`-only signing breaks nsec + NIP-46. Grep for
+      `window.nostr`, `extension.signEvent`, and direct `signEvent` calls across publish
+      paths (lists, reactions, reposts, comments, profile metadata, NWC, watch history,
+      deletes, NIP-71 mirror, view events) and fix any that bypass the active signer.
+
+### 43. Logged-in profile card at the top of the profile modal (UX)
+- [ ] Show the **logged-in user's profile photo + name** at the **top-center** of the
+      profile modal, styled as a "profile card" that sits **half-on / half-off** the
+      modal edge (overlapping the top border) for a polished look. Goal: users can see
+      WHICH profile they're acting as (e.g. uploading as) at a glance. Pull avatar/name
+      from the profile cache for the active pubkey; update on profile switch.
+
+### 44. In-modal storage selector for uploads (UX)
+- [ ] Make storage unlock + selection easier from the **video upload modal**: let the
+      user **pick any configured storage connection** (R2 / B2 / Custom S3) and unlock it
+      **without leaving the upload modal** — today they must close it, open Profile →
+      Storage, change the default/selected connection, then reopen upload. Add a provider
+      picker (driven by `storageService.listConnections`) + inline unlock in the upload
+      modal's storage section; selecting one sets it as the active upload target for this
+      upload (and optionally the default). Reuse `loadFromStorage` / the per-provider
+      connection model.
+
 ### 8. Orphan storage garbage-collection tool
 - [x] **Largely delivered by the My Videos tab** (`9d3a0df0`): lists bucket objects no
       live note references and offers per-file delete (under the user's prefix only).
