@@ -1395,7 +1395,7 @@
     overscroll-behavior: contain;
   }
 
-  @media (max-width: calc(theme("screens.lg") - var(--breakpoint-edge-offset))) {
+  @media (max-width: calc(theme("screens.lg") - 0.02px)) {
     .bv-modal {
       align-items: stretch;
       justify-content: stretch;
@@ -3130,7 +3130,7 @@
     }
   }
 
-  @media (max-width: calc(theme("screens.lg") - var(--breakpoint-edge-offset))) {
+  @media (max-width: calc(theme("screens.lg") - 0.02px)) {
     .profile-modal__layout[data-mobile-view="menu"]
       .profile-modal__pane-wrapper {
       display: none;
@@ -3148,7 +3148,7 @@
      use a CSS `var()` — custom properties are invalid inside media conditions and
      Chromium drops the whole block. `theme("screens.lg")` resolves to a literal at
      build time, which is valid. */
-  @media (max-width: theme("screens.lg")) {
+  @media (max-width: calc(theme("screens.lg") - 0.02px)) {
     .profile-modal__nav {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -6122,7 +6122,7 @@
   }
 
   /* Mobile Active State */
-  @media (max-width: calc(theme("screens.lg") - var(--breakpoint-edge-offset))) {
+  @media (max-width: calc(theme("screens.lg") - 0.02px)) {
     .card[data-mobile-active="true"] {
       --video-card-lift-translate-y: var(--motion-video-card-hover-translate);
       --video-card-backdrop-opacity: 0.425;

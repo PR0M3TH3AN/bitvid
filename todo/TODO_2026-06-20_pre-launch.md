@@ -1099,7 +1099,7 @@ has a persisted cache; channel/search now render optimistically from
       precedence/gating. Logic extracted to a helper so channelProfile.js stayed
       under its size cap. Tests + mutation-verified.
 
-### 40. Dead @media queries: `var()` in media conditions is invalid (BUG, broad)
+### 40. Dead @media queries: `var()` in media conditions is invalid — FIXED 2026-06-25
 Found 2026-06-25 while fixing the profile-modal mobile grid. Many media queries use
 `@media (max-width: calc(theme("screens.lg") - var(--breakpoint-edge-offset)))`.
 CSS custom properties are NOT allowed inside `@media` conditions — Chromium/Brave
@@ -1116,3 +1116,13 @@ that used it.
       token can stay) or whether to drop the offset pattern entirely.
 - [ ] Re-verify the responsive rules that were silently dead (e.g. the profile-modal
       menu/pane-hide block, and the line ~1398/1433 player/modal rules).
+
+- [x] **FIXED 2026-06-25.** Replaced `var(--breakpoint-edge-offset)` with the literal
+      `0.02px` in all 4 `@media` conditions (`css/tailwind.source.css`). `0.02px` was
+      ALREADY exempt in the design-token lint, so the offset token was never needed —
+      using it just produced invalid, dead media queries. Verified valid via matchMedia.
+      This RE-ACTIVATES 3 previously-dead mobile blocks (intended behavior that had
+      silently never worked): full-screen modals on mobile, profile-modal menu/pane
+      switching, and the video-card tap-active state — plus the profile-nav app-grid.
+- [ ] **VERIFY live on a phone**: modals should now be full-screen; tapping a video
+      card shows the active lift/accent/marquee; profile modal tabs are the app-grid.
