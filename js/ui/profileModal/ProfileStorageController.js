@@ -9,6 +9,12 @@ import { getActiveSigner } from "../../nostr/client.js";
 import { DEFAULT_NIP07_ENCRYPTION_METHODS } from "../../nostr/nip07Permissions.js";
 import { storageSyncService } from "../../services/storageSyncService.js";
 import { StorageCorsHelp } from "./storageCorsHelp.js";
+import {
+  fillStorageForm,
+  clearCredentialFields,
+  findProviderConnection,
+  saveProviderConnection,
+} from "./storageConnections.js";
 
 export class ProfileStorageController {
   constructor(mainController) {
@@ -111,7 +117,7 @@ export class ProfileStorageController {
 
     if (this.storageProviderInput instanceof HTMLElement) {
       this.storageProviderInput.addEventListener("change", () => {
-        this.updateStorageFormVisibility();
+        void this.handleProviderChange();
       });
     }
 
@@ -212,7 +218,7 @@ export class ProfileStorageController {
             targetConn.id
           );
           if (conn) {
-            this.fillStorageForm(conn);
+            fillStorageForm(this, conn);
             if (this.storageStatusText) {
               const label = conn.meta?.label || conn.provider || "S3";
               this.storageStatusText.textContent = `Unlocked (${label})`;
@@ -355,57 +361,32 @@ export class ProfileStorageController {
     }
   }
 
-  fillStorageForm(conn) {
-    if (!conn) return;
-    const {
-      provider,
-      accessKeyId,
-      secretAccessKey,
-      accountId: payloadAccountId,
-      endpoint: payloadEndpoint,
-      forcePathStyle: payloadForcePathStyle,
-    } = conn;
-    const {
-      endpoint,
-      region,
-      bucket,
-      prefix,
-      defaultForUploads,
-      accountId,
-      forcePathStyle: metaForcePathStyle,
-    } = conn.meta || {};
-
-    if (this.storageProviderInput)
-      this.storageProviderInput.value = provider || "cloudflare_r2";
-
-    const resolvedEndpoint =
-      endpoint || accountId || payloadAccountId || payloadEndpoint || "";
-
-    if (this.storageEndpointInput)
-      this.storageEndpointInput.value = resolvedEndpoint;
-    if (this.storageRegionInput)
-      this.storageRegionInput.value = region || "auto";
-    if (this.storageAccessKeyInput)
-      this.storageAccessKeyInput.value = accessKeyId || "";
-    if (this.storageSecretKeyInput)
-      this.storageSecretKeyInput.value = secretAccessKey || "";
-    if (this.storageBucketInput) this.storageBucketInput.value = bucket || "";
-    if (this.storagePrefixInput) this.storagePrefixInput.value = prefix || "";
-    if (this.storageDefaultInput)
-      this.storageDefaultInput.checked = !!defaultForUploads;
-
-    if (this.storageForcePathStyleInput) {
-      if (typeof payloadForcePathStyle === "boolean") {
-        this.storageForcePathStyleInput.checked = payloadForcePathStyle;
-      } else if (typeof metaForcePathStyle === "boolean") {
-        this.storageForcePathStyleInput.checked = metaForcePathStyle;
-      } else {
-        this.storageForcePathStyleInput.checked = true;
-      }
-    }
-
+  // Load the saved connection for the newly-selected provider so each provider keeps
+  // its own credentials; clear the credential fields when that provider has none yet.
+  async handleProviderChange() {
     this.updateStorageFormVisibility();
-    this.handlePublicUrlInput();
+    const pubkey = this.mainController.normalizeHexPubkey(
+      this.mainController.getActivePubkey(),
+    );
+    const storageService = this.mainController.services?.storageService;
+    if (!pubkey || !storageService || !storageService.isUnlocked?.(pubkey)) {
+      return;
+    }
+    const provider = this.storageProviderInput?.value || "cloudflare_r2";
+    try {
+      const connections = await storageService.listConnections(pubkey);
+      const match = findProviderConnection(connections, provider);
+      if (match) {
+        const conn = await storageService.getConnection(pubkey, match.id);
+        if (conn) {
+          fillStorageForm(this, conn);
+          return;
+        }
+      }
+      clearCredentialFields(this);
+    } catch (error) {
+      devLogger.warn("[ProfileModal] Failed to load connection for provider:", error);
+    }
   }
 
   handlePublicUrlInput() {
@@ -858,7 +839,13 @@ export class ProfileStorageController {
     this.setStorageFormStatus("Saving...", "info");
 
     try {
-      await storageService.saveConnection(pubkey, "default", payload, meta);
+      // One slot per provider type so providers don't overwrite or clash.
+      await saveProviderConnection(storageService, pubkey, {
+        provider,
+        payload,
+        meta,
+        isDefault,
+      });
       this.setStorageFormStatus("Connection saved.", "success");
       this.mainController.showSuccess("Storage connection saved.");
 

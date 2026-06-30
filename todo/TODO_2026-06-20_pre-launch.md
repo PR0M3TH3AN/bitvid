@@ -886,6 +886,21 @@ Reported 2026-06-25. Relates to #17 (NIP-71 interop) / the bitvid→NIP-71 mirro
 - [ ] **VERIFY live** on unstable: pick Backblaze B2, enter region (`us-west-004`) +
       bucket + key/secret, Test → passes; apply the CORS helper's rules; upload a video →
       plays from `https://<bucket>.s3.<region>.backblazeb2.com/...`.
+- [x] **Per-provider connections (no overwrite/clash) — DONE 2026-06-30.** The UI saved
+      every provider into a single shared `"default"` connection id, so configuring B2
+      overwrote R2 (etc.). The service layer + upload path + sync already supported a
+      MAP of connections keyed by id (`listConnections`/`defaultForUploads`/
+      `exportAccountRecord`) — only the controller collapsed them. Now each provider type
+      gets its own slot keyed by provider id (`cloudflare_r2`/`backblaze_b2`/`generic_s3`):
+      save writes that slot (preserving a single active `defaultForUploads`, and lazily
+      migrating the legacy `"default"` slot to its provider id), and switching the provider
+      dropdown loads that provider's saved credentials (or clears the fields for a fresh
+      entry). Sync already carries the whole record, so all providers sync together.
+      Logic extracted to `js/ui/profileModal/storageConnections.js` (`saveProviderConnection`
+      + pure helpers; keeps the controller under the 1000-line cap). Tests:
+      `tests/storage-connections.test.mjs` (7 — pure default/dup logic + integration:
+      R2+B2 coexist with one default, re-default switch, legacy-`default` migration, and
+      the export carries both). Storage + profile-modal suites 69/69; build + lint clean.
 
 ### 39. Image uploads should prefer uploading to configured storage (UX)
 - [ ] Anywhere the user adds an image, prefer letting them **upload an image file to
