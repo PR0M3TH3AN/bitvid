@@ -794,11 +794,35 @@ Reported 2026-06-25. Relates to #17 (NIP-71 interop) / the bitvid→NIP-71 mirro
       action, batch operations, and faster list mutation. Couples with #22/#23.
 
 ### 36. Storage unlock doesn't work with nsec login (BUG)
-- [ ] With an **nsec** login, unlocking encrypted storage credentials fails. The
-      storage-unlock flow likely assumes a different signer/key path than the nsec
-      session provides. Audit the unlock path (`StorageService` master-key decrypt +
-      `js/services/authService.js`) for the nsec case so nsec users can use hosted
-      storage. (Relates to the credential-encryption work in #15.)
+- [x] **ROOT-CAUSED + FIXED 2026-06-29.** Audited the whole nsec unlock path and built
+      an empirical repro: the crypto layer is **correct** — with real nsec cipher
+      closures (`createPrivateKeyCipherClosures`), `storageService.unlock` round-trips
+      master-key encrypt→lock→decrypt perfectly (NIP-44). Both nsec login paths
+      (`registerPrivateKeySigner`, `unlockStoredSessionActor`) register a signer exposing
+      `nip04Decrypt`/`nip44Decrypt`. **The real failure is session-shape after a page
+      reload** (user-confirmed repro): a persisted "remember this key" nsec session
+      restores the logged-in **pubkey + UI but NOT the in-memory signer** (the private key
+      is only passphrase-encrypted). `ProfileStorageController`'s fallback
+      (`ensureActiveSignerForPubkey`) can only rebuild an *extension* signer, so an nsec
+      user hit a dead-end: storage unlock found no signer and showed the misleading "No
+      active signer found. Please login." even though they look logged in.
+      **Fix:** detect this exact case (`getLockedStoredNsecSession` — a saved nsec key for
+      the account being unlocked via `getStoredSessionActorMetadata`) and surface an
+      **actionable** error/status ("Your saved key is locked after reload — re-enter your
+      passphrase from the Login menu to unlock it, then unlock storage") in both the
+      Unlock-button flow and the passive Storage-pane status text, instead of the generic
+      no-signer / no-decryptor messages. New error code
+      `storage-unlock-locked-nsec-session`. Tests:
+      `tests/storage-unlock-locked-nsec.test.mjs` (6, behavioral). Build + lint clean.
+- [ ] **Follow-up (UX nicety):** auto-open the login modal's existing unlock-saved-key
+      (passphrase) flow directly from the storage pane so the user re-unlocks in one
+      click instead of navigating to Login — needs a side-effect-free
+      `requestUnlockStoredSession` hook (the current `requestAddProfileLogin` path runs an
+      add-account callback). Deferred to keep this fix small.
+- [ ] **VERIFY on unstable:** nsec-login with "remember key" + passphrase, reload the
+      page, open Profile → Storage → the status should read the actionable re-unlock hint
+      (not "No active signer"); after re-entering the passphrase via Login, storage
+      unlocks normally. (`[storage-unlock]` console line confirms the locked-key branch.)
 
 ### 37. Channel playlists — creator-curated custom note lists
 - [ ] Let creators build **playlists** (custom curated lists of their videos / notes)

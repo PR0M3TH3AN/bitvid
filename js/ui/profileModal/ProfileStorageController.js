@@ -1,4 +1,4 @@
-import { devLogger } from "../../utils/logger.js";
+import { devLogger, userLogger } from "../../utils/logger.js";
 import { PROVIDERS } from "../../services/storageService.js";
 import {
   prepareS3Connection,
@@ -170,6 +170,11 @@ export class ProfileStorageController {
       } else if (this.storageUnlockFailure?.message) {
         this.storageStatusText.textContent = `Locked (${this.storageUnlockFailure.message})`;
         this.storageStatusText.className = "text-xs text-status-danger";
+      } else if (this.getLockedStoredNsecSession(pubkey)) {
+        // Saved nsec key not yet re-unlocked after reload — point the user at the fix.
+        this.storageStatusText.textContent =
+          "Locked — re-unlock your saved key (Login → passphrase) to manage storage.";
+        this.storageStatusText.className = "text-xs text-status-warning";
       } else {
         this.storageStatusText.textContent = "Locked";
         this.storageStatusText.className = "text-xs text-status-warning";
@@ -451,6 +456,8 @@ export class ProfileStorageController {
         return "Storage unlock requires extension encryption permission. Approve the prompt, then retry unlock.";
       case "storage-unlock-no-decryptor":
         return "Your signer cannot decrypt storage keys. Use a signer with NIP-44 or NIP-04 decrypt support.";
+      case "storage-unlock-locked-nsec-session":
+        return "Your saved key is locked after reloading the page. Open the Login menu and re-enter your passphrase to unlock your saved key, then unlock storage.";
       case "storage-unlock-decrypt-failed":
         return "Unable to decrypt your saved storage key. Retry unlock and confirm the active account matches.";
       default:
@@ -479,6 +486,47 @@ export class ProfileStorageController {
 
   clearStorageUnlockFailureState() {
     this.storageUnlockFailure = null;
+  }
+
+  // After a page reload, a persisted ("remember this key") nsec session restores the
+  // logged-in pubkey + UI but NOT the in-memory signer — the private key is held only
+  // passphrase-encrypted. Storage unlock then has no signer (or a decrypt-less stub),
+  // and the generic "No active signer / cannot decrypt" errors are misleading because
+  // the user still looks logged in. Detect this exact case (a saved nsec key for the
+  // account we're unlocking) so we can tell them to re-unlock their saved key instead.
+  getLockedStoredNsecSession(pubkey) {
+    const client = this.mainController.services?.nostrClient;
+    if (!client || typeof client.getStoredSessionActorMetadata !== "function") {
+      return null;
+    }
+    let meta = null;
+    try {
+      meta = client.getStoredSessionActorMetadata();
+    } catch (error) {
+      return null;
+    }
+    if (!meta || meta.hasEncryptedKey !== true || meta.source !== "nsec") {
+      return null;
+    }
+    const metaPubkey = this.mainController.normalizeHexPubkey(meta.pubkey);
+    // Only treat it as "this account is locked" when the saved key is for the pubkey
+    // we're actually trying to unlock (don't hijack a different-account situation).
+    if (pubkey && metaPubkey && metaPubkey !== pubkey) {
+      return null;
+    }
+    return meta;
+  }
+
+  reportLockedNsecSession() {
+    userLogger.info(
+      "[storage-unlock] saved nsec key is locked (no in-memory signer after reload); prompting re-unlock.",
+    );
+    const error = new Error(
+      "Your saved key is locked after reloading the page. Re-enter your passphrase from the Login menu to unlock it, then unlock storage.",
+    );
+    error.code = "storage-unlock-locked-nsec-session";
+    this.setStorageUnlockFailureState(error);
+    this.mainController.showError(this.getStorageUnlockFailureMessage(error));
   }
 
   async requestStorageUnlockPermissions() {
@@ -521,6 +569,10 @@ export class ProfileStorageController {
     }
 
     if (!signer) {
+      if (this.getLockedStoredNsecSession(pubkey)) {
+        this.reportLockedNsecSession();
+        return;
+      }
       this.mainController.showError("No active signer found. Please login.");
       return;
     }
@@ -592,6 +644,12 @@ export class ProfileStorageController {
       typeof signer?.decrypt === "function";
 
     if (!hasNip44Decrypt && !hasNip04Decrypt) {
+      // A restored-but-locked persisted nsec session can leave a decrypt-less stub
+      // signer; route it to the re-unlock guidance rather than the generic message.
+      if (this.getLockedStoredNsecSession(pubkey)) {
+        this.reportLockedNsecSession();
+        return;
+      }
       const missingDecryptError = new Error(
         "This signer cannot decrypt storage keys (NIP-44/NIP-04 missing)."
       );
