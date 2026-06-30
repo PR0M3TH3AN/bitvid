@@ -883,6 +883,13 @@ export class SignerManager {
 
   async scheduleStoredRemoteSignerRestore() {
     const stored = readStoredNip46Session();
+    // [nip46-diag] TEMP (todo #33): trace whether a NIP-46 session is restored on
+    // load — the "unknown user after refresh" symptom. Remove with the fix.
+    userLogger.info("[nip46-diag] restore: scheduleStoredRemoteSignerRestore", {
+      hasStored: !!stored,
+      storedPubkey: stored?.pubkey || stored?.userPubkey || null,
+      storedKeys: stored ? Object.keys(stored) : [],
+    });
     if (!stored) {
       return;
     }
@@ -896,8 +903,15 @@ export class SignerManager {
           silent: true,
           validator: this.buildAccessControlValidator(),
         });
+        userLogger.info("[nip46-diag] restore: succeeded", {
+          resolvedPubkey: this.pubkey || null,
+        });
       } catch (err) {
-        devLogger.warn("Failed to restore remote signer", err);
+        // Surfaced via userLogger so it's visible on unstable (devLogger is gated).
+        userLogger.warn("[nip46-diag] restore: FAILED", {
+          message: err?.message || String(err),
+          code: err?.code || null,
+        });
       }
     };
 
@@ -905,6 +919,14 @@ export class SignerManager {
   }
 
   async disconnectRemoteSigner({ keepStored = false } = {}) {
+    // [nip46-diag] TEMP (todo #33): the single shared nip46Client is torn down here;
+    // logout/switch calling this is the suspected "logs out everyone" cause.
+    userLogger.info("[nip46-diag] disconnectRemoteSigner", {
+      keepStored,
+      hadClient: !!this.nip46Client,
+      pubkey: this.pubkey || null,
+      stack: new Error().stack?.split("\n").slice(2, 5).join(" <- "),
+    });
     // Abort an in-flight nostrconnect:// handshake wait, if any.
     if (typeof this.pendingHandshakeCancel === "function") {
       try {
@@ -1016,6 +1038,13 @@ export class SignerManager {
 
   logout() {
     const previousPubkey = this.pubkey;
+    // [nip46-diag] TEMP (todo #33): trace logout scope — which pubkey + whether a
+    // shared remote-signer client is being torn down (affects other NIP-46 profiles).
+    userLogger.info("[nip46-diag] logout", {
+      previousPubkey: previousPubkey || null,
+      hadRemoteClient: !!this.nip46Client,
+      sessionActorSource: this.sessionActor?.source || null,
+    });
     this.pubkey = null;
     logoutSignerFromRegistry(previousPubkey);
     const previousSessionActor = this.sessionActor;

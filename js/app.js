@@ -1071,7 +1071,54 @@ class Application {
     // Placeholder for session actor initialization if needed
   }
 
+  // Merge the static operator list (_staticBlacklistedEventIds) with the dynamic admin
+  // event-blacklist (#25) into the live set every consumer reads. Reassign (not mutate)
+  // so snapshots taken by feed/grid/search paths pick up the new set.
+  _rebuildBlacklistedEventIds() {
+    const base =
+      this._staticBlacklistedEventIds instanceof Set
+        ? this._staticBlacklistedEventIds
+        : new Set();
+    let adminIds = [];
+    try {
+      adminIds =
+        typeof accessControl.getEventBlacklist === "function"
+          ? accessControl.getEventBlacklist()
+          : [];
+    } catch (error) {
+      adminIds = [];
+    }
+    this.blacklistedEventIds = new Set([...base, ...adminIds]);
+    return this.blacklistedEventIds;
+  }
+
   _initAccessControlListeners() {
+    if (typeof accessControl.onEventBlacklistChange === "function") {
+      accessControl.onEventBlacklistChange(() => {
+        this._rebuildBlacklistedEventIds();
+        const refreshReason = "admin-event-blacklist-change";
+        this.refreshAllVideoGrids({
+          reason: refreshReason,
+          forceMainReload: true,
+        }).catch((error) => {
+          devLogger.warn(
+            "[app.init()] Failed to refresh video grids after admin event-blacklist change:",
+            error,
+          );
+        });
+        if (typeof this.refreshVisibleModerationUi === "function") {
+          try {
+            this.refreshVisibleModerationUi({ reason: refreshReason });
+          } catch (error) {
+            devLogger.warn(
+              "[app.init()] Failed to refresh moderation UI after event-blacklist change:",
+              error,
+            );
+          }
+        }
+      });
+    }
+
     if (typeof accessControl.onBlacklistChange === "function") {
       accessControl.onBlacklistChange(() => {
         this._syncSessionActorBlacklist("blacklist-change");

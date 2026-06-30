@@ -10,7 +10,11 @@
 //
 // Dependency-injected so it unit-tests without a live signer/relay pool.
 
-import { buildNip71MirrorEvent } from "../nostr/nip71Mirror.js";
+import {
+  buildNip71MirrorEvent,
+  NIP71_NORMAL_VIDEO_KIND,
+  NIP71_SHORT_VIDEO_KIND,
+} from "../nostr/nip71Mirror.js";
 import { nostrClient } from "../nostrClientFacade.js";
 import { getActiveSigner } from "../nostr/index.js";
 import {
@@ -34,6 +38,40 @@ export function createNip71MirrorService({
       ? nostrClient.getDeletePublishRelays()
       : [],
   getPool = () => nostrClient?.pool || null,
+  // L1 chokepoint (no direct pool.list — see scripts/check-direct-pool-access.mjs).
+  getSubscriptionManager = () =>
+    typeof nostrClient?.getSubscriptionManager === "function"
+      ? nostrClient.getSubscriptionManager()
+      : null,
+  // Look up the author's existing mirror events (both kinds) for a video root, on
+  // the write relays where mirrors are published. Returns [{ kind, created_at }].
+  // Injected so the idempotency logic unit-tests without a live relay manager.
+  fetchExistingMirrors = async ({ pubkey, root }) => {
+    const sm = getSubscriptionManager();
+    const relays = getWriteRelays() || [];
+    if (!sm || typeof sm.list !== "function" || !relays.length) {
+      return [];
+    }
+    try {
+      const events = await sm.list({
+        filters: [
+          {
+            kinds: [NIP71_NORMAL_VIDEO_KIND, NIP71_SHORT_VIDEO_KIND],
+            authors: [pubkey],
+            "#d": [root],
+          },
+        ],
+        relays,
+      });
+      return (Array.isArray(events) ? events : []).map((e) => ({
+        kind: e?.kind,
+        created_at: Number(e?.created_at) || 0,
+      }));
+    } catch (error) {
+      userLogger.warn("[nip71Mirror] existing-mirror lookup failed:", error);
+      return [];
+    }
+  },
   publishEventToRelays = defaultPublishEventToRelays,
   summarizePublishResults = defaultSummarize,
   signEvent = async (template) => {
@@ -82,9 +120,37 @@ export function createNip71MirrorService({
     }
 
     const pubkey = str(video?.pubkey) || getActivePubkey();
+    const root = str(video?.videoRootId);
+
+    // Idempotency (#34): the mirror kind (34235 normal / 34236 short) is inferred
+    // from the video's dimensions, which aren't always present — so re-mirroring the
+    // same video could publish the OTHER kind, and since (kind,pubkey,d) is the
+    // addressable identity that produced a DUPLICATE in NIP-71 clients. Reuse the kind
+    // of any existing mirror so a re-publish REPLACES the same coordinate, and remember
+    // a stray of the other kind to clean up (self-heals duplicates created earlier).
+    let forcedShort = options.short; // explicit caller override always wins
+    let staleKind = null;
+    let reusedExistingKind = false;
+    if (forcedShort === undefined && pubkey && root) {
+      const existing = await fetchExistingMirrors({ pubkey, root });
+      if (Array.isArray(existing) && existing.length) {
+        const newest = existing.reduce((a, b) =>
+          (b.created_at || 0) > (a.created_at || 0) ? b : a,
+        );
+        forcedShort = newest.kind === NIP71_SHORT_VIDEO_KIND;
+        reusedExistingKind = true;
+        const otherKind = forcedShort
+          ? NIP71_NORMAL_VIDEO_KIND
+          : NIP71_SHORT_VIDEO_KIND;
+        if (existing.some((e) => e.kind === otherKind)) {
+          staleKind = otherKind;
+        }
+      }
+    }
+
     const built = buildMirrorEvent(
       { ...video, pubkey },
-      { ...options, createdAt: Math.floor(now() / 1000) },
+      { ...options, short: forcedShort, createdAt: Math.floor(now() / 1000) },
     );
     if (!built.ok) {
       return { ok: false, reason: built.reason };
@@ -106,11 +172,37 @@ export function createNip71MirrorService({
 
     const results = await publishEventToRelays(pool, relays, signed);
     const { accepted, failed } = summarizePublishResults(results);
+
+    // Self-heal: if a duplicate of the OTHER kind already existed, tear it down via a
+    // NIP-09 delete so the video stops showing twice in NIP-71 clients.
+    let healedStaleKind = false;
+    if (staleKind != null && accepted.length > 0) {
+      try {
+        const del = await signEvent({
+          kind: 5,
+          pubkey,
+          created_at: Math.floor(now() / 1000),
+          content: "Removed duplicate NIP-71 mirror",
+          tags: [
+            ["a", `${staleKind}:${pubkey}:${root}`],
+            ["k", String(staleKind)],
+          ],
+        });
+        const delResults = await publishEventToRelays(pool, relays, del);
+        healedStaleKind = summarizePublishResults(delResults).accepted.length > 0;
+      } catch (error) {
+        userLogger.warn("[nip71Mirror] Failed to clean up duplicate mirror:", error);
+      }
+    }
+
     return {
       ok: accepted.length > 0,
       accepted: accepted.length,
       total: accepted.length + failed.length,
       event: signed,
+      kind: built.event.kind,
+      reusedExistingKind,
+      healedStaleKind,
     };
   }
 
@@ -186,7 +278,61 @@ export function createNip71MirrorService({
     return { ok: publishedOk > 0, published: publishedOk, total };
   }
 
-  return { isAvailable, canMirror, publish, remove };
+  // Relay-truth detection (#34): derive "is this mirrored?" from the actual
+  // published events instead of the device-local flag. `kinds.length > 1` flags a
+  // pre-existing cross-kind duplicate. (UI wiring is a follow-up — batch these.)
+  async function findMirror(video) {
+    const pubkey = str(video?.pubkey) || getActivePubkey();
+    const root = str(video?.videoRootId);
+    if (!pubkey || !root) {
+      return { mirrored: false, kinds: [], duplicate: false };
+    }
+    const existing = await fetchExistingMirrors({ pubkey, root });
+    const kinds = [
+      ...new Set((Array.isArray(existing) ? existing : []).map((e) => e.kind).filter(Boolean)),
+    ];
+    return { mirrored: kinds.length > 0, kinds, duplicate: kinds.length > 1 };
+  }
+
+  // Batched relay-truth detection for a list of videos (e.g. the My Videos grid):
+  // ONE query for all video roots instead of N. Returns Map<videoRootId,
+  // { mirrored, kinds, duplicate }>. Roots with no mirror are simply absent.
+  async function findMirrors(videos) {
+    const list = Array.isArray(videos) ? videos : [];
+    const pubkey = getActivePubkey();
+    const roots = [
+      ...new Set(list.map((v) => str(v?.videoRootId)).filter(Boolean)),
+    ];
+    const out = new Map();
+    if (!pubkey || !roots.length) {
+      return out;
+    }
+    // fetchExistingMirrors filters on a single #d; query each root but in one
+    // round via the shared lookup (the SubscriptionManager batches internally).
+    const results = await Promise.all(
+      roots.map(async (root) => {
+        const existing = await fetchExistingMirrors({ pubkey, root });
+        const kinds = [
+          ...new Set(
+            (Array.isArray(existing) ? existing : [])
+              .map((e) => e.kind)
+              .filter(Boolean),
+          ),
+        ];
+        return [root, kinds];
+      }),
+    );
+    for (const [root, kinds] of results) {
+      out.set(root, {
+        mirrored: kinds.length > 0,
+        kinds,
+        duplicate: kinds.length > 1,
+      });
+    }
+    return out;
+  }
+
+  return { isAvailable, canMirror, publish, remove, findMirror, findMirrors };
 }
 
 export const nip71MirrorService = createNip71MirrorService();

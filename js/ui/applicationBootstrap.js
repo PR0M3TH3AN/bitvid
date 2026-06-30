@@ -543,6 +543,33 @@ export default class ApplicationBootstrap {
           authService: app.authService,
           requestAddProfileLogin: (options) =>
             app.requestProfileAdditionLogin(options),
+          // Side-effect-free open of the login modal (no add-account callback). Used by
+          // the storage pane to route a locked persisted-nsec session to the existing
+          // unlock-saved-key (passphrase) flow. Returns true if the modal opened.
+          openLoginModal: (options = {}) => {
+            try {
+              if (typeof app.initializeLoginModalController === "function") {
+                app.initializeLoginModalController();
+              }
+            } catch (error) {
+              devLogger.warn(
+                "[Application] Failed to ensure login modal before open:",
+                error,
+              );
+            }
+            const controller = app.loginModalController;
+            if (controller && typeof controller.openModal === "function") {
+              try {
+                return controller.openModal(options) !== false;
+              } catch (error) {
+                devLogger.warn(
+                  "[Application] Failed to open login modal:",
+                  error,
+                );
+              }
+            }
+            return false;
+          },
           describeLoginError: (error, fallbackMessage) =>
             app.describeLoginError(error, fallbackMessage),
           hashtagPreferences: app.hashtagPreferences,
@@ -1182,7 +1209,10 @@ export default class ApplicationBootstrap {
     });
     app.appChromeController.initialize();
 
-    app.blacklistedEventIds = new Set();
+    // Static, build-time per-event block list (operator config). Kept separate from
+    // the dynamic admin list (#25) so app._rebuildBlacklistedEventIds() can re-merge
+    // both whenever the published admin event-blacklist changes.
+    app._staticBlacklistedEventIds = new Set();
     if (this.window?.NostrTools?.nip19?.decode) {
       for (const neventStr of ADMIN_INITIAL_EVENT_BLACKLIST) {
         if (!neventStr || neventStr.trim().length < 8) {
@@ -1191,7 +1221,7 @@ export default class ApplicationBootstrap {
         try {
           const decoded = this.window.NostrTools.nip19.decode(neventStr);
           if (decoded?.type === "nevent" && decoded.data?.id) {
-            app.blacklistedEventIds.add(decoded.data.id);
+            app._staticBlacklistedEventIds.add(decoded.data.id);
           }
         } catch (err) {
           devLogger.error(
@@ -1201,6 +1231,12 @@ export default class ApplicationBootstrap {
           );
         }
       }
+    }
+    app.blacklistedEventIds = new Set(app._staticBlacklistedEventIds);
+    if (typeof app._rebuildBlacklistedEventIds === "function") {
+      // Fold in any already-loaded admin event-blacklist (accessControl may have
+      // hydrated from cache synchronously before this point).
+      app._rebuildBlacklistedEventIds();
     }
 
     app.unsubscribeFromPubkeyState = null;

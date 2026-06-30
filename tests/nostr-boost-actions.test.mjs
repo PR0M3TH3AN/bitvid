@@ -104,19 +104,38 @@ function createPublishClient({ actorPubkey = "", sessionPubkey = "", failPublish
   assert.deepEqual(event.tags[2], ["p", "deadbeef"]);
 })();
 
-(function testBuildRepostEventRequiresRelay() {
+(function testBuildRepostEventOmitsRelayHintWhenAbsent() {
   const createdAt = 1_700_000_001;
 
-  assert.throws(
-    () =>
-      buildRepostEvent({
-        pubkey: "actorpubkey",
-        created_at: createdAt,
-        eventId: "event456",
-        authorPubkey: "cafebabe",
-        targetKind: 30078,
-      }),
-    /missing-event-relay/,
+  // Spec correction (SCN-repost-optional-relay): a relay hint on the `e` tag is a
+  // NIP-18 SHOULD, not a MUST. With no relay available the builder must still emit
+  // a VALID repost — a two-element `e` tag (no relay) — rather than throwing, so a
+  // user can always repost even without a known relay hint.
+  const event = buildRepostEvent({
+    pubkey: "actorpubkey",
+    created_at: createdAt,
+    eventId: "event456",
+    authorPubkey: "cafebabe",
+    targetKind: 30078,
+  });
+
+  // Non-kind-1 (addressable) target → generic repost kind 16 with a `k` tag.
+  assert.equal(event.kind, 16);
+  assert.equal(event.pubkey, "actorpubkey");
+  assert.equal(event.created_at, createdAt);
+  assert.deepEqual(
+    event.tags.find((tag) => tag[0] === "e"),
+    ["e", "event456"],
+    "e tag omits the relay hint when none is provided (no throw)",
+  );
+  assert.deepEqual(
+    event.tags.find((tag) => tag[0] === "p"),
+    ["p", "cafebabe"],
+  );
+  assert.deepEqual(
+    event.tags.find((tag) => tag[0] === "k"),
+    ["k", "30078"],
+    "generic repost records the target kind",
   );
 })();
 

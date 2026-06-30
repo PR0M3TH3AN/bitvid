@@ -168,14 +168,16 @@ const communityMemberNpub = "npub1communityblacklist";
 const communitySecondMemberNpub = "npub1communitytwo";
 const communityCuratorOneNpub = "npub1communitycurator";
 const communityCuratorTwoNpub = "npub1communitycurator2";
-const communityCuratorOneHex = mockNip19.decode(communityCuratorOneNpub).data;
-const communityCuratorTwoHex = mockNip19.decode(communityCuratorTwoNpub).data;
-const communityCuratorOneAuthorHex = mockNip19.decode(
-  communityCuratorOneHex
-).data;
-const communityCuratorTwoAuthorHex = mockNip19.decode(
-  communityCuratorTwoHex
-).data;
+// Curator coordinates in an `a` tag carry a REAL 64-char hex pubkey (kind:hex:dTag),
+// which parseCommunityBlacklistReferences uses directly via isHexPubkey(). The old
+// mock-"hex" values still started with "npub", so the parser's npub branch decoded
+// them AGAIN (…-hex-hex), and the batched curator filter then didn't match the
+// curator events' pubkeys. Use realistic hex so the test exercises the production
+// path faithfully.
+const communityCuratorOneHex = "c".repeat(64);
+const communityCuratorTwoHex = "d".repeat(64);
+const communityCuratorOneAuthorHex = communityCuratorOneHex;
+const communityCuratorTwoAuthorHex = communityCuratorTwoHex;
 const editorsDTag = `${ADMIN_LIST_NAMESPACE}:${ADMIN_LIST_IDENTIFIERS.editors}`;
 const whitelistDTag = `${ADMIN_LIST_NAMESPACE}:${ADMIN_LIST_IDENTIFIERS.whitelist}`;
 const blacklistDTag = `${ADMIN_LIST_NAMESPACE}:${ADMIN_LIST_IDENTIFIERS.blacklist}`;
@@ -202,12 +204,18 @@ function registerListEvent({ dTag, authorHex = null, event }) {
 }
 
 function createListEvent({ dTag, tags, pubkey, createdAt }) {
+  // Real kind-30000 list events are parameterized-replaceable and ALWAYS carry a
+  // `d` tag. The batched community fetch matches curator events to references by
+  // their own `d` tag (selectNewestEventsForReferences), so the helper must emit
+  // one (prepended, deduped against any caller-supplied d tag).
+  const callerTags = Array.isArray(tags) ? tags : [];
+  const hasDTag = callerTags.some((tag) => Array.isArray(tag) && tag[0] === "d");
   return {
     kind: 30000,
     pubkey: pubkey || "",
     created_at: typeof createdAt === "number" ? createdAt : Math.floor(Date.now() / 1000),
     id: `${dTag}:${pubkey || "anon"}:${createdAt || 0}`,
-    tags: Array.isArray(tags) ? tags : [],
+    tags: hasDTag ? callerTags : [["d", dTag], ...callerTags],
   };
 }
 
@@ -293,6 +301,31 @@ nostrClient.pool = {
     return [event];
   },
 };
+
+// Community curator blacklists are batched through the SubscriptionManager (one
+// REQ instead of one-per-curator — the cold-start relay-storm fix), NOT pool.list.
+// The harness previously only mocked pool.list, so the batched curator fetch
+// returned nothing and the community-merge assertion failed. Serve the same
+// registry here; selectNewestEventsForReferences matches events to references by
+// (event.pubkey, dTag), so returning all events matching the batched filter's
+// authors+#d is sufficient and still exercises real merge/dedupe/guard logic.
+nostrClient.getSubscriptionManager = () => ({
+  async list({ filters } = {}) {
+    const filter = Array.isArray(filters) && filters.length ? filters[0] : {};
+    const wantAuthors = new Set(
+      Array.isArray(filter.authors) ? filter.authors : []
+    );
+    const wantDTags = new Set(Array.isArray(filter["#d"]) ? filter["#d"] : []);
+    const out = [];
+    for (const [key, ev] of listEventRegistry.entries()) {
+      const dTag = key.slice(key.indexOf("::") + 2);
+      if (wantDTags.size && !wantDTags.has(dTag)) continue;
+      if (wantAuthors.size && !wantAuthors.has(ev.pubkey)) continue;
+      out.push(ev);
+    }
+    return out;
+  },
+});
 
 if (!globalThis.window.nostr) {
   globalThis.window.nostr = {};

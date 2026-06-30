@@ -898,6 +898,7 @@
                             <span class="mb-2 block font-medium">Provider</span>
                             <select id="storageProvider" class="input">
                                 <option value="cloudflare_r2" selected>Cloudflare R2</option>
+                                <option value="backblaze_b2">Backblaze B2</option>
                                 <option value="generic_s3">Custom S3</option>
                             </select>
                         </label>
@@ -905,6 +906,11 @@
                         <!-- R2 Helper -->
                         <div id="storageR2Helper" class="card border border-info/30 bg-info/10 p-3 text-xs text-info">
                             Enter your Cloudflare R2 credentials. Your Account ID (from dashboard) is used to connect. For Public Access URL, use your custom domain or R2.dev subdomain. Ensure the token has "Object Read & Write" permissions.
+                        </div>
+
+                        <!-- B2 Helper -->
+                        <div id="storageB2Helper" class="card border border-info/30 bg-info/10 p-3 text-xs text-info hidden">
+                            Enter your Backblaze B2 Application Key. Set Region to your bucket's region (e.g. us-west-004) — bitvid derives the endpoint and the public URL (https://&lt;bucket&gt;.s3.&lt;region&gt;.backblazeb2.com). Your bucket must be Public for playback; override the Public Access URL if you serve files from a custom domain/CDN.
                         </div>
 
                         <!-- S3 Helper -->
@@ -966,6 +972,9 @@
                         </button>
                         <button id="storageClearBtn" type="button" class="btn-ghost focus-ring text-status-danger">
                             Clear
+                        </button>
+                        <button id="storageCorsHelpBtn" type="button" class="btn-ghost focus-ring text-xs">
+                            CORS setup help
                         </button>
                     </div>
                     <p id="storageFormStatus" class="text-sm" role="status" aria-live="polite"></p>
@@ -1052,9 +1061,18 @@
                 data-orientation="vertical"
               ></ul>
               <div id="profileMyVideosOrphans" class="space-y-2 hidden">
-                <h4 class="text-sm font-semibold text-text">
-                  Orphaned storage objects
-                </h4>
+                <div class="flex items-center justify-between gap-3">
+                  <h4 class="text-sm font-semibold text-text">
+                    Orphaned storage objects
+                  </h4>
+                  <button
+                    id="profileMyVideosOrphanDeleteAll"
+                    type="button"
+                    class="btn-ghost focus-ring text-xs text-status-danger"
+                  >
+                    Delete all
+                  </button>
+                </div>
                 <p class="text-2xs text-muted">
                   Files in your bucket that no current video references — safe to
                   remove to reclaim space.
@@ -1829,6 +1847,78 @@
           Logout
         </button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Storage CORS setup helper (B2 / S3-compatible). Shown on demand from the
+     Storage pane; renders above the profile modal via modal-always-on-top. -->
+<div
+  id="storageCorsModal"
+  class="bv-modal modal-always-on-top hidden items-start justify-center md:items-center"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="storageCorsModalTitle"
+  aria-describedby="storageCorsModalIntro"
+  data-ds="new"
+>
+  <div class="bv-modal-backdrop" data-storage-cors-dismiss></div>
+
+  <div class="modal-sheet max-h-modal-shell overflow-hidden flex flex-col w-full max-w-2xl" tabindex="-1">
+    <div class="modal-header">
+      <h2 id="storageCorsModalTitle" class="text-xl font-bold text-text">
+        Allow browser uploads (bucket CORS)
+      </h2>
+      <button
+        id="storageCorsModalClose"
+        class="modal-close"
+        type="button"
+        aria-label="Close CORS setup help"
+        data-storage-cors-dismiss
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+
+    <div class="modal-body overflow-y-auto p-5 space-y-4 text-sm text-muted-strong">
+      <p id="storageCorsModalIntro">
+        Uploading from your browser uses an S3 <code>PUT</code>/<code>POST</code>,
+        which your bucket must allow via CORS.
+      </p>
+
+      <div>
+        <div class="mb-1 flex items-center justify-between gap-2">
+          <span class="font-medium text-text">CORS rules JSON</span>
+          <button id="storageCorsCopyJsonBtn" type="button" class="btn-ghost focus-ring text-xs">
+            Copy JSON
+          </button>
+        </div>
+        <pre class="card border border-default bg-surface-strong/40 p-3 overflow-x-auto text-xs leading-relaxed"><code id="storageCorsJson" class="whitespace-pre text-text"></code></pre>
+        <p class="mt-1 text-xs text-muted">
+          Origins are pre-filled from this site. Add your other bitvid domains, or use
+          <code>["*"]</code> to allow every origin.
+        </p>
+      </div>
+
+      <div>
+        <div class="mb-1 flex items-center justify-between gap-2">
+          <span id="storageCorsCmdLabel" class="font-medium text-text">Apply it</span>
+          <button id="storageCorsCopyCmdBtn" type="button" class="btn-ghost focus-ring text-xs">
+            Copy command
+          </button>
+        </div>
+        <pre class="card border border-default bg-surface-strong/40 p-3 overflow-x-auto text-xs leading-relaxed"><code id="storageCorsCli" class="whitespace-pre text-text"></code></pre>
+      </div>
+
+      <p id="storageCorsNotes" class="whitespace-pre-line text-xs text-muted"></p>
+    </div>
+
+    <div class="modal-footer flex items-center justify-end gap-3 border-t border-border/60 p-4">
+      <button id="storageCorsDoneBtn" type="button" class="btn focus-ring" data-storage-cors-dismiss>
+        Done
+      </button>
     </div>
   </div>
 </div>

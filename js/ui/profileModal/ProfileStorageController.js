@@ -1,12 +1,21 @@
-import { devLogger } from "../../utils/logger.js";
+import { devLogger, userLogger } from "../../utils/logger.js";
 import { PROVIDERS } from "../../services/storageService.js";
 import {
   prepareS3Connection,
   getCorsOrigins,
+  deriveB2Endpoint,
+  derivePublicBaseUrl,
 } from "../../services/s3Service.js";
 import { getActiveSigner } from "../../nostr/client.js";
 import { DEFAULT_NIP07_ENCRYPTION_METHODS } from "../../nostr/nip07Permissions.js";
 import { storageSyncService } from "../../services/storageSyncService.js";
+import { StorageCorsHelp } from "./storageCorsHelp.js";
+import {
+  fillStorageForm,
+  clearCredentialFields,
+  findProviderConnection,
+  saveProviderConnection,
+} from "./storageConnections.js";
 
 export class ProfileStorageController {
   constructor(mainController) {
@@ -31,7 +40,15 @@ export class ProfileStorageController {
     this.storagePrefixWarning = null;
     this.storageDefaultInput = null;
     this.storageR2Helper = null;
+    this.storageB2Helper = null;
     this.storageS3Helper = null;
+    // Provider-aware CORS setup helper modal — owns its own DOM + behavior.
+    this.corsHelp = new StorageCorsHelp({
+      getProvider: () => this.storageProviderInput?.value || "cloudflare_r2",
+      getBucket: () => this.storageBucketInput?.value?.trim() || "",
+      getRegion: () => this.storageRegionInput?.value?.trim() || "",
+      getEndpoint: () => this.storageEndpointInput?.value?.trim() || "",
+    });
     this.storageForcePathStyleInput = null;
     this.storageForcePathStyleLabel = null;
 
@@ -63,7 +80,9 @@ export class ProfileStorageController {
     this.storagePrefixWarning = document.getElementById("storagePrefixWarning") || null;
     this.storageDefaultInput = document.getElementById("storageDefault") || null;
     this.storageR2Helper = document.getElementById("storageR2Helper") || null;
+    this.storageB2Helper = document.getElementById("storageB2Helper") || null;
     this.storageS3Helper = document.getElementById("storageS3Helper") || null;
+    this.corsHelp.cacheDom(document);
     this.storageForcePathStyleInput = document.getElementById("storageForcePathStyle") || null;
     this.storageForcePathStyleLabel = document.getElementById("storageForcePathStyleLabel") || null;
     this.storageSyncSection = document.getElementById("profileStorageSync") || null;
@@ -99,7 +118,7 @@ export class ProfileStorageController {
 
     if (this.storageProviderInput instanceof HTMLElement) {
       this.storageProviderInput.addEventListener("change", () => {
-        this.updateStorageFormVisibility();
+        void this.handleProviderChange();
       });
     }
 
@@ -120,6 +139,8 @@ export class ProfileStorageController {
         void this.handleRestoreSync();
       });
     }
+
+    this.corsHelp.registerEventListeners();
   }
 
   async populateStoragePane() {
@@ -170,6 +191,11 @@ export class ProfileStorageController {
       } else if (this.storageUnlockFailure?.message) {
         this.storageStatusText.textContent = `Locked (${this.storageUnlockFailure.message})`;
         this.storageStatusText.className = "text-xs text-status-danger";
+      } else if (this.getLockedStoredNsecSession(pubkey)) {
+        // Saved nsec key not yet re-unlocked after reload — point the user at the fix.
+        this.storageStatusText.textContent =
+          "Locked — re-unlock your saved key (Login → passphrase) to manage storage.";
+        this.storageStatusText.className = "text-xs text-status-warning";
       } else {
         this.storageStatusText.textContent = "Locked";
         this.storageStatusText.className = "text-xs text-status-warning";
@@ -193,7 +219,7 @@ export class ProfileStorageController {
             targetConn.id
           );
           if (conn) {
-            this.fillStorageForm(conn);
+            fillStorageForm(this, conn);
             if (this.storageStatusText) {
               const label = conn.meta?.label || conn.provider || "S3";
               this.storageStatusText.textContent = `Unlocked (${label})`;
@@ -336,57 +362,32 @@ export class ProfileStorageController {
     }
   }
 
-  fillStorageForm(conn) {
-    if (!conn) return;
-    const {
-      provider,
-      accessKeyId,
-      secretAccessKey,
-      accountId: payloadAccountId,
-      endpoint: payloadEndpoint,
-      forcePathStyle: payloadForcePathStyle,
-    } = conn;
-    const {
-      endpoint,
-      region,
-      bucket,
-      prefix,
-      defaultForUploads,
-      accountId,
-      forcePathStyle: metaForcePathStyle,
-    } = conn.meta || {};
-
-    if (this.storageProviderInput)
-      this.storageProviderInput.value = provider || "cloudflare_r2";
-
-    const resolvedEndpoint =
-      endpoint || accountId || payloadAccountId || payloadEndpoint || "";
-
-    if (this.storageEndpointInput)
-      this.storageEndpointInput.value = resolvedEndpoint;
-    if (this.storageRegionInput)
-      this.storageRegionInput.value = region || "auto";
-    if (this.storageAccessKeyInput)
-      this.storageAccessKeyInput.value = accessKeyId || "";
-    if (this.storageSecretKeyInput)
-      this.storageSecretKeyInput.value = secretAccessKey || "";
-    if (this.storageBucketInput) this.storageBucketInput.value = bucket || "";
-    if (this.storagePrefixInput) this.storagePrefixInput.value = prefix || "";
-    if (this.storageDefaultInput)
-      this.storageDefaultInput.checked = !!defaultForUploads;
-
-    if (this.storageForcePathStyleInput) {
-      if (typeof payloadForcePathStyle === "boolean") {
-        this.storageForcePathStyleInput.checked = payloadForcePathStyle;
-      } else if (typeof metaForcePathStyle === "boolean") {
-        this.storageForcePathStyleInput.checked = metaForcePathStyle;
-      } else {
-        this.storageForcePathStyleInput.checked = true;
-      }
-    }
-
+  // Load the saved connection for the newly-selected provider so each provider keeps
+  // its own credentials; clear the credential fields when that provider has none yet.
+  async handleProviderChange() {
     this.updateStorageFormVisibility();
-    this.handlePublicUrlInput();
+    const pubkey = this.mainController.normalizeHexPubkey(
+      this.mainController.getActivePubkey(),
+    );
+    const storageService = this.mainController.services?.storageService;
+    if (!pubkey || !storageService || !storageService.isUnlocked?.(pubkey)) {
+      return;
+    }
+    const provider = this.storageProviderInput?.value || "cloudflare_r2";
+    try {
+      const connections = await storageService.listConnections(pubkey);
+      const match = findProviderConnection(connections, provider);
+      if (match) {
+        const conn = await storageService.getConnection(pubkey, match.id);
+        if (conn) {
+          fillStorageForm(this, conn);
+          return;
+        }
+      }
+      clearCredentialFields(this);
+    } catch (error) {
+      devLogger.warn("[ProfileModal] Failed to load connection for provider:", error);
+    }
   }
 
   handlePublicUrlInput() {
@@ -398,6 +399,8 @@ export class ProfileStorageController {
   updateStorageFormVisibility() {
     const provider = this.storageProviderInput?.value || "cloudflare_r2";
     const isR2 = provider === "cloudflare_r2";
+    // B2 derives its endpoint from the region, so its raw Endpoint field is hidden.
+    const isB2 = provider === PROVIDERS.B2;
 
     if (this.storageEndpointInput) {
       const label =
@@ -411,6 +414,13 @@ export class ProfileStorageController {
         if (this.storagePrefixInput) {
           this.storagePrefixInput.placeholder = "https://pub-xxx.r2.dev";
         }
+      } else if (isB2) {
+        // Endpoint is derived from the region; hide the raw endpoint input.
+        this.storageEndpointInput.parentElement.classList.add("hidden");
+        if (this.storagePrefixInput) {
+          this.storagePrefixInput.placeholder =
+            "Optional — derived from region/bucket (or your CDN domain)";
+        }
       } else {
         if (label) label.textContent = "Endpoint URL";
         this.storageEndpointInput.placeholder = "https://s3.example.com";
@@ -422,25 +432,46 @@ export class ProfileStorageController {
       }
     }
 
+    if (this.storageRegionInput && isB2) {
+      this.storageRegionInput.placeholder = "us-west-004";
+    } else if (this.storageRegionInput) {
+      this.storageRegionInput.placeholder = "auto";
+    }
+
+    // B2 calls the secret an "Application Key" — match its terminology.
+    const secretLabel =
+      this.storageSecretKeyInput?.parentElement?.querySelector("span");
+    if (secretLabel) {
+      secretLabel.textContent = isB2 ? "Application Key" : "Secret Access Key";
+    }
+
     if (this.storageR2Helper) {
-      if (isR2) this.storageR2Helper.classList.remove("hidden");
-      else this.storageR2Helper.classList.add("hidden");
+      this.storageR2Helper.classList.toggle("hidden", !isR2);
+    }
+
+    if (this.storageB2Helper) {
+      this.storageB2Helper.classList.toggle("hidden", !isB2);
     }
 
     if (this.storageS3Helper) {
-      if (!isR2) this.storageS3Helper.classList.remove("hidden");
-      else this.storageS3Helper.classList.add("hidden");
+      // Generic/custom S3 helper only — not R2, not B2 (each has its own helper).
+      this.storageS3Helper.classList.toggle("hidden", isR2 || isB2);
     }
 
     if (this.storageForcePathStyleLabel) {
-      if (!isR2)
-        this.storageForcePathStyleLabel.classList.remove("hidden", "flex");
-      else this.storageForcePathStyleLabel.classList.add("hidden");
-
-      if (!isR2) {
-        this.storageForcePathStyleLabel.classList.add("flex");
-      }
+      // Force-path-style is a generic-S3 knob; R2 and B2 fix it internally.
+      const showForcePathStyle = !isR2 && !isB2;
+      this.storageForcePathStyleLabel.classList.toggle(
+        "hidden",
+        !showForcePathStyle,
+      );
+      this.storageForcePathStyleLabel.classList.toggle(
+        "flex",
+        showForcePathStyle,
+      );
     }
+
+    this.corsHelp.setVisible(true); // provider-aware; useful for all bucket providers
   }
 
   getStorageUnlockFailureMessage(error) {
@@ -451,6 +482,8 @@ export class ProfileStorageController {
         return "Storage unlock requires extension encryption permission. Approve the prompt, then retry unlock.";
       case "storage-unlock-no-decryptor":
         return "Your signer cannot decrypt storage keys. Use a signer with NIP-44 or NIP-04 decrypt support.";
+      case "storage-unlock-locked-nsec-session":
+        return "Your saved key is locked after reloading the page. Open the Login menu and re-enter your passphrase to unlock your saved key, then unlock storage.";
       case "storage-unlock-decrypt-failed":
         return "Unable to decrypt your saved storage key. Retry unlock and confirm the active account matches.";
       default:
@@ -479,6 +512,61 @@ export class ProfileStorageController {
 
   clearStorageUnlockFailureState() {
     this.storageUnlockFailure = null;
+  }
+
+  // After a page reload, a persisted nsec session restores the logged-in pubkey + UI
+  // but NOT the in-memory signer (the key is passphrase-encrypted). Storage unlock then
+  // has no usable signer, and the generic "No active signer" error is misleading.
+  // Detect this exact case (a saved nsec key for the account we're unlocking).
+  getLockedStoredNsecSession(pubkey) {
+    const client = this.mainController.services?.nostrClient;
+    if (!client || typeof client.getStoredSessionActorMetadata !== "function") {
+      return null;
+    }
+    let meta = null;
+    try {
+      meta = client.getStoredSessionActorMetadata();
+    } catch (error) {
+      return null;
+    }
+    if (!meta || meta.hasEncryptedKey !== true || meta.source !== "nsec") {
+      return null;
+    }
+    const metaPubkey = this.mainController.normalizeHexPubkey(meta.pubkey);
+    // Only treat it as "this account is locked" when the saved key is for the pubkey
+    // we're actually trying to unlock (don't hijack a different-account situation).
+    if (pubkey && metaPubkey && metaPubkey !== pubkey) {
+      return null;
+    }
+    return meta;
+  }
+
+  reportLockedNsecSession({ autoOpenLogin = false } = {}) {
+    userLogger.info(
+      "[storage-unlock] saved nsec key is locked (no in-memory signer after reload); prompting re-unlock.",
+    );
+    const error = new Error(
+      "Your saved key is locked after reloading the page. Re-enter your passphrase from the Login menu to unlock it, then unlock storage.",
+    );
+    error.code = "storage-unlock-locked-nsec-session";
+    this.setStorageUnlockFailureState(error);
+    this.mainController.showError(this.getStorageUnlockFailureMessage(error));
+
+    // On an explicit "Unlock Storage" click, open the login modal's unlock-saved-key
+    // (passphrase) flow so the user re-unlocks in one step (not from passive render).
+    if (autoOpenLogin) {
+      const openLoginModal = this.mainController.services?.openLoginModal;
+      if (typeof openLoginModal === "function") {
+        try {
+          openLoginModal();
+        } catch (openError) {
+          devLogger.warn(
+            "[ProfileModal] Failed to open login modal for saved-key unlock:",
+            openError,
+          );
+        }
+      }
+    }
   }
 
   async requestStorageUnlockPermissions() {
@@ -521,6 +609,10 @@ export class ProfileStorageController {
     }
 
     if (!signer) {
+      if (this.getLockedStoredNsecSession(pubkey)) {
+        this.reportLockedNsecSession({ autoOpenLogin: true });
+        return;
+      }
       this.mainController.showError("No active signer found. Please login.");
       return;
     }
@@ -592,6 +684,12 @@ export class ProfileStorageController {
       typeof signer?.decrypt === "function";
 
     if (!hasNip44Decrypt && !hasNip04Decrypt) {
+      // A restored-but-locked persisted nsec session can leave a decrypt-less stub
+      // signer; route it to the re-unlock guidance rather than the generic message.
+      if (this.getLockedStoredNsecSession(pubkey)) {
+        this.reportLockedNsecSession({ autoOpenLogin: true });
+        return;
+      }
       const missingDecryptError = new Error(
         "This signer cannot decrypt storage keys (NIP-44/NIP-04 missing)."
       );
@@ -654,6 +752,17 @@ export class ProfileStorageController {
     const prefix = this.storagePrefixInput?.value?.trim() || "";
     const isDefault = this.storageDefaultInput?.checked || false;
 
+    if (provider === PROVIDERS.B2) {
+      endpointOrAccount = deriveB2Endpoint(region); // derived from region for B2
+      if (!endpointOrAccount) {
+        this.setStorageFormStatus(
+          "Enter your Backblaze B2 region (e.g. us-west-004).",
+          "error",
+        );
+        return;
+      }
+    }
+
     if (!accessKeyId || !secretAccessKey || !bucket || !endpointOrAccount) {
       this.setStorageFormStatus("Please fill in all required fields.", "error");
       return;
@@ -695,6 +804,8 @@ export class ProfileStorageController {
           secretAccessKey,
           bucket,
           forcePathStyle,
+          // Explicit Public Access URL (custom domain/CDN); blank → derived.
+          publicBaseUrl: prefix || undefined,
           origins: getCorsOrigins(),
         });
         endpointOrAccount = normalized.endpoint;
@@ -736,7 +847,13 @@ export class ProfileStorageController {
     this.setStorageFormStatus("Saving...", "info");
 
     try {
-      await storageService.saveConnection(pubkey, "default", payload, meta);
+      // One slot per provider type so providers don't overwrite or clash.
+      await saveProviderConnection(storageService, pubkey, {
+        provider,
+        payload,
+        meta,
+        isDefault,
+      });
       this.setStorageFormStatus("Connection saved.", "success");
       this.mainController.showSuccess("Storage connection saved.");
 
@@ -777,7 +894,7 @@ export class ProfileStorageController {
     }
 
     const provider = this.storageProviderInput?.value || "cloudflare_r2";
-    const endpointOrAccount = this.storageEndpointInput?.value?.trim() || "";
+    let endpointOrAccount = this.storageEndpointInput?.value?.trim() || "";
     const region = this.storageRegionInput?.value?.trim() || "auto";
     const accessKeyId = this.storageAccessKeyInput?.value?.trim() || "";
     const secretAccessKey = this.storageSecretKeyInput?.value?.trim() || "";
@@ -789,6 +906,17 @@ export class ProfileStorageController {
         : false;
 
     const publicBaseUrl = this.storagePrefixInput?.value?.trim() || "";
+
+    if (provider === PROVIDERS.B2) {
+      endpointOrAccount = deriveB2Endpoint(region); // derived from region for B2
+      if (!endpointOrAccount) {
+        this.setStorageFormStatus(
+          "Enter your Backblaze B2 region (e.g. us-west-004) to test.",
+          "error",
+        );
+        return;
+      }
+    }
 
     if (!accessKeyId || !secretAccessKey || !endpointOrAccount) {
       this.setStorageFormStatus("Missing credentials for test.", "error");
@@ -825,6 +953,11 @@ export class ProfileStorageController {
     } else {
       config.endpoint = endpointOrAccount;
       config.forcePathStyle = forcePathStyle;
+      // Explicit Public Access URL, else derive it (so the test doesn't falsely warn).
+      config.publicBaseUrl =
+        publicBaseUrl ||
+        derivePublicBaseUrl({ endpoint: endpointOrAccount, bucket, forcePathStyle });
+      config.baseDomain = config.publicBaseUrl;
     }
 
     try {
