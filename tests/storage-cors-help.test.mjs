@@ -70,7 +70,7 @@ test("content for Backblaze B2 uses B2-native rules + the b2 CLI", () => {
   assert.match(c.cmd, /^b2 update-bucket /);
   assert.match(c.cmdLabel, /B2 command-line/i);
   assert.ok(JSON.parse(c.json)[0].allowedOperations.includes("s3_put"));
-  assert.match(c.notes, /b2 CLI|pip install b2/i);
+  assert.match(c.notes, /pipx install b2/i);
 });
 
 test("content for Custom S3 uses standard S3 CORS + the AWS CLI", () => {

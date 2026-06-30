@@ -84,7 +84,7 @@ export function buildCorsHelpContent({ provider, origins, bucket, endpoint } = {
       cmdLabel: "Apply it (B2 command-line tool)",
       cmd: buildB2CorsCommand(bucket, rules),
       notes:
-        "1. Install the B2 CLI (pip install b2).\n" +
+        "1. Install the B2 CLI (pipx install b2).\n" +
         "2. Run the command above (it authorizes, then sets the rules).\n" +
         "3. Wait ~1 minute, then retry your upload.\n" +
         "Tip: a B2 application key with the writeBucketCors capability lets bitvid set " +

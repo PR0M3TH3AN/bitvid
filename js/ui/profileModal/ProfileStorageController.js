@@ -437,6 +437,13 @@ export class ProfileStorageController {
       this.storageRegionInput.placeholder = "auto";
     }
 
+    // B2 calls the secret an "Application Key" — match its terminology.
+    const secretLabel =
+      this.storageSecretKeyInput?.parentElement?.querySelector("span");
+    if (secretLabel) {
+      secretLabel.textContent = isB2 ? "Application Key" : "Secret Access Key";
+    }
+
     if (this.storageR2Helper) {
       this.storageR2Helper.classList.toggle("hidden", !isR2);
     }
