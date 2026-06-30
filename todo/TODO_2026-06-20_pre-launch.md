@@ -814,11 +814,16 @@ Reported 2026-06-25. Relates to #17 (NIP-71 interop) / the bitvid→NIP-71 mirro
       no-signer / no-decryptor messages. New error code
       `storage-unlock-locked-nsec-session`. Tests:
       `tests/storage-unlock-locked-nsec.test.mjs` (6, behavioral). Build + lint clean.
-- [ ] **Follow-up (UX nicety):** auto-open the login modal's existing unlock-saved-key
-      (passphrase) flow directly from the storage pane so the user re-unlocks in one
-      click instead of navigating to Login — needs a side-effect-free
-      `requestUnlockStoredSession` hook (the current `requestAddProfileLogin` path runs an
-      add-account callback). Deferred to keep this fix small.
+- [x] **Follow-up (UX nicety) — DONE 2026-06-30.** Clicking "Unlock Storage" on a
+      locked persisted-nsec session now **auto-opens the login modal** straight to its
+      existing unlock-saved-key (passphrase) flow, so the user re-unlocks in one step.
+      Added a side-effect-free `openLoginModal` service to `profileModalServices`
+      (`app.loginModalController.openModal` — no add-account callback, idempotently
+      ensures the modal exists first); `reportLockedNsecSession({ autoOpenLogin })` calls
+      it only from the user-initiated unlock click, NOT the passive pane render (no
+      surprise popups). After the user unlocks, the signer is active app-wide and
+      re-opening the storage pane auto-unlocks. Tests extended (8 total: asserts auto-open
+      fires on click, stays closed on passive render).
 - [ ] **VERIFY on unstable:** nsec-login with "remember key" + passphrase, reload the
       page, open Profile → Storage → the status should read the actionable re-unlock hint
       (not "No active signer"); after re-entering the passphrase via Login, storage

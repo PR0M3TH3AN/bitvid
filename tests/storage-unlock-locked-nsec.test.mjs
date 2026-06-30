@@ -20,6 +20,7 @@ const OTHER_PUBKEY = "b".repeat(64);
 
 function makeController({ meta } = {}) {
   const shownErrors = [];
+  const loginOpens = [];
   const mainController = {
     normalizeHexPubkey: (value) =>
       typeof value === "string" ? value.trim().toLowerCase() : "",
@@ -29,10 +30,14 @@ function makeController({ meta } = {}) {
       nostrClient: {
         getStoredSessionActorMetadata: () => meta,
       },
+      openLoginModal: (options) => {
+        loginOpens.push(options ?? null);
+        return true;
+      },
     },
   };
   const controller = new ProfileStorageController(mainController);
-  return { controller, shownErrors };
+  return { controller, shownErrors, loginOpens };
 }
 
 const persistedNsecMeta = {
@@ -79,6 +84,18 @@ test("reporting the locked session shows the actionable re-unlock message, not a
   assert.match(msg, /saved key/i);
   assert.match(msg, /passphrase/i);
   assert.doesNotMatch(msg, /no active signer/i);
+});
+
+test("autoOpenLogin opens the login modal's unlock flow (one-click re-unlock)", () => {
+  const { controller, loginOpens } = makeController({ meta: persistedNsecMeta });
+  controller.reportLockedNsecSession({ autoOpenLogin: true });
+  assert.equal(loginOpens.length, 1, "should open the login modal exactly once");
+});
+
+test("the passive path does NOT auto-open the login modal (no surprise popups)", () => {
+  const { controller, loginOpens } = makeController({ meta: persistedNsecMeta });
+  controller.reportLockedNsecSession();
+  assert.equal(loginOpens.length, 0, "default (passive) report must not open a modal");
 });
 
 test("the new error code maps to a saved-key/passphrase message", () => {

@@ -543,6 +543,33 @@ export default class ApplicationBootstrap {
           authService: app.authService,
           requestAddProfileLogin: (options) =>
             app.requestProfileAdditionLogin(options),
+          // Side-effect-free open of the login modal (no add-account callback). Used by
+          // the storage pane to route a locked persisted-nsec session to the existing
+          // unlock-saved-key (passphrase) flow. Returns true if the modal opened.
+          openLoginModal: (options = {}) => {
+            try {
+              if (typeof app.initializeLoginModalController === "function") {
+                app.initializeLoginModalController();
+              }
+            } catch (error) {
+              devLogger.warn(
+                "[Application] Failed to ensure login modal before open:",
+                error,
+              );
+            }
+            const controller = app.loginModalController;
+            if (controller && typeof controller.openModal === "function") {
+              try {
+                return controller.openModal(options) !== false;
+              } catch (error) {
+                devLogger.warn(
+                  "[Application] Failed to open login modal:",
+                  error,
+                );
+              }
+            }
+            return false;
+          },
           describeLoginError: (error, fallbackMessage) =>
             app.describeLoginError(error, fallbackMessage),
           hashtagPreferences: app.hashtagPreferences,

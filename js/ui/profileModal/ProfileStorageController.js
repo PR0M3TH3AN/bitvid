@@ -517,7 +517,7 @@ export class ProfileStorageController {
     return meta;
   }
 
-  reportLockedNsecSession() {
+  reportLockedNsecSession({ autoOpenLogin = false } = {}) {
     userLogger.info(
       "[storage-unlock] saved nsec key is locked (no in-memory signer after reload); prompting re-unlock.",
     );
@@ -527,6 +527,25 @@ export class ProfileStorageController {
     error.code = "storage-unlock-locked-nsec-session";
     this.setStorageUnlockFailureState(error);
     this.mainController.showError(this.getStorageUnlockFailureMessage(error));
+
+    // When the user actively clicked "Unlock Storage", open the login modal straight
+    // to its existing unlock-saved-key (passphrase) flow so they can re-unlock in one
+    // step. After they unlock, the signer is active app-wide and re-opening the storage
+    // pane auto-unlocks. We don't auto-open from the passive pane render (would be
+    // surprising); the status text + button still guide them there.
+    if (autoOpenLogin) {
+      const openLoginModal = this.mainController.services?.openLoginModal;
+      if (typeof openLoginModal === "function") {
+        try {
+          openLoginModal();
+        } catch (openError) {
+          devLogger.warn(
+            "[ProfileModal] Failed to open login modal for saved-key unlock:",
+            openError,
+          );
+        }
+      }
+    }
   }
 
   async requestStorageUnlockPermissions() {
@@ -570,7 +589,7 @@ export class ProfileStorageController {
 
     if (!signer) {
       if (this.getLockedStoredNsecSession(pubkey)) {
-        this.reportLockedNsecSession();
+        this.reportLockedNsecSession({ autoOpenLogin: true });
         return;
       }
       this.mainController.showError("No active signer found. Please login.");
@@ -647,7 +666,7 @@ export class ProfileStorageController {
       // A restored-but-locked persisted nsec session can leave a decrypt-less stub
       // signer; route it to the re-unlock guidance rather than the generic message.
       if (this.getLockedStoredNsecSession(pubkey)) {
-        this.reportLockedNsecSession();
+        this.reportLockedNsecSession({ autoOpenLogin: true });
         return;
       }
       const missingDecryptError = new Error(
