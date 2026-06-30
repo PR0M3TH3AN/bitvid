@@ -973,6 +973,9 @@
                         <button id="storageClearBtn" type="button" class="btn-ghost focus-ring text-status-danger">
                             Clear
                         </button>
+                        <button id="storageCorsHelpBtn" type="button" class="btn-ghost focus-ring text-xs hidden">
+                            CORS setup help
+                        </button>
                     </div>
                     <p id="storageFormStatus" class="text-sm" role="status" aria-live="polite"></p>
 
@@ -1835,6 +1838,91 @@
           Logout
         </button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Storage CORS setup helper (B2 / S3-compatible). Shown on demand from the
+     Storage pane; renders above the profile modal via modal-always-on-top. -->
+<div
+  id="storageCorsModal"
+  class="bv-modal modal-always-on-top hidden items-start justify-center md:items-center"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="storageCorsModalTitle"
+  aria-describedby="storageCorsModalIntro"
+  data-ds="new"
+>
+  <div class="bv-modal-backdrop" data-storage-cors-dismiss></div>
+
+  <div class="modal-sheet max-h-modal-shell overflow-hidden flex flex-col w-full max-w-2xl" tabindex="-1">
+    <div class="modal-header">
+      <h2 id="storageCorsModalTitle" class="text-xl font-bold text-text">
+        Allow browser uploads (bucket CORS)
+      </h2>
+      <button
+        id="storageCorsModalClose"
+        class="modal-close"
+        type="button"
+        aria-label="Close CORS setup help"
+        data-storage-cors-dismiss
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+
+    <div class="modal-body overflow-y-auto p-5 space-y-4 text-sm text-muted-strong">
+      <p id="storageCorsModalIntro">
+        Backblaze B2's web console CORS presets ("Share everything…") only allow
+        <strong>downloads</strong>. Uploading from your browser uses an S3
+        <code>PUT</code>/<code>POST</code>, which needs the <strong>custom</strong>
+        rules below. Backblaze can only apply custom rules via its command-line tool.
+      </p>
+
+      <div>
+        <div class="mb-1 flex items-center justify-between gap-2">
+          <span class="font-medium text-text">CORS rules JSON</span>
+          <button id="storageCorsCopyJsonBtn" type="button" class="btn-ghost focus-ring text-xs">
+            Copy JSON
+          </button>
+        </div>
+        <pre class="card border border-default bg-surface-strong/40 p-3 overflow-x-auto text-xs leading-relaxed"><code id="storageCorsJson" class="whitespace-pre text-text"></code></pre>
+        <p class="mt-1 text-xs text-muted">
+          Origins are pre-filled from this site. Add your other bitvid domains, or use
+          <code>["*"]</code> to allow every origin.
+        </p>
+      </div>
+
+      <div>
+        <div class="mb-1 flex items-center justify-between gap-2">
+          <span class="font-medium text-text">Apply it (B2 command-line tool)</span>
+          <button id="storageCorsCopyCmdBtn" type="button" class="btn-ghost focus-ring text-xs">
+            Copy command
+          </button>
+        </div>
+        <pre class="card border border-default bg-surface-strong/40 p-3 overflow-x-auto text-xs leading-relaxed"><code id="storageCorsCli" class="whitespace-pre text-text"></code></pre>
+      </div>
+
+      <ol class="list-decimal space-y-1 pl-5 text-xs text-muted">
+        <li>Install Backblaze's <strong>B2 CLI</strong> (<code>pip install b2</code>) on your computer.</li>
+        <li>Run the command above (it authorizes with your key, then sets the rules).</li>
+        <li>Wait ~1 minute, then retry your upload in bitvid.</li>
+      </ol>
+
+      <p class="text-xs text-muted">
+        Prefer the web console? Its presets are fine for <strong>playback</strong> of
+        already-uploaded files — only browser <strong>uploads</strong> need the custom
+        rules above. (Tip: a B2 application key with the <code>writeBucketCors</code>
+        capability lets bitvid set this for you automatically when you Save.)
+      </p>
+    </div>
+
+    <div class="modal-footer flex items-center justify-end gap-3 border-t border-border/60 p-4">
+      <button id="storageCorsDoneBtn" type="button" class="btn focus-ring" data-storage-cors-dismiss>
+        Done
+      </button>
     </div>
   </div>
 </div>

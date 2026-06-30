@@ -8,6 +8,7 @@ import {
 import { getActiveSigner } from "../../nostr/client.js";
 import { DEFAULT_NIP07_ENCRYPTION_METHODS } from "../../nostr/nip07Permissions.js";
 import { storageSyncService } from "../../services/storageSyncService.js";
+import { StorageCorsHelp } from "./storageCorsHelp.js";
 
 export class ProfileStorageController {
   constructor(mainController) {
@@ -34,6 +35,10 @@ export class ProfileStorageController {
     this.storageR2Helper = null;
     this.storageB2Helper = null;
     this.storageS3Helper = null;
+    // CORS setup helper modal (B2 / Custom S3) — owns its own DOM + behavior.
+    this.corsHelp = new StorageCorsHelp({
+      getBucket: () => this.storageBucketInput?.value?.trim() || "",
+    });
     this.storageForcePathStyleInput = null;
     this.storageForcePathStyleLabel = null;
 
@@ -67,6 +72,7 @@ export class ProfileStorageController {
     this.storageR2Helper = document.getElementById("storageR2Helper") || null;
     this.storageB2Helper = document.getElementById("storageB2Helper") || null;
     this.storageS3Helper = document.getElementById("storageS3Helper") || null;
+    this.corsHelp.cacheDom(document);
     this.storageForcePathStyleInput = document.getElementById("storageForcePathStyle") || null;
     this.storageForcePathStyleLabel = document.getElementById("storageForcePathStyleLabel") || null;
     this.storageSyncSection = document.getElementById("profileStorageSync") || null;
@@ -123,6 +129,8 @@ export class ProfileStorageController {
         void this.handleRestoreSync();
       });
     }
+
+    this.corsHelp.registerEventListeners();
   }
 
   async populateStoragePane() {
@@ -406,8 +414,7 @@ export class ProfileStorageController {
   updateStorageFormVisibility() {
     const provider = this.storageProviderInput?.value || "cloudflare_r2";
     const isR2 = provider === "cloudflare_r2";
-    // B2 derives its endpoint from the region (s3.<region>.backblazeb2.com), so the
-    // raw Endpoint field is hidden and the region drives the connection.
+    // B2 derives its endpoint from the region, so its raw Endpoint field is hidden.
     const isB2 = provider === PROVIDERS.B2;
 
     if (this.storageEndpointInput) {
@@ -461,8 +468,7 @@ export class ProfileStorageController {
     }
 
     if (this.storageForcePathStyleLabel) {
-      // Force-path-style is a generic-S3 knob; R2 (account-derived) and B2
-      // (virtual-hosted) fix it internally, so hide the toggle for both.
+      // Force-path-style is a generic-S3 knob; R2 and B2 fix it internally.
       const showForcePathStyle = !isR2 && !isB2;
       this.storageForcePathStyleLabel.classList.toggle(
         "hidden",
@@ -473,6 +479,9 @@ export class ProfileStorageController {
         showForcePathStyle,
       );
     }
+
+    // Manual CORS helper is for S3-compatible providers (B2 / Custom S3), not R2.
+    this.corsHelp.setVisible(!isR2);
   }
 
   getStorageUnlockFailureMessage(error) {
@@ -515,12 +524,10 @@ export class ProfileStorageController {
     this.storageUnlockFailure = null;
   }
 
-  // After a page reload, a persisted ("remember this key") nsec session restores the
-  // logged-in pubkey + UI but NOT the in-memory signer — the private key is held only
-  // passphrase-encrypted. Storage unlock then has no signer (or a decrypt-less stub),
-  // and the generic "No active signer / cannot decrypt" errors are misleading because
-  // the user still looks logged in. Detect this exact case (a saved nsec key for the
-  // account we're unlocking) so we can tell them to re-unlock their saved key instead.
+  // After a page reload, a persisted nsec session restores the logged-in pubkey + UI
+  // but NOT the in-memory signer (the key is passphrase-encrypted). Storage unlock then
+  // has no usable signer, and the generic "No active signer" error is misleading.
+  // Detect this exact case (a saved nsec key for the account we're unlocking).
   getLockedStoredNsecSession(pubkey) {
     const client = this.mainController.services?.nostrClient;
     if (!client || typeof client.getStoredSessionActorMetadata !== "function") {
@@ -555,11 +562,8 @@ export class ProfileStorageController {
     this.setStorageUnlockFailureState(error);
     this.mainController.showError(this.getStorageUnlockFailureMessage(error));
 
-    // When the user actively clicked "Unlock Storage", open the login modal straight
-    // to its existing unlock-saved-key (passphrase) flow so they can re-unlock in one
-    // step. After they unlock, the signer is active app-wide and re-opening the storage
-    // pane auto-unlocks. We don't auto-open from the passive pane render (would be
-    // surprising); the status text + button still guide them there.
+    // On an explicit "Unlock Storage" click, open the login modal's unlock-saved-key
+    // (passphrase) flow so the user re-unlocks in one step (not from passive render).
     if (autoOpenLogin) {
       const openLoginModal = this.mainController.services?.openLoginModal;
       if (typeof openLoginModal === "function") {
@@ -758,9 +762,8 @@ export class ProfileStorageController {
     const prefix = this.storagePrefixInput?.value?.trim() || "";
     const isDefault = this.storageDefaultInput?.checked || false;
 
-    // B2: the endpoint isn't entered — derive it from the region.
     if (provider === PROVIDERS.B2) {
-      endpointOrAccount = deriveB2Endpoint(region);
+      endpointOrAccount = deriveB2Endpoint(region); // derived from region for B2
       if (!endpointOrAccount) {
         this.setStorageFormStatus(
           "Enter your Backblaze B2 region (e.g. us-west-004).",
@@ -811,9 +814,8 @@ export class ProfileStorageController {
           secretAccessKey,
           bucket,
           forcePathStyle,
-          // Honor an explicit Public Access URL (e.g. a B2 custom domain / CDN in front
-          // of the bucket); when blank, validateS3Connection derives it from the
-          // endpoint + bucket (for B2: https://<bucket>.s3.<region>.backblazeb2.com).
+          // Honor an explicit Public Access URL (custom domain / CDN); when blank,
+          // validateS3Connection derives it from the endpoint + bucket.
           publicBaseUrl: prefix || undefined,
           origins: getCorsOrigins(),
         });
@@ -910,9 +912,8 @@ export class ProfileStorageController {
 
     const publicBaseUrl = this.storagePrefixInput?.value?.trim() || "";
 
-    // B2: the endpoint isn't entered — derive it from the region.
     if (provider === PROVIDERS.B2) {
-      endpointOrAccount = deriveB2Endpoint(region);
+      endpointOrAccount = deriveB2Endpoint(region); // derived from region for B2
       if (!endpointOrAccount) {
         this.setStorageFormStatus(
           "Enter your Backblaze B2 region (e.g. us-west-004) to test.",

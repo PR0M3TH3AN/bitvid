@@ -860,9 +860,24 @@ Reported 2026-06-25. Relates to #17 (NIP-71 interop) / the bitvid→NIP-71 mirro
       - Tests: `tests/storage-b2-provider.test.mjs` (8 — endpoint derivation, virtual-
         hosted public URL, end-to-end validate, explicit override, object URLs). All
         s3/storage suites green (50); build + lint clean.
-- [ ] **VERIFY live** with a real B2 Application Key + public bucket on unstable: pick
-      Backblaze B2, enter region (e.g. `us-west-004`) + bucket + key/secret, Test → passes;
-      upload a video → plays from `https://<bucket>.s3.<region>.backblazeb2.com/...`.
+- [x] **VALIDATED against a real B2 account 2026-06-30.** Read-only `b2_authorize_account`
+      on the live `bitvid` bucket confirmed the derivation EXACTLY: B2's reported
+      `s3ApiUrl` = `https://s3.us-west-004.backblazeb2.com` = `deriveB2Endpoint("us-west-004")`;
+      bucket is `allPublic` → S3-style playback URL works. Key file caps
+      (read/write/list/delete) ✓.
+- [x] **CORS helper modal — DONE 2026-06-30.** Empirically confirmed the gotcha: B2's
+      web-console "Share everything…" presets write DOWNLOAD-only CORS (`s3_get/s3_head`,
+      `b2_download_*`) — **no `s3_put/s3_post`** — so browser uploads CORS-fail. Added a
+      "CORS setup help" button (shown for B2 / Custom S3) opening a modal that shows the
+      exact B2-native CORS rules JSON (upload + ranged-playback ops, origins pre-filled
+      from `getCorsOrigins()`) + the `b2 update-bucket --corsRules …` command to apply
+      them, with copy buttons and step-by-step (incl. the "use a key with
+      `writeBucketCors` and bitvid sets it for you" tip). Extracted to
+      `js/ui/profileModal/storageCorsHelp.js` (keeps the controller <1000 lines). Tests:
+      `tests/storage-cors-help.test.mjs` (8). Build + lint clean.
+- [ ] **VERIFY live** on unstable: pick Backblaze B2, enter region (`us-west-004`) +
+      bucket + key/secret, Test → passes; apply the CORS helper's rules; upload a video →
+      plays from `https://<bucket>.s3.<region>.backblazeb2.com/...`.
 
 ### 39. Image uploads should prefer uploading to configured storage (UX)
 - [ ] Anywhere the user adds an image, prefer letting them **upload an image file to
