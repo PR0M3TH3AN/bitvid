@@ -750,6 +750,28 @@ Reported 2026-06-25. Relates to #17 (NIP-71 interop) / the bitvid→NIP-71 mirro
 - [ ] Fix: make mirror detection reliable + the mirror publish idempotent. See
       `js/nostr/nip71Mirror.js` / `js/services/nip71MirrorFlags.js`.
 
+- [x] **AUDIT done 2026-06-25.** Two root causes:
+      1. **Detection is device-local.** `isMirrorEnabled(pubkey, videoRootId)`
+         (`nip71MirrorFlags.js`) reads a localStorage flag (`FLAG_KEY`), NOT the actual
+         published mirror events — so a cache clear / other device / lost flag reports
+         "not mirrored" even though the 34235/34236 events exist on relays.
+      2. **Kind is unstable → cross-kind duplicate.** `buildNip71MirrorEvent`
+         (`nip71Mirror.js:177`) uses `short = hasDims && height > width` → kind 34236,
+         else 34235. The d-tag is deterministic (`["d", videoRootId]`), but
+         `(34235,pubkey,d)` and `(34236,pubkey,d)` are DISTINCT addressable events. When
+         a video has dimensions on one mirror attempt but not another, the kind flips, so
+         re-mirroring publishes the OTHER kind → two copies in NIP-71 clients. "Delete
+         removes both" confirms the shared d-tag / two-kind duplicate.
+- [ ] **FIX PLAN:**
+      (a) **Idempotent publish:** before mirroring, query relays for an existing mirror
+          by author + `#d=videoRootId` across BOTH kinds; if one exists, REUSE its kind
+          (replace it) and delete any stray of the other kind. Going forward also make
+          the kind determination stable (don't flip to 34235 just because dims are absent
+          — fall back to the existing/previous kind).
+      (b) **Relay-truth detection:** derive "is mirrored" from the published events (the
+          query above), not just the local flag; keep the flag as a cache/hint only.
+      Reproduction-dependent (needs NIP-71 relay state) — verify on unstable after.
+
 ### 35. Admin whitelisting tool is slow & cumbersome — improve with application forms
 - [ ] The current admin whitelist tool is slow and clunky to use. Improve the UX when
       we integrate the **application/submission forms** (#22) and the **Admin
