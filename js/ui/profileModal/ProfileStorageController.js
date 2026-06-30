@@ -35,9 +35,12 @@ export class ProfileStorageController {
     this.storageR2Helper = null;
     this.storageB2Helper = null;
     this.storageS3Helper = null;
-    // CORS setup helper modal (B2 / Custom S3) — owns its own DOM + behavior.
+    // Provider-aware CORS setup helper modal — owns its own DOM + behavior.
     this.corsHelp = new StorageCorsHelp({
+      getProvider: () => this.storageProviderInput?.value || "cloudflare_r2",
       getBucket: () => this.storageBucketInput?.value?.trim() || "",
+      getRegion: () => this.storageRegionInput?.value?.trim() || "",
+      getEndpoint: () => this.storageEndpointInput?.value?.trim() || "",
     });
     this.storageForcePathStyleInput = null;
     this.storageForcePathStyleLabel = null;
@@ -447,7 +450,6 @@ export class ProfileStorageController {
       }
     }
 
-    // Region matters for B2 (drives the endpoint) and AWS-style S3; nudge the example.
     if (this.storageRegionInput && isB2) {
       this.storageRegionInput.placeholder = "us-west-004";
     } else if (this.storageRegionInput) {
@@ -480,8 +482,7 @@ export class ProfileStorageController {
       );
     }
 
-    // Manual CORS helper is for S3-compatible providers (B2 / Custom S3), not R2.
-    this.corsHelp.setVisible(!isR2);
+    this.corsHelp.setVisible(true); // provider-aware; useful for all bucket providers
   }
 
   getStorageUnlockFailureMessage(error) {
@@ -814,8 +815,7 @@ export class ProfileStorageController {
           secretAccessKey,
           bucket,
           forcePathStyle,
-          // Honor an explicit Public Access URL (custom domain / CDN); when blank,
-          // validateS3Connection derives it from the endpoint + bucket.
+          // Explicit Public Access URL (custom domain/CDN); blank → derived.
           publicBaseUrl: prefix || undefined,
           origins: getCorsOrigins(),
         });

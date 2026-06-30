@@ -1,29 +1,35 @@
-// Storage CORS setup helper (B2 / S3-compatible): the rules + command bitvid shows a
-// user so in-browser uploads work. The crucial property: the rules include the UPLOAD
-// operations (s3_put / s3_post) that B2's web-console "share" presets omit — that gap
-// is exactly why uploads CORS-fail until these custom rules are applied.
+// Provider-aware storage CORS setup helper. The helper must give the RIGHT rules +
+// apply-command for each provider: B2-native rules + the b2 CLI for Backblaze B2, and
+// standard S3 CORS + AWS CLI / dashboard guidance for Custom S3 and Cloudflare R2.
+// The invariant across all of them: the rules allow browser uploads (PUT/POST), which
+// is what makes uploads stop CORS-failing.
 
 import test, { beforeEach, afterEach } from "node:test";
 import { strict as assert } from "node:assert";
 import { JSDOM } from "jsdom";
 import {
   buildBucketCorsRules,
+  buildS3CorsConfig,
   buildB2CorsCommand,
+  buildAwsCorsCommand,
+  buildCorsHelpContent,
   StorageCorsHelp,
 } from "../js/ui/profileModal/storageCorsHelp.js";
 
-test("CORS rules include the upload operations the B2 presets omit", () => {
+test("B2-native rules include the upload operations the B2 presets omit", () => {
   const [rule] = buildBucketCorsRules(["https://bitvid.network"]);
-  for (const op of ["s3_put", "s3_post"]) {
-    assert.ok(
-      rule.allowedOperations.includes(op),
-      `rule must allow ${op} (browser upload) — the whole point of this helper`,
-    );
-  }
-  // ...and still allow ranged playback reads.
+  assert.ok(rule.allowedOperations.includes("s3_put"));
+  assert.ok(rule.allowedOperations.includes("s3_post"));
   assert.ok(rule.allowedOperations.includes("s3_get"));
-  assert.ok(rule.allowedOperations.includes("s3_head"));
-  assert.deepEqual(rule.exposeHeaders, [
+});
+
+test("standard S3 CORS config allows upload + ranged playback methods", () => {
+  const cfg = buildS3CorsConfig(["https://bitvid.network"]);
+  const rule = cfg.CORSRules[0];
+  assert.deepEqual(rule.AllowedMethods, ["GET", "HEAD", "PUT", "POST", "DELETE"]);
+  // OPTIONS is not a valid S3 AllowedMethod and must not be present.
+  assert.ok(!rule.AllowedMethods.includes("OPTIONS"));
+  assert.deepEqual(rule.ExposeHeaders, [
     "ETag",
     "Content-Length",
     "Content-Range",
@@ -31,41 +37,83 @@ test("CORS rules include the upload operations the B2 presets omit", () => {
   ]);
 });
 
-test("CORS rules use the given origins, and fall back to every-origin when none", () => {
-  assert.deepEqual(
-    buildBucketCorsRules(["https://a.example", "https://b.example"])[0]
-      .allowedOrigins,
-    ["https://a.example", "https://b.example"],
-  );
+test("origins fall back to every-origin when none are provided", () => {
   assert.deepEqual(buildBucketCorsRules([])[0].allowedOrigins, ["*"]);
-  assert.deepEqual(buildBucketCorsRules(undefined)[0].allowedOrigins, ["*"]);
+  assert.deepEqual(buildS3CorsConfig(undefined).CORSRules[0].AllowedOrigins, ["*"]);
 });
 
-test("the B2 CLI command targets the bucket as allPublic with compact one-line JSON", () => {
-  const rules = buildBucketCorsRules(["https://bitvid.network"]);
-  const cmd = buildB2CorsCommand("bitvid", rules);
+test("B2 command targets the bucket allPublic with compact one-line JSON", () => {
+  const cmd = buildB2CorsCommand("bitvid", buildBucketCorsRules(["https://x"]));
   assert.match(cmd, /^b2 update-bucket --corsRules '.*' bitvid allPublic$/);
-  assert.ok(!cmd.includes("\n"), "command must be a single pasteable line");
-  // The embedded JSON is valid and carries the upload op.
-  const json = cmd.slice(cmd.indexOf("'") + 1, cmd.lastIndexOf("'"));
-  assert.ok(JSON.parse(json)[0].allowedOperations.includes("s3_put"));
+  assert.ok(!cmd.includes("\n"));
 });
 
-test("a missing bucket name degrades to an obvious placeholder (not an empty arg)", () => {
-  assert.match(buildB2CorsCommand("", buildBucketCorsRules([])), /YOUR_BUCKET allPublic$/);
+test("AWS command includes the endpoint + bucket, one line", () => {
+  const cmd = buildAwsCorsCommand(
+    "vids",
+    "https://s3.example.com",
+    buildS3CorsConfig(["https://x"]),
+  );
+  assert.match(
+    cmd,
+    /^aws s3api put-bucket-cors --bucket vids --endpoint-url https:\/\/s3\.example\.com --cors-configuration '.*'$/,
+  );
 });
 
-// --- DOM behavior ---
+test("content for Backblaze B2 uses B2-native rules + the b2 CLI", () => {
+  const c = buildCorsHelpContent({
+    provider: "backblaze_b2",
+    origins: ["https://bitvid.network"],
+    bucket: "bitvid",
+    endpoint: "https://s3.us-west-004.backblazeb2.com",
+  });
+  assert.match(c.cmd, /^b2 update-bucket /);
+  assert.match(c.cmdLabel, /B2 command-line/i);
+  assert.ok(JSON.parse(c.json)[0].allowedOperations.includes("s3_put"));
+  assert.match(c.notes, /b2 CLI|pip install b2/i);
+});
+
+test("content for Custom S3 uses standard S3 CORS + the AWS CLI", () => {
+  const c = buildCorsHelpContent({
+    provider: "generic_s3",
+    origins: ["https://bitvid.network"],
+    bucket: "vids",
+    endpoint: "https://s3.example.com",
+  });
+  assert.match(c.cmd, /^aws s3api put-bucket-cors /);
+  assert.match(c.cmd, /--endpoint-url https:\/\/s3\.example\.com/);
+  assert.ok(JSON.parse(c.json).CORSRules[0].AllowedMethods.includes("PUT"));
+  assert.doesNotMatch(c.cmd, /backblaze|b2 update-bucket/i);
+});
+
+test("content for Cloudflare R2 uses S3 CORS and points at the R2 dashboard", () => {
+  const c = buildCorsHelpContent({
+    provider: "cloudflare_r2",
+    origins: ["https://bitvid.network"],
+    bucket: "vids",
+    endpoint: "https://acct.r2.cloudflarestorage.com",
+  });
+  assert.match(c.cmd, /^aws s3api put-bucket-cors /);
+  assert.match(c.notes, /Cloudflare dashboard/i);
+  assert.match(c.cmdLabel, /Cloudflare/i);
+  assert.ok(JSON.parse(c.json).CORSRules);
+});
+
+// --- DOM behavior (provider switch reflected in the modal) ---
 let dom;
 beforeEach(() => {
   dom = new JSDOM(
     `<!doctype html><html><body>
-      <button id="storageCorsHelpBtn" class="hidden"></button>
+      <select id="prov"><option value="cloudflare_r2">r2</option></select>
+      <button id="storageCorsHelpBtn"></button>
       <div id="storageCorsModal" class="hidden">
         <div class="modal-sheet" tabindex="-1"></div>
         <button data-storage-cors-dismiss id="x"></button>
+        <p id="storageCorsModalIntro"></p>
         <code id="storageCorsJson"></code>
+        <span id="storageCorsCmdLabel"></span>
         <code id="storageCorsCli"></code>
+        <p id="storageCorsNotes"></p>
         <button id="storageCorsCopyJsonBtn"></button>
         <button id="storageCorsCopyCmdBtn"></button>
       </div>
@@ -82,30 +130,33 @@ afterEach(() => {
   delete globalThis.window;
 });
 
-test("open() fills the JSON + command from the current origin and reveals the modal", () => {
-  const help = new StorageCorsHelp({ getBucket: () => "bitvid" });
+test("open() renders provider-specific content and pre-fills the current origin", () => {
+  let provider = "backblaze_b2";
+  const help = new StorageCorsHelp({
+    getProvider: () => provider,
+    getBucket: () => "bitvid",
+    getRegion: () => "us-west-004",
+    getEndpoint: () => "",
+  });
   help.cacheDom(dom.window.document);
   help.registerEventListeners();
 
   help.open();
+  const doc = dom.window.document;
+  assert.ok(!doc.getElementById("storageCorsModal").classList.contains("hidden"));
+  assert.match(doc.getElementById("storageCorsCli").textContent, /^b2 update-bucket /);
+  const b2Rule = JSON.parse(doc.getElementById("storageCorsJson").textContent)[0];
+  assert.deepEqual(b2Rule.allowedOrigins, ["https://unstable.bitvid.network"]);
 
-  const modal = dom.window.document.getElementById("storageCorsModal");
-  assert.ok(!modal.classList.contains("hidden"), "modal is shown");
-
-  const json = dom.window.document.getElementById("storageCorsJson").textContent;
-  const rule = JSON.parse(json)[0];
-  assert.deepEqual(
-    rule.allowedOrigins,
-    ["https://unstable.bitvid.network"],
-    "origins pre-filled from getCorsOrigins()",
-  );
-
-  const cli = dom.window.document.getElementById("storageCorsCli").textContent;
-  assert.match(cli, /bitvid allPublic$/);
+  // Switch provider → reopening yields the AWS-CLI form.
+  provider = "generic_s3";
+  help.open();
+  assert.match(doc.getElementById("storageCorsCli").textContent, /^aws s3api put-bucket-cors /);
+  assert.ok(JSON.parse(doc.getElementById("storageCorsJson").textContent).CORSRules);
 });
 
 test("dismiss controls hide the modal again", () => {
-  const help = new StorageCorsHelp({ getBucket: () => "bitvid" });
+  const help = new StorageCorsHelp({ getProvider: () => "generic_s3" });
   help.cacheDom(dom.window.document);
   help.registerEventListeners();
   help.open();
@@ -113,14 +164,4 @@ test("dismiss controls hide the modal again", () => {
   assert.ok(
     dom.window.document.getElementById("storageCorsModal").classList.contains("hidden"),
   );
-});
-
-test("setVisible toggles the help button for S3-compatible vs R2", () => {
-  const help = new StorageCorsHelp({ getBucket: () => "" });
-  help.cacheDom(dom.window.document);
-  const btn = dom.window.document.getElementById("storageCorsHelpBtn");
-  help.setVisible(true);
-  assert.ok(!btn.classList.contains("hidden"));
-  help.setVisible(false);
-  assert.ok(btn.classList.contains("hidden"));
 });

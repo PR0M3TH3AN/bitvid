@@ -865,16 +865,24 @@ Reported 2026-06-25. Relates to #17 (NIP-71 interop) / the bitvid→NIP-71 mirro
       `s3ApiUrl` = `https://s3.us-west-004.backblazeb2.com` = `deriveB2Endpoint("us-west-004")`;
       bucket is `allPublic` → S3-style playback URL works. Key file caps
       (read/write/list/delete) ✓.
-- [x] **CORS helper modal — DONE 2026-06-30.** Empirically confirmed the gotcha: B2's
-      web-console "Share everything…" presets write DOWNLOAD-only CORS (`s3_get/s3_head`,
-      `b2_download_*`) — **no `s3_put/s3_post`** — so browser uploads CORS-fail. Added a
-      "CORS setup help" button (shown for B2 / Custom S3) opening a modal that shows the
-      exact B2-native CORS rules JSON (upload + ranged-playback ops, origins pre-filled
-      from `getCorsOrigins()`) + the `b2 update-bucket --corsRules …` command to apply
-      them, with copy buttons and step-by-step (incl. the "use a key with
-      `writeBucketCors` and bitvid sets it for you" tip). Extracted to
-      `js/ui/profileModal/storageCorsHelp.js` (keeps the controller <1000 lines). Tests:
-      `tests/storage-cors-help.test.mjs` (8). Build + lint clean.
+- [x] **CORS helper modal (provider-aware) — DONE 2026-06-30.** Empirically confirmed
+      the gotcha: B2's web-console "Share everything…" presets write DOWNLOAD-only CORS
+      (`s3_get/s3_head`, `b2_download_*`) — **no `s3_put/s3_post`** — so browser uploads
+      CORS-fail. Added a "CORS setup help" button (shown for **all** bucket providers)
+      opening a **provider-aware** modal:
+      - **Backblaze B2** → B2-native rules JSON (upload + ranged-playback ops) + the
+        `b2 update-bucket --corsRules …` command.
+      - **Custom S3** → standard S3 `CORSConfiguration` JSON + `aws s3api put-bucket-cors
+        --endpoint-url <endpoint> …`.
+      - **Cloudflare R2** → standard S3 JSON + Cloudflare-dashboard guidance (R2 → bucket
+        → Settings → CORS Policy) and the AWS-CLI command against the derived R2 endpoint.
+      Origins pre-filled from `getCorsOrigins()`; copy buttons for JSON + command. bitvid
+      still auto-applies CORS on Save (R2/S3 via `ensureBucketCors`) — this is the manual
+      fallback for when the key lacks CORS-write permission. Logic in
+      `js/ui/profileModal/storageCorsHelp.js` (`buildCorsHelpContent` switches on
+      provider; keeps the controller <1000 lines). Tests:
+      `tests/storage-cors-help.test.mjs` (10 — per-provider rules/command + DOM switch).
+      Build + lint clean.
 - [ ] **VERIFY live** on unstable: pick Backblaze B2, enter region (`us-west-004`) +
       bucket + key/secret, Test → passes; apply the CORS helper's rules; upload a video →
       plays from `https://<bucket>.s3.<region>.backblazeb2.com/...`.

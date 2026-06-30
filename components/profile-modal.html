@@ -973,7 +973,7 @@
                         <button id="storageClearBtn" type="button" class="btn-ghost focus-ring text-status-danger">
                             Clear
                         </button>
-                        <button id="storageCorsHelpBtn" type="button" class="btn-ghost focus-ring text-xs hidden">
+                        <button id="storageCorsHelpBtn" type="button" class="btn-ghost focus-ring text-xs">
                             CORS setup help
                         </button>
                     </div>
@@ -1875,10 +1875,8 @@
 
     <div class="modal-body overflow-y-auto p-5 space-y-4 text-sm text-muted-strong">
       <p id="storageCorsModalIntro">
-        Backblaze B2's web console CORS presets ("Share everything…") only allow
-        <strong>downloads</strong>. Uploading from your browser uses an S3
-        <code>PUT</code>/<code>POST</code>, which needs the <strong>custom</strong>
-        rules below. Backblaze can only apply custom rules via its command-line tool.
+        Uploading from your browser uses an S3 <code>PUT</code>/<code>POST</code>,
+        which your bucket must allow via CORS.
       </p>
 
       <div>
@@ -1897,7 +1895,7 @@
 
       <div>
         <div class="mb-1 flex items-center justify-between gap-2">
-          <span class="font-medium text-text">Apply it (B2 command-line tool)</span>
+          <span id="storageCorsCmdLabel" class="font-medium text-text">Apply it</span>
           <button id="storageCorsCopyCmdBtn" type="button" class="btn-ghost focus-ring text-xs">
             Copy command
           </button>
@@ -1905,18 +1903,7 @@
         <pre class="card border border-default bg-surface-strong/40 p-3 overflow-x-auto text-xs leading-relaxed"><code id="storageCorsCli" class="whitespace-pre text-text"></code></pre>
       </div>
 
-      <ol class="list-decimal space-y-1 pl-5 text-xs text-muted">
-        <li>Install Backblaze's <strong>B2 CLI</strong> (<code>pip install b2</code>) on your computer.</li>
-        <li>Run the command above (it authorizes with your key, then sets the rules).</li>
-        <li>Wait ~1 minute, then retry your upload in bitvid.</li>
-      </ol>
-
-      <p class="text-xs text-muted">
-        Prefer the web console? Its presets are fine for <strong>playback</strong> of
-        already-uploaded files — only browser <strong>uploads</strong> need the custom
-        rules above. (Tip: a B2 application key with the <code>writeBucketCors</code>
-        capability lets bitvid set this for you automatically when you Save.)
-      </p>
+      <p id="storageCorsNotes" class="whitespace-pre-line text-xs text-muted"></p>
     </div>
 
     <div class="modal-footer flex items-center justify-end gap-3 border-t border-border/60 p-4">
