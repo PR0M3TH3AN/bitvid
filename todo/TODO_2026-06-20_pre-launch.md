@@ -903,12 +903,25 @@ Reported 2026-06-25. Relates to #17 (NIP-71 interop) / the bitvid→NIP-71 mirro
       the export carries both). Storage + profile-modal suites 69/69; build + lint clean.
 
 ### 39. Image uploads should prefer uploading to configured storage (UX)
-- [ ] Anywhere the user adds an image, prefer letting them **upload an image file to
-      their configured storage** (Cloudflare R2 / S3 / B2 / Blossom) and auto-grab the
-      resulting URL — rather than pasting a link. First target: the **profile image +
-      banner** in Edit Profile (upload → store → auto-fill the URL). Reuse the existing
-      upload pipeline (`s3UploadService` / thumbnail upload) and apply the same pattern
-      to other image inputs (thumbnails already do some of this).
+- [x] **Profile image + banner upload — FIXED 2026-06-30.** The UI was already wired
+      (`ProfileEditController.handleUpload`: resolve connection → `uploadFile` → auto-fill
+      the URL field), but it was **broken**: it passed a **hex** pubkey to
+      `r2Service.resolveConnection()`, which only decoded `npub1…` strings
+      (`safeDecodeNpub`) → hex resolved to `null` → "Storage configuration missing" and the
+      Upload button stayed disabled even with storage configured. (Thumbnails worked
+      because `mediaUploader` uses `listConnections(pubkey)` directly.)
+      **Fix:** `resolveConnection` now accepts a hex pubkey OR an npub. The rest of the
+      chain is already provider-agnostic — `resolveConnection` returns the
+      `defaultForUploads` connection (any provider) with its `endpoint`/`baseDomain`/
+      `forcePathStyle`, `uploadFile` routes R2 vs generic-S3 by provider, and
+      `buildPublicUrl` builds the right URL — so this now works for R2 / B2 / Custom S3.
+      Test: `tests/r2-resolve-connection-hex.test.mjs` (3, with `nip19.decode` throwing on
+      hex to prove the hex path, not npub decoding). Build + lint clean.
+- [ ] **VERIFY live:** unlock storage, Edit Profile → upload a picture/banner file →
+      uploads to the active provider's bucket and the URL auto-fills.
+- [ ] **Extend the pattern** to any remaining image-URL inputs that still only accept a
+      pasted link (video thumbnail in upload/edit already uploads via `mediaUploader`).
+      Audit for others (e.g. future channel/branding image fields) and reuse the helper.
 
 ## Open — lower priority / infra
 
