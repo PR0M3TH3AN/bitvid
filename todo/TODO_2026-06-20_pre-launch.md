@@ -507,8 +507,16 @@ toward freshness and looked identical. Gave each a structural identity:
 ### 8. Orphan storage garbage-collection tool
 - [x] **Largely delivered by the My Videos tab** (`9d3a0df0`): lists bucket objects no
       live note references and offers per-file delete (under the user's prefix only).
-- [ ] Remaining (optional): a one-click **bulk** "delete all orphans" action, and/or
-      surfacing the same control from the Storage settings pane.
+- [x] **Bulk "Delete all" orphans — DONE 2026-06-30.** Added a "Delete all (N)" button to
+      the orphaned-objects header in My Videos (shown only when >1 orphan). One
+      confirmation → a single `deleteStorageKeys({ keys: allOrphans, pubkey })` call
+      (already array-capable + unlock-gated + prefix-scoped). Refreshes the list on
+      success and reports partial outcomes honestly ("Removed 2 files (1 could not be
+      deleted)"); surfaces storage-locked as an unlock prompt. Tests:
+      `tests/my-videos-bulk-orphan-delete.test.mjs` (5 — all-keys-in-one-call, cancel,
+      storage-locked, partial, empty no-op). Build + lint clean; My Videos suite 37/37.
+- [ ] Remaining (optional): surface the same orphan control from the Storage settings
+      pane (currently only in My Videos).
 
 ### 9. Cap the cold-login relay-REQ storm further
 - [x] **Biggest source fixed** (`a8e9f520`): the community-blacklist load fired one

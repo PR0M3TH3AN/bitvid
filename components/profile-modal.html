@@ -1061,9 +1061,18 @@
                 data-orientation="vertical"
               ></ul>
               <div id="profileMyVideosOrphans" class="space-y-2 hidden">
-                <h4 class="text-sm font-semibold text-text">
-                  Orphaned storage objects
-                </h4>
+                <div class="flex items-center justify-between gap-3">
+                  <h4 class="text-sm font-semibold text-text">
+                    Orphaned storage objects
+                  </h4>
+                  <button
+                    id="profileMyVideosOrphanDeleteAll"
+                    type="button"
+                    class="btn-ghost focus-ring text-xs text-status-danger"
+                  >
+                    Delete all
+                  </button>
+                </div>
                 <p class="text-2xs text-muted">
                   Files in your bucket that no current video references — safe to
                   remove to reclaim space.
