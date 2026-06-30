@@ -504,6 +504,25 @@ toward freshness and looked identical. Gave each a structural identity:
 - [ ] Consider removing the CDN/WebTorrent source badge from the card (clutter).
 - [ ] Run `npm run test:visual` after layout changes; update baselines deliberately.
 
+### 41. Native browser dialogs → site notification system
+- [x] **DONE 2026-06-30.** Replaced every `alert()`/`confirm()` (no `prompt()` existed)
+      with the app's notification system so dialogs are styled + consistent.
+      - `alert()` (13) → toasts: `this.showError` where the component already had it
+        (UploadModal), else `notifyError`/`notifySuccess` via a new `js/ui/appNotify.js`
+        (routes to the app's NotificationController).
+      - `confirm()` (~13) → a new promise-based **`showConfirm()`** dialog
+        (`js/ui/confirmDialog.js`) — a `bv-modal modal-always-on-top` overlay returning
+        `Promise<boolean>` (Confirm/Cancel/backdrop/Escape, danger variant focuses
+        Cancel). Importable anywhere, so future confirmations use it too. Stacks above
+        other modals and is typable thanks to the stacked-modal focus fix.
+      - Migrated: UploadModal, MyVideosController, ProfileStorage/Wallet/Relay
+        controllers, profileModalController, subscriptionHistoryController,
+        settingsRestorePrompt (default `confirm` now `showConfirm`), nostr/client
+        (deleteAllVersions). `confirmSyncOverwrite` helpers made async (the sync layer
+        already `await`s `confirmOverwrite`). Tests: `tests/confirm-dialog.test.mjs` (6).
+        Build + lint clean; affected suites green. NOTE: `npm run build`/`lint` do NOT
+        parse JS — verify migrations by importing the module / running its test.
+
 ### 8. Orphan storage garbage-collection tool
 - [x] **Largely delivered by the My Videos tab** (`9d3a0df0`): lists bucket objects no
       live note references and offers per-file delete (under the user's prefix only).

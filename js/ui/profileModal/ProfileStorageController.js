@@ -10,6 +10,7 @@ import { getActiveSigner } from "../../nostr/client.js";
 import { DEFAULT_NIP07_ENCRYPTION_METHODS } from "../../nostr/nip07Permissions.js";
 import { storageSyncService } from "../../services/storageSyncService.js";
 import { StorageCorsHelp } from "./storageCorsHelp.js";
+import { showConfirm } from "../confirmDialog.js";
 import {
   fillStorageForm,
   clearCredentialFields,
@@ -241,12 +242,10 @@ export class ProfileStorageController {
   }
 
   confirmSyncOverwrite() {
-    if (typeof window === "undefined" || typeof window.confirm !== "function") {
-      return true;
-    }
-    return window.confirm(
+    return showConfirm(
       "A newer copy of your storage settings is on your account (changed on " +
-        "another device). Overwrite it with this one?"
+        "another device). Overwrite it with this one?",
+      { confirmLabel: "Overwrite", danger: true },
     );
   }
 

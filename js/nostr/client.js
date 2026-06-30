@@ -18,6 +18,7 @@
  */
 
 import { isDevMode } from "../config.js";
+import { showConfirm } from "../ui/confirmDialog.js";
 import { infoHashFromMagnet } from "../magnets.js";
 // 🔧 merged conflicting changes from codex/update-video-publishing-and-parsing-logic vs unstable
 import {
@@ -3465,9 +3466,10 @@ export class NostrClient {
       options && typeof options.video === "object" ? options.video : null;
     let confirmed = true;
 
-    if (shouldConfirm && typeof window?.confirm === "function") {
-      confirmed = window.confirm(
-        "Are you sure you want to delete all versions of this video? This action cannot be undone."
+    if (shouldConfirm) {
+      confirmed = await showConfirm(
+        "Are you sure you want to delete all versions of this video? This action cannot be undone.",
+        { confirmLabel: "Delete all", danger: true },
       );
     }
 

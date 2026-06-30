@@ -6,6 +6,7 @@ import {
   MAX_WALLET_DEFAULT_ZAP as CONFIG_MAX_WALLET_DEFAULT_ZAP,
   ENABLE_NIP17_RELAY_WARNING as CONFIG_ENABLE_NIP17_RELAY_WARNING,
 } from "../config.js";
+import { showConfirm } from "./confirmDialog.js";
 import { normalizeDesignSystemContext } from "../designSystem.js";
 import { RUNTIME_FLAGS } from "../constants.js";
 import {
@@ -1926,14 +1927,17 @@ export class ProfileModalController {
     }
 
     if (this.profileSubscriptionsBackupBtn) {
-      this.profileSubscriptionsBackupBtn.addEventListener("click", () => {
+      this.profileSubscriptionsBackupBtn.addEventListener("click", async () => {
         const pubkey = this.normalizeHexPubkey(this.getActivePubkey());
-        if (pubkey) {
-          if (confirm("Create a backup of your current subscription list?")) {
+        if (
+          pubkey &&
+          (await showConfirm("Create a backup of your current subscription list?", {
+            confirmLabel: "Create backup",
+          }))
+        ) {
              this.subscriptionHistoryController.handleCreateBackup(pubkey).then(() => {
                  this.showSuccess("Backup created.");
              });
-          }
         } else {
           this.showError("Please log in to backup subscriptions.");
         }
@@ -2930,7 +2934,7 @@ export class ProfileModalController {
             ? confirmValue.trim()
             : "this entry";
         const prompt = confirmMessage.replace("{npub}", replacement);
-        if (!window.confirm(prompt)) {
+        if (!(await showConfirm(prompt, { danger: true }))) {
           return;
         }
       }

@@ -26,6 +26,7 @@ import {
   requestDefaultExtensionPermissions,
 } from "../../nostrClientFacade.js";
 import { UI_FEEDBACK_DELAY_MS } from "../../constants.js";
+import { showConfirm } from "../confirmDialog.js";
 
 const INFO_HASH_PATTERN = /^[a-f0-9]{40}$/;
 
@@ -518,12 +519,12 @@ export class UploadModal {
       void this.captureVideoMetadata(file);
 
       if (!this.storageConfigured) {
-          alert("Please configure storage before selecting a file.");
+          this.showError("Please configure storage before selecting a file.");
           e.target.value = ""; // Clear selection
           return;
       }
       if (!this.isStorageUnlocked) {
-          alert("Please unlock storage before selecting a file.");
+          this.showError("Please unlock storage before selecting a file.");
           e.target.value = "";
           return;
       }
@@ -614,7 +615,7 @@ export class UploadModal {
           if (this.results.magnet) this.results.magnet.value = "Upload Failed";
           if (this.results.torrentUrl) this.results.torrentUrl.value = "Upload Failed";
 
-          alert(`Upload failed: ${err.message}`);
+          this.showError(`Upload failed: ${err.message}`);
 
           if (this.inputs.file) this.inputs.file.value = ""; // Reset
       }
@@ -676,7 +677,7 @@ export class UploadModal {
           userLogger.error("Thumbnail upload failed:", err);
           this.thumbnailUploadState.status = 'error';
           this.updateThumbnailProgress(null, "Failed.");
-          alert("Thumbnail upload failed.");
+          this.showError("Thumbnail upload failed.");
       }
   }
 
@@ -824,7 +825,7 @@ export class UploadModal {
           if (this.promptStoredNsecUnlock(pubkey)) {
               return;
           }
-          alert("No signer available to unlock storage.");
+          this.showError("No signer available to unlock storage.");
           return;
       }
 
@@ -832,7 +833,7 @@ export class UploadModal {
           if (signer?.type === "extension" || signer?.type === "nip07") {
               const permissionResult = await requestDefaultExtensionPermissions();
               if (!permissionResult?.ok) {
-                  alert("Extension permissions are required to unlock storage.");
+                  this.showError("Extension permissions are required to unlock storage.");
                   return;
               }
           }
@@ -846,7 +847,7 @@ export class UploadModal {
           await this.loadFromStorage();
       } catch (err) {
           userLogger.error("Unlock failed", err);
-          alert("Failed to unlock storage: " + err.message);
+          this.showError("Failed to unlock storage: " + err.message);
       } finally {
           if (this.toggles.storageUnlock) {
             this.toggles.storageUnlock.textContent = "Unlock";
@@ -945,17 +946,17 @@ export class UploadModal {
       // Check upload state
       if (this.activeSource === "upload") {
           if (this.videoUploadState.status === 'uploading' || this.thumbnailUploadState.status === 'uploading') {
-              alert("Please wait for uploads to complete.");
+              this.showError("Please wait for uploads to complete.");
               return;
           }
           if (this.videoUploadState.status === 'error') {
-              alert("Video upload failed. Please try again.");
+              this.showError("Video upload failed. Please try again.");
               return;
           }
           if (this.videoUploadState.status !== 'complete') {
                // Fallback: If no file selected, maybe they want to submit without a new file?
                // (Not supported in this simplified modal, assume file required)
-               alert("Please select a video file and wait for it to upload.");
+               this.showError("Please select a video file and wait for it to upload.");
                return;
           }
       }
@@ -1104,7 +1105,7 @@ export class UploadModal {
       }
 
       if (!hasUrl && !hasImeta && hasMagnet) {
-         if (!confirm("Magnet-only uploads require active seeding. Proceed?")) return;
+         if (!(await showConfirm("Magnet-only uploads require active seeding. Proceed?"))) return;
       }
 
       await this.publish(metadata);

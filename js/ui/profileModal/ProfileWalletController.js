@@ -1,4 +1,5 @@
 import { devLogger } from "../../utils/logger.js";
+import { showConfirm } from "../confirmDialog.js";
 import { NWC_URI_SCHEME } from "../profileModalContract.js";
 import { createWalletSyncService } from "../../services/walletSyncService.js";
 import { runWalletZappabilityCheck } from "./walletZappabilityCheck.js";
@@ -104,12 +105,10 @@ export class ProfileWalletController {
   }
 
   confirmSyncOverwrite() {
-    if (typeof window === "undefined" || typeof window.confirm !== "function") {
-      return true;
-    }
-    return window.confirm(
+    return showConfirm(
       "A newer copy of your wallet connection is on your account (changed on " +
-        "another device). Overwrite it with this one?"
+        "another device). Overwrite it with this one?",
+      { confirmLabel: "Overwrite", danger: true },
     );
   }
 
@@ -158,14 +157,12 @@ export class ProfileWalletController {
     try {
       if (enabled) {
         // Spending capability — require explicit confirmation before publishing.
-        const confirmed =
-          typeof window !== "undefined" && typeof window.confirm === "function"
-            ? window.confirm(
-                "This publishes an ENCRYPTED copy of your wallet connection to public relays.\n\n" +
-                  "A wallet connect URI can SPEND from your wallet. Anyone who controls your " +
-                  "Nostr key could decrypt this and spend from this wallet.\n\nContinue?"
-              )
-            : true;
+        const confirmed = await showConfirm(
+          "This publishes an ENCRYPTED copy of your wallet connection to public relays.\n\n" +
+            "A wallet connect URI can SPEND from your wallet. Anyone who controls your " +
+            "Nostr key could decrypt this and spend from this wallet.\n\nContinue?",
+          { confirmLabel: "Publish", danger: true },
+        );
         if (!confirmed) {
           if (this.walletSyncToggle instanceof HTMLInputElement) {
             this.walletSyncToggle.checked = false;
