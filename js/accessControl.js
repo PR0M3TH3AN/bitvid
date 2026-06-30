@@ -14,6 +14,10 @@ import {
   readCachedAdminState,
 } from "./adminListStore.js";
 import { ensureNostrTools } from "./nostr/toolkit.js";
+import {
+  normalizeEventId,
+  normalizeEventIdList,
+} from "./adminEventBlacklistHelpers.js";
 import { userLogger } from "./utils/logger.js";
 
 const HEX_KEY_PATTERN = /^[0-9a-f]{64}$/i;
@@ -109,6 +113,8 @@ class AccessControl {
     this.whitelistPubkeys = new Set();
     this.blacklist = new Set();
     this.blacklistPubkeys = new Set();
+    // Per-event (per-video) block list (#25): hex event ids hidden everywhere.
+    this.eventBlacklist = new Set();
     this.whitelistEnabled = getWhitelistMode();
     this.hasLoaded = false;
     this.lastError = null;
@@ -118,6 +124,7 @@ class AccessControl {
     this._whitelistListeners = new Set();
     this._editorListeners = new Set();
     this._blacklistListeners = new Set();
+    this._eventBlacklistListeners = new Set();
 
     this._scheduleHydrateFromCache();
   }
@@ -248,6 +255,9 @@ class AccessControl {
     const editors = Array.isArray(state?.editors) ? state.editors : [];
     const whitelist = Array.isArray(state?.whitelist) ? state.whitelist : [];
     const blacklist = Array.isArray(state?.blacklist) ? state.blacklist : [];
+    const eventBlacklist = Array.isArray(state?.eventBlacklist)
+      ? state.eventBlacklist
+      : [];
 
     const previousEditors =
       this.editors instanceof Set ? new Set(this.editors) : new Set();
@@ -255,6 +265,8 @@ class AccessControl {
       this.whitelist instanceof Set ? new Set(this.whitelist) : new Set();
     const previousBlacklist =
       this.blacklist instanceof Set ? new Set(this.blacklist) : new Set();
+    const previousEventBlacklist =
+      this.eventBlacklist instanceof Set ? new Set(this.eventBlacklist) : new Set();
 
     this.editors = new Set(
       dedupeNpubs([...ADMIN_EDITORS_NPUBS, ...editors])
@@ -281,6 +293,12 @@ class AccessControl {
     });
     this.blacklist = new Set(sanitizedBlacklist);
     const blacklistChanged = !areSetsEqual(previousBlacklist, this.blacklist);
+
+    this.eventBlacklist = new Set(normalizeEventIdList(eventBlacklist));
+    const eventBlacklistChanged = !areSetsEqual(
+      previousEventBlacklist,
+      this.eventBlacklist,
+    );
 
     const toolkitCandidate =
       (typeof window !== "undefined" ? window?.NostrTools : null) ||
@@ -330,6 +348,9 @@ class AccessControl {
     if (blacklistChanged) {
       this._emitBlacklistChange(Array.from(this.blacklist));
     }
+    if (eventBlacklistChanged) {
+      this._emitEventBlacklistChange(Array.from(this.eventBlacklist));
+    }
   }
 
   _emitWhitelistChange(whitelistValues) {
@@ -364,6 +385,24 @@ class AccessControl {
         listener(snapshot);
       } catch (error) {
         userLogger.error("accessControl blacklist listener failed", error);
+      }
+    }
+  }
+
+  _emitEventBlacklistChange(eventValues) {
+    if (!this._eventBlacklistListeners.size) {
+      return;
+    }
+
+    const snapshot = Array.isArray(eventValues)
+      ? [...eventValues]
+      : this.getEventBlacklist();
+
+    for (const listener of Array.from(this._eventBlacklistListeners)) {
+      try {
+        listener(snapshot);
+      } catch (error) {
+        userLogger.error("accessControl event-blacklist listener failed", error);
       }
     }
   }
@@ -405,6 +444,7 @@ class AccessControl {
           this.whitelistPubkeys.clear();
           this.blacklist.clear();
           this.blacklistPubkeys.clear();
+          this.eventBlacklist.clear();
         }
         throw error;
       } finally {
@@ -540,6 +580,65 @@ class AccessControl {
     return () => {
       this._blacklistListeners.delete(listener);
     };
+  }
+
+  // --- Per-event (per-video) admin block list (#25) ---
+
+  getEventBlacklist() {
+    return Array.from(this.eventBlacklist);
+  }
+
+  isEventBlacklisted(idOrPointer) {
+    const id = normalizeEventId(idOrPointer);
+    return Boolean(id) && this.eventBlacklist.has(id);
+  }
+
+  onEventBlacklistChange(listener) {
+    if (typeof listener !== "function") {
+      return () => {};
+    }
+    this._eventBlacklistListeners.add(listener);
+    return () => {
+      this._eventBlacklistListeners.delete(listener);
+    };
+  }
+
+  async _persistEventBlacklist(actorNpub, nextIds) {
+    try {
+      await persistAdminState(actorNpub, { eventBlacklist: nextIds });
+      await this.refresh();
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error?.code || "storage-error" };
+    }
+  }
+
+  async addToEventBlacklist(actorNpub, idOrPointer) {
+    if (!this.canEditAdminLists(actorNpub)) {
+      return { ok: false, error: "forbidden" };
+    }
+    const id = normalizeEventId(idOrPointer);
+    if (!id) {
+      return { ok: false, error: "invalid event id" };
+    }
+    return this._persistEventBlacklist(
+      actorNpub,
+      normalizeEventIdList([...this.getEventBlacklist(), id]),
+    );
+  }
+
+  async removeFromEventBlacklist(actorNpub, idOrPointer) {
+    if (!this.canEditAdminLists(actorNpub)) {
+      return { ok: false, error: "forbidden" };
+    }
+    const id = normalizeEventId(idOrPointer);
+    if (!id) {
+      return { ok: false, error: "invalid event id" };
+    }
+    return this._persistEventBlacklist(
+      actorNpub,
+      this.getEventBlacklist().filter((value) => value !== id),
+    );
   }
 
   async addModerator(requestorNpub, moderatorNpub) {

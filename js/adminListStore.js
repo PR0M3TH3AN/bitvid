@@ -21,6 +21,7 @@ import {
   NOTE_TYPES,
 } from "./nostrEventSchemas.js";
 import { CACHE_POLICIES, STORAGE_TIERS } from "./nostr/cachePolicies.js";
+import { sanitizeEventIdList, extractEventIdsFromEvent, buildEventBlacklistEvent } from "./adminEventBlacklistHelpers.js";
 import { publishEventToRelay } from "./nostrPublish.js";
 import { fetchBatchedReferenceEvents } from "./adminListBatch.js";
 
@@ -224,6 +225,7 @@ function sanitizeAdminState(state = {}) {
     editors: sanitizedEditors,
     whitelist: sanitizedWhitelist,
     blacklist: sanitizedBlacklist,
+    eventBlacklist: sanitizeEventIdList(state.eventBlacklist || []),
   };
 }
 
@@ -231,7 +233,8 @@ function hasAnyEntries(state = {}) {
   return Boolean(
     (Array.isArray(state.editors) && state.editors.length) ||
       (Array.isArray(state.whitelist) && state.whitelist.length) ||
-      (Array.isArray(state.blacklist) && state.blacklist.length)
+      (Array.isArray(state.blacklist) && state.blacklist.length) ||
+      (Array.isArray(state.eventBlacklist) && state.eventBlacklist.length)
   );
 }
 
@@ -551,15 +554,9 @@ async function fetchLatestListEvent(filter, contextLabel = "admin-list") {
     ? filter["#d"][0]
     : "";
 
-  // Note: fetchListIncrementally expects single kind, pubkey, dTag.
-  // The existing fetchLatestListEvent was a bit generic but admin lists are specific.
-  // If we can't extract specific identifiers, fall back to pool list (no incremental).
-
+  // fetchListIncrementally needs a single kind/pubkey/dTag (admin lists always have them).
   if (!pubkey) {
      devLogger.warn(`[adminListStore] Cannot use incremental fetch for ${contextLabel} without author.`);
-     // Fallback to old behavior if pubkey missing (e.g. search scenario? unlikely for admin lists)
-     // Actually admin lists always have specific d-tag and author (editor list, whitelist, blacklist, community lists)
-     // So we should be fine.
   }
 
   let events = [];
@@ -577,20 +574,14 @@ async function fetchLatestListEvent(filter, contextLabel = "admin-list") {
           pubkey,
           dTag,
           relayUrls: relays,
-          // Force a full fetch: admin lists are replaceable events whose
-          // created_at doesn't advance, so a persisted lastSeen would gate
-          // since=lastSeen+1 and perpetually hide the current event across
-          // reloads. See tests/nostr/relayBatchFetcherReplaceable.test.mjs.
+          // Force a full fetch: admin lists are replaceable (see
+          // tests/nostr/relayBatchFetcherReplaceable.test.mjs).
           since: 0,
         }),
         timeoutPromise,
       ]);
     } else {
-      // Fallback for non-specific queries
-      const normalizedFilter = {
-        kinds: [kind],
-        limit: 50,
-      };
+      const normalizedFilter = { kinds: [kind], limit: 50 };
       if (dTag) normalizedFilter["#d"] = [dTag];
       if (filter.authors) normalizedFilter.authors = filter.authors;
       events = await Promise.race([
@@ -639,17 +630,19 @@ async function loadNostrList(identifier) {
   }
 
   const event = await fetchLatestListEvent(filter, identifier);
-  return event ? extractNpubsFromEvent(event) : [];
+  const extractor = identifier === ADMIN_LIST_IDENTIFIERS.eventBlacklist ? extractEventIdsFromEvent : extractNpubsFromEvent;
+  return event ? extractor(event) : [];
 }
 
 async function loadNostrState() {
-  const [editors, whitelist, blacklist] = await Promise.all([
+  const [editors, whitelist, blacklist, eventBlacklist] = await Promise.all([
     loadNostrList(ADMIN_LIST_IDENTIFIERS.editors),
     loadNostrList(ADMIN_LIST_IDENTIFIERS.whitelist),
     loadNostrList(ADMIN_LIST_IDENTIFIERS.blacklist),
+    loadNostrList(ADMIN_LIST_IDENTIFIERS.eventBlacklist),
   ]);
 
-  return sanitizeAdminState({ editors, whitelist, blacklist });
+  return sanitizeAdminState({ editors, whitelist, blacklist, eventBlacklist });
 }
 
 async function loadCommunityBlacklistEntries() {
@@ -689,9 +682,8 @@ async function loadCommunityBlacklistEntries() {
     return [];
   }
 
-  // Batch all curator blacklists into ONE REQ instead of one-per-curator — this
-  // was the cold-start kind-30000 relay storm. Best-effort: on failure we return
-  // nothing and the cached admin state (readCachedAdminState) carries over.
+  // Batch all curator blacklists into ONE REQ (was the cold-start kind-30000 storm).
+  // Best-effort: on failure the cached admin state carries over.
   try {
     const matched = await fetchBatchedReferenceEvents({
       references,
@@ -709,7 +701,11 @@ async function loadCommunityBlacklistEntries() {
   }
 }
 
-function buildListEvent(listKey, npubs, actorHex) {
+function buildListEvent(listKey, entries, actorHex) {
+  if (listKey === "eventBlacklist") {
+    return buildEventBlacklistEvent(actorHex, entries); // `e`-tag list, hex event ids
+  }
+  const npubs = entries;
   const hexPubkeys = Array.from(
     new Set(npubs.map((npub) => {
       try {
@@ -938,6 +934,9 @@ async function persistNostrState(actorNpub, updates = {}) {
     );
   }
 
+  if (Array.isArray(updates.eventBlacklist)) {
+    sanitizedUpdates.eventBlacklist = sanitizeEventIdList(updates.eventBlacklist);
+  }
   const entries = Object.entries(sanitizedUpdates).filter(([, value]) =>
     Array.isArray(value)
   );
@@ -1026,6 +1025,7 @@ export async function loadAdminState() {
           editors: baseEditors,
           whitelist: baseWhitelist,
           blacklist: [...baseBlacklist, ...communityEntries],
+          eventBlacklist: nostrState?.eventBlacklist || [],
         });
       }
     } catch (error) {

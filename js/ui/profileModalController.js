@@ -51,6 +51,7 @@ import { ProfileAdminController } from "./profileModal/ProfileAdminController.js
 import { ProfileModerationController } from "./profileModal/ProfileModerationController.js";
 import { ProfileBlockListController } from "./profileModal/ProfileBlockListController.js";
 import { ProfileEditController } from "./profileModal/ProfileEditController.js";
+import { isInStackedModal } from "./focusTrapStacking.js";
 
 const noop = () => {};
 
@@ -4667,6 +4668,12 @@ export class ProfileModalController {
           modalRoot.classList.contains("hidden") ||
           modalRoot.contains(event.target)
         ) {
+          return;
+        }
+
+        // Don't fight a modal stacked on top of the profile modal (e.g. the login
+        // modal's nsec passphrase/PIN field) — let it own focus so it stays typable.
+        if (isInStackedModal(event.target, modalRoot)) {
           return;
         }
 

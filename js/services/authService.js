@@ -977,6 +977,12 @@ export default class AuthService {
     const providerId = normalizeProviderId(normalizedOptions.providerId);
 
     const normalizedActive = this.normalizeHexPubkey(getActiveProfilePubkey());
+    // [nip46-diag] TEMP (todo #33): trace profile switching — from/to + provider.
+    userLogger.info("[nip46-diag] switchProfile: begin", {
+      from: normalizedActive || null,
+      to: normalizedTarget,
+      providerId: providerId || null,
+    });
     if (normalizedActive && normalizedActive === normalizedTarget) {
       return { switched: false, reason: "already-active" };
     }
@@ -993,6 +999,10 @@ export default class AuthService {
     try {
       requestResult = await this.requestLogin(requestOptions);
     } catch (error) {
+      userLogger.warn("[nip46-diag] switchProfile: requestLogin FAILED", {
+        to: normalizedTarget,
+        message: error?.message || String(error),
+      });
       throw error;
     }
 
@@ -1001,6 +1011,13 @@ export default class AuthService {
       (typeof requestResult?.pubkey === "string"
         ? requestResult.pubkey.trim()
         : "");
+    // [nip46-diag] TEMP (todo #33): did the switch resolve the EXPECTED pubkey?
+    userLogger.info("[nip46-diag] switchProfile: requestLogin returned", {
+      to: normalizedTarget,
+      requestedPubkey: requestedPubkey || null,
+      matchesTarget: requestedPubkey === normalizedTarget,
+      hasDetail: !!requestResult?.detail,
+    });
 
     let detail = requestResult?.detail || null;
 

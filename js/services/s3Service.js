@@ -3,8 +3,11 @@ import { ensureBucketCors, ensureBucketExists } from "../storage/s3-multipart.js
 import {
   buildS3PublicUrl,
   buildS3UrlFromBase,
+  deriveB2Endpoint,
   normalizeS3PublicBaseUrl,
 } from "../storage/s3-url.js";
+
+export { deriveB2Endpoint };
 import { userLogger } from "../utils/logger.js";
 
 function normalizeEndpoint(endpoint) {

@@ -111,7 +111,11 @@ export class MediaUploader {
   async uploadThumbnail(file, { provider, credentials, onProgress } = {}) {
     const pubkey = this.getCurrentPubkey();
     const npub = this.safeEncodeNpub(pubkey);
-    const service = this.serviceFor(provider);
+    // Route by the credentials' own provider (see uploadVideo) to avoid wrong-service
+    // routing when the modal's provider state is stale.
+    const effectiveProvider =
+      credentials?.provider || credentials?.meta?.provider || provider;
+    const service = this.serviceFor(effectiveProvider);
 
     const { settings, bucketEntry } = await service.prepareUpload(npub, {
       credentials,
@@ -121,7 +125,7 @@ export class MediaUploader {
     const cleanName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
     const key = `${npub}/thumbnails/${timestamp}-${cleanName}`;
     const baseDomain = bucketEntry.publicBaseUrl;
-    const url = this.publicUrlFor(provider, baseDomain, key);
+    const url = this.publicUrlFor(effectiveProvider, baseDomain, key);
 
     await service.uploadFile({
       file,
@@ -129,7 +133,7 @@ export class MediaUploader {
       key,
       accountId: settings.accountId,
       endpoint: settings.endpoint,
-      provider: settings.provider || provider || "cloudflare_r2",
+      provider: settings.provider || effectiveProvider || "cloudflare_r2",
       region: settings.region,
       accessKeyId: settings.accessKeyId,
       secretAccessKey: settings.secretAccessKey,
@@ -201,7 +205,11 @@ export class MediaUploader {
 
     const pubkey = this.getCurrentPubkey();
     const npub = this.safeEncodeNpub(pubkey);
-    const service = this.serviceFor(provider);
+    // Route by the credentials' OWN provider so a stale activeProvider can't send an
+    // R2 connection (accountId, no endpoint) through the S3 path — or vice-versa.
+    const effectiveProvider =
+      credentials?.provider || credentials?.meta?.provider || provider;
+    const service = this.serviceFor(effectiveProvider);
 
     const { settings, bucketEntry } = await service.prepareUpload(npub, {
       credentials,
@@ -209,7 +217,7 @@ export class MediaUploader {
 
     const videoKey = buildR2Key(npub, file, identifier);
     const baseDomain = bucketEntry.publicBaseUrl;
-    const videoPublicUrl = this.publicUrlFor(provider, baseDomain, videoKey);
+    const videoPublicUrl = this.publicUrlFor(effectiveProvider, baseDomain, videoKey);
 
     emit(0, "Uploading video...");
     const uploadPromise = service.uploadFile({
@@ -218,7 +226,7 @@ export class MediaUploader {
       key: videoKey,
       accountId: settings.accountId,
       endpoint: settings.endpoint,
-      provider: settings.provider || provider || "cloudflare_r2",
+      provider: settings.provider || effectiveProvider || "cloudflare_r2",
       region: settings.region,
       accessKeyId: settings.accessKeyId,
       secretAccessKey: settings.secretAccessKey,
@@ -239,7 +247,7 @@ export class MediaUploader {
       publicBaseUrl: baseDomain,
       key: videoKey,
     });
-    const providerLabel = isR2Provider(provider) ? "r2" : "s3";
+    const providerLabel = isR2Provider(effectiveProvider) ? "r2" : "s3";
     const storagePointer = buildStoragePointerValue({
       provider: providerLabel,
       prefix: storagePrefix,

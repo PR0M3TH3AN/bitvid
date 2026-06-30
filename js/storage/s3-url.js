@@ -17,6 +17,25 @@ function normalizeKey(key) {
   return String(key || "").replace(/^\/+/, "").trim();
 }
 
+// Backblaze B2's S3-compatible endpoint is region-scoped:
+//   region "us-west-004" -> https://s3.us-west-004.backblazeb2.com
+// Unlike generic S3, the user supplies a region (not a pasted endpoint) and bitvid
+// derives the endpoint. Returns "" for a missing/placeholder region so callers can
+// surface a "region required" error. B2 buckets are addressed virtual-hosted-style,
+// so the public URL then derives to https://<bucket>.s3.<region>.backblazeb2.com via
+// buildS3PublicUrl({ forcePathStyle: false }).
+export function deriveB2Endpoint(region) {
+  const normalizedRegion = String(region || "").trim().toLowerCase();
+  if (!normalizedRegion || normalizedRegion === "auto") {
+    return "";
+  }
+  // Defend against a user pasting a full endpoint/host into the region box.
+  if (normalizedRegion.includes("/") || normalizedRegion.includes(".")) {
+    return "";
+  }
+  return `https://s3.${normalizedRegion}.backblazeb2.com`;
+}
+
 export function normalizeS3PublicBaseUrl(publicBaseUrl) {
   const trimmed = String(publicBaseUrl || "").trim();
   if (!trimmed) {

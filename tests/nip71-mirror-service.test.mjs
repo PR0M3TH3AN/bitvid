@@ -145,3 +145,80 @@ test("remove() is unavailable without a signer", async () => {
   assert.equal(result.ok, false);
   assert.equal(result.error, "unavailable");
 });
+
+// #34: idempotent re-mirror. The mirror KIND is inferred from dimensions
+// (34236 short for portrait, else 34235), but (kind,pubkey,d) is the addressable
+// identity — so a kind flip between mirror attempts produced a DUPLICATE in NIP-71
+// clients. publish() must reuse the kind of any existing mirror instead.
+function makeServiceWithExisting(existing) {
+  const relay = makeRelay();
+  const signer = { signEvent: async (tpl) => ({ ...tpl, id: "id", sig: "sig" }) };
+  const service = createNip71MirrorService({
+    getActivePubkey: () => PUBKEY,
+    getSigner: () => signer,
+    getWriteRelays: () => ["wss://write.relay"],
+    getPool: () => relay,
+    publishEventToRelays,
+    summarizePublishResults,
+    signEvent: signer.signEvent,
+    allowNsfw: () => false,
+    fetchExistingMirrors: async () => existing,
+  });
+  return { service, relay };
+}
+
+test("re-mirror reuses the existing mirror's kind (idempotent — no cross-kind duplicate)", async () => {
+  // An existing SHORT (34236) mirror exists; the video object has no dims, so the
+  // inference would otherwise pick 34235 (normal) → a duplicate. Must reuse 34236.
+  const { service, relay } = makeServiceWithExisting([
+    { kind: 34236, created_at: 100 },
+  ]);
+  const result = await service.publish(baseVideo());
+  assert.equal(result.ok, true);
+  assert.equal(result.reusedExistingKind, true);
+  assert.equal(relay.events.length, 1, "replaces the same coordinate, no second event");
+  assert.equal(relay.events[0].kind, 34236, "reused the existing kind, not the inferred 34235");
+});
+
+test("self-heals a pre-existing cross-kind duplicate by NIP-09-deleting the stale kind", async () => {
+  // Both kinds already exist (the bug's aftermath). Reuse the newest (34236) and
+  // tear down the stale 34235 so the video stops showing twice.
+  const { service, relay } = makeServiceWithExisting([
+    { kind: 34236, created_at: 200 },
+    { kind: 34235, created_at: 100 },
+  ]);
+  const result = await service.publish(baseVideo());
+  assert.equal(result.ok, true);
+  assert.equal(result.healedStaleKind, true);
+  assert.equal(relay.events.length, 2, "the mirror + a delete for the stale kind");
+  assert.equal(relay.events[0].kind, 34236);
+  const del = relay.events[1];
+  assert.equal(del.kind, 5, "NIP-09 delete");
+  assert.ok(
+    del.tags.some((t) => t[0] === "a" && t[1] === `34235:${PUBKEY}:root-1`),
+    "delete targets the stale 34235 coordinate",
+  );
+});
+
+test("an explicit options.short override is respected over any existing mirror", async () => {
+  const { service, relay } = makeServiceWithExisting([{ kind: 34236, created_at: 100 }]);
+  const result = await service.publish(baseVideo(), { short: false });
+  assert.equal(result.ok, true);
+  assert.equal(result.reusedExistingKind, false);
+  assert.equal(relay.events[0].kind, 34235, "explicit override wins");
+});
+
+test("findMirror derives mirror state from relays (truth), flagging duplicates", async () => {
+  const dup = makeServiceWithExisting([{ kind: 34235 }, { kind: 34236 }]).service;
+  assert.deepEqual(await dup.findMirror(baseVideo()), {
+    mirrored: true,
+    kinds: [34235, 34236],
+    duplicate: true,
+  });
+  const none = makeServiceWithExisting([]).service;
+  assert.deepEqual(await none.findMirror(baseVideo()), {
+    mirrored: false,
+    kinds: [],
+    duplicate: false,
+  });
+});

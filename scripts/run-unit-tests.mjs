@@ -14,12 +14,9 @@ process.env.NODE_ENV = "test";
 // failing on main, unnoticed). Each entry MUST cite why and link the triage item.
 // Remove an entry as soon as its file is fixed. See todo/TODO_2026-06-20_pre-launch.md todo-11b.
 const QUARANTINE = new Map([
-  ["tests/user-blocks.test.mjs", "HANG — triage todo-11b"],
-  ["tests/nostr-count-fallback.test.mjs", "FAIL — triage todo-11b"],
-  ["tests/admin-list-store.test.mjs", "FAIL — triage todo-11b"],
-  ["tests/nostr-boost-actions.test.mjs", "FAIL — triage todo-11b"],
+  ["tests/user-blocks.test.mjs", "HANG — async leak; needs a deterministic rewrite. triage todo-11b"],
   ["tests/nwc-client.test.mjs", "FAIL — mocks nostr-tools but is shadowed by the frozen canonical toolkit the bootstrap installs (real @noble rejects the fake keys). The underlying production bug (parseNwcUri passed a hex secret to getPublicKey, which needs bytes — NWC connection broken) is FIXED and guarded by tests/nwc-parse-uri.test.mjs; this file needs a mock-injection rework. triage todo-11b (NWC / item #3)"],
-  ["tests/nostr-publish-rejection.test.mjs", "FAIL — triage todo-11b"],
+  ["tests/nostr-publish-rejection.test.mjs", "FAIL — multi-precondition setup. Diagnosed 2026-06-25: (1) testPublishVideoNoteDefaultsToLiveModeInDev needs dev mode — set globalThis.__BITVID_DEV_MODE_OVERRIDE__=true BEFORE the first (dynamic) config-importing import (~line 50); (2) the publishNip71Video sub-test then fails (publishVideo's NIP-71 invocation path) — needs FEATURE_PUBLISH_NIP71/condition triage; possibly more after. triage todo-11b"],
 ]);
 
 const rootDir = path.dirname(fileURLToPath(new URL("../package.json", import.meta.url)));

@@ -55,6 +55,22 @@ export function initUploadModal({
           app.profileController.show("storage");
         }
       },
+      // Open the login modal's unlock-saved-key (passphrase) flow when a persisted
+      // nsec session is locked after a reload.
+      onRequestUnlock: () => {
+        try {
+          if (typeof app?.initializeLoginModalController === "function") {
+            app.initializeLoginModalController();
+          }
+          const controller = app?.loginModalController;
+          if (controller && typeof controller.openModal === "function") {
+            return controller.openModal({}) !== false;
+          }
+        } catch (error) {
+          /* best-effort */
+        }
+        return false;
+      },
     });
 
   const boundSubmitHandler =

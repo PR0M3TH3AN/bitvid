@@ -282,6 +282,12 @@ export function createVideoMoreMenuPanel({
       variant: "critical",
       dataset: { author: metadata.pubkey },
     });
+    appendMenuAction(doc, list, {
+      text: "Block this video",
+      action: "blacklist-event",
+      variant: "critical",
+      dataset: { eventId: metadata.id },
+    });
   }
 
   appendMenuAction(doc, list, {

@@ -447,8 +447,13 @@ export class R2Service {
   async resolveConnection(npub) {
     if (!npub) return null;
 
-    // 1. Try StorageService
-    const pubkey = safeDecodeNpub(npub);
+    // 1. Try StorageService. Accept either a hex pubkey or an npub — some callers
+    // (e.g. ProfileEditController's image upload) pass hex, and safeDecodeNpub only
+    // decodes npub1… strings, so passing hex used to silently resolve no connection.
+    const trimmed = String(npub).trim();
+    const pubkey = /^[0-9a-f]{64}$/i.test(trimmed)
+      ? trimmed.toLowerCase()
+      : safeDecodeNpub(trimmed);
     if (pubkey && storageService) {
       try {
         const connections = await storageService.listConnections(pubkey);

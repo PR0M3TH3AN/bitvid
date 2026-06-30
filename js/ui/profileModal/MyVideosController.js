@@ -50,6 +50,8 @@ export class MyVideosController {
     this.refreshBtn = null;
     this.orphansSection = null;
     this.orphanListEl = null;
+    this.orphanDeleteAllBtn = null;
+    this.orphanKeys = [];
     this.autoShareRow = null;
     this.autoShareInput = null;
     this.loading = false;
@@ -67,6 +69,8 @@ export class MyVideosController {
       document.getElementById("profileMyVideosOrphans") || null;
     this.orphanListEl =
       document.getElementById("profileMyVideosOrphanList") || null;
+    this.orphanDeleteAllBtn =
+      document.getElementById("profileMyVideosOrphanDeleteAll") || null;
     this.autoShareRow =
       document.getElementById("profileMyVideosAutoShareRow") || null;
     this.autoShareInput =
@@ -86,6 +90,11 @@ export class MyVideosController {
           return;
         }
         setAutoShareEnabled(pubkey, this.autoShareInput.checked === true);
+      });
+    }
+    if (this.orphanDeleteAllBtn instanceof HTMLElement) {
+      this.orphanDeleteAllBtn.addEventListener("click", () => {
+        void this.handleDeleteAllOrphans();
       });
     }
   }
@@ -230,8 +239,15 @@ export class MyVideosController {
 
   renderOrphans(keys) {
     const list = Array.isArray(keys) ? keys : [];
+    this.orphanKeys = list;
     if (this.orphansSection instanceof HTMLElement) {
       this.orphansSection.classList.toggle("hidden", list.length === 0);
+    }
+    if (this.orphanDeleteAllBtn instanceof HTMLElement) {
+      this.orphanDeleteAllBtn.textContent =
+        list.length > 1 ? `Delete all (${list.length})` : "Delete all";
+      // Only worth a bulk action when there's more than one file.
+      this.orphanDeleteAllBtn.classList.toggle("hidden", list.length < 2);
     }
     if (!(this.orphanListEl instanceof HTMLElement)) {
       return;
@@ -289,6 +305,56 @@ export class MyVideosController {
     }
   }
 
+  // Bulk "delete all orphans" — one call removes every listed orphaned object (each is
+  // already confirmed safe by reconcileStorage: no live note references it, under the
+  // user's prefix only). deleteStorageKeys takes the whole key array at once.
+  async handleDeleteAllOrphans() {
+    const r2Service = this.mainController.services?.r2Service;
+    const keys = Array.isArray(this.orphanKeys) ? this.orphanKeys.slice() : [];
+    if (!r2Service || typeof r2Service.deleteStorageKeys !== "function" || !keys.length) {
+      return;
+    }
+    if (typeof window !== "undefined" && typeof window.confirm === "function") {
+      if (
+        !window.confirm(
+          `Permanently delete all ${keys.length} orphaned files from your bucket?`,
+        )
+      ) {
+        return;
+      }
+    }
+    if (this.orphanDeleteAllBtn instanceof HTMLElement) {
+      this.orphanDeleteAllBtn.disabled = true;
+      this.orphanDeleteAllBtn.textContent = "Deleting…";
+    }
+    let result;
+    try {
+      result = await r2Service.deleteStorageKeys({ keys, pubkey: this.pubkey });
+    } catch (err) {
+      devLogger.warn("[myVideos] bulk deleteStorageKeys failed:", err);
+      this.mainController.showError?.("Failed to delete the files. Please try again.");
+      return;
+    } finally {
+      if (this.orphanDeleteAllBtn instanceof HTMLElement) {
+        this.orphanDeleteAllBtn.disabled = false;
+      }
+    }
+    const deleted = result?.deleted?.length || 0;
+    if (result?.ok && deleted) {
+      const failed = keys.length - deleted;
+      this.mainController.showSuccess?.(
+        failed > 0
+          ? `Removed ${deleted} files (${failed} could not be deleted).`
+          : `Removed all ${deleted} orphaned files from your bucket.`,
+      );
+      void this.populate({ forceFetch: false });
+    } else if (result?.reason === "storage-locked") {
+      this.mainController.showError?.("Unlock storage first, then delete the files.");
+    } else {
+      this.mainController.showError?.("Failed to delete the files. Please try again.");
+    }
+  }
+
   buildSummary(rows) {
     if (!rows.length) {
       return "";
@@ -336,6 +402,9 @@ export class MyVideosController {
     for (const video of rows) {
       this.listEl.appendChild(this.buildRow(video));
     }
+    // After the synchronous render (which used the local flag), correct the mirror
+    // labels from relay truth in the background. Fire-and-forget.
+    this.refreshMirrorStates(rows);
   }
 
   buildRow(video) {
@@ -441,10 +510,63 @@ export class MyVideosController {
       btn.classList.add("opacity-50");
       return btn;
     }
-    return this.buildActionButton(
+    const btn = this.buildActionButton(
       enabled ? "Shared ✓" : "Share to apps",
       (event) => this.handleToggleMirror(video, event?.currentTarget || null),
     );
+    // Tag with the root so the batched relay-truth refresh can update this button.
+    const root = video?.videoRootId;
+    if (root) {
+      btn.dataset.mirrorRoot = String(root);
+    }
+    return btn;
+  }
+
+  // Relay-truth detection (#34): the per-row mirror label initially uses the
+  // device-local flag (synchronous), which can be stale/missing on a fresh device or
+  // after a cache clear. After render, look up the ACTUAL published mirror events
+  // (one batched query for the whole list), reconcile the local flag to match, and
+  // correct any button labels. Fire-and-forget — never blocks the render.
+  async refreshMirrorStates(videos) {
+    if (!FEATURE_NIP71_MIRROR || !this.pubkey) {
+      return;
+    }
+    if (typeof nip71MirrorService.findMirrors !== "function") {
+      return;
+    }
+    let states;
+    try {
+      states = await nip71MirrorService.findMirrors(videos);
+    } catch (error) {
+      // Detection is best-effort; the local flag remains as a hint.
+      return;
+    }
+    if (!(states instanceof Map) || !(this.listEl instanceof HTMLElement)) {
+      return;
+    }
+    for (const video of Array.isArray(videos) ? videos : []) {
+      const root = video?.videoRootId ? String(video.videoRootId) : "";
+      if (!root) {
+        continue;
+      }
+      const mirrored = states.get(root)?.mirrored === true;
+      // Reconcile the local flag so it's a correct cache going forward.
+      try {
+        setMirrorEnabled(this.pubkey, root, mirrored);
+      } catch (error) {
+        // ignore storage errors
+      }
+      const safeRoot =
+        typeof CSS !== "undefined" && typeof CSS.escape === "function"
+          ? CSS.escape(root)
+          : root.replace(/["\\]/g, "\\$&");
+      const btn = this.listEl.querySelector(
+        `[data-mirror-root="${safeRoot}"]`,
+      );
+      if (btn instanceof HTMLElement && !btn.disabled) {
+        btn.textContent = mirrored ? "Shared ✓" : "Share to apps";
+      }
+    }
   }
 
   async handleToggleMirror(video, btn) {

@@ -30,6 +30,56 @@ tests → `npm run build` + `npm run test:unit` green → commit + push.
 
 ## Open — high priority (launch-blocking candidates)
 
+### 33. Login / profile / session persistence broken with NIP-46 (Amber) — AUDIT (BUG)
+Reported 2026-06-25. All symptoms observed with a **NIP-46 remote signer (Amber)**.
+Likely a shared root cause in session/identity persistence + multi-account handling.
+- [ ] **Lost login → "unknown user".** Sometimes the site loses who is logged in: the
+      profile shows "unknown user", the profile area renders weird, and no videos load.
+      Only a **logout + hard refresh** recovers it. (Session/identity state desync —
+      possibly the NIP-46 signer connection or the persisted pubkey dropping after a
+      refresh/idle, leaving the UI without a resolved identity.)
+- [ ] **Switching profiles doesn't work** for logged-in users (multi-account switch is
+      broken).
+- [ ] **Logout logs out everyone.** Logging out the current user appears to log out
+      **every** signed-in account, not just the active one (shared/global session state
+      instead of per-account).
+- [ ] **Audit the whole login + profile system + user persistence** across refresh and
+      repeat visits — especially the NIP-46 path: how the active pubkey + signer
+      connection are stored/restored, how multiple accounts are tracked, and how
+      logout scopes to one account. Produce a plan (likely `docs/`), then fix.
+
+- [x] **AUDIT done 2026-06-25 (code-level).** Architecture:
+      `js/state/cache.js` persists a list of **saved profiles** (`bitvid:savedProfiles:v1`)
+      + a single **active profile pubkey**. There is ONE active session at a time.
+      `SignerManager` (`js/nostr/managers/SignerManager.js`) holds a SINGLE shared
+      `this.nip46Client` (one remote-signer connection). Likely root cause for ALL three
+      symptoms: the single-shared `nip46Client` + per-profile restore/switch not being
+      multi-account-aware. Specifics:
+        - **Logout-logs-out-everyone:** `authService.logout()` IS registry-scoped
+          (`logoutSignerFromRegistry(previousPubkey)`), but `SignerManager.logout()`
+          calls `disconnectRemoteSigner()` which destroys the SHARED `nip46Client` — so
+          for NIP-46 every profile that depends on it loses its signer.
+        - **Switch-doesn't-work:** `authService.switchProfile` re-runs `requestLogin`
+          with `expectPubkey`; for NIP-46 the shared client must be re-established for the
+          target profile — if it doesn't reconnect, the new profile has no working signer.
+        - **Unknown-user-after-refresh:** `scheduleStoredRemoteSignerRestore` →
+          `useStoredRemoteSigner` silently fails (the catch logged via the gated
+          `devLogger`), leaving `this.pubkey` unresolved → UI shows "unknown user".
+- [x] **Diagnostics SHIPPED (2026-06-25, TEMP).** Added `[nip46-diag]` `userLogger`
+      traces (visible on unstable, where `devLogger` is gated off) at:
+      `scheduleStoredRemoteSignerRestore` (hasStored/storedPubkey + succeeded/FAILED),
+      `disconnectRemoteSigner` (keepStored/hadClient + caller stack),
+      `SignerManager.logout` (previousPubkey/hadRemoteClient), and
+      `authService.switchProfile` (from/to + whether requestLogin resolved the expected
+      pubkey). **Remove these once the fix lands.**
+- [ ] **VERIFY / REPRODUCE (user action):** on the phone with Amber on
+      unstable.bitvid.network, exercise (1) fresh load, (2) switch profiles, (3) logout,
+      and capture the `[nip46-diag]` console lines for each — restore succeeded/FAILED,
+      switchProfile `matchesTarget`, and disconnect `keepStored`/`hadClient`/caller stack.
+- [ ] **THEN fix** based on the captured trace (likely: per-profile NIP-46 session keyed
+      by pubkey; don't tear the shared client on a scoped logout; reconnect on
+      switch/restore) and REMOVE the temporary `[nip46-diag]` diagnostics.
+
 ### 1. Delete is not fully working — tombstoned videos still show in the UI
 - [x] **Root cause found + fixed** (`afb6200b`): deletes published only to the CAPPED
       read set (<=8) while videos publish to the full write set, so relays outside
@@ -442,14 +492,31 @@ toward freshness and looked identical. Gave each a structural identity:
 
 ### 7. Mobile + video-card layout
 - [ ] Improve mobile layout and the video card layout.
+- [ ] **Improve mobile UI** broadly (reiterated 2026-06-25) — not just the card: nav/
+      sidebar, modals, the player, forms, and touch targets across the app.
+  - [x] **Profile modal tabs → app-grid on mobile (2026-06-25).** Below 1024px (the
+        full-width menu view), the profile modal's tab nav (`.profile-modal__nav`:
+        Account/Relays/Wallet/Storage/…) renders as a 3-column grid of icon tiles
+        with the title centered below each icon, instead of the vertical list.
+        Desktop keeps the vertical nav. Token-only; validated live in-browser.
+        `css/tailwind.source.css`. (NOTE: the sidebar is NOT a grid — an earlier
+        sidebar version was a misread and was reverted.)
 - [ ] Consider removing the CDN/WebTorrent source badge from the card (clutter).
 - [ ] Run `npm run test:visual` after layout changes; update baselines deliberately.
 
 ### 8. Orphan storage garbage-collection tool
 - [x] **Largely delivered by the My Videos tab** (`9d3a0df0`): lists bucket objects no
       live note references and offers per-file delete (under the user's prefix only).
-- [ ] Remaining (optional): a one-click **bulk** "delete all orphans" action, and/or
-      surfacing the same control from the Storage settings pane.
+- [x] **Bulk "Delete all" orphans — DONE 2026-06-30.** Added a "Delete all (N)" button to
+      the orphaned-objects header in My Videos (shown only when >1 orphan). One
+      confirmation → a single `deleteStorageKeys({ keys: allOrphans, pubkey })` call
+      (already array-capable + unlock-gated + prefix-scoped). Refreshes the list on
+      success and reports partial outcomes honestly ("Removed 2 files (1 could not be
+      deleted)"); surfaces storage-locked as an unlock prompt. Tests:
+      `tests/my-videos-bulk-orphan-delete.test.mjs` (5 — all-keys-in-one-call, cancel,
+      storage-locked, partial, empty no-op). Build + lint clean; My Videos suite 37/37.
+- [ ] Remaining (optional): surface the same orphan control from the Storage settings
+      pane (currently only in My Videos).
 
 ### 9. Cap the cold-login relay-REQ storm further
 - [x] **Biggest source fixed** (`a8e9f520`): the community-blacklist load fired one
@@ -523,12 +590,31 @@ toward freshness and looked identical. Gave each a structural identity:
       allow-override after the WoT mute/block checks.
 
 ### 25. Per-video / per-event admin block list (granular moderation)
-- [ ] Today admin moderation is essentially a "ban hammer" (author/community level).
-      Add a **per-event (per-video) block list** so an admin can hide a SINGLE
-      offending video without blocking the whole author. Define the per-event block
-      record (kind/addressable + the event id / address it targets), wire it into the
-      render-time filter alongside the existing author/community blacklist, and expose
-      it in the moderation UI (and eventually the #23 admin tab).
+- [x] **DONE 2026-06-30 (full vertical slice).** Admins (any editor — same gate as the
+      author blacklist) can now hide a SINGLE video without blocking its author.
+      - **Record:** a published kind-30000 NIP-51 list under d-tag
+        `bitvid:admin:event-blacklist`, carrying blocked event ids as `e` tags
+        (`NOTE_TYPES.ADMIN_EVENT_BLACKLIST` schema; `participantTagName: "e"`).
+        Loaded/persisted through the existing admin-list machinery
+        (`adminListStore` loadNostrState/persistNostrState) and cached like the others.
+      - **accessControl:** `eventBlacklist` Set + `getEventBlacklist()`/
+        `isEventBlacklisted()`/`addToEventBlacklist()`/`removeFromEventBlacklist()`
+        (editor-gated, normalizes hex or nevent/note) + `onEventBlacklistChange`.
+      - **Render filter:** already existed (`app.blacklistedEventIds`, honored by every
+        feed/grid/search/playback path) but was fed only by the static
+        `ADMIN_INITIAL_EVENT_BLACKLIST` config. Now `app._rebuildBlacklistedEventIds()`
+        merges that static base with the dynamic admin list, and an
+        `onEventBlacklistChange` listener rebuilds + refreshes the grids on change.
+      - **UI:** a "Block this video" item in the per-video ⋯ menu (editor-only, via
+        `videoMenuRenderers`), handled by `handleBlacklistEventAction`
+        (`js/ui/moreMenu/blacklistEventAction.js`).
+      - Helpers extracted to `js/adminEventBlacklistHelpers.js` to keep adminListStore /
+        accessControl / moreMenuController under their size caps. Tests:
+        `tests/admin-event-blacklist.test.mjs` (9 — record helpers + editor-gated action,
+        fallbacks, refusal, publish-failure). Build + lint clean; admin/access/moderation
+        suites 56/56.
+- [ ] **Follow-up:** surface the per-event list (view/unblock) in the Admin pane /
+      future #23 admin tab; today removal is via `removeFromEventBlacklist` (no UI yet).
 
 ### 26. Video popularity / view-count chart (public, three-dots menu) — DONE 2026-06-24
 - [x] **Shipped.** A "Popularity" item in the ⋯ menu opens a public views-over-time
@@ -676,6 +762,228 @@ to rescue a creator who *does* get WoT-hidden, so if it happens, ship this promp
       a signed Nostr event per Blossom rather than S3 keys. Research the BUD spec
       coverage needed for bitvid's upload/delete flows.
 
+### 34. NIP-71 mirror: videos show "not mirrored" + duplicate on re-mirror (BUG)
+Reported 2026-06-25. Relates to #17 (NIP-71 interop) / the bitvid→NIP-71 mirror.
+- [ ] **Mirrored videos report as NOT mirrored.** All videos were mirrored, but the UI
+      now shows them un-mirrored even though the NIP-71 mirror events exist. The
+      "is this mirrored?" detection is wrong/stale (likely the mirror-state lookup
+      doesn't find the existing kind-21/22 mirror, or a flag isn't persisted/derived).
+- [ ] **Re-mirroring creates DUPLICATES.** Because they read as un-mirrored, mirroring
+      again publishes a SECOND NIP-71 event, so NIP-71 clients show two copies of the
+      same video. The mirror should be idempotent (addressable/replaceable, or detect
+      the existing mirror and update it) instead of creating a duplicate.
+- [ ] Delete/un-mirror correctly removes BOTH copies (so the dedup key is shared) —
+      confirms the publish path is creating a true duplicate, not a distinct event.
+- [ ] Fix: make mirror detection reliable + the mirror publish idempotent. See
+      `js/nostr/nip71Mirror.js` / `js/services/nip71MirrorFlags.js`.
+
+- [x] **AUDIT done 2026-06-25.** Two root causes:
+      1. **Detection is device-local.** `isMirrorEnabled(pubkey, videoRootId)`
+         (`nip71MirrorFlags.js`) reads a localStorage flag (`FLAG_KEY`), NOT the actual
+         published mirror events — so a cache clear / other device / lost flag reports
+         "not mirrored" even though the 34235/34236 events exist on relays.
+      2. **Kind is unstable → cross-kind duplicate.** `buildNip71MirrorEvent`
+         (`nip71Mirror.js:177`) uses `short = hasDims && height > width` → kind 34236,
+         else 34235. The d-tag is deterministic (`["d", videoRootId]`), but
+         `(34235,pubkey,d)` and `(34236,pubkey,d)` are DISTINCT addressable events. When
+         a video has dimensions on one mirror attempt but not another, the kind flips, so
+         re-mirroring publishes the OTHER kind → two copies in NIP-71 clients. "Delete
+         removes both" confirms the shared d-tag / two-kind duplicate.
+- [x] **FIX (a) Idempotent publish + self-heal — DONE 2026-06-25.**
+      `nip71MirrorService.publish()` now looks up the author's existing mirror (both
+      kinds) via the SubscriptionManager chokepoint and **reuses the existing kind** so
+      a re-publish REPLACES the same addressable coordinate instead of creating the
+      cross-kind duplicate. If both kinds already exist (the bug's aftermath), it
+      **self-heals** by NIP-09-deleting the stale-kind coordinate. An explicit
+      `options.short` override still wins. Also added `findMirror(video)` (relay-truth
+      `{mirrored, kinds, duplicate}`). Dependency-injected; 4 new scenario tests in
+      `tests/nip71-mirror-service.test.mjs` (12/12 green); lint clean (no direct
+      pool.list — uses `getSubscriptionManager().list`).
+- [x] **FIX (b) Relay-truth detection in the UI — DONE 2026-06-29.** Added batched
+      `nip71MirrorService.findMirrors(videos)` → `Map<videoRootId, {mirrored, kinds,
+      duplicate}>` (one relay lookup per root via `Promise.all`, all through the
+      SubscriptionManager chokepoint). `MyVideosController.renderRows` now fires
+      `refreshMirrorStates(rows)` after the synchronous (local-flag) render: it looks up
+      relay truth, **reconciles the device-local flag to match** (so the flag becomes a
+      correct cache, not the source of truth), and corrects each mirror button's label
+      ("Shared ✓" / "Share to apps"). Buttons are tagged `data-mirror-root` for the
+      batched update. Fire-and-forget — never blocks render; detection failures fall back
+      to the local flag. 4 new behavioral tests in
+      `tests/my-videos-mirror-relay-truth.test.mjs` (jsdom: promote unmirrored→shared,
+      clear stale shared, per-row batch reconcile, button tagging); build + lint clean.
+- [ ] **VERIFY on unstable with Amber:** re-mirror an already-mirrored video → it should
+      replace (one copy), and a previously-duplicated video should collapse to one.
+
+### 35. Admin whitelisting tool is slow & cumbersome — improve with application forms
+- [ ] The current admin whitelist tool is slow and clunky to use. Improve the UX when
+      we integrate the **application/submission forms** (#22) and the **Admin
+      Submissions tab** (#23) — e.g. approve-an-application → add-to-whitelist in one
+      action, batch operations, and faster list mutation. Couples with #22/#23.
+
+### 36. Storage unlock doesn't work with nsec login (BUG)
+- [x] **ROOT-CAUSED + FIXED 2026-06-29.** Audited the whole nsec unlock path and built
+      an empirical repro: the crypto layer is **correct** — with real nsec cipher
+      closures (`createPrivateKeyCipherClosures`), `storageService.unlock` round-trips
+      master-key encrypt→lock→decrypt perfectly (NIP-44). Both nsec login paths
+      (`registerPrivateKeySigner`, `unlockStoredSessionActor`) register a signer exposing
+      `nip04Decrypt`/`nip44Decrypt`. **The real failure is session-shape after a page
+      reload** (user-confirmed repro): a persisted "remember this key" nsec session
+      restores the logged-in **pubkey + UI but NOT the in-memory signer** (the private key
+      is only passphrase-encrypted). `ProfileStorageController`'s fallback
+      (`ensureActiveSignerForPubkey`) can only rebuild an *extension* signer, so an nsec
+      user hit a dead-end: storage unlock found no signer and showed the misleading "No
+      active signer found. Please login." even though they look logged in.
+      **Fix:** detect this exact case (`getLockedStoredNsecSession` — a saved nsec key for
+      the account being unlocked via `getStoredSessionActorMetadata`) and surface an
+      **actionable** error/status ("Your saved key is locked after reload — re-enter your
+      passphrase from the Login menu to unlock it, then unlock storage") in both the
+      Unlock-button flow and the passive Storage-pane status text, instead of the generic
+      no-signer / no-decryptor messages. New error code
+      `storage-unlock-locked-nsec-session`. Tests:
+      `tests/storage-unlock-locked-nsec.test.mjs` (6, behavioral). Build + lint clean.
+- [x] **Follow-up (UX nicety) — DONE 2026-06-30.** Clicking "Unlock Storage" on a
+      locked persisted-nsec session now **auto-opens the login modal** straight to its
+      existing unlock-saved-key (passphrase) flow, so the user re-unlocks in one step.
+      Added a side-effect-free `openLoginModal` service to `profileModalServices`
+      (`app.loginModalController.openModal` — no add-account callback, idempotently
+      ensures the modal exists first); `reportLockedNsecSession({ autoOpenLogin })` calls
+      it only from the user-initiated unlock click, NOT the passive pane render (no
+      surprise popups). After the user unlocks, the signer is active app-wide and
+      re-opening the storage pane auto-unlocks. Tests extended (8 total: asserts auto-open
+      fires on click, stays closed on passive render).
+- [ ] **VERIFY on unstable:** nsec-login with "remember key" + passphrase, reload the
+      page, open Profile → Storage → the status should read the actionable re-unlock hint
+      (not "No active signer"); after re-entering the passphrase via Login, storage
+      unlocks normally. (`[storage-unlock]` console line confirms the locked-key branch.)
+- [x] **Same fix for the UPLOAD modal — DONE 2026-06-30.** The Upload modal's "Unlock
+      storage" had its OWN unlock path (`UploadModal.handleUnlock`) that dead-ended on a
+      reloaded persisted-nsec session with "No signer available to unlock storage."
+      Added `promptStoredNsecUnlock(pubkey)`: when the active account has a locked saved
+      nsec key (`getStoredSessionActorMetadata`), it shows an actionable message and opens
+      the login modal's unlock-saved-key (passphrase) flow (`onRequestUnlock`, wired in
+      `initUploadModal` → `app.loginModalController.openModal`) instead of the alert. After
+      the user re-enters their passphrase the signer is active and the upload proceeds.
+      Tests: `tests/upload-modal-nsec-unlock.test.mjs` (5). Build + lint clean.
+
+### 37. Channel playlists — creator-curated custom note lists
+- [ ] Let creators build **playlists** (custom curated lists of their videos / notes)
+      surfaced on their channel. Likely a NIP-51 set (kind 30005 "curation sets" or a
+      bitvid-specific addressable list) referencing video events, with create/edit/
+      reorder UI on the channel page and a playlist view. Research the list shape +
+      where it slots into channel profile + the feed engine.
+
+### 38. Generic S3 doesn't work with Backblaze B2 — add B2 as a first-class provider
+- [x] **DONE 2026-06-30.** Added **Backblaze B2** as its own provider
+      (`PROVIDERS.B2 = "backblaze_b2"`). Root issue: B2's S3 endpoint is *region-scoped*
+      (`s3.<region>.backblazeb2.com`) and a public bucket is addressed virtual-hosted, so
+      the public download URL is `https://<bucket>.s3.<region>.backblazeb2.com/<key>` —
+      not derivable from a pasted generic-S3 endpoint. Implementation:
+      - `deriveB2Endpoint(region)` (`js/storage/s3-url.js`, re-exported from `s3Service`):
+        region → `https://s3.<region>.backblazeb2.com`; returns "" for `auto`/blank/pasted
+        host so callers can require a real region.
+      - `storageService`: `PROVIDERS.B2` + `resolveB2Endpoint` (explicit endpoint wins,
+        else derive from region) + a `PROVIDER_TESTS[B2]` handler (derived endpoint,
+        `forcePathStyle:false`).
+      - **Public URL strategy = S3-style virtual-hosted** (user-chosen): auto-derives to
+        `https://<bucket>.s3.<region>.backblazeb2.com`; an explicit Public Access URL
+        (custom domain/CDN) overrides it — the save path now passes the user's URL to
+        `prepareS3Connection` (also fixes generic-S3 silently ignoring a custom CDN URL).
+      - UI (`profile-modal.html` + `ProfileStorageController`): "Backblaze B2" option +
+        helper; for B2 the raw Endpoint field is hidden (region drives it), Region shows a
+        `us-west-004` example, force-path-style toggle hidden (B2 is virtual-hosted), and
+        save/test derive the endpoint from region (clear "enter your region" error if
+        missing). `UploadModal` shows B2-specific labels.
+      - Tests: `tests/storage-b2-provider.test.mjs` (8 — endpoint derivation, virtual-
+        hosted public URL, end-to-end validate, explicit override, object URLs). All
+        s3/storage suites green (50); build + lint clean.
+- [x] **VALIDATED against a real B2 account 2026-06-30.** Read-only `b2_authorize_account`
+      on the live `bitvid` bucket confirmed the derivation EXACTLY: B2's reported
+      `s3ApiUrl` = `https://s3.us-west-004.backblazeb2.com` = `deriveB2Endpoint("us-west-004")`;
+      bucket is `allPublic` → S3-style playback URL works. Key file caps
+      (read/write/list/delete) ✓.
+- [x] **CORS helper modal (provider-aware) — DONE 2026-06-30.** Empirically confirmed
+      the gotcha: B2's web-console "Share everything…" presets write DOWNLOAD-only CORS
+      (`s3_get/s3_head`, `b2_download_*`) — **no `s3_put/s3_post`** — so browser uploads
+      CORS-fail. Added a "CORS setup help" button (shown for **all** bucket providers)
+      opening a **provider-aware** modal:
+      - **Backblaze B2** → B2-native rules JSON (upload + ranged-playback ops) + the
+        `b2 update-bucket --corsRules …` command.
+      - **Custom S3** → standard S3 `CORSConfiguration` JSON + `aws s3api put-bucket-cors
+        --endpoint-url <endpoint> …`.
+      - **Cloudflare R2** → standard S3 JSON + Cloudflare-dashboard guidance (R2 → bucket
+        → Settings → CORS Policy) and the AWS-CLI command against the derived R2 endpoint.
+      Origins pre-filled from `getCorsOrigins()`; copy buttons for JSON + command. bitvid
+      still auto-applies CORS on Save (R2/S3 via `ensureBucketCors`) — this is the manual
+      fallback for when the key lacks CORS-write permission. Logic in
+      `js/ui/profileModal/storageCorsHelp.js` (`buildCorsHelpContent` switches on
+      provider; keeps the controller <1000 lines). Tests:
+      `tests/storage-cors-help.test.mjs` (10 — per-provider rules/command + DOM switch).
+      Build + lint clean.
+- [ ] **VERIFY live** on unstable: pick Backblaze B2, enter region (`us-west-004`) +
+      bucket + key/secret, Test → passes; apply the CORS helper's rules; upload a video →
+      plays from `https://<bucket>.s3.<region>.backblazeb2.com/...`.
+- [x] **Per-provider connections (no overwrite/clash) — DONE 2026-06-30.** The UI saved
+      every provider into a single shared `"default"` connection id, so configuring B2
+      overwrote R2 (etc.). The service layer + upload path + sync already supported a
+      MAP of connections keyed by id (`listConnections`/`defaultForUploads`/
+      `exportAccountRecord`) — only the controller collapsed them. Now each provider type
+      gets its own slot keyed by provider id (`cloudflare_r2`/`backblaze_b2`/`generic_s3`):
+      save writes that slot (preserving a single active `defaultForUploads`, and lazily
+      migrating the legacy `"default"` slot to its provider id), and switching the provider
+      dropdown loads that provider's saved credentials (or clears the fields for a fresh
+      entry). Sync already carries the whole record, so all providers sync together.
+      Logic extracted to `js/ui/profileModal/storageConnections.js` (`saveProviderConnection`
+      + pure helpers; keeps the controller under the 1000-line cap). Tests:
+      `tests/storage-connections.test.mjs` (7 — pure default/dup logic + integration:
+      R2+B2 coexist with one default, re-default switch, legacy-`default` migration, and
+      the export carries both). Storage + profile-modal suites 69/69; build + lint clean.
+- [x] **Upload wrong-service routing FIXED 2026-06-30 (multi-provider regression).** With
+      both B2 + Cloudflare configured, an upload could fail with **"S3 endpoint is
+      required."** when the upload modal's tracked `activeProvider` drifted out of sync
+      with `activeCredentials` (user: "selector on Backblaze but the modal set for
+      Cloudflare") — an R2 connection (accountId, no endpoint) got routed through the S3
+      service. Fix: `MediaUploader.uploadVideo`/`uploadThumbnail` now route by the
+      CREDENTIALS' own provider (`credentials.provider || meta.provider || provider`), so
+      a stale modal provider can't pick the wrong service. Test:
+      `tests/media-uploader-provider-routing.test.mjs` (4). Build + lint clean.
+- [ ] **Follow-up (cosmetic):** the upload modal's summary provider label can still show
+      a stale provider until reloaded — refresh `loadFromStorage` when the storage default
+      changes in the Storage pane (functional routing is already correct).
+- [x] **B2 / generic-S3 upload contract mismatch FIXED 2026-06-30.** Uploading to a
+      Backblaze B2 (or any generic-S3) bucket failed with **"S3 endpoint is required."**
+      Root cause: `MediaUploader` calls `service.prepareUpload(npub, { credentials })`
+      (the `r2Service` contract), but `s3UploadService.prepareUpload` took `(settings, …)`
+      — so the npub string became the settings (no endpoint). Also a
+      `storageService.getConnection()` result keeps `bucket`/`endpoint`/`region` under
+      `.meta`, which `validateS3Connection` reads at the top level. Fix:
+      `s3UploadService.prepareUpload` now accepts `(npub, { credentials })` and flattens
+      meta → top-level via `flattenS3Settings`. (R2 was unaffected because its service
+      already used that contract.) Also: the storage **Test** now derives/passes the B2
+      public URL so it stops falsely warning "Public Bucket URL is missing." Tests:
+      `tests/services/s3-upload-prepare-contract.test.mjs` (3 — flatten + npub-ignored +
+      back-compat). Build + lint clean; upload/storage suites 46/46.
+
+### 39. Image uploads should prefer uploading to configured storage (UX)
+- [x] **Profile image + banner upload — FIXED 2026-06-30.** The UI was already wired
+      (`ProfileEditController.handleUpload`: resolve connection → `uploadFile` → auto-fill
+      the URL field), but it was **broken**: it passed a **hex** pubkey to
+      `r2Service.resolveConnection()`, which only decoded `npub1…` strings
+      (`safeDecodeNpub`) → hex resolved to `null` → "Storage configuration missing" and the
+      Upload button stayed disabled even with storage configured. (Thumbnails worked
+      because `mediaUploader` uses `listConnections(pubkey)` directly.)
+      **Fix:** `resolveConnection` now accepts a hex pubkey OR an npub. The rest of the
+      chain is already provider-agnostic — `resolveConnection` returns the
+      `defaultForUploads` connection (any provider) with its `endpoint`/`baseDomain`/
+      `forcePathStyle`, `uploadFile` routes R2 vs generic-S3 by provider, and
+      `buildPublicUrl` builds the right URL — so this now works for R2 / B2 / Custom S3.
+      Test: `tests/r2-resolve-connection-hex.test.mjs` (3, with `nip19.decode` throwing on
+      hex to prove the hex path, not npub decoding). Build + lint clean.
+- [ ] **VERIFY live:** unlock storage, Edit Profile → upload a picture/banner file →
+      uploads to the active provider's bucket and the URL auto-fills.
+- [ ] **Extend the pattern** to any remaining image-URL inputs that still only accept a
+      pasted link (video thumbnail in upload/edit already uploads via `mediaUploader`).
+      Audit for others (e.g. future channel/branding image fields) and reuse the helper.
+
 ## Open — lower priority / infra
 
 ### 10. WebTorrent `null.fill` seeding crash
@@ -722,8 +1030,11 @@ test below was failing on `main` unnoticed).
         logged-in pubkey now) → aligned; (3) same test asserted `session===true` for a
         logged-in watch (the pre-fix bug) → corrected to `session!==true`. The full
         2669-line file passes via the CI runner and was removed from QUARANTINE.
-      - `nostr-boost-actions` — "Missing expected exception" (likely stale: expects a
-        throw the code no longer makes).
+      - `nostr-boost-actions` — ✅ DONE + UN-QUARANTINED 2026-06-25: STALE SPEC. The
+        test required `buildRepostEvent` to throw `/missing-event-relay/` with no relay
+        hint, but a relay hint is a NIP-18 SHOULD (not MUST) — the builder degrades to a
+        two-element `e` tag so a user can always repost. Replaced with an exact assertion
+        of the valid output (kind 16 + e/p/k tags). See TEST_INTEGRITY.md.
       - `view-counter` (#4) — ✅ DONE + UN-QUARANTINED 2026-06-24: the failures were
         (a) the deterministic-d-tag accuracy fix (no more random `d` tag, so no
         auto-`d` either), (b) the batched SubscriptionManager silently shadowing
@@ -743,11 +1054,26 @@ test below was failing on `main` unnoticed).
         Fixed + guarded by the real-tools `tests/nwc-parse-uri.test.mjs`. The mock-based
         `nwc-client.test.mjs` STAYS quarantined — its nostr-tools mock is shadowed by the
         frozen canonical toolkit the bootstrap installs; needs a mock-injection rework.
-      - `nostr-count-fallback` — `TypeError: Cannot read 'has' of undefined` — likely
-        a stale harness mock missing a field.
-      - `admin-list-store` — community-blacklist merge mismatch.
-      - `nostr-publish-rejection` — rejection-path assertion.
-      - `user-blocks` — HANGS (async leak); needs a deterministic rewrite.
+      - `nostr-count-fallback` — ✅ DONE + UN-QUARANTINED 2026-06-25: STALE TEST after a
+        refactor. `countUnsupportedRelays` moved from `NostrClient` to its
+        `ConnectionManager`; the test read it off the client (undefined.has). Repointed the
+        assertion at `client.connectionManager.countUnsupportedRelays`. No behavior change.
+      - `admin-list-store` — ✅ DONE + UN-QUARANTINED 2026-06-25: STALE HARNESS (no
+        production change, no assertion weakened). Community curator lists are fetched via
+        the BATCHED SubscriptionManager (cold-start relay-storm fix) which the harness
+        didn't mock; the mock-"hex" curator values started with "npub" so
+        parseCommunityBlacklistReferences decoded them twice; and createListEvent omitted
+        the `d` tag that selectNewestEventsForReferences matches on. Fixed all three to be
+        faithful to production. See TEST_INTEGRITY.md.
+      - `nostr-publish-rejection` — STILL QUARANTINED. Partially diagnosed 2026-06-25:
+        multi-precondition setup. (1) `testPublishVideoNoteDefaultsToLiveModeInDev` needs
+        dev mode — set `globalThis.__BITVID_DEV_MODE_OVERRIDE__=true` BEFORE the first
+        (dynamic) config-importing import (~line 50). (2) The `publishNip71Video` sub-test
+        then fails — `publishVideo`'s NIP-71 invocation path needs FEATURE_PUBLISH_NIP71 /
+        condition triage; possibly more after. Quarantine note carries the steps.
+      - `nostr-publish-rejection`, `nwc-client`, `user-blocks` remain quarantined
+        (see QUARANTINE map in run-unit-tests.mjs for the precise reason on each).
+      - `user-blocks` — STILL QUARANTINED: HANGS (async leak); needs a deterministic rewrite.
 
 ### 12. Promotion: `unstable → beta`
 - [ ] After this batch soaks and the high-priority items land, promote `unstable → beta`
@@ -1001,3 +1327,31 @@ has a persisted cache; channel/search now render optimistically from
       dedupe-by-root + canAccess in `buildRenderableChannelVideos` handle
       precedence/gating. Logic extracted to a helper so channelProfile.js stayed
       under its size cap. Tests + mutation-verified.
+
+### 40. Dead @media queries: `var()` in media conditions is invalid — FIXED 2026-06-25
+Found 2026-06-25 while fixing the profile-modal mobile grid. Many media queries use
+`@media (max-width: calc(theme("screens.lg") - var(--breakpoint-edge-offset)))`.
+CSS custom properties are NOT allowed inside `@media` conditions — Chromium/Brave
+drop the ENTIRE block, so all those rules are DEAD (confirmed via matchMedia: the
+`var()` form returns false where it should match; the literal `calc(... - 0.02px)`
+works). The `--breakpoint-edge-offset` token was introduced to satisfy the
+design-token lint (no raw measurements), but it silently broke every media query
+that used it.
+- [ ] Audit all `var(--breakpoint-edge-offset)` (and any other `var()`) inside
+      `@media` conditions in `css/tailwind.source.css` and replace with a valid
+      literal-resolving form (e.g. `@media (max-width: theme("screens.lg"))`, which
+      compiles to a literal). The profile-modal nav grid (#7) already uses this.
+- [ ] Decide whether the token-lint should EXEMPT @media conditions (so the offset
+      token can stay) or whether to drop the offset pattern entirely.
+- [ ] Re-verify the responsive rules that were silently dead (e.g. the profile-modal
+      menu/pane-hide block, and the line ~1398/1433 player/modal rules).
+
+- [x] **FIXED 2026-06-25.** Replaced `var(--breakpoint-edge-offset)` with the literal
+      `0.02px` in all 4 `@media` conditions (`css/tailwind.source.css`). `0.02px` was
+      ALREADY exempt in the design-token lint, so the offset token was never needed —
+      using it just produced invalid, dead media queries. Verified valid via matchMedia.
+      This RE-ACTIVATES 3 previously-dead mobile blocks (intended behavior that had
+      silently never worked): full-screen modals on mobile, profile-modal menu/pane
+      switching, and the video-card tap-active state — plus the profile-nav app-grid.
+- [ ] **VERIFY live on a phone**: modals should now be full-screen; tapping a video
+      card shows the active lift/accent/marquee; profile modal tabs are the app-grid.
