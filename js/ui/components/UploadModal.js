@@ -53,6 +53,7 @@ export class UploadModal {
     eventTarget,
     container,
     onRequestStorageSettings,
+    onRequestUnlock,
   } = {}) {
     this.authService = authService || null;
     this.r2Service = r2Service || null;
@@ -88,6 +89,9 @@ export class UploadModal {
       eventTarget instanceof EventTarget ? eventTarget : new EventTarget();
     this.container = container || null;
     this.onRequestStorageSettings = typeof onRequestStorageSettings === "function" ? onRequestStorageSettings : null;
+    // Opens the login modal's unlock-saved-key (passphrase) flow — used when a
+    // persisted nsec session is locked after a reload.
+    this.onRequestUnlock = typeof onRequestUnlock === "function" ? onRequestUnlock : null;
 
     this.root = null;
     this.isVisible = false;
@@ -813,6 +817,13 @@ export class UploadModal {
         ? signer.canSign()
         : typeof signer?.signEvent === "function";
       if (!canSign) {
+          // A persisted ("remember this key") nsec session restores the logged-in
+          // pubkey after a reload but NOT the in-memory signer (the key is passphrase-
+          // encrypted). Prompt the user to re-unlock their saved key instead of dead-
+          // ending — matches the storage pane's behavior (#36).
+          if (this.promptStoredNsecUnlock(pubkey)) {
+              return;
+          }
           alert("No signer available to unlock storage.");
           return;
       }
@@ -842,6 +853,43 @@ export class UploadModal {
             this.toggles.storageUnlock.disabled = false;
           }
       }
+  }
+
+  // Returns true if a locked persisted-nsec session was detected (for the active
+  // account) and the re-unlock (passphrase) flow was opened, so the caller can stop.
+  promptStoredNsecUnlock(pubkey) {
+      const client = this.authService?.nostrClient;
+      if (!client || typeof client.getStoredSessionActorMetadata !== "function") {
+          return false;
+      }
+      let meta = null;
+      try {
+          meta = client.getStoredSessionActorMetadata();
+      } catch (err) {
+          return false;
+      }
+      if (!meta || meta.hasEncryptedKey !== true || meta.source !== "nsec") {
+          return false;
+      }
+      const metaPubkey =
+          typeof meta.pubkey === "string" ? meta.pubkey.trim().toLowerCase() : "";
+      const activePubkey =
+          typeof pubkey === "string" ? pubkey.trim().toLowerCase() : "";
+      if (activePubkey && metaPubkey && metaPubkey !== activePubkey) {
+          return false;
+      }
+      if (typeof this.onRequestUnlock !== "function") {
+          return false;
+      }
+      this.showError(
+          "Your saved key is locked after reloading. Re-enter your passphrase to unlock it, then try the upload again.",
+      );
+      try {
+          this.onRequestUnlock();
+      } catch (err) {
+          userLogger.warn("[UploadModal] Failed to open saved-key unlock flow:", err);
+      }
+      return true;
   }
 
   updateLockUi() {

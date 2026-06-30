@@ -855,6 +855,15 @@ Reported 2026-06-25. Relates to #17 (NIP-71 interop) / the bitvid→NIP-71 mirro
       page, open Profile → Storage → the status should read the actionable re-unlock hint
       (not "No active signer"); after re-entering the passphrase via Login, storage
       unlocks normally. (`[storage-unlock]` console line confirms the locked-key branch.)
+- [x] **Same fix for the UPLOAD modal — DONE 2026-06-30.** The Upload modal's "Unlock
+      storage" had its OWN unlock path (`UploadModal.handleUnlock`) that dead-ended on a
+      reloaded persisted-nsec session with "No signer available to unlock storage."
+      Added `promptStoredNsecUnlock(pubkey)`: when the active account has a locked saved
+      nsec key (`getStoredSessionActorMetadata`), it shows an actionable message and opens
+      the login modal's unlock-saved-key (passphrase) flow (`onRequestUnlock`, wired in
+      `initUploadModal` → `app.loginModalController.openModal`) instead of the alert. After
+      the user re-enters their passphrase the signer is active and the upload proceeds.
+      Tests: `tests/upload-modal-nsec-unlock.test.mjs` (5). Build + lint clean.
 
 ### 37. Channel playlists — creator-curated custom note lists
 - [ ] Let creators build **playlists** (custom curated lists of their videos / notes)
