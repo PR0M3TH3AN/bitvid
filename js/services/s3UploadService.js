@@ -26,6 +26,30 @@ import {
 const STATUS_VARIANTS = new Set(["info", "success", "error", "warning"]);
 const INFO_HASH_PATTERN = /^[a-f0-9]{40}$/;
 
+// A storageService.getConnection() result keeps bucket/region/endpoint/forcePathStyle
+// under `.meta`; validateS3Connection reads them at the top level. Flatten so a saved
+// connection (e.g. Backblaze B2) can be uploaded to without "S3 endpoint is required".
+function flattenS3Settings(raw = {}) {
+  const meta = raw && typeof raw.meta === "object" && raw.meta ? raw.meta : {};
+  const pickBool = (a, b) =>
+    typeof a === "boolean" ? a : typeof b === "boolean" ? b : false;
+  return {
+    ...raw,
+    endpoint: raw.endpoint || meta.endpoint || "",
+    bucket: raw.bucket || meta.bucket || "",
+    region: raw.region || meta.region || "auto",
+    accessKeyId: raw.accessKeyId || "",
+    secretAccessKey: raw.secretAccessKey || "",
+    forcePathStyle: pickBool(raw.forcePathStyle, meta.forcePathStyle),
+    publicBaseUrl:
+      raw.publicBaseUrl ||
+      meta.publicBaseUrl ||
+      raw.baseDomain ||
+      meta.baseDomain ||
+      "",
+  };
+}
+
 function normalizeInfoHash(value) {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
@@ -155,7 +179,16 @@ export class S3UploadService {
     return prepared;
   }
 
-  async prepareUpload(settings = {}, { createBucketIfMissing = true } = {}) {
+  async prepareUpload(settingsOrNpub = {}, options = {}) {
+    const { createBucketIfMissing = true, credentials } = options || {};
+    // Two call styles must both work:
+    //  - direct:        prepareUpload(settings, { createBucketIfMissing })
+    //  - mediaUploader: prepareUpload(npub, { credentials })  ← like r2Service
+    // When credentials come from storageService.getConnection, the bucket/region/
+    // endpoint live under `.meta`, so flatten them to the top level that
+    // validateS3Connection reads. (npub is ignored when credentials are supplied.)
+    const raw = credentials || settingsOrNpub || {};
+    const settings = flattenS3Settings(raw);
     const prepared = await this.verifyConnection({
       settings,
       createBucketIfMissing,

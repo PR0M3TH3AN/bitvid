@@ -949,6 +949,19 @@ Reported 2026-06-25. Relates to #17 (NIP-71 interop) / the bitvid→NIP-71 mirro
 - [ ] **Follow-up (cosmetic):** the upload modal's summary provider label can still show
       a stale provider until reloaded — refresh `loadFromStorage` when the storage default
       changes in the Storage pane (functional routing is already correct).
+- [x] **B2 / generic-S3 upload contract mismatch FIXED 2026-06-30.** Uploading to a
+      Backblaze B2 (or any generic-S3) bucket failed with **"S3 endpoint is required."**
+      Root cause: `MediaUploader` calls `service.prepareUpload(npub, { credentials })`
+      (the `r2Service` contract), but `s3UploadService.prepareUpload` took `(settings, …)`
+      — so the npub string became the settings (no endpoint). Also a
+      `storageService.getConnection()` result keeps `bucket`/`endpoint`/`region` under
+      `.meta`, which `validateS3Connection` reads at the top level. Fix:
+      `s3UploadService.prepareUpload` now accepts `(npub, { credentials })` and flattens
+      meta → top-level via `flattenS3Settings`. (R2 was unaffected because its service
+      already used that contract.) Also: the storage **Test** now derives/passes the B2
+      public URL so it stops falsely warning "Public Bucket URL is missing." Tests:
+      `tests/services/s3-upload-prepare-contract.test.mjs` (3 — flatten + npub-ignored +
+      back-compat). Build + lint clean; upload/storage suites 46/46.
 
 ### 39. Image uploads should prefer uploading to configured storage (UX)
 - [x] **Profile image + banner upload — FIXED 2026-06-30.** The UI was already wired

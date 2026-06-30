@@ -4,6 +4,7 @@ import {
   prepareS3Connection,
   getCorsOrigins,
   deriveB2Endpoint,
+  derivePublicBaseUrl,
 } from "../../services/s3Service.js";
 import { getActiveSigner } from "../../nostr/client.js";
 import { DEFAULT_NIP07_ENCRYPTION_METHODS } from "../../nostr/nip07Permissions.js";
@@ -952,6 +953,11 @@ export class ProfileStorageController {
     } else {
       config.endpoint = endpointOrAccount;
       config.forcePathStyle = forcePathStyle;
+      // Explicit Public Access URL, else derive it (so the test doesn't falsely warn).
+      config.publicBaseUrl =
+        publicBaseUrl ||
+        derivePublicBaseUrl({ endpoint: endpointOrAccount, bucket, forcePathStyle });
+      config.baseDomain = config.publicBaseUrl;
     }
 
     try {
