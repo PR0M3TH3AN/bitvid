@@ -590,12 +590,31 @@ toward freshness and looked identical. Gave each a structural identity:
       allow-override after the WoT mute/block checks.
 
 ### 25. Per-video / per-event admin block list (granular moderation)
-- [ ] Today admin moderation is essentially a "ban hammer" (author/community level).
-      Add a **per-event (per-video) block list** so an admin can hide a SINGLE
-      offending video without blocking the whole author. Define the per-event block
-      record (kind/addressable + the event id / address it targets), wire it into the
-      render-time filter alongside the existing author/community blacklist, and expose
-      it in the moderation UI (and eventually the #23 admin tab).
+- [x] **DONE 2026-06-30 (full vertical slice).** Admins (any editor — same gate as the
+      author blacklist) can now hide a SINGLE video without blocking its author.
+      - **Record:** a published kind-30000 NIP-51 list under d-tag
+        `bitvid:admin:event-blacklist`, carrying blocked event ids as `e` tags
+        (`NOTE_TYPES.ADMIN_EVENT_BLACKLIST` schema; `participantTagName: "e"`).
+        Loaded/persisted through the existing admin-list machinery
+        (`adminListStore` loadNostrState/persistNostrState) and cached like the others.
+      - **accessControl:** `eventBlacklist` Set + `getEventBlacklist()`/
+        `isEventBlacklisted()`/`addToEventBlacklist()`/`removeFromEventBlacklist()`
+        (editor-gated, normalizes hex or nevent/note) + `onEventBlacklistChange`.
+      - **Render filter:** already existed (`app.blacklistedEventIds`, honored by every
+        feed/grid/search/playback path) but was fed only by the static
+        `ADMIN_INITIAL_EVENT_BLACKLIST` config. Now `app._rebuildBlacklistedEventIds()`
+        merges that static base with the dynamic admin list, and an
+        `onEventBlacklistChange` listener rebuilds + refreshes the grids on change.
+      - **UI:** a "Block this video" item in the per-video ⋯ menu (editor-only, via
+        `videoMenuRenderers`), handled by `handleBlacklistEventAction`
+        (`js/ui/moreMenu/blacklistEventAction.js`).
+      - Helpers extracted to `js/adminEventBlacklistHelpers.js` to keep adminListStore /
+        accessControl / moreMenuController under their size caps. Tests:
+        `tests/admin-event-blacklist.test.mjs` (9 — record helpers + editor-gated action,
+        fallbacks, refusal, publish-failure). Build + lint clean; admin/access/moderation
+        suites 56/56.
+- [ ] **Follow-up:** surface the per-event list (view/unblock) in the Admin pane /
+      future #23 admin tab; today removal is via `removeFromEventBlacklist` (no UI yet).
 
 ### 26. Video popularity / view-count chart (public, three-dots menu) — DONE 2026-06-24
 - [x] **Shipped.** A "Popularity" item in the ⋯ menu opens a public views-over-time

@@ -1209,7 +1209,10 @@ export default class ApplicationBootstrap {
     });
     app.appChromeController.initialize();
 
-    app.blacklistedEventIds = new Set();
+    // Static, build-time per-event block list (operator config). Kept separate from
+    // the dynamic admin list (#25) so app._rebuildBlacklistedEventIds() can re-merge
+    // both whenever the published admin event-blacklist changes.
+    app._staticBlacklistedEventIds = new Set();
     if (this.window?.NostrTools?.nip19?.decode) {
       for (const neventStr of ADMIN_INITIAL_EVENT_BLACKLIST) {
         if (!neventStr || neventStr.trim().length < 8) {
@@ -1218,7 +1221,7 @@ export default class ApplicationBootstrap {
         try {
           const decoded = this.window.NostrTools.nip19.decode(neventStr);
           if (decoded?.type === "nevent" && decoded.data?.id) {
-            app.blacklistedEventIds.add(decoded.data.id);
+            app._staticBlacklistedEventIds.add(decoded.data.id);
           }
         } catch (err) {
           devLogger.error(
@@ -1228,6 +1231,12 @@ export default class ApplicationBootstrap {
           );
         }
       }
+    }
+    app.blacklistedEventIds = new Set(app._staticBlacklistedEventIds);
+    if (typeof app._rebuildBlacklistedEventIds === "function") {
+      // Fold in any already-loaded admin event-blacklist (accessControl may have
+      // hydrated from cache synchronously before this point).
+      app._rebuildBlacklistedEventIds();
     }
 
     app.unsubscribeFromPubkeyState = null;

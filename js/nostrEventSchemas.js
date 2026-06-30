@@ -56,6 +56,7 @@ export const NOTE_TYPES = Object.freeze({
   ADMIN_MODERATION_LIST: "adminModerationList",
   ADMIN_BLACKLIST: "adminBlacklist",
   ADMIN_WHITELIST: "adminWhitelist",
+  ADMIN_EVENT_BLACKLIST: "adminEventBlacklist",
   PROFILE_METADATA: "profileMetadata",
   MUTE_LIST: "muteList",
   DELETION: "deletion",
@@ -82,6 +83,7 @@ export const ADMIN_LIST_IDENTIFIERS = Object.freeze({
   editors: "editors",
   whitelist: "whitelist",
   blacklist: "blacklist",
+  eventBlacklist: "event-blacklist",
   communityBlacklistSources: ADMIN_COMMUNITY_BLACKLIST_SOURCES,
 });
 
@@ -632,6 +634,21 @@ const BASE_SCHEMAS = {
       value: `${ADMIN_LIST_NAMESPACE}:${ADMIN_LIST_IDENTIFIERS.whitelist}`,
     },
     participantTagName: "p",
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: { format: "empty", description: "Content field unused." },
+  },
+  // Per-event (per-video) admin block list (#25): hides a SINGLE offending event
+  // without blocking its author. Same kind-30000 NIP-51 shape as the author lists,
+  // but the entries are EVENT ids carried as `e` tags (not `p` pubkey tags).
+  [NOTE_TYPES.ADMIN_EVENT_BLACKLIST]: {
+    type: NOTE_TYPES.ADMIN_EVENT_BLACKLIST,
+    label: "Admin event blacklist",
+    kind: 30000,
+    identifierTag: {
+      name: "d",
+      value: `${ADMIN_LIST_NAMESPACE}:${ADMIN_LIST_IDENTIFIERS.eventBlacklist}`,
+    },
+    participantTagName: "e",
     appendTags: DEFAULT_APPEND_TAGS,
     content: { format: "empty", description: "Content field unused." },
   },
@@ -2977,6 +2994,9 @@ function resolveAdminNoteType(listKey) {
       return NOTE_TYPES.ADMIN_WHITELIST;
     case "blacklist":
       return NOTE_TYPES.ADMIN_BLACKLIST;
+    case "eventBlacklist":
+    case "event-blacklist":
+      return NOTE_TYPES.ADMIN_EVENT_BLACKLIST;
     default:
       return null;
   }

@@ -5,6 +5,7 @@ import {
   createVideoMoreMenuPanel,
 } from "./components/videoMenuRenderers.js";
 import createPopover from "./overlay/popoverEngine.js";
+import { handleBlacklistEventAction } from "./moreMenu/blacklistEventAction.js";
 import {
   prepareStaticModal,
   openStaticModal,
@@ -1019,9 +1020,7 @@ export default class MoreMenuController {
         event.preventDefault();
         event.stopPropagation();
 
-        // The modal ⋯ trigger declares its context via `data-more-dropdown`
-        // ("modal"), not `data-context` — reading only the latter made it
-        // default to "card" and skip the modal video resolution below.
+        // Modal ⋯ context comes from `data-more-dropdown`, not `data-context`.
         const context =
           button.getAttribute("data-context") ||
           button.getAttribute("data-more-dropdown") ||
@@ -1034,8 +1033,7 @@ export default class MoreMenuController {
 
         if (context === "modal") {
           video = this.callbacks.getCurrentVideo();
-          // currentVideo can be null when the modal opened without playback
-          // starting (e.g. a deep link); fall back to the modal's activeVideo.
+          // currentVideo can be null on a deep link; fall back to activeVideo.
           if (!video && this.videoModal?.activeVideo) {
             video = this.videoModal.activeVideo;
           }
@@ -1175,9 +1173,6 @@ export default class MoreMenuController {
         break;
       }
       case "view-stats": {
-        // Prefer the card's own video; fall back to resolving it from the menu
-        // item's eventId (card popovers don't always carry the object), and only
-        // use the modal's current video for the modal context.
         let targetVideo = video || null;
         if (!targetVideo && dataset?.eventId) {
           targetVideo =
@@ -1190,7 +1185,6 @@ export default class MoreMenuController {
           this.callbacks.showError("No video selected.");
           break;
         }
-        // Dismiss the menu, then open the public popularity chart (lazy-loaded).
         try {
           this.activePopover?.close?.();
         } catch (error) {
@@ -1469,6 +1463,15 @@ export default class MoreMenuController {
         }
         break;
       }
+      case "blacklist-event": {
+        await handleBlacklistEventAction({
+          accessControl: this.accessControl,
+          callbacks: this.callbacks,
+          dataset,
+          currentVideo,
+        });
+        break;
+      }
       case "block-author": {
         const currentUserPubkey = this.callbacks.getCurrentUserPubkey();
         if (!currentUserPubkey) {
@@ -1625,13 +1628,10 @@ export default class MoreMenuController {
         break;
       }
       case "event-details": {
-        // Card context passes the card's video; modal context falls back to the
-        // active video (the dispatch path doesn't carry the video object).
         let targetVideo = video;
         if (!targetVideo && context === "modal") {
           targetVideo = currentVideo;
         }
-        // Dismiss the menu before opening the details modal.
         try {
           this.activePopover?.close?.();
         } catch (error) {
