@@ -72,10 +72,13 @@ Likely a shared root cause in session/identity persistence + multi-account handl
       `SignerManager.logout` (previousPubkey/hadRemoteClient), and
       `authService.switchProfile` (from/to + whether requestLogin resolved the expected
       pubkey). **Remove these once the fix lands.**
-- [ ] **NEXT: reproduce on the phone with Amber on unstable, paste the `[nip46-diag]`
-      console output**, then ship the targeted fix (likely: per-profile NIP-46 session
-      keyed by pubkey, don't tear the shared client on a scoped logout, and reconnect on
-      switch/restore).
+- [ ] **VERIFY / REPRODUCE (user action):** on the phone with Amber on
+      unstable.bitvid.network, exercise (1) fresh load, (2) switch profiles, (3) logout,
+      and capture the `[nip46-diag]` console lines for each — restore succeeded/FAILED,
+      switchProfile `matchesTarget`, and disconnect `keepStored`/`hadClient`/caller stack.
+- [ ] **THEN fix** based on the captured trace (likely: per-profile NIP-46 session keyed
+      by pubkey; don't tear the shared client on a scoped logout; reconnect on
+      switch/restore) and REMOVE the temporary `[nip46-diag]` diagnostics.
 
 ### 1. Delete is not fully working — tombstoned videos still show in the UI
 - [x] **Root cause found + fixed** (`afb6200b`): deletes published only to the CAPPED
