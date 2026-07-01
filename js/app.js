@@ -3330,6 +3330,17 @@ class Application {
     return this._auth.handleProfileSwitchRequest(...args);
   }
 
+  // Coordinator methods are bound to `this` (the Application) by bindCoordinator,
+  // so a sibling call like `this.prepareStoredNsecSwitch(...)` inside
+  // handleProfileSwitchRequest resolves against the Application — it needs this
+  // delegator to exist (like handleProfileSwitchRequest above). Without it,
+  // switching to a stored-nsec account threw "this.prepareStoredNsecSwitch is not
+  // a function".
+  async prepareStoredNsecSwitch(...args) {
+    this._initCoordinators();
+    return this._auth.prepareStoredNsecSwitch(...args);
+  }
+
   async waitForIdentityRefresh(...args) {
     this._initCoordinators();
     return this._auth.waitForIdentityRefresh(...args);
