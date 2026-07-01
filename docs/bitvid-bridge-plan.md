@@ -5,11 +5,23 @@ Companion to **`docs/live-publish-plan.md`** (#16c) — this expands its **Phase
 gap a static web client can't: **receiving and routing live media** on the
 creator's machine.
 Status: **FUTURE / exploratory — all design decisions LOCKED** (maintainer
-accepted every recommendation). Sequenced after the #16c Media Node MVP; the
-Bridge and the server-side Media Node share one codebase (DECISION 7).
+accepted every recommendation), but **DELIBERATELY DEFERRED** — see the priority
+principle below.
 
-Goal (maintainer): a **super-simple, easy-to-install, easy-to-use** cross-platform
-app (Windows / macOS / Linux) that makes going live on bitvid turnkey.
+> **⛔ PRIORITY PRINCIPLE — static bitvid first (maintainer).** Put as much effort
+> into the **static bitvid client** as possible before branching into any *separate
+> application*. The Bridge is a second app (own repo, toolchain, cross-platform
+> packaging, code-signing cost), so **do not start it** until the static client's
+> live features have shipped and are maximally developed — specifically the Go-Live
+> **Tier-1/2 MVP** (external-provider + serverless, zero infra; see the publish
+> plan's provider spectrum). Rule of thumb: **exhaust what the static client can do
+> before writing a second app.** Build the Bridge only once live has shipped *and*
+> shown real demand for the sovereignty/power features it adds (local recording +
+> full-WebTorrent VOD, no-third-party, multi-restream, hardware/appliance, capture).
+
+Goal (maintainer, *when it's time*): a **super-simple, easy-to-install,
+easy-to-use** cross-platform app (Windows / macOS / Linux) that makes going live on
+bitvid turnkey.
 
 ---
 

@@ -336,6 +336,35 @@ has enough concurrent viewers — see the ingest plan + Advantages above. The en
 
 ---
 
+## Build order & the static-first principle
+
+> **PRIORITY (maintainer): pour effort into the static bitvid client before
+> branching into any separate app.** Everything through the Go-Live MVP below lives
+> **entirely in the static client** — no Bridge, no VPS, no bitvid infra. The
+> Bridge (a second application) is deliberately deferred until this is shipped and
+> maximally developed. See `docs/bitvid-bridge-plan.md`.
+
+Recommended sequence across the live/short work:
+
+```
+1. Shorts (#16b)             ← smallest, ready to build, unrelated to live
+2. Live ingest (#16)         ← the WATCH foundation (Live tab, player, hls.js,
+                               chat, zaps) — a hard dependency of publishing
+3. Go-Live MVP (#16c P0–P1)  ← Tiers 1 & 2 (external embed + serverless HLS);
+                               CLIENT-SIDE ONLY, no Bridge / no VPS / no infra
+   ── ship it; validate that people actually want live ──
+4. (only if warranted) the Bridge app  ← Tier-3 sovereignty/power features;
+                               its own repo/toolchain/code-signing — a later track
+```
+
+The Go-Live MVP (steps 1–3) is the "as much static bitvid as possible" target: a
+real, working live experience where the creator brings their own provider
+(StreamYard→YouTube, or OBS→Livepeer/Mux) and bitvid does the Nostr-native part —
+publish, discover, watch, chat, zap, archive→VOD. Only after that proves out does
+a second app (the Bridge) earn the investment.
+
+---
+
 ## Phases
 
 - **Phase 0 — Flags + schema (small).** `FEATURE_LIVE_PUBLISH/BRIDGE/RESTREAM`;
