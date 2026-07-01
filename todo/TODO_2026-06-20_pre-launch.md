@@ -1337,6 +1337,7 @@ Threat model / cautions (write these into the feature + docs):
 > config flags from the start.
 
 ### 16. Nostr live streams — INGEST / watch-only (zap.stream, shosho.live)
+> **Dev plan: `docs/live-ingest-plan.md`** (decisions open + Phase 0 research spike).
 > Ingesting live streams (watch others' streams) and PUBLISHING a stream
 > ("go live", #16c) are TWO separate functions and must each have their OWN config
 > flag — the maintainer wants to enable/disable ingest and publish independently.
@@ -1366,6 +1367,7 @@ Threat model / cautions (write these into the feature + docs):
       streaming-server dependency early (relates to the CORS/edge constraints).
 
 ### 16b. Nostr short-form video notes — watch-only (new sidebar tab)
+> **Dev plan: `docs/shorts-plan.md`** (decisions open; ingest already exists).
 - [ ] Short-form (vertical/portrait) video is **NIP-71 kind 22** (the short-form
       counterpart to kind 21 normal video) — distinct from live streams. bitvid
       already ingests NIP-71 (see #17), so much of the parsing exists; this is about
