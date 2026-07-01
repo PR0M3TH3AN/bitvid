@@ -293,7 +293,10 @@ has enough concurrent viewers — see the ingest plan + Advantages above. The en
   Bridge to avoid browser↔localhost/mixed-content pain.
 - **Phase 7 — Local Bridge app (large; `FEATURE_LIVE_BRIDGE`).** Packaged desktop
   helper: local RTMP/SRT receiver, forward to Node + external, local record +
-  archive upload, localhost API + pairing. *BitVid Live v2 / "BitVid Box" seed.*
+  archive upload, embedded Studio webview (signs) + optional localhost API.
+  *BitVid Live v2 / "BitVid Box" seed.* **Full plan: `docs/bitvid-bridge-plan.md`**
+  (cross-platform app; note DECISION 7 there — the Bridge and this Media Node can
+  share one codebase running headless vs with-UI).
 - **Phase 8 — WebRTC low-latency (later, DECISION 4).**
 
 ---
