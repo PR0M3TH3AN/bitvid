@@ -47,6 +47,42 @@ around it. That's Phase 1 and delivers value with zero servers.
 
 ---
 
+## Why BitVid Live — advantages over the incumbents
+
+Lean into what only bitvid can offer; these are the reasons a creator would pick
+BitVid Live over zap.stream/Twitch/YouTube.
+
+- **P2P bandwidth offload (WebTorrent-flavored live).** Classic WebTorrent can't
+  carry a live stream (its infohash needs the *complete* file), but **P2P-assisted
+  HLS** can: hls.js + [P2P Media Loader](https://github.com/novage/p2p-media-loader)
+  (historically WebTorrent-tracker-based) lets concurrent viewers share HLS
+  segments over WebRTC, so each extra viewer helps *serve* the stream. This
+  directly cuts the Media Node's egress — the biggest cost of running live infra —
+  and scales *better* the more popular a stream gets. (Enable when concurrency
+  warrants; see the ingest plan.)
+- **Recordings become full WebTorrent VODs.** The moment a stream ends, its
+  recording is an ordinary bitvid video: complete file → infohash → **seed +
+  webseed**, playable P2P + URL like everything else. Twitch/YouTube VODs are
+  origin-only; bitvid VODs are P2P-distributable and self-hostable.
+- **Nostr-native = portable + no lock-in.** The stream is a signed NIP-53 event on
+  relays, not a row in a platform DB. It's discoverable by *any* Nostr app, the
+  creator owns it, and it can't be de-platformed by a single company.
+- **Zaps built in.** Instant Lightning value-for-value to the host during the
+  stream (bitvid's existing NWC/zap system) — no ads, no 50% platform cut, no
+  payout thresholds.
+- **Bring-your-own everything.** Own storage (R2/B2/S3/MinIO) for recordings, own
+  relays, self-hostable Media Node, and an **external-provider-only mode that needs
+  zero bitvid infra**. No mandatory middleman.
+- **One canonical stream, many mirrors.** Restream to YouTube/Twitch/zap.stream
+  simultaneously while bitvid stays the sovereign home — reach without lock-in.
+- **Archive is a first-class video, not a throwaway.** VODs flow into the same
+  feeds, search, moderation, comments, and zaps as every other bitvid video (the
+  `s`-tag/info.json/30078 model) — no separate "past broadcasts" ghetto.
+- **Self-sovereign identity.** The creator signs; no BitVid account, no bridge
+  ever holds their key.
+
+---
+
 ## Decisions needed
 
 > **DECISION 1 — Media hosting model.** Who runs the Media Node? (a) a **managed
@@ -223,7 +259,10 @@ This is a specialized upload-modal flow, not a new publishing system.
 
 Live: **HLS first** (works everywhere via #16's hls.js), then WebRTC later
 (DECISION 4), then external-embed fallback. Mirror bitvid's URL-first ethos:
-**primary live URL → external mirror → ended recording (VOD).**
+**primary live URL → external mirror → ended recording (VOD).** Optional
+**P2P-assisted HLS** (P2P Media Loader) offloads Media Node egress once a stream
+has enough concurrent viewers — see the ingest plan + Advantages above. The ended
+**recording gets full classic WebTorrent** (seed + webseed), like any bitvid video.
 
 ---
 

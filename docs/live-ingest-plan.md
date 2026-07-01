@@ -158,6 +158,33 @@ chat message. Read-only ingest = subscribe by `#a`, render newest.
 
 ---
 
+## P2P-assisted playback (future — bitvid's bandwidth edge)
+
+Q: "Can live use WebTorrent?" **Classic WebTorrent can't carry a *live* stream** —
+a torrent's infohash is computed from the *complete* file, and live content
+doesn't exist yet. bitvid's WebTorrent is progressive playback of a finished VOD,
+not live. **But P2P *live* is real** via a different mechanism: **HLS + peer-to-peer
+segment sharing.** hls.js loads segments while a WebRTC swarm shares them among
+concurrent viewers, so the origin serves each segment fewer times.
+
+- **Concrete stack:** [P2P Media Loader](https://github.com/novage/p2p-media-loader)
+  — hls.js-compatible, and historically used **WebTorrent trackers** for peer
+  discovery. It's a drop-in segment engine for the Phase-2 hls.js player: the
+  "WebTorrent-flavored" path for live.
+- **bitvid advantage:** every extra concurrent viewer helps *serve* the stream
+  instead of only consuming origin bandwidth — cutting the Media Node's egress
+  (the biggest cost/risk of #16c) and matching bitvid's P2P ethos.
+- **Why NOT v1:** P2P offload only pays off with **enough concurrent viewers of
+  the same stream**. DECISION 1 scopes live to whitelisted hosts → likely
+  low-concurrency/sparse, where a swarm adds complexity + a little latency (on top
+  of HLS's 6–30s) for little gain. **v1 = plain hls.js; add P2P-assisted HLS
+  later, gated on real concurrency.**
+- **VOD keeps full WebTorrent:** once a stream ends, its recording is an ordinary
+  bitvid video (complete file → infohash) and gets the normal seed/webseed
+  treatment (see the publish plan's archive→VOD flow).
+
+---
+
 ## Live watch UX best practices (researched July 2026)
 
 Unlike shorts, live is a **landscape 16:9, "cinematic"** experience, and the watch
