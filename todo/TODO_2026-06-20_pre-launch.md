@@ -594,20 +594,27 @@ toward freshness and looked identical. Gave each a structural identity:
       reliable zap data (couples with the zap system already shipped in #3).
 
 ### 48. Fluent profile switching across signing methods (nsec / NIP-46 / NIP-07)
-- [ ] **CONFIRMED NOT DONE (verified 2026-06-30).** Switching to a saved **nsec** profile
-      fails: `switchProfile(pubkey, { providerId: "nsec" })` → `requestLogin` → the nsec
-      provider's `login()` is called with **no secret/passphrase**, so it throws
-      `"secret-required"` and the switch silently fails (caught + logged in
-      `profileModalController`). It never prompts for the PIN or routes to the stored-key
-      unlock flow. Same root gap as #36 (nsec signer needs the passphrase to be restored),
-      but in the SWITCH path. Fix: when switching to a saved nsec profile, detect the
-      stored encrypted key (`getStoredSessionActorMetadata`) and prompt for the pin/
-      passphrase (route through `unlockStoredSessionActor`, e.g. open the login modal's
-      unlock flow), then activate. Apply the same for **NIP-46** (reconnect / re-authorize
-      the remote signer on switch if needed). Goal: switch fluently between NIP-07 ⇄ nsec
-      ⇄ NIP-46 accounts regardless of the current signing method. NOTE: multiple saved
-      nsec accounts share ONE stored session entry today — confirm per-account key storage
-      is needed for switching among several nsec profiles.
+- [x] **nsec switching FIXED 2026-06-30.** Switching to a saved nsec profile used to fail
+      silently ("secret-required") — `switchProfile` called the nsec provider with no
+      passphrase and never prompted. Now `handleProfileSwitchRequest` detects an nsec
+      target, checks the stored key (`getStoredSessionActorMetadata` +
+      `evaluateStoredNsecSwitch` — must be a persisted nsec for THIS account), prompts for
+      the PIN/passphrase via a new `showPasswordPrompt` dialog
+      (`js/ui/promptDialog.js`), and calls `switchProfile(pubkey, { unlockStored: true,
+      passphrase })`. `authService.switchProfile` now forwards `unlockStored`/`passphrase`
+      → `requestLogin` → the nsec provider's `unlockStoredSessionActor` restores the signer
+      and activates the account. Wrong PIN → "Incorrect PIN/passphrase" toast; no stored
+      key / different account → a clear "log in with its nsec" toast. So you can switch
+      NIP-07 → nsec fluently. Tests: `tests/stored-nsec-switch.test.mjs` (6, pure gate) +
+      `tests/password-prompt.test.mjs` (6, dialog). Build + lint clean; auth suites 25/25.
+- [ ] **VERIFY + extend to NIP-46 (follow-up).** My change only intercepts nsec targets;
+      NIP-46 switching is unchanged (`switchProfile({ providerId: "nip46" })`). Verify a
+      NIP-07 → NIP-46 (and nsec → NIP-46) switch actually reconnects/re-authorizes the
+      remote signer; if it fails, apply the same "prep before switch" pattern (reconnect
+      the bunker / re-open the NIP-46 connect flow).
+- [ ] **Multiple nsec accounts:** the stored session is a SINGLE slot
+      (`bitvid:sessionActor:v1`), so only the last-persisted nsec key is on the device —
+      switching among several saved nsec accounts needs per-account encrypted-key storage.
 
 ### 8. Orphan storage garbage-collection tool
 - [x] **Largely delivered by the My Videos tab** (`9d3a0df0`): lists bucket objects no

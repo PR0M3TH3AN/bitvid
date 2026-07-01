@@ -13,6 +13,8 @@ import { clearDecryptionSchemeCache } from "../nostr/decryptionSchemeCache.js";
 import { clearWatchHistoryConversationKeyCache } from "../nostr/watchHistory.js";
 import { clearWatchHistoryDecryptedChunkCache } from "../nostr/watchHistoryDecryptCache.js";
 import { FEED_TYPES, FEATURE_TRENDING_FEED } from "../constants.js";
+import { showPasswordPrompt } from "../ui/promptDialog.js";
+import { evaluateStoredNsecSwitch } from "./storedNsecSwitch.js";
 
 /**
  * Kick a background watch-history refresh after login, once the feed-driving
@@ -1372,12 +1374,68 @@ export function createAuthSessionCoordinator(deps) {
       }
     },
 
+    // For an nsec target, ensure its stored key can be unlocked and collect the
+    // passphrase. Returns { status: "ok", passphrase } | { status: "cancelled" } |
+    // { status: "error", reason }.
+    async prepareStoredNsecSwitch(targetPubkey) {
+      const meta =
+        typeof nostrClient?.getStoredSessionActorMetadata === "function"
+          ? nostrClient.getStoredSessionActorMetadata()
+          : null;
+      const decision = evaluateStoredNsecSwitch(meta, targetPubkey);
+      if (decision.action === "error") {
+        this.showError?.(
+          decision.reason === "pubkey-mismatch"
+            ? "A different account's key is saved on this device. Log in with this account's nsec to switch to it."
+            : "This account's key isn't saved on this device. Log in with its nsec to switch to it.",
+        );
+        return { status: "error", reason: decision.reason };
+      }
+      const passphrase = await showPasswordPrompt(
+        "Enter your PIN / passphrase to unlock this account's saved key.",
+        { title: "Switch account", confirmLabel: "Switch" },
+      );
+      if (passphrase == null || passphrase === "") {
+        return { status: "cancelled", reason: "cancelled" };
+      }
+      return { status: "ok", passphrase };
+    },
+
     async handleProfileSwitchRequest({ pubkey, providerId } = {}) {
       if (!pubkey) {
         throw new Error("Missing pubkey for profile switch request.");
       }
 
-      const result = await this.authService.switchProfile(pubkey, { providerId });
+      // Switching to a saved nsec account needs its passphrase — the private key is
+      // stored encrypted, so switchProfile alone throws "secret-required". Prompt for
+      // the PIN and unlock the stored key so the switch actually works (matches #36).
+      let switchOptions = { providerId };
+      const isNsecTarget =
+        String(providerId || "").trim().toLowerCase() === "nsec";
+      if (isNsecTarget) {
+        const prep = await this.prepareStoredNsecSwitch(pubkey);
+        if (prep.status !== "ok") {
+          return { switched: false, reason: prep.reason || prep.status };
+        }
+        switchOptions = {
+          providerId,
+          unlockStored: true,
+          passphrase: prep.passphrase,
+        };
+      }
+
+      let result;
+      try {
+        result = await this.authService.switchProfile(pubkey, switchOptions);
+      } catch (error) {
+        if (isNsecTarget && error?.code === "decrypt-failed") {
+          this.showError?.(
+            "Incorrect PIN / passphrase. Try switching to this account again.",
+          );
+          return { switched: false, reason: "bad-passphrase" };
+        }
+        throw error;
+      }
 
       if (result?.switched) {
         const detail = result.detail || null;

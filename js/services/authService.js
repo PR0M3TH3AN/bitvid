@@ -992,6 +992,17 @@ export default class AuthService {
       expectPubkey: normalizedTarget,
       persistActive: true,
       ...(providerId ? { providerId } : {}),
+      // Switching to a saved nsec account: unlock its stored key with the passphrase
+      // the caller collected (the private key can't be restored otherwise).
+      ...(normalizedOptions.unlockStored
+        ? {
+            unlockStored: true,
+            passphrase:
+              typeof normalizedOptions.passphrase === "string"
+                ? normalizedOptions.passphrase
+                : "",
+          }
+        : {}),
     };
     const autoApply = requestOptions.autoApply !== false;
 
