@@ -123,6 +123,61 @@ Reuses the existing feed engine + ingest; new pieces are thin.
 
 ---
 
+## Short-form UX best practices (researched July 2026)
+
+Short-form is a **mobile-first** format (~70%+ of social video is watched on
+phones, held vertically), but bitvid is a desktop-capable web app, so the Shorts
+experience must be **responsive** — the same feed, two presentations. Sources at
+the bottom of this doc.
+
+### The immersive feed (both platforms)
+- **One short at a time, full-height 9:16**, not a scroll-list of small cards.
+  The grid (Phase 1) is the *entry point*; tapping/clicking a short drops into an
+  immersive one-at-a-time feed (Phase 2).
+- **Autoplay + loop.** The active short autoplays and loops. Browser autoplay
+  policy requires **muted autoplay** — so start muted with an obvious unmute, and
+  persist the user's mute choice across shorts.
+- **Preload the next 2–3.** Buffer upcoming shorts in the background so advancing
+  is instant. "If your platform shows a loading spinner between videos, you've
+  already lost the session." (This is the single most-cited make-or-break detail.)
+- **Overlaid chrome, safe zones.** Title/author bottom-left, an **action rail**
+  bottom-right, controls over the frame — keep them inside 9:16 safe zones so they
+  don't collide with the video edges.
+- **Action rail** (bitvid mapping): **Zap** (bitvid's primary engagement, via the
+  existing NWC/zap system — replaces the generic "like"), **Comment**, **Share**,
+  and **author avatar + follow/subscribe**. Reuse the existing engagement + ⋯
+  menu wiring.
+- **Captions/muted-friendliness.** A large share of viewing happens muted at some
+  point; surface captions when a short provides them and make the mute state
+  obvious. (bitvid can't generate captions — show them when present.)
+- **Accessibility:** respect `prefers-reduced-motion` (no auto-advance / disable
+  scroll-snap animation), full keyboard support, focus management on advance.
+
+### Mobile presentation
+- **Full-screen** vertical player; **swipe up/down = next/previous**; tap =
+  pause/play; the action rail sits on the right thumb-reach edge.
+
+### Desktop presentation
+- **Centered vertical player with letterboxed / blurred side panels** — never
+  stretch a 9:16 short to fill a wide viewport (this is the YouTube-Shorts-on-
+  desktop pattern).
+- **Keyboard navigation is a real differentiator.** YouTube Shorts on desktop has
+  notoriously weak keyboard support (users install extensions to get it). bitvid
+  should ship it natively: **↑/↓ = prev/next short**, **Space = pause/play**,
+  **M = mute**, **←/→ = seek** (or prev/next — pick one and document it), Esc =
+  exit to grid.
+- **Action rail beside the player** (to the right of the letterboxed video) rather
+  than overlaid, since desktop has the horizontal room.
+- Advance via scroll-snap (wheel/trackpad) **and** the arrow keys; a subtle
+  next/prev affordance for mouse users.
+
+### bitvid-specific notes
+- Playback rides the existing URL-first + WebTorrent pipeline
+  (`playbackService`); shorts are just kind-22 videos, so no new transport.
+- Zaps (not likes) are the headline action — this is a genuine differentiator vs
+  the incumbents and it already exists in bitvid.
+- Everything still flows through the render-time moderation filter (DECISION 2).
+
 ## Phases (each flag-gated from day one)
 
 - **Phase 0 — Detection + flag (small).** Add `FEATURE_SHORTS` (off), `isShort`
@@ -131,8 +186,13 @@ Reuses the existing feed engine + ingest; new pieces are thin.
   link, `views/shorts.html`, feed registration filtered to `isShort`, route gated
   by flag, and the **new portrait 9:16 card** (DECISION 6) so the grid renders
   shorts correctly. Opens in the standard player for now.
-- **Phase 2 — Vertical UX (medium).** Portrait player layout + full-screen
-  swipe/next feed.
+- **Phase 2 — Immersive vertical feed (medium–large).** The one-at-a-time
+  responsive feed described in "Short-form UX best practices": muted autoplay +
+  loop, **preload next 2–3** (no spinner between shorts), overlaid action rail
+  (Zap/Comment/Share/follow), captions-when-present, `prefers-reduced-motion`
+  handling. **Mobile:** full-screen + swipe up/down. **Desktop:** centered
+  letterboxed player + **native keyboard nav** (↑/↓ prev/next, Space, M, Esc) +
+  side action rail. Grid (Phase 1) remains the entry point.
 - **Phase 3 — Polish.** Autoplay-on-scroll, mute toggle, per-tab empty states,
   optional exclusion from the main feed (DECISION 3 revisit).
 
@@ -163,5 +223,11 @@ per-event block list (#25) already applies to any event id, shorts included.
 
 - NIP-71 (video events; kinds 21/22 regular, 34235/34236 addressable).
 - Existing code: `js/nostr/nip71IngestAdapter.js`, `js/nostr/nip71Mirror.js`,
-  `js/app/feedCoordinator.js`, `js/feedEngine/sorters.js`, `components/sidebar.html`.
+  `js/app/feedCoordinator.js`, `js/feedEngine/sorters.js`, `components/sidebar.html`,
+  `js/ui/components/VideoCard.js` (16:9 card to variant/replace).
 - `docs/nip71-migration-plan.md` (dual-event model, short=34236 heuristic).
+- Short-form UX research (July 2026):
+  - [Top 10 Features Every Short Video App Needs in 2026 — Primocys](https://primocys.com/blog/top-10-short-video-app-features-2026/) (full-screen player, autoplay/loop, swipe-next, preload next 2–3)
+  - [Short-Form Video Strategy 2026 — Teleprompter](https://www.teleprompter.com/blog/short-form-video-strategy) (9:16 mobile-first, overlaid chrome/safe zones, captions)
+  - [Why Vertical Video Is Becoming the Default Format — Oyelabs](https://oyelabs.com/why-vertical-video-is-default-content-format/) (mobile share, vertical engagement)
+  - [Keyboard shortcuts for YouTube — YouTube Help](https://support.google.com/youtube/answer/7631406) & [YouTube Arrow Keys Fix (Chrome Web Store)](https://chromewebstore.google.com/detail/youtube-arrow-keys-fix/hbnlngeljeofecndhmebgpgpccfnkgjb) (desktop Shorts keyboard-nav gap → do it natively)
