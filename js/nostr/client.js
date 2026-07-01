@@ -173,7 +173,7 @@ import {
   readStoredSessionActorEntry,
   isSessionActor,
 } from "./sessionActor.js";
-import { HEX64_REGEX, normalizeHexHash } from "../utils/hex.js";
+import { HEX64_REGEX, normalizeHexHash, bytesToHex } from "../utils/hex.js";
 import {
   NIP46_RPC_KIND,
   NIP46_HANDSHAKE_TIMEOUT_MS,
