@@ -38,9 +38,11 @@ it solves two hard problems at once —
    honors the publish plan's Rule 1 ("BitVid signs; Bridge routes") while still
    being one self-contained app.
 
-**When you don't need the Bridge at all:** OBS → the public Media Node works for a
-basic stream. The Bridge earns its place via multi-restream, local recording,
-hardware/appliance input, and turnkey UX — and later, built-in capture (no OBS).
+**When you don't need the Bridge at all:** OBS → an **external provider**
+(zap.stream/YouTube) works for a basic stream (bitvid runs no node — blanket
+rule). The Bridge earns its place by letting a creator **self-host** their own
+node and by multi-restream, local recording, hardware/appliance input, turnkey UX
+— and later, built-in capture (no OBS).
 
 ---
 
@@ -203,9 +205,14 @@ becomes a normal bitvid video automatically.
 - **Phase 0 — Shell + media core (foundational).** App skeleton (DECISION 1),
   bundle + supervise MediaMTX, embedded Studio webview, webview↔core IPC, signed
   dev builds on all three OS. Sign-in works (DECISION 4).
-- **Phase 1 — Receive → BitVid (the MVP).** Local RTMP ingest; copy-forward to the
-  BitVid Media Node; publish planned→live→ended NIP-53 from the webview driven by
-  MediaMTX input hooks. "OBS → Bridge → bitvid, one window."
+- **Phase 1 — Receive → serve (the MVP).** Local RTMP ingest → serve HLS. For
+  public viewers the playback origin must be **reachable**, so either run the
+  Bridge **headless on a reachable host** (VPS — the self-hosted node) or
+  copy-forward from a local Bridge to that reachable node / an external provider
+  (never a bitvid-run node). Publish planned→live→ended NIP-53 from the webview via
+  MediaMTX input hooks. "OBS → your node → bitvid, one window."
+  *(NAT note: a home-only Bridge can't serve public HLS without a tunnel/
+  port-forward — hence the headless-on-VPS path.)*
 - **Phase 2 — Record → archive → VOD.** Local recording, finalize, rclone upload
   to the user's storage, manifest → webview publishes a normal bitvid video
   (reuses the `s`-tag/info.json/30078 flow). Optional torrent/webseed for full
@@ -232,8 +239,9 @@ becomes a normal bitvid video automatically.
 3. **Pass-through first** — copy H.264/AAC, don't transcode (DECISION 8).
 4. **Reuse bitvid's web client** for the Studio webview (session, signer, publish,
    upload-modal-style VOD flow) — minimize net-new signing/auth code.
-5. **Optional, not required** — a creator can still stream OBS → public Media Node
-   without the Bridge; the Bridge only *adds* convenience/power.
+5. **Optional, not required** — a creator can still stream OBS → an external
+   provider without the Bridge; the Bridge *adds* self-hosting + convenience/power
+   (and bitvid never runs a node — blanket rule).
 6. **Respect the connected instance's config.** The embedded Studio webview loads
    a specific bitvid instance, so it inherits that instance's flags — if the
    instance has `FEATURE_LIVE_PUBLISH` **off**, the Bridge shows go-live as
@@ -272,6 +280,12 @@ becomes a normal bitvid video automatically.
 - **Local ingest exposure.** A misconfigured wide bind would expose an unauth'd
   RTMP receiver on the network — default to loopback (invariant 7); require auth
   for any non-loopback bind.
+- **Reachability / NAT (self-hosting reality).** With the blanket rule, the
+  playback origin is the creator's own node — a **home-only Bridge behind NAT
+  can't serve public HLS**. The clean path is running the Bridge **headless on a
+  reachable VPS**; document that, plus optional tunnel/port-forward for the local
+  case. This is the main friction of "self-host everything" and the reason the
+  headless mode (Phase 7 / DECISION 7) matters.
 
 ---
 

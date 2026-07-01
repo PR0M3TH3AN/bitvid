@@ -4,25 +4,34 @@ TODO ref: **#16c** in `todo/TODO_2026-06-20_pre-launch.md` (this doc expands the
 stub). Companion to **`docs/live-ingest-plan.md`** (#16, watch-only) — the *watch*
 side (Live tab, player, chat, zaps) is built there and **reused** here; this doc
 adds the *broadcast* side.
-Status: **FUTURE / exploratory.** Sequenced **after** #16 (live ingest) and #16b
-(shorts) ship. This is the largest of the three plans and the only one that
-introduces **server-side media infrastructure** — read the Core Decision first.
+Status: **FUTURE / exploratory — all six decisions LOCKED** (see Core Decision's
+blanket rule: bitvid hosts nothing; self-host or external only). Sequenced
+**after** #16 (live ingest) and #16b (shorts). The largest plan, and the only one
+touching **(self-hosted, never bitvid-run) media infrastructure**.
 
 ---
 
 ## Core decision
 
+> **BLANKET RULE (maintainer, non-negotiable): bitvid.network hosts NOTHING but a
+> static client — no servers, no media infrastructure, ever.** All media
+> receiving/routing is **self-hosted by the creator** (the Bridge run headless — a
+> single self-hosted binary, see `docs/bitvid-bridge-plan.md`) or handled by an
+> **external provider** (zap.stream/YouTube/Twitch). There is no bitvid-operated
+> Media Node and no managed publishing — those options are off the table.
+
 Build **BitVid Live** as a **Nostr-native live-stream control layer**, not a
 video-hosting backend. BitVid the client stays exactly what it is — a static site
 that signs client-side, holds no keys, runs no server. The one thing a static
 browser app genuinely *cannot* do (receive + route live media) is isolated into a
-**separate, optional** service. Split:
+**separate, self-hosted-or-external** service (never bitvid-operated). Split:
 
 ```
 BitVid static client   = identity, metadata, NIP-53 publishing, discovery, chat,
                          zaps, player UI, archive→VOD publishing
-BitVid Media Node/Bridge = RTMP/SRT/WHIP ingest, HLS/WebRTC output, recording,
-                         restreaming, status API   (server-side, optional)
+Media Node / Bridge    = RTMP/SRT/WHIP ingest, HLS/WebRTC output, recording,
+   (self-hosted OR       restreaming, status API
+    external provider)
 ```
 
 This keeps BitVid's architecture intact while adding broadcast. Crucially,
@@ -85,45 +94,39 @@ BitVid Live over zap.stream/Twitch/YouTube.
 
 ## Decisions needed
 
-> **DECISION 1 — Media hosting model.** Who runs the Media Node? (a) a **managed
-> BitVid Media Node** (bitvid-operated infra — easiest for creators, but ops/cost
-> and least "self-sovereign"); (b) **self-hosted** (creator/instance runs their
-> own node — most aligned, higher friction); (c) **external-provider-only** (no
-> node; stream to zap.stream/YouTube and just publish the NIP-53 event).
-> *Recommendation: ship (c) first — zero infra, immediate utility — then offer (b)
-> self-host with a reference node, and consider (a) managed as an opt-in later.*
+> **DECISION 1 — Media hosting model. ✅ LOCKED by the blanket rule: self-host OR
+> external-provider only — NO bitvid-operated node, ever.** Two supported paths:
+> **(c) external-provider-only** (no node — stream to zap.stream/YouTube/Twitch,
+> bitvid just publishes the NIP-53 event; **ships first**, zero infra) and
+> **(b) self-hosted** (the creator runs their own Media Node = the Bridge headless;
+> most aligned). The managed-BitVid-node option is **removed**. Order: ship (c)
+> first, then ship (b) as the Bridge/headless path.
 
-> **DECISION 2 — Signing during a live stream.** The Media Node can detect
-> start/stop, but must NOT hold the creator's Nostr key. How do status updates get
-> signed? (A) **BitVid tab stays open**, browser signs status=live/ended;
-> (B) **NIP-46 remote signer** so the node can request signatures; (C) node
-> publishes *provider-status* under its **own** pubkey while the creator's canonical
-> 30311 stays user-signed; (D) managed publishing account (least sovereign).
-> *Recommendation: A for MVP, explore B (NIP-46) later. Never D.*
+> **DECISION 2 — Signing during a live stream. ✅ LOCKED: A for MVP, B (NIP-46)
+> later; D removed by the blanket rule.** The node must NOT hold the creator's key.
+> **(A) BitVid tab/app stays open** and signs status=live/ended (matches the
+> Bridge's embedded-webview design) — MVP. **(B) NIP-46 remote signer** for a
+> hands-off experience — later. **(C)** a *self-hosted* node may also publish
+> provider-status under its own pubkey while the canonical 30311 stays user-signed
+> — available to self-hosters. **(D) managed publishing account is off the table**
+> (blanket rule).
 
-> **DECISION 3 — Transcode now or pass-through only?** v1 should be **stream-copy
-> only** (`-c copy`, no transcode) — require OBS to send H.264/AAC, ~2s keyframes.
-> Transcoding (multi-bitrate ladders) adds heavy CPU/GPU + cost. *Recommendation:
-> pass-through v1; transcode profiles much later, if ever.*
+> **DECISION 3 — Transcode. ✅ LOCKED: pass-through only (`-c copy`) in v1.**
+> Require H.264/AAC + ~2s keyframes in; no transcode ladders. Transcoding is a
+> heavy, self-hoster-only opt-in much later, if ever.
 
-> **DECISION 4 — WebRTC (low-latency) in scope for v1?** HLS (~6–30s latency) is
-> the safe default and works everywhere via hls.js (from #16). WebRTC (<500ms) is
-> nicer but more complex. *Recommendation: HLS first; WebRTC as a later phase.*
+> **DECISION 4 — WebRTC low-latency. ✅ LOCKED: HLS first, WebRTC later.** HLS
+> (~6–30s) works everywhere via #16's hls.js; WebRTC (<500ms) is a later phase.
 
-> **DECISION 5 — Local Bridge app in scope, or Media Node only?** The local Bridge
-> (desktop helper for hardware encoders / multi-restream / local recording) is
-> powerful but a separate packaged app. *Recommendation: NOT required for MVP —
-> OBS → public Media Node covers most creators; Bridge is a later phase and the
-> seed of a future "BitVid Box".*
+> **DECISION 5 — Local Bridge in MVP. ✅ LOCKED: not required for the external-
+> provider MVP; it IS the self-hosting path (DECISION 1b).** With the blanket rule,
+> self-hosting a Media Node **is** running the Bridge headless, so the Bridge isn't
+> an optional extra for self-hosters — it's *the* mechanism. The external-provider
+> MVP (Phase 1) still needs neither. Full plan: `docs/bitvid-bridge-plan.md`.
 
-> **DECISION 6 — Flag naming reconciliation.** #16 already established
-> `FEATURE_LIVE_INGEST` (watch) + `FEATURE_LIVE_CHAT_POST`. This plan adds
-> `FEATURE_LIVE_PUBLISH` (Studio / Go Live), `FEATURE_LIVE_BRIDGE` (Media
-> Node/Bridge integration), `FEATURE_LIVE_RESTREAM` (external outputs). Confirm we
-> keep the specific `*_INGEST` / `*_PUBLISH` split rather than a single umbrella
-> `FEATURE_LIVE`. *Recommendation: keep the specific flags; publishing needs
-> ingest on (you watch your own stream), so `FEATURE_LIVE_PUBLISH` implies
-> `FEATURE_LIVE_INGEST`.*
+> **DECISION 6 — Flag naming. ✅ LOCKED: keep the specific split.**
+> `FEATURE_LIVE_INGEST` / `_PUBLISH` / `_BRIDGE` / `_RESTREAM` (+ `_CHAT_POST` from
+> #16). No umbrella `FEATURE_LIVE`. `FEATURE_LIVE_PUBLISH` implies ingest is on.
 
 ---
 
@@ -221,13 +224,15 @@ public metadata. **Never** publish RTMP/SRT ingest URLs or stream keys into Nost
   metadata, publish planned→live→ended NIP-53 updates, show OBS/encoder ingest
   settings, connect to Bridge/Node, monitor health, manage restream outputs,
   publish the recording.
-- **BitVid Media Node** *(server-side; new)* — RTMP/SRT/WHIP ingest → HLS/WebRTC
-  out, recording, S3-compatible upload, status API, optional restream. **Built on
-  [MediaMTX](https://mediamtx.org/docs/kickoff/introduction)** (handles the
-  protocol matrix, recording, hooks, control API) — not from scratch.
-- **BitVid Bridge** *(local helper; optional, later)* — local RTMP/SRT receiver
-  for hardware encoders, one-input→many-outputs restream, local recording, archive
-  upload, OBS-WebSocket control bridge. Foundation for a future "BitVid Box".
+- **Media Node** *(server-side; **self-hosted by the creator**, never bitvid-run)*
+  — RTMP/SRT/WHIP ingest → HLS/WebRTC out, recording, S3-compatible upload, status
+  API, optional restream. **Built on
+  [MediaMTX](https://mediamtx.org/docs/kickoff/introduction)** — not from scratch.
+  Per DECISION 7 it's the **same binary as the Bridge, run headless**.
+- **BitVid Bridge** *(the self-hosting vehicle — desktop app or headless node)* —
+  local RTMP/SRT receiver for hardware encoders, one-input→many-outputs restream,
+  local recording, archive upload, OBS-WebSocket control. **This is how a creator
+  self-hosts** (DECISION 1b) and the seed of a future "BitVid Box".
 
 New client modules (matching repo style): `js/services/liveEventService.js`,
 `liveChatService.js`, `liveBridgeClient.js`, `livePlaybackService.js` (or extend
@@ -308,10 +313,12 @@ has enough concurrent viewers — see the ingest plan + Advantages above. The en
 - **Phase 2 — Bridge API client + mock backend (medium).** `liveBridgeClient`,
   Pair-Bridge UI, mocked `/sessions`, setup wizard, status dashboard,
   recording-ready flow — builds the client contract before real infra exists.
-- **Phase 3 — Media Node MVP (large, server-side).** `bitvid-media-node` around
-  MediaMTX: session API, NIP-98-verified auth, token'd RTMP ingest, HLS playback,
-  start/stop detection, status endpoint. OBS → node → bitvid watches. No keys in
-  Nostr. *This is BitVid Live v1.*
+- **Phase 3 — Self-hosted Media Node MVP (large, server-side).** A **reference
+  node the creator runs themselves** (never bitvid-operated) around MediaMTX:
+  session API, NIP-98-verified auth, token'd RTMP ingest, HLS playback, start/stop
+  detection, status endpoint. OBS → the creator's node → bitvid watches. No keys in
+  Nostr. Per DECISION 7 (Bridge plan) this is the **same binary as the Bridge, run
+  headless** — so Phase 3 and Phase 7 share code. *This is BitVid Live v1.*
 - **Phase 4 — Recording → archive → VOD (medium).** MediaMTX recording → finalize
   → S3 upload → manifest → the archive→VOD publish flow above.
 - **Phase 5 — Restream outputs (medium; `FEATURE_LIVE_RESTREAM`).** Output manager,
@@ -348,17 +355,19 @@ has enough concurrent viewers — see the ingest plan + Advantages above. The en
 
 ## Risks / watch-items
 
-- **Departure from static-only.** The Media Node/Bridge is real server infra with
-  real ops + cost — the biggest philosophical + practical shift. Mitigated by
-  keeping it **optional** (Phase-1 external mode needs none) and off by default.
+- **bitvid stays static; infra is the creator's.** The Media Node/Bridge is real
+  server infra, but per the **blanket rule it's never bitvid-operated** — it's
+  self-hosted by the creator or replaced by an external provider. So the ops/cost
+  burden lives with whoever self-hosts, not bitvid.network. The static client is
+  unaffected; Phase-1 external mode needs no infra at all.
+- **Self-hoster burden (DECISION 1b).** Bandwidth/storage cost, encoder config, and
+  keeping the node reachable fall on the self-hoster. Good docs + a turnkey
+  headless Bridge (one binary) are the mitigation.
 - **Signing during long streams (DECISION 2).** Tab-open (A) is fragile for long
   broadcasts; NIP-53 lets clients treat a live event with no update in ~1h as
   ended, so plan a heartbeat and a graceful "stale → ended" story.
-- **CORS / cross-origin HLS** — segments served by the node's origin must allow the
-  bitvid origin (same class as the storage/edge CORS work).
-- **Cost & abuse of a managed node (DECISION 1a)** — bandwidth/storage cost,
-  transcode temptation, and moderation of who can ingest. Self-host (1b) pushes
-  this to the operator.
+- **CORS / cross-origin HLS** — segments served by the (self-hosted) node's origin
+  must allow the bitvid origin (same class as the storage/edge CORS work).
 - **Encoder compatibility** — pass-through requires H.264/AAC + sane keyframes;
   document encoder settings; reject or warn on incompatible input.
 - **Scope discipline** — publishing is genuinely large; ship Phase 1 (no infra)
