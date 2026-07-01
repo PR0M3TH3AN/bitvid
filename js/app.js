@@ -2122,6 +2122,26 @@ class Application {
       );
     }
 
+    // Try a cached "keep unlocked" key first so we never prompt after a reload
+    // when the user opted to stay unlocked (TODO #51).
+    if (
+      normalized &&
+      typeof nostrClient?.restoreUnlockedSigner === "function" &&
+      !isSignerCapable(resolveSignerCapabilities(getActiveSigner()), need)
+    ) {
+      try {
+        const restored = await nostrClient.restoreUnlockedSigner(normalized);
+        if (
+          restored?.restored &&
+          isSignerCapable(resolveSignerCapabilities(getActiveSigner()), need)
+        ) {
+          return { ok: true, restored: true };
+        }
+      } catch (error) {
+        devLogger.warn("[Application] Cached unlock restore failed:", error);
+      }
+    }
+
     const decision = decideSignerEnsure({
       capabilities: resolveSignerCapabilities(getActiveSigner()),
       need,
@@ -2141,10 +2161,18 @@ class Application {
       typeof promptMessage === "string" && promptMessage.trim()
         ? promptMessage.trim()
         : "Re-enter your PIN / passphrase to unlock your saved key for this action.";
-    const passphrase = await showPasswordPrompt(message, {
+    const promptResult = await showPasswordPrompt(message, {
       title: "Unlock your key",
       confirmLabel: "Unlock",
+      collectRemember: true,
     });
+    if (promptResult == null) {
+      return { ok: false, reason: "cancelled" };
+    }
+    const passphrase =
+      typeof promptResult === "string" ? promptResult : promptResult.passphrase;
+    const persistUnlock =
+      typeof promptResult === "object" ? Boolean(promptResult.remember) : false;
     if (passphrase == null || passphrase === "") {
       return { ok: false, reason: "cancelled" };
     }
@@ -2152,6 +2180,7 @@ class Application {
     try {
       await nostrClient.unlockStoredSessionActor(passphrase, {
         pubkey: normalized,
+        persistUnlock,
       });
     } catch (error) {
       if (error?.code === "decrypt-failed") {

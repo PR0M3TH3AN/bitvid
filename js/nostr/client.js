@@ -175,6 +175,11 @@ import {
 } from "./sessionActor.js";
 import { HEX64_REGEX, normalizeHexHash, bytesToHex } from "../utils/hex.js";
 import {
+  rememberUnlockedKey,
+  readUnlockedKey,
+  forgetUnlockedKey,
+} from "./unlockedKeyCache.js";
+import {
   NIP46_RPC_KIND,
   NIP46_HANDSHAKE_TIMEOUT_MS,
   NIP46_AUTH_CHALLENGE_MAX_ATTEMPTS,
@@ -2623,7 +2628,10 @@ export class NostrClient {
   // passphrase and re-activating the signer via the same path as fresh login.
   // The access-control validator is enforced before activation, and a
   // now-blocked key is forgotten.
-  async unlockStoredSessionActor(passphrase, { validator, pubkey: targetPubkey } = {}) {
+  async unlockStoredSessionActor(
+    passphrase,
+    { validator, pubkey: targetPubkey, cacheUnlock = true, persistUnlock = false } = {},
+  ) {
     if (typeof passphrase !== "string" || !passphrase.trim()) {
       const error = new Error("A passphrase is required to unlock the saved key.");
       error.code = "passphrase-required";
@@ -2710,7 +2718,87 @@ export class NostrClient {
       (adapter && typeof adapter.pubkey === "string" && adapter.pubkey) ||
       pubkey ||
       "";
+
+    // Cache the decrypted key so a reload doesn't require the passphrase again
+    // (TODO #51). Session tier is always written (survives refresh, cleared on tab
+    // close); the persistent tier (on disk) only when the user opted in.
+    if (cacheUnlock && resolvedPubkey) {
+      try {
+        rememberUnlockedKey(resolvedPubkey, normalizedPrivateKey, {
+          persist: Boolean(persistUnlock),
+        });
+      } catch (error) {
+        devLogger.warn("[nostr] Failed to cache unlocked key:", error);
+      }
+    }
+
     return { pubkey: resolvedPubkey };
+  }
+
+  // Restore an nsec signer from the "keep unlocked" cache without a passphrase
+  // (TODO #51). Reads the cached decrypted key for `targetPubkey`, verifies it
+  // derives to that pubkey (defense-in-depth; a mismatch forgets the cache), and
+  // registers it app-wide. Returns { restored: boolean }.
+  async restoreUnlockedSigner(targetPubkey) {
+    const pubkey =
+      typeof targetPubkey === "string" && HEX64_REGEX.test(targetPubkey.trim().toLowerCase())
+        ? targetPubkey.trim().toLowerCase()
+        : "";
+    if (!pubkey) {
+      return { restored: false, reason: "no-pubkey" };
+    }
+
+    const privateKeyHex = readUnlockedKey(pubkey);
+    if (!HEX64_REGEX.test(privateKeyHex || "")) {
+      return { restored: false, reason: "no-cache" };
+    }
+
+    let derivedPubkey = "";
+    try {
+      const tools = (await ensureNostrTools()) || getCachedNostrTools();
+      if (tools && typeof tools.getPublicKey === "function") {
+        derivedPubkey = String(tools.getPublicKey(privateKeyHex) || "").toLowerCase();
+      }
+    } catch (error) {
+      devLogger.warn(
+        "[nostr] Failed to derive pubkey while restoring unlocked signer:",
+        error,
+      );
+    }
+    if (derivedPubkey && derivedPubkey !== pubkey) {
+      // Corrupt / mismatched cache — never adopt a different account's key.
+      forgetUnlockedKey(pubkey);
+      return { restored: false, reason: "pubkey-mismatch" };
+    }
+
+    try {
+      const adapter = await this.registerPrivateKeySigner({
+        privateKey: privateKeyHex,
+        pubkey,
+        persist: false,
+      });
+      if (this.sessionActor && typeof this.sessionActor === "object") {
+        this.sessionActor.persisted = true;
+      }
+      return {
+        restored: true,
+        pubkey:
+          (adapter && typeof adapter.pubkey === "string" && adapter.pubkey) ||
+          pubkey,
+      };
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to restore unlocked signer:", error);
+      return { restored: false, reason: "register-failed", error };
+    }
+  }
+
+  // Forget any cached "keep unlocked" key for an account (both tiers).
+  forgetUnlockedSigner(targetPubkey) {
+    try {
+      forgetUnlockedKey(targetPubkey);
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to forget unlocked key:", error);
+    }
   }
 
   /**
@@ -2866,6 +2954,27 @@ export class NostrClient {
   }
 
   async ensureActiveSignerForPubkey(pubkey) {
+    // If the registry has no sign-capable signer (e.g. a reload restored the
+    // pubkey/UI but not the in-memory signer) and a "keep unlocked" nsec key is
+    // cached, restore it before falling back to the extension path — so a reload
+    // doesn't require the passphrase (TODO #51). Never adopts a different account
+    // (restoreUnlockedSigner verifies the derived pubkey).
+    const existing = getActiveSigner();
+    if (!existing || typeof existing.signEvent !== "function") {
+      const normalized =
+        typeof pubkey === "string" && HEX64_REGEX.test(pubkey.trim().toLowerCase())
+          ? pubkey.trim().toLowerCase()
+          : "";
+      if (normalized && readUnlockedKey(normalized)) {
+        const restored = await this.restoreUnlockedSigner(normalized);
+        if (restored?.restored) {
+          const signer = getActiveSigner();
+          if (signer && typeof signer.signEvent === "function") {
+            return signer;
+          }
+        }
+      }
+    }
     return this.signerManager.ensureActiveSignerForPubkey(pubkey);
   }
 

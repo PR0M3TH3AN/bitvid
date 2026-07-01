@@ -1573,14 +1573,32 @@ passphrase-encrypted). Items 51, 56, 57 are all facets of that.
 - [ ] **Root cause:** same as **#36** — the nsec signer + unlocked storage master key
       live only in memory, so a reload drops them. Today the fix (#36) makes the error
       *actionable* (re-enter passphrase), but the user still has to do it every reload.
-- [ ] **Ask:** persist/cache the unlocked state so a refresh doesn't require re-entry.
-      **SECURITY-SENSITIVE:** caching an unlocked master key (or the decrypted nsec)
-      across reloads weakens the passphrase-at-rest guarantee. Options to weigh:
-      (a) keep the unlocked key in `sessionStorage` (survives reload, cleared on tab
-      close) vs (b) an opt-in "keep unlocked on this device for N minutes/until logout"
-      with a clear warning, vs (c) status-quo re-prompt but make it one tap (#36 already
-      auto-opens the unlock flow). Decide the security posture before building. Pairs
-      with 56/57 (same re-prompt UX for uploads + encryption ops).
+- [x] **DONE 2026-07-01 — opt-in "keep unlocked" cache.** Decision (maintainer):
+      **opt-in** tiers. On a successful nsec unlock the decrypted key is cached in a
+      new `js/nostr/unlockedKeyCache.js`:
+        - **session tier (default, always):** `sessionStorage` — survives refresh /
+          navigation, auto-cleared on tab close. Roughly the same exposure as the
+          in-memory signer, so no more PIN on every reload within a session.
+        - **persistent tier (opt-in checkbox):** the unlock prompt now shows a "Keep
+          me unlocked on this device" checkbox (with an inline unencrypted-at-rest
+          warning); when checked the key is ALSO written to `localStorage` and survives
+          until the user clears site data.
+      `client.restoreUnlockedSigner(pubkey)` re-registers the signer from the cache
+      WITHOUT a passphrase (verifies the key derives to that pubkey; a mismatch
+      forgets it). It's called proactively from `ensureActiveSignerForPubkey` (the
+      auto-login/refresh path) and lazily from `ensureEncryptionCapableSigner` before
+      any prompt — so after a reload the signer is restored silently and every
+      signing/encryption flow (storage, hashtags, DMs, reactions, blocks, subs) just
+      works. Logout / remove-saved-profile forget the cached key
+      (`forgetUnlockedSigner`). Tests: `tests/unlocked-key-cache.test.mjs` (8). Lint +
+      build green.
+- [ ] **VERIFY on unstable:** unlock once (leave the box unchecked) → refresh → no PIN;
+      close the tab + reopen → PIN again. Check the box → close/reopen the browser →
+      still no PIN; Log out or clear site data → PIN again. Confirm the checkbox warning
+      copy reads clearly.
+- [ ] **Follow-up (optional):** a visible "Lock now / forget on this device" control in
+      the profile menu (today the cache is cleared only on logout / clear-site-data), and
+      consider surfacing whether the current session is persistently remembered.
 
 ### 52. After editing a video, the video grids don't refresh to show the update (BUG)
 - [ ] Editing a video leaves the grids showing the pre-edit version until a manual

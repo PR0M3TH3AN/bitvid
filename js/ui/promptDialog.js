@@ -4,12 +4,21 @@
 // user cancels. Builds its own `bv-modal modal-always-on-top` overlay so it stacks above
 // other modals (and is typable thanks to the stacked-modal focus fix).
 
+// When `collectRemember` is set, an opt-in "keep unlocked" checkbox is shown and
+// the prompt resolves `{ passphrase, remember }` instead of a bare string (cancel
+// still resolves null). Callers that don't pass `collectRemember` keep the legacy
+// string resolution.
 export function showPasswordPrompt(message, options = {}) {
   const {
     title = "",
     confirmLabel = "Unlock",
     cancelLabel = "Cancel",
     placeholder = "PIN / passphrase",
+    collectRemember = false,
+    rememberLabel = "Keep me unlocked on this device",
+    rememberHint =
+      "Stored unencrypted on this device until you clear site data. Anyone with access to this browser can use it. Leave off to re-enter after closing the tab.",
+    rememberDefault = false,
   } = options || {};
 
   if (typeof document === "undefined" || !document.body) {
@@ -57,6 +66,32 @@ export function showPasswordPrompt(message, options = {}) {
     input.autocomplete = "off";
     input.setAttribute("aria-label", placeholder);
     body.appendChild(input);
+
+    let rememberCheckbox = null;
+    if (collectRemember) {
+      const rememberWrap = document.createElement("label");
+      rememberWrap.className = "flex items-start gap-2 cursor-pointer";
+      rememberCheckbox = document.createElement("input");
+      rememberCheckbox.type = "checkbox";
+      rememberCheckbox.className = "mt-1";
+      rememberCheckbox.checked = Boolean(rememberDefault);
+      const rememberText = document.createElement("span");
+      rememberText.className = "text-sm text-muted-strong";
+      const rememberTitle = document.createElement("span");
+      rememberTitle.className = "block text-text";
+      rememberTitle.textContent = rememberLabel;
+      rememberText.appendChild(rememberTitle);
+      if (rememberHint) {
+        const hint = document.createElement("span");
+        hint.className = "block text-xs text-status-danger";
+        hint.textContent = rememberHint;
+        rememberText.appendChild(hint);
+      }
+      rememberWrap.appendChild(rememberCheckbox);
+      rememberWrap.appendChild(rememberText);
+      body.appendChild(rememberWrap);
+    }
+
     sheet.appendChild(body);
 
     const footer = document.createElement("div");
@@ -84,7 +119,15 @@ export function showPasswordPrompt(message, options = {}) {
       overlay.remove();
       resolve(result);
     };
-    const submit = () => cleanup(input.value);
+    const submit = () =>
+      cleanup(
+        collectRemember
+          ? {
+              passphrase: input.value,
+              remember: Boolean(rememberCheckbox && rememberCheckbox.checked),
+            }
+          : input.value,
+      );
     function onKeydown(event) {
       if (event.key === "Escape") {
         event.preventDefault();

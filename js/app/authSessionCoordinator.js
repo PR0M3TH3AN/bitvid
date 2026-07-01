@@ -973,6 +973,21 @@ export function createAuthSessionCoordinator(deps) {
       clearDecryptionSchemeCache();
       clearWatchHistoryConversationKeyCache();
       clearWatchHistoryDecryptedChunkCache();
+
+      // Forget any cached "keep unlocked" key for the account being logged out, so
+      // logout actually re-locks it (TODO #51).
+      try {
+        const loggedOutPubkey = detail?.pubkey || this.pubkey;
+        if (
+          loggedOutPubkey &&
+          typeof nostrClient.forgetUnlockedSigner === "function"
+        ) {
+          nostrClient.forgetUnlockedSigner(loggedOutPubkey);
+        }
+      } catch (error) {
+        devLogger.warn("Failed to forget cached unlock during logout:", error);
+      }
+
       this.updateAuthLoadingState({ profile: "idle", lists: "idle", dms: "idle" });
 
       try {
@@ -1670,6 +1685,18 @@ export function createAuthSessionCoordinator(deps) {
             error,
           );
         }
+      }
+
+      // Removing a saved profile must also forget its cached "keep unlocked" key.
+      try {
+        if (typeof nostrClient.forgetUnlockedSigner === "function") {
+          nostrClient.forgetUnlockedSigner(normalizedTarget);
+        }
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to forget cached unlock for removed profile:",
+          error,
+        );
       }
 
       this.renderSavedProfiles();
