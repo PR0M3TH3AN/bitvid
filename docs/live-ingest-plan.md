@@ -68,6 +68,13 @@ When `FEATURE_LIVE_INGEST` is off, all of the following must be absent:
    so it never loads when the flag is off (keeps the bundle/network clean).
 6. **Config surface** — the two flags are the only footprint.
 
+> **Management UI note:** a **"Live" sub-tab in profile → My Videos** (alongside
+> Videos / Shorts, reusing the admin sub-tab pattern) is for managing the user's
+> OWN streams — so it belongs to **publishing (#16c / `FEATURE_LIVE_PUBLISH`)**,
+> not this ingest feature. With ingest-only enabled there is nothing of the user's
+> to manage, so no My-Videos Live sub-tab appears. (See the shorts plan's
+> "Publish & management UI" section for the shared sub-tab treatment.)
+
 ---
 
 ## Field mapping — kind 30311 (to VERIFY in Phase 0)

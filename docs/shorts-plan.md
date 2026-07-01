@@ -19,27 +19,48 @@ source that lists only shorts. Everything ships behind a config flag that leaves
 
 ## Decisions needed
 
-> **DECISION 1 — Discovery scope.** Does Shorts pull from the **same whitelisted
-> authors** as the main feed (reuse the existing render-time whitelist/WoT
-> filter), or does it have its **own discovery scope** (e.g. all authors, capped)?
-> *Recommendation: same whitelist scope as the main feed for v1 — least surprise,
-> reuses the existing moderation filter, no new relay fan-out.*
+> **DECISION 1 — Discovery scope. ✅ LOCKED: Option A (same whitelist scope).**
+> Shorts pulls from the same whitelisted/WoT authors as the main feed and reuses
+> the existing render-time moderation filter — no new moderation surface, no extra
+> relay fan-out. Rationale (maintainer): the existing moderation + ingest system
+> is already good; keep Shorts consistent with it. A broader/Explore-style scope
+> can be added later if desired.
 
-> **DECISION 2 — Moderation / NSFW.** Inherit the existing filters
-> (blacklist / WoT mute / NSFW / private), or add short-specific handling?
-> *Recommendation: inherit — shorts are just kind-22 videos; the render-time
-> `filterVideos` path already applies.*
+> **DECISION 2 — Moderation / NSFW. ✅ LOCKED: Option A (inherit, no special
+> handling).** Shorts pass through the same render-time `filterVideos` path as
+> every grid (event blacklist / author blacklist / WoT mute / NSFW / private).
+> No short-specific moderation. Note: the NSFW gate already *excludes* NSFW from
+> users who haven't opted in, so the immersive autoplay feed carries no extra
+> NSFW-exposure risk — opted-in users chose to see it, everyone else never
+> receives it. Rationale (maintainer): no reason to treat shorts differently.
+> **One agreed safeguard:** even for opted-in users, an **NSFW short does NOT
+> autoplay** in the immersive feed — it stays blurred/paused with a tap-to-play
+> affordance (autoplay resumes on the next non-NSFW short). This is the only
+> short-specific behavior; all *filtering* still inherits the shared pipeline.
 
-> **DECISION 3 — Do shorts also appear in the main feed, or only under Shorts?**
-> Today ingested kind-22 videos land in the main grids. Options:
-> (a) leave them in the main feed AND add a Shorts tab (Shorts = a filtered view);
-> (b) exclude shorts from the main/Recent/For-You feeds and surface them ONLY in
-> the Shorts tab.
-> *Recommendation: (a) for v1 — simplest, no changes to existing feeds; revisit
-> exclusion later if the main feed feels diluted.*
+> **DECISION 3 — Do shorts also appear in the main feed? ✅ LOCKED: Option B
+> (Shorts tab ONLY; excluded from the main/discovery feeds).** Rationale
+> (maintainer): shorts should not dilute the main feed at all — the Shorts tab is
+> their only home.
+> **Build implication:** add an `isShort` **exclusion** to the general feeds —
+> Recent, For You, Explore, Trending, Kids — so kind-22/short videos never render
+> there (they currently do via NIP-71 ingest). The Shorts feed is the inverse
+> filter (`isShort` only). This touches each feed source/sorter, so verify no
+> feed regressions (couples with #20/#21 feed-identity work).
+> **Sub-point (recommend, not blocking):** a creator's shorts SHOULD still appear
+> on their **Channel profile** page (it's their full catalogue) and in
+> **Subscriptions** is TBD — default: exclude from Subscriptions too (it's a
+> discovery feed), keep on Channel profile. Confirm during Phase 1.
 
-> **DECISION 4 — What counts as a "short"?** See Field mapping below; confirm the
-> detection rule (kind 22/34236 vs aspect-ratio) once we've eyeballed real events.
+> **DECISION 4 — What counts as a "short"? ✅ LOCKED: Option A (kind is the
+> definer).** A video is a short iff its event kind is **22** or **34236**;
+> kind 21/34235 = regular. No aspect-ratio heuristic — the publisher's declared
+> kind decides. Rationale (maintainer): shorts are typically vertical, but the
+> protocol kind is the source of truth; a vertical video mis-published as regular
+> just renders in the 16:9 card (thumbnail center-cropped via `object-fit:cover`;
+> the player letterboxes it via `object-fit:contain`, never distorts) and stays in
+> the main feed — the publisher's choice. Aspect-ratio fallback can be added later
+> if too many real shorts leak in as kind-21.
 
 > **DECISION 5 — UI ambition for v1.** Minimal (a normal grid that opens shorts in
 > a portrait player) vs full (TikTok-style full-screen vertical swipe/next feed)?
@@ -59,6 +80,45 @@ source that lists only shorts. Everything ships behind a config flag that leaves
 > `VideoCard` unwieldy or pushes it past its size cap.* Either way this is a
 > **first-class deliverable**, not an afterthought — the grid can't ship without it.
 
+> **DECISION 7 — Publish side: content-type selector + native short marker.
+> ✅ AGREED (maintainer-proposed).** Add an **upload-modal content-type selector**
+> (Regular video ⟷ Short) with **visual + text helpers** so creators pick the
+> right type and understand placement — e.g. landscape/portrait icons + copy like
+> *"Shorts appear only in the Shorts tab, not the main feed."* This is not just
+> UX: bitvid's canonical event is **kind 30078** (not 21/22), and the schema has
+> **no short marker today** (short is only inferred from dimensions at mirror
+> time). So this decision also adds an explicit **`isShort` (or `format:
+> "short"`) field to the v3 content schema**, set by the selector, which (a) lets
+> the Shorts feed filter + main-feed exclusion catch bitvid-native shorts, and
+> (b) forces the NIP-71 mirror to kind **34236**. Detection becomes: a video is a
+> short iff `kind ∈ {22,34236}` (foreign/ingested) **OR** `isShort === true`
+> (bitvid-native). *Open sub-choices for build time: default selection (recommend
+> "Regular"), whether to auto-suggest "Short" when the uploaded file is portrait,
+> and exact copy/icons.*
+
+> **DECISION 8 — Native short representation. ⏳ LEANING: marker on kind 30078
+> (both options mirror to 34236).** Hard requirement (maintainer): a native short
+> MUST keep bitvid's WebTorrent advantage AND mirror to the standard NIP-71 short
+> kind via the existing mirror system. Both viable options satisfy that — they
+> produce the *same external result* (a WebTorrent-rich native event + a standard
+> **34236** mirror carrying the magnet via `imeta`):
+>
+> - **Option 1 (recommended) — kind 30078 + `isShort` marker.** Native short = a
+>   normal bitvid video flagged short; the *existing* mirror emits 34236. No new
+>   kind. Reuses 100% of the publish/edit/delete/moderation/view-count/zap/mirror
+>   pipeline (all keyed on 30078). Least code, least risk.
+> - **Option 2 — a distinct bitvid-short kind that mirrors to 34236.** A separate
+>   kind number for rich native shorts + the mirror to 34236 for interop.
+>   *Trade-off:* the external result is identical to Option 1, but the distinct
+>   *native* kind is non-standard (only the 34236 mirror is recognized by other
+>   clients) and it forks every pipeline that's currently keyed on 30078 — i.e.
+>   more work for the same outcome. A new kind buys a distinct native kind number;
+>   it does **not** buy WebTorrent or interop that Option 1 lacks.
+>
+> Net: Option 1 already delivers "WebTorrent + mirror to the standard kind"
+> without minting a kind. Only pick Option 2 if a distinct native kind number is
+> itself a requirement. **Maintainer to confirm.**
+
 ---
 
 ## Config flag (off = no trace)
@@ -75,24 +135,55 @@ never added" requirement):
 3. **Subscription/source** — no shorts-specific relay subscription is created.
 4. **Route** — `#view=shorts` falls back to the default view (a stale bookmark
    can't resurrect the tab).
-5. **Config surface** — the flag is the only footprint.
+5. **Publish UI** — the upload-modal content-type selector (DECISION 7) is not
+   rendered; uploads are plain regular videos exactly as today.
+6. **Management UI** — no Shorts sub-tab in profile → My Videos (see below).
+7. **Config surface** — the flag is the only footprint.
 
 ---
+
+## Publish & management UI (flag-gated)
+
+Both the publish and management surfaces must obey "off = no trace" (points 5–6
+above), and reuse patterns already in the app.
+
+- **Upload modal — content-type selector (DECISION 7).** Regular ⟷ Short, with
+  visual + text placement helpers ("Shorts appear only in the Shorts tab").
+  Rendered only when `FEATURE_SHORTS` is on; otherwise uploads are plain regular
+  videos exactly as today.
+- **Profile → My Videos — sub-tabs.** Reuse the **admin-pane sub-tab toolbar
+  pattern** just shipped (`ProfileAdminController` sub-tabs) to split My Videos
+  into **Videos / Shorts / Live** sub-tabs for easier content management. Each
+  sub-tab appears **only when its feature flag is on**:
+  - `FEATURE_SHORTS` off → no Shorts sub-tab.
+  - Live sub-tab is tied to **publishing** live (**#16c** / `FEATURE_LIVE_PUBLISH`),
+    NOT ingest (#16) — with ingest-only there is nothing of the user's to manage,
+    so no Live sub-tab.
+  - **All flags off → no sub-tab bar at all**, just the plain My Videos list
+    exactly as today (true "no trace").
+  - Videos sub-tab lists regular bitvid/NIP-71 videos (excludes `isShort`);
+    Shorts sub-tab lists the user's `isShort` videos.
 
 ## Field mapping — detecting a "short"
 
 A video object needs a reliable `isShort` marker so a feed source can filter.
 Candidate signals (to confirm against real events in Phase 0):
 
-| Signal | Meaning | Notes |
-|--------|---------|-------|
-| `kind === 22` | NIP-71 regular short | primary signal for ingested foreign shorts |
-| `kind === 34236` | NIP-71 **addressable** short | bitvid's own mirror uses 34235/36 (`nip71Mirror.js`) |
-| `imeta dim` height > width | portrait aspect | fallback when kind is ambiguous (matches the mirror's `short = hasDims && height > width` heuristic) |
+Per DECISION 4 + 7, `isShort` is derived from **kind for foreign/ingested videos**
+and from an **explicit marker for bitvid-native videos** (which are kind 30078):
 
-Plan: surface `isShort` on the bitvid video object in `nip71IngestAdapter.js`
-(it already tracks the source kind) and in the local mirror path, so both foreign
-and native shorts are detectable without re-fetching.
+| Signal | Applies to | Meaning |
+|--------|-----------|---------|
+| `kind === 22` | ingested foreign | NIP-71 regular short |
+| `kind === 34236` | ingested foreign | NIP-71 **addressable** short |
+| `isShort` / `format:"short"` in kind-30078 content | **bitvid-native** | set by the upload-modal content-type selector (DECISION 7) |
+| `imeta dim` height > width | (future fallback) | portrait aspect; **not** used in v1 (DECISION 4) — kept only as a possible later fallback |
+
+Plan: surface a single `isShort` boolean on the bitvid video object —
+`nip71IngestAdapter.js` sets it from the source kind (it already tracks kind);
+the native publish path sets it from the new content-schema field. The Shorts
+feed filters `isShort === true`; the main feeds exclude `isShort === true`
+(DECISION 3). No re-fetching needed.
 
 ---
 
@@ -136,7 +227,9 @@ the bottom of this doc.
   immersive one-at-a-time feed (Phase 2).
 - **Autoplay + loop.** The active short autoplays and loops. Browser autoplay
   policy requires **muted autoplay** — so start muted with an obvious unmute, and
-  persist the user's mute choice across shorts.
+  persist the user's mute choice across shorts. **Exception (agreed):** NSFW-
+  flagged shorts do **not** autoplay even for opted-in users — blurred/paused with
+  tap-to-play (see DECISION 2).
 - **Preload the next 2–3.** Buffer upcoming shorts in the background so advancing
   is instant. "If your platform shows a loading spinner between videos, you've
   already lost the session." (This is the single most-cited make-or-break detail.)
@@ -180,12 +273,21 @@ the bottom of this doc.
 
 ## Phases (each flag-gated from day one)
 
-- **Phase 0 — Detection + flag (small).** Add `FEATURE_SHORTS` (off), `isShort`
-  derivation in the ingest adapter + mirror, unit tests for detection. No UI.
-- **Phase 1 — Tab + feed + portrait card (medium).** `FEED_TYPES.SHORTS`, sidebar
-  link, `views/shorts.html`, feed registration filtered to `isShort`, route gated
-  by flag, and the **new portrait 9:16 card** (DECISION 6) so the grid renders
-  shorts correctly. Opens in the standard player for now.
+- **Phase 0 — Detection + flag (small).** Add `FEATURE_SHORTS` (off), the
+  `isShort` content-schema field (DECISION 7), and `isShort` derivation (foreign =
+  kind, native = marker) in the ingest adapter + mirror, with unit tests. No UI.
+- **Phase 0b — Publish-side selector (small–medium, DECISION 7).** Upload-modal
+  content-type selector (Regular ⟷ Short) with visual + text placement helpers;
+  wires the `isShort` marker + forces mirror kind 34236. Lets bitvid creators
+  actually publish shorts (without it, the Shorts tab only shows ingested foreign
+  shorts).
+- **Phase 1 — Tab + feed + portrait card + main-feed exclusion (medium).**
+  `FEED_TYPES.SHORTS`, sidebar link, `views/shorts.html`, feed registration
+  filtered to `isShort`, route gated by flag, and the **new portrait 9:16 card**
+  (DECISION 6). **Per DECISION 3 (B):** add the `isShort` **exclusion** to the
+  main/discovery feeds (Recent, For You, Explore, Trending, Kids; likely
+  Subscriptions) so shorts never appear outside the Shorts tab — with regression
+  checks on each feed. Opens in the standard player for now.
 - **Phase 2 — Immersive vertical feed (medium–large).** The one-at-a-time
   responsive feed described in "Short-form UX best practices": muted autoplay +
   loop, **preload next 2–3** (no spinner between shorts), overlaid action rail
