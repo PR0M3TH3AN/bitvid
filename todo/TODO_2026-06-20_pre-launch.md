@@ -571,6 +571,44 @@ toward freshness and looked identical. Gave each a structural identity:
       upload (and optionally the default). Reuse `loadFromStorage` / the per-provider
       connection model.
 
+### 45. Upload modal: suggest tags from the user's previous videos (UX)
+- [ ] In the upload modal, let the user **pick tags reused from their other videos** —
+      surface a set of their **commonly-used tags** (frequency-ranked across their past
+      uploads) as one-tap chips, plus their less-common individual tags. Source from the
+      user's own video events' `t` tags (My Videos / their kind-30078+NIP-71 posts).
+      Rank by usage count; clicking a chip adds it to the new video's tags.
+
+### 46. Feed auto-refreshes after posting a video (UX)
+- [ ] After a video note is published, **automatically refresh the feed** so the new
+      video appears without a manual page reload. Hook the post-publish success (upload
+      modal `upload:submit` / `publishVideoNote` completion) to
+      `refreshAllVideoGrids`/`onVideosShouldRefresh` (optimistically inject the just-
+      published event so it shows instantly). Mind the feed-identity + dedupe paths (#20/
+      #21) so the injected event isn't dropped or duplicated.
+
+### 47. "Most Zapped" sidebar tab (trending-by-zaps)
+- [ ] Add a **Most Zapped** sidebar tab: like Trending (#27, view-count) but ranked by
+      **total zaps** (sats / zap count) per video. Reuse the zap accounting (kind-9735
+      receipts) already used for the zap system; build a feed source/ranker that sorts by
+      zap total over a window, wired into the feed engine like Trending. Depends on
+      reliable zap data (couples with the zap system already shipped in #3).
+
+### 48. Fluent profile switching across signing methods (nsec / NIP-46 / NIP-07)
+- [ ] **CONFIRMED NOT DONE (verified 2026-06-30).** Switching to a saved **nsec** profile
+      fails: `switchProfile(pubkey, { providerId: "nsec" })` → `requestLogin` → the nsec
+      provider's `login()` is called with **no secret/passphrase**, so it throws
+      `"secret-required"` and the switch silently fails (caught + logged in
+      `profileModalController`). It never prompts for the PIN or routes to the stored-key
+      unlock flow. Same root gap as #36 (nsec signer needs the passphrase to be restored),
+      but in the SWITCH path. Fix: when switching to a saved nsec profile, detect the
+      stored encrypted key (`getStoredSessionActorMetadata`) and prompt for the pin/
+      passphrase (route through `unlockStoredSessionActor`, e.g. open the login modal's
+      unlock flow), then activate. Apply the same for **NIP-46** (reconnect / re-authorize
+      the remote signer on switch if needed). Goal: switch fluently between NIP-07 ⇄ nsec
+      ⇄ NIP-46 accounts regardless of the current signing method. NOTE: multiple saved
+      nsec accounts share ONE stored session entry today — confirm per-account key storage
+      is needed for switching among several nsec profiles.
+
 ### 8. Orphan storage garbage-collection tool
 - [x] **Largely delivered by the My Videos tab** (`9d3a0df0`): lists bucket objects no
       live note references and offers per-file delete (under the user's prefix only).
