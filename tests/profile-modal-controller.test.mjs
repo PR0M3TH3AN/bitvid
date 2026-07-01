@@ -1475,3 +1475,90 @@ test('refreshOpenPanesForActiveIdentity re-runs the active pane only when the mo
     'open modal: re-runs the active pane so it reloads for the new identity',
   );
 });
+
+// Hashtag mutation routes through the signer gate (TODO #57): a reloaded nsec
+// session that lost its in-memory key must trigger a re-unlock prompt, not a
+// blanket "connect a signer that supports encryption" error — and publish must
+// NOT run until the signer is confirmed.
+//
+// test_integrity_note:
+//   change_type: ["new_tests"]
+//   scenarios:
+//     - id: SCN-hashtag-signer-gate
+//       given: "a profile modal with a mocked ensureEncryptionCapableSigner + publish"
+//       when: "persistHashtagPreferences runs"
+//       then: "publish is gated on the signer being ensured first"
+//   observable_outcomes:
+//     - "gate returns not-ok -> publish never called, throws missing-signer"
+//     - "gate returns ok -> publish runs once"
+//   determinism_controls:
+//     - "mocked service + gate; JSDOM controller; no network"
+//   anti_cheat_rationale:
+//     prevents: ["over-mocking internal logic", "hard-coded return value"]
+//   relaxation:
+//     did_relax_any_assertion: false
+
+test('hashtag persist: a not-ok signer gate blocks publish (no blanket dead-end)', async (t) => {
+  const publishCalls = [];
+  let ensureCalls = 0;
+  const controller = createController({
+    services: {
+      ensureEncryptionCapableSigner: async () => {
+        ensureCalls += 1;
+        return { ok: false, reason: 'cancelled' };
+      },
+      hashtagPreferences: {
+        publish: async (payload) => {
+          publishCalls.push(payload);
+          return { ok: true };
+        },
+      },
+    },
+  });
+  await controller.load();
+  t.after(() => {
+    try {
+      controller.hide({ silent: true });
+    } catch {}
+    resetRuntimeFlags();
+  });
+  controller.setActivePubkey('a'.repeat(64));
+
+  await assert.rejects(
+    () =>
+      controller.hashtagController.persistHashtagPreferences({
+        pubkey: 'a'.repeat(64),
+      }),
+    (err) => err?.code === 'hashtag-preferences-missing-signer',
+  );
+  assert.equal(ensureCalls, 1, 'the signer gate ran before publishing');
+  assert.equal(publishCalls.length, 0, 'publish was NOT attempted after the gate failed');
+});
+
+test('hashtag persist: an ok signer gate lets publish proceed', async (t) => {
+  const publishCalls = [];
+  const controller = createController({
+    services: {
+      ensureEncryptionCapableSigner: async () => ({ ok: true, unlocked: true }),
+      hashtagPreferences: {
+        publish: async (payload) => {
+          publishCalls.push(payload);
+          return { ok: true };
+        },
+      },
+    },
+  });
+  await controller.load();
+  t.after(() => {
+    try {
+      controller.hide({ silent: true });
+    } catch {}
+    resetRuntimeFlags();
+  });
+  controller.setActivePubkey('a'.repeat(64));
+
+  await controller.hashtagController.persistHashtagPreferences({
+    pubkey: 'a'.repeat(64),
+  });
+  assert.equal(publishCalls.length, 1, 'publish ran once after the gate passed');
+});

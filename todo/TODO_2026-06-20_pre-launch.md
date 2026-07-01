@@ -1640,3 +1640,24 @@ passphrase-encrypted). Items 51, 56, 57 are all facets of that.
       dead-end error. Cross-ref **#48** (fluent switching) and the account-switch refresh
       work (commit `87af650b`). Audit every "signer that supports encryption" guard and
       route it to the unlock prompt when a saved nsec key exists for the active pubkey.
+- [x] **Shared gate built + hashtags wired — DONE 2026-07-01.** New reusable
+      `app.ensureEncryptionCapableSigner({ pubkey, need, promptMessage })`
+      (`js/app.js`, pure branching in `js/nostr/ensureSignerDecision.js`): checks the
+      active signer's capabilities; if it can't encrypt/sign AND a **matching** locked
+      nsec key exists for the account, prompts once for the passphrase and re-unlocks
+      the signer app-wide via `unlockStoredSessionActor` (one unlock re-enables every
+      flow until the next reload). Never unlocks a different account's key
+      (pubkey-mismatch guard). Exposed to the profile modal as
+      `services.ensureEncryptionCapableSigner`. **Hashtag add/edit** now routes through
+      it (`ProfileHashtagController.persistHashtagPreferences`): a cancelled prompt
+      silently aborts, a bad passphrase shows its own toast, and publish never runs
+      until the signer is confirmed. Tests: `tests/ensure-signer-decision.test.mjs` (9),
+      + 2 wiring tests in `tests/profile-modal-controller.test.mjs`. Lint + build green.
+- [ ] **Fast-follows (same gate, remaining call sites):** wire `subscriptions`
+      (add/remove channel), `userBlocks` (block/unblock — clean chokepoint at
+      `authSessionCoordinator.handleProfileBlocklistMutation`), DM send, and reactions
+      (**#54** — verify like/dislike is this same lost-signer issue vs a dead-button
+      wiring bug) through `ensureEncryptionCapableSigner`. Each needs its caller's
+      error-mapping checked so a "cancelled"/"bad-passphrase" reads cleanly (that's why
+      they weren't batched into the first pass). The `need:"sign"` mode covers
+      sign-only ops (e.g. reactions) that don't require encryption.

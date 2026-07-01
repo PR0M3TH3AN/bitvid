@@ -572,6 +572,11 @@ export default class ApplicationBootstrap {
           },
           describeLoginError: (error, fallbackMessage) =>
             app.describeLoginError(error, fallbackMessage),
+          // Ensure the active signer can encrypt/sign before a list mutation; if a
+          // reloaded nsec session lost its in-memory key, this prompts once to
+          // re-unlock it instead of dead-ending with a blanket error (TODO #57).
+          ensureEncryptionCapableSigner: (options = {}) =>
+            app.ensureEncryptionCapableSigner(options),
           hashtagPreferences: app.hashtagPreferences,
           getHashtagPreferences: () => app.getHashtagPreferences(),
           describeHashtagPreferencesError: (error, fallbackMessage) =>

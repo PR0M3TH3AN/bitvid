@@ -97,6 +97,12 @@ import {
   getActiveSigner,
   onActiveSignerChanged,
 } from "./nostrClientRegistry.js";
+import { resolveSignerCapabilities } from "./nostr/signerCapabilities.js";
+import {
+  decideSignerEnsure,
+  isSignerCapable,
+} from "./nostr/ensureSignerDecision.js";
+import { showPasswordPrompt } from "./ui/promptDialog.js";
 import { queueSignEvent } from "./nostr/signRequestQueue.js";
 import {
   DEFAULT_NIP07_CORE_METHODS,
@@ -2072,6 +2078,100 @@ class Application {
         : "Failed to update hashtag preferences. Please try again.";
 
     return fallback;
+  }
+
+  /**
+   * Ensure the ACTIVE signer can encrypt/sign. If it can't because a persisted
+   * nsec session restored the pubkey + UI but not the in-memory signer after a
+   * page reload (the private key is only passphrase-encrypted — see TODO #36),
+   * prompt once for the passphrase and re-unlock the signer app-wide via
+   * `unlockStoredSessionActor`. One unlock re-enables every signing/encryption
+   * flow (hashtags, subscriptions, blocks, DMs, reactions, storage) until the
+   * next reload — instead of each guard dead-ending with a blanket
+   * "connect a signer that supports encryption" error (TODO #51/#54/#56/#57).
+   *
+   * @param {object} [opts]
+   * @param {string} [opts.pubkey] - Account to unlock (defaults to the active one).
+   * @param {"encrypt"|"sign"} [opts.need] - Capability required. "encrypt" needs
+   *   nip44/nip04; "sign" needs signEvent only.
+   * @param {string} [opts.promptMessage] - Override the passphrase-prompt copy.
+   * @returns {Promise<{ok: boolean, reason?: string, unlocked?: boolean, error?: Error}>}
+   */
+  async ensureEncryptionCapableSigner({
+    pubkey,
+    need = "encrypt",
+    promptMessage,
+  } = {}) {
+    const normalized =
+      this.normalizeHexPubkey(pubkey) ||
+      this.normalizeHexPubkey(this.pubkey) ||
+      "";
+
+    let meta = null;
+    try {
+      meta =
+        normalized &&
+        typeof nostrClient?.getStoredSessionActorMetadata === "function"
+          ? nostrClient.getStoredSessionActorMetadata(normalized)
+          : null;
+    } catch (error) {
+      devLogger.warn(
+        "[Application] Failed to read stored session metadata while ensuring signer:",
+        error,
+      );
+    }
+
+    const decision = decideSignerEnsure({
+      capabilities: resolveSignerCapabilities(getActiveSigner()),
+      need,
+      normalizedPubkey: normalized,
+      storedKeyMeta: meta,
+      normalizePubkey: (value) => this.normalizeHexPubkey(value) || "",
+    });
+
+    if (decision.action === "ok") {
+      return { ok: true };
+    }
+    if (decision.action === "fail") {
+      return { ok: false, reason: decision.reason };
+    }
+
+    const message =
+      typeof promptMessage === "string" && promptMessage.trim()
+        ? promptMessage.trim()
+        : "Re-enter your PIN / passphrase to unlock your saved key for this action.";
+    const passphrase = await showPasswordPrompt(message, {
+      title: "Unlock your key",
+      confirmLabel: "Unlock",
+    });
+    if (passphrase == null || passphrase === "") {
+      return { ok: false, reason: "cancelled" };
+    }
+
+    try {
+      await nostrClient.unlockStoredSessionActor(passphrase, {
+        pubkey: normalized,
+      });
+    } catch (error) {
+      if (error?.code === "decrypt-failed") {
+        this.showError?.(
+          "Incorrect PIN / passphrase. Try that action again to re-enter it.",
+        );
+        return { ok: false, reason: "bad-passphrase", error };
+      }
+      devLogger.warn(
+        "[Application] Failed to unlock stored nsec session for a signing action:",
+        error,
+      );
+      return { ok: false, reason: "unlock-failed", error };
+    }
+
+    // The signer is now registered app-wide; confirm the capability actually
+    // came back before telling the caller to proceed.
+    if (!isSignerCapable(resolveSignerCapabilities(getActiveSigner()), need)) {
+      return { ok: false, reason: "still-incapable" };
+    }
+    return { ok: true, unlocked: true };
   }
 
   resetPermissionPromptState() {
