@@ -19,6 +19,10 @@ export default class ReactionController {
       isUserLoggedIn: callbacks.isUserLoggedIn || (() => false),
       normalizeHexPubkey: callbacks.normalizeHexPubkey || ((val) => val),
       getPubkey: callbacks.getPubkey || (() => null),
+      // Ensure a sign-capable signer before publishing a reaction (kind 7). A
+      // reloaded nsec session can lose its in-memory key; this re-unlocks it with
+      // one passphrase prompt instead of the reaction silently failing (TODO #54).
+      ensureSigner: callbacks.ensureSigner || (async () => ({ ok: true })),
     };
 
     this.reactionState = {
@@ -333,6 +337,31 @@ export default class ReactionController {
     if (!this.callbacks.isUserLoggedIn()) {
       this.ui.showError("Please login to react to videos.");
       videoModal.setUserReaction(previousReaction);
+      return;
+    }
+
+    // A reloaded nsec session keeps the pubkey/UI but drops the in-memory signer,
+    // so publishing the kind-7 reaction would fail with a generic "Failed to send
+    // reaction" and the button would appear dead. Re-unlock the signer first (one
+    // passphrase prompt). Gate BEFORE the optimistic update so nothing flashes.
+    let ensured = { ok: true };
+    try {
+      ensured = await this.callbacks.ensureSigner({
+        need: "sign",
+        pubkey: this.callbacks.getPubkey(),
+        promptMessage:
+          "Re-enter your PIN / passphrase to unlock your key and react to videos.",
+      });
+    } catch (error) {
+      devLogger.warn("[reaction] Signer gate failed:", error);
+      ensured = { ok: false, reason: "ensure-failed" };
+    }
+    if (ensured && ensured.ok === false) {
+      videoModal.setUserReaction(previousReaction);
+      // cancelled = user backed out; bad-passphrase already showed its own toast.
+      if (ensured.reason !== "cancelled" && ensured.reason !== "bad-passphrase") {
+        this.ui.showError("Connect a signer to react to videos.");
+      }
       return;
     }
 

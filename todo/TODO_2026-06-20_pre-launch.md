@@ -1601,6 +1601,13 @@ passphrase-encrypted). Items 51, 56, 57 are all facets of that.
       active-signer availability, publish path). Note: reactions require signing — verify
       this isn't another "lost signer after refresh" (#57) surfacing as a dead button; if
       so, prompt to unlock rather than silently no-op.
+- [x] **Lost-signer variant addressed 2026-07-01.** `ReactionController.handleReaction`
+      now runs the `ensureEncryptionCapableSigner` gate (`need:"sign"`) before
+      publishing, so a reloaded nsec session re-unlocks with one passphrase prompt
+      instead of the reaction silently failing (rolled-back button + generic error).
+      Tests: `tests/reaction-signer-gate.test.mjs`. **Still VERIFY on unstable** whether
+      any residual dead-button behavior remains (event binding / pointer availability),
+      which would be a separate wiring bug from the signer issue.
 
 ### 55. Video-grid event caching — faster loads, cache-first + merge-new (PERF / UX)
 - [ ] **Channel-profile grid still loads slowly.** Even after the coalescing + relay
@@ -1653,11 +1660,22 @@ passphrase-encrypted). Items 51, 56, 57 are all facets of that.
       silently aborts, a bad passphrase shows its own toast, and publish never runs
       until the signer is confirmed. Tests: `tests/ensure-signer-decision.test.mjs` (9),
       + 2 wiring tests in `tests/profile-modal-controller.test.mjs`. Lint + build green.
-- [ ] **Fast-follows (same gate, remaining call sites):** wire `subscriptions`
-      (add/remove channel), `userBlocks` (block/unblock — clean chokepoint at
-      `authSessionCoordinator.handleProfileBlocklistMutation`), DM send, and reactions
-      (**#54** — verify like/dislike is this same lost-signer issue vs a dead-button
-      wiring bug) through `ensureEncryptionCapableSigner`. Each needs its caller's
-      error-mapping checked so a "cancelled"/"bad-passphrase" reads cleanly (that's why
-      they weren't batched into the first pass). The `need:"sign"` mode covers
-      sign-only ops (e.g. reactions) that don't require encryption.
+- [x] **Fast-follows wired — DONE 2026-07-01.** All remaining signing/encryption
+      call sites now route through `ensureEncryptionCapableSigner`, short-circuiting
+      only on the user-driven outcomes (cancel / bad-passphrase) so every other case
+      still falls through to the flow's own error handling:
+        - **Reactions (#54):** `ReactionController.handleReaction` gates before the
+          optimistic update with `need:"sign"` (kind-7 reactions don't need encryption).
+          Tests: `tests/reaction-signer-gate.test.mjs` (3).
+        - **Blocks:** `authSessionCoordinator.handleProfileBlocklistMutation`
+          (`need:"encrypt"`, NIP-04 mute/block lists).
+        - **Subscriptions:** the channel-profile Subscribe/Unsubscribe toggle
+          (`js/channelProfile.js`, `need:"encrypt"`, kind-30000).
+        - **DM send:** both composers — `handleSendProfileMessage` and
+          `handleDmAppShellSendMessage` (`need:"encrypt"`, NIP-17/NIP-04).
+      Lint + build + related suites (decision, reaction, DM, profile-modal, switch)
+      green.
+- [ ] **VERIFY on unstable:** with an nsec account, reload, then (a) add a hashtag,
+      (b) like/dislike a video, (c) block/unblock a creator, (d) subscribe to a channel,
+      (e) send a DM — each should show ONE passphrase prompt (not a blanket error), then
+      work; the single unlock should cover the rest until the next reload.

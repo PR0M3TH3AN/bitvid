@@ -4246,6 +4246,32 @@ function renderSubscribeButton(channelHex) {
         return;
       }
 
+      // Subscriptions (kind 30000) are NIP-04 encrypted. A reloaded nsec session
+      // can lose its in-memory key; re-unlock it with one passphrase prompt rather
+      // than failing with a blanket signer error (TODO #57). Gate BEFORE the
+      // optimistic update so the button doesn't flash on cancel. Only the
+      // user-driven outcomes short-circuit; anything else falls through to
+      // toggleChannel's own error handling below.
+      if (typeof currentApp.ensureEncryptionCapableSigner === "function") {
+        let ensured = { ok: true };
+        try {
+          ensured = await currentApp.ensureEncryptionCapableSigner({
+            pubkey: currentApp.pubkey,
+            need: "encrypt",
+            promptMessage:
+              "Re-enter your PIN / passphrase to unlock your key and update your subscriptions.",
+          });
+        } catch (error) {
+          ensured = { ok: false, reason: "ensure-failed" };
+        }
+        if (
+          ensured &&
+          (ensured.reason === "cancelled" || ensured.reason === "bad-passphrase")
+        ) {
+          return;
+        }
+      }
+
       // Optimistic UI update
       const wasSubscribed = toggleBtn.dataset.state === "subscribed";
       const nextState = wasSubscribed ? "unsubscribed" : "subscribed";

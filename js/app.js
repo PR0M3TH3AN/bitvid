@@ -387,6 +387,7 @@ class Application {
         isUserLoggedIn: () => this.isUserLoggedIn(),
         normalizeHexPubkey: (val) => this.normalizeHexPubkey(val),
         getPubkey: () => this.pubkey,
+        ensureSigner: (options) => this.ensureEncryptionCapableSigner(options),
       },
     });
 

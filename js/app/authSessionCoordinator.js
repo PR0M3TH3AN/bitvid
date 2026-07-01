@@ -1795,6 +1795,27 @@ export function createAuthSessionCoordinator(deps) {
         return context;
       }
 
+      // Block lists are NIP-04 encrypted. A reloaded nsec session can lose its
+      // in-memory key; re-unlock it (one passphrase prompt) rather than failing
+      // with a blanket signer error (TODO #57). Only short-circuit on the
+      // user-driven outcomes — anything else falls through so the mutation's own
+      // signer error (e.g. an unresponsive NIP-07 extension) still surfaces.
+      if (typeof this.ensureEncryptionCapableSigner === "function") {
+        const ensured = await this.ensureEncryptionCapableSigner({
+          pubkey: actorHex,
+          need: "encrypt",
+          promptMessage:
+            "Re-enter your PIN / passphrase to unlock your key and update your mute/block list.",
+        });
+        if (
+          ensured &&
+          (ensured.reason === "cancelled" || ensured.reason === "bad-passphrase")
+        ) {
+          context.reason = ensured.reason;
+          return context;
+        }
+      }
+
       try {
         await userBlocks.ensureLoaded(actorHex);
         const isBlocked = userBlocks.isBlocked(targetHex);
