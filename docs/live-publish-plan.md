@@ -35,9 +35,36 @@ Media Node / Bridge    = RTMP/SRT/WHIP ingest, HLS/WebRTC output, recording,
 ```
 
 This keeps BitVid's architecture intact while adding broadcast. Crucially,
-**external-provider-only mode needs no BitVid infrastructure at all** — a creator
-streams to zap.stream/YouTube/Twitch and BitVid just publishes the NIP-53 event
-around it. That's Phase 1 and delivers value with zero servers.
+**most of these modes need no bitvid infrastructure at all** — see the three-tier
+spectrum next.
+
+---
+
+## Provider options — three tiers (bitvid hosts none of them)
+
+The creator chooses who receives their media; bitvid only ever **publishes the
+resulting `streaming` URL and plays it**. A VPS is only the *most sovereign* tier,
+not a requirement — most creators never run a server.
+
+| Tier | Setup / cost | Playback in bitvid | Trade-off | bitvid work |
+|------|--------------|--------------------|-----------|-------------|
+| **1. Platform embed** — StreamYard/OBS → YouTube/Twitch | free, **zero infra** | their **iframe** embed | their rules/ads; no native playback, no P2P/WebTorrent | external-embed adapter |
+| **2. Serverless RTMP→HLS API** — Livepeer / Mux / Cloudflare Stream | ~free–cheap, **no server** | **native HLS** (+ P2P-assist possible) | small cost at scale; a 3rd-party account | native HLS (from #16) |
+| **3. Self-hosted node** — the Bridge run headless on a VPS | most effort/cost | native HLS | full **sovereignty + WebTorrent VOD + restream** | native HLS + Bridge |
+
+- **Recommended default "no-VPS but native": Tier 2, Livepeer** — decentralized,
+  crypto-native, cheapest-aligned; the creator points OBS/StreamYard at Livepeer's
+  RTMP ingest and pastes the HLS URL into bitvid. [Mux](https://www.mux.com/live)
+  (free delivery allotment; live needs a paid quality tier) and
+  [Cloudflare Stream](https://developers.cloudflare.com/stream/pricing/) (free
+  ingest/encoding, cheap delivery) are alternatives.
+- **StreamYard is a studio, not a CDN** — it broadcasts *out* to
+  YouTube/Twitch/custom-RTMP (custom RTMP is paid), so with bitvid it's a Tier-1
+  encoder feeding YouTube/Twitch, or a Tier-2/3 encoder feeding a serverless
+  API / your node.
+- **The same NIP-53 event + player serve all three tiers** — the only per-tier
+  code is the playback adapter (external embed vs native HLS). So supporting the
+  spectrum is cheap, and the VPS/Bridge is the *advanced* tier, not the default.
 
 ---
 
@@ -94,13 +121,21 @@ BitVid Live over zap.stream/Twitch/YouTube.
 
 ## Decisions needed
 
-> **DECISION 1 — Media hosting model. ✅ LOCKED by the blanket rule: self-host OR
-> external-provider only — NO bitvid-operated node, ever.** Two supported paths:
-> **(c) external-provider-only** (no node — stream to zap.stream/YouTube/Twitch,
-> bitvid just publishes the NIP-53 event; **ships first**, zero infra) and
-> **(b) self-hosted** (the creator runs their own Media Node = the Bridge headless;
-> most aligned). The managed-BitVid-node option is **removed**. Order: ship (c)
-> first, then ship (b) as the Bridge/headless path.
+> **DECISION 1 — Media hosting model. ✅ LOCKED by the blanket rule: a three-tier
+> provider spectrum — bitvid hosts NONE of them.** The creator picks who receives
+> their media; bitvid just publishes the resulting `streaming` URL. **A VPS is only
+> the *most sovereign* tier, not a requirement.** See "Provider options" below:
+> 1. **Platform embed** (StreamYard/OBS → YouTube/Twitch) — free, zero infra;
+>    bitvid embeds their player. **Ships first (Phase 1).**
+> 2. **Serverless RTMP→HLS API** (Livepeer / Mux / Cloudflare Stream) — no server
+>    to run; the creator gets a real HLS URL bitvid plays **natively**. The
+>    recommended "no-VPS but native" default. **Livepeer** is the most aligned.
+> 3. **Self-hosted node** (the Bridge run headless on a VPS) — full sovereignty +
+>    WebTorrent VOD + restream control; most effort. The advanced tier.
+>
+> The managed-BitVid-node option is **removed**. bitvid's job (publish the event,
+> play the `streaming` URL) is **identical across all three** — the only code
+> difference is a per-tier playback adapter (external embed vs native HLS).
 
 > **DECISION 2 — Signing during a live stream. ✅ LOCKED: A for MVP, B (NIP-46)
 > later; D removed by the blanket rule.** The node must NOT hold the creator's key.
@@ -306,10 +341,13 @@ has enough concurrent viewers — see the ingest plan + Advantages above. The en
 - **Phase 0 — Flags + schema (small).** `FEATURE_LIVE_PUBLISH/BRIDGE/RESTREAM`;
   30311/1311 **builders** + `updateLiveStreamStatusEvent` + `getLiveAddress`
   (coordinate with #16's parsers); `docs/live.md`; schema-doc update; unit tests.
-- **Phase 1 — External-provider publishing (small; NO infra).** "Create Live
-  Stream" modal: title/summary/thumbnail/tags/starts + a paste-in `streaming` URL;
-  publish planned→live→ended; chat + zaps against the live address (reusing #16).
-  *This is BitVid Live v0 and needs zero servers — DECISION 1(c).*
+- **Phase 1 — Provider-agnostic publishing (small; NO infra — Tiers 1 & 2).**
+  "Create Live Stream" modal: title/summary/thumbnail/tags/starts + a paste-in
+  `streaming` URL / platform link; publish planned→live→ended; chat + zaps against
+  the live address (reusing #16). Playback adapter picks **external embed**
+  (Tier 1: YouTube/Twitch) or **native HLS** (Tier 2: Livepeer/Mux/Cloudflare).
+  *This is BitVid Live v0, needs zero servers, and covers the recommended no-VPS
+  path (Tier 2 / Livepeer).*
 - **Phase 2 — Bridge API client + mock backend (medium).** `liveBridgeClient`,
   Pair-Bridge UI, mocked `/sessions`, setup wizard, status dashboard,
   recording-ready flow — builds the client contract before real infra exists.

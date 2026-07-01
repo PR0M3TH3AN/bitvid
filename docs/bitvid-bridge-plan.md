@@ -38,11 +38,22 @@ it solves two hard problems at once —
    honors the publish plan's Rule 1 ("BitVid signs; Bridge routes") while still
    being one self-contained app.
 
-**When you don't need the Bridge at all:** OBS → an **external provider**
-(zap.stream/YouTube) works for a basic stream (bitvid runs no node — blanket
-rule). The Bridge earns its place by letting a creator **self-host** their own
-node and by multi-restream, local recording, hardware/appliance input, turnkey UX
-— and later, built-in capture (no OBS).
+**Where the Bridge sits (see the publish plan's three-tier provider spectrum):**
+- **Tier 1 (platform embed)** and **Tier 2 (serverless RTMP→HLS: Livepeer/Mux/
+  Cloudflare)** need **no Bridge and no VPS** — Tier 2 is the recommended
+  "no-server, native playback" default. So the Bridge is the **Tier-3 (advanced /
+  full-sovereignty)** option, not the default on-ramp.
+- **The Bridge earns its place** by: no third party at all, **local recording +
+  full-WebTorrent VOD**, multi-restream hub, hardware/appliance input, turnkey UX,
+  and later built-in capture (no OBS).
+
+**Hybrid that avoids a VPS entirely (important):** a **local** Bridge can
+**record locally + restream to a Tier-2 serverless provider** which serves the
+public HLS. The home Bridge then **never needs to be publicly reachable** (no VPS,
+no tunnel/port-forward — it's *outbound* to the provider), yet the creator still
+gets local recording + a full-WebTorrent VOD, and viewers get native HLS. This is
+the sweet spot for most sovereignty-minded creators: **local Bridge for
+record/WebTorrent/control + serverless for reach.**
 
 ---
 
@@ -211,15 +222,20 @@ becomes a normal bitvid video automatically.
   copy-forward from a local Bridge to that reachable node / an external provider
   (never a bitvid-run node). Publish planned→live→ended NIP-53 from the webview via
   MediaMTX input hooks. "OBS → your node → bitvid, one window."
-  *(NAT note: a home-only Bridge can't serve public HLS without a tunnel/
-  port-forward — hence the headless-on-VPS path.)*
+  *(NAT note: a home-only Bridge can't serve public HLS directly → either run
+  headless on a VPS, or use the hybrid: forward to a Tier-2 serverless provider
+  that serves public HLS — see Phase 3.)*
 - **Phase 2 — Record → archive → VOD.** Local recording, finalize, rclone upload
   to the user's storage, manifest → webview publishes a normal bitvid video
   (reuses the `s`-tag/info.json/30078 flow). Optional torrent/webseed for full
   WebTorrent VOD.
 - **Phase 3 — Multi-restream (`FEATURE_LIVE_RESTREAM`).** One input → many outputs
-  (YouTube/Twitch/zap.stream/custom RTMP/SRT), copy-only, per-output status +
-  retry/backoff. Keys stay local; optional public mirror links as `r` tags.
+  (YouTube/Twitch/zap.stream/**serverless providers Livepeer/Mux/Cloudflare**/
+  custom RTMP/SRT), copy-only, per-output status + retry/backoff. Keys stay local;
+  optional public mirror links as `r` tags. **The serverless preset enables the
+  no-VPS hybrid** — a local Bridge records locally + forwards to Livepeer/Mux,
+  which serves the public HLS (the `streaming` URL in the NIP-53 event). This is
+  arguably the flagship Bridge workflow for home creators.
 - **Phase 4 — Turnkey UX + packaging.** One-click go-live, OBS auto-config or
   OBS-WebSocket control, signed/notarized installers + AppImage, auto-update.
 - **Phase 5 — Built-in capture (no OBS).** Screen/window/camera capture + encode
@@ -280,12 +296,14 @@ becomes a normal bitvid video automatically.
 - **Local ingest exposure.** A misconfigured wide bind would expose an unauth'd
   RTMP receiver on the network — default to loopback (invariant 7); require auth
   for any non-loopback bind.
-- **Reachability / NAT (self-hosting reality).** With the blanket rule, the
-  playback origin is the creator's own node — a **home-only Bridge behind NAT
-  can't serve public HLS**. The clean path is running the Bridge **headless on a
-  reachable VPS**; document that, plus optional tunnel/port-forward for the local
-  case. This is the main friction of "self-host everything" and the reason the
-  headless mode (Phase 7 / DECISION 7) matters.
+- **Reachability / NAT (self-hosting reality) — largely solved by the hybrid.** A
+  **home-only Bridge behind NAT can't *serve* public HLS**. Two clean answers:
+  (1) the **hybrid** — the local Bridge *forwards* (outbound) to a Tier-2
+  serverless provider that serves the public HLS, so the home box needs no public
+  reachability at all (recommended for laptops/home); (2) run the Bridge
+  **headless on a reachable VPS** for full self-hosting (no third party). Only (2)
+  needs a VPS; document both. This is why headless mode (Phase 7 / DECISION 7) and
+  restream-to-serverless (Phase 3 preset) both matter.
 
 ---
 
