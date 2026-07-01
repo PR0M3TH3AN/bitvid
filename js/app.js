@@ -89,6 +89,7 @@ import { buildDmRelayListEvent, buildShareEvent } from "./nostrEventSchemas.js";
 import {
   publishEventToRelays,
   assertAnyRelayAccepted,
+  assertAnyRelayAcceptedOrUnconfirmed,
   describePublishOutcome,
   readRelayPublishSummary,
 } from "./nostrPublish.js";
@@ -2905,24 +2906,17 @@ class Application {
       signedEvent,
     );
 
-    let publishSummary;
-    try {
-      publishSummary = assertAnyRelayAccepted(publishResults, {
-        context: "dm relay hints update",
-        message: "No relays accepted the DM relay list.",
-      });
-    } catch (publishError) {
-      if (publishError?.relayFailures?.length) {
-        publishError.relayFailures.forEach(
-          ({ url, error: relayError, reason }) => {
-            userLogger.error(
-              `[Application] Relay ${url} rejected DM relay list: ${reason}`,
-              relayError || reason,
-            );
-          },
-        );
-      }
-      throw publishError;
+    // An all-timeout (unconfirmed) publish of the replaceable DM relay list is a
+    // soft success — sent + almost always persisted; don't error/revert. Explicit
+    // rejections still throw.
+    const publishSummary = assertAnyRelayAcceptedOrUnconfirmed(publishResults, {
+      context: "dm relay hints update",
+      message: "No relays accepted the DM relay list.",
+    });
+    if (publishSummary.unconfirmed) {
+      userLogger.warn(
+        "[Application] DM relay list not acknowledged by any relay within the timeout; treating as optimistic success (reconciles on next load).",
+      );
     }
 
     if (publishSummary.failed.length) {

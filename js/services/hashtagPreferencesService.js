@@ -12,7 +12,7 @@ import {
 } from "../nostrEventSchemas.js";
 import {
   publishEventToRelays,
-  assertAnyRelayAccepted,
+  assertAnyRelayAcceptedOrUnconfirmed,
 } from "../nostrPublish.js";
 import { userLogger, devLogger } from "../utils/logger.js";
 import {
@@ -1453,9 +1453,17 @@ class HashtagPreferencesService {
       signedEvent,
     );
 
-    const publishSummary = assertAnyRelayAccepted(publishResults, {
+    // All-timeout (unconfirmed) publish of the replaceable preferences list is a
+    // soft success — sent + almost always persisted; don't throw. Explicit
+    // rejections still throw.
+    const publishSummary = assertAnyRelayAcceptedOrUnconfirmed(publishResults, {
       context: "hashtag-preferences",
     });
+    if (publishSummary.unconfirmed) {
+      userLogger.warn(
+        `${LOG_PREFIX} Preferences not acknowledged by any relay within the timeout; treating as optimistic success (reconciles on next load).`,
+      );
+    }
 
     if (publishSummary.failed?.length) {
       publishSummary.failed.forEach(({ url, error }) => {

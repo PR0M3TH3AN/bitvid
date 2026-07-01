@@ -27,8 +27,11 @@
 
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import { RelayPublishError } from "../js/nostrPublish.js";
-import { subscriptionPublishFailuresAreAllTimeouts } from "../js/subscriptions.js";
+import {
+  RelayPublishError,
+  relayPublishFailuresAreAllTimeouts as subscriptionPublishFailuresAreAllTimeouts,
+  assertAnyRelayAcceptedOrUnconfirmed,
+} from "../js/nostrPublish.js";
 
 // Build a RelayPublishError the same way assertAnyRelayAccepted does — from the
 // per-relay result objects (success:false + an Error whose message is the reason).
@@ -63,4 +66,38 @@ test("no failures / empty does not soft-succeed", () => {
 test("case-insensitive: 'Publish Timeout' still counts as a timeout", () => {
   const e = errFrom([rejected("wss://a", "Publish Timeout")]);
   assert.equal(subscriptionPublishFailuresAreAllTimeouts(e), true);
+});
+
+// assertAnyRelayAcceptedOrUnconfirmed is the shared helper every list-publish
+// caller now uses (subscriptions/blocks/relay-list/dm-hints/hashtags).
+const okResult = (url) => ({ url, success: true, error: null });
+
+test("shared helper: a confirmed ack returns unconfirmed:false with accepted", () => {
+  const summary = assertAnyRelayAcceptedOrUnconfirmed(
+    [okResult("wss://a"), timeout("wss://b")],
+    { context: "list" },
+  );
+  assert.equal(summary.unconfirmed, false);
+  assert.equal(summary.accepted.length, 1);
+});
+
+test("shared helper: all-timeout returns unconfirmed:true and does NOT throw", () => {
+  const summary = assertAnyRelayAcceptedOrUnconfirmed(
+    [timeout("wss://a"), timeout("wss://b")],
+    { context: "list" },
+  );
+  assert.equal(summary.unconfirmed, true);
+  assert.equal(summary.accepted.length, 0);
+  assert.equal(summary.failed.length, 2);
+});
+
+test("shared helper: an explicit rejection still throws RelayPublishError", () => {
+  assert.throws(
+    () =>
+      assertAnyRelayAcceptedOrUnconfirmed(
+        [timeout("wss://a"), rejected("wss://b", "blocked: spam")],
+        { context: "list" },
+      ),
+    RelayPublishError,
+  );
 });
