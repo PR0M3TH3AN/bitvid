@@ -2919,8 +2919,8 @@ export class NostrClient {
     return this.signerManager.onRemoteSignerChange(listener);
   }
 
-  getStoredNip46Metadata() {
-    return this.signerManager.getStoredNip46Metadata();
+  getStoredNip46Metadata(pubkey) {
+    return this.signerManager.getStoredNip46Metadata(pubkey);
   }
 
   async ensureExtensionPermissions(

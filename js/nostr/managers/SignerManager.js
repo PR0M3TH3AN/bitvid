@@ -778,8 +778,14 @@ export class SignerManager {
       typeof normalizedOptions.validator === "function"
         ? normalizedOptions.validator
         : null;
+    // When switching accounts, select that account's stored session so we
+    // reconnect the one the user asked for — not just the last-connected default.
+    const targetPubkey =
+      typeof normalizedOptions.pubkey === "string"
+        ? normalizedOptions.pubkey.trim().toLowerCase()
+        : "";
 
-    let stored = readStoredNip46Session();
+    let stored = readStoredNip46Session(targetPubkey || undefined);
     if (!stored) {
       const error = new Error(
         "No remote signer session is stored on this device.",
@@ -850,9 +856,10 @@ export class SignerManager {
         this.nip46Client = null;
         this.emitRemoteSignerChange({ state: "error", error: err });
         // Always forget a stored session that was rejected by access control —
-        // no point keeping a blocked pubkey's session to retry.
+        // no point keeping a blocked pubkey's session to retry. Forget only the
+        // account we tried, leaving other saved sessions switchable.
         if (forgetOnError || err?.code === "remote-signer-access-denied") {
-            clearStoredNip46Session();
+            clearStoredNip46Session(stored?.userPubkey || targetPubkey || undefined);
         }
         throw err;
     }
@@ -947,8 +954,8 @@ export class SignerManager {
     this.emitRemoteSignerChange();
   }
 
-  getStoredNip46Metadata() {
-    const stored = readStoredNip46Session() || {};
+  getStoredNip46Metadata(pubkey) {
+    const stored = readStoredNip46Session(pubkey) || {};
     const userPubkey =
       typeof stored.userPubkey === "string" ? stored.userPubkey : "";
     return {

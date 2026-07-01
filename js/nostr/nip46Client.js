@@ -46,6 +46,13 @@ import { SHORT_TIMEOUT_MS } from "../constants.js";
 
 export const NIP46_RPC_KIND = 24_133;
 const NIP46_SESSION_STORAGE_KEY = "bitvid:nip46:session:v1";
+// Per-user-pubkey remote-signer session store, mirroring the per-account nsec
+// key store (bitvid:sessionActors:v2). Lets several saved NIP-46 accounts each
+// keep their own reconnectable session so the profile switcher can move between
+// them. The v1 single slot above is kept in sync as the last-connected default
+// (boot restore) and migrated into this map on first read.
+const NIP46_SESSIONS_MAP_STORAGE_KEY = "bitvid:nip46:sessions:v2";
+const NIP46_SESSIONS_MAP_VERSION = 2;
 const NIP46_PUBLISH_TIMEOUT_MS = 8_000;
 const NIP46_PING_TIMEOUT_MS = SHORT_TIMEOUT_MS;
 const NIP46_RESPONSE_TIMEOUT_MS = 15_000;
@@ -248,7 +255,88 @@ export function sanitizeStoredNip46Session(candidate) {
   };
 }
 
-export function readStoredNip46Session() {
+function normalizeNip46PubkeyKey(pubkey) {
+  return typeof pubkey === "string" && pubkey.trim()
+    ? pubkey.trim().toLowerCase()
+    : "";
+}
+
+// Read the per-user-pubkey session map { [userPubkeyLower]: session }.
+function readNip46SessionsMap() {
+  const storage = getNip46Storage();
+  if (!storage) {
+    return {};
+  }
+  let raw = null;
+  try {
+    raw = storage.getItem(NIP46_SESSIONS_MAP_STORAGE_KEY);
+  } catch (error) {
+    return {};
+  }
+  if (!raw) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    const entries =
+      parsed && typeof parsed === "object" ? parsed.entries : null;
+    if (!entries || typeof entries !== "object") {
+      return {};
+    }
+    const map = {};
+    for (const key of Object.keys(entries)) {
+      const session = sanitizeStoredNip46Session(entries[key]);
+      if (!session) {
+        continue;
+      }
+      const normalizedKey = normalizeNip46PubkeyKey(session.userPubkey || key);
+      if (normalizedKey) {
+        map[normalizedKey] = session;
+      }
+    }
+    return map;
+  } catch (error) {
+    try {
+      storage.removeItem(NIP46_SESSIONS_MAP_STORAGE_KEY);
+    } catch (cleanupError) {
+      devLogger.warn(
+        "[nostr] Failed to clear corrupt NIP-46 session map:",
+        cleanupError,
+      );
+    }
+    return {};
+  }
+}
+
+function writeNip46SessionsMap(map) {
+  const storage = getNip46Storage();
+  if (!storage) {
+    return;
+  }
+  const entries = {};
+  for (const key of Object.keys(map || {})) {
+    const session = sanitizeStoredNip46Session(map[key]);
+    if (session) {
+      entries[key] = session;
+    }
+  }
+  try {
+    if (!Object.keys(entries).length) {
+      storage.removeItem(NIP46_SESSIONS_MAP_STORAGE_KEY);
+      return;
+    }
+    storage.setItem(
+      NIP46_SESSIONS_MAP_STORAGE_KEY,
+      JSON.stringify({ version: NIP46_SESSIONS_MAP_VERSION, entries }),
+    );
+  } catch (error) {
+    // ignore persistence failures
+  }
+}
+
+// Read the legacy v1 single slot, re-persisting it in the sanitized (no
+// plaintext) shape if it still carries raw credentials.
+function readV1Nip46Session() {
   const storage = getNip46Storage();
   if (!storage) {
     return null;
@@ -289,6 +377,49 @@ export function readStoredNip46Session() {
   }
 }
 
+// Read a stored remote-signer session.
+//   readStoredNip46Session(pubkey) → that account's session (or null)
+//   readStoredNip46Session()       → the last-connected account (v1 slot),
+//                                     for boot restore / backward-compat.
+// The v1 single slot is migrated into the per-pubkey map on first read.
+export function readStoredNip46Session(pubkey) {
+  const v1 = readV1Nip46Session();
+  const map = readNip46SessionsMap();
+
+  // Migrate the legacy single slot into the per-pubkey map.
+  if (v1 && v1.userPubkey) {
+    const key = normalizeNip46PubkeyKey(v1.userPubkey);
+    if (key && !map[key]) {
+      map[key] = v1;
+      writeNip46SessionsMap(map);
+    }
+  }
+
+  const target = normalizeNip46PubkeyKey(pubkey);
+  if (target) {
+    if (map[target]) {
+      return map[target];
+    }
+    if (v1 && normalizeNip46PubkeyKey(v1.userPubkey) === target) {
+      return v1;
+    }
+    return null;
+  }
+
+  // No target: the last-connected account. Fall back to the sole stored session
+  // if the v1 slot was cleared but the map still holds exactly one.
+  if (v1) {
+    return v1;
+  }
+  const keys = Object.keys(map);
+  return keys.length === 1 ? map[keys[0]] : null;
+}
+
+// User pubkeys (hex, lowercase) of every account with a stored session.
+export function listStoredNip46SessionPubkeys() {
+  return Object.keys(readNip46SessionsMap());
+}
+
 export function writeStoredNip46SessionSync(payload) {
   const storage = getNip46Storage();
   if (!storage) {
@@ -321,6 +452,16 @@ export function writeStoredNip46SessionSync(payload) {
     return;
   }
 
+  // Store under the account's user pubkey so several saved accounts coexist…
+  const key = normalizeNip46PubkeyKey(normalized.userPubkey);
+  if (key) {
+    const map = readNip46SessionsMap();
+    map[key] = normalized;
+    writeNip46SessionsMap(map);
+  }
+
+  // …and keep the v1 single slot pointed at the last-connected account so boot
+  // restore and no-arg reads resolve a sensible default.
   try {
     storage.setItem(NIP46_SESSION_STORAGE_KEY, JSON.stringify(normalized));
   } catch (error) {
@@ -412,14 +553,42 @@ export async function decryptNip46Session(session, passphrase) {
   };
 }
 
-export function clearStoredNip46Session() {
+// Forget a stored session. With a pubkey, only that account is removed (the
+// others stay reconnectable); without one, every stored session is wiped
+// (logout).
+export function clearStoredNip46Session(pubkey) {
   const storage = getNip46Storage();
   if (!storage) {
     return;
   }
 
+  const target = normalizeNip46PubkeyKey(pubkey);
+
+  if (target) {
+    const map = readNip46SessionsMap();
+    if (map[target]) {
+      delete map[target];
+      writeNip46SessionsMap(map);
+    }
+    // Drop the v1 default only if it pointed at the account we just removed.
+    const v1 = readV1Nip46Session();
+    if (v1 && normalizeNip46PubkeyKey(v1.userPubkey) === target) {
+      try {
+        storage.removeItem(NIP46_SESSION_STORAGE_KEY);
+      } catch (error) {
+        // ignore cleanup issues
+      }
+    }
+    return;
+  }
+
   try {
     storage.removeItem(NIP46_SESSION_STORAGE_KEY);
+  } catch (error) {
+    // ignore cleanup issues
+  }
+  try {
+    storage.removeItem(NIP46_SESSIONS_MAP_STORAGE_KEY);
   } catch (error) {
     // ignore cleanup issues
   }

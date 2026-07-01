@@ -635,11 +635,20 @@ toward freshness and looked identical. Gave each a structural identity:
       `listStoredSessionActorPubkeys()`. Tests: `tests/session-actor-multi-account.test.mjs`
       (7 — per-account resolve, list, clear-one-keeps-others, no-arg default, no-arg wipe,
       v1→v2 migration, missing-account returns null).
-- [ ] **Multiple NIP-46 accounts (remaining):** the remote-signer session is still a
-      SINGLE slot (`bitvid:nip46:session:v1`), so only the last-connected remote signer is
-      restorable — switching among several saved NIP-46 accounts needs the same per-pubkey
-      treatment applied to `js/nostr/nip46Client.js` (session store keyed by user pubkey +
-      `useStoredRemoteSigner({ pubkey })` selecting it). Separate, larger change than nsec.
+- [x] **Multiple NIP-46 accounts — DONE 2026-06-30.** The remote-signer session store is
+      now per-user-pubkey (`bitvid:nip46:sessions:v2` = `{ [userPubkeyLower]: session }`),
+      mirroring the nsec store. Several saved NIP-46 accounts each keep their own
+      reconnectable session, so the switcher can move between them. The legacy v1 single
+      slot is kept in sync as the last-connected default (boot restore) and migrated into
+      the map on first read. `readStoredNip46Session` and `getStoredNip46Metadata` take an
+      optional target pubkey; `writeStoredNip46SessionSync` writes both the map (keyed by
+      `userPubkey`) and the v1 default; `clearStoredNip46Session(pubkey)` forgets one
+      account (no-arg wipes all, for logout). `SignerManager.useStoredRemoteSigner({ pubkey
+      })` selects the target account's session and, on access-denial, forgets only that
+      account; the nsec/nip46 providers thread `expectPubkey` through so a switch
+      reconnects the requested account (with the `expectPubkey` guard as a backstop). Added
+      `listStoredNip46SessionPubkeys()`. (`nip46Connector.js` is dead code — the live path
+      is entirely in `SignerManager`.) Tests: `tests/nip46-multi-account.test.mjs` (7).
 
 ### 8. Orphan storage garbage-collection tool
 - [x] **Largely delivered by the My Videos tab** (`9d3a0df0`): lists bucket objects no
