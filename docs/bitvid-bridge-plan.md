@@ -4,8 +4,9 @@ Companion to **`docs/live-publish-plan.md`** (#16c) — this expands its **Phase
 (Local Bridge app)** into its own plan. The Bridge is the piece that fills the one
 gap a static web client can't: **receiving and routing live media** on the
 creator's machine.
-Status: **FUTURE / exploratory.** Sequenced after the #16c Media Node MVP, but the
-Bridge and the server-side Media Node can share a codebase (see DECISION 7).
+Status: **FUTURE / exploratory — all design decisions LOCKED** (maintainer
+accepted every recommendation). Sequenced after the #16c Media Node MVP; the
+Bridge and the server-side Media Node share one codebase (DECISION 7).
 
 Goal (maintainer): a **super-simple, easy-to-install, easy-to-use** cross-platform
 app (Windows / macOS / Linux) that makes going live on bitvid turnkey.
@@ -43,7 +44,27 @@ hardware/appliance input, and turnkey UX — and later, built-in capture (no OBS
 
 ---
 
-## Decisions needed
+## Decisions — ✅ ALL LOCKED
+
+The maintainer accepted every recommendation below; each *Recommendation* line is
+now the **locked choice**. Summary:
+
+| # | Decision | Locked |
+|---|----------|--------|
+| 1 | App framework | **Wails (Go)** — one Go binary for desktop + headless node (ties to D7); Tauri was the close alt |
+| 2 | Control model | **Embedded Studio webview** primary; optional localhost API later |
+| 3 | Capture vs receive | **Receiver-first MVP**; built-in capture as a fast-follow (Phase 5) |
+| 4 | Webview signer | **NIP-46 + encrypted-nsec**, NIP-46 preferred |
+| 5 | Ingest protocols | **RTMP for MVP**; SRT + WHIP later |
+| 6 | Recording upload | **Bundled rclone** (multi-provider, resumable) |
+| 7 | One codebase, two modes | **Yes** — desktop Bridge == self-hosted Media Node run `--headless` |
+| 8 | Transcode | **Pass-through only** (`-c copy`) |
+| 9 | Code signing | **Project owns** Apple notarization + Windows cert (budgeted) |
+| 10 | License / telemetry | **Match bitvid; no telemetry by default** |
+
+D1 resolves to **Go/Wails** specifically because D7 (one codebase, two modes) is a
+"yes": a single Go binary serves the desktop Bridge (with UI) and the headless
+self-hosted Media Node — Go being MediaMTX's own language makes that clean.
 
 > **DECISION 1 — App framework.** Go/**Wails** vs **Tauri** vs Electron.
 > *Recommendation: **Wails (Go)** or **Tauri (Rust)** — both give a web UI (reuse
