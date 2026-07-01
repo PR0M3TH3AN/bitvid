@@ -122,6 +122,47 @@ chat message. Read-only ingest = subscribe by `#a`, render newest.
 
 ---
 
+## Live watch UX best practices (researched July 2026)
+
+Unlike shorts, live is a **landscape 16:9, "cinematic"** experience, and the watch
+page is a well-established pattern (Twitch / YouTube Live). Sources at the bottom.
+
+### Desktop presentation (cinematic)
+- **Player + chat side rail.** 16:9 player on the left/center, a **collapsible chat
+  rail on the right**. Below the player: title, **host (avatar + name + follow/
+  subscribe)**, **LIVE badge + viewer count**, elapsed time, description/tags.
+- **Theater mode** (player widens, chat stays docked) and **fullscreen** (chat
+  becomes an optional overlay or hides) — both standard viewer expectations.
+- Keyboard: **Space** pause, **F** fullscreen, **T** theater, **M** mute.
+
+### Mobile presentation
+- **Player on top (16:9), chat below** in a scrollable panel. In landscape /
+  fullscreen, chat becomes a **resizable/draggable overlay** (the current Twitch/
+  YouTube mobile pattern) rather than eating the video. Picture-in-picture
+  "keep playing while I browse" is a nice-to-have, not v1.
+
+### Live-specific affordances
+- **Prominent red LIVE badge + viewer count** (from 30311 `current_participants`)
+  and elapsed-since-`starts`. These are retention cues, keep them visible.
+- **Latency is real and must be expected:** standard **HLS is ~6–30s behind**
+  real-time (LL-HLS 1–5s, WebRTC <500ms). zap.stream serves HLS, so **chat will
+  run ahead of the video** — don't promise low-latency, and don't try to hard-sync
+  chat to the frame.
+- **Auto-scrolling chat** that **pauses when the user scrolls up**, with a
+  "jump to latest" affordance (Phase 3).
+- **Live vs ended seeking:** a live stream has only edge/limited seeking; an
+  **ended stream plays its `recording` as a normal VOD** with a full scrubber
+  (Phase 4).
+
+### bitvid-specific notes
+- **Zaps fit live perfectly** — zap.stream's whole model is zapping streamers, and
+  bitvid already has the NWC/zap system. Live zaps to the host are a natural
+  headline action (surface them alongside chat). Even if chat is read-only in
+  Phase 3, zapping the host can ship earlier.
+- Reuse the existing player shell where practical; HLS via lazy hls.js (DECISION 3).
+- Respect `prefers-reduced-motion` and the relay-cap / circuit-breaker invariants
+  for the discovery + chat subscriptions.
+
 ## Phases (each flag-gated from day one)
 
 - **Phase 0 — Research spike (do FIRST, small but essential).**
@@ -133,11 +174,16 @@ chat message. Read-only ingest = subscribe by `#a`, render newest.
 - **Phase 1 — Discovery + Live tab (medium).** Flag, `FEED_TYPES.LIVE`, live
   service (30311 discovery, scoped), sidebar link, `views/live.html`, grid of
   live cards, route gated by flag. Clicking a card opens… (Phase 2).
-- **Phase 2 — HLS playback (medium).** Live player path + lazy hls.js; play the
-  `streaming` URL; graceful error when the stream is down.
+- **Phase 2 — HLS playback + cinematic layout (medium).** Live player path + lazy
+  hls.js; play the `streaming` URL; **desktop** player + collapsible chat rail
+  (rail empty until Phase 3), theater/fullscreen, LIVE badge + viewer count;
+  **mobile** player-top / chat-below; keyboard controls; graceful error when the
+  stream is down. Set latency expectations (HLS ~6–30s).
 - **Phase 3 — Chat (medium, DECISION 2).** Read-only kind-1311 subscription by
-  `#a` + render + teardown. Optional **Phase 3b — post chat** (sign/publish 1311,
-  its own sub-flag + moderation stance) if read+post is chosen.
+  `#a`, auto-scroll with pause-on-scroll-up + jump-to-latest, teardown on close.
+  **Host zaps** can surface here (or earlier) via the existing zap system.
+  Optional **Phase 3b — post chat** (sign/publish 1311, its own sub-flag +
+  moderation stance) if read+post is chosen.
 - **Phase 4 — Past streams / VOD (medium, DECISION 4).** List `status=ended`
   events and play their `recording` URL through the same HLS player; mark ended
   vs live in the UI. This is the "past zap.stream streams" capability.
@@ -182,5 +228,9 @@ Phase 3.**
 - Existing code: `js/services/nip71IngestService.js` (deferred/throttled ingest
   pattern to mirror), `js/services/playbackService.js` (player entry for HLS),
   `js/app/feedCoordinator.js`, `components/sidebar.html`, `js/constants.js`
-  (`FEED_TYPES`).
+  (`FEED_TYPES`), `js/ui/components/VideoCard.js` (contrast for the new LiveCard).
 - hls.js (candidate HLS playback dependency, DECISION 3).
+- Live watch-UX research (July 2026):
+  - [Streaming App UX Best Practices: 7 Pillars — Fora Soft](https://www.forasoft.com/blog/article/streaming-app-ux-best-practices) (player+chat layout, live vs VOD, social overlays as retention)
+  - [Top Live Streaming Platforms 2026 — VdoCipher](https://www.vdocipher.com/blog/live-streaming-platforms/) (latency: HLS/DASH 6–30s, LL-HLS 1–5s, WebRTC <500ms)
+  - [Twitch mobile viewer update, resizable chat overlay + PiP (Stream-Rise)](https://stream-rise.com/blog/twitch-mobile-broadcasting) (mobile chat-below / draggable overlay pattern)
