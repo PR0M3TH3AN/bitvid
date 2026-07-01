@@ -18,37 +18,56 @@ a config flag that leaves **no trace** when off.
 
 ## Decisions needed
 
-> **DECISION 1 — Listing scope.** List only **whitelisted hosts** (reuse the
-> existing whitelist/WoT filter on the host `p`/author), or **all** `status=live`
-> events discovered on the read relays (capped)?
-> *Recommendation: whitelisted hosts for v1 — consistent with the rest of bitvid's
-> trust model and avoids surfacing arbitrary/abusive streams.*
+> **DECISION 1 — Listing scope. ✅ LOCKED: Option A (whitelisted hosts only).**
+> The Live tab lists only kind-30311 events whose host is a whitelisted/trusted
+> author, reusing the existing whitelist/WoT filter — no new moderation surface,
+> consistent with the main feed + Shorts. Accepted trade-off (maintainer): live
+> is sparse, so the tab may be empty when no whitelisted creator is streaming;
+> that's expected with a whitelist (ship a clear "no one you follow is live right
+> now" empty state). A broader "discover live" surface can come later.
 
-> **DECISION 2 — Chat level (read-only vs read + post).** Chat is **committed to
-> the roadmap** (Phase 3), the only open question is how far: **read-only** (kind
-> 1311 ingest — stays cleanly inside "ingest"), or **read + post** (signing/
-> publishing 1311 events — a write path, likely its own sub-flag + moderation
-> stance). *Recommendation: read-only in Phase 3, then read + post as Phase 3b if
-> wanted. Playback (Phases 1–2) ships before chat regardless.*
+> **DECISION 2 — Chat level. ✅ LOCKED: read + post + zaps as the end state,
+> reached in phases.** Target is full participation (read chat, post chat, zap the
+> host). Phased so playback ships first and posting (a write path) lands cleanly:
+> - **Phase 3** — read-only kind-1311 chat **+ host zaps** (zaps via the existing
+>   NWC/zap system; active participation from day one of chat).
+> - **Phase 3b** — **post chat**: sign/publish kind-1311 into the stream, behind
+>   its own sub-flag (`FEATURE_LIVE_CHAT_POST` or similar), with a moderation
+>   stance (rate-limit; you're publishing into someone else's stream — decide how
+>   blocked/muted authors and your own outbound spam are handled).
+> Rationale (maintainer): end up at read+post+zaps; phasing keeps the write path
+> and its moderation questions out of the initial playback release.
 
-> **DECISION 3 — HLS playback dependency.** OK to lazy-load a small HLS library
-> (**hls.js**, ~cdn/vendored) ONLY when the flag is on, or must playback stay
-> dependency-free (native `<video>` HLS, which only Safari supports reliably)?
-> *Recommendation: allow hls.js, lazy-imported behind the flag (native HLS alone
-> won't play `.m3u8` in Chrome/Firefox). It never loads when the flag is off.*
+> **DECISION 3 — HLS playback dependency. ✅ LOCKED: Option A (hls.js,
+> lazy-loaded behind the flag).** Native `<video>` HLS only works in Safari, so a
+> library is required for Chrome/Firefox/Edge; hls.js is the mature standard.
+> Maintainer deferred to recommendation. Implementation guardrails:
+> - **Vendored**, not a runtime CDN import (bitvid ships assets locally; keeps it
+>   working offline/self-hosted and avoids a third-party origin dependency).
+> - **Dynamically imported only when the live player opens** — never loaded when
+>   `FEATURE_LIVE_INGEST` is off (honors "off = no trace"), and not on the
+>   critical path for non-live pages.
+> - Prefer native HLS where available (Safari) and fall back to hls.js elsewhere,
+>   so Safari users don't pay for the library.
+> - Precedent: bitvid already ships WebTorrent (a much heavier dep), so one small
+>   well-established HLS lib is proportionate.
 
-> **DECISION 4 — Past streams / VOD presentation.** Past (ended) streams are
-> **committed to the roadmap** (Phase 4): a `status=ended` event carries a
-> `recording` URL (a VOD, usually `.m3u8`/mp4) which plays through the same HLS
-> path as live. Open question is only *presentation*: mix ended streams into the
-> Live tab (marked "ended"), or give them a separate "Past streams" section/sort?
-> *Recommendation: one Live tab that lists live first, then recent ended streams
-> marked accordingly; a dedicated section only if it gets crowded.*
+> **DECISION 4 — Past streams / VOD presentation. ✅ LOCKED: Option A (one Live
+> tab: live first, then recent ended).** Currently-live streams sort to the top;
+> recently-ended streams follow, clearly badged "Ended" and playing their
+> `recording` VOD (normal scrubber) through the same HLS path. Bonus: this
+> **mitigates the sparse-live empty-tab concern from DECISION 1** — a whitelisted
+> creator's recent past streams keep the tab populated between live sessions.
+> A separate "Past streams" section only if the single list gets crowded.
 
-> **DECISION 5 — Discovery relays.** Use the user's normal read relays, or add
-> stream-heavy relays (zap.stream's relay etc.) for discovery? *Recommendation:
-> user read relays first; make an optional extra-relay list configurable if
-> coverage is thin.*
+> **DECISION 5 — Discovery relays. ✅ LOCKED: Option B (user read relays + a
+> configurable set of live-discovery relays).** Query kind-30311 on the user's
+> read relays PLUS a small instance-config list of known stream relays
+> (default a couple of well-known ones, e.g. zap.stream's relay; editable per
+> deployment). Widens *where* we look without widening *who* — DECISION 1's
+> whitelist still gates the hosts shown. Extra relays are only connected when
+> `FEATURE_LIVE_INGEST` is on, capped/deferred per the relay-storm invariants.
+> Phase 0 confirms which stream relays to ship as defaults.
 
 ---
 
@@ -186,11 +205,14 @@ page is a well-established pattern (Twitch / YouTube Live). Sources at the botto
   (rail empty until Phase 3), theater/fullscreen, LIVE badge + viewer count;
   **mobile** player-top / chat-below; keyboard controls; graceful error when the
   stream is down. Set latency expectations (HLS ~6–30s).
-- **Phase 3 — Chat (medium, DECISION 2).** Read-only kind-1311 subscription by
-  `#a`, auto-scroll with pause-on-scroll-up + jump-to-latest, teardown on close.
-  **Host zaps** can surface here (or earlier) via the existing zap system.
-  Optional **Phase 3b — post chat** (sign/publish 1311, its own sub-flag +
-  moderation stance) if read+post is chosen.
+- **Phase 3 — Read chat + host zaps (medium, DECISION 2).** Read-only kind-1311
+  subscription by `#a`, auto-scroll with pause-on-scroll-up + jump-to-latest,
+  teardown on close. **Host zaps** via the existing NWC/zap system (active
+  participation from the start).
+- **Phase 3b — Post chat (medium, DECISION 2).** Sign/publish kind-1311 into the
+  stream, behind its own sub-flag, with a moderation stance (rate-limit; how
+  blocked/muted authors + outbound spam are handled). This is the committed end
+  state (read + post + zaps).
 - **Phase 4 — Past streams / VOD (medium, DECISION 4).** List `status=ended`
   events and play their `recording` URL through the same HLS player; mark ended
   vs live in the UI. This is the "past zap.stream streams" capability.
