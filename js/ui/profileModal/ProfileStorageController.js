@@ -10,7 +10,14 @@ import { getActiveSigner } from "../../nostr/client.js";
 import { DEFAULT_NIP07_ENCRYPTION_METHODS } from "../../nostr/nip07Permissions.js";
 import { storageSyncService } from "../../services/storageSyncService.js";
 import { StorageCorsHelp } from "./storageCorsHelp.js";
-import { showConfirm } from "../confirmDialog.js";
+import {
+  syncStatusClass,
+  runSyncToggle,
+  runSyncRestore,
+  confirmSyncOverwrite,
+} from "./syncSection.js";
+
+const STORAGE_SYNC_LABEL = "storage settings";
 import {
   fillStorageForm,
   clearCredentialFields,
@@ -241,14 +248,6 @@ export class ProfileStorageController {
     this.updateStorageFormVisibility();
   }
 
-  confirmSyncOverwrite() {
-    return showConfirm(
-      "A newer copy of your storage settings is on your account (changed on " +
-        "another device). Overwrite it with this one?",
-      { confirmLabel: "Overwrite", danger: true },
-    );
-  }
-
   renderSyncSection(pubkey) {
     if (!(this.storageSyncSection instanceof HTMLElement)) {
       return;
@@ -271,13 +270,7 @@ export class ProfileStorageController {
       return;
     }
     this.storageSyncStatus.textContent = message || "";
-    const toneClass =
-      tone === "success"
-        ? "text-status-success"
-        : tone === "error"
-          ? "text-status-danger"
-          : "text-muted";
-    this.storageSyncStatus.className = `text-xs ${toneClass}`;
+    this.storageSyncStatus.className = syncStatusClass(tone);
   }
 
   async handleToggleSync() {
@@ -292,41 +285,20 @@ export class ProfileStorageController {
         ? this.storageSyncToggle.checked
         : false;
     try {
-      if (enabled) {
-        this.setSyncStatus("Encrypting and publishing…");
-        const result = await storageSyncService.enable(pubkey, {
-          confirmOverwrite: () => this.confirmSyncOverwrite(),
-        });
-        if (result?.ok) {
-          this.setSyncStatus(
-            `Synced to ${result.accepted}/${result.total} relays.`,
-            "success"
-          );
-          this.mainController.showSuccess("Storage settings synced (encrypted).");
-        } else if (result?.conflict) {
-          // User declined to overwrite a newer copy from another device.
-          this.setSyncStatus(
-            "Kept the newer copy on your account. Use Restore to pull it, or save again to overwrite.",
-          );
-        } else {
-          // Roll the toggle back so it reflects reality.
+      await runSyncToggle({
+        service: storageSyncService,
+        pubkey,
+        enabled,
+        itemLabel: STORAGE_SYNC_LABEL,
+        emptyHint: "Nothing to sync yet — save a connection first.",
+        setStatus: (msg, tone) => this.setSyncStatus(msg, tone),
+        showSuccess: (msg) => this.mainController.showSuccess(msg),
+        setToggle: (value) => {
           if (this.storageSyncToggle instanceof HTMLInputElement) {
-            this.storageSyncToggle.checked = false;
+            this.storageSyncToggle.checked = value;
           }
-          await storageSyncService.disable(pubkey).catch(() => {});
-          this.setSyncStatus(
-            result?.error === "nothing-to-sync"
-              ? "Nothing to sync yet — save a connection first."
-              : "Could not publish the encrypted copy. Try again.",
-            "error"
-          );
-        }
-      } else {
-        this.setSyncStatus("Removing the synced copy…");
-        await storageSyncService.disable(pubkey);
-        this.setSyncStatus("Sync turned off; the synced copy was cleared.");
-        this.mainController.showSuccess("Storage sync turned off.");
-      }
+        },
+      });
     } catch (error) {
       devLogger.error("[ProfileModal] Storage sync toggle failed:", error);
       this.setSyncStatus("Sync failed. Please try again.", "error");
@@ -341,20 +313,15 @@ export class ProfileStorageController {
       return;
     }
     try {
-      this.setSyncStatus("Fetching and decrypting…");
-      const result = await storageSyncService.pull(pubkey);
-      if (result?.found && result.imported) {
-        this.setSyncStatus("Restored from your Nostr account.", "success");
-        this.mainController.showSuccess("Storage settings restored.");
+      await runSyncRestore({
+        service: storageSyncService,
+        pubkey,
+        itemLabel: STORAGE_SYNC_LABEL,
+        setStatus: (msg, tone) => this.setSyncStatus(msg, tone),
+        showSuccess: (msg) => this.mainController.showSuccess(msg),
         // Re-render the pane so the restored connection shows.
-        await this.populateStoragePane();
-      } else if (result?.found && !result.imported) {
-        this.setSyncStatus("Found a copy but could not import it.", "error");
-      } else if (result?.cleared) {
-        this.setSyncStatus("No synced settings found (it was cleared).");
-      } else {
-        this.setSyncStatus("No synced settings found on your account.");
-      }
+        onImported: () => this.populateStoragePane(),
+      });
     } catch (error) {
       devLogger.error("[ProfileModal] Storage sync restore failed:", error);
       this.setSyncStatus("Restore failed. Please try again.", "error");
@@ -861,7 +828,7 @@ export class ProfileStorageController {
       if (storageSyncService.isEnabled(pubkey)) {
         try {
           const syncResult = await storageSyncService.push(pubkey, {
-            confirmOverwrite: () => this.confirmSyncOverwrite(),
+            confirmOverwrite: () => confirmSyncOverwrite(STORAGE_SYNC_LABEL),
           });
           if (syncResult?.ok) {
             this.setSyncStatus("Synced copy updated.", "success");
