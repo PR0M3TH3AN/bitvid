@@ -534,12 +534,25 @@ toward freshness and looked identical. Gave each a structural identity:
       extension (`type === "extension"/"nip07"`). Regression test added to
       `tests/admin-list-store.test.mjs` (nsec signer used while `window.nostr.signEvent`
       throws). Build + lint clean.
-- [ ] **AUDIT (follow-up):** sweep EVERY place that signs an event and confirm it uses the
-      active-signer path (`getActiveSigner().signEvent` / the client's sign helper), NOT
-      `window.nostr` directly. `window.nostr`-only signing breaks nsec + NIP-46. Grep for
-      `window.nostr`, `extension.signEvent`, and direct `signEvent` calls across publish
-      paths (lists, reactions, reposts, comments, profile metadata, NWC, watch history,
-      deletes, NIP-71 mirror, view events) and fix any that bypass the active signer.
+- [x] **AUDIT DONE 2026-06-30 — clean (adminListStore was the only bug).** Swept every
+      `.signEvent(`, `window.nostr`, and `ensureExtensionPermissions`/
+      `requestDefaultExtensionPermissions` caller:
+      - **Signing:** NO `window.nostr` is used to sign/encrypt anywhere. Every publish
+        path signs with the active signer (`signer.signEvent`): subscriptions, userBlocks,
+        hashtag prefs, relay prefs, moderationService reports, nip71MirrorService,
+        encryptedSyncFacade, DM seal + legacy DM (`nostr/client` signingAdapter defaults
+        to the active signer), DM relay list, admin lists.
+      - **Extension-permission gates:** every caller (reactions, comments, subscriptions,
+        userBlocks, watchHistory, relayManager, DM relays) guards the request behind a
+        signer-type (`extension`/`nip07`) or capability check, so nsec/NIP-46 skip it and
+        go straight to active-signer signing — they never hit the `extension-missing`
+        failure that broke admin lists.
+      - **Decrypt:** gates on the active signer's nip04/nip44 capability with `window.nostr`
+        only as a fallback; nsec (closures) + NIP-46 (remote) both decrypt fine.
+      - **Cleanup note (low priority):** `js/auth/signingAdapter.js`
+        (`createNip07SigningAdapter`, defaults to `window.nostr`) is dead production code —
+        referenced only by its own test, no app callers. Harmless; remove or repoint at
+        the active signer if ever reused.
 
 ### 43. Logged-in profile card at the top of the profile modal (UX)
 - [ ] Show the **logged-in user's profile photo + name** at the **top-center** of the
