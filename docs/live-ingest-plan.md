@@ -24,10 +24,12 @@ a config flag that leaves **no trace** when off.
 > *Recommendation: whitelisted hosts for v1 — consistent with the rest of bitvid's
 > trust model and avoids surfacing arbitrary/abusive streams.*
 
-> **DECISION 2 — Live chat in v1?** Read-only kind-1311 chat alongside the player,
-> or playback-only for v1 (chat later)?
-> *Recommendation: playback-only v1; add read-only chat in a later phase. Chat is
-> a live subscription with its own moderation questions.*
+> **DECISION 2 — Chat level (read-only vs read + post).** Chat is **committed to
+> the roadmap** (Phase 3), the only open question is how far: **read-only** (kind
+> 1311 ingest — stays cleanly inside "ingest"), or **read + post** (signing/
+> publishing 1311 events — a write path, likely its own sub-flag + moderation
+> stance). *Recommendation: read-only in Phase 3, then read + post as Phase 3b if
+> wanted. Playback (Phases 1–2) ships before chat regardless.*
 
 > **DECISION 3 — HLS playback dependency.** OK to lazy-load a small HLS library
 > (**hls.js**, ~cdn/vendored) ONLY when the flag is on, or must playback stay
@@ -35,10 +37,13 @@ a config flag that leaves **no trace** when off.
 > *Recommendation: allow hls.js, lazy-imported behind the flag (native HLS alone
 > won't play `.m3u8` in Chrome/Firefox). It never loads when the flag is off.*
 
-> **DECISION 4 — Ended streams / VOD.** When `status=ended`, some events carry a
-> `recording` URL (a VOD). Show ended streams with playback of the recording,
-> hide them, or list-but-mark-ended? *Recommendation: v1 shows only `status=live`;
-> treat recordings as a later enhancement.*
+> **DECISION 4 — Past streams / VOD presentation.** Past (ended) streams are
+> **committed to the roadmap** (Phase 4): a `status=ended` event carries a
+> `recording` URL (a VOD, usually `.m3u8`/mp4) which plays through the same HLS
+> path as live. Open question is only *presentation*: mix ended streams into the
+> Live tab (marked "ended"), or give them a separate "Past streams" section/sort?
+> *Recommendation: one Live tab that lists live first, then recent ended streams
+> marked accordingly; a dedicated section only if it gets crowded.*
 
 > **DECISION 5 — Discovery relays.** Use the user's normal read relays, or add
 > stream-heavy relays (zap.stream's relay etc.) for discovery? *Recommendation:
@@ -102,6 +107,10 @@ chat message. Read-only ingest = subscribe by `#a`, render newest.
   `nip71IngestService` so it stays off the cold-start critical path.
 - **Sidebar tab + view:** "Live" link in `components/sidebar.html` (flag-gated) +
   `views/live.html` (grid of live cards).
+- **Card design (new):** a **live card** distinct from `VideoCard.js` — a **LIVE
+  badge**, viewer count, host name/avatar, and an "ended" state for past streams
+  (Phase 4). Likely a dedicated `LiveCard` (the live/ended metadata differs enough
+  from a video card that a variant is awkward). New `data-testid` for e2e.
 - **Player:** a live player path. The current player
   (`js/services/playbackService.js`) sets `videoEl.src` for URL/WebTorrent; HLS
   needs hls.js attached to the `<video>` element when the source is `.m3u8`
@@ -126,10 +135,14 @@ chat message. Read-only ingest = subscribe by `#a`, render newest.
   live cards, route gated by flag. Clicking a card opens… (Phase 2).
 - **Phase 2 — HLS playback (medium).** Live player path + lazy hls.js; play the
   `streaming` URL; graceful error when the stream is down.
-- **Phase 3 — Read-only chat (medium, DECISION 2).** kind-1311 subscription +
-  render + teardown.
-- **Phase 4 — Polish.** Viewer counts, ended/recording handling (DECISION 4),
-  optional extra discovery relays (DECISION 5), poster/skeleton states.
+- **Phase 3 — Chat (medium, DECISION 2).** Read-only kind-1311 subscription by
+  `#a` + render + teardown. Optional **Phase 3b — post chat** (sign/publish 1311,
+  its own sub-flag + moderation stance) if read+post is chosen.
+- **Phase 4 — Past streams / VOD (medium, DECISION 4).** List `status=ended`
+  events and play their `recording` URL through the same HLS player; mark ended
+  vs live in the UI. This is the "past zap.stream streams" capability.
+- **Phase 5 — Polish.** Viewer counts, optional extra discovery relays
+  (DECISION 5), poster/skeleton states, liveness de-emphasis for stale events.
 
 ---
 

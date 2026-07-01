@@ -46,6 +46,19 @@ source that lists only shorts. Everything ships behind a config flag that leaves
 > *Recommendation: ship the grid + portrait player first (small), then layer the
 > swipe feed as a phase 2 — keeps the first release cheap.*
 
+> **DECISION 6 — Card design.** Shorts need a **new portrait (9:16) card** — the
+> existing `js/ui/components/VideoCard.js` hardcodes a **16:9 landscape** media
+> ratio (`ratio-16-9`), so it can't render shorts correctly as-is. Two options:
+> (a) a **new `ShortCard` component** (portrait thumbnail, compact meta, its own
+> `data-testid`); or (b) a **portrait "mode"/variant of `VideoCard`** driven by a
+> flag (e.g. `variant: "short"` swapping the ratio class + layout).
+> *Recommendation: (b) a portrait variant of `VideoCard` if the internals are
+> clean enough to parameterize the ratio + layout — it inherits thumbnail
+> binding, moderation badges, engagement controls, and the ⋯ menu for free;
+> fall back to (a) a dedicated `ShortCard` only if forcing a variant makes
+> `VideoCard` unwieldy or pushes it past its size cap.* Either way this is a
+> **first-class deliverable**, not an afterthought — the grid can't ship without it.
+
 ---
 
 ## Config flag (off = no trace)
@@ -97,6 +110,12 @@ Reuses the existing feed engine + ingest; new pieces are thin.
 - **Sidebar tab:** add a Shorts link in `components/sidebar.html`, rendered only
   when the flag is on.
 - **View:** `views/shorts.html` (a portrait-oriented grid container).
+- **Card design (new):** a portrait **9:16** card — either a `variant: "short"`
+  mode of `js/ui/components/VideoCard.js` (which is currently 16:9 / `ratio-16-9`)
+  or a dedicated `ShortCard` (DECISION 6). Portrait thumbnail, compact title +
+  author, reuse of thumbnail binding, moderation badges, engagement + ⋯ menu. New
+  design tokens if needed (existing `--video-card-*` tokens live in
+  `css/tokens.css`). A distinct `data-testid` for e2e selectors.
 - **Player UI:** v1 opens a short in the existing player modal with a portrait
   layout; v2 adds a full-screen vertical swipe/next feed.
 - **Diversity:** apply the existing `spreadAuthors` pass (feed sorters) so the
@@ -108,10 +127,12 @@ Reuses the existing feed engine + ingest; new pieces are thin.
 
 - **Phase 0 — Detection + flag (small).** Add `FEATURE_SHORTS` (off), `isShort`
   derivation in the ingest adapter + mirror, unit tests for detection. No UI.
-- **Phase 1 — Tab + feed (small–medium).** `FEED_TYPES.SHORTS`, sidebar link,
-  `views/shorts.html`, feed registration filtered to `isShort`, route gated by
-  flag. Grid renders; opens in the standard player.
-- **Phase 2 — Vertical UX (medium).** Portrait player layout + swipe/next feel.
+- **Phase 1 — Tab + feed + portrait card (medium).** `FEED_TYPES.SHORTS`, sidebar
+  link, `views/shorts.html`, feed registration filtered to `isShort`, route gated
+  by flag, and the **new portrait 9:16 card** (DECISION 6) so the grid renders
+  shorts correctly. Opens in the standard player for now.
+- **Phase 2 — Vertical UX (medium).** Portrait player layout + full-screen
+  swipe/next feed.
 - **Phase 3 — Polish.** Autoplay-on-scroll, mute toggle, per-tab empty states,
   optional exclusion from the main feed (DECISION 3 revisit).
 
