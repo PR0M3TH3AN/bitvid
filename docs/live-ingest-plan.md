@@ -3,16 +3,17 @@
 TODO ref: **#16** in `todo/TODO_2026-06-20_pre-launch.md` (watch-only).
 Publishing / "Go Live" is **#16c** — a separate, larger effort with its **own**
 config flag; it is explicitly **out of scope** for this doc.
-Status: **PLANNING → needs a research spike (Phase 0)**. Not started.
+Status: **DECISIONS LOCKED (D1–D5)** — Phase 0 research spike first (confirm tag
+shapes + hls.js/CORS + default relays), then build. Not started.
 
 Live streams are **NIP-53 Live Activities** — a *different* NIP from short-form
 video (#16b / NIP-71). Kind **30311** is the live event (addressable, carries the
 `streaming` URL — usually HLS `.m3u8` — plus `status`, title, host `p` tags);
 kind **1311** is live chat. zap.stream and shosho.live publish these.
 
-Scope of this feature: **discover live events, play the HLS stream, optionally
-show read-only chat.** No broadcasting, no media hosting. Everything ships behind
-a config flag that leaves **no trace** when off.
+Scope of this feature: **discover live streams, play the HLS stream, chat
+(read → post, phased), and zap the host.** No broadcasting, no media hosting.
+Everything ships behind a config flag that leaves **no trace** when off.
 
 ---
 
@@ -73,9 +74,15 @@ a config flag that leaves **no trace** when off.
 
 ## Config flags (off = no trace)
 
-Add **`FEATURE_LIVE_INGEST`** to `config/instance-config.js` (default `false`),
-threaded through `js/config.js` → `js/constants.js` like `FEATURE_NIP71_INGEST`.
-(The separate `FEATURE_LIVE_PUBLISH` for #16c is **not** part of this doc.)
+Flags introduced by this doc (both default `false`, threaded through
+`js/config.js` → `js/constants.js` like `FEATURE_NIP71_INGEST`):
+- **`FEATURE_LIVE_INGEST`** — the whole watch-only feature (tab, discovery,
+  playback, read chat, host zaps).
+- **`FEATURE_LIVE_CHAT_POST`** — the Phase 3b write path (posting chat); only
+  meaningful when ingest is also on. Kept separate so an instance can allow
+  watching + reading chat without enabling outbound posting.
+
+(The `FEATURE_LIVE_PUBLISH` "Go Live" flag belongs to **#16c**, a separate doc.)
 
 When `FEATURE_LIVE_INGEST` is off, all of the following must be absent:
 1. **Sidebar tab** — the "Live" link is not rendered in `components/sidebar.html`.
@@ -85,7 +92,9 @@ When `FEATURE_LIVE_INGEST` is off, all of the following must be absent:
 4. **Route** — `#view=live` falls back to the default view.
 5. **HLS library** — hls.js is dynamically imported only inside the live player,
    so it never loads when the flag is off (keeps the bundle/network clean).
-6. **Config surface** — the two flags are the only footprint.
+6. **Chat-post UI** — the compose box (Phase 3b) is absent unless BOTH
+   `FEATURE_LIVE_INGEST` and `FEATURE_LIVE_CHAT_POST` are on.
+7. **Config surface** — the flags above are the only footprint.
 
 > **Management UI note:** a **"Live" sub-tab in profile → My Videos** (alongside
 > Videos / Shorts, reusing the admin sub-tab pattern) is for managing the user's
@@ -141,8 +150,9 @@ chat message. Read-only ingest = subscribe by `#a`, render newest.
   (`js/services/playbackService.js`) sets `videoEl.src` for URL/WebTorrent; HLS
   needs hls.js attached to the `<video>` element when the source is `.m3u8`
   (native only on Safari). Lazy-load hls.js on first live play (DECISION 3).
-- **Chat (later, DECISION 2):** read-only kind-1311 subscription by `#a`, rendered
-  beside the player; teardown on close.
+- **Chat (DECISION 2):** read-only kind-1311 subscription by `#a` (Phase 3),
+  rendered beside the player with WoT-mute filtering; a compose/post path in
+  Phase 3b behind `FEATURE_LIVE_CHAT_POST`; teardown on close.
 - **Liveness/staleness:** an event with `status=live` but no recent update / dead
   `.m3u8` should be de-emphasized or dropped (see Risks).
 
@@ -184,7 +194,9 @@ page is a well-established pattern (Twitch / YouTube Live). Sources at the botto
 - **Zaps fit live perfectly** — zap.stream's whole model is zapping streamers, and
   bitvid already has the NWC/zap system. Live zaps to the host are a natural
   headline action (surface them alongside chat). Even if chat is read-only in
-  Phase 3, zapping the host can ship earlier.
+  Phase 3, zapping the host can ship earlier. **Zap target:** resolve from the
+  host's profile `lud16`/LNURL, or a zap tag on the 30311 event if present
+  (confirm in Phase 0); reuse the existing zap flow — no new payment code.
 - Reuse the existing player shell where practical; HLS via lazy hls.js (DECISION 3).
 - Respect `prefers-reduced-motion` and the relay-cap / circuit-breaker invariants
   for the discovery + chat subscriptions.
@@ -196,7 +208,11 @@ page is a well-established pattern (Twitch / YouTube Live). Sources at the botto
     `streaming` multiplicity, live/ended marking, host `p` roles.
   - Prototype HLS playback in a throwaway page: hls.js attaching to `<video>`
     with a real `.m3u8`; confirm CORS behavior from the static origin.
-  - Output: lock DECISIONS 1–5 and the field mapping; update this doc.
+  - Pick the default **live-discovery relays** (DECISION 5) from where real
+    30311 events actually land; resolve the **host zap target** (lud16/LNURL vs a
+    `zap` tag on the event).
+  - Output: **confirm** the field mapping + defaults (decisions are already
+    locked); flag any surprises back into this doc.
 - **Phase 1 — Discovery + Live tab (medium).** Flag, `FEED_TYPES.LIVE`, live
   service (30311 discovery, scoped), sidebar link, `views/live.html`, grid of
   live cards, route gated by flag. Clicking a card opens… (Phase 2).
@@ -216,19 +232,27 @@ page is a well-established pattern (Twitch / YouTube Live). Sources at the botto
 - **Phase 4 — Past streams / VOD (medium, DECISION 4).** List `status=ended`
   events and play their `recording` URL through the same HLS player; mark ended
   vs live in the UI. This is the "past zap.stream streams" capability.
-- **Phase 5 — Polish.** Viewer counts, optional extra discovery relays
-  (DECISION 5), poster/skeleton states, liveness de-emphasis for stale events.
+- **Phase 5 — Polish.** Poster/skeleton states, liveness de-emphasis for stale
+  events, high-volume-chat buffering, and (optional) surfacing `planned`/upcoming
+  streams.
 
 ---
 
 ## Moderation, whitelist & NSFW
 
-Per DECISION 1 (recommended: whitelisted hosts): the live list is scoped to
+Per DECISION 1 (locked: whitelisted hosts): the live list is scoped to
 whitelisted authors and reuses the existing trust filter, so the admin
-whitelist/blacklist governs who can appear. Open question for chat (Phase 3):
-kind-1311 messages come from arbitrary viewers — decide whether chat inherits the
-WoT mute list or is simply unmoderated/read-only-with-hide. **Flag this before
-Phase 3.**
+whitelist/blacklist governs which streams appear.
+
+**Chat moderation (two design items, before their phases):**
+- **Read chat (Phase 3):** kind-1311 messages come from *arbitrary* viewers, not
+  just whitelisted authors. Decide whether the read view applies the existing WoT
+  **mute/blacklist** (hide messages from muted/blocked pubkeys) — recommend yes,
+  reuse the same author filter so a globally-blocked spammer is hidden in live
+  chat too. NSFW/text moderation of chat is out of scope for v1.
+- **Post chat (Phase 3b):** you're publishing into someone else's stream — add
+  rate-limiting and respect the host/relay's own rules; decide the outbound stance
+  (e.g. block posting for lockdown/blacklisted local users).
 
 ---
 
@@ -247,6 +271,17 @@ Phase 3.**
   deferred and capped like nip71 ingest.
 - **Scope creep into #16c.** Keep this strictly watch-only; broadcasting is a
   separate flag + plan.
+- **High-volume chat.** A busy stream's kind-1311 can arrive fast; the read view
+  must cap/virtualize the message buffer (drop-oldest) so it can't balloon memory
+  or jank the UI. Tie into the auto-scroll/pause behavior.
+- **`status=planned` (scheduled) streams.** 30311 supports a not-yet-live state.
+  v1 shows only live + ended (DECISION 4); decide later whether to surface
+  "upcoming" (with `starts`). Just don't let a `planned` event render as if live.
+- **Multiple `streaming` renditions.** `streaming` may appear more than once
+  (quality variants) or point at a master playlist. Pick one sensibly (hls.js
+  handles master playlists); confirm shapes in Phase 0.
+- **Private/token-gated streams.** Only public HLS is in scope — a stream whose
+  `.m3u8` requires auth/tokens is treated as "can't play," gracefully.
 
 ---
 

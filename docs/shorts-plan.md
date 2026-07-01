@@ -1,7 +1,8 @@
 # Shorts (short-form vertical video) — Dev Plan
 
 TODO ref: **#16b** in `todo/TODO_2026-06-20_pre-launch.md`.
-Status: **PLANNING** — decisions open (see below). Not started.
+Status: **DECISIONS LOCKED — ready to build** (D1–D5, D7, D8 locked; D6 is a
+build-time implementation choice). Not started.
 
 Short-form vertical video is **NIP-71 kind 22** (the short counterpart to kind 21
 normal video), plus the addressable short kind **34236**. It is a *different*
@@ -10,10 +11,12 @@ feature from live streams (#16, NIP-53) — do not conflate them.
 The good news: **bitvid already ingests kind 22.** The inbound NIP-71 adapter
 (`js/nostr/nip71IngestAdapter.js`, `NIP71_KINDS = {21, 22, 34235, 34236}`) parses
 short-form notes today and they already flow into the main feed. So this feature
-is **not new ingest code** — it is (a) a way to distinguish "short" videos,
-(b) a dedicated **Shorts sidebar tab** with a vertical/swipe UI, and (c) a feed
-source that lists only shorts. Everything ships behind a config flag that leaves
-**no trace** when off.
+is **not new ingest code** — it is (a) a single `isShort` discriminator (native
+marker / foreign kind), (b) a dedicated **Shorts sidebar tab** with a vertical
+UI, (c) a feed source that lists only shorts, (d) **exclusion of shorts from the
+main/discovery feeds** (DECISION 3), and (e) a **publish-side content-type
+selector** + native short marker (DECISION 7) so bitvid creators can post shorts.
+Everything ships behind a config flag that leaves **no trace** when off.
 
 ---
 
@@ -173,11 +176,8 @@ above), and reuse patterns already in the app.
 
 ## Field mapping — detecting a "short"
 
-A video object needs a reliable `isShort` marker so a feed source can filter.
-Candidate signals (to confirm against real events in Phase 0):
-
-Per DECISION 4 + 7, `isShort` is derived from **kind for foreign/ingested videos**
-and from an **explicit marker for bitvid-native videos** (which are kind 30078):
+Per DECISION 4 + 7 (locked), `isShort` is derived from **kind for foreign/ingested
+videos** and from an **explicit marker for bitvid-native videos** (kind 30078):
 
 | Signal | Applies to | Meaning |
 |--------|-----------|---------|
@@ -272,10 +272,18 @@ the bottom of this doc.
   next/prev affordance for mouse users.
 
 ### bitvid-specific notes
-- Playback rides the existing URL-first + WebTorrent pipeline
-  (`playbackService`); shorts are just kind-22 videos, so no new transport.
-- Zaps (not likes) are the headline action — this is a genuine differentiator vs
-  the incumbents and it already exists in bitvid.
+- Playback rides the existing URL-first + WebTorrent pipeline (`playbackService`);
+  shorts are ordinary videos (native kind-30078 + `isShort`, or ingested
+  21/22/34235/34236), so **no new transport**.
+- **WebTorrent + autoplay caution:** an autoplaying scroll feed must NOT spin up a
+  torrent swarm per short as the user flies past. In the immersive feed, prefer
+  **URL-first for the active/preloaded shorts** and only fall back to WebTorrent on
+  demand (e.g. when the URL fails, or the short is dwelt on) — otherwise scrolling
+  seeds dozens of swarms and thrashes the connection budget. (Risks section.)
+- Zaps (not likes) are the headline action — a genuine differentiator vs the
+  incumbents that already exists in bitvid.
+- View counts, watch history, comments, and zaps reuse the existing per-video
+  machinery — shorts are just videos to those systems.
 - Everything still flows through the render-time moderation filter (DECISION 2).
 
 ## Phases (each flag-gated from day one)
@@ -302,29 +310,46 @@ the bottom of this doc.
   handling. **Mobile:** full-screen + swipe up/down. **Desktop:** centered
   letterboxed player + **native keyboard nav** (↑/↓ prev/next, Space, M, Esc) +
   side action rail. Grid (Phase 1) remains the entry point.
-- **Phase 3 — Polish.** Autoplay-on-scroll, mute toggle, per-tab empty states,
-  optional exclusion from the main feed (DECISION 3 revisit).
+- **Phase 3 — Polish.** Mute toggle persistence, per-tab empty states, captions
+  surfacing, seek affordance, and the URL-first-for-autoplay WebTorrent guard.
 
 ---
 
 ## Moderation, whitelist & NSFW
 
-Per DECISION 2 (recommended: inherit): shorts pass through the same render-time
+Per DECISION 2 (locked: inherit): shorts pass through the same render-time
 `filterVideos` path (blacklist event ids, author blacklist, WoT mute, NSFW gate,
 private exclusion) as every other grid. No new moderation surface. The admin
-per-event block list (#25) already applies to any event id, shorts included.
+per-event block list (#25) already applies to any event id, shorts included. The
+**one** short-specific behavior is that NSFW-flagged shorts do not autoplay in the
+immersive feed (tap-to-play), even for opted-in users — a playback rule, not a
+filtering change.
 
 ---
 
 ## Risks / watch-items
 
-- **Aspect-ratio detection is soft** — not every short carries `imeta dim`; kind
-  is the reliable signal, dims are the fallback. Confirm in Phase 0.
-- **Double-listing** — if shorts stay in the main feed (DECISION 3a), make sure
-  the cross-ecosystem dedup (import-link + infohash, see nip71 onboarding) still
-  collapses a short that also exists as a 30078/34235 video.
-- **Empty tab** — with a whitelist-scoped source, a small instance may have zero
-  shorts; ship a clear empty state so the tab doesn't look broken.
+- **Main-feed exclusion touches every feed (DECISION 3).** Adding the `isShort`
+  exclusion to Recent / For You / Explore / Trending / Kids (and likely
+  Subscriptions) is the riskiest part — a bug drops the *wrong* videos or lets
+  shorts leak. Regression-test each feed; couples with the #20/#21 feed-identity
+  work. A single shared `isShort` predicate (used positively by Shorts, negatively
+  by the others) keeps it consistent.
+- **A native short missing its marker leaks into the main feed.** Since native
+  detection is the `isShort` content field (not aspect ratio), a bitvid short must
+  reliably carry the marker on publish AND on edit/re-publish, or it reappears in
+  the main feed. Cover publish + edit paths; the marker must round-trip through the
+  mirror/auto-sync.
+- **WebTorrent swarm storm in the autoplay feed.** Preloading + autoplaying a
+  scroll feed over WebTorrent would spin up many swarms at once. Prefer URL-first
+  for active/preloaded shorts; fall back to WebTorrent on demand (see Architecture
+  → bitvid notes). Respect the existing connection budget.
+- **Empty tab** — a whitelist-scoped source (DECISION 1) on a small instance may
+  have few shorts; ship a clear empty state.
+- **Search scope (sub-decision, defer to build).** Should shorts appear in
+  search? They're excluded from the *browse* feeds (DECISION 3) but a user
+  searching a creator/topic arguably still wants their shorts. Recommend: shorts
+  remain searchable and open in the Shorts player context; confirm during Phase 1.
 
 ---
 
