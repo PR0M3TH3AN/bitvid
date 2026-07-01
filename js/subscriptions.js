@@ -175,6 +175,25 @@ const subscribeVideoViewEventsApi = (pointer, options) =>
  * Also handles fetching and rendering subscribed channels' videos
  * in the same card style as your home page.
  */
+// A RelayPublishError whose failures are ALL "publish timeout" (no relay ACKed in
+// the window) means the event was sent but not confirmed — not that it was
+// rejected. For an idempotent, replaceable list this almost always persisted (the
+// user sees it after a refresh), so we treat it as a soft success rather than a
+// hard error that would revert the optimistic UI. An explicit relay rejection has
+// a different reason and is NOT a timeout, so it still fails loudly.
+export function subscriptionPublishFailuresAreAllTimeouts(publishError) {
+  const failures = Array.isArray(publishError?.relayFailures)
+    ? publishError.relayFailures
+    : [];
+  if (!failures.length) {
+    return false;
+  }
+  return failures.every((failure) => {
+    const reason = typeof failure?.reason === "string" ? failure.reason : "";
+    return /timeout/i.test(reason);
+  });
+}
+
 class SubscriptionsManager {
   constructor() {
     this.subscribedPubkeys = new Set();
@@ -1452,7 +1471,8 @@ class SubscriptionsManager {
       signedEvent
     );
 
-    let publishSummary;
+    let publishSummary = null;
+    let softSuccess = false;
     try {
       publishSummary = assertAnyRelayAccepted(publishResults, {
         context: "subscription list"
@@ -1461,17 +1481,28 @@ class SubscriptionsManager {
       if (publishError?.relayFailures?.length) {
         publishError.relayFailures.forEach(
           ({ url, error: relayError, reason }) => {
-            userLogger.error(
-              `[SubscriptionsManager] Subscription list rejected by ${url}: ${reason}`,
+            userLogger.warn(
+              `[SubscriptionsManager] Subscription list not acked by ${url}: ${reason}`,
               relayError || reason
             );
           }
         );
       }
-      throw publishError;
+      // Only an explicit relay rejection (or a pre-publish signer/encryption
+      // error, thrown earlier) is a real failure. A result where every relay
+      // merely timed out means the event was sent to an idempotent, replaceable
+      // list and almost certainly persisted — surface it as a soft success so the
+      // optimistic UI is NOT reverted and the user doesn't see a spurious error.
+      if (!subscriptionPublishFailuresAreAllTimeouts(publishError)) {
+        throw publishError;
+      }
+      userLogger.warn(
+        "[SubscriptionsManager] Subscription list not acknowledged by any relay within the timeout; treating as optimistic success (reconciles on next load).",
+      );
+      softSuccess = true;
     }
 
-    if (publishSummary.failed.length) {
+    if (publishSummary?.failed?.length) {
       publishSummary.failed.forEach(({ url, error: relayError }) => {
         const reason =
           relayError instanceof Error
@@ -1486,12 +1517,18 @@ class SubscriptionsManager {
       });
     }
 
+    // Record the published event id for both a confirmed and an
+    // optimistic/unconfirmed publish — the event carries this id regardless.
     this.subsEventId = signedEvent.id;
     this.subsEventCreatedAt = signedEvent.created_at;
     this.saveToCache(userPubkey);
-    const acceptedUrls = publishSummary.accepted.map(({ url }) => url);
+    const acceptedUrls = publishSummary
+      ? publishSummary.accepted.map(({ url }) => url)
+      : [];
     devLogger.log(
-      "Subscription list published, event id:",
+      softSuccess
+        ? "Subscription list published (optimistic/unconfirmed), event id:"
+        : "Subscription list published, event id:",
       signedEvent.id,
       "accepted relays:",
       acceptedUrls
