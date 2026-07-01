@@ -1158,9 +1158,26 @@ test('admin mutations invoke accessControl stubs and update admin DOM', async ()
 
   assert.ok(controller.navButtons.admin);
   assert.equal(controller.navButtons.admin.classList.contains('hidden'), false);
-  assert.equal(controller.moderatorSection.classList.contains('hidden'), false);
+  // The admin pane is now organized into sub-tabs: Whitelist is the default tab
+  // (visible), while Moderators/Blacklist/Blocked-videos sections are hidden
+  // until their tab is selected. The Moderators *tab button* is shown to a
+  // super admin. (Previously every section was stacked and visible at once.)
+  const admin = controller.adminController;
+  assert.equal(admin.whitelistSection.classList.contains('hidden'), false);
+  assert.equal(admin.moderatorSection.classList.contains('hidden'), true);
+  assert.equal(
+    admin.subtabButtons.moderators.classList.contains('hidden'),
+    false,
+    'moderators sub-tab is available to a super admin',
+  );
+  // Content still populates behind the inactive tab.
   assert.equal(controller.adminModeratorList.querySelectorAll('li').length, 1);
-  assert.equal(controller.adminModeratorList.hasAttribute('hidden'), false);
+  // Selecting the Moderators sub-tab reveals its section and hides Whitelist.
+  admin.selectAdminSubtab('moderators');
+  assert.equal(admin.moderatorSection.classList.contains('hidden'), false);
+  assert.equal(admin.whitelistSection.classList.contains('hidden'), true);
+  // Back to Whitelist for the remaining assertions.
+  admin.selectAdminSubtab('whitelist');
   assert.equal(
     controller.whitelistList.querySelectorAll('button').length > 0,
     true,
