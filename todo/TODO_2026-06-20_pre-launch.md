@@ -1353,6 +1353,9 @@ Threat model / cautions (write these into the feature + docs):
       populate `streaming`/`recording`, and HLS playback support in the player.
 
 ### 16c. Publish live streams — "Go Live" from bitvid (like zap.stream)
+> **Dev plan: `docs/live-publish-plan.md`** (FUTURE — after #16 + #16b; static
+> client + optional Media Node/Bridge split; MediaMTX; NIP-98 bridge auth;
+> archive→VOD reuses the s-tag/info.json model. Decisions open.)
 - [ ] Let users **broadcast their own stream** (camera / desktop / arbitrary source)
       to Nostr via bitvid, the way zap.stream does: publish a NIP-53 kind-30311 live
       event (status live → ended), push the media to a streaming endpoint (HLS), and
