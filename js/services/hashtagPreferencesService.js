@@ -5,6 +5,7 @@ import {
   getActiveSigner,
 } from "../nostrClientFacade.js";
 import { isSessionActor } from "../nostr/sessionActor.js";
+import { nextReplaceableCreatedAt } from "../nostr/replaceableCreatedAt.js";
 import {
   buildHashtagPreferenceEvent,
   getNostrEventSchema,
@@ -1408,7 +1409,13 @@ class HashtagPreferencesService {
       throw error;
     }
 
-    const createdAt = Math.floor(Date.now() / 1000);
+    // Replaceable event: created_at MUST be strictly greater than the last one we
+    // published, or relays reject the update as "not newer" and keep the old copy.
+    // Two quick edits (e.g. adding a second disinterest within the same wall-clock
+    // second) otherwise collide — the second errored on the client yet landed on
+    // relays that resolve same-created_at ties by id, so it "failed but works after
+    // refresh". Monotonic created_at removes the collision entirely.
+    const createdAt = nextReplaceableCreatedAt(this.eventCreatedAt);
     const event = buildHashtagPreferenceEvent({
       pubkey: targetPubkey,
       created_at: createdAt,
