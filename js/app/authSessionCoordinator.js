@@ -1406,12 +1406,14 @@ export function createAuthSessionCoordinator(deps) {
         throw new Error("Missing pubkey for profile switch request.");
       }
 
-      // Switching to a saved nsec account needs its passphrase — the private key is
-      // stored encrypted, so switchProfile alone throws "secret-required". Prompt for
-      // the PIN and unlock the stored key so the switch actually works (matches #36).
+      // Different signing methods need help to activate on switch:
+      //  - nsec: its key is passphrase-encrypted → prompt for the PIN + unlock it.
+      //  - NIP-46: reuse the stored remote-signer session (don't restart a handshake).
+      //  - NIP-07: the extension connects directly, no prep needed.
+      const normalizedProviderId = String(providerId || "").trim().toLowerCase();
+      const isNsecTarget = normalizedProviderId === "nsec";
+      const isNip46Target = normalizedProviderId === "nip46";
       let switchOptions = { providerId };
-      const isNsecTarget =
-        String(providerId || "").trim().toLowerCase() === "nsec";
       if (isNsecTarget) {
         const prep = await this.prepareStoredNsecSwitch(pubkey);
         if (prep.status !== "ok") {
@@ -1422,6 +1424,8 @@ export function createAuthSessionCoordinator(deps) {
           unlockStored: true,
           passphrase: prep.passphrase,
         };
+      } else if (isNip46Target) {
+        switchOptions = { providerId, reuseStored: true };
       }
 
       let result;
@@ -1433,6 +1437,12 @@ export function createAuthSessionCoordinator(deps) {
             "Incorrect PIN / passphrase. Try switching to this account again.",
           );
           return { switched: false, reason: "bad-passphrase" };
+        }
+        if (isNip46Target) {
+          this.showError?.(
+            "Couldn't reconnect to this account's remote signer. Reconnect it (Login → remote signer) to switch to it.",
+          );
+          return { switched: false, reason: "nip46-reconnect-failed" };
         }
         throw error;
       }

@@ -607,11 +607,20 @@ toward freshness and looked identical. Gave each a structural identity:
       key / different account → a clear "log in with its nsec" toast. So you can switch
       NIP-07 → nsec fluently. Tests: `tests/stored-nsec-switch.test.mjs` (6, pure gate) +
       `tests/password-prompt.test.mjs` (6, dialog). Build + lint clean; auth suites 25/25.
-- [ ] **VERIFY + extend to NIP-46 (follow-up).** My change only intercepts nsec targets;
-      NIP-46 switching is unchanged (`switchProfile({ providerId: "nip46" })`). Verify a
-      NIP-07 → NIP-46 (and nsec → NIP-46) switch actually reconnects/re-authorizes the
-      remote signer; if it fails, apply the same "prep before switch" pattern (reconnect
-      the bunker / re-open the NIP-46 connect flow).
+- [x] **NIP-46 switching FIXED 2026-06-30.** Confirmed the same bug: switching to a saved
+      NIP-46 account called the provider with no `reuseStored`, so it started a fresh
+      handshake (needing a new connect URI/QR) instead of reconnecting. Now
+      `handleProfileSwitchRequest` sends `{ providerId: "nip46", reuseStored: true }` for
+      NIP-46 targets → `switchProfile` forwards `reuseStored` → the nip46 provider's
+      `useStoredRemoteSigner` reconnects the stored session and activates the account. On
+      failure → "Couldn't reconnect to this account's remote signer" toast.
+- [x] **Wrong-account guard (all methods) 2026-06-30.** `requestLogin` now enforces
+      `expectPubkey` (only set by `switchProfile`): if a single-slot stored session
+      resolves to a DIFFERENT account than requested, it rejects with `pubkey-mismatch`
+      instead of silently switching to the wrong profile. Also protects NIP-07 (switching
+      to an account the extension isn't currently on now fails clearly instead of grabbing
+      the extension's active account). Tests in `tests/authService.test.mjs` (option
+      forwarding + expectPubkey rejection).
 - [ ] **Multiple nsec accounts:** the stored session is a SINGLE slot
       (`bitvid:sessionActor:v1`), so only the last-persisted nsec key is on the device —
       switching among several saved nsec accounts needs per-account encrypted-key storage.

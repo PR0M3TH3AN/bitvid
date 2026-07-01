@@ -204,5 +204,40 @@ describe("AuthService Coverage", () => {
         // So yes, moved to front.
         assert.equal(saved[0].pubkey, pubkey1);
     });
+
+    // #48: fluent switching across signing methods — switchProfile must forward the
+    // per-method restore options to the provider.
+    test("forwards unlockStored + passphrase to the provider (nsec switch)", async () => {
+      const target = "00000000000000000000000000000000000000000000000000000000000000a1";
+      mockAuthProvider.login.mock.mockImplementation(async () => ({ pubkey: target, authType: "nsec" }));
+      await authService.switchProfile(target, {
+        providerId: "nsec",
+        unlockStored: true,
+        passphrase: "pin1234",
+      });
+      const opts = mockAuthProvider.login.mock.calls.at(-1).arguments[0].options;
+      assert.equal(opts.unlockStored, true);
+      assert.equal(opts.passphrase, "pin1234");
+    });
+
+    test("forwards reuseStored to the provider (NIP-46 switch)", async () => {
+      const target = "00000000000000000000000000000000000000000000000000000000000000b2";
+      mockAuthProvider.login.mock.mockImplementation(async () => ({ pubkey: target, authType: "nip46" }));
+      await authService.switchProfile(target, { providerId: "nip46", reuseStored: true });
+      const opts = mockAuthProvider.login.mock.calls.at(-1).arguments[0].options;
+      assert.equal(opts.reuseStored, true);
+    });
+
+    test("rejects and does NOT activate a DIFFERENT account than requested (expectPubkey)", async () => {
+      const target = "00000000000000000000000000000000000000000000000000000000000000c3";
+      const other = "00000000000000000000000000000000000000000000000000000000000000d4";
+      // A single-slot stored session that resolves to another account:
+      mockAuthProvider.login.mock.mockImplementation(async () => ({ pubkey: other, authType: "nip46" }));
+      await assert.rejects(
+        () => authService.switchProfile(target, { providerId: "nip46", reuseStored: true }),
+        { code: "pubkey-mismatch" },
+      );
+      assert.notEqual(getPubkey(), other, "must not silently switch to the wrong account");
+    });
   });
 });
