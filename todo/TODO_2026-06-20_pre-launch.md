@@ -1523,3 +1523,41 @@ that used it.
       switching, and the video-card tap-active state — plus the profile-nav app-grid.
 - [ ] **VERIFY live on a phone**: modals should now be full-screen; tapping a video
       card shows the active lift/accent/marquee; profile modal tabs are the app-grid.
+
+### 49. Relay-ack false-negatives on the generic content-publish path (HIGH-STAKES — deferred)
+> No rush — only act if it starts causing problems. Same bug class as the list-publish
+> fix (commit 47f2a9a8): when no relay ACKs within the 10s `RELAY_PUBLISH_TIMEOUT_MS`
+> window, `assertAnyRelayAccepted` throws even though the event was sent and almost
+> always persisted (works after refresh). Already fixed for the replaceable LISTS
+> (subscriptions/blocks/relay-list/dm-hints/hashtags) via
+> `assertAnyRelayAcceptedOrUnconfirmed`.
+- [ ] **Generic content publish still hard-errors on all-timeout.** The
+      `signAndPublishEventHelper` (`js/nostr/publishHelpers.js:472`) + `rebroadcast`
+      (`:1334`) + `video revert` (`js/nostr/client.js:3064`) still use bare
+      `assertAnyRelayAccepted`, so a slow-ack **video publish/edit/delete/revert**
+      can show "Failed to share video" (or similar) when it actually published.
+      HIGH-STAKES because these are the flagship content flows.
+- [ ] **Why it wasn't bundled in:** video publish feeds a relay summary into
+      `describePublishOutcome` (the "shared to N relays" / warning UI). Applying
+      `assertAnyRelayAcceptedOrUnconfirmed` here must keep that outcome honest (an
+      unconfirmed publish should read as "shared, couldn't confirm" — NOT a hard
+      failure and NOT a false "shared to N relays"). Needs its own careful pass +
+      tests around the video outcome-describer and delete semantics (a false
+      "deleted" is worse than a false "publish failed").
+- [ ] Deletions (kind 5) especially: decide whether an unconfirmed delete should
+      report success optimistically or stay conservative.
+
+### 50. isDevMode — keep it; fix the test-harness gap (LOW priority)
+- Decision (2026-07): **KEEP `isDevMode`.** It's used in ~26 files, chiefly to gate
+  **runtime schema validation** in `js/nostrEventSchemas.js` (event builders validate
+  against their schema only in dev — catches malformed events without the prod cost),
+  plus dev-only verbose logging and dev-only feature flags (`FEATURE_SEARCH_FILTERS`).
+  Removing it would drop that safety net or force validation into prod. Not a candidate
+  for removal.
+- [ ] **Test-harness gap (not an isDevMode bug):** `tests/nostr-publish-rejection.test.mjs`
+      asserts `isDevMode === true` but never sets `globalThis.__BITVID_DEV_MODE_OVERRIDE__`
+      before importing `js/config.js`, so it fails in a non-dev env (`isDevMode` falls back
+      to `IS_DEV_MODE` = false). Fix: force dev mode via the override in that test's setup.
+      Fails identically on committed HEAD — pre-existing, low priority.
+- [ ] (Optional) sweep other tests that assume dev mode without forcing the override, for
+      consistency.
