@@ -1368,3 +1368,110 @@ test('handleDirectMessagesRelayWarning suppresses status updates when disabled',
   controller.handleDirectMessagesRelayWarning(detail);
   assert.equal(statusCalls.length, 0);
 });
+
+// Account-switch refresh (nip-07 -> saved nsec, modal open): the modal must
+// re-render for the NEW identity without a manual refresh, and a failure in one
+// identity-reset step must not skip the others (notably the DM reset that clears
+// the previous account's conversation).
+//
+// test_integrity_note:
+//   change_type: ["new_tests"]
+//   scenarios:
+//     - id: SCN-switch-modal-refresh
+//       given: "profile modal controller loaded"
+//       when: "handleAuthLogin runs for a new identity / refreshOpenPanesForActiveIdentity is called"
+//       then: "DM reset still runs after a sibling throw; the active pane is re-run when open"
+//   observable_outcomes:
+//     - "runIdentityResetStep swallows a throwing step (does not propagate)"
+//     - "a throwing DM reset does not skip renderSavedProfiles"
+//     - "refreshOpenPanesForActiveIdentity re-runs selectPane(activePane) only when open"
+//   determinism_controls:
+//     - "instance method spies; no network/timers relied upon for assertions"
+//   anti_cheat_rationale:
+//     prevents: ["over-mocking internal logic", "hard-coded return value"]
+//   relaxation:
+//     did_relax_any_assertion: false
+
+test('runIdentityResetStep isolates a throwing step (does not propagate)', async () => {
+  const controller = createController();
+  let ran = false;
+  assert.doesNotThrow(() => {
+    controller.runIdentityResetStep('boom', () => {
+      throw new Error('kaboom');
+    });
+    controller.runIdentityResetStep('ok', () => {
+      ran = true;
+    });
+  });
+  assert.equal(ran, true, 'a later reset step still runs after an earlier one throws');
+});
+
+test('handleAuthLogin: a throwing DM reset does not skip the saved-profiles reset', async (t) => {
+  const controller = createController();
+  await controller.load();
+  t.after(() => {
+    try {
+      controller.hide({ silent: true });
+    } catch {}
+    resetRuntimeFlags();
+  });
+
+  // Keep the async collaborators inert so the test only exercises the reset order.
+  controller.hydrateActiveWalletSettings = async () => null;
+  controller.refreshAdminPaneState = async () => {};
+  controller.refreshOpenPanesForActiveIdentity = () => {};
+
+  let dmResetPubkey = 'unset';
+  controller.handleActiveDmIdentityChanged = (pubkey) => {
+    dmResetPubkey = pubkey;
+    throw new Error('dm reset blew up');
+  };
+  let savedProfilesRendered = 0;
+  controller.renderSavedProfiles = () => {
+    savedProfilesRendered += 1;
+  };
+
+  const pubkey = 'b'.repeat(64);
+  const result = await controller.handleAuthLogin({
+    pubkey,
+    activeProfilePubkey: pubkey,
+    identityChanged: true,
+  });
+
+  assert.equal(result, true);
+  assert.equal(dmResetPubkey, pubkey, 'DM reset was attempted for the new identity');
+  assert.equal(
+    savedProfilesRendered,
+    1,
+    'the saved-profiles reset still ran even though the DM reset threw',
+  );
+});
+
+test('refreshOpenPanesForActiveIdentity re-runs the active pane only when the modal is open', async (t) => {
+  const controller = createController();
+  await controller.load();
+  t.after(() => {
+    try {
+      controller.hide({ silent: true });
+    } catch {}
+    resetRuntimeFlags();
+  });
+
+  const selected = [];
+  controller.selectPane = (name) => {
+    selected.push(name);
+  };
+  controller.getActivePane = () => 'messages';
+
+  controller.isProfileModalOpen = () => false;
+  controller.refreshOpenPanesForActiveIdentity();
+  assert.deepEqual(selected, [], 'closed modal: no pane refresh');
+
+  controller.isProfileModalOpen = () => true;
+  controller.refreshOpenPanesForActiveIdentity();
+  assert.deepEqual(
+    selected,
+    ['messages'],
+    'open modal: re-runs the active pane so it reloads for the new identity',
+  );
+});

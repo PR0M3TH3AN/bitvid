@@ -1258,6 +1258,39 @@ export class ProfileModalController {
     void this.refreshDmRelayPreferences({ force: true });
   }
 
+  // Run one identity-switch reset step in isolation. A failure in a single step
+  // must not skip the ones after it — notably the DM reset that clears the
+  // previous account's conversation on a switch.
+  runIdentityResetStep(label, fn) {
+    try {
+      fn();
+    } catch (error) {
+      userLogger.warn(
+        `[profileModal] Identity reset step "${label}" failed:`,
+        error,
+      );
+    }
+  }
+
+  // Refresh the profile modal for the ACTIVE identity while it is open (e.g. right
+  // after switching accounts). Re-runs the current pane's own lazy load+populate —
+  // the SAME path as opening the pane fresh — so DMs reload, subscriptions and
+  // hashtags refetch for the new account, blocked/relays/storage repopulate, etc.
+  // Non-active panes stay lazy and repopulate when the user selects them.
+  refreshOpenPanesForActiveIdentity() {
+    if (!this.isProfileModalOpen()) {
+      return;
+    }
+    try {
+      this.selectPane(this.getActivePane());
+    } catch (error) {
+      userLogger.warn(
+        "[profileModal] Failed to refresh the active pane for the current identity:",
+        error,
+      );
+    }
+  }
+
   setMessagesUnreadIndicator(visible) {
     if (!(this.dmController.profileMessagesUnreadDot instanceof HTMLElement)) {
       return;
@@ -5223,12 +5256,21 @@ export class ProfileModalController {
       this.setActivePubkey(activePubkey);
     }
 
+    // Reset identity-scoped UI state up front, each step isolated so one throwing
+    // can't skip the others. Regression this guards: switching from NIP-07 to a
+    // saved nsec (modal open) left the PREVIOUS account's DMs, subscriptions and
+    // hashtags on screen because a sibling call threw before the DM reset ran.
+    // DM identity setup also feeds the background unread indicator + DM
+    // subscription, so it stays eager.
+    this.runIdentityResetStep("dm-identity", () =>
+      this.handleActiveDmIdentityChanged(activePubkey),
+    );
+    this.runIdentityResetStep("saved-profiles", () => this.renderSavedProfiles());
+
     const walletPromise = this.hydrateActiveWalletSettings(activePubkey);
     const adminPromise = this.refreshAdminPaneState().catch((error) => {
       userLogger.warn("Failed to refresh admin pane after login:", error);
     });
-
-    this.renderSavedProfiles();
 
     // Warm blocks + subscriptions, but go through ensureLoaded() (not the raw
     // loadBlocks/loadSubscriptions) so these COALESCE with the auth coordinator's
@@ -5236,33 +5278,35 @@ export class ProfileModalController {
     // direct calls here each kicked off an independent relay round-trip,
     // doubling the cold-login kind-30000/10000 REQ burst (KNOWN_BUGS #0).
     if (activePubkey) {
-      if (this.services.userBlocks?.ensureLoaded) {
-        this.services.userBlocks.ensureLoaded(activePubkey).catch(noop);
-      } else if (this.services.userBlocks?.loadBlocks) {
-        this.services.userBlocks.loadBlocks(activePubkey).catch(noop);
-      }
-      if (this.subscriptionsService?.ensureLoaded) {
-        this.subscriptionsService
-          .ensureLoaded(activePubkey, { allowPermissionPrompt: false })
-          .catch(noop);
-      } else if (this.subscriptionsService?.loadSubscriptions) {
-        this.subscriptionsService
-          .loadSubscriptions(activePubkey, { allowPermissionPrompt: false })
-          .catch(noop);
-      }
+      this.runIdentityResetStep("warm-lists", () => {
+        if (this.services.userBlocks?.ensureLoaded) {
+          this.services.userBlocks.ensureLoaded(activePubkey).catch(noop);
+        } else if (this.services.userBlocks?.loadBlocks) {
+          this.services.userBlocks.loadBlocks(activePubkey).catch(noop);
+        }
+        if (this.subscriptionsService?.ensureLoaded) {
+          this.subscriptionsService
+            .ensureLoaded(activePubkey, { allowPermissionPrompt: false })
+            .catch(noop);
+        } else if (this.subscriptionsService?.loadSubscriptions) {
+          this.subscriptionsService
+            .loadSubscriptions(activePubkey, { allowPermissionPrompt: false })
+            .catch(noop);
+        }
+      });
     }
-
-    // DM identity is cheap state setup needed for the background unread
-    // indicator + DM subscription, so it stays eager.
-    this.handleActiveDmIdentityChanged(activePubkey);
 
     // Profile-PANEL rendering is deferred: each pane lazily populates when it's
     // shown (selectPane), so eagerly rendering all of them at login paints into
     // CLOSED panels — friends-list avatars, subscriptions, blocks, storage,
     // relays — and jams the main thread right after login (the ~10-15s "profile
-    // panel won't open / site frozen" report). Only do the eager pass when the
-    // modal is already open (e.g. switching accounts with it visible);
-    // otherwise open()/selectPane handles it on demand.
+    // panel won't open / site frozen" report). Only refresh when the modal is
+    // already open (e.g. switching accounts with it visible); otherwise
+    // open()/selectPane handles it on demand. On a switch we re-run the ACTIVE
+    // pane's own load+populate (refreshOpenPanesForActiveIdentity) so the pane the
+    // user is viewing reloads for the new identity, then again once profile/wallet
+    // data settles (list panes also backfill via the auth coordinator once the new
+    // identity's lists finish loading).
     const settleLoginData = Promise.all([
       walletPromise,
       adminPromise,
@@ -5270,12 +5314,10 @@ export class ProfileModalController {
     ]);
 
     if (this.isProfileModalOpen()) {
-      this.populateOpenProfilePanels();
+      this.refreshOpenPanesForActiveIdentity();
       settleLoginData
         .then(() => {
-          if (this.isProfileModalOpen()) {
-            this.populateOpenProfilePanels();
-          }
+          this.refreshOpenPanesForActiveIdentity();
         })
         .catch((error) => {
           userLogger.warn(

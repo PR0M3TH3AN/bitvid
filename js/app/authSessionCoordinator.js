@@ -650,6 +650,26 @@ export function createAuthSessionCoordinator(deps) {
           authLoadingState: this.authLoadingState,
         });
 
+        // Now that the NEW identity's lists (blocks/subscriptions/hashtags) have
+        // settled, backfill the profile modal if it is open — so switching
+        // accounts with the modal visible refreshes the pane the user is viewing
+        // with the freshly-loaded data instead of leaving the previous account's
+        // list on screen until a manual refresh. No-op when the modal is closed.
+        if (
+          this.profileController &&
+          typeof this.profileController.refreshOpenPanesForActiveIdentity ===
+            "function"
+        ) {
+          try {
+            this.profileController.refreshOpenPanesForActiveIdentity();
+          } catch (error) {
+            devLogger.warn(
+              "[Application] Failed to refresh profile panes after lists settled:",
+              error,
+            );
+          }
+        }
+
         // Warm the watch history in the background now that the feed-driving
         // lists (blocks/subscriptions/hashtags) have finished decrypting. This
         // runs AFTER the required lists — never concurrently — so it does not
