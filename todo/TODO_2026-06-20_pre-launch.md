@@ -768,8 +768,16 @@ toward freshness and looked identical. Gave each a structural identity:
         `tests/admin-event-blacklist.test.mjs` (9 — record helpers + editor-gated action,
         fallbacks, refusal, publish-failure). Build + lint clean; admin/access/moderation
         suites 56/56.
-- [ ] **Follow-up:** surface the per-event list (view/unblock) in the Admin pane /
-      future #23 admin tab; today removal is via `removeFromEventBlacklist` (no UI yet).
+- [x] **Follow-up DONE 2026-07-01.** The admin pane is now organized into a sub-tab
+      toolbar (Whitelist / Blacklist / Blocked videos / Moderators — Moderators tab
+      super-admin-only) and a **Blocked videos** tool surfaces the per-event list:
+      view every blocked video (title+author when cached, else shortened id), **unblock**
+      per row (confirm → `removeFromEventBlacklist`), and **add by nevent/hex id**. Reuses
+      the existing accessControl event-blacklist API + `onEventBlacklistChange` (live
+      re-render) and refreshes the grids on change; no backend changes. Row logic in
+      `js/ui/profileModal/blockedVideosSection.js`; wiring in `ProfileAdminController`.
+      Tests: `tests/profile-blocked-videos.test.mjs` (7) + updated profile-modal-controller
+      admin test for the sub-tab layout.
 
 ### 26. Video popularity / view-count chart (public, three-dots menu) — DONE 2026-06-24
 - [x] **Shipped.** A "Popularity" item in the ⋯ menu opens a public views-over-time
