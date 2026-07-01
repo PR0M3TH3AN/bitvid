@@ -7,6 +7,7 @@
 
 import { storageSyncService as defaultStorageSync } from "./storageSyncService.js";
 import { showConfirm } from "../ui/confirmDialog.js";
+import { setSyncEnabled } from "./settingsSyncFlags.js";
 
 const OFFERED_KEY = "bitvid:settings-sync:offered:v1";
 
@@ -130,6 +131,11 @@ export function createSettingsRestorePrompt({
         const result = await serviceByKind[kind].pull(key);
         if (result?.imported) {
           restored.push(kind);
+          // Accepting the offer means "keep this device in sync", not just a
+          // one-time pull — enable the flag so future saves auto-push (the toggle
+          // then reflects reality). Without this, users restored once but never
+          // synced again ("not syncing").
+          setSyncEnabled(key, kind, true);
         }
       } catch (error) {
         logger?.warn?.(`[settingsRestore] ${kind} pull failed`, error);

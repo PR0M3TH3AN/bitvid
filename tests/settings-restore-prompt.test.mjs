@@ -11,6 +11,7 @@ import "./test-helpers/setup-localstorage.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createSettingsRestorePrompt } from "../js/services/settingsRestorePrompt.js";
+import { isSyncEnabled } from "../js/services/settingsSyncFlags.js";
 
 const PUBKEY = "c".repeat(64);
 
@@ -145,6 +146,47 @@ test("skips items already enabled on this device", async () => {
   assert.deepEqual(result.restored, ["wallet"], "only the not-yet-enabled item is offered");
   assert.equal(storageSync.pulls, 0);
   assert.equal(walletSync.pulls, 1);
+});
+
+test("accepting the offer ENABLES ongoing sync so future saves auto-push", async () => {
+  // Regression: accepting used to pull once but never set the sync flag, so the
+  // user "restored once but stopped syncing" and the toggle showed OFF. Accepting
+  // means "keep this device in sync".
+  localStorage.clear();
+  const storageSync = makeSyncStub({ remote: true });
+  const walletSync = makeSyncStub({ remote: false });
+  const prompt = createSettingsRestorePrompt({
+    storageSync,
+    walletSync,
+    confirm: () => true,
+  });
+
+  assert.equal(isSyncEnabled(PUBKEY, "storage"), false, "not enabled before accept");
+  const result = await prompt.maybeOffer(PUBKEY);
+  assert.deepEqual(result.restored, ["storage"]);
+  assert.equal(
+    isSyncEnabled(PUBKEY, "storage"),
+    true,
+    "accepting must enable ongoing sync for the restored item",
+  );
+  assert.equal(
+    isSyncEnabled(PUBKEY, "wallet"),
+    false,
+    "an item that was not restored must not be enabled",
+  );
+});
+
+test("declining the offer does NOT enable sync", async () => {
+  localStorage.clear();
+  const storageSync = makeSyncStub({ remote: true });
+  const prompt = createSettingsRestorePrompt({
+    storageSync,
+    walletSync: makeSyncStub({ remote: false }),
+    confirm: () => false,
+  });
+
+  await prompt.maybeOffer(PUBKEY);
+  assert.equal(isSyncEnabled(PUBKEY, "storage"), false, "decline must not enable sync");
 });
 
 test("nothing remote: does NOT consume the one-time offer (can prompt later)", async () => {
