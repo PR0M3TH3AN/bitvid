@@ -62,10 +62,11 @@ source that lists only shorts. Everything ships behind a config flag that leaves
 > the main feed — the publisher's choice. Aspect-ratio fallback can be added later
 > if too many real shorts leak in as kind-21.
 
-> **DECISION 5 — UI ambition for v1.** Minimal (a normal grid that opens shorts in
-> a portrait player) vs full (TikTok-style full-screen vertical swipe/next feed)?
-> *Recommendation: ship the grid + portrait player first (small), then layer the
-> swipe feed as a phase 2 — keeps the first release cheap.*
+> **DECISION 5 — UI ambition for v1. ✅ LOCKED: Option C (phased).** Phase 1 ships
+> the grid + portrait card + the main-feed exclusion (DECISION 3) so shorts are
+> corralled into their own tab immediately (the maintainer's priority); Phase 2
+> adds the full immersive autoplay/swipe feed later. Front-loads "shorts out of
+> the main feed," defers the heavier immersive build.
 
 > **DECISION 6 — Card design.** Shorts need a **new portrait (9:16) card** — the
 > existing `js/ui/components/VideoCard.js` hardcodes a **16:9 landscape** media
@@ -117,7 +118,13 @@ source that lists only shorts. Everything ships behind a config flag that leaves
 >
 > Net: Option 1 already delivers "WebTorrent + mirror to the standard kind"
 > without minting a kind. Only pick Option 2 if a distinct native kind number is
-> itself a requirement. **Maintainer to confirm.**
+> itself a requirement.
+>
+> **✅ LOCKED: Option 1 (marker on kind 30078), provided shorts are reliably
+> distinguishable.** They are: a single `isShort` boolean discriminates them
+> everywhere — set from the `isShort`/`format:"short"` content field for native
+> videos and from `kind ∈ {22,34236}` for ingested ones (see Field mapping). The
+> Shorts feed filters `isShort === true`; the main feeds exclude it.
 
 ---
 
