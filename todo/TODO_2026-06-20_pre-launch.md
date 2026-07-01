@@ -1561,3 +1561,82 @@ that used it.
       Fails identically on committed HEAD — pre-existing, low priority.
 - [ ] (Optional) sweep other tests that assume dev mode without forcing the override, for
       consistency.
+
+## Open — rough edges found in hands-on testing (2026-07-01)
+Reported by the maintainer after live testing on `unstable`. Several share a root
+cause with **#36** (a persisted **nsec** session restores the pubkey + UI but NOT the
+in-memory signer after a page reload, because the private key is only
+passphrase-encrypted). Items 51, 56, 57 are all facets of that.
+
+### 51. Shouldn't have to re-"unlock" storage after every refresh (UX / session)
+- [ ] **Symptom:** after a page refresh the user must unlock storage again every time.
+- [ ] **Root cause:** same as **#36** — the nsec signer + unlocked storage master key
+      live only in memory, so a reload drops them. Today the fix (#36) makes the error
+      *actionable* (re-enter passphrase), but the user still has to do it every reload.
+- [ ] **Ask:** persist/cache the unlocked state so a refresh doesn't require re-entry.
+      **SECURITY-SENSITIVE:** caching an unlocked master key (or the decrypted nsec)
+      across reloads weakens the passphrase-at-rest guarantee. Options to weigh:
+      (a) keep the unlocked key in `sessionStorage` (survives reload, cleared on tab
+      close) vs (b) an opt-in "keep unlocked on this device for N minutes/until logout"
+      with a clear warning, vs (c) status-quo re-prompt but make it one tap (#36 already
+      auto-opens the unlock flow). Decide the security posture before building. Pairs
+      with 56/57 (same re-prompt UX for uploads + encryption ops).
+
+### 52. After editing a video, the video grids don't refresh to show the update (BUG)
+- [ ] Editing a video leaves the grids showing the pre-edit version until a manual
+      reload. Publishing a NEW video already refreshes the feed (**#46**); the **edit**
+      path needs the same post-publish grid refresh (title/thumbnail/description/url).
+      Likely wire the edit-submit success into the same `refreshAllVideoGrids` /
+      `onVideosShouldRefresh` path #46 uses, keyed by `videoRootId`.
+
+### 53. Channel-profile link in the video player modal doesn't work (BUG)
+- [ ] Clicking the channel/creator link inside the video player modal does nothing
+      (should navigate to that author's channel profile view). Audit the modal's
+      channel-link handler (`js/ui/videoModal*` / the author byline) — likely a missing
+      or wrong nav callback (compare with the working channel links in the grid cards).
+
+### 54. Like / dislike buttons in the video player modal don't work (BUG)
+- [ ] The reaction (like/dislike) buttons in the player modal are unresponsive / don't
+      persist. Audit `reactionController` wiring into the video modal (event binding,
+      active-signer availability, publish path). Note: reactions require signing — verify
+      this isn't another "lost signer after refresh" (#57) surfacing as a dead button; if
+      so, prompt to unlock rather than silently no-op.
+
+### 55. Video-grid event caching — faster loads, cache-first + merge-new (PERF / UX)
+- [ ] **Channel-profile grid still loads slowly.** Even after the coalescing + relay
+      timeout + parity-seed fix, the channel wall streams in slowly. Cache that channel's
+      events so revisits render instantly.
+- [ ] **Generalize to every grid:** cache the events behind each video grid (feed tabs +
+      channel walls) so they render from cache immediately, then refresh in the
+      background and **merge in only new events** (don't blank + re-fetch). Fresh content
+      still matters — proposed balance: **cache-and-refresh simultaneously**, appending
+      new events as they arrive, with an explicit **pull-to-refresh / refresh button**
+      for a forced re-fetch. Decide cache store (in-memory vs IndexedDB via
+      `js/state/cache.js`) + a staleness/TTL policy.
+- [ ] **Cache media too:** thumbnails and profile images/banners should be cached (browser
+      cache headers / a warm cache / persistent store) so they don't reload from scratch
+      on every visit. Cross-ref `js/channelProfile.js` and the card renderers.
+
+### 56. Upload & edit modals: prompt to unlock storage (PIN popup), don't just error (UX)
+- [ ] When storage is locked, the **upload** and **edit** modals should open the
+      passphrase/PIN unlock popup instead of surfacing a raw error — for **both** the
+      video-file upload and the **thumbnail** upload. **#36** already added this
+      auto-open-login unlock for the **upload** modal; extend the same treatment to the
+      **edit** modal and the **thumbnail** upload path.
+- [ ] Combine with **51**: once unlocked, cache the state so the user isn't re-prompted
+      on every upload/refresh. "Both would be nice" — actionable prompt AND cached unlock.
+
+### 57. nsec / NIP-46 accounts: encryption ops fail after refresh — re-prompt, don't blanket-error (BUG)
+- [ ] **Symptom:** adding/editing a hashtag on an **nsec**-logged-in account errors with
+      *"Connect a Nostr signer that supports encryption before managing hashtag
+      preferences."* Same class blocks other NIP-44/encryption list ops (subscriptions,
+      blocks, DMs) after a reload.
+- [ ] **Root cause (likely #36):** the reload dropped the in-memory nsec signer, so
+      `nip44Encrypt`/`nip44Decrypt` aren't available even though the user "looks" logged
+      in. The guard then emits a blanket "connect a signer that supports encryption."
+- [ ] **Fix intent:** ALL signing/encryption functions must work across ALL signer types
+      (nsec / NIP-46 / NIP-07). When the op needs a locked nsec key, **prompt to re-enter
+      the PIN/passphrase to re-unlock the signer** (reuse #36's unlock flow) instead of a
+      dead-end error. Cross-ref **#48** (fluent switching) and the account-switch refresh
+      work (commit `87af650b`). Audit every "signer that supports encryption" guard and
+      route it to the unlock prompt when a saved nsec key exists for the active pubkey.
