@@ -148,6 +148,12 @@ BitVid Bridge
 └── (optional) localhost API          → for website control, later   DECISION 2
 ```
 
+- **Studio webview sourcing.** The webview loads the **instance's deployed bitvid
+  web app** (remote URL, cached for offline resilience) rather than a bundled copy.
+  Benefit: it's always current and **auto-inherits the instance's flags** (so
+  `FEATURE_LIVE_PUBLISH` off ⇒ no go-live, invariant 6) with no app update needed;
+  a trimmed bundled fallback covers the offline/first-run case. The instance URL is
+  configurable (a user may use more than one bitvid instance).
 - **Media core = a local Media Node.** Same engine as the server-side node (#16c),
   which is why DECISION 7 (one codebase, two modes) is attractive.
 - **Stream keys / ingest URLs never leave the device** and never go into Nostr; the
@@ -228,6 +234,15 @@ becomes a normal bitvid video automatically.
    upload-modal-style VOD flow) — minimize net-new signing/auth code.
 5. **Optional, not required** — a creator can still stream OBS → public Media Node
    without the Bridge; the Bridge only *adds* convenience/power.
+6. **Respect the connected instance's config.** The embedded Studio webview loads
+   a specific bitvid instance, so it inherits that instance's flags — if the
+   instance has `FEATURE_LIVE_PUBLISH` **off**, the Bridge shows go-live as
+   unavailable for it (nothing to publish to). The Bridge is only useful pointed
+   at an instance that has publishing enabled; surface that clearly rather than
+   failing opaquely.
+7. **Bind the local ingest to loopback only.** The RTMP/SRT receiver listens on
+   `127.0.0.1` (not `0.0.0.0`) by default so it isn't exposed to the LAN;
+   appliance/headless mode (Phase 7) can opt into a wider bind with auth.
 
 ---
 
@@ -250,6 +265,13 @@ becomes a normal bitvid video automatically.
   detect + warn on incompatible input rather than failing silently.
 - **Scope creep.** This app can sprawl (capture, transcode, appliance). Ship the
   receiver MVP (Phase 0–1) first; everything else is additive.
+- **Instance without publishing enabled.** If a user points the Bridge at an
+  instance that has `FEATURE_LIVE_PUBLISH` off, go-live must degrade gracefully
+  (clear "publishing isn't enabled on this instance" state), not error obscurely
+  (invariant 6).
+- **Local ingest exposure.** A misconfigured wide bind would expose an unauth'd
+  RTMP receiver on the network — default to loopback (invariant 7); require auth
+  for any non-loopback bind.
 
 ---
 

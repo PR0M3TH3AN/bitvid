@@ -129,18 +129,48 @@ BitVid Live over zap.stream/Twitch/YouTube.
 
 ## Config flags (off = no trace)
 
-All default `false`, threaded `config/instance-config.js` → `js/config.js` →
-`js/constants.js` like `FEATURE_NIP71_INGEST`:
+Every "Go Live" surface is instance-config gated and defaults **off**, threaded
+`config/instance-config.js` → `js/config.js` → `js/constants.js` like
+`FEATURE_NIP71_INGEST`. An operator can ship the code and have publishing be
+completely invisible until they opt in.
 
-- `FEATURE_LIVE_INGEST` — watch side (from #16; dependency).
-- `FEATURE_LIVE_PUBLISH` — the Studio / Go-Live publishing UI.
+- `FEATURE_LIVE_INGEST` — watch side (from #16; a dependency of publish).
+- `FEATURE_LIVE_PUBLISH` — the Studio / Go-Live publishing UI (the master
+  publish switch).
 - `FEATURE_LIVE_BRIDGE` — Media Node / Bridge session API integration.
 - `FEATURE_LIVE_RESTREAM` — external restream output management.
 
-When `FEATURE_LIVE_PUBLISH` is off: no Studio, no "Go Live" entry point, no My
-Videos → Live sub-tab, no Bridge/session UI, no live-event **builders** wired into
-any surface. Bridge/restream UI additionally gated on their own flags. Config
-flags are the only footprint.
+**Independent of watching.** These are separate from `FEATURE_LIVE_INGEST`, so an
+instance can enable *watching* live streams without enabling *broadcasting* (or
+vice-versa). `FEATURE_LIVE_PUBLISH` implies ingest is on (you watch your own
+stream); it does not force ingest on for everyone if the operator wants
+watch-only.
+
+When `FEATURE_LIVE_PUBLISH` is off, **all** of the following are absent — no tab,
+no button, no trace (as if never added):
+1. **"Go Live" / Studio entry points** — no Studio launch anywhere (sidebar,
+   upload modal, profile).
+2. **My Videos → Live sub-tab** — not rendered (shorts-plan sub-tab treatment).
+3. **Live-event builders** — `buildLiveStreamEvent` / `updateLiveStreamStatusEvent`
+   are not wired into any UI (the schema definitions can exist dormant; nothing
+   *invokes* them).
+4. **Bridge/session UI** — pairing, ingest settings, health dashboard (also gated
+   on `FEATURE_LIVE_BRIDGE`).
+5. **Restream UI** — output manager (also gated on `FEATURE_LIVE_RESTREAM`).
+6. **Archive→VOD "publish recording"** live-origin flow (a normal video upload is
+   unaffected).
+7. **Routes** — any `#view=live-studio` (or equivalent) falls back to default.
+8. **Config surface** — the flags are the only footprint.
+
+Bridge and restream have their own sub-flags so an operator can allow, e.g.,
+publishing to their own Media Node **without** exposing external restreams.
+
+**Who may go live (operator control).** Beyond the on/off flags, publishing on an
+instance should respect the existing **whitelist/WoT** model — i.e. an operator
+can allow only whitelisted creators to broadcast on their instance (reusing
+`accessControl`), the same way the feeds are gated. Decide whether go-live is
+whitelist-gated by default (recommended: yes on whitelist-mode instances) so a
+public instance isn't an open ingest relay.
 
 ---
 
