@@ -579,12 +579,21 @@ toward freshness and looked identical. Gave each a structural identity:
       Rank by usage count; clicking a chip adds it to the new video's tags.
 
 ### 46. Feed auto-refreshes after posting a video (UX)
-- [ ] After a video note is published, **automatically refresh the feed** so the new
-      video appears without a manual page reload. Hook the post-publish success (upload
-      modal `upload:submit` / `publishVideoNote` completion) to
-      `refreshAllVideoGrids`/`onVideosShouldRefresh` (optimistically inject the just-
-      published event so it shows instantly). Mind the feed-identity + dedupe paths (#20/
-      #21) so the injected event isn't dropped or duplicated.
+- [x] **DONE 2026-06-30.** `publishVideoNote` now (1) **optimistically injects** the
+      just-published legacy event into the shared client cache via a new
+      `nostrClient.ingestLocalVideoEvent(rawEvent)` (+ thin `nostrService` wrapper), so the
+      new video shows in the feed **instantly**, before the relays echo it back; and (2)
+      refreshes via the canonical `refreshAllVideoGrids({ reason: "video-published",
+      forceMainReload: true })` instead of a bare `loadVideos()` — so it refreshes
+      **whichever feed is active** (For You / Explore / Recent) plus the subscription and
+      channel grids, and forces a render (bypassing the load cooldown) so the injected
+      video is actually shown. `ingestLocalVideoEvent` mirrors live ingestion (convert →
+      root created_at → tombstone guard → allEvents/activeMap), so it obeys the same
+      dedupe/active-key rules (#20/#21): a later relay copy of the same event (same
+      `created_at`) won't duplicate it, and an older revision can't overwrite a newer
+      active entry. Tests: `tests/optimistic-feed-insert.test.mjs` (6 — surfaced instantly,
+      no-duplicate on re-ingest, newer-wins, older-doesn't-clobber, invalid→null, garbage
+      handled).
 
 ### 47. "Most Zapped" sidebar tab (trending-by-zaps)
 - [ ] Add a **Most Zapped** sidebar tab: like Trending (#27, view-count) but ranked by

@@ -4306,6 +4306,62 @@ export class NostrClient {
     );
   }
 
+  // Optimistically add a just-published video event to the local caches so it
+  // shows in the feed immediately, without waiting for it to propagate back
+  // from the relays. Mirrors the per-event ingestion the live subscription and
+  // fetchVideosByAuthors use (convert → root created_at → tombstone guard →
+  // allEvents/activeMap), so it obeys the same dedupe/active-key rules — a later
+  // relay copy of the same event (same created_at) won't displace it, and an
+  // older revision can't overwrite a newer active entry. Returns the ingested
+  // video, or null if the event isn't a usable video note.
+  ingestLocalVideoEvent(rawEvent) {
+    if (!rawEvent || typeof rawEvent !== "object" || !rawEvent.id) {
+      return null;
+    }
+
+    let video;
+    try {
+      video = convertEventToVideo(rawEvent);
+    } catch (error) {
+      devLogger.warn(
+        "[nostr] Failed to convert published event for optimistic feed insert:",
+        error,
+      );
+      return null;
+    }
+    if (!video || video.invalid) {
+      return null;
+    }
+
+    this.applyRootCreatedAt(video);
+    if (this.rawEvents && typeof this.rawEvents.set === "function") {
+      this.rawEvents.set(rawEvent.id, rawEvent);
+    }
+
+    const activeKey = getActiveKey(video);
+    if (video.deleted) {
+      this.recordTombstone(activeKey, video.created_at);
+      return video;
+    }
+
+    this.applyTombstoneGuard(video);
+    if (video.deleted) {
+      // A tombstone guard flipped it to deleted — don't surface it.
+      return video;
+    }
+
+    this.allEvents.set(rawEvent.id, video);
+    this.dirtyEventIds.add(rawEvent.id);
+
+    const existing = this.activeMap.get(activeKey);
+    if (!existing || video.created_at > existing.created_at) {
+      this.activeMap.set(activeKey, video);
+      this.applyRootCreatedAt(video);
+    }
+
+    return video;
+  }
+
   handleEvent(event) {
     if (!event || typeof event !== "object") return;
 

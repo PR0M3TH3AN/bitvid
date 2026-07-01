@@ -3197,8 +3197,9 @@ class Application {
     }
 
     let relaySummary = null;
+    let publishResult = null;
     try {
-      const publishResult = await this.nostrService.publishVideoNote(
+      publishResult = await this.nostrService.publishVideoNote(
         publishPayload,
         this.pubkey,
       );
@@ -3219,10 +3220,31 @@ class Application {
       this.uploadModal.close();
     }
 
+    // Optimistically insert the just-published note into the shared cache so it
+    // appears in the feed instantly, before the relays echo it back. Obeys the
+    // same dedupe/active-key rules as live ingestion, so a later relay copy
+    // won't duplicate it (see #20/#21).
+    try {
+      if (publishResult?.legacy) {
+        this.nostrService.ingestLocalVideoEvent(publishResult.legacy);
+      }
+    } catch (error) {
+      devLogger.warn(
+        "[Application] Optimistic feed insert after publishing failed:",
+        error,
+      );
+    }
+
     let loadVideosError = null;
 
     try {
-      await this.loadVideos();
+      // Refresh whichever feed is active (For You / Explore / Recent) plus the
+      // subscription and channel grids — not just the main recent feed — and
+      // force a render so the newly injected video is shown.
+      await this.refreshAllVideoGrids({
+        reason: "video-published",
+        forceMainReload: true,
+      });
     } catch (error) {
       loadVideosError = error;
       devLogger.error(
