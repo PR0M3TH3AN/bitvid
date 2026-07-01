@@ -621,9 +621,25 @@ toward freshness and looked identical. Gave each a structural identity:
       to an account the extension isn't currently on now fails clearly instead of grabbing
       the extension's active account). Tests in `tests/authService.test.mjs` (option
       forwarding + expectPubkey rejection).
-- [ ] **Multiple nsec accounts:** the stored session is a SINGLE slot
-      (`bitvid:sessionActor:v1`), so only the last-persisted nsec key is on the device —
-      switching among several saved nsec accounts needs per-account encrypted-key storage.
+- [x] **Multiple nsec accounts — DONE 2026-06-30.** The encrypted-key store is now
+      per-pubkey (`bitvid:sessionActors:v2` = `{ [pubkeyLower]: { privateKeyEncrypted,
+      encryption, createdAt } }`), following the existing `bitvid:<thing>:<npub>`
+      convention (profileCache, nwcSettings, …). Several saved nsec accounts each keep
+      their own key on the device, so the switcher can move between them. The legacy v1
+      single slot is kept in sync as the "last-saved default" (boot restore / no-arg
+      reads) and is migrated into the map on first read. `readStoredSessionActorEntry`,
+      `getStoredSessionActorMetadata`, and `unlockStoredSessionActor` all take an optional
+      target pubkey; the nsec provider threads `expectPubkey` through so a switch unlocks
+      the requested account (not the last-saved one), with the `expectPubkey` guard as a
+      backstop. IndexedDB mirror is now keyed per-pubkey too. Added
+      `listStoredSessionActorPubkeys()`. Tests: `tests/session-actor-multi-account.test.mjs`
+      (7 — per-account resolve, list, clear-one-keeps-others, no-arg default, no-arg wipe,
+      v1→v2 migration, missing-account returns null).
+- [ ] **Multiple NIP-46 accounts (remaining):** the remote-signer session is still a
+      SINGLE slot (`bitvid:nip46:session:v1`), so only the last-connected remote signer is
+      restorable — switching among several saved NIP-46 accounts needs the same per-pubkey
+      treatment applied to `js/nostr/nip46Client.js` (session store keyed by user pubkey +
+      `useStoredRemoteSigner({ pubkey })` selecting it). Separate, larger change than nsec.
 
 ### 8. Orphan storage garbage-collection tool
 - [x] **Largely delivered by the My Videos tab** (`9d3a0df0`): lists bucket objects no

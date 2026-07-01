@@ -1380,7 +1380,7 @@ export function createAuthSessionCoordinator(deps) {
     async prepareStoredNsecSwitch(targetPubkey) {
       const meta =
         typeof nostrClient?.getStoredSessionActorMetadata === "function"
-          ? nostrClient.getStoredSessionActorMetadata()
+          ? nostrClient.getStoredSessionActorMetadata(targetPubkey)
           : null;
       const decision = evaluateStoredNsecSwitch(meta, targetPubkey);
       if (decision.action === "error") {

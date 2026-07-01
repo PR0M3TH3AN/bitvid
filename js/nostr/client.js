@@ -2597,10 +2597,10 @@ export class NostrClient {
   // Metadata about a stored, passphrase-encrypted nsec session (no secrets).
   // The login modal reads `hasEncryptedKey` to offer the "unlock saved key"
   // flow; without this the unlock UI never appeared.
-  getStoredSessionActorMetadata() {
+  getStoredSessionActorMetadata(pubkey) {
     let entry = null;
     try {
-      entry = readStoredSessionActorEntry();
+      entry = readStoredSessionActorEntry(pubkey);
     } catch (error) {
       devLogger.warn(
         "[nostr] Failed to read stored session actor metadata:",
@@ -2623,14 +2623,16 @@ export class NostrClient {
   // passphrase and re-activating the signer via the same path as fresh login.
   // The access-control validator is enforced before activation, and a
   // now-blocked key is forgotten.
-  async unlockStoredSessionActor(passphrase, { validator } = {}) {
+  async unlockStoredSessionActor(passphrase, { validator, pubkey: targetPubkey } = {}) {
     if (typeof passphrase !== "string" || !passphrase.trim()) {
       const error = new Error("A passphrase is required to unlock the saved key.");
       error.code = "passphrase-required";
       throw error;
     }
 
-    const entry = readStoredSessionActorEntry();
+    // When switching accounts, `targetPubkey` selects that account's stored key
+    // so we unlock the one the user asked for — not just the last-saved default.
+    const entry = readStoredSessionActorEntry(targetPubkey);
     if (!entry || !entry.privateKeyEncrypted || !entry.encryption) {
       const error = new Error("There is no saved key to unlock.");
       error.code = "no-stored-session";
@@ -2646,7 +2648,8 @@ export class NostrClient {
         validator(storedPubkey);
       } catch (error) {
         try {
-          clearStoredSessionActorEntry();
+          // Forget only the now-blocked account, not every saved key.
+          clearStoredSessionActorEntry(storedPubkey);
         } catch (cleanupError) {
           devLogger.warn(
             "[nostr] Failed to clear stored session after access denial:",
