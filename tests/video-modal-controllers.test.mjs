@@ -248,3 +248,63 @@ test("creator navigation is a no-op without an active video pubkey", async (t) =
   modal.handleCreatorNavigation();
   assert.equal(fired, false, "no pubkey → no navigation event");
 });
+
+// Like/dislike in the player modal (TODO #54): clicking a reaction button must
+// dispatch "video:reaction" (→ app.handleVideoReaction → reactionController). The
+// old handleReactionClick called this.reactionsController.handleReaction (a method
+// that doesn't exist on the video-modal reactions controller) with the raw DOM
+// event, so nothing was published.
+//
+// test_integrity_note:
+//   change_type: ["new_tests"]
+//   scenarios:
+//     - id: SCN-video-modal-reaction-dispatch
+//       given: "a video modal with an active video"
+//       when: "handleReactionClick runs for a like/dislike button or a bare +/-"
+//       then: "it dispatches video:reaction with the derived reaction; unrelated targets do nothing"
+//   observable_outcomes:
+//     - "bare '+'/'-' → video:reaction with that reaction"
+//     - "a click whose currentTarget is the like button → reaction '+'"
+//     - "a null/unrelated target → no dispatch"
+//   determinism_controls:
+//     - "JSDOM modal via setupModal; synchronous dispatch"
+//   anti_cheat_rationale:
+//     prevents: ["hard-coded return value", "asserting the broken call path"]
+//   relaxation:
+//     did_relax_any_assertion: false
+
+test("like/dislike dispatches video:reaction with the derived reaction", async (t) => {
+  const { modal, cleanup } = await setupModal();
+  t.after(cleanup);
+
+  modal.activeVideo = { pubkey: "a".repeat(64) };
+  const events = [];
+  modal.addEventListener("video:reaction", (event) => events.push(event.detail));
+
+  modal.handleReactionClick("+");
+  modal.handleReactionClick("-");
+
+  assert.equal(events.length, 2, "both reactions dispatched");
+  assert.equal(events[0].reaction, "+");
+  assert.equal(events[1].reaction, "-");
+  assert.equal(events[0].video, modal.activeVideo, "carries the active video");
+
+  // And via a real button click (currentTarget = the bound like button).
+  if (modal.reactionButtons?.["+"]) {
+    modal.handleReactionClick({ currentTarget: modal.reactionButtons["+"] });
+    assert.equal(events[2]?.reaction, "+", "derived '+' from the like button element");
+  }
+});
+
+test("reaction click with no matching button does not dispatch", async (t) => {
+  const { modal, cleanup } = await setupModal();
+  t.after(cleanup);
+
+  let fired = false;
+  modal.addEventListener("video:reaction", () => {
+    fired = true;
+  });
+  modal.handleReactionClick({ currentTarget: null });
+  modal.handleReactionClick({});
+  assert.equal(fired, false, "no reaction event for an unrelated/empty target");
+});

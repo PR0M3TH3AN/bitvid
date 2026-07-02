@@ -1659,6 +1659,17 @@ passphrase-encrypted). Items 51, 56, 57 are all facets of that.
       Tests: `tests/reaction-signer-gate.test.mjs`. **Still VERIFY on unstable** whether
       any residual dead-button behavior remains (event binding / pointer availability),
       which would be a separate wiring bug from the signer issue.
+- [x] **The actual dead-button bug — FIXED 2026-07-02.** `VideoModal.handleReactionClick`
+      never derived the reaction or reached the publish path: it called
+      `this.reactionsController.handleReaction(event)` — a method that does NOT exist on
+      the video-modal reactions controller (which only binds buttons + does optimistic
+      UI), passing the raw DOM click event as the "reaction". So the #54 signer gate was
+      correct but unreachable. Now `handleReactionClick` derives `+`/`-` from the clicked
+      button (`#modalLikeBtn`/`#modalDislikeBtn`) and dispatches `video:reaction` — the
+      event ModalManager already routes to `app.handleVideoReaction` →
+      `reactionController.handleReaction` (which signs/publishes + runs the signer gate).
+      Tests: `tests/video-modal-controllers.test.mjs` (+2 — derives the reaction and
+      dispatches; unrelated target is a no-op). Lint + build green.
 
 ### 55. Video-grid event caching — faster loads, cache-first + merge-new (PERF / UX)
 - [ ] **Channel-profile grid still loads slowly.** Even after the coalescing + relay
