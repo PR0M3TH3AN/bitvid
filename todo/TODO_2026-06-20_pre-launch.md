@@ -1672,19 +1672,37 @@ passphrase-encrypted). Items 51, 56, 57 are all facets of that.
       dispatches; unrelated target is a no-op). Lint + build green.
 
 ### 55. Video-grid event caching — faster loads, cache-first + merge-new (PERF / UX)
-- [ ] **Channel-profile grid still loads slowly.** Even after the coalescing + relay
-      timeout + parity-seed fix, the channel wall streams in slowly. Cache that channel's
-      events so revisits render instantly.
-- [ ] **Generalize to every grid:** cache the events behind each video grid (feed tabs +
-      channel walls) so they render from cache immediately, then refresh in the
-      background and **merge in only new events** (don't blank + re-fetch). Fresh content
-      still matters — proposed balance: **cache-and-refresh simultaneously**, appending
-      new events as they arrive, with an explicit **pull-to-refresh / refresh button**
-      for a forced re-fetch. Decide cache store (in-memory vs IndexedDB via
-      `js/state/cache.js`) + a staleness/TTL policy.
-- [ ] **Cache media too:** thumbnails and profile images/banners should be cached (browser
-      cache headers / a warm cache / persistent store) so they don't reload from scratch
-      on every visit. Cross-ref `js/channelProfile.js` and the card renderers.
+- [x] **VERIFIED 2026-07-02: event caching already exists — no gap.** Traced end to
+      end: `allEvents` (incl. ingested NIP-71 videos via `nip71IngestService.injectVideo`)
+      is persisted to IndexedDB (`bitvid:eventsCache:v1`, `PersistenceManager` +
+      `EventsCacheStore`), restored on boot (`restoreLocalData`), and `loadVideos` +
+      the channel grid render **cache-first then merge-new** (never blank+refetch).
+      Bullets 1–2 were already built; the remaining slowness is only a genuinely-cold
+      first visit, already bounded by the coalescing/timeout/parity fixes.
+- [x] **Media caching part 1 — Cache-Control on uploads — DONE 2026-07-02.**
+      `computeCacheControl` (js/storage/s3-multipart.js) already stamped most media
+      immutable; added the missing `webp`/`avif`/`ico` **and `.torrent`** (safe:
+      `buildR2Key` namespaces by infohash → content-addressed). Playlists (m3u8/mpd)
+      stay short-lived. Exported + tested (`tests/storage-cache-control.test.mjs`, 3).
+- [x] **Media caching part 2 — SW image cache — DONE 2026-07-02.** `sw.min.js` now
+      serves **cross-origin images** (thumbnails/avatars/banners — the hosts bitvid
+      doesn't control headers for) **stale-while-revalidate** from `bitvid-images-v1`
+      (Cache API): instant on revisit, background refresh self-heals changed images,
+      LRU-capped at 300 entries, quota errors fail open (drop the cache, never break
+      image loading), and every handler error falls back to plain `fetch`. The
+      activate handler's wipe-all now **preserves the current image cache** (old
+      versions + other caches still wiped). Same-origin assets are untouched (they
+      ride the host HTTP cache + dist cache-purge pipeline). `app._initServiceWorker`
+      now registers the SW at boot when none exists (same path/scope/options as
+      `webtorrent.js`'s `setupServiceWorker`, so playback's later `register()` is a
+      no-op on the same registration). SW_VERSION bumped. Tests:
+      `tests/sw-image-cache.test.mjs` (6 — runs the REAL sw.min.js in a VM sandbox:
+      cold/warm/offline/opaque flows, non-interception, activate preservation).
+- [ ] **VERIFY on unstable:** revisit a feed/channel — thumbnails + avatars should
+      load instantly from the SW cache (DevTools → Network shows "(ServiceWorker)");
+      after an SW update the image cache survives. Optional follow-up: pull-to-refresh
+      / manual refresh affordance for forced re-fetch (nice-to-have; background
+      merge-new already keeps grids fresh).
 
 ### 56. Upload & edit modals: prompt to unlock storage (PIN popup), don't just error (UX)
 - [ ] When storage is locked, the **upload** and **edit** modals should open the

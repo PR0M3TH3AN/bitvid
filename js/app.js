@@ -861,9 +861,33 @@ class Application {
   _initServiceWorker() {
     // Force update of any registered service workers to ensure latest code is used.
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.getRegistrations().then((registrations) => {
-        registrations.forEach((registration) => registration.update());
-      });
+      navigator.serviceWorker
+        .getRegistrations()
+        .then((registrations) => {
+          if (registrations.length) {
+            registrations.forEach((registration) => registration.update());
+            return;
+          }
+          // No registration yet (user never played a torrent): register the SW
+          // at boot so its cross-origin image cache (thumbnails/avatars) works
+          // for everyone. Same path/scope/options as js/webtorrent.js's
+          // setupServiceWorker, so its later register() resolves to this same
+          // registration — playback behavior is unchanged. Best-effort only.
+          return navigator.serviceWorker
+            .register("/sw.min.js", { scope: "/", updateViaCache: "none" })
+            .catch((error) => {
+              devLogger.warn(
+                "[Application] Boot service-worker registration skipped:",
+                error,
+              );
+            });
+        })
+        .catch((error) => {
+          devLogger.warn(
+            "[Application] Service-worker init failed:",
+            error,
+          );
+        });
     }
   }
 
