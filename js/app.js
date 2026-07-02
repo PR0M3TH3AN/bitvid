@@ -1217,6 +1217,22 @@ class Application {
         loginOptions.providerId = savedEntry.providerId;
       }
 
+      // Restore a kept-unlocked nsec signer from cache BEFORE re-login, so the
+      // login flow (list decrypt, NWC hydrate) and the later storage auto-unlock
+      // all inherit it on refresh without a passphrase (TODO #51). For nsec this
+      // is the only way the signer comes back on reload (the key is passphrase-
+      // encrypted); safe no-op when nothing is cached or for NIP-07/46.
+      try {
+        if (typeof nostrClient.restoreUnlockedSigner === "function") {
+          await nostrClient.restoreUnlockedSigner(normalizedSaved);
+        }
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to restore kept-unlocked signer on boot:",
+          error,
+        );
+      }
+
       try {
         await this.authService.login(savedPubKey, loginOptions);
       } catch (error) {

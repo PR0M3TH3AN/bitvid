@@ -1592,13 +1592,27 @@ passphrase-encrypted). Items 51, 56, 57 are all facets of that.
       works. Logout / remove-saved-profile forget the cached key
       (`forgetUnlockedSigner`). Tests: `tests/unlocked-key-cache.test.mjs` (8). Lint +
       build green.
-- [ ] **VERIFY on unstable:** unlock once (leave the box unchecked) → refresh → no PIN;
+- [x] **Storage + NWC inherit the kept-unlocked signer — DONE 2026-07-01.** Storage
+      and NWC don't have their own passphrase: the storage master key and the NWC
+      settings are ENCRYPTED WITH THE SIGNER (nip44/nip04 self-encryption) and unlocked
+      by it. So rather than caching a second secret, both now inherit the kept-unlocked
+      nsec signer. `_initAutoLogin` calls `nostrClient.restoreUnlockedSigner(pubkey)`
+      BEFORE the boot re-login, so the login flow (NWC hydrate, list decrypt) and the
+      existing storage auto-unlock (ProfileStorageController / UploadModal call
+      `storageService.unlock` when a signer is present) all succeed silently on refresh
+      — no passphrase, no manual "Unlock storage". Tied to the signer cache: persists
+      exactly as long as the kept-unlocked key does (session or until site-data clear).
+      (NIP-07/46 profiles no-op — nothing is cached; their extension/remote signer
+      already persists.)
+- [ ] **VERIFY on unstable:** unlock once (box unchecked) → refresh → no PIN, and
+      Storage shows Unlocked + the wallet/NWC connection is live without re-entry;
       close the tab + reopen → PIN again. Check the box → close/reopen the browser →
-      still no PIN; Log out or clear site data → PIN again. Confirm the checkbox warning
-      copy reads clearly.
+      still no PIN and storage/NWC still ready; Log out or clear site data → PIN again.
 - [ ] **Follow-up (optional):** a visible "Lock now / forget on this device" control in
       the profile menu (today the cache is cleared only on logout / clear-site-data), and
-      consider surfacing whether the current session is persistently remembered.
+      consider surfacing whether the current session is persistently remembered. When it
+      lands, "Lock now" should also `storageService.lock(pubkey)` + drop the NWC cache so
+      the inherited unlocks re-lock together.
 
 ### 52. After editing a video, the video grids don't refresh to show the update (BUG)
 - [ ] Editing a video leaves the grids showing the pre-edit version until a manual
