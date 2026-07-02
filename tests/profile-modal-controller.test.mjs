@@ -1562,3 +1562,86 @@ test('hashtag persist: an ok signer gate lets publish proceed', async (t) => {
   });
   assert.equal(publishCalls.length, 1, 'publish ran once after the gate passed');
 });
+
+// "Lock this device" control (TODO #51): only shown when there is a cached
+// "keep unlocked" key to forget, and clicking it locks the active account.
+//
+// test_integrity_note:
+//   change_type: ["new_tests"]
+//   scenarios:
+//     - id: SCN-lock-now-control
+//       given: "a profile modal with mocked isSessionKeptUnlocked + lockKeptUnlockedSession"
+//       when: "updateLockNowVisibility runs / the lock button is clicked"
+//       then: "the button shows only when unlocked; clicking locks the active pubkey"
+//   observable_outcomes:
+//     - "kept-unlocked -> button not hidden; not-unlocked -> hidden"
+//     - "click -> lockKeptUnlockedSession(activePubkey) called once"
+//   determinism_controls:
+//     - "mocked services; JSDOM; no network"
+//   anti_cheat_rationale:
+//     prevents: ["hard-coded return value", "over-mocking internal logic"]
+//   relaxation:
+//     did_relax_any_assertion: false
+
+test('Lock this device: shown only when the session is kept unlocked', async (t) => {
+  let unlocked = true;
+  const controller = createController({
+    services: {
+      isSessionKeptUnlocked: () => unlocked,
+      lockKeptUnlockedSession: () => ({ ok: true }),
+    },
+  });
+  await controller.load();
+  t.after(() => {
+    try {
+      controller.hide({ silent: true });
+    } catch {}
+    resetRuntimeFlags();
+  });
+  controller.setActivePubkey('a'.repeat(64));
+
+  controller.updateLockNowVisibility();
+  assert.ok(
+    controller.lockNowButton instanceof dom.window.HTMLElement,
+    'the lock button exists in the modal',
+  );
+  assert.equal(
+    controller.lockNowButton.classList.contains('hidden'),
+    false,
+    'shown when the session is kept unlocked',
+  );
+
+  unlocked = false;
+  controller.updateLockNowVisibility();
+  assert.equal(
+    controller.lockNowButton.classList.contains('hidden'),
+    true,
+    'hidden when nothing is cached to lock',
+  );
+});
+
+test('Lock this device: clicking locks the active account', async (t) => {
+  const lockCalls = [];
+  const controller = createController({
+    services: {
+      isSessionKeptUnlocked: () => true,
+      lockKeptUnlockedSession: (pubkey) => {
+        lockCalls.push(pubkey);
+        return { ok: true };
+      },
+    },
+  });
+  await controller.load();
+  t.after(() => {
+    try {
+      controller.hide({ silent: true });
+    } catch {}
+    resetRuntimeFlags();
+  });
+  controller.setActivePubkey('a'.repeat(64));
+  controller.updateLockNowVisibility();
+
+  controller.lockNowButton.click();
+  assert.equal(lockCalls.length, 1, 'lock ran once');
+  assert.equal(lockCalls[0], controller.getActivePubkey(), 'locked the active account');
+});

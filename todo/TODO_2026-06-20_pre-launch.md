@@ -1608,11 +1608,19 @@ passphrase-encrypted). Items 51, 56, 57 are all facets of that.
       Storage shows Unlocked + the wallet/NWC connection is live without re-entry;
       close the tab + reopen → PIN again. Check the box → close/reopen the browser →
       still no PIN and storage/NWC still ready; Log out or clear site data → PIN again.
-- [ ] **Follow-up (optional):** a visible "Lock now / forget on this device" control in
-      the profile menu (today the cache is cleared only on logout / clear-site-data), and
-      consider surfacing whether the current session is persistently remembered. When it
-      lands, "Lock now" should also `storageService.lock(pubkey)` + drop the NWC cache so
-      the inherited unlocks re-lock together.
+- [x] **"Lock this device" control — DONE 2026-07-01.** A footer button in the profile
+      modal (desktop + mobile), shown only when the active account has a cached
+      "keep unlocked" key to forget (`app.isSessionKeptUnlocked`). Clicking it runs
+      `app.lockKeptUnlockedSession(pubkey)`, which re-locks everything the signer
+      unlocks in one action: forgets the cached key (both tiers → future reloads
+      re-prompt), drops the in-memory signer (`logoutSigner` → the current session
+      re-locks now), `storageService.lock(pubkey)`, and `nwcSettingsService.clearCache()`.
+      Visibility refreshes on `renderSavedProfiles` + `selectPane`. Tests:
+      2 in `tests/profile-modal-controller.test.mjs` (visibility gate + click locks the
+      active pubkey). Lint + build green.
+- [ ] **Follow-up (optional):** surface whether the current session is *persistently*
+      remembered (disk vs session tier) in the UI, and consider a "keep unlocked" toggle
+      in the storage/wallet panes for users who set it up there rather than via a prompt.
 
 ### 52. After editing a video, the video grids don't refresh to show the update (BUG)
 - [ ] Editing a video leaves the grids showing the pre-edit version until a manual

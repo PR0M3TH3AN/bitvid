@@ -374,9 +374,30 @@
                 Admin (Moderation)
               </button>
               <button
+                id="profileMobileLockNowBtn"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium mt-6 lg:hidden hidden"
+                title="Forget your unlocked key on this device and re-lock storage + wallet now"
+              >
+                <svg
+                  class="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                  />
+                </svg>
+                Lock this device
+              </button>
+              <button
                 id="profileMobileLogoutBtn"
                 type="button"
-                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium mt-6 lg:hidden"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium mt-2 lg:hidden"
                 data-variant="critical"
               >
                 <svg
@@ -1943,6 +1964,14 @@
 
       <!-- Modal Footer -->
       <div class="hidden lg:flex items-center justify-end gap-3 border-t border-border/60 p-4">
+        <button
+          id="profileLockNowBtn"
+          type="button"
+          class="btn-ghost focus-ring hidden"
+          title="Forget your unlocked key on this device and re-lock storage + wallet now"
+        >
+          Lock this device
+        </button>
         <button id="profileLogoutBtn" class="btn focus-ring" data-variant="danger">
           Logout
         </button>

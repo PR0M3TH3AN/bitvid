@@ -360,6 +360,8 @@ export class ProfileModalController {
     this.closeButton = null;
     this.logoutButton = null;
     this.mobileLogoutButton = null;
+    this.lockNowButton = null;
+    this.mobileLockNowButton = null;
     this.channelLink = null;
     this.addAccountButton = null;
     this.navButtons = {
@@ -657,6 +659,9 @@ export class ProfileModalController {
     this.logoutButton = document.getElementById("profileLogoutBtn") || null;
     this.mobileLogoutButton =
       document.getElementById("profileMobileLogoutBtn") || null;
+    this.lockNowButton = document.getElementById("profileLockNowBtn") || null;
+    this.mobileLockNowButton =
+      document.getElementById("profileMobileLockNowBtn") || null;
     this.channelLink = document.getElementById("profileChannelLink") || null;
     this.addAccountButton =
       document.getElementById("profileAddAccountBtn") || null;
@@ -1291,6 +1296,25 @@ export class ProfileModalController {
     }
   }
 
+  // Show the "Lock this device" control only when there is a cached "keep
+  // unlocked" key to forget (an nsec account currently kept unlocked). TODO #51.
+  updateLockNowVisibility() {
+    const check = this.services?.isSessionKeptUnlocked;
+    let unlocked = false;
+    if (typeof check === "function") {
+      try {
+        unlocked = Boolean(check(this.getActivePubkey()));
+      } catch (error) {
+        unlocked = false;
+      }
+    }
+    for (const button of [this.lockNowButton, this.mobileLockNowButton]) {
+      if (button instanceof HTMLElement) {
+        button.classList.toggle("hidden", !unlocked);
+      }
+    }
+  }
+
   setMessagesUnreadIndicator(visible) {
     if (!(this.dmController.profileMessagesUnreadDot instanceof HTMLElement)) {
       return;
@@ -1670,6 +1694,25 @@ export class ProfileModalController {
         }
         this.hide();
       });
+    }
+
+    const handleLockNow = () => {
+      const lock = this.services?.lockKeptUnlockedSession;
+      if (typeof lock !== "function") {
+        return;
+      }
+      try {
+        lock(this.getActivePubkey());
+      } catch (error) {
+        devLogger.warn("[profileModal] Lock this device failed:", error);
+      }
+      this.updateLockNowVisibility();
+    };
+    if (this.lockNowButton instanceof HTMLElement) {
+      this.lockNowButton.addEventListener("click", handleLockNow);
+    }
+    if (this.mobileLockNowButton instanceof HTMLElement) {
+      this.mobileLockNowButton.addEventListener("click", handleLockNow);
     }
 
     if (this.channelLink instanceof HTMLElement) {
@@ -2365,6 +2408,7 @@ export class ProfileModalController {
    * Triggers a batch fetch for any missing profile metadata.
    */
   renderSavedProfiles() {
+    this.updateLockNowVisibility();
     const normalizedActive = this.normalizeHexPubkey(this.getActivePubkey());
     const entriesNeedingFetch = new Set();
     const savedProfiles = this.getSavedProfiles();
@@ -3237,6 +3281,7 @@ export class ProfileModalController {
   }
 
   selectPane(name = "account", options = {}) {
+    this.updateLockNowVisibility();
     const { keepMenuView = false } =
       options && typeof options === "object" ? options : {};
     const normalized = typeof name === "string" ? name.toLowerCase() : "account";

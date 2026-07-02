@@ -577,6 +577,10 @@ export default class ApplicationBootstrap {
           // re-unlock it instead of dead-ending with a blanket error (TODO #57).
           ensureEncryptionCapableSigner: (options = {}) =>
             app.ensureEncryptionCapableSigner(options),
+          // "Keep unlocked" lock controls (TODO #51).
+          isSessionKeptUnlocked: (pubkey) => app.isSessionKeptUnlocked(pubkey),
+          lockKeptUnlockedSession: (pubkey) =>
+            app.lockKeptUnlockedSession(pubkey),
           hashtagPreferences: app.hashtagPreferences,
           getHashtagPreferences: () => app.getHashtagPreferences(),
           describeHashtagPreferencesError: (error, fallbackMessage) =>

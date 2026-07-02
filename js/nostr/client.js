@@ -2792,6 +2792,15 @@ export class NostrClient {
     }
   }
 
+  // True if a "keep unlocked" key is cached for this account (session or disk).
+  hasCachedUnlockedKey(targetPubkey) {
+    try {
+      return Boolean(readUnlockedKey(targetPubkey));
+    } catch (error) {
+      return false;
+    }
+  }
+
   // Forget any cached "keep unlocked" key for an account (both tiers).
   forgetUnlockedSigner(targetPubkey) {
     try {

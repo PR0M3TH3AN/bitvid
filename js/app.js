@@ -96,6 +96,7 @@ import {
 import {
   getActiveSigner,
   onActiveSignerChanged,
+  logoutSigner,
 } from "./nostrClientRegistry.js";
 import { resolveSignerCapabilities } from "./nostr/signerCapabilities.js";
 import {
@@ -2218,6 +2219,76 @@ class Application {
       return { ok: false, reason: "still-incapable" };
     }
     return { ok: true, unlocked: true };
+  }
+
+  // True when the active (or given) account currently has a cached "keep
+  // unlocked" key — i.e. there is something to lock (TODO #51).
+  isSessionKeptUnlocked(pubkey) {
+    const normalized =
+      this.normalizeHexPubkey(pubkey) ||
+      this.normalizeHexPubkey(this.pubkey) ||
+      "";
+    if (!normalized || typeof nostrClient?.hasCachedUnlockedKey !== "function") {
+      return false;
+    }
+    try {
+      return nostrClient.hasCachedUnlockedKey(normalized);
+    } catch (error) {
+      return false;
+    }
+  }
+
+  // "Lock now": re-lock this device immediately AND forget the cached key so a
+  // future reload re-prompts. Counterpart to the opt-in "keep unlocked" (TODO
+  // #51). Locks everything the signer unlocks — the in-memory signer, storage,
+  // and the decrypted NWC cache — so the account is fully re-locked in one action.
+  lockKeptUnlockedSession(pubkey) {
+    const normalized =
+      this.normalizeHexPubkey(pubkey) ||
+      this.normalizeHexPubkey(this.pubkey) ||
+      "";
+    if (!normalized) {
+      return { ok: false, reason: "no-pubkey" };
+    }
+
+    // 1. Forget the cached key (both tiers) → future reloads re-prompt for the PIN.
+    try {
+      if (typeof nostrClient.forgetUnlockedSigner === "function") {
+        nostrClient.forgetUnlockedSigner(normalized);
+      }
+    } catch (error) {
+      devLogger.warn("[Application] Failed to forget cached unlock on lock:", error);
+    }
+
+    // 2. Remove the in-memory nsec signer → the CURRENT session re-locks now.
+    try {
+      logoutSigner(normalized);
+    } catch (error) {
+      devLogger.warn("[Application] Failed to drop the active signer on lock:", error);
+    }
+
+    // 3. Lock storage (drops the in-memory master key).
+    try {
+      if (typeof storageService.lock === "function") {
+        storageService.lock(normalized);
+      }
+    } catch (error) {
+      devLogger.warn("[Application] Failed to lock storage on lock:", error);
+    }
+
+    // 4. Drop the decrypted NWC cache (re-hydrates from the signer next time).
+    try {
+      if (typeof this.nwcSettingsService?.clearCache === "function") {
+        this.nwcSettingsService.clearCache();
+      }
+    } catch (error) {
+      devLogger.warn("[Application] Failed to drop the NWC cache on lock:", error);
+    }
+
+    this.showSuccess?.(
+      "Locked on this device. You'll re-enter your PIN next time it's needed.",
+    );
+    return { ok: true };
   }
 
   resetPermissionPromptState() {
