@@ -190,3 +190,61 @@ test("VideoModal trims tag strip to fit modal width", async (t) => {
   );
 });
 
+
+// Channel-profile link in the player modal (TODO #53): clicking the creator
+// avatar/name must navigate to the creator's channel. It dispatched
+// "navigate:profile", which had NO listener (ModalManager listens for
+// "creator:navigate"), so the click did nothing — same class as the old
+// action:embed bug. Now it dispatches "creator:navigate" with the pubkey.
+//
+// test_integrity_note:
+//   change_type: ["new_tests"]
+//   scenarios:
+//     - id: SCN-video-modal-creator-nav
+//       given: "a video modal with an active video"
+//       when: "handleCreatorNavigation runs (creator avatar/name click)"
+//       then: "it dispatches creator:navigate with the pubkey, not the dead navigate:profile"
+//   observable_outcomes:
+//     - "creator:navigate fires with { pubkey }"
+//     - "the old dead navigate:profile event never fires"
+//   determinism_controls:
+//     - "JSDOM modal via setupModal; synchronous dispatch"
+//   anti_cheat_rationale:
+//     prevents: ["hard-coded return value", "asserting the broken event name"]
+//   relaxation:
+//     did_relax_any_assertion: false
+
+test("creator link dispatches creator:navigate with the pubkey (not the dead navigate:profile)", async (t) => {
+  const { modal, cleanup } = await setupModal();
+  t.after(cleanup);
+
+  modal.activeVideo = { pubkey: "a".repeat(64) };
+
+  let creatorNavigate = null;
+  let deadEventFired = false;
+  modal.addEventListener("creator:navigate", (event) => {
+    creatorNavigate = event.detail;
+  });
+  modal.addEventListener("navigate:profile", () => {
+    deadEventFired = true;
+  });
+
+  modal.handleCreatorNavigation();
+
+  assert.ok(creatorNavigate, "creator:navigate should fire (ModalManager listens for it)");
+  assert.equal(creatorNavigate.pubkey, "a".repeat(64));
+  assert.equal(deadEventFired, false, "the old listener-less navigate:profile must not be used");
+});
+
+test("creator navigation is a no-op without an active video pubkey", async (t) => {
+  const { modal, cleanup } = await setupModal();
+  t.after(cleanup);
+
+  modal.activeVideo = { pubkey: "" };
+  let fired = false;
+  modal.addEventListener("creator:navigate", () => {
+    fired = true;
+  });
+  modal.handleCreatorNavigation();
+  assert.equal(fired, false, "no pubkey → no navigation event");
+});

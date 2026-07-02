@@ -3017,7 +3017,11 @@ export class VideoModal {
 
   handleCreatorNavigation() {
     if (this.activeVideo?.pubkey) {
-      this.dispatch("navigate:profile", { pubkey: this.activeVideo.pubkey });
+      // ModalManager listens for "creator:navigate" (→ app.openCreatorChannel).
+      // The previous "navigate:profile" name had NO listener, so clicking the
+      // creator avatar/name did nothing — the event went into the void (same class
+      // as the old action:embed bug above).
+      this.dispatch("creator:navigate", { pubkey: this.activeVideo.pubkey });
     }
   }
 

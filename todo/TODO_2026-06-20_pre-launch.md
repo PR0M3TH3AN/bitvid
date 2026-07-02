@@ -1636,10 +1636,15 @@ passphrase-encrypted). Items 51, 56, 57 are all facets of that.
       `onVideosShouldRefresh` path #46 uses, keyed by `videoRootId`.
 
 ### 53. Channel-profile link in the video player modal doesn't work (BUG)
-- [ ] Clicking the channel/creator link inside the video player modal does nothing
-      (should navigate to that author's channel profile view). Audit the modal's
-      channel-link handler (`js/ui/videoModal*` / the author byline) — likely a missing
-      or wrong nav callback (compare with the working channel links in the grid cards).
+- [x] **FIXED 2026-07-02.** Event-name mismatch: `VideoModal.handleCreatorNavigation`
+      dispatched `"navigate:profile"`, but ModalManager only listens for
+      `"creator:navigate"` → the click went into the void (same class as the old
+      `action:embed` bug). Renamed the dispatch to `"creator:navigate"` and threaded the
+      modal's own creator pubkey through: the handler now passes `event.detail.pubkey`
+      to `app.openCreatorChannel(pubkey)`, and `routerCoordinator.openCreatorChannel`
+      accepts an optional pubkey (falls back to the active video's creator). Tests:
+      `tests/video-modal-controllers.test.mjs` (+2 — dispatches creator:navigate with
+      the pubkey, never the dead event; no-op without a pubkey). Lint + build green.
 
 ### 54. Like / dislike buttons in the video player modal don't work (BUG)
 - [ ] The reaction (like/dislike) buttons in the player modal are unresponsive / don't

@@ -45,15 +45,21 @@ export function createRouterCoordinator(deps) {
       window.location.hash = `#view=channel-profile&npub=${npub}`;
     },
 
-    openCreatorChannel() {
-      if (!this.currentVideo || !this.currentVideo.pubkey) {
+    openCreatorChannel(pubkey) {
+      // Prefer an explicit pubkey (e.g. the video modal's own creator) and fall
+      // back to the active video's creator.
+      const targetPubkey =
+        (typeof pubkey === "string" && pubkey.trim()) ||
+        this.currentVideo?.pubkey ||
+        "";
+      if (!targetPubkey) {
         this.showError("No creator info available.");
         return;
       }
 
       try {
         // Encode the hex pubkey to npub
-        const npub = window.NostrTools.nip19.npubEncode(this.currentVideo.pubkey);
+        const npub = window.NostrTools.nip19.npubEncode(targetPubkey);
 
         // Close the video modal
         this.hideModal();
