@@ -1080,8 +1080,9 @@ export class EditModal {
     // with no magnet, so an edited external URL keeps the P2P benefit (magnet
     // ws=url). Best-effort + size-capped; on CORS / too-large / any error it stays
     // URL-only. Runs before the magnet normalization below so the derived magnet's
-    // ws/xs are extracted the same way a pasted magnet's are. (Hosting the tiny
-    // .torrent (xs=) on the edit path needs credential plumbing — a follow-up.)
+    // ws/xs are extracted the same way a pasted magnet's are. When storage is
+    // unlocked we also host the tiny .torrent (xs=) so the webseed can bootstrap
+    // P2P — same as the upload modal.
     if (
       urlWasEdited &&
       finalUrl &&
@@ -1089,9 +1090,24 @@ export class EditModal {
       typeof this.mediaUploader?.deriveTorrentForExternalUrl === "function"
     ) {
       try {
+        let connection = null;
+        try {
+          connection =
+            typeof this.mediaUploader.resolveActiveConnection === "function"
+              ? await this.mediaUploader.resolveActiveConnection()
+              : null;
+        } catch (connectionError) {
+          connection = null;
+        }
+        const canHostTorrent = Boolean(
+          connection?.unlocked && connection?.credentials && connection?.provider,
+        );
         const derived = await this.mediaUploader.deriveTorrentForExternalUrl(
           finalUrl,
-          {},
+          {
+            provider: canHostTorrent ? connection.provider : undefined,
+            credentials: canHostTorrent ? connection.credentials : undefined,
+          },
         );
         if (derived?.magnet) {
           finalMagnet = derived.magnet;
