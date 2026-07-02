@@ -888,7 +888,7 @@ export class EditModal {
     }
   }
 
-  submit() {
+  async submit() {
     if (this.pendingSubmit) {
       return;
     }
@@ -1074,6 +1074,34 @@ export class EditModal {
     if (finalUrl && !/^https:\/\//i.test(finalUrl)) {
       this.showError("Hosted video URLs must use HTTPS.");
       return;
+    }
+
+    // Auto-derive a webseed torrent when the URL was changed to an external link
+    // with no magnet, so an edited external URL keeps the P2P benefit (magnet
+    // ws=url). Best-effort + size-capped; on CORS / too-large / any error it stays
+    // URL-only. Runs before the magnet normalization below so the derived magnet's
+    // ws/xs are extracted the same way a pasted magnet's are. (Hosting the tiny
+    // .torrent (xs=) on the edit path needs credential plumbing — a follow-up.)
+    if (
+      urlWasEdited &&
+      finalUrl &&
+      !finalMagnet &&
+      typeof this.mediaUploader?.deriveTorrentForExternalUrl === "function"
+    ) {
+      try {
+        const derived = await this.mediaUploader.deriveTorrentForExternalUrl(
+          finalUrl,
+          {},
+        );
+        if (derived?.magnet) {
+          finalMagnet = derived.magnet;
+        }
+      } catch (error) {
+        devLogger.warn(
+          "[EditModal] External URL webseed derivation skipped:",
+          error?.message || error,
+        );
+      }
     }
 
     if (finalMagnet) {
