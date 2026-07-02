@@ -15,6 +15,10 @@ import { clearWatchHistoryDecryptedChunkCache } from "../nostr/watchHistoryDecry
 import { FEED_TYPES, FEATURE_TRENDING_FEED } from "../constants.js";
 import { showPasswordPrompt } from "../ui/promptDialog.js";
 import { evaluateStoredNsecSwitch } from "./storedNsecSwitch.js";
+import {
+  createListCacheProbe,
+  waitForListCaches,
+} from "./feedListCacheGate.js";
 
 /**
  * Kick a background watch-history refresh after login, once the feed-driving
@@ -201,12 +205,10 @@ export function createAuthSessionCoordinator(deps) {
       if (detail?.identityChanged) {
         this.resetViewLoggingState();
 
-        // Account switch: clear the PREVIOUS account's cached DMs + stop its
-        // subscription before the new account loads. The DM store is app-wide on
-        // nostrService, so resetting only the modal's view left the old account's
-        // messages on screen after a switch (e.g. NIP-07 → nsec) — logout clears it
-        // the same way. keepSnapshot keeps each account's persisted cache so
-        // switching back stays fast.
+        // Account switch: clear the PREVIOUS account's app-wide DM store + stop
+        // its subscription (logout does the same); resetting only the modal view
+        // left old messages on screen. keepSnapshot preserves each account's
+        // persisted DM cache so switching back stays fast.
         try {
           this.nostrService?.stopDirectMessageSubscription?.();
           this.nostrService?.clearDirectMessages?.({ emit: true, keepSnapshot: true });
@@ -666,11 +668,8 @@ export function createAuthSessionCoordinator(deps) {
           authLoadingState: this.authLoadingState,
         });
 
-        // Now that the NEW identity's lists (blocks/subscriptions/hashtags) have
-        // settled, backfill the profile modal if it is open — so switching
-        // accounts with the modal visible refreshes the pane the user is viewing
-        // with the freshly-loaded data instead of leaving the previous account's
-        // list on screen until a manual refresh. No-op when the modal is closed.
+        // The NEW identity's lists settled: backfill the open profile modal so a
+        // switch refreshes the visible pane (no-op when the modal is closed).
         if (
           this.profileController &&
           typeof this.profileController.refreshOpenPanesForActiveIdentity ===
@@ -791,11 +790,21 @@ export function createAuthSessionCoordinator(deps) {
       // lowered so settled results arrive faster. 8s prevents the feed from
       // being blocked while still giving most lists time to decrypt.
       const FEED_SYNC_TIMEOUT_MS = 8000;
+      // Cache-aware early release (rationale in feedListCacheGate.js): open the
+      // gate as soon as all three list caches are valid for this pubkey.
+      const listCacheReadyPromise = waitForListCaches(
+        createListCacheProbe({
+          userBlocks,
+          subscriptions,
+          hashtagPreferences: this.hashtagPreferences,
+          normalizeHexPubkey: (value) => this.normalizeHexPubkey(value),
+          activePubkey,
+        }),
+        { timeoutMs: FEED_SYNC_TIMEOUT_MS },
+      );
       const feedSyncPromise = Promise.race([
-        Promise.allSettled([
-          listStatePromise,
-          profileStatePromise,
-        ]),
+        Promise.allSettled([listStatePromise, profileStatePromise]),
+        listCacheReadyPromise,
         new Promise((resolve) => setTimeout(resolve, FEED_SYNC_TIMEOUT_MS)),
       ]).catch(() => null);
 
@@ -1838,11 +1847,9 @@ export function createAuthSessionCoordinator(deps) {
         return context;
       }
 
-      // Block lists are NIP-04 encrypted. A reloaded nsec session can lose its
-      // in-memory key; re-unlock it (one passphrase prompt) rather than failing
-      // with a blanket signer error (TODO #57). Only short-circuit on the
-      // user-driven outcomes — anything else falls through so the mutation's own
-      // signer error (e.g. an unresponsive NIP-07 extension) still surfaces.
+      // Block lists are NIP-04 encrypted: re-unlock a reloaded nsec signer via
+      // one passphrase prompt (TODO #57). Only user-driven outcomes short-circuit;
+      // everything else falls through to the mutation's own signer errors.
       if (typeof this.ensureEncryptionCapableSigner === "function") {
         const ensured = await this.ensureEncryptionCapableSigner({
           pubkey: actorHex,

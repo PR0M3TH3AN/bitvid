@@ -983,8 +983,6 @@ class Application {
   }
 
   async _initAccessControl() {
-    const promises = [];
-
     const aclRefreshPromise = accessControl
       .refresh()
       .then(() => {
@@ -1005,6 +1003,36 @@ class Application {
         );
       });
 
+    // Admin-pane state is UI, not a boot dependency — never block boot on it.
+    const refreshAdminPane = () => {
+      if (!this.profileController) {
+        return;
+      }
+      Promise.resolve()
+        .then(() => this.profileController.refreshAdminPaneState())
+        .catch((error) => {
+          devLogger.warn(
+            "Failed to update admin pane after connecting to Nostr:",
+            error,
+          );
+        });
+    };
+    refreshAdminPane();
+
+    // Stale-while-revalidate boot: when the admin lists hydrated from the
+    // localStorage cache (every visit after the first), canAccess() is already
+    // accurate, so DON'T serialize boot behind the relay refresh — it continues
+    // in the background and the whitelist/blacklist change listeners re-filter
+    // the grids + re-apply trusted seeds when it lands. This was the
+    // "Fetching moderation filters…" cold-start stall (up to 15s before the
+    // feed could even start).
+    if (accessControl.isHydrated?.()) {
+      void aclRefreshPromise.then(refreshAdminPane);
+      return;
+    }
+
+    // First-ever visit (no cached lists): wait, so a whitelist-mode instance
+    // never renders an unfiltered/empty feed.
     // Safeguard: Do not block app initialization indefinitely if relays are slow/unresponsive.
     // 15s gives plenty of time for a healthy connection but prevents E2E test timeouts (60s).
     const timeoutPromise = new Promise((resolve) => {
@@ -1014,22 +1042,8 @@ class Application {
       }, 15000);
     });
 
-    promises.push(Promise.race([aclRefreshPromise, timeoutPromise]));
-
-    if (this.profileController) {
-      promises.push(
-        Promise.resolve()
-          .then(() => this.profileController.refreshAdminPaneState())
-          .catch((error) => {
-            devLogger.warn(
-              "Failed to update admin pane after connecting to Nostr:",
-              error,
-            );
-          })
-      );
-    }
-
-    await Promise.all(promises);
+    await Promise.race([aclRefreshPromise, timeoutPromise]);
+    refreshAdminPane();
   }
 
   async _syncSessionActorBlacklist(trigger) {
