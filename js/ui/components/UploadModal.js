@@ -26,6 +26,7 @@ import {
   requestDefaultExtensionPermissions,
 } from "../../nostrClientFacade.js";
 import { UI_FEEDBACK_DELAY_MS } from "../../constants.js";
+import { showConfirm } from "../confirmDialog.js";
 
 const INFO_HASH_PATTERN = /^[a-f0-9]{40}$/;
 
@@ -54,6 +55,7 @@ export class UploadModal {
     container,
     onRequestStorageSettings,
     onRequestUnlock,
+    getHashtagSuggestions,
   } = {}) {
     this.authService = authService || null;
     this.r2Service = r2Service || null;
@@ -74,6 +76,8 @@ export class UploadModal {
       typeof showSuccess === "function" ? showSuccess : () => {};
     this.getCurrentPubkey =
       typeof getCurrentPubkey === "function" ? getCurrentPubkey : null;
+    this.getHashtagSuggestions =
+      typeof getHashtagSuggestions === "function" ? getHashtagSuggestions : null;
     this.safeEncodeNpub =
       typeof safeEncodeNpub === "function" ? safeEncodeNpub : () => "";
     // Shared storage+torrent upload core (also used by the Edit modal).
@@ -191,6 +195,7 @@ export class UploadModal {
       // Initial State
       if (this.storageService) {
         const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
+        await this.maybeAutoUnlockStorage(pubkey);
         this.isStorageUnlocked = pubkey ? this.storageService.isUnlocked(pubkey) : false;
         await this.loadFromStorage();
       }
@@ -214,6 +219,8 @@ export class UploadModal {
     this.submitButton = $("#btn-submit");
     this.submitStatus = $("#submit-status");
     this.closeButton = $("#closeUploadModal");
+    this.hashtagSuggestionsWrap = $("#hashtag-suggestions-wrap");
+    this.hashtagSuggestionsList = $("#hashtag-suggestions");
 
     // Mode Switchers
     this.modeButtons = {
@@ -518,12 +525,12 @@ export class UploadModal {
       void this.captureVideoMetadata(file);
 
       if (!this.storageConfigured) {
-          alert("Please configure storage before selecting a file.");
+          this.showError("Please configure storage before selecting a file.");
           e.target.value = ""; // Clear selection
           return;
       }
       if (!this.isStorageUnlocked) {
-          alert("Please unlock storage before selecting a file.");
+          this.showError("Please unlock storage before selecting a file.");
           e.target.value = "";
           return;
       }
@@ -614,7 +621,7 @@ export class UploadModal {
           if (this.results.magnet) this.results.magnet.value = "Upload Failed";
           if (this.results.torrentUrl) this.results.torrentUrl.value = "Upload Failed";
 
-          alert(`Upload failed: ${err.message}`);
+          this.showError(`Upload failed: ${err.message}`);
 
           if (this.inputs.file) this.inputs.file.value = ""; // Reset
       }
@@ -676,7 +683,7 @@ export class UploadModal {
           userLogger.error("Thumbnail upload failed:", err);
           this.thumbnailUploadState.status = 'error';
           this.updateThumbnailProgress(null, "Failed.");
-          alert("Thumbnail upload failed.");
+          this.showError("Thumbnail upload failed.");
       }
   }
 
@@ -712,11 +719,160 @@ export class UploadModal {
   async refreshState() {
     if (this.storageService) {
       const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
+      await this.maybeAutoUnlockStorage(pubkey);
       this.isStorageUnlocked = pubkey ? this.storageService.isUnlocked(pubkey) : false;
       this.updateLockUi();
 
       await this.loadFromStorage();
     }
+  }
+
+  // Silently unlock existing storage when a decrypt-capable signer is already
+  // available (e.g. a kept-unlocked nsec restored on refresh, TODO #51) so the
+  // upload modal opens Unlocked instead of Locked. Guarded on an EXISTING account
+  // so it never creates storage for magnet/URL-only uploaders, and on the signer
+  // already being present so it never triggers a fresh permission prompt.
+  async maybeAutoUnlockStorage(pubkey) {
+    if (!this.storageService || !pubkey) {
+      return;
+    }
+    if (this.storageService.isUnlocked(pubkey)) {
+      return;
+    }
+    const signer = getActiveSigner();
+    if (
+      !signer ||
+      (typeof signer.nip44Decrypt !== "function" &&
+        typeof signer.nip04Decrypt !== "function")
+    ) {
+      return;
+    }
+    try {
+      const hasAccount =
+        typeof this.storageService.hasStoredAccount === "function"
+          ? await this.storageService.hasStoredAccount(pubkey)
+          : false;
+      if (!hasAccount) {
+        return;
+      }
+      await this.storageService.unlock(pubkey, { signer });
+    } catch (error) {
+      devLogger?.log?.(
+        "[UploadModal] Auto-unlock storage skipped:",
+        error?.message || error,
+      );
+    }
+  }
+
+  // --- Hashtag suggestion chips (TODO #45) ---
+
+  // The hashtags currently entered in the "t" repeater (normalized).
+  getSelectedHashtags() {
+    if (!this.nip71FormManager) {
+      return [];
+    }
+    try {
+      return this.nip71FormManager
+        .collectRepeaterValues("main", "t", (entry) =>
+          this.nip71FormManager.getFieldValue(entry, "value"),
+        )
+        .map((value) => this.nip71FormManager.sanitizeHashtagValue(value))
+        .filter(Boolean);
+    } catch (error) {
+      return [];
+    }
+  }
+
+  // Add a hashtag to the "t" repeater (skips duplicates). Returns true if added.
+  addHashtagValue(rawValue) {
+    if (!this.nip71FormManager) {
+      return false;
+    }
+    const normalized = this.nip71FormManager.sanitizeHashtagValue(rawValue);
+    if (!normalized) {
+      return false;
+    }
+    if (new Set(this.getSelectedHashtags()).has(normalized)) {
+      return false;
+    }
+    const entry = this.nip71FormManager.addRepeaterEntry("main", "t");
+    if (!entry) {
+      return false;
+    }
+    this.nip71FormManager.setFieldValue(entry, "value", normalized);
+    return true;
+  }
+
+  // Render one-tap chips for the user's most-used past hashtags. Hidden when the
+  // user has none (new/first upload).
+  renderHashtagSuggestions() {
+    const list = this.hashtagSuggestionsList;
+    const wrap = this.hashtagSuggestionsWrap;
+    if (!(list instanceof HTMLElement)) {
+      return;
+    }
+
+    let suggestions = [];
+    if (typeof this.getHashtagSuggestions === "function") {
+      try {
+        suggestions = this.getHashtagSuggestions({ limit: 12 }) || [];
+      } catch (error) {
+        suggestions = [];
+      }
+    }
+
+    list.textContent = "";
+    const usable = Array.isArray(suggestions) ? suggestions : [];
+    if (!usable.length) {
+      if (wrap instanceof HTMLElement) {
+        wrap.classList.add("hidden");
+      }
+      return;
+    }
+
+    for (const item of usable) {
+      const tag = this.nip71FormManager
+        ? this.nip71FormManager.sanitizeHashtagValue(item?.tag)
+        : typeof item?.tag === "string"
+          ? item.tag
+          : "";
+      if (!tag) {
+        continue;
+      }
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className =
+        "btn-ghost px-3 py-1 text-xs bg-surface border border-border/50 rounded-full";
+      chip.dataset.tag = tag;
+      chip.textContent = `#${tag}`;
+      chip.addEventListener("click", () => {
+        this.addHashtagValue(tag);
+        this.refreshHashtagSuggestionStates();
+      });
+      list.appendChild(chip);
+    }
+
+    if (wrap instanceof HTMLElement) {
+      wrap.classList.remove("hidden");
+    }
+    this.refreshHashtagSuggestionStates();
+  }
+
+  // Dim + disable chips whose tag is already in the current tag list.
+  refreshHashtagSuggestionStates() {
+    const list = this.hashtagSuggestionsList;
+    if (!(list instanceof HTMLElement)) {
+      return;
+    }
+    const selected = new Set(this.getSelectedHashtags());
+    list.querySelectorAll("[data-tag]").forEach((chip) => {
+      const isSelected = selected.has(chip.dataset.tag);
+      chip.classList.toggle("opacity-40", isSelected);
+      chip.setAttribute("aria-pressed", isSelected ? "true" : "false");
+      if ("disabled" in chip) {
+        chip.disabled = isSelected;
+      }
+    });
   }
 
   async loadFromStorage() {
@@ -824,7 +980,7 @@ export class UploadModal {
           if (this.promptStoredNsecUnlock(pubkey)) {
               return;
           }
-          alert("No signer available to unlock storage.");
+          this.showError("No signer available to unlock storage.");
           return;
       }
 
@@ -832,7 +988,7 @@ export class UploadModal {
           if (signer?.type === "extension" || signer?.type === "nip07") {
               const permissionResult = await requestDefaultExtensionPermissions();
               if (!permissionResult?.ok) {
-                  alert("Extension permissions are required to unlock storage.");
+                  this.showError("Extension permissions are required to unlock storage.");
                   return;
               }
           }
@@ -846,7 +1002,7 @@ export class UploadModal {
           await this.loadFromStorage();
       } catch (err) {
           userLogger.error("Unlock failed", err);
-          alert("Failed to unlock storage: " + err.message);
+          this.showError("Failed to unlock storage: " + err.message);
       } finally {
           if (this.toggles.storageUnlock) {
             this.toggles.storageUnlock.textContent = "Unlock";
@@ -945,17 +1101,17 @@ export class UploadModal {
       // Check upload state
       if (this.activeSource === "upload") {
           if (this.videoUploadState.status === 'uploading' || this.thumbnailUploadState.status === 'uploading') {
-              alert("Please wait for uploads to complete.");
+              this.showError("Please wait for uploads to complete.");
               return;
           }
           if (this.videoUploadState.status === 'error') {
-              alert("Video upload failed. Please try again.");
+              this.showError("Video upload failed. Please try again.");
               return;
           }
           if (this.videoUploadState.status !== 'complete') {
                // Fallback: If no file selected, maybe they want to submit without a new file?
                // (Not supported in this simplified modal, assume file required)
-               alert("Please select a video file and wait for it to upload.");
+               this.showError("Please select a video file and wait for it to upload.");
                return;
           }
       }
@@ -1104,7 +1260,7 @@ export class UploadModal {
       }
 
       if (!hasUrl && !hasImeta && hasMagnet) {
-         if (!confirm("Magnet-only uploads require active seeding. Proceed?")) return;
+         if (!(await showConfirm("Magnet-only uploads require active seeding. Proceed?"))) return;
       }
 
       await this.publish(metadata);
@@ -1221,9 +1377,11 @@ export class UploadModal {
     this.setGlobalModalState("upload", true);
     this.isVisible = true;
 
-    // Refresh lock state on open
+    // Refresh lock state on open. Auto-unlock first so a kept-unlocked nsec
+    // (restored on refresh) opens Unlocked instead of Locked (TODO #51).
     if (this.storageService) {
         const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
+        await this.maybeAutoUnlockStorage(pubkey);
         this.isStorageUnlocked = pubkey ? this.storageService.isUnlocked(pubkey) : false;
         this.updateLockUi();
         // Always attempt load to refresh configuration status (even if locked)
@@ -1231,6 +1389,8 @@ export class UploadModal {
             userLogger.warn("Failed to refresh storage state on open:", err);
         });
     }
+
+    this.renderHashtagSuggestions();
 
     this.modalAccessibility?.activate({ triggerElement });
   }

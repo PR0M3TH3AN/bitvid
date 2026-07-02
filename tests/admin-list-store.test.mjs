@@ -667,4 +667,32 @@ assert.ok(
   "should warn when blacklist updates fail on a relay",
 );
 
+// Regression: admin list edits must sign with the ACTIVE signer (nsec / NIP-46), not
+// window.nostr — persistNostrState previously hardcoded the NIP-07 extension, so nsec
+// and NIP-46 logins couldn't edit the whitelist.
+let nsecSignerCalls = 0;
+globalThis.window.nostr.signEvent = async () => {
+  throw new Error("window.nostr must NOT be used to sign admin lists");
+};
+setActiveSigner({
+  pubkey: superHex,
+  type: "nsec",
+  signEvent: async (event) => {
+    nsecSignerCalls += 1;
+    return { ...event, id: "nsec-signed" };
+  },
+});
+nostrClient.writeRelays = [relays[1]];
+setPublishBehaviors([{ url: relays[1], success: true }]);
+
+await assert.doesNotReject(
+  () =>
+    persistAdminState(ADMIN_SUPER_NPUB, { whitelist: ["npub1nsecwhitelistmember"] }),
+  "admin list edit must succeed with an nsec signer and no usable window.nostr",
+);
+assert.ok(
+  nsecSignerCalls > 0,
+  "should sign admin list updates with the active (nsec) signer, not window.nostr",
+);
+
 console.log("admin-list-store tests passed");

@@ -6,6 +6,7 @@ import { classifyVideoHealth, isUrlUnderBase } from "./myVideosHealth.js";
 import { reconcileStorage } from "./myVideosReconcile.js";
 import { FEATURE_NIP71_MIRROR } from "../../constants.js";
 import { nip71MirrorService } from "../../services/nip71MirrorService.js";
+import { showConfirm } from "../confirmDialog.js";
 import {
   isMirrorEnabled,
   setMirrorEnabled,
@@ -282,10 +283,13 @@ export class MyVideosController {
     if (!r2Service || typeof r2Service.deleteStorageKeys !== "function") {
       return;
     }
-    if (typeof window !== "undefined" && typeof window.confirm === "function") {
-      if (!window.confirm(`Permanently delete this file from your bucket?\n\n${key}`)) {
-        return;
-      }
+    if (
+      !(await showConfirm(`Permanently delete this file from your bucket?\n\n${key}`, {
+        confirmLabel: "Delete",
+        danger: true,
+      }))
+    ) {
+      return;
     }
     let result;
     try {
@@ -314,14 +318,13 @@ export class MyVideosController {
     if (!r2Service || typeof r2Service.deleteStorageKeys !== "function" || !keys.length) {
       return;
     }
-    if (typeof window !== "undefined" && typeof window.confirm === "function") {
-      if (
-        !window.confirm(
-          `Permanently delete all ${keys.length} orphaned files from your bucket?`,
-        )
-      ) {
-        return;
-      }
+    if (
+      !(await showConfirm(
+        `Permanently delete all ${keys.length} orphaned files from your bucket?`,
+        { confirmLabel: "Delete all", danger: true },
+      ))
+    ) {
+      return;
     }
     if (this.orphanDeleteAllBtn instanceof HTMLElement) {
       this.orphanDeleteAllBtn.disabled = true;

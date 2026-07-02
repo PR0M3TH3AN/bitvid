@@ -12,6 +12,16 @@ export function normalizeHexString(value) {
 export const normalizeHexId = normalizeHexString;
 export const normalizeHexPubkey = normalizeHexString;
 
+// Lowercase hex encoding of a byte array (e.g. a generated secret key).
+export function bytesToHex(bytes) {
+  if (!bytes) {
+    return "";
+  }
+  return Array.from(bytes)
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 export function normalizeHexHash(value) {
   if (value === undefined || value === null) {
     return "";

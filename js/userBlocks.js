@@ -24,7 +24,7 @@ import {
 import { STANDARD_TIMEOUT_MS, MAX_BLOCKLIST_ENTRIES } from "./constants.js";
 import {
   publishEventToRelays,
-  assertAnyRelayAccepted,
+  assertAnyRelayAcceptedOrUnconfirmed,
 } from "./nostrPublish.js";
 import { profileCache } from "./state/profileCache.js";
 import { DEFAULT_RELAY_URLS, capReadRelays } from "./nostr/toolkit.js";
@@ -2383,23 +2383,17 @@ class UserBlockListManager {
       signedEvent
     );
 
-    let publishSummary;
-    try {
-      publishSummary = assertAnyRelayAccepted(publishResults, {
-        context: "mute list",
-      });
-    } catch (publishError) {
-      if (publishError?.relayFailures?.length) {
-        publishError.relayFailures.forEach(
-          ({ url, error: relayError, reason }) => {
-            userLogger.error(
-              `[UserBlockList] Mute list rejected by ${url}: ${reason}`,
-              relayError || reason
-            );
-          }
-        );
-      }
-      throw publishError;
+    // An all-timeout (unconfirmed) publish of this idempotent, replaceable mute
+    // list is treated as a soft success — the event was sent and almost always
+    // persists (it shows up after a refresh), so don't surface a spurious error /
+    // revert the optimistic state. Explicit rejections still throw.
+    const publishSummary = assertAnyRelayAcceptedOrUnconfirmed(publishResults, {
+      context: "mute list",
+    });
+    if (publishSummary.unconfirmed) {
+      userLogger.warn(
+        "[UserBlockList] Mute list not acknowledged by any relay within the timeout; treating as optimistic success (reconciles on next load).",
+      );
     }
 
     if (publishSummary.failed.length) {

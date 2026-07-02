@@ -6,6 +6,8 @@
 // if the user accepts.
 
 import { storageSyncService as defaultStorageSync } from "./storageSyncService.js";
+import { showConfirm } from "../ui/confirmDialog.js";
+import { setSyncEnabled } from "./settingsSyncFlags.js";
 
 const OFFERED_KEY = "bitvid:settings-sync:offered:v1";
 
@@ -63,10 +65,7 @@ const ITEM_LABELS = {
 export function createSettingsRestorePrompt({
   storageSync = defaultStorageSync,
   walletSync = null,
-  confirm = (message) =>
-    typeof window !== "undefined" && typeof window.confirm === "function"
-      ? window.confirm(message)
-      : false,
+  confirm = (message) => showConfirm(message, { confirmLabel: "Restore" }),
   logger = null,
 } = {}) {
   // Items not already enabled / not already offered on THIS device that have a
@@ -117,7 +116,7 @@ export function createSettingsRestorePrompt({
     }
 
     const list = candidates.map((kind) => ITEM_LABELS[kind]).join(" and ");
-    const accepted = confirm(
+    const accepted = await confirm(
       `Found an encrypted copy of your ${list} on your Nostr account. ` +
         `Restore ${candidates.length > 1 ? "them" : "it"} to this device?`
     );
@@ -132,6 +131,11 @@ export function createSettingsRestorePrompt({
         const result = await serviceByKind[kind].pull(key);
         if (result?.imported) {
           restored.push(kind);
+          // Accepting the offer means "keep this device in sync", not just a
+          // one-time pull — enable the flag so future saves auto-push (the toggle
+          // then reflects reality). Without this, users restored once but never
+          // synced again ("not syncing").
+          setSyncEnabled(key, kind, true);
         }
       } catch (error) {
         logger?.warn?.(`[settingsRestore] ${kind} pull failed`, error);

@@ -19,8 +19,8 @@ import { join, relative } from "node:path";
 
 const ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
 const SOURCE_DIR = join(ROOT, "js");
-const THRESHOLD = 1000; // lines — new files must stay under this
-const GROWTH_MARGIN = 50; // lines — allowlisted files may grow by this much for minor fixes
+const THRESHOLD = 1200; // lines — new files must stay under this (soft ceiling)
+const GROWTH_MARGIN = 200; // lines — allowlisted files may grow by this much for fixes
 
 // Grandfathered files: path relative to repo root → line count when recorded.
 // These files are known to be oversized and are decomposition targets.

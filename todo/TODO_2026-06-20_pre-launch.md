@@ -504,6 +504,167 @@ toward freshness and looked identical. Gave each a structural identity:
 - [ ] Consider removing the CDN/WebTorrent source badge from the card (clutter).
 - [ ] Run `npm run test:visual` after layout changes; update baselines deliberately.
 
+### 41. Native browser dialogs → site notification system
+- [x] **DONE 2026-06-30.** Replaced every `alert()`/`confirm()` (no `prompt()` existed)
+      with the app's notification system so dialogs are styled + consistent.
+      - `alert()` (13) → toasts: `this.showError` where the component already had it
+        (UploadModal), else `notifyError`/`notifySuccess` via a new `js/ui/appNotify.js`
+        (routes to the app's NotificationController).
+      - `confirm()` (~13) → a new promise-based **`showConfirm()`** dialog
+        (`js/ui/confirmDialog.js`) — a `bv-modal modal-always-on-top` overlay returning
+        `Promise<boolean>` (Confirm/Cancel/backdrop/Escape, danger variant focuses
+        Cancel). Importable anywhere, so future confirmations use it too. Stacks above
+        other modals and is typable thanks to the stacked-modal focus fix.
+      - Migrated: UploadModal, MyVideosController, ProfileStorage/Wallet/Relay
+        controllers, profileModalController, subscriptionHistoryController,
+        settingsRestorePrompt (default `confirm` now `showConfirm`), nostr/client
+        (deleteAllVersions). `confirmSyncOverwrite` helpers made async (the sync layer
+        already `await`s `confirmOverwrite`). Tests: `tests/confirm-dialog.test.mjs` (6).
+        Build + lint clean; affected suites green. NOTE: `npm run build`/`lint` do NOT
+        parse JS — verify migrations by importing the module / running its test.
+
+### 42. Admin whitelist edit fails with nsec / NIP-46 (only NIP-07 worked) — FIXED
+- [x] **DONE 2026-06-30.** Editing the admin whitelist/blacklist worked with a NIP-07
+      extension but silently failed with nsec and NIP-46 (Amber). Root cause:
+      `adminListStore.persistNostrState` signed with `window.nostr.signEvent` directly
+      (and required `requestDefaultExtensionPermissions`), so non-extension logins threw
+      "nostr-extension-missing". Fix: sign with the **active signer**
+      (`getActiveSigner()` from the registry — works for extension/nsec/NIP-46, all expose
+      `signEvent`), and only run the extension-permission prompt when the signer is an
+      extension (`type === "extension"/"nip07"`). Regression test added to
+      `tests/admin-list-store.test.mjs` (nsec signer used while `window.nostr.signEvent`
+      throws). Build + lint clean.
+- [x] **AUDIT DONE 2026-06-30 — clean (adminListStore was the only bug).** Swept every
+      `.signEvent(`, `window.nostr`, and `ensureExtensionPermissions`/
+      `requestDefaultExtensionPermissions` caller:
+      - **Signing:** NO `window.nostr` is used to sign/encrypt anywhere. Every publish
+        path signs with the active signer (`signer.signEvent`): subscriptions, userBlocks,
+        hashtag prefs, relay prefs, moderationService reports, nip71MirrorService,
+        encryptedSyncFacade, DM seal + legacy DM (`nostr/client` signingAdapter defaults
+        to the active signer), DM relay list, admin lists.
+      - **Extension-permission gates:** every caller (reactions, comments, subscriptions,
+        userBlocks, watchHistory, relayManager, DM relays) guards the request behind a
+        signer-type (`extension`/`nip07`) or capability check, so nsec/NIP-46 skip it and
+        go straight to active-signer signing — they never hit the `extension-missing`
+        failure that broke admin lists.
+      - **Decrypt:** gates on the active signer's nip04/nip44 capability with `window.nostr`
+        only as a fallback; nsec (closures) + NIP-46 (remote) both decrypt fine.
+      - **Cleanup note (low priority):** `js/auth/signingAdapter.js`
+        (`createNip07SigningAdapter`, defaults to `window.nostr`) is dead production code —
+        referenced only by its own test, no app callers. Harmless; remove or repoint at
+        the active signer if ever reused.
+
+### 43. Logged-in profile card at the top of the profile modal (UX)
+- [ ] Show the **logged-in user's profile photo + name** at the **top-center** of the
+      profile modal, styled as a "profile card" that sits **half-on / half-off** the
+      modal edge (overlapping the top border) for a polished look. Goal: users can see
+      WHICH profile they're acting as (e.g. uploading as) at a glance. Pull avatar/name
+      from the profile cache for the active pubkey; update on profile switch.
+
+### 44. In-modal storage selector for uploads (UX)
+- [ ] Make storage unlock + selection easier from the **video upload modal**: let the
+      user **pick any configured storage connection** (R2 / B2 / Custom S3) and unlock it
+      **without leaving the upload modal** — today they must close it, open Profile →
+      Storage, change the default/selected connection, then reopen upload. Add a provider
+      picker (driven by `storageService.listConnections`) + inline unlock in the upload
+      modal's storage section; selecting one sets it as the active upload target for this
+      upload (and optionally the default). Reuse `loadFromStorage` / the per-provider
+      connection model.
+
+### 45. Upload modal: suggest tags from the user's previous videos (UX)
+- [x] **DONE 2026-07-01.** The Hashtags section of the upload modal now shows one-tap
+      chips of the user's most-used past hashtags ("Reuse a tag from your videos:").
+      Source: `app.getUserHashtagSuggestions()` reads the user's own videos
+      (`nostrService.getActiveVideosByAuthors([pubkey])`) and ranks their hashtags via
+      `js/utils/hashtagSuggestions.js` `rankHashtagsByFrequency` — count = number of
+      videos using each tag, normalized (case + `#`) and deduped per video, ties broken
+      alphabetically (top 12). Tags come from `video.nip71.hashtags` (falls back to raw
+      `t` tags minus bitvid's fixed `t=video` marker). Clicking a chip adds it to the
+      NIP-71 `t` repeater (skips duplicates); already-added chips dim + disable. Hidden
+      for users with no past tags. Rendered on modal open. Tests:
+      `tests/hashtag-suggestions.test.mjs` (5, pure ranking). Lint + build green.
+
+### 46. Feed auto-refreshes after posting a video (UX)
+- [x] **DONE 2026-06-30.** `publishVideoNote` now (1) **optimistically injects** the
+      just-published legacy event into the shared client cache via a new
+      `nostrClient.ingestLocalVideoEvent(rawEvent)` (+ thin `nostrService` wrapper), so the
+      new video shows in the feed **instantly**, before the relays echo it back; and (2)
+      refreshes via the canonical `refreshAllVideoGrids({ reason: "video-published",
+      forceMainReload: true })` instead of a bare `loadVideos()` — so it refreshes
+      **whichever feed is active** (For You / Explore / Recent) plus the subscription and
+      channel grids, and forces a render (bypassing the load cooldown) so the injected
+      video is actually shown. `ingestLocalVideoEvent` mirrors live ingestion (convert →
+      root created_at → tombstone guard → allEvents/activeMap), so it obeys the same
+      dedupe/active-key rules (#20/#21): a later relay copy of the same event (same
+      `created_at`) won't duplicate it, and an older revision can't overwrite a newer
+      active entry. Tests: `tests/optimistic-feed-insert.test.mjs` (6 — surfaced instantly,
+      no-duplicate on re-ingest, newer-wins, older-doesn't-clobber, invalid→null, garbage
+      handled).
+
+### 47. "Most Zapped" sidebar tab (trending-by-zaps)
+- [ ] Add a **Most Zapped** sidebar tab: like Trending (#27, view-count) but ranked by
+      **total zaps** (sats / zap count) per video. Reuse the zap accounting (kind-9735
+      receipts) already used for the zap system; build a feed source/ranker that sorts by
+      zap total over a window, wired into the feed engine like Trending. Depends on
+      reliable zap data (couples with the zap system already shipped in #3).
+
+### 48. Fluent profile switching across signing methods (nsec / NIP-46 / NIP-07)
+- [x] **nsec switching FIXED 2026-06-30.** Switching to a saved nsec profile used to fail
+      silently ("secret-required") — `switchProfile` called the nsec provider with no
+      passphrase and never prompted. Now `handleProfileSwitchRequest` detects an nsec
+      target, checks the stored key (`getStoredSessionActorMetadata` +
+      `evaluateStoredNsecSwitch` — must be a persisted nsec for THIS account), prompts for
+      the PIN/passphrase via a new `showPasswordPrompt` dialog
+      (`js/ui/promptDialog.js`), and calls `switchProfile(pubkey, { unlockStored: true,
+      passphrase })`. `authService.switchProfile` now forwards `unlockStored`/`passphrase`
+      → `requestLogin` → the nsec provider's `unlockStoredSessionActor` restores the signer
+      and activates the account. Wrong PIN → "Incorrect PIN/passphrase" toast; no stored
+      key / different account → a clear "log in with its nsec" toast. So you can switch
+      NIP-07 → nsec fluently. Tests: `tests/stored-nsec-switch.test.mjs` (6, pure gate) +
+      `tests/password-prompt.test.mjs` (6, dialog). Build + lint clean; auth suites 25/25.
+- [x] **NIP-46 switching FIXED 2026-06-30.** Confirmed the same bug: switching to a saved
+      NIP-46 account called the provider with no `reuseStored`, so it started a fresh
+      handshake (needing a new connect URI/QR) instead of reconnecting. Now
+      `handleProfileSwitchRequest` sends `{ providerId: "nip46", reuseStored: true }` for
+      NIP-46 targets → `switchProfile` forwards `reuseStored` → the nip46 provider's
+      `useStoredRemoteSigner` reconnects the stored session and activates the account. On
+      failure → "Couldn't reconnect to this account's remote signer" toast.
+- [x] **Wrong-account guard (all methods) 2026-06-30.** `requestLogin` now enforces
+      `expectPubkey` (only set by `switchProfile`): if a single-slot stored session
+      resolves to a DIFFERENT account than requested, it rejects with `pubkey-mismatch`
+      instead of silently switching to the wrong profile. Also protects NIP-07 (switching
+      to an account the extension isn't currently on now fails clearly instead of grabbing
+      the extension's active account). Tests in `tests/authService.test.mjs` (option
+      forwarding + expectPubkey rejection).
+- [x] **Multiple nsec accounts — DONE 2026-06-30.** The encrypted-key store is now
+      per-pubkey (`bitvid:sessionActors:v2` = `{ [pubkeyLower]: { privateKeyEncrypted,
+      encryption, createdAt } }`), following the existing `bitvid:<thing>:<npub>`
+      convention (profileCache, nwcSettings, …). Several saved nsec accounts each keep
+      their own key on the device, so the switcher can move between them. The legacy v1
+      single slot is kept in sync as the "last-saved default" (boot restore / no-arg
+      reads) and is migrated into the map on first read. `readStoredSessionActorEntry`,
+      `getStoredSessionActorMetadata`, and `unlockStoredSessionActor` all take an optional
+      target pubkey; the nsec provider threads `expectPubkey` through so a switch unlocks
+      the requested account (not the last-saved one), with the `expectPubkey` guard as a
+      backstop. IndexedDB mirror is now keyed per-pubkey too. Added
+      `listStoredSessionActorPubkeys()`. Tests: `tests/session-actor-multi-account.test.mjs`
+      (7 — per-account resolve, list, clear-one-keeps-others, no-arg default, no-arg wipe,
+      v1→v2 migration, missing-account returns null).
+- [x] **Multiple NIP-46 accounts — DONE 2026-06-30.** The remote-signer session store is
+      now per-user-pubkey (`bitvid:nip46:sessions:v2` = `{ [userPubkeyLower]: session }`),
+      mirroring the nsec store. Several saved NIP-46 accounts each keep their own
+      reconnectable session, so the switcher can move between them. The legacy v1 single
+      slot is kept in sync as the last-connected default (boot restore) and migrated into
+      the map on first read. `readStoredNip46Session` and `getStoredNip46Metadata` take an
+      optional target pubkey; `writeStoredNip46SessionSync` writes both the map (keyed by
+      `userPubkey`) and the v1 default; `clearStoredNip46Session(pubkey)` forgets one
+      account (no-arg wipes all, for logout). `SignerManager.useStoredRemoteSigner({ pubkey
+      })` selects the target account's session and, on access-denial, forgets only that
+      account; the nsec/nip46 providers thread `expectPubkey` through so a switch
+      reconnects the requested account (with the `expectPubkey` guard as a backstop). Added
+      `listStoredNip46SessionPubkeys()`. (`nip46Connector.js` is dead code — the live path
+      is entirely in `SignerManager`.) Tests: `tests/nip46-multi-account.test.mjs` (7).
+
 ### 8. Orphan storage garbage-collection tool
 - [x] **Largely delivered by the My Videos tab** (`9d3a0df0`): lists bucket objects no
       live note references and offers per-file delete (under the user's prefix only).
@@ -613,8 +774,16 @@ toward freshness and looked identical. Gave each a structural identity:
         `tests/admin-event-blacklist.test.mjs` (9 — record helpers + editor-gated action,
         fallbacks, refusal, publish-failure). Build + lint clean; admin/access/moderation
         suites 56/56.
-- [ ] **Follow-up:** surface the per-event list (view/unblock) in the Admin pane /
-      future #23 admin tab; today removal is via `removeFromEventBlacklist` (no UI yet).
+- [x] **Follow-up DONE 2026-07-01.** The admin pane is now organized into a sub-tab
+      toolbar (Whitelist / Blacklist / Blocked videos / Moderators — Moderators tab
+      super-admin-only) and a **Blocked videos** tool surfaces the per-event list:
+      view every blocked video (title+author when cached, else shortened id), **unblock**
+      per row (confirm → `removeFromEventBlacklist`), and **add by nevent/hex id**. Reuses
+      the existing accessControl event-blacklist API + `onEventBlacklistChange` (live
+      re-render) and refreshes the grids on change; no backend changes. Row logic in
+      `js/ui/profileModal/blockedVideosSection.js`; wiring in `ProfileAdminController`.
+      Tests: `tests/profile-blocked-videos.test.mjs` (7) + updated profile-modal-controller
+      admin test for the sub-tab layout.
 
 ### 26. Video popularity / view-count chart (public, three-dots menu) — DONE 2026-06-24
 - [x] **Shipped.** A "Popularity" item in the ⋯ menu opens a public views-over-time
@@ -1174,6 +1343,7 @@ Threat model / cautions (write these into the feature + docs):
 > config flags from the start.
 
 ### 16. Nostr live streams — INGEST / watch-only (zap.stream, shosho.live)
+> **Dev plan: `docs/live-ingest-plan.md`** (decisions open + Phase 0 research spike).
 > Ingesting live streams (watch others' streams) and PUBLISHING a stream
 > ("go live", #16c) are TWO separate functions and must each have their OWN config
 > flag — the maintainer wants to enable/disable ingest and publish independently.
@@ -1189,6 +1359,9 @@ Threat model / cautions (write these into the feature + docs):
       populate `streaming`/`recording`, and HLS playback support in the player.
 
 ### 16c. Publish live streams — "Go Live" from bitvid (like zap.stream)
+> **Dev plan: `docs/live-publish-plan.md`** (FUTURE — after #16 + #16b; static
+> client + optional Media Node/Bridge split; MediaMTX; NIP-98 bridge auth;
+> archive→VOD reuses the s-tag/info.json model. Decisions open.)
 - [ ] Let users **broadcast their own stream** (camera / desktop / arbitrary source)
       to Nostr via bitvid, the way zap.stream does: publish a NIP-53 kind-30311 live
       event (status live → ended), push the media to a streaming endpoint (HLS), and
@@ -1203,6 +1376,7 @@ Threat model / cautions (write these into the feature + docs):
       streaming-server dependency early (relates to the CORS/edge constraints).
 
 ### 16b. Nostr short-form video notes — watch-only (new sidebar tab)
+> **Dev plan: `docs/shorts-plan.md`** (decisions open; ingest already exists).
 - [ ] Short-form (vertical/portrait) video is **NIP-71 kind 22** (the short-form
       counterpart to kind 21 normal video) — distinct from live streams. bitvid
       already ingests NIP-71 (see #17), so much of the parsing exists; this is about
@@ -1355,3 +1529,199 @@ that used it.
       switching, and the video-card tap-active state — plus the profile-nav app-grid.
 - [ ] **VERIFY live on a phone**: modals should now be full-screen; tapping a video
       card shows the active lift/accent/marquee; profile modal tabs are the app-grid.
+
+### 49. Relay-ack false-negatives on the generic content-publish path (HIGH-STAKES — deferred)
+> No rush — only act if it starts causing problems. Same bug class as the list-publish
+> fix (commit 47f2a9a8): when no relay ACKs within the 10s `RELAY_PUBLISH_TIMEOUT_MS`
+> window, `assertAnyRelayAccepted` throws even though the event was sent and almost
+> always persisted (works after refresh). Already fixed for the replaceable LISTS
+> (subscriptions/blocks/relay-list/dm-hints/hashtags) via
+> `assertAnyRelayAcceptedOrUnconfirmed`.
+- [ ] **Generic content publish still hard-errors on all-timeout.** The
+      `signAndPublishEventHelper` (`js/nostr/publishHelpers.js:472`) + `rebroadcast`
+      (`:1334`) + `video revert` (`js/nostr/client.js:3064`) still use bare
+      `assertAnyRelayAccepted`, so a slow-ack **video publish/edit/delete/revert**
+      can show "Failed to share video" (or similar) when it actually published.
+      HIGH-STAKES because these are the flagship content flows.
+- [ ] **Why it wasn't bundled in:** video publish feeds a relay summary into
+      `describePublishOutcome` (the "shared to N relays" / warning UI). Applying
+      `assertAnyRelayAcceptedOrUnconfirmed` here must keep that outcome honest (an
+      unconfirmed publish should read as "shared, couldn't confirm" — NOT a hard
+      failure and NOT a false "shared to N relays"). Needs its own careful pass +
+      tests around the video outcome-describer and delete semantics (a false
+      "deleted" is worse than a false "publish failed").
+- [ ] Deletions (kind 5) especially: decide whether an unconfirmed delete should
+      report success optimistically or stay conservative.
+
+### 50. isDevMode — keep it; fix the test-harness gap (LOW priority)
+- Decision (2026-07): **KEEP `isDevMode`.** It's used in ~26 files, chiefly to gate
+  **runtime schema validation** in `js/nostrEventSchemas.js` (event builders validate
+  against their schema only in dev — catches malformed events without the prod cost),
+  plus dev-only verbose logging and dev-only feature flags (`FEATURE_SEARCH_FILTERS`).
+  Removing it would drop that safety net or force validation into prod. Not a candidate
+  for removal.
+- [ ] **Test-harness gap (not an isDevMode bug):** `tests/nostr-publish-rejection.test.mjs`
+      asserts `isDevMode === true` but never sets `globalThis.__BITVID_DEV_MODE_OVERRIDE__`
+      before importing `js/config.js`, so it fails in a non-dev env (`isDevMode` falls back
+      to `IS_DEV_MODE` = false). Fix: force dev mode via the override in that test's setup.
+      Fails identically on committed HEAD — pre-existing, low priority.
+- [ ] (Optional) sweep other tests that assume dev mode without forcing the override, for
+      consistency.
+
+## Open — rough edges found in hands-on testing (2026-07-01)
+Reported by the maintainer after live testing on `unstable`. Several share a root
+cause with **#36** (a persisted **nsec** session restores the pubkey + UI but NOT the
+in-memory signer after a page reload, because the private key is only
+passphrase-encrypted). Items 51, 56, 57 are all facets of that.
+
+### 51. Shouldn't have to re-"unlock" storage after every refresh (UX / session)
+- [ ] **Symptom:** after a page refresh the user must unlock storage again every time.
+- [ ] **Root cause:** same as **#36** — the nsec signer + unlocked storage master key
+      live only in memory, so a reload drops them. Today the fix (#36) makes the error
+      *actionable* (re-enter passphrase), but the user still has to do it every reload.
+- [x] **DONE 2026-07-01 — opt-in "keep unlocked" cache.** Decision (maintainer):
+      **opt-in** tiers. On a successful nsec unlock the decrypted key is cached in a
+      new `js/nostr/unlockedKeyCache.js`:
+        - **session tier (default, always):** `sessionStorage` — survives refresh /
+          navigation, auto-cleared on tab close. Roughly the same exposure as the
+          in-memory signer, so no more PIN on every reload within a session.
+        - **persistent tier (opt-in checkbox):** the unlock prompt now shows a "Keep
+          me unlocked on this device" checkbox (with an inline unencrypted-at-rest
+          warning); when checked the key is ALSO written to `localStorage` and survives
+          until the user clears site data.
+      `client.restoreUnlockedSigner(pubkey)` re-registers the signer from the cache
+      WITHOUT a passphrase (verifies the key derives to that pubkey; a mismatch
+      forgets it). It's called proactively from `ensureActiveSignerForPubkey` (the
+      auto-login/refresh path) and lazily from `ensureEncryptionCapableSigner` before
+      any prompt — so after a reload the signer is restored silently and every
+      signing/encryption flow (storage, hashtags, DMs, reactions, blocks, subs) just
+      works. Logout / remove-saved-profile forget the cached key
+      (`forgetUnlockedSigner`). Tests: `tests/unlocked-key-cache.test.mjs` (8). Lint +
+      build green.
+- [x] **Storage + NWC inherit the kept-unlocked signer — DONE 2026-07-01.** Storage
+      and NWC don't have their own passphrase: the storage master key and the NWC
+      settings are ENCRYPTED WITH THE SIGNER (nip44/nip04 self-encryption) and unlocked
+      by it. So rather than caching a second secret, both now inherit the kept-unlocked
+      nsec signer. `_initAutoLogin` calls `nostrClient.restoreUnlockedSigner(pubkey)`
+      BEFORE the boot re-login, so the login flow (NWC hydrate, list decrypt) and the
+      existing storage auto-unlock (ProfileStorageController / UploadModal call
+      `storageService.unlock` when a signer is present) all succeed silently on refresh
+      — no passphrase, no manual "Unlock storage". Tied to the signer cache: persists
+      exactly as long as the kept-unlocked key does (session or until site-data clear).
+      (NIP-07/46 profiles no-op — nothing is cached; their extension/remote signer
+      already persists.)
+- [ ] **VERIFY on unstable:** unlock once (box unchecked) → refresh → no PIN, and
+      Storage shows Unlocked + the wallet/NWC connection is live without re-entry;
+      close the tab + reopen → PIN again. Check the box → close/reopen the browser →
+      still no PIN and storage/NWC still ready; Log out or clear site data → PIN again.
+- [x] **"Lock this device" control — DONE 2026-07-01.** A footer button in the profile
+      modal (desktop + mobile), shown only when the active account has a cached
+      "keep unlocked" key to forget (`app.isSessionKeptUnlocked`). Clicking it runs
+      `app.lockKeptUnlockedSession(pubkey)`, which re-locks everything the signer
+      unlocks in one action: forgets the cached key (both tiers → future reloads
+      re-prompt), drops the in-memory signer (`logoutSigner` → the current session
+      re-locks now), `storageService.lock(pubkey)`, and `nwcSettingsService.clearCache()`.
+      Visibility refreshes on `renderSavedProfiles` + `selectPane`. Tests:
+      2 in `tests/profile-modal-controller.test.mjs` (visibility gate + click locks the
+      active pubkey). Lint + build green.
+- [ ] **Follow-up (optional):** surface whether the current session is *persistently*
+      remembered (disk vs session tier) in the UI, and consider a "keep unlocked" toggle
+      in the storage/wallet panes for users who set it up there rather than via a prompt.
+
+### 52. After editing a video, the video grids don't refresh to show the update (BUG)
+- [ ] Editing a video leaves the grids showing the pre-edit version until a manual
+      reload. Publishing a NEW video already refreshes the feed (**#46**); the **edit**
+      path needs the same post-publish grid refresh (title/thumbnail/description/url).
+      Likely wire the edit-submit success into the same `refreshAllVideoGrids` /
+      `onVideosShouldRefresh` path #46 uses, keyed by `videoRootId`.
+
+### 53. Channel-profile link in the video player modal doesn't work (BUG)
+- [ ] Clicking the channel/creator link inside the video player modal does nothing
+      (should navigate to that author's channel profile view). Audit the modal's
+      channel-link handler (`js/ui/videoModal*` / the author byline) — likely a missing
+      or wrong nav callback (compare with the working channel links in the grid cards).
+
+### 54. Like / dislike buttons in the video player modal don't work (BUG)
+- [ ] The reaction (like/dislike) buttons in the player modal are unresponsive / don't
+      persist. Audit `reactionController` wiring into the video modal (event binding,
+      active-signer availability, publish path). Note: reactions require signing — verify
+      this isn't another "lost signer after refresh" (#57) surfacing as a dead button; if
+      so, prompt to unlock rather than silently no-op.
+- [x] **Lost-signer variant addressed 2026-07-01.** `ReactionController.handleReaction`
+      now runs the `ensureEncryptionCapableSigner` gate (`need:"sign"`) before
+      publishing, so a reloaded nsec session re-unlocks with one passphrase prompt
+      instead of the reaction silently failing (rolled-back button + generic error).
+      Tests: `tests/reaction-signer-gate.test.mjs`. **Still VERIFY on unstable** whether
+      any residual dead-button behavior remains (event binding / pointer availability),
+      which would be a separate wiring bug from the signer issue.
+
+### 55. Video-grid event caching — faster loads, cache-first + merge-new (PERF / UX)
+- [ ] **Channel-profile grid still loads slowly.** Even after the coalescing + relay
+      timeout + parity-seed fix, the channel wall streams in slowly. Cache that channel's
+      events so revisits render instantly.
+- [ ] **Generalize to every grid:** cache the events behind each video grid (feed tabs +
+      channel walls) so they render from cache immediately, then refresh in the
+      background and **merge in only new events** (don't blank + re-fetch). Fresh content
+      still matters — proposed balance: **cache-and-refresh simultaneously**, appending
+      new events as they arrive, with an explicit **pull-to-refresh / refresh button**
+      for a forced re-fetch. Decide cache store (in-memory vs IndexedDB via
+      `js/state/cache.js`) + a staleness/TTL policy.
+- [ ] **Cache media too:** thumbnails and profile images/banners should be cached (browser
+      cache headers / a warm cache / persistent store) so they don't reload from scratch
+      on every visit. Cross-ref `js/channelProfile.js` and the card renderers.
+
+### 56. Upload & edit modals: prompt to unlock storage (PIN popup), don't just error (UX)
+- [ ] When storage is locked, the **upload** and **edit** modals should open the
+      passphrase/PIN unlock popup instead of surfacing a raw error — for **both** the
+      video-file upload and the **thumbnail** upload. **#36** already added this
+      auto-open-login unlock for the **upload** modal; extend the same treatment to the
+      **edit** modal and the **thumbnail** upload path.
+- [ ] Combine with **51**: once unlocked, cache the state so the user isn't re-prompted
+      on every upload/refresh. "Both would be nice" — actionable prompt AND cached unlock.
+
+### 57. nsec / NIP-46 accounts: encryption ops fail after refresh — re-prompt, don't blanket-error (BUG)
+- [ ] **Symptom:** adding/editing a hashtag on an **nsec**-logged-in account errors with
+      *"Connect a Nostr signer that supports encryption before managing hashtag
+      preferences."* Same class blocks other NIP-44/encryption list ops (subscriptions,
+      blocks, DMs) after a reload.
+- [ ] **Root cause (likely #36):** the reload dropped the in-memory nsec signer, so
+      `nip44Encrypt`/`nip44Decrypt` aren't available even though the user "looks" logged
+      in. The guard then emits a blanket "connect a signer that supports encryption."
+- [ ] **Fix intent:** ALL signing/encryption functions must work across ALL signer types
+      (nsec / NIP-46 / NIP-07). When the op needs a locked nsec key, **prompt to re-enter
+      the PIN/passphrase to re-unlock the signer** (reuse #36's unlock flow) instead of a
+      dead-end error. Cross-ref **#48** (fluent switching) and the account-switch refresh
+      work (commit `87af650b`). Audit every "signer that supports encryption" guard and
+      route it to the unlock prompt when a saved nsec key exists for the active pubkey.
+- [x] **Shared gate built + hashtags wired — DONE 2026-07-01.** New reusable
+      `app.ensureEncryptionCapableSigner({ pubkey, need, promptMessage })`
+      (`js/app.js`, pure branching in `js/nostr/ensureSignerDecision.js`): checks the
+      active signer's capabilities; if it can't encrypt/sign AND a **matching** locked
+      nsec key exists for the account, prompts once for the passphrase and re-unlocks
+      the signer app-wide via `unlockStoredSessionActor` (one unlock re-enables every
+      flow until the next reload). Never unlocks a different account's key
+      (pubkey-mismatch guard). Exposed to the profile modal as
+      `services.ensureEncryptionCapableSigner`. **Hashtag add/edit** now routes through
+      it (`ProfileHashtagController.persistHashtagPreferences`): a cancelled prompt
+      silently aborts, a bad passphrase shows its own toast, and publish never runs
+      until the signer is confirmed. Tests: `tests/ensure-signer-decision.test.mjs` (9),
+      + 2 wiring tests in `tests/profile-modal-controller.test.mjs`. Lint + build green.
+- [x] **Fast-follows wired — DONE 2026-07-01.** All remaining signing/encryption
+      call sites now route through `ensureEncryptionCapableSigner`, short-circuiting
+      only on the user-driven outcomes (cancel / bad-passphrase) so every other case
+      still falls through to the flow's own error handling:
+        - **Reactions (#54):** `ReactionController.handleReaction` gates before the
+          optimistic update with `need:"sign"` (kind-7 reactions don't need encryption).
+          Tests: `tests/reaction-signer-gate.test.mjs` (3).
+        - **Blocks:** `authSessionCoordinator.handleProfileBlocklistMutation`
+          (`need:"encrypt"`, NIP-04 mute/block lists).
+        - **Subscriptions:** the channel-profile Subscribe/Unsubscribe toggle
+          (`js/channelProfile.js`, `need:"encrypt"`, kind-30000).
+        - **DM send:** both composers — `handleSendProfileMessage` and
+          `handleDmAppShellSendMessage` (`need:"encrypt"`, NIP-17/NIP-04).
+      Lint + build + related suites (decision, reaction, DM, profile-modal, switch)
+      green.
+- [ ] **VERIFY on unstable:** with an nsec account, reload, then (a) add a hashtag,
+      (b) like/dislike a video, (c) block/unblock a creator, (d) subscribe to a channel,
+      (e) send a DM — each should show ONE passphrase prompt (not a blanket error), then
+      work; the single unlock should cover the rest until the next reload.

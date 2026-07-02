@@ -1575,6 +1575,24 @@ export class NostrService {
     return this.filterVideos(all, options);
   }
 
+  // Optimistically insert a just-published video into the shared client caches
+  // so the feed can render it before it round-trips through the relays. Keeps
+  // the author index in sync so channel/subscription grids reflect it too.
+  ingestLocalVideoEvent(rawEvent) {
+    if (
+      !this.nostrClient ||
+      typeof this.nostrClient.ingestLocalVideoEvent !== "function"
+    ) {
+      return null;
+    }
+    const video = this.nostrClient.ingestLocalVideoEvent(rawEvent);
+    if (video && !video.deleted && !video.invalid) {
+      this.markAuthorIndexDirty();
+      this.emit("videos:updated", { videos: null, reason: "local-publish" });
+    }
+    return video;
+  }
+
   getActiveVideosByAuthors(authors = [], options = {}) {
     const candidates = ensureSet(authors);
     const normalizedAuthors = new Set();

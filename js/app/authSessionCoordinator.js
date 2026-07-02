@@ -13,6 +13,8 @@ import { clearDecryptionSchemeCache } from "../nostr/decryptionSchemeCache.js";
 import { clearWatchHistoryConversationKeyCache } from "../nostr/watchHistory.js";
 import { clearWatchHistoryDecryptedChunkCache } from "../nostr/watchHistoryDecryptCache.js";
 import { FEED_TYPES, FEATURE_TRENDING_FEED } from "../constants.js";
+import { showPasswordPrompt } from "../ui/promptDialog.js";
+import { evaluateStoredNsecSwitch } from "./storedNsecSwitch.js";
 
 /**
  * Kick a background watch-history refresh after login, once the feed-driving
@@ -648,6 +650,26 @@ export function createAuthSessionCoordinator(deps) {
           authLoadingState: this.authLoadingState,
         });
 
+        // Now that the NEW identity's lists (blocks/subscriptions/hashtags) have
+        // settled, backfill the profile modal if it is open — so switching
+        // accounts with the modal visible refreshes the pane the user is viewing
+        // with the freshly-loaded data instead of leaving the previous account's
+        // list on screen until a manual refresh. No-op when the modal is closed.
+        if (
+          this.profileController &&
+          typeof this.profileController.refreshOpenPanesForActiveIdentity ===
+            "function"
+        ) {
+          try {
+            this.profileController.refreshOpenPanesForActiveIdentity();
+          } catch (error) {
+            devLogger.warn(
+              "[Application] Failed to refresh profile panes after lists settled:",
+              error,
+            );
+          }
+        }
+
         // Warm the watch history in the background now that the feed-driving
         // lists (blocks/subscriptions/hashtags) have finished decrypting. This
         // runs AFTER the required lists — never concurrently — so it does not
@@ -951,6 +973,21 @@ export function createAuthSessionCoordinator(deps) {
       clearDecryptionSchemeCache();
       clearWatchHistoryConversationKeyCache();
       clearWatchHistoryDecryptedChunkCache();
+
+      // Forget any cached "keep unlocked" key for the account being logged out, so
+      // logout actually re-locks it (TODO #51).
+      try {
+        const loggedOutPubkey = detail?.pubkey || this.pubkey;
+        if (
+          loggedOutPubkey &&
+          typeof nostrClient.forgetUnlockedSigner === "function"
+        ) {
+          nostrClient.forgetUnlockedSigner(loggedOutPubkey);
+        }
+      } catch (error) {
+        devLogger.warn("Failed to forget cached unlock during logout:", error);
+      }
+
       this.updateAuthLoadingState({ profile: "idle", lists: "idle", dms: "idle" });
 
       try {
@@ -1372,12 +1409,78 @@ export function createAuthSessionCoordinator(deps) {
       }
     },
 
+    // For an nsec target, ensure its stored key can be unlocked and collect the
+    // passphrase. Returns { status: "ok", passphrase } | { status: "cancelled" } |
+    // { status: "error", reason }.
+    async prepareStoredNsecSwitch(targetPubkey) {
+      const meta =
+        typeof nostrClient?.getStoredSessionActorMetadata === "function"
+          ? nostrClient.getStoredSessionActorMetadata(targetPubkey)
+          : null;
+      const decision = evaluateStoredNsecSwitch(meta, targetPubkey);
+      if (decision.action === "error") {
+        this.showError?.(
+          decision.reason === "pubkey-mismatch"
+            ? "A different account's key is saved on this device. Log in with this account's nsec to switch to it."
+            : "This account's key isn't saved on this device. Log in with its nsec to switch to it.",
+        );
+        return { status: "error", reason: decision.reason };
+      }
+      const passphrase = await showPasswordPrompt(
+        "Enter your PIN / passphrase to unlock this account's saved key.",
+        { title: "Switch account", confirmLabel: "Switch" },
+      );
+      if (passphrase == null || passphrase === "") {
+        return { status: "cancelled", reason: "cancelled" };
+      }
+      return { status: "ok", passphrase };
+    },
+
     async handleProfileSwitchRequest({ pubkey, providerId } = {}) {
       if (!pubkey) {
         throw new Error("Missing pubkey for profile switch request.");
       }
 
-      const result = await this.authService.switchProfile(pubkey, { providerId });
+      // Different signing methods need help to activate on switch:
+      //  - nsec: its key is passphrase-encrypted → prompt for the PIN + unlock it.
+      //  - NIP-46: reuse the stored remote-signer session (don't restart a handshake).
+      //  - NIP-07: the extension connects directly, no prep needed.
+      const normalizedProviderId = String(providerId || "").trim().toLowerCase();
+      const isNsecTarget = normalizedProviderId === "nsec";
+      const isNip46Target = normalizedProviderId === "nip46";
+      let switchOptions = { providerId };
+      if (isNsecTarget) {
+        const prep = await this.prepareStoredNsecSwitch(pubkey);
+        if (prep.status !== "ok") {
+          return { switched: false, reason: prep.reason || prep.status };
+        }
+        switchOptions = {
+          providerId,
+          unlockStored: true,
+          passphrase: prep.passphrase,
+        };
+      } else if (isNip46Target) {
+        switchOptions = { providerId, reuseStored: true };
+      }
+
+      let result;
+      try {
+        result = await this.authService.switchProfile(pubkey, switchOptions);
+      } catch (error) {
+        if (isNsecTarget && error?.code === "decrypt-failed") {
+          this.showError?.(
+            "Incorrect PIN / passphrase. Try switching to this account again.",
+          );
+          return { switched: false, reason: "bad-passphrase" };
+        }
+        if (isNip46Target) {
+          this.showError?.(
+            "Couldn't reconnect to this account's remote signer. Reconnect it (Login → remote signer) to switch to it.",
+          );
+          return { switched: false, reason: "nip46-reconnect-failed" };
+        }
+        throw error;
+      }
 
       if (result?.switched) {
         const detail = result.detail || null;
@@ -1584,6 +1687,18 @@ export function createAuthSessionCoordinator(deps) {
         }
       }
 
+      // Removing a saved profile must also forget its cached "keep unlocked" key.
+      try {
+        if (typeof nostrClient.forgetUnlockedSigner === "function") {
+          nostrClient.forgetUnlockedSigner(normalizedTarget);
+        }
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to forget cached unlock for removed profile:",
+          error,
+        );
+      }
+
       this.renderSavedProfiles();
 
       return { loggedOut: true, removed: true };
@@ -1705,6 +1820,27 @@ export function createAuthSessionCoordinator(deps) {
       if (!actorHex || !targetHex) {
         context.reason = "invalid-target";
         return context;
+      }
+
+      // Block lists are NIP-04 encrypted. A reloaded nsec session can lose its
+      // in-memory key; re-unlock it (one passphrase prompt) rather than failing
+      // with a blanket signer error (TODO #57). Only short-circuit on the
+      // user-driven outcomes — anything else falls through so the mutation's own
+      // signer error (e.g. an unresponsive NIP-07 extension) still surfaces.
+      if (typeof this.ensureEncryptionCapableSigner === "function") {
+        const ensured = await this.ensureEncryptionCapableSigner({
+          pubkey: actorHex,
+          need: "encrypt",
+          promptMessage:
+            "Re-enter your PIN / passphrase to unlock your key and update your mute/block list.",
+        });
+        if (
+          ensured &&
+          (ensured.reason === "cancelled" || ensured.reason === "bad-passphrase")
+        ) {
+          context.reason = ensured.reason;
+          return context;
+        }
       }
 
       try {

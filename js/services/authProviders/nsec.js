@@ -60,6 +60,10 @@ function normalizeOptions(options) {
     persist: options.persist === true,
     passphrase: typeof options.passphrase === "string" ? options.passphrase : "",
     unlockStored: options.unlockStored === true,
+    // Set when switching to a specific saved account, so the stored-key unlock
+    // targets that account rather than the last-saved default.
+    expectPubkey:
+      typeof options.expectPubkey === "string" ? options.expectPubkey.trim() : "",
   };
 }
 
@@ -120,7 +124,7 @@ export default {
 
       const unlockResult = await nostrClient.unlockStoredSessionActor(
         suppliedPassphrase,
-        { validator },
+        { validator, pubkey: normalized.expectPubkey || undefined },
       );
       const unlockedPubkey = normalizePubkey(unlockResult);
 

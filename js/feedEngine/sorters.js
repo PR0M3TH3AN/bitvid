@@ -55,7 +55,9 @@ export function createTrendingSorter() {
 
     const live = items.filter((entry) => !isMuted(entry));
     const muted = items.filter((entry) => isMuted(entry));
-    return [...live.sort(compare), ...muted.sort(compare)];
+    // Rank by views, then spread authors so the tab isn't walls of one creator.
+    // The most-viewed item is still chosen first, so it stays topmost.
+    return [...spreadAuthors(live.sort(compare)), ...muted.sort(compare)];
   };
 }
 
@@ -93,6 +95,47 @@ export function interleaveByAuthor(items, { authorOf } = {}) {
         result.push(bucket.shift());
         remaining -= 1;
       }
+    }
+  }
+  return result;
+}
+
+// Gentle author-diversity re-rank. Unlike interleaveByAuthor (full round-robin,
+// which flattens the ranking), this keeps the caller's ranked order as the
+// priority and only breaks up runs of the same author: at each step it takes the
+// highest-ranked remaining item whose author wasn't among the last `window`
+// picks, falling back to the plain top item when every remaining candidate is a
+// recent author. The #1 ranked item is always chosen first, so "best/most-X on
+// top" is preserved while consecutive cards stop clustering by creator.
+export function spreadAuthors(items, { authorOf, window: windowSize = 1 } = {}) {
+  if (!Array.isArray(items) || items.length < 3) {
+    return Array.isArray(items) ? [...items] : [];
+  }
+  const size = Number.isFinite(windowSize) && windowSize > 0 ? Math.floor(windowSize) : 1;
+  const keyOf =
+    typeof authorOf === "function"
+      ? authorOf
+      : (entry) =>
+          typeof entry?.video?.pubkey === "string" ? entry.video.pubkey : "";
+
+  const remaining = items.map((item, index) => ({ item, key: keyOf(item), index }));
+  const result = [];
+  const recent = []; // authors of the last `size` picks
+  while (remaining.length) {
+    let pickIdx = 0; // default: the highest-ranked remaining item
+    for (let i = 0; i < remaining.length; i += 1) {
+      const { key } = remaining[i];
+      // Anonymous/unknown authors ("") never count as a repeat.
+      if (!key || !recent.includes(key)) {
+        pickIdx = i;
+        break;
+      }
+    }
+    const [picked] = remaining.splice(pickIdx, 1);
+    result.push(picked.item);
+    if (picked.key) {
+      recent.push(picked.key);
+      if (recent.length > size) recent.shift();
     }
   }
   return result;
@@ -154,6 +197,9 @@ export function createForYouScoreSorter() {
         if (tierDiff !== 0) return tierDiff;
         return byScore(a, b);
       });
+      // Break up per-creator clusters (a followed author's whole back-catalogue
+      // would otherwise sit in one block) while keeping the best-fit item on top.
+      ordered = spreadAuthors(ordered);
     } else {
       // No signals → discovery fallback: score order, then interleave authors so
       // it doesn't read as a chronological clone of Recently-added.

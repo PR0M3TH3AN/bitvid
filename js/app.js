@@ -89,13 +89,22 @@ import { buildDmRelayListEvent, buildShareEvent } from "./nostrEventSchemas.js";
 import {
   publishEventToRelays,
   assertAnyRelayAccepted,
+  assertAnyRelayAcceptedOrUnconfirmed,
   describePublishOutcome,
   readRelayPublishSummary,
 } from "./nostrPublish.js";
 import {
   getActiveSigner,
   onActiveSignerChanged,
+  logoutSigner,
 } from "./nostrClientRegistry.js";
+import { resolveSignerCapabilities } from "./nostr/signerCapabilities.js";
+import { rankHashtagsByFrequency } from "./utils/hashtagSuggestions.js";
+import {
+  decideSignerEnsure,
+  isSignerCapable,
+} from "./nostr/ensureSignerDecision.js";
+import { showPasswordPrompt } from "./ui/promptDialog.js";
 import { queueSignEvent } from "./nostr/signRequestQueue.js";
 import {
   DEFAULT_NIP07_CORE_METHODS,
@@ -380,6 +389,7 @@ class Application {
         isUserLoggedIn: () => this.isUserLoggedIn(),
         normalizeHexPubkey: (val) => this.normalizeHexPubkey(val),
         getPubkey: () => this.pubkey,
+        ensureSigner: (options) => this.ensureEncryptionCapableSigner(options),
       },
     });
 
@@ -1207,6 +1217,22 @@ class Application {
       }
       if (savedEntry?.providerId) {
         loginOptions.providerId = savedEntry.providerId;
+      }
+
+      // Restore a kept-unlocked nsec signer from cache BEFORE re-login, so the
+      // login flow (list decrypt, NWC hydrate) and the later storage auto-unlock
+      // all inherit it on refresh without a passphrase (TODO #51). For nsec this
+      // is the only way the signer comes back on reload (the key is passphrase-
+      // encrypted); safe no-op when nothing is cached or for NIP-07/46.
+      try {
+        if (typeof nostrClient.restoreUnlockedSigner === "function") {
+          await nostrClient.restoreUnlockedSigner(normalizedSaved);
+        }
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to restore kept-unlocked signer on boot:",
+          error,
+        );
       }
 
       try {
@@ -2073,6 +2099,199 @@ class Application {
     return fallback;
   }
 
+  /**
+   * Ensure the ACTIVE signer can encrypt/sign. If it can't because a persisted
+   * nsec session restored the pubkey + UI but not the in-memory signer after a
+   * page reload (the private key is only passphrase-encrypted — see TODO #36),
+   * prompt once for the passphrase and re-unlock the signer app-wide via
+   * `unlockStoredSessionActor`. One unlock re-enables every signing/encryption
+   * flow (hashtags, subscriptions, blocks, DMs, reactions, storage) until the
+   * next reload — instead of each guard dead-ending with a blanket
+   * "connect a signer that supports encryption" error (TODO #51/#54/#56/#57).
+   *
+   * @param {object} [opts]
+   * @param {string} [opts.pubkey] - Account to unlock (defaults to the active one).
+   * @param {"encrypt"|"sign"} [opts.need] - Capability required. "encrypt" needs
+   *   nip44/nip04; "sign" needs signEvent only.
+   * @param {string} [opts.promptMessage] - Override the passphrase-prompt copy.
+   * @returns {Promise<{ok: boolean, reason?: string, unlocked?: boolean, error?: Error}>}
+   */
+  async ensureEncryptionCapableSigner({
+    pubkey,
+    need = "encrypt",
+    promptMessage,
+  } = {}) {
+    const normalized =
+      this.normalizeHexPubkey(pubkey) ||
+      this.normalizeHexPubkey(this.pubkey) ||
+      "";
+
+    let meta = null;
+    try {
+      meta =
+        normalized &&
+        typeof nostrClient?.getStoredSessionActorMetadata === "function"
+          ? nostrClient.getStoredSessionActorMetadata(normalized)
+          : null;
+    } catch (error) {
+      devLogger.warn(
+        "[Application] Failed to read stored session metadata while ensuring signer:",
+        error,
+      );
+    }
+
+    // Try a cached "keep unlocked" key first so we never prompt after a reload
+    // when the user opted to stay unlocked (TODO #51).
+    if (
+      normalized &&
+      typeof nostrClient?.restoreUnlockedSigner === "function" &&
+      !isSignerCapable(resolveSignerCapabilities(getActiveSigner()), need)
+    ) {
+      try {
+        const restored = await nostrClient.restoreUnlockedSigner(normalized);
+        if (
+          restored?.restored &&
+          isSignerCapable(resolveSignerCapabilities(getActiveSigner()), need)
+        ) {
+          return { ok: true, restored: true };
+        }
+      } catch (error) {
+        devLogger.warn("[Application] Cached unlock restore failed:", error);
+      }
+    }
+
+    const decision = decideSignerEnsure({
+      capabilities: resolveSignerCapabilities(getActiveSigner()),
+      need,
+      normalizedPubkey: normalized,
+      storedKeyMeta: meta,
+      normalizePubkey: (value) => this.normalizeHexPubkey(value) || "",
+    });
+
+    if (decision.action === "ok") {
+      return { ok: true };
+    }
+    if (decision.action === "fail") {
+      return { ok: false, reason: decision.reason };
+    }
+
+    const message =
+      typeof promptMessage === "string" && promptMessage.trim()
+        ? promptMessage.trim()
+        : "Re-enter your PIN / passphrase to unlock your saved key for this action.";
+    const promptResult = await showPasswordPrompt(message, {
+      title: "Unlock your key",
+      confirmLabel: "Unlock",
+      collectRemember: true,
+    });
+    if (promptResult == null) {
+      return { ok: false, reason: "cancelled" };
+    }
+    const passphrase =
+      typeof promptResult === "string" ? promptResult : promptResult.passphrase;
+    const persistUnlock =
+      typeof promptResult === "object" ? Boolean(promptResult.remember) : false;
+    if (passphrase == null || passphrase === "") {
+      return { ok: false, reason: "cancelled" };
+    }
+
+    try {
+      await nostrClient.unlockStoredSessionActor(passphrase, {
+        pubkey: normalized,
+        persistUnlock,
+      });
+    } catch (error) {
+      if (error?.code === "decrypt-failed") {
+        this.showError?.(
+          "Incorrect PIN / passphrase. Try that action again to re-enter it.",
+        );
+        return { ok: false, reason: "bad-passphrase", error };
+      }
+      devLogger.warn(
+        "[Application] Failed to unlock stored nsec session for a signing action:",
+        error,
+      );
+      return { ok: false, reason: "unlock-failed", error };
+    }
+
+    // The signer is now registered app-wide; confirm the capability actually
+    // came back before telling the caller to proceed.
+    if (!isSignerCapable(resolveSignerCapabilities(getActiveSigner()), need)) {
+      return { ok: false, reason: "still-incapable" };
+    }
+    return { ok: true, unlocked: true };
+  }
+
+  // True when the active (or given) account currently has a cached "keep
+  // unlocked" key — i.e. there is something to lock (TODO #51).
+  isSessionKeptUnlocked(pubkey) {
+    const normalized =
+      this.normalizeHexPubkey(pubkey) ||
+      this.normalizeHexPubkey(this.pubkey) ||
+      "";
+    if (!normalized || typeof nostrClient?.hasCachedUnlockedKey !== "function") {
+      return false;
+    }
+    try {
+      return nostrClient.hasCachedUnlockedKey(normalized);
+    } catch (error) {
+      return false;
+    }
+  }
+
+  // "Lock now": re-lock this device immediately AND forget the cached key so a
+  // future reload re-prompts. Counterpart to the opt-in "keep unlocked" (TODO
+  // #51). Locks everything the signer unlocks — the in-memory signer, storage,
+  // and the decrypted NWC cache — so the account is fully re-locked in one action.
+  lockKeptUnlockedSession(pubkey) {
+    const normalized =
+      this.normalizeHexPubkey(pubkey) ||
+      this.normalizeHexPubkey(this.pubkey) ||
+      "";
+    if (!normalized) {
+      return { ok: false, reason: "no-pubkey" };
+    }
+
+    // 1. Forget the cached key (both tiers) → future reloads re-prompt for the PIN.
+    try {
+      if (typeof nostrClient.forgetUnlockedSigner === "function") {
+        nostrClient.forgetUnlockedSigner(normalized);
+      }
+    } catch (error) {
+      devLogger.warn("[Application] Failed to forget cached unlock on lock:", error);
+    }
+
+    // 2. Remove the in-memory nsec signer → the CURRENT session re-locks now.
+    try {
+      logoutSigner(normalized);
+    } catch (error) {
+      devLogger.warn("[Application] Failed to drop the active signer on lock:", error);
+    }
+
+    // 3. Lock storage (drops the in-memory master key).
+    try {
+      if (typeof storageService.lock === "function") {
+        storageService.lock(normalized);
+      }
+    } catch (error) {
+      devLogger.warn("[Application] Failed to lock storage on lock:", error);
+    }
+
+    // 4. Drop the decrypted NWC cache (re-hydrates from the signer next time).
+    try {
+      if (typeof this.nwcSettingsService?.clearCache === "function") {
+        this.nwcSettingsService.clearCache();
+      }
+    } catch (error) {
+      devLogger.warn("[Application] Failed to drop the NWC cache on lock:", error);
+    }
+
+    this.showSuccess?.(
+      "Locked on this device. You'll re-enter your PIN next time it's needed.",
+    );
+    return { ok: true };
+  }
+
   resetPermissionPromptState() {
     this.permissionPromptShownForSession = false;
     this.permissionPromptVisible = false;
@@ -2905,24 +3124,17 @@ class Application {
       signedEvent,
     );
 
-    let publishSummary;
-    try {
-      publishSummary = assertAnyRelayAccepted(publishResults, {
-        context: "dm relay hints update",
-        message: "No relays accepted the DM relay list.",
-      });
-    } catch (publishError) {
-      if (publishError?.relayFailures?.length) {
-        publishError.relayFailures.forEach(
-          ({ url, error: relayError, reason }) => {
-            userLogger.error(
-              `[Application] Relay ${url} rejected DM relay list: ${reason}`,
-              relayError || reason,
-            );
-          },
-        );
-      }
-      throw publishError;
+    // An all-timeout (unconfirmed) publish of the replaceable DM relay list is a
+    // soft success — sent + almost always persisted; don't error/revert. Explicit
+    // rejections still throw.
+    const publishSummary = assertAnyRelayAcceptedOrUnconfirmed(publishResults, {
+      context: "dm relay hints update",
+      message: "No relays accepted the DM relay list.",
+    });
+    if (publishSummary.unconfirmed) {
+      userLogger.warn(
+        "[Application] DM relay list not acknowledged by any relay within the timeout; treating as optimistic success (reconciles on next load).",
+      );
     }
 
     if (publishSummary.failed.length) {
@@ -3197,8 +3409,9 @@ class Application {
     }
 
     let relaySummary = null;
+    let publishResult = null;
     try {
-      const publishResult = await this.nostrService.publishVideoNote(
+      publishResult = await this.nostrService.publishVideoNote(
         publishPayload,
         this.pubkey,
       );
@@ -3219,10 +3432,31 @@ class Application {
       this.uploadModal.close();
     }
 
+    // Optimistically insert the just-published note into the shared cache so it
+    // appears in the feed instantly, before the relays echo it back. Obeys the
+    // same dedupe/active-key rules as live ingestion, so a later relay copy
+    // won't duplicate it (see #20/#21).
+    try {
+      if (publishResult?.legacy) {
+        this.nostrService.ingestLocalVideoEvent(publishResult.legacy);
+      }
+    } catch (error) {
+      devLogger.warn(
+        "[Application] Optimistic feed insert after publishing failed:",
+        error,
+      );
+    }
+
     let loadVideosError = null;
 
     try {
-      await this.loadVideos();
+      // Refresh whichever feed is active (For You / Explore / Recent) plus the
+      // subscription and channel grids — not just the main recent feed — and
+      // force a render so the newly injected video is shown.
+      await this.refreshAllVideoGrids({
+        reason: "video-published",
+        forceMainReload: true,
+      });
     } catch (error) {
       loadVideosError = error;
       devLogger.error(
@@ -3314,6 +3548,17 @@ class Application {
     return this._auth.handleProfileSwitchRequest(...args);
   }
 
+  // Coordinator methods are bound to `this` (the Application) by bindCoordinator,
+  // so a sibling call like `this.prepareStoredNsecSwitch(...)` inside
+  // handleProfileSwitchRequest resolves against the Application — it needs this
+  // delegator to exist (like handleProfileSwitchRequest above). Without it,
+  // switching to a stored-nsec account threw "this.prepareStoredNsecSwitch is not
+  // a function".
+  async prepareStoredNsecSwitch(...args) {
+    this._initCoordinators();
+    return this._auth.prepareStoredNsecSwitch(...args);
+  }
+
   async waitForIdentityRefresh(...args) {
     this._initCoordinators();
     return this._auth.waitForIdentityRefresh(...args);
@@ -3387,6 +3632,29 @@ class Application {
   updateActiveProfileUI(...args) {
     this._initCoordinators();
     return this._ui.updateActiveProfileUI(...args);
+  }
+
+  // The active user's most-used hashtags (frequency-ranked from their own past
+  // uploads) for the upload modal's one-tap suggestion chips (TODO #45).
+  getUserHashtagSuggestions({ limit = 12 } = {}) {
+    const pubkey = this.normalizeHexPubkey(this.pubkey);
+    if (
+      !pubkey ||
+      typeof this.nostrService?.getActiveVideosByAuthors !== "function"
+    ) {
+      return [];
+    }
+    let videos = [];
+    try {
+      videos = this.nostrService.getActiveVideosByAuthors([pubkey]) || [];
+    } catch (error) {
+      devLogger.warn(
+        "[Application] Failed to read user videos for hashtag suggestions:",
+        error,
+      );
+      return [];
+    }
+    return rankHashtagsByFrequency(videos, { limit });
   }
 
   async hydrateNwcSettingsForPubkey(pubkey) {

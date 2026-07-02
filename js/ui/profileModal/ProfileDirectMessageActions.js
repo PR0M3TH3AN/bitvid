@@ -240,6 +240,32 @@ export class ProfileDirectMessageActions {
       return;
     }
 
+    // DMs are encrypted (NIP-17 gift wrap / NIP-04). A reloaded nsec session can
+    // lose its in-memory key; re-unlock it with one passphrase prompt rather than
+    // failing to send (TODO #57). Only user-driven outcomes stop the send; other
+    // cases fall through to sendDirectMessage's own error handling.
+    const ensureSigner =
+      this.mainController.services?.ensureEncryptionCapableSigner;
+    if (typeof ensureSigner === "function") {
+      let ensured = { ok: true };
+      try {
+        ensured = await ensureSigner({
+          pubkey: this.controller.helper.resolveActiveDmActor(),
+          need: "encrypt",
+          promptMessage:
+            "Re-enter your PIN / passphrase to unlock your key and send messages.",
+        });
+      } catch (error) {
+        ensured = { ok: false, reason: "ensure-failed" };
+      }
+      if (
+        ensured &&
+        (ensured.reason === "cancelled" || ensured.reason === "bad-passphrase")
+      ) {
+        return;
+      }
+    }
+
     const sendButton = this.controller.renderer.profileMessageSendButton;
     if (sendButton instanceof HTMLElement && "disabled" in sendButton) {
       sendButton.disabled = true;
@@ -487,6 +513,35 @@ export class ProfileDirectMessageActions {
         actorPubkey: actor,
       });
       return;
+    }
+
+    // Re-unlock a reloaded nsec signer before sending (TODO #57). Same gate as the
+    // profile-modal composer; only user-driven outcomes stop the send.
+    const ensureSigner =
+      this.mainController.services?.ensureEncryptionCapableSigner;
+    if (typeof ensureSigner === "function") {
+      let ensured = { ok: true };
+      try {
+        ensured = await ensureSigner({
+          pubkey: actor,
+          need: "encrypt",
+          promptMessage:
+            "Re-enter your PIN / passphrase to unlock your key and send messages.",
+        });
+      } catch (error) {
+        ensured = { ok: false, reason: "ensure-failed" };
+      }
+      if (
+        ensured &&
+        (ensured.reason === "cancelled" || ensured.reason === "bad-passphrase")
+      ) {
+        this.controller.dmComposerState = "idle";
+        await this.controller.renderer.renderDmAppShell(
+          this.controller.directMessagesCache,
+          { actorPubkey: actor },
+        );
+        return;
+      }
     }
 
     const privacyMode =

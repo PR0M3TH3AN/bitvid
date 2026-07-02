@@ -1,8 +1,19 @@
 import { devLogger, userLogger } from "../../utils/logger.js";
 import { isDevMode } from "../../config.js";
 import { ProfileAdminRenderer } from "./ProfileAdminRenderer.js";
+import { getApplication } from "../../applicationContext.js";
+import {
+  buildBlockedVideoRows,
+  renderBlockedVideosList,
+} from "./blockedVideosSection.js";
+import { showConfirm } from "../confirmDialog.js";
 
 const noop = () => {};
+
+// Admin pane sub-tabs, in toolbar order. "moderators" is only shown to the
+// super admin (its tab button is hidden otherwise).
+const ADMIN_SUBTABS = ["whitelist", "blacklist", "blockedVideos", "moderators"];
+const DEFAULT_ADMIN_SUBTAB = "whitelist";
 
 export class ProfileAdminController {
   constructor(mainController) {
@@ -27,6 +38,21 @@ export class ProfileAdminController {
     this.addBlacklistButton = null;
     this.blacklistInput = null;
     this.adminBlacklistRefreshBtn = null;
+
+    // Blocked videos (per-event admin block list) sub-tab.
+    this.blockedVideosSection = null;
+    this.blockedVideosEmpty = null;
+    this.blockedVideosList = null;
+    this.addBlockedVideoButton = null;
+    this.blockedVideoInput = null;
+    this.blockedVideosRefreshBtn = null;
+
+    // Sub-tab toolbar.
+    this.subtabBar = null;
+    this.subtabButtons = {};
+    this.subtabSections = {};
+    this.activeSubtab = DEFAULT_ADMIN_SUBTAB;
+    this.eventBlacklistUnsub = null;
   }
 
   cacheDomReferences() {
@@ -50,6 +76,27 @@ export class ProfileAdminController {
     this.addBlacklistButton = document.getElementById("adminAddBlacklistBtn") || null;
     this.blacklistInput = document.getElementById("adminBlacklistInput") || null;
     this.adminBlacklistRefreshBtn = document.getElementById("adminBlacklistRefreshBtn") || null;
+
+    this.blockedVideosSection = document.getElementById("adminBlockedVideosSection") || null;
+    this.blockedVideosEmpty = document.getElementById("adminBlockedVideosEmpty") || null;
+    this.blockedVideosList = document.getElementById("adminBlockedVideosList") || null;
+    this.addBlockedVideoButton = document.getElementById("adminAddBlockedVideoBtn") || null;
+    this.blockedVideoInput = document.getElementById("adminBlockedVideoInput") || null;
+    this.blockedVideosRefreshBtn = document.getElementById("adminBlockedVideosRefreshBtn") || null;
+
+    this.subtabBar = document.getElementById("adminSubtabBar") || null;
+    this.subtabButtons = {
+      whitelist: document.getElementById("adminSubtabWhitelist") || null,
+      blacklist: document.getElementById("adminSubtabBlacklist") || null,
+      blockedVideos: document.getElementById("adminSubtabBlockedVideos") || null,
+      moderators: document.getElementById("adminSubtabModerators") || null,
+    };
+    this.subtabSections = {
+      whitelist: this.whitelistSection,
+      blacklist: this.blacklistSection,
+      blockedVideos: this.blockedVideosSection,
+      moderators: this.moderatorSection,
+    };
   }
 
   registerEventListeners() {
@@ -155,6 +202,87 @@ export class ProfileAdminController {
         }
       });
     }
+
+    ensureAriaLabel(this.blockedVideosRefreshBtn, "Refresh blocked videos");
+
+    for (const name of ADMIN_SUBTABS) {
+      const button = this.subtabButtons?.[name];
+      if (button instanceof HTMLElement) {
+        button.addEventListener("click", () => this.selectAdminSubtab(name));
+      }
+    }
+
+    if (this.addBlockedVideoButton instanceof HTMLElement) {
+      this.addBlockedVideoButton.addEventListener("click", () => {
+        void this.handleAddBlockedVideo();
+      });
+    }
+
+    if (this.blockedVideoInput instanceof HTMLElement) {
+      this.blockedVideoInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          void this.handleAddBlockedVideo();
+        }
+      });
+    }
+
+    if (this.blockedVideosRefreshBtn instanceof HTMLElement) {
+      this.blockedVideosRefreshBtn.addEventListener("click", () => {
+        const service = this.mainController.services.accessControl;
+        if (!service || typeof service.refresh !== "function") {
+          return;
+        }
+        void service
+          .refresh()
+          .then(() => this.populateBlockedVideos())
+          .catch((error) => {
+            devLogger.warn("[profileModal] Failed to refresh blocked videos:", error);
+          });
+      });
+    }
+
+    // Re-render the blocked-videos list whenever the published list changes
+    // (e.g. an admin blocks a video from the ⋯ menu while this pane is open).
+    const accessControl = this.mainController.services?.accessControl;
+    if (accessControl && typeof accessControl.onEventBlacklistChange === "function") {
+      if (typeof this.eventBlacklistUnsub === "function") {
+        this.eventBlacklistUnsub();
+      }
+      this.eventBlacklistUnsub = accessControl.onEventBlacklistChange(() => {
+        this.populateBlockedVideos();
+      });
+    }
+  }
+
+  // Show one admin sub-tab's section and hide the rest, syncing button state.
+  // Falls back to the default tab when asked for a hidden one (e.g. Moderators
+  // for a non-super-admin).
+  selectAdminSubtab(name) {
+    let target = ADMIN_SUBTABS.includes(name) ? name : DEFAULT_ADMIN_SUBTAB;
+    const button = this.subtabButtons?.[target];
+    if (button instanceof HTMLElement && button.classList.contains("hidden")) {
+      target = DEFAULT_ADMIN_SUBTAB;
+    }
+    this.activeSubtab = target;
+
+    for (const key of ADMIN_SUBTABS) {
+      const isActive = key === target;
+      const tabButton = this.subtabButtons?.[key];
+      const section = this.subtabSections?.[key];
+      if (tabButton instanceof HTMLElement) {
+        tabButton.setAttribute("aria-selected", isActive ? "true" : "false");
+        if (isActive) {
+          tabButton.dataset.state = "active";
+        } else {
+          delete tabButton.dataset.state;
+        }
+      }
+      if (section instanceof HTMLElement) {
+        section.classList.toggle("hidden", !isActive);
+        section.setAttribute("aria-hidden", (!isActive).toString());
+      }
+    }
   }
 
   populateAdminLists() {
@@ -228,6 +356,137 @@ export class ProfileAdminController {
     );
   }
 
+  // Best-effort lookup of a blocked video from the shared feed cache so rows can
+  // show a title/author; returns null when the video isn't cached (id-only row).
+  resolveBlockedVideo(id) {
+    try {
+      const app = getApplication();
+      const service = app?.nostrService || null;
+      if (service && typeof service.getVideoByEventId === "function") {
+        const video = service.getVideoByEventId(id);
+        if (video) return video;
+      }
+      const client = service?.nostrClient || null;
+      if (client?.allEvents && typeof client.allEvents.get === "function") {
+        return client.allEvents.get(id) || null;
+      }
+    } catch (error) {
+      // Non-fatal — fall back to an id-only row.
+    }
+    return null;
+  }
+
+  populateBlockedVideos() {
+    if (!(this.blockedVideosList instanceof HTMLElement)) {
+      return;
+    }
+    const actorNpub = this.mainController.services.getCurrentUserNpub();
+    const accessControl = this.mainController.services.accessControl;
+    if (!actorNpub || !accessControl?.canEditAdminLists?.(actorNpub)) {
+      renderBlockedVideosList(this.blockedVideosList, this.blockedVideosEmpty, []);
+      return;
+    }
+    const ids =
+      typeof accessControl.getEventBlacklist === "function"
+        ? accessControl.getEventBlacklist()
+        : [];
+    const rows = buildBlockedVideoRows(ids, (id) => this.resolveBlockedVideo(id));
+    renderBlockedVideosList(this.blockedVideosList, this.blockedVideosEmpty, rows, {
+      onUnblock: (id, button) => this.handleRemoveBlockedVideo(id, button),
+      formatAuthor: (hex) =>
+        typeof hex === "string" && hex.length > 12
+          ? `by ${hex.slice(0, 10)}…`
+          : "",
+    });
+  }
+
+  async handleAddBlockedVideo() {
+    const input = this.blockedVideoInput || null;
+    const rawValue = typeof input?.value === "string" ? input.value.trim() : "";
+    if (!rawValue) {
+      this.mainController.showError("Enter an event id or nevent to block.");
+      return;
+    }
+    const actorNpub = this.ensureAdminActor();
+    if (!actorNpub) {
+      return;
+    }
+    const accessControl = this.mainController.services.accessControl;
+    try {
+      const result = await accessControl.addToEventBlacklist(actorNpub, rawValue);
+      if (result?.ok) {
+        if (input) input.value = "";
+        this.mainController.showSuccess("Video added to the block list.");
+        this.populateBlockedVideos();
+        this.refreshGridsAfterEventBlacklistChange();
+      } else {
+        this.mainController.showError(
+          result?.error === "forbidden"
+            ? "You do not have permission to block videos."
+            : result?.error === "invalid event id"
+            ? "That doesn't look like a valid event id or nevent."
+            : "Failed to block the video. Please try again.",
+        );
+      }
+    } catch (error) {
+      userLogger.error("[profileModal] Failed to add blocked video:", error);
+      this.mainController.showError("Failed to block the video. Please try again.");
+    }
+  }
+
+  async handleRemoveBlockedVideo(id, button) {
+    const actorNpub = this.ensureAdminActor();
+    if (!actorNpub) {
+      return;
+    }
+    const confirmed = await showConfirm(
+      "Unblock this video? It will become visible across bitvid again.",
+      { title: "Unblock video", confirmLabel: "Unblock", cancelLabel: "Cancel" },
+    );
+    if (!confirmed) {
+      return;
+    }
+    if (button instanceof HTMLElement) {
+      button.disabled = true;
+    }
+    const accessControl = this.mainController.services.accessControl;
+    try {
+      const result = await accessControl.removeFromEventBlacklist(actorNpub, id);
+      if (result?.ok) {
+        this.mainController.showSuccess("Video unblocked.");
+        this.populateBlockedVideos();
+        this.refreshGridsAfterEventBlacklistChange();
+      } else {
+        if (button instanceof HTMLElement) button.disabled = false;
+        this.mainController.showError(
+          result?.error === "forbidden"
+            ? "You do not have permission to unblock videos."
+            : "Failed to unblock the video. Please try again.",
+        );
+      }
+    } catch (error) {
+      if (button instanceof HTMLElement) button.disabled = false;
+      userLogger.error("[profileModal] Failed to remove blocked video:", error);
+      this.mainController.showError("Failed to unblock the video. Please try again.");
+    }
+  }
+
+  refreshGridsAfterEventBlacklistChange() {
+    try {
+      const app = getApplication();
+      if (app && typeof app.refreshAllVideoGrids === "function") {
+        void app
+          .refreshAllVideoGrids({
+            reason: "admin-event-blacklist-update",
+            forceMainReload: true,
+          })
+          .catch(() => {});
+      }
+    } catch (error) {
+      // Non-fatal.
+    }
+  }
+
   async refreshAdminPaneState() {
     const adminNav = this.mainController.navButtons.admin;
     const adminPane = this.mainController.panes.admin;
@@ -297,14 +556,21 @@ export class ProfileAdminController {
       return;
     }
 
-    if (this.moderatorSection instanceof HTMLElement) {
-      this.moderatorSection.classList.toggle("hidden", !isSuperAdmin);
-      this.moderatorSection.setAttribute(
-        "aria-hidden",
-        (!isSuperAdmin).toString(),
-      );
+    // Moderators is super-admin-only: hide its sub-tab button entirely for
+    // everyone else (its section visibility is then governed by selectAdminSubtab).
+    const moderatorsTab = this.subtabButtons?.moderators;
+    if (moderatorsTab instanceof HTMLElement) {
+      moderatorsTab.classList.toggle("hidden", !isSuperAdmin);
+      if (!isSuperAdmin) {
+        moderatorsTab.setAttribute("aria-selected", "false");
+      }
     }
+
     this.populateAdminLists();
+    this.populateBlockedVideos();
+    // Re-apply the current sub-tab so exactly one section is visible (and so a
+    // now-hidden Moderators tab falls back to the default).
+    this.selectAdminSubtab(this.activeSubtab);
     this.mainController.showStatus(null);
     this.renderer.setAdminLoading(this, false);
   }

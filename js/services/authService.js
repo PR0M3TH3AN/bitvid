@@ -248,6 +248,18 @@ export default class AuthService {
       return { pubkey: null, providerId, authType: detailAuthType, signer };
     }
 
+    // Only switchProfile sets expectPubkey: don't activate a DIFFERENT account than the
+    // one requested (e.g. a single-slot stored nsec/NIP-46 session resolving to another
+    // pubkey). Reject instead of silently switching to the wrong profile.
+    const expectPubkey = this.normalizeHexPubkey(providerOptions?.expectPubkey);
+    if (expectPubkey && this.normalizeHexPubkey(trimmed) !== expectPubkey) {
+      const mismatchError = new Error(
+        "Signed in as a different account than the one selected.",
+      );
+      mismatchError.code = "pubkey-mismatch";
+      throw mismatchError;
+    }
+
     if (autoApply === false) {
       return { pubkey: trimmed, providerId, authType: detailAuthType, signer };
     }
@@ -992,6 +1004,20 @@ export default class AuthService {
       expectPubkey: normalizedTarget,
       persistActive: true,
       ...(providerId ? { providerId } : {}),
+      // Switching to a saved nsec account: unlock its stored key with the passphrase
+      // the caller collected (the private key can't be restored otherwise).
+      ...(normalizedOptions.unlockStored
+        ? {
+            unlockStored: true,
+            passphrase:
+              typeof normalizedOptions.passphrase === "string"
+                ? normalizedOptions.passphrase
+                : "",
+          }
+        : {}),
+      // Switching to a saved NIP-46 account: reuse the stored remote-signer session
+      // instead of starting a fresh handshake (which would need a new connect URI/QR).
+      ...(normalizedOptions.reuseStored ? { reuseStored: true } : {}),
     };
     const autoApply = requestOptions.autoApply !== false;
 

@@ -336,6 +336,45 @@ export class ProfileHashtagController {
 
     const payload = normalizedPubkey ? { pubkey: normalizedPubkey } : {};
 
+    // Managing hashtags needs an encryption-capable signer. If a reloaded nsec
+    // session lost its in-memory key, re-unlock it (one passphrase prompt) instead
+    // of dead-ending with "connect a signer that supports encryption" (TODO #57).
+    const ensureSigner =
+      this.mainController.services?.ensureEncryptionCapableSigner;
+    if (typeof ensureSigner === "function") {
+      let ensured = { ok: true };
+      try {
+        ensured = await ensureSigner({
+          pubkey: normalizedPubkey,
+          need: "encrypt",
+          promptMessage:
+            "Re-enter your PIN / passphrase to unlock your key and manage hashtag preferences.",
+        });
+      } catch (error) {
+        ensured = { ok: false, reason: "ensure-failed", error };
+      }
+      if (!ensured?.ok) {
+        // "bad-passphrase" already showed its own toast; "cancelled" is a silent
+        // user choice. Only surface the generic hint for other reasons.
+        if (ensured?.reason !== "cancelled" && ensured?.reason !== "bad-passphrase") {
+          const message = this.describeHashtagPreferencesError(
+            Object.assign(new Error("Signer unavailable."), {
+              code: "hashtag-preferences-missing-signer",
+            }),
+          );
+          if (message) {
+            this.mainController.showError(message);
+            this.setHashtagStatus(message, "warning");
+          }
+        } else {
+          this.setHashtagStatus("", "muted");
+        }
+        const error = new Error("Signer unavailable for hashtag preferences.");
+        error.code = "hashtag-preferences-missing-signer";
+        throw error;
+      }
+    }
+
     const pendingMessage =
       typeof progressMessage === "string" && progressMessage.trim()
         ? progressMessage.trim()

@@ -97,6 +97,10 @@ function normalizeOptions(options) {
     handshakeTimeoutMs: Number.isFinite(options.handshakeTimeoutMs)
       ? Number(options.handshakeTimeoutMs)
       : undefined,
+    // Set when switching to a specific saved account, so reusing a stored
+    // session targets that account rather than the last-connected default.
+    expectPubkey:
+      typeof options.expectPubkey === "string" ? options.expectPubkey.trim() : "",
   };
 }
 
@@ -163,7 +167,10 @@ export default {
       // For now, I will assume I will fix client.js later or accept that stored sessions are trusted?
       // No, I must fix useStoredRemoteSigner too.
 
-      result = await nostrClient.useStoredRemoteSigner({ validator });
+      result = await nostrClient.useStoredRemoteSigner({
+        validator,
+        pubkey: normalized.expectPubkey || undefined,
+      });
       devLogger.debug("[nip46] Stored remote signer returned", {
         pubkey: summarizeHexForLog(normalizePubkey(result)),
       });

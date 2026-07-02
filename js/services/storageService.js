@@ -527,6 +527,23 @@ export class StorageService {
   }
 
   /**
+   * True if an encrypted storage account already exists for this pubkey. Lets
+   * callers auto-unlock existing storage WITHOUT unlock() creating a brand-new
+   * account for users who never set storage up (e.g. magnet/URL-only uploaders).
+   */
+  async hasStoredAccount(pubkey) {
+    if (!pubkey) {
+      return false;
+    }
+    try {
+      const account = await this._getAccount(pubkey);
+      return Boolean(account && account.encryptedMasterKey);
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
    * Saves a connection configuration.
    * Requires unlock() to be called first.
    *
