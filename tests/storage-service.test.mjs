@@ -277,4 +277,29 @@ describe("StorageService", () => {
       /Storage is locked/,
     );
   });
+
+  // hasStoredAccount lets the upload modal auto-unlock EXISTING storage on refresh
+  // without unlock() creating a fresh account for users who never set it up (#51).
+  test("hasStoredAccount() is false before setup, true after, and never creates an account", async () => {
+    assert.strictEqual(
+      await storageService.hasStoredAccount(pubkey),
+      false,
+      "no account before any unlock",
+    );
+    // A read-only existence check must not create an account.
+    assert.strictEqual(await storageService.hasStoredAccount(pubkey), false);
+
+    await storageService.unlock(pubkey, { signer: mockSigner });
+    assert.strictEqual(
+      await storageService.hasStoredAccount(pubkey),
+      true,
+      "account exists after unlock persisted the encrypted master key",
+    );
+
+    // Survives a lock (existence is on-disk, not the in-memory master key).
+    storageService.lock(pubkey);
+    assert.strictEqual(await storageService.hasStoredAccount(pubkey), true);
+
+    assert.strictEqual(await storageService.hasStoredAccount(""), false);
+  });
 });

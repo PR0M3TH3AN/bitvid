@@ -192,6 +192,7 @@ export class UploadModal {
       // Initial State
       if (this.storageService) {
         const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
+        await this.maybeAutoUnlockStorage(pubkey);
         this.isStorageUnlocked = pubkey ? this.storageService.isUnlocked(pubkey) : false;
         await this.loadFromStorage();
       }
@@ -713,10 +714,48 @@ export class UploadModal {
   async refreshState() {
     if (this.storageService) {
       const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
+      await this.maybeAutoUnlockStorage(pubkey);
       this.isStorageUnlocked = pubkey ? this.storageService.isUnlocked(pubkey) : false;
       this.updateLockUi();
 
       await this.loadFromStorage();
+    }
+  }
+
+  // Silently unlock existing storage when a decrypt-capable signer is already
+  // available (e.g. a kept-unlocked nsec restored on refresh, TODO #51) so the
+  // upload modal opens Unlocked instead of Locked. Guarded on an EXISTING account
+  // so it never creates storage for magnet/URL-only uploaders, and on the signer
+  // already being present so it never triggers a fresh permission prompt.
+  async maybeAutoUnlockStorage(pubkey) {
+    if (!this.storageService || !pubkey) {
+      return;
+    }
+    if (this.storageService.isUnlocked(pubkey)) {
+      return;
+    }
+    const signer = getActiveSigner();
+    if (
+      !signer ||
+      (typeof signer.nip44Decrypt !== "function" &&
+        typeof signer.nip04Decrypt !== "function")
+    ) {
+      return;
+    }
+    try {
+      const hasAccount =
+        typeof this.storageService.hasStoredAccount === "function"
+          ? await this.storageService.hasStoredAccount(pubkey)
+          : false;
+      if (!hasAccount) {
+        return;
+      }
+      await this.storageService.unlock(pubkey, { signer });
+    } catch (error) {
+      devLogger?.log?.(
+        "[UploadModal] Auto-unlock storage skipped:",
+        error?.message || error,
+      );
     }
   }
 
@@ -1222,9 +1261,11 @@ export class UploadModal {
     this.setGlobalModalState("upload", true);
     this.isVisible = true;
 
-    // Refresh lock state on open
+    // Refresh lock state on open. Auto-unlock first so a kept-unlocked nsec
+    // (restored on refresh) opens Unlocked instead of Locked (TODO #51).
     if (this.storageService) {
         const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
+        await this.maybeAutoUnlockStorage(pubkey);
         this.isStorageUnlocked = pubkey ? this.storageService.isUnlocked(pubkey) : false;
         this.updateLockUi();
         // Always attempt load to refresh configuration status (even if locked)
