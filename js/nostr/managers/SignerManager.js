@@ -138,16 +138,30 @@ export class SignerManager {
   }
 
   async ensureSessionActor(force = false) {
+    // The session actor is an ANONYMOUS telemetry key used to SIGN reactions /
+    // view events / watch-history when they aren't tied to the login. It must
+    // therefore carry a usable plaintext private key. A persisted nsec login is
+    // passphrase-encrypted (privateKey ""), so adopting one as the session actor
+    // made reactions fail with "Missing signing primitives" (a leftover saved-nsec
+    // entry hijacked the anonymous key). Only reuse an actor that can actually
+    // sign; otherwise fall through and generate a fresh ephemeral key.
+    const hasUsableKey = (actor) =>
+      Boolean(
+        actor &&
+          typeof actor.privateKey === "string" &&
+          HEX64_REGEX.test(actor.privateKey),
+      );
+
     if (!force) {
-      if (this.sessionActor) {
+      if (hasUsableKey(this.sessionActor)) {
         return this.sessionActor.pubkey;
-      }
-      if (this.lockedSessionActor) {
-        return this.lockedSessionActor.pubkey;
       }
       const storedEntry = readStoredSessionActorEntry();
       if (storedEntry) {
+        // Track a locked/encrypted entry (other flows read it) but don't sign with it.
         this.lockedSessionActor = storedEntry;
+      }
+      if (hasUsableKey(storedEntry)) {
         this.sessionActor = storedEntry;
         return storedEntry.pubkey;
       }
