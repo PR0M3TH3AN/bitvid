@@ -582,13 +582,15 @@ export function clearStoredNip46Session(pubkey) {
     return;
   }
 
+  // No target pubkey: clear ONLY the legacy v1 "last connected" default slot.
+  // We must NOT wipe the per-account v2 map here — the no-arg callers are all
+  // connection teardown / connect-error paths (disconnectRemoteSigner, handshake
+  // failures). Wiping the whole map deleted EVERY saved account's remote-signer
+  // session, so after switching away (e.g. to an nsec account) you could no longer
+  // switch back to a NIP-46 account ("No remote signer session is stored on this
+  // device"). A specific account is forgotten via clearStoredNip46Session(pubkey).
   try {
     storage.removeItem(NIP46_SESSION_STORAGE_KEY);
-  } catch (error) {
-    // ignore cleanup issues
-  }
-  try {
-    storage.removeItem(NIP46_SESSIONS_MAP_STORAGE_KEY);
   } catch (error) {
     // ignore cleanup issues
   }

@@ -5,7 +5,7 @@
 // NIP-46 accounts silently reconnected the wrong one (or failed).
 //
 // test_integrity_note:
-//   change_type: ["new_tests"]
+//   change_type: ["new_tests", "spec_correction"]
 //   scenarios:
 //     - id: SCN-nip46-multi-account-storage
 //       given: "two NIP-46 accounts each persist a stored session"
@@ -93,15 +93,30 @@ test("no-arg read returns the last-connected account as the default", () => {
   assert.equal(readStoredNip46Session().remotePubkey, REMOTE_B);
 });
 
-test("no-arg clear wipes every stored session (logout)", () => {
+// spec_correction: the previous test asserted "no-arg clear wipes every stored
+// session (logout)". That encoded a bug: the no-arg clear is invoked from
+// connection-teardown / connect-error paths (disconnectRemoteSigner, handshake
+// failures) — NOT only an explicit logout. Wiping the whole per-account map there
+// deleted EVERY saved account's session, so switching away from a NIP-46 account
+// (e.g. to an nsec account) then made switching back fail with "No remote signer
+// session is stored on this device." Correct behavior: no-arg clear drops only the
+// legacy v1 "last-connected" default; per-account v2 sessions survive. Forgetting a
+// specific account uses the targeted clearStoredNip46Session(pubkey) (tested above).
+test("no-arg clear drops the legacy v1 default but KEEPS per-account v2 sessions", () => {
   writeStoredNip46SessionSync(session(USER_A, REMOTE_A, "wss://a.example"));
   writeStoredNip46SessionSync(session(USER_B, REMOTE_B, "wss://b.example"));
 
-  clearStoredNip46Session();
+  clearStoredNip46Session(); // e.g. tearing down the live connection on a switch
 
-  assert.deepEqual(listStoredNip46SessionPubkeys(), []);
-  assert.equal(readStoredNip46Session(USER_A), null);
-  assert.equal(readStoredNip46Session(), null);
+  // Both accounts remain reconnectable — switching back to either still works.
+  assert.deepEqual(
+    listStoredNip46SessionPubkeys().sort(),
+    [USER_A, USER_B].sort(),
+  );
+  assert.equal(readStoredNip46Session(USER_A).remotePubkey, REMOTE_A);
+  assert.equal(readStoredNip46Session(USER_B).remotePubkey, REMOTE_B);
+  // The legacy single-slot default is gone (no ambiguous "last connected").
+  assert.equal(localStorage.getItem(NIP46_SESSION_STORAGE_KEY), null);
 });
 
 test("a legacy v1 single-slot session migrates into the per-pubkey map", () => {
