@@ -572,11 +572,17 @@ toward freshness and looked identical. Gave each a structural identity:
       connection model.
 
 ### 45. Upload modal: suggest tags from the user's previous videos (UX)
-- [ ] In the upload modal, let the user **pick tags reused from their other videos** —
-      surface a set of their **commonly-used tags** (frequency-ranked across their past
-      uploads) as one-tap chips, plus their less-common individual tags. Source from the
-      user's own video events' `t` tags (My Videos / their kind-30078+NIP-71 posts).
-      Rank by usage count; clicking a chip adds it to the new video's tags.
+- [x] **DONE 2026-07-01.** The Hashtags section of the upload modal now shows one-tap
+      chips of the user's most-used past hashtags ("Reuse a tag from your videos:").
+      Source: `app.getUserHashtagSuggestions()` reads the user's own videos
+      (`nostrService.getActiveVideosByAuthors([pubkey])`) and ranks their hashtags via
+      `js/utils/hashtagSuggestions.js` `rankHashtagsByFrequency` — count = number of
+      videos using each tag, normalized (case + `#`) and deduped per video, ties broken
+      alphabetically (top 12). Tags come from `video.nip71.hashtags` (falls back to raw
+      `t` tags minus bitvid's fixed `t=video` marker). Clicking a chip adds it to the
+      NIP-71 `t` repeater (skips duplicates); already-added chips dim + disable. Hidden
+      for users with no past tags. Rendered on modal open. Tests:
+      `tests/hashtag-suggestions.test.mjs` (5, pure ranking). Lint + build green.
 
 ### 46. Feed auto-refreshes after posting a video (UX)
 - [x] **DONE 2026-06-30.** `publishVideoNote` now (1) **optimistically injects** the

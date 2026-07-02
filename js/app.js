@@ -99,6 +99,7 @@ import {
   logoutSigner,
 } from "./nostrClientRegistry.js";
 import { resolveSignerCapabilities } from "./nostr/signerCapabilities.js";
+import { rankHashtagsByFrequency } from "./utils/hashtagSuggestions.js";
 import {
   decideSignerEnsure,
   isSignerCapable,
@@ -3631,6 +3632,29 @@ class Application {
   updateActiveProfileUI(...args) {
     this._initCoordinators();
     return this._ui.updateActiveProfileUI(...args);
+  }
+
+  // The active user's most-used hashtags (frequency-ranked from their own past
+  // uploads) for the upload modal's one-tap suggestion chips (TODO #45).
+  getUserHashtagSuggestions({ limit = 12 } = {}) {
+    const pubkey = this.normalizeHexPubkey(this.pubkey);
+    if (
+      !pubkey ||
+      typeof this.nostrService?.getActiveVideosByAuthors !== "function"
+    ) {
+      return [];
+    }
+    let videos = [];
+    try {
+      videos = this.nostrService.getActiveVideosByAuthors([pubkey]) || [];
+    } catch (error) {
+      devLogger.warn(
+        "[Application] Failed to read user videos for hashtag suggestions:",
+        error,
+      );
+      return [];
+    }
+    return rankHashtagsByFrequency(videos, { limit });
   }
 
   async hydrateNwcSettingsForPubkey(pubkey) {

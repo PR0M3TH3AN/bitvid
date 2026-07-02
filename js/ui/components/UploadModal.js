@@ -55,6 +55,7 @@ export class UploadModal {
     container,
     onRequestStorageSettings,
     onRequestUnlock,
+    getHashtagSuggestions,
   } = {}) {
     this.authService = authService || null;
     this.r2Service = r2Service || null;
@@ -75,6 +76,8 @@ export class UploadModal {
       typeof showSuccess === "function" ? showSuccess : () => {};
     this.getCurrentPubkey =
       typeof getCurrentPubkey === "function" ? getCurrentPubkey : null;
+    this.getHashtagSuggestions =
+      typeof getHashtagSuggestions === "function" ? getHashtagSuggestions : null;
     this.safeEncodeNpub =
       typeof safeEncodeNpub === "function" ? safeEncodeNpub : () => "";
     // Shared storage+torrent upload core (also used by the Edit modal).
@@ -216,6 +219,8 @@ export class UploadModal {
     this.submitButton = $("#btn-submit");
     this.submitStatus = $("#submit-status");
     this.closeButton = $("#closeUploadModal");
+    this.hashtagSuggestionsWrap = $("#hashtag-suggestions-wrap");
+    this.hashtagSuggestionsList = $("#hashtag-suggestions");
 
     // Mode Switchers
     this.modeButtons = {
@@ -759,6 +764,117 @@ export class UploadModal {
     }
   }
 
+  // --- Hashtag suggestion chips (TODO #45) ---
+
+  // The hashtags currently entered in the "t" repeater (normalized).
+  getSelectedHashtags() {
+    if (!this.nip71FormManager) {
+      return [];
+    }
+    try {
+      return this.nip71FormManager
+        .collectRepeaterValues("main", "t", (entry) =>
+          this.nip71FormManager.getFieldValue(entry, "value"),
+        )
+        .map((value) => this.nip71FormManager.sanitizeHashtagValue(value))
+        .filter(Boolean);
+    } catch (error) {
+      return [];
+    }
+  }
+
+  // Add a hashtag to the "t" repeater (skips duplicates). Returns true if added.
+  addHashtagValue(rawValue) {
+    if (!this.nip71FormManager) {
+      return false;
+    }
+    const normalized = this.nip71FormManager.sanitizeHashtagValue(rawValue);
+    if (!normalized) {
+      return false;
+    }
+    if (new Set(this.getSelectedHashtags()).has(normalized)) {
+      return false;
+    }
+    const entry = this.nip71FormManager.addRepeaterEntry("main", "t");
+    if (!entry) {
+      return false;
+    }
+    this.nip71FormManager.setFieldValue(entry, "value", normalized);
+    return true;
+  }
+
+  // Render one-tap chips for the user's most-used past hashtags. Hidden when the
+  // user has none (new/first upload).
+  renderHashtagSuggestions() {
+    const list = this.hashtagSuggestionsList;
+    const wrap = this.hashtagSuggestionsWrap;
+    if (!(list instanceof HTMLElement)) {
+      return;
+    }
+
+    let suggestions = [];
+    if (typeof this.getHashtagSuggestions === "function") {
+      try {
+        suggestions = this.getHashtagSuggestions({ limit: 12 }) || [];
+      } catch (error) {
+        suggestions = [];
+      }
+    }
+
+    list.textContent = "";
+    const usable = Array.isArray(suggestions) ? suggestions : [];
+    if (!usable.length) {
+      if (wrap instanceof HTMLElement) {
+        wrap.classList.add("hidden");
+      }
+      return;
+    }
+
+    for (const item of usable) {
+      const tag = this.nip71FormManager
+        ? this.nip71FormManager.sanitizeHashtagValue(item?.tag)
+        : typeof item?.tag === "string"
+          ? item.tag
+          : "";
+      if (!tag) {
+        continue;
+      }
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className =
+        "btn-ghost px-3 py-1 text-xs bg-surface border border-border/50 rounded-full";
+      chip.dataset.tag = tag;
+      chip.textContent = `#${tag}`;
+      chip.addEventListener("click", () => {
+        this.addHashtagValue(tag);
+        this.refreshHashtagSuggestionStates();
+      });
+      list.appendChild(chip);
+    }
+
+    if (wrap instanceof HTMLElement) {
+      wrap.classList.remove("hidden");
+    }
+    this.refreshHashtagSuggestionStates();
+  }
+
+  // Dim + disable chips whose tag is already in the current tag list.
+  refreshHashtagSuggestionStates() {
+    const list = this.hashtagSuggestionsList;
+    if (!(list instanceof HTMLElement)) {
+      return;
+    }
+    const selected = new Set(this.getSelectedHashtags());
+    list.querySelectorAll("[data-tag]").forEach((chip) => {
+      const isSelected = selected.has(chip.dataset.tag);
+      chip.classList.toggle("opacity-40", isSelected);
+      chip.setAttribute("aria-pressed", isSelected ? "true" : "false");
+      if ("disabled" in chip) {
+        chip.disabled = isSelected;
+      }
+    });
+  }
+
   async loadFromStorage() {
       if (!this.storageService) return;
       const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
@@ -1273,6 +1389,8 @@ export class UploadModal {
             userLogger.warn("Failed to refresh storage state on open:", err);
         });
     }
+
+    this.renderHashtagSuggestions();
 
     this.modalAccessibility?.activate({ triggerElement });
   }

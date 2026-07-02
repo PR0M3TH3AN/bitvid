@@ -48,6 +48,12 @@ export function initUploadModal({
       showSuccess,
       getCurrentPubkey,
       safeEncodeNpub,
+      // Frequency-ranked hashtags from the user's own past uploads → one-tap
+      // suggestion chips in the upload modal (TODO #45).
+      getHashtagSuggestions: (options) =>
+        typeof app?.getUserHashtagSuggestions === "function"
+          ? app.getUserHashtagSuggestions(options)
+          : [],
       eventTarget: events,
       container,
       onRequestStorageSettings: () => {
