@@ -1158,9 +1158,26 @@ test('admin mutations invoke accessControl stubs and update admin DOM', async ()
 
   assert.ok(controller.navButtons.admin);
   assert.equal(controller.navButtons.admin.classList.contains('hidden'), false);
-  assert.equal(controller.moderatorSection.classList.contains('hidden'), false);
+  // The admin pane is now organized into sub-tabs: Whitelist is the default tab
+  // (visible), while Moderators/Blacklist/Blocked-videos sections are hidden
+  // until their tab is selected. The Moderators *tab button* is shown to a
+  // super admin. (Previously every section was stacked and visible at once.)
+  const admin = controller.adminController;
+  assert.equal(admin.whitelistSection.classList.contains('hidden'), false);
+  assert.equal(admin.moderatorSection.classList.contains('hidden'), true);
+  assert.equal(
+    admin.subtabButtons.moderators.classList.contains('hidden'),
+    false,
+    'moderators sub-tab is available to a super admin',
+  );
+  // Content still populates behind the inactive tab.
   assert.equal(controller.adminModeratorList.querySelectorAll('li').length, 1);
-  assert.equal(controller.adminModeratorList.hasAttribute('hidden'), false);
+  // Selecting the Moderators sub-tab reveals its section and hides Whitelist.
+  admin.selectAdminSubtab('moderators');
+  assert.equal(admin.moderatorSection.classList.contains('hidden'), false);
+  assert.equal(admin.whitelistSection.classList.contains('hidden'), true);
+  // Back to Whitelist for the remaining assertions.
+  admin.selectAdminSubtab('whitelist');
   assert.equal(
     controller.whitelistList.querySelectorAll('button').length > 0,
     true,
@@ -1350,4 +1367,281 @@ test('handleDirectMessagesRelayWarning suppresses status updates when disabled',
 
   controller.handleDirectMessagesRelayWarning(detail);
   assert.equal(statusCalls.length, 0);
+});
+
+// Account-switch refresh (nip-07 -> saved nsec, modal open): the modal must
+// re-render for the NEW identity without a manual refresh, and a failure in one
+// identity-reset step must not skip the others (notably the DM reset that clears
+// the previous account's conversation).
+//
+// test_integrity_note:
+//   change_type: ["new_tests"]
+//   scenarios:
+//     - id: SCN-switch-modal-refresh
+//       given: "profile modal controller loaded"
+//       when: "handleAuthLogin runs for a new identity / refreshOpenPanesForActiveIdentity is called"
+//       then: "DM reset still runs after a sibling throw; the active pane is re-run when open"
+//   observable_outcomes:
+//     - "runIdentityResetStep swallows a throwing step (does not propagate)"
+//     - "a throwing DM reset does not skip renderSavedProfiles"
+//     - "refreshOpenPanesForActiveIdentity re-runs selectPane(activePane) only when open"
+//   determinism_controls:
+//     - "instance method spies; no network/timers relied upon for assertions"
+//   anti_cheat_rationale:
+//     prevents: ["over-mocking internal logic", "hard-coded return value"]
+//   relaxation:
+//     did_relax_any_assertion: false
+
+test('runIdentityResetStep isolates a throwing step (does not propagate)', async () => {
+  const controller = createController();
+  let ran = false;
+  assert.doesNotThrow(() => {
+    controller.runIdentityResetStep('boom', () => {
+      throw new Error('kaboom');
+    });
+    controller.runIdentityResetStep('ok', () => {
+      ran = true;
+    });
+  });
+  assert.equal(ran, true, 'a later reset step still runs after an earlier one throws');
+});
+
+test('handleAuthLogin: a throwing DM reset does not skip the saved-profiles reset', async (t) => {
+  const controller = createController();
+  await controller.load();
+  t.after(() => {
+    try {
+      controller.hide({ silent: true });
+    } catch {}
+    resetRuntimeFlags();
+  });
+
+  // Keep the async collaborators inert so the test only exercises the reset order.
+  controller.hydrateActiveWalletSettings = async () => null;
+  controller.refreshAdminPaneState = async () => {};
+  controller.refreshOpenPanesForActiveIdentity = () => {};
+
+  let dmResetPubkey = 'unset';
+  controller.handleActiveDmIdentityChanged = (pubkey) => {
+    dmResetPubkey = pubkey;
+    throw new Error('dm reset blew up');
+  };
+  let savedProfilesRendered = 0;
+  controller.renderSavedProfiles = () => {
+    savedProfilesRendered += 1;
+  };
+
+  const pubkey = 'b'.repeat(64);
+  const result = await controller.handleAuthLogin({
+    pubkey,
+    activeProfilePubkey: pubkey,
+    identityChanged: true,
+  });
+
+  assert.equal(result, true);
+  assert.equal(dmResetPubkey, pubkey, 'DM reset was attempted for the new identity');
+  assert.equal(
+    savedProfilesRendered,
+    1,
+    'the saved-profiles reset still ran even though the DM reset threw',
+  );
+});
+
+test('refreshOpenPanesForActiveIdentity re-runs the active pane only when the modal is open', async (t) => {
+  const controller = createController();
+  await controller.load();
+  t.after(() => {
+    try {
+      controller.hide({ silent: true });
+    } catch {}
+    resetRuntimeFlags();
+  });
+
+  const selected = [];
+  controller.selectPane = (name) => {
+    selected.push(name);
+  };
+  controller.getActivePane = () => 'messages';
+
+  controller.isProfileModalOpen = () => false;
+  controller.refreshOpenPanesForActiveIdentity();
+  assert.deepEqual(selected, [], 'closed modal: no pane refresh');
+
+  controller.isProfileModalOpen = () => true;
+  controller.refreshOpenPanesForActiveIdentity();
+  assert.deepEqual(
+    selected,
+    ['messages'],
+    'open modal: re-runs the active pane so it reloads for the new identity',
+  );
+});
+
+// Hashtag mutation routes through the signer gate (TODO #57): a reloaded nsec
+// session that lost its in-memory key must trigger a re-unlock prompt, not a
+// blanket "connect a signer that supports encryption" error — and publish must
+// NOT run until the signer is confirmed.
+//
+// test_integrity_note:
+//   change_type: ["new_tests"]
+//   scenarios:
+//     - id: SCN-hashtag-signer-gate
+//       given: "a profile modal with a mocked ensureEncryptionCapableSigner + publish"
+//       when: "persistHashtagPreferences runs"
+//       then: "publish is gated on the signer being ensured first"
+//   observable_outcomes:
+//     - "gate returns not-ok -> publish never called, throws missing-signer"
+//     - "gate returns ok -> publish runs once"
+//   determinism_controls:
+//     - "mocked service + gate; JSDOM controller; no network"
+//   anti_cheat_rationale:
+//     prevents: ["over-mocking internal logic", "hard-coded return value"]
+//   relaxation:
+//     did_relax_any_assertion: false
+
+test('hashtag persist: a not-ok signer gate blocks publish (no blanket dead-end)', async (t) => {
+  const publishCalls = [];
+  let ensureCalls = 0;
+  const controller = createController({
+    services: {
+      ensureEncryptionCapableSigner: async () => {
+        ensureCalls += 1;
+        return { ok: false, reason: 'cancelled' };
+      },
+      hashtagPreferences: {
+        publish: async (payload) => {
+          publishCalls.push(payload);
+          return { ok: true };
+        },
+      },
+    },
+  });
+  await controller.load();
+  t.after(() => {
+    try {
+      controller.hide({ silent: true });
+    } catch {}
+    resetRuntimeFlags();
+  });
+  controller.setActivePubkey('a'.repeat(64));
+
+  await assert.rejects(
+    () =>
+      controller.hashtagController.persistHashtagPreferences({
+        pubkey: 'a'.repeat(64),
+      }),
+    (err) => err?.code === 'hashtag-preferences-missing-signer',
+  );
+  assert.equal(ensureCalls, 1, 'the signer gate ran before publishing');
+  assert.equal(publishCalls.length, 0, 'publish was NOT attempted after the gate failed');
+});
+
+test('hashtag persist: an ok signer gate lets publish proceed', async (t) => {
+  const publishCalls = [];
+  const controller = createController({
+    services: {
+      ensureEncryptionCapableSigner: async () => ({ ok: true, unlocked: true }),
+      hashtagPreferences: {
+        publish: async (payload) => {
+          publishCalls.push(payload);
+          return { ok: true };
+        },
+      },
+    },
+  });
+  await controller.load();
+  t.after(() => {
+    try {
+      controller.hide({ silent: true });
+    } catch {}
+    resetRuntimeFlags();
+  });
+  controller.setActivePubkey('a'.repeat(64));
+
+  await controller.hashtagController.persistHashtagPreferences({
+    pubkey: 'a'.repeat(64),
+  });
+  assert.equal(publishCalls.length, 1, 'publish ran once after the gate passed');
+});
+
+// "Lock this device" control (TODO #51): only shown when there is a cached
+// "keep unlocked" key to forget, and clicking it locks the active account.
+//
+// test_integrity_note:
+//   change_type: ["new_tests"]
+//   scenarios:
+//     - id: SCN-lock-now-control
+//       given: "a profile modal with mocked isSessionKeptUnlocked + lockKeptUnlockedSession"
+//       when: "updateLockNowVisibility runs / the lock button is clicked"
+//       then: "the button shows only when unlocked; clicking locks the active pubkey"
+//   observable_outcomes:
+//     - "kept-unlocked -> button not hidden; not-unlocked -> hidden"
+//     - "click -> lockKeptUnlockedSession(activePubkey) called once"
+//   determinism_controls:
+//     - "mocked services; JSDOM; no network"
+//   anti_cheat_rationale:
+//     prevents: ["hard-coded return value", "over-mocking internal logic"]
+//   relaxation:
+//     did_relax_any_assertion: false
+
+test('Lock this device: shown only when the session is kept unlocked', async (t) => {
+  let unlocked = true;
+  const controller = createController({
+    services: {
+      isSessionKeptUnlocked: () => unlocked,
+      lockKeptUnlockedSession: () => ({ ok: true }),
+    },
+  });
+  await controller.load();
+  t.after(() => {
+    try {
+      controller.hide({ silent: true });
+    } catch {}
+    resetRuntimeFlags();
+  });
+  controller.setActivePubkey('a'.repeat(64));
+
+  controller.updateLockNowVisibility();
+  assert.ok(
+    controller.lockNowButton instanceof dom.window.HTMLElement,
+    'the lock button exists in the modal',
+  );
+  assert.equal(
+    controller.lockNowButton.classList.contains('hidden'),
+    false,
+    'shown when the session is kept unlocked',
+  );
+
+  unlocked = false;
+  controller.updateLockNowVisibility();
+  assert.equal(
+    controller.lockNowButton.classList.contains('hidden'),
+    true,
+    'hidden when nothing is cached to lock',
+  );
+});
+
+test('Lock this device: clicking locks the active account', async (t) => {
+  const lockCalls = [];
+  const controller = createController({
+    services: {
+      isSessionKeptUnlocked: () => true,
+      lockKeptUnlockedSession: (pubkey) => {
+        lockCalls.push(pubkey);
+        return { ok: true };
+      },
+    },
+  });
+  await controller.load();
+  t.after(() => {
+    try {
+      controller.hide({ silent: true });
+    } catch {}
+    resetRuntimeFlags();
+  });
+  controller.setActivePubkey('a'.repeat(64));
+  controller.updateLockNowVisibility();
+
+  controller.lockNowButton.click();
+  assert.equal(lockCalls.length, 1, 'lock ran once');
+  assert.equal(lockCalls[0], controller.getActivePubkey(), 'locked the active account');
 });

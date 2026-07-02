@@ -36,6 +36,11 @@ const IGNORED_GLOBS = [
   'bitvid-working-webtorrent/**',
   'scripts/agent/**',
   'docs/capacitor-native-app-plan.md',
+  // Planning docs cite TODO/issue refs (e.g. "16c", "16b") that read as 3-digit hex.
+  'docs/shorts-plan.md',
+  'docs/live-ingest-plan.md',
+  'docs/live-publish-plan.md',
+  'docs/bitvid-bridge-plan.md',
   'perf/**',
   'test_logs/**',
   'context/**',

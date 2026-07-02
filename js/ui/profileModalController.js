@@ -6,6 +6,7 @@ import {
   MAX_WALLET_DEFAULT_ZAP as CONFIG_MAX_WALLET_DEFAULT_ZAP,
   ENABLE_NIP17_RELAY_WARNING as CONFIG_ENABLE_NIP17_RELAY_WARNING,
 } from "../config.js";
+import { showConfirm } from "./confirmDialog.js";
 import { normalizeDesignSystemContext } from "../designSystem.js";
 import { RUNTIME_FLAGS } from "../constants.js";
 import {
@@ -359,6 +360,8 @@ export class ProfileModalController {
     this.closeButton = null;
     this.logoutButton = null;
     this.mobileLogoutButton = null;
+    this.lockNowButton = null;
+    this.mobileLockNowButton = null;
     this.channelLink = null;
     this.addAccountButton = null;
     this.navButtons = {
@@ -656,6 +659,9 @@ export class ProfileModalController {
     this.logoutButton = document.getElementById("profileLogoutBtn") || null;
     this.mobileLogoutButton =
       document.getElementById("profileMobileLogoutBtn") || null;
+    this.lockNowButton = document.getElementById("profileLockNowBtn") || null;
+    this.mobileLockNowButton =
+      document.getElementById("profileMobileLockNowBtn") || null;
     this.channelLink = document.getElementById("profileChannelLink") || null;
     this.addAccountButton =
       document.getElementById("profileAddAccountBtn") || null;
@@ -1257,6 +1263,58 @@ export class ProfileModalController {
     void this.refreshDmRelayPreferences({ force: true });
   }
 
+  // Run one identity-switch reset step in isolation. A failure in a single step
+  // must not skip the ones after it — notably the DM reset that clears the
+  // previous account's conversation on a switch.
+  runIdentityResetStep(label, fn) {
+    try {
+      fn();
+    } catch (error) {
+      userLogger.warn(
+        `[profileModal] Identity reset step "${label}" failed:`,
+        error,
+      );
+    }
+  }
+
+  // Refresh the profile modal for the ACTIVE identity while it is open (e.g. right
+  // after switching accounts). Re-runs the current pane's own lazy load+populate —
+  // the SAME path as opening the pane fresh — so DMs reload, subscriptions and
+  // hashtags refetch for the new account, blocked/relays/storage repopulate, etc.
+  // Non-active panes stay lazy and repopulate when the user selects them.
+  refreshOpenPanesForActiveIdentity() {
+    if (!this.isProfileModalOpen()) {
+      return;
+    }
+    try {
+      this.selectPane(this.getActivePane());
+    } catch (error) {
+      userLogger.warn(
+        "[profileModal] Failed to refresh the active pane for the current identity:",
+        error,
+      );
+    }
+  }
+
+  // Show the "Lock this device" control only when there is a cached "keep
+  // unlocked" key to forget (an nsec account currently kept unlocked). TODO #51.
+  updateLockNowVisibility() {
+    const check = this.services?.isSessionKeptUnlocked;
+    let unlocked = false;
+    if (typeof check === "function") {
+      try {
+        unlocked = Boolean(check(this.getActivePubkey()));
+      } catch (error) {
+        unlocked = false;
+      }
+    }
+    for (const button of [this.lockNowButton, this.mobileLockNowButton]) {
+      if (button instanceof HTMLElement) {
+        button.classList.toggle("hidden", !unlocked);
+      }
+    }
+  }
+
   setMessagesUnreadIndicator(visible) {
     if (!(this.dmController.profileMessagesUnreadDot instanceof HTMLElement)) {
       return;
@@ -1638,6 +1696,25 @@ export class ProfileModalController {
       });
     }
 
+    const handleLockNow = () => {
+      const lock = this.services?.lockKeptUnlockedSession;
+      if (typeof lock !== "function") {
+        return;
+      }
+      try {
+        lock(this.getActivePubkey());
+      } catch (error) {
+        devLogger.warn("[profileModal] Lock this device failed:", error);
+      }
+      this.updateLockNowVisibility();
+    };
+    if (this.lockNowButton instanceof HTMLElement) {
+      this.lockNowButton.addEventListener("click", handleLockNow);
+    }
+    if (this.mobileLockNowButton instanceof HTMLElement) {
+      this.mobileLockNowButton.addEventListener("click", handleLockNow);
+    }
+
     if (this.channelLink instanceof HTMLElement) {
       this.channelLink.addEventListener("click", (event) => {
         event.preventDefault();
@@ -1926,14 +2003,17 @@ export class ProfileModalController {
     }
 
     if (this.profileSubscriptionsBackupBtn) {
-      this.profileSubscriptionsBackupBtn.addEventListener("click", () => {
+      this.profileSubscriptionsBackupBtn.addEventListener("click", async () => {
         const pubkey = this.normalizeHexPubkey(this.getActivePubkey());
-        if (pubkey) {
-          if (confirm("Create a backup of your current subscription list?")) {
+        if (
+          pubkey &&
+          (await showConfirm("Create a backup of your current subscription list?", {
+            confirmLabel: "Create backup",
+          }))
+        ) {
              this.subscriptionHistoryController.handleCreateBackup(pubkey).then(() => {
                  this.showSuccess("Backup created.");
              });
-          }
         } else {
           this.showError("Please log in to backup subscriptions.");
         }
@@ -2328,6 +2408,7 @@ export class ProfileModalController {
    * Triggers a batch fetch for any missing profile metadata.
    */
   renderSavedProfiles() {
+    this.updateLockNowVisibility();
     const normalizedActive = this.normalizeHexPubkey(this.getActivePubkey());
     const entriesNeedingFetch = new Set();
     const savedProfiles = this.getSavedProfiles();
@@ -2930,7 +3011,7 @@ export class ProfileModalController {
             ? confirmValue.trim()
             : "this entry";
         const prompt = confirmMessage.replace("{npub}", replacement);
-        if (!window.confirm(prompt)) {
+        if (!(await showConfirm(prompt, { danger: true }))) {
           return;
         }
       }
@@ -3200,6 +3281,7 @@ export class ProfileModalController {
   }
 
   selectPane(name = "account", options = {}) {
+    this.updateLockNowVisibility();
     const { keepMenuView = false } =
       options && typeof options === "object" ? options : {};
     const normalized = typeof name === "string" ? name.toLowerCase() : "account";
@@ -5219,12 +5301,21 @@ export class ProfileModalController {
       this.setActivePubkey(activePubkey);
     }
 
+    // Reset identity-scoped UI state up front, each step isolated so one throwing
+    // can't skip the others. Regression this guards: switching from NIP-07 to a
+    // saved nsec (modal open) left the PREVIOUS account's DMs, subscriptions and
+    // hashtags on screen because a sibling call threw before the DM reset ran.
+    // DM identity setup also feeds the background unread indicator + DM
+    // subscription, so it stays eager.
+    this.runIdentityResetStep("dm-identity", () =>
+      this.handleActiveDmIdentityChanged(activePubkey),
+    );
+    this.runIdentityResetStep("saved-profiles", () => this.renderSavedProfiles());
+
     const walletPromise = this.hydrateActiveWalletSettings(activePubkey);
     const adminPromise = this.refreshAdminPaneState().catch((error) => {
       userLogger.warn("Failed to refresh admin pane after login:", error);
     });
-
-    this.renderSavedProfiles();
 
     // Warm blocks + subscriptions, but go through ensureLoaded() (not the raw
     // loadBlocks/loadSubscriptions) so these COALESCE with the auth coordinator's
@@ -5232,33 +5323,35 @@ export class ProfileModalController {
     // direct calls here each kicked off an independent relay round-trip,
     // doubling the cold-login kind-30000/10000 REQ burst (KNOWN_BUGS #0).
     if (activePubkey) {
-      if (this.services.userBlocks?.ensureLoaded) {
-        this.services.userBlocks.ensureLoaded(activePubkey).catch(noop);
-      } else if (this.services.userBlocks?.loadBlocks) {
-        this.services.userBlocks.loadBlocks(activePubkey).catch(noop);
-      }
-      if (this.subscriptionsService?.ensureLoaded) {
-        this.subscriptionsService
-          .ensureLoaded(activePubkey, { allowPermissionPrompt: false })
-          .catch(noop);
-      } else if (this.subscriptionsService?.loadSubscriptions) {
-        this.subscriptionsService
-          .loadSubscriptions(activePubkey, { allowPermissionPrompt: false })
-          .catch(noop);
-      }
+      this.runIdentityResetStep("warm-lists", () => {
+        if (this.services.userBlocks?.ensureLoaded) {
+          this.services.userBlocks.ensureLoaded(activePubkey).catch(noop);
+        } else if (this.services.userBlocks?.loadBlocks) {
+          this.services.userBlocks.loadBlocks(activePubkey).catch(noop);
+        }
+        if (this.subscriptionsService?.ensureLoaded) {
+          this.subscriptionsService
+            .ensureLoaded(activePubkey, { allowPermissionPrompt: false })
+            .catch(noop);
+        } else if (this.subscriptionsService?.loadSubscriptions) {
+          this.subscriptionsService
+            .loadSubscriptions(activePubkey, { allowPermissionPrompt: false })
+            .catch(noop);
+        }
+      });
     }
-
-    // DM identity is cheap state setup needed for the background unread
-    // indicator + DM subscription, so it stays eager.
-    this.handleActiveDmIdentityChanged(activePubkey);
 
     // Profile-PANEL rendering is deferred: each pane lazily populates when it's
     // shown (selectPane), so eagerly rendering all of them at login paints into
     // CLOSED panels — friends-list avatars, subscriptions, blocks, storage,
     // relays — and jams the main thread right after login (the ~10-15s "profile
-    // panel won't open / site frozen" report). Only do the eager pass when the
-    // modal is already open (e.g. switching accounts with it visible);
-    // otherwise open()/selectPane handles it on demand.
+    // panel won't open / site frozen" report). Only refresh when the modal is
+    // already open (e.g. switching accounts with it visible); otherwise
+    // open()/selectPane handles it on demand. On a switch we re-run the ACTIVE
+    // pane's own load+populate (refreshOpenPanesForActiveIdentity) so the pane the
+    // user is viewing reloads for the new identity, then again once profile/wallet
+    // data settles (list panes also backfill via the auth coordinator once the new
+    // identity's lists finish loading).
     const settleLoginData = Promise.all([
       walletPromise,
       adminPromise,
@@ -5266,12 +5359,10 @@ export class ProfileModalController {
     ]);
 
     if (this.isProfileModalOpen()) {
-      this.populateOpenProfilePanels();
+      this.refreshOpenPanesForActiveIdentity();
       settleLoginData
         .then(() => {
-          if (this.isProfileModalOpen()) {
-            this.populateOpenProfilePanels();
-          }
+          this.refreshOpenPanesForActiveIdentity();
         })
         .catch((error) => {
           userLogger.warn(

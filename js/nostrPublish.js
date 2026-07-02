@@ -335,6 +335,48 @@ export function describePublishOutcome({ accepted = 0, total = 0 } = {}) {
   };
 }
 
+// A RelayPublishError whose per-relay failures are ALL "publish timeout" means the
+// event was sent but not ACKed in the window — NOT that any relay rejected it. For
+// an idempotent, replaceable event this almost always persisted (users see it
+// after a refresh), so callers that publish such events can treat this as a soft
+// success instead of a hard error. An explicit rejection has a different reason
+// and returns false, so it still fails loudly.
+export function relayPublishFailuresAreAllTimeouts(error) {
+  const failures = Array.isArray(error?.relayFailures) ? error.relayFailures : [];
+  if (!failures.length) {
+    return false;
+  }
+  return failures.every((failure) => {
+    const reason = typeof failure?.reason === "string" ? failure.reason : "";
+    return /timeout/i.test(reason);
+  });
+}
+
+// Like assertAnyRelayAccepted, but for idempotent/replaceable publishes: when the
+// only reason nothing was accepted is that every relay timed out (unconfirmed),
+// don't throw — return a summary flagged `{ unconfirmed: true }` so the caller can
+// treat it as an optimistic success (reconciles on next load). An explicit relay
+// rejection (or an empty/other failure set) still throws exactly as before.
+export function assertAnyRelayAcceptedOrUnconfirmed(results = [], options = {}) {
+  try {
+    const summary = assertAnyRelayAccepted(results, options);
+    return { ...summary, unconfirmed: false };
+  } catch (error) {
+    if (error instanceof RelayPublishError && relayPublishFailuresAreAllTimeouts(error)) {
+      return {
+        accepted: [],
+        failed: (error.relayFailures || []).map((f) => ({
+          url: f.url,
+          error: f.error || null,
+          reason: f.reason,
+        })),
+        unconfirmed: true,
+      };
+    }
+    throw error;
+  }
+}
+
 export function assertAnyRelayAccepted(results = [], options = {}) {
   const summary = summarizePublishResults(results);
   if (summary.accepted.length > 0) {

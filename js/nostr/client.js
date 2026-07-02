@@ -18,6 +18,7 @@
  */
 
 import { isDevMode } from "../config.js";
+import { showConfirm } from "../ui/confirmDialog.js";
 import { infoHashFromMagnet } from "../magnets.js";
 // 🔧 merged conflicting changes from codex/update-video-publishing-and-parsing-logic vs unstable
 import {
@@ -172,7 +173,12 @@ import {
   readStoredSessionActorEntry,
   isSessionActor,
 } from "./sessionActor.js";
-import { HEX64_REGEX, normalizeHexHash } from "../utils/hex.js";
+import { HEX64_REGEX, normalizeHexHash, bytesToHex } from "../utils/hex.js";
+import {
+  rememberUnlockedKey,
+  readUnlockedKey,
+  forgetUnlockedKey,
+} from "./unlockedKeyCache.js";
 import {
   NIP46_RPC_KIND,
   NIP46_HANDSHAKE_TIMEOUT_MS,
@@ -2596,10 +2602,10 @@ export class NostrClient {
   // Metadata about a stored, passphrase-encrypted nsec session (no secrets).
   // The login modal reads `hasEncryptedKey` to offer the "unlock saved key"
   // flow; without this the unlock UI never appeared.
-  getStoredSessionActorMetadata() {
+  getStoredSessionActorMetadata(pubkey) {
     let entry = null;
     try {
-      entry = readStoredSessionActorEntry();
+      entry = readStoredSessionActorEntry(pubkey);
     } catch (error) {
       devLogger.warn(
         "[nostr] Failed to read stored session actor metadata:",
@@ -2622,14 +2628,19 @@ export class NostrClient {
   // passphrase and re-activating the signer via the same path as fresh login.
   // The access-control validator is enforced before activation, and a
   // now-blocked key is forgotten.
-  async unlockStoredSessionActor(passphrase, { validator } = {}) {
+  async unlockStoredSessionActor(
+    passphrase,
+    { validator, pubkey: targetPubkey, cacheUnlock = true, persistUnlock = false } = {},
+  ) {
     if (typeof passphrase !== "string" || !passphrase.trim()) {
       const error = new Error("A passphrase is required to unlock the saved key.");
       error.code = "passphrase-required";
       throw error;
     }
 
-    const entry = readStoredSessionActorEntry();
+    // When switching accounts, `targetPubkey` selects that account's stored key
+    // so we unlock the one the user asked for — not just the last-saved default.
+    const entry = readStoredSessionActorEntry(targetPubkey);
     if (!entry || !entry.privateKeyEncrypted || !entry.encryption) {
       const error = new Error("There is no saved key to unlock.");
       error.code = "no-stored-session";
@@ -2645,7 +2656,8 @@ export class NostrClient {
         validator(storedPubkey);
       } catch (error) {
         try {
-          clearStoredSessionActorEntry();
+          // Forget only the now-blocked account, not every saved key.
+          clearStoredSessionActorEntry(storedPubkey);
         } catch (cleanupError) {
           devLogger.warn(
             "[nostr] Failed to clear stored session after access denial:",
@@ -2706,7 +2718,96 @@ export class NostrClient {
       (adapter && typeof adapter.pubkey === "string" && adapter.pubkey) ||
       pubkey ||
       "";
+
+    // Cache the decrypted key so a reload doesn't require the passphrase again
+    // (TODO #51). Session tier is always written (survives refresh, cleared on tab
+    // close); the persistent tier (on disk) only when the user opted in.
+    if (cacheUnlock && resolvedPubkey) {
+      try {
+        rememberUnlockedKey(resolvedPubkey, normalizedPrivateKey, {
+          persist: Boolean(persistUnlock),
+        });
+      } catch (error) {
+        devLogger.warn("[nostr] Failed to cache unlocked key:", error);
+      }
+    }
+
     return { pubkey: resolvedPubkey };
+  }
+
+  // Restore an nsec signer from the "keep unlocked" cache without a passphrase
+  // (TODO #51). Reads the cached decrypted key for `targetPubkey`, verifies it
+  // derives to that pubkey (defense-in-depth; a mismatch forgets the cache), and
+  // registers it app-wide. Returns { restored: boolean }.
+  async restoreUnlockedSigner(targetPubkey) {
+    const pubkey =
+      typeof targetPubkey === "string" && HEX64_REGEX.test(targetPubkey.trim().toLowerCase())
+        ? targetPubkey.trim().toLowerCase()
+        : "";
+    if (!pubkey) {
+      return { restored: false, reason: "no-pubkey" };
+    }
+
+    const privateKeyHex = readUnlockedKey(pubkey);
+    if (!HEX64_REGEX.test(privateKeyHex || "")) {
+      return { restored: false, reason: "no-cache" };
+    }
+
+    let derivedPubkey = "";
+    try {
+      const tools = (await ensureNostrTools()) || getCachedNostrTools();
+      if (tools && typeof tools.getPublicKey === "function") {
+        derivedPubkey = String(tools.getPublicKey(privateKeyHex) || "").toLowerCase();
+      }
+    } catch (error) {
+      devLogger.warn(
+        "[nostr] Failed to derive pubkey while restoring unlocked signer:",
+        error,
+      );
+    }
+    if (derivedPubkey && derivedPubkey !== pubkey) {
+      // Corrupt / mismatched cache — never adopt a different account's key.
+      forgetUnlockedKey(pubkey);
+      return { restored: false, reason: "pubkey-mismatch" };
+    }
+
+    try {
+      const adapter = await this.registerPrivateKeySigner({
+        privateKey: privateKeyHex,
+        pubkey,
+        persist: false,
+      });
+      if (this.sessionActor && typeof this.sessionActor === "object") {
+        this.sessionActor.persisted = true;
+      }
+      return {
+        restored: true,
+        pubkey:
+          (adapter && typeof adapter.pubkey === "string" && adapter.pubkey) ||
+          pubkey,
+      };
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to restore unlocked signer:", error);
+      return { restored: false, reason: "register-failed", error };
+    }
+  }
+
+  // True if a "keep unlocked" key is cached for this account (session or disk).
+  hasCachedUnlockedKey(targetPubkey) {
+    try {
+      return Boolean(readUnlockedKey(targetPubkey));
+    } catch (error) {
+      return false;
+    }
+  }
+
+  // Forget any cached "keep unlocked" key for an account (both tiers).
+  forgetUnlockedSigner(targetPubkey) {
+    try {
+      forgetUnlockedKey(targetPubkey);
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to forget unlocked key:", error);
+    }
   }
 
   /**
@@ -2862,6 +2963,27 @@ export class NostrClient {
   }
 
   async ensureActiveSignerForPubkey(pubkey) {
+    // If the registry has no sign-capable signer (e.g. a reload restored the
+    // pubkey/UI but not the in-memory signer) and a "keep unlocked" nsec key is
+    // cached, restore it before falling back to the extension path — so a reload
+    // doesn't require the passphrase (TODO #51). Never adopts a different account
+    // (restoreUnlockedSigner verifies the derived pubkey).
+    const existing = getActiveSigner();
+    if (!existing || typeof existing.signEvent !== "function") {
+      const normalized =
+        typeof pubkey === "string" && HEX64_REGEX.test(pubkey.trim().toLowerCase())
+          ? pubkey.trim().toLowerCase()
+          : "";
+      if (normalized && readUnlockedKey(normalized)) {
+        const restored = await this.restoreUnlockedSigner(normalized);
+        if (restored?.restored) {
+          const signer = getActiveSigner();
+          if (signer && typeof signer.signEvent === "function") {
+            return signer;
+          }
+        }
+      }
+    }
     return this.signerManager.ensureActiveSignerForPubkey(pubkey);
   }
 
@@ -2915,8 +3037,8 @@ export class NostrClient {
     return this.signerManager.onRemoteSignerChange(listener);
   }
 
-  getStoredNip46Metadata() {
-    return this.signerManager.getStoredNip46Metadata();
+  getStoredNip46Metadata(pubkey) {
+    return this.signerManager.getStoredNip46Metadata(pubkey);
   }
 
   async ensureExtensionPermissions(
@@ -3465,9 +3587,10 @@ export class NostrClient {
       options && typeof options.video === "object" ? options.video : null;
     let confirmed = true;
 
-    if (shouldConfirm && typeof window?.confirm === "function") {
-      confirmed = window.confirm(
-        "Are you sure you want to delete all versions of this video? This action cannot be undone."
+    if (shouldConfirm) {
+      confirmed = await showConfirm(
+        "Are you sure you want to delete all versions of this video? This action cannot be undone.",
+        { confirmLabel: "Delete all", danger: true },
       );
     }
 
@@ -4299,6 +4422,62 @@ export class NostrClient {
     return Array.from(this.activeMap.values()).sort(
       (a, b) => b.created_at - a.created_at
     );
+  }
+
+  // Optimistically add a just-published video event to the local caches so it
+  // shows in the feed immediately, without waiting for it to propagate back
+  // from the relays. Mirrors the per-event ingestion the live subscription and
+  // fetchVideosByAuthors use (convert → root created_at → tombstone guard →
+  // allEvents/activeMap), so it obeys the same dedupe/active-key rules — a later
+  // relay copy of the same event (same created_at) won't displace it, and an
+  // older revision can't overwrite a newer active entry. Returns the ingested
+  // video, or null if the event isn't a usable video note.
+  ingestLocalVideoEvent(rawEvent) {
+    if (!rawEvent || typeof rawEvent !== "object" || !rawEvent.id) {
+      return null;
+    }
+
+    let video;
+    try {
+      video = convertEventToVideo(rawEvent);
+    } catch (error) {
+      devLogger.warn(
+        "[nostr] Failed to convert published event for optimistic feed insert:",
+        error,
+      );
+      return null;
+    }
+    if (!video || video.invalid) {
+      return null;
+    }
+
+    this.applyRootCreatedAt(video);
+    if (this.rawEvents && typeof this.rawEvents.set === "function") {
+      this.rawEvents.set(rawEvent.id, rawEvent);
+    }
+
+    const activeKey = getActiveKey(video);
+    if (video.deleted) {
+      this.recordTombstone(activeKey, video.created_at);
+      return video;
+    }
+
+    this.applyTombstoneGuard(video);
+    if (video.deleted) {
+      // A tombstone guard flipped it to deleted — don't surface it.
+      return video;
+    }
+
+    this.allEvents.set(rawEvent.id, video);
+    this.dirtyEventIds.add(rawEvent.id);
+
+    const existing = this.activeMap.get(activeKey);
+    if (!existing || video.created_at > existing.created_at) {
+      this.activeMap.set(activeKey, video);
+      this.applyRootCreatedAt(video);
+    }
+
+    return video;
   }
 
   handleEvent(event) {

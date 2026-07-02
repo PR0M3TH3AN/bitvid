@@ -1,6 +1,13 @@
 import { devLogger } from "../utils/logger.js";
 
 export const SESSION_ACTOR_STORAGE_KEY = "bitvid:sessionActor:v1";
+// Per-pubkey encrypted-key store. Follows the existing `bitvid:<thing>:<npub>`
+// convention (profileCache, nwcSettings, …) so several saved nsec accounts can
+// each keep their own encrypted key on the device and be switched between. The
+// v1 single slot above is kept in sync as the "active/last-saved" default and is
+// migrated into this map on first read.
+export const SESSION_ACTORS_MAP_STORAGE_KEY = "bitvid:sessionActors:v2";
+export const SESSION_ACTORS_MAP_VERSION = 2;
 export const SESSION_ACTOR_ENCRYPTION_VERSION = 1;
 export const SESSION_ACTOR_KDF_ITERATIONS = 250_000;
 export const SESSION_ACTOR_KDF_HASH = "SHA-256";
@@ -114,7 +121,9 @@ function persistSessionActorToIndexedDb(payload) {
       return new Promise((resolve, reject) => {
         const tx = db.transaction(SESSION_ACTOR_STORE, "readwrite");
         const store = tx.objectStore(SESSION_ACTOR_STORE);
-        store.put(payload, SESSION_ACTOR_STORAGE_KEY);
+        // Key each account's payload by pubkey so multiple saved accounts don't
+        // clobber one another (legacy single-slot records used the storage key).
+        store.put(payload, normalizePubkeyKey(payload?.pubkey) || SESSION_ACTOR_STORAGE_KEY);
         tx.oncomplete = () => resolve(true);
         tx.onerror = () =>
           reject(tx.error || new Error("Session actor IndexedDB write failed"));
@@ -128,7 +137,7 @@ function persistSessionActorToIndexedDb(payload) {
     });
 }
 
-function clearStoredSessionActorIndexedDb() {
+function clearStoredSessionActorIndexedDb(pubkey) {
   return openSessionActorDb()
     .then((db) => {
       if (!db) {
@@ -137,7 +146,14 @@ function clearStoredSessionActorIndexedDb() {
       return new Promise((resolve, reject) => {
         const tx = db.transaction(SESSION_ACTOR_STORE, "readwrite");
         const store = tx.objectStore(SESSION_ACTOR_STORE);
-        store.delete(SESSION_ACTOR_STORAGE_KEY);
+        const key = normalizePubkeyKey(pubkey);
+        if (key) {
+          // Forget just this account's key…
+          store.delete(key);
+        } else {
+          // …or wipe everything (logout / legacy single-slot record too).
+          store.clear();
+        }
         tx.oncomplete = () => resolve(true);
         tx.onerror = () =>
           reject(tx.error || new Error("Session actor IndexedDB delete failed"));
@@ -351,7 +367,113 @@ export async function decryptSessionPrivateKey(payload, passphrase) {
   return decoder.decode(decrypted);
 }
 
-export function readStoredSessionActorEntry() {
+function normalizePubkeyKey(pubkey) {
+  return typeof pubkey === "string" && pubkey.trim()
+    ? pubkey.trim().toLowerCase()
+    : "";
+}
+
+// Turn a parsed stored payload into a canonical entry, or null if it lacks a
+// usable encrypted key. Never exposes plaintext (privateKey is always "").
+function normalizeStoredActorEntry(parsed) {
+  const pubkey = typeof parsed?.pubkey === "string" ? parsed.pubkey.trim() : "";
+  const privateKeyEncrypted =
+    typeof parsed?.privateKeyEncrypted === "string"
+      ? parsed.privateKeyEncrypted.trim()
+      : "";
+  const encryption = normalizeStoredEncryptionMetadata(parsed?.encryption);
+  const createdAt = Number.isFinite(parsed?.createdAt)
+    ? parsed.createdAt
+    : Date.now();
+  if (!privateKeyEncrypted || !encryption) {
+    return null;
+  }
+  return { pubkey, privateKey: "", privateKeyEncrypted, encryption, createdAt };
+}
+
+// Read the per-pubkey map { [pubkeyLower]: entry } from localStorage.
+function readSessionActorsMap() {
+  if (typeof localStorage === "undefined") {
+    return {};
+  }
+  let raw = null;
+  try {
+    raw = localStorage.getItem(SESSION_ACTORS_MAP_STORAGE_KEY);
+  } catch (error) {
+    devLogger.warn("[nostr] Failed to read session actor map:", error);
+    return {};
+  }
+  if (!raw || typeof raw !== "string") {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    const entries =
+      parsed && typeof parsed === "object" ? parsed.entries : null;
+    if (!entries || typeof entries !== "object") {
+      return {};
+    }
+    const map = {};
+    for (const key of Object.keys(entries)) {
+      const entry = normalizeStoredActorEntry(entries[key]);
+      if (!entry) {
+        continue;
+      }
+      const normalizedKey = normalizePubkeyKey(entry.pubkey || key);
+      if (normalizedKey) {
+        map[normalizedKey] = entry;
+      }
+    }
+    return map;
+  } catch (error) {
+    devLogger.warn("[nostr] Failed to parse session actor map:", error);
+    try {
+      localStorage.removeItem(SESSION_ACTORS_MAP_STORAGE_KEY);
+    } catch (cleanupError) {
+      devLogger.warn(
+        "[nostr] Failed to clear corrupt session actor map:",
+        cleanupError,
+      );
+    }
+    return {};
+  }
+}
+
+function writeSessionActorsMap(map) {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+  const entries = {};
+  for (const key of Object.keys(map || {})) {
+    const entry = map[key];
+    if (!entry || !entry.privateKeyEncrypted || !entry.encryption) {
+      continue;
+    }
+    entries[key] = {
+      pubkey: entry.pubkey || key,
+      privateKeyEncrypted: entry.privateKeyEncrypted,
+      encryption: entry.encryption,
+      createdAt: Number.isFinite(entry.createdAt) ? entry.createdAt : Date.now(),
+    };
+  }
+  try {
+    if (!Object.keys(entries).length) {
+      localStorage.removeItem(SESSION_ACTORS_MAP_STORAGE_KEY);
+      return;
+    }
+    localStorage.setItem(
+      SESSION_ACTORS_MAP_STORAGE_KEY,
+      JSON.stringify({ version: SESSION_ACTORS_MAP_VERSION, entries }),
+    );
+  } catch (error) {
+    devLogger.warn("[nostr] Failed to persist session actor map:", error);
+  }
+}
+
+// Read the legacy single-slot (v1) entry. Also handles the legacy plaintext
+// migration: a payload that still carries `privateKey` is re-persisted in the
+// encrypted-only shape, or cleared if it can't be salvaged.
+function readV1Entry() {
   if (typeof localStorage === "undefined") {
     return null;
   }
@@ -427,6 +549,50 @@ export function readStoredSessionActorEntry() {
   return null;
 }
 
+// Read a stored, passphrase-encrypted nsec entry.
+//   readStoredSessionActorEntry(pubkey) → that specific account's entry (or null)
+//   readStoredSessionActorEntry()       → the active/last-saved account (v1 slot),
+//                                          for boot restore / backward-compat.
+// The v1 single slot is migrated into the per-pubkey map on first read so
+// existing single-account installs keep working and gain multi-account storage.
+export function readStoredSessionActorEntry(pubkey) {
+  const v1 = readV1Entry();
+  const map = readSessionActorsMap();
+
+  // Migrate the legacy single slot into the per-pubkey map.
+  if (v1 && v1.pubkey) {
+    const key = normalizePubkeyKey(v1.pubkey);
+    if (key && !map[key]) {
+      map[key] = v1;
+      writeSessionActorsMap(map);
+    }
+  }
+
+  const target = normalizePubkeyKey(pubkey);
+  if (target) {
+    if (map[target]) {
+      return map[target];
+    }
+    if (v1 && normalizePubkeyKey(v1.pubkey) === target) {
+      return v1;
+    }
+    return null;
+  }
+
+  // No target: the active/last-saved account (v1 slot). Fall back to the sole
+  // stored account if the v1 slot was cleared but the map still has exactly one.
+  if (v1) {
+    return v1;
+  }
+  const keys = Object.keys(map);
+  return keys.length === 1 ? map[keys[0]] : null;
+}
+
+// Pubkeys (hex, lowercase) of every account with an encrypted key on this device.
+export function listStoredSessionActorPubkeys() {
+  return Object.keys(readSessionActorsMap());
+}
+
 export function persistSessionActor(actor) {
   if (
     !actor ||
@@ -458,6 +624,21 @@ export function persistSessionActor(actor) {
 
   persistSessionActorToIndexedDb(payload);
 
+  // Store under the account's pubkey so several saved accounts coexist…
+  const key = normalizePubkeyKey(payload.pubkey);
+  if (key) {
+    const map = readSessionActorsMap();
+    map[key] = {
+      pubkey: payload.pubkey,
+      privateKeyEncrypted: payload.privateKeyEncrypted,
+      encryption: payload.encryption,
+      createdAt,
+    };
+    writeSessionActorsMap(map);
+  }
+
+  // …and keep the v1 single slot pointed at the last-saved account so boot
+  // restore and no-arg reads resolve a sensible default.
   if (typeof localStorage !== "undefined") {
     try {
       localStorage.setItem(
@@ -470,7 +651,32 @@ export function persistSessionActor(actor) {
   }
 }
 
-export function clearStoredSessionActor() {
+// Forget a stored key. With a pubkey, only that account is removed (the others
+// stay switchable); without one, every stored account is wiped (logout).
+export function clearStoredSessionActor(pubkey) {
+  const target = normalizePubkeyKey(pubkey);
+
+  if (target) {
+    clearStoredSessionActorIndexedDb(target);
+    const map = readSessionActorsMap();
+    if (map[target]) {
+      delete map[target];
+      writeSessionActorsMap(map);
+    }
+    // Drop the v1 default only if it pointed at the account we just removed.
+    if (typeof localStorage !== "undefined") {
+      const v1 = readV1Entry();
+      if (v1 && normalizePubkeyKey(v1.pubkey) === target) {
+        try {
+          localStorage.removeItem(SESSION_ACTOR_STORAGE_KEY);
+        } catch (error) {
+          devLogger.warn("[nostr] Failed to clear stored session actor:", error);
+        }
+      }
+    }
+    return;
+  }
+
   clearStoredSessionActorIndexedDb();
 
   if (typeof localStorage !== "undefined") {
@@ -478,6 +684,11 @@ export function clearStoredSessionActor() {
       localStorage.removeItem(SESSION_ACTOR_STORAGE_KEY);
     } catch (error) {
       devLogger.warn("[nostr] Failed to clear stored session actor:", error);
+    }
+    try {
+      localStorage.removeItem(SESSION_ACTORS_MAP_STORAGE_KEY);
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to clear session actor map:", error);
     }
   }
 }

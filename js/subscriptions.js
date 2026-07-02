@@ -21,7 +21,7 @@ import {
 import { CACHE_POLICIES, STORAGE_TIERS } from "./nostr/cachePolicies.js";
 import {
   publishEventToRelays,
-  assertAnyRelayAccepted
+  assertAnyRelayAcceptedOrUnconfirmed,
 } from "./nostrPublish.js";
 import { getApplication } from "./applicationContext.js";
 import { VideoListView } from "./ui/views/VideoListView.js";
@@ -1452,26 +1452,22 @@ class SubscriptionsManager {
       signedEvent
     );
 
-    let publishSummary;
-    try {
-      publishSummary = assertAnyRelayAccepted(publishResults, {
-        context: "subscription list"
-      });
-    } catch (publishError) {
-      if (publishError?.relayFailures?.length) {
-        publishError.relayFailures.forEach(
-          ({ url, error: relayError, reason }) => {
-            userLogger.error(
-              `[SubscriptionsManager] Subscription list rejected by ${url}: ${reason}`,
-              relayError || reason
-            );
-          }
-        );
-      }
-      throw publishError;
+    // Only an explicit relay rejection (or a pre-publish signer/encryption error,
+    // thrown earlier) is a real failure. A result where every relay merely timed
+    // out means the event was sent to an idempotent, replaceable list and almost
+    // certainly persisted — treated as a soft success (unconfirmed) so the
+    // optimistic UI is NOT reverted and the user doesn't see a spurious error.
+    const publishSummary = assertAnyRelayAcceptedOrUnconfirmed(publishResults, {
+      context: "subscription list",
+    });
+    const softSuccess = publishSummary.unconfirmed === true;
+    if (softSuccess) {
+      userLogger.warn(
+        "[SubscriptionsManager] Subscription list not acknowledged by any relay within the timeout; treating as optimistic success (reconciles on next load).",
+      );
     }
 
-    if (publishSummary.failed.length) {
+    if (publishSummary?.failed?.length) {
       publishSummary.failed.forEach(({ url, error: relayError }) => {
         const reason =
           relayError instanceof Error
@@ -1486,12 +1482,18 @@ class SubscriptionsManager {
       });
     }
 
+    // Record the published event id for both a confirmed and an
+    // optimistic/unconfirmed publish — the event carries this id regardless.
     this.subsEventId = signedEvent.id;
     this.subsEventCreatedAt = signedEvent.created_at;
     this.saveToCache(userPubkey);
-    const acceptedUrls = publishSummary.accepted.map(({ url }) => url);
+    const acceptedUrls = publishSummary
+      ? publishSummary.accepted.map(({ url }) => url)
+      : [];
     devLogger.log(
-      "Subscription list published, event id:",
+      softSuccess
+        ? "Subscription list published (optimistic/unconfirmed), event id:"
+        : "Subscription list published, event id:",
       signedEvent.id,
       "accepted relays:",
       acceptedUrls

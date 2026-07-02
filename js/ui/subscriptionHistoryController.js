@@ -3,6 +3,7 @@ import { profileCache } from "../state/profileCache.js";
 import { formatTimeAgo } from "../utils/formatters.js";
 import { userLogger } from "../utils/logger.js";
 import { getApplication } from "../applicationContext.js";
+import { notifyError, notifySuccess, showConfirm } from "./appNotify.js";
 
 export class SubscriptionHistoryController {
   constructor(options = {}) {
@@ -302,9 +303,10 @@ export class SubscriptionHistoryController {
   async handleRestore() {
     if (!this.selectedEvent) return;
     if (
-      !confirm(
-        "Are you sure you want to restore this list? It will overwrite your current subscriptions."
-      )
+      !(await showConfirm(
+        "Are you sure you want to restore this list? It will overwrite your current subscriptions.",
+        { confirmLabel: "Restore", danger: true },
+      ))
     )
       return;
 
@@ -313,11 +315,11 @@ export class SubscriptionHistoryController {
 
     try {
       await subscriptions.restoreBackup(this.selectedEvent, this.activePubkey);
-      // alert("Subscriptions restored successfully!"); // alert blocks, toast is better if available, but alert is fine for now
+      notifySuccess("Subscriptions restored.");
       this.hide();
     } catch (error) {
       userLogger.error("Restore failed:", error);
-      alert("Failed to restore: " + error.message);
+      notifyError("Failed to restore: " + error.message);
     } finally {
       this.restoreBtn.disabled = false;
       this.restoreBtn.textContent = "Restore as Active";
@@ -338,7 +340,7 @@ export class SubscriptionHistoryController {
       this.fetchHistory();
     } catch (error) {
       userLogger.error("Rebroadcast failed:", error);
-      alert("Failed to rebroadcast: " + error.message);
+      notifyError("Failed to rebroadcast: " + error.message);
     } finally {
       this.rebroadcastBtn.disabled = false;
       this.rebroadcastBtn.textContent = "Rebroadcast";
@@ -364,7 +366,7 @@ export class SubscriptionHistoryController {
       }
     } catch (error) {
       userLogger.error("Backup failed:", error);
-      alert("Backup failed: " + error.message);
+      notifyError("Backup failed: " + error.message);
     }
   }
 }

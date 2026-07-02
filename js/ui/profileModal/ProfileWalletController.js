@@ -1,7 +1,16 @@
 import { devLogger } from "../../utils/logger.js";
+import { showConfirm } from "../confirmDialog.js";
 import { NWC_URI_SCHEME } from "../profileModalContract.js";
 import { createWalletSyncService } from "../../services/walletSyncService.js";
 import { runWalletZappabilityCheck } from "./walletZappabilityCheck.js";
+import {
+  syncStatusClass,
+  runSyncToggle,
+  runSyncRestore,
+  confirmSyncOverwrite,
+} from "./syncSection.js";
+
+const WALLET_SYNC_LABEL = "wallet connection";
 
 const noop = () => {};
 const SECRET_PLACEHOLDER = "*****";
@@ -103,16 +112,6 @@ export class ProfileWalletController {
     return this._walletSyncService;
   }
 
-  confirmSyncOverwrite() {
-    if (typeof window === "undefined" || typeof window.confirm !== "function") {
-      return true;
-    }
-    return window.confirm(
-      "A newer copy of your wallet connection is on your account (changed on " +
-        "another device). Overwrite it with this one?"
-    );
-  }
-
   renderSyncSection(pubkey) {
     if (!(this.walletSyncSection instanceof HTMLElement)) {
       return;
@@ -134,13 +133,7 @@ export class ProfileWalletController {
       return;
     }
     this.walletSyncStatus.textContent = message || "";
-    const toneClass =
-      tone === "success"
-        ? "text-status-success"
-        : tone === "error"
-          ? "text-status-danger"
-          : "text-muted";
-    this.walletSyncStatus.className = `text-xs ${toneClass}`;
+    this.walletSyncStatus.className = syncStatusClass(tone);
   }
 
   async handleToggleSync() {
@@ -156,56 +149,29 @@ export class ProfileWalletController {
         ? this.walletSyncToggle.checked
         : false;
     try {
-      if (enabled) {
-        // Spending capability — require explicit confirmation before publishing.
-        const confirmed =
-          typeof window !== "undefined" && typeof window.confirm === "function"
-            ? window.confirm(
-                "This publishes an ENCRYPTED copy of your wallet connection to public relays.\n\n" +
-                  "A wallet connect URI can SPEND from your wallet. Anyone who controls your " +
-                  "Nostr key could decrypt this and spend from this wallet.\n\nContinue?"
-              )
-            : true;
-        if (!confirmed) {
+      await runSyncToggle({
+        service: sync,
+        pubkey,
+        enabled,
+        itemLabel: WALLET_SYNC_LABEL,
+        emptyHint: "Connect a wallet first, then enable sync.",
+        setStatus: (msg, tone) => this.setSyncStatus(msg, tone),
+        showSuccess: (msg) => this.mainController.showSuccess(msg),
+        setToggle: (value) => {
           if (this.walletSyncToggle instanceof HTMLInputElement) {
-            this.walletSyncToggle.checked = false;
+            this.walletSyncToggle.checked = value;
           }
-          return;
-        }
-        this.setSyncStatus("Encrypting and publishing…");
-        const result = await sync.enable(pubkey, {
-          confirmOverwrite: () => this.confirmSyncOverwrite(),
-        });
-        if (result?.ok) {
-          this.setSyncStatus(
-            `Synced to ${result.accepted}/${result.total} relays.`,
-            "success"
-          );
-          this.mainController.showSuccess("Wallet connection synced (encrypted).");
-        } else if (result?.conflict) {
-          // User declined to overwrite a newer copy from another device. Keep
-          // sync on (flag set) and the newer remote intact.
-          this.setSyncStatus(
-            "Kept the newer copy on your account. Use Restore to pull it, or save again to overwrite.",
-          );
-        } else {
-          if (this.walletSyncToggle instanceof HTMLInputElement) {
-            this.walletSyncToggle.checked = false;
-          }
-          await sync.disable(pubkey).catch(() => {});
-          this.setSyncStatus(
-            result?.error === "nothing-to-sync"
-              ? "Connect a wallet first, then enable sync."
-              : "Could not publish the encrypted copy. Try again.",
-            "error"
-          );
-        }
-      } else {
-        this.setSyncStatus("Removing the synced copy…");
-        await sync.disable(pubkey);
-        this.setSyncStatus("Sync turned off; the synced copy was cleared.");
-        this.mainController.showSuccess("Wallet sync turned off.");
-      }
+        },
+        // Spending capability — a wallet-connect URI can SPEND. Keep the explicit
+        // one-time warning before publishing (even encrypted) to public relays.
+        preEnableConfirm: () =>
+          showConfirm(
+            "This publishes an ENCRYPTED copy of your wallet connection to public relays.\n\n" +
+              "A wallet connect URI can SPEND from your wallet. Anyone who controls your " +
+              "Nostr key could decrypt this and spend from this wallet.\n\nContinue?",
+            { confirmLabel: "Publish", danger: true },
+          ),
+      });
     } catch (error) {
       devLogger.error("[ProfileModal] Wallet sync toggle failed:", error);
       this.setSyncStatus("Sync failed. Please try again.", "error");
@@ -221,19 +187,14 @@ export class ProfileWalletController {
     }
     const sync = this.getWalletSyncService();
     try {
-      this.setSyncStatus("Fetching and decrypting…");
-      const result = await sync.pull(pubkey);
-      if (result?.found && result.imported) {
-        this.setSyncStatus("Restored from your Nostr account.", "success");
-        this.mainController.showSuccess("Wallet connection restored.");
-        this.refreshWalletPaneState();
-      } else if (result?.found && !result.imported) {
-        this.setSyncStatus("Found a copy but could not import it.", "error");
-      } else if (result?.cleared) {
-        this.setSyncStatus("No synced wallet found (it was cleared).");
-      } else {
-        this.setSyncStatus("No synced wallet found on your account.");
-      }
+      await runSyncRestore({
+        service: sync,
+        pubkey,
+        itemLabel: WALLET_SYNC_LABEL,
+        setStatus: (msg, tone) => this.setSyncStatus(msg, tone),
+        showSuccess: (msg) => this.mainController.showSuccess(msg),
+        onImported: () => this.refreshWalletPaneState(),
+      });
     } catch (error) {
       devLogger.error("[ProfileModal] Wallet sync restore failed:", error);
       this.setSyncStatus("Restore failed. Please try again.", "error");
@@ -644,7 +605,7 @@ export class ProfileWalletController {
         if (sync.isEnabled(normalizedActive)) {
           try {
             const syncResult = await sync.push(normalizedActive, {
-              confirmOverwrite: () => this.confirmSyncOverwrite(),
+              confirmOverwrite: () => confirmSyncOverwrite(WALLET_SYNC_LABEL),
             });
             if (syncResult?.conflict) {
               this.setSyncStatus(

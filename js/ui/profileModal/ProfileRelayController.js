@@ -1,4 +1,5 @@
 import { devLogger, userLogger } from "../../utils/logger.js";
+import { showConfirm } from "../confirmDialog.js";
 import { sanitizeRelayList } from "../../nostr/nip46Client.js";
 
 const noop = () => {};
@@ -556,7 +557,7 @@ export class ProfileRelayController {
       reason: null,
     };
 
-    const confirmed = window.confirm("Restore the recommended relay defaults?");
+    const confirmed = await showConfirm("Restore the recommended relay defaults?", { confirmLabel: "Restore" });
     context.confirmed = confirmed;
     if (!confirmed) {
       context.reason = "cancelled";
@@ -604,9 +605,10 @@ export class ProfileRelayController {
       return;
     }
 
-    const confirmed = window.confirm(
-      `Remove ${url} from your relay list?`,
-    );
+    const confirmed = await showConfirm(`Remove ${url} from your relay list?`, {
+      confirmLabel: "Remove",
+      danger: true,
+    });
     if (!confirmed) {
       return;
     }

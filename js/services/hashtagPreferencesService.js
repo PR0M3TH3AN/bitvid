@@ -5,6 +5,7 @@ import {
   getActiveSigner,
 } from "../nostrClientFacade.js";
 import { isSessionActor } from "../nostr/sessionActor.js";
+import { nextReplaceableCreatedAt } from "../nostr/replaceableCreatedAt.js";
 import {
   buildHashtagPreferenceEvent,
   getNostrEventSchema,
@@ -12,7 +13,7 @@ import {
 } from "../nostrEventSchemas.js";
 import {
   publishEventToRelays,
-  assertAnyRelayAccepted,
+  assertAnyRelayAcceptedOrUnconfirmed,
 } from "../nostrPublish.js";
 import { userLogger, devLogger } from "../utils/logger.js";
 import {
@@ -1408,7 +1409,13 @@ class HashtagPreferencesService {
       throw error;
     }
 
-    const createdAt = Math.floor(Date.now() / 1000);
+    // Replaceable event: created_at MUST be strictly greater than the last one we
+    // published, or relays reject the update as "not newer" and keep the old copy.
+    // Two quick edits (e.g. adding a second disinterest within the same wall-clock
+    // second) otherwise collide — the second errored on the client yet landed on
+    // relays that resolve same-created_at ties by id, so it "failed but works after
+    // refresh". Monotonic created_at removes the collision entirely.
+    const createdAt = nextReplaceableCreatedAt(this.eventCreatedAt);
     const event = buildHashtagPreferenceEvent({
       pubkey: targetPubkey,
       created_at: createdAt,
@@ -1453,9 +1460,17 @@ class HashtagPreferencesService {
       signedEvent,
     );
 
-    const publishSummary = assertAnyRelayAccepted(publishResults, {
+    // All-timeout (unconfirmed) publish of the replaceable preferences list is a
+    // soft success — sent + almost always persisted; don't throw. Explicit
+    // rejections still throw.
+    const publishSummary = assertAnyRelayAcceptedOrUnconfirmed(publishResults, {
       context: "hashtag-preferences",
     });
+    if (publishSummary.unconfirmed) {
+      userLogger.warn(
+        `${LOG_PREFIX} Preferences not acknowledged by any relay within the timeout; treating as optimistic success (reconciles on next load).`,
+      );
+    }
 
     if (publishSummary.failed?.length) {
       publishSummary.failed.forEach(({ url, error }) => {

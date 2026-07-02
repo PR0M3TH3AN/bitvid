@@ -9,7 +9,7 @@ import { buildRelayListEvent } from "./nostrEventSchemas.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import {
   publishEventToRelays,
-  assertAnyRelayAccepted,
+  assertAnyRelayAcceptedOrUnconfirmed,
 } from "./nostrPublish.js";
 import { profileCache } from "./state/profileCache.js";
 
@@ -812,24 +812,17 @@ class RelayPreferencesManager {
       signedEvent
     );
 
-    let publishSummary;
-    try {
-      publishSummary = assertAnyRelayAccepted(publishResults, {
-        context: "relay preferences update",
-        message: "No relays accepted the update.",
-      });
-    } catch (publishError) {
-      if (publishError?.relayFailures?.length) {
-        publishError.relayFailures.forEach(
-          ({ url, error: relayError, reason }) => {
-            userLogger.error(
-              `[RelayPreferencesManager] Relay ${url} rejected relay list: ${reason}`,
-              relayError || reason
-            );
-          }
-        );
-      }
-      throw publishError;
+    // An all-timeout (unconfirmed) publish of the replaceable relay list is a soft
+    // success — sent + almost always persisted; don't error/revert. Explicit
+    // rejections still throw.
+    const publishSummary = assertAnyRelayAcceptedOrUnconfirmed(publishResults, {
+      context: "relay preferences update",
+      message: "No relays accepted the update.",
+    });
+    if (publishSummary.unconfirmed) {
+      userLogger.warn(
+        "[RelayPreferencesManager] Relay list not acknowledged by any relay within the timeout; treating as optimistic success (reconciles on next load).",
+      );
     }
 
     if (publishSummary.failed.length) {

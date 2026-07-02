@@ -76,6 +76,36 @@ import { RELAY_BACKGROUND_CONCURRENCY } from "./nostr/relayConstants.js";
 
 const getApp = () => getApplication();
 
+// A single hung relay (one that never sends EOSE) used to stall the whole
+// channel-grid fetch because `pool.list` has no built-in timeout. Bound each
+// relay's list() so a slow relay resolves to "no events" instead of holding up
+// the merged render — the other relays + the shared cache still fill the grid.
+export const CHANNEL_RELAY_LIST_TIMEOUT_MS = 8000;
+
+// Pure, testable core: race a list() call (via a factory) against a timeout.
+// Resolves to the list's array on success, or [] on timeout OR rejection — a
+// failing/hung relay contributes nothing rather than stalling or throwing (and
+// a late rejection after the timeout wins can't surface as unhandled).
+export function raceListWithTimeout(listFn, timeoutMs = CHANNEL_RELAY_LIST_TIMEOUT_MS) {
+  let timer = null;
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(() => resolve([]), timeoutMs);
+  });
+  const listPromise = Promise.resolve()
+    .then(() => listFn())
+    .then((result) => (Array.isArray(result) ? result : []))
+    .catch(() => []);
+  return Promise.race([listPromise, timeout]).finally(() => {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  });
+}
+
+function listRelayWithTimeout(relays, filters, timeoutMs = CHANNEL_RELAY_LIST_TIMEOUT_MS) {
+  return raceListWithTimeout(() => nostrClient.pool.list(relays, filters), timeoutMs);
+}
+
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const CHANNEL_MODERATION_BADGE_ID = "channel-moderation-badge";
 
@@ -1310,6 +1340,17 @@ let zapPopoverOpenPromise = null;
 let channelMenuPopover = null;
 let channelMenuOpen = false;
 let currentVideoLoadToken = 0;
+// Coalescing state for channel-grid loads. loadUserVideos() bumps
+// currentVideoLoadToken and only renders if its token is still current, so a
+// burst of refresh triggers (e.g. the NIP-71 ingest flushing repeatedly right
+// after open) can supersede every in-flight load before it paints — the grid
+// gets stuck on "Loading videos…". requestChannelVideoLoad() collapses those:
+// while a load for the same channel is in flight, a refresh flags a single
+// trailing rerun instead of starting a competing load. Navigation to a channel
+// (isRefresh:false) still starts immediately (and supersedes a stale channel).
+let channelVideoLoadInFlight = null;
+let channelVideoLoadPubkey = null;
+let channelVideoRerunPending = false;
 let currentProfileLoadToken = 0;
 
 const FALLBACK_CHANNEL_BANNER = "assets/jpg/bitvid.jpg";
@@ -3821,7 +3862,7 @@ export async function initChannelProfileView() {
       syncChannelShareButtonState();
     });
 
-  const videosPromise = loadUserVideos(hexPub).catch((error) => {
+  const videosPromise = requestChannelVideoLoad(hexPub).catch((error) => {
     userLogger.error("Failed to load channel videos:", error);
   });
 
@@ -4205,6 +4246,32 @@ function renderSubscribeButton(channelHex) {
         return;
       }
 
+      // Subscriptions (kind 30000) are NIP-04 encrypted. A reloaded nsec session
+      // can lose its in-memory key; re-unlock it with one passphrase prompt rather
+      // than failing with a blanket signer error (TODO #57). Gate BEFORE the
+      // optimistic update so the button doesn't flash on cancel. Only the
+      // user-driven outcomes short-circuit; anything else falls through to
+      // toggleChannel's own error handling below.
+      if (typeof currentApp.ensureEncryptionCapableSigner === "function") {
+        let ensured = { ok: true };
+        try {
+          ensured = await currentApp.ensureEncryptionCapableSigner({
+            pubkey: currentApp.pubkey,
+            need: "encrypt",
+            promptMessage:
+              "Re-enter your PIN / passphrase to unlock your key and update your subscriptions.",
+          });
+        } catch (error) {
+          ensured = { ok: false, reason: "ensure-failed" };
+        }
+        if (
+          ensured &&
+          (ensured.reason === "cancelled" || ensured.reason === "bad-passphrase")
+        ) {
+          return;
+        }
+      }
+
       // Optimistic UI update
       const wasSubscribed = toggleBtn.dataset.state === "subscribed";
       const nextState = wasSubscribed ? "unsubscribed" : "subscribed";
@@ -4448,7 +4515,26 @@ function getCachedChannelVideoEvents(pubkey) {
     }
   );
 
-  return [...rawMatches, ...processedMatches];
+  // Parity with the other grids: also pull the author's videos from the shared
+  // feed cache (nostrService videosMap → author index) — the SAME source the
+  // main/subscriptions grids render from. The channel grid otherwise sources
+  // only nostrClient.allEvents + a scoped relay fetch, which can DIVERGE from
+  // that cache, so a video shown on another grid could be missing here. Appended
+  // last so it only fills gaps (richer raw/processed copies win the id-dedupe).
+  let parityMatches = [];
+  try {
+    const service = getApp()?.nostrService;
+    if (service && typeof service.getActiveVideosByAuthors === "function") {
+      const parity = service.getActiveVideosByAuthors([normalized]);
+      if (Array.isArray(parity)) {
+        parityMatches = parity;
+      }
+    }
+  } catch (error) {
+    // Best-effort; the allEvents scan + scoped relay fetch still populate the grid.
+  }
+
+  return [...rawMatches, ...processedMatches, ...parityMatches];
 }
 
 function normalizeRenderableChannelVideo(entry) {
@@ -5315,7 +5401,7 @@ export function refreshActiveChannelVideoGrid({ reason } = {}) {
   }
 
   try {
-    const result = loadUserVideos(currentChannelHex);
+    const result = requestChannelVideoLoad(currentChannelHex, { isRefresh: true });
     return result instanceof Promise ? result : Promise.resolve(result);
   } catch (error) {
     userLogger.warn(
@@ -5326,6 +5412,49 @@ export function refreshActiveChannelVideoGrid({ reason } = {}) {
     );
     return Promise.resolve();
   }
+}
+
+// Entry point for channel-grid loads. Coalesces refresh-driven loads so a
+// storm of refreshes can't perpetually cancel each other before rendering.
+//   isRefresh:true  → if a load for the same channel is in flight, flag one
+//                     trailing rerun and reuse the in-flight promise.
+//   isRefresh:false → navigation; always start (supersedes a stale channel).
+function requestChannelVideoLoad(pubkey, { isRefresh = false } = {}) {
+  const normalized =
+    typeof pubkey === "string" ? pubkey.trim().toLowerCase() : "";
+  if (
+    isRefresh &&
+    channelVideoLoadInFlight &&
+    channelVideoLoadPubkey === normalized
+  ) {
+    channelVideoRerunPending = true;
+    return channelVideoLoadInFlight;
+  }
+  return startChannelVideoLoad(pubkey);
+}
+
+function startChannelVideoLoad(pubkey) {
+  const normalized =
+    typeof pubkey === "string" ? pubkey.trim().toLowerCase() : "";
+  channelVideoLoadPubkey = normalized;
+  const promise = Promise.resolve(loadUserVideos(pubkey)).finally(() => {
+    if (channelVideoLoadInFlight === promise) {
+      channelVideoLoadInFlight = null;
+    }
+    // Fire at most one trailing reload, and only if we're still on this
+    // channel (navigation elsewhere will have started its own load).
+    if (channelVideoRerunPending) {
+      channelVideoRerunPending = false;
+      const stillHere =
+        typeof currentChannelHex === "string" &&
+        currentChannelHex.trim().toLowerCase() === normalized;
+      if (stillHere) {
+        startChannelVideoLoad(currentChannelHex);
+      }
+    }
+  });
+  channelVideoLoadInFlight = promise;
+  return promise;
 }
 
 async function loadUserVideos(pubkey) {
@@ -5398,7 +5527,7 @@ async function loadUserVideos(pubkey) {
 
     if (relayList.length === 0) {
       try {
-        const fallbackEvents = await nostrClient.pool.list(
+        const fallbackEvents = await listRelayWithTimeout(
           Array.from(DEFAULT_RELAY_URLS),
           filters
         );
@@ -5411,7 +5540,7 @@ async function loadUserVideos(pubkey) {
     } else {
       const settled = await pMapSettled(
         relayList,
-        (url) => nostrClient.pool.list([url], filters),
+        (url) => listRelayWithTimeout([url], filters),
         { concurrency: RELAY_BACKGROUND_CONCURRENCY }
       );
       settled.forEach((result, index) => {
@@ -5493,7 +5622,7 @@ if (typeof window !== "undefined" && typeof window.addEventListener === "functio
       return;
     }
 
-    loadUserVideos(currentChannelHex).catch((error) => {
+    requestChannelVideoLoad(currentChannelHex, { isRefresh: true }).catch((error) => {
       userLogger.error(
         "Failed to refresh channel videos after admin update:",
         error

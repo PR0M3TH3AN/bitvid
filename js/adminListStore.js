@@ -12,6 +12,7 @@ import {
 import { SHORT_TIMEOUT_MS } from "./constants.js";
 import {
   getRegisteredNostrClient,
+  getActiveSigner,
   requestDefaultExtensionPermissions,
 } from "./nostrClientRegistry.js";
 import { devLogger, userLogger } from "./utils/logger.js";
@@ -574,8 +575,7 @@ async function fetchLatestListEvent(filter, contextLabel = "admin-list") {
           pubkey,
           dTag,
           relayUrls: relays,
-          // Force a full fetch: admin lists are replaceable (see
-          // tests/nostr/relayBatchFetcherReplaceable.test.mjs).
+          // Full fetch: admin lists are replaceable (relayBatchFetcherReplaceable.test).
           since: 0,
         }),
         timeoutPromise,
@@ -682,8 +682,7 @@ async function loadCommunityBlacklistEntries() {
     return [];
   }
 
-  // Batch all curator blacklists into ONE REQ (was the cold-start kind-30000 storm).
-  // Best-effort: on failure the cached admin state carries over.
+  // Batch all curator blacklists into ONE REQ (best-effort; cache carries over on fail).
   try {
     const matched = await fetchBatchedReferenceEvents({
       references,
@@ -874,20 +873,21 @@ async function persistNostrState(actorNpub, updates = {}) {
   }
 
   ensureNostrReady();
-  const permissionResult = await requestDefaultExtensionPermissions();
-  if (!permissionResult.ok) {
-    throw createError(
-      "extension-permission-denied",
-      "The NIP-07 extension must allow signing before updating admin lists.",
-      permissionResult.error,
-    );
+  // Sign with the ACTIVE signer (extension / nsec / NIP-46), not window.nostr.
+  const signer = getActiveSigner();
+  if (!signer || typeof signer.signEvent !== "function") {
+    throw createError("nostr-signer-missing", "No active signer to update admin lists. Please log in.");
   }
-  const extension = window?.nostr;
-  if (!extension || typeof extension.signEvent !== "function") {
-    throw createError(
-      "nostr-extension-missing",
-      "A Nostr extension with signEvent support is required."
-    );
+  // Only a NIP-07 extension needs an explicit permission prompt before signing.
+  if (signer.type === "extension" || signer.type === "nip07") {
+    const permissionResult = await requestDefaultExtensionPermissions();
+    if (!permissionResult.ok) {
+      throw createError(
+        "extension-permission-denied",
+        "The NIP-07 extension must allow signing before updating admin lists.",
+        permissionResult.error,
+      );
+    }
   }
 
   const actorHex = decodeNpubToHex(actorNpub);
@@ -950,7 +950,7 @@ async function persistNostrState(actorNpub, updates = {}) {
 
     let signedEvent;
     try {
-      signedEvent = await extension.signEvent(event);
+      signedEvent = await signer.signEvent(event);
     } catch (error) {
       throw createError("signature-failed", "Failed to sign admin list event.", error);
     }
