@@ -80,4 +80,38 @@ describe("NostrService", () => {
       assert.equal(mockClient.pool.list.mock.callCount(), 1);
     });
   });
+
+  // Account switch must not leave the previous account's DMs on screen: the DM
+  // store lives here (nostrService), so a switch clears the in-memory store. With
+  // keepSnapshot it preserves each account's persisted cache for fast switch-back.
+  describe("clearDirectMessages", () => {
+    it("empties the in-memory DM store and resets the active actor", () => {
+      nostrService.dmMessages = [{ id: "m1" }, { id: "m2" }];
+      nostrService.dmMessageIndex = new Map([["m1", 0], ["m2", 1]]);
+      nostrService.dmActorPubkey = "a".repeat(64);
+
+      const events = [];
+      const originalEmit = nostrService.emit;
+      nostrService.emit = (name) => events.push(name);
+      try {
+        nostrService.clearDirectMessages({ emit: true, keepSnapshot: true });
+      } finally {
+        nostrService.emit = originalEmit;
+      }
+
+      assert.deepEqual(nostrService.dmMessages, []);
+      assert.equal(nostrService.dmMessageIndex.size, 0);
+      assert.equal(nostrService.dmActorPubkey, null);
+      assert.ok(events.includes("directMessages:cleared"));
+      assert.ok(events.includes("directMessages:updated"));
+    });
+
+    it("clears the in-memory store in both keepSnapshot modes (logout parity)", () => {
+      nostrService.dmMessages = [{ id: "m1" }];
+      nostrService.dmMessageIndex = new Map([["m1", 0]]);
+      nostrService.clearDirectMessages({ emit: false, keepSnapshot: false });
+      assert.deepEqual(nostrService.dmMessages, []);
+      assert.equal(nostrService.dmMessageIndex.size, 0);
+    });
+  });
 });

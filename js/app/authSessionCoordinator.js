@@ -200,6 +200,22 @@ export function createAuthSessionCoordinator(deps) {
 
       if (detail?.identityChanged) {
         this.resetViewLoggingState();
+
+        // Account switch: clear the PREVIOUS account's cached DMs + stop its
+        // subscription before the new account loads. The DM store is app-wide on
+        // nostrService, so resetting only the modal's view left the old account's
+        // messages on screen after a switch (e.g. NIP-07 → nsec) — logout clears it
+        // the same way. keepSnapshot keeps each account's persisted cache so
+        // switching back stays fast.
+        try {
+          this.nostrService?.stopDirectMessageSubscription?.();
+          this.nostrService?.clearDirectMessages?.({ emit: true, keepSnapshot: true });
+        } catch (error) {
+          devLogger.warn(
+            "[Application] Failed to reset DMs on account switch:",
+            error,
+          );
+        }
       }
 
       this.resetPermissionPromptState();

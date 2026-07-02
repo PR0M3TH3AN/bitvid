@@ -786,7 +786,11 @@ export class NostrService {
     return Array.isArray(this.dmMessages) ? [...this.dmMessages] : [];
   }
 
-  clearDirectMessages({ actorPubkey = null, emit = true } = {}) {
+  // keepSnapshot: clear the IN-MEMORY DM store but preserve each account's
+  // persisted per-actor snapshot. Used on account SWITCH so the new account
+  // doesn't show the previous account's messages, while switching back stays fast
+  // (its cached DMs survive). Logout still fully clears (keepSnapshot defaults off).
+  clearDirectMessages({ actorPubkey = null, emit = true, keepSnapshot = false } = {}) {
     this.dmMessages = [];
     this.dmMessageIndex = new Map();
     this.dmHydratedFromSnapshot = false;
@@ -805,7 +809,7 @@ export class NostrService {
         ? actorPubkey
         : this.dmActorPubkey || this.resolveActiveDmActor(),
     );
-    if (activeActor) {
+    if (activeActor && !keepSnapshot) {
       clearDirectMessageSnapshot(activeActor).catch((error) => {
         userLogger.warn("[nostrService] Failed to clear DM snapshot", error);
       });
