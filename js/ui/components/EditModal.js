@@ -101,6 +101,11 @@ export class EditModal {
     this.nip71SectionKey = "edit";
     this.originalNip71Metadata = null;
     this.originalNip71MetadataJson = null;
+    // Full stored NIP-71 metadata for the active video. The form now edits only
+    // hashtags (the rest of the NIP-71 section was removed for a cleaner UI), so
+    // legacy extras (imeta, text tracks, participants, …) must be merged back in
+    // on save rather than replaced by the reduced form's empty output.
+    this.storedNip71Metadata = null;
   }
 
   addEventListener(type, listener, options) {
@@ -385,6 +390,7 @@ export class EditModal {
       this.nip71FormManager.resetSection(this.nip71SectionKey);
       this.originalNip71Metadata = null;
       this.originalNip71MetadataJson = null;
+      this.storedNip71Metadata = null;
       this.setSubmitState({ pending: false });
       return;
     }
@@ -430,6 +436,7 @@ export class EditModal {
     this.nip71FormManager.resetSection(this.nip71SectionKey);
     this.originalNip71Metadata = null;
     this.originalNip71MetadataJson = null;
+    this.storedNip71Metadata = null;
     this.activeVideo = null;
     this.setSubmitState({ pending: false });
   }
@@ -511,7 +518,19 @@ export class EditModal {
 
     const initialNip71 = this.nip71FormManager.collectSection(this.nip71SectionKey);
     this.originalNip71Metadata = this.cloneNip71Metadata(initialNip71);
+    // Apply the SAME normalization submit applies to its collected copy, so the
+    // nip71Edited JSON comparison is between identically-shaped objects. Without
+    // this, submit's publishedAt string→timestamp / delete-empty step made every
+    // save look "edited" even when nothing changed.
+    this.normalizeCollectedNip71(this.originalNip71Metadata);
     this.originalNip71MetadataJson = JSON.stringify(this.originalNip71Metadata);
+    // Keep the video's FULL stored NIP-71 metadata (pre-form): the reduced form
+    // only round-trips hashtags, and submit merges them into this so legacy
+    // extras survive a save.
+    this.storedNip71Metadata =
+      video.nip71 && typeof video.nip71 === "object"
+        ? this.cloneNip71Metadata(video.nip71)
+        : null;
     this.activeVideo = editContext;
 
     if (this.root) {
@@ -888,6 +907,28 @@ export class EditModal {
     }
   }
 
+  // Normalize a collectSection() result in place: convert the datetime-local
+  // publishedAt string back to unix seconds and drop it when empty/invalid.
+  // Applied to BOTH the open-time original and the submit-time copy so the
+  // nip71Edited comparison sees identically-shaped objects.
+  normalizeCollectedNip71(metadata) {
+    if (!metadata || typeof metadata.publishedAt !== "string") {
+      return metadata;
+    }
+    const dateStr = metadata.publishedAt;
+    if (dateStr) {
+      const dt = new Date(dateStr);
+      if (!isNaN(dt.getTime())) {
+        metadata.publishedAt = Math.floor(dt.getTime() / 1000);
+      } else {
+        delete metadata.publishedAt;
+      }
+    } else {
+      delete metadata.publishedAt;
+    }
+    return metadata;
+  }
+
   async submit() {
     if (this.pendingSubmit) {
       return;
@@ -996,21 +1037,7 @@ export class EditModal {
 
     const rawNip71 = this.nip71FormManager.collectSection(this.nip71SectionKey);
     const currentNip71 = this.cloneNip71Metadata(rawNip71);
-
-    // Convert publishedAt back to Unix timestamp (seconds)
-    if (currentNip71 && typeof currentNip71.publishedAt === "string") {
-      const dateStr = currentNip71.publishedAt;
-      if (dateStr) {
-        const dt = new Date(dateStr);
-        if (!isNaN(dt.getTime())) {
-          currentNip71.publishedAt = Math.floor(dt.getTime() / 1000);
-        } else {
-          delete currentNip71.publishedAt;
-        }
-      } else {
-        delete currentNip71.publishedAt;
-      }
-    }
+    this.normalizeCollectedNip71(currentNip71);
     const hasImetaSource = Array.isArray(currentNip71?.imeta)
       ? currentNip71.imeta.some((variant) => {
           if (!variant || typeof variant !== "object") {
@@ -1170,7 +1197,25 @@ export class EditModal {
 
     const currentNip71Json = JSON.stringify(currentNip71);
     const nip71Edited = currentNip71Json !== this.originalNip71MetadataJson;
-    updatedData.nip71 = currentNip71;
+    // The form now edits ONLY hashtags. Merge them into the video's full stored
+    // NIP-71 metadata so legacy extras (imeta, text tracks, participants, …) are
+    // preserved on save instead of being replaced by the reduced form's empty
+    // fields. (Both sides of the nip71Edited comparison round-trip through the
+    // same reduced form, so it still fires exactly on hashtag changes.)
+    let finalNip71 = currentNip71;
+    if (this.storedNip71Metadata && typeof this.storedNip71Metadata === "object") {
+      const preserved = this.cloneNip71Metadata(this.storedNip71Metadata) || {};
+      const editedHashtags = Array.isArray(currentNip71?.hashtags)
+        ? currentNip71.hashtags
+        : [];
+      preserved.hashtags = editedHashtags;
+      if (Array.isArray(preserved.t)) {
+        // Some stored payloads mirror hashtags under `t`; keep them in sync.
+        preserved.t = editedHashtags;
+      }
+      finalNip71 = preserved;
+    }
+    updatedData.nip71 = finalNip71;
     updatedData.nip71Edited = nip71Edited;
 
     const originalEvent = {

@@ -1759,3 +1759,32 @@ passphrase-encrypted). Items 51, 56, 57 are all facets of that.
       (b) like/dislike a video, (c) block/unblock a creator, (d) subscribe to a channel,
       (e) send a DM — each should show ONE passphrase prompt (not a blanket error), then
       work; the single unlock should cover the rest until the next reload.
+
+### 58. Remove NIP-71 authoring UI from upload/edit modals (clean UI)
+- [x] **DONE 2026-07-02.** Decision (maintainer): bitvid authors kind-30078 and
+      MIRRORS to NIP-71 — it does not author NIP-71 directly — so the NIP-71 form
+      sections were confusing dead weight. Verified before removing: the My Videos
+      mirror (`buildNip71MirrorEvent`) derives EVERYTHING from the bitvid note
+      (title/url/magnet/thumbnail/description, duration+dims auto-captured at upload,
+      contentWarning from the NSFW toggle, hashtags), and the only consumer of the
+      form's NIP-71 metadata (`publishNip71Video`) is gated behind
+      `FEATURE_PUBLISH_NIP71: false`.
+      Removed: upload modal's "NIP-71 Technical" (content warning / duration /
+      summary+Customize) + IMETA variant editor; edit modal's kind selector,
+      published_at, alt, duration, content warning, summary, IMETA, text tracks,
+      segments, participants, references. KEPT: hashtags in both modals (they feed
+      hashtag feeds, the suggestion chips, and the mirror's `t` tags) and the web
+      seeds / torrent (xs) inputs (bitvid-note fields, not NIP-71).
+      Compatibility: existing videos' NIP-71 extras are PRESERVED on save — EditModal
+      keeps the full stored metadata (`storedNip71Metadata`) and merges the edited
+      hashtags into it instead of replacing it with the reduced form's empty output.
+      Also fixed a latent bug this exposed: `nip71Edited` compared a normalized
+      submit-side copy against an unnormalized original (publishedAt string vs
+      timestamp), so every save looked "edited"; both sides now share
+      `normalizeCollectedNip71`. Tests: +2 in `tests/edit-modal-submit-state.test.mjs`
+      (extras survive a hashtag edit; untouched save → nip71Edited false).
+- [ ] **Post-launch cleanup (Option B, optional):** delete the dormant
+      `FEATURE_PUBLISH_NIP71` auto-publish path, the unused `Nip71FormManager`
+      sections (imeta/text-track/segment/p/r + scalar inputs), and the nip71
+      plumbing through `videoNotePayload` that only the removed forms fed.
+      RevertModal keeps its READ-ONLY use of the manager (version-history display).
