@@ -13,6 +13,10 @@ import { escapeHTML } from "./utils/domUtils.js";
 import { formatShortNpub } from "./utils/formatters.js";
 import createPopover from "./ui/overlay/popoverEngine.js";
 import { VideoCard } from "./ui/components/VideoCard.js";
+import {
+  subscribeChannelCardViewCount,
+  clearChannelCardViewCounts,
+} from "./channelViewCounts.js";
 import { createChannelProfileMenuPanel } from "./ui/components/videoMenuRenderers.js";
 import { ALLOW_NSFW_CONTENT } from "./config.js";
 import { sanitizeProfileMediaUrl } from "./utils/profileMedia.js";
@@ -179,6 +183,7 @@ function updateChannelBannerBackground(el, url) {
 
 export function clearChannelVideoCardRegistry() {
   channelVideoCardsById.clear();
+  clearChannelCardViewCounts();
 }
 
 let currentChannelHex = null;
@@ -5029,6 +5034,9 @@ export async function renderChannelVideosFromList({
     const cardEl = videoCard.getRoot();
     if (cardEl) {
       fragment.appendChild(cardEl);
+      // Subscribe the card to the shared view counter (the feed does this; the
+      // channel grid didn't, so its view counts rendered blank).
+      subscribeChannelCardViewCount(cardEl, pointerInfo);
     }
   }
 
