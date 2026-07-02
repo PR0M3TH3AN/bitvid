@@ -233,6 +233,46 @@ test("activate wipes other caches but preserves the CURRENT image cache", async 
   );
 });
 
+test("the network fetch starts immediately — never serialized behind cache I/O", async () => {
+  // Regression: the first version awaited caches.open + cache.match BEFORE
+  // starting the download, so a cold thumbnail burst loaded visibly slower than
+  // with no SW at all ("Recently Added fetching slowly").
+  let fetchStarted = false;
+  let releaseMatch;
+  const matchGate = new Promise((resolve) => {
+    releaseMatch = resolve;
+  });
+
+  const { listeners, sandbox } = loadSw({
+    fetchImpl: async () => {
+      fetchStarted = true;
+      return makeResponse("net-1");
+    },
+  });
+  // Make cache.match hang until released — the download must not wait for it.
+  const realOpen = sandbox.caches.open.bind(sandbox.caches);
+  sandbox.caches.open = async (name) => {
+    const cache = await realOpen(name);
+    return {
+      ...cache,
+      async match(request) {
+        await matchGate;
+        return cache.match(request);
+      },
+    };
+  };
+
+  const event = makeFetchEvent(IMG);
+  listeners.get("fetch")(event);
+  await Promise.resolve(); // let the handler take its first steps
+  assert.equal(fetchStarted, true, "download began while cache.match was still pending");
+
+  releaseMatch();
+  const response = await event.response;
+  assert.equal(response.body, "net-1");
+  await Promise.all(event.pending);
+});
+
 test("opaque (cross-origin no-cors) responses are cached; failed basic responses are not", async () => {
   let mode = "opaque";
   const { listeners, cacheStorage } = loadSw({
