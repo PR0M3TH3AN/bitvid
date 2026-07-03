@@ -28,6 +28,7 @@ export function buildBitvidTourSteps({ openProfilePane } = {}) {
     {
       id: "feeds",
       target: "#sidebar",
+      placement: "right", // full-height column — popover beside it, not below
       title: "Your feeds",
       body:
         "Recent shows the newest videos across the network. For You learns from what you watch, and Trending ranks by views. Switch any time from this sidebar.",

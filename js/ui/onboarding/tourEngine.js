@@ -72,6 +72,62 @@ const TOUR_CSS = `
 .bv-tour-buttons .bv-tour-skip { margin-right: auto; }
 `;
 
+// Pure popover-placement decision (exported for tests). Given the target rect
+// and viewport, pick below → above → beside → centered, whichever actually fits,
+// and NEVER return a position outside the viewport. The original below/above-only
+// logic pushed the popover off-screen for full-height targets like the sidebar
+// (the "stuck with a glow and nothing to do" bug).
+export function computeTourPlacement({
+  rect,
+  viewportWidth,
+  viewportHeight,
+  preferred = "",
+  popWidth = 336,
+  popHeight = 240,
+  pad = 12,
+} = {}) {
+  const clampX = (x) =>
+    Math.min(Math.max(x, popWidth / 2 + pad), viewportWidth - popWidth / 2 - pad);
+  const centerX = clampX(rect.left + rect.width / 2);
+
+  const fits = {
+    bottom: viewportHeight - rect.bottom >= popHeight + pad,
+    top: rect.top >= popHeight + pad,
+    right: viewportWidth - rect.right >= popWidth + pad * 2,
+    left: rect.left >= popWidth + pad * 2,
+  };
+
+  const order = preferred && fits[preferred]
+    ? [preferred]
+    : ["bottom", "top", "right", "left"].filter((side) => fits[side]);
+  const side = order[0] || "center";
+
+  const midY = Math.min(
+    Math.max(rect.top + rect.height / 2, popHeight / 2 + pad),
+    viewportHeight - popHeight / 2 - pad,
+  );
+
+  switch (side) {
+    case "bottom":
+      return { placement: "bottom", px: centerX, py: rect.bottom + pad, tx: "-50%", ty: "0%" };
+    case "top":
+      return { placement: "top", px: centerX, py: rect.top - pad, tx: "-50%", ty: "-100%" };
+    case "right":
+      return { placement: "right", px: rect.right + pad, py: midY, tx: "0%", ty: "-50%" };
+    case "left":
+      return { placement: "left", px: rect.left - pad, py: midY, tx: "-100%", ty: "-50%" };
+    default:
+      // Nothing fits (huge target): center over the dim — always visible.
+      return {
+        placement: "center",
+        px: viewportWidth / 2,
+        py: viewportHeight / 2,
+        tx: "-50%",
+        ty: "-50%",
+      };
+  }
+}
+
 function ensureStyles(doc) {
   if (doc.getElementById(STYLE_ID)) {
     return;
@@ -144,25 +200,16 @@ export function createTour({
     setVar(state.scrim, "--bv-tour-w", `${rect.width + pad * 2}px`);
     setVar(state.scrim, "--bv-tour-h", `${rect.height + pad * 2}px`);
 
-    // Popover: below the target unless there is more room above.
-    const viewportH = doc.defaultView?.innerHeight || 800;
-    const below = rect.bottom + pad * 2;
-    const placeAbove =
-      step.placement === "top" ||
-      (step.placement !== "bottom" && below > viewportH - 220 && rect.top > 240);
-    const centerX = Math.min(
-      Math.max(rect.left + rect.width / 2, 180),
-      (doc.defaultView?.innerWidth || 1200) - 180,
-    );
-    setVar(state.popover, "--bv-tour-px", `${centerX}px`);
-    setVar(state.popover, "--bv-tour-tx", "-50%");
-    if (placeAbove) {
-      setVar(state.popover, "--bv-tour-py", `${rect.top - pad * 2}px`);
-      setVar(state.popover, "--bv-tour-ty", "-100%");
-    } else {
-      setVar(state.popover, "--bv-tour-py", `${below + pad}px`);
-      setVar(state.popover, "--bv-tour-ty", "0%");
-    }
+    const placementResult = computeTourPlacement({
+      rect,
+      viewportWidth: doc.defaultView?.innerWidth || 1200,
+      viewportHeight: doc.defaultView?.innerHeight || 800,
+      preferred: step.placement || "",
+    });
+    setVar(state.popover, "--bv-tour-px", `${placementResult.px}px`);
+    setVar(state.popover, "--bv-tour-py", `${placementResult.py}px`);
+    setVar(state.popover, "--bv-tour-tx", placementResult.tx);
+    setVar(state.popover, "--bv-tour-ty", placementResult.ty);
   }
 
   function renderStep() {

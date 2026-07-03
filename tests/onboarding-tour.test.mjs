@@ -165,3 +165,68 @@ test("final-card action buttons deep-link and complete the tour", () => {
   assert.equal(doc.querySelector(".bv-tour-root"), null, "tour closed");
   assert.equal(shouldOfferOnboarding(PUB), false, "completion recorded");
 });
+
+// Regression (the "stuck at the sidebar" bug): the popover placement must NEVER
+// land outside the viewport. A full-height target (sidebar) used to push the
+// popover below the fold, leaving the user with a glowing sidebar and no card.
+//
+// test_integrity_note:
+//   change_type: ["new_tests"]
+//   scenarios:
+//     - id: SCN-tour-placement
+//       given: "target rects of various shapes vs a viewport"
+//       when: "computeTourPlacement decides where the popover goes"
+//       then: "it picks a side that fits and always stays inside the viewport"
+//   observable_outcomes:
+//     - "full-height left column -> 'right' placement, y within viewport"
+//     - "normal button with room below -> 'bottom'"
+//     - "target near the bottom edge with room above -> 'top'"
+//     - "viewport-filling target -> 'center' fallback (always visible)"
+//   determinism_controls:
+//     - "pure function, explicit rect/viewport inputs"
+//   anti_cheat_rationale:
+//     prevents: ["asserting the off-screen (broken) coordinates"]
+//   relaxation:
+//     did_relax_any_assertion: false
+
+test("placement: full-height sidebar goes BESIDE, never off-screen", async () => {
+  const { computeTourPlacement } = await import("../js/ui/onboarding/tourEngine.js");
+  const viewport = { viewportWidth: 1280, viewportHeight: 800 };
+
+  const sidebar = computeTourPlacement({
+    rect: { left: 0, top: 64, right: 240, bottom: 800, width: 240, height: 736 },
+    ...viewport,
+  });
+  assert.equal(sidebar.placement, "right");
+  assert.ok(sidebar.py > 0 && sidebar.py < 800, "y inside the viewport");
+  assert.ok(sidebar.px > 240 && sidebar.px < 1280, "x beside the sidebar");
+
+  const button = computeTourPlacement({
+    rect: { left: 600, top: 100, right: 700, bottom: 140, width: 100, height: 40 },
+    ...viewport,
+  });
+  assert.equal(button.placement, "bottom");
+
+  const nearBottom = computeTourPlacement({
+    rect: { left: 600, top: 700, right: 700, bottom: 780, width: 100, height: 80 },
+    ...viewport,
+  });
+  assert.equal(nearBottom.placement, "top");
+
+  const fullScreen = computeTourPlacement({
+    rect: { left: 0, top: 0, right: 1280, bottom: 800, width: 1280, height: 800 },
+    ...viewport,
+  });
+  assert.equal(fullScreen.placement, "center");
+  assert.equal(fullScreen.px, 640);
+  assert.equal(fullScreen.py, 400);
+
+  // A preferred placement that doesn't fit falls back to one that does.
+  const badPreference = computeTourPlacement({
+    rect: { left: 0, top: 64, right: 240, bottom: 800, width: 240, height: 736 },
+    preferred: "bottom",
+    ...viewport,
+  });
+  assert.notEqual(badPreference.placement, "bottom");
+  assert.ok(badPreference.py <= 800 - 12, "never below the fold");
+});
