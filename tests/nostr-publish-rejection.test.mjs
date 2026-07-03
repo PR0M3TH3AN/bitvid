@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 // Force dev mode BEFORE any config-importing module loads: the dev-mode default
 // assertions below depend on it, and outside a dev env isDevMode falls back to
-// false (the quarantine cause — see todo #11b/#50).
+// false (the quarantine cause — see todo 11b / todo 50).
 globalThis.__BITVID_DEV_MODE_OVERRIDE__ = true;
 
 if (typeof globalThis.window === "undefined") {
@@ -426,7 +426,7 @@ try {
         publishedEvents.some((entry) => entry.options?.context === "video note"),
         "publishVideo should sign the primary video note",
       );
-      // spec_correction (quarantine triage, todo #11b): this test asserted
+      // spec_correction (quarantine triage, todo 11b): this test asserted
       // publishVideo invokes publishNip71Video whenever nip71 metadata is
       // present. That is stale spec on two counts: (1) legacy 21/22 auto-publish
       // is deliberately gated OFF by FEATURE_PUBLISH_NIP71 (the opt-in NIP-71
