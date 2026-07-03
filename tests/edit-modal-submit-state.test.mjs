@@ -310,3 +310,120 @@ test('does not show missing video error after modal closes', async () => {
     'should not surface missing video error when closed',
   );
 });
+
+// NIP-71 extras must survive a save now that the edit form only exposes hashtags
+// (the rest of the NIP-71 section was removed for a cleaner UI). A hashtag edit
+// must merge into the video's stored metadata — never replace it with the reduced
+// form's empty fields.
+//
+// test_integrity_note:
+//   change_type: ["new_tests"]
+//   scenarios:
+//     - id: SCN-edit-nip71-preserved
+//       given: "a video whose stored nip71 carries imeta/textTracks/participants"
+//       when: "the user edits hashtags in the reduced form and submits"
+//       then: "updatedData.nip71 keeps the extras AND the new hashtags; nip71Edited reflects the hashtag change"
+//   observable_outcomes:
+//     - "imeta/textTracks/participants/publishedAt survive the save"
+//     - "hashtags (and a mirrored t key) update to the edited set"
+//     - "no hashtag change -> nip71Edited stays false"
+//   determinism_controls:
+//     - "JSDOM modal against the real component HTML; no network"
+//   anti_cheat_rationale:
+//     prevents: ["asserting the wiping (broken) behavior", "over-mocking internal logic"]
+//   relaxation:
+//     did_relax_any_assertion: false
+
+test('editing hashtags preserves stored NIP-71 extras instead of wiping them', async () => {
+  const modal = createModal({ eventTarget: new EventTarget() });
+  await modal.load({ container });
+
+  const storedNip71 = {
+    publishedAt: 1700000000,
+    imeta: [{ url: 'https://cdn.example.com/v.mp4', m: 'video/mp4' }],
+    textTracks: [{ url: 'https://cdn.example.com/v.vtt', type: 'captions' }],
+    participants: [{ pubkey: 'a'.repeat(64) }],
+    hashtags: ['old'],
+    t: ['old'],
+  };
+
+  const video = {
+    id: 'video-nip71',
+    pubkey: 'pubkey1',
+    title: 'Sample video',
+    url: 'https://example.com/video.mp4',
+    thumbnail: '',
+    description: '',
+    enableComments: true,
+    isPrivate: false,
+    isNsfw: false,
+    isForKids: false,
+    nip71: storedNip71,
+  };
+
+  await modal.open(video);
+
+  // Edit hashtags through the reduced form (same path as the UI's Add hashtag).
+  const entry = modal.nip71FormManager.addRepeaterEntry('edit', 't');
+  modal.nip71FormManager.setFieldValue(entry, 'value', 'newtag');
+
+  const submissions = [];
+  modal.addEventListener('video:edit-submit', (event) => {
+    submissions.push(event.detail);
+  });
+
+  await modal.submit();
+
+  assert.equal(submissions.length, 1, 'submit emitted');
+  const savedNip71 = submissions[0].updatedData.nip71;
+  assert.equal(submissions[0].updatedData.nip71Edited, true, 'hashtag change detected');
+
+  assert.deepEqual(savedNip71.imeta, storedNip71.imeta, 'imeta preserved');
+  assert.deepEqual(savedNip71.textTracks, storedNip71.textTracks, 'text tracks preserved');
+  assert.deepEqual(savedNip71.participants, storedNip71.participants, 'participants preserved');
+  assert.equal(savedNip71.publishedAt, storedNip71.publishedAt, 'publishedAt preserved');
+  assert.deepEqual(savedNip71.hashtags, ['old', 'newtag'], 'edited hashtags applied');
+  assert.deepEqual(savedNip71.t, ['old', 'newtag'], 'mirrored t key kept in sync');
+});
+
+test('submitting without touching hashtags leaves nip71Edited false and extras intact', async () => {
+  const modal = createModal({ eventTarget: new EventTarget() });
+  await modal.load({ container });
+
+  const storedNip71 = {
+    imeta: [{ url: 'https://cdn.example.com/v.mp4', m: 'video/mp4' }],
+    hashtags: ['keepme'],
+  };
+
+  const video = {
+    id: 'video-nip71-b',
+    pubkey: 'pubkey1',
+    title: 'Sample video',
+    url: 'https://example.com/video.mp4',
+    thumbnail: '',
+    description: '',
+    enableComments: true,
+    isPrivate: false,
+    isNsfw: false,
+    isForKids: false,
+    nip71: storedNip71,
+  };
+
+  await modal.open(video);
+
+  const submissions = [];
+  modal.addEventListener('video:edit-submit', (event) => {
+    submissions.push(event.detail);
+  });
+
+  await modal.submit();
+
+  assert.equal(submissions.length, 1);
+  assert.equal(submissions[0].updatedData.nip71Edited, false, 'no hashtag change');
+  assert.deepEqual(
+    submissions[0].updatedData.nip71.imeta,
+    storedNip71.imeta,
+    'extras intact on an untouched save',
+  );
+  assert.deepEqual(submissions[0].updatedData.nip71.hashtags, ['keepme']);
+});

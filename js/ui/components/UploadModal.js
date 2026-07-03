@@ -1259,11 +1259,68 @@ export class UploadModal {
           throw new Error("Please provide at least a Video URL or Magnet Link.");
       }
 
-      if (!hasUrl && !hasImeta && hasMagnet) {
+      // Auto-derive a webseed torrent from the external URL so the link keeps the
+      // P2P benefit (fetch + hash the remote file → magnet with ws=url). Best-effort
+      // and size-capped: on CORS / too-large / any error it silently degrades to
+      // URL-only. Only runs when the user didn't already paste their own magnet.
+      if (hasUrl && !hasMagnet) {
+          const derived = await this.deriveExternalWebseed(metadata.url);
+          if (derived?.magnet) {
+              metadata.magnet = derived.magnet;
+              metadata.infoHash = derived.infoHash || metadata.infoHash || "";
+              metadata.ws = [metadata.url, this.inputs.ws?.value || ""];
+              if (derived.torrentUrl) metadata.xs = derived.torrentUrl;
+          }
+      }
+
+      if (!hasUrl && !hasImeta && metadata.magnet.length > 0) {
          if (!(await showConfirm("Magnet-only uploads require active seeding. Proceed?"))) return;
       }
 
       await this.publish(metadata);
+  }
+
+  // Best-effort webseed derivation for an external URL (TODO: external-URL P2P).
+  // Hosts the tiny .torrent (xs=) only when storage is actually unlocked; otherwise
+  // returns a ws=-only magnet. Never throws — returns null so the caller publishes
+  // URL-only.
+  async deriveExternalWebseed(url) {
+      if (typeof this.mediaUploader?.deriveTorrentForExternalUrl !== "function") {
+          return null;
+      }
+      const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
+      const canHostTorrent = Boolean(
+          this.activeProvider &&
+          this.activeCredentials &&
+          pubkey &&
+          this.storageService?.isUnlocked?.(pubkey),
+      );
+      const previousLabel = this.submitButton?.textContent;
+      if (this.submitButton) {
+          this.submitButton.disabled = true;
+          this.submitButton.textContent = "Computing torrent hash…";
+      }
+      try {
+          return await this.mediaUploader.deriveTorrentForExternalUrl(url, {
+              provider: canHostTorrent ? this.activeProvider : undefined,
+              credentials: canHostTorrent ? this.activeCredentials : undefined,
+              onProgress: ({ label }) => {
+                  if (this.submitStatus && label) this.submitStatus.textContent = label;
+              },
+          });
+      } catch (error) {
+          userLogger.warn(
+              "[UploadModal] External URL webseed derivation skipped:",
+              error?.message || error,
+          );
+          return null;
+      } finally {
+          if (this.submitButton) {
+              this.submitButton.disabled = false;
+              if (previousLabel) this.submitButton.textContent = previousLabel;
+          }
+          if (this.submitStatus) this.submitStatus.textContent = "";
+      }
   }
 
   async publish(metadata) {

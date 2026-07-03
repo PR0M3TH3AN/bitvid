@@ -330,52 +330,11 @@
 
                 <div id="section-advanced" class="hidden mt-4 space-y-6 pl-2 border-l-2 border-border/30">
 
-                     <!-- NIP-71 Technical -->
-                     <div class="grid gap-4 md:grid-cols-2">
-                        <div class="space-y-2">
-                            <label class="block text-xs font-medium text-muted-strong">Content Warning</label>
-                            <input id="input-content-warning" type="text" data-nip71-input="content-warning" class="input text-sm" placeholder="e.g. Nudity" />
-                        </div>
-                        <div class="space-y-2">
-                            <label class="block text-xs font-medium text-muted-strong">Duration (sec)</label>
-                            <input id="input-duration" type="number" step="1" data-nip71-input="duration" class="input text-sm" />
-                        </div>
-                     </div>
-
-                     <div class="space-y-2">
-                        <div class="flex items-center justify-between">
-                             <label class="block text-xs font-medium text-muted-strong">Summary (NIP-71 Content)</label>
-                             <label class="flex items-center gap-2 text-xs text-muted cursor-pointer">
-                                <input type="checkbox" id="check-summary-unlock" class="checkbox h-3 w-3" />
-                                Customize
-                             </label>
-                        </div>
-                        <textarea id="input-summary" rows="2" data-nip71-input="summary" class="textarea text-sm text-muted" readonly></textarea>
-                     </div>
-
-                     <!-- IMETA Editor -->
-                     <div class="space-y-3" data-nip71-repeater="imeta">
-                         <div class="flex items-center justify-between">
-                            <h4 class="text-sm font-semibold text-text">Video Variants (IMETA)</h4>
-                            <button type="button" class="btn-ghost px-2 py-1 text-xs" data-nip71-add="imeta">Add Variant</button>
-                         </div>
-                         <div id="imeta-list" class="space-y-4" data-nip71-list="imeta"></div>
-
-                         <!-- IMETA Template -->
-                         <template data-nip71-template="imeta">
-                             <article class="rounded-md border border-border/70 bg-surface/50 p-3 space-y-3" data-nip71-entry="imeta">
-                                 <div class="grid gap-2 md:grid-cols-2 text-xs">
-                                     <input type="text" data-nip71-field="m" placeholder="MIME (video/mp4)" class="input" />
-                                     <input type="text" data-nip71-field="dim" placeholder="Dimensions (1920x1080)" class="input" />
-                                     <input type="url" data-nip71-field="url" placeholder="URL" class="input md:col-span-2" />
-                                     <input type="text" data-nip71-field="x" placeholder="Magnet" class="input md:col-span-2" />
-                                 </div>
-                                 <div class="flex justify-end">
-                                     <button type="button" class="text-xs text-critical hover:underline" data-nip71-remove="imeta">Remove Variant</button>
-                                 </div>
-                             </article>
-                         </template>
-                     </div>
+                     <!-- The old "NIP-71 Technical" inputs (content warning, duration,
+                          summary, IMETA variants) were removed for a cleaner UI: they fed
+                          the disabled FEATURE_PUBLISH_NIP71 path, and everything the NIP-71
+                          mirror needs (duration/dimensions, content warning from the NSFW
+                          toggle, the primary imeta) is derived automatically. -->
 
                      <!-- Additional Technical Sections (Web Seeds, etc) -->
                      <div class="grid gap-3 md:grid-cols-2">

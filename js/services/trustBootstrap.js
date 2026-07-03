@@ -68,6 +68,17 @@ async function waitForAccessControl({ timeoutMs = TRUST_SEED_READY_TIMEOUT_MS } 
     return { ok: true, timedOut: false };
   }
 
+  // Cached admin lists (hydrated synchronously from localStorage at
+  // construction) are enough to seed trust — don't stall boot behind the relay
+  // refresh. If the refresh later changes editors/whitelist/blacklist, the
+  // change listeners registered in bootstrapTrustedSeeds re-apply the seeds.
+  if (
+    typeof accessControl.isHydrated === "function" &&
+    accessControl.isHydrated()
+  ) {
+    return { ok: true, timedOut: false, fromCache: true };
+  }
+
   let timedOut = false;
   const timeoutPromise = new Promise((_, reject) => {
     setTimeout(() => {

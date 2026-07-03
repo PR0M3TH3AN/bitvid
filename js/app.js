@@ -861,9 +861,33 @@ class Application {
   _initServiceWorker() {
     // Force update of any registered service workers to ensure latest code is used.
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.getRegistrations().then((registrations) => {
-        registrations.forEach((registration) => registration.update());
-      });
+      navigator.serviceWorker
+        .getRegistrations()
+        .then((registrations) => {
+          if (registrations.length) {
+            registrations.forEach((registration) => registration.update());
+            return;
+          }
+          // No registration yet (user never played a torrent): register the SW
+          // at boot so its cross-origin image cache (thumbnails/avatars) works
+          // for everyone. Same path/scope/options as js/webtorrent.js's
+          // setupServiceWorker, so its later register() resolves to this same
+          // registration — playback behavior is unchanged. Best-effort only.
+          return navigator.serviceWorker
+            .register("/sw.min.js", { scope: "/", updateViaCache: "none" })
+            .catch((error) => {
+              devLogger.warn(
+                "[Application] Boot service-worker registration skipped:",
+                error,
+              );
+            });
+        })
+        .catch((error) => {
+          devLogger.warn(
+            "[Application] Service-worker init failed:",
+            error,
+          );
+        });
     }
   }
 
@@ -959,8 +983,6 @@ class Application {
   }
 
   async _initAccessControl() {
-    const promises = [];
-
     const aclRefreshPromise = accessControl
       .refresh()
       .then(() => {
@@ -981,6 +1003,36 @@ class Application {
         );
       });
 
+    // Admin-pane state is UI, not a boot dependency — never block boot on it.
+    const refreshAdminPane = () => {
+      if (!this.profileController) {
+        return;
+      }
+      Promise.resolve()
+        .then(() => this.profileController.refreshAdminPaneState())
+        .catch((error) => {
+          devLogger.warn(
+            "Failed to update admin pane after connecting to Nostr:",
+            error,
+          );
+        });
+    };
+    refreshAdminPane();
+
+    // Stale-while-revalidate boot: when the admin lists hydrated from the
+    // localStorage cache (every visit after the first), canAccess() is already
+    // accurate, so DON'T serialize boot behind the relay refresh — it continues
+    // in the background and the whitelist/blacklist change listeners re-filter
+    // the grids + re-apply trusted seeds when it lands. This was the
+    // "Fetching moderation filters…" cold-start stall (up to 15s before the
+    // feed could even start).
+    if (accessControl.isHydrated?.()) {
+      void aclRefreshPromise.then(refreshAdminPane);
+      return;
+    }
+
+    // First-ever visit (no cached lists): wait, so a whitelist-mode instance
+    // never renders an unfiltered/empty feed.
     // Safeguard: Do not block app initialization indefinitely if relays are slow/unresponsive.
     // 15s gives plenty of time for a healthy connection but prevents E2E test timeouts (60s).
     const timeoutPromise = new Promise((resolve) => {
@@ -990,22 +1042,8 @@ class Application {
       }, 15000);
     });
 
-    promises.push(Promise.race([aclRefreshPromise, timeoutPromise]));
-
-    if (this.profileController) {
-      promises.push(
-        Promise.resolve()
-          .then(() => this.profileController.refreshAdminPaneState())
-          .catch((error) => {
-            devLogger.warn(
-              "Failed to update admin pane after connecting to Nostr:",
-              error,
-            );
-          })
-      );
-    }
-
-    await Promise.all(promises);
+    await Promise.race([aclRefreshPromise, timeoutPromise]);
+    refreshAdminPane();
   }
 
   async _syncSessionActorBlacklist(trigger) {
@@ -1226,7 +1264,9 @@ class Application {
       // encrypted); safe no-op when nothing is cached or for NIP-07/46.
       try {
         if (typeof nostrClient.restoreUnlockedSigner === "function") {
-          await nostrClient.restoreUnlockedSigner(normalizedSaved);
+          await nostrClient.restoreUnlockedSigner(normalizedSaved, {
+            validator: this.buildAccessControlValidator(),
+          });
         }
       } catch (error) {
         devLogger.warn(
@@ -2148,7 +2188,9 @@ class Application {
       !isSignerCapable(resolveSignerCapabilities(getActiveSigner()), need)
     ) {
       try {
-        const restored = await nostrClient.restoreUnlockedSigner(normalized);
+        const restored = await nostrClient.restoreUnlockedSigner(normalized, {
+          validator: this.buildAccessControlValidator(),
+        });
         if (
           restored?.restored &&
           isSignerCapable(resolveSignerCapabilities(getActiveSigner()), need)
@@ -2220,6 +2262,22 @@ class Application {
       return { ok: false, reason: "still-incapable" };
     }
     return { ok: true, unlocked: true };
+  }
+
+  // Access-control gate passed into keep-unlocked signer restores so a
+  // since-blocked account's cached key is forgotten instead of restoring.
+  buildAccessControlValidator() {
+    return (pk) => {
+      if (
+        accessControl &&
+        typeof accessControl.canAccess === "function" &&
+        !accessControl.canAccess(pk)
+      ) {
+        const error = new Error("Access restricted for this account.");
+        error.code = "access-denied";
+        throw error;
+      }
+    };
   }
 
   // True when the active (or given) account currently has a cached "keep

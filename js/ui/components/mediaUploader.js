@@ -12,6 +12,11 @@ import {
   calculateTorrentInfoHash,
   createTorrentMetadata,
 } from "../../utils/torrentHash.js";
+import {
+  deriveExternalUrlTorrent,
+  buildWebseedMagnet,
+  DEFAULT_EXTERNAL_URL_HASH_MAX_BYTES,
+} from "../../utils/externalUrlTorrent.js";
 import { buildR2Key, buildPublicUrl } from "../../r2.js";
 import { buildS3ObjectUrl } from "../../services/s3Service.js";
 import { PROVIDERS } from "../../services/storageService.js";
@@ -305,6 +310,92 @@ export class MediaUploader {
       emit(1, "Upload complete (No torrent fallback).");
     }
 
+    return result;
+  }
+
+  /**
+   * Derive a WebTorrent webseed for an EXTERNALLY-hosted video URL so an external
+   * link keeps the P2P benefit. Best-effort: fetches the remote file (CORS-
+   * permitting), streams it under a size cap, computes the infoHash, and builds a
+   * magnet with the URL as the webseed (ws=). If storage credentials are available
+   * it also hosts the tiny .torrent so the webseed can bootstrap P2P (xs=);
+   * otherwise it returns a ws=-only magnet. Any failure throws (coded) so the
+   * caller degrades to URL-only.
+   *
+   * @returns {Promise<{ infoHash, magnet, torrentUrl, torrentFile, name, hasValidInfoHash }>}
+   */
+  async deriveTorrentForExternalUrl(
+    url,
+    { provider, credentials, onProgress, maxBytes = DEFAULT_EXTERNAL_URL_HASH_MAX_BYTES } = {},
+  ) {
+    const emit = (fraction, label) => {
+      if (typeof onProgress === "function") onProgress({ fraction, label });
+    };
+
+    emit(0, "Fetching the file to compute its hash…");
+    const derived = await deriveExternalUrlTorrent(url, {
+      maxBytes,
+      onProgress: ({ received, total }) => {
+        emit(total ? Math.min(1, received / total) : null, "Computing torrent hash…");
+      },
+    });
+
+    const result = {
+      infoHash: derived.infoHash,
+      magnet: derived.magnet,
+      torrentUrl: "",
+      torrentFile: derived.torrentFile,
+      name: derived.name,
+      hasValidInfoHash: Boolean(derived.infoHash),
+    };
+
+    // Host the tiny .torrent (metadata) so the webseed can actually bootstrap P2P.
+    // Requires storage; best-effort — a failure keeps the ws=-only magnet.
+    const effectiveProvider =
+      credentials?.provider || credentials?.meta?.provider || provider;
+    const npub = this.safeEncodeNpub(this.getCurrentPubkey());
+    if (credentials && effectiveProvider && derived.torrentFile && npub) {
+      try {
+        const service = this.serviceFor(effectiveProvider);
+        const { settings, bucketEntry } = await service.prepareUpload(npub, {
+          credentials,
+        });
+        const torrentKey = `${npub}/external/${derived.infoHash}.torrent`;
+        const torrentPublicUrl = this.publicUrlFor(
+          effectiveProvider,
+          bucketEntry.publicBaseUrl,
+          torrentKey,
+        );
+        emit(null, "Hosting torrent metadata…");
+        await service.uploadFile({
+          file: derived.torrentFile,
+          bucket: bucketEntry.bucket,
+          key: torrentKey,
+          accountId: settings.accountId,
+          endpoint: settings.endpoint,
+          provider: settings.provider || effectiveProvider || "cloudflare_r2",
+          region: settings.region,
+          accessKeyId: settings.accessKeyId,
+          secretAccessKey: settings.secretAccessKey,
+          forcePathStyle: settings.forcePathStyle,
+          createBucketIfMissing: true,
+        });
+        result.torrentUrl = torrentPublicUrl;
+        result.magnet = buildWebseedMagnet({
+          infoHash: derived.infoHash,
+          url,
+          name: derived.name,
+          torrentUrl: torrentPublicUrl,
+        });
+      } catch (torrentHostError) {
+        userLogger.warn(
+          "[mediaUploader] Could not host .torrent for external URL; publishing ws=-only:",
+          torrentHostError,
+        );
+      }
+    }
+
+    emit(1, "Ready to publish!");
     return result;
   }
 }
