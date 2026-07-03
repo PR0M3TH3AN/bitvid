@@ -116,3 +116,45 @@ test("sort: trending weights views by recency", () => {
   );
   assert.deepEqual(ranked, ["fresh-riser", "old-hit"]);
 });
+
+// Author values arrive as npubs but videos carry hex pubkeys — without decoding,
+// npub authors silently matched nothing (the "wired but wrong" filter).
+//
+// test_integrity_note:
+//   change_type: ["new_tests"]
+//   scenarios:
+//     - id: SCN-search-author-npub
+//       given: "author values as npub / hex / garbage"
+//       when: "normalizeAuthorValues runs (with an injected decoder)"
+//       then: "npubs decode to hex, hex passes through lowercased, garbage is dropped with errors"
+//   observable_outcomes:
+//     - "npub -> decoded hex; HEX passthrough lowercased; undecodable -> dropped"
+//     - "parser author: token emits decode errors for garbage"
+//   determinism_controls:
+//     - "injected decodeNpub stub (no window.NostrTools dependency)"
+//   anti_cheat_rationale:
+//     prevents: ["hard-coded return value"]
+//   relaxation:
+//     did_relax_any_assertion: false
+
+test("normalizeAuthorValues decodes npubs, passes hex, drops garbage", async () => {
+  const { normalizeAuthorValues } = await import("../js/search/searchFilters.js");
+  const HEX = "a".repeat(64);
+  const decodeNpub = (v) => (v === "npub1good" ? HEX : null);
+
+  const { normalized, dropped } = normalizeAuthorValues(
+    ["npub1good", "B".repeat(64), "npub1bad", "garbage"],
+    { decodeNpub },
+  );
+  assert.deepEqual(normalized, [HEX, "b".repeat(64)]);
+  assert.deepEqual(dropped, ["npub1bad", "garbage"]);
+});
+
+test("author: token with hex passes into filters; garbage surfaces as an error", () => {
+  const HEX = "c".repeat(64);
+  const good = parseFilterQuery(`author:${HEX}`);
+  assert.deepEqual(good.filters.authorPubkeys, [HEX]);
+  const bad = parseFilterQuery("author:not-a-key");
+  assert.equal(bad.filters.authorPubkeys.length, 0);
+  assert.ok(bad.errors.some((e) => /decode author/i.test(e.message)));
+});
