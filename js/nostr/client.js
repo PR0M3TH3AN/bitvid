@@ -2539,9 +2539,10 @@ export class NostrClient {
       try {
         opts.validator(adapter.pubkey);
       } catch (error) {
-        // Don't leave a since-blocked key persisted on this device.
+        // Don't leave the since-blocked key persisted on this device. Targeted:
+        // only THIS account's entry — the no-arg clear wiped every saved key.
         try {
-          clearStoredSessionActorEntry();
+          clearStoredSessionActorEntry(adapter.pubkey);
         } catch (cleanupError) {
           devLogger.warn(
             "[nostr] Failed to clear stored session after access denial:",
@@ -2738,8 +2739,11 @@ export class NostrClient {
   // Restore an nsec signer from the "keep unlocked" cache without a passphrase
   // (TODO #51). Reads the cached decrypted key for `targetPubkey`, verifies it
   // derives to that pubkey (defense-in-depth; a mismatch forgets the cache), and
-  // registers it app-wide. Returns { restored: boolean }.
-  async restoreUnlockedSigner(targetPubkey) {
+  // registers it app-wide. Pass a `validator` (access-control gate, like
+  // unlockStoredSessionActor's) where available — a since-blocked account's
+  // cached key is then forgotten instead of silently restoring its signer.
+  // Returns { restored: boolean }.
+  async restoreUnlockedSigner(targetPubkey, { validator } = {}) {
     const pubkey =
       typeof targetPubkey === "string" && HEX64_REGEX.test(targetPubkey.trim().toLowerCase())
         ? targetPubkey.trim().toLowerCase()
@@ -2769,6 +2773,17 @@ export class NostrClient {
       // Corrupt / mismatched cache — never adopt a different account's key.
       forgetUnlockedKey(pubkey);
       return { restored: false, reason: "pubkey-mismatch" };
+    }
+
+    // Access-control gate (mirrors unlockStoredSessionActor): a since-blocked
+    // account must not silently restore its signer — forget its cached key.
+    if (typeof validator === "function") {
+      try {
+        validator(pubkey);
+      } catch (error) {
+        forgetUnlockedKey(pubkey);
+        return { restored: false, reason: "access-denied", error };
+      }
     }
 
     try {
@@ -3062,6 +3077,28 @@ export class NostrClient {
 
   clearStoredSessionActor() {
     return this.signerManager.clearStoredSessionActor();
+  }
+
+  // Forget ONE removed account's stored credentials (remembered nsec key +
+  // NIP-46 remote-signer session) without touching the active session. Used by
+  // the profile switcher's remove-account flow so a removed profile doesn't
+  // leave its keys on the device.
+  forgetStoredAccount(pubkey) {
+    const normalized =
+      typeof pubkey === "string" ? pubkey.trim().toLowerCase() : "";
+    if (!normalized) {
+      return;
+    }
+    try {
+      this.signerManager.forgetStoredSessionActor(normalized);
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to forget stored nsec key:", error);
+    }
+    try {
+      clearStoredNip46Session(normalized);
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to forget stored NIP-46 session:", error);
+    }
   }
 
   /**

@@ -15,6 +15,10 @@ import { clearWatchHistoryDecryptedChunkCache } from "../nostr/watchHistoryDecry
 import { FEED_TYPES, FEATURE_TRENDING_FEED } from "../constants.js";
 import { showPasswordPrompt } from "../ui/promptDialog.js";
 import { evaluateStoredNsecSwitch } from "./storedNsecSwitch.js";
+import {
+  createListCacheProbe,
+  waitForListCaches,
+} from "./feedListCacheGate.js";
 
 /**
  * Kick a background watch-history refresh after login, once the feed-driving
@@ -200,6 +204,20 @@ export function createAuthSessionCoordinator(deps) {
 
       if (detail?.identityChanged) {
         this.resetViewLoggingState();
+
+        // Account switch: clear the PREVIOUS account's app-wide DM store + stop
+        // its subscription (logout does the same); resetting only the modal view
+        // left old messages on screen. keepSnapshot preserves each account's
+        // persisted DM cache so switching back stays fast.
+        try {
+          this.nostrService?.stopDirectMessageSubscription?.();
+          this.nostrService?.clearDirectMessages?.({ emit: true, keepSnapshot: true });
+        } catch (error) {
+          devLogger.warn(
+            "[Application] Failed to reset DMs on account switch:",
+            error,
+          );
+        }
       }
 
       this.resetPermissionPromptState();
@@ -650,11 +668,8 @@ export function createAuthSessionCoordinator(deps) {
           authLoadingState: this.authLoadingState,
         });
 
-        // Now that the NEW identity's lists (blocks/subscriptions/hashtags) have
-        // settled, backfill the profile modal if it is open — so switching
-        // accounts with the modal visible refreshes the pane the user is viewing
-        // with the freshly-loaded data instead of leaving the previous account's
-        // list on screen until a manual refresh. No-op when the modal is closed.
+        // The NEW identity's lists settled: backfill the open profile modal so a
+        // switch refreshes the visible pane (no-op when the modal is closed).
         if (
           this.profileController &&
           typeof this.profileController.refreshOpenPanesForActiveIdentity ===
@@ -775,11 +790,21 @@ export function createAuthSessionCoordinator(deps) {
       // lowered so settled results arrive faster. 8s prevents the feed from
       // being blocked while still giving most lists time to decrypt.
       const FEED_SYNC_TIMEOUT_MS = 8000;
+      // Cache-aware early release (rationale in feedListCacheGate.js): open the
+      // gate as soon as all three list caches are valid for this pubkey.
+      const listCacheReadyPromise = waitForListCaches(
+        createListCacheProbe({
+          userBlocks,
+          subscriptions,
+          hashtagPreferences: this.hashtagPreferences,
+          normalizeHexPubkey: (value) => this.normalizeHexPubkey(value),
+          activePubkey,
+        }),
+        { timeoutMs: FEED_SYNC_TIMEOUT_MS },
+      );
       const feedSyncPromise = Promise.race([
-        Promise.allSettled([
-          listStatePromise,
-          profileStatePromise,
-        ]),
+        Promise.allSettled([listStatePromise, profileStatePromise]),
+        listCacheReadyPromise,
         new Promise((resolve) => setTimeout(resolve, FEED_SYNC_TIMEOUT_MS)),
       ]).catch(() => null);
 
@@ -974,15 +999,14 @@ export function createAuthSessionCoordinator(deps) {
       clearWatchHistoryConversationKeyCache();
       clearWatchHistoryDecryptedChunkCache();
 
-      // Forget any cached "keep unlocked" key for the account being logged out, so
-      // logout actually re-locks it (TODO #51).
+      // Forget the cached "keep unlocked" key so logout re-locks (TODO #51).
+      // MUST read previousPubkey: authService.logout already nulled the active
+      // pubkey, so detail.pubkey/this.pubkey are empty here.
       try {
-        const loggedOutPubkey = detail?.pubkey || this.pubkey;
-        if (
-          loggedOutPubkey &&
-          typeof nostrClient.forgetUnlockedSigner === "function"
-        ) {
-          nostrClient.forgetUnlockedSigner(loggedOutPubkey);
+        const loggedOutPubkey =
+          detail?.previousPubkey || detail?.pubkey || this.pubkey;
+        if (loggedOutPubkey) {
+          nostrClient.forgetUnlockedSigner?.(loggedOutPubkey);
         }
       } catch (error) {
         devLogger.warn("Failed to forget cached unlock during logout:", error);
@@ -1687,14 +1711,14 @@ export function createAuthSessionCoordinator(deps) {
         }
       }
 
-      // Removing a saved profile must also forget its cached "keep unlocked" key.
+      // A removed profile must not leave keys on the device: forget its cached
+      // "keep unlocked" key + stored credentials (nsec key, NIP-46 session).
       try {
-        if (typeof nostrClient.forgetUnlockedSigner === "function") {
-          nostrClient.forgetUnlockedSigner(normalizedTarget);
-        }
+        nostrClient.forgetUnlockedSigner?.(normalizedTarget);
+        nostrClient.forgetStoredAccount?.(normalizedTarget);
       } catch (error) {
         devLogger.warn(
-          "[Application] Failed to forget cached unlock for removed profile:",
+          "[Application] Failed to forget credentials for removed profile:",
           error,
         );
       }
@@ -1822,11 +1846,9 @@ export function createAuthSessionCoordinator(deps) {
         return context;
       }
 
-      // Block lists are NIP-04 encrypted. A reloaded nsec session can lose its
-      // in-memory key; re-unlock it (one passphrase prompt) rather than failing
-      // with a blanket signer error (TODO #57). Only short-circuit on the
-      // user-driven outcomes — anything else falls through so the mutation's own
-      // signer error (e.g. an unresponsive NIP-07 extension) still surfaces.
+      // Block lists are NIP-04 encrypted: re-unlock a reloaded nsec signer via
+      // one passphrase prompt (TODO #57). Only user-driven outcomes short-circuit;
+      // everything else falls through to the mutation's own signer errors.
       if (typeof this.ensureEncryptionCapableSigner === "function") {
         const ensured = await this.ensureEncryptionCapableSigner({
           pubkey: actorHex,

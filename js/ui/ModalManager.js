@@ -574,8 +574,8 @@ export default class ModalManager {
       this.videoModalHandlers.contextAction,
     );
 
-    this.videoModalHandlers.creatorNavigate = () => {
-      app.openCreatorChannel();
+    this.videoModalHandlers.creatorNavigate = (event) => {
+      app.openCreatorChannel(event?.detail?.pubkey);
     };
     this.videoModal.addEventListener(
       "creator:navigate",

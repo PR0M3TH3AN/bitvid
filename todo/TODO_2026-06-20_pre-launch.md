@@ -1636,10 +1636,15 @@ passphrase-encrypted). Items 51, 56, 57 are all facets of that.
       `onVideosShouldRefresh` path #46 uses, keyed by `videoRootId`.
 
 ### 53. Channel-profile link in the video player modal doesn't work (BUG)
-- [ ] Clicking the channel/creator link inside the video player modal does nothing
-      (should navigate to that author's channel profile view). Audit the modal's
-      channel-link handler (`js/ui/videoModal*` / the author byline) — likely a missing
-      or wrong nav callback (compare with the working channel links in the grid cards).
+- [x] **FIXED 2026-07-02.** Event-name mismatch: `VideoModal.handleCreatorNavigation`
+      dispatched `"navigate:profile"`, but ModalManager only listens for
+      `"creator:navigate"` → the click went into the void (same class as the old
+      `action:embed` bug). Renamed the dispatch to `"creator:navigate"` and threaded the
+      modal's own creator pubkey through: the handler now passes `event.detail.pubkey`
+      to `app.openCreatorChannel(pubkey)`, and `routerCoordinator.openCreatorChannel`
+      accepts an optional pubkey (falls back to the active video's creator). Tests:
+      `tests/video-modal-controllers.test.mjs` (+2 — dispatches creator:navigate with
+      the pubkey, never the dead event; no-op without a pubkey). Lint + build green.
 
 ### 54. Like / dislike buttons in the video player modal don't work (BUG)
 - [ ] The reaction (like/dislike) buttons in the player modal are unresponsive / don't
@@ -1654,21 +1659,50 @@ passphrase-encrypted). Items 51, 56, 57 are all facets of that.
       Tests: `tests/reaction-signer-gate.test.mjs`. **Still VERIFY on unstable** whether
       any residual dead-button behavior remains (event binding / pointer availability),
       which would be a separate wiring bug from the signer issue.
+- [x] **The actual dead-button bug — FIXED 2026-07-02.** `VideoModal.handleReactionClick`
+      never derived the reaction or reached the publish path: it called
+      `this.reactionsController.handleReaction(event)` — a method that does NOT exist on
+      the video-modal reactions controller (which only binds buttons + does optimistic
+      UI), passing the raw DOM click event as the "reaction". So the #54 signer gate was
+      correct but unreachable. Now `handleReactionClick` derives `+`/`-` from the clicked
+      button (`#modalLikeBtn`/`#modalDislikeBtn`) and dispatches `video:reaction` — the
+      event ModalManager already routes to `app.handleVideoReaction` →
+      `reactionController.handleReaction` (which signs/publishes + runs the signer gate).
+      Tests: `tests/video-modal-controllers.test.mjs` (+2 — derives the reaction and
+      dispatches; unrelated target is a no-op). Lint + build green.
 
 ### 55. Video-grid event caching — faster loads, cache-first + merge-new (PERF / UX)
-- [ ] **Channel-profile grid still loads slowly.** Even after the coalescing + relay
-      timeout + parity-seed fix, the channel wall streams in slowly. Cache that channel's
-      events so revisits render instantly.
-- [ ] **Generalize to every grid:** cache the events behind each video grid (feed tabs +
-      channel walls) so they render from cache immediately, then refresh in the
-      background and **merge in only new events** (don't blank + re-fetch). Fresh content
-      still matters — proposed balance: **cache-and-refresh simultaneously**, appending
-      new events as they arrive, with an explicit **pull-to-refresh / refresh button**
-      for a forced re-fetch. Decide cache store (in-memory vs IndexedDB via
-      `js/state/cache.js`) + a staleness/TTL policy.
-- [ ] **Cache media too:** thumbnails and profile images/banners should be cached (browser
-      cache headers / a warm cache / persistent store) so they don't reload from scratch
-      on every visit. Cross-ref `js/channelProfile.js` and the card renderers.
+- [x] **VERIFIED 2026-07-02: event caching already exists — no gap.** Traced end to
+      end: `allEvents` (incl. ingested NIP-71 videos via `nip71IngestService.injectVideo`)
+      is persisted to IndexedDB (`bitvid:eventsCache:v1`, `PersistenceManager` +
+      `EventsCacheStore`), restored on boot (`restoreLocalData`), and `loadVideos` +
+      the channel grid render **cache-first then merge-new** (never blank+refetch).
+      Bullets 1–2 were already built; the remaining slowness is only a genuinely-cold
+      first visit, already bounded by the coalescing/timeout/parity fixes.
+- [x] **Media caching part 1 — Cache-Control on uploads — DONE 2026-07-02.**
+      `computeCacheControl` (js/storage/s3-multipart.js) already stamped most media
+      immutable; added the missing `webp`/`avif`/`ico` **and `.torrent`** (safe:
+      `buildR2Key` namespaces by infohash → content-addressed). Playlists (m3u8/mpd)
+      stay short-lived. Exported + tested (`tests/storage-cache-control.test.mjs`, 3).
+- [x] **Media caching part 2 — SW image cache — DONE 2026-07-02.** `sw.min.js` now
+      serves **cross-origin images** (thumbnails/avatars/banners — the hosts bitvid
+      doesn't control headers for) **stale-while-revalidate** from `bitvid-images-v1`
+      (Cache API): instant on revisit, background refresh self-heals changed images,
+      LRU-capped at 300 entries, quota errors fail open (drop the cache, never break
+      image loading), and every handler error falls back to plain `fetch`. The
+      activate handler's wipe-all now **preserves the current image cache** (old
+      versions + other caches still wiped). Same-origin assets are untouched (they
+      ride the host HTTP cache + dist cache-purge pipeline). `app._initServiceWorker`
+      now registers the SW at boot when none exists (same path/scope/options as
+      `webtorrent.js`'s `setupServiceWorker`, so playback's later `register()` is a
+      no-op on the same registration). SW_VERSION bumped. Tests:
+      `tests/sw-image-cache.test.mjs` (6 — runs the REAL sw.min.js in a VM sandbox:
+      cold/warm/offline/opaque flows, non-interception, activate preservation).
+- [ ] **VERIFY on unstable:** revisit a feed/channel — thumbnails + avatars should
+      load instantly from the SW cache (DevTools → Network shows "(ServiceWorker)");
+      after an SW update the image cache survives. Optional follow-up: pull-to-refresh
+      / manual refresh affordance for forced re-fetch (nice-to-have; background
+      merge-new already keeps grids fresh).
 
 ### 56. Upload & edit modals: prompt to unlock storage (PIN popup), don't just error (UX)
 - [ ] When storage is locked, the **upload** and **edit** modals should open the
@@ -1725,3 +1759,32 @@ passphrase-encrypted). Items 51, 56, 57 are all facets of that.
       (b) like/dislike a video, (c) block/unblock a creator, (d) subscribe to a channel,
       (e) send a DM — each should show ONE passphrase prompt (not a blanket error), then
       work; the single unlock should cover the rest until the next reload.
+
+### 58. Remove NIP-71 authoring UI from upload/edit modals (clean UI)
+- [x] **DONE 2026-07-02.** Decision (maintainer): bitvid authors kind-30078 and
+      MIRRORS to NIP-71 — it does not author NIP-71 directly — so the NIP-71 form
+      sections were confusing dead weight. Verified before removing: the My Videos
+      mirror (`buildNip71MirrorEvent`) derives EVERYTHING from the bitvid note
+      (title/url/magnet/thumbnail/description, duration+dims auto-captured at upload,
+      contentWarning from the NSFW toggle, hashtags), and the only consumer of the
+      form's NIP-71 metadata (`publishNip71Video`) is gated behind
+      `FEATURE_PUBLISH_NIP71: false`.
+      Removed: upload modal's "NIP-71 Technical" (content warning / duration /
+      summary+Customize) + IMETA variant editor; edit modal's kind selector,
+      published_at, alt, duration, content warning, summary, IMETA, text tracks,
+      segments, participants, references. KEPT: hashtags in both modals (they feed
+      hashtag feeds, the suggestion chips, and the mirror's `t` tags) and the web
+      seeds / torrent (xs) inputs (bitvid-note fields, not NIP-71).
+      Compatibility: existing videos' NIP-71 extras are PRESERVED on save — EditModal
+      keeps the full stored metadata (`storedNip71Metadata`) and merges the edited
+      hashtags into it instead of replacing it with the reduced form's empty output.
+      Also fixed a latent bug this exposed: `nip71Edited` compared a normalized
+      submit-side copy against an unnormalized original (publishedAt string vs
+      timestamp), so every save looked "edited"; both sides now share
+      `normalizeCollectedNip71`. Tests: +2 in `tests/edit-modal-submit-state.test.mjs`
+      (extras survive a hashtag edit; untouched save → nip71Edited false).
+- [ ] **Post-launch cleanup (Option B, optional):** delete the dormant
+      `FEATURE_PUBLISH_NIP71` auto-publish path, the unused `Nip71FormManager`
+      sections (imeta/text-track/segment/p/r + scalar inputs), and the nip71
+      plumbing through `videoNotePayload` that only the removed forms fed.
+      RevertModal keeps its READ-ONLY use of the manager (version-history display).

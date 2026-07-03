@@ -3017,7 +3017,11 @@ export class VideoModal {
 
   handleCreatorNavigation() {
     if (this.activeVideo?.pubkey) {
-      this.dispatch("navigate:profile", { pubkey: this.activeVideo.pubkey });
+      // ModalManager listens for "creator:navigate" (→ app.openCreatorChannel).
+      // The previous "navigate:profile" name had NO listener, so clicking the
+      // creator avatar/name did nothing — the event went into the void (same class
+      // as the old action:embed bug above).
+      this.dispatch("creator:navigate", { pubkey: this.activeVideo.pubkey });
     }
   }
 
@@ -3026,10 +3030,37 @@ export class VideoModal {
     this.log("[VideoModal] More button clicked");
   }
 
-  handleReactionClick(reaction) {
-    if (this.reactionsController) {
-      this.reactionsController.handleReaction(reaction);
+  handleReactionClick(event) {
+    // The reactionsController binds the like/dislike buttons and forwards the raw
+    // click event here. Derive WHICH button was clicked, then dispatch
+    // "video:reaction" — the event ModalManager listens for
+    // (→ app.handleVideoReaction → reactionController.handleReaction, which signs +
+    // publishes the kind-7). The old code called this.reactionsController.handleReaction
+    // (a method that doesn't exist on that controller) with the DOM event as the
+    // "reaction", so like/dislike silently did nothing. Also accept a bare "+"/"-"
+    // for programmatic callers.
+    let reaction = "";
+    if (event === "+" || event === "-") {
+      reaction = event;
+    } else {
+      const target =
+        event?.currentTarget instanceof Element
+          ? event.currentTarget
+          : event?.target?.closest?.("#modalLikeBtn, #modalDislikeBtn") || null;
+      if (target && target === this.reactionButtons?.["+"]) {
+        reaction = "+";
+      } else if (target && target === this.reactionButtons?.["-"]) {
+        reaction = "-";
+      } else if (target?.id === "modalLikeBtn") {
+        reaction = "+";
+      } else if (target?.id === "modalDislikeBtn") {
+        reaction = "-";
+      }
     }
+    if (reaction !== "+" && reaction !== "-") {
+      return;
+    }
+    this.dispatch("video:reaction", { reaction, video: this.activeVideo });
   }
 
   bindVideoEvents() {

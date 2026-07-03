@@ -28,7 +28,12 @@ function getCreateBucketConfig(region) {
   };
 }
 
-function computeCacheControl(key) {
+// Exported for tests. Upload keys are content-addressed (buildR2Key namespaces
+// by the file's infohash), so media at a given key never changes — a long
+// immutable Cache-Control is safe and makes browsers keep thumbnails/avatars/
+// videos across visits instead of re-fetching them. Playlists (m3u8/mpd) stay
+// short-lived because live/HLS manifests DO mutate in place.
+export function computeCacheControl(key) {
   if (!key) {
     return DEFAULT_CACHE_CONTROL;
   }
@@ -39,7 +44,7 @@ function computeCacheControl(key) {
   }
 
   if (
-    /\.(m4s|ts|mp4|webm|mov|mkv|png|jpg|jpeg|gif|svg|vtt|srt|mpg|mpeg)$/.test(
+    /\.(m4s|ts|mp4|webm|mov|mkv|png|jpg|jpeg|gif|svg|webp|avif|ico|vtt|srt|mpg|mpeg|torrent)$/.test(
       lower
     )
   ) {
