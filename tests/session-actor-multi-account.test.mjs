@@ -4,7 +4,7 @@
 // key survived, so switching among saved nsec accounts silently failed.
 //
 // test_integrity_note:
-//   change_type: ["new_tests"]
+//   change_type: ["new_tests", "spec_correction"]
 //   scenarios:
 //     - id: SCN-nsec-multi-account-storage
 //       given: "two nsec accounts each persist their encrypted key"
@@ -83,15 +83,27 @@ test("no-arg read returns the last-saved account as the default", () => {
   assert.equal(readStoredSessionActorEntry().privateKeyEncrypted, "cipher-B");
 });
 
-test("no-arg clear wipes every stored account (logout)", () => {
+// spec_correction: the previous test asserted "no-arg clear wipes every stored
+// account (logout)". That encoded a bug: the no-arg clear is reached from
+// per-account paths (SignerManager.logout's non-persisted-nsec cleanup, the
+// blocked-key cleanup in registerPrivateKeySigner), so logging out ONE account
+// silently destroyed every OTHER saved account's remembered key and broke
+// switching back to them — the same bug class as the NIP-46 session-map wipe.
+// Correct behavior: no-arg clears only the legacy v1 "last saved" slot; the
+// per-account v2 map survives. Forgetting a specific account uses the targeted
+// clearStoredSessionActor(pubkey) (tested above).
+test("no-arg clear drops the legacy v1 slot but KEEPS per-account saved keys", () => {
   persistSessionActor(actor(PUB_A, "cipher-A"));
   persistSessionActor(actor(PUB_B, "cipher-B"));
 
-  clearStoredSessionActor();
+  clearStoredSessionActor(); // e.g. one account's logout cleanup
 
-  assert.deepEqual(listStoredSessionActorPubkeys(), []);
-  assert.equal(readStoredSessionActorEntry(PUB_A), null);
-  assert.equal(readStoredSessionActorEntry(), null);
+  // Both accounts remain switchable — their remembered keys survive.
+  assert.deepEqual(listStoredSessionActorPubkeys().sort(), [PUB_A, PUB_B].sort());
+  assert.equal(readStoredSessionActorEntry(PUB_A).privateKeyEncrypted, "cipher-A");
+  assert.equal(readStoredSessionActorEntry(PUB_B).privateKeyEncrypted, "cipher-B");
+  // The legacy single-slot default is gone.
+  assert.equal(localStorage.getItem(SESSION_ACTOR_STORAGE_KEY), null);
 });
 
 test("a legacy v1 single-slot entry migrates into the per-pubkey map", () => {

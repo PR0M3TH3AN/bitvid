@@ -999,15 +999,14 @@ export function createAuthSessionCoordinator(deps) {
       clearWatchHistoryConversationKeyCache();
       clearWatchHistoryDecryptedChunkCache();
 
-      // Forget any cached "keep unlocked" key for the account being logged out, so
-      // logout actually re-locks it (TODO #51).
+      // Forget the cached "keep unlocked" key so logout re-locks (TODO #51).
+      // MUST read previousPubkey: authService.logout already nulled the active
+      // pubkey, so detail.pubkey/this.pubkey are empty here.
       try {
-        const loggedOutPubkey = detail?.pubkey || this.pubkey;
-        if (
-          loggedOutPubkey &&
-          typeof nostrClient.forgetUnlockedSigner === "function"
-        ) {
-          nostrClient.forgetUnlockedSigner(loggedOutPubkey);
+        const loggedOutPubkey =
+          detail?.previousPubkey || detail?.pubkey || this.pubkey;
+        if (loggedOutPubkey) {
+          nostrClient.forgetUnlockedSigner?.(loggedOutPubkey);
         }
       } catch (error) {
         devLogger.warn("Failed to forget cached unlock during logout:", error);
@@ -1712,14 +1711,14 @@ export function createAuthSessionCoordinator(deps) {
         }
       }
 
-      // Removing a saved profile must also forget its cached "keep unlocked" key.
+      // A removed profile must not leave keys on the device: forget its cached
+      // "keep unlocked" key + stored credentials (nsec key, NIP-46 session).
       try {
-        if (typeof nostrClient.forgetUnlockedSigner === "function") {
-          nostrClient.forgetUnlockedSigner(normalizedTarget);
-        }
+        nostrClient.forgetUnlockedSigner?.(normalizedTarget);
+        nostrClient.forgetStoredAccount?.(normalizedTarget);
       } catch (error) {
         devLogger.warn(
-          "[Application] Failed to forget cached unlock for removed profile:",
+          "[Application] Failed to forget credentials for removed profile:",
           error,
         );
       }

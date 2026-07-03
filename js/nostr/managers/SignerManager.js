@@ -203,10 +203,34 @@ export class SignerManager {
     return newActor.pubkey;
   }
 
-  clearStoredSessionActor() {
-    clearStoredSessionActorEntry();
+  // Forget a stored (remembered) key. Pass the account's pubkey — the no-arg
+  // form only clears the legacy v1 slot and must never be used to log out one
+  // account (it used to wipe EVERY saved account's key).
+  clearStoredSessionActor(pubkey) {
+    clearStoredSessionActorEntry(pubkey);
     this.sessionActor = null;
     this.lockedSessionActor = null;
+  }
+
+  // Forget ONE account's remembered key WITHOUT touching the current session's
+  // in-memory actors (used when removing a non-active saved profile). Only drops
+  // the in-memory references if they belong to the removed account.
+  forgetStoredSessionActor(pubkey) {
+    const target =
+      typeof pubkey === "string" ? pubkey.trim().toLowerCase() : "";
+    if (!target) {
+      return;
+    }
+    clearStoredSessionActorEntry(target);
+    const matches = (actor) =>
+      typeof actor?.pubkey === "string" &&
+      actor.pubkey.trim().toLowerCase() === target;
+    if (matches(this.lockedSessionActor)) {
+      this.lockedSessionActor = null;
+    }
+    if (matches(this.sessionActor) && !this.sessionActor?.privateKey) {
+      this.sessionActor = null;
+    }
   }
 
   async ensureActiveSignerForPubkey(pubkey) {
@@ -1083,8 +1107,15 @@ export class SignerManager {
       previousSessionActor.persisted !== true;
 
     if (shouldClearStoredSession) {
-      this.lockedSessionActor = null;
-      this.clearStoredSessionActor();
+      // Forget ONLY the departing account's remembered key. The no-arg clear
+      // used to wipe the whole per-account map, so logging out one non-persisted
+      // nsec login destroyed every OTHER saved account's key. Skip entirely when
+      // we can't name the account — never wipe-all implicitly.
+      const clearTarget = previousSessionActor.pubkey || previousPubkey || "";
+      if (clearTarget) {
+        this.lockedSessionActor = null;
+        this.clearStoredSessionActor(clearTarget);
+      }
     }
 
     if (

@@ -677,18 +677,18 @@ export function clearStoredSessionActor(pubkey) {
     return;
   }
 
-  clearStoredSessionActorIndexedDb();
-
+  // No target pubkey: clear ONLY the legacy v1 "last saved" slot. Wiping the
+  // per-account v2 map here deleted EVERY saved account's remembered nsec key —
+  // the no-arg callers were logout/teardown paths for ONE account, so logging
+  // out (or a blocked-key cleanup) silently destroyed the other saved accounts'
+  // keys and broke switching back to them. Same bug class as the NIP-46
+  // session-map wipe. A specific account is forgotten via
+  // clearStoredSessionActor(pubkey), which remains targeted.
   if (typeof localStorage !== "undefined") {
     try {
       localStorage.removeItem(SESSION_ACTOR_STORAGE_KEY);
     } catch (error) {
       devLogger.warn("[nostr] Failed to clear stored session actor:", error);
-    }
-    try {
-      localStorage.removeItem(SESSION_ACTORS_MAP_STORAGE_KEY);
-    } catch (error) {
-      devLogger.warn("[nostr] Failed to clear session actor map:", error);
     }
   }
 }

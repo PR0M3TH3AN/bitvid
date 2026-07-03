@@ -1264,7 +1264,9 @@ class Application {
       // encrypted); safe no-op when nothing is cached or for NIP-07/46.
       try {
         if (typeof nostrClient.restoreUnlockedSigner === "function") {
-          await nostrClient.restoreUnlockedSigner(normalizedSaved);
+          await nostrClient.restoreUnlockedSigner(normalizedSaved, {
+            validator: this.buildAccessControlValidator(),
+          });
         }
       } catch (error) {
         devLogger.warn(
@@ -2186,7 +2188,9 @@ class Application {
       !isSignerCapable(resolveSignerCapabilities(getActiveSigner()), need)
     ) {
       try {
-        const restored = await nostrClient.restoreUnlockedSigner(normalized);
+        const restored = await nostrClient.restoreUnlockedSigner(normalized, {
+          validator: this.buildAccessControlValidator(),
+        });
         if (
           restored?.restored &&
           isSignerCapable(resolveSignerCapabilities(getActiveSigner()), need)
@@ -2258,6 +2262,22 @@ class Application {
       return { ok: false, reason: "still-incapable" };
     }
     return { ok: true, unlocked: true };
+  }
+
+  // Access-control gate passed into keep-unlocked signer restores so a
+  // since-blocked account's cached key is forgotten instead of restoring.
+  buildAccessControlValidator() {
+    return (pk) => {
+      if (
+        accessControl &&
+        typeof accessControl.canAccess === "function" &&
+        !accessControl.canAccess(pk)
+      ) {
+        const error = new Error("Access restricted for this account.");
+        error.code = "access-denied";
+        throw error;
+      }
+    };
   }
 
   // True when the active (or given) account currently has a cached "keep
