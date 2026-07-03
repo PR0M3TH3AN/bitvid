@@ -20,6 +20,9 @@ const IGNORED_DIRECTORIES = new Set([
 const IGNORED_EXTENSIONS = new Set([".min.js", ".map"]);
 const ALLOWED_FILES = new Set([
   "js/ui/components/RevertModal.js",
+  // Guided-tour injected stylesheet (colors are all theme tokens; the raw
+  // lengths are spotlight/popover geometry, same precedent as RevertModal).
+  "js/ui/onboarding/tourEngine.js",
   "css/tokens.css",
 ]);
 const LENGTH_PATTERN = /\d+(?:\.\d+)?(?:px|rem)\b/gim;

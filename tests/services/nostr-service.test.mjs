@@ -84,6 +84,37 @@ describe("NostrService", () => {
   // Account switch must not leave the previous account's DMs on screen: the DM
   // store lives here (nostrService), so a switch clears the in-memory store. With
   // keepSnapshot it preserves each account's persisted cache for fast switch-back.
+  // #52: an edit must refresh the grids immediately — the edited signed event
+  // is ingested locally (same optimistic path as publish) instead of waiting
+  // for the relay echo of the replaceable event.
+  describe("handleEditVideoSubmit", () => {
+    it("ingests the edited event locally and emits videos:edited", async () => {
+      const signed = { id: "edited-1", kind: 30078, pubkey: "p", created_at: 2000 };
+      mockClient.editVideo = mock.fn(async () => signed);
+      const ingested = [];
+      mockClient.ingestLocalVideoEvent = mock.fn((evt) => {
+        ingested.push(evt);
+        return { id: evt.id, deleted: false, invalid: false };
+      });
+      const events = [];
+      const originalEmit = nostrService.emit;
+      nostrService.emit = (name, detail) => events.push(name);
+      try {
+        const result = await nostrService.handleEditVideoSubmit({
+          originalEvent: { id: "orig" },
+          updatedData: { title: "t" },
+          pubkey: "p",
+        });
+        assert.equal(result, signed);
+      } finally {
+        nostrService.emit = originalEmit;
+      }
+      assert.deepEqual(ingested, [signed], "edited event ingested for instant grid refresh");
+      assert.ok(events.includes("videos:updated"), "grids notified");
+      assert.ok(events.includes("videos:edited"));
+    });
+  });
+
   describe("clearDirectMessages", () => {
     it("empties the in-memory DM store and resets the active actor", () => {
       nostrService.dmMessages = [{ id: "m1" }, { id: "m2" }];

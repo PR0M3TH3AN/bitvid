@@ -100,6 +100,7 @@ import {
 } from "./nostrClientRegistry.js";
 import { resolveSignerCapabilities } from "./nostr/signerCapabilities.js";
 import { rankHashtagsByFrequency } from "./utils/hashtagSuggestions.js";
+import { launchBitvidTour } from "./ui/onboarding/bitvidTour.js";
 import {
   decideSignerEnsure,
   isSignerCapable,
@@ -1746,7 +1747,50 @@ class Application {
       // Best-effort, never blocks login: offer to restore encrypted settings
       // synced from another device.
       this.maybeOfferSettingsRestore(pubkey);
+      this.maybeOfferOnboardingTour(pubkey);
     }
+  }
+
+  // First login of this pubkey on this device: offer the guided tour
+  // (docs/onboarding-plan.md). Deferred so the feed has rendered and the
+  // settings-restore prompt (2s window; only fires for accounts with synced
+  // settings — i.e. NOT first-run users) is out of the way. Never blocks login.
+  maybeOfferOnboardingTour(pubkey) {
+    const key = this.normalizeHexPubkey(pubkey);
+    if (!key) {
+      return;
+    }
+    setTimeout(() => {
+      try {
+        if (!this.isUserLoggedIn()) {
+          return;
+        }
+        this.startOnboardingTour({ pubkey: key, force: false });
+      } catch (error) {
+        devLogger.warn("[Application] Onboarding tour offer failed:", error);
+      }
+    }, 3500);
+  }
+
+  // Launch the guided tour. `force: true` (the "Take the tour" button) reruns it
+  // even when this account already completed/skipped it.
+  startOnboardingTour({ pubkey, force = true } = {}) {
+    const key =
+      this.normalizeHexPubkey(pubkey) || this.normalizeHexPubkey(this.pubkey);
+    if (!key) {
+      return false;
+    }
+    return launchBitvidTour({
+      pubkey: key,
+      force,
+      openProfilePane: (pane) => {
+        try {
+          this.profileController?.show?.(pane);
+        } catch (error) {
+          devLogger.warn("[Application] Tour deep-link failed:", error);
+        }
+      },
+    });
   }
 
   // One-time offer to restore encrypted storage/wallet settings on login (todo

@@ -1,3 +1,32 @@
+import { safeDecodeNpub } from "../utils/nostrHelpers.js";
+
+const HEX64 = /^[0-9a-f]{64}$/;
+
+// Authors arrive as npubs (what users actually have) or hex, but videos carry
+// HEX pubkeys — without decoding, npub authors silently matched nothing.
+// Undecodable values are dropped (returned in `dropped` for error surfaces).
+export function normalizeAuthorValues(values, { decodeNpub = safeDecodeNpub } = {}) {
+  const normalized = [];
+  const dropped = [];
+  for (const raw of Array.isArray(values) ? values : []) {
+    const value = typeof raw === "string" ? raw.trim() : "";
+    if (!value) continue;
+    if (HEX64.test(value.toLowerCase())) {
+      normalized.push(value.toLowerCase());
+      continue;
+    }
+    if (value.toLowerCase().startsWith("npub1")) {
+      const hex = typeof decodeNpub === "function" ? decodeNpub(value) : null;
+      if (hex && HEX64.test(hex.toLowerCase())) {
+        normalized.push(hex.toLowerCase());
+        continue;
+      }
+    }
+    dropped.push(value);
+  }
+  return { normalized, dropped };
+}
+
 const DATE_FORMAT_OPTIONS = {
   year: "numeric",
   month: "2-digit",
@@ -176,7 +205,13 @@ export function parseFilterQuery(inputString = "") {
           errors.push({ token, message: "Author value is empty." });
           break;
         }
-        filters.authorPubkeys.push(...values);
+        {
+          const { normalized, dropped } = normalizeAuthorValues(values);
+          filters.authorPubkeys.push(...normalized);
+          for (const value of dropped) {
+            errors.push({ token, message: `Could not decode author "${value}".` });
+          }
+        }
         break;
       }
       case "tag": {

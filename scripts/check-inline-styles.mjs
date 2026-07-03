@@ -54,6 +54,13 @@ const VIOLATION_ALLOWLIST = new Map([
     new Set(["Direct .style usage"]),
   ],
   [
+    // Guided-tour spotlight/popover positioning via CSS custom properties
+    // (style.setProperty("--bv-tour-*") — the same sanctioned dynamic-var
+    // pattern as VideoCard). All visual styling lives in its stylesheet.
+    "js/ui/onboarding/tourEngine.js",
+    new Set(["Direct .style usage"]),
+  ],
+  [
     "torrent/app.js",
     new Set(["Direct .style usage"]),
   ],
