@@ -662,6 +662,7 @@ export class ProfileModalController {
     this.lockNowButton = document.getElementById("profileLockNowBtn") || null;
     this.mobileLockNowButton =
       document.getElementById("profileMobileLockNowBtn") || null;
+    this.takeTourButton = document.getElementById("profileTakeTourBtn") || null;
     this.channelLink = document.getElementById("profileChannelLink") || null;
     this.addAccountButton =
       document.getElementById("profileAddAccountBtn") || null;
@@ -1713,6 +1714,22 @@ export class ProfileModalController {
     }
     if (this.mobileLockNowButton instanceof HTMLElement) {
       this.mobileLockNowButton.addEventListener("click", handleLockNow);
+    }
+
+    if (this.takeTourButton instanceof HTMLElement) {
+      this.takeTourButton.addEventListener("click", () => {
+        // Close the modal first so the tour spotlights the app, not the modal.
+        try {
+          this.hide({ silent: true });
+        } catch (error) {
+          devLogger.warn("[profileModal] Failed to hide before tour:", error);
+        }
+        try {
+          this.services?.startOnboardingTour?.();
+        } catch (error) {
+          devLogger.warn("[profileModal] Failed to start tour:", error);
+        }
+      });
     }
 
     if (this.channelLink instanceof HTMLElement) {

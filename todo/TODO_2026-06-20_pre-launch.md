@@ -1560,7 +1560,11 @@ that used it.
   plus dev-only verbose logging and dev-only feature flags (`FEATURE_SEARCH_FILTERS`).
   Removing it would drop that safety net or force validation into prod. Not a candidate
   for removal.
-- [ ] **Test-harness gap (not an isDevMode bug):** `tests/nostr-publish-rejection.test.mjs`
+- [x] **DONE 2026-07-02 (quarantine triage):** `tests/nostr-publish-rejection.test.mjs`
+      fixed + un-quarantined — dev-mode override set before config import, and the
+      stale NIP-71 auto-publish expectation spec-corrected (FEATURE_PUBLISH_NIP71 is
+      deliberately off; the mirror is the interop path). File passes fully in CI.
+      Original note: `tests/nostr-publish-rejection.test.mjs`
       asserts `isDevMode === true` but never sets `globalThis.__BITVID_DEV_MODE_OVERRIDE__`
       before importing `js/config.js`, so it fails in a non-dev env (`isDevMode` falls back
       to `IS_DEV_MODE` = false). Fix: force dev mode via the override in that test's setup.
@@ -1629,11 +1633,13 @@ passphrase-encrypted). Items 51, 56, 57 are all facets of that.
       in the storage/wallet panes for users who set it up there rather than via a prompt.
 
 ### 52. After editing a video, the video grids don't refresh to show the update (BUG)
-- [ ] Editing a video leaves the grids showing the pre-edit version until a manual
-      reload. Publishing a NEW video already refreshes the feed (**#46**); the **edit**
-      path needs the same post-publish grid refresh (title/thumbnail/description/url).
-      Likely wire the edit-submit success into the same `refreshAllVideoGrids` /
-      `onVideosShouldRefresh` path #46 uses, keyed by `videoRootId`.
+- [x] **FIXED 2026-07-02.** The edit flow already re-ran `loadVideos()`, but the cache
+      still held the PRE-edit version: unlike new publishes (#46), the edit never
+      ingested its signed replaceable event locally, so grids re-rendered stale until
+      relays echoed the update. `nostrService.handleEditVideoSubmit` now ingests the
+      edited event via `ingestLocalVideoEvent` (newest-wins replace in the active
+      store + `videos:updated`), so grids show the new title/thumbnail/etc.
+      immediately. Test: `tests/services/nostr-service.test.mjs` (+1).
 
 ### 53. Channel-profile link in the video player modal doesn't work (BUG)
 - [x] **FIXED 2026-07-02.** Event-name mismatch: `VideoModal.handleCreatorNavigation`
@@ -1788,3 +1794,27 @@ passphrase-encrypted). Items 51, 56, 57 are all facets of that.
       sections (imeta/text-track/segment/p/r + scalar inputs), and the nip71
       plumbing through `videoNotePayload` that only the removed forms fed.
       RevertModal keeps its READ-ONLY use of the manager (version-history display).
+
+### 59. First-run onboarding experience (guided tour) — plan in docs/onboarding-plan.md
+- [x] **Phase 1 BUILT 2026-07-02.** Guided tour for fresh logins: spotlight scrim
+      with a cutout over each step's anchor + a pulsing accent-glow ring
+      (`--color-accent`/`--color-accent-strong` theme tokens), anchored popover with
+      Back/Next/Skip + progress dots, keyboard nav (arrows/Esc). Hand-rolled engine
+      (`js/ui/onboarding/tourEngine.js`, no deps) positioning via CSS custom
+      properties; steps with missing anchors auto-skip (responsive-safe). Steps:
+      welcome → feeds (#sidebar) → subscriptions → upload → profile → final card with
+      "Set up storage" / "Connect wallet" deep-links into the profile panes. Offered
+      once per pubkey per device (`bitvid:onboarding:v1`, settingsRestorePrompt-style
+      flags), triggered 3.5s after first login, re-launchable via "Take the tour" in
+      the profile modal footer. Tests: `tests/onboarding-tour.test.mjs` (5).
+- [ ] **VERIFY on unstable:** log in with a pubkey that has never completed the tour
+      → tour appears ~3.5s after the feed renders; spotlight glow follows each anchor;
+      Skip/Esc dismisses and never re-offers; "Take the tour" replays it; the final
+      card's buttons open the storage/wallet panes.
+- [ ] **Phase 2:** "Getting started" checklist card (relays ✓, follow 3 channels ✓,
+      storage ✓, wallet ✓, first upload ✓) — persistent + dismissible.
+- [ ] **Phase 3:** empty-state upgrades (teach + CTA; suggested channels from trust
+      seeds in empty For You / Subscriptions).
+- [ ] **Phase 4:** fresh-npub bootstrap — "Create account" via the existing generate
+      provider with a REQUIRED key-backup step, then inline kind-0 profile setup
+      (name + avatar), then the tour.

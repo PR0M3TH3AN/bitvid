@@ -9,7 +9,7 @@ import {
   buildSearchHashFromState,
   resetSearchFilters,
 } from "../../search/searchFilterState.js";
-import { DEFAULT_FILTERS } from "../../search/searchFilters.js";
+import { DEFAULT_FILTERS, normalizeAuthorValues } from "../../search/searchFilters.js";
 import { setHashView } from "../../hashView.js";
 import { ALLOW_NSFW_CONTENT } from "../../config.js";
 
@@ -349,8 +349,9 @@ function applyFilters() {
   filters.sort = sortSelect.value;
 
   // Author
-  const authors = authorInput.value.split(/[, ]+/).map(s => s.trim()).filter(Boolean);
-  filters.authorPubkeys = authors;
+  const rawAuthors = authorInput.value.split(/[, ]+/).map(s => s.trim()).filter(Boolean);
+  // Decode npubs to hex — videos carry hex pubkeys, so raw npubs matched nothing.
+  filters.authorPubkeys = normalizeAuthorValues(rawAuthors).normalized;
 
   // Tags
   const selectedTags = new Set();

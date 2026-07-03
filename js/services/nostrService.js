@@ -2134,6 +2134,18 @@ export class NostrService {
 
   async handleEditVideoSubmit({ originalEvent, updatedData, pubkey }) {
     const result = await this.nostrClient.editVideo(originalEvent, updatedData, pubkey);
+    // #52: ingest the edited (signed) event locally — the same optimistic path
+    // new publishes use (#46). The edit is a replaceable event; without this the
+    // grids re-render from cache showing the PRE-edit version until relays echo
+    // the update back. Ingesting replaces the old version in the active store
+    // (newest-wins) and emits videos:updated so grids refresh immediately.
+    if (result && typeof result === "object" && result.id) {
+      try {
+        this.ingestLocalVideoEvent(result);
+      } catch (error) {
+        this.log("[nostrService] Failed to ingest edited video locally", error);
+      }
+    }
     this.emit("videos:edited", { originalEvent, updatedData, pubkey, result });
     return result;
   }
