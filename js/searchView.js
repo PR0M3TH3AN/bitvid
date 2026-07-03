@@ -661,10 +661,14 @@ async function performVideoSearch(query, token, filters = {}) {
                     matches = video.tags.some(t => Array.isArray(t) && t[0] === "t" && t[1].toLowerCase() === lowerTerm);
                 }
             } else {
-                // Check title/description
+                // Check title/description, honoring the textScope filter
+                // (all | title | description).
+                const scope = filters?.textScope || "all";
                 const title = video.title ? video.title.toLowerCase() : "";
                 const desc = video.description ? video.description.toLowerCase() : "";
-                if (title.includes(lowerTerm) || desc.includes(lowerTerm)) {
+                const titleHit = scope !== "description" && title.includes(lowerTerm);
+                const descHit = scope !== "title" && desc.includes(lowerTerm);
+                if (titleHit || descHit) {
                     matches = true;
                 }
             }
@@ -681,7 +685,8 @@ async function performVideoSearch(query, token, filters = {}) {
 
     // 2. Relay Search
     let relayVideos = [];
-    const relays = nostrClient.relays || [];
+    // relay: filter scopes the relay-side search to that single relay.
+    const relays = filters?.relay ? [filters.relay] : nostrClient.relays || [];
 
     if (relays.length > 0 && nostrClient.pool) {
         const filter = {
@@ -733,6 +738,22 @@ async function performVideoSearch(query, token, filters = {}) {
         if (!unique.has(v.id)) unique.set(v.id, v);
     }
 
-    // Sort by creation date (newest first)
-    return Array.from(unique.values()).sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+    // Sort per the active filter (recent/views/trending/longest); "recent" is
+    // the default. Views come from the shared deduped view-count cache.
+    const { sortSearchResults } = await import("./search/searchFilterMatchers.js");
+    const { getVideoViewCountSnapshot } = await import("./viewCounter.js");
+    return sortSearchResults(Array.from(unique.values()), filters?.sort, {
+        getViews: (video) => {
+            try {
+                const snapshot = getVideoViewCountSnapshot([
+                    "a",
+                    30078,
+                    video.videoRootId || video.id,
+                ]);
+                return Number(snapshot?.total) || 0;
+            } catch (error) {
+                return 0;
+            }
+        },
+    });
 }

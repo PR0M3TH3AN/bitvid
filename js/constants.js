@@ -195,7 +195,6 @@ const DEFAULT_FLAGS = Object.freeze({
   // the admin instance config so a deployer flips it in one place.
   FEATURE_NIP71_INGEST: CONFIG_FEATURE_NIP71_INGEST !== false,
   FEATURE_HASHTAG_PREFERENCES: false,
-  FEATURE_SEARCH_FILTERS: Boolean(IS_DEV_MODE),
   FEATURE_TRUST_SEEDS: true, // Rollback: disable to drop baseline trust seeds without code changes.
   FEATURE_TRUSTED_HIDE_CONTROLS: true,
   FEATURE_IMPROVED_COMMENT_FETCHING: true, // Default true for comment persistence fixes
@@ -218,7 +217,6 @@ const runtimeFlags = (() => {
     FEATURE_NIP71_MIRROR: DEFAULT_FLAGS.FEATURE_NIP71_MIRROR,
     FEATURE_NIP71_INGEST: DEFAULT_FLAGS.FEATURE_NIP71_INGEST,
     FEATURE_HASHTAG_PREFERENCES: DEFAULT_FLAGS.FEATURE_HASHTAG_PREFERENCES,
-    FEATURE_SEARCH_FILTERS: DEFAULT_FLAGS.FEATURE_SEARCH_FILTERS,
     FEATURE_TRUST_SEEDS: DEFAULT_FLAGS.FEATURE_TRUST_SEEDS,
     FEATURE_TRUSTED_HIDE_CONTROLS: DEFAULT_FLAGS.FEATURE_TRUSTED_HIDE_CONTROLS,
     FEATURE_IMPROVED_COMMENT_FETCHING:
@@ -262,11 +260,6 @@ export let FEATURE_NIP71_INGEST = coerceBoolean(
 export let FEATURE_HASHTAG_PREFERENCES = coerceBoolean(
   runtimeFlags.FEATURE_HASHTAG_PREFERENCES,
   DEFAULT_FLAGS.FEATURE_HASHTAG_PREFERENCES
-);
-
-export let FEATURE_SEARCH_FILTERS = coerceBoolean(
-  runtimeFlags.FEATURE_SEARCH_FILTERS,
-  DEFAULT_FLAGS.FEATURE_SEARCH_FILTERS
 );
 
 export let FEATURE_TRENDING_FEED = coerceBoolean(
@@ -352,20 +345,6 @@ Object.defineProperty(runtimeFlags, "FEATURE_HASHTAG_PREFERENCES", {
     FEATURE_HASHTAG_PREFERENCES = coerceBoolean(
       next,
       DEFAULT_FLAGS.FEATURE_HASHTAG_PREFERENCES
-    );
-  },
-});
-
-Object.defineProperty(runtimeFlags, "FEATURE_SEARCH_FILTERS", {
-  configurable: true,
-  enumerable: true,
-  get() {
-    return FEATURE_SEARCH_FILTERS;
-  },
-  set(next) {
-    FEATURE_SEARCH_FILTERS = coerceBoolean(
-      next,
-      DEFAULT_FLAGS.FEATURE_SEARCH_FILTERS
     );
   },
 });
@@ -458,7 +437,6 @@ runtimeFlags.URL_FIRST_ENABLED = URL_FIRST_ENABLED;
 runtimeFlags.FEATURE_WATCH_HISTORY_V2 = FEATURE_WATCH_HISTORY_V2;
 runtimeFlags.FEATURE_PUBLISH_NIP71 = FEATURE_PUBLISH_NIP71;
 runtimeFlags.FEATURE_HASHTAG_PREFERENCES = FEATURE_HASHTAG_PREFERENCES;
-runtimeFlags.FEATURE_SEARCH_FILTERS = FEATURE_SEARCH_FILTERS;
 runtimeFlags.FEATURE_TRUST_SEEDS = FEATURE_TRUST_SEEDS;
 runtimeFlags.FEATURE_TRUSTED_HIDE_CONTROLS = FEATURE_TRUSTED_HIDE_CONTROLS;
 runtimeFlags.FEATURE_IMPROVED_COMMENT_FETCHING =
@@ -555,16 +533,10 @@ export function setHashtagPreferencesEnabled(next) {
   return FEATURE_HASHTAG_PREFERENCES;
 }
 
-export function setSearchFiltersEnabled(next) {
-  runtimeFlags.FEATURE_SEARCH_FILTERS = next;
-  return FEATURE_SEARCH_FILTERS;
-}
-
 export function resetRuntimeFlags() {
   setUrlFirstEnabled(DEFAULT_FLAGS.URL_FIRST_ENABLED);
   setWatchHistoryV2Enabled(DEFAULT_FLAGS.FEATURE_WATCH_HISTORY_V2);
   setHashtagPreferencesEnabled(DEFAULT_FLAGS.FEATURE_HASHTAG_PREFERENCES);
-  setSearchFiltersEnabled(DEFAULT_FLAGS.FEATURE_SEARCH_FILTERS);
   setTrustSeedsEnabled(DEFAULT_FLAGS.FEATURE_TRUST_SEEDS);
   setTrustedHideControlsEnabled(DEFAULT_FLAGS.FEATURE_TRUSTED_HIDE_CONTROLS);
   setImprovedCommentFetchingEnabled(

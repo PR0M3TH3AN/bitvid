@@ -56,7 +56,11 @@ export function buildVideoSearchFilterMatcher(filters = {}, options = {}) {
     if (hasUrl && !video.url) return false;
 
     if (Number.isFinite(minDuration) || Number.isFinite(maxDuration)) {
-      const duration = Number(video.nip71?.duration);
+      // Both video types carry duration differently: bitvid's kind-30078 puts
+      // it top-level (captured at upload); ingested NIP-71 (21/22/34235/34236)
+      // nests it in nip71 metadata. Future live (30311) / shorts use the same
+      // shapes, so check both.
+      const duration = Number(video.duration) || Number(video.nip71?.duration);
       if (!Number.isFinite(duration)) return false;
       if (Number.isFinite(minDuration) && duration < minDuration) return false;
       if (Number.isFinite(maxDuration) && duration > maxDuration) return false;
@@ -77,4 +81,38 @@ export function buildVideoSearchFilterMatcher(filters = {}, options = {}) {
 
     return true;
   };
+}
+
+// Sort search results per the modal's Sort By options. Pure + injectable
+// (getViews) so it is unit-testable. "recent" (and the "relevance" default)
+// keep newest-first; "views" ranks by the shared view-count cache; "trending"
+// weights views by recency (views / age-in-days^1.5, same spirit as the
+// Trending tab); "longest" ranks by duration.
+export function sortSearchResults(videos, sort, { getViews, now = Date.now() } = {}) {
+  const list = Array.isArray(videos) ? [...videos] : [];
+  const views = (video) => {
+    if (typeof getViews !== "function") return 0;
+    const value = getViews(video);
+    return Number.isFinite(value) ? value : 0;
+  };
+  const createdAt = (video) => Number(video?.created_at) || 0;
+  const duration = (video) =>
+    Number(video?.duration) || Number(video?.nip71?.duration) || 0;
+
+  switch (sort) {
+    case "views":
+      return list.sort((a, b) => views(b) - views(a) || createdAt(b) - createdAt(a));
+    case "trending": {
+      const score = (video) => {
+        const ageDays = Math.max((now / 1000 - createdAt(video)) / 86400, 0.25);
+        return views(video) / Math.pow(ageDays, 1.5);
+      };
+      return list.sort((a, b) => score(b) - score(a) || createdAt(b) - createdAt(a));
+    }
+    case "longest":
+      return list.sort((a, b) => duration(b) - duration(a) || createdAt(b) - createdAt(a));
+    case "recent":
+    default:
+      return list.sort((a, b) => createdAt(b) - createdAt(a));
+  }
 }
