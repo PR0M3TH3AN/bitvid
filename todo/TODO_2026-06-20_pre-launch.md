@@ -1560,7 +1560,11 @@ that used it.
   plus dev-only verbose logging and dev-only feature flags (`FEATURE_SEARCH_FILTERS`).
   Removing it would drop that safety net or force validation into prod. Not a candidate
   for removal.
-- [ ] **Test-harness gap (not an isDevMode bug):** `tests/nostr-publish-rejection.test.mjs`
+- [x] **DONE 2026-07-02 (quarantine triage):** `tests/nostr-publish-rejection.test.mjs`
+      fixed + un-quarantined — dev-mode override set before config import, and the
+      stale NIP-71 auto-publish expectation spec-corrected (FEATURE_PUBLISH_NIP71 is
+      deliberately off; the mirror is the interop path). File passes fully in CI.
+      Original note: `tests/nostr-publish-rejection.test.mjs`
       asserts `isDevMode === true` but never sets `globalThis.__BITVID_DEV_MODE_OVERRIDE__`
       before importing `js/config.js`, so it fails in a non-dev env (`isDevMode` falls back
       to `IS_DEV_MODE` = false). Fix: force dev mode via the override in that test's setup.
