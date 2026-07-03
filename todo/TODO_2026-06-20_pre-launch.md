@@ -1788,3 +1788,27 @@ passphrase-encrypted). Items 51, 56, 57 are all facets of that.
       sections (imeta/text-track/segment/p/r + scalar inputs), and the nip71
       plumbing through `videoNotePayload` that only the removed forms fed.
       RevertModal keeps its READ-ONLY use of the manager (version-history display).
+
+### 59. First-run onboarding experience (guided tour) — plan in docs/onboarding-plan.md
+- [x] **Phase 1 BUILT 2026-07-02.** Guided tour for fresh logins: spotlight scrim
+      with a cutout over each step's anchor + a pulsing accent-glow ring
+      (`--color-accent`/`--color-accent-strong` theme tokens), anchored popover with
+      Back/Next/Skip + progress dots, keyboard nav (arrows/Esc). Hand-rolled engine
+      (`js/ui/onboarding/tourEngine.js`, no deps) positioning via CSS custom
+      properties; steps with missing anchors auto-skip (responsive-safe). Steps:
+      welcome → feeds (#sidebar) → subscriptions → upload → profile → final card with
+      "Set up storage" / "Connect wallet" deep-links into the profile panes. Offered
+      once per pubkey per device (`bitvid:onboarding:v1`, settingsRestorePrompt-style
+      flags), triggered 3.5s after first login, re-launchable via "Take the tour" in
+      the profile modal footer. Tests: `tests/onboarding-tour.test.mjs` (5).
+- [ ] **VERIFY on unstable:** log in with a pubkey that has never completed the tour
+      → tour appears ~3.5s after the feed renders; spotlight glow follows each anchor;
+      Skip/Esc dismisses and never re-offers; "Take the tour" replays it; the final
+      card's buttons open the storage/wallet panes.
+- [ ] **Phase 2:** "Getting started" checklist card (relays ✓, follow 3 channels ✓,
+      storage ✓, wallet ✓, first upload ✓) — persistent + dismissible.
+- [ ] **Phase 3:** empty-state upgrades (teach + CTA; suggested channels from trust
+      seeds in empty For You / Subscriptions).
+- [ ] **Phase 4:** fresh-npub bootstrap — "Create account" via the existing generate
+      provider with a REQUIRED key-backup step, then inline kind-0 profile setup
+      (name + avatar), then the tour.

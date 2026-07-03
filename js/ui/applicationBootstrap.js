@@ -581,6 +581,8 @@ export default class ApplicationBootstrap {
           isSessionKeptUnlocked: (pubkey) => app.isSessionKeptUnlocked(pubkey),
           lockKeptUnlockedSession: (pubkey) =>
             app.lockKeptUnlockedSession(pubkey),
+          // Replay the first-run guided tour (docs/onboarding-plan.md).
+          startOnboardingTour: () => app.startOnboardingTour({ force: true }),
           hashtagPreferences: app.hashtagPreferences,
           getHashtagPreferences: () => app.getHashtagPreferences(),
           describeHashtagPreferencesError: (error, fallbackMessage) =>
