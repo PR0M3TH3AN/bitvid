@@ -1629,11 +1629,13 @@ passphrase-encrypted). Items 51, 56, 57 are all facets of that.
       in the storage/wallet panes for users who set it up there rather than via a prompt.
 
 ### 52. After editing a video, the video grids don't refresh to show the update (BUG)
-- [ ] Editing a video leaves the grids showing the pre-edit version until a manual
-      reload. Publishing a NEW video already refreshes the feed (**#46**); the **edit**
-      path needs the same post-publish grid refresh (title/thumbnail/description/url).
-      Likely wire the edit-submit success into the same `refreshAllVideoGrids` /
-      `onVideosShouldRefresh` path #46 uses, keyed by `videoRootId`.
+- [x] **FIXED 2026-07-02.** The edit flow already re-ran `loadVideos()`, but the cache
+      still held the PRE-edit version: unlike new publishes (#46), the edit never
+      ingested its signed replaceable event locally, so grids re-rendered stale until
+      relays echoed the update. `nostrService.handleEditVideoSubmit` now ingests the
+      edited event via `ingestLocalVideoEvent` (newest-wins replace in the active
+      store + `videos:updated`), so grids show the new title/thumbnail/etc.
+      immediately. Test: `tests/services/nostr-service.test.mjs` (+1).
 
 ### 53. Channel-profile link in the video player modal doesn't work (BUG)
 - [x] **FIXED 2026-07-02.** Event-name mismatch: `VideoModal.handleCreatorNavigation`
