@@ -34,6 +34,70 @@ export function createModalCoordinator(deps) {
     BITVID_WEBSITE_URL,
   } = deps;
 
+  // Zap-total badge helpers are LOCAL closures, NOT coordinator methods:
+  // coordinator methods run with `this` bound to the Application, so a
+  // cross-method `this.helper()` call only works when app.js also adds an
+  // explicit delegate for it — a silent landmine (a missing delegate here
+  // threw on EVERY modal open and broke video playback entirely).
+  let modalZapTotalUnsub = null;
+
+  function teardownModalZapTotal() {
+    if (typeof modalZapTotalUnsub === "function") {
+      try {
+        modalZapTotalUnsub();
+      } catch (error) {
+        devLogger.warn("[zapTotals] Failed to tear down modal listener:", error);
+      }
+    }
+    modalZapTotalUnsub = null;
+    const el =
+      typeof document !== "undefined"
+        ? document.getElementById("videoZapTotal")
+        : null;
+    if (el) {
+      el.classList.add("hidden");
+      const text = el.querySelector("[data-zap-total-text]");
+      if (text) {
+        text.textContent = "";
+      }
+    }
+  }
+
+  // Orange sats badge on the modal's meta row (right side; views stay left).
+  // Mirrors the card badge: cached total now (also schedules the batched
+  // receipt fetch), re-rendered when a batch lands, hidden while zero.
+  function subscribeModalZapTotal(pointer) {
+    if (
+      typeof requestVideoZapTotal !== "function" ||
+      typeof getVideoZapTotalSnapshot !== "function" ||
+      typeof onZapTotalsChanged !== "function"
+    ) {
+      return;
+    }
+    const el =
+      typeof document !== "undefined"
+        ? document.getElementById("videoZapTotal")
+        : null;
+    if (!el || !pointer) {
+      return;
+    }
+    const render = () => {
+      const sats = getVideoZapTotalSnapshot(pointer);
+      const text = el.querySelector("[data-zap-total-text]");
+      if (Number.isFinite(sats) && sats > 0) {
+        if (text) {
+          text.textContent = `${formatViewCount(sats)} sats`;
+        }
+        el.classList.remove("hidden");
+      } else {
+        el.classList.add("hidden");
+      }
+    };
+    requestVideoZapTotal(pointer);
+    render();
+    modalZapTotalUnsub = onZapTotalsChanged(render);
+  }
+
   return {
     normalizeModalTrigger(candidate) {
       if (!candidate) {
@@ -120,64 +184,11 @@ export function createModalCoordinator(deps) {
         }
       }
       this.modalViewCountUnsub = null;
-      this.teardownModalZapTotal();
+      teardownModalZapTotal();
       if (this.videoModal) {
         this.videoModal.updateViewCountLabel("\u2013 views");
         this.videoModal.setViewCountPointer(null);
       }
-    },
-
-    teardownModalZapTotal() {
-      if (typeof this.modalZapTotalUnsub === "function") {
-        try {
-          this.modalZapTotalUnsub();
-        } catch (error) {
-          devLogger.warn("[zapTotals] Failed to tear down modal listener:", error);
-        }
-      }
-      this.modalZapTotalUnsub = null;
-      const el =
-        typeof document !== "undefined"
-          ? document.getElementById("videoZapTotal")
-          : null;
-      if (el) {
-        el.classList.add("hidden");
-        const text = el.querySelector("[data-zap-total-text]");
-        if (text) {
-          text.textContent = "";
-        }
-      }
-    },
-
-    // Orange sats badge on the modal's meta row (right side; views stay left).
-    // Mirrors the card badge: cached total now (also schedules the batched
-    // receipt fetch), re-rendered when a batch lands, hidden while zero.
-    subscribeModalZapTotal(pointer) {
-      if (typeof requestVideoZapTotal !== "function") {
-        return;
-      }
-      const el =
-        typeof document !== "undefined"
-          ? document.getElementById("videoZapTotal")
-          : null;
-      if (!el || !pointer) {
-        return;
-      }
-      const render = () => {
-        const sats = getVideoZapTotalSnapshot(pointer);
-        const text = el.querySelector("[data-zap-total-text]");
-        if (Number.isFinite(sats) && sats > 0) {
-          if (text) {
-            text.textContent = `${formatViewCount(sats)} sats`;
-          }
-          el.classList.remove("hidden");
-        } else {
-          el.classList.add("hidden");
-        }
-      };
-      requestVideoZapTotal(pointer);
-      render();
-      this.modalZapTotalUnsub = onZapTotalsChanged(render);
     },
 
     subscribeModalViewCount(pointer, pointerKey) {
@@ -196,7 +207,7 @@ export function createModalCoordinator(deps) {
         this.videoModal.updateViewCountLabel("Loading views\u2026");
         this.videoModal.setViewCountPointer(pointerKey);
       }
-      this.subscribeModalZapTotal(pointer);
+      subscribeModalZapTotal(pointer);
       try {
         const token = subscribeToVideoViewCount(pointer, ({ total, status, partial }) => {
           const latestViewEl = this.videoModal?.getViewCountElement() || null;
