@@ -1,9 +1,10 @@
 // js/ui/components/uploadModalStorageUnlock.js
 //
-// Storage-unlock glue for the Upload modal (#36 / #56), kept out of
-// UploadModal.js to stay within its file-size budget. Every function operates
-// on the UploadModal instance (`modal`); UploadModal exposes them as thin
-// prototype delegates so callers and tests keep using the instance methods.
+// Storage glue for the Upload modal (#36 / #56 unlock + #44 connection
+// picker), kept out of UploadModal.js to stay within its file-size budget.
+// Every function operates on the UploadModal instance (`modal`); UploadModal
+// exposes them as thin prototype delegates so callers and tests keep using
+// the instance methods.
 
 import { devLogger, userLogger } from "../../utils/logger.js";
 
@@ -65,6 +66,52 @@ export function resetThumbnailPicker(modal) {
     thumbnail.placeholder = "https://example.com/thumbnail.jpg";
     thumbnail.disabled = false;
   }
+}
+
+// #44: resolve which configured connection this upload targets. A per-modal
+// selection wins; a stale selection (connection deleted meanwhile) is reset;
+// otherwise the account default, then the first configured connection.
+export function pickTargetConnection(modal, connections) {
+  const list = Array.isArray(connections) ? connections : [];
+  const defaultConn = list.find((conn) => conn?.meta?.defaultForUploads) || null;
+  if (modal.selectedConnectionId) {
+    const selected = list.find((conn) => conn?.id === modal.selectedConnectionId);
+    if (selected) {
+      return { targetConn: selected, defaultConn };
+    }
+    modal.selectedConnectionId = null;
+  }
+  return { targetConn: defaultConn || list[0] || null, defaultConn };
+}
+
+// #44: render the "Upload destination" <select>. Hidden with fewer than two
+// connections (nothing to choose); the default connection is labelled.
+export function renderConnectionPicker(modal, connections, targetConn, defaultConn) {
+  const select = modal.inputs?.storageConnection;
+  const wrap = modal.sourceSections?.connectionPicker;
+  if (!select || !(wrap instanceof HTMLElement)) {
+    return;
+  }
+  const list = Array.isArray(connections) ? connections : [];
+  if (list.length < 2) {
+    wrap.classList.add("hidden");
+    return;
+  }
+  select.textContent = "";
+  for (const conn of list) {
+    if (!conn?.id) {
+      continue;
+    }
+    const option = select.ownerDocument.createElement("option");
+    option.value = conn.id;
+    const label = `${modal.getProviderLabel(conn.provider || conn.meta?.provider)} — ${
+      conn.meta?.bucket || "unnamed bucket"
+    }`;
+    option.textContent = conn.id === defaultConn?.id ? `${label} (default)` : label;
+    option.selected = conn.id === targetConn?.id;
+    select.appendChild(option);
+  }
+  wrap.classList.remove("hidden");
 }
 
 // Returns true if a locked persisted-nsec session was detected (for the active

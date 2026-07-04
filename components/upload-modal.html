@@ -153,6 +153,11 @@
                                     <button type="button" id="btn-manage-storage" class="text-xs text-muted hover:text-text hover:underline">Manage</button>
                                 </div>
                             </div>
+                            <!-- #44: switch upload destination without leaving the modal -->
+                            <div id="storage-connection-picker" class="hidden space-y-1">
+                                <label for="select-storage-connection" class="text-xs text-muted">Upload destination</label>
+                                <select id="select-storage-connection" class="input input-sm text-xs"></select>
+                            </div>
                             <div class="grid grid-cols-3 gap-2 text-xs">
                                 <div class="min-w-0">
                                     <span class="block text-muted">Provider</span>

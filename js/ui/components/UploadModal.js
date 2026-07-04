@@ -31,6 +31,8 @@ import {
   ensureStorageUnlockedForUpload,
   resetThumbnailPicker,
   promptStoredNsecUnlock,
+  pickTargetConnection,
+  renderConnectionPicker,
 } from "./uploadModalStorageUnlock.js";
 
 const INFO_HASH_PATTERN = /^[a-f0-9]{40}$/;
@@ -116,6 +118,8 @@ export class UploadModal {
     this.activeProvider = null;
     this.isStorageUnlocked = false;
     this.storageConfigured = false;
+    // #44: per-modal upload-destination override (null = account default).
+    this.selectedConnectionId = null;
 
     // Upload State
     this.videoUploadState = {
@@ -247,6 +251,7 @@ export class UploadModal {
         progress: $("#upload-progress-container"),
         thumbnailProgress: $("#thumbnail-progress-container"),
         results: $("#upload-results-container"),
+        connectionPicker: $("#storage-connection-picker"),
     };
 
     this.storageViews = {
@@ -274,6 +279,9 @@ export class UploadModal {
         // Progress
         progress: $("#input-progress"),
         thumbnailProgress: $("#thumbnail-progress"),
+
+        // #44: upload-destination picker
+        storageConnection: $("#select-storage-connection"),
     };
 
     // Results (Generated Links)
@@ -332,6 +340,14 @@ export class UploadModal {
     // Storage Unlock
     if (this.toggles.storageUnlock) {
         this.toggles.storageUnlock.addEventListener("click", () => this.handleUnlock());
+    }
+
+    if (this.inputs.storageConnection) {
+        // #44: switching the destination re-resolves summary + credentials.
+        this.inputs.storageConnection.addEventListener("change", () => {
+            this.selectedConnectionId = this.inputs.storageConnection.value || null;
+            void this.loadFromStorage();
+        });
     }
 
     // Manage Storage
@@ -910,9 +926,9 @@ export class UploadModal {
 
       try {
         const connections = await this.storageService.listConnections(pubkey);
-        // Prefer default connection
-        const defaultConn = connections.find(c => c.meta?.defaultForUploads);
-        const targetConn = defaultConn || connections[0];
+        // #44: a per-modal selection wins over the account default.
+        const { targetConn, defaultConn } = pickTargetConnection(this, connections);
+        renderConnectionPicker(this, connections, targetConn, defaultConn);
 
         if (targetConn) {
             this.storageConfigured = true;

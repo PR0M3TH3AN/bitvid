@@ -555,21 +555,34 @@ toward freshness and looked identical. Gave each a structural identity:
         the active signer if ever reused.
 
 ### 43. Logged-in profile card at the top of the profile modal (UX)
-- [ ] Show the **logged-in user's profile photo + name** at the **top-center** of the
-      profile modal, styled as a "profile card" that sits **half-on / half-off** the
-      modal edge (overlapping the top border) for a polished look. Goal: users can see
-      WHICH profile they're acting as (e.g. uploading as) at a glance. Pull avatar/name
-      from the profile cache for the active pubkey; update on profile switch.
+- [x] **DONE 2026-07-03.** An "Acting as <name>" identity pill now renders
+      top-center on EVERY pane, straddling the header divider (negative
+      block-start margin — the modal is full-screen, so the header edge is the
+      overlap surface). Avatar + name come from the same resolveMeta path as
+      the Account pane card (profile cache first), populated in
+      renderSavedProfiles so it refreshes on every profile switch; hidden when
+      logged out; clicking it jumps to the Account pane. Markup in
+      components/profile-modal.html, styles in css/tailwind.source.css
+      (.profile-modal__identity*), wiring in profileModalController. Test in
+      tests/profile-modal-controller.test.mjs (26 pass). Lint + build green.
+- [ ] **VERIFY on unstable:** open any pane → pill shows the active identity;
+      switch accounts → it updates; log out → it disappears; click → Account.
 
 ### 44. In-modal storage selector for uploads (UX)
-- [ ] Make storage unlock + selection easier from the **video upload modal**: let the
-      user **pick any configured storage connection** (R2 / B2 / Custom S3) and unlock it
-      **without leaving the upload modal** — today they must close it, open Profile →
-      Storage, change the default/selected connection, then reopen upload. Add a provider
-      picker (driven by `storageService.listConnections`) + inline unlock in the upload
-      modal's storage section; selecting one sets it as the active upload target for this
-      upload (and optionally the default). Reuse `loadFromStorage` / the per-provider
-      connection model.
+- [x] **DONE 2026-07-03.** The upload modal's storage summary now has an
+      "Upload destination" <select> (hidden with <2 connections) listing every
+      configured connection ("Provider — bucket", default labelled). Selecting
+      one becomes the upload target for THIS modal (per-modal override; the
+      account default is untouched — set that in Profile → Storage) and
+      loadFromStorage re-resolves summary + credentials immediately. A stale
+      selection (connection deleted) falls back to the default. Inline unlock
+      was already covered by #56's gate. Logic in
+      uploadModalStorageUnlock.js (pickTargetConnection/renderConnectionPicker,
+      UploadModal file-size budget). Tests:
+      tests/upload-storage-picker.test.mjs (2 scenarios). Lint + build green.
+- [ ] **VERIFY on unstable:** with 2+ connections configured, open Upload →
+      Storage Status → switch destination → summary updates and the upload
+      lands in the chosen bucket; with 1 connection the picker stays hidden.
 
 ### 45. Upload modal: suggest tags from the user's previous videos (UX)
 - [x] **DONE 2026-07-01.** The Hashtags section of the upload modal now shows one-tap
