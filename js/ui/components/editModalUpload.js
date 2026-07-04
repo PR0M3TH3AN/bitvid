@@ -7,6 +7,10 @@
 // and its rendered root (`context`).
 
 import { devLogger, userLogger } from "../../utils/logger.js";
+import {
+  getActiveSigner,
+  requestDefaultExtensionPermissions,
+} from "../../nostrClientFacade.js";
 
 // Set a field's value AND mark it edited/unlocked so EditModal.collect treats it
 // as a user change (isEditing() reads readOnly===false || dataset.isEditing).
@@ -24,7 +28,8 @@ function setStatus(el, text) {
 
 // Resolve the active storage connection and surface a user-facing reason when
 // upload isn't possible. Returns the connection on success, null otherwise.
-async function ensureUploadable(modal) {
+// `deps` are injectable for tests only.
+export async function ensureUploadable(modal, deps = {}) {
   if (!modal.mediaUploader) {
     modal.showError("Uploads are unavailable in this view.");
     return null;
@@ -40,7 +45,88 @@ async function ensureUploadable(modal) {
     return null;
   }
   if (!conn.unlocked || !conn.credentials) {
-    modal.showError("Unlock your storage in the profile modal, then try again.");
+    // #56: unlock inline (kept-unlocked restore or one passphrase prompt) and
+    // continue with this same file pick instead of bouncing the user to the
+    // profile modal.
+    return tryInlineStorageUnlock(modal, deps);
+  }
+  return conn;
+}
+
+const UNLOCK_FALLBACK_MESSAGE =
+  "Unlock your storage in the profile modal, then try again.";
+
+async function tryInlineStorageUnlock(modal, deps = {}) {
+  const getSigner =
+    typeof deps.getSigner === "function" ? deps.getSigner : getActiveSigner;
+  const requestPermissions =
+    typeof deps.requestPermissions === "function"
+      ? deps.requestPermissions
+      : requestDefaultExtensionPermissions;
+
+  const pubkey =
+    typeof modal.getCurrentPubkey === "function" ? modal.getCurrentPubkey() : null;
+  if (!pubkey || !modal.storageService) {
+    modal.showError(UNLOCK_FALLBACK_MESSAGE);
+    return null;
+  }
+
+  if (typeof modal.ensureSigner === "function") {
+    let gate = null;
+    try {
+      gate = await modal.ensureSigner({
+        pubkey,
+        need: "encrypt",
+        promptMessage:
+          "Re-enter your PIN / passphrase to unlock storage for this upload.",
+      });
+    } catch (error) {
+      devLogger.warn("[editModalUpload] Signer gate failed:", error);
+    }
+    if (gate && gate.ok !== true) {
+      // Cancel aborts quietly; a bad passphrase already showed its own toast.
+      if (gate.reason !== "cancelled" && gate.reason !== "bad-passphrase") {
+        modal.showError(UNLOCK_FALLBACK_MESSAGE);
+      }
+      return null;
+    }
+  }
+
+  const signer = getSigner();
+  if (
+    !signer ||
+    (typeof signer.nip44Decrypt !== "function" &&
+      typeof signer.nip04Decrypt !== "function")
+  ) {
+    modal.showError(UNLOCK_FALLBACK_MESSAGE);
+    return null;
+  }
+
+  try {
+    if (signer.type === "extension" || signer.type === "nip07") {
+      const permissionResult = await requestPermissions();
+      if (!permissionResult?.ok) {
+        modal.showError("Extension permissions are required to unlock storage.");
+        return null;
+      }
+    }
+    await modal.storageService.unlock(pubkey, { signer });
+  } catch (error) {
+    userLogger.error("[editModalUpload] Storage unlock failed:", error);
+    modal.showError(
+      "Failed to unlock storage: " + (error?.message || String(error)),
+    );
+    return null;
+  }
+
+  let conn = null;
+  try {
+    conn = await modal.mediaUploader.resolveActiveConnection();
+  } catch (error) {
+    devLogger.warn("[editModalUpload] Failed to re-resolve storage connection:", error);
+  }
+  if (!conn?.unlocked || !conn?.credentials) {
+    modal.showError(UNLOCK_FALLBACK_MESSAGE);
     return null;
   }
   return conn;

@@ -27,6 +27,11 @@ import {
 } from "../../nostrClientFacade.js";
 import { UI_FEEDBACK_DELAY_MS } from "../../constants.js";
 import { showConfirm } from "../confirmDialog.js";
+import {
+  ensureStorageUnlockedForUpload,
+  resetThumbnailPicker,
+  promptStoredNsecUnlock,
+} from "./uploadModalStorageUnlock.js";
 
 const INFO_HASH_PATTERN = /^[a-f0-9]{40}$/;
 
@@ -55,6 +60,7 @@ export class UploadModal {
     container,
     onRequestStorageSettings,
     onRequestUnlock,
+    ensureSigner,
     getHashtagSuggestions,
   } = {}) {
     this.authService = authService || null;
@@ -96,6 +102,10 @@ export class UploadModal {
     // Opens the login modal's unlock-saved-key (passphrase) flow — used when a
     // persisted nsec session is locked after a reload.
     this.onRequestUnlock = typeof onRequestUnlock === "function" ? onRequestUnlock : null;
+    // Shared signer gate (app.ensureEncryptionCapableSigner): silently restores a
+    // kept-unlocked key or shows ONE passphrase prompt, so the file pickers can
+    // unlock storage inline instead of dead-ending (#56).
+    this.ensureSigner = typeof ensureSigner === "function" ? ensureSigner : null;
 
     this.root = null;
     this.isVisible = false;
@@ -530,9 +540,13 @@ export class UploadModal {
           return;
       }
       if (!this.isStorageUnlocked) {
-          this.showError("Please unlock storage before selecting a file.");
-          e.target.value = "";
-          return;
+          // #56: unlock inline (silent restore or one passphrase prompt) and
+          // continue with this same file pick instead of erroring.
+          const unlocked = await this.ensureStorageUnlockedForUpload();
+          if (!unlocked) {
+              e.target.value = "";
+              return;
+          }
       }
 
       // Start new session
@@ -628,11 +642,18 @@ export class UploadModal {
   }
 
   async handleThumbnailSelection(file) {
-      if (!this.storageConfigured || !this.isStorageUnlocked) {
-          // We can't upload yet. Just hold it in state or warn?
-          // Since UI disables the browse button until unlocked (mostly), we assume safe.
-          // But if they just unlocked, we're good.
+      if (!this.storageConfigured) {
+          this.showError("Configure storage before uploading a thumbnail.");
+          this.resetThumbnailPicker();
           return;
+      }
+      if (!this.isStorageUnlocked) {
+          // #56: prompt to unlock inline instead of silently dropping the pick.
+          const unlocked = await this.ensureStorageUnlockedForUpload();
+          if (!unlocked) {
+              this.resetThumbnailPicker();
+              return;
+          }
       }
 
       const currentUploadId = ++this.thumbnailUploadId;
@@ -1011,41 +1032,18 @@ export class UploadModal {
       }
   }
 
-  // Returns true if a locked persisted-nsec session was detected (for the active
-  // account) and the re-unlock (passphrase) flow was opened, so the caller can stop.
+  // #36 / #56 storage-unlock glue lives in uploadModalStorageUnlock.js (file-size
+  // budget); these stay as instance methods so callers/tests are unchanged.
+  async ensureStorageUnlockedForUpload() {
+      return ensureStorageUnlockedForUpload(this);
+  }
+
+  resetThumbnailPicker() {
+      resetThumbnailPicker(this);
+  }
+
   promptStoredNsecUnlock(pubkey) {
-      const client = this.authService?.nostrClient;
-      if (!client || typeof client.getStoredSessionActorMetadata !== "function") {
-          return false;
-      }
-      let meta = null;
-      try {
-          meta = client.getStoredSessionActorMetadata();
-      } catch (err) {
-          return false;
-      }
-      if (!meta || meta.hasEncryptedKey !== true || meta.source !== "nsec") {
-          return false;
-      }
-      const metaPubkey =
-          typeof meta.pubkey === "string" ? meta.pubkey.trim().toLowerCase() : "";
-      const activePubkey =
-          typeof pubkey === "string" ? pubkey.trim().toLowerCase() : "";
-      if (activePubkey && metaPubkey && metaPubkey !== activePubkey) {
-          return false;
-      }
-      if (typeof this.onRequestUnlock !== "function") {
-          return false;
-      }
-      this.showError(
-          "Your saved key is locked after reloading. Re-enter your passphrase to unlock it, then try the upload again.",
-      );
-      try {
-          this.onRequestUnlock();
-      } catch (err) {
-          userLogger.warn("[UploadModal] Failed to open saved-key unlock flow:", err);
-      }
-      return true;
+      return promptStoredNsecUnlock(this, pubkey);
   }
 
   updateLockUi() {

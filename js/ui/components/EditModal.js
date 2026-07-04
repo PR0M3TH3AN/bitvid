@@ -25,6 +25,7 @@ export class EditModal {
     storageService = null,
     getCurrentPubkey = null,
     safeEncodeNpub = null,
+    ensureSigner = null,
     eventTarget,
     container,
   } = {}) {
@@ -39,6 +40,9 @@ export class EditModal {
     this.storageService = storageService || null;
     this.getCurrentPubkey =
       typeof getCurrentPubkey === "function" ? getCurrentPubkey : null;
+    // Shared signer gate (#56): lets the "Replace file" pickers unlock storage
+    // inline (cached keep-unlocked key or one passphrase prompt).
+    this.ensureSigner = typeof ensureSigner === "function" ? ensureSigner : null;
     this.mediaUploader = new MediaUploader({
       r2Service,
       s3Service,
