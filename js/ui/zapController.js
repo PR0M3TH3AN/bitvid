@@ -790,7 +790,19 @@ export default class ZapController {
       throw new Error("Enter a zap amount greater than zero.");
     }
 
-    const creatorEntry = await fetchLightningMetadata(lightningAddress);
+    // Name WHICH address failed: LNURL servers return opaque reasons like
+    // "Could not get user information", and without the address the creator's
+    // (fine) address gets blamed for a broken platform-fee address.
+    let creatorEntry;
+    try {
+      creatorEntry = await fetchLightningMetadata(lightningAddress);
+    } catch (error) {
+      const detail =
+        error?.message || "Unable to load this creator's Lightning info.";
+      throw new Error(
+        `Creator Lightning address (${lightningAddress}): ${detail}`,
+      );
+    }
     if (shares.creatorShare > 0) {
       try {
         validateInvoiceAmount(creatorEntry.metadata, shares.creatorShare);
@@ -814,7 +826,15 @@ export default class ZapController {
         throw new Error("Platform Lightning address is unavailable.");
       }
 
-      platformEntry = await fetchLightningMetadata(platformAddress);
+      try {
+        platformEntry = await fetchLightningMetadata(platformAddress);
+      } catch (error) {
+        const detail =
+          error?.message || "Unable to load the platform's Lightning info.";
+        throw new Error(
+          `Platform fee Lightning address (${platformAddress}): ${detail}`,
+        );
+      }
       try {
         validateInvoiceAmount(platformEntry.metadata, shares.platformShare);
       } catch (error) {
