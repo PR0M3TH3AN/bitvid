@@ -12,7 +12,11 @@ test("network/CORS failure throws a friendly, coded error", async () => {
     throw new TypeError("Failed to fetch");
   };
   await assert.rejects(
-    () => fetchPayServiceData("https://example.com/.well-known/lnurlp/x", { fetcher }),
+    () =>
+      fetchPayServiceData("https://example.com/.well-known/lnurlp/x", {
+        fetcher,
+        retryDelayMs: 0,
+      }),
     (err) => {
       assert.match(err.message, /reach this recipient's Lightning address/i);
       assert.equal(err.code, "lnurl-unreachable");
@@ -25,9 +29,65 @@ test("network/CORS failure throws a friendly, coded error", async () => {
 test("a non-OK HTTP response still reports a status error (unchanged)", async () => {
   const fetcher = async () => ({ ok: false, status: 502 });
   await assert.rejects(
-    () => fetchPayServiceData("https://example.com/.well-known/lnurlp/x", { fetcher }),
+    () =>
+      fetchPayServiceData("https://example.com/.well-known/lnurlp/x", {
+        fetcher,
+        retryDelayMs: 0,
+      }),
     /Failed to load LNURL metadata \(502\)/,
   );
+});
+
+// LNURL servers intermittently return {status:"ERROR"} bodies (observed live
+// against strike.me: "Could not get user information" on one request, a valid
+// callback on the next). A single retry must absorb that blip; a PERSISTENT
+// error must still surface the server's reason after the retry budget.
+test("a transient LNURL ERROR body recovers on the retry", async () => {
+  let calls = 0;
+  const fetcher = async () => {
+    calls += 1;
+    if (calls === 1) {
+      return {
+        ok: true,
+        json: async () => ({ status: "ERROR", reason: "Could not get user information" }),
+      };
+    }
+    return {
+      ok: true,
+      json: async () => ({
+        tag: "payRequest",
+        callback: "https://example.com/cb",
+        minSendable: 1000,
+        maxSendable: 100000,
+      }),
+    };
+  };
+  const meta = await fetchPayServiceData(
+    "https://example.com/.well-known/lnurlp/x",
+    { fetcher, retryDelayMs: 0 },
+  );
+  assert.equal(meta.callback, "https://example.com/cb");
+  assert.equal(calls, 2, "exactly one retry");
+});
+
+test("a persistent LNURL ERROR still fails with the server's reason", async () => {
+  let calls = 0;
+  const fetcher = async () => {
+    calls += 1;
+    return {
+      ok: true,
+      json: async () => ({ status: "ERROR", reason: "Could not get user information" }),
+    };
+  };
+  await assert.rejects(
+    () =>
+      fetchPayServiceData("https://example.com/.well-known/lnurlp/x", {
+        fetcher,
+        retryDelayMs: 0,
+      }),
+    /Could not get user information/,
+  );
+  assert.equal(calls, 2, "retry budget spent, then surfaced");
 });
 
 test("a valid LNURL pay response parses (no false friendly error)", async () => {
