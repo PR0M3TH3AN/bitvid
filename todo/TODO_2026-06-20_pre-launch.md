@@ -615,6 +615,19 @@ toward freshness and looked identical. Gave each a structural identity:
       handled).
 
 ### 47. "Most Zapped" sidebar tab (trending-by-zaps)
+- [ ] **NEXT (planned, not started): bitvid-native zap tally.** Full spec +
+      ordered task checklist in `docs/zap-tally-plan.md`. Problem: NIP-57 zap
+      receipts (9735) are published by the RECIPIENT's LNURL server, and
+      custodial wallets (Strike) don't — so paid zaps leave no on-relay record
+      and can't be counted globally. Fix: bitvid publishes a payer-signed,
+      preimage-verified zap event on successful send (as strong as a 9735 via
+      the preimage→payment_hash + description_hash→zapRequest binding, reusing
+      the existing bolt11 decode in `zapReceiptValidator.js`), counted alongside
+      real 9735s (deduped by payment_hash, 9735-preferred). Behind
+      `FEATURE_ZAP_TALLY` (default off). See the plan for the file-by-file
+      changes. Current state (commit `cbc62306`): 9735 counting + optimistic
+      bump + durable local ledger (`bitvid:sentZaps:v1`) already shipped; the
+      tally is the missing global/cross-user source.
 - [x] **DONE 2026-07-03.** Full Trending-pattern clone ranked by SATS:
         - `js/zapTotals.js` — per-pointer kind-9735 aggregation. The feed's
           getZapTotal reads the cached total AND schedules a BATCHED one-shot
