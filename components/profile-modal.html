@@ -62,6 +62,35 @@
         </button>
       </div>
 
+      <!--
+        Active-identity card (#43): visible on EVERY pane, straddling the
+        header divider, so users always see which profile they're acting as
+        (e.g. before uploading). Clicking it jumps to the Account pane.
+      -->
+      <button
+        id="profileModalIdentityCard"
+        type="button"
+        class="profile-modal__identity focus-ring hidden"
+        aria-hidden="true"
+        aria-label="Active profile — open account settings"
+      >
+        <span class="profile-modal__identity-avatar" aria-hidden="true">
+          <img
+            id="profileModalIdentityAvatar"
+            src="/assets/svg/default-profile.svg"
+            alt=""
+          />
+        </span>
+        <span class="profile-modal__identity-copy">
+          <span class="profile-modal__identity-kicker">Acting as</span>
+          <span
+            id="profileModalIdentityName"
+            class="profile-modal__identity-name"
+            >No active profile</span
+          >
+        </span>
+      </button>
+
       <!-- Modal Body -->
       <div class="profile-modal__body">
         <div
