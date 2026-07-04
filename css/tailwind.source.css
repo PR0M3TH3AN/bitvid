@@ -2904,6 +2904,18 @@
     transform-origin: top center;
   }
 
+  /* Zap total on video cards (#47 follow-up): orange, pushed to the row's end
+     so views/comments stay left-aligned and sats sit right-aligned. Hidden
+     (via the utility class) until a nonzero total is known. */
+  .video-card__zaps {
+    color: var(--color-zap);
+    margin-inline-start: auto;
+  }
+
+  .video-card__zaps .zap-total-text {
+    font-variant-numeric: tabular-nums;
+  }
+
   /* #43: always-visible active-identity pill. Rendered after the header in
      flow and pulled up with a negative block-start margin so it sits half-on /
      half-off the header divider — every pane shows who you're acting as. */

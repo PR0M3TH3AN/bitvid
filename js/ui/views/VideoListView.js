@@ -4,6 +4,7 @@ import {
   subscribeToVideoViewCount,
   unsubscribeFromVideoViewCount,
 } from "../../viewCounter.js";
+import { createZapTotalBinder } from "./videoCardZapTotals.js";
 import { normalizeDesignSystemContext } from "../../designSystem.js";
 import { userLogger } from "../../utils/logger.js";
 
@@ -172,6 +173,8 @@ export class VideoListView {
     this.renderedVideoIds = new Set();
     this.videoCardInstances = [];
     this.viewCountSubscriptions = new Map();
+    // #47 follow-up: orange per-card zap totals (right-aligned in the row).
+    this.zapTotalBinder = createZapTotalBinder();
     this.currentVideos = [];
     this.lastRenderedVideoSignature = null;
     this._lastRenderedVideoListElement = null;
@@ -266,6 +269,7 @@ export class VideoListView {
   destroy() {
     this.unmount();
     this.teardownAllViewCountSubscriptions();
+    this.zapTotalBinder.destroy();
     this.renderedVideoIds.clear();
     this.videoCardInstances = [];
     this.currentVideos = [];
@@ -712,6 +716,7 @@ export class VideoListView {
 
       if (pointerInfo) {
         this.registerVideoViewCountElement(cardEl, pointerInfo);
+        this.zapTotalBinder.bind(cardEl, pointerInfo);
       }
 
       if (video && video.id) {
@@ -809,6 +814,7 @@ export class VideoListView {
       container: this.container,
     });
     this.pruneDetachedViewCountElements();
+    this.zapTotalBinder.prune();
 
     return displayVideos;
   }

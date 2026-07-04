@@ -266,3 +266,6 @@ export function requestVideoZapTotal(pointer) {
 export function onZapTotalsChanged(listener) {
   return store.onChange(listener);
 }
+
+// The singleton store itself — exposes flush() for tests.
+export default store;

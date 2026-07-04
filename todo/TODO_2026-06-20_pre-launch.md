@@ -633,9 +633,21 @@ toward freshness and looked identical. Gave each a structural identity:
           `FEED_TYPES.MOST_ZAPPED`, `FEATURE_MOST_ZAPPED_FEED` flag (default
           on; off hides the tab like Trending's flag).
       Tests: `tests/zap-totals.test.mjs` (5). Lint + build green.
+- [x] **Follow-up DONE 2026-07-03 — per-card zap badges.** Video cards now show
+      the zap total in bitcoin ORANGE (new `--color-zap` token, both themes),
+      RIGHT-ALIGNED in the engagement row (views/comments stay left; CSS
+      `margin-inline-start: auto` on `.video-card__zaps`). Hidden until a
+      nonzero total is known (no "0 sats" noise). Binder
+      (`js/ui/views/videoCardZapTotals.js`, VideoListView file-size budget)
+      fills `[data-zap-total]` from the shared zapTotals cache — bind() also
+      schedules the batched receipt fetch, and one change listener updates
+      every bound card as batches land. Test:
+      `tests/video-card-zap-totals.test.mjs` (drives the REAL store).
 - [ ] **VERIFY on unstable:** open Most Zapped → zapped videos rise as receipts
-      load (unzapped feed reads as Recent at first); zap a video → within ~2min
-      of tab re-entry its rank reflects the new total.
+      load (unzapped feed reads as Recent at first) and their cards show the
+      orange right-aligned sats badge; unzapped cards show no badge; zap a
+      video → within ~2min of tab re-entry its rank + badge reflect the new
+      total.
 
 ### 48. Fluent profile switching across signing methods (nsec / NIP-46 / NIP-07)
 - [x] **nsec switching FIXED 2026-06-30.** Switching to a saved nsec profile used to fail
