@@ -155,6 +155,40 @@ test("zero-receipt answers are cached (no immediate refetch) and listeners fire"
   assert.equal(scheduled.length, schedulesBefore + 1, "stale entry schedules again");
 });
 
+test("optimistic ingest bumps instantly, then a real receipt replaces it (no double-count)", async () => {
+  let t = 1000;
+  let scripted = [];
+  const s = createZapTotalsStore({
+    now: () => t,
+    getTools: () => ({ nip57: { getSatoshisAmountFromBolt11: () => NaN } }),
+    getClient: () => ({
+      relays: ["wss://relay.example"],
+      getSubscriptionManager: () => ({ list: async () => scripted }),
+    }),
+    schedule: (fn) => { fn(); return 1; },
+  });
+  let changes = 0;
+  s.onChange(() => { changes += 1; });
+
+  const pointer = { type: "a", value: A1 };
+  // Optimistic bump shows immediately, no fetch needed.
+  s.ingestLocalZap(pointer, 2100);
+  assert.equal(s.getSnapshot(pointer), 2100, "optimistic sats visible instantly");
+  assert.ok(changes >= 1, "change emitted for the badge");
+
+  // Later, past the fetch TTL, the real receipt for the same zap lands →
+  // replaces the optimistic portion (total stays 2100, not 4200).
+  t += 5 * 60 * 1000;
+  scripted = [receipt("real-1", [["a", A1], amountTag(2100000)])];
+  s.request(pointer); // stale now → schedules; schedule() runs it inline
+  await s.flush();
+  assert.equal(
+    s.getSnapshot(pointer),
+    2100,
+    "real receipt replaced the optimistic bump — not added to it",
+  );
+});
+
 test("most-zapped sorter: sats desc, recency tie-break, muted sinks", () => {
   const item = (id, author, sats, createdAt, muted = false) => ({
     video: { id, pubkey: author, created_at: createdAt },

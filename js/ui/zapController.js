@@ -85,6 +85,10 @@ export default class ZapController {
     this.callbacks = {
       onSuccess: typeof callbacks.onSuccess === "function" ? callbacks.onSuccess : null,
       onError: typeof callbacks.onError === "function" ? callbacks.onError : null,
+      // Fires with { video, sats } after a fully-successful send so the app can
+      // optimistically bump the video's zap total (badge updates instantly).
+      onZapSuccess:
+        typeof callbacks.onZapSuccess === "function" ? callbacks.onZapSuccess : null,
     };
     this.requestWalletPane =
       typeof requestWalletPane === "function" ? requestWalletPane : null;
@@ -376,6 +380,20 @@ export default class ZapController {
       }
       this.videoModal?.setZapStatus(summary, "success");
       this.notifySuccess("Zap sent successfully!");
+
+      // Optimistically bump the video's zap total by the amount sent (both the
+      // creator and platform shares are tagged to the video, so the eventual
+      // relay total equals context.shares.total). Badge updates instantly.
+      if (this.callbacks.onZapSuccess) {
+        try {
+          this.callbacks.onZapSuccess({
+            video: this.getCurrentVideo(),
+            sats: Math.max(0, Math.round(Number(context?.shares?.total) || 0)),
+          });
+        } catch (error) {
+          userLogger.warn("[zap] onZapSuccess hook failed:", error);
+        }
+      }
 
       this.resetRetryState();
       this.modalZapCommentValue = "";

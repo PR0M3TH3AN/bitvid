@@ -89,7 +89,12 @@ export function createZapTotalsStore({
   getTools = () => null,
   schedule = (fn, ms) => setTimeout(fn, ms),
 } = {}) {
-  const totals = new Map(); // key → { sats, receiptIds:Set, fetchedAt }
+  // key → { sats, optimisticSats, receiptIds:Set, fetchedAt }
+  //   sats            — summed from real relay receipts (deduped by event id)
+  //   optimisticSats  — this session's own just-sent zaps, shown instantly
+  //                     (like ingestLocalViewEvent), cleared once a real
+  //                     receipt for the pointer arrives so it's never double-counted
+  const totals = new Map();
   const pending = new Map(); // key → pointer
   const listeners = new Set();
   let batchTimer = null;
@@ -97,11 +102,14 @@ export function createZapTotalsStore({
   const entryFor = (key) => {
     let entry = totals.get(key);
     if (!entry) {
-      entry = { sats: 0, receiptIds: new Set(), fetchedAt: 0 };
+      entry = { sats: 0, optimisticSats: 0, receiptIds: new Set(), fetchedAt: 0 };
       totals.set(key, entry);
     }
     return entry;
   };
+
+  const totalOf = (entry) =>
+    (entry?.sats || 0) + (entry?.optimisticSats || 0);
 
   const emitChange = () => {
     for (const listener of listeners) {
@@ -173,6 +181,7 @@ export function createZapTotalsStore({
     }
 
     let changed = false;
+    const keysWithRealReceipt = new Set();
     for (const event of Array.isArray(events) ? events : []) {
       if (!event || event.kind !== ZAP_RECEIPT_KIND || !event.id) {
         continue;
@@ -187,6 +196,7 @@ export function createZapTotalsStore({
       const sats = extractReceiptAmountSats(event, getTools());
       for (const key of keys) {
         const entry = entryFor(key);
+        keysWithRealReceipt.add(key);
         if (entry.receiptIds.has(event.id)) {
           continue;
         }
@@ -194,6 +204,15 @@ export function createZapTotalsStore({
         if (sats > 0) {
           entry.sats += sats;
         }
+        changed = true;
+      }
+    }
+    // A pointer that now has real receipts is authoritative — drop its
+    // optimistic bump so this session's just-sent zap isn't counted twice.
+    for (const key of keysWithRealReceipt) {
+      const entry = totals.get(key);
+      if (entry && entry.optimisticSats > 0) {
+        entry.optimisticSats = 0;
         changed = true;
       }
     }
@@ -206,7 +225,7 @@ export function createZapTotalsStore({
     // Cached total only — never triggers a fetch.
     getSnapshot(pointer) {
       const key = pointerKey(pointer);
-      return key ? totals.get(key)?.sats || 0 : 0;
+      return key ? totalOf(totals.get(key)) : 0;
     },
     // Cached total now, plus a scheduled batched fetch when unknown/stale.
     request(pointer) {
@@ -224,7 +243,25 @@ export function createZapTotalsStore({
           }, batchDelayMs);
         }
       }
-      return entry?.sats || 0;
+      return totalOf(entry);
+    },
+    // Optimistic bump for a zap THIS client just sent (mirrors
+    // ingestLocalViewEvent): the sats show instantly on the card + modal, and
+    // fetchedAt is refreshed so we don't immediately re-fetch and double-count
+    // before the real receipt propagates. When the real receipt later lands,
+    // runBatch clears the optimistic portion. Persists in-memory until the real
+    // receipt arrives or the page reloads (receipts from custodial wallets may
+    // never be published — the bump keeps the zapper's own view honest).
+    ingestLocalZap(pointer, sats) {
+      const key = pointerKey(pointer);
+      const amount = Number.isFinite(sats) ? Math.max(0, Math.round(sats)) : 0;
+      if (!key || amount <= 0) {
+        return;
+      }
+      const entry = entryFor(key);
+      entry.optimisticSats += amount;
+      entry.fetchedAt = now();
+      emitChange();
     },
     onChange(listener) {
       if (typeof listener !== "function") {
@@ -275,6 +312,12 @@ export function requestVideoZapTotal(pointer) {
 
 export function onZapTotalsChanged(listener) {
   return store.onChange(listener);
+}
+
+// Optimistic bump after this client sends a zap, so the card + modal badge
+// update instantly (the relay receipt reconciles later).
+export function ingestLocalVideoZap(pointer, sats) {
+  return store.ingestLocalZap(pointer, sats);
 }
 
 // The singleton store itself — exposes flush() for tests.

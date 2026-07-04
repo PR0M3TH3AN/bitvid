@@ -13,6 +13,7 @@ import initEditModal from "./initEditModal.js";
 import initDeleteModal from "./initDeleteModal.js";
 import { EventDetailsModal } from "./components/EventDetailsModal.js";
 import ZapController from "./zapController.js";
+import { ingestLocalVideoZap } from "../zapTotals.js";
 import { nostrClient } from "../nostrClientFacade.js";
 
 export default class ModalManager {
@@ -271,6 +272,21 @@ export default class ModalManager {
       callbacks: {
         onSuccess: (message) => app.showSuccess(message),
         onError: (message) => app.showError(message),
+        // Optimistically bump the zapped video's total using the SAME pointer
+        // the cards/modal badge subscribe with, so the badge updates instantly.
+        onZapSuccess: ({ video, sats } = {}) => {
+          try {
+            const info =
+              video && typeof app.deriveVideoPointerInfo === "function"
+                ? app.deriveVideoPointerInfo(video)
+                : null;
+            if (info?.pointer && sats > 0) {
+              ingestLocalVideoZap(info.pointer, sats);
+            }
+          } catch (error) {
+            /* best-effort optimistic update */
+          }
+        },
       },
       requestWalletPane: () => app.openWalletPane(),
     });
