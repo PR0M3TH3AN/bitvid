@@ -65,7 +65,14 @@ test("amount extraction: bolt11 first, zap-request amount fallback, garbage → 
   );
 });
 
-test("pointerKey normalizes and rejects unusable pointers", () => {
+test("pointerKey accepts BOTH app shapes and rejects unusable pointers", () => {
+  // Tag-style ARRAY — what deriveVideoPointerInfo/resolveVideoPointer actually
+  // produce (regression: the object-only version silently zeroed every card
+  // badge and the Most Zapped ranking).
+  assert.equal(pointerKey(["a", A1]), `a:${A1}`);
+  assert.equal(pointerKey(["e", "evt1", "wss://relay.example"]), "e:evt1");
+  assert.equal(pointerKey(["x", "nope"]), "");
+  // Object form.
   assert.equal(pointerKey({ type: "a", value: A1 }), `a:${A1}`);
   assert.equal(pointerKey({ type: "e", value: "evt1" }), "e:evt1");
   assert.equal(pointerKey({ type: "x", value: "nope" }), "");

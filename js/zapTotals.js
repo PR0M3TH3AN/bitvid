@@ -29,9 +29,19 @@ function tagValues(event, name) {
     .map((tag) => tag[1]);
 }
 
+// Accepts BOTH pointer shapes used in the app: the canonical tag-style array
+// ["a"|"e", value, relay?] (what deriveVideoPointerInfo/resolveVideoPointer
+// produce) and the object form { type, value }.
 export function pointerKey(pointer) {
-  const type = pointer?.type === "e" ? "e" : pointer?.type === "a" ? "a" : "";
-  const value = typeof pointer?.value === "string" ? pointer.value.trim() : "";
+  let type = "";
+  let value = "";
+  if (Array.isArray(pointer)) {
+    type = pointer[0] === "a" || pointer[0] === "e" ? pointer[0] : "";
+    value = typeof pointer[1] === "string" ? pointer[1].trim() : "";
+  } else if (pointer && typeof pointer === "object") {
+    type = pointer.type === "a" || pointer.type === "e" ? pointer.type : "";
+    value = typeof pointer.value === "string" ? pointer.value.trim() : "";
+  }
   if (!type || !value) {
     return "";
   }

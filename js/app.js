@@ -119,7 +119,12 @@ import {
   formatViewCount,
   ingestLocalViewEvent,
 } from "./viewCounter.js";
-import { initZapTotals } from "./zapTotals.js";
+import {
+  initZapTotals,
+  requestVideoZapTotal,
+  getVideoZapTotalSnapshot,
+  onZapTotalsChanged,
+} from "./zapTotals.js";
 import {
   formatAbsoluteTimestamp as formatAbsoluteTimestampUtil,
   formatAbsoluteDateWithOrdinal as formatAbsoluteDateWithOrdinalUtil,
@@ -699,6 +704,9 @@ class Application {
         unsubscribeFromVideoViewCount,
         formatViewCount,
         ingestLocalViewEvent,
+        requestVideoZapTotal,
+        getVideoZapTotalSnapshot,
+        onZapTotalsChanged,
         pointerArrayToKey,
         pointerKey: pointerKey,
         getCanonicalDesignSystemMode,

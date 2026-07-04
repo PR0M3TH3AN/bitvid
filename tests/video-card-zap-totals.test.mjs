@@ -60,7 +60,8 @@ test("binder: zero stays hidden, receipts reveal and format, prune drops detache
   const badge = card.querySelector("[data-zap-total]");
   const wrapper = card.querySelector(".video-card__zaps");
 
-  const pointerInfo = { key: `a:${A1}`, pointer: { type: "a", value: A1 } };
+  // Tag-style ARRAY pointer — the shape VideoListView actually passes.
+  const pointerInfo = { key: `a:${A1}`, pointer: ["a", A1] };
   binder.bind(card, pointerInfo);
   assert.equal(wrapper.classList.contains("hidden"), true, "unknown total stays hidden");
   assert.equal(badge.textContent, "");

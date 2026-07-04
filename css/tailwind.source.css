@@ -2916,6 +2916,13 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* Same treatment in the player modal: orange sats on the far side of the
+     meta row (the row is justify-between, views stay left). */
+  .video-modal__zaps {
+    color: var(--color-zap);
+    font-variant-numeric: tabular-nums;
+  }
+
   /* #43: always-visible active-identity pill. Rendered after the header in
      flow and pulled up with a negative block-start margin so it sits half-on /
      half-off the header divider — every pane shows who you're acting as. */
