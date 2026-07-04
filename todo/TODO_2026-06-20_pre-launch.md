@@ -1166,6 +1166,13 @@ Reported 2026-06-25. Relates to #17 (NIP-71 interop) / the bitvid→NIP-71 mirro
       trusted release gate. Audit e2e parallel-load flakiness too.
 
 ### 11b. SILENTLY-EXCLUDED unit tests — 20 files never run in CI (found 2026-06-23)
+> **2026-07-03 addendum — stale-default failure was hiding in local runs:**
+> `tests/app/hash-change-handler.test.mjs` had been failing since 04621efc
+> (2026-06-24) made TRENDING the deliberate logged-out landing — the test still
+> expected `most-recent-videos`. It went unnoticed locally because
+> `npm run test:unit | tail` reports the PIPE's exit code, not npm's (lesson:
+> never pipe the suite when reading its exit status). Spec-corrected to assert
+> `views/trending.html` (integrity note in the test file); all 3 tests pass.
 `scripts/run-unit-tests.mjs` only collects `*.test.mjs|*.test.js` files whose
 **content contains `node:test`** (line ~54). 20 test files use bare `assert` +
 top-level await instead, so the runner skips them WITHOUT WARNING and they are
@@ -1530,28 +1537,38 @@ that used it.
 - [ ] **VERIFY live on a phone**: modals should now be full-screen; tapping a video
       card shows the active lift/accent/marquee; profile modal tabs are the app-grid.
 
-### 49. Relay-ack false-negatives on the generic content-publish path (HIGH-STAKES — deferred)
-> No rush — only act if it starts causing problems. Same bug class as the list-publish
-> fix (commit 47f2a9a8): when no relay ACKs within the 10s `RELAY_PUBLISH_TIMEOUT_MS`
-> window, `assertAnyRelayAccepted` throws even though the event was sent and almost
-> always persisted (works after refresh). Already fixed for the replaceable LISTS
-> (subscriptions/blocks/relay-list/dm-hints/hashtags) via
-> `assertAnyRelayAcceptedOrUnconfirmed`.
-- [ ] **Generic content publish still hard-errors on all-timeout.** The
-      `signAndPublishEventHelper` (`js/nostr/publishHelpers.js:472`) + `rebroadcast`
-      (`:1334`) + `video revert` (`js/nostr/client.js:3064`) still use bare
-      `assertAnyRelayAccepted`, so a slow-ack **video publish/edit/delete/revert**
-      can show "Failed to share video" (or similar) when it actually published.
-      HIGH-STAKES because these are the flagship content flows.
-- [ ] **Why it wasn't bundled in:** video publish feeds a relay summary into
-      `describePublishOutcome` (the "shared to N relays" / warning UI). Applying
-      `assertAnyRelayAcceptedOrUnconfirmed` here must keep that outcome honest (an
-      unconfirmed publish should read as "shared, couldn't confirm" — NOT a hard
-      failure and NOT a false "shared to N relays"). Needs its own careful pass +
-      tests around the video outcome-describer and delete semantics (a false
-      "deleted" is worse than a false "publish failed").
-- [ ] Deletions (kind 5) especially: decide whether an unconfirmed delete should
-      report success optimistically or stay conservative.
+### 49. Relay-ack false-negatives on the generic content-publish path (HIGH-STAKES)
+> Same bug class as the list-publish fix (commit 47f2a9a8): all-timeout ≠ rejection.
+- [x] **DONE 2026-07-03 — generic content publish is unconfirmed-tolerant, with
+      HONEST outcome messaging at every consumer.** The three bare
+      `assertAnyRelayAccepted` call sites now use
+      `assertAnyRelayAcceptedOrUnconfirmed` (all-timeout → `summary.unconfirmed`,
+      soft success; explicit rejections STILL throw `RelayPublishError`):
+        - `signAndPublishEvent` (js/nostr/publishHelpers.js — video publish, edit,
+          repost, mirror, videoPublisher) + `rebroadcastEvent`.
+        - `revertVideo` (js/nostr/client.js) — so a slow-ack tombstone no longer
+          aborts `deleteAllVersions` midway (kind-5 hard delete now always runs).
+      Honesty plumbing (the reason this was deferred):
+        - The relay tally (`attachRelayPublishSummary`, now also attached on EDIT)
+          carries `unconfirmed`; `describePublishOutcome` maps accepted=0 +
+          unconfirmed → WARNING "sent, but no relay has confirmed receiving it
+          yet" — never a fake "published to N relays", never a hard failure.
+          Zero-accepted WITHOUT the flag stays the hard error.
+        - Edit: editModalController reads the tally and says "update sent, not
+          confirmed yet" instead of "updated successfully" when unconfirmed.
+        - Revert: revertModalController tracks per-entry summaries and only says
+          "Reverted…" when a relay ACKed; otherwise "sent, not confirmed yet".
+- [x] **Delete semantics — decided CONSERVATIVE.** A false "deleted" is worse
+      than a false "failed": `anyRelayAcceptedInSummaries` (js/nostrPublish.js)
+      scans every tombstone + kind-5 summary; `handleDeleteModalConfirm` only
+      claims "All versions deleted successfully!" when ≥1 relay ACKed something,
+      else "Delete request sent, but no relay has confirmed it yet — the video
+      may reappear until relays catch up." (Empty set = nothing to publish =
+      confirmed.) Tests: `tests/relay-ack-unconfirmed-content.test.mjs` (6, incl.
+      end-to-end signAndPublishEvent all-timeout vs rejection). Lint + build green.
+- [ ] **VERIFY on unstable:** with a slow/unreachable relay set, publish + edit +
+      delete a test video — messages should read "sent/unconfirmed", never
+      "failed", and the content should be correct after a refresh.
 
 ### 50. isDevMode — keep it; fix the test-harness gap (LOW priority)
 - Decision (2026-07): **KEEP `isDevMode`.** It's used in ~26 files, chiefly to gate
@@ -1711,13 +1728,31 @@ passphrase-encrypted). Items 51, 56, 57 are all facets of that.
       merge-new already keeps grids fresh).
 
 ### 56. Upload & edit modals: prompt to unlock storage (PIN popup), don't just error (UX)
-- [ ] When storage is locked, the **upload** and **edit** modals should open the
-      passphrase/PIN unlock popup instead of surfacing a raw error — for **both** the
-      video-file upload and the **thumbnail** upload. **#36** already added this
-      auto-open-login unlock for the **upload** modal; extend the same treatment to the
-      **edit** modal and the **thumbnail** upload path.
-- [ ] Combine with **51**: once unlocked, cache the state so the user isn't re-prompted
-      on every upload/refresh. "Both would be nice" — actionable prompt AND cached unlock.
+- [x] **DONE 2026-07-03.** All three locked-storage file-pick paths now unlock
+      INLINE and continue with the same pick, via the shared signer gate
+      (`app.ensureEncryptionCapableSigner`: silent kept-unlocked restore, else ONE
+      passphrase prompt with the keep-unlocked checkbox):
+        - **Upload modal, video file:** was `showError("Please unlock storage…")`
+          → now `ensureStorageUnlockedForUpload()` (new
+          `js/ui/components/uploadModalStorageUnlock.js`; UploadModal delegates —
+          also absorbed `promptStoredNsecUnlock` for the file-size budget).
+        - **Upload modal, thumbnail:** was a SILENT no-op → now the same inline
+          unlock; a refused unlock resets the picker (placeholder + URL input).
+        - **Edit modal, "Replace file" (video + thumbnail):** was "Unlock your
+          storage in the profile modal, then try again" → `ensureUploadable`
+          (js/ui/components/editModalUpload.js) now gates the signer, runs
+          `storageService.unlock`, and re-resolves the connection in-gesture
+          (extension signers still get the permission request first).
+      Cancel / bad-passphrase abort quietly (the gate toasts a wrong passphrase
+      itself); other failures fall through to the pre-existing messaging.
+      `ensureSigner` is threaded through initUploadModal / initEditModal from app.
+      Tests: `tests/upload-edit-storage-unlock-gate.test.mjs` (12). Lint + build green.
+- [x] Combine with **51**: satisfied by the gate itself — it restores the cached
+      keep-unlocked key first, so an unlocked-once session never re-prompts.
+- [ ] **VERIFY on unstable:** locked nsec session → pick a video file in the upload
+      modal (one PIN prompt, upload proceeds), pick a thumbnail (same), and use
+      Edit → Replace file (same). Cancel each prompt once — no error spam, picker
+      state restored.
 
 ### 57. nsec / NIP-46 accounts: encryption ops fail after refresh — re-prompt, don't blanket-error (BUG)
 - [ ] **Symptom:** adding/editing a hashtag on an **nsec**-logged-in account errors with
