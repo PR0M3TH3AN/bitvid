@@ -15,6 +15,7 @@
 import { devLogger } from "./utils/logger.js";
 
 export const ZAP_RECEIPT_KIND = 9735;
+export const SENT_ZAPS_STORAGE_KEY = "bitvid:sentZaps:v1";
 const FETCH_TTL_MS = 120000;
 const BATCH_DELAY_MS = 150;
 const MAX_POINTERS_PER_FILTER = 100;
@@ -88,16 +89,52 @@ export function createZapTotalsStore({
   getClient = () => null,
   getTools = () => null,
   schedule = (fn, ms) => setTimeout(fn, ms),
+  // Durable ledger of the user's OWN sent zaps (localStorage key), so their
+  // zapped videos keep the count + Most-Zapped rank across reloads even when
+  // the recipient's LNURL server never publishes a 9735 receipt (custodial
+  // wallets like Strike routinely don't). Pass null to disable (tests).
+  persistKey = SENT_ZAPS_STORAGE_KEY,
 } = {}) {
   // key → { sats, optimisticSats, receiptIds:Set, fetchedAt }
   //   sats            — summed from real relay receipts (deduped by event id)
-  //   optimisticSats  — this session's own just-sent zaps, shown instantly
-  //                     (like ingestLocalViewEvent), cleared once a real
-  //                     receipt for the pointer arrives so it's never double-counted
+  //   optimisticSats  — the user's OWN sent zaps (durable ledger + session
+  //                     bumps), shown instantly like ingestLocalViewEvent.
+  //                     Cleared once a real receipt for the pointer arrives, so
+  //                     if the recipient DOES publish, the relay becomes
+  //                     authoritative and the value is never double-counted.
   const totals = new Map();
   const pending = new Map(); // key → pointer
   const listeners = new Set();
   let batchTimer = null;
+
+  // --- durable sent-zap ledger (localStorage: { pointerKey: sats }) ---
+  const readLedger = () => {
+    if (!persistKey || typeof localStorage === "undefined") {
+      return {};
+    }
+    try {
+      const raw = localStorage.getItem(persistKey);
+      const parsed = raw ? JSON.parse(raw) : {};
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch (error) {
+      return {};
+    }
+  };
+  const writeLedger = (ledger) => {
+    if (!persistKey || typeof localStorage === "undefined") {
+      return;
+    }
+    try {
+      const keys = Object.keys(ledger || {});
+      if (!keys.length) {
+        localStorage.removeItem(persistKey);
+      } else {
+        localStorage.setItem(persistKey, JSON.stringify(ledger));
+      }
+    } catch (error) {
+      /* best-effort */
+    }
+  };
 
   const entryFor = (key) => {
     let entry = totals.get(key);
@@ -107,6 +144,14 @@ export function createZapTotalsStore({
     }
     return entry;
   };
+
+  // Seed the optimistic layer from the durable ledger at construction.
+  for (const [key, sats] of Object.entries(readLedger())) {
+    const amount = Number(sats);
+    if (typeof key === "string" && key && Number.isFinite(amount) && amount > 0) {
+      entryFor(key).optimisticSats = Math.round(amount);
+    }
+  }
 
   const totalOf = (entry) =>
     (entry?.sats || 0) + (entry?.optimisticSats || 0);
@@ -208,12 +253,24 @@ export function createZapTotalsStore({
       }
     }
     // A pointer that now has real receipts is authoritative — drop its
-    // optimistic bump so this session's just-sent zap isn't counted twice.
-    for (const key of keysWithRealReceipt) {
-      const entry = totals.get(key);
-      if (entry && entry.optimisticSats > 0) {
-        entry.optimisticSats = 0;
-        changed = true;
+    // optimistic bump AND its durable ledger entry, so once the relay actually
+    // reflects zaps for this video we trust it and never double-count.
+    if (keysWithRealReceipt.size) {
+      const ledger = readLedger();
+      let ledgerChanged = false;
+      for (const key of keysWithRealReceipt) {
+        const entry = totals.get(key);
+        if (entry && entry.optimisticSats > 0) {
+          entry.optimisticSats = 0;
+          changed = true;
+        }
+        if (key in ledger) {
+          delete ledger[key];
+          ledgerChanged = true;
+        }
+      }
+      if (ledgerChanged) {
+        writeLedger(ledger);
       }
     }
     if (changed || batch.size) {
@@ -261,6 +318,11 @@ export function createZapTotalsStore({
       const entry = entryFor(key);
       entry.optimisticSats += amount;
       entry.fetchedAt = now();
+      // Persist to the durable ledger so the badge + Most-Zapped rank survive a
+      // reload even when no 9735 receipt is ever published for this zap.
+      const ledger = readLedger();
+      ledger[key] = (Number(ledger[key]) || 0) + amount;
+      writeLedger(ledger);
       emitChange();
     },
     onChange(listener) {

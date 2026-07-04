@@ -84,6 +84,7 @@ function makeStore({ receipts = [], now = () => 1000 } = {}) {
   const scheduled = [];
   const store = createZapTotalsStore({
     now,
+    persistKey: null, // in-memory; the durable ledger has its own test
     getTools: () => ({ nip57: { getSatoshisAmountFromBolt11: () => NaN } }),
     getClient: () => ({
       relays: ["wss://relay.example"],
@@ -160,6 +161,7 @@ test("optimistic ingest bumps instantly, then a real receipt replaces it (no dou
   let scripted = [];
   const s = createZapTotalsStore({
     now: () => t,
+    persistKey: null,
     getTools: () => ({ nip57: { getSatoshisAmountFromBolt11: () => NaN } }),
     getClient: () => ({
       relays: ["wss://relay.example"],
@@ -187,6 +189,44 @@ test("optimistic ingest bumps instantly, then a real receipt replaces it (no dou
     2100,
     "real receipt replaced the optimistic bump — not added to it",
   );
+});
+
+test("durable ledger: sent zaps persist across reload; a real receipt prunes them", async () => {
+  const KEY = "bitvid:sentZaps:test";
+  localStorage.removeItem(KEY);
+  const pointer = { type: "a", value: A1 };
+
+  // Session 1: send a zap. No receipt is ever published (Strike-style).
+  const s1 = createZapTotalsStore({ persistKey: KEY });
+  s1.ingestLocalZap(pointer, 2100);
+  assert.equal(s1.getSnapshot(pointer), 2100);
+
+  // Session 2 (reload): a fresh store seeds from the durable ledger — the zap
+  // still shows, so the badge + Most-Zapped rank survive with no relay receipt.
+  const s2 = createZapTotalsStore({ persistKey: KEY });
+  assert.equal(s2.getSnapshot(pointer), 2100, "sent zap persisted across reload");
+
+  // Session 3: now a real receipt for this video DOES appear on relays → the
+  // relay becomes authoritative and the ledger entry is pruned (no double-count).
+  let scripted = [receipt("r-1", [["a", A1], amountTag(2100000)])];
+  const s3 = createZapTotalsStore({
+    persistKey: KEY,
+    now: () => 10 * 60 * 1000, // past the fetch TTL so the seeded entry is stale
+    getTools: () => ({ nip57: { getSatoshisAmountFromBolt11: () => NaN } }),
+    getClient: () => ({
+      relays: ["wss://relay.example"],
+      getSubscriptionManager: () => ({ list: async () => scripted }),
+    }),
+    schedule: (fn) => { fn(); return 1; },
+  });
+  s3.request(pointer);
+  await s3.flush();
+  assert.equal(s3.getSnapshot(pointer), 2100, "relay receipt now the source (not 4200)");
+
+  // Session 4 (reload after prune): ledger cleared, so only relay data remains.
+  const s4 = createZapTotalsStore({ persistKey: KEY });
+  assert.equal(s4.getSnapshot(pointer), 0, "ledger pruned once the relay had a receipt");
+  localStorage.removeItem(KEY);
 });
 
 test("most-zapped sorter: sats desc, recency tie-break, muted sinks", () => {
