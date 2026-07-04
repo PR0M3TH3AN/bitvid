@@ -615,11 +615,27 @@ toward freshness and looked identical. Gave each a structural identity:
       handled).
 
 ### 47. "Most Zapped" sidebar tab (trending-by-zaps)
-- [ ] Add a **Most Zapped** sidebar tab: like Trending (#27, view-count) but ranked by
-      **total zaps** (sats / zap count) per video. Reuse the zap accounting (kind-9735
-      receipts) already used for the zap system; build a feed source/ranker that sorts by
-      zap total over a window, wired into the feed engine like Trending. Depends on
-      reliable zap data (couples with the zap system already shipped in #3).
+- [x] **DONE 2026-07-03.** Full Trending-pattern clone ranked by SATS:
+        - `js/zapTotals.js` — per-pointer kind-9735 aggregation. The feed's
+          getZapTotal reads the cached total AND schedules a BATCHED one-shot
+          receipt fetch (`#a`/`#e` chunks via the L1 SubscriptionManager — the
+          direct-pool lint gate applies) for unknown/stale pointers (2-min TTL;
+          zero-receipt answers cached too). Amounts: nip57 bolt11 parse, falling
+          back to the zap request's amount tag (msats); receipts deduped by id
+          so re-fetches never double-count.
+        - Feed: `js/feedEngine/mostZappedFeed.js` + `createMostZappedSorter`
+          (sorters.js refactored to a shared count-ranked sorter — Trending
+          behavior unchanged: sats/views desc, recency tie-break, author
+          spread, trusted-muted sink).
+        - View: `views/most-zapped.html` + `js/mostZappedView.js` (re-runs the
+          feed on zapTotals' change signal, same settle-in pattern), sidebar
+          link, viewManager registry, feedCoordinator case/loader,
+          `FEED_TYPES.MOST_ZAPPED`, `FEATURE_MOST_ZAPPED_FEED` flag (default
+          on; off hides the tab like Trending's flag).
+      Tests: `tests/zap-totals.test.mjs` (5). Lint + build green.
+- [ ] **VERIFY on unstable:** open Most Zapped → zapped videos rise as receipts
+      load (unzapped feed reads as Recent at first); zap a video → within ~2min
+      of tab re-entry its rank reflects the new total.
 
 ### 48. Fluent profile switching across signing methods (nsec / NIP-46 / NIP-07)
 - [x] **nsec switching FIXED 2026-06-30.** Switching to a saved nsec profile used to fail

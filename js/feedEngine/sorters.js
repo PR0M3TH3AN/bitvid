@@ -3,21 +3,20 @@
 import { normalizeHashtag } from "../utils/hashtagNormalization.js";
 import { markAsNormalized } from "./utils.js";
 
-// Ranks the active feed by VIEW COUNT (the "Trending" tab). Counts come from the
-// injected runtime.getViewCount(video) — the shared viewCounter cache populated
-// by the grid cards' per-card subscriptions. Unknown/not-yet-loaded counts are
-// treated as 0, so on a cold cache the feed reads as recency and settles into
-// true trending as counts stream in (the Trending view re-runs the feed on
-// viewCounter's debounced change signal). Trusted-muted always sinks last.
-export function createTrendingSorter() {
-  return function trendingSorter(items = [], context = {}) {
+// Shared count-ranked sorter: rank by an injected per-video metric (desc),
+// tie-break by recency, spread authors, sink trusted-muted last. Unknown /
+// not-yet-loaded counts are treated as 0, so on a cold cache the feed reads
+// as recency and settles into the true ranking as counts stream in (the view
+// re-runs the feed on the metric cache's debounced change signal).
+//   - Trending (#27): runtime.getViewCount (viewCounter cache)
+//   - Most Zapped (#47): runtime.getZapTotal (zapTotals cache)
+function createCountRankedSorter(resolveMetric) {
+  return function countRankedSorter(items = [], context = {}) {
     if (!Array.isArray(items)) {
       return [];
     }
-    const getViewCount =
-      typeof context?.runtime?.getViewCount === "function"
-        ? context.runtime.getViewCount
-        : () => 0;
+    const metricFn = resolveMetric(context);
+    const getViewCount = typeof metricFn === "function" ? metricFn : () => 0;
 
     const isMuted = (entry) =>
       entry?.metadata?.moderation?.trustedMuted === true ||
@@ -55,10 +54,19 @@ export function createTrendingSorter() {
 
     const live = items.filter((entry) => !isMuted(entry));
     const muted = items.filter((entry) => isMuted(entry));
-    // Rank by views, then spread authors so the tab isn't walls of one creator.
-    // The most-viewed item is still chosen first, so it stays topmost.
+    // Rank by the metric, then spread authors so the tab isn't walls of one
+    // creator. The top-ranked item is still chosen first, so it stays topmost.
     return [...spreadAuthors(live.sort(compare)), ...muted.sort(compare)];
   };
+}
+
+export function createTrendingSorter() {
+  return createCountRankedSorter((context) => context?.runtime?.getViewCount);
+}
+
+// "Most Zapped" (#47): same ranking mechanics over sats totals.
+export function createMostZappedSorter() {
+  return createCountRankedSorter((context) => context?.runtime?.getZapTotal);
 }
 
 // Round-robin interleave by author: one video per creator per pass, each pass in

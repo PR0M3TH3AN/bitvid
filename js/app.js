@@ -119,6 +119,7 @@ import {
   formatViewCount,
   ingestLocalViewEvent,
 } from "./viewCounter.js";
+import { initZapTotals } from "./zapTotals.js";
 import {
   formatAbsoluteTimestamp as formatAbsoluteTimestampUtil,
   formatAbsoluteDateWithOrdinal as formatAbsoluteDateWithOrdinalUtil,
@@ -981,6 +982,11 @@ class Application {
       initViewCounter({ nostrClient });
     } catch (error) {
       devLogger.warn("Failed to initialize view counter:", error);
+    }
+    try {
+      initZapTotals({ nostrClient });
+    } catch (error) {
+      devLogger.warn("Failed to initialize zap totals:", error);
     }
   }
 
@@ -4407,6 +4413,11 @@ class Application {
   refreshTrendingFeed(...args) {
     this._initCoordinators();
     return this._feed.refreshFeed(FEED_TYPES.TRENDING, ...args);
+  }
+
+  refreshMostZappedFeed(...args) {
+    this._initCoordinators();
+    return this._feed.refreshFeed(FEED_TYPES.MOST_ZAPPED, ...args);
   }
 
   refreshRecentFeed(...args) {
