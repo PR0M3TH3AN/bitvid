@@ -624,8 +624,10 @@ toward freshness and looked identical. Gave each a structural identity:
       the preimage→payment_hash + description_hash→zapRequest binding, reusing
       the existing bolt11 decode in `zapReceiptValidator.js`), counted alongside
       real 9735s (deduped by payment_hash, 9735-preferred). Behind
-      `FEATURE_ZAP_TALLY` (default off). See the plan for the file-by-file
-      changes. Current state (commit `cbc62306`): 9735 counting + optimistic
+      `FEATURE_ZAP_TALLY` (default off). Plan also covers a
+      SECOND orange zaps-over-time line on the per-video Popularity chart with a
+      legend (red=Views/orange=Zaps) and visible date labels (docs §5.9). See the
+      plan for the file-by-file changes. Current state (commit `cbc62306`): 9735 counting + optimistic
       bump + durable local ledger (`bitvid:sentZaps:v1`) already shipped; the
       tally is the missing global/cross-user source.
 - [x] **DONE 2026-07-03.** Full Trending-pattern clone ranked by SATS:

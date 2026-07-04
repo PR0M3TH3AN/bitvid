@@ -1,9 +1,11 @@
 # bitvid-native zap tally — dev plan
 
 > Status: **PLANNED (not started)** · Author: agent handoff · Created 2026-07-04
-> Scope: a bitvid-published, preimage-verified zap event so "Most Zapped" and the
-> per-card / per-modal zap totals are global, durable, and independent of whether
-> the recipient's Lightning provider publishes NIP-57 receipts.
+> Scope: (1) a bitvid-published, preimage-verified zap event so "Most Zapped" and
+> the per-card / per-modal zap totals are global, durable, and independent of
+> whether the recipient's Lightning provider publishes NIP-57 receipts; and (2) a
+> second (orange) zaps-over-time line on the per-video Popularity chart, with a
+> legend (red=Views / orange=Zaps) and visible date labels (§5.9).
 
 This document is the single source of truth for the change so work stays neat
 across sessions. Read it top to bottom before touching code; the **Task
@@ -72,6 +74,9 @@ sha256 check. No new crypto dependency.
 - Anti-spam by construction (must actually pay to inflate; misattribution
   blocked by the description-hash binding).
 - Never double-counts against a real 9735 receipt for the same payment.
+- **Popularity chart** (§5.9): a second **orange zaps-over-time line** beside the
+  red views line, a **legend**, and **visible date labels** so the chart is
+  self-explanatory.
 
 **Non-goals**
 - Interop with other Nostr clients' zap UIs. bitvid **cannot** mint a valid
@@ -253,6 +258,86 @@ fallback, local ledger as the instant/offline overlay.
   so a profile zap total would surface on channel pages — a follow-up UI task,
   not required for the video path. Track as D2.
 
+### 5.9 Popularity chart: second (orange) zaps line + legend + date axis
+
+The per-video **Popularity** modal (`js/viewCountChart.js`, opened from the ⋯
+menu — feature #26) currently plots ONE cumulative **views** series and, notably,
+puts the date range only in the SVG `aria-label` — there is **no visible legend
+and no visible date labels**. This sub-feature adds a second series and the
+missing chart furniture. It can ship in two stages: the chart plumbing works
+with today's on-relay zap data (real 9735 receipts) even before the tally event
+(§3) exists; tallies simply make the orange line populated for Strike-style zaps.
+
+**Current shape to build on**
+- `buildViewCountTimeSeries(events)` → `{ series:[{bucketStart, count,
+  cumulative}], total }`, bucketed per day (`VIEW_CHART_WINDOW_SECONDS`).
+- `buildViewCountChartSvg(doc, series, {width,height})` — one `<polyline>` +
+  area, colored by `svg.classList.add("text-accent")` + `stroke="currentColor"`
+  (this instance's `--color-accent` is red). `pad.bottom:18` already reserves
+  space for an axis strip that today draws nothing visible.
+- The modal (`openPopularityModal`) fetches view events
+  (`listVideoViewEventsWithDefaultClient` + `subscribe…`), dedupes by id, and
+  re-renders on a 250ms debounce.
+
+**Changes**
+
+1. **Zap time-series data.** Add a `buildZapSatsTimeSeries(events, { tools })`
+   next to `buildViewCountTimeSeries`: bucket **cumulative SATS** per day from
+   the union of **9735 receipts** and **verified bitvid tallies** (§3), deduping
+   by **payment_hash** (reuse the store's rule so the chart and the badge agree).
+   Amount per event = `getSatoshisAmountFromBolt11` (authoritative), created_at =
+   the receipt/tally timestamp. Output shape mirrors the view series:
+   `{ series:[{bucketStart, sats, cumulative}], total }`.
+
+2. **Zap event source.** Add `listVideoZapEventsWithDefaultClient(pointer)` +
+   `subscribeVideoZapEvents…` (mirror the view-event facade) that list/subscribe
+   `kinds:[9735, ZAP_TALLY_KIND]` for the pointer's `#a`/`#e`. The modal fetches
+   BOTH streams (views + zaps) and re-renders on the same debounce. Reuse the
+   store's verify + payment_hash dedup helpers (§5.6) so there is one code path
+   for "what counts."
+
+3. **Dual-series renderer.** Generalize `buildViewCountChartSvg` into
+   `buildPopularityChartSvg(doc, { views, zaps }, opts)` that draws BOTH
+   cumulative lines on a shared **time** X axis, each with its **own Y scale**
+   (views in counts, zaps in sats are different units — independent per-series
+   scaling shows the trend/shape honestly without a misleading shared axis; a
+   dual labeled Y-axis is an option — see D5). Colors are token-based:
+   - views line/area → `text-accent` / `currentColor` (red) — unchanged.
+   - zaps line/area → the **`--color-zap`** orange token added for the badges.
+     The token lint forbids raw colors and `var()` in attributes, so add a
+     small utility class (e.g. `.text-zap { color: var(--color-zap); }` in
+     `css/tailwind.source.css`) and wrap the zap series in a `<g class="text-zap">`
+     using `stroke="currentColor"` — same pattern the views line already uses.
+   Draw the zap area at a low opacity like the views area so overlaps stay legible.
+
+4. **Legend.** Below/above the chart, a small two-item legend: a red swatch
+   "Views" and an orange swatch "Zaps (sats)". Plain DOM (`el(doc,…)` helper),
+   token colors via the `.text-accent` / `.text-zap` classes. Include it in the
+   modal so both series are labeled; keep it out of the tiny inline card sparkline
+   if one is ever added.
+
+5. **Visible date axis.** Draw X-axis tick labels (not just `aria-label`): at
+   minimum the first and last bucket dates, ideally 3–4 evenly spaced ticks, using
+   the existing `formatDay(seconds)` formatter, as `<text>` nodes in the reserved
+   `pad.bottom` strip (token text color, `text-2xs`). Add light vertical gridlines
+   at the ticks if it reads cleanly. This answers "users don't know what they're
+   looking at."
+
+6. **Headline + copy.** The modal headline stays the authoritative view count;
+   add a second line for the zap total (from `store.getSnapshot`, so it matches
+   the badge) — e.g. "1.2K views · 4.3K sats zapped". Update the footer note to
+   "Public view + zap data · updates as more load."
+
+**Empty/degenerate states** (mirror the view chart): no zaps → no orange line +
+a greyed "Zaps (sats)" legend item (or omit); a single zap bucket → flat baseline
+segment like the single-view case.
+
+**Independence:** this renders whatever zap events exist on relays. Before the
+tally event ships, the orange line reflects only real 9735s (often empty for
+Strike); after, it reflects tallies too. The local durable ledger (badge-only,
+no per-event timestamps) does **not** feed the time chart — another reason the
+published tally matters for a meaningful zaps-over-time line.
+
 ---
 
 ## 6. Data flow (end to end)
@@ -355,6 +440,9 @@ tallies simply stop being counted. No data migration.
   store queries a superset (it queries `client.relays`). Likely fine; verify.
 - **D4 — privacy default.** Default the feature flag off and add one line of UI
   copy ("your zap will be publicly attributed on bitvid") before default-on?
+- **D5 — chart Y-axis (§5.9).** Independent per-series scaling (each cumulative
+  line filling the height — simplest, trend-focused, **recommended**) vs. a dual
+  labeled Y-axis (left=views, right=sats — more precise, busier in a small modal).
 
 ---
 
@@ -377,6 +465,21 @@ tallies simply stop being counted. No data migration.
 - [ ] `lint` + `build` + suites green; push to `unstable`.
 - [ ] Rollout per §9; TODO entry updated.
 
+**Popularity chart (§5.9 — can start once the store's verify + dedup helpers
+exist; the renderer/legend/axis parts have no dependency on publishing tallies):**
+- [ ] `.text-zap` utility in `css/tailwind.source.css`.
+- [ ] `viewCountChart.js`: `buildZapSatsTimeSeries` (bucket cumulative sats,
+      verify + payment_hash dedup).
+- [ ] Zap-event facade: `listVideoZapEventsWithDefaultClient` +
+      `subscribeVideoZapEvents…` (kinds `[9735, ZAP_TALLY_KIND]`).
+- [ ] Generalize `buildViewCountChartSvg` → `buildPopularityChartSvg({views,zaps})`:
+      two token-colored lines, per-series Y (D5), visible X date ticks via
+      `formatDay`, legend (Views=red / Zaps=orange), second headline line.
+- [ ] Wire both fetches + debounced re-render in `openPopularityModal`; empty/
+      single-bucket states for the zap line.
+- [ ] Tests: `zap-time-series.test.mjs` (bucketing + dedup); chart-svg test
+      (two `<polyline>`s, legend nodes, date-tick `<text>` present).
+
 ---
 
 ## 12. Relationship to existing work (so nothing regresses)
@@ -390,4 +493,8 @@ tallies simply stop being counted. No data migration.
   `requestVideoZapTotal`, which now reflects tallies.
 - The NIP-57 `zapReceiptValidator` 9735 path — untouched behavior; we only add
   helpers and reuse its bolt11 decode.
+- `js/viewCountChart.js` (§5.9) — the single view series stays; we generalize the
+  SVG builder to two series and add the legend + visible date axis the view chart
+  never had. The `--color-zap` token (already added for the badges) is reused for
+  the orange zap line, so cards, modal badge, and chart all share one zap color.
 ```
