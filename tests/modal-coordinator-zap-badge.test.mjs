@@ -13,10 +13,10 @@
 //     - id: SCN-modal-open-no-missing-delegate
 //       given: "a coordinator bound to an app stub exposing only app.js's real modal delegates"
 //       when: "subscribeModalViewCount runs (the modal-open path) and teardown runs (close path)"
-//       then: "no TypeError; the zap badge renders from the shared store and clears on teardown"
+//       then: "no TypeError; the zap badge is visible from open (0 sats) and updates to the summed total; hidden on teardown"
 //   observable_outcomes:
 //     - "subscribeModalViewCount does not throw (the user-facing 'video will not open' bug)"
-//     - "badge hidden at zero, revealed with sats after a receipt batch, cleared on teardown"
+//     - "badge visible at open showing 0 sats, updates to the summed total, hidden on teardown (no video open)"
 //   determinism_controls:
 //     - "JSDOM; scripted subscription-manager double; store flushed manually"
 //   anti_cheat_rationale:
@@ -86,7 +86,13 @@ test("modal open path survives binding and drives the zap badge", async () => {
   app.subscribeModalViewCount(pointer, `a:${A1}`);
 
   const badge = dom.window.document.getElementById("videoZapTotal");
-  assert.equal(badge.classList.contains("hidden"), true, "zero total stays hidden");
+  // Always visible while a video is open (mirrors the view counter); 0 sats
+  // until a receipt lands.
+  assert.equal(badge.classList.contains("hidden"), false, "visible while open");
+  assert.match(
+    badge.querySelector("[data-zap-total-text]").textContent,
+    /^0 sats$/,
+  );
 
   receipts = [
     {
@@ -96,13 +102,14 @@ test("modal open path survives binding and drives the zap badge", async () => {
     },
   ];
   await zapTotalsStore.flush();
-  assert.equal(badge.classList.contains("hidden"), false, "receipts reveal the badge");
+  assert.equal(badge.classList.contains("hidden"), false, "stays visible");
   assert.match(
     badge.querySelector("[data-zap-total-text]").textContent,
     /21 sats/,
   );
 
-  // Modal close path (also used to throw via this.teardownModalZapTotal).
+  // Modal close path re-hides the badge (no video open) — also used to throw
+  // via the missing this.teardownModalZapTotal delegate.
   app.teardownModalViewCountSubscription();
-  assert.equal(badge.classList.contains("hidden"), true, "teardown clears the badge");
+  assert.equal(badge.classList.contains("hidden"), true, "teardown hides the badge");
 });

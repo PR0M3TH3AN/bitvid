@@ -23,15 +23,15 @@ export function createZapTotalBinder({ formatSats = defaultFormatSats } = {}) {
   const entries = new Map(); // pointerKey → { pointer, elements:Set }
   let unsubscribe = null;
 
+  // Always visible, mirroring the view counter (a zero is a real, informative
+  // value — "this hasn't been zapped yet" — not noise to hide). The wrapper
+  // starts hidden in markup and is revealed on first bind so cards without a
+  // pointer stay clean.
   const renderElement = (el, sats) => {
     const wrapper = el.closest?.(".video-card__zaps") || null;
-    if (Number.isFinite(sats) && sats > 0) {
-      el.textContent = formatSats(sats);
-      wrapper?.classList?.remove("hidden");
-    } else {
-      el.textContent = "";
-      wrapper?.classList?.add("hidden");
-    }
+    const value = Number.isFinite(sats) && sats > 0 ? sats : 0;
+    el.textContent = formatSats(value);
+    wrapper?.classList?.remove("hidden");
   };
 
   const renderKey = (key) => {

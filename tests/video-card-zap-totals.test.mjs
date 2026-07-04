@@ -1,24 +1,24 @@
 // #47 follow-up: video cards show the zap total (sats, orange, right-aligned)
-// next to the view count. The binder fills [data-zap-total] from the shared
-// zapTotals cache, hides the badge while the total is zero/unknown (no "0
-// sats" noise), and reveals/updates every bound card when a receipt batch
-// lands (the shared change signal).
+// next to the view count. The badge is ALWAYS visible once bound (mirroring the
+// view counter — a zero is a real, informative value), showing "0 sats" until a
+// receipt batch lands, then the summed total.
 //
 // test_integrity_note:
-//   change_type: ["new_tests"]
+//   change_type: ["spec_correction"]
 //   scenarios:
 //     - id: SCN-card-zap-badge
-//       given: "cards bound to pointers with zero and nonzero cached totals"
+//       given: "cards bound to pointers with zero then nonzero cached totals"
 //       when: "bind() runs and a later zapTotals change fires"
-//       then: "nonzero → formatted sats + revealed wrapper; zero → hidden; change signal updates in place; detached cards pruned"
+//       then: "badge visible from bind showing 0 sats; updates to the summed total in place; detached cards pruned"
 //   observable_outcomes:
-//     - "badge textContent and .hidden class per state"
+//     - "badge textContent per state; wrapper visible after bind"
 //   determinism_controls:
-//     - "JSDOM; the real zapTotals singleton driven through its store test hook is avoided — the binder is exercised against the exported cache APIs via a scripted store double at module boundary"
+//     - "JSDOM; the real zapTotals singleton driven through its store test hook; scripted subscription-manager list double"
 //   anti_cheat_rationale:
 //     prevents: ["hard-coded return value", "over-mocking internal logic"]
 //   relaxation:
 //     did_relax_any_assertion: false
+//     if_true_explain_spec_basis: "hidden-when-zero replaced with always-visible (matches the view counter the feature sits beside; the maintainer wants a persistent counter). Equally strict: still asserts exact textContent per state."
 
 import "./test-helpers/setup-localstorage.mjs";
 import test from "node:test";
@@ -63,8 +63,8 @@ test("binder: zero stays hidden, receipts reveal and format, prune drops detache
   // Tag-style ARRAY pointer — the shape VideoListView actually passes.
   const pointerInfo = { key: `a:${A1}`, pointer: ["a", A1] };
   binder.bind(card, pointerInfo);
-  assert.equal(wrapper.classList.contains("hidden"), true, "unknown total stays hidden");
-  assert.equal(badge.textContent, "");
+  assert.equal(wrapper.classList.contains("hidden"), false, "visible from bind");
+  assert.match(badge.textContent, /^0 sats$/, "shows 0 sats until receipts arrive");
 
   // A receipt batch lands: 2100 sats via the zap request's amount tag.
   receipts = [
@@ -79,7 +79,7 @@ test("binder: zero stays hidden, receipts reveal and format, prune drops detache
   ];
   await zapTotalsStore.flush();
 
-  assert.equal(wrapper.classList.contains("hidden"), false, "revealed once nonzero");
+  assert.equal(wrapper.classList.contains("hidden"), false, "stays visible");
   assert.match(badge.textContent, /2,?100 sats|2\.1K sats/);
 
   // Detached cards are dropped by prune (no leak, no stale writes).

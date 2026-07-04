@@ -81,17 +81,16 @@ export function createModalCoordinator(deps) {
     if (!el || !pointer) {
       return;
     }
+    // Always visible while a video is open (mirrors the view counter); a zero
+    // is a real value, not noise to hide.
     const render = () => {
       const sats = getVideoZapTotalSnapshot(pointer);
+      const value = Number.isFinite(sats) && sats > 0 ? sats : 0;
       const text = el.querySelector("[data-zap-total-text]");
-      if (Number.isFinite(sats) && sats > 0) {
-        if (text) {
-          text.textContent = `${formatViewCount(sats)} sats`;
-        }
-        el.classList.remove("hidden");
-      } else {
-        el.classList.add("hidden");
+      if (text) {
+        text.textContent = `${formatViewCount(value)} sats`;
       }
+      el.classList.remove("hidden");
     };
     requestVideoZapTotal(pointer);
     render();
