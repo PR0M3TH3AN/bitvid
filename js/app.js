@@ -4373,6 +4373,11 @@ class Application {
     return this._feed.registerTrendingFeed(...args);
   }
 
+  registerMostZappedFeed(...args) {
+    this._initCoordinators();
+    return this._feed.registerMostZappedFeed(...args);
+  }
+
   registerSubscriptionsFeed(...args) {
     this._initCoordinators();
     return this._feed.registerSubscriptionsFeed(...args);
@@ -4474,6 +4479,11 @@ class Application {
   async loadTrendingVideos(...args) {
     this._initCoordinators();
     return this._feed.loadTrendingVideos(...args);
+  }
+
+  async loadMostZappedVideos(...args) {
+    this._initCoordinators();
+    return this._feed.loadMostZappedVideos(...args);
   }
 
   async loadOlderVideos(...args) {

@@ -279,3 +279,9 @@ export function onZapTotalsChanged(listener) {
 
 // The singleton store itself — exposes flush() for tests.
 export default store;
+
+// Console debug handle: window.__bitvidZapTotals.getSnapshot(["a","30078:…"]),
+// .request(pointer), .flush() — for diagnosing why a badge is (not) showing.
+if (typeof window !== "undefined") {
+  window.__bitvidZapTotals = store;
+}
