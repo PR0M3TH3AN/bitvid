@@ -712,6 +712,15 @@ toward freshness and looked identical. Gave each a structural identity:
       ones (DM relays, interest sets) until after first render. Multi-subsystem +
       sensitive (trust) → do as a dedicated perf pass, not a rushed change.
       Source still to pin: the loop issuing 30000/30002/30005/30015 per contact.
+- [x] **REQ tracer SHIPPED (2026-07-03)** to pin those emitters empirically —
+      static search found NO per-contact list loops (mutes already batched), so
+      the hypothesis needs data. `js/nostr/reqTelemetry.js` hooks the shimmed
+      `pool.sub` choke point (every sub/list flows through it) and aggregates
+      kinds + relay fan-out + emitting call site per 10s window. Zero-cost off.
+      **To trace:** on unstable run `localStorage.setItem("bitvid:reqTrace","1")`,
+      reload (cold login), read the `[req-trace]` console logs (or
+      `window.__bitvidReqTrace.report()`); the top rows name the emitters and
+      the batching/deferral pass follows directly from that data.
 
 ### 22. Anti-spam: validate npub on application / submission forms
 - [x] **DONE 2026-06-24.** Added a shared, testable NIP-19 validator
