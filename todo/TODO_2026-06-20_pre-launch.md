@@ -1167,6 +1167,22 @@ Reported 2026-06-25. Relates to #17 (NIP-71 interop) / the bitvid→NIP-71 mirro
 ### 10. WebTorrent `null.fill` seeding crash
 - [ ] Investigate the vendored `webtorrent.min.js` `null.fill` error on wire handshake;
       may require a bundle update or patch.
+- [x] **Bounded investigation DONE 2026-07-03.** The vendored bundle is
+      webtorrent **2.5.11** (~2 years old; upstream latest is **3.0.16**). The
+      bundle has exactly two `.fill(` sites: a piece-bitfield fill and
+      `this.buffer.fill(void 0)` — fast-fifo's `clear()`, the queue streamx
+      uses under bittorrent-protocol's wire Duplex. "null.fill on wire
+      handshake" = that queue being touched after stream teardown (use-after-
+      destroy in the streamx/fast-fifo layer). No matching public upstream
+      issue found, but webtorrent 3.x now PINS `streamx` to an exact version
+      (2.25.0) — consistent with upstream having chased this bug class.
+- [ ] **Fix path: vendored-bundle update to 3.0.16 as its OWN task** (playback-
+      critical → own branch/soak, NOT bundled with other work): rebuild
+      `js/webtorrent.min.js` + `.map`, re-test URL+magnet playback, seeding,
+      the beacon app (`torrent/`), and the SW streaming path; rollback = keep
+      the old bundle file. Check 2.x→3.x breaking changes against
+      `js/webtorrent.js` usage first. Without a repro for the crash, a blind
+      local patch is guesswork — the update is the honest fix.
 
 ### 11. Harden flaky tests (CI gate reliability)
 - [ ] `tests/ui/uploadModal-reset.test.mjs` ("UploadModal Reset Logic") intermittently
