@@ -278,9 +278,16 @@ export function attachRelayPublishSummary(event, summary) {
   }
   const accepted = Array.isArray(summary?.accepted) ? summary.accepted.length : 0;
   const failed = Array.isArray(summary?.failed) ? summary.failed.length : 0;
+  // #49: carry the unconfirmed flag (all relays timed out, nothing rejected)
+  // so the outcome describer can say "sent, unconfirmed" instead of lying in
+  // either direction ("published to N relays" / "failed").
+  const tally =
+    summary?.unconfirmed === true
+      ? { accepted, total: accepted + failed, unconfirmed: true }
+      : { accepted, total: accepted + failed };
   try {
     Object.defineProperty(event, RELAY_PUBLISH_SUMMARY_KEY, {
-      value: { accepted, total: accepted + failed },
+      value: tally,
       enumerable: false,
       configurable: true,
       writable: true,
@@ -308,7 +315,11 @@ export function readRelayPublishSummary(event) {
  * @param {{ accepted?: number, total?: number }} tally
  * @returns {{ tone: "success"|"warning"|"error", message: string }}
  */
-export function describePublishOutcome({ accepted = 0, total = 0 } = {}) {
+export function describePublishOutcome({
+  accepted = 0,
+  total = 0,
+  unconfirmed = false,
+} = {}) {
   const a = Number.isFinite(accepted) ? Math.max(0, Math.floor(accepted)) : 0;
   const t = Number.isFinite(total) ? Math.max(0, Math.floor(total)) : 0;
 
@@ -317,6 +328,16 @@ export function describePublishOutcome({ accepted = 0, total = 0 } = {}) {
     return { tone: "success", message: "Video shared successfully!" };
   }
   if (a <= 0) {
+    // #49: every relay timed out without rejecting — the event was sent and
+    // almost always persisted (it shows up after a refresh). Say exactly that:
+    // neither a hard failure nor a fake "published to N relays".
+    if (unconfirmed === true) {
+      return {
+        tone: "warning",
+        message:
+          "Video sent, but no relay has confirmed receiving it yet. It should appear shortly — refresh in a moment to double-check.",
+      };
+    }
     return {
       tone: "error",
       message:
@@ -333,6 +354,24 @@ export function describePublishOutcome({ accepted = 0, total = 0 } = {}) {
     tone: "success",
     message: `Video published to ${a} ${a === 1 ? "relay" : "relays"}!`,
   };
+}
+
+// #49 delete semantics: a delete flow publishes several events (tombstone
+// reverts + kind-5 chunks) and the UI must NOT claim "deleted" unless at least
+// one relay actually ACKed something — a false "deleted" is worse than a false
+// "failed". An empty list (nothing needed publishing) counts as confirmed.
+export function anyRelayAcceptedInSummaries(summaries = []) {
+  const list = Array.isArray(summaries) ? summaries.filter(Boolean) : [];
+  if (!list.length) {
+    return true;
+  }
+  return list.some((summary) => {
+    const accepted = summary?.accepted;
+    if (Array.isArray(accepted)) {
+      return accepted.length > 0;
+    }
+    return Number.isFinite(accepted) && accepted > 0;
+  });
 }
 
 // A RelayPublishError whose per-relay failures are ALL "publish timeout" means the

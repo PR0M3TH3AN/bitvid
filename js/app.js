@@ -92,6 +92,7 @@ import {
   assertAnyRelayAcceptedOrUnconfirmed,
   describePublishOutcome,
   readRelayPublishSummary,
+  anyRelayAcceptedInSummaries,
 } from "./nostrPublish.js";
 import {
   getActiveSigner,
@@ -5073,7 +5074,7 @@ class Application {
     this.showStatus("Deleting. Please wait.", { showSpinner: true });
 
     try {
-      await this.nostrService.handleFullDeleteVideo({
+      const deleteDetail = await this.nostrService.handleFullDeleteVideo({
         videoRootId: rootId,
         video: targetVideo,
         pubkey: this.pubkey,
@@ -5110,7 +5111,21 @@ class Application {
       }
 
       await this.loadVideos();
-      this.showSuccess("All versions deleted successfully!");
+      // #49 conservative delete semantics: only claim "deleted" when at least
+      // one relay ACKed something. An all-timeout run (tombstones + kind-5 sent
+      // but unconfirmed) must not read as a confirmed delete — the video may
+      // linger on relays until they catch up.
+      const deleteSummaries = [
+        ...(deleteDetail?.result?.reverts || []),
+        ...(deleteDetail?.result?.deletes || []),
+      ].map((entry) => entry?.summary);
+      if (anyRelayAcceptedInSummaries(deleteSummaries)) {
+        this.showSuccess("All versions deleted successfully!");
+      } else {
+        this.showSuccess(
+          "Delete request sent, but no relay has confirmed it yet — the video may reappear until relays catch up. Check again in a bit.",
+        );
+      }
       if (storageLockedRemnant) {
         this.showStatus(
           "Heads up: the hosted file is still in your storage bucket because storage is locked. Unlock storage and delete again, or remove it from your bucket manually.",
