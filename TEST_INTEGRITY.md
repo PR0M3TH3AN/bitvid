@@ -458,3 +458,54 @@ test_integrity_note:
     did_relax_any_assertion: false
     if_true_explain_spec_basis: ""
 ```
+
+## 2026-07-05 — todo-11b final: un-quarantine nwc-client (+ user-blocks / nostr-publish-rejection hangs)
+
+```yaml
+test_integrity_note:
+  change_type: ["spec_correction", "refactor_tests", "flake_fix"]
+  scenarios:
+    - id: SCN-nwc-unsupported-encryption-scheme
+      given: "An NWC wallet whose info event (kind 13194) advertises ONLY an encryption scheme bitvid does not implement (nip44_v3)"
+      when: "ensureEncryptionForContext(context) negotiates a scheme"
+      then: "It rejects with message /Wallet advertises unsupported encryption schemes: nip44_v3\\./ AND error.code === 'UNSUPPORTED_ENCRYPTION'"
+    - id: SCN-nwc-mock-toolkit-selection
+      given: "Each nwc-client section installs a per-section window.NostrTools mock to drive encryption-scheme selection"
+      when: "The nostr-tools bootstrap has installed its frozen canonical toolkit on the global scope"
+      then: "Removing scope.__BITVID_CANONICAL_NOSTR_TOOLS__ lets readToolkitFromScope fall through to the section mock, so the wiring under test runs against the mock (not real @noble against fake keys)"
+  observable_outcomes:
+    - "ensureEncryptionForContext rejection message + error.code (UNSUPPORTED_ENCRYPTION) — asserted exactly"
+    - "nip44_v2 section still resolves via the mock's nip44 (assert.match on the mock ciphertext shape)"
+  determinism_controls:
+    - "per-section in-memory window.NostrTools mocks; canonical-toolkit removal is deterministic (one-time, nothing re-installs it); no network"
+  anti_cheat_rationale:
+    prevents:
+      - "over-mocking internal logic"
+      - "hard-coded return value"
+    note: |
+      nwc-client: TWO issues. (1) MOCK SHADOW (not a spec change): the bootstrap installs a
+      frozen canonical toolkit that readToolkitFromScope() prefers over window.NostrTools, so
+      the per-section mocks never took effect and real @noble ran against the fake test keys
+      ("bad point: is not on curve"). Deleting the scope canonical lets the resolver use each
+      section's mock — the tests exercise the NWC client's encryption-SELECTION wiring, not
+      @noble crypto (which is real elsewhere; the parseNwcUri hex-vs-bytes production bug is
+      guarded by tests/nwc-parse-uri.test.mjs). (2) SPEC CORRECTION: one section asserted a
+      rejection when the toolkit "lacks nip44" by omitting nip44 from the mock. That precondition
+      is architecturally unreachable — the bootstrap's mergeWithCanonical ALWAYS backfills the
+      canonical nip44 (even an explicit `nip44: null` is overwritten by `!merged.nip44`), so
+      nip44_v2 is never an unsupported scheme. Replaced with a wallet advertising a scheme bitvid
+      genuinely cannot provide (nip44_v3), exercising the SAME UNSUPPORTED_ENCRYPTION rejection
+      via a reachable scenario, and strengthened the check to also assert error.code — strictly
+      stronger than the old message-only match.
+
+      user-blocks + nostr-publish-rejection: FLAKE_FIX (no assertion changed). Both are
+      bare-assert files that PASS all assertions then hang on lingering handles after completion
+      (user-blocks: a never-resolving decrypt's background retry timer that manager.reset() doesn't
+      cancel; nostr-publish-rejection: js/app.js + subscriptions + userBlocks module-load
+      timers/connection managers). Applied the repo's established post-completion
+      `setTimeout(() => process.exit(0), 50)` exit after cleanup. No behavior or expectation was
+      altered — the process simply exits once the assertions have all run.
+  relaxation:
+    did_relax_any_assertion: false
+    if_true_explain_spec_basis: ""
+```

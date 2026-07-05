@@ -473,3 +473,12 @@ try {
     window.NostrTools = originalWindowNostrTools;
   }
 }
+
+// All assertions above run to completion before the cleanup finally block; a
+// failure would have rejected the top-level await and exited non-zero. This
+// file imports the full app stack (js/app.js, subscriptions, userBlocks) whose
+// module-load side effects (timers/connection managers) keep the event loop
+// alive after the tests finish, so the process would otherwise hang. Force a
+// clean exit — the established pattern for this repo's bare-assert tests with
+// lingering handles. The small delay lets the "tests passed" log flush first.
+setTimeout(() => process.exit(0), 50);

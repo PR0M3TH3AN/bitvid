@@ -1786,3 +1786,12 @@ await (async () => {
     manager.reset();
   }
 })();
+
+// All assertions above run at top level; a failure would have rejected and
+// exited non-zero before reaching here. The decrypt-timeout section
+// deliberately installs a never-resolving nip44Decrypt, which leaves a
+// background decrypt-retry timer alive (manager.reset() doesn't cancel it),
+// so the process would otherwise hang. Force a clean exit — the established
+// pattern for this repo's bare-assert tests with lingering handles.
+console.log("user-blocks tests passed");
+setTimeout(() => process.exit(0), 50);
