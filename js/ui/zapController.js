@@ -384,11 +384,32 @@ export default class ZapController {
       // Optimistically bump the video's zap total by the amount sent (both the
       // creator and platform shares are tagged to the video, so the eventual
       // relay total equals context.shares.total). Badge updates instantly.
+      // Also forward the per-share proof (bolt11 + preimage + zap request) so
+      // the app can publish preimage-verified bitvid zap tallies
+      // (docs/zap-tally-plan.md §5.4). Only settled shares with a preimage.
       if (this.callbacks.onZapSuccess) {
         try {
+          const shares = receipts
+            .filter(
+              (r) =>
+                r &&
+                (r.status === "success" || !r.status) &&
+                typeof r.preimage === "string" &&
+                r.preimage,
+            )
+            .map((r) => ({
+              recipientType: r.recipientType || "creator",
+              amountSats: Math.max(0, Math.round(Number(r.amount) || 0)),
+              bolt11:
+                typeof r.invoice?.invoice === "string" ? r.invoice.invoice : "",
+              preimage: r.preimage,
+              zapRequest: typeof r.zapRequest === "string" ? r.zapRequest : "",
+            }))
+            .filter((s) => s.bolt11 && s.zapRequest && s.amountSats > 0);
           this.callbacks.onZapSuccess({
             video: this.getCurrentVideo(),
             sats: Math.max(0, Math.round(Number(context?.shares?.total) || 0)),
+            shares,
           });
         } catch (error) {
           userLogger.warn("[zap] onZapSuccess hook failed:", error);

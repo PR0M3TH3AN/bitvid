@@ -14,6 +14,8 @@ import initDeleteModal from "./initDeleteModal.js";
 import { EventDetailsModal } from "./components/EventDetailsModal.js";
 import ZapController from "./zapController.js";
 import { ingestLocalVideoZap } from "../zapTotals.js";
+import { publishZapTallies } from "../payments/zapTallyPublisher.js";
+import { FEATURE_ZAP_TALLY } from "../constants.js";
 import { nostrClient } from "../nostrClientFacade.js";
 
 export default class ModalManager {
@@ -272,9 +274,12 @@ export default class ModalManager {
       callbacks: {
         onSuccess: (message) => app.showSuccess(message),
         onError: (message) => app.showError(message),
-        // Optimistically bump the zapped video's total using the SAME pointer
-        // the cards/modal badge subscribe with, so the badge updates instantly.
-        onZapSuccess: ({ video, sats } = {}) => {
+        // (1) Optimistically bump the zapped video's total using the SAME
+        // pointer the cards/modal badge subscribe with (instant), and
+        // (2) publish preimage-verified bitvid zap tallies so the total is
+        // global + durable even if the recipient never publishes a 9735
+        // (docs/zap-tally-plan.md §5.5). Both best-effort.
+        onZapSuccess: ({ video, sats, shares } = {}) => {
           try {
             const info =
               video && typeof app.deriveVideoPointerInfo === "function"
@@ -285,6 +290,24 @@ export default class ModalManager {
             }
           } catch (error) {
             /* best-effort optimistic update */
+          }
+          if (FEATURE_ZAP_TALLY && Array.isArray(shares) && shares.length) {
+            publishZapTallies({
+              shares,
+              pubkey: app.pubkey,
+              enabled: FEATURE_ZAP_TALLY,
+              publish: (event) =>
+                nostrClient.signAndPublishEvent(event, {
+                  context: "zap tally",
+                  logName: "Zap tally",
+                  devLogLabel: "zap tally",
+                  rejectionLogLevel: "warn",
+                  resolveActiveSigner: (p) =>
+                    nostrClient.signerManager.resolveActiveSigner(p),
+                }),
+            }).catch(() => {
+              /* non-fatal: the payment already succeeded */
+            });
           }
         },
       },
