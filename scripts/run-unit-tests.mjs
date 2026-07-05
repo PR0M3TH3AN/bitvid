@@ -13,9 +13,7 @@ process.env.NODE_ENV = "test";
 // imported `node:test`, silently excluding ~20 bare-assert files; several were
 // failing on main, unnoticed). Each entry MUST cite why and link the triage item.
 // Remove an entry as soon as its file is fixed. See todo/TODO_2026-06-20_pre-launch.md todo-11b.
-const QUARANTINE = new Map([
-  ["tests/dm-block-filter.test.mjs", "HANG (post-completion) — all subtests PASS (TAP 'ok'), then the process hangs on a lingering handle from the imported app stack (nostrService/userBlocks/nostrClient/relayManager) so node:test never exits. Surfaced 2026-07-05 by running the full suite with UNIT_TEST_TIMEOUT_MS (pre-existing; it was never in this map). Needs a node:test-SAFE fix: close the leaked resource in an after() hook so node exits naturally — a force `process.exit` in after() is UNSAFE here (process.exitCode isn't set yet, verified, so it masks real failures). triage todo-11b"],
-]);
+const QUARANTINE = new Map([]);
 
 const rootDir = path.dirname(fileURLToPath(new URL("../package.json", import.meta.url)));
 const testsDir = path.join(rootDir, "tests");

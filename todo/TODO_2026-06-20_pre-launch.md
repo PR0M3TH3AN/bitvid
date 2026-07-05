@@ -1347,14 +1347,22 @@ test below was failing on `main` unnoticed).
         decrypt-timeout section installs a never-resolving nip44Decrypt that leaves a
         background decrypt-retry timer alive (manager.reset() doesn't cancel it). Applied
         the same `setTimeout(() => process.exit(0), 50)` exit after the final assertion.
-      - **All THREE #11b target files un-quarantined.** Running the full suite with a
-        per-file timeout then surfaced a FOURTH, pre-existing hang that was never in the
-        map: `tests/dm-block-filter.test.mjs` (node:test) — all subtests PASS, then it
-        hangs on a lingering app-stack handle so node:test never exits. Quarantined with a
-        triage note (needs a node:test-safe resource-close fix, NOT a force-exit — a force
-        `process.exit` in an after() hook was verified to mask failures because
-        process.exitCode isn't set yet). So the map has ONE entry (dm-block-filter), down
-        from the original two, with the newly-found file documented.
+      - `dm-block-filter` — ✅ DONE + UN-QUARANTINED 2026-07-05. A FOURTH, pre-existing hang
+        surfaced by running the full suite with a per-file timeout (it was never in the map,
+        so it had been silently hanging local `npm run test:unit`). All subtests PASS, then
+        node:test never exits. Root cause (diagnosed via process.getActiveResourcesInfo):
+        the "integration with loaded user block list" test's `manager.loadBlocks()` opens a
+        LIVE block-list subscription through nostrClient's real SimplePool aimed at the
+        test's fake relay URLs, leaking 4 TCP sockets + reconnect timers. NOT the
+        decrypt-retry timer (verified absent). Nulling the pool did NOT help — loadBlocks
+        calls `ensurePool()` (userBlocks.js:967) to re-create+connect a real pool when pool
+        is falsy. Fix (node:test-SAFE, no force-exit): make the test hermetic — (1) a TRUTHY
+        stub pool so ensurePool() is skipped, (2) a no-op getSubscriptionManager so the
+        subscription opens nothing; the block MERGE still runs via the stubbed
+        fetchListIncrementally. Verified: clean run exits 0 (# pass 12), AND a deliberately
+        broken assertion still exits 1 (# fail 1) — failures are NOT masked. See
+        TEST_INTEGRITY.md.
+      - **QUARANTINE map is now EMPTY** — every unit test file runs in CI.
 
 ### 12. Promotion: `unstable → beta`
 - [ ] After this batch soaks and the high-priority items land, promote `unstable → beta`

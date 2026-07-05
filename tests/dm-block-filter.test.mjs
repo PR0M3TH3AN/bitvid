@@ -194,6 +194,8 @@ describe("DM block/mute filtering", () => {
         : nostrClient.relays;
       const originalFetchListIncrementally = nostrClient.fetchListIncrementally;
       const originalRelayEntries = relayManager.getEntries();
+      const originalPool = nostrClient.pool;
+      const originalGetSubscriptionManager = nostrClient.getSubscriptionManager;
 
       const relayUrls = ["wss://dm-block-regression.example"];
       relayManager.setEntries(
@@ -201,6 +203,22 @@ describe("DM block/mute filtering", () => {
         { allowEmpty: false, updateClient: false },
       );
       nostrClient.relays = relayUrls;
+
+      // Keep this test hermetic. Otherwise loadBlocks() opens a LIVE block-list
+      // subscription through nostrClient's real SimplePool aimed at the fake relay
+      // above, leaking TCP sockets + reconnect timers that outlive the test and
+      // hang the node:test runner AFTER every assertion has already passed.
+      //   (1) A truthy stub pool stops loadBlocks from calling ensurePool(), which
+      //       otherwise re-creates and connects a real pool when pool is falsy
+      //       (userBlocks.js) — so nulling the pool alone is not enough.
+      //   (2) A no-op subscription manager makes startBlockListSubscription() a
+      //       no-op instead of a real relay REQ.
+      // The block MERGE under test still runs entirely through the stubbed
+      // fetchListIncrementally below. Both are restored in finally.
+      nostrClient.pool = { __mockForDmBlockFilterTest: true };
+      nostrClient.getSubscriptionManager = () => ({
+        subscribe: () => ({ close() {} }),
+      });
 
       if (typeof globalThis.window === "undefined") {
         globalThis.window = {};
@@ -317,6 +335,8 @@ describe("DM block/mute filtering", () => {
         });
         nostrClient.relays = originalRelays;
         nostrClient.fetchListIncrementally = originalFetchListIncrementally;
+        nostrClient.pool = originalPool;
+        nostrClient.getSubscriptionManager = originalGetSubscriptionManager;
         if (typeof globalThis.window === "undefined") {
           globalThis.window = {};
         }

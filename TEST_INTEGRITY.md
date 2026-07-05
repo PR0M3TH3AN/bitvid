@@ -509,3 +509,42 @@ test_integrity_note:
     did_relax_any_assertion: false
     if_true_explain_spec_basis: ""
 ```
+
+## 2026-07-05 — todo-11b: un-quarantine dm-block-filter (hermetic subscription; no force-exit)
+
+```yaml
+test_integrity_note:
+  change_type: ["flake_fix"]
+  scenarios:
+    - id: SCN-dm-block-filter-hermetic
+      given: "The 'integration with loaded user block list' test loads standard + legacy block lists and filters incoming DMs"
+      when: "manager.loadBlocks() runs against stubbed fetchListIncrementally, with the live block-list subscription stubbed out"
+      then: "Both blocked contacts (standard + legacy) are filtered (dmMessages === [ALLOWED]) AND the process opens NO real relay sockets, so node:test exits naturally with the correct exit code"
+  observable_outcomes:
+    - "manager.isBlocked(legacy) && manager.isBlocked(standard) === true; dmMessages length 1 (ALLOWED only)"
+    - "process.getActiveResourcesInfo() shows no TCPSocketWrap after loadBlocks; node exits 0 on pass, 1 on a forced failure (verified — failures NOT masked)"
+  determinism_controls:
+    - "stubbed nostrClient.fetchListIncrementally; truthy stub nostrClient.pool; no-op nostrClient.getSubscriptionManager; window.nostr.nip04.decrypt stub. All restored in finally. No network."
+  anti_cheat_rationale:
+    prevents:
+      - "retry/sleep-based flake masking"
+      - "over-mocking internal logic"
+    note: |
+      FLAKE_FIX, no assertion changed. The file PASSED all subtests then hung: loadBlocks()
+      opens a LIVE block-list subscription through nostrClient's real SimplePool aimed at the
+      test's fake relay URLs, leaking TCP sockets + reconnect timers that outlive the run so
+      node:test never exits (surfaced only once the runner was given a per-file timeout).
+      Diagnosed with process.getActiveResourcesInfo() — 4 TCPSocketWrap + reconnect Timeouts;
+      NOT the decrypt-retry timer (verified absent). Nulling the pool did not help because
+      loadBlocks calls ensurePool() (userBlocks.js:967) to re-create+connect a real pool when
+      pool is falsy. Fix keeps the test hermetic: a TRUTHY stub pool (so ensurePool is skipped)
+      + a no-op getSubscriptionManager (so the subscription opens nothing). The block-merge
+      logic under test still runs fully through the stubbed fetchListIncrementally. A force
+      `process.exit` in an after() hook was explicitly REJECTED after verifying it masks real
+      failures (process.exitCode is not set when the hook's timer fires — a deliberately broken
+      assertion still exited 0 under that approach). Under this fix, the forced-failure control
+      correctly exits 1.
+  relaxation:
+    did_relax_any_assertion: false
+    if_true_explain_spec_basis: ""
+```
