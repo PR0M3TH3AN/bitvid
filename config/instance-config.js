@@ -191,7 +191,10 @@ export const PLATFORM_FEE_PERCENT = 30;
  * Super Admin profile publishing a `lud16` so bitvid still knows where to route
  * fees when they are enabled.
  */
-export const PLATFORM_LUD16_OVERRIDE = "adammalin@strike.me";
+// coinos: Nostr-native, publishes NIP-57 zap receipts, reliable routing,
+// 1-sat minimum. Replaced adammalin@strike.me, whose LNURL was flaky and never
+// published receipts, causing platform-share pay timeouts + missing zap tallies.
+export const PLATFORM_LUD16_OVERRIDE = "a4a6b5849bc917b3befd5c81@coinos.io";
 
 /**
  * Optional list of relays to seed new sessions with instead of the defaults.
