@@ -1112,6 +1112,38 @@ export default class ZapController {
         : "Retried zap shares successfully.";
     this.videoModal?.setZapStatus(successMessage, "success");
     this.notifySuccess("Zap shares retried successfully!");
+
+    // Retried shares also bump the badge + publish verified tallies (same hook
+    // as the main path; docs/zap-tally-plan.md §5.4). Best-effort.
+    if (this.callbacks.onZapSuccess) {
+      try {
+        const shareProof = aggregatedReceipts
+          .filter(
+            (r) =>
+              r &&
+              (r.status === "success" || !r.status) &&
+              typeof r.preimage === "string" &&
+              r.preimage,
+          )
+          .map((r) => ({
+            recipientType: r.recipientType || "creator",
+            amountSats: Math.max(0, Math.round(Number(r.amount) || 0)),
+            bolt11:
+              typeof r.invoice?.invoice === "string" ? r.invoice.invoice : "",
+            preimage: r.preimage,
+            zapRequest: typeof r.zapRequest === "string" ? r.zapRequest : "",
+          }))
+          .filter((s) => s.bolt11 && s.zapRequest && s.amountSats > 0);
+        this.callbacks.onZapSuccess({
+          video: this.getCurrentVideo(),
+          sats: total,
+          shares: shareProof,
+        });
+      } catch (error) {
+        userLogger.warn("[zap] onZapSuccess hook failed (retry):", error);
+      }
+    }
+
     this.resetRetryState();
     return true;
   }
