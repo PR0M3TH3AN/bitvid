@@ -47,6 +47,7 @@ export const NOTE_TYPES = Object.freeze({
   DM_TYPING: "dmTypingIndicator",
   ZAP_REQUEST: "zapRequest",
   ZAP_RECEIPT: "zapReceipt",
+  ZAP_TALLY: "zapTally",
   WATCH_HISTORY: "watchHistory",
   SUBSCRIPTION_LIST: "subscriptionList",
   SUBSCRIPTION_BACKUP: "subscriptionBackup",
@@ -91,6 +92,11 @@ export { ADMIN_COMMUNITY_BLACKLIST_SOURCES };
 export { ADMIN_COMMUNITY_BLACKLIST_PREFIX };
 
 const DEFAULT_APPEND_TAGS = [];
+
+// bitvid-native zap tally event kind. Addressable (30000–39999) so `d =
+// payment_hash` yields one canonical event per real payment. In bitvid's family
+// (30078 video, 30079 view). See docs/zap-tally-plan.md.
+export const ZAP_TALLY_KIND = 30081;
 
 let cachedUtf8Encoder = null;
 
@@ -525,6 +531,23 @@ const BASE_SCHEMAS = {
       format: "text",
       description:
         "Zap receipts are published by lightning wallets to confirm zap requests.",
+    },
+  },
+  [NOTE_TYPES.ZAP_TALLY]: {
+    // bitvid-native, payer-signed, preimage-verified zap tally (docs/zap-tally-plan.md).
+    // Addressable (d = payment_hash) so each real payment maps to one canonical
+    // event: relay-level idempotency, re-publish replaces rather than duplicates.
+    // Counted alongside NIP-57 9735 receipts (deduped by payment_hash), so a
+    // Most-Zapped tally survives when the recipient's wallet never publishes a 9735.
+    type: NOTE_TYPES.ZAP_TALLY,
+    label: "Zap tally",
+    kind: ZAP_TALLY_KIND,
+    identifierTag: { name: "d" },
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "text",
+      description:
+        "Optional zap message; the authoritative amount + proof live in the tags.",
     },
   },
   [NOTE_TYPES.WATCH_HISTORY]: {
@@ -2342,6 +2365,101 @@ export function buildZapRequestEvent(params) {
 
   if (isDevMode) {
     validateEventAgainstSchema(NOTE_TYPES.ZAP_REQUEST, event);
+  }
+
+  return event;
+}
+
+/**
+ * Builds a bitvid-native zap tally event (kind ZAP_TALLY_KIND, addressable by
+ * d=payment_hash). Payer-signed, preimage-verified stand-in for a NIP-57 receipt
+ * when the recipient's LNURL server doesn't publish one. Carries the same
+ * {bolt11, preimage, description(zap request)} a 9735 would, so any client can
+ * verify sha256(preimage)==payment_hash and description_hash==sha256(zapRequest).
+ * See docs/zap-tally-plan.md §3. Returns an UNSIGNED event; the caller signs.
+ *
+ * @param {object} params
+ * @param {string} params.pubkey            payer pubkey
+ * @param {number} params.created_at
+ * @param {string} params.paymentHash       hex; becomes the `d` tag (idempotency)
+ * @param {string} params.recipientPubkey   the zapped party (`p`)
+ * @param {string} [params.eventId]         zapped video event id (`e`)
+ * @param {string} [params.coordinate]      zapped video coordinate kind:pubkey:d (`a`)
+ * @param {number} [params.amountMsats]     echoes the zap request amount tag
+ * @param {string} params.bolt11            paid invoice (carries payment_hash + description_hash)
+ * @param {string} params.preimage          NWC pay_invoice preimage (proof of settlement)
+ * @param {string} params.zapRequestJson    the signed 9734 JSON (NIP-57 `description`)
+ * @param {string} [params.comment]
+ * @returns {object} Unsigned event.
+ */
+export function buildZapTallyEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    paymentHash,
+    recipientPubkey,
+    eventId,
+    coordinate,
+    amountMsats,
+    bolt11,
+    preimage,
+    zapRequestJson,
+    comment = "",
+  } = params || {};
+
+  const schema = getNostrEventSchema(NOTE_TYPES.ZAP_TALLY);
+  const tags = [];
+
+  const normalizedHash = normalizePointerIdentifier(paymentHash);
+  if (normalizedHash) {
+    tags.push(["d", normalizedHash]); // addressable identifier = payment_hash
+  }
+
+  const normalizedRecipient = normalizePointerIdentifier(recipientPubkey);
+  if (normalizedRecipient) {
+    tags.push(["p", normalizedRecipient]);
+  }
+
+  const normalizedEventId = normalizePointerIdentifier(eventId);
+  if (normalizedEventId) {
+    tags.push(["e", normalizedEventId]);
+  }
+
+  if (typeof coordinate === "string" && coordinate.trim()) {
+    tags.push(["a", coordinate.trim()]);
+  }
+
+  if (Number.isFinite(amountMsats)) {
+    tags.push(["amount", String(Math.max(0, Math.round(amountMsats)))]);
+  }
+
+  if (typeof bolt11 === "string" && bolt11.trim()) {
+    tags.push(["bolt11", bolt11.trim()]);
+  }
+
+  if (typeof preimage === "string" && preimage.trim()) {
+    tags.push(["preimage", preimage.trim()]);
+  }
+
+  if (typeof zapRequestJson === "string" && zapRequestJson.trim()) {
+    tags.push(["description", zapRequestJson.trim()]);
+  }
+
+  tags.push(["client", "bitvid"]);
+  tags.push(["t", "zap"]);
+
+  appendSchemaTags(tags, schema);
+
+  const event = {
+    kind: schema?.kind ?? ZAP_TALLY_KIND,
+    pubkey,
+    created_at,
+    tags,
+    content: ensureValidUtf8Content(typeof comment === "string" ? comment : ""),
+  };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.ZAP_TALLY, event);
   }
 
   return event;

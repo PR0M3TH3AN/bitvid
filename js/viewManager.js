@@ -4,6 +4,7 @@ import { initForYouView } from "./forYouView.js";
 import { initKidsView } from "./kidsView.js";
 import { initExploreView } from "./exploreView.js";
 import { initTrendingView } from "./trendingView.js";
+import { initMostZappedView } from "./mostZappedView.js";
 import { subscriptions } from "./subscriptions.js";
 import { getApplication } from "./applicationContext.js";
 import { applyDesignSystemAttributes } from "./designSystem.js";
@@ -154,6 +155,26 @@ export const viewInitRegistry = {
         app.mountVideoListView({ includeTags: false });
       }
       app.loadTrendingVideos();
+    }
+    const refreshApp = getApplication();
+    if (refreshApp && typeof refreshApp.forceRefreshAllProfiles === "function") {
+      refreshApp.forceRefreshAllProfiles();
+    }
+  },
+  [FEED_TYPES.MOST_ZAPPED]: () => {
+    const app = getApplication();
+    initMostZappedView({
+      getApp: getApplication,
+      isActive: () =>
+        typeof window !== "undefined" &&
+        typeof window.location?.hash === "string" &&
+        window.location.hash.startsWith(`#view=${FEED_TYPES.MOST_ZAPPED}`),
+    });
+    if (app && typeof app.loadMostZappedVideos === "function") {
+      if (typeof app.mountVideoListView === "function") {
+        app.mountVideoListView({ includeTags: false });
+      }
+      app.loadMostZappedVideos();
     }
     const refreshApp = getApplication();
     if (refreshApp && typeof refreshApp.forceRefreshAllProfiles === "function") {

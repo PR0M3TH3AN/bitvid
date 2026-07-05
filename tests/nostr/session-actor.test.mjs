@@ -87,17 +87,31 @@ test("SessionActor", async (t) => {
     assert.equal(read.encryption.salt, actor.encryption.salt);
   });
 
-  await t.test("clears stored session actor", async () => {
+  // spec_correction: no-arg clearStoredSessionActor() deliberately no longer
+  // wipes the per-account map (that wiped EVERY saved account's key on one
+  // account's logout — fixed 2026-07-02, same class as the NIP-46 map wipe).
+  // Forgetting an account is the targeted clearStoredSessionActor(pubkey).
+  // See tests/nostr/sessionActor.test.mjs for the full integrity note and the
+  // multi-account survival scenario.
+  await t.test("clears stored session actor (targeted; no-arg drops only the default slot)", async () => {
     const actor = {
         pubkey: "pubkey123",
         privateKeyEncrypted: "encrypteddata",
         encryption: { salt: "salt", iv: "iv" }
     };
     sessionActor.persistSessionActor(actor);
-    sessionActor.clearStoredSessionActor();
 
-    const read = sessionActor.readStoredSessionActorEntry();
-    assert.equal(read, null);
+    // No-arg clear: default slot gone, but the account's key survives.
+    sessionActor.clearStoredSessionActor();
     assert.equal(localStorage.getItem(sessionActor.SESSION_ACTOR_STORAGE_KEY), null);
+    assert.ok(
+      sessionActor.readStoredSessionActorEntry("pubkey123"),
+      "no-arg clear must not delete the account's stored key",
+    );
+
+    // Targeted clear actually forgets it.
+    sessionActor.clearStoredSessionActor("pubkey123");
+    assert.equal(sessionActor.readStoredSessionActorEntry("pubkey123"), null);
+    assert.equal(sessionActor.readStoredSessionActorEntry(), null);
   });
 });

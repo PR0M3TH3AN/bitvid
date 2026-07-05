@@ -228,10 +228,42 @@ function normalizeNumeric(value, fallback = 0) {
   return numeric;
 }
 
-export async function fetchPayServiceData(url, { fetcher } = {}) {
+// LNURL servers (Strike among them) intermittently return transient failures —
+// network errors, 5xx, or {status:"ERROR"} bodies like "Could not get user
+// information" — for addresses that resolve fine seconds later (verified live
+// 2026-07-04 against strike.me: ERROR on one request, OK with a callback on
+// the retry). One short retry keeps a real zap from dying on such a blip; a
+// genuinely bad address still fails after at most one extra request.
+export async function fetchPayServiceData(
+  url,
+  { fetcher, retries = 1, retryDelayMs = 600 } = {},
+) {
   const targetUrl = sanitizeUrl(url);
   const fetchFn = ensureFetchFunction(fetcher);
 
+  let lastError = null;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    if (attempt > 0 && retryDelayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+    }
+    try {
+      return await fetchPayServiceDataOnce(targetUrl, fetchFn);
+    } catch (error) {
+      lastError = error;
+      if (error?.transient !== true) {
+        throw error;
+      }
+    }
+  }
+  throw lastError;
+}
+
+function markTransient(error) {
+  error.transient = true;
+  return error;
+}
+
+async function fetchPayServiceDataOnce(targetUrl, fetchFn) {
   let response;
   try {
     response = await fetchFn(targetUrl, {
@@ -247,18 +279,21 @@ export async function fetchPayServiceData(url, { fetcher } = {}) {
     );
     friendly.cause = error;
     friendly.code = "lnurl-unreachable";
-    throw friendly;
+    throw markTransient(friendly);
   }
 
   if (!response.ok) {
-    throw new Error(`Failed to load LNURL metadata (${response.status}).`);
+    throw markTransient(
+      new Error(`Failed to load LNURL metadata (${response.status}).`),
+    );
   }
 
   let payload;
   try {
     payload = await response.json();
   } catch (error) {
-    throw new Error("LNURL endpoint did not return JSON.");
+    // A non-JSON body is usually an edge/CDN interstitial — treat as a blip.
+    throw markTransient(new Error("LNURL endpoint did not return JSON."));
   }
 
   if (!payload || typeof payload !== "object") {
@@ -270,7 +305,7 @@ export async function fetchPayServiceData(url, { fetcher } = {}) {
       typeof payload.reason === "string" && payload.reason.trim()
         ? payload.reason.trim()
         : "LNURL endpoint returned an error.";
-    throw new Error(reason);
+    throw markTransient(new Error(reason));
   }
 
   const callback = sanitizeUrl(payload.callback);

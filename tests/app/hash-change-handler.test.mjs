@@ -63,7 +63,30 @@ test("handleHashChange defaults to for-you when logged in", async () => {
   }
 });
 
-test("handleHashChange defaults to most-recent-videos when logged out", async () => {
+// spec_correction: commit 04621efc (2026-06-24, "Trending defaults") made
+// TRENDING the deliberate logged-out landing ("the best not-personalized
+// landing", falling back to Recent only when FEATURE_TRENDING_FEED is off —
+// see js/hashChangeHandler.js). This test still encoded the pre-change
+// default (most-recent-videos) and has been failing since; the flag defaults
+// to true, so the correct observable outcome is views/trending.html.
+//
+// test_integrity_note:
+//   change_type: ["spec_correction"]
+//   scenarios:
+//     - id: SCN-logged-out-default-view
+//       given: "no #view= hash and a logged-out user (FEATURE_TRENDING_FEED default-on)"
+//       when: "handleHashChange resolves the default view"
+//       then: "the Trending view loads and its init runs"
+//   observable_outcomes:
+//     - "loadView called with views/trending.html and the trending init fires"
+//   determinism_controls:
+//     - "JSDOM with fixed URL; injected logged-out application stub"
+//   anti_cheat_rationale:
+//     prevents: ["snapshot rubber-stamping"]
+//   relaxation:
+//     did_relax_any_assertion: false
+//     if_true_explain_spec_basis: "expectation moved to the newer intended default (equally strict)"
+test("handleHashChange defaults to trending when logged out", async () => {
   const restore = setupDom("https://example.com");
 
   try {
@@ -77,7 +100,7 @@ test("handleHashChange defaults to most-recent-videos when logged out", async ()
         loadViewCalls.push(viewUrl);
       },
       viewInitRegistry: {
-        "most-recent-videos": async () => {
+        trending: async () => {
           initCalled = true;
         },
       },
@@ -87,7 +110,7 @@ test("handleHashChange defaults to most-recent-videos when logged out", async ()
 
     await handleHashChange();
 
-    assert.deepEqual(loadViewCalls, ["views/most-recent-videos.html"]);
+    assert.deepEqual(loadViewCalls, ["views/trending.html"]);
     assert.equal(initCalled, true);
   } finally {
     restore();

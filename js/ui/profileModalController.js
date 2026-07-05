@@ -669,6 +669,13 @@ export class ProfileModalController {
     this.profileAvatar = document.getElementById("profileModalAvatar") || null;
     this.profileName = document.getElementById("profileModalName") || null;
     this.profileNpub = document.getElementById("profileModalNpub") || null;
+    // #43: always-visible identity card straddling the header divider.
+    this.identityCard =
+      document.getElementById("profileModalIdentityCard") || null;
+    this.identityCardAvatar =
+      document.getElementById("profileModalIdentityAvatar") || null;
+    this.identityCardName =
+      document.getElementById("profileModalIdentityName") || null;
     this.switcherList = document.getElementById("profileSwitcherList") || null;
 
     this.profileModalAvatar = this.profileAvatar;
@@ -1745,6 +1752,12 @@ export class ProfileModalController {
       });
     }
 
+    if (this.identityCard instanceof HTMLElement) {
+      this.identityCard.addEventListener("click", () => {
+        this.selectPane("account");
+      });
+    }
+
     if (this.permissionPromptCtaButton instanceof HTMLElement) {
       this.permissionPromptCtaButton.addEventListener("click", () => {
         if (this.permissionPromptCtaButton?.dataset?.action === "retry-auth-sync") {
@@ -2562,6 +2575,24 @@ export class ProfileModalController {
       this.globalProfileAvatar.alt = hasActiveProfile
         ? `${activeDisplayName} avatar`
         : this.globalProfileAvatar.alt || "Profile avatar";
+    }
+
+    // #43: keep the always-visible identity card in sync (hidden when logged
+    // out so the modal doesn't claim an identity that isn't active).
+    if (this.identityCard instanceof HTMLElement) {
+      this.identityCard.classList.toggle("hidden", !hasActiveProfile);
+      this.identityCard.setAttribute(
+        "aria-hidden",
+        hasActiveProfile ? "false" : "true",
+      );
+    }
+    if (this.identityCardName instanceof HTMLElement) {
+      this.identityCardName.textContent = activeDisplayName;
+    }
+    if (this.identityCardAvatar instanceof HTMLImageElement) {
+      if (this.identityCardAvatar.src !== activeAvatarSrc) {
+        this.identityCardAvatar.src = activeAvatarSrc;
+      }
     }
 
     const listEl = this.switcherList;

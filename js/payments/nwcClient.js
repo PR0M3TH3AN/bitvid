@@ -926,7 +926,7 @@ async function ensureEncryption(context) {
   throw new Error("No compatible wallet encryption scheme available.");
 }
 
-function shouldRetryWithFallback(context, error, encryption, { hasRetried }) {
+function shouldRetryWithFallback(context, error, encryption, { hasRetried, method } = {}) {
   if (!context || !encryption || hasRetried) {
     return false;
   }
@@ -934,6 +934,8 @@ function shouldRetryWithFallback(context, error, encryption, { hasRetried }) {
   const code = typeof error?.code === "string" ? error.code : "";
   const message = typeof error?.message === "string" ? error.message : "";
 
+  // An explicit "unsupported encryption" rejection means the wallet never
+  // processed the request, so re-sending under nip04 is safe for any method.
   if (code === "UNSUPPORTED_ENCRYPTION" || code === "unsupported_encryption") {
     return true;
   }
@@ -944,6 +946,13 @@ function shouldRetryWithFallback(context, error, encryption, { hasRetried }) {
     code === "TIMEOUT";
 
   if (!isTimeout || encryption.scheme !== "nip44_v2") {
+    return false;
+  }
+
+  // A TIMEOUT is ambiguous: the wallet may have received the request and be
+  // paying it. NEVER auto-resend a spending method on timeout — the encryption
+  // fallback would double-pay. Read-only methods stay retryable.
+  if (NWC_SPENDING_METHODS.has(method)) {
     return false;
   }
 
@@ -1358,6 +1367,15 @@ async function dispatchWalletRequest(context, payload, { timeoutMs } = {}) {
   return promise;
 }
 
+// NWC methods that MOVE money. A timeout on these is ambiguous — the payment
+// may already be in flight — so we must NOT auto-resend them (double-spend).
+const NWC_SPENDING_METHODS = new Set([
+  "pay_invoice",
+  "pay_keysend",
+  "multi_pay_invoice",
+  "multi_pay_keysend",
+]);
+
 async function sendWalletRequest(context, payload, { timeoutMs, __internalRetry = false } = {}) {
   try {
     return await dispatchWalletRequest(context, payload, { timeoutMs });
@@ -1366,6 +1384,7 @@ async function sendWalletRequest(context, payload, { timeoutMs, __internalRetry 
     if (
       shouldRetryWithFallback(context, error, encryption, {
         hasRetried: __internalRetry === true,
+        method: payload?.method,
       })
     ) {
       rememberUnsupportedEncryption(context, encryption.scheme);
@@ -1647,4 +1666,6 @@ export const __TESTING__ = Object.freeze({
   buildPayInvoiceParams,
   getActiveState: () => activeState,
   ensureEncryptionForContext: ensureEncryption,
+  shouldRetryWithFallback,
+  NWC_SPENDING_METHODS,
 });

@@ -486,6 +486,15 @@ async function processShare({
       metadata,
       invoice,
       payment,
+      // Proof of settlement from NWC pay_invoice (result.preimage), surfaced so
+      // the caller can publish a preimage-verified bitvid zap tally
+      // (docs/zap-tally-plan.md §5.3). null when the wallet returns none.
+      preimage:
+        (payment && typeof payment === "object" && payment.result &&
+          typeof payment.result.preimage === "string" &&
+          payment.result.preimage.trim())
+          ? payment.result.preimage.trim()
+          : null,
       zapRequest,
       status: "success",
     };

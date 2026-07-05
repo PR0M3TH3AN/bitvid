@@ -129,12 +129,37 @@ describe("PlaybackService", () => {
       });
     });
 
-    test("URL Probe Success starts playback", async () => {
+    // spec_correction: the URL probe only exists to decide whether to fail over
+    // to P2P quickly. It used to run for EVERY hosted attempt, but its timeout
+    // (4s) exceeds the playback-start window (3s), so a slow no-cors HEAD (e.g.
+    // archive.org) consumed the whole budget and the URL was never even loaded —
+    // a false "No playable source found." for perfectly playable URL-only
+    // videos. The probe now runs ONLY when there's a magnet to fall over to.
+    // This test therefore uses a DUAL-source video so the probe path is still
+    // exercised; the URL-only skip is covered by the next test.
+    //
+    // test_integrity_note:
+    //   change_type: ["spec_correction"]
+    //   scenarios:
+    //     - id: SCN-probe-success-dual-source
+    //       given: "a dual-source (url+magnet) video whose URL probe succeeds"
+    //       when: "playback starts"
+    //       then: "the probe runs, the URL plays, and torrent is not used"
+    //   observable_outcomes:
+    //     - "probe called once; URL playback started; playViaWebTorrent not called"
+    //   determinism_controls: ["jsdom video element; mocked probe/torrent"]
+    //   anti_cheat_rationale:
+    //     prevents: ["over-mocking internal logic"]
+    //   relaxation:
+    //     did_relax_any_assertion: false
+    //     if_true_explain_spec_basis: "moved the probe assertion to the dual-source case it now applies to; url-only skip is separately asserted"
+    test("URL Probe Success starts playback (dual-source)", async () => {
       const probeUrl = mock.fn(async () => ({ outcome: "good", status: 200 }));
       const playViaWebTorrent = mock.fn();
 
       const testSession = service.createSession({
         url: "https://example.com/video.mp4",
+        magnet: "magnet:?xt=urn:btih:1111111111111111111111111111111111111111",
         videoElement: video,
         probeUrl,
         playViaWebTorrent,
@@ -155,6 +180,42 @@ describe("PlaybackService", () => {
       assert.equal(playMock.mock.callCount(), 1);
       assert.equal(result.source, "url");
       assert.equal(playViaWebTorrent.mock.callCount(), 0);
+    });
+
+    // The reported bug: a URL-only video (no magnet) must NOT be gated by the
+    // probe — the video element is the arbiter. It plays directly, probe skipped.
+    //
+    // test_integrity_note:
+    //   change_type: ["new_tests"]
+    //   scenarios:
+    //     - id: SCN-url-only-skips-probe
+    //       given: "a URL-only video (no magnet) with a playable URL"
+    //       when: "playback starts"
+    //       then: "the probe is NOT called and the URL plays directly"
+    //   observable_outcomes: ["probe callCount 0; URL playback started"]
+    //   determinism_controls: ["jsdom video element; mocked probe"]
+    //   anti_cheat_rationale: { prevents: ["hard-coded return value"] }
+    //   relaxation: { did_relax_any_assertion: false }
+    test("URL-only video skips the probe and plays directly", async () => {
+      const probeUrl = mock.fn(async () => ({ outcome: "good", status: 200 }));
+      const playViaWebTorrent = mock.fn();
+
+      const testSession = service.createSession({
+        url: "https://example.com/video.mp4",
+        videoElement: video,
+        probeUrl,
+        playViaWebTorrent,
+      });
+
+      const startPromise = testSession.start();
+      await new Promise(resolve => process.nextTick(resolve));
+      await new Promise(resolve => process.nextTick(resolve));
+      video.dispatchEvent(new window.Event("playing"));
+      const result = await startPromise;
+
+      assert.equal(probeUrl.mock.callCount(), 0, "URL-only: probe not on the critical path");
+      assert.equal(playMock.mock.callCount(), 1);
+      assert.equal(result.source, "url");
     });
 
     test("URL Probe Failure triggers fallback", async () => {

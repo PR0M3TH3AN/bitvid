@@ -16,7 +16,12 @@
 //   logLabel      short label for warnings
 
 import { encryptedSync as defaultEncryptedSync } from "../nostr/encryptedSyncFacade.js";
-import { isSyncEnabled, setSyncEnabled } from "./settingsSyncFlags.js";
+import {
+  isSyncEnabled,
+  setSyncEnabled,
+  getSyncPushedAt,
+  setSyncPushedAt,
+} from "./settingsSyncFlags.js";
 import { pushWithConflictCheck } from "./syncConflict.js";
 import { userLogger } from "../utils/logger.js";
 
@@ -100,6 +105,36 @@ export function createEncryptedSyncItem({
     return { ...result, imported: true };
   }
 
+  // #15 follow-up ("doesn't sync unless I click Restore"): a device with sync
+  // ENABLED auto-pulls a NEWER remote note at login. Previously enabled devices
+  // only pushed-on-save — edits from another device sat unseen until the manual
+  // Restore click. The per-device freshness marker doubles as "local state
+  // matches note X": it's recorded on push AND after a successful pull, so the
+  // next conflict check stays honest and the same note is never re-pulled.
+  async function autoPullIfNewer(pubkey) {
+    const key = normalizePubkey(pubkey);
+    if (!key || !isAvailable() || !isEnabled(key)) {
+      return { pulled: false, reason: "not-enabled" };
+    }
+    let remoteCreatedAt = 0;
+    try {
+      const peek = await encryptedSync.exists(dtag);
+      remoteCreatedAt = Number(peek?.createdAt) || 0;
+    } catch (error) {
+      return { pulled: false, reason: "peek-failed", cause: error };
+    }
+    const lastSynced = getSyncPushedAt(key, id);
+    if (!remoteCreatedAt || remoteCreatedAt <= lastSynced) {
+      return { pulled: false, reason: "up-to-date" };
+    }
+    const result = await pull(key);
+    if (result?.imported) {
+      setSyncPushedAt(key, id, remoteCreatedAt);
+      return { pulled: true, remoteCreatedAt };
+    }
+    return { pulled: false, reason: result?.error || "pull-failed" };
+  }
+
   async function enable(pubkey, options = {}) {
     setEnabledFlag(pubkey, true);
     return push(pubkey, options);
@@ -118,6 +153,7 @@ export function createEncryptedSyncItem({
     hasRemote,
     push,
     pull,
+    autoPullIfNewer,
     enable,
     disable,
   };

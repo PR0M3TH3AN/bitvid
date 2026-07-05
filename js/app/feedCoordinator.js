@@ -14,6 +14,10 @@ import {
   registerTrendingFeed as registerTrendingFeedPipeline,
   buildTrendingFeedRuntime,
 } from "../feedEngine/trendingFeed.js";
+import {
+  registerMostZappedFeed as registerMostZappedFeedPipeline,
+  buildMostZappedFeedRuntime,
+} from "../feedEngine/mostZappedFeed.js";
 
 /**
  * @param {object} deps - Injected dependencies.
@@ -876,6 +880,11 @@ export function createFeedCoordinator(deps) {
             // Preserve the view-count ranking (otherwise re-sorted by date).
             metadataModifier = (m) => ({ ...m, preserveOrder: true });
             break;
+          case FEED_TYPES.MOST_ZAPPED:
+            runtime = buildMostZappedFeedRuntime(this);
+            // Preserve the zap-total ranking (otherwise re-sorted by date).
+            metadataModifier = (m) => ({ ...m, preserveOrder: true });
+            break;
           case "recent":
             runtime = this.buildRecentFeedRuntime();
             break;
@@ -1041,6 +1050,12 @@ export function createFeedCoordinator(deps) {
           refreshMethod = (opts) => this.refreshFeed(FEED_TYPES.TRENDING, opts);
           shouldCheckRelayHealth = false;
           break;
+        case FEED_TYPES.MOST_ZAPPED:
+          includeTags = false;
+          loadingMessage = "Fetching most-zapped videos\u2026";
+          refreshMethod = (opts) => this.refreshFeed(FEED_TYPES.MOST_ZAPPED, opts);
+          shouldCheckRelayHealth = false;
+          break;
         default:
           devLogger.warn(
             `[Application] Unknown feed type for loadFeedVideos: ${feedType}`,
@@ -1141,6 +1156,14 @@ export function createFeedCoordinator(deps) {
 
     async loadTrendingVideos(forceFetch = false) {
       return this.loadFeedVideos(FEED_TYPES.TRENDING, forceFetch);
+    },
+
+    registerMostZappedFeed() {
+      return registerMostZappedFeedPipeline(this);
+    },
+
+    async loadMostZappedVideos(forceFetch = false) {
+      return this.loadFeedVideos(FEED_TYPES.MOST_ZAPPED, forceFetch);
     },
 
     async loadOlderVideos(lastTimestamp) {

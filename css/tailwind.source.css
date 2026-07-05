@@ -2904,6 +2904,98 @@
     transform-origin: top center;
   }
 
+  /* Zap total on video cards (#47 follow-up): orange, pushed to the row's end
+     so views/comments stay left-aligned and sats sit right-aligned. Hidden
+     (via the utility class) until a nonzero total is known. */
+  .video-card__zaps {
+    color: var(--color-zap);
+    margin-inline-start: auto;
+  }
+
+  .video-card__zaps .zap-total-text {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Same treatment in the player modal: orange sats on the far side of the
+     meta row (the row is justify-between, views stay left). */
+  .video-modal__zaps {
+    color: var(--color-zap);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* #43: always-visible active-identity pill. Rendered after the header in
+     flow and pulled up with a negative block-start margin so it sits half-on /
+     half-off the header divider — every pane shows who you're acting as. */
+  .profile-modal__identity {
+    align-self: center;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+    max-inline-size: min(80%, calc(var(--profile-modal-active-min-width) * 2));
+    padding: var(--space-3xs);
+    padding-inline-end: var(--space-md);
+    border-radius: var(--radius-full);
+    border: var(--border-width-hairline) solid var(--color-border-translucent);
+    background-color: var(--color-panel);
+    color: var(--color-text);
+    box-shadow: var(--shadow-md);
+    position: relative;
+    z-index: 2;
+    margin-block-start: calc(-1 * var(--space-sm));
+    margin-block-end: calc(-1 * var(--space-3xs));
+    cursor: pointer;
+    text-align: start;
+  }
+
+  .profile-modal__identity.hidden {
+    display: none;
+  }
+
+  .profile-modal__identity:hover {
+    border-color: var(--color-accent);
+  }
+
+  .profile-modal__identity-avatar {
+    display: flex;
+    inline-size: var(--space-xl);
+    block-size: var(--space-xl);
+    flex-shrink: 0;
+    overflow: hidden;
+    border-radius: var(--radius-full);
+    border: var(--border-width-hairline) solid var(--color-accent);
+    background-color: var(--color-surface);
+  }
+
+  .profile-modal__identity-avatar img {
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: cover;
+  }
+
+  .profile-modal__identity-copy {
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+  }
+
+  .profile-modal__identity-kicker {
+    font-size: var(--font-size-3xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-extra-wide);
+    color: var(--color-accent);
+    line-height: var(--line-height-tight);
+  }
+
+  .profile-modal__identity-name {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    line-height: var(--line-height-tight);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .profile-modal__active-profile {
     @apply focus-ring flex flex-wrap items-center gap-4 p-4;
   }

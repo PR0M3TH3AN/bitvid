@@ -61,6 +61,12 @@ export function initUploadModal({
           app.profileController.show("storage");
         }
       },
+      // Shared signer gate (#56): restores a kept-unlocked key silently or shows
+      // one passphrase prompt so the file pickers can unlock storage inline.
+      ensureSigner: (options) =>
+        typeof app?.ensureEncryptionCapableSigner === "function"
+          ? app.ensureEncryptionCapableSigner(options)
+          : null,
       // Open the login modal's unlock-saved-key (passphrase) flow when a persisted
       // nsec session is locked after a reload.
       onRequestUnlock: () => {

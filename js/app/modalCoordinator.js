@@ -25,11 +25,77 @@ export function createModalCoordinator(deps) {
     unsubscribeFromVideoViewCount,
     formatViewCount,
     ingestLocalViewEvent,
+    requestVideoZapTotal,
+    getVideoZapTotalSnapshot,
+    onZapTotalsChanged,
     pointerArrayToKey,
     pointerKey,
     getCanonicalDesignSystemMode,
     BITVID_WEBSITE_URL,
   } = deps;
+
+  // Zap-total badge helpers are LOCAL closures, NOT coordinator methods:
+  // coordinator methods run with `this` bound to the Application, so a
+  // cross-method `this.helper()` call only works when app.js also adds an
+  // explicit delegate for it — a silent landmine (a missing delegate here
+  // threw on EVERY modal open and broke video playback entirely).
+  let modalZapTotalUnsub = null;
+
+  function teardownModalZapTotal() {
+    if (typeof modalZapTotalUnsub === "function") {
+      try {
+        modalZapTotalUnsub();
+      } catch (error) {
+        devLogger.warn("[zapTotals] Failed to tear down modal listener:", error);
+      }
+    }
+    modalZapTotalUnsub = null;
+    const el =
+      typeof document !== "undefined"
+        ? document.getElementById("videoZapTotal")
+        : null;
+    if (el) {
+      el.classList.add("hidden");
+      const text = el.querySelector("[data-zap-total-text]");
+      if (text) {
+        text.textContent = "";
+      }
+    }
+  }
+
+  // Orange sats badge on the modal's meta row (right side; views stay left).
+  // Mirrors the card badge: cached total now (also schedules the batched
+  // receipt fetch), re-rendered when a batch lands, hidden while zero.
+  function subscribeModalZapTotal(pointer) {
+    if (
+      typeof requestVideoZapTotal !== "function" ||
+      typeof getVideoZapTotalSnapshot !== "function" ||
+      typeof onZapTotalsChanged !== "function"
+    ) {
+      return;
+    }
+    const el =
+      typeof document !== "undefined"
+        ? document.getElementById("videoZapTotal")
+        : null;
+    if (!el || !pointer) {
+      return;
+    }
+    // Always visible while a video is open (mirrors the view counter); a zero
+    // is a real value, not noise to hide.
+    const render = () => {
+      const sats = getVideoZapTotalSnapshot(pointer);
+      const value = Number.isFinite(sats) && sats > 0 ? sats : 0;
+      const text = el.querySelector("[data-zap-total-text]");
+      if (text) {
+        text.textContent = `${formatViewCount(value)} sats`;
+      }
+      el.classList.remove("hidden");
+    };
+    requestVideoZapTotal(pointer);
+    render();
+    modalZapTotalUnsub = onZapTotalsChanged(render);
+  }
 
   return {
     normalizeModalTrigger(candidate) {
@@ -117,6 +183,7 @@ export function createModalCoordinator(deps) {
         }
       }
       this.modalViewCountUnsub = null;
+      teardownModalZapTotal();
       if (this.videoModal) {
         this.videoModal.updateViewCountLabel("\u2013 views");
         this.videoModal.setViewCountPointer(null);
@@ -139,6 +206,7 @@ export function createModalCoordinator(deps) {
         this.videoModal.updateViewCountLabel("Loading views\u2026");
         this.videoModal.setViewCountPointer(pointerKey);
       }
+      subscribeModalZapTotal(pointer);
       try {
         const token = subscribeToVideoViewCount(pointer, ({ total, status, partial }) => {
           const latestViewEl = this.videoModal?.getViewCountElement() || null;
