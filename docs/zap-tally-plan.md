@@ -1,6 +1,6 @@
 # bitvid-native zap tally — dev plan
 
-> Status: **PLANNED (not started)** · Author: agent handoff · Created 2026-07-04
+> Status: **IN PROGRESS** (video-zap tally shipped; profile + chart remain) · Created 2026-07-04
 > Scope: (1) a bitvid-published, preimage-verified zap event so "Most Zapped" and
 > the per-card / per-modal zap totals are global, durable, and independent of
 > whether the recipient's Lightning provider publishes NIP-57 receipts; and (2) a
@@ -474,8 +474,8 @@ tallies simply stop being counted. No data migration.
       - [ ] **Profile-zap counting:** the store queries `#a`/`#e` only — add
             `#p` batches so a profile-only tally (no video pointer) is fetched,
             and a channel-page total UI surface (D2 chose video+profile).
-      - [ ] **Retry path:** `zapController.executeRetry` doesn't fire
-            `onZapSuccess`; wire it so retried shares also publish tallies.
+      - [x] **Retry path:** `zapController.executeRetry` fires `onZapSuccess`
+            so retried shares publish tallies too. (commit afed041f)
       - [ ] **Popularity chart §5.9:** orange zaps line + legend + date axis.
       - [ ] Live end-to-end on unstable (real zap → tally on relay → second
             browser counts it); rollout per §9.
