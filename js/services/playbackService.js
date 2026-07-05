@@ -988,15 +988,35 @@ class PlaybackSession extends SimpleEventEmitter {
           { once: true }
         );
 
-        const probeResult = await this.service.probeHostedUrl({
-          url: candidateUrl,
-          magnet: this.trimmedMagnet,
-          probeUrl,
-        });
+        // The probe (fetch HEAD) only helps DECIDE whether to fail over to P2P
+        // fast. When the URL is the only source there's nothing to fail over
+        // to — and the probe's timeout (URL_PROBE_TIMEOUT_MS, 4s) is LONGER than
+        // the playback-start window (PLAYBACK_START_TIMEOUT, 3s), so a slow
+        // no-cors HEAD (e.g. archive.org) would consume the whole budget and the
+        // attempt would time out before `src` is ever set → a false "No playable
+        // source found." So skip the probe when there's no magnet and let the
+        // video element (the real arbiter) load the URL directly.
+        const probeResult =
+          this.magnetForPlayback
+            ? await this.service.probeHostedUrl({
+                url: candidateUrl,
+                magnet: this.trimmedMagnet,
+                probeUrl,
+              })
+            : { outcome: "skipped-url-only" };
         const probeOutcome = probeResult?.outcome || "error";
         const probeStatus = probeResult?.status || "unknown";
+        // A `<video>` element plays cross-origin URLs WITHOUT CORS, but this
+        // probe uses fetch (CORS-limited): a benign no-cors HEAD failure or a
+        // slow HEAD returns "error"/"opaque" for perfectly playable hosts (e.g.
+        // archive.org — 200 video/mp4 with byte ranges). An ambiguous probe must
+        // NEVER veto the URL into "No playable source found." Only a
+        // definitively-READ failure status ("bad") deprioritizes it — and even
+        // then, if there's no P2P fallback, we still try (a real media error is
+        // clearer than a false "no source"). The video element + watchdogs are
+        // the actual arbiter of playability.
         const shouldAttemptHosted =
-          probeOutcome !== "bad" && probeOutcome !== "error";
+          probeOutcome !== "bad" || !this.magnetForPlayback;
 
         this.service.log(
           `[playVideoWithFallback] Hosted URL probe outcome=${probeOutcome} status=${probeStatus} shouldAttemptHosted=${shouldAttemptHosted}`

@@ -1,7 +1,7 @@
 import { ENSURE_PRESENCE_REBROADCAST_COOLDOWN_SECONDS } from "../config.js";
 import {
   publishEventToRelays,
-  assertAnyRelayAccepted,
+  assertAnyRelayAcceptedOrUnconfirmed,
   summarizePublishResults,
 } from "../nostrPublish.js";
 import {
@@ -469,7 +469,10 @@ export async function signAndPublishEvent({
 
   let publishSummary;
   try {
-    publishSummary = assertAnyRelayAccepted(publishResults, { context });
+    // #49: an all-timeout publish (sent, nothing rejected) is treated as an
+    // unconfirmed soft success — summary.unconfirmed=true — instead of a false
+    // "failed to publish". Explicit relay rejections still throw below.
+    publishSummary = assertAnyRelayAcceptedOrUnconfirmed(publishResults, { context });
   } catch (publishError) {
     if (publishError?.relayFailures?.length) {
       const logLevel = rejectionLogLevel === "warn" ? "warn" : "error";
@@ -484,6 +487,12 @@ export async function signAndPublishEvent({
   publishSummary.accepted.forEach(({ url }) => {
     devLogger.log(`${logName} published to ${url}`);
   });
+
+  if (publishSummary.unconfirmed) {
+    userLogger.warn(
+      `[nostr] ${logName} was sent but no relay confirmed it within the timeout — treating as an unconfirmed publish.`,
+    );
+  }
 
   if (publishSummary.failed.length) {
     publishSummary.failed.forEach(({ url, error: relayError }) => {
@@ -1331,7 +1340,11 @@ export async function rebroadcastEvent({ client, eventId, options = {} }) {
   const publishResults = await publishEventToRelays(client?.pool, relays, rawEvent);
 
   try {
-    const summary = assertAnyRelayAccepted(publishResults, { context: "rebroadcast" });
+    // #49: rebroadcast re-publishes an existing event, so an all-timeout is a
+    // safe unconfirmed success; only explicit rejections fall to the catch.
+    const summary = assertAnyRelayAcceptedOrUnconfirmed(publishResults, {
+      context: "rebroadcast",
+    });
     return {
       ok: true,
       rebroadcast: true,

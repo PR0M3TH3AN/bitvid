@@ -726,6 +726,59 @@ for (const _ of [0]) {
     assert.equal(switcherNpubEl.textContent, expectedSwitcher);
   });
 
+  // #43: the always-visible identity card mirrors the active profile on every
+  // pane (populated by renderSavedProfiles, so it also refreshes on account
+  // switch), hides when logged out, and click-through opens the Account pane.
+  test('identity card shows the acting profile, hides logged out, opens Account', async () => {
+    const sampleProfiles = [
+      {
+        pubkey: defaultActorHex,
+        npub: 'npub1abcdefghijkmnopqrstuvwxyz1234567890example',
+        name: 'Primary Account',
+        picture: '',
+        providerId: 'nip07',
+        authType: 'nip07',
+      },
+    ];
+
+    const controller = createController({
+      services: {
+        formatShortNpub,
+      },
+    });
+
+    await controller.load();
+
+    controller.state.setSavedProfiles(sampleProfiles);
+    controller.state.setActivePubkey(defaultActorHex);
+    controller.renderSavedProfiles();
+
+    assert.ok(controller.identityCard, 'identity card element is cached');
+    assert.equal(
+      controller.identityCard.classList.contains('hidden'),
+      false,
+      'visible while a profile is active',
+    );
+    assert.equal(controller.identityCard.getAttribute('aria-hidden'), 'false');
+    assert.equal(controller.identityCardName.textContent, 'Primary Account');
+
+    controller.identityCard.click();
+    assert.equal(
+      controller.getActivePane(),
+      'account',
+      'click-through jumps to the Account pane',
+    );
+
+    controller.state.setActivePubkey(null);
+    controller.renderSavedProfiles();
+    assert.equal(
+      controller.identityCard.classList.contains('hidden'),
+      true,
+      'hidden when logged out (no claimed identity)',
+    );
+    assert.equal(controller.identityCard.getAttribute('aria-hidden'), 'true');
+  });
+
   test('renderSavedProfiles applies provider metadata', async () => {
     const sampleProfiles = [
       {

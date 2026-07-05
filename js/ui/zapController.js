@@ -85,6 +85,10 @@ export default class ZapController {
     this.callbacks = {
       onSuccess: typeof callbacks.onSuccess === "function" ? callbacks.onSuccess : null,
       onError: typeof callbacks.onError === "function" ? callbacks.onError : null,
+      // Fires with { video, sats } after a fully-successful send so the app can
+      // optimistically bump the video's zap total (badge updates instantly).
+      onZapSuccess:
+        typeof callbacks.onZapSuccess === "function" ? callbacks.onZapSuccess : null,
     };
     this.requestWalletPane =
       typeof requestWalletPane === "function" ? requestWalletPane : null;
@@ -376,6 +380,41 @@ export default class ZapController {
       }
       this.videoModal?.setZapStatus(summary, "success");
       this.notifySuccess("Zap sent successfully!");
+
+      // Optimistically bump the video's zap total by the amount sent (both the
+      // creator and platform shares are tagged to the video, so the eventual
+      // relay total equals context.shares.total). Badge updates instantly.
+      // Also forward the per-share proof (bolt11 + preimage + zap request) so
+      // the app can publish preimage-verified bitvid zap tallies
+      // (docs/zap-tally-plan.md §5.4). Only settled shares with a preimage.
+      if (this.callbacks.onZapSuccess) {
+        try {
+          const shares = receipts
+            .filter(
+              (r) =>
+                r &&
+                (r.status === "success" || !r.status) &&
+                typeof r.preimage === "string" &&
+                r.preimage,
+            )
+            .map((r) => ({
+              recipientType: r.recipientType || "creator",
+              amountSats: Math.max(0, Math.round(Number(r.amount) || 0)),
+              bolt11:
+                typeof r.invoice?.invoice === "string" ? r.invoice.invoice : "",
+              preimage: r.preimage,
+              zapRequest: typeof r.zapRequest === "string" ? r.zapRequest : "",
+            }))
+            .filter((s) => s.bolt11 && s.zapRequest && s.amountSats > 0);
+          this.callbacks.onZapSuccess({
+            video: this.getCurrentVideo(),
+            sats: Math.max(0, Math.round(Number(context?.shares?.total) || 0)),
+            shares,
+          });
+        } catch (error) {
+          userLogger.warn("[zap] onZapSuccess hook failed:", error);
+        }
+      }
 
       this.resetRetryState();
       this.modalZapCommentValue = "";
@@ -790,7 +829,19 @@ export default class ZapController {
       throw new Error("Enter a zap amount greater than zero.");
     }
 
-    const creatorEntry = await fetchLightningMetadata(lightningAddress);
+    // Name WHICH address failed: LNURL servers return opaque reasons like
+    // "Could not get user information", and without the address the creator's
+    // (fine) address gets blamed for a broken platform-fee address.
+    let creatorEntry;
+    try {
+      creatorEntry = await fetchLightningMetadata(lightningAddress);
+    } catch (error) {
+      const detail =
+        error?.message || "Unable to load this creator's Lightning info.";
+      throw new Error(
+        `Creator Lightning address (${lightningAddress}): ${detail}`,
+      );
+    }
     if (shares.creatorShare > 0) {
       try {
         validateInvoiceAmount(creatorEntry.metadata, shares.creatorShare);
@@ -814,7 +865,15 @@ export default class ZapController {
         throw new Error("Platform Lightning address is unavailable.");
       }
 
-      platformEntry = await fetchLightningMetadata(platformAddress);
+      try {
+        platformEntry = await fetchLightningMetadata(platformAddress);
+      } catch (error) {
+        const detail =
+          error?.message || "Unable to load the platform's Lightning info.";
+        throw new Error(
+          `Platform fee Lightning address (${platformAddress}): ${detail}`,
+        );
+      }
       try {
         validateInvoiceAmount(platformEntry.metadata, shares.platformShare);
       } catch (error) {
@@ -1053,6 +1112,38 @@ export default class ZapController {
         : "Retried zap shares successfully.";
     this.videoModal?.setZapStatus(successMessage, "success");
     this.notifySuccess("Zap shares retried successfully!");
+
+    // Retried shares also bump the badge + publish verified tallies (same hook
+    // as the main path; docs/zap-tally-plan.md §5.4). Best-effort.
+    if (this.callbacks.onZapSuccess) {
+      try {
+        const shareProof = aggregatedReceipts
+          .filter(
+            (r) =>
+              r &&
+              (r.status === "success" || !r.status) &&
+              typeof r.preimage === "string" &&
+              r.preimage,
+          )
+          .map((r) => ({
+            recipientType: r.recipientType || "creator",
+            amountSats: Math.max(0, Math.round(Number(r.amount) || 0)),
+            bolt11:
+              typeof r.invoice?.invoice === "string" ? r.invoice.invoice : "",
+            preimage: r.preimage,
+            zapRequest: typeof r.zapRequest === "string" ? r.zapRequest : "",
+          }))
+          .filter((s) => s.bolt11 && s.zapRequest && s.amountSats > 0);
+        this.callbacks.onZapSuccess({
+          video: this.getCurrentVideo(),
+          sats: total,
+          shares: shareProof,
+        });
+      } catch (error) {
+        userLogger.warn("[zap] onZapSuccess hook failed (retry):", error);
+      }
+    }
+
     this.resetRetryState();
     return true;
   }

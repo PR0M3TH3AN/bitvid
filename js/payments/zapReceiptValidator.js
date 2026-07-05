@@ -58,6 +58,97 @@ function computeZapRequestHash(zapRequest) {
   return bytesToHex(sha256(data));
 }
 
+function hexToBytes(hex) {
+  const clean = typeof hex === "string" ? hex.trim().toLowerCase() : "";
+  if (!clean || clean.length % 2 !== 0 || /[^0-9a-f]/.test(clean)) {
+    return null;
+  }
+  const bytes = new Uint8Array(clean.length / 2);
+  for (let i = 0; i < bytes.length; i += 1) {
+    bytes[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
+}
+
+// Proof of settlement: a Lightning payment_hash is sha256(preimage). Anyone can
+// check it — this is what makes a payer-signed tally as trustworthy as a
+// recipient-signed 9735 (docs/zap-tally-plan.md §3, step 2).
+export function verifyPaymentPreimage(preimageHex, paymentHashHex) {
+  const preimage = hexToBytes(preimageHex);
+  const expected =
+    typeof paymentHashHex === "string" ? paymentHashHex.trim().toLowerCase() : "";
+  if (!preimage || preimage.length !== 32 || expected.length !== 64) {
+    return false;
+  }
+  return bytesToHex(sha256(preimage)) === expected;
+}
+
+const tagValue = (tags, name) => {
+  const list = Array.isArray(tags) ? tags : [];
+  const tag = list.find((t) => Array.isArray(t) && t[0] === name && t[1] != null);
+  return tag ? String(tag[1]) : "";
+};
+
+// Verify a bitvid zap-tally event (kind ZAP_TALLY_KIND). Returns
+// { ok, sats, paymentHash, pointerTags } — pointerTags come from the EMBEDDED
+// zap request (a/e/p), not the outer wrapper, so a mangled wrapper can't
+// retarget the credit. `getSats` defaults to nostr-tools' bolt11 amount parser;
+// injectable for tests. See docs/zap-tally-plan.md §3.
+export function verifyBitvidZapTally(event, { getSats, extractFields } = {}) {
+  const fail = { ok: false, sats: 0, paymentHash: null, pointerTags: [] };
+  if (!event || typeof event !== "object" || !Array.isArray(event.tags)) {
+    return fail;
+  }
+  const bolt11 = tagValue(event.tags, "bolt11");
+  const preimage = tagValue(event.tags, "preimage");
+  const zapRequestJson = tagValue(event.tags, "description");
+  if (!bolt11 || !preimage) {
+    return fail;
+  }
+
+  const decode = typeof extractFields === "function" ? extractFields : extractBolt11Fields;
+  const { paymentHash, descriptionHash } = decode(bolt11);
+  if (!paymentHash) {
+    return fail;
+  }
+  // Step 2: the invoice was actually paid.
+  if (!verifyPaymentPreimage(preimage, paymentHash)) {
+    return fail;
+  }
+  // Step 3: that payment was for THIS zap request (binds pointer + amount;
+  // blocks reusing a leaked preimage against a different video).
+  if (descriptionHash) {
+    if (!zapRequestJson || computeZapRequestHash(zapRequestJson) !== descriptionHash) {
+      return fail;
+    }
+  }
+
+  // Amount is authoritative from the bolt11, never the tag.
+  let sats = 0;
+  try {
+    const fn =
+      typeof getSats === "function"
+        ? getSats
+        : cachedTools?.nip57?.getSatoshisAmountFromBolt11;
+    const parsed = typeof fn === "function" ? Number(fn(bolt11)) : NaN;
+    sats = Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : 0;
+  } catch (error) {
+    sats = 0;
+  }
+  if (sats <= 0) {
+    return fail;
+  }
+
+  // Pointer tags from the embedded, hash-bound zap request.
+  const req = parseZapRequest(zapRequestJson);
+  const reqTags = Array.isArray(req?.tags) ? req.tags : event.tags;
+  const pointerTags = reqTags.filter(
+    (t) => Array.isArray(t) && (t[0] === "a" || t[0] === "e" || t[0] === "p"),
+  );
+
+  return { ok: true, sats, paymentHash, pointerTags };
+}
+
 function normalizeRelayList(relays) {
   if (!Array.isArray(relays)) {
     return [];
@@ -159,6 +250,74 @@ function normalizePubkey(pubkey) {
   }
   const trimmed = pubkey.trim();
   return trimmed ? trimmed.toLowerCase() : "";
+}
+
+// Walk a bolt11's bech32 tagged fields once, returning the fields we care about:
+//   paymentHash     — bolt11 tag 'p' (proves settlement when sha256(preimage)===it)
+//   descriptionHash — bolt11 tag 'h' (NIP-57 binds the invoice to the zap request)
+// Both hex, or null if absent/undecodable. Shared by the 9735 path and the
+// bitvid zap-tally verifier (docs/zap-tally-plan.md §3).
+export function extractBolt11Fields(bolt11) {
+  const out = { paymentHash: null, descriptionHash: null };
+  const normalized = normalizeInvoiceValue(bolt11).toLowerCase();
+  if (!normalized) {
+    return out;
+  }
+
+  let decoded;
+  try {
+    decoded = bech32.decode(normalized, 2000);
+  } catch (error) {
+    return out;
+  }
+
+  const words = Array.isArray(decoded?.words) ? decoded.words.slice() : [];
+  if (words.length <= 104) {
+    return out;
+  }
+
+  const dataWords = words.slice(0, -104);
+  if (dataWords.length <= 7) {
+    return out;
+  }
+
+  let index = 7; // skip timestamp words
+  while (index < dataWords.length) {
+    const tagCode = dataWords[index];
+    index += 1;
+    if (typeof tagCode !== "number" || tagCode < 0 || tagCode >= BOLT11_CHARSET.length) {
+      return out;
+    }
+    if (index + 1 >= dataWords.length) {
+      return out;
+    }
+    const length = (dataWords[index] << 5) + dataWords[index + 1];
+    index += 2;
+    if (length < 0 || index + length > dataWords.length) {
+      return out;
+    }
+    const dataSlice = dataWords.slice(index, index + length);
+    index += length;
+    const tag = BOLT11_CHARSET[tagCode];
+    if (tag === "h" && !out.descriptionHash) {
+      try {
+        out.descriptionHash = bytesToHex(Uint8Array.from(bech32.fromWords(dataSlice)));
+      } catch (error) {
+        /* leave null */
+      }
+    } else if (tag === "p" && !out.paymentHash) {
+      try {
+        out.paymentHash = bytesToHex(Uint8Array.from(bech32.fromWords(dataSlice)));
+      } catch (error) {
+        /* leave null */
+      }
+    }
+    if (out.paymentHash && out.descriptionHash) {
+      break;
+    }
+  }
+
+  return out;
 }
 
 function extractDescriptionHashFromBolt11(bolt11) {

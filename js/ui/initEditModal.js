@@ -51,6 +51,12 @@ export function initEditModal({
       storageService,
       getCurrentPubkey,
       safeEncodeNpub,
+      // Shared signer gate (#56): lets the "Replace file" pickers unlock storage
+      // inline (cached keep-unlocked key or one passphrase prompt).
+      ensureSigner: (options) =>
+        typeof app?.ensureEncryptionCapableSigner === "function"
+          ? app.ensureEncryptionCapableSigner(options)
+          : null,
       eventTarget: events,
       container,
     });

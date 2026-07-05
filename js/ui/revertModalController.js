@@ -91,8 +91,12 @@ export default class RevertModalController {
     this.revertModal.setBusy(true, "Reverting…");
 
     try {
+      // #49: revertVideo no longer hard-fails when every relay merely times
+      // out (summary.unconfirmed) — track whether ANY relay actually ACKed so
+      // the success message stays honest.
+      let anyAccepted = false;
       for (const entry of entries) {
-        await this.services.nostrClient.revertVideo(
+        const revertResult = await this.services.nostrClient.revertVideo(
           {
             id: entry.id,
             pubkey: entry.pubkey,
@@ -100,12 +104,22 @@ export default class RevertModalController {
           },
           pubkey,
         );
+        const accepted = revertResult?.summary?.accepted;
+        if (Array.isArray(accepted) && accepted.length > 0) {
+          anyAccepted = true;
+        }
       }
 
       await this.callbacks.loadVideos();
 
       const timestampLabel = this.helpers.formatAbsoluteTimestamp(target.created_at);
-      this.ui.showSuccess(`Reverted to revision from ${timestampLabel}.`);
+      if (anyAccepted) {
+        this.ui.showSuccess(`Reverted to revision from ${timestampLabel}.`);
+      } else {
+        this.ui.showSuccess(
+          `Revert to the revision from ${timestampLabel} was sent, but no relay has confirmed it yet — check again in a moment.`,
+        );
+      }
       this.revertModal.close();
       this.callbacks.forceRefreshAllProfiles();
     } catch (err) {

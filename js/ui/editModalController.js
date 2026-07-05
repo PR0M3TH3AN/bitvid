@@ -1,5 +1,6 @@
 import { devLogger } from "../utils/logger.js";
 import r2Service from "../services/r2Service.js";
+import { readRelayPublishSummary } from "../nostrPublish.js";
 
 export default class EditModalController {
   constructor({ services, state, ui, callbacks, helpers }) {
@@ -86,7 +87,7 @@ export default class EditModalController {
     }
 
     try {
-      await this.services.nostrService.handleEditVideoSubmit({
+      const editedEvent = await this.services.nostrService.handleEditVideoSubmit({
         originalEvent,
         updatedData,
         pubkey,
@@ -139,7 +140,16 @@ export default class EditModalController {
         videosMap.clear();
       }
 
-      this.ui.showSuccess("Video updated successfully!");
+      // #49: an all-timeout publish reaches here flagged unconfirmed — say so
+      // honestly instead of claiming a confirmed update.
+      const tally = readRelayPublishSummary(editedEvent);
+      if (tally?.unconfirmed === true && !(tally.accepted > 0)) {
+        this.ui.showSuccess(
+          "Video update sent, but no relay has confirmed it yet — it may take a moment to propagate.",
+        );
+      } else {
+        this.ui.showSuccess("Video updated successfully!");
+      }
 
       if (editModal?.setSubmitState) {
         editModal.setSubmitState({ pending: false });

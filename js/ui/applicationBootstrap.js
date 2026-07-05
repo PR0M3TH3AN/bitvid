@@ -24,7 +24,12 @@ import r2Service from "../services/r2Service.js";
 import s3UploadService from "../services/s3UploadService.js";
 import RelayHealthService from "../services/relayHealthService.js";
 import { createFeedEngine } from "../feedEngine/index.js";
-import { URL_FIRST_ENABLED, SHORT_TIMEOUT_MS, FEATURE_TRENDING_FEED } from "../constants.js";
+import {
+  URL_FIRST_ENABLED,
+  SHORT_TIMEOUT_MS,
+  FEATURE_TRENDING_FEED,
+  FEATURE_MOST_ZAPPED_FEED,
+} from "../constants.js";
 import { ALLOW_NSFW_CONTENT } from "../config.js";
 import { relayManager } from "../relayManager.js";
 import { userBlocks } from "../userBlocks.js";
@@ -282,6 +287,18 @@ export default class ApplicationBootstrap {
       const trendingLink = document.getElementById("trendingLink");
       if (trendingLink) {
         trendingLink.classList.add("hidden");
+      }
+    }
+    if (
+      FEATURE_MOST_ZAPPED_FEED &&
+      typeof app.registerMostZappedFeed === "function"
+    ) {
+      app.registerMostZappedFeed();
+    } else if (typeof document !== "undefined") {
+      // Flag off: hide the always-visible Most Zapped sidebar link.
+      const mostZappedLink = document.getElementById("mostZappedLink");
+      if (mostZappedLink) {
+        mostZappedLink.classList.add("hidden");
       }
     }
     app.registerSubscriptionsFeed();

@@ -102,6 +102,32 @@ export function createSettingsRestorePrompt({
       return { offered: false, reason: "no-pubkey" };
     }
 
+    // Items ALREADY enabled on this device sync silently: pull the remote note
+    // when it's newer than what this device last pushed/pulled (i.e. another
+    // device changed it). No prompt — the user opted in when enabling sync.
+    // Without this, enabled devices only ever pushed, and edits from another
+    // device sat unseen until the manual Restore click ("doesn't sync").
+    const autoPulled = [];
+    for (const [kind, service] of [
+      ["storage", storageSync],
+      ["wallet", walletSync],
+    ]) {
+      if (typeof service?.autoPullIfNewer !== "function") {
+        continue;
+      }
+      try {
+        const result = await service.autoPullIfNewer(key);
+        if (result?.pulled) {
+          autoPulled.push(kind);
+        }
+      } catch (error) {
+        logger?.warn?.(`[settingsRestore] ${kind} auto-pull failed`, error);
+      }
+    }
+    if (autoPulled.length && typeof onRestored === "function") {
+      onRestored(autoPulled);
+    }
+
     const candidates = await collectCandidates(key);
     if (!candidates.length) {
       // Don't mark offered — a note may be published later from another device;

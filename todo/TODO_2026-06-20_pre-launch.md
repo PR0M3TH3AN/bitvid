@@ -555,21 +555,34 @@ toward freshness and looked identical. Gave each a structural identity:
         the active signer if ever reused.
 
 ### 43. Logged-in profile card at the top of the profile modal (UX)
-- [ ] Show the **logged-in user's profile photo + name** at the **top-center** of the
-      profile modal, styled as a "profile card" that sits **half-on / half-off** the
-      modal edge (overlapping the top border) for a polished look. Goal: users can see
-      WHICH profile they're acting as (e.g. uploading as) at a glance. Pull avatar/name
-      from the profile cache for the active pubkey; update on profile switch.
+- [x] **DONE 2026-07-03.** An "Acting as <name>" identity pill now renders
+      top-center on EVERY pane, straddling the header divider (negative
+      block-start margin — the modal is full-screen, so the header edge is the
+      overlap surface). Avatar + name come from the same resolveMeta path as
+      the Account pane card (profile cache first), populated in
+      renderSavedProfiles so it refreshes on every profile switch; hidden when
+      logged out; clicking it jumps to the Account pane. Markup in
+      components/profile-modal.html, styles in css/tailwind.source.css
+      (.profile-modal__identity*), wiring in profileModalController. Test in
+      tests/profile-modal-controller.test.mjs (26 pass). Lint + build green.
+- [ ] **VERIFY on unstable:** open any pane → pill shows the active identity;
+      switch accounts → it updates; log out → it disappears; click → Account.
 
 ### 44. In-modal storage selector for uploads (UX)
-- [ ] Make storage unlock + selection easier from the **video upload modal**: let the
-      user **pick any configured storage connection** (R2 / B2 / Custom S3) and unlock it
-      **without leaving the upload modal** — today they must close it, open Profile →
-      Storage, change the default/selected connection, then reopen upload. Add a provider
-      picker (driven by `storageService.listConnections`) + inline unlock in the upload
-      modal's storage section; selecting one sets it as the active upload target for this
-      upload (and optionally the default). Reuse `loadFromStorage` / the per-provider
-      connection model.
+- [x] **DONE 2026-07-03.** The upload modal's storage summary now has an
+      "Upload destination" <select> (hidden with <2 connections) listing every
+      configured connection ("Provider — bucket", default labelled). Selecting
+      one becomes the upload target for THIS modal (per-modal override; the
+      account default is untouched — set that in Profile → Storage) and
+      loadFromStorage re-resolves summary + credentials immediately. A stale
+      selection (connection deleted) falls back to the default. Inline unlock
+      was already covered by #56's gate. Logic in
+      uploadModalStorageUnlock.js (pickTargetConnection/renderConnectionPicker,
+      UploadModal file-size budget). Tests:
+      tests/upload-storage-picker.test.mjs (2 scenarios). Lint + build green.
+- [ ] **VERIFY on unstable:** with 2+ connections configured, open Upload →
+      Storage Status → switch destination → summary updates and the upload
+      lands in the chosen bucket; with 1 connection the picker stays hidden.
 
 ### 45. Upload modal: suggest tags from the user's previous videos (UX)
 - [x] **DONE 2026-07-01.** The Hashtags section of the upload modal now shows one-tap
@@ -602,11 +615,54 @@ toward freshness and looked identical. Gave each a structural identity:
       handled).
 
 ### 47. "Most Zapped" sidebar tab (trending-by-zaps)
-- [ ] Add a **Most Zapped** sidebar tab: like Trending (#27, view-count) but ranked by
-      **total zaps** (sats / zap count) per video. Reuse the zap accounting (kind-9735
-      receipts) already used for the zap system; build a feed source/ranker that sorts by
-      zap total over a window, wired into the feed engine like Trending. Depends on
-      reliable zap data (couples with the zap system already shipped in #3).
+- [ ] **NEXT (planned, not started): bitvid-native zap tally.** Full spec +
+      ordered task checklist in `docs/zap-tally-plan.md`. Problem: NIP-57 zap
+      receipts (9735) are published by the RECIPIENT's LNURL server, and
+      custodial wallets (Strike) don't — so paid zaps leave no on-relay record
+      and can't be counted globally. Fix: bitvid publishes a payer-signed,
+      preimage-verified zap event on successful send (as strong as a 9735 via
+      the preimage→payment_hash + description_hash→zapRequest binding, reusing
+      the existing bolt11 decode in `zapReceiptValidator.js`), counted alongside
+      real 9735s (deduped by payment_hash, 9735-preferred). Behind
+      `FEATURE_ZAP_TALLY` (default off). Plan also covers a
+      SECOND orange zaps-over-time line on the per-video Popularity chart with a
+      legend (red=Views/orange=Zaps) and visible date labels (docs §5.9). See the
+      plan for the file-by-file changes. Current state (commit `cbc62306`): 9735 counting + optimistic
+      bump + durable local ledger (`bitvid:sentZaps:v1`) already shipped; the
+      tally is the missing global/cross-user source.
+- [x] **DONE 2026-07-03.** Full Trending-pattern clone ranked by SATS:
+        - `js/zapTotals.js` — per-pointer kind-9735 aggregation. The feed's
+          getZapTotal reads the cached total AND schedules a BATCHED one-shot
+          receipt fetch (`#a`/`#e` chunks via the L1 SubscriptionManager — the
+          direct-pool lint gate applies) for unknown/stale pointers (2-min TTL;
+          zero-receipt answers cached too). Amounts: nip57 bolt11 parse, falling
+          back to the zap request's amount tag (msats); receipts deduped by id
+          so re-fetches never double-count.
+        - Feed: `js/feedEngine/mostZappedFeed.js` + `createMostZappedSorter`
+          (sorters.js refactored to a shared count-ranked sorter — Trending
+          behavior unchanged: sats/views desc, recency tie-break, author
+          spread, trusted-muted sink).
+        - View: `views/most-zapped.html` + `js/mostZappedView.js` (re-runs the
+          feed on zapTotals' change signal, same settle-in pattern), sidebar
+          link, viewManager registry, feedCoordinator case/loader,
+          `FEED_TYPES.MOST_ZAPPED`, `FEATURE_MOST_ZAPPED_FEED` flag (default
+          on; off hides the tab like Trending's flag).
+      Tests: `tests/zap-totals.test.mjs` (5). Lint + build green.
+- [x] **Follow-up DONE 2026-07-03 — per-card zap badges.** Video cards now show
+      the zap total in bitcoin ORANGE (new `--color-zap` token, both themes),
+      RIGHT-ALIGNED in the engagement row (views/comments stay left; CSS
+      `margin-inline-start: auto` on `.video-card__zaps`). Hidden until a
+      nonzero total is known (no "0 sats" noise). Binder
+      (`js/ui/views/videoCardZapTotals.js`, VideoListView file-size budget)
+      fills `[data-zap-total]` from the shared zapTotals cache — bind() also
+      schedules the batched receipt fetch, and one change listener updates
+      every bound card as batches land. Test:
+      `tests/video-card-zap-totals.test.mjs` (drives the REAL store).
+- [ ] **VERIFY on unstable:** open Most Zapped → zapped videos rise as receipts
+      load (unzapped feed reads as Recent at first) and their cards show the
+      orange right-aligned sats badge; unzapped cards show no badge; zap a
+      video → within ~2min of tab re-entry its rank + badge reflect the new
+      total.
 
 ### 48. Fluent profile switching across signing methods (nsec / NIP-46 / NIP-07)
 - [x] **nsec switching FIXED 2026-06-30.** Switching to a saved nsec profile used to fail
@@ -712,6 +768,15 @@ toward freshness and looked identical. Gave each a structural identity:
       ones (DM relays, interest sets) until after first render. Multi-subsystem +
       sensitive (trust) → do as a dedicated perf pass, not a rushed change.
       Source still to pin: the loop issuing 30000/30002/30005/30015 per contact.
+- [x] **REQ tracer SHIPPED (2026-07-03)** to pin those emitters empirically —
+      static search found NO per-contact list loops (mutes already batched), so
+      the hypothesis needs data. `js/nostr/reqTelemetry.js` hooks the shimmed
+      `pool.sub` choke point (every sub/list flows through it) and aggregates
+      kinds + relay fan-out + emitting call site per 10s window. Zero-cost off.
+      **To trace:** on unstable run `localStorage.setItem("bitvid:reqTrace","1")`,
+      reload (cold login), read the `[req-trace]` console logs (or
+      `window.__bitvidReqTrace.report()`); the top rows name the emitters and
+      the batching/deferral pass follows directly from that data.
 
 ### 22. Anti-spam: validate npub on application / submission forms
 - [x] **DONE 2026-06-24.** Added a shared, testable NIP-19 validator
@@ -1158,6 +1223,22 @@ Reported 2026-06-25. Relates to #17 (NIP-71 interop) / the bitvid→NIP-71 mirro
 ### 10. WebTorrent `null.fill` seeding crash
 - [ ] Investigate the vendored `webtorrent.min.js` `null.fill` error on wire handshake;
       may require a bundle update or patch.
+- [x] **Bounded investigation DONE 2026-07-03.** The vendored bundle is
+      webtorrent **2.5.11** (~2 years old; upstream latest is **3.0.16**). The
+      bundle has exactly two `.fill(` sites: a piece-bitfield fill and
+      `this.buffer.fill(void 0)` — fast-fifo's `clear()`, the queue streamx
+      uses under bittorrent-protocol's wire Duplex. "null.fill on wire
+      handshake" = that queue being touched after stream teardown (use-after-
+      destroy in the streamx/fast-fifo layer). No matching public upstream
+      issue found, but webtorrent 3.x now PINS `streamx` to an exact version
+      (2.25.0) — consistent with upstream having chased this bug class.
+- [ ] **Fix path: vendored-bundle update to 3.0.16 as its OWN task** (playback-
+      critical → own branch/soak, NOT bundled with other work): rebuild
+      `js/webtorrent.min.js` + `.map`, re-test URL+magnet playback, seeding,
+      the beacon app (`torrent/`), and the SW streaming path; rollback = keep
+      the old bundle file. Check 2.x→3.x breaking changes against
+      `js/webtorrent.js` usage first. Without a repro for the crash, a blind
+      local patch is guesswork — the update is the honest fix.
 
 ### 11. Harden flaky tests (CI gate reliability)
 - [ ] `tests/ui/uploadModal-reset.test.mjs` ("UploadModal Reset Logic") intermittently
@@ -1166,6 +1247,13 @@ Reported 2026-06-25. Relates to #17 (NIP-71 interop) / the bitvid→NIP-71 mirro
       trusted release gate. Audit e2e parallel-load flakiness too.
 
 ### 11b. SILENTLY-EXCLUDED unit tests — 20 files never run in CI (found 2026-06-23)
+> **2026-07-03 addendum — stale-default failure was hiding in local runs:**
+> `tests/app/hash-change-handler.test.mjs` had been failing since 04621efc
+> (2026-06-24) made TRENDING the deliberate logged-out landing — the test still
+> expected `most-recent-videos`. It went unnoticed locally because
+> `npm run test:unit | tail` reports the PIPE's exit code, not npm's (lesson:
+> never pipe the suite when reading its exit status). Spec-corrected to assert
+> `views/trending.html` (integrity note in the test file); all 3 tests pass.
 `scripts/run-unit-tests.mjs` only collects `*.test.mjs|*.test.js` files whose
 **content contains `node:test`** (line ~54). 20 test files use bare `assert` +
 top-level await instead, so the runner skips them WITHOUT WARNING and they are
@@ -1530,28 +1618,38 @@ that used it.
 - [ ] **VERIFY live on a phone**: modals should now be full-screen; tapping a video
       card shows the active lift/accent/marquee; profile modal tabs are the app-grid.
 
-### 49. Relay-ack false-negatives on the generic content-publish path (HIGH-STAKES — deferred)
-> No rush — only act if it starts causing problems. Same bug class as the list-publish
-> fix (commit 47f2a9a8): when no relay ACKs within the 10s `RELAY_PUBLISH_TIMEOUT_MS`
-> window, `assertAnyRelayAccepted` throws even though the event was sent and almost
-> always persisted (works after refresh). Already fixed for the replaceable LISTS
-> (subscriptions/blocks/relay-list/dm-hints/hashtags) via
-> `assertAnyRelayAcceptedOrUnconfirmed`.
-- [ ] **Generic content publish still hard-errors on all-timeout.** The
-      `signAndPublishEventHelper` (`js/nostr/publishHelpers.js:472`) + `rebroadcast`
-      (`:1334`) + `video revert` (`js/nostr/client.js:3064`) still use bare
-      `assertAnyRelayAccepted`, so a slow-ack **video publish/edit/delete/revert**
-      can show "Failed to share video" (or similar) when it actually published.
-      HIGH-STAKES because these are the flagship content flows.
-- [ ] **Why it wasn't bundled in:** video publish feeds a relay summary into
-      `describePublishOutcome` (the "shared to N relays" / warning UI). Applying
-      `assertAnyRelayAcceptedOrUnconfirmed` here must keep that outcome honest (an
-      unconfirmed publish should read as "shared, couldn't confirm" — NOT a hard
-      failure and NOT a false "shared to N relays"). Needs its own careful pass +
-      tests around the video outcome-describer and delete semantics (a false
-      "deleted" is worse than a false "publish failed").
-- [ ] Deletions (kind 5) especially: decide whether an unconfirmed delete should
-      report success optimistically or stay conservative.
+### 49. Relay-ack false-negatives on the generic content-publish path (HIGH-STAKES)
+> Same bug class as the list-publish fix (commit 47f2a9a8): all-timeout ≠ rejection.
+- [x] **DONE 2026-07-03 — generic content publish is unconfirmed-tolerant, with
+      HONEST outcome messaging at every consumer.** The three bare
+      `assertAnyRelayAccepted` call sites now use
+      `assertAnyRelayAcceptedOrUnconfirmed` (all-timeout → `summary.unconfirmed`,
+      soft success; explicit rejections STILL throw `RelayPublishError`):
+        - `signAndPublishEvent` (js/nostr/publishHelpers.js — video publish, edit,
+          repost, mirror, videoPublisher) + `rebroadcastEvent`.
+        - `revertVideo` (js/nostr/client.js) — so a slow-ack tombstone no longer
+          aborts `deleteAllVersions` midway (kind-5 hard delete now always runs).
+      Honesty plumbing (the reason this was deferred):
+        - The relay tally (`attachRelayPublishSummary`, now also attached on EDIT)
+          carries `unconfirmed`; `describePublishOutcome` maps accepted=0 +
+          unconfirmed → WARNING "sent, but no relay has confirmed receiving it
+          yet" — never a fake "published to N relays", never a hard failure.
+          Zero-accepted WITHOUT the flag stays the hard error.
+        - Edit: editModalController reads the tally and says "update sent, not
+          confirmed yet" instead of "updated successfully" when unconfirmed.
+        - Revert: revertModalController tracks per-entry summaries and only says
+          "Reverted…" when a relay ACKed; otherwise "sent, not confirmed yet".
+- [x] **Delete semantics — decided CONSERVATIVE.** A false "deleted" is worse
+      than a false "failed": `anyRelayAcceptedInSummaries` (js/nostrPublish.js)
+      scans every tombstone + kind-5 summary; `handleDeleteModalConfirm` only
+      claims "All versions deleted successfully!" when ≥1 relay ACKed something,
+      else "Delete request sent, but no relay has confirmed it yet — the video
+      may reappear until relays catch up." (Empty set = nothing to publish =
+      confirmed.) Tests: `tests/relay-ack-unconfirmed-content.test.mjs` (6, incl.
+      end-to-end signAndPublishEvent all-timeout vs rejection). Lint + build green.
+- [ ] **VERIFY on unstable:** with a slow/unreachable relay set, publish + edit +
+      delete a test video — messages should read "sent/unconfirmed", never
+      "failed", and the content should be correct after a refresh.
 
 ### 50. isDevMode — keep it; fix the test-harness gap (LOW priority)
 - Decision (2026-07): **KEEP `isDevMode`.** It's used in ~26 files, chiefly to gate
@@ -1711,13 +1809,31 @@ passphrase-encrypted). Items 51, 56, 57 are all facets of that.
       merge-new already keeps grids fresh).
 
 ### 56. Upload & edit modals: prompt to unlock storage (PIN popup), don't just error (UX)
-- [ ] When storage is locked, the **upload** and **edit** modals should open the
-      passphrase/PIN unlock popup instead of surfacing a raw error — for **both** the
-      video-file upload and the **thumbnail** upload. **#36** already added this
-      auto-open-login unlock for the **upload** modal; extend the same treatment to the
-      **edit** modal and the **thumbnail** upload path.
-- [ ] Combine with **51**: once unlocked, cache the state so the user isn't re-prompted
-      on every upload/refresh. "Both would be nice" — actionable prompt AND cached unlock.
+- [x] **DONE 2026-07-03.** All three locked-storage file-pick paths now unlock
+      INLINE and continue with the same pick, via the shared signer gate
+      (`app.ensureEncryptionCapableSigner`: silent kept-unlocked restore, else ONE
+      passphrase prompt with the keep-unlocked checkbox):
+        - **Upload modal, video file:** was `showError("Please unlock storage…")`
+          → now `ensureStorageUnlockedForUpload()` (new
+          `js/ui/components/uploadModalStorageUnlock.js`; UploadModal delegates —
+          also absorbed `promptStoredNsecUnlock` for the file-size budget).
+        - **Upload modal, thumbnail:** was a SILENT no-op → now the same inline
+          unlock; a refused unlock resets the picker (placeholder + URL input).
+        - **Edit modal, "Replace file" (video + thumbnail):** was "Unlock your
+          storage in the profile modal, then try again" → `ensureUploadable`
+          (js/ui/components/editModalUpload.js) now gates the signer, runs
+          `storageService.unlock`, and re-resolves the connection in-gesture
+          (extension signers still get the permission request first).
+      Cancel / bad-passphrase abort quietly (the gate toasts a wrong passphrase
+      itself); other failures fall through to the pre-existing messaging.
+      `ensureSigner` is threaded through initUploadModal / initEditModal from app.
+      Tests: `tests/upload-edit-storage-unlock-gate.test.mjs` (12). Lint + build green.
+- [x] Combine with **51**: satisfied by the gate itself — it restores the cached
+      keep-unlocked key first, so an unlocked-once session never re-prompts.
+- [ ] **VERIFY on unstable:** locked nsec session → pick a video file in the upload
+      modal (one PIN prompt, upload proceeds), pick a thumbnail (same), and use
+      Edit → Replace file (same). Cancel each prompt once — no error spam, picker
+      state restored.
 
 ### 57. nsec / NIP-46 accounts: encryption ops fail after refresh — re-prompt, don't blanket-error (BUG)
 - [ ] **Symptom:** adding/editing a hashtag on an **nsec**-logged-in account errors with

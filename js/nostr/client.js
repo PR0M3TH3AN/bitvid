@@ -111,7 +111,7 @@ import "./maxListenerDiagnostics.js";
 import {
   publishEventToRelay,
   publishEventToRelays,
-  assertAnyRelayAccepted,
+  assertAnyRelayAcceptedOrUnconfirmed,
   attachRelayPublishSummary,
 } from "../nostrPublish.js";
 import {
@@ -2960,12 +2960,16 @@ export class NostrClient {
     await this.ensureActiveSignerForPubkey(userPubkeyLower);
 
     try {
-      const { signedEvent } = await this.signAndPublishEvent(context.event, {
+      const { signedEvent, summary } = await this.signAndPublishEvent(context.event, {
         context: "edited video note",
         logName: "Edited video note",
         devLogLabel: "edited video note",
         resolveActiveSigner: (p) => this.signerManager.resolveActiveSigner(p),
       });
+
+      // Same tally as publishVideo so the edit UI can tell an unconfirmed
+      // (all-timeout, #49) update apart from a confirmed one.
+      attachRelayPublishSummary(signedEvent, summary);
 
       await handlePublishNip94(this, signedEvent, context);
       await handlePublishNip71(this, signedEvent, context);
@@ -3216,7 +3220,10 @@ export class NostrClient {
 
     let publishSummary;
     try {
-      publishSummary = assertAnyRelayAccepted(publishResults, {
+      // #49: an all-timeout tombstone publish is an unconfirmed soft success
+      // (summary.unconfirmed=true) so a slow-ack revert/delete doesn't abort
+      // midway; explicit relay rejections still throw below.
+      publishSummary = assertAnyRelayAcceptedOrUnconfirmed(publishResults, {
         context: "video revert",
       });
     } catch (publishError) {
@@ -3236,6 +3243,12 @@ export class NostrClient {
     publishSummary.accepted.forEach(({ url }) =>
       devLogger.log(`Revert event published to ${url}`)
     );
+
+    if (publishSummary.unconfirmed) {
+      userLogger.warn(
+        "[nostr] Video revert was sent but no relay confirmed it within the timeout — proceeding as unconfirmed.",
+      );
+    }
 
     if (publishSummary.failed.length) {
       publishSummary.failed.forEach(({ url, error: relayError }) => {

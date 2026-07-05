@@ -12,8 +12,20 @@ let nostrClient;
 let getActiveSigner;
 let clearActiveSigner;
 let clearStoredSessionActor;
+let listStoredSessionActorPubkeys;
+let readStoredSessionActorEntry;
 let tools;
 let bytesToHex;
+
+// No-arg clearStoredSessionActor() deliberately clears only the legacy
+// "last saved" slot (per-account keys must survive another account's logout —
+// fixed 2026-07-02). Tests that need a pristine store wipe every account.
+function wipeStoredActors() {
+  for (const pk of listStoredSessionActorPubkeys?.() || []) {
+    clearStoredSessionActor(pk);
+  }
+  clearStoredSessionActor();
+}
 
 before(async () => {
   tools = await ensureNostrTools();
@@ -24,7 +36,11 @@ before(async () => {
 
   ({ nostrClient } = await import("../js/nostrClientFacade.js"));
   ({ getActiveSigner, clearActiveSigner } = await import("../js/nostr/client.js"));
-  ({ clearStoredSessionActor } = await import("../js/nostr/sessionActor.js"));
+  ({
+    clearStoredSessionActor,
+    listStoredSessionActorPubkeys,
+    readStoredSessionActorEntry,
+  } = await import("../js/nostr/sessionActor.js"));
 
   bytesToHex = (bytes) => {
     if (tools.bytesToHex) return tools.bytesToHex(bytes);
@@ -35,7 +51,7 @@ before(async () => {
 
 after(() => {
   try {
-    clearStoredSessionActor?.();
+    wipeStoredActors();
   } catch (error) {
     // ignore
   }
@@ -50,7 +66,7 @@ function makeKey() {
 describe("nsec login", () => {
   it("enforces the access-control validator before activating the signer", async () => {
     clearActiveSigner();
-    clearStoredSessionActor();
+    wipeStoredActors();
     const { hex } = makeKey();
 
     let seenPubkey = null;
@@ -74,7 +90,7 @@ describe("nsec login", () => {
 
   it("persists an encrypted key and unlocks it with the passphrase", async () => {
     clearActiveSigner();
-    clearStoredSessionActor();
+    wipeStoredActors();
     const { hex, pubkey } = makeKey();
     const passphrase = "correct horse battery staple";
 
@@ -110,7 +126,7 @@ describe("nsec login", () => {
 
   it("unlock re-checks access control and forgets a blocked key", async () => {
     clearActiveSigner();
-    clearStoredSessionActor();
+    wipeStoredActors();
     const { hex, pubkey } = makeKey();
     const passphrase = "another secret passphrase";
 
@@ -132,10 +148,18 @@ describe("nsec login", () => {
       "a blocked key must not unlock",
     );
     assert.equal(getActiveSigner(), null, "no signer activated for a blocked key");
+    // The security property, asserted on the blocked account SPECIFICALLY (a
+    // no-arg metadata read can legitimately surface a different saved account
+    // via the single-entry fallback — that is not a leak of THIS key).
+    assert.equal(
+      readStoredSessionActorEntry(pubkey),
+      null,
+      "the blocked account's encrypted key is forgotten (cleared from storage)",
+    );
     assert.equal(
       nostrClient.getStoredSessionActorMetadata(),
       null,
-      "a blocked key is forgotten (cleared from storage)",
+      "with no other saved accounts, no metadata survives the blocked-key cleanup",
     );
   });
 });

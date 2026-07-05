@@ -3,6 +3,7 @@
 import { isDevMode } from "../config.js";
 import { nostrToolsReady } from "../nostrToolsBootstrap.js";
 import { devLogger, userLogger } from "../utils/logger.js";
+import { recordReq } from "./reqTelemetry.js";
 
 /**
  * The default relay set bitvid bootstraps with before loading a user's
@@ -523,6 +524,10 @@ export function shimLegacySimplePoolMethods(pool) {
     pool.sub = function legacySub(relays, filters, opts = {}) {
       const { relayList, filterList, requests } =
         createLegacySubscriptionContext(relays, filters);
+
+      // #9 REQ tracer: every sub/list passes through here — record kinds,
+      // fan-out, and the emitting call site (no-op unless tracing is armed).
+      recordReq(relayList.length, filterList);
 
       const listeners = {
         event: new Set(),

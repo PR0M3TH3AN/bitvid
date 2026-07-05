@@ -509,6 +509,8 @@
   --color-accent: rgb(99 102 241);
   --color-accent-strong: rgb(79 70 229);
   --color-accent-pressed: rgb(67 56 202);
+  /* Zap totals (sats) — bitcoin orange, darker for light-bg contrast. */
+  --color-zap: rgb(217 119 6);
   --color-accent-override: rgb(84 0 17);
   --color-accent-strong-override: rgb(254 0 50);
   --color-accent-pressed-override: rgb(169 0 33);
@@ -696,6 +698,8 @@
   --color-accent: rgb(129 140 248);
   --color-accent-strong: rgb(99 102 241);
   --color-accent-pressed: rgb(79 70 229);
+  /* Zap totals (sats) — bitcoin orange. */
+  --color-zap: rgb(247 147 26);
   --color-accent-override: rgb(84 0 17);
   --color-accent-strong-override: rgb(254 0 50);
   --color-accent-pressed-override: rgb(169 0 33);

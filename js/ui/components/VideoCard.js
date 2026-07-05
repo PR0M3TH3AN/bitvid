@@ -169,6 +169,7 @@ export class VideoCard {
     this.urlHealthBadgeEl = null;
     this.torrentHealthBadgeEl = null;
     this.viewCountEl = null;
+    this.zapTotalEl = null;
     this.discussionCountEl = null;
     this.authorPicEl = null;
     this.authorNameEl = null;
@@ -2440,6 +2441,33 @@ export class VideoCard {
     return svg;
   }
 
+  createZapIcon(classNames = []) {
+    const svg = this.document.createElementNS(SVG_NAMESPACE, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "2");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+
+    classNames.forEach((className) => {
+      if (className) {
+        svg.classList.add(className);
+      }
+    });
+
+    const polygon = this.document.createElementNS(SVG_NAMESPACE, "polygon");
+    polygon.setAttribute(
+      "points",
+      "13 2 3 14 12 14 11 22 21 10 12 10 13 2",
+    );
+    svg.appendChild(polygon);
+
+    return svg;
+  }
+
   createMessageIcon(classNames = []) {
     const svg = this.document.createElementNS(SVG_NAMESPACE, "svg");
     svg.setAttribute("viewBox", "0 0 24 24");
@@ -2554,6 +2582,29 @@ export class VideoCard {
 
         this.discussionCountEl = wrapper;
       }
+    }
+
+    // Zaps (#47 follow-up): total sats in orange, pushed to the row's end
+    // (views/comments stay left). Hidden until a nonzero total is known —
+    // most videos have no zaps and a wall of "0 sats" is just noise. The
+    // list view's zap binder fills the value and reveals the wrapper.
+    if (hasPointer) {
+      const zapWrapper = this.createElement("div", {
+        classNames: ["flex", "items-center", "gap-1.5", "video-card__zaps", "hidden"],
+      });
+      zapWrapper.setAttribute("title", "Zap total (sats)");
+      zapWrapper.appendChild(this.createZapIcon(["w-4", "h-4"]));
+
+      const zap = this.createElement("span", {
+        classNames: ["zap-total-text"],
+        textContent: "",
+      });
+      zap.dataset.zapTotal = "";
+      zap.dataset.zapPointer = this.pointerInfo.key;
+      zapWrapper.appendChild(zap);
+      container.appendChild(zapWrapper);
+
+      this.zapTotalEl = zap;
     }
 
     return container;
