@@ -2,6 +2,7 @@
 
 import { nostrClient } from "./nostrClientFacade.js";
 import { convertChannelEvent, buildChannelVideoFilters, loadCachedChannelVideos, saveCachedChannelVideos, mergeChannelVideoSources } from "./channelProfileVideos.js";
+import { wireChannelZapTotal } from "./channelZapTotal.js";
 import { dedupeVideos } from "./utils/videoDeduper.js";
 import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
 import { subscriptions } from "./subscriptions.js";
@@ -5227,6 +5228,9 @@ function applyChannelProfileMetadata({
   }
 
   setChannelZapVisibility(Boolean(lightningAddress));
+
+  // #47: total sats zapped to this creator (p:<pubkey> pointer in the store).
+  wireChannelZapTotal(currentChannelHex);
 }
 
 async function fetchChannelProfileFromRelays(pubkey) {

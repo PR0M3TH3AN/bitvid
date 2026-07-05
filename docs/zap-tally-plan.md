@@ -471,9 +471,12 @@ tallies simply stop being counted. No data migration.
 - [x] Tests: verify, schema, publisher, cross-source dedup, flag-off, e2e verify.
 - [x] `lint` + `build` + suites green; pushed to `unstable`.
 - [ ] **Remaining v1 work:**
-      - [ ] **Profile-zap counting (remaining):** the store queries `#a`/`#e`
-            only — add `#p` batches so a profile-only tally (no video pointer) is
-            fetched, and a channel-page total UI surface (D2 chose video+profile).
+      - [x] **Profile-zap counting DONE:** pointerKey/store support `p:`
+            pointers (profilePointer(pubkey)); runBatch queries `#p` and both
+            folds count `#p`-tagged 9735s + tallies. Channel page shows a
+            "⚡ N sats zapped" total (js/channelZapTotal.js, hidden until
+            nonzero). Tests in tests/zap-totals.test.mjs. This CLOSES the zap
+            tally feature (D2 video + profile).
       - [x] **Retry path:** `zapController.executeRetry` fires `onZapSuccess`
             so retried shares publish tallies too. (commit afed041f)
       - [x] **Popularity chart §5.9 DONE:** orange zaps-over-time line beside
