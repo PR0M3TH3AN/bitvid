@@ -13,6 +13,12 @@
 // double-count.
 
 import { devLogger } from "./utils/logger.js";
+import {
+  verifyBitvidZapTally,
+  extractBolt11Fields,
+} from "./payments/zapReceiptValidator.js";
+import { ZAP_TALLY_KIND } from "./nostrEventSchemas.js";
+import { FEATURE_ZAP_TALLY } from "./constants.js";
 
 export const ZAP_RECEIPT_KIND = 9735;
 export const SENT_ZAPS_STORAGE_KEY = "bitvid:sentZaps:v1";
@@ -89,6 +95,12 @@ export function createZapTotalsStore({
   getClient = () => null,
   getTools = () => null,
   schedule = (fn, ms) => setTimeout(fn, ms),
+  // bitvid-native zap tally (docs/zap-tally-plan.md): count kind-30081
+  // preimage-verified tallies alongside 9735s, deduped by payment_hash.
+  // Injectable for tests; the singleton wires the real verifier + flag.
+  isTallyEnabled = () => true,
+  verifyTally = verifyBitvidZapTally,
+  tallyKind = ZAP_TALLY_KIND,
   // Durable ledger of the user's OWN sent zaps (localStorage key), so their
   // zapped videos keep the count + Most-Zapped rank across reloads even when
   // the recipient's LNURL server never publishes a 9735 receipt (custodial
@@ -139,7 +151,15 @@ export function createZapTotalsStore({
   const entryFor = (key) => {
     let entry = totals.get(key);
     if (!entry) {
-      entry = { sats: 0, optimisticSats: 0, receiptIds: new Set(), fetchedAt: 0 };
+      entry = {
+        sats: 0,
+        optimisticSats: 0,
+        receiptIds: new Set(),
+        // Cross-source dedup: a single payment can yield BOTH a 9735 and a
+        // bitvid tally; count its sats once (docs/zap-tally-plan.md §4).
+        paymentHashes: new Set(),
+        fetchedAt: 0,
+      };
       totals.set(key, entry);
     }
     return entry;
@@ -192,17 +212,26 @@ export function createZapTotalsStore({
       else if (pointer.type === "e") eValues.push(pointer.value);
     }
 
+    // One query for both sources: real 9735 receipts + bitvid tallies.
+    const tallyOn = (() => {
+      try {
+        return isTallyEnabled() !== false;
+      } catch (error) {
+        return false;
+      }
+    })();
+    const kinds = tallyOn ? [ZAP_RECEIPT_KIND, tallyKind] : [ZAP_RECEIPT_KIND];
     const filters = [];
     for (let i = 0; i < aValues.length; i += MAX_POINTERS_PER_FILTER) {
       filters.push({
-        kinds: [ZAP_RECEIPT_KIND],
+        kinds,
         "#a": aValues.slice(i, i + MAX_POINTERS_PER_FILTER),
         limit: RECEIPTS_PER_FILTER_LIMIT,
       });
     }
     for (let i = 0; i < eValues.length; i += MAX_POINTERS_PER_FILTER) {
       filters.push({
-        kinds: [ZAP_RECEIPT_KIND],
+        kinds,
         "#e": eValues.slice(i, i + MAX_POINTERS_PER_FILTER),
         limit: RECEIPTS_PER_FILTER_LIMIT,
       });
@@ -227,7 +256,11 @@ export function createZapTotalsStore({
 
     let changed = false;
     const keysWithRealReceipt = new Set();
-    for (const event of Array.isArray(events) ? events : []) {
+    const list = Array.isArray(events) ? events : [];
+
+    // 1) Real NIP-57 receipts (9735). Record each payment_hash so a matching
+    //    bitvid tally for the same payment isn't also counted.
+    for (const event of list) {
       if (!event || event.kind !== ZAP_RECEIPT_KIND || !event.id) {
         continue;
       }
@@ -239,6 +272,8 @@ export function createZapTotalsStore({
         continue;
       }
       const sats = extractReceiptAmountSats(event, getTools());
+      const paymentHash = extractBolt11Fields(tagValues(event, "bolt11")[0] || "")
+        .paymentHash;
       for (const key of keys) {
         const entry = entryFor(key);
         keysWithRealReceipt.add(key);
@@ -246,10 +281,48 @@ export function createZapTotalsStore({
           continue;
         }
         entry.receiptIds.add(event.id);
+        if (paymentHash) {
+          entry.paymentHashes.add(paymentHash);
+        }
         if (sats > 0) {
           entry.sats += sats;
         }
         changed = true;
+      }
+    }
+
+    // 2) bitvid tallies (verified; deduped by payment_hash vs. 9735s + earlier
+    //    tallies). Pointers come from the embedded, hash-bound zap request.
+    if (tallyOn) {
+      for (const event of list) {
+        if (!event || event.kind !== tallyKind) {
+          continue;
+        }
+        let verdict;
+        try {
+          verdict = verifyTally(event, {
+            getSats: getTools()?.nip57?.getSatoshisAmountFromBolt11,
+          });
+        } catch (error) {
+          verdict = null;
+        }
+        if (!verdict?.ok || !(verdict.sats > 0) || !verdict.paymentHash) {
+          continue;
+        }
+        const keys = verdict.pointerTags
+          .filter((t) => t[0] === "a" || t[0] === "e")
+          .map((t) => `${t[0]}:${t[1]}`)
+          .filter((key) => batch.has(key) || totals.has(key));
+        for (const key of keys) {
+          const entry = entryFor(key);
+          keysWithRealReceipt.add(key);
+          if (entry.paymentHashes.has(verdict.paymentHash)) {
+            continue; // already counted via a 9735 or an earlier tally
+          }
+          entry.paymentHashes.add(verdict.paymentHash);
+          entry.sats += verdict.sats;
+          changed = true;
+        }
       }
     }
     // A pointer that now has real receipts is authoritative — drop its
@@ -353,6 +426,8 @@ const store = createZapTotalsStore({
     globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__ ||
     globalThis.NostrTools ||
     null,
+  // Read the flag live so a runtime toggle takes effect on the next fetch.
+  isTallyEnabled: () => FEATURE_ZAP_TALLY,
 });
 
 export function initZapTotals({ nostrClient, tools } = {}) {
