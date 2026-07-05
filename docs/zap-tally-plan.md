@@ -426,23 +426,28 @@ tallies simply stop being counted. No data migration.
 
 ---
 
-## 10. Open decisions (need a call before/at build time)
+## 10. Decisions (RESOLVED 2026-07-04)
 
-- **D1 — event kind.** Proposed `9736` (adjacent to the 9735 receipt, "bitvid zap
-  tally"). Must confirm it's unassigned in the NIP kind registry; if risky, pick a
-  clearly app-specific regular kind and reserve it in `docs/nostr-event-schemas.md`.
-  Everything references `ZAP_TALLY_KIND` so the number is a one-line change.
-- **D2 — profile zaps in v1?** Video path is the ask; profile path is the same
-  primitives + a channel-page badge. Ship video-only first, profile as a
-  follow-up? (Recommended: yes, video-only v1.)
-- **D3 — publish relays.** Publish the tally to the user's write relays (same as
-  video publishing) so bitvid clients querying those relays see it. Confirm the
-  store queries a superset (it queries `client.relays`). Likely fine; verify.
-- **D4 — privacy default.** Default the feature flag off and add one line of UI
-  copy ("your zap will be publicly attributed on bitvid") before default-on?
-- **D5 — chart Y-axis (§5.9).** Independent per-series scaling (each cumulative
-  line filling the height — simplest, trend-focused, **recommended**) vs. a dual
-  labeled Y-axis (left=views, right=sats — more precise, busier in a small modal).
+- **D1 — event kind → ADDRESSABLE `ZAP_TALLY_KIND = 30081`, `d = payment_hash`.**
+  Chosen: a higher, app-specific kind in bitvid's own family (30078 video,
+  30079 view, **30081** zap tally). Addressable (30000–39999) with the
+  per-payment `payment_hash` as the `d` tag makes each real payment map to
+  exactly ONE canonical event — relay-level idempotency; a re-publish replaces
+  rather than duplicates. Still queried by its `#a`/`#e`/`#p` tags like a 9735.
+  Reserve the kind in `docs/nostr-event-schemas.md`.
+- **D2 — scope → VIDEO + PROFILE zaps in v1.** Video path drives the badges/Most
+  Zapped; profile path reuses the same primitives with a `p`-only pointer and a
+  channel-page total (new small UI surface). Both ship in v1.
+- **D3 — publish relays → user's WRITE relays** (same path as video publishing).
+  The store queries `client.relays` (a superset incl. write relays); verify at
+  wiring time.
+- **D4 — publishing → ON BY DEFAULT.** `FEATURE_ZAP_TALLY` still exists for
+  rollback but defaults **true**; every successful zap publishes a tally. Keep a
+  short one-line disclosure in the zap UI ("zaps are publicly attributed on
+  bitvid") since it's honest and cheap, but no opt-in gate.
+- **D5 — chart Y-axis → INDEPENDENT PER-SERIES scaling.** Each cumulative line
+  fills the height against its own max; the legend names the two units. No dual
+  labeled Y-axis.
 
 ---
 
