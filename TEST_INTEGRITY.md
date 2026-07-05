@@ -510,6 +510,46 @@ test_integrity_note:
     if_true_explain_spec_basis: ""
 ```
 
+## 2026-07-05 — todo-11: uploadModal-reset zombie-callback test made deterministic (correct mock boundary)
+
+```yaml
+test_integrity_note:
+  change_type: ["flake_fix", "refactor_tests"]
+  scenarios:
+    - id: SCN-upload-zombie-callback-guard
+      given: "An upload is in progress (videoUploadState.status === 'uploading') via a controllable pending mediaUploader.uploadVideo"
+      when: "resetUploads() runs mid-upload (bumping videoUploadId), then the in-flight upload later resolves (a 'zombie' completion)"
+      then: "The stale completion is ignored — status stays 'idle' and results.videoUrl stays '' — because handleVideoSelection guards on videoUploadId !== currentUploadId"
+  observable_outcomes:
+    - "videoUploadState.status: 'uploading' after start, 'idle' after reset, still 'idle' after the zombie resolve"
+    - "results.videoUrl.value === '' after the zombie resolve"
+    - "test exits 0 with no async-after-test activity (was leaking webtorrent/Blob errors)"
+  determinism_controls:
+    - "mediaUploader.uploadVideo replaced with a manually-resolved promise; captureVideoMetadata stubbed; jsdom DOM; no webtorrent, no network, no real Blob ops"
+  anti_cheat_rationale:
+    prevents:
+      - "over-mocking internal logic"
+      - "retry/sleep-based flake masking"
+    note: |
+      FLAKE_FIX + REFACTOR_TESTS, no assertion weakened. The subtest PASSED its asserts but
+      leaked async activity after the test ended, which node:test flags as a failure. Root
+      cause: it mocked modal.generateTorrentMetadata / resolveUploadIdentifier, but
+      handleVideoSelection drives the upload through this.mediaUploader.uploadVideo — a
+      DIFFERENT object with its OWN helpers — so the mediaUploader still ran real
+      createTorrentMetadata()/hashing on a synthetic {name:'video.mp4'} file ("invalid input
+      type" async), and captureVideoMetadata() ran URL.createObjectURL(file) ("must be an
+      instance of Blob"). Fixed by mocking at the correct DI boundary
+      (modal.mediaUploader.uploadVideo returns the controllable pending promise) and stubbing
+      captureVideoMetadata. The unit under test is the modal's videoUploadId zombie-guard, so
+      mocking the uploader boundary is correct isolation, not over-mocking (real upload/torrent
+      paths are covered by the mediaUploader / s3-upload suites).
+  mutation_verification:
+    - "Broke the guard (`if (this.videoUploadId !== currentUploadId) return` → `if (false)`) → the test FAILS ('State should remain idle after zombie completion', # fail 1). Reverted."
+  relaxation:
+    did_relax_any_assertion: false
+    if_true_explain_spec_basis: ""
+```
+
 ## 2026-07-05 — todo-11b: un-quarantine dm-block-filter (hermetic subscription; no force-exit)
 
 ```yaml

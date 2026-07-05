@@ -1241,10 +1241,20 @@ Reported 2026-06-25. Relates to #17 (NIP-71 interop) / the bitvid→NIP-71 mirro
       local patch is guesswork — the update is the honest fix.
 
 ### 11. Harden flaky tests (CI gate reliability)
-- [ ] `tests/ui/uploadModal-reset.test.mjs` ("UploadModal Reset Logic") intermittently
-      hangs/cancels (jsdom/webtorrent async-hang flake; documented in KNOWN_ISSUES,
-      reproduced on pre-refactor `1b11cb1b`). Make it deterministic so it can be a
-      trusted release gate. Audit e2e parallel-load flakiness too.
+- [x] `tests/ui/uploadModal-reset.test.mjs` ("UploadModal Reset Logic") — FIXED 2026-07-05.
+      The "guard against zombie callbacks" subtest mocked `modal.generateTorrentMetadata` /
+      `resolveUploadIdentifier`, but handleVideoSelection drives the upload through
+      `this.mediaUploader.uploadVideo` (a DIFFERENT object with its own helpers) — so the
+      mediaUploader still ran real `createTorrentMetadata()`/hashing on a synthetic
+      `{name:"video.mp4"}` file, throwing "invalid input type" as async activity AFTER the
+      test ended (node:test flags that as an uncaughtException) plus
+      `captureVideoMetadata()` calling `URL.createObjectURL(file)` → "must be an instance of
+      Blob". Not intermittent anymore — it was a consistent, wrong-boundary mock. Fix: mock
+      at the real DI boundary — `modal.mediaUploader.uploadVideo = () => delayedUpload` (the
+      controllable pending promise) + stub `modal.captureVideoMetadata`. Now hermetic, no
+      webtorrent/Blob, deterministic (3/3 exit 0, # pass 3). Mutation-verified: breaking the
+      videoUploadId zombie guard makes the test fail (# fail 1). See TEST_INTEGRITY.md.
+- [ ] Audit e2e parallel-load flakiness too.
 
 ### 11b. SILENTLY-EXCLUDED unit tests — 20 files never run in CI (found 2026-06-23)
 > **2026-07-03 addendum — stale-default failure was hiding in local runs:**
