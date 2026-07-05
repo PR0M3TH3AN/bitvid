@@ -453,22 +453,32 @@ tallies simply stop being counted. No data migration.
 
 ## 11. Task checklist (ordered — pick up here across sessions)
 
-- [ ] **D1** decide `ZAP_TALLY_KIND`; add constant + `docs/nostr-event-schemas.md` row.
-- [ ] `constants.js`: `FEATURE_ZAP_TALLY` (default off) + runtime-flag plumbing.
-- [ ] `nostrEventSchemas.js`: `NOTE_TYPES.ZAP_TALLY` schema + `buildZapTallyEvent`.
-- [ ] `zapReceiptValidator.js`: `extractBolt11Fields` (payment_hash),
-      `verifyPaymentPreimage`, `verifyBitvidZapTally`. Unit tests first (vectors).
-- [ ] `zapSplit.js`: expose `receipt.preimage`.
-- [ ] `zapController.js`: extend `onZapSuccess` payload with per-share proof; wire
-      the retry path.
-- [ ] `ModalManager.js` + a thin `app.publishZapTally`: build→sign→publish
-      (best-effort, flag-gated) → `store.ingestVerifiedZap`.
-- [ ] `zapTotals.js`: query `ZAP_TALLY_KIND`, verify + dedup by payment_hash
-      (`paymentHashes` set), `ingestVerifiedZap`, flag-gate counting.
-- [ ] Tests: verify, schema, cross-source dedup, wiring, flag-off; Playwright
-      seeded-event count/rank.
-- [ ] `lint` + `build` + suites green; push to `unstable`.
-- [ ] Rollout per §9; TODO entry updated.
+- [x] **D1** `ZAP_TALLY_KIND = 30081` (addressable, d=payment_hash) + constant +
+      `docs/nostr-event-schemas.md` row. (commit a6b2996f)
+- [x] `constants.js`: `FEATURE_ZAP_TALLY` (default ON per D4) + runtime plumbing.
+- [x] `nostrEventSchemas.js`: `NOTE_TYPES.ZAP_TALLY` schema + `buildZapTallyEvent`.
+- [x] `zapReceiptValidator.js`: `extractBolt11Fields`, `verifyPaymentPreimage`,
+      `verifyBitvidZapTally`. Tests incl. a real amount-bearing bolt11 e2e.
+- [x] `zapSplit.js`: expose `receipt.preimage`. (commit 41e533e6)
+- [x] `zapController.js`: `onZapSuccess` forwards per-share proof.
+      *(Retry path still TODO — see below.)*
+- [x] `zapTallyPublisher.js` (buildTallyFromShare + publishZapTallies) +
+      `ModalManager.js` wiring: build→sign→publish (best-effort, flag-gated).
+      No `ingestVerifiedZap` needed — the store's existing "relay wins" prune
+      reconciles the optimistic ledger when the published tally is fetched back.
+- [x] `zapTotals.js`: query `[9735, ZAP_TALLY_KIND]`, verify + dedup by
+      payment_hash (`paymentHashes` set), flag-gated counting. (commit 025ab348)
+- [x] Tests: verify, schema, publisher, cross-source dedup, flag-off, e2e verify.
+- [x] `lint` + `build` + suites green; pushed to `unstable`.
+- [ ] **Remaining v1 work:**
+      - [ ] **Profile-zap counting:** the store queries `#a`/`#e` only — add
+            `#p` batches so a profile-only tally (no video pointer) is fetched,
+            and a channel-page total UI surface (D2 chose video+profile).
+      - [ ] **Retry path:** `zapController.executeRetry` doesn't fire
+            `onZapSuccess`; wire it so retried shares also publish tallies.
+      - [ ] **Popularity chart §5.9:** orange zaps line + legend + date axis.
+      - [ ] Live end-to-end on unstable (real zap → tally on relay → second
+            browser counts it); rollout per §9.
 
 **Popularity chart (§5.9 — can start once the store's verify + dedup helpers
 exist; the renderer/legend/axis parts have no dependency on publishing tallies):**

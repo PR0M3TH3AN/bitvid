@@ -219,6 +219,49 @@ test("buildZapTallyEvent: addressable by payment_hash + carries the proof tags",
   assert.deepEqual(tag("client"), ["client", "bitvid"]);
 });
 
+// End-to-end with the REAL verifier + a REAL amount-bearing bolt11: proves the
+// pieces compose (no injected extractFields/getSats). The invoice encodes an
+// amount (lnbc21u = 2100 sats), a payment_hash = sha256(preimage), and a
+// description_hash = sha256(zap request); the real nip57 amount parser reads it.
+test("verifyBitvidZapTally: accepts a fully valid tally end to end (real decode + amount)", async () => {
+  const { nip57 } = await import("nostr-tools");
+  const preimage = randomBytes(32);
+  const preimageHex = preimage.toString("hex");
+  const paymentHashBytes = createHash("sha256").update(preimage).digest();
+  const reqJson = zapRequestJson();
+  const descHashBytes = createHash("sha256").update(Buffer.from(reqJson, "utf8")).digest();
+
+  const pWords = bech32.toWords(new Uint8Array(paymentHashBytes));
+  const hWords = bech32.toWords(new Uint8Array(descHashBytes));
+  const words = [
+    0, 0, 0, 0, 0, 0, 0,
+    1, ...lenWords(pWords.length), ...pWords, // 'p' payment_hash
+    23, ...lenWords(hWords.length), ...hWords, // 'h' description_hash
+    ...new Array(104).fill(0),
+  ];
+  const bolt11 = bech32.encode("lnbc21u", words, 2000); // 21 micro-BTC = 2100 sats
+
+  const event = buildZapTallyEvent({
+    pubkey: PUB,
+    created_at: 1000,
+    paymentHash: paymentHashBytes.toString("hex"),
+    recipientPubkey: CREATOR,
+    eventId: EVENT_ID,
+    coordinate: COORD,
+    amountMsats: 2100000,
+    bolt11,
+    preimage: preimageHex,
+    zapRequestJson: reqJson,
+  });
+
+  const result = verifyBitvidZapTally(event, {
+    getSats: nip57.getSatoshisAmountFromBolt11, // real parser, no injection of fields
+  });
+  assert.equal(result.ok, true, "real verifier accepts a genuinely valid tally");
+  assert.equal(result.sats, 2100, "amount parsed from the real bolt11 hrp");
+  assert.equal(result.paymentHash, paymentHashBytes.toString("hex"));
+});
+
 test("buildZapTallyEvent: profile-only zap has p but no a/e", () => {
   const event = buildZapTallyEvent({
     pubkey: PUB,
