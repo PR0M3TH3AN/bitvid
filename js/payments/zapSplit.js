@@ -21,6 +21,7 @@ import {
   resolvePlatformFeePercent,
 } from "./platformFee.js";
 import { HEX64_REGEX } from "../utils/hex.js";
+import { buildVideoAddressPointer } from "../utils/videoPointer.js";
 
 
 const ZAP_KIND = 9734;
@@ -271,21 +272,16 @@ function decodeAdminPubkey() {
 }
 
 function derivePointerTag(videoEvent) {
-  if (!videoEvent || typeof videoEvent !== "object") {
-    return null;
-  }
-  if (!Array.isArray(videoEvent.tags)) {
-    return null;
-  }
-  const dTag = videoEvent.tags.find((tag) => Array.isArray(tag) && tag[0] === "d" && tag[1]);
-  if (!dTag) {
-    return null;
-  }
-  if (!Number.isFinite(videoEvent.kind) || typeof videoEvent.pubkey !== "string") {
-    return null;
-  }
-  const value = `${videoEvent.kind}:${videoEvent.pubkey}:${dTag[1]}`;
-  return ["a", value];
+  // Delegate to the app's canonical pointer derivation — the SAME one the read
+  // side (zapTotals / mostZappedFeed) uses to fetch totals. bitvid's internal
+  // video objects don't always carry the Nostr `kind` (it can be 0/undefined),
+  // and the old inline builder trusted `videoEvent.kind` verbatim: a kind-0
+  // object produced a `0:pubkey:d` coordinate (Number.isFinite(0) === true),
+  // which the reader — querying `30078:pubkey:d` — could never match, so zaps
+  // silently counted as zero. buildVideoAddressPointer defaults invalid/zero
+  // kinds to 30078, keeping writer and reader coordinates in lockstep.
+  const value = buildVideoAddressPointer(videoEvent);
+  return value ? ["a", value] : null;
 }
 
 function resolveRelayUrls(wallet) {
