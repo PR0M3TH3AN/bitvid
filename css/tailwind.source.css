@@ -2923,6 +2923,34 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* Zap orange as a currentColor source for the popularity chart's zaps line
+     + legend swatch (mirrors how the views line uses .text-accent). */
+  .text-zap {
+    color: var(--color-zap);
+  }
+
+  .popularity-legend {
+    display: flex;
+    gap: var(--space-md);
+    align-items: center;
+    font-size: var(--font-size-2xs);
+    color: var(--color-text-muted);
+    margin-block-start: var(--space-2xs);
+  }
+
+  .popularity-legend__item {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-3xs);
+  }
+
+  .popularity-legend__swatch {
+    inline-size: var(--space-sm);
+    block-size: var(--size-3px, 0.1875rem);
+    border-radius: var(--radius-full);
+    background-color: currentColor;
+  }
+
   /* #43: always-visible active-identity pill. Rendered after the header in
      flow and pulled up with a negative block-start margin so it sits half-on /
      half-off the header divider — every pane shows who you're acting as. */

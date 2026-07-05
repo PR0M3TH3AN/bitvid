@@ -471,12 +471,16 @@ tallies simply stop being counted. No data migration.
 - [x] Tests: verify, schema, publisher, cross-source dedup, flag-off, e2e verify.
 - [x] `lint` + `build` + suites green; pushed to `unstable`.
 - [ ] **Remaining v1 work:**
-      - [ ] **Profile-zap counting:** the store queries `#a`/`#e` only — add
-            `#p` batches so a profile-only tally (no video pointer) is fetched,
-            and a channel-page total UI surface (D2 chose video+profile).
+      - [ ] **Profile-zap counting (remaining):** the store queries `#a`/`#e`
+            only — add `#p` batches so a profile-only tally (no video pointer) is
+            fetched, and a channel-page total UI surface (D2 chose video+profile).
       - [x] **Retry path:** `zapController.executeRetry` fires `onZapSuccess`
             so retried shares publish tallies too. (commit afed041f)
-      - [ ] **Popularity chart §5.9:** orange zaps line + legend + date axis.
+      - [x] **Popularity chart §5.9 DONE:** orange zaps-over-time line beside
+            the red views line, legend (Views/Zaps), visible date-axis ticks,
+            and a "· N sats zapped" headline. buildZapSatsTimeSeries (dedup by
+            payment_hash) + buildPopularityChartSvg + zapEventsFacade. Tests:
+            tests/zap-time-series-chart.test.mjs.
       - [ ] Live end-to-end on unstable (real zap → tally on relay → second
             browser counts it); rollout per §9.
 

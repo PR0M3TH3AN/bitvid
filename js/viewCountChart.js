@@ -15,7 +15,20 @@ import {
   subscribeToVideoViewCount,
   unsubscribeFromVideoViewCount,
 } from "./viewCounter.js";
+import { listVideoZapEventsWithDefaultClient } from "./zapEventsFacade.js";
+import {
+  getVideoZapTotalSnapshot,
+  requestVideoZapTotal,
+  onZapTotalsChanged,
+  ZAP_RECEIPT_KIND,
+} from "./zapTotals.js";
+import { ZAP_TALLY_KIND } from "./nostrEventSchemas.js";
+import {
+  verifyBitvidZapTally,
+  extractBolt11Fields,
+} from "./payments/zapReceiptValidator.js";
 import { VIEW_COUNT_BACKFILL_MAX_DAYS } from "./config.js";
+import { FEATURE_ZAP_TALLY } from "./constants.js";
 import { devLogger } from "./utils/logger.js";
 
 export const VIEW_CHART_WINDOW_SECONDS = 86400; // 1 day, matches the counter dedupe window
@@ -54,6 +67,73 @@ export function buildViewCountTimeSeries(
     const count = perBucket.get(bucket) || 0;
     cumulative += count;
     series.push({ bucketStart: bucket * w, count, cumulative });
+  }
+  return { series, total: cumulative };
+}
+
+// Read the authoritative sats for one zap event (9735 receipt or bitvid tally),
+// plus a dedup key (payment_hash preferred, else event id). Returns null when
+// the event isn't a countable zap (invalid tally, no amount, …).
+function readZapEvent(event, tools) {
+  const getSats = tools?.nip57?.getSatoshisAmountFromBolt11;
+  if (event?.kind === ZAP_TALLY_KIND) {
+    const verdict = verifyBitvidZapTally(event, { getSats });
+    if (!verdict?.ok || !(verdict.sats > 0)) {
+      return null;
+    }
+    return { sats: verdict.sats, dedup: verdict.paymentHash || event.id };
+  }
+  if (event?.kind === ZAP_RECEIPT_KIND && event?.id) {
+    const bolt11 =
+      (Array.isArray(event.tags)
+        ? event.tags.find((t) => Array.isArray(t) && t[0] === "bolt11")?.[1]
+        : "") || "";
+    let sats = 0;
+    try {
+      const parsed = typeof getSats === "function" ? Number(getSats(bolt11)) : NaN;
+      sats = Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : 0;
+    } catch (error) {
+      sats = 0;
+    }
+    if (sats <= 0) {
+      return null;
+    }
+    const dedup = extractBolt11Fields(bolt11).paymentHash || event.id;
+    return { sats, dedup };
+  }
+  return null;
+}
+
+// Bucket zap events into a cumulative SATS-over-time series, deduped by
+// payment_hash across 9735s + tallies (same rule as the zap-totals store), so
+// the chart and the badge agree. Returns ordered buckets + the total.
+export function buildZapSatsTimeSeries(
+  events,
+  { windowSeconds = VIEW_CHART_WINDOW_SECONDS, tools = null } = {},
+) {
+  const w = Math.max(1, Number(windowSeconds) || VIEW_CHART_WINDOW_SECONDS);
+  const seenPayments = new Set();
+  const perBucket = new Map();
+  for (const event of Array.isArray(events) ? events : []) {
+    const createdAt = Number(event?.created_at);
+    if (!Number.isFinite(createdAt) || createdAt <= 0) {
+      continue;
+    }
+    const read = readZapEvent(event, tools);
+    if (!read || seenPayments.has(read.dedup)) {
+      continue;
+    }
+    seenPayments.add(read.dedup);
+    const bucket = Math.floor(createdAt / w);
+    perBucket.set(bucket, (perBucket.get(bucket) || 0) + read.sats);
+  }
+  const buckets = Array.from(perBucket.keys()).sort((a, b) => a - b);
+  const series = [];
+  let cumulative = 0;
+  for (const bucket of buckets) {
+    const sats = perBucket.get(bucket) || 0;
+    cumulative += sats;
+    series.push({ bucketStart: bucket * w, sats, cumulative });
   }
   return { series, total: cumulative };
 }
@@ -138,6 +218,128 @@ export function buildViewCountChartSvg(doc, series, { width = 320, height = 120 
   return svg;
 }
 
+// Draw one cumulative series (area + line) into `svg` using a color class on a
+// wrapping <g> (currentColor). x()/y() map data → pixels. Independent per-series
+// Y scaling (D5): the caller passes this series' own maxY.
+function drawSeries(doc, svg, points, { x, y, baseY, colorClass }) {
+  if (!points.length) return;
+  const coords =
+    points.length === 1
+      ? [
+          [x(points[0].bucketStart), y(points[0].cumulative)],
+          [x(points[points.length - 1].bucketStart) + 1, y(points[0].cumulative)],
+        ]
+      : points.map((p) => [x(p.bucketStart), y(p.cumulative)]);
+  const linePoints = coords.map(([px, py]) => `${px.toFixed(1)},${py.toFixed(1)}`).join(" ");
+  const areaPoints =
+    `${coords[0][0].toFixed(1)},${baseY.toFixed(1)} ` +
+    linePoints +
+    ` ${coords[coords.length - 1][0].toFixed(1)},${baseY.toFixed(1)}`;
+
+  const group = doc.createElementNS(SVG_NS, "g");
+  if (colorClass) group.classList.add(colorClass);
+
+  const area = doc.createElementNS(SVG_NS, "polygon");
+  area.setAttribute("points", areaPoints);
+  area.setAttribute("fill", "currentColor");
+  area.setAttribute("fill-opacity", "0.15");
+  area.setAttribute("stroke", "none");
+  group.appendChild(area);
+
+  const line = doc.createElementNS(SVG_NS, "polyline");
+  line.setAttribute("points", linePoints);
+  line.setAttribute("fill", "none");
+  line.setAttribute("stroke", "currentColor");
+  line.setAttribute("stroke-width", "2");
+  line.setAttribute("stroke-linejoin", "round");
+  line.setAttribute("stroke-linecap", "round");
+  group.appendChild(line);
+
+  svg.appendChild(group);
+}
+
+// Popularity chart with TWO cumulative series on a shared TIME x-axis, each with
+// its OWN y scale (views in counts, zaps in sats — independent per-series
+// scaling shows each trend honestly; the legend names the units). Adds VISIBLE
+// x-axis date ticks. Views = accent (red), zaps = --color-zap (orange).
+export function buildPopularityChartSvg(
+  doc,
+  { views = [], zaps = [] } = {},
+  { width = 320, height = 132 } = {},
+) {
+  const pad = { top: 8, right: 8, bottom: 26, left: 8 };
+  const svg = doc.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.setAttribute("width", "100%");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("preserveAspectRatio", "none");
+
+  const viewsPts = Array.isArray(views) ? views : [];
+  const zapsPts = Array.isArray(zaps) ? zaps : [];
+  if (!viewsPts.length && !zapsPts.length) {
+    svg.setAttribute("aria-label", "No views or zaps yet");
+    return svg;
+  }
+
+  const innerW = Math.max(1, width - pad.left - pad.right);
+  const innerH = Math.max(1, height - pad.top - pad.bottom);
+  const baseY = pad.top + innerH;
+
+  // Shared time domain across both series.
+  const allX = [...viewsPts, ...zapsPts].map((p) => p.bucketStart);
+  const minX = Math.min(...allX);
+  const maxX = Math.max(...allX);
+  const spanX = maxX - minX || 1;
+  const x = (bucketStart) => pad.left + ((bucketStart - minX) / spanX) * innerW;
+
+  // Per-series y scale (each fills the height against its own max).
+  const makeY = (pts) => {
+    const maxY = (pts[pts.length - 1]?.cumulative) || 1;
+    return (cumulative) => pad.top + (1 - cumulative / maxY) * innerH;
+  };
+
+  drawSeries(doc, svg, viewsPts, {
+    x,
+    y: makeY(viewsPts),
+    baseY,
+    colorClass: "text-accent",
+  });
+  drawSeries(doc, svg, zapsPts, {
+    x,
+    y: makeY(zapsPts),
+    baseY,
+    colorClass: "text-zap",
+  });
+
+  // Visible x-axis date ticks (min → max, a few evenly spaced) so the reader
+  // knows the time range — the old chart only put dates in the aria-label.
+  const tickCount = spanX > 1 ? 3 : 1;
+  for (let i = 0; i < tickCount; i += 1) {
+    const t = tickCount === 1 ? minX : minX + (spanX * i) / (tickCount - 1);
+    const label = doc.createElementNS(SVG_NS, "text");
+    const px = x(t);
+    label.setAttribute("x", px.toFixed(1));
+    label.setAttribute("y", (height - 8).toFixed(1));
+    label.setAttribute("font-size", "9");
+    label.setAttribute("fill", "currentColor");
+    label.setAttribute("fill-opacity", "0.6");
+    label.setAttribute(
+      "text-anchor",
+      i === 0 ? "start" : i === tickCount - 1 ? "end" : "middle",
+    );
+    label.textContent = formatDay(t);
+    svg.appendChild(label);
+  }
+
+  const viewsTotal = viewsPts[viewsPts.length - 1]?.cumulative || 0;
+  const zapsTotal = zapsPts[zapsPts.length - 1]?.cumulative || 0;
+  svg.setAttribute(
+    "aria-label",
+    `${viewsTotal} views and ${zapsTotal} sats zapped from ${formatDay(minX)} to ${formatDay(maxX)}`,
+  );
+  return svg;
+}
+
 // ---- Modal -------------------------------------------------------------------
 
 function pointerForVideo(video) {
@@ -173,6 +375,11 @@ export function openPopularityModal({
   video,
   listViewEvents = listVideoViewEventsWithDefaultClient,
   subscribeViewEvents = subscribeVideoViewEventsWithDefaultClient,
+  listZapEvents = listVideoZapEventsWithDefaultClient,
+  getTools = () =>
+    (typeof globalThis !== "undefined" &&
+      (globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__ || globalThis.NostrTools)) ||
+    null,
   mount = null,
 } = {}) {
   if (!doc) return null;
@@ -216,11 +423,28 @@ export function openPopularityModal({
   const chartHost = el(doc, "div", "popularity-modal__chart");
   dialog.appendChild(chartHost);
 
+  // Legend: red = Views, orange = Zaps (sats). Token colors via .text-accent /
+  // .text-zap on the swatch (currentColor). Only shown when the feature is on.
+  const legend = el(doc, "div", "popularity-legend");
+  const legendItem = (colorClass, label) => {
+    const item = el(doc, "span", "popularity-legend__item");
+    item.appendChild(el(doc, "span", `popularity-legend__swatch ${colorClass}`));
+    item.appendChild(el(doc, "span", "", label));
+    return item;
+  };
+  legend.appendChild(legendItem("text-accent", "Views"));
+  if (FEATURE_ZAP_TALLY) {
+    legend.appendChild(legendItem("text-zap", "Zaps (sats)"));
+  }
+  dialog.appendChild(legend);
+
   const note = el(
     doc,
     "p",
     "text-2xs text-muted mt-2",
-    "Public view data · updates as more views load.",
+    FEATURE_ZAP_TALLY
+      ? "Public view + zap data · updates as more load."
+      : "Public view data · updates as more views load.",
   );
   dialog.appendChild(note);
 
@@ -229,8 +453,10 @@ export function openPopularityModal({
 
   // ---- data + render ----
   const eventsById = new Map();
+  const zapEventsById = new Map();
   let closed = false;
   let unsubscribe = null;
+  let unsubscribeZapTotals = null;
   let countToken = null;
   let counterTotal = null;
   let rerenderTimer = null;
@@ -239,6 +465,13 @@ export function openPopularityModal({
     const id = typeof event?.id === "string" ? event.id : "";
     if (!id || eventsById.has(id)) return false;
     eventsById.set(id, event);
+    return true;
+  };
+
+  const addZapEvent = (event) => {
+    const id = typeof event?.id === "string" ? event.id : "";
+    if (!id || zapEventsById.has(id)) return false;
+    zapEventsById.set(id, event);
     return true;
   };
 
@@ -254,17 +487,33 @@ export function openPopularityModal({
     if (!Number.isFinite(total)) {
       return;
     }
-    totalLine.textContent =
+    const viewsText =
       total > 0
         ? `${formatViewCount(total)} ${total === 1 ? "view" : "views"}`
         : "No views recorded yet.";
+    // Zap total from the shared store (matches the badge), appended when on.
+    if (FEATURE_ZAP_TALLY) {
+      let zapSats = 0;
+      try {
+        zapSats = getVideoZapTotalSnapshot(pointer) || 0;
+      } catch (error) {
+        zapSats = 0;
+      }
+      totalLine.textContent =
+        zapSats > 0 ? `${viewsText} · ${formatViewCount(zapSats)} sats zapped` : viewsText;
+    } else {
+      totalLine.textContent = viewsText;
+    }
   };
 
   const renderChart = () => {
     if (closed) return;
-    const { series } = buildViewCountTimeSeries([...eventsById.values()]);
+    const { series: views } = buildViewCountTimeSeries([...eventsById.values()]);
+    const { series: zaps } = FEATURE_ZAP_TALLY
+      ? buildZapSatsTimeSeries([...zapEventsById.values()], { tools: getTools() })
+      : { series: [] };
     chartHost.textContent = "";
-    chartHost.appendChild(buildViewCountChartSvg(doc, series));
+    chartHost.appendChild(buildPopularityChartSvg(doc, { views, zaps }));
     renderHeadline();
   };
 
@@ -293,6 +542,13 @@ export function openPopularityModal({
     if (countToken != null) {
       try {
         unsubscribeFromVideoViewCount(pointer, countToken);
+      } catch (error) {
+        // best effort
+      }
+    }
+    if (typeof unsubscribeZapTotals === "function") {
+      try {
+        unsubscribeZapTotals();
       } catch (error) {
         // best effort
       }
@@ -360,6 +616,33 @@ export function openPopularityModal({
     });
   } catch (error) {
     devLogger.warn("[popularity] Failed to subscribe to view events:", error);
+  }
+
+  // Zaps-over-time (orange line): fetch the pointer's zap events (9735 + tally)
+  // for the chart, and (headline) request the shared total + re-render when the
+  // zap-totals store changes. Gated by the feature flag.
+  if (FEATURE_ZAP_TALLY) {
+    try {
+      requestVideoZapTotal(pointer); // primes the store for the headline
+      unsubscribeZapTotals = onZapTotalsChanged(() => {
+        if (!closed) renderHeadline();
+      });
+    } catch (error) {
+      devLogger.warn("[popularity] Failed to subscribe to zap totals:", error);
+    }
+    Promise.resolve()
+      .then(() => listZapEvents(pointer, { since }))
+      .then((events) => {
+        if (closed) return;
+        let added = false;
+        for (const event of Array.isArray(events) ? events : []) {
+          if (addZapEvent(event)) added = true;
+        }
+        if (added) renderChart();
+      })
+      .catch((error) => {
+        devLogger.warn("[popularity] Failed to load zap events:", error);
+      });
   }
 
   const handle = { close };
