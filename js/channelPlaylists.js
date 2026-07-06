@@ -4,14 +4,21 @@
 // renders a row of cards linking to the playlist view. Kept out of
 // channelProfile.js (that file is at its size cap) and wired in via a one-line
 // hook, mirroring channelZapTotal.js. Gated by FEATURE_PLAYLISTS — with the flag
-// off (default) it renders nothing and does no fetch, so it's invisible until
-// the whole playlist UI ships.
+// off it renders nothing and does no fetch.
+//
+// Also listens for `bitvid:playlists-changed` (dispatched by the "Add to
+// playlist" picker) so the section refreshes right after you add/create a
+// playlist, instead of needing a manual page reload.
 
 import { fetchCreatorPlaylists } from "./playlists/playlistFacade.js";
 import { FEATURE_PLAYLISTS } from "./constants.js";
 import { devLogger } from "./utils/logger.js";
 
 let currentToken = 0;
+let currentHex = "";
+let currentClient;
+let currentDoc = null;
+let listenerAttached = false;
 
 function clearChildren(el) {
   while (el.firstChild) {
@@ -63,8 +70,71 @@ function renderPlaylistCard(doc, playlist) {
   return card;
 }
 
+// Fetch + render the currently-wired channel's playlists. Safe to call any time
+// (event refresh, initial wire); a nav token drops a stale fetch.
+async function refresh() {
+  const doc = currentDoc || globalThis.document;
+  const section =
+    doc && typeof doc.getElementById === "function"
+      ? doc.getElementById("channelPlaylistsSection")
+      : null;
+  const grid = doc?.getElementById?.("channelPlaylistsGrid") || null;
+  if (!section || !grid) {
+    return;
+  }
+
+  if (!FEATURE_PLAYLISTS || !currentHex) {
+    section.classList.add("hidden");
+    return;
+  }
+
+  const token = currentToken;
+  let playlists = [];
+  try {
+    playlists = await fetchCreatorPlaylists(
+      currentHex,
+      currentClient ? { client: currentClient } : {},
+    );
+  } catch (error) {
+    devLogger.warn("[channelPlaylists] Failed to load playlists:", error);
+    playlists = [];
+  }
+
+  // A newer navigation superseded this fetch.
+  if (token !== currentToken) {
+    return;
+  }
+
+  if (!playlists.length) {
+    section.classList.add("hidden");
+    return;
+  }
+
+  clearChildren(grid);
+  const frag = doc.createDocumentFragment();
+  for (const playlist of playlists) {
+    frag.appendChild(renderPlaylistCard(doc, playlist));
+  }
+  grid.appendChild(frag);
+  section.classList.remove("hidden");
+}
+
+function onPlaylistsChanged(event) {
+  const changed = (event?.detail?.pubkey || "").trim().toLowerCase();
+  if (!currentHex || changed !== currentHex) {
+    return;
+  }
+  // Refresh now, then again shortly after — relays need a beat to serve the
+  // event we just published back, so the first fetch can miss it.
+  refresh();
+  setTimeout(() => {
+    refresh();
+  }, 2000);
+}
+
 export function teardownChannelPlaylists() {
   currentToken += 1;
+  currentHex = "";
 }
 
 /**
@@ -78,51 +148,16 @@ export async function wireChannelPlaylists(
   { document: doc = globalThis.document, client } = {},
 ) {
   teardownChannelPlaylists();
-  const token = currentToken;
+  currentHex = typeof pubkey === "string" ? pubkey.trim().toLowerCase() : "";
+  currentClient = client;
+  currentDoc = doc || globalThis.document;
 
-  const section =
-    doc && typeof doc.getElementById === "function"
-      ? doc.getElementById("channelPlaylistsSection")
-      : null;
-  const grid = doc?.getElementById?.("channelPlaylistsGrid") || null;
-  if (!section || !grid) {
-    return;
+  if (!listenerAttached && currentDoc?.addEventListener) {
+    currentDoc.addEventListener("bitvid:playlists-changed", onPlaylistsChanged);
+    listenerAttached = true;
   }
 
-  const hide = () => section.classList.add("hidden");
-  const show = () => section.classList.remove("hidden");
-
-  const hex = typeof pubkey === "string" ? pubkey.trim().toLowerCase() : "";
-  if (!FEATURE_PLAYLISTS || !hex) {
-    hide();
-    return;
-  }
-
-  let playlists = [];
-  try {
-    playlists = await fetchCreatorPlaylists(hex, client ? { client } : {});
-  } catch (error) {
-    devLogger.warn("[channelPlaylists] Failed to load playlists:", error);
-    playlists = [];
-  }
-
-  // A newer navigation (channel switch / teardown) superseded this fetch.
-  if (token !== currentToken) {
-    return;
-  }
-
-  if (!playlists.length) {
-    hide();
-    return;
-  }
-
-  clearChildren(grid);
-  const frag = doc.createDocumentFragment();
-  for (const playlist of playlists) {
-    frag.appendChild(renderPlaylistCard(doc, playlist));
-  }
-  grid.appendChild(frag);
-  show();
+  await refresh();
 }
 
 export default wireChannelPlaylists;

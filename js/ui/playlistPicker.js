@@ -169,13 +169,13 @@ export async function openPlaylistPicker({ videoCoordinate, notify } = {}) {
       }
     }
 
-    async function onSave() {
-      saveBtn.disabled = true;
-      cancelBtn.disabled = true;
-      saveBtn.textContent = "Saving…";
-
+    function onSave() {
+      // Compute the diff synchronously, then close the dialog IMMEDIATELY and
+      // publish in the background — relay publishes take a beat, and blocking the
+      // dialog on them made it feel stuck / "not close". Success/failure comes
+      // back as a toast; a `bitvid:playlists-changed` event lets the channel
+      // section refresh without a manual page reload.
       const jobs = [];
-      // Diff existing playlists: only publish those whose membership changed.
       for (const { playlist, input, wasIn } of checkboxes) {
         if (input.checked === wasIn) {
           continue;
@@ -185,7 +185,6 @@ export async function openPlaylistPicker({ videoCoordinate, notify } = {}) {
           : removeVideoFromPlaylist(playlist.items, coordinate);
         jobs.push({ ...playlist, items });
       }
-      // New playlist, if named.
       const newName = newInput.value.trim();
       if (newName) {
         jobs.push({
@@ -196,41 +195,55 @@ export async function openPlaylistPicker({ videoCoordinate, notify } = {}) {
         });
       }
 
+      cleanup();
       if (!jobs.length) {
-        cleanup();
         return;
       }
 
-      let ok = 0;
-      let failed = 0;
-      for (const job of jobs) {
-        try {
-          await publishPlaylist({ pubkey, ...job });
-          ok += 1;
-        } catch (error) {
-          userLogger.warn("[playlistPicker] Failed to publish playlist:", error);
-          failed += 1;
+      (async () => {
+        let ok = 0;
+        let failed = 0;
+        for (const job of jobs) {
+          try {
+            await publishPlaylist({ pubkey, ...job });
+            ok += 1;
+          } catch (error) {
+            userLogger.warn(
+              "[playlistPicker] Failed to publish playlist:",
+              error,
+            );
+            failed += 1;
+          }
         }
-      }
 
-      cleanup();
-      if (ok && !failed) {
-        say(
-          "success",
-          ok === 1 ? "Playlist updated." : `Updated ${ok} playlists.`,
-        );
-      } else if (ok && failed) {
-        say("error", `Updated ${ok}; ${failed} could not be saved.`);
-      } else {
-        say("error", "Couldn't save your playlist changes.");
-      }
+        if (ok && !failed) {
+          say(
+            "success",
+            ok === 1 ? "Playlist updated." : `Updated ${ok} playlists.`,
+          );
+        } else if (ok && failed) {
+          say("error", `Updated ${ok}; ${failed} could not be saved.`);
+        } else {
+          say("error", "Couldn't save your playlist changes.");
+        }
+
+        if (ok) {
+          try {
+            document.dispatchEvent(
+              new CustomEvent("bitvid:playlists-changed", {
+                detail: { pubkey },
+              }),
+            );
+          } catch (error) {
+            // best effort
+          }
+        }
+      })();
     }
 
     cancelBtn.addEventListener("click", cleanup);
     backdrop.addEventListener("click", cleanup);
-    saveBtn.addEventListener("click", () => {
-      onSave().catch(() => cleanup());
-    });
+    saveBtn.addEventListener("click", onSave);
     document.addEventListener("keydown", onKeydown, true);
 
     document.body.appendChild(overlay);
