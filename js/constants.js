@@ -201,7 +201,7 @@ const DEFAULT_FLAGS = Object.freeze({
   FEATURE_TRENDING_FEED: true, // "Trending" tab: recently-added ranked by view count. Disable to hide the tab.
   FEATURE_MOST_ZAPPED_FEED: true, // "Most Zapped" tab: recently-added ranked by zap total. Disable to hide the tab.
   FEATURE_ZAP_TALLY: true, // bitvid-native preimage-verified zap tally (publish + count). Rollback: set false.
-  FEATURE_PLAYLISTS: false, // Creator playlists (#37): channel section + playlist view + add-to-playlist. Default OFF until the UI is complete.
+  FEATURE_PLAYLISTS: true, // Creator playlists (#37): channel section + playlist view + add-to-playlist (⋯ menu). Rollback: set false to hide all playlist UI.
   TRUSTED_MUTE_HIDE_THRESHOLD: DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
   TRUSTED_SPAM_HIDE_THRESHOLD: DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
   WSS_TRACKERS: DEFAULT_WSS_TRACKERS,
