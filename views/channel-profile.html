@@ -156,6 +156,15 @@
 
   <hr class="my-6" />
 
+  <!-- #37: creator playlists. Hidden unless FEATURE_PLAYLISTS is on and the
+       creator has at least one playlist (populated by js/channelPlaylists.js). -->
+  <section id="channelPlaylistsSection" class="hidden mb-8">
+    <h3 class="text-lg font-bold text-text-strong mb-4">Playlists</h3>
+    <div id="channelPlaylistsGrid" class="playlist-grid">
+      <!-- Playlist cards go here -->
+    </div>
+  </section>
+
   <div class="flex items-center gap-2 mb-4">
     <h3 class="text-lg font-bold text-text-strong">Videos by This User</h3>
     <button

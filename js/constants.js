@@ -201,6 +201,7 @@ const DEFAULT_FLAGS = Object.freeze({
   FEATURE_TRENDING_FEED: true, // "Trending" tab: recently-added ranked by view count. Disable to hide the tab.
   FEATURE_MOST_ZAPPED_FEED: true, // "Most Zapped" tab: recently-added ranked by zap total. Disable to hide the tab.
   FEATURE_ZAP_TALLY: true, // bitvid-native preimage-verified zap tally (publish + count). Rollback: set false.
+  FEATURE_PLAYLISTS: false, // Creator playlists (#37): channel section + playlist view + add-to-playlist. Default OFF until the UI is complete.
   TRUSTED_MUTE_HIDE_THRESHOLD: DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
   TRUSTED_SPAM_HIDE_THRESHOLD: DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
   WSS_TRACKERS: DEFAULT_WSS_TRACKERS,
@@ -226,6 +227,7 @@ const runtimeFlags = (() => {
     FEATURE_TRENDING_FEED: DEFAULT_FLAGS.FEATURE_TRENDING_FEED,
     FEATURE_MOST_ZAPPED_FEED: DEFAULT_FLAGS.FEATURE_MOST_ZAPPED_FEED,
     FEATURE_ZAP_TALLY: DEFAULT_FLAGS.FEATURE_ZAP_TALLY,
+    FEATURE_PLAYLISTS: DEFAULT_FLAGS.FEATURE_PLAYLISTS,
     TRUSTED_MUTE_HIDE_THRESHOLD: DEFAULT_FLAGS.TRUSTED_MUTE_HIDE_THRESHOLD,
     TRUSTED_SPAM_HIDE_THRESHOLD: DEFAULT_FLAGS.TRUSTED_SPAM_HIDE_THRESHOLD,
     WSS_TRACKERS: [...DEFAULT_FLAGS.WSS_TRACKERS],
@@ -279,6 +281,11 @@ export let FEATURE_MOST_ZAPPED_FEED = coerceBoolean(
 export let FEATURE_ZAP_TALLY = coerceBoolean(
   runtimeFlags.FEATURE_ZAP_TALLY,
   DEFAULT_FLAGS.FEATURE_ZAP_TALLY
+);
+
+export let FEATURE_PLAYLISTS = coerceBoolean(
+  runtimeFlags.FEATURE_PLAYLISTS,
+  DEFAULT_FLAGS.FEATURE_PLAYLISTS
 );
 
 export let FEATURE_TRUST_SEEDS = coerceBoolean(

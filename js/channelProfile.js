@@ -3,6 +3,7 @@
 import { nostrClient } from "./nostrClientFacade.js";
 import { convertChannelEvent, buildChannelVideoFilters, loadCachedChannelVideos, saveCachedChannelVideos, mergeChannelVideoSources } from "./channelProfileVideos.js";
 import { wireChannelZapTotal } from "./channelZapTotal.js";
+import { wireChannelPlaylists } from "./channelPlaylists.js";
 import { dedupeVideos } from "./utils/videoDeduper.js";
 import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
 import { subscriptions } from "./subscriptions.js";
@@ -5231,6 +5232,9 @@ function applyChannelProfileMetadata({
 
   // #47: total sats zapped to this creator (p:<pubkey> pointer in the store).
   wireChannelZapTotal(currentChannelHex);
+
+  // #37: creator playlists section (no-op unless FEATURE_PLAYLISTS is on).
+  wireChannelPlaylists(currentChannelHex);
 }
 
 async function fetchChannelProfileFromRelays(pubkey) {

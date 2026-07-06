@@ -2951,6 +2951,68 @@
     background-color: currentColor;
   }
 
+  /* #37: channel playlists section — a responsive row of playlist cards. */
+  .playlist-grid {
+    @apply grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4;
+    gap: var(--space-md);
+  }
+
+  .playlist-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xs);
+    text-decoration: none;
+    transition: transform 0.12s ease-out;
+  }
+
+  .playlist-card:hover {
+    transform: translateY(-2px);
+  }
+
+  .playlist-card__thumb {
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-end;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    border-radius: var(--radius-sm);
+    background-color: var(--color-page-alt);
+    border: var(--border-width-hairline) solid var(--color-page-alt);
+  }
+
+  .playlist-card__image {
+    position: absolute;
+    inset: 0;
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: cover;
+  }
+
+  .playlist-card__count {
+    position: relative;
+    margin: var(--space-2xs);
+    border-radius: var(--radius-sm);
+    padding-block: var(--space-3xs);
+    padding-inline: var(--space-2xs);
+    font-size: var(--font-size-2xs);
+    font-weight: 500;
+    color: var(--color-text-strong);
+    background-color: var(--color-page);
+  }
+
+  .playlist-card__title {
+    margin: 0;
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    color: var(--color-text);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
   /* #43: always-visible active-identity pill. Rendered after the header in
      flow and pulled up with a negative block-start margin so it sits half-on /
      half-off the header divider — every pane shows who you're acting as. */
