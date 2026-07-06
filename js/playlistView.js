@@ -25,22 +25,15 @@ function readParams() {
   };
 }
 
-// Resolve the playlist's items to the app's active video objects, in playlist
-// order. Unresolved refs (video not in the cache) are skipped — the count line
+// Resolve the playlist's items to video objects, in playlist order, from the
+// given pool. Unresolved refs (video missing) are skipped — the count line
 // reflects how many resolved.
-function resolveOrderedVideos(playlist) {
-  let active = [];
-  try {
-    active = nostrClient.getActiveVideos() || [];
-  } catch (error) {
-    active = [];
-  }
-
+function resolveOrderedVideos(playlist, videoPool) {
   const byCoordinate = new Map();
   const byEventId = new Map();
-  for (const video of active) {
+  for (const video of videoPool) {
     const coordinate = buildVideoAddressPointer(video);
-    if (coordinate) {
+    if (coordinate && !byCoordinate.has(coordinate)) {
       byCoordinate.set(coordinate, video);
     }
     if (video && typeof video.id === "string" && video.id) {
@@ -59,6 +52,39 @@ function resolveOrderedVideos(playlist) {
     }
   }
   return ordered;
+}
+
+// The videos to resolve against: the referenced creators' videos (fetched from
+// relays so a DIRECT load / cold cache still works) plus whatever's already
+// active. Without the fetch, a deep-linked playlist resolves nothing and the
+// shared grid shows the default feed instead.
+async function gatherVideoPool(playlist, app) {
+  const authors = [
+    ...new Set(
+      playlist.items
+        .filter((item) => item.type === "a")
+        .map((item) => item.value.split(":")[1])
+        .filter(Boolean),
+    ),
+  ];
+
+  let fetched = [];
+  if (authors.length && typeof app?.nostrService?.fetchVideosByAuthors === "function") {
+    try {
+      fetched = (await app.nostrService.fetchVideosByAuthors(authors)) || [];
+    } catch (error) {
+      devLogger.warn("[playlistView] Failed to fetch playlist videos:", error);
+    }
+  }
+
+  let active = [];
+  try {
+    active = nostrClient.getActiveVideos() || [];
+  } catch (error) {
+    active = [];
+  }
+
+  return [...fetched, ...active];
 }
 
 function setText(id, text) {
@@ -103,7 +129,8 @@ export async function initPlaylistView({ getApp } = {}) {
 
   setText("playlistTitle", playlist.title);
 
-  const videos = resolveOrderedVideos(playlist);
+  const pool = await gatherVideoPool(playlist, app);
+  const videos = resolveOrderedVideos(playlist, pool);
   const total = playlist.items.length;
   setText(
     "playlistMeta",
@@ -112,6 +139,9 @@ export async function initPlaylistView({ getApp } = {}) {
       : `${videos.length} of ${total} videos available`,
   );
 
+  // Always render into the shared grid — even an empty playlist must OVERRIDE
+  // the default feed that populates #videoList, so a deep-linked playlist never
+  // shows unrelated recent videos.
   if (app && typeof app.mountVideoListView === "function") {
     app.mountVideoListView({ includeTags: false });
   }
@@ -119,7 +149,11 @@ export async function initPlaylistView({ getApp } = {}) {
     try {
       await app.renderVideoList({
         videos,
-        metadata: { reason: "playlist", preserveOrder: true },
+        metadata: {
+          reason: "playlist",
+          preserveOrder: true,
+          emptyStateMessage: "None of this playlist's videos could be loaded.",
+        },
       });
     } catch (error) {
       devLogger.warn("[playlistView] Failed to render playlist videos:", error);
