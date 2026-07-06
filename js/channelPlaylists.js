@@ -11,6 +11,8 @@
 // playlist, instead of needing a manual page reload.
 
 import { fetchCreatorPlaylists } from "./playlists/playlistFacade.js";
+import { nostrClient } from "./nostrClientFacade.js";
+import { buildVideoAddressPointer } from "./utils/videoPointer.js";
 import { FEATURE_PLAYLISTS } from "./constants.js";
 import { devLogger } from "./utils/logger.js";
 
@@ -35,7 +37,38 @@ function playlistHref(playlist) {
   return `#${params.toString()}`;
 }
 
-function renderPlaylistCard(doc, playlist) {
+// coord -> thumbnail URL, from the app's active videos, so a playlist can show
+// its first video's thumbnail as the cover.
+function buildThumbnailMap() {
+  const map = new Map();
+  let active = [];
+  try {
+    active = nostrClient.getActiveVideos() || [];
+  } catch (error) {
+    active = [];
+  }
+  for (const video of active) {
+    const coordinate = buildVideoAddressPointer(video);
+    if (coordinate && typeof video.thumbnail === "string" && video.thumbnail) {
+      map.set(coordinate, video.thumbnail);
+    }
+  }
+  return map;
+}
+
+function coverFor(playlist, thumbnails) {
+  for (const item of playlist.items) {
+    if (item.type === "a") {
+      const thumb = thumbnails.get(item.value);
+      if (thumb) {
+        return thumb;
+      }
+    }
+  }
+  return playlist.image || "";
+}
+
+function renderPlaylistCard(doc, playlist, coverUrl) {
   const card = doc.createElement("a");
   card.href = playlistHref(playlist);
   card.className = "playlist-card";
@@ -46,27 +79,33 @@ function renderPlaylistCard(doc, playlist) {
 
   const thumb = doc.createElement("div");
   thumb.className = "playlist-card__thumb";
-  if (playlist.image) {
+
+  if (coverUrl) {
     const img = doc.createElement("img");
-    img.src = playlist.image;
+    img.src = coverUrl;
     img.alt = "";
     img.loading = "lazy";
     img.referrerPolicy = "no-referrer";
     img.className = "playlist-card__image";
     thumb.appendChild(img);
   }
+
+  const scrim = doc.createElement("div");
+  scrim.className = "playlist-card__scrim";
+  thumb.appendChild(scrim);
+
   const count = doc.createElement("span");
   count.className = "playlist-card__count";
   const n = playlist.items.length;
   count.textContent = `${n} ${n === 1 ? "video" : "videos"}`;
   thumb.appendChild(count);
-  card.appendChild(thumb);
 
   const title = doc.createElement("p");
   title.className = "playlist-card__title";
   title.textContent = playlist.title;
-  card.appendChild(title);
+  thumb.appendChild(title);
 
+  card.appendChild(thumb);
   return card;
 }
 
@@ -111,9 +150,12 @@ async function refresh() {
   }
 
   clearChildren(grid);
+  const thumbnails = buildThumbnailMap();
   const frag = doc.createDocumentFragment();
   for (const playlist of playlists) {
-    frag.appendChild(renderPlaylistCard(doc, playlist));
+    frag.appendChild(
+      renderPlaylistCard(doc, playlist, coverFor(playlist, thumbnails)),
+    );
   }
   grid.appendChild(frag);
   section.classList.remove("hidden");

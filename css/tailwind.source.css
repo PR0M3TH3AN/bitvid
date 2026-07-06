@@ -2951,34 +2951,62 @@
     background-color: currentColor;
   }
 
-  /* #37: channel playlists section — a responsive row of playlist cards. */
+  /* #37: channel playlists — each card is a stacked "pile of clips" cover with a
+     themed gradient scrim and the title set bold over it. */
   .playlist-grid {
     @apply grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4;
-    gap: var(--space-md);
+    gap: var(--space-lg);
   }
 
   .playlist-card {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2xs);
+    position: relative;
+    display: block;
+    aspect-ratio: 16 / 9;
     text-decoration: none;
-    transition: transform 0.12s ease-out;
+    /* leave room for the offset stack layers to peek out */
+    margin-block-start: var(--space-2xs);
+    margin-inline-end: var(--space-xs);
+    transition: transform 0.14s ease-out;
+  }
+
+  /* Two offset layers behind the cover read as a stack of videos. */
+  .playlist-card::before,
+  .playlist-card::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: var(--radius-md);
+    background-color: var(--color-page-alt);
+    border: var(--border-width-hairline) solid var(--color-overlay-strong);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .playlist-card::before {
+    transform: translate(var(--size-5px), calc(-1 * var(--size-5px)))
+      rotate(2.5deg);
+  }
+
+  .playlist-card::after {
+    transform: translate(calc(-1 * var(--size-4px)), calc(-1 * var(--size-3px)))
+      rotate(-2deg);
+  }
+
+  .playlist-card__thumb {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background-color: var(--color-page-alt);
+    box-shadow: var(--shadow-md);
   }
 
   .playlist-card:hover {
     transform: translateY(-2px);
   }
 
-  .playlist-card__thumb {
-    position: relative;
-    display: flex;
-    align-items: flex-end;
-    justify-content: flex-end;
-    aspect-ratio: 16 / 9;
-    overflow: hidden;
-    border-radius: var(--radius-sm);
-    background-color: var(--color-page-alt);
-    border: var(--border-width-hairline) solid var(--color-page-alt);
+  .playlist-card:hover .playlist-card__thumb {
+    box-shadow: var(--shadow-lg);
   }
 
   .playlist-card__image {
@@ -2989,23 +3017,45 @@
     object-fit: cover;
   }
 
+  /* Themed scrim: accent-tinted dark at the base fading to clear, so the bold
+     title reads over any cover (always dark, so the title is always white). */
+  .playlist-card__scrim {
+    position: absolute;
+    inset: 0;
+    background-image: linear-gradient(
+      to top,
+      color-mix(in srgb, var(--color-accent-strong) 62%, black) 0%,
+      color-mix(in srgb, var(--color-accent) 26%, transparent) 45%,
+      transparent 74%
+    );
+  }
+
   .playlist-card__count {
-    position: relative;
-    margin: var(--space-2xs);
+    position: absolute;
+    z-index: 2;
+    inset-block-start: var(--space-2xs);
+    inset-inline-end: var(--space-2xs);
     border-radius: var(--radius-sm);
     padding-block: var(--space-3xs);
     padding-inline: var(--space-2xs);
     font-size: var(--font-size-2xs);
-    font-weight: 500;
-    color: var(--color-text-strong);
-    background-color: var(--color-page);
+    font-weight: 600;
+    color: var(--color-white);
+    background-color: var(--color-overlay-strong);
   }
 
   .playlist-card__title {
+    position: absolute;
+    z-index: 2;
+    inset-inline: 0;
+    inset-block-end: 0;
     margin: 0;
+    padding: var(--space-sm);
     font-size: var(--font-size-sm);
-    font-weight: 500;
-    color: var(--color-text);
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--color-white);
+    text-shadow: 0 var(--size-2px) var(--size-3px) var(--color-overlay-black);
     display: -webkit-box;
     -webkit-line-clamp: 2;
     line-clamp: 2;
