@@ -54,34 +54,49 @@ function resolveOrderedVideos(playlist, videoPool) {
   return ordered;
 }
 
-// The videos to resolve against: the referenced creators' videos (fetched from
-// relays so a DIRECT load / cold cache still works) plus whatever's already
-// active. Without the fetch, a deep-linked playlist resolves nothing and the
-// shared grid shows the default feed instead.
+// The videos to resolve against. Resolve from the ALREADY-active cache first —
+// when you arrive from the creator's channel (or re-visit), the videos are
+// already loaded, so this is instant with no relay round-trip. Only when some
+// playlist coordinates are still missing (a cold deep-link) do we fetch the
+// referenced creators' videos. Without any fetch, a cold deep-link resolves
+// nothing and the shared grid shows the default feed instead.
 async function gatherVideoPool(playlist, app) {
-  const authors = [
-    ...new Set(
-      playlist.items
-        .filter((item) => item.type === "a")
-        .map((item) => item.value.split(":")[1])
-        .filter(Boolean),
-    ),
-  ];
-
-  let fetched = [];
-  if (authors.length && typeof app?.nostrService?.fetchVideosByAuthors === "function") {
-    try {
-      fetched = (await app.nostrService.fetchVideosByAuthors(authors)) || [];
-    } catch (error) {
-      devLogger.warn("[playlistView] Failed to fetch playlist videos:", error);
-    }
-  }
-
   let active = [];
   try {
     active = nostrClient.getActiveVideos() || [];
   } catch (error) {
     active = [];
+  }
+
+  const covered = new Set();
+  for (const video of active) {
+    const coordinate = buildVideoAddressPointer(video);
+    if (coordinate) {
+      covered.add(coordinate);
+    }
+  }
+
+  const neededCoords = playlist.items
+    .filter((item) => item.type === "a")
+    .map((item) => item.value);
+  const allCovered = neededCoords.every((coord) => covered.has(coord));
+  if (allCovered) {
+    return active;
+  }
+
+  const authors = [
+    ...new Set(neededCoords.map((coord) => coord.split(":")[1]).filter(Boolean)),
+  ];
+  let fetched = [];
+  if (
+    authors.length &&
+    typeof app?.nostrService?.fetchVideosByAuthors === "function"
+  ) {
+    try {
+      fetched = (await app.nostrService.fetchVideosByAuthors(authors)) || [];
+    } catch (error) {
+      devLogger.warn("[playlistView] Failed to fetch playlist videos:", error);
+    }
   }
 
   return [...fetched, ...active];
