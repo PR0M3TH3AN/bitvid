@@ -79,6 +79,8 @@ export class ProfilePlaylistsController {
     this.playlists = [];
     this.expanded = new Set();
     this.loading = false;
+    this._drag = null;
+    this._dropTarget = null;
     this._onChanged = () => {
       void this.refresh();
     };
@@ -102,6 +104,16 @@ export class ProfilePlaylistsController {
       this.listEl.addEventListener("click", (event) =>
         this.handleListClick(event),
       );
+      // Desktop drag-to-reorder for videos within a playlist. The ↑/↓ buttons
+      // stay as the accessible / touch-friendly path.
+      this.listEl.addEventListener("dragstart", (event) =>
+        this.handleDragStart(event),
+      );
+      this.listEl.addEventListener("dragover", (event) =>
+        this.handleDragOver(event),
+      );
+      this.listEl.addEventListener("drop", (event) => this.handleDrop(event));
+      this.listEl.addEventListener("dragend", () => this.clearDrag());
     }
     if (typeof document !== "undefined") {
       document.addEventListener("bitvid:playlists-changed", this._onChanged);
@@ -268,6 +280,9 @@ export class ProfilePlaylistsController {
     }
     playlist.items.forEach((item, index) => {
       const row = el("li", "playlist-video");
+      row.draggable = true;
+      row.dataset.plId = playlist.id;
+      row.dataset.plIndex = String(index);
       const info = videoMap.get(item.value);
       const dtag = item.value.split(":")[2] || item.value;
       const label = info?.title || dtag;
@@ -335,6 +350,88 @@ export class ProfilePlaylistsController {
       void this.moveVideo(playlist, Number(target.dataset.plIndex), 1);
     } else if (action === "remove") {
       void this.removeVideo(playlist, target.dataset.plCoord);
+    }
+  }
+
+  handleDragStart(event) {
+    const row = event.target?.closest?.(".playlist-video");
+    if (!row) {
+      return;
+    }
+    this._drag = {
+      playlistId: row.dataset.plId,
+      fromIndex: Number(row.dataset.plIndex),
+    };
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = "move";
+      try {
+        event.dataTransfer.setData("text/plain", String(this._drag.fromIndex));
+      } catch (error) {
+        // some browsers require setData(); ignore failures
+      }
+    }
+    row.classList.add("playlist-video--dragging");
+  }
+
+  handleDragOver(event) {
+    if (!this._drag) {
+      return;
+    }
+    const row = event.target?.closest?.(".playlist-video");
+    if (!row || row.dataset.plId !== this._drag.playlistId) {
+      return;
+    }
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = "move";
+    }
+    if (this._dropTarget && this._dropTarget !== row) {
+      this._dropTarget.classList.remove("playlist-video--drop-target");
+    }
+    if (Number(row.dataset.plIndex) !== this._drag.fromIndex) {
+      row.classList.add("playlist-video--drop-target");
+      this._dropTarget = row;
+    }
+  }
+
+  handleDrop(event) {
+    const drag = this._drag;
+    const row = event.target?.closest?.(".playlist-video");
+    this.clearDrag();
+    if (!drag || !row || row.dataset.plId !== drag.playlistId) {
+      return;
+    }
+    event.preventDefault();
+    const toIndex = Number(row.dataset.plIndex);
+    if (
+      !Number.isInteger(drag.fromIndex) ||
+      !Number.isInteger(toIndex) ||
+      drag.fromIndex === toIndex
+    ) {
+      return;
+    }
+    const playlist = this.playlists.find((p) => p.id === drag.playlistId);
+    if (!playlist) {
+      return;
+    }
+    const items = reorderPlaylistItems(playlist.items, drag.fromIndex, toIndex);
+    void this.publishUpdate({ ...playlist, items }, null);
+  }
+
+  clearDrag() {
+    this._drag = null;
+    this._dropTarget = null;
+    if (this.listEl) {
+      this.listEl
+        .querySelectorAll(
+          ".playlist-video--dragging, .playlist-video--drop-target",
+        )
+        .forEach((node) => {
+          node.classList.remove(
+            "playlist-video--dragging",
+            "playlist-video--drop-target",
+          );
+        });
     }
   }
 
