@@ -605,4 +605,5 @@ export const FEED_TYPES = Object.freeze({
   CHANNEL: "channel-profile",
   DOCS: "docs",
   SEARCH: "search",
+  PLAYLIST: "playlist",
 });
