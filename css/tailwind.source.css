@@ -3063,6 +3063,98 @@
     overflow: hidden;
   }
 
+  /* #37: profile modal "Playlists" management pane — collapsible rows. */
+  .playlist-row {
+    border: var(--border-width-hairline) solid var(--color-border-subtle);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background-color: var(--color-page-alt);
+  }
+
+  .playlist-row + .playlist-row {
+    margin-block-start: var(--space-2xs);
+  }
+
+  .playlist-row__head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-sm);
+    cursor: pointer;
+  }
+
+  .playlist-row__chevron svg {
+    color: var(--color-text-muted);
+    transition: transform 0.15s ease-out;
+  }
+
+  .playlist-row__chevron[data-open="true"] svg {
+    transform: rotate(90deg);
+  }
+
+  .playlist-row__meta {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+  }
+
+  .playlist-row__title {
+    margin: 0;
+    font-weight: 600;
+    color: var(--color-text-strong);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .playlist-row__count {
+    margin: 0;
+    font-size: var(--font-size-2xs);
+    color: var(--color-text-muted);
+  }
+
+  .playlist-row__actions {
+    display: flex;
+    gap: var(--space-2xs);
+    flex-shrink: 0;
+  }
+
+  .playlist-row__videos {
+    border-block-start: var(--border-width-hairline) solid
+      var(--color-border-subtle);
+    padding: var(--space-2xs) var(--space-sm) var(--space-sm);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xs);
+  }
+
+  .playlist-row__empty {
+    padding-block: var(--space-2xs);
+    font-size: var(--font-size-sm);
+    color: var(--color-text-muted);
+  }
+
+  .playlist-video {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+  }
+
+  .playlist-video__title {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    font-size: var(--font-size-sm);
+    color: var(--color-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .playlist-video__controls {
+    display: flex;
+    gap: var(--space-3xs);
+    flex-shrink: 0;
+  }
+
   /* #43: always-visible active-identity pill. Rendered after the header in
      flow and pulled up with a negative block-start margin so it sits half-on /
      half-off the header divider — every pane shows who you're acting as. */

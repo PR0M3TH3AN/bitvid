@@ -149,6 +149,56 @@ export async function publishPlaylist(playlist, { client = nostrClient } = {}) {
   return result?.signedEvent || null;
 }
 
+/**
+ * Delete a playlist: publishes a NIP-09 deletion (kind 5) referencing the
+ * playlist's addressable coordinate (`a`) and, when known, its event id (`e`),
+ * so relays that honor deletions drop it. Also republishes the playlist as an
+ * empty replaceable event so readers that ignore kind 5 still see it as empty
+ * (and empty playlists are dropped from listings).
+ * @param {Object} playlist  parsed playlist ({ pubkey, id, address, eventId })
+ * @param {{ client?: any }} [opts]
+ * @returns {Promise<Object|null>} the signed deletion event
+ */
+export async function deletePlaylist(playlist, { client = nostrClient } = {}) {
+  const pubkey =
+    typeof playlist?.pubkey === "string" ? playlist.pubkey.trim().toLowerCase() : "";
+  const id = typeof playlist?.id === "string" ? playlist.id.trim() : "";
+  if (!pubkey || !id) {
+    return null;
+  }
+  const address =
+    typeof playlist.address === "string" && playlist.address
+      ? playlist.address
+      : `${PLAYLIST_KIND}:${pubkey}:${id}`;
+
+  const tags = [["a", address]];
+  if (typeof playlist.eventId === "string" && playlist.eventId) {
+    tags.push(["e", playlist.eventId]);
+  }
+  const deletion = {
+    kind: 5,
+    pubkey,
+    created_at: Math.floor(Date.now() / 1000),
+    tags,
+    content: "playlist deleted",
+  };
+
+  // Best-effort: replace with an empty playlist so kind-5-ignoring readers drop it.
+  try {
+    await publishPlaylist(
+      { pubkey, id, title: playlist.title || "", items: [] },
+      { client },
+    );
+  } catch (error) {
+    devLogger.warn("[playlists] Failed to empty playlist during delete:", error);
+  }
+
+  const result = await client.signAndPublishEvent(deletion, {
+    context: "playlist-delete",
+  });
+  return result?.signedEvent || null;
+}
+
 export default {
   fetchCreatorPlaylists,
   fetchPlaylist,

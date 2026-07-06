@@ -45,6 +45,8 @@ import { DMSettingsModalController } from "./dm/DMSettingsModalController.js";
 import { ProfileWalletController } from "./profileModal/ProfileWalletController.js";
 import { ProfileStorageController } from "./profileModal/ProfileStorageController.js";
 import { MyVideosController } from "./profileModal/MyVideosController.js";
+import { ProfilePlaylistsController } from "./profileModal/ProfilePlaylistsController.js";
+import { FEATURE_PLAYLISTS } from "../constants.js";
 import { ProfileDirectMessageController } from "./profileModal/ProfileDirectMessageController.js";
 import { ProfileRelayController } from "./profileModal/ProfileRelayController.js";
 import { ProfileHashtagController } from "./profileModal/ProfileHashtagController.js";
@@ -530,6 +532,7 @@ export class ProfileModalController {
     this.walletController = new ProfileWalletController(this);
     this.storageController = new ProfileStorageController(this);
     this.myVideosController = new MyVideosController(this);
+    this.playlistsController = new ProfilePlaylistsController(this);
     this.mobileViewState = "menu";
     this.lastMobileViewState = "menu";
     this.setActivePane(this.getActivePane());
@@ -696,6 +699,12 @@ export class ProfileModalController {
     this.navButtons.storage = document.getElementById("profileNavStorage") || null;
     this.navButtons.myvideos =
       document.getElementById("profileNavMyVideos") || null;
+    this.navButtons.playlists =
+      document.getElementById("profileNavPlaylists") || null;
+    // Hide the Playlists tab entirely while the feature is off.
+    if (!FEATURE_PLAYLISTS && this.navButtons.playlists) {
+      this.navButtons.playlists.classList.add("hidden");
+    }
     this.navButtons.hashtags =
       document.getElementById("profileNavHashtags") || null;
     this.navButtons.subscriptions =
@@ -721,6 +730,8 @@ export class ProfileModalController {
     this.panes.storage = document.getElementById("profilePaneStorage") || null;
     this.panes.myvideos =
       document.getElementById("profilePaneMyVideos") || null;
+    this.panes.playlists =
+      document.getElementById("profilePanePlaylists") || null;
     this.panes.hashtags = document.getElementById("profilePaneHashtags") || null;
     this.panes.subscriptions =
       document.getElementById("profilePaneSubscriptions") || null;
@@ -816,6 +827,7 @@ export class ProfileModalController {
     this.walletController.cacheDomReferences();
     this.storageController.cacheDomReferences();
     this.myVideosController.cacheDomReferences();
+    this.playlistsController.cacheDomReferences();
 
     if (this.dmController.pendingMessagesRender) {
       const { messages, actorPubkey } = this.dmController.pendingMessagesRender;
@@ -1976,6 +1988,7 @@ export class ProfileModalController {
     this.walletController.registerEventListeners();
     this.storageController.registerEventListeners();
     this.myVideosController.registerEventListeners();
+    this.playlistsController.registerEventListeners();
     this.adminController.registerEventListeners();
     this.moderationController.registerEventListeners();
 
@@ -3413,6 +3426,8 @@ export class ProfileModalController {
         this.storageController.populateStoragePane();
       } else if (target === "myvideos") {
         void this.myVideosController.populate({ forceFetch: true });
+      } else if (target === "playlists") {
+        void this.playlistsController.refresh();
       } else if (target === "hashtags") {
         this.hashtagController.populateHashtagPreferences();
         if (activeHex && this.services.hashtagPreferences) {
