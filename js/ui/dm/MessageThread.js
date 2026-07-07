@@ -137,6 +137,9 @@ export function MessageThread({
         message,
         variant: isOutgoing ? "outgoing" : "incoming",
         avatarSrc: isOutgoing ? currentUserAvatarUrl : (contact.avatarSrc || ""),
+        // Star incoming bubbles from an admin peer; the current user's own admin
+        // status is already shown on the profile button.
+        adminId: isOutgoing ? "" : (contact.pubkey || contact.id || ""),
       });
       timeline.appendChild(bubble);
     });

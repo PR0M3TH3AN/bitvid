@@ -5896,6 +5896,14 @@
     border: var(--border-width-hairline) solid var(--border-subtle);
   }
 
+  /* Non-clipped relative shell used only when a message avatar needs an admin
+     star; the plain .dm-message-avatar img has no wrapper otherwise. */
+  .dm-message-avatar-wrap {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+  }
+
   .dm-message-bubble {
     max-width: 75%;
     display: flex;

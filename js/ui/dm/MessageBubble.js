@@ -1,3 +1,5 @@
+import { applyAdminStar, isAdminActor } from "../adminBadge.js";
+
 function createElement(doc, tag, className, text) {
   const element = doc.createElement(tag);
   if (className) {
@@ -14,6 +16,7 @@ export function MessageBubble({
   message = {},
   variant = "incoming",
   avatarSrc = "",
+  adminId = "",
 } = {}) {
   if (!doc) {
     throw new Error("MessageBubble requires a document reference.");
@@ -31,6 +34,17 @@ export function MessageBubble({
   const avatar = createElement(doc, "img", "dm-message-avatar");
   avatar.src = avatarSrc || "assets/svg/default-profile.svg";
   avatar.alt = variant === "outgoing" ? "Me" : "Sender";
+
+  // The message avatar is a bare circular <img>; when its author is an admin,
+  // wrap it in a non-clipped relative shell so the star can sit in the corner.
+  // Non-admin bubbles keep the plain <img> so existing layout is untouched.
+  let avatarNode = avatar;
+  if (adminId && isAdminActor(adminId)) {
+    const wrap = createElement(doc, "span", "dm-message-avatar-wrap");
+    wrap.appendChild(avatar);
+    applyAdminStar(wrap, adminId, { doc });
+    avatarNode = wrap;
+  }
 
   const bubble = createElement(doc, "div", "dm-message-bubble");
   bubble.classList.add(`dm-message-bubble--${variant}`);
@@ -67,9 +81,9 @@ export function MessageBubble({
 
   if (variant === "outgoing") {
     row.appendChild(bubble);
-    row.appendChild(avatar);
+    row.appendChild(avatarNode);
   } else {
-    row.appendChild(avatar);
+    row.appendChild(avatarNode);
     row.appendChild(bubble);
   }
 
