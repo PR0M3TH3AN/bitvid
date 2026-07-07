@@ -94,6 +94,19 @@ test("fetchPendingSubmissions returns pending, excludes resolved, dedupes by app
   assert.equal(alice.id, "s2", "newest application for alice wins");
 });
 
+test("fetchPendingSubmissions still returns pending when a pool is present (mirror is best-effort)", async () => {
+  const events = [
+    submissionEvent({ id: "m1", applicant: "npub-x", created_at: 100 }),
+  ];
+  const client = mockClient({ events });
+  // Presence of a pool triggers the re-broadcast mirror path; any publish
+  // failure is swallowed and must not affect the returned queue.
+  client.pool = {};
+  const pending = await fetchPendingSubmissions({ adminHex: ADMIN, client });
+  assert.equal(pending.length, 1);
+  assert.equal(pending[0].applicant, "npub-x");
+});
+
 test("fetchPendingSubmissions returns [] for a blank admin or no relays", async () => {
   assert.deepEqual(await fetchPendingSubmissions({ adminHex: "", client: mockClient({}) }), []);
   const noRelays = { ...mockClient({}), relays: [] };

@@ -14,6 +14,7 @@ import {
   SUBMISSION_KIND,
   parseSubmissionEvent,
 } from "./submissionService.js";
+import { publishEventToRelays } from "../nostrPublish.js";
 import { devLogger } from "../utils/logger.js";
 
 export const RESOLVED_LIST_KIND = 30000;
@@ -31,6 +32,28 @@ function getManagerAndRelays(client) {
       : null;
   const relays = Array.isArray(client?.relays) ? client.relays : [];
   return { manager, relays };
+}
+
+// Keep pending submissions alive. They're authored by throwaway ephemeral keys
+// and public relays prune events from pubkeys with no social graph, so the queue
+// quietly evaporates over time. A signed event can be re-published by anyone, so
+// on each fetch we re-broadcast the still-pending events back to our relays to
+// refresh them. Best-effort and fire-and-forget — never blocks or fails a fetch.
+function mirrorPendingSubmissions(rawEvents, client) {
+  try {
+    const pool = client?.pool;
+    const relays = Array.isArray(client?.relays) ? client.relays : [];
+    if (!pool || !relays.length || !Array.isArray(rawEvents) || !rawEvents.length) {
+      return;
+    }
+    for (const event of rawEvents) {
+      Promise.resolve()
+        .then(() => publishEventToRelays(pool, relays, event))
+        .catch(() => {});
+    }
+  } catch (error) {
+    // best effort — mirroring must never break the submissions view
+  }
 }
 
 function newestByCreatedAt(events) {
@@ -93,7 +116,16 @@ export async function fetchPendingSubmissions({
       byApplicant.set(key, submission);
     }
   }
-  return [...byApplicant.values()];
+  const pending = [...byApplicant.values()];
+
+  // Refresh the still-pending events on our relays so they don't get pruned.
+  const pendingIds = new Set(pending.map((submission) => submission.eventId));
+  const rawPending = (Array.isArray(subEvents) ? subEvents : []).filter(
+    (event) => event && pendingIds.has(event.id),
+  );
+  mirrorPendingSubmissions(rawPending, client);
+
+  return pending;
 }
 
 /**
