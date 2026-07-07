@@ -9,10 +9,12 @@
 import {
   fetchPendingSubmissions,
   markSubmissionResolved,
+  resolveEventAuthorHex,
 } from "../../submissions/submissionFacade.js";
 import { SUBMISSION_TYPE_LABELS } from "../../submissions/submissionService.js";
 import { FEATURE_SUBMISSIONS } from "../../constants.js";
-import { safeDecodeNpub } from "../../utils/nostrHelpers.js";
+import { safeDecodeNpub, safeEncodeNpub } from "../../utils/nostrHelpers.js";
+import { formatShortNpub } from "../../utils/formatters.js";
 import { showConfirm } from "../confirmDialog.js";
 import { devLogger } from "../../utils/logger.js";
 
@@ -202,7 +204,7 @@ function actionsForSubmission(submission) {
       actions.push({
         action: "approve-appeal",
         label: "Approve & unblock",
-        hint: "Removes the video from the block list so it's visible again.",
+        hint: "Finds why it's hidden and lifts the block (author-level is confirmed separately).",
         primary: true,
       });
     }
@@ -288,9 +290,12 @@ async function approveSubmission(controller, submission) {
   }
 }
 
-// Approve a content appeal: actually remove the named video from the per-event
-// block list, then mark the appeal resolved. Requires a well-formed target id
-// (parsed from the submission's `e` tag) — the button isn't shown without one.
+// Diagnose WHY the appealed video is hidden, then apply the right fix. A video
+// can be hidden by an event-level block (just that video) or an author-level
+// block (the whole npub — hides ALL their content). We resolve the event's
+// author from relays and branch: author-level unblock is a bigger hammer, so it
+// gets its own explicit, strongly-worded confirmation and is never bundled into
+// the default "unblock this video".
 async function approveAppeal(controller, submission) {
   const services = controller.mainController.services;
   const accessControl = services?.accessControl;
@@ -299,38 +304,100 @@ async function approveAppeal(controller, submission) {
   if (!actorNpub || !accessControl || !targetEventId) {
     return;
   }
-  const ok = await showConfirm(
-    "Unblock this video? It'll be removed from the block list and become visible again.",
-    { title: "Approve appeal", confirmLabel: "Unblock" },
-  );
-  if (!ok) {
-    return;
+
+  const eventBlocked =
+    typeof accessControl.isEventBlacklisted === "function"
+      ? Boolean(accessControl.isEventBlacklisted(targetEventId))
+      : false;
+  let authorHex = "";
+  try {
+    authorHex = await resolveEventAuthorHex({ eventId: targetEventId });
+  } catch (error) {
+    authorHex = "";
   }
+  const authorNpub = authorHex ? safeEncodeNpub(authorHex) || "" : "";
+  const authorBlocked =
+    authorHex && typeof accessControl.isBlacklisted === "function"
+      ? Boolean(accessControl.isBlacklisted(authorHex))
+      : false;
+
+  // Pick the action + confirmation for the real block state. `apply` runs the
+  // unblock(s) after the admin confirms; `successMessage` reports what happened.
+  let apply = null;
+  let successMessage = "";
+  if (authorBlocked) {
+    const who = authorNpub ? formatShortNpub(authorNpub) : "this creator";
+    const confirmed = await showConfirm(
+      `This video is hidden because its author (${who}) is blocked platform-wide. Unblocking restores ALL of their content, not just this video. Unblock the author?`,
+      { title: "Author is blocked", confirmLabel: "Unblock author" },
+    );
+    if (!confirmed) {
+      return;
+    }
+    apply = async () => {
+      const result = await accessControl.removeFromBlacklist(actorNpub, authorNpub);
+      if (!result || result.ok === false) {
+        throw new Error(result?.error || "author-unblock-failed");
+      }
+      // Also clear any event-level block so the video is fully visible.
+      if (eventBlocked && typeof accessControl.removeFromEventBlacklist === "function") {
+        await accessControl.removeFromEventBlacklist(actorNpub, targetEventId);
+      }
+    };
+    successMessage = "Appeal approved — the author has been unblocked.";
+  } else if (eventBlocked) {
+    const confirmed = await showConfirm(
+      "Unblock this video? It'll be removed from the block list and become visible again.",
+      { title: "Approve appeal", confirmLabel: "Unblock" },
+    );
+    if (!confirmed) {
+      return;
+    }
+    apply = async () => {
+      const result = await accessControl.removeFromEventBlacklist(
+        actorNpub,
+        targetEventId,
+      );
+      if (!result || result.ok === false) {
+        throw new Error(result?.error || "unblock-failed");
+      }
+    };
+    successMessage = "Appeal approved — the video has been unblocked.";
+  } else {
+    // Not on either block list. Distinguish "confirmed not blocked" from
+    // "couldn't verify" (event not found on connected relays).
+    const message = authorHex
+      ? "This video isn't on the event or author block list — there's nothing to unblock (it may already be unblocked, or hidden by trusted moderation reports). Mark the appeal as resolved?"
+      : "Couldn't find this video on connected relays to check its block status. If you've already lifted the block, mark the appeal as resolved — otherwise cancel and check the admin block lists.";
+    const confirmed = await showConfirm(message, {
+      title: authorHex ? "Nothing to unblock" : "Couldn't verify",
+      confirmLabel: "Mark resolved",
+    });
+    if (!confirmed) {
+      return;
+    }
+    apply = async () => {};
+    successMessage = "Appeal marked as resolved.";
+  }
+
   controller.pendingSubmissions = (controller.pendingSubmissions || []).filter(
     (s) => s.eventId !== submission.eventId,
   );
   renderSubmissions(controller);
   try {
-    const result = await accessControl.removeFromEventBlacklist(
-      actorNpub,
-      targetEventId,
-    );
-    if (!result || result.ok === false) {
-      throw new Error(result?.error || "unblock-failed");
-    }
+    await apply();
     await markSubmissionResolved({
       submission,
       status: "approved",
       actingHex: safeDecodeNpub(actorNpub),
     });
-    controller.mainController.showSuccess?.(
-      "Appeal approved — the video has been unblocked.",
-    );
+    controller.mainController.showSuccess?.(successMessage);
+    controller.populateAdminLists?.();
     emitSubmissionsChanged();
   } catch (error) {
     devLogger.warn("[profileModal] Approve appeal failed:", error);
     controller.mainController.showError?.(
-      "Couldn't unblock — please try again.",
+      "Couldn't complete the appeal — please try again.",
     );
     void populateSubmissions(controller);
   }

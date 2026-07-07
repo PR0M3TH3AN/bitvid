@@ -96,6 +96,40 @@ export async function fetchPendingSubmissions({
   return [...byApplicant.values()];
 }
 
+/**
+ * Look up a single event by id and return its author's hex pubkey (or "").
+ * The appeal-approval flow uses this to discover WHY a video is hidden — the
+ * event's own pubkey is the authoritative author, so we don't rely on the
+ * appellant to supply it.
+ * @param {{ eventId: string, client?: any }} opts
+ * @returns {Promise<string>} lowercased author hex, or "" if not found
+ */
+export async function resolveEventAuthorHex({ eventId, client = nostrClient } = {}) {
+  const id = normHex(eventId);
+  if (!id) {
+    return "";
+  }
+  const { manager, relays } = getManagerAndRelays(client);
+  if (!manager || typeof manager.list !== "function" || !relays.length) {
+    return "";
+  }
+  try {
+    const events = await manager.list({
+      relays,
+      filters: [{ ids: [id], limit: 1 }],
+    });
+    const found = (Array.isArray(events) ? events : []).find(
+      (event) => normHex(event?.id) === id,
+    );
+    return found && typeof found.pubkey === "string"
+      ? found.pubkey.trim().toLowerCase()
+      : "";
+  } catch (error) {
+    devLogger.warn("[submissions] Failed to resolve event author:", error);
+    return "";
+  }
+}
+
 async function fetchResolvedIds({ editorHexes, manager, relays }) {
   const authors = [...new Set(editorHexes.map(normHex).filter(Boolean))];
   const ids = new Set();
@@ -201,4 +235,5 @@ export default {
   SUBMISSIONS_RESOLVED_DTAG,
   fetchPendingSubmissions,
   markSubmissionResolved,
+  resolveEventAuthorHex,
 };

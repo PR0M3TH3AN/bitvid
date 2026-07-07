@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   fetchPendingSubmissions,
   markSubmissionResolved,
+  resolveEventAuthorHex,
   RESOLVED_LIST_KIND,
   SUBMISSIONS_RESOLVED_DTAG,
 } from "../js/submissions/submissionFacade.js";
@@ -47,6 +48,7 @@ function mockClient({ events = [], onPublish } = {}) {
       list: async ({ filters }) => {
         const f = filters[0] || {};
         return events.filter((ev) => {
+          if (f.ids && !f.ids.includes(ev.id)) return false;
           if (f.kinds && !f.kinds.includes(ev.kind)) return false;
           if (f.authors && !f.authors.includes(ev.pubkey)) return false;
           if (f["#p"]) {
@@ -119,6 +121,30 @@ test("markSubmissionResolved appends to the acting moderator's resolved-set", as
   const newTag = published.tags.find((t) => t[0] === "e" && t[1] === "evt-s3");
   assert.equal(newTag[2], "denied", "records status");
   assert.equal(newTag[3], "npub-bob", "records applicant");
+});
+
+test("resolveEventAuthorHex returns the blocked event's author (lowercased)", async () => {
+  const blockedEventId = "f".repeat(64);
+  const authorHex = "C".repeat(64); // stored upper-case to prove normalization
+  const events = [
+    { id: blockedEventId, kind: 30078, pubkey: authorHex, tags: [], content: "" },
+  ];
+  const author = await resolveEventAuthorHex({
+    eventId: blockedEventId,
+    client: mockClient({ events }),
+  });
+  assert.equal(author, "c".repeat(64));
+});
+
+test("resolveEventAuthorHex returns '' for a blank id or an event not found", async () => {
+  assert.equal(await resolveEventAuthorHex({ eventId: "", client: mockClient({}) }), "");
+  assert.equal(
+    await resolveEventAuthorHex({
+      eventId: "a".repeat(64),
+      client: mockClient({ events: [] }),
+    }),
+    "",
+  );
 });
 
 test("markSubmissionResolved is a no-op without an acting pubkey or event id", async () => {
