@@ -69,6 +69,47 @@ export function renderSubmissions(controller) {
   }
 }
 
+// Render `**bold**` segments as <strong>; everything else as plain text — never
+// parse HTML from the content (submissions are untrusted public events).
+function appendInline(el, text) {
+  const parts = String(text).split("**");
+  parts.forEach((part, i) => {
+    if (!part) {
+      return;
+    }
+    if (i % 2 === 1) {
+      const strong = document.createElement("strong");
+      strong.textContent = part;
+      el.appendChild(strong);
+    } else {
+      el.appendChild(document.createTextNode(part));
+    }
+  });
+}
+
+// Tiny, SAFE markdown-lite renderer for the form-generated body: `#…###`
+// headings become bold lines, leading `- `/`* ` bullet markers are stripped,
+// `**bold**` is honored inline. No HTML is ever parsed from the content.
+function renderSubmissionBody(container, content) {
+  for (const raw of String(content).split("\n")) {
+    const line = raw.replace(/\s+$/, "");
+    if (!line.trim()) {
+      continue;
+    }
+    if (/^#{1,6}\s/.test(line)) {
+      const heading = document.createElement("p");
+      heading.className = "submission-card__heading";
+      appendInline(heading, line.replace(/^#{1,6}\s+/, ""));
+      container.appendChild(heading);
+    } else {
+      const p = document.createElement("p");
+      p.className = "submission-card__line";
+      appendInline(p, line.replace(/^[-*]\s+/, ""));
+      container.appendChild(p);
+    }
+  }
+}
+
 function renderSubmissionRow(submission) {
   const li = document.createElement("li");
   li.className = "submission-card";
@@ -90,9 +131,9 @@ function renderSubmissionRow(submission) {
   li.appendChild(head);
 
   if (submission.content) {
-    const body = document.createElement("p");
+    const body = document.createElement("div");
     body.className = "submission-card__body";
-    body.textContent = submission.content;
+    renderSubmissionBody(body, submission.content);
     li.appendChild(body);
   }
 

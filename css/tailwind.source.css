@@ -3210,10 +3210,22 @@
   }
 
   .submission-card__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3xs);
+  }
+
+  .submission-card__heading {
+    margin: 0;
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--color-text-strong);
+  }
+
+  .submission-card__line {
     margin: 0;
     font-size: var(--font-size-sm);
     color: var(--color-text);
-    white-space: pre-wrap;
     word-break: break-word;
   }
 
