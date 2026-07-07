@@ -20,9 +20,55 @@ import { devLogger } from "../utils/logger.js";
 export const RESOLVED_LIST_KIND = 30000;
 export const SUBMISSIONS_RESOLVED_DTAG = "bitvid:admin:submissions-resolved";
 const LIST_LIMIT = 500;
+const LOCAL_RESOLVED_KEY = "bitvid:admin:submissions-resolved-ids";
 
 function normHex(value) {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function normNpub(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+// A device-local, ever-growing set of resolved submission ids. It backs up the
+// relay resolved-set two ways: (1) it hides handled items even if a cold-load
+// relay read momentarily misses the list, and (2) it makes the read-modify-write
+// in markSubmissionResolved loss-proof — a missed read can't republish a shrunk
+// list. Cleared with site data (that's fine; the mirrored relay list restores).
+function getLocalResolvedIds() {
+  try {
+    if (typeof localStorage === "undefined") {
+      return new Set();
+    }
+    const raw = localStorage.getItem(LOCAL_RESOLVED_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return new Set(
+      Array.isArray(parsed) ? parsed.filter((id) => typeof id === "string" && id) : [],
+    );
+  } catch (error) {
+    return new Set();
+  }
+}
+
+function addLocalResolvedIds(ids) {
+  try {
+    if (typeof localStorage === "undefined") {
+      return;
+    }
+    const set = getLocalResolvedIds();
+    let changed = false;
+    for (const id of ids || []) {
+      if (id && !set.has(id)) {
+        set.add(id);
+        changed = true;
+      }
+    }
+    if (changed) {
+      localStorage.setItem(LOCAL_RESOLVED_KEY, JSON.stringify([...set]));
+    }
+  } catch (error) {
+    // best effort — local backup must never break the flow
+  }
 }
 
 function getManagerAndRelays(client) {
@@ -34,12 +80,12 @@ function getManagerAndRelays(client) {
   return { manager, relays };
 }
 
-// Keep pending submissions alive. They're authored by throwaway ephemeral keys
-// and public relays prune events from pubkeys with no social graph, so the queue
-// quietly evaporates over time. A signed event can be re-published by anyone, so
-// on each fetch we re-broadcast the still-pending events back to our relays to
-// refresh them. Best-effort and fire-and-forget — never blocks or fails a fetch.
-function mirrorPendingSubmissions(rawEvents, client) {
+// Re-broadcast signed events to our relays so aggressive relay pruning doesn't
+// quietly drop them. Used for both pending submissions (ephemeral-authored, no
+// social graph → pruned fast) and the admin resolved-set (so the "handled" list
+// stays alive). A signed event can be re-published by anyone. Best-effort and
+// fire-and-forget — never blocks or fails a fetch.
+function mirrorEventsToRelays(rawEvents, client) {
   try {
     const pool = client?.pool;
     const relays = Array.isArray(client?.relays) ? client.relays : [];
@@ -68,13 +114,18 @@ function newestByCreatedAt(events) {
 
 /**
  * Fetch the PENDING submissions addressed to an admin: parsed, deduped by
- * applicant (newest wins), and excluding any already in an editor's resolved-set.
- * @param {{ adminHex: string, editorHexes?: string[], client?: any }} opts
+ * applicant (newest wins), and excluding anything already handled — via the
+ * relay resolved-set, the device-local resolved cache, OR (for applications) an
+ * applicant already on the whitelist.
+ * @param {{
+ *   adminHex: string, editorHexes?: string[], whitelistNpubs?: string[], client?: any,
+ * }} opts
  * @returns {Promise<Array>} pending submissions, newest-first
  */
 export async function fetchPendingSubmissions({
   adminHex,
   editorHexes = [],
+  whitelistNpubs = [],
   client = nostrClient,
 } = {}) {
   const admin = normHex(adminHex);
@@ -97,15 +148,44 @@ export async function fetchPendingSubmissions({
     return [];
   }
 
-  const resolvedIds = await fetchResolvedIds({
+  // Handled = union of (relay resolved-sets) + (device-local resolved cache).
+  const resolvedEvents = await fetchResolvedSets({
     editorHexes: [admin, ...editorHexes],
     manager,
     relays,
   });
+  const relayResolvedIds = collectResolvedIds(resolvedEvents);
+  // Persist what the relays know into the local cache (so a later prune or a
+  // cold read can't resurface them), then hide by the union of both.
+  addLocalResolvedIds([...relayResolvedIds]);
+  const resolvedIds = new Set([...relayResolvedIds, ...getLocalResolvedIds()]);
+  // Keep the resolved-set alive on relays too — it prunes just like submissions.
+  mirrorEventsToRelays(resolvedEvents, client);
+
+  // Belt-and-suspenders: an application whose applicant is already whitelisted
+  // is durably handled even if the resolved-set were lost entirely.
+  const whitelisted = new Set(
+    (Array.isArray(whitelistNpubs) ? whitelistNpubs : [])
+      .map(normNpub)
+      .filter(Boolean),
+  );
+  const isHandled = (submission) => {
+    if (resolvedIds.has(submission.eventId)) {
+      return true;
+    }
+    if (
+      submission.type === "application" &&
+      submission.applicant &&
+      whitelisted.has(normNpub(submission.applicant))
+    ) {
+      return true;
+    }
+    return false;
+  };
 
   const parsed = (Array.isArray(subEvents) ? subEvents : [])
     .map(parseSubmissionEvent)
-    .filter((s) => s && s.eventId && !resolvedIds.has(s.eventId))
+    .filter((s) => s && s.eventId && !isHandled(s))
     .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
   // Dedupe by claimed applicant (newest already first); fall back to id.
@@ -123,7 +203,7 @@ export async function fetchPendingSubmissions({
   const rawPending = (Array.isArray(subEvents) ? subEvents : []).filter(
     (event) => event && pendingIds.has(event.id),
   );
-  mirrorPendingSubmissions(rawPending, client);
+  mirrorEventsToRelays(rawPending, client);
 
   return pending;
 }
@@ -162,15 +242,15 @@ export async function resolveEventAuthorHex({ eventId, client = nostrClient } = 
   }
 }
 
-async function fetchResolvedIds({ editorHexes, manager, relays }) {
+// Fetch every editor's resolved-set (raw events, so the caller can also mirror
+// them to keep them alive).
+async function fetchResolvedSets({ editorHexes, manager, relays }) {
   const authors = [...new Set(editorHexes.map(normHex).filter(Boolean))];
-  const ids = new Set();
   if (!authors.length) {
-    return ids;
+    return [];
   }
-  let events = [];
   try {
-    events = await manager.list({
+    const events = await manager.list({
       relays,
       filters: [
         {
@@ -181,10 +261,16 @@ async function fetchResolvedIds({ editorHexes, manager, relays }) {
         },
       ],
     });
+    return Array.isArray(events) ? events : [];
   } catch (error) {
     devLogger.warn("[submissions] Failed to list resolved-sets:", error);
-    return ids;
+    return [];
   }
+}
+
+// Union the `e`-tag ids across a set of resolved-set events.
+function collectResolvedIds(events) {
+  const ids = new Set();
   for (const event of Array.isArray(events) ? events : []) {
     for (const tag of event?.tags || []) {
       if (Array.isArray(tag) && tag[0] === "e" && tag[1]) {
@@ -215,6 +301,10 @@ export async function markSubmissionResolved({
     return null;
   }
 
+  // Record locally FIRST so this id can never be lost, even if the read below
+  // misses and the republish would otherwise shrink the list.
+  addLocalResolvedIds([eventId]);
+
   const { manager, relays } = getManagerAndRelays(client);
   let current = null;
   if (manager && typeof manager.list === "function" && relays.length) {
@@ -238,14 +328,25 @@ export async function markSubmissionResolved({
 
   const tags = [["d", SUBMISSIONS_RESOLVED_DTAG]];
   const seen = new Set();
+  // 1) Preserve existing entries (with their status/applicant audit tags).
   for (const tag of current?.tags || []) {
     if (Array.isArray(tag) && tag[0] === "e" && tag[1] && !seen.has(tag[1])) {
       seen.add(tag[1]);
       tags.push(["e", tag[1], tag[2] || "", tag[3] || ""]);
     }
   }
+  // 2) The submission being resolved right now, with its audit metadata.
   if (!seen.has(eventId)) {
+    seen.add(eventId);
     tags.push(["e", eventId, status, submission.applicant || ""]);
+  }
+  // 3) Loss-proofing: fold in every id this device knows was resolved, so a
+  //    missed read can never republish a list smaller than what we've handled.
+  for (const id of getLocalResolvedIds()) {
+    if (id && !seen.has(id)) {
+      seen.add(id);
+      tags.push(["e", id]);
+    }
   }
   tags.push(["client", "bitvid"]);
 
