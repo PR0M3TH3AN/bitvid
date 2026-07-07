@@ -3168,6 +3168,60 @@
     flex-shrink: 0;
   }
 
+  /* #23: admin Submissions cards. */
+  .submission-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xs);
+    padding: var(--space-sm);
+    border: var(--border-width-hairline) solid var(--color-border-subtle);
+    border-radius: var(--radius-md);
+    background-color: var(--color-page-alt);
+  }
+
+  .submission-card + .submission-card {
+    margin-block-start: var(--space-2xs);
+  }
+
+  .submission-card__head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+  }
+
+  .submission-card__type {
+    padding-block: var(--space-3xs);
+    padding-inline: var(--space-2xs);
+    border-radius: var(--radius-full);
+    font-size: var(--font-size-2xs);
+    font-weight: 600;
+    color: var(--color-white);
+    background-color: var(--color-accent-strong);
+  }
+
+  .submission-card__applicant {
+    min-inline-size: 0;
+    font-size: var(--font-size-2xs);
+    color: var(--color-text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .submission-card__body {
+    margin: 0;
+    font-size: var(--font-size-sm);
+    color: var(--color-text);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .submission-card__actions {
+    display: flex;
+    gap: var(--space-2xs);
+  }
+
   /* #43: always-visible active-identity pill. Rendered after the header in
      flow and pulled up with a negative block-start margin so it sits half-on /
      half-off the header divider — every pane shows who you're acting as. */
