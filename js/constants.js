@@ -202,7 +202,7 @@ const DEFAULT_FLAGS = Object.freeze({
   FEATURE_MOST_ZAPPED_FEED: true, // "Most Zapped" tab: recently-added ranked by zap total. Disable to hide the tab.
   FEATURE_ZAP_TALLY: true, // bitvid-native preimage-verified zap tally (publish + count). Rollback: set false.
   FEATURE_PLAYLISTS: true, // Creator playlists (#37): channel section + playlist view + add-to-playlist (⋯ menu). Rollback: set false to hide all playlist UI.
-  FEATURE_SUBMISSIONS: false, // Structured submissions (#23): admin Submissions tab + forms publish kind-30083 instead of DMs. Default OFF until the UI is complete.
+  FEATURE_SUBMISSIONS: true, // Structured submissions (#23): admin Submissions tab + forms publish kind-30083 instead of DMs. Rollback: set false to hide the admin tab (forms still publish 30083).
   TRUSTED_MUTE_HIDE_THRESHOLD: DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
   TRUSTED_SPAM_HIDE_THRESHOLD: DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
   WSS_TRACKERS: DEFAULT_WSS_TRACKERS,
