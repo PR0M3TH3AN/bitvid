@@ -151,4 +151,111 @@ export function showPasswordPrompt(message, options = {}) {
   });
 }
 
+// A plain single-line text prompt (sibling of showPasswordPrompt) — used for
+// things like renaming a playlist. Resolves the trimmed string, or null on
+// cancel / empty. Prefill with `value`.
+export function showTextPrompt(message, options = {}) {
+  const {
+    title = "",
+    confirmLabel = "Save",
+    cancelLabel = "Cancel",
+    placeholder = "",
+    value = "",
+    maxLength = 200,
+  } = options || {};
+
+  if (typeof document === "undefined" || !document.body) {
+    return Promise.resolve(null);
+  }
+
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className =
+      "bv-modal modal-always-on-top items-start justify-center md:items-center";
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+
+    const backdrop = document.createElement("div");
+    backdrop.className = "bv-modal-backdrop";
+    overlay.appendChild(backdrop);
+
+    const sheet = document.createElement("div");
+    sheet.className = "modal-sheet w-full max-w-md flex flex-col";
+    sheet.tabIndex = -1;
+    overlay.appendChild(sheet);
+
+    if (title) {
+      const header = document.createElement("div");
+      header.className = "modal-header";
+      const heading = document.createElement("h2");
+      heading.className = "text-lg font-bold text-text";
+      heading.textContent = title;
+      header.appendChild(heading);
+      sheet.appendChild(header);
+    }
+
+    const body = document.createElement("div");
+    body.className = "p-5 flex flex-col gap-3";
+    if (message) {
+      const text = document.createElement("p");
+      text.className = "text-sm text-muted-strong";
+      text.textContent = String(message);
+      body.appendChild(text);
+    }
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "form-input";
+    input.placeholder = placeholder;
+    input.value = value;
+    input.maxLength = maxLength;
+    body.appendChild(input);
+    sheet.appendChild(body);
+
+    const footer = document.createElement("div");
+    footer.className =
+      "flex items-center justify-end gap-3 border-t border-border/60 p-4";
+    const cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "btn-ghost focus-ring";
+    cancelBtn.textContent = cancelLabel;
+    const okBtn = document.createElement("button");
+    okBtn.type = "button";
+    okBtn.className = "btn focus-ring";
+    okBtn.textContent = confirmLabel;
+    footer.appendChild(cancelBtn);
+    footer.appendChild(okBtn);
+    sheet.appendChild(footer);
+
+    let settled = false;
+    const cleanup = (result) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      document.removeEventListener("keydown", onKeydown, true);
+      overlay.remove();
+      resolve(result);
+    };
+    const submit = () => cleanup(input.value.trim() || null);
+    function onKeydown(event) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        cleanup(null);
+      } else if (event.key === "Enter" && document.activeElement === input) {
+        event.preventDefault();
+        submit();
+      }
+    }
+
+    cancelBtn.addEventListener("click", () => cleanup(null));
+    backdrop.addEventListener("click", () => cleanup(null));
+    okBtn.addEventListener("click", submit);
+    document.addEventListener("keydown", onKeydown, true);
+
+    document.body.appendChild(overlay);
+    input.focus();
+    input.select();
+  });
+}
+
 export default showPasswordPrompt;

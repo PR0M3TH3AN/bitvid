@@ -1,0 +1,41 @@
+<!-- views/playlist.html — creator playlist (#37). Renders the playlist's ordered
+     videos into the shared #videoList grid via app.renderVideoList. -->
+<section data-ds="new">
+  <div class="mb-4">
+    <a
+      href="#view=most-recent-videos"
+      id="playlistBackLink"
+      class="btn-ghost"
+      data-size="sm"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        class="w-4 h-4"
+        aria-hidden="true"
+      >
+        <polyline points="15 18 9 12 15 6"></polyline>
+      </svg>
+      Back to channel
+    </a>
+  </div>
+  <div class="flex items-center gap-2 mb-2">
+    <h2 id="playlistTitle" class="text-xl font-semibold text-text">Playlist</h2>
+  </div>
+  <p id="playlistMeta" class="text-sm text-muted mb-4"></p>
+  <div id="videoList" class="bv-grid-video" data-testid="video-list">
+    <div class="sidebar-loading-wrapper" role="status" aria-live="polite">
+      <div class="sidebar-loading-indicator">
+        <span
+          class="status-spinner status-spinner--inline"
+          aria-hidden="true"
+        ></span>
+        <span class="sidebar-loading-text">Loading playlist…</span>
+      </div>
+    </div>
+  </div>
+</section>

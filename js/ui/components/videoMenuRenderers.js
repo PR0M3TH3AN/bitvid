@@ -159,6 +159,7 @@ export function createVideoMoreMenuPanel({
   playbackUrl = "",
   playbackMagnet = "",
   canManageBlacklist = false,
+  canManagePlaylists = false,
   context = "card",
   designSystem = null,
 } = {}) {
@@ -192,6 +193,14 @@ export function createVideoMoreMenuPanel({
     action: "view-stats",
     dataset: { eventId: metadata.id, context },
   });
+
+  if (canManagePlaylists) {
+    appendMenuAction(doc, list, {
+      text: "Add to playlist",
+      action: "add-to-playlist",
+      dataset: { eventId: metadata.id, context },
+    });
+  }
 
   const baseBoostDataset = {
     eventId: metadata.id,

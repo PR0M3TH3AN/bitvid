@@ -48,6 +48,8 @@ export const NOTE_TYPES = Object.freeze({
   ZAP_REQUEST: "zapRequest",
   ZAP_RECEIPT: "zapReceipt",
   ZAP_TALLY: "zapTally",
+  PLAYLIST: "playlist",
+  SUBMISSION: "submission",
   WATCH_HISTORY: "watchHistory",
   SUBSCRIPTION_LIST: "subscriptionList",
   SUBSCRIPTION_BACKUP: "subscriptionBackup",
@@ -97,6 +99,21 @@ const DEFAULT_APPEND_TAGS = [];
 // payment_hash` yields one canonical event per real payment. In bitvid's family
 // (30078 video, 30079 view). See docs/zap-tally-plan.md.
 export const ZAP_TALLY_KIND = 30081;
+
+// bitvid-native creator playlist (#37). Addressable (30000–39999) so `d =
+// playlist id` yields one canonical, replaceable event per playlist. In bitvid's
+// family (30078 video, 30079 view, 30081 zap tally). Deliberately NOT NIP-51's
+// 30005 "video curation set": bitvid already reads 30005 as legacy interest-sets
+// (hashtagPreferencesService), so reusing it would collide. Ordered `a` tags
+// (30078:pubkey:d) reference the videos; order = tag order.
+export const PLAYLIST_KIND = 30082;
+
+// bitvid submission (#23): applications / appeals / bug / feature / feedback,
+// PUBLIC + structured so an admin "Submissions" tab can list + approve/deny them
+// (replacing the old kind-4 encrypted DM flow). Addressable (30000–39999) in
+// bitvid's family; published from an EPHEMERAL key (no login), so the `applicant`
+// tag carries the CLAIMED npub the admin vouches for. `d` = ephemeral id.
+export const SUBMISSION_KIND = 30083;
 
 let cachedUtf8Encoder = null;
 
@@ -337,6 +354,32 @@ const BASE_SCHEMAS = {
         { key: "ws", type: "string", required: false },
         { key: "xs", type: "string", required: false },
       ],
+    },
+  },
+  [NOTE_TYPES.PLAYLIST]: {
+    type: NOTE_TYPES.PLAYLIST,
+    label: "Playlist",
+    kind: PLAYLIST_KIND,
+    topicTag: { name: "t", value: "playlist" },
+    identifierTag: { name: "d" },
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "text",
+      description:
+        "Reserved for future notes; playlist data lives in tags (title/description/image + ordered `a` video refs).",
+    },
+  },
+  [NOTE_TYPES.SUBMISSION]: {
+    type: NOTE_TYPES.SUBMISSION,
+    label: "Submission",
+    kind: SUBMISSION_KIND,
+    topicTag: { name: "t", value: "bitvid-submission" },
+    identifierTag: { name: "d" },
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "text",
+      description:
+        "Free-text submission body (application reason, appeal, bug report, etc.). Structured fields live in tags: k (type), applicant (npub), p (recipient admin).",
     },
   },
   [NOTE_TYPES.VIDEO_MIRROR]: {
@@ -1418,6 +1461,175 @@ export function buildVideoMirrorEvent(params) {
 
   if (isDevMode) {
     validateEventAgainstSchema(NOTE_TYPES.VIDEO_MIRROR, event);
+  }
+
+  return event;
+}
+
+/**
+ * Builds a bitvid Playlist event (Kind 30082, addressable). All playlist data
+ * lives in tags: `d` (id), `title`, `description`, `image`, and ordered `a`
+ * refs (`30078:pubkey:d`) to the videos — order is preserved as tag order.
+ * Republishing with the same `d` replaces the playlist (NIP-33).
+ *
+ * @param {Object} params
+ * @param {string} params.pubkey
+ * @param {number} params.created_at
+ * @param {string} params.dTagValue            stable playlist id (required)
+ * @param {string} [params.title]
+ * @param {string} [params.description]
+ * @param {string} [params.image]
+ * @param {string[]} [params.videoCoordinates] ordered "30078:pubkey:d" strings (`a`)
+ * @param {string[]} [params.eventRefs]        optional ordered raw event ids (`e`)
+ * @param {string} [params.content]
+ * @returns {Object} Unsigned event.
+ */
+export function buildPlaylistEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    dTagValue,
+    title = "",
+    description = "",
+    image = "",
+    videoCoordinates = [],
+    eventRefs = [],
+    content = "",
+  } = params || {};
+
+  const identifier = typeof dTagValue === "string" ? dTagValue.trim() : "";
+  if (!identifier) {
+    throw new Error("A playlist requires a d-tag identifier.");
+  }
+
+  const schema = getNostrEventSchema(NOTE_TYPES.PLAYLIST);
+  const tags = [];
+
+  if (schema?.topicTag?.name && schema?.topicTag?.value) {
+    tags.push([schema.topicTag.name, schema.topicTag.value]);
+  }
+  tags.push([schema?.identifierTag?.name || "d", identifier]);
+
+  const trimmedTitle = typeof title === "string" ? title.trim() : "";
+  if (trimmedTitle) {
+    tags.push(["title", trimmedTitle]);
+  }
+  const trimmedDescription =
+    typeof description === "string" ? description.trim() : "";
+  if (trimmedDescription) {
+    tags.push(["description", trimmedDescription]);
+  }
+  const trimmedImage = typeof image === "string" ? image.trim() : "";
+  if (trimmedImage) {
+    tags.push(["image", trimmedImage]);
+  }
+
+  // Ordered video refs; dedupe so the same video can't appear twice.
+  const seen = new Set();
+  if (Array.isArray(videoCoordinates)) {
+    videoCoordinates.forEach((coord) => {
+      const value = typeof coord === "string" ? coord.trim() : "";
+      if (value && !seen.has(`a:${value}`)) {
+        seen.add(`a:${value}`);
+        tags.push(["a", value]);
+      }
+    });
+  }
+  if (Array.isArray(eventRefs)) {
+    eventRefs.forEach((ref) => {
+      const value = typeof ref === "string" ? ref.trim() : "";
+      if (value && !seen.has(`e:${value}`)) {
+        seen.add(`e:${value}`);
+        tags.push(["e", value]);
+      }
+    });
+  }
+
+  appendSchemaTags(tags, schema);
+
+  const event = {
+    kind: schema?.kind ?? PLAYLIST_KIND,
+    pubkey,
+    created_at,
+    tags,
+    content: ensureValidUtf8Content(content),
+  };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.PLAYLIST, event);
+  }
+
+  return event;
+}
+
+/**
+ * Builds a bitvid Submission event (Kind 30083, addressable, PUBLIC). Structured
+ * so an admin "Submissions" tab can list + approve/deny. Published from an
+ * ephemeral key, so the `applicant` tag carries the CLAIMED npub.
+ *
+ * @param {Object} params
+ * @param {string} params.pubkey            the (ephemeral) author pubkey
+ * @param {number} params.created_at
+ * @param {string} params.dTagValue         stable submission id (required)
+ * @param {string} [params.submissionType]  application | appeal | bug | feature | feedback
+ * @param {string} [params.applicantNpub]   the npub the submission is about
+ * @param {string} [params.recipientPubkey] the admin hex pubkey (`p` tag)
+ * @param {string} [params.content]         free-text body
+ * @returns {Object} Unsigned event.
+ */
+export function buildSubmissionEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    dTagValue,
+    submissionType = "application",
+    applicantNpub = "",
+    recipientPubkey = "",
+    content = "",
+  } = params || {};
+
+  const identifier = typeof dTagValue === "string" ? dTagValue.trim() : "";
+  if (!identifier) {
+    throw new Error("A submission requires a d-tag identifier.");
+  }
+
+  const schema = getNostrEventSchema(NOTE_TYPES.SUBMISSION);
+  const tags = [];
+
+  if (schema?.topicTag?.name && schema?.topicTag?.value) {
+    tags.push([schema.topicTag.name, schema.topicTag.value]);
+  }
+  tags.push([schema?.identifierTag?.name || "d", identifier]);
+
+  const type =
+    typeof submissionType === "string" && submissionType.trim()
+      ? submissionType.trim()
+      : "application";
+  tags.push(["k", type]);
+
+  const applicant =
+    typeof applicantNpub === "string" ? applicantNpub.trim() : "";
+  if (applicant) {
+    tags.push(["applicant", applicant]);
+  }
+
+  const recipient = normalizePointerIdentifier(recipientPubkey);
+  if (recipient) {
+    tags.push(["p", recipient]);
+  }
+
+  appendSchemaTags(tags, schema);
+
+  const event = {
+    kind: schema?.kind ?? SUBMISSION_KIND,
+    pubkey,
+    created_at,
+    tags,
+    content: ensureValidUtf8Content(content),
+  };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.SUBMISSION, event);
   }
 
   return event;

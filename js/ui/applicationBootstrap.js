@@ -35,6 +35,7 @@ import { relayManager } from "../relayManager.js";
 import { userBlocks } from "../userBlocks.js";
 import { subscriptions } from "../subscriptions.js";
 import { accessControl } from "../accessControl.js";
+import { applyAdminStar } from "./adminBadge.js";
 import moderationService from "../services/moderationService.js";
 import ProfileIdentityController from "./profileIdentityController.js";
 import VideoListViewController from "./videoListViewController.js";
@@ -83,6 +84,8 @@ import {
   isDevMode,
 } from "../config.js";
 import { ADMIN_INITIAL_EVENT_BLACKLIST } from "../lists.js";
+import { FEATURE_SUBMISSIONS } from "../constants.js";
+import { fetchPendingSubmissions } from "../submissions/submissionFacade.js";
 import {
   prepareStaticModal,
   openStaticModal,
@@ -858,21 +861,40 @@ export default class ApplicationBootstrap {
     };
 
     app.videosMap = app.nostrService.getVideosMap();
+    // The profile-button red dot shows when EITHER there are unread DMs OR (for
+    // admins) there are pending submissions. The Messages nav dot stays DM-only.
+    app._dmUnread = false;
+    app._submissionsPending = false;
+    app.applyProfileNotificationDot = () => {
+      const profileDot = app._dmUnread || app._submissionsPending;
+      if (
+        app.appChromeController &&
+        typeof app.appChromeController.setUnreadDmIndicator === "function"
+      ) {
+        app.appChromeController.setUnreadDmIndicator(profileDot);
+      }
+      if (
+        app.profileController &&
+        typeof app.profileController.setMessagesUnreadIndicator === "function"
+      ) {
+        app.profileController.setMessagesUnreadIndicator(app._dmUnread);
+      }
+      // Pending-submissions dots on the Admin tab + Submissions subtab so an
+      // admin knows exactly where to look.
+      if (
+        app.profileController &&
+        typeof app.profileController.setSubmissionsUnreadIndicator === "function"
+      ) {
+        app.profileController.setSubmissionsUnreadIndicator(
+          app._submissionsPending,
+        );
+      }
+    };
+
     app.refreshUnreadDmIndicator = async ({ reason = "" } = {}) => {
       const applyIndicatorState = (visible) => {
-        if (
-          app.appChromeController &&
-          typeof app.appChromeController.setUnreadDmIndicator === "function"
-        ) {
-          app.appChromeController.setUnreadDmIndicator(visible);
-        }
-
-        if (
-          app.profileController &&
-          typeof app.profileController.setMessagesUnreadIndicator === "function"
-        ) {
-          app.profileController.setMessagesUnreadIndicator(visible);
-        }
+        app._dmUnread = Boolean(visible);
+        app.applyProfileNotificationDot();
       };
 
       if (typeof app.isUserLoggedIn === "function" && !app.isUserLoggedIn()) {
@@ -929,6 +951,64 @@ export default class ApplicationBootstrap {
       }
     };
 
+    // #23: admin-only signal — pending submissions light up the profile dot too.
+    app.refreshSubmissionsIndicator = async ({ reason = "" } = {}) => {
+      let pending = false;
+      try {
+        if (
+          FEATURE_SUBMISSIONS &&
+          typeof app.isUserLoggedIn === "function" &&
+          app.isUserLoggedIn()
+        ) {
+          const actorNpub =
+            typeof app.getCurrentUserNpub === "function"
+              ? app.getCurrentUserNpub()
+              : "";
+          if (
+            actorNpub &&
+            typeof accessControl.canEditAdminLists === "function" &&
+            accessControl.canEditAdminLists(actorNpub)
+          ) {
+            const adminHex = app.safeDecodeNpub(ADMIN_SUPER_NPUB);
+            const editorHexes = Array.from(accessControl.getEditors?.() || [])
+              .map((npub) => app.safeDecodeNpub(npub))
+              .filter(Boolean);
+            const list = await fetchPendingSubmissions({ adminHex, editorHexes });
+            pending = Array.isArray(list) && list.length > 0;
+          }
+        }
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to refresh submissions indicator",
+          reason,
+          error,
+        );
+      }
+      app._submissionsPending = pending;
+      app.applyProfileNotificationDot();
+    };
+
+    // The profile button shows the logged-in user; light its admin star when
+    // that user is a bitvid admin. Re-runs on editor-list load so a moderator
+    // added after startup still gets the star.
+    app.refreshAdminStar = () => {
+      try {
+        const npub =
+          typeof app.getCurrentUserNpub === "function"
+            ? app.getCurrentUserNpub()
+            : "";
+        // applyAdminStar returns whether the user is an admin; use it to also
+        // toggle the gold ring around the profile avatar (the flagship signal
+        // on your own button — the corner star stays the shared marker).
+        const isAdmin = applyAdminStar(app.profileButton, npub || "");
+        if (app.profileButton && app.profileButton.classList) {
+          app.profileButton.classList.toggle("is-admin", Boolean(isAdmin));
+        }
+      } catch (error) {
+        devLogger.warn("[Application] Failed to refresh admin star", error);
+      }
+    };
+
     const nostrUnsubscribes = [];
     nostrUnsubscribes.push(
       app.nostrService.on("subscription:changed", ({ subscription }) => {
@@ -975,6 +1055,39 @@ export default class ApplicationBootstrap {
         }
       }),
     );
+
+    // #23: keep the admin submissions dot fresh — recompute when one is resolved
+    // (event) and on a light poll (submissions arrive from external users, so
+    // there's no push signal). refreshSubmissionsIndicator no-ops for non-admins.
+    if (typeof document !== "undefined") {
+      const onSubmissionsChanged = () => {
+        void app.refreshSubmissionsIndicator({ reason: "submissions-changed" });
+      };
+      document.addEventListener(
+        "bitvid:submissions-changed",
+        onSubmissionsChanged,
+      );
+      nostrUnsubscribes.push(() =>
+        document.removeEventListener(
+          "bitvid:submissions-changed",
+          onSubmissionsChanged,
+        ),
+      );
+    }
+    const submissionsPollId = setInterval(() => {
+      void app.refreshSubmissionsIndicator({ reason: "poll" });
+    }, 180000);
+    if (submissionsPollId && typeof submissionsPollId.unref === "function") {
+      submissionsPollId.unref();
+    }
+    nostrUnsubscribes.push(() => clearInterval(submissionsPollId));
+    void app.refreshSubmissionsIndicator({ reason: "startup" });
+    if (typeof accessControl.onEditorsChange === "function") {
+      nostrUnsubscribes.push(
+        accessControl.onEditorsChange(() => app.refreshAdminStar?.()),
+      );
+    }
+    app.refreshAdminStar();
     app.unsubscribeFromNostrService = () => {
       while (nostrUnsubscribes.length) {
         const unsubscribe = nostrUnsubscribes.pop();

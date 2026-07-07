@@ -8,6 +8,22 @@ const nwcModule = await import("../js/payments/nwcClient.js");
 const { __TESTING__, resetWalletClient } = nwcModule;
 const { buildPayInvoiceParams, ensureActiveState, parseNwcUri, getActiveState } = __TESTING__;
 
+// The nostr-tools bootstrap installs a frozen canonical toolkit on the global
+// scope, and nwcClient's readToolkitFromScope() prefers it over
+// window.NostrTools. That shadows the per-section mocks below, so the real
+// @noble crypto runs and rejects the fake test keys ("bad point: is not on
+// curve"). These sections exercise the NWC client's encryption-SELECTION
+// wiring — which scheme it negotiates and how it threads
+// getConversationKey/encrypt — NOT @noble's crypto correctness (that's real
+// elsewhere, and the hex-vs-bytes production bug parseNwcUri once had is
+// guarded by tests/nwc-parse-uri.test.mjs). Remove the canonical so the
+// resolver falls through to each section's mock. Nothing re-installs it during
+// the run, so one removal holds for every section.
+delete globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__;
+if (globalThis.window && typeof globalThis.window === "object") {
+  delete globalThis.window.__BITVID_CANONICAL_NOSTR_TOOLS__;
+}
+
 await (async () => {
   const params = buildPayInvoiceParams({
     invoice: "bolt11-invoice",
@@ -240,9 +256,19 @@ await (async () => {
     `&secret=${secretKey}`;
 
   const context = ensureActiveState({ nwcUri: uri });
+  // Spec correction: the original scenario advertised "nip44_v2" and relied on
+  // the mock toolkit LACKING nip44 to force a rejection. That precondition is
+  // architecturally unreachable — the nostr-tools bootstrap's mergeWithCanonical
+  // always backfills the canonical nip44 (even an explicit `nip44: null` is
+  // overwritten), so nip44_v2 is ALWAYS a supported scheme and the wallet's
+  // advertisement would be honored, not rejected. The intended behavior under
+  // test is: when a wallet advertises ONLY encryption schemes bitvid cannot
+  // provide, ensureEncryption rejects with UNSUPPORTED_ENCRYPTION. bitvid only
+  // implements nip04 + nip44_v2, so advertising an unknown scheme is the
+  // reachable, faithful way to exercise that exact branch.
   context.infoEvent = {
     kind: 13194,
-    tags: [["encryption", "nip44_v2"]],
+    tags: [["encryption", "nip44_v3"]],
   };
 
   await assert.rejects(
@@ -250,7 +276,12 @@ await (async () => {
     (error) => {
       assert.match(
         error?.message || "",
-        /Wallet advertises unsupported encryption schemes: nip44_v2\./
+        /Wallet advertises unsupported encryption schemes: nip44_v3\./
+      );
+      assert.equal(
+        error?.code,
+        "UNSUPPORTED_ENCRYPTION",
+        "unsupported-scheme rejection must carry the UNSUPPORTED_ENCRYPTION code"
       );
       return true;
     }

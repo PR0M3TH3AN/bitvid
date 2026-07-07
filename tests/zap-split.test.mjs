@@ -334,6 +334,53 @@ async function testSplitMath() {
   delete globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
 }
 
+// Regression: bitvid's internal video objects don't always carry the Nostr
+// `kind` — it can be 0 or undefined. The zap request's `a` (coordinate) tag
+// MUST still address the video as kind 30078, because the read side
+// (zapTotals / mostZappedFeed) fetches totals by querying `30078:pubkey:d`.
+// A kind-0 coordinate (`0:pubkey:d`) publishes fine but can never be matched,
+// so zaps silently count as zero. This asserts the coordinate defaults to
+// 30078 regardless of the source object's kind.
+async function testZapPointerDefaultsToVideoKindWhenMissing() {
+  const previousOverride = globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
+  globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = 0;
+
+  const { deps } = createDeps();
+  const callbackUrl = "https://lnurl.example/api/callback";
+  const bech32Address = encodeLnurlBech32(callbackUrl);
+  const pubkey = "d".repeat(64);
+
+  for (const brokenKind of [0, undefined, "not-a-number"]) {
+    const videoEvent = {
+      id: "event-id",
+      pubkey,
+      lightningAddress: bech32Address,
+      tags: [["d", "1782939097186-elrw1x3fdvg"]],
+      kind: brokenKind,
+    };
+
+    const result = await splitAndZap(
+      { videoEvent, amountSats: 500, comment: "PointerKind" },
+      deps
+    );
+
+    const parsedZap = JSON.parse(result.receipts[0].zapRequest);
+    const aTag = parsedZap.tags.find((tag) => Array.isArray(tag) && tag[0] === "a");
+    assert(aTag, `zap request should carry an 'a' coordinate (kind=${brokenKind})`);
+    assert.equal(
+      aTag[1],
+      `30078:${pubkey}:1782939097186-elrw1x3fdvg`,
+      `coordinate must address the video as kind 30078, not '${brokenKind}'`
+    );
+  }
+
+  if (previousOverride === undefined) {
+    delete globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
+  } else {
+    globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = previousOverride;
+  }
+}
+
 async function testBech32LightningAddressZapTag() {
   const previousOverride = globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
   globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = 0;
@@ -1046,6 +1093,7 @@ async function testSplitRoundingPreservesEverySat() {
 await testCreatorEqualsPlatformCollapsesToOnePayment();
 await testSplitRoundingPreservesEverySat();
 await testSplitMath();
+await testZapPointerDefaultsToVideoKindWhenMissing();
 await testBech32LightningAddressZapTag();
 await testUrlLightningAddressZapTag();
 await testRequestInvoiceIncludesLnurlParam();

@@ -39,20 +39,30 @@ function tagValues(event, name) {
 // Accepts BOTH pointer shapes used in the app: the canonical tag-style array
 // ["a"|"e", value, relay?] (what deriveVideoPointerInfo/resolveVideoPointer
 // produce) and the object form { type, value }.
+const POINTER_TYPES = new Set(["a", "e", "p"]);
+
 export function pointerKey(pointer) {
   let type = "";
   let value = "";
   if (Array.isArray(pointer)) {
-    type = pointer[0] === "a" || pointer[0] === "e" ? pointer[0] : "";
+    type = POINTER_TYPES.has(pointer[0]) ? pointer[0] : "";
     value = typeof pointer[1] === "string" ? pointer[1].trim() : "";
   } else if (pointer && typeof pointer === "object") {
-    type = pointer.type === "a" || pointer.type === "e" ? pointer.type : "";
+    type = POINTER_TYPES.has(pointer.type) ? pointer.type : "";
     value = typeof pointer.value === "string" ? pointer.value.trim() : "";
   }
   if (!type || !value) {
     return "";
   }
   return `${type}:${value}`;
+}
+
+// A `p:` (profile/channel) pointer for a creator pubkey — the total sats zapped
+// to that pubkey via bitvid (direct profile zaps AND zaps to their videos, both
+// tagged `p`). Used by the channel page; distinct key space from video a:/e:.
+export function profilePointer(pubkey) {
+  const hex = typeof pubkey === "string" ? pubkey.trim().toLowerCase() : "";
+  return hex ? ["p", hex] : null;
 }
 
 // Sats carried by one receipt: bolt11 first (the actual paid invoice), then
@@ -207,9 +217,11 @@ export function createZapTotalsStore({
 
     const aValues = [];
     const eValues = [];
+    const pValues = [];
     for (const pointer of batch.values()) {
       if (pointer.type === "a") aValues.push(pointer.value);
       else if (pointer.type === "e") eValues.push(pointer.value);
+      else if (pointer.type === "p") pValues.push(pointer.value);
     }
 
     // One query for both sources: real 9735 receipts + bitvid tallies.
@@ -233,6 +245,15 @@ export function createZapTotalsStore({
       filters.push({
         kinds,
         "#e": eValues.slice(i, i + MAX_POINTERS_PER_FILTER),
+        limit: RECEIPTS_PER_FILTER_LIMIT,
+      });
+    }
+    // Profile/channel totals: every zap to this pubkey (direct or via a video)
+    // is tagged `#p`. Only queried when a p: pointer is requested (channel page).
+    for (let i = 0; i < pValues.length; i += MAX_POINTERS_PER_FILTER) {
+      filters.push({
+        kinds,
+        "#p": pValues.slice(i, i + MAX_POINTERS_PER_FILTER),
         limit: RECEIPTS_PER_FILTER_LIMIT,
       });
     }
@@ -267,6 +288,7 @@ export function createZapTotalsStore({
       const keys = [
         ...tagValues(event, "a").map((value) => `a:${value}`),
         ...tagValues(event, "e").map((value) => `e:${value}`),
+        ...tagValues(event, "p").map((value) => `p:${value}`),
       ].filter((key) => batch.has(key) || totals.has(key));
       if (!keys.length) {
         continue;
@@ -310,7 +332,7 @@ export function createZapTotalsStore({
           continue;
         }
         const keys = verdict.pointerTags
-          .filter((t) => t[0] === "a" || t[0] === "e")
+          .filter((t) => t[0] === "a" || t[0] === "e" || t[0] === "p")
           .map((t) => `${t[0]}:${t[1]}`)
           .filter((key) => batch.has(key) || totals.has(key));
         for (const key of keys) {

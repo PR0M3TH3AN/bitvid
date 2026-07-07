@@ -45,6 +45,18 @@
             placeholder="Enter the magnet link"
           />
 
+          <label for="eventPointer">Blocked video link or event ID:</label>
+          <input
+            class="form-control"
+            type="text"
+            id="eventPointer"
+            placeholder="Paste the video's share link, nevent1…, note1…, or 64-char event id"
+          />
+          <p class="form-hint">
+            Required — open the blocked video's ⋯ menu, choose “Copy link”, and
+            paste it here so a moderator can locate and unblock the exact video.
+          </p>
+
           <label for="submissionDate">Date of Content Submission:</label>
           <input class="form-control" type="date" id="submissionDate" />
 
@@ -193,14 +205,45 @@
 
         // Set the recipient's NPUB (your personal NPUB) here.
         const recipientNpub =
-          "npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe";
+          "npub15jnttpymeytm80hatjqcvhhqhzrhx6gxp8pq0wn93rhnu8s9h9dsha32lx";
 
         const RELAYS = [
           "wss://relay.snort.social",
           "wss://relay.damus.io",
           "wss://relay.primal.net",
+          "wss://nos.lol",
         ];
         const pool = new SimplePool();
+
+        // Validate + normalize the blocked-video reference to a 64-char hex
+        // event id. Accepts a bitvid share link (which embeds an nevent), a raw
+        // nevent1…/note1… pointer, or a bare hex id. Returns "" when nothing
+        // valid is found so the caller can block submission.
+        const HEX_EVENT_ID = /^[0-9a-f]{64}$/i;
+        function extractEventHex(input) {
+          const trimmed = String(input || "").trim();
+          if (!trimmed) {
+            return "";
+          }
+          if (HEX_EVENT_ID.test(trimmed)) {
+            return trimmed.toLowerCase();
+          }
+          // Pull an nevent/note token out of a URL or free text.
+          const match = trimmed.match(/(nevent1[0-9a-z]+|note1[0-9a-z]+)/i);
+          const token = match ? match[1] : trimmed;
+          try {
+            const decoded = nip19.decode(token);
+            if (decoded.type === "nevent" && HEX_EVENT_ID.test(decoded.data?.id || "")) {
+              return decoded.data.id.toLowerCase();
+            }
+            if (decoded.type === "note" && HEX_EVENT_ID.test(decoded.data || "")) {
+              return decoded.data.toLowerCase();
+            }
+          } catch (err) {
+            // not a decodable pointer
+          }
+          return "";
+        }
 
         document
           .getElementById("dm-form")
@@ -220,6 +263,17 @@
               const magnetLink = document
                 .getElementById("magnetLink")
                 .value.trim();
+              const eventPointer = document
+                .getElementById("eventPointer")
+                .value.trim();
+              const targetEventHex = extractEventHex(eventPointer);
+              if (!targetEventHex) {
+                log(
+                  "Please paste a valid video share link, nevent1…, note1…, or 64-char event id so a moderator can locate the blocked video.",
+                  "error"
+                );
+                return;
+              }
               const submissionDate = document
                 .getElementById("submissionDate")
                 .value.trim();
@@ -261,6 +315,7 @@
 **2. Content Details**
 - **Title of the Video:** ${videoTitle}
 - **Magnet Link:** ${magnetLink}
+- **Blocked Event ID:** ${targetEventHex}
 - **Date of Content Submission:** ${submissionDate}
   
 **3. Reason for Appeal**
@@ -315,23 +370,27 @@ For further questions, reach out through bitvid’s Nostr support channels.
               const ephemeralPubHex = getPublicKey(ephemeralPriv);
               log("Ephemeral pubkey: " + ephemeralPubHex.slice(0, 16) + "...");
 
-              // Encrypt the appeal content.
-              log("Encrypting appeal content (nip04)...");
-              const ciphertext = await nip04.encrypt(
-                ephemeralPriv,
-                targetPubHex,
-                appealContent
-              );
-              log("[DEBUG] Ciphertext: " + ciphertext);
-              log("Encryption done.");
-
-              // Build the event template.
+              // Build a structured bitvid submission (kind 30083, PUBLIC — no
+              // encryption). Published from the ephemeral key.
+              log("Building appeal submission (kind 30083, public)...");
               const now = Math.floor(Date.now() / 1000);
+              const submissionId =
+                "sub-" +
+                now.toString(36) +
+                "-" +
+                Math.random().toString(36).slice(2, 10);
               const eventTemplate = {
-                kind: 4,
+                kind: 30083,
                 created_at: now,
-                tags: [["p", targetPubHex]],
-                content: ciphertext,
+                tags: [
+                  ["d", submissionId],
+                  ["k", "appeal"],
+                  ["p", targetPubHex],
+                  ["e", targetEventHex],
+                  ["t", "bitvid-submission"],
+                  ["client", "bitvid"],
+                ],
+                content: appealContent,
               };
               log(
                 "[DEBUG] Event template before finalizing: " +
@@ -351,7 +410,7 @@ For further questions, reach out through bitvid’s Nostr support channels.
               for (const url of RELAYS) {
                 log("Connecting to " + url + " for subscription...");
                 const relay = await Relay.connect(url);
-                relay.subscribe([{ authors: [ephemeralPubHex], kinds: [4] }], {
+                relay.subscribe([{ authors: [ephemeralPubHex], kinds: [30083] }], {
                   onEvent(foundEvent) {
                     if (foundEvent.id === event.id) {
                       log(

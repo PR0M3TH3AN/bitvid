@@ -8,11 +8,19 @@ import {
 import { buildVideoSearchFilterMatcher } from "../../js/search/searchFilterMatchers.js";
 
 test("parseFilterQuery collects filters and text tokens", () => {
+  // spec_correction (todo-11): the author filter now runs values through
+  // normalizeAuthorValues (searchFilters.js) — it accepts a 64-char hex pubkey
+  // or a decodable npub1 and DROPS anything else (with an error), because videos
+  // carry HEX pubkeys and npub authors otherwise matched nothing. The old fixture
+  // "abc123" is neither hex64 nor an npub, so it is (correctly) dropped, leaving
+  // authorPubkeys empty and an error — contradicting this happy-path test. Use a
+  // valid hex pubkey so the test exercises the intended normalization.
+  const authorHex = "a".repeat(64);
   const parsed = parseFilterQuery(
-    "author:abc123 tag:#news duration:<=5m has:magnet nsfw:false hello world",
+    `author:${authorHex} tag:#news duration:<=5m has:magnet nsfw:false hello world`,
   );
 
-  assert.deepEqual(parsed.filters.authorPubkeys, ["abc123"]);
+  assert.deepEqual(parsed.filters.authorPubkeys, [authorHex]);
   assert.deepEqual(parsed.filters.tags, ["news"]);
   assert.equal(parsed.filters.duration.maxSeconds, 300);
   assert.equal(parsed.filters.hasMagnet, true);

@@ -201,6 +201,8 @@ const DEFAULT_FLAGS = Object.freeze({
   FEATURE_TRENDING_FEED: true, // "Trending" tab: recently-added ranked by view count. Disable to hide the tab.
   FEATURE_MOST_ZAPPED_FEED: true, // "Most Zapped" tab: recently-added ranked by zap total. Disable to hide the tab.
   FEATURE_ZAP_TALLY: true, // bitvid-native preimage-verified zap tally (publish + count). Rollback: set false.
+  FEATURE_PLAYLISTS: true, // Creator playlists (#37): channel section + playlist view + add-to-playlist (⋯ menu). Rollback: set false to hide all playlist UI.
+  FEATURE_SUBMISSIONS: true, // Structured submissions (#23): admin Submissions tab + forms publish kind-30083 instead of DMs. Rollback: set false to hide the admin tab (forms still publish 30083).
   TRUSTED_MUTE_HIDE_THRESHOLD: DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
   TRUSTED_SPAM_HIDE_THRESHOLD: DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
   WSS_TRACKERS: DEFAULT_WSS_TRACKERS,
@@ -226,6 +228,8 @@ const runtimeFlags = (() => {
     FEATURE_TRENDING_FEED: DEFAULT_FLAGS.FEATURE_TRENDING_FEED,
     FEATURE_MOST_ZAPPED_FEED: DEFAULT_FLAGS.FEATURE_MOST_ZAPPED_FEED,
     FEATURE_ZAP_TALLY: DEFAULT_FLAGS.FEATURE_ZAP_TALLY,
+    FEATURE_PLAYLISTS: DEFAULT_FLAGS.FEATURE_PLAYLISTS,
+    FEATURE_SUBMISSIONS: DEFAULT_FLAGS.FEATURE_SUBMISSIONS,
     TRUSTED_MUTE_HIDE_THRESHOLD: DEFAULT_FLAGS.TRUSTED_MUTE_HIDE_THRESHOLD,
     TRUSTED_SPAM_HIDE_THRESHOLD: DEFAULT_FLAGS.TRUSTED_SPAM_HIDE_THRESHOLD,
     WSS_TRACKERS: [...DEFAULT_FLAGS.WSS_TRACKERS],
@@ -279,6 +283,16 @@ export let FEATURE_MOST_ZAPPED_FEED = coerceBoolean(
 export let FEATURE_ZAP_TALLY = coerceBoolean(
   runtimeFlags.FEATURE_ZAP_TALLY,
   DEFAULT_FLAGS.FEATURE_ZAP_TALLY
+);
+
+export let FEATURE_PLAYLISTS = coerceBoolean(
+  runtimeFlags.FEATURE_PLAYLISTS,
+  DEFAULT_FLAGS.FEATURE_PLAYLISTS
+);
+
+export let FEATURE_SUBMISSIONS = coerceBoolean(
+  runtimeFlags.FEATURE_SUBMISSIONS,
+  DEFAULT_FLAGS.FEATURE_SUBMISSIONS
 );
 
 export let FEATURE_TRUST_SEEDS = coerceBoolean(
@@ -598,4 +612,5 @@ export const FEED_TYPES = Object.freeze({
   CHANNEL: "channel-profile",
   DOCS: "docs",
   SEARCH: "search",
+  PLAYLIST: "playlist",
 });

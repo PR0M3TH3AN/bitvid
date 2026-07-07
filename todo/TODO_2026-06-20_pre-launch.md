@@ -1241,10 +1241,20 @@ Reported 2026-06-25. Relates to #17 (NIP-71 interop) / the bitvid→NIP-71 mirro
       local patch is guesswork — the update is the honest fix.
 
 ### 11. Harden flaky tests (CI gate reliability)
-- [ ] `tests/ui/uploadModal-reset.test.mjs` ("UploadModal Reset Logic") intermittently
-      hangs/cancels (jsdom/webtorrent async-hang flake; documented in KNOWN_ISSUES,
-      reproduced on pre-refactor `1b11cb1b`). Make it deterministic so it can be a
-      trusted release gate. Audit e2e parallel-load flakiness too.
+- [x] `tests/ui/uploadModal-reset.test.mjs` ("UploadModal Reset Logic") — FIXED 2026-07-05.
+      The "guard against zombie callbacks" subtest mocked `modal.generateTorrentMetadata` /
+      `resolveUploadIdentifier`, but handleVideoSelection drives the upload through
+      `this.mediaUploader.uploadVideo` (a DIFFERENT object with its own helpers) — so the
+      mediaUploader still ran real `createTorrentMetadata()`/hashing on a synthetic
+      `{name:"video.mp4"}` file, throwing "invalid input type" as async activity AFTER the
+      test ended (node:test flags that as an uncaughtException) plus
+      `captureVideoMetadata()` calling `URL.createObjectURL(file)` → "must be an instance of
+      Blob". Not intermittent anymore — it was a consistent, wrong-boundary mock. Fix: mock
+      at the real DI boundary — `modal.mediaUploader.uploadVideo = () => delayedUpload` (the
+      controllable pending promise) + stub `modal.captureVideoMetadata`. Now hermetic, no
+      webtorrent/Blob, deterministic (3/3 exit 0, # pass 3). Mutation-verified: breaking the
+      videoUploadId zombie guard makes the test fail (# fail 1). See TEST_INTEGRITY.md.
+- [ ] Audit e2e parallel-load flakiness too.
 
 ### 11b. SILENTLY-EXCLUDED unit tests — 20 files never run in CI (found 2026-06-23)
 > **2026-07-03 addendum — stale-default failure was hiding in local runs:**
@@ -1276,8 +1286,10 @@ test below was failing on `main` unnoticed).
         `watch-history-feed`, `subscriptions-feed`, `discussion-count-service`,
         `feed-engine`, `zap-split`, `nostr-view-events`,
         `watchHistory/watch-history-telemetry`, `unit/ui/thumbnailBinder`.
-- [ ] **Triage + un-quarantine the 10 broken files** (first-error diagnosis 2026-06-23;
-      each needs the stale-vs-real-bug investigation the delete-flow file got):
+- [x] **ALL broken files triaged + un-quarantined (COMPLETE 2026-07-05).** The QUARANTINE
+      map in `run-unit-tests.mjs` is now empty; every unit test file runs in CI. Per-file
+      diagnosis + spec-correction history below (each got the stale-vs-real-bug
+      investigation the delete-flow file got):
       - `watch-history` (#2) — DONE + UN-QUARANTINED 2026-06-23. Three stale tests,
         all spec-corrected to shipped behavior (see TEST_INTEGRITY.md):
         (1) `testWatchHistoryPartialRelayRetry` asserted snapshot THROWS on partial
@@ -1322,15 +1334,45 @@ test below was failing on `main` unnoticed).
         parseCommunityBlacklistReferences decoded them twice; and createListEvent omitted
         the `d` tag that selectNewestEventsForReferences matches on. Fixed all three to be
         faithful to production. See TEST_INTEGRITY.md.
-      - `nostr-publish-rejection` — STILL QUARANTINED. Partially diagnosed 2026-06-25:
-        multi-precondition setup. (1) `testPublishVideoNoteDefaultsToLiveModeInDev` needs
-        dev mode — set `globalThis.__BITVID_DEV_MODE_OVERRIDE__=true` BEFORE the first
-        (dynamic) config-importing import (~line 50). (2) The `publishNip71Video` sub-test
-        then fails — `publishVideo`'s NIP-71 invocation path needs FEATURE_PUBLISH_NIP71 /
-        condition triage; possibly more after. Quarantine note carries the steps.
-      - `nostr-publish-rejection`, `nwc-client`, `user-blocks` remain quarantined
-        (see QUARANTINE map in run-unit-tests.mjs for the precise reason on each).
-      - `user-blocks` — STILL QUARANTINED: HANGS (async leak); needs a deterministic rewrite.
+      - `nostr-publish-rejection` — ✅ DONE + UN-QUARANTINED 2026-07-05. The two spec
+        precondition fixes had already landed (dev-mode override at top; NIP-71
+        auto-publish spec-corrected to expect ZERO calls with FEATURE_PUBLISH_NIP71 off).
+        Remaining issue was a post-completion HANG: the file imports the full app stack
+        (js/app.js + subscriptions + userBlocks) whose module-load timers/connection
+        managers keep the event loop alive after all assertions pass. Applied the repo's
+        established bare-assert `setTimeout(() => process.exit(0), 50)` exit after cleanup.
+        NOTE: it was never actually in the QUARANTINE map (only 2 entries: user-blocks +
+        nwc-client), so it had been silently hanging any local `npm run test:unit` (no
+        per-file timeout unless UNIT_TEST_TIMEOUT_MS is set).
+      - `nwc-client` — ✅ DONE + UN-QUARANTINED 2026-07-05. (1) Mock-shadow fixed: the
+        bootstrap's frozen canonical toolkit is preferred by readToolkitFromScope, so the
+        per-section `window.NostrTools` mocks never took effect (real @noble rejected the
+        fake keys). Removing the scope canonical lets the resolver fall through to each
+        mock. (2) Spec correction: one section expected a rejection when the toolkit
+        "lacks nip44," but mergeWithCanonical ALWAYS backfills the canonical nip44 (even
+        explicit `nip44:null`), so nip44_v2 is never absent — the wallet now advertises a
+        genuinely-unsupported scheme (`nip44_v3`) to exercise the same UNSUPPORTED_ENCRYPTION
+        path, and the assertion also checks `error.code`.
+      - `user-blocks` — ✅ DONE + UN-QUARANTINED 2026-07-05. Post-completion HANG: the
+        decrypt-timeout section installs a never-resolving nip44Decrypt that leaves a
+        background decrypt-retry timer alive (manager.reset() doesn't cancel it). Applied
+        the same `setTimeout(() => process.exit(0), 50)` exit after the final assertion.
+      - `dm-block-filter` — ✅ DONE + UN-QUARANTINED 2026-07-05. A FOURTH, pre-existing hang
+        surfaced by running the full suite with a per-file timeout (it was never in the map,
+        so it had been silently hanging local `npm run test:unit`). All subtests PASS, then
+        node:test never exits. Root cause (diagnosed via process.getActiveResourcesInfo):
+        the "integration with loaded user block list" test's `manager.loadBlocks()` opens a
+        LIVE block-list subscription through nostrClient's real SimplePool aimed at the
+        test's fake relay URLs, leaking 4 TCP sockets + reconnect timers. NOT the
+        decrypt-retry timer (verified absent). Nulling the pool did NOT help — loadBlocks
+        calls `ensurePool()` (userBlocks.js:967) to re-create+connect a real pool when pool
+        is falsy. Fix (node:test-SAFE, no force-exit): make the test hermetic — (1) a TRUTHY
+        stub pool so ensurePool() is skipped, (2) a no-op getSubscriptionManager so the
+        subscription opens nothing; the block MERGE still runs via the stubbed
+        fetchListIncrementally. Verified: clean run exits 0 (# pass 12), AND a deliberately
+        broken assertion still exits 1 (# fail 1) — failures are NOT masked. See
+        TEST_INTEGRITY.md.
+      - **QUARANTINE map is now EMPTY** — every unit test file runs in CI.
 
 ### 12. Promotion: `unstable → beta`
 - [ ] After this batch soaks and the high-priority items land, promote `unstable → beta`

@@ -2,12 +2,15 @@
 
 import { nostrClient } from "./nostrClientFacade.js";
 import { convertChannelEvent, buildChannelVideoFilters, loadCachedChannelVideos, saveCachedChannelVideos, mergeChannelVideoSources } from "./channelProfileVideos.js";
+import { wireChannelZapTotal } from "./channelZapTotal.js";
+import { wireChannelPlaylists } from "./channelPlaylists.js";
 import { dedupeVideos } from "./utils/videoDeduper.js";
 import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
 import { subscriptions } from "./subscriptions.js";
 import { attachHealthBadges } from "./gridHealth.js";
 import { attachUrlHealthBadges } from "./urlHealthObserver.js";
 import { accessControl } from "./accessControl.js";
+import { applyAdminStar, applyAdminRing } from "./ui/adminBadge.js";
 import { getApplication } from "./applicationContext.js";
 import { escapeHTML } from "./utils/domUtils.js";
 import { formatShortNpub } from "./utils/formatters.js";
@@ -5157,6 +5160,10 @@ function applyChannelProfileMetadata({
   }
 
   const blurPubkey = pubkey || currentChannelHex || "";
+  applyAdminStar(document.getElementById("channelAvatarWrap"), blurPubkey);
+  // Ring the inner rounded avatar box (the wrap is a non-clipped positioning
+  // shell; the box-shadow ring belongs on the circular element itself).
+  applyAdminRing(avatarEl?.parentElement, blurPubkey);
   updateChannelModerationVisuals({
     bannerEl,
     avatarEl,
@@ -5227,6 +5234,12 @@ function applyChannelProfileMetadata({
   }
 
   setChannelZapVisibility(Boolean(lightningAddress));
+
+  // #47: total sats zapped to this creator (p:<pubkey> pointer in the store).
+  wireChannelZapTotal(currentChannelHex);
+
+  // #37: creator playlists section (no-op unless FEATURE_PLAYLISTS is on).
+  wireChannelPlaylists(currentChannelHex);
 }
 
 async function fetchChannelProfileFromRelays(pubkey) {

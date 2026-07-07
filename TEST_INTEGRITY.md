@@ -458,3 +458,133 @@ test_integrity_note:
     did_relax_any_assertion: false
     if_true_explain_spec_basis: ""
 ```
+
+## 2026-07-05 — todo-11b final: un-quarantine nwc-client (+ user-blocks / nostr-publish-rejection hangs)
+
+```yaml
+test_integrity_note:
+  change_type: ["spec_correction", "refactor_tests", "flake_fix"]
+  scenarios:
+    - id: SCN-nwc-unsupported-encryption-scheme
+      given: "An NWC wallet whose info event (kind 13194) advertises ONLY an encryption scheme bitvid does not implement (nip44_v3)"
+      when: "ensureEncryptionForContext(context) negotiates a scheme"
+      then: "It rejects with message /Wallet advertises unsupported encryption schemes: nip44_v3\\./ AND error.code === 'UNSUPPORTED_ENCRYPTION'"
+    - id: SCN-nwc-mock-toolkit-selection
+      given: "Each nwc-client section installs a per-section window.NostrTools mock to drive encryption-scheme selection"
+      when: "The nostr-tools bootstrap has installed its frozen canonical toolkit on the global scope"
+      then: "Removing scope.__BITVID_CANONICAL_NOSTR_TOOLS__ lets readToolkitFromScope fall through to the section mock, so the wiring under test runs against the mock (not real @noble against fake keys)"
+  observable_outcomes:
+    - "ensureEncryptionForContext rejection message + error.code (UNSUPPORTED_ENCRYPTION) — asserted exactly"
+    - "nip44_v2 section still resolves via the mock's nip44 (assert.match on the mock ciphertext shape)"
+  determinism_controls:
+    - "per-section in-memory window.NostrTools mocks; canonical-toolkit removal is deterministic (one-time, nothing re-installs it); no network"
+  anti_cheat_rationale:
+    prevents:
+      - "over-mocking internal logic"
+      - "hard-coded return value"
+    note: |
+      nwc-client: TWO issues. (1) MOCK SHADOW (not a spec change): the bootstrap installs a
+      frozen canonical toolkit that readToolkitFromScope() prefers over window.NostrTools, so
+      the per-section mocks never took effect and real @noble ran against the fake test keys
+      ("bad point: is not on curve"). Deleting the scope canonical lets the resolver use each
+      section's mock — the tests exercise the NWC client's encryption-SELECTION wiring, not
+      @noble crypto (which is real elsewhere; the parseNwcUri hex-vs-bytes production bug is
+      guarded by tests/nwc-parse-uri.test.mjs). (2) SPEC CORRECTION: one section asserted a
+      rejection when the toolkit "lacks nip44" by omitting nip44 from the mock. That precondition
+      is architecturally unreachable — the bootstrap's mergeWithCanonical ALWAYS backfills the
+      canonical nip44 (even an explicit `nip44: null` is overwritten by `!merged.nip44`), so
+      nip44_v2 is never an unsupported scheme. Replaced with a wallet advertising a scheme bitvid
+      genuinely cannot provide (nip44_v3), exercising the SAME UNSUPPORTED_ENCRYPTION rejection
+      via a reachable scenario, and strengthened the check to also assert error.code — strictly
+      stronger than the old message-only match.
+
+      user-blocks + nostr-publish-rejection: FLAKE_FIX (no assertion changed). Both are
+      bare-assert files that PASS all assertions then hang on lingering handles after completion
+      (user-blocks: a never-resolving decrypt's background retry timer that manager.reset() doesn't
+      cancel; nostr-publish-rejection: js/app.js + subscriptions + userBlocks module-load
+      timers/connection managers). Applied the repo's established post-completion
+      `setTimeout(() => process.exit(0), 50)` exit after cleanup. No behavior or expectation was
+      altered — the process simply exits once the assertions have all run.
+  relaxation:
+    did_relax_any_assertion: false
+    if_true_explain_spec_basis: ""
+```
+
+## 2026-07-05 — todo-11: uploadModal-reset zombie-callback test made deterministic (correct mock boundary)
+
+```yaml
+test_integrity_note:
+  change_type: ["flake_fix", "refactor_tests"]
+  scenarios:
+    - id: SCN-upload-zombie-callback-guard
+      given: "An upload is in progress (videoUploadState.status === 'uploading') via a controllable pending mediaUploader.uploadVideo"
+      when: "resetUploads() runs mid-upload (bumping videoUploadId), then the in-flight upload later resolves (a 'zombie' completion)"
+      then: "The stale completion is ignored — status stays 'idle' and results.videoUrl stays '' — because handleVideoSelection guards on videoUploadId !== currentUploadId"
+  observable_outcomes:
+    - "videoUploadState.status: 'uploading' after start, 'idle' after reset, still 'idle' after the zombie resolve"
+    - "results.videoUrl.value === '' after the zombie resolve"
+    - "test exits 0 with no async-after-test activity (was leaking webtorrent/Blob errors)"
+  determinism_controls:
+    - "mediaUploader.uploadVideo replaced with a manually-resolved promise; captureVideoMetadata stubbed; jsdom DOM; no webtorrent, no network, no real Blob ops"
+  anti_cheat_rationale:
+    prevents:
+      - "over-mocking internal logic"
+      - "retry/sleep-based flake masking"
+    note: |
+      FLAKE_FIX + REFACTOR_TESTS, no assertion weakened. The subtest PASSED its asserts but
+      leaked async activity after the test ended, which node:test flags as a failure. Root
+      cause: it mocked modal.generateTorrentMetadata / resolveUploadIdentifier, but
+      handleVideoSelection drives the upload through this.mediaUploader.uploadVideo — a
+      DIFFERENT object with its OWN helpers — so the mediaUploader still ran real
+      createTorrentMetadata()/hashing on a synthetic {name:'video.mp4'} file ("invalid input
+      type" async), and captureVideoMetadata() ran URL.createObjectURL(file) ("must be an
+      instance of Blob"). Fixed by mocking at the correct DI boundary
+      (modal.mediaUploader.uploadVideo returns the controllable pending promise) and stubbing
+      captureVideoMetadata. The unit under test is the modal's videoUploadId zombie-guard, so
+      mocking the uploader boundary is correct isolation, not over-mocking (real upload/torrent
+      paths are covered by the mediaUploader / s3-upload suites).
+  mutation_verification:
+    - "Broke the guard (`if (this.videoUploadId !== currentUploadId) return` → `if (false)`) → the test FAILS ('State should remain idle after zombie completion', # fail 1). Reverted."
+  relaxation:
+    did_relax_any_assertion: false
+    if_true_explain_spec_basis: ""
+```
+
+## 2026-07-05 — todo-11b: un-quarantine dm-block-filter (hermetic subscription; no force-exit)
+
+```yaml
+test_integrity_note:
+  change_type: ["flake_fix"]
+  scenarios:
+    - id: SCN-dm-block-filter-hermetic
+      given: "The 'integration with loaded user block list' test loads standard + legacy block lists and filters incoming DMs"
+      when: "manager.loadBlocks() runs against stubbed fetchListIncrementally, with the live block-list subscription stubbed out"
+      then: "Both blocked contacts (standard + legacy) are filtered (dmMessages === [ALLOWED]) AND the process opens NO real relay sockets, so node:test exits naturally with the correct exit code"
+  observable_outcomes:
+    - "manager.isBlocked(legacy) && manager.isBlocked(standard) === true; dmMessages length 1 (ALLOWED only)"
+    - "process.getActiveResourcesInfo() shows no TCPSocketWrap after loadBlocks; node exits 0 on pass, 1 on a forced failure (verified — failures NOT masked)"
+  determinism_controls:
+    - "stubbed nostrClient.fetchListIncrementally; truthy stub nostrClient.pool; no-op nostrClient.getSubscriptionManager; window.nostr.nip04.decrypt stub. All restored in finally. No network."
+  anti_cheat_rationale:
+    prevents:
+      - "retry/sleep-based flake masking"
+      - "over-mocking internal logic"
+    note: |
+      FLAKE_FIX, no assertion changed. The file PASSED all subtests then hung: loadBlocks()
+      opens a LIVE block-list subscription through nostrClient's real SimplePool aimed at the
+      test's fake relay URLs, leaking TCP sockets + reconnect timers that outlive the run so
+      node:test never exits (surfaced only once the runner was given a per-file timeout).
+      Diagnosed with process.getActiveResourcesInfo() — 4 TCPSocketWrap + reconnect Timeouts;
+      NOT the decrypt-retry timer (verified absent). Nulling the pool did not help because
+      loadBlocks calls ensurePool() (userBlocks.js:967) to re-create+connect a real pool when
+      pool is falsy. Fix keeps the test hermetic: a TRUTHY stub pool (so ensurePool is skipped)
+      + a no-op getSubscriptionManager (so the subscription opens nothing). The block-merge
+      logic under test still runs fully through the stubbed fetchListIncrementally. A force
+      `process.exit` in an after() hook was explicitly REJECTED after verifying it masks real
+      failures (process.exitCode is not set when the hook's timer fires — a deliberately broken
+      assertion still exited 0 under that approach). Under this fix, the forced-failure control
+      correctly exits 1.
+  relaxation:
+    did_relax_any_assertion: false
+    if_true_explain_spec_basis: ""
+```
