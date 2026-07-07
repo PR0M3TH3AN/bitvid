@@ -36,7 +36,8 @@ export async function populateSubmissions(controller) {
   }
 
   const adminHex = safeDecodeNpub(controller.mainController.adminSuperNpub);
-  const editorHexes = (accessControl.getEditors?.() || [])
+  // getEditors() may return a Set (or array) — coerce before mapping.
+  const editorHexes = Array.from(accessControl.getEditors?.() || [])
     .map((npub) => safeDecodeNpub(npub))
     .filter(Boolean);
 
