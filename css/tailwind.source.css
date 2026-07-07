@@ -3544,6 +3544,13 @@
     overflow-x: visible;
   }
 
+  /* Nav buttons host an absolutely-positioned unread dot, so they must be the
+     positioning context — otherwise the dot resolves against the whole nav
+     column (top:50%/left:-6px of the list, not the button). */
+  .profile-modal__nav > button {
+    position: relative;
+  }
+
   .profile-nav__unread-dot {
     position: absolute;
     top: 50%;
