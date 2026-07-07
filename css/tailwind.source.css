@@ -2764,6 +2764,8 @@
     position: relative;
     inline-size: var(--comment-avatar-size);
     block-size: var(--comment-avatar-size);
+    /* rounded so the admin ring (box-shadow) reads as a circle */
+    border-radius: var(--radius-full);
   }
 
   .comment-thread__avatar img {
@@ -3558,6 +3560,30 @@
   }
 
   .profile-nav__unread-dot.is-visible {
+    display: block;
+  }
+
+  /* Pending-submissions dot on the Admin pane's "Submissions" subtab. The
+     subtabs sit in a horizontal row, so this dot rides the top-right corner
+     (not the left edge like the vertical nav dots). */
+  .admin-subtab-has-dot {
+    position: relative;
+  }
+
+  .admin-subtab-dot {
+    position: absolute;
+    top: calc(-1 * var(--space-3xs));
+    right: calc(-1 * var(--space-3xs));
+    width: var(--space-sm);
+    height: var(--space-sm);
+    border-radius: var(--radius-full);
+    border: var(--border-width-hairline) solid var(--surface-panel);
+    background-color: var(--status-danger);
+    display: none;
+    pointer-events: none;
+  }
+
+  .admin-subtab-dot.is-visible {
     display: block;
   }
 

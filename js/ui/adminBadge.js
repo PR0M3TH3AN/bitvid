@@ -91,6 +91,23 @@ export function applyAdminStar(
 }
 
 /**
+ * Toggle just the gold ring on a circular element (for surfaces that already
+ * place the star on a specific element and only need the ring added). The
+ * element should be circular (border-radius) for the ring to read right.
+ * @param {Element|null} el
+ * @param {string} pubkeyOrNpub
+ * @returns {boolean} whether the ring is applied
+ */
+export function applyAdminRing(el, pubkeyOrNpub) {
+  if (!el || !el.classList) {
+    return false;
+  }
+  const isAdmin = isAdminActor(pubkeyOrNpub);
+  el.classList.toggle(ADMIN_RING_CLASS, isAdmin);
+  return isAdmin;
+}
+
+/**
  * Decorate a circular avatar element with BOTH the admin ring and the corner
  * star. `avatarEl` is the circular element (an <img> or a clip container). The
  * ring is a box-shadow on `avatarEl` itself (not clipped by its own overflow);
@@ -138,5 +155,6 @@ export default {
   ADMIN_WRAP_CLASS,
   isAdminActor,
   applyAdminStar,
+  applyAdminRing,
   decorateAdminAvatar,
 };

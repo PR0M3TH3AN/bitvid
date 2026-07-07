@@ -879,6 +879,16 @@ export default class ApplicationBootstrap {
       ) {
         app.profileController.setMessagesUnreadIndicator(app._dmUnread);
       }
+      // Pending-submissions dots on the Admin tab + Submissions subtab so an
+      // admin knows exactly where to look.
+      if (
+        app.profileController &&
+        typeof app.profileController.setSubmissionsUnreadIndicator === "function"
+      ) {
+        app.profileController.setSubmissionsUnreadIndicator(
+          app._submissionsPending,
+        );
+      }
     };
 
     app.refreshUnreadDmIndicator = async ({ reason = "" } = {}) => {

@@ -10,7 +10,7 @@ import { subscriptions } from "./subscriptions.js";
 import { attachHealthBadges } from "./gridHealth.js";
 import { attachUrlHealthBadges } from "./urlHealthObserver.js";
 import { accessControl } from "./accessControl.js";
-import { applyAdminStar } from "./ui/adminBadge.js";
+import { applyAdminStar, applyAdminRing } from "./ui/adminBadge.js";
 import { getApplication } from "./applicationContext.js";
 import { escapeHTML } from "./utils/domUtils.js";
 import { formatShortNpub } from "./utils/formatters.js";
@@ -5161,6 +5161,9 @@ function applyChannelProfileMetadata({
 
   const blurPubkey = pubkey || currentChannelHex || "";
   applyAdminStar(document.getElementById("channelAvatarWrap"), blurPubkey);
+  // Ring the inner rounded avatar box (the wrap is a non-clipped positioning
+  // shell; the box-shadow ring belongs on the circular element itself).
+  applyAdminRing(avatarEl?.parentElement, blurPubkey);
   updateChannelModerationVisuals({
     bannerEl,
     avatarEl,

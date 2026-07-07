@@ -423,6 +423,11 @@
                   />
                 </svg>
                 Admin (Moderation)
+                <span
+                  id="profileNavAdminUnreadDot"
+                  class="profile-nav__unread-dot"
+                  aria-hidden="true"
+                ></span>
               </button>
               <button
                 id="profileMobileLockNowBtn"
@@ -1884,9 +1889,14 @@
                   data-admin-subtab="submissions"
                   aria-controls="adminSubmissionsSection"
                   aria-selected="false"
-                  class="btn-ghost focus-ring px-3 py-1.5 text-sm font-medium hidden"
+                  class="admin-subtab-has-dot btn-ghost focus-ring px-3 py-1.5 text-sm font-medium hidden"
                 >
                   Submissions
+                  <span
+                    id="adminSubtabSubmissionsDot"
+                    class="admin-subtab-dot"
+                    aria-hidden="true"
+                  ></span>
                 </button>
               </div>
 

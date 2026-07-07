@@ -721,6 +721,12 @@ export class ProfileModalController {
     this.navButtons.admin = document.getElementById("profileNavAdmin") || null;
     this.navButtons.safety = document.getElementById("profileNavSafety") || null;
 
+    // Pending-submissions dots: on the Admin nav tab and the Submissions subtab.
+    this.adminNavUnreadDot =
+      document.getElementById("profileNavAdminUnreadDot") || null;
+    this.adminSubmissionsDot =
+      document.getElementById("adminSubtabSubmissionsDot") || null;
+
     this.profileEditBtn = document.getElementById("profileEditBtn") || null;
     this.profileEditBackBtn = document.getElementById("profileEditBackBtn") || null;
 
@@ -1351,6 +1357,26 @@ export class ProfileModalController {
       "is-visible",
       Boolean(visible) && isVisible,
     );
+  }
+
+  // Pending-submissions dots for admins: on the Admin nav tab (gated on that tab
+  // being visible) and on the Submissions subtab button inside the admin pane.
+  setSubmissionsUnreadIndicator(visible) {
+    const show = Boolean(visible);
+    const adminButton = this.navButtons.admin;
+    const adminNavVisible =
+      adminButton instanceof HTMLElement &&
+      !adminButton.classList.contains("hidden") &&
+      !adminButton.hasAttribute("hidden");
+    if (this.adminNavUnreadDot instanceof HTMLElement) {
+      this.adminNavUnreadDot.classList.toggle(
+        "is-visible",
+        show && adminNavVisible,
+      );
+    }
+    if (this.adminSubmissionsDot instanceof HTMLElement) {
+      this.adminSubmissionsDot.classList.toggle("is-visible", show);
+    }
   }
 
 
