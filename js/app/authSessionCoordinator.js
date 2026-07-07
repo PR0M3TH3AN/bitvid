@@ -240,6 +240,9 @@ export function createAuthSessionCoordinator(deps) {
       if (typeof this.refreshSubmissionsIndicator === "function") {
         void this.refreshSubmissionsIndicator({ reason: "auth-login" });
       }
+      if (typeof this.refreshAdminStar === "function") {
+        this.refreshAdminStar();
+      }
 
       const currentView = getHashViewName();
       const normalizedView =
@@ -1048,6 +1051,9 @@ export function createAuthSessionCoordinator(deps) {
       }
       if (typeof this.refreshSubmissionsIndicator === "function") {
         void this.refreshSubmissionsIndicator({ reason: "auth-logout" });
+      }
+      if (typeof this.refreshAdminStar === "function") {
+        this.refreshAdminStar();
       }
 
       const logoutView = getHashViewName();

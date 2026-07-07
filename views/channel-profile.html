@@ -23,16 +23,18 @@
           aria-live="polite"
         ></div>
         <div class="flex items-center">
-          <div
-            class="h-16 w-16 overflow-hidden rounded-full border-2 border-border-translucent-bright max-sm:h-12 max-sm:w-12"
-          >
-            <img
-              id="channelAvatar"
-            src="assets/svg/default-profile.svg"
-            alt="Avatar"
-            class="h-full w-full object-cover"
-          />
-        </div>
+          <div id="channelAvatarWrap" class="relative">
+            <div
+              class="h-16 w-16 overflow-hidden rounded-full border-2 border-border-translucent-bright max-sm:h-12 max-sm:w-12"
+            >
+              <img
+                id="channelAvatar"
+                src="assets/svg/default-profile.svg"
+                alt="Avatar"
+                class="h-full w-full object-cover"
+              />
+            </div>
+          </div>
           <div class="ml-4 text-text">
             <h2 id="channelName" class="text-xl font-bold max-sm:text-base">User Name</h2>
             <p id="channelNpub" class="text-sm opacity-80 max-sm:text-2xs">npub...</p>

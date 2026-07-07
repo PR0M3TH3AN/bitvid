@@ -1,6 +1,7 @@
 import { UI_FEEDBACK_DELAY_MS } from "../../../constants.js";
 import { formatAbsoluteTimestamp, formatTimeAgo } from "../../../utils/formatters.js";
 import { registerCommentAvatarFailure as registerCommentAvatarFailureUtil } from "./utils/commentAvatar.js";
+import { applyAdminStar } from "../../adminBadge.js";
 
 export class CommentNodeFactory {
   constructor({ document, window, logger, dispatch, DEFAULT_PROFILE_AVATAR }) {
@@ -44,6 +45,13 @@ export class CommentNodeFactory {
 
     const avatarLabel = this.document.createElement("span");
     avatarWrapper.appendChild(avatarLabel);
+
+    // Gold admin star for comments authored by a bitvid admin.
+    if (typeof event.pubkey === "string" && event.pubkey.trim()) {
+      applyAdminStar(avatarWrapper, event.pubkey.trim(), {
+        doc: this.document,
+      });
+    }
 
     const content = this.document.createElement("div");
     content.classList.add("comment-thread__content");

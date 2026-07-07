@@ -10,6 +10,7 @@ import { subscriptions } from "./subscriptions.js";
 import { attachHealthBadges } from "./gridHealth.js";
 import { attachUrlHealthBadges } from "./urlHealthObserver.js";
 import { accessControl } from "./accessControl.js";
+import { applyAdminStar } from "./ui/adminBadge.js";
 import { getApplication } from "./applicationContext.js";
 import { escapeHTML } from "./utils/domUtils.js";
 import { formatShortNpub } from "./utils/formatters.js";
@@ -5159,6 +5160,7 @@ function applyChannelProfileMetadata({
   }
 
   const blurPubkey = pubkey || currentChannelHex || "";
+  applyAdminStar(document.getElementById("channelAvatarWrap"), blurPubkey);
   updateChannelModerationVisuals({
     bannerEl,
     avatarEl,

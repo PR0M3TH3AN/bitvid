@@ -32,6 +32,7 @@ export function ContactRow({
     avatarSrc = "",
     status = "",
     zapTotalSats = null,
+    pubkey = "",
   } = contact;
 
   const button = createElement(doc, "button", "dm-contact-row");
@@ -51,6 +52,7 @@ export function ContactRow({
     size: "md",
     initials: name,
     status,
+    adminId: pubkey || id,
   });
   button.appendChild(avatar);
 

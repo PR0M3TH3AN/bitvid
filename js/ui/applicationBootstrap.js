@@ -35,6 +35,7 @@ import { relayManager } from "../relayManager.js";
 import { userBlocks } from "../userBlocks.js";
 import { subscriptions } from "../subscriptions.js";
 import { accessControl } from "../accessControl.js";
+import { applyAdminStar } from "./adminBadge.js";
 import moderationService from "../services/moderationService.js";
 import ProfileIdentityController from "./profileIdentityController.js";
 import VideoListViewController from "./videoListViewController.js";
@@ -977,6 +978,21 @@ export default class ApplicationBootstrap {
       app.applyProfileNotificationDot();
     };
 
+    // The profile button shows the logged-in user; light its admin star when
+    // that user is a bitvid admin. Re-runs on editor-list load so a moderator
+    // added after startup still gets the star.
+    app.refreshAdminStar = () => {
+      try {
+        const npub =
+          typeof app.getCurrentUserNpub === "function"
+            ? app.getCurrentUserNpub()
+            : "";
+        applyAdminStar(app.profileButton, npub || "");
+      } catch (error) {
+        devLogger.warn("[Application] Failed to refresh admin star", error);
+      }
+    };
+
     const nostrUnsubscribes = [];
     nostrUnsubscribes.push(
       app.nostrService.on("subscription:changed", ({ subscription }) => {
@@ -1050,6 +1066,12 @@ export default class ApplicationBootstrap {
     }
     nostrUnsubscribes.push(() => clearInterval(submissionsPollId));
     void app.refreshSubmissionsIndicator({ reason: "startup" });
+    if (typeof accessControl.onEditorsChange === "function") {
+      nostrUnsubscribes.push(
+        accessControl.onEditorsChange(() => app.refreshAdminStar?.()),
+      );
+    }
+    app.refreshAdminStar();
     app.unsubscribeFromNostrService = () => {
       while (nostrUnsubscribes.length) {
         const unsubscribe = nostrUnsubscribes.pop();

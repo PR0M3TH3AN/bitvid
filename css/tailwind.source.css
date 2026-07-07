@@ -252,6 +252,34 @@
     display: block;
   }
 
+  /* Admin "verified" star — sits in the corner opposite the notification dot.
+     A gold star on a page-colored disc so it stays legible on any avatar, and
+     pairs visually with the red dot. Positioned top-left by default (the dot is
+     top-right); per-surface rules below tune the inset for larger avatars. */
+  .admin-star {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 3;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--space-sm);
+    height: var(--space-sm);
+    border-radius: var(--radius-full);
+    border: var(--border-width-hairline) solid var(--color-page);
+    background-color: var(--status-warning);
+    color: var(--color-warning-on);
+    font-size: var(--font-size-3xs);
+    line-height: 1;
+    pointer-events: none;
+  }
+
+  #profileButton .admin-star {
+    top: var(--space-2xs);
+    left: var(--space-2xs);
+  }
+
   .header-icon-toggle[data-theme-state="light"]:hover,
   .header-icon-toggle[data-theme-state="light"]:focus-visible {
     color: var(--color-text);
@@ -2706,6 +2734,7 @@
   }
 
   .comment-thread__avatar {
+    position: relative;
     inline-size: var(--comment-avatar-size);
     block-size: var(--comment-avatar-size);
   }
@@ -5729,6 +5758,14 @@
     background: var(--color-accent);
     color: var(--color-white);
     font-size: var(--font-size-3xs);
+  }
+
+  /* Non-clipped relative shell used only when a DM avatar needs an admin star
+     in its corner (the .dm-avatar itself clips to a circle). */
+  .dm-avatar-wrap {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
   }
 
   .dm-avatar {
