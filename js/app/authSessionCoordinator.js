@@ -237,6 +237,9 @@ export function createAuthSessionCoordinator(deps) {
       if (typeof this.refreshUnreadDmIndicator === "function") {
         void this.refreshUnreadDmIndicator({ reason: "auth-login" });
       }
+      if (typeof this.refreshSubmissionsIndicator === "function") {
+        void this.refreshSubmissionsIndicator({ reason: "auth-login" });
+      }
 
       const currentView = getHashViewName();
       const normalizedView =
@@ -1042,6 +1045,9 @@ export function createAuthSessionCoordinator(deps) {
         void this.refreshUnreadDmIndicator({ reason: "auth-logout" });
       } else if (this.appChromeController?.setUnreadDmIndicator) {
         this.appChromeController.setUnreadDmIndicator(false);
+      }
+      if (typeof this.refreshSubmissionsIndicator === "function") {
+        void this.refreshSubmissionsIndicator({ reason: "auth-logout" });
       }
 
       const logoutView = getHashViewName();

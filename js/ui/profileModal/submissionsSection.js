@@ -22,6 +22,16 @@ function setLoading(controller, value) {
   }
 }
 
+// Let the app recompute the profile-button "pending submissions" dot after a
+// moderator approves/denies one.
+function emitSubmissionsChanged() {
+  try {
+    document.dispatchEvent(new CustomEvent("bitvid:submissions-changed"));
+  } catch (error) {
+    // best effort
+  }
+}
+
 export async function populateSubmissions(controller) {
   if (!FEATURE_SUBMISSIONS || !controller.submissionsList) {
     return;
@@ -214,6 +224,7 @@ async function approveSubmission(controller, submission) {
       `Approved — ${applicant} added to the whitelist.`,
     );
     controller.populateAdminLists();
+    emitSubmissionsChanged();
   } catch (error) {
     devLogger.warn("[profileModal] Approve submission failed:", error);
     controller.mainController.showError?.("Couldn't approve — please try again.");
@@ -238,6 +249,7 @@ async function denySubmission(controller, submission) {
       actingHex: safeDecodeNpub(actorNpub),
     });
     controller.mainController.showSuccess?.("Submission dismissed.");
+    emitSubmissionsChanged();
   } catch (error) {
     devLogger.warn("[profileModal] Deny submission failed:", error);
     controller.mainController.showError?.("Couldn't dismiss — please try again.");
