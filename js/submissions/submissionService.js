@@ -38,13 +38,31 @@ function firstTagValue(tags, name) {
   return tag ? tag[1] : "";
 }
 
+const HEX_EVENT_ID_REGEX = /^[0-9a-f]{64}$/i;
+
+// The `e` tag on an appeal points at the blocked video's event id. We only trust
+// a well-formed 64-char hex id — the admin approve path feeds it straight into
+// the event block list.
+function firstEventTarget(tags) {
+  for (const tag of tags) {
+    if (Array.isArray(tag) && tag[0] === "e" && typeof tag[1] === "string") {
+      const id = tag[1].trim().toLowerCase();
+      if (HEX_EVENT_ID_REGEX.test(id)) {
+        return id;
+      }
+    }
+  }
+  return "";
+}
+
 /**
  * Parse a kind-30083 event into a structured submission. Returns null for a
  * non-submission event or one missing a `d` identifier.
  * @param {Object} event
  * @returns {null | {
  *   id: string, eventId: string, type: string, applicant: string,
- *   recipient: string, content: string, createdAt: number, pubkey: string,
+ *   targetEventId: string, recipient: string, content: string,
+ *   createdAt: number, pubkey: string,
  * }}
  */
 export function parseSubmissionEvent(event) {
@@ -65,6 +83,7 @@ export function parseSubmissionEvent(event) {
     eventId: typeof event.id === "string" ? event.id : "",
     type: KNOWN_TYPES.has(rawType) ? rawType : "other",
     applicant: firstTagValue(tags, "applicant").trim(),
+    targetEventId: firstEventTarget(tags),
     recipient: firstTagValue(tags, "p").trim(),
     content: typeof event.content === "string" ? event.content : "",
     createdAt: Number.isFinite(event.created_at) ? event.created_at : 0,

@@ -3231,7 +3231,24 @@
 
   .submission-card__actions {
     display: flex;
-    gap: var(--space-2xs);
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+    align-items: flex-start;
+  }
+
+  /* Each action pairs its button with a one-line description so a moderator
+     knows exactly what the control does before clicking. */
+  .submission-card__action {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3xs);
+    min-inline-size: 0;
+  }
+
+  .submission-card__action-hint {
+    font-size: var(--font-size-2xs);
+    color: var(--color-text-muted);
+    max-inline-size: 22ch;
   }
 
   /* #43: always-visible active-identity pill. Rendered after the header in
@@ -4529,6 +4546,12 @@
   body.iframe-form label + .textarea,
   body.iframe-form label + .select {
     margin-top: var(--space-xs);
+  }
+
+  body.iframe-form .form-hint {
+    margin-top: var(--space-xs);
+    font-size: var(--font-size-2xs);
+    color: var(--color-text-muted);
   }
 
   body.iframe-form .checkbox-group,

@@ -73,6 +73,48 @@ test("parseSubmissionEvent structures a submission", () => {
   assert.equal(parsed.pubkey, EPHEMERAL);
 });
 
+test("parseSubmissionEvent surfaces an appeal's blocked-event target from the e tag", () => {
+  const target = "b".repeat(64);
+  const parsed = parseSubmissionEvent({
+    kind: SUBMISSION_KIND,
+    pubkey: EPHEMERAL,
+    created_at: 10,
+    tags: [
+      ["d", "appeal-1"],
+      ["k", "appeal"],
+      ["p", ADMIN],
+      ["e", target.toUpperCase()],
+    ],
+  });
+  assert.equal(parsed.type, "appeal");
+  // lowercased, ready to feed straight into the event block list
+  assert.equal(parsed.targetEventId, target);
+});
+
+test("parseSubmissionEvent ignores a malformed e tag and defaults target to ''", () => {
+  const parsed = parseSubmissionEvent({
+    kind: SUBMISSION_KIND,
+    pubkey: EPHEMERAL,
+    created_at: 10,
+    tags: [
+      ["d", "appeal-2"],
+      ["k", "appeal"],
+      ["e", "not-a-real-event-id"],
+    ],
+  });
+  assert.equal(parsed.targetEventId, "");
+});
+
+test("parseSubmissionEvent leaves targetEventId empty when no e tag is present", () => {
+  const parsed = parseSubmissionEvent({
+    kind: SUBMISSION_KIND,
+    pubkey: EPHEMERAL,
+    created_at: 10,
+    tags: [["d", "x"], ["k", "application"]],
+  });
+  assert.equal(parsed.targetEventId, "");
+});
+
 test("parseSubmissionEvent normalizes an unknown type to 'other'", () => {
   const parsed = parseSubmissionEvent({
     kind: SUBMISSION_KIND,

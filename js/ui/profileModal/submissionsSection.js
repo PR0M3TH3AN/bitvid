@@ -149,26 +149,79 @@ function renderSubmissionRow(submission) {
 
   const actions = document.createElement("div");
   actions.className = "submission-card__actions";
-  // Approve (add to whitelist) only applies to whitelist applications.
-  if (submission.type === "application" && submission.applicant) {
-    const approve = document.createElement("button");
-    approve.type = "button";
-    approve.className = "btn focus-ring";
-    approve.dataset.size = "sm";
-    approve.dataset.submissionAction = "approve";
-    approve.textContent = "Approve";
-    actions.appendChild(approve);
+  for (const action of actionsForSubmission(submission)) {
+    actions.appendChild(renderAction(action));
   }
-  const deny = document.createElement("button");
-  deny.type = "button";
-  deny.className = "btn-ghost focus-ring";
-  deny.dataset.size = "sm";
-  deny.dataset.submissionAction = "deny";
-  deny.textContent = submission.type === "application" ? "Deny" : "Dismiss";
-  actions.appendChild(deny);
   li.appendChild(actions);
 
   return li;
+}
+
+// Build a labeled button + one-line description explaining what it does.
+function renderAction({ action, label, hint, primary }) {
+  const wrap = document.createElement("div");
+  wrap.className = "submission-card__action";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `${primary ? "btn" : "btn-ghost"} focus-ring`;
+  button.dataset.size = "sm";
+  button.dataset.submissionAction = action;
+  button.textContent = label;
+  wrap.appendChild(button);
+  if (hint) {
+    const caption = document.createElement("span");
+    caption.className = "submission-card__action-hint";
+    caption.textContent = hint;
+    wrap.appendChild(caption);
+  }
+  return wrap;
+}
+
+// The action set depends on the submission type so each button's effect is
+// explicit. Only whitelist applications add to the whitelist; only appeals that
+// name a real event can unblock it; everything else is just "mark handled".
+function actionsForSubmission(submission) {
+  if (submission.type === "application" && submission.applicant) {
+    return [
+      {
+        action: "approve",
+        label: "Approve",
+        hint: "Adds the applicant to the whitelist.",
+        primary: true,
+      },
+      {
+        action: "deny",
+        label: "Deny",
+        hint: "Rejects the application — nothing is whitelisted.",
+      },
+    ];
+  }
+  if (submission.type === "appeal") {
+    const actions = [];
+    if (submission.targetEventId) {
+      actions.push({
+        action: "approve-appeal",
+        label: "Approve & unblock",
+        hint: "Removes the video from the block list so it's visible again.",
+        primary: true,
+      });
+    }
+    actions.push({
+      action: "deny",
+      label: submission.targetEventId ? "Keep blocked" : "Dismiss",
+      hint: submission.targetEventId
+        ? "Dismisses the appeal — the video stays blocked."
+        : "Marks the appeal as handled (no event linked to unblock).",
+    });
+    return actions;
+  }
+  return [
+    {
+      action: "deny",
+      label: "Mark handled",
+      hint: "Marks this submission as reviewed.",
+    },
+  ];
 }
 
 export function handleSubmissionsClick(controller, event) {
@@ -187,8 +240,11 @@ export function handleSubmissionsClick(controller, event) {
   if (!submission) {
     return;
   }
-  if (button.dataset.submissionAction === "approve") {
+  const action = button.dataset.submissionAction;
+  if (action === "approve") {
     void approveSubmission(controller, submission);
+  } else if (action === "approve-appeal") {
+    void approveAppeal(controller, submission);
   } else {
     void denySubmission(controller, submission);
   }
@@ -228,6 +284,54 @@ async function approveSubmission(controller, submission) {
   } catch (error) {
     devLogger.warn("[profileModal] Approve submission failed:", error);
     controller.mainController.showError?.("Couldn't approve — please try again.");
+    void populateSubmissions(controller);
+  }
+}
+
+// Approve a content appeal: actually remove the named video from the per-event
+// block list, then mark the appeal resolved. Requires a well-formed target id
+// (parsed from the submission's `e` tag) — the button isn't shown without one.
+async function approveAppeal(controller, submission) {
+  const services = controller.mainController.services;
+  const accessControl = services?.accessControl;
+  const actorNpub = services?.getCurrentUserNpub?.() || "";
+  const targetEventId = submission.targetEventId;
+  if (!actorNpub || !accessControl || !targetEventId) {
+    return;
+  }
+  const ok = await showConfirm(
+    "Unblock this video? It'll be removed from the block list and become visible again.",
+    { title: "Approve appeal", confirmLabel: "Unblock" },
+  );
+  if (!ok) {
+    return;
+  }
+  controller.pendingSubmissions = (controller.pendingSubmissions || []).filter(
+    (s) => s.eventId !== submission.eventId,
+  );
+  renderSubmissions(controller);
+  try {
+    const result = await accessControl.removeFromEventBlacklist(
+      actorNpub,
+      targetEventId,
+    );
+    if (!result || result.ok === false) {
+      throw new Error(result?.error || "unblock-failed");
+    }
+    await markSubmissionResolved({
+      submission,
+      status: "approved",
+      actingHex: safeDecodeNpub(actorNpub),
+    });
+    controller.mainController.showSuccess?.(
+      "Appeal approved — the video has been unblocked.",
+    );
+    emitSubmissionsChanged();
+  } catch (error) {
+    devLogger.warn("[profileModal] Approve appeal failed:", error);
+    controller.mainController.showError?.(
+      "Couldn't unblock — please try again.",
+    );
     void populateSubmissions(controller);
   }
 }
