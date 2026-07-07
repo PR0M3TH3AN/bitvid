@@ -318,21 +318,31 @@ For additional discussions, reach out via bitvid’s Nostr support channels.
 
               // Encrypt the feedback content.
               log("Encrypting feedback content (nip04)...");
-              const ciphertext = await nip04.encrypt(
-                ephemeralPriv,
-                targetPubHex,
-                feedbackContent
-              );
-              log("[DEBUG] Ciphertext: " + ciphertext);
-              log("Encryption done.");
-
-              // Build the event template.
+              // Build a structured bitvid submission (kind 30083, PUBLIC — no
+              // encryption). Published from the ephemeral key.
               const now = Math.floor(Date.now() / 1000);
+              const submissionId =
+                "sub-" +
+                now.toString(36) +
+                "-" +
+                Math.random().toString(36).slice(2, 10);
+              const tags = [
+                ["d", submissionId],
+                ["k", "feedback"],
+              ];
+              if (userNpub) {
+                tags.push(["applicant", userNpub]);
+              }
+              tags.push(
+                ["p", targetPubHex],
+                ["t", "bitvid-submission"],
+                ["client", "bitvid"]
+              );
               const eventTemplate = {
-                kind: 4,
+                kind: 30083,
                 created_at: now,
-                tags: [["p", targetPubHex]],
-                content: ciphertext,
+                tags,
+                content: feedbackContent,
               };
               log(
                 "[DEBUG] Event template before finalizing: " +
@@ -352,7 +362,7 @@ For additional discussions, reach out via bitvid’s Nostr support channels.
               for (const url of RELAYS) {
                 log("Connecting to " + url + " for subscription...");
                 const relay = await Relay.connect(url);
-                relay.subscribe([{ authors: [ephemeralPubHex], kinds: [4] }], {
+                relay.subscribe([{ authors: [ephemeralPubHex], kinds: [30083] }], {
                   onEvent(foundEvent) {
                     if (foundEvent.id === event.id) {
                       log(

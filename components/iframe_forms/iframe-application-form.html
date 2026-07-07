@@ -437,23 +437,27 @@ For further questions, contact us through bitvid’s Nostr support channels.
               const ephemeralPubHex = getPublicKey(ephemeralPriv);
               log("Ephemeral pubkey: " + ephemeralPubHex.slice(0, 16) + "...");
 
-              // Encrypt the application content.
-              log("Encrypting application content (nip04)...");
-              const ciphertext = await nip04.encrypt(
-                ephemeralPriv,
-                targetPubHex,
-                applicationContent
-              );
-              log("[DEBUG] Ciphertext: " + ciphertext);
-              log("Encryption done.");
-
-              // Build the Nostr event template.
+              // Build a structured bitvid submission (kind 30083, PUBLIC — no
+              // encryption). Published from the ephemeral key; the admin's
+              // Submissions tab lists these and can approve → add to whitelist.
               const now = Math.floor(Date.now() / 1000);
+              const submissionId =
+                "sub-" +
+                now.toString(36) +
+                "-" +
+                Math.random().toString(36).slice(2, 10);
               const eventTemplate = {
-                kind: 4,
+                kind: 30083,
                 created_at: now,
-                tags: [["p", targetPubHex]],
-                content: ciphertext,
+                tags: [
+                  ["d", submissionId],
+                  ["k", "application"],
+                  ["applicant", applicantNpub],
+                  ["p", targetPubHex],
+                  ["t", "bitvid-submission"],
+                  ["client", "bitvid"],
+                ],
+                content: applicationContent,
               };
               log(
                 "[DEBUG] Event template before finalizing: " +
@@ -473,7 +477,7 @@ For further questions, contact us through bitvid’s Nostr support channels.
               for (const url of RELAYS) {
                 log("Connecting to " + url + " for subscription...");
                 const relay = await Relay.connect(url);
-                relay.subscribe([{ authors: [ephemeralPubHex], kinds: [4] }], {
+                relay.subscribe([{ authors: [ephemeralPubHex], kinds: [30083] }], {
                   onEvent(foundEvent) {
                     if (foundEvent.id === event.id) {
                       log(
