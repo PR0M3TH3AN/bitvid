@@ -1283,6 +1283,25 @@ async function bootstrapInterface() {
   document.addEventListener(
     "bitvid:disclaimer-dismissed",
     () => {
+      // The playlist view (#37) reuses the shared #videoList but is NOT the
+      // recent feed — force-loading loadVideos() here would race the playlist's
+      // own fetch and replace it with recent videos. Re-run the current view's
+      // init for a playlist so its grid re-renders; only the feed grids want the
+      // recent reload.
+      const viewName =
+        ((window.location?.hash || "").match(/^#view=([^&]+)/) || [])[1] || "";
+      if (viewName === "playlist") {
+        const initPlaylist = viewInitRegistry?.playlist;
+        if (typeof initPlaylist === "function") {
+          Promise.resolve(initPlaylist()).catch((error) => {
+            devLogger.warn(
+              "[Interface] Failed to re-render playlist after disclaimer dismissed:",
+              error,
+            );
+          });
+        }
+        return;
+      }
       if (application && typeof application.loadVideos === "function") {
         Promise.resolve(application.loadVideos(true)).catch((error) => {
           devLogger.warn(
