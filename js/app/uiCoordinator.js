@@ -128,6 +128,12 @@ export function createUiCoordinator(deps) {
       if (exploreLink) {
         exploreLink.classList.remove("hidden");
       }
+
+      // Light the admin star/ring whenever the authenticated UI is applied —
+      // this covers session restore, not just a fresh login.
+      if (typeof this.refreshAdminStar === "function") {
+        this.refreshAdminStar();
+      }
     },
 
     applyLoggedOutUiState() {

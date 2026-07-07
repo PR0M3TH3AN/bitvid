@@ -987,7 +987,13 @@ export default class ApplicationBootstrap {
           typeof app.getCurrentUserNpub === "function"
             ? app.getCurrentUserNpub()
             : "";
-        applyAdminStar(app.profileButton, npub || "");
+        // applyAdminStar returns whether the user is an admin; use it to also
+        // toggle the gold ring around the profile avatar (the flagship signal
+        // on your own button — the corner star stays the shared marker).
+        const isAdmin = applyAdminStar(app.profileButton, npub || "");
+        if (app.profileButton && app.profileButton.classList) {
+          app.profileButton.classList.toggle("is-admin", Boolean(isAdmin));
+        }
       } catch (error) {
         devLogger.warn("[Application] Failed to refresh admin star", error);
       }

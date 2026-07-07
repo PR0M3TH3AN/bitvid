@@ -280,6 +280,16 @@
     left: var(--space-2xs);
   }
 
+  /* Gold ring around the avatar when the logged-in user is an admin — the
+     unmistakable "you're an admin" signal on your own profile button. A thin
+     page-colored gap separates the avatar from the ring so it reads as a ring,
+     not a border. Box-shadow isn't clipped by the avatar's own overflow. */
+  #profileButton.is-admin > div {
+    box-shadow:
+      0 0 0 var(--border-width-hairline) var(--color-page),
+      0 0 0 calc(var(--border-width-hairline) * 3) var(--status-warning);
+  }
+
   .header-icon-toggle[data-theme-state="light"]:hover,
   .header-icon-toggle[data-theme-state="light"]:focus-visible {
     color: var(--color-text);
