@@ -13,6 +13,7 @@ import {
 } from "../moderationUiHelpers.js";
 import { buildModerationBadgeText } from "../moderationCopy.js";
 import { HEX64_REGEX } from "../../utils/hex.js";
+import { decorateAdminAvatar } from "../adminBadge.js";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const DEFAULT_PROFILE_AVATAR = "assets/svg/default-profile.svg";
@@ -1004,7 +1005,11 @@ export class VideoCard {
     authorMeta.appendChild(authorName);
     authorMeta.appendChild(metadata);
 
-    wrapper.appendChild(avatarWrapper);
+    // Ring + star on the creator avatar when the author is a bitvid admin.
+    const avatarNode = decorateAdminAvatar(avatarWrapper, this.video.pubkey || "", {
+      doc: this.document,
+    });
+    wrapper.appendChild(avatarNode);
     wrapper.appendChild(authorMeta);
 
     this.authorPicEl = avatar;

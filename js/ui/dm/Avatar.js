@@ -1,4 +1,4 @@
-import { applyAdminStar, isAdminActor } from "../adminBadge.js";
+import { decorateAdminAvatar, isAdminActor } from "../adminBadge.js";
 
 const DEFAULT_AVATAR_ALT = "Avatar";
 
@@ -56,16 +56,10 @@ export function Avatar({
     avatar.appendChild(fallback);
   }
 
-  // The circular avatar clips its contents, so an admin star can't live inside
-  // it. Only when the actor is an admin do we wrap the avatar in a non-clipped
-  // relative container and hang the star off that — non-admin avatars are
-  // returned exactly as before to keep existing layouts untouched.
+  // Only admin avatars get decorated (ring + wrapped corner star); non-admin
+  // avatars are returned exactly as before to keep existing layouts untouched.
   if (adminId && isAdminActor(adminId)) {
-    const wrap = doc.createElement("span");
-    wrap.className = "dm-avatar-wrap";
-    wrap.appendChild(avatar);
-    applyAdminStar(wrap, adminId, { doc });
-    return wrap;
+    return decorateAdminAvatar(avatar, adminId, { doc });
   }
 
   return avatar;

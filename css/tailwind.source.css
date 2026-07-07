@@ -280,6 +280,23 @@
     left: var(--space-2xs);
   }
 
+  /* Non-clipped relative shell that decorateAdminAvatar wraps around a circular
+     avatar so the corner star isn't clipped. Sizes to the avatar it holds. */
+  .admin-avatar-wrap {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+  }
+
+  /* Gold ring hugging an admin avatar. A thin page-colored gap makes it read as
+     a ring, not a border. box-shadow isn't clipped by the avatar's own
+     overflow, so it works on clipped circular avatars. */
+  .admin-ring {
+    box-shadow:
+      0 0 0 var(--border-width-hairline) var(--color-page),
+      0 0 0 calc(var(--border-width-hairline) * 3) var(--status-warning);
+  }
+
   /* Gold ring around the avatar when the logged-in user is an admin — the
      unmistakable "you're an admin" signal on your own profile button. A thin
      page-colored gap separates the avatar from the ring so it reads as a ring,

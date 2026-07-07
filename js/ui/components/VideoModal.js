@@ -6,6 +6,7 @@ import {
 } from "./videoMenuRenderers.js";
 import { attachAmbientBackground } from "../ambientBackground.js";
 import { applyDesignSystemAttributes } from "../../designSystem.js";
+import { decorateAdminAvatar } from "../adminBadge.js";
 import { devLogger } from "../../utils/logger.js";
 import { CommentsController } from "./video-modal/commentsController.js";
 import { ReactionsController } from "./video-modal/reactionsController.js";
@@ -2464,6 +2465,10 @@ export class VideoModal {
     if (this.creatorAvatar) {
       this.creatorAvatar.src = avatarUrl || "assets/svg/default-profile.svg";
       this.creatorAvatar.alt = name || "Unknown";
+      // Ring + star on the player's creator avatar when the author is admin.
+      if (this.creatorAvatar.parentElement) {
+        decorateAdminAvatar(this.creatorAvatar.parentElement, npub || "");
+      }
     }
     if (this.creatorNpub) {
       this.creatorNpub.textContent = npub || "";

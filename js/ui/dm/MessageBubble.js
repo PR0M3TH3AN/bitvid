@@ -1,4 +1,4 @@
-import { applyAdminStar, isAdminActor } from "../adminBadge.js";
+import { decorateAdminAvatar, isAdminActor } from "../adminBadge.js";
 
 function createElement(doc, tag, className, text) {
   const element = doc.createElement(tag);
@@ -36,14 +36,11 @@ export function MessageBubble({
   avatar.alt = variant === "outgoing" ? "Me" : "Sender";
 
   // The message avatar is a bare circular <img>; when its author is an admin,
-  // wrap it in a non-clipped relative shell so the star can sit in the corner.
-  // Non-admin bubbles keep the plain <img> so existing layout is untouched.
+  // decorate it (ring + wrapped corner star). Non-admin bubbles keep the plain
+  // <img> so existing layout is untouched.
   let avatarNode = avatar;
   if (adminId && isAdminActor(adminId)) {
-    const wrap = createElement(doc, "span", "dm-message-avatar-wrap");
-    wrap.appendChild(avatar);
-    applyAdminStar(wrap, adminId, { doc });
-    avatarNode = wrap;
+    avatarNode = decorateAdminAvatar(avatar, adminId, { doc });
   }
 
   const bubble = createElement(doc, "div", "dm-message-bubble");

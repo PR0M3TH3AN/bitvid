@@ -55,6 +55,7 @@ import { ProfileModerationController } from "./profileModal/ProfileModerationCon
 import { ProfileBlockListController } from "./profileModal/ProfileBlockListController.js";
 import { ProfileEditController } from "./profileModal/ProfileEditController.js";
 import { isInStackedModal } from "./focusTrapStacking.js";
+import { decorateAdminAvatar } from "./adminBadge.js";
 
 const noop = () => {};
 
@@ -2606,6 +2607,13 @@ export class ProfileModalController {
       if (this.identityCardAvatar.src !== activeAvatarSrc) {
         this.identityCardAvatar.src = activeAvatarSrc;
       }
+      // Ring + star on the "Acting as" avatar when the active profile is admin.
+      if (this.identityCardAvatar.parentElement) {
+        decorateAdminAvatar(
+          this.identityCardAvatar.parentElement,
+          hasActiveProfile ? activeMeta?.npub || "" : "",
+        );
+      }
     }
 
     const listEl = this.switcherList;
@@ -2744,7 +2752,9 @@ export class ProfileModalController {
           }
 
           metaSpan.append(topLine, nameSpan, npubSpan);
-          button.append(avatarSpan, metaSpan);
+          // Ring + star on a saved profile's avatar when that account is admin.
+          const avatarNode = decorateAdminAvatar(avatarSpan, entry.pubkey);
+          button.append(avatarNode, metaSpan);
 
           const ariaLabel = isSelected
             ? `${cardDisplayName} selected`

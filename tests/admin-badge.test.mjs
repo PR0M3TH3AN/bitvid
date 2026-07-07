@@ -3,7 +3,11 @@ import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 
 import { ADMIN_SUPER_NPUB } from "../js/config.js";
-import { applyAdminStar, isAdminActor } from "../js/ui/adminBadge.js";
+import {
+  applyAdminStar,
+  decorateAdminAvatar,
+  isAdminActor,
+} from "../js/ui/adminBadge.js";
 
 const dom = new JSDOM("<!doctype html><body></body>");
 const doc = dom.window.document;
@@ -41,4 +45,51 @@ test("applyAdminStar renders nothing for a non-admin and clears a stale star", (
 
 test("applyAdminStar is a no-op with no container", () => {
   assert.equal(applyAdminStar(null, ADMIN_SUPER_NPUB, { doc }), false);
+});
+
+test("decorateAdminAvatar wraps, rings, and stars an admin avatar (attached)", () => {
+  const parent = doc.createElement("div");
+  const avatar = doc.createElement("span");
+  parent.appendChild(avatar);
+
+  const wrap = decorateAdminAvatar(avatar, ADMIN_SUPER_NPUB, { doc });
+
+  // wrapped in place, ring on the avatar, star on the wrap
+  assert.ok(wrap.classList.contains("admin-avatar-wrap"));
+  assert.equal(avatar.parentElement, wrap);
+  assert.equal(wrap.parentElement, parent, "wrapper takes the avatar's place");
+  assert.ok(avatar.classList.contains("admin-ring"));
+  assert.equal(wrap.querySelectorAll(".admin-star").length, 1);
+});
+
+test("decorateAdminAvatar is idempotent and reuses the wrapper", () => {
+  const parent = doc.createElement("div");
+  const avatar = doc.createElement("span");
+  parent.appendChild(avatar);
+
+  const first = decorateAdminAvatar(avatar, ADMIN_SUPER_NPUB, { doc });
+  const second = decorateAdminAvatar(avatar, ADMIN_SUPER_NPUB, { doc });
+  assert.equal(first, second, "same wrapper reused");
+  assert.equal(parent.querySelectorAll(".admin-avatar-wrap").length, 1);
+  assert.equal(first.querySelectorAll(".admin-star").length, 1);
+});
+
+test("decorateAdminAvatar adds no ring/star for a non-admin", () => {
+  const parent = doc.createElement("div");
+  const avatar = doc.createElement("span");
+  parent.appendChild(avatar);
+
+  decorateAdminAvatar(avatar, STRANGER_NPUB, { doc });
+  assert.equal(avatar.classList.contains("admin-ring"), false);
+  // wrapper may exist but must carry no star
+  assert.equal(parent.querySelectorAll(".admin-star").length, 0);
+});
+
+test("decorateAdminAvatar handles a detached avatar (returns the wrapper to append)", () => {
+  const avatar = doc.createElement("span");
+  const wrap = decorateAdminAvatar(avatar, ADMIN_SUPER_NPUB, { doc });
+  assert.ok(wrap.classList.contains("admin-avatar-wrap"));
+  assert.equal(avatar.parentElement, wrap);
+  assert.ok(avatar.classList.contains("admin-ring"));
+  assert.equal(wrap.querySelectorAll(".admin-star").length, 1);
 });
