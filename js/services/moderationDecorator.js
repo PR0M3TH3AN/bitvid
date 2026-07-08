@@ -2,7 +2,7 @@
 
 import { getTrustedMuteHideThreshold, getTrustedSpamHideThreshold, DEFAULT_BLUR_THRESHOLD, DEFAULT_AUTOPLAY_BLOCK_THRESHOLD, DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD, DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD } from "../constants.js";
 import { formatShortNpub } from "../utils/formatters.js";
-import { getModerationOverride, getModerationSettings, getDefaultModerationSettings } from "../state/cache.js";
+import { getModerationOverride, getAuthorModerationOverride, getModerationSettings, getDefaultModerationSettings } from "../state/cache.js";
 import { userLogger } from "../utils/logger.js";
 
 /**
@@ -403,14 +403,22 @@ export class ModerationDecorator {
 
     const computedHidden = hideTriggered && !hideBypass;
 
+    const authorPubkey = video.pubkey || video.author?.pubkey || "";
     const overrideEntry = getModerationOverride({
       eventId: video.id,
-      authorPubkey: video.pubkey || video.author?.pubkey || "",
+      authorPubkey,
     });
-    const overrideActive = overrideEntry?.showAnyway === true;
+    // Account-level ("trusted creator") override: suppresses the WoT warning for
+    // ALL of this author's videos, exactly like a per-video "show anyway".
+    const authorOverrideEntry = getAuthorModerationOverride(authorPubkey);
+    const overrideActive =
+      overrideEntry?.showAnyway === true ||
+      authorOverrideEntry?.showAnyway === true;
     const overrideUpdatedAt = Number.isFinite(overrideEntry?.updatedAt)
       ? Math.floor(overrideEntry.updatedAt)
-      : Date.now();
+      : Number.isFinite(authorOverrideEntry?.updatedAt)
+        ? Math.floor(authorOverrideEntry.updatedAt)
+        : Date.now();
 
     const originalHideCounts = hideCounts
       ? {

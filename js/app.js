@@ -177,6 +177,10 @@ import {
   setModerationOverride,
   clearModerationOverride,
   loadModerationOverridesFromStorage,
+  getAuthorModerationOverridesList,
+  setAuthorModerationOverride,
+  clearAuthorModerationOverride,
+  loadAuthorModerationOverridesFromStorage,
   getModerationSettings,
   getDefaultModerationSettings,
   setModerationSettings,
@@ -918,6 +922,7 @@ class Application {
     }
 
     loadModerationOverridesFromStorage();
+    loadAuthorModerationOverridesFromStorage();
     loadModerationSettingsFromStorage();
     loadDmPrivacySettingsFromStorage();
     this.moderationSettings = this.normalizeModerationSettings(
