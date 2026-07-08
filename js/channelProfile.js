@@ -5611,7 +5611,14 @@ async function loadUserVideos(pubkey) {
     const knownRelays = Array.isArray(nostrClient.relays)
       ? nostrClient.relays
       : Array.from(nostrClient.relays || []);
-    const relayList = knownRelays.filter((url) => isValidRelayUrl(url));
+    // ALWAYS include the bundled defaults. A creator's videos can live only on
+    // a default relay (e.g. a NIP-71 video that's only on nos.lol) that the
+    // user's capped NIP-65 read set excludes — otherwise a known, whitelisted
+    // video never shows on the channel because we never query the one relay
+    // that has it.
+    const relayList = [
+      ...new Set([...knownRelays, ...DEFAULT_RELAY_URLS]),
+    ].filter((url) => isValidRelayUrl(url));
 
     // Route one fetch through the app's PROVEN path (the same one "My Videos"
     // uses on refresh). It streams into the shared cache, so this grid, its
