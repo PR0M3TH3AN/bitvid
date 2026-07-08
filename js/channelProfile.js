@@ -4610,21 +4610,33 @@ function buildRenderableChannelVideos({ events = [], app } = {}) {
     dedupeVideos(uniqueVideos);
 
   let videos = newestByRoot.filter((video) => !video.deleted);
+  const afterDeleted = videos.length;
+  let dropBlacklist = 0;
+  let dropAccess = 0;
   videos = videos.filter((video) => {
     if (!video || !video.id) {
       return false;
     }
 
     if (app?.blacklistedEventIds?.has?.(video.id)) {
+      dropBlacklist += 1;
       return false;
     }
 
     if (!accessControl.canAccess(video)) {
+      dropAccess += 1;
       return false;
     }
 
     return true;
   });
+
+  // [channel-load] diagnostics: where do a channel's videos get dropped?
+  devLogger.info(
+    `[channel-load] build: input=${events.length} converted=${convertedVideos.length} ` +
+      `uniqueById=${uniqueVideos.length} byRoot=${newestByRoot.length} afterDeleted=${afterDeleted} ` +
+      `dropBlacklist=${dropBlacklist} dropAccess=${dropAccess} final=${videos.length}`,
+  );
 
   videos.sort((a, b) => b.created_at - a.created_at);
   return videos;
@@ -5651,6 +5663,18 @@ async function loadUserVideos(pubkey) {
     await sharedFetch;
     await renderInFlight;
     await ensureAccessPromise;
+
+    // [channel-load] diagnostics: what did the relays + cache actually return?
+    const kindCounts = events.reduce((acc, evt) => {
+      const k = evt?.kind;
+      acc[k] = (acc[k] || 0) + 1;
+      return acc;
+    }, {});
+    devLogger.info(
+      `[channel-load] pubkey=${(pubkey || "").slice(0, 8)} relays=${relayList.length} ` +
+        `relayEvents=${events.length} kinds=${JSON.stringify(kindCounts)} ` +
+        `cacheEvents=${getCachedChannelVideoEvents(pubkey).length}`,
+    );
 
     if (loadToken !== currentVideoLoadToken) {
       return;
