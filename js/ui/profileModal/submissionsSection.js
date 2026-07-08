@@ -52,11 +52,12 @@ export async function populateSubmissions(controller) {
   const editorHexes = Array.from(accessControl.getEditors?.() || [])
     .map((npub) => safeDecodeNpub(npub))
     .filter(Boolean);
+  const whitelistNpubs = Array.from(accessControl.getWhitelist?.() || []);
 
   setLoading(controller, true);
   let pending = [];
   try {
-    pending = await fetchPendingSubmissions({ adminHex, editorHexes });
+    pending = await fetchPendingSubmissions({ adminHex, editorHexes, whitelistNpubs });
   } catch (error) {
     devLogger.warn("[profileModal] Failed to load submissions:", error);
   }

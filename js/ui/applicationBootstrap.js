@@ -973,7 +973,12 @@ export default class ApplicationBootstrap {
             const editorHexes = Array.from(accessControl.getEditors?.() || [])
               .map((npub) => app.safeDecodeNpub(npub))
               .filter(Boolean);
-            const list = await fetchPendingSubmissions({ adminHex, editorHexes });
+            const whitelistNpubs = Array.from(accessControl.getWhitelist?.() || []);
+            const list = await fetchPendingSubmissions({
+              adminHex,
+              editorHexes,
+              whitelistNpubs,
+            });
             pending = Array.isArray(list) && list.length > 0;
           }
         }

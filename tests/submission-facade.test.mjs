@@ -1,5 +1,18 @@
-import { test } from "node:test";
+import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
+
+// The facade keeps a device-local resolved-id cache in localStorage; node has
+// none, so provide a minimal in-memory shim and reset it before each test.
+global.localStorage = (() => {
+  const store = new Map();
+  return {
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => store.set(k, String(v)),
+    removeItem: (k) => store.delete(k),
+    clear: () => store.clear(),
+  };
+})();
+beforeEach(() => global.localStorage.clear());
 
 import {
   fetchPendingSubmissions,
@@ -134,6 +147,60 @@ test("markSubmissionResolved appends to the acting moderator's resolved-set", as
   const newTag = published.tags.find((t) => t[0] === "e" && t[1] === "evt-s3");
   assert.equal(newTag[2], "denied", "records status");
   assert.equal(newTag[3], "npub-bob", "records applicant");
+});
+
+test("fetchPendingSubmissions hides an application whose applicant is already whitelisted", async () => {
+  const events = [
+    submissionEvent({ id: "wl1", applicant: "npub-whitelisted", created_at: 100 }),
+    submissionEvent({ id: "wl2", applicant: "npub-other", created_at: 100 }),
+  ];
+  const pending = await fetchPendingSubmissions({
+    adminHex: ADMIN,
+    whitelistNpubs: ["npub-whitelisted"],
+    client: mockClient({ events }),
+  });
+  assert.deepEqual(
+    pending.map((s) => s.applicant),
+    ["npub-other"],
+    "whitelisted applicant's application is treated as handled",
+  );
+});
+
+test("fetchPendingSubmissions hides a locally-resolved submission even with an empty relay resolved-set", async () => {
+  const events = [submissionEvent({ id: "loc1", applicant: "npub-a", created_at: 100 })];
+  const client = mockClient({ events });
+  // No resolved-set on relays; resolving seeds only the device-local cache.
+  await markSubmissionResolved({
+    submission: { eventId: "evt-loc1" },
+    actingHex: MOD,
+    client,
+  });
+  const pending = await fetchPendingSubmissions({ adminHex: ADMIN, client });
+  assert.equal(pending.length, 0, "local cache keeps it hidden after a cold read");
+});
+
+test("markSubmissionResolved never republishes a shrunk list (loss-proof via local cache)", async () => {
+  let published = null;
+  // Client has NO resolved-set events, so every read-modify-write read misses.
+  const client = mockClient({ events: [], onPublish: (e) => (published = e) });
+  await markSubmissionResolved({
+    submission: { eventId: "evtA", applicant: "npub-a" },
+    status: "approved",
+    actingHex: MOD,
+    client,
+  });
+  await markSubmissionResolved({
+    submission: { eventId: "evtB", applicant: "npub-b" },
+    status: "denied",
+    actingHex: MOD,
+    client,
+  });
+  const eIds = published.tags.filter((t) => t[0] === "e").map((t) => t[1]).sort();
+  assert.deepEqual(
+    eIds,
+    ["evtA", "evtB"],
+    "the earlier id is carried forward from the local cache despite the missed read",
+  );
 });
 
 test("resolveEventAuthorHex returns the blocked event's author (lowercased)", async () => {
