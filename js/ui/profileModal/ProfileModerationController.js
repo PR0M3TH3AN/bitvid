@@ -501,7 +501,7 @@ export class ProfileModerationController {
       item.className = "card space-y-2 p-4";
 
       const row = document.createElement("div");
-      row.className = "flex items-center justify-between gap-4";
+      row.className = "profile-account-card__row";
 
       const authorKey = entry.authorPubkey;
       let profileSummary = null;
@@ -516,7 +516,7 @@ export class ProfileModerationController {
       profileSummary = this.mainController.dmController.createCompactProfileSummary(summaryData);
 
       const actions = document.createElement("div");
-      actions.className = "flex flex-wrap items-center justify-end gap-2";
+      actions.className = "profile-account-card__actions";
 
       const resetButton = this.mainController.createRemoveButton({
         label: "Reset",
