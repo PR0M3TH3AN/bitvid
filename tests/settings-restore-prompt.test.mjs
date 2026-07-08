@@ -15,8 +15,13 @@ import { isSyncEnabled } from "../js/services/settingsSyncFlags.js";
 
 const PUBKEY = "c".repeat(64);
 
-function makeSyncStub({ available = true, enabled = false, remote = false } = {}) {
-  return {
+function makeSyncStub({
+  available = true,
+  enabled = false,
+  remote = false,
+  local = undefined,
+} = {}) {
+  const stub = {
     pulls: 0,
     isAvailable: () => available,
     isEnabled: () => enabled,
@@ -26,7 +31,15 @@ function makeSyncStub({ available = true, enabled = false, remote = false } = {}
       return { found: true, imported: true };
     },
   };
+  // Only real services expose hasLocal; omitting it (local === undefined) keeps
+  // the legacy "assume present" behavior the older tests rely on.
+  if (local !== undefined) {
+    stub.hasLocal = async () => local;
+  }
+  return stub;
 }
+
+const OFFERED_KEY = "bitvid:settings-sync:offered:v1";
 
 test("offers and restores items that have a remote copy and aren't already enabled", async () => {
   localStorage.clear();
@@ -49,6 +62,57 @@ test("offers and restores items that have a remote copy and aren't already enabl
   assert.equal(storageSync.pulls, 1, "storage (has remote) must be pulled");
   assert.equal(walletSync.pulls, 0, "wallet (no remote) must NOT be pulled");
   assert.deepEqual(restoredCalls, [["storage"]]);
+});
+
+test("re-offers a MISSING item even after it was already offered once (restore-like-storage)", async () => {
+  localStorage.clear();
+  // Simulate a prior offer for wallet on this device (the old blocker).
+  localStorage.setItem(OFFERED_KEY, JSON.stringify({ [PUBKEY]: { wallet: true } }));
+  const walletSync = makeSyncStub({ remote: true, local: false });
+  const prompt = createSettingsRestorePrompt({
+    storageSync: makeSyncStub({ remote: false, local: true }),
+    walletSync,
+    confirm: () => true,
+  });
+
+  const result = await prompt.maybeOffer(PUBKEY);
+  assert.equal(result.accepted, true);
+  assert.deepEqual(result.restored, ["wallet"]);
+  assert.equal(walletSync.pulls, 1, "missing wallet is re-surfaced despite the prior offer");
+});
+
+test("does NOT re-offer an item that is present locally once prompted", async () => {
+  localStorage.clear();
+  localStorage.setItem(OFFERED_KEY, JSON.stringify({ [PUBKEY]: { wallet: true } }));
+  const walletSync = makeSyncStub({ remote: true, local: true });
+  const prompt = createSettingsRestorePrompt({
+    storageSync: makeSyncStub({ remote: false, local: true }),
+    walletSync,
+    confirm: () => true,
+  });
+
+  const result = await prompt.maybeOffer(PUBKEY);
+  assert.equal(result.offered, false, "present + already offered → no nag");
+  assert.equal(walletSync.pulls, 0);
+});
+
+test("dismissing a missing item stops it re-offering every login", async () => {
+  localStorage.clear();
+  const walletSync = makeSyncStub({ remote: true, local: false });
+  const prompt = createSettingsRestorePrompt({
+    storageSync: makeSyncStub({ remote: false, local: true }),
+    walletSync,
+    confirm: () => false, // decline
+  });
+
+  const first = await prompt.maybeOffer(PUBKEY);
+  assert.equal(first.offered, true);
+  assert.equal(first.accepted, false);
+
+  // Next login: still missing locally, but the decline is remembered.
+  const second = await prompt.maybeOffer(PUBKEY);
+  assert.equal(second.offered, false, "declined → stays quiet even though still missing");
+  assert.equal(walletSync.pulls, 0);
 });
 
 test("declining the prompt restores nothing", async () => {
