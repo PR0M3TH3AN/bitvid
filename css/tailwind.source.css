@@ -3594,6 +3594,49 @@
     display: block;
   }
 
+  /* Compact creator/account cards (Subscriptions, Friends, Blocked). Desktop
+     lays them out in a row: summary left, actions right. */
+  .profile-account-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-md);
+    padding: var(--space-md);
+  }
+
+  .profile-account-card__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-2xs);
+  }
+
+  /* Phones: stack the card so the name/npub get the full width (no more
+     4-line-wrapped npub in a crammed column), with the actions as a full-width
+     row of equal-width buttons below. */
+  @media (max-width: calc(theme("screens.sm") - 0.02px)) {
+    .profile-account-card {
+      flex-direction: column;
+      align-items: stretch;
+      gap: var(--space-sm);
+      padding: var(--space-sm);
+    }
+
+    .profile-account-card__actions {
+      gap: var(--space-2xs);
+    }
+
+    .profile-account-card__actions > * {
+      flex: 1 1 auto;
+    }
+
+    /* tighter buttons so all three fit one clean row */
+    .profile-account-card__actions .btn-ghost {
+      padding-inline: var(--space-sm);
+    }
+  }
+
   .profile-modal__panes {
     display: flex;
     flex: 1 1 auto;

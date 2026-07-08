@@ -3911,7 +3911,7 @@ export class ProfileModalController {
 
       deduped.forEach(({ hex, label }) => {
         const item = document.createElement("li");
-        item.className = "card flex items-center justify-between gap-4 p-4";
+        item.className = "card profile-account-card";
 
         let cachedProfile = null;
         if (hex && typeof this.services.getProfileCacheEntry === "function") {
@@ -3943,7 +3943,7 @@ export class ProfileModalController {
         });
 
         const actions = document.createElement("div");
-        actions.className = "flex flex-wrap items-center justify-end gap-2";
+        actions.className = "profile-account-card__actions";
 
         const viewButton = this.createViewChannelButton({
           targetNpub: encodedNpub,
@@ -4230,7 +4230,7 @@ export class ProfileModalController {
 
       deduped.forEach(({ hex, label }) => {
         const item = document.createElement("li");
-        item.className = "card flex items-center justify-between gap-4 p-4";
+        item.className = "card profile-account-card";
 
         let cachedProfile = null;
         if (hex && typeof this.services.getProfileCacheEntry === "function") {
@@ -4262,7 +4262,7 @@ export class ProfileModalController {
         });
 
         const actions = document.createElement("div");
-        actions.className = "flex flex-wrap items-center justify-end gap-2";
+        actions.className = "profile-account-card__actions";
 
         const viewButton = this.createViewChannelButton({
           targetNpub: encodedNpub,

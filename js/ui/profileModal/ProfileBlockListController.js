@@ -282,8 +282,7 @@ export class ProfileBlockListController {
 
     deduped.forEach(({ hex, label }) => {
       const item = document.createElement("li");
-      item.className =
-        "card flex items-center justify-between gap-4 p-4";
+      item.className = "card profile-account-card";
 
       let cachedProfile = null;
       if (hex) {
@@ -311,7 +310,7 @@ export class ProfileBlockListController {
       });
 
       const actions = document.createElement("div");
-      actions.className = "flex flex-wrap items-center justify-end gap-2";
+      actions.className = "profile-account-card__actions";
 
       const viewButton = this.mainController.createViewChannelButton({
         targetNpub: encodedNpub,
