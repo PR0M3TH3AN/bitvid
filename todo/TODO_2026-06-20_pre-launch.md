@@ -279,7 +279,7 @@ Audit started 2026-06-23. See the doc for architecture map + findings. Summary:
 - [x] Comment box confirmed WORKING (the "message doesn't work" was the popover
       mis-position making it hard to use — see 3a).
 
-### 4. View counter accuracy & reliability — DEEP AUDIT
+### 4. View counter accuracy & reliability — DEEP AUDIT — DONE 2026-06-24
 Audit finding (2026-06-24): counts INFLATE. `viewCounter.js` dedupes locally by
 (viewer, time-window) correctly, but two things defeated it: (a)
 `generateViewEventDedupeTag` built the kind-30079 `d` tag with random entropy +
@@ -421,7 +421,7 @@ un-hides when WebTorrent flips green). The real gaps:
       brand-new person, confirm the thread opens on THEM and the sent message lands
       in that conversation after refresh.
 
-### 20. Feed / grid loading reliability — some videos missing (BUG)
+### 20. Feed / grid loading reliability — some videos missing (BUG) — FIXED (streaming/first-relay-wins render is a separate latency follow-up under #17d)
 Two related intermittent symptoms; likely the same root cause (a one-shot,
 all-relays-settle fetch that drops slow-relay results — see 17d).
 - [x] **Profile / Channel page sometimes doesn't pull in all of a creator's
@@ -504,7 +504,7 @@ toward freshness and looked identical. Gave each a structural identity:
 - [ ] Consider removing the CDN/WebTorrent source badge from the card (clutter).
 - [ ] Run `npm run test:visual` after layout changes; update baselines deliberately.
 
-### 41. Native browser dialogs → site notification system
+### 41. Native browser dialogs → site notification system — DONE 2026-06-30
 - [x] **DONE 2026-06-30.** Replaced every `alert()`/`confirm()` (no `prompt()` existed)
       with the app's notification system so dialogs are styled + consistent.
       - `alert()` (13) → toasts: `this.showError` where the component already had it
@@ -584,7 +584,7 @@ toward freshness and looked identical. Gave each a structural identity:
       Storage Status → switch destination → summary updates and the upload
       lands in the chosen bucket; with 1 connection the picker stays hidden.
 
-### 45. Upload modal: suggest tags from the user's previous videos (UX)
+### 45. Upload modal: suggest tags from the user's previous videos (UX) — DONE 2026-07-01
 - [x] **DONE 2026-07-01.** The Hashtags section of the upload modal now shows one-tap
       chips of the user's most-used past hashtags ("Reuse a tag from your videos:").
       Source: `app.getUserHashtagSuggestions()` reads the user's own videos
@@ -597,7 +597,7 @@ toward freshness and looked identical. Gave each a structural identity:
       for users with no past tags. Rendered on modal open. Tests:
       `tests/hashtag-suggestions.test.mjs` (5, pure ranking). Lint + build green.
 
-### 46. Feed auto-refreshes after posting a video (UX)
+### 46. Feed auto-refreshes after posting a video (UX) — DONE 2026-06-30
 - [x] **DONE 2026-06-30.** `publishVideoNote` now (1) **optimistically injects** the
       just-published legacy event into the shared client cache via a new
       `nostrClient.ingestLocalVideoEvent(rawEvent)` (+ thin `nostrService` wrapper), so the
@@ -664,7 +664,7 @@ toward freshness and looked identical. Gave each a structural identity:
       video → within ~2min of tab re-entry its rank + badge reflect the new
       total.
 
-### 48. Fluent profile switching across signing methods (nsec / NIP-46 / NIP-07)
+### 48. Fluent profile switching across signing methods (nsec / NIP-46 / NIP-07) — DONE 2026-06-30
 - [x] **nsec switching FIXED 2026-06-30.** Switching to a saved nsec profile used to fail
       silently ("secret-required") — `switchProfile` called the nsec provider with no
       passphrase and never prompted. Now `handleProfileSwitchRequest` detects an nsec
@@ -807,15 +807,27 @@ toward freshness and looked identical. Gave each a structural identity:
 - [ ] Define the submission schema + the admin action → list-mutation mapping; reuse
       the existing admin list stores (whitelist/blacklist) for the writes.
 
-### 24. User-level allowlist override for the Web-of-Trust mute list
-- [ ] Let a user keep (and import) a personal **allowlist** that the client ALWAYS
-      shows content from, overriding the inherited WoT/trusted-mute list. So even if a
-      trusted curator mutes an author, the user can force that author's content to
-      appear in their own feeds. Persist it (NIP-51 list, encrypted/opt-in), make it
-      importable, and apply it at the render-time moderation filter as a final
-      allow-override after the WoT mute/block checks.
+### 24. User-level allowlist override for the Web-of-Trust mute list — CORE DONE 2026-07-08
+- [x] **Core render-time allow-override — DONE 2026-07-08.** A per-author (per-npub)
+      override that ALWAYS shows a creator's content, overriding the inherited
+      WoT/trusted-mute warning (blur/hide) for every one of that author's videos until
+      reset. Stored in a dedicated cache (`bitvid:moderationAuthorOverrides:v1`,
+      `js/state/cache.js`) and applied as the final allow-override at the single
+      render-time integration point (`js/services/moderationDecorator.js` — sets
+      `overrideActive` when `getAuthorModerationOverride(pubkey).showAnyway`). Two entry
+      points: (a) the **Safety tab** "Trusted creators" npub input + list with per-row
+      Reset (`ProfileModerationController`), and (b) an **"Always show creator"** button
+      on every blurred/warned surface (VideoCard, VideoModal, SimilarContentCard) that
+      dispatches a `video:trust-author` event handled once in `applicationBootstrap.js`.
+      Tests: `tests/author-moderation-override.test.mjs` (5). Committed a0131c71 (Safety
+      tab) + 5844a36a (overlay button).
+- [ ] **Remaining (deferred, not blocking launch): NIP-51 sync + import.** The override
+      is currently **device-local** (localStorage), not a published NIP-51 list, so it
+      doesn't roam across devices and can't be imported/shared. Follow-up: persist as an
+      encrypted/opt-in NIP-51 list and make it importable, reusing the cross-login sync
+      machinery (#15).
 
-### 25. Per-video / per-event admin block list (granular moderation)
+### 25. Per-video / per-event admin block list (granular moderation) — DONE 2026-07-01
 - [x] **DONE 2026-06-30 (full vertical slice).** Admins (any editor — same gate as the
       author blacklist) can now hide a SINGLE video without blocking its author.
       - **Record:** a published kind-30000 NIP-51 list under d-tag
@@ -996,7 +1008,7 @@ to rescue a creator who *does* get WoT-hidden, so if it happens, ship this promp
       a signed Nostr event per Blossom rather than S3 keys. Research the BUD spec
       coverage needed for bitvid's upload/delete flows.
 
-### 34. NIP-71 mirror: videos show "not mirrored" + duplicate on re-mirror (BUG)
+### 34. NIP-71 mirror: videos show "not mirrored" + duplicate on re-mirror (BUG) — FIXED 2026-06-29 (only live Amber VERIFY remains)
 Reported 2026-06-25. Relates to #17 (NIP-71 interop) / the bitvid→NIP-71 mirror.
 - [ ] **Mirrored videos report as NOT mirrored.** All videos were mirrored, but the UI
       now shows them un-mirrored even though the NIP-71 mirror events exist. The
@@ -1772,7 +1784,7 @@ passphrase-encrypted). Items 51, 56, 57 are all facets of that.
       remembered (disk vs session tier) in the UI, and consider a "keep unlocked" toggle
       in the storage/wallet panes for users who set it up there rather than via a prompt.
 
-### 52. After editing a video, the video grids don't refresh to show the update (BUG)
+### 52. After editing a video, the video grids don't refresh to show the update (BUG) — FIXED 2026-07-02
 - [x] **FIXED 2026-07-02.** The edit flow already re-ran `loadVideos()`, but the cache
       still held the PRE-edit version: unlike new publishes (#46), the edit never
       ingested its signed replaceable event locally, so grids re-rendered stale until
@@ -1781,7 +1793,7 @@ passphrase-encrypted). Items 51, 56, 57 are all facets of that.
       store + `videos:updated`), so grids show the new title/thumbnail/etc.
       immediately. Test: `tests/services/nostr-service.test.mjs` (+1).
 
-### 53. Channel-profile link in the video player modal doesn't work (BUG)
+### 53. Channel-profile link in the video player modal doesn't work (BUG) — FIXED 2026-07-02
 - [x] **FIXED 2026-07-02.** Event-name mismatch: `VideoModal.handleCreatorNavigation`
       dispatched `"navigate:profile"`, but ModalManager only listens for
       `"creator:navigate"` → the click went into the void (same class as the old
@@ -1792,8 +1804,8 @@ passphrase-encrypted). Items 51, 56, 57 are all facets of that.
       `tests/video-modal-controllers.test.mjs` (+2 — dispatches creator:navigate with
       the pubkey, never the dead event; no-op without a pubkey). Lint + build green.
 
-### 54. Like / dislike buttons in the video player modal don't work (BUG)
-- [ ] The reaction (like/dislike) buttons in the player modal are unresponsive / don't
+### 54. Like / dislike buttons in the video player modal don't work (BUG) — FIXED 2026-07-02 (only live VERIFY remains)
+- [x] The reaction (like/dislike) buttons in the player modal are unresponsive / don't
       persist. Audit `reactionController` wiring into the video modal (event binding,
       active-signer availability, publish path). Note: reactions require signing — verify
       this isn't another "lost signer after refresh" (#57) surfacing as a dead button; if
