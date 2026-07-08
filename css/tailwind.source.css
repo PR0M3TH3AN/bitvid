@@ -3668,12 +3668,16 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: flex-start;
+      justify-content: center;
       text-align: center;
       gap: var(--space-2xs);
       width: 100%;
-      padding-block: var(--space-sm);
-      padding-inline: var(--space-2xs);
+      /* equal-height tiles: a consistent floor so short and 2-line labels align
+         (grid rows stretch to the tallest tile, so within a row they match) */
+      min-block-size: var(--profile-modal-nav-tile-min-height);
+      padding-block: var(--space-xs);
+      padding-inline: var(--space-3xs);
+      line-height: 1.15;
       /* wrap labels at spaces, not mid-word */
       overflow-wrap: break-word;
       word-break: normal;
@@ -3684,6 +3688,16 @@
     .profile-modal__nav > button svg {
       width: var(--space-lg);
       height: var(--space-lg);
+      flex-shrink: 0;
+    }
+
+    /* In the tile grid the unread dot rides the tile's top-right corner instead
+       of the vertical-nav left edge (where it landed in the grid gutter). */
+    .profile-modal__nav > button .profile-nav__unread-dot {
+      top: var(--space-2xs);
+      left: auto;
+      right: var(--space-2xs);
+      transform: none;
     }
   }
 

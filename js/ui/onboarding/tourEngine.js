@@ -57,6 +57,20 @@ const TOUR_CSS = `
   padding: 1rem;
   transition: left 0.28s ease, top 0.28s ease;
 }
+/* Mobile: dock the popover as a bottom sheet instead of anchoring it to the
+   target. Anchored placement is fragile on phones (short viewports, wrapping
+   buttons, URL-bar resize) — a fixed sheet is always in a predictable spot and
+   the spotlight still highlights the (centered-scrolled) target above it. */
+.bv-tour-popover.bv-tour-popover--sheet {
+  left: 0.75rem;
+  right: 0.75rem;
+  top: auto;
+  bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+  transform: none;
+  width: auto;
+  max-width: 32rem;
+  margin-inline: auto;
+}
 .bv-tour-popover h3 { font-size: 1rem; font-weight: 700; margin: 0 0 0.375rem; }
 .bv-tour-popover p { font-size: 0.875rem; margin: 0 0 0.75rem; opacity: 0.9; }
 .bv-tour-dots { display: flex; gap: 0.375rem; margin-bottom: 0.75rem; }
@@ -171,10 +185,13 @@ export function createTour({
     }
   };
 
+  const isMobileViewport = () => (doc.defaultView?.innerWidth || 1200) < 640;
+
   function measure(step) {
     const target = step.target ? doc.querySelector(step.target) : null;
     if (!target) {
       // Centered card: zero-size cutout in the middle (pure dim).
+      state.popover.classList.remove("bv-tour-popover--sheet");
       setVar(state.scrim, "--bv-tour-x", "50vw");
       setVar(state.scrim, "--bv-tour-y", "50vh");
       setVar(state.scrim, "--bv-tour-w", "0px");
@@ -187,8 +204,13 @@ export function createTour({
       return;
     }
 
+    const mobile = isMobileViewport();
     try {
-      target.scrollIntoView({ block: "nearest", inline: "nearest" });
+      // Center the target on mobile so it sits above the bottom sheet.
+      target.scrollIntoView({
+        block: mobile ? "center" : "nearest",
+        inline: "nearest",
+      });
     } catch (error) {
       // older engines
     }
@@ -200,11 +222,23 @@ export function createTour({
     setVar(state.scrim, "--bv-tour-w", `${rect.width + pad * 2}px`);
     setVar(state.scrim, "--bv-tour-h", `${rect.height + pad * 2}px`);
 
+    if (mobile) {
+      // Bottom sheet — no anchored-placement math to get wrong.
+      state.popover.classList.add("bv-tour-popover--sheet");
+      return;
+    }
+
+    // Desktop: anchor, but measure the ACTUAL popover so the fit checks are
+    // accurate (the old 240px/336px guesses pushed tall popovers off-screen).
+    state.popover.classList.remove("bv-tour-popover--sheet");
+    const popRect = state.popover.getBoundingClientRect();
     const placementResult = computeTourPlacement({
       rect,
       viewportWidth: doc.defaultView?.innerWidth || 1200,
       viewportHeight: doc.defaultView?.innerHeight || 800,
       preferred: step.placement || "",
+      popWidth: popRect.width || 336,
+      popHeight: popRect.height || 240,
     });
     setVar(state.popover, "--bv-tour-px", `${placementResult.px}px`);
     setVar(state.popover, "--bv-tour-py", `${placementResult.py}px`);

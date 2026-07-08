@@ -359,6 +359,8 @@
   --notification-banner-max-inline: var(--size-28rem);
   --profile-modal-nav-min-width: max-content;
   --profile-modal-nav-max-width: max-content;
+  /* Equal-height floor for the mobile tab-grid tiles. */
+  --profile-modal-nav-tile-min-height: 4.75rem;
   --profile-modal-scrollbar-offset: var(--space-2xs);
   --modal-embed-height: 80vh;
   --profile-history-max-height: 26.25rem;
