@@ -1122,6 +1122,24 @@ export default class ApplicationBootstrap {
         ),
       );
     }
+    // #24: "Always show this creator" overlay button → set the account-level
+    // web-of-trust override for that author + refresh the feed. Fired by the
+    // moderation badge on video cards / the player / similar cards.
+    if (typeof document !== "undefined") {
+      const onTrustAuthor = (event) => {
+        const pubkey =
+          typeof event?.detail?.pubkey === "string" ? event.detail.pubkey : "";
+        if (!pubkey) {
+          return;
+        }
+        setAuthorModerationOverride(pubkey, { showAnyway: true });
+        notifyAuthorModerationOverrideChanged(app, pubkey);
+      };
+      document.addEventListener("video:trust-author", onTrustAuthor);
+      nostrUnsubscribes.push(() =>
+        document.removeEventListener("video:trust-author", onTrustAuthor),
+      );
+    }
     const submissionsPollId = setInterval(() => {
       void app.refreshSubmissionsIndicator({ reason: "poll" });
     }, 180000);

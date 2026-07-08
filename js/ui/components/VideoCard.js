@@ -156,6 +156,8 @@ export class VideoCard {
     this.moderationBadgeSlot = null;
     this.hiddenSummaryEl = null;
     this.boundShowAnywayHandler = (event) => this.handleShowAnywayClick(event);
+    this.boundTrustAuthorHandler = (event) =>
+      this.handleTrustAuthorClick(event);
     this.boundModerationBlockHandler = (event) =>
       this.handleModerationBlockClick(event);
     this.boundModerationHideHandler = (event) =>
@@ -1210,6 +1212,44 @@ export class VideoCard {
     return button;
   }
 
+  // Account-level ("trusted creator") action shown alongside "Show anyway":
+  // turns off the web-of-trust warning for EVERY video by this creator. Fires a
+  // document event that the app handles (sets the per-author override + refresh)
+  // — no per-renderer callback plumbing needed.
+  createModerationTrustAuthorButton() {
+    const button = this.createElement("button", {
+      classNames: ["moderation-badge__action", "flex-shrink-0"],
+      attrs: {
+        type: "button",
+        "data-moderation-action": "trust-author",
+        "aria-describedby": this.getModerationBadgeId(),
+        "aria-label": "Always show videos from this creator",
+      },
+      textContent: "Always show creator",
+    });
+    button.addEventListener("click", this.boundTrustAuthorHandler);
+    return button;
+  }
+
+  handleTrustAuthorClick(event) {
+    if (event) {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+    }
+    const pubkey =
+      this.video?.pubkey || this.video?.author?.pubkey || "";
+    if (!pubkey || typeof document === "undefined") {
+      return;
+    }
+    try {
+      document.dispatchEvent(
+        new CustomEvent("video:trust-author", { detail: { pubkey } }),
+      );
+    } catch (error) {
+      userLogger.warn("[VideoCard] trust-author dispatch failed", error);
+    }
+  }
+
   createModerationHideButton() {
     const { text: label, ariaLabel } = getModerationOverrideActionLabels({
       overrideActive: true,
@@ -1638,6 +1678,7 @@ export class VideoCard {
         actions.appendChild(showButton);
         this.moderationActionButton = showButton;
         this.moderationActionButtonMode = "override";
+        actions.appendChild(this.createModerationTrustAuthorButton());
       }
       hasActions = true;
     } else {
