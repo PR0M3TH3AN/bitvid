@@ -59,6 +59,22 @@ export function createEncryptedSyncItem({
     return Boolean(result?.exists);
   }
 
+  // Does this device already have the item locally? (A non-null payload means
+  // there's something to sync — e.g. a connected wallet / configured storage.)
+  // Used by the login offer to re-surface a restore when the item is MISSING
+  // here but a Nostr backup exists.
+  async function hasLocal(pubkey) {
+    const key = normalizePubkey(pubkey);
+    if (!key) {
+      return false;
+    }
+    try {
+      return Boolean(await buildPayload(key));
+    } catch (error) {
+      return false;
+    }
+  }
+
   async function push(pubkey, { confirmOverwrite } = {}) {
     const key = normalizePubkey(pubkey);
     if (!key) {
@@ -151,6 +167,7 @@ export function createEncryptedSyncItem({
     isAvailable,
     isEnabled,
     hasRemote,
+    hasLocal,
     push,
     pull,
     autoPullIfNewer,

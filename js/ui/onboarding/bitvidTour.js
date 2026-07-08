@@ -74,19 +74,32 @@ export function launchBitvidTour({
   openProfilePane,
   document: doc,
   force = false,
+  onEnd,
 } = {}) {
   if (!force && !shouldOfferOnboarding(pubkey)) {
     return false;
   }
 
+  // Fire onEnd on both finish and skip so callers can release anything they
+  // deferred for the tour's duration (e.g. the settings-restore prompt).
+  const end = (status) => {
+    markOnboarding(pubkey, status);
+    try {
+      onEnd?.(status);
+    } catch (error) {
+      // best-effort
+    }
+  };
+
   const tour = createTour({
     steps: buildBitvidTourSteps({ openProfilePane }),
     document: doc,
-    onFinish: () => markOnboarding(pubkey, "completed"),
-    onSkip: () => markOnboarding(pubkey, "skipped"),
+    onFinish: () => end("completed"),
+    onSkip: () => end("skipped"),
   });
 
-  return Boolean(tour?.start());
+  const started = Boolean(tour?.start());
+  return started;
 }
 
 export default launchBitvidTour;
