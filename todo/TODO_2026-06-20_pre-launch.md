@@ -2022,6 +2022,24 @@ example: event `95053d75…` "Nostr Compass Podcast #20" (pubkey `b7ed68b0…`).
       (`audio`/`podcast`/`music`) parallel to `t:video` so the Audio tab has a clean
       feed filter (like the video feed's `#t video`), and gate the tab behind its
       own config flag (mirrors the streaming tab pattern in #16).
+- [ ] **Channel-profile category tabs (requested 2026-07-09).** The channel profile
+      should carry the same media categories as a tab strip so a creator's page stays
+      neat and self-explanatory instead of mixing everything into one grid:
+      - **Videos** (current default — kind 30078 video / NIP-71 21+34235),
+      - **Audio** (audio-only notes — podcasts / music; the #60 audio player),
+      - **Live** / **Streams** (NIP-53 kind 30311 — see #16; show live now + past),
+      - **Shorts** (NIP-71 kind 22 short-form vertical — see #16).
+      Each tab is its **own category playlist** that only loads/renders when that tab
+      is selected (lazy per-tab fetch, no cross-contamination — the audio guard keeps
+      Audio out of Videos and vice-versa). Only show a tab when the creator actually
+      has content of that type (hide empty categories). Mirror the same tab set on the
+      main feed/sidebar so the sidebar category ↔ channel tab stay consistent.
+- [ ] **Shared category model:** define one media-category resolver
+      (`video | audio | live | short`) derived from kind + `imeta m` + `t` markers,
+      used by BOTH the sidebar feeds and the channel tabs, so a note lands in exactly
+      one category everywhere. This is the natural home for the #17 unified media grid.
 - [ ] **Cross-refs:** shares the "new media type behind a sidebar tab + config flag"
-      shape with #16 (live streams / NIP-53) and the #17 unified media grid — plan
-      the loaders together so video / live / audio don't each grow a bespoke fetch.
+      shape with #16 (live streams / NIP-53, incl. kind-22 shorts) and the #17 unified
+      media grid — plan the category resolver + per-tab loaders together so video /
+      audio / live / shorts don't each grow a bespoke fetch, and so the channel-profile
+      tabs and sidebar tabs share one source of truth.
