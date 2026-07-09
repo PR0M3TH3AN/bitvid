@@ -974,6 +974,17 @@ video/mp4, range + CORS `*`) — the block is the whitelist gate, not the source
       watchdog can't re-fire.
 - [ ] **VERIFY live**: open the beacon, paste a dead magnet → spinner should clear
       with a warning after ~30s instead of hanging; paste a live magnet → resolves.
+- [x] **SEPARATE BUG — spinner-on-load, FIXED 2026-07-09.** Reported: beacon.html
+      "just shows a spinner." Root cause was NOT the watchdog (that's compiled into
+      the bundle fine) but a CSS specificity trap from the `data-ds="new"` redesign:
+      `.ds-overlay-backdrop { display: flex }` (an author rule) overrides the UA
+      `[hidden] { display: none }`, so the processing overlay — `hidden` in the HTML
+      — rendered on load as a full-screen backdrop covering the whole page. Fix:
+      added `.ds-overlay-backdrop[hidden] { display: none }` (specificity 0,2,0 wins)
+      in `css/tailwind.source.css` — same guard the video modal already uses
+      (css ~2663). No JS needed; the JS inline-style toggle still works. Rebuilt CSS
+      + dist. **VERIFY live**: beacon.html loads to the form (no spinner); the
+      spinner only appears while adding a torrent.
 
 ### 29. Admin-whitelisted users bypass the Web-of-Trust (anti-abuse) — DEFERRED (YAGNI)
 **DECISION 2026-06-24: defer until there's a real brigading incident to scope against.**
