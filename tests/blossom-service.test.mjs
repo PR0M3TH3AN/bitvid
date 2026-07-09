@@ -11,6 +11,7 @@ import blossomService, {
   isBlossomProvider,
   resolveBlossomServers,
 } from "../js/services/blossomService.js";
+import { FEATURE_BLOSSOM_STORAGE } from "../js/constants.js";
 
 const SHA = "a".repeat(64);
 const signer = async (draft) => ({ ...draft, id: "id", sig: "sig", pubkey: "pk" });
@@ -43,8 +44,8 @@ test("isBlossomProvider / BLOSSOM_PROVIDER only match 'blossom'", () => {
   assert.equal(isBlossomProvider("cloudflare_r2"), false);
 });
 
-test("isAvailable reflects the flag (off by default)", () => {
-  assert.equal(blossomService.isAvailable(), false);
+test("isAvailable reflects the FEATURE_BLOSSOM_STORAGE flag", () => {
+  assert.equal(blossomService.isAvailable(), FEATURE_BLOSSOM_STORAGE === true);
 });
 
 test("resolveBlossomServers de-dupes, trims, and reads meta.servers", () => {

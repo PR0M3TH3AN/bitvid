@@ -25,6 +25,7 @@ import {
   buildStoragePrefixFromKey,
 } from "../../utils/storagePointer.js";
 import blossomServiceDefault, {
+  BLOSSOM_PROVIDER,
   isBlossomProvider,
   resolveBlossomServers,
 } from "../../services/blossomService.js";
@@ -108,6 +109,21 @@ export class MediaUploader {
 
     base.configured = true;
     base.provider = targetConn.provider;
+
+    // Blossom has no encrypted secret — its server list lives in the plaintext
+    // connection meta, so credentials are available without unlocking storage
+    // (uploads authorize with the Nostr signer, not a stored key).
+    if (isBlossomProvider(targetConn.provider)) {
+      base.unlocked = true;
+      base.credentials = {
+        provider: BLOSSOM_PROVIDER,
+        servers: Array.isArray(targetConn.meta?.servers)
+          ? targetConn.meta.servers
+          : [],
+        meta: targetConn.meta || {},
+      };
+      return base;
+    }
 
     if (base.unlocked) {
       const details = await this.storageService.getConnection(

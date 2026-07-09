@@ -1012,9 +1012,25 @@
                                 <option value="cloudflare_r2" selected>Cloudflare R2</option>
                                 <option value="backblaze_b2">Backblaze B2</option>
                                 <option value="generic_s3">Custom S3</option>
+                                <option id="storageProviderBlossomOption" value="blossom" class="hidden">Blossom (Nostr-native)</option>
                             </select>
                         </label>
 
+                        <!-- Blossom (Nostr-native) — keyless, multi-server. Shown when the
+                             Blossom provider is selected; auth is your Nostr signer. -->
+                        <div id="storageBlossomSection" class="hidden space-y-3">
+                            <div class="card border border-info/30 bg-info/10 p-3 text-xs text-info">
+                                Blossom stores files on nostr-native blob servers. No access keys — uploads are authorized by your Nostr signer. Add one or more servers (uploads mirror to all for resilience). The first server is the primary.
+                            </div>
+                            <label class="block text-sm text-muted-strong" for="storageBlossomServers">
+                                <span class="mb-2 block font-medium">Blossom servers (one URL per line)</span>
+                                <textarea id="storageBlossomServers" rows="3" class="input" placeholder="https://blossom.example.com
+https://another.blossom.example"></textarea>
+                            </label>
+                        </div>
+
+                        <!-- S3-family fields (R2 / B2 / Custom S3). Hidden for Blossom. -->
+                        <div id="storageS3Fields" class="space-y-4">
                         <!-- R2 Helper -->
                         <div id="storageR2Helper" class="card border border-info/30 bg-info/10 p-3 text-xs text-info">
                             Enter your Cloudflare R2 credentials. Your Account ID (from dashboard) is used to connect. For Public Access URL, use your custom domain or R2.dev subdomain. Ensure the token has "Object Read & Write" permissions.
@@ -1068,6 +1084,8 @@
                                 The public URL where your files will be accessible (CDN).
                             </span>
                         </label>
+                        </div>
+                        <!-- /storageS3Fields -->
 
                         <label class="flex items-center gap-2 text-sm text-muted-strong">
                             <input id="storageDefault" type="checkbox" class="checkbox" />

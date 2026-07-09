@@ -286,8 +286,11 @@ export const FEATURE_BITCOIN_CONNECT = true;
  * Defaults to `false` ("off = no trace"): with it off the Storage pane shows only
  * R2 / S3 / B2 as today and the vendored Blossom SDK is never imported. Flip to
  * `true` to expose the Blossom provider.
+ *
+ * Currently `true` for LOCAL testing of Phase 1b — reset to `false` (shipping
+ * default) before pushing/promoting until the upload flow is verified.
  */
-export const FEATURE_BLOSSOM_STORAGE = false;
+export const FEATURE_BLOSSOM_STORAGE = true;
 
 /**
  * Card liveness visibility policy — what a non-owner video card does while its
