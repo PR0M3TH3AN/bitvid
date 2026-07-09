@@ -69,6 +69,10 @@ export default class VideoModalController {
         this.handleCopyCdn(event);
       });
 
+      this.videoModal.addEventListener("video:copy-url", (event) => {
+        this.handleCopyUrl(event);
+      });
+
       this.videoModal.addEventListener("video:copy-magnet", () => {
         if (this.handleCopyMagnetCallback) {
           this.handleCopyMagnetCallback();
@@ -111,6 +115,28 @@ export default class VideoModalController {
       .catch(() => {
         if (this.showError) {
           this.showError("Failed to copy CDN link.");
+        }
+      });
+  }
+
+  handleCopyUrl(event) {
+    const url = event?.detail?.url || "";
+    if (!url) {
+      if (this.showError) {
+        this.showError("Could not generate a share link.");
+      }
+      return;
+    }
+    navigator.clipboard
+      .writeText(url)
+      .then(() => {
+        if (this.showSuccess) {
+          this.showSuccess("Video link copied to clipboard!");
+        }
+      })
+      .catch(() => {
+        if (this.showError) {
+          this.showError("Failed to copy the link.");
         }
       });
   }

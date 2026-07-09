@@ -3450,6 +3450,81 @@ export class VideoModal {
     }
   }
 
+  // Delegated click handler for the share popover's menu-action buttons
+  // (Copy URL / Copy Magnet / Copy CDN / Share on Nostr). The forced-source
+  // test links self-wire their own copy, so they are skipped here.
+  bindShareMenuActions(panel) {
+    if (!panel || typeof panel.addEventListener !== "function") {
+      return;
+    }
+    panel.addEventListener("click", (event) => {
+      const target = event.target;
+      const button =
+        target && typeof target.closest === "function"
+          ? target.closest("button[data-action]")
+          : null;
+      if (!button || button.disabled) {
+        return;
+      }
+      const action = button.dataset?.action || "";
+      if (action === "copy-webtorrent-url" || action === "copy-cdn-url") {
+        return; // self-wired in createVideoShareMenuPanel
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      this.handleShareMenuAction(action);
+      this.modalSharePopover?.close?.();
+    });
+  }
+
+  handleShareMenuAction(action) {
+    const video = this.activeVideo;
+    switch (action) {
+      case "copy-magnet":
+        this.dispatch("video:copy-magnet", { video });
+        break;
+      case "copy-cdn":
+        this.dispatch("video:copy-cdn", { video });
+        break;
+      case "share-nostr":
+        this.dispatch("video:share-nostr", {
+          video,
+          trigger: this.shareBtn || null,
+        });
+        break;
+      case "share":
+        // "Copy URL" — the shareable deep link to this video.
+        this.dispatch("video:copy-url", {
+          video,
+          url: this.buildShareUrl(video),
+        });
+        break;
+      default:
+        break;
+    }
+  }
+
+  // Plain `?v=<nevent>` share link (no forced playback source).
+  buildShareUrl(video) {
+    const eventId =
+      video && typeof video.id === "string" ? video.id.trim() : "";
+    if (!eventId) {
+      return "";
+    }
+    const win = this.window || globalThis;
+    const neventEncode = win?.NostrTools?.nip19?.neventEncode;
+    const loc = win?.location;
+    if (typeof neventEncode !== "function" || !loc) {
+      return "";
+    }
+    try {
+      const nevent = neventEncode({ id: eventId });
+      return `${loc.origin}${loc.pathname}?v=${encodeURIComponent(nevent)}`;
+    } catch (error) {
+      return "";
+    }
+  }
+
   setupModalSharePopover() {
     if (!this.playerModal || !this.shareBtn) {
       return;
@@ -3483,6 +3558,10 @@ export class VideoModal {
             this.buildForcedSourceShareUrl(this.activeVideo, playback),
         });
         if (panel) {
+          // The share menu's Copy URL / Copy Magnet / Copy CDN / Share on Nostr
+          // items only set `data-action` (like the ⋯ menu) — unlike the ⋯ menu,
+          // nothing wired their clicks, so they were dead. Delegate them here.
+          this.bindShareMenuActions(panel);
           container.appendChild(panel);
         }
         return panel;
