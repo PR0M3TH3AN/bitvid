@@ -277,6 +277,19 @@ export const FEATURE_AUDIO_INGEST = false;
 export const FEATURE_BITCOIN_CONNECT = true;
 
 /**
+ * Whether this deployment offers Blossom (nostr-native blob storage) as a
+ * first-class upload provider alongside Cloudflare R2 / generic S3 / Backblaze B2
+ * (docs/blossom-plan.md, TODO #30). Blossom uploads authorize with the user's
+ * existing nostr signer (kind-24242 auth events) instead of S3 access keys, and
+ * mirror to multiple servers for resilience.
+ *
+ * Defaults to `false` ("off = no trace"): with it off the Storage pane shows only
+ * R2 / S3 / B2 as today and the vendored Blossom SDK is never imported. Flip to
+ * `true` to expose the Blossom provider.
+ */
+export const FEATURE_BLOSSOM_STORAGE = false;
+
+/**
  * Card liveness visibility policy — what a non-owner video card does while its
  * CDN/WebTorrent liveness probes are still running:
  *   - "show-pending"  : show the card immediately, hide only if every source is
