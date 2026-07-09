@@ -1988,3 +1988,35 @@ passphrase-encrypted). Items 51, 56, 57 are all facets of that.
 - [ ] **Phase 4:** fresh-npub bootstrap — "Create account" via the existing generate
       provider with a REQUIRED key-backup step, then inline kind-0 profile setup
       (name + avatar), then the tour.
+
+### 60. Audio tab — podcasts / music / audio support (FUTURE)
+Reported 2026-07-09. Today an audio note (e.g. a podcast published as a native
+kind-30078 with `imeta … m audio/ogg` + an `.ogg` URL) leaks into the video grid
+and can't play: `convertEventToVideo` accepts it (it has a `url`), `VideoCard` gives
+it a `data-play-url`, but the source is audio-only. bitvid maps `.ogg → video/ogg`
+and hands it to a `<video>` element → black frame + audio on Chrome/FF, or
+`MEDIA_ERR_SRC_NOT_SUPPORTED` on Safari/iOS. There is no `<audio>`/podcast player.
+The NIP-71 *ingest* guard (`nip71IngestAdapter.js` — "exclude audio/image/etc.")
+only covers ingested kinds 21/22/34235/34236, not the native 30078 path. Real
+example: event `95053d75…` "Nostr Compass Podcast #20" (pubkey `b7ed68b0…`).
+- [ ] **Near-term (launch hygiene, separate small task):** stop audio-only notes
+      from rendering as broken video. Extend the existing audio guard to the native
+      path (`convertEventToVideo` / author-fetch): if the only source is audio
+      (`imeta m audio/*`, or an audio-only `.ogg/.mp3/.m4a/.opus/.wav` URL with no
+      video track) mark it filtered so it doesn't appear in the video grid. Mirrors
+      the ingest adapter's behavior. Test: audio-only event → filtered; video event
+      → unaffected. (This is the immediate fix; the tab below is the real feature.)
+- [ ] **The feature:** a dedicated **Audio** sidebar tab (podcasts / music / audio)
+      with its own player. Detect `audio/*` sources and render an `<audio>` UI
+      (poster from the `image`/thumbnail tag + transport controls, duration, seek)
+      instead of the `<video>` element. This event already carries the metadata a
+      good audio UI wants: `title`, `image`, `duration`, `summary`, `channel`,
+      `show`, plus podcast `t` tags — so cards can show cover art + show/episode.
+- [ ] **Discovery/schema:** decide the canonical audio signal — honor NIP-54-style
+      podcast events and/or native 30078 with `m audio/*`; consider a `t` marker
+      (`audio`/`podcast`/`music`) parallel to `t:video` so the Audio tab has a clean
+      feed filter (like the video feed's `#t video`), and gate the tab behind its
+      own config flag (mirrors the streaming tab pattern in #16).
+- [ ] **Cross-refs:** shares the "new media type behind a sidebar tab + config flag"
+      shape with #16 (live streams / NIP-53) and the #17 unified media grid — plan
+      the loaders together so video / live / audio don't each grow a bespoke fetch.
