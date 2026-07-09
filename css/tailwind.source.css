@@ -573,6 +573,13 @@
     -webkit-backdrop-filter: blur(var(--overlay-backdrop-blur));
   }
 
+  /* `display: flex` above overrides the UA `[hidden] { display: none }`, so an
+     overlay with the `hidden` attribute (e.g. the beacon processing spinner)
+     would render on load and cover the whole page. Restore hide-on-hidden. */
+  .ds-overlay-backdrop[hidden] {
+    display: none;
+  }
+
   .popularity-modal__backdrop {
     z-index: var(--z-overlay-popover);
     padding: var(--space-md);
