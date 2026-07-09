@@ -2034,10 +2034,20 @@ example: event `95053d75…` "Nostr Compass Podcast #20" (pubkey `b7ed68b0…`).
       Audio out of Videos and vice-versa). Only show a tab when the creator actually
       has content of that type (hide empty categories). Mirror the same tab set on the
       main feed/sidebar so the sidebar category ↔ channel tab stay consistent.
+- [ ] **Profile modal: "My Videos" → "My Content" with tabs (requested 2026-07-09).**
+      The creator-side management view (`js/ui/profileModal/MyVideosController.js`)
+      is the owner mirror of the channel-profile tabs: rename the pane/label to
+      **My Content** and give it the same category tabs (Videos / Audio / Live /
+      Shorts), each listing only that category's notes. Per-tab keeps the management
+      rows (edit, delete/undelete, mirror-to-apps toggle, storage status) scoped and
+      uncluttered. Reuse the shared category resolver below so an item shows under the
+      same tab here as on the public channel. Keep the empty-category hiding, or show
+      an empty-state CTA ("Publish your first audio note") per tab.
 - [ ] **Shared category model:** define one media-category resolver
       (`video | audio | live | short`) derived from kind + `imeta m` + `t` markers,
-      used by BOTH the sidebar feeds and the channel tabs, so a note lands in exactly
-      one category everywhere. This is the natural home for the #17 unified media grid.
+      used by the sidebar feeds, the public channel tabs, AND the profile-modal
+      "My Content" tabs, so a note lands in exactly one category everywhere. This is
+      the natural home for the #17 unified media grid.
 - [ ] **Cross-refs:** shares the "new media type behind a sidebar tab + config flag"
       shape with #16 (live streams / NIP-53, incl. kind-22 shorts) and the #17 unified
       media grid — plan the category resolver + per-tab loaders together so video /
