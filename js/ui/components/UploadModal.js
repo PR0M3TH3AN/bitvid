@@ -96,6 +96,7 @@ export class UploadModal {
       getCurrentPubkey: () =>
         this.getCurrentPubkey ? this.getCurrentPubkey() : null,
       safeEncodeNpub: (pubkey) => this.safeEncodeNpub(pubkey),
+      getSigner: () => getActiveSigner(),
     });
     this.eventTarget =
       eventTarget instanceof EventTarget ? eventTarget : new EventTarget();

@@ -24,6 +24,10 @@ import {
   buildStoragePointerValue,
   buildStoragePrefixFromKey,
 } from "../../utils/storagePointer.js";
+import blossomServiceDefault, {
+  isBlossomProvider,
+  resolveBlossomServers,
+} from "../../services/blossomService.js";
 
 const INFO_HASH_PATTERN = /^[a-f0-9]{40}$/;
 
@@ -46,6 +50,8 @@ export class MediaUploader {
     storageService,
     getCurrentPubkey,
     safeEncodeNpub,
+    blossomService,
+    getSigner,
   } = {}) {
     this.r2Service = r2Service || null;
     this.s3Service = s3Service || null;
@@ -54,6 +60,10 @@ export class MediaUploader {
       typeof getCurrentPubkey === "function" ? getCurrentPubkey : null;
     this.safeEncodeNpub =
       typeof safeEncodeNpub === "function" ? safeEncodeNpub : () => "";
+    // Blossom (nostr-native) upload path. Only exercised when a connection's
+    // provider is "blossom", so S3/R2 uploads are completely unaffected.
+    this.blossomService = blossomService || blossomServiceDefault;
+    this.getSigner = typeof getSigner === "function" ? getSigner : null;
   }
 
   serviceFor(provider) {
@@ -120,6 +130,9 @@ export class MediaUploader {
     // routing when the modal's provider state is stale.
     const effectiveProvider =
       credentials?.provider || credentials?.meta?.provider || provider;
+    if (isBlossomProvider(effectiveProvider)) {
+      return this.uploadThumbnailToBlossom(file, { credentials, onProgress });
+    }
     const service = this.serviceFor(effectiveProvider);
 
     const { settings, bucketEntry } = await service.prepareUpload(npub, {
@@ -214,6 +227,9 @@ export class MediaUploader {
     // R2 connection (accountId, no endpoint) through the S3 path — or vice-versa.
     const effectiveProvider =
       credentials?.provider || credentials?.meta?.provider || provider;
+    if (isBlossomProvider(effectiveProvider)) {
+      return this.uploadVideoToBlossom(file, { credentials, onProgress });
+    }
     const service = this.serviceFor(effectiveProvider);
 
     const { settings, bucketEntry } = await service.prepareUpload(npub, {
@@ -313,6 +329,67 @@ export class MediaUploader {
     return result;
   }
 
+  // --- Blossom (nostr-native blob storage) path --------------------------------
+  // Thin wiring only: resolve servers + signer, then delegate the orchestration
+  // to blossomService (which owns upload + torrent + magnet + storagePointer and
+  // stays WebTorrent-free / unit-testable). The torrent generator is injected so
+  // blossomService never imports WebTorrent. See docs/blossom-plan.md.
+
+  // Adapt bitvid's active signer (object with signEvent) to the SDK's signer
+  // shape: an async (eventTemplate) → signed event.
+  async resolveBlossomSigner() {
+    const signer = this.getSigner ? await this.getSigner() : null;
+    if (!signer || typeof signer.signEvent !== "function") {
+      throw new Error("A Nostr signer is required to upload to Blossom.");
+    }
+    return (draft) => signer.signEvent(draft);
+  }
+
+  async uploadThumbnailToBlossom(file, { credentials, onProgress } = {}) {
+    const servers = resolveBlossomServers(credentials);
+    if (servers.length === 0) {
+      throw new Error("No Blossom servers configured for this connection.");
+    }
+    const signer = await this.resolveBlossomSigner();
+    const uploaded = await this.blossomService.uploadFile({
+      file,
+      servers,
+      signer,
+      type: "upload",
+      onProgress: (fraction) => {
+        if (typeof onProgress === "function") onProgress(fraction);
+      },
+    });
+    return { url: uploaded.url, key: uploaded.key };
+  }
+
+  async uploadVideoToBlossom(file, { credentials, onProgress } = {}) {
+    const emit = (fraction, label) => {
+      if (typeof onProgress === "function") onProgress({ fraction, label });
+    };
+    const servers = resolveBlossomServers(credentials);
+    if (servers.length === 0) {
+      throw new Error("No Blossom servers configured for this connection.");
+    }
+    const signer = await this.resolveBlossomSigner();
+
+    emit(0, "Uploading video to Blossom...");
+    const result = await this.blossomService.uploadVideo({
+      file,
+      servers,
+      signer,
+      generateTorrent: (args) => this.generateTorrentMetadata(args),
+      onProgress: (fraction) => emit(fraction, null),
+    });
+    emit(
+      1,
+      result.hasValidInfoHash
+        ? "Ready to publish!"
+        : "Upload complete (No torrent fallback).",
+    );
+    return result;
+  }
+
   /**
    * Derive a WebTorrent webseed for an EXTERNALLY-hosted video URL so an external
    * link keeps the P2P benefit. Best-effort: fetches the remote file (CORS-
@@ -400,4 +477,4 @@ export class MediaUploader {
   }
 }
 
-export { isR2Provider, normalizeInfoHash, isValidInfoHash };
+export { isR2Provider, isBlossomProvider, normalizeInfoHash, isValidInfoHash };

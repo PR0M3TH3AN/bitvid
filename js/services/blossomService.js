@@ -1,33 +1,42 @@
-// Blossom (nostr-native blob storage) upload service — Phase 0 skeleton.
+// Blossom (nostr-native blob storage) upload service.
 //
-// Implements the same `uploadFile({…}) → { url, key, … }` contract as
-// s3UploadService / r2Service (see js/ui/components/mediaUploader.js), so a later
-// `isBlossomProvider` branch can route to it with no change downstream. Auth is a
-// signed kind-24242 nostr event (BUD-11) built from bitvid's existing signer — no
+// Owns the Blossom upload orchestration so mediaUploader stays thin and this
+// logic is unit-testable without pulling WebTorrent. Implements the same result
+// shape as the S3/R2 path (see js/ui/components/mediaUploader.js) so a
+// `provider === "blossom"` connection flows through publish unchanged. Auth is a
+// signed kind-24242 nostr event (BUD-11) from bitvid's existing signer — no
 // access keys. Uploads mirror to multiple servers for resilience (BUD-04).
-//
-// Phase 0: the vendored SDK loader, availability gate, and the core upload path
-// exist but nothing is wired into mediaUploader yet, and the flag is off by
-// default. Phase 1 completes torrent parity (magnet/infoHash), the result-shape
-// mapping, and the mediaUploader routing + Storage-pane config. See
-// docs/blossom-plan.md.
+// See docs/blossom-plan.md / TODO #30.
 import { FEATURE_BLOSSOM_STORAGE } from "../constants.js";
-import { userLogger } from "../utils/logger.js";
+import { buildStoragePointerValue } from "../utils/storagePointer.js";
 
 // Vendored, pinned blossom-client-sdk bundle (scripts/build-blossom-sdk.mjs).
 // Lazy-imported so its (small) weight never touches the main bundle.
 const BLOSSOM_SDK_BUNDLE_URL = "../../vendor/blossom-client-sdk.bundle.min.js";
 
-function normalizeServerList(servers) {
+export const BLOSSOM_PROVIDER = "blossom";
+
+export function isBlossomProvider(provider) {
+  return provider === BLOSSOM_PROVIDER;
+}
+
+// Extract a clean, de-duped server-URL list from a connection's credentials
+// (servers live in the plaintext connection meta — they are public, not secret).
+export function resolveBlossomServers(credentials) {
+  const source = credentials || {};
+  const raw = Array.isArray(source.servers)
+    ? source.servers
+    : Array.isArray(source.meta?.servers)
+      ? source.meta.servers
+      : [];
   const out = [];
   const seen = new Set();
-  for (const entry of Array.isArray(servers) ? servers : []) {
+  for (const entry of raw) {
     const url = typeof entry === "string" ? entry.trim() : "";
-    if (!url || seen.has(url)) {
-      continue;
+    if (url && !seen.has(url)) {
+      seen.add(url);
+      out.push(url);
     }
-    seen.add(url);
-    out.push(url);
   }
   return out;
 }
@@ -38,13 +47,11 @@ export class BlossomService {
     this._sdkPromise = null;
   }
 
-  // On/off gate — off ⇒ the SDK is never imported and callers should not route
-  // uploads here.
+  // On/off gate — off ⇒ the SDK is never imported.
   isAvailable() {
     return FEATURE_BLOSSOM_STORAGE === true;
   }
 
-  // Lazy-load the vendored SDK once.
   async loadSdk() {
     if (this._sdkPromise) {
       return this._sdkPromise;
@@ -57,25 +64,14 @@ export class BlossomService {
   }
 
   /**
-   * Upload a file to one or more Blossom servers, mirroring for resilience.
-   *
-   * @param {object} params
-   * @param {File|Blob} params.file - the blob to upload.
-   * @param {string[]} params.servers - Blossom server base URLs (first = primary).
-   * @param {(draft: object) => Promise<object>} params.signer - bitvid's active
-   *   signer (BUD-11 kind-24242 auth). Same shape the app already uses.
-   * @param {string} [params.type] - the auth `t` verb (default "upload").
-   * @param {(pct:number)=>void} [params.onProgress]
-   * @returns {Promise<{ url: string, key: string, servers: string[], descriptors: object[] }>}
-   *
-   * NOTE (Phase 1): torrent parity (magnet/infoHash), storagePointer, and the full
-   * mediaUploader result shape are added when this is wired into the upload flow.
+   * Upload a single blob to one or more Blossom servers (mirrored). Returns the
+   * primary blob descriptor's `url` (`<server>/<sha256>`) and `key` (sha256).
    */
   async uploadFile({ file, servers, signer, type = "upload", onProgress } = {}) {
     if (!file) {
       throw new Error("Blossom upload requires a file.");
     }
-    const serverList = normalizeServerList(servers);
+    const serverList = resolveBlossomServers({ servers });
     if (serverList.length === 0) {
       throw new Error("Blossom upload requires at least one server URL.");
     }
@@ -95,13 +91,10 @@ export class BlossomService {
     // One auth per action, scoped to the blob's sha256; the SDK reuses it across
     // the mirror set so a multi-server upload isn't N signer prompts.
     const results = await multiServerUpload(serverList, file, {
-      onAuth: (server, sha256) =>
-        createUploadAuth(signer, sha256, { type }),
-      onProgress:
-        typeof onProgress === "function" ? onProgress : undefined,
+      onAuth: (server, sha256) => createUploadAuth(signer, sha256, { type }),
+      onProgress: typeof onProgress === "function" ? onProgress : undefined,
     });
 
-    // results: Map<serverUrl, BlobDescriptor{ url, sha256, size, type, … }>
     const descriptors = Array.from(results?.values?.() || []);
     const primary =
       descriptors.find((d) => typeof d?.url === "string" && d.url) || null;
@@ -115,6 +108,76 @@ export class BlossomService {
       servers: serverList,
       descriptors,
     };
+  }
+
+  /**
+   * Full video upload: the blob, then (if `generateTorrent` yields one) the
+   * `.torrent` as a second blob, wired into a magnet (ws = the Blossom video URL,
+   * xs = the Blossom .torrent URL). Returns the same shape mediaUploader's S3 path
+   * returns so publish is untouched. `generateTorrent` is injected by the caller
+   * so this module never imports WebTorrent (keeps it unit-testable).
+   *
+   * @param {object} params
+   * @param {File|Blob} params.file
+   * @param {string[]} params.servers
+   * @param {(draft:object)=>Promise<object>} params.signer
+   * @param {(args:{file:File,videoPublicUrl:string})=>Promise<{hasValidInfoHash:boolean,infoHash?:string,torrentFile?:File}>} [params.generateTorrent]
+   * @param {(fraction:number)=>void} [params.onProgress]
+   */
+  async uploadVideo({ file, servers, signer, generateTorrent, onProgress } = {}) {
+    const serverList = resolveBlossomServers({ servers });
+    if (serverList.length === 0) {
+      throw new Error("No Blossom servers configured for this connection.");
+    }
+
+    const uploaded = await this.uploadFile({
+      file,
+      servers: serverList,
+      signer,
+      type: "upload",
+      onProgress,
+    });
+    const videoPublicUrl = uploaded.url; // <server>/<sha256>
+
+    const result = {
+      url: videoPublicUrl,
+      key: uploaded.key,
+      storagePointer: buildStoragePointerValue({
+        provider: BLOSSOM_PROVIDER,
+        prefix: serverList[0], // where the blob lives, for later delete/list (BUD-12)
+      }),
+      infoHash: "",
+      magnet: "",
+      torrentUrl: "",
+      torrentFile: null,
+      hasValidInfoHash: false,
+    };
+
+    let torrent = null;
+    if (typeof generateTorrent === "function") {
+      torrent = await generateTorrent({ file, videoPublicUrl });
+    }
+
+    if (torrent?.hasValidInfoHash && torrent.torrentFile) {
+      const torrentUploaded = await this.uploadFile({
+        file: torrent.torrentFile,
+        servers: serverList,
+        signer,
+        type: "upload",
+      });
+      const name = typeof file?.name === "string" ? file.name : "video";
+      result.infoHash = torrent.infoHash;
+      result.magnet = `magnet:?xt=urn:btih:${torrent.infoHash}&dn=${encodeURIComponent(
+        name,
+      )}&ws=${encodeURIComponent(videoPublicUrl)}&xs=${encodeURIComponent(
+        torrentUploaded.url,
+      )}`;
+      result.torrentUrl = torrentUploaded.url;
+      result.torrentFile = torrent.torrentFile;
+      result.hasValidInfoHash = true;
+    }
+
+    return result;
   }
 }
 
