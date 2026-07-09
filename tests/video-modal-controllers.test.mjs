@@ -308,3 +308,76 @@ test("reaction click with no matching button does not dispatch", async (t) => {
   modal.handleReactionClick({});
   assert.equal(fired, false, "no reaction event for an unrelated/empty target");
 });
+
+// Share popover (reported: "Copy URL / Copy Magnet / Copy CDN don't work"). The
+// share menu buttons only set data-action (like the ⋯ menu), but unlike the ⋯
+// menu nothing wired their clicks, so they were dead. handleShareMenuAction now
+// routes each to the event videoModalController already handles.
+//
+// test_integrity_note:
+//   change_type: ["new_tests"]
+//   scenarios:
+//     - id: SCN-video-modal-share-menu-routing
+//       given: "a video modal with an active video"
+//       when: "handleShareMenuAction runs for a share-menu action"
+//       then: "it dispatches the matching video:* event; forced-source actions do not re-route"
+//   determinism_controls:
+//     - "JSDOM modal via setupModal; synchronous dispatch"
+//   relaxation:
+//     did_relax_any_assertion: false
+
+test("share menu Copy Magnet routes to video:copy-magnet", async (t) => {
+  const { modal, cleanup } = await setupModal();
+  t.after(cleanup);
+  modal.activeVideo = { id: "e".repeat(64), url: "https://x/v.mp4", magnet: "" };
+  const events = [];
+  modal.addEventListener("video:copy-magnet", (e) => events.push(e.detail));
+  modal.handleShareMenuAction("copy-magnet");
+  assert.equal(events.length, 1, "Copy Magnet dispatches video:copy-magnet");
+  assert.equal(events[0].video.id, "e".repeat(64));
+});
+
+test("share menu Copy CDN routes to video:copy-cdn", async (t) => {
+  const { modal, cleanup } = await setupModal();
+  t.after(cleanup);
+  modal.activeVideo = { id: "e".repeat(64), url: "https://x/v.mp4" };
+  const events = [];
+  modal.addEventListener("video:copy-cdn", (e) => events.push(e.detail));
+  modal.handleShareMenuAction("copy-cdn");
+  assert.equal(events.length, 1, "Copy CDN dispatches video:copy-cdn");
+  assert.equal(events[0].video.url, "https://x/v.mp4");
+});
+
+test("share menu Copy URL routes to video:copy-url", async (t) => {
+  const { modal, cleanup } = await setupModal();
+  t.after(cleanup);
+  modal.activeVideo = { id: "e".repeat(64) };
+  const events = [];
+  modal.addEventListener("video:copy-url", (e) => events.push(e.detail));
+  modal.handleShareMenuAction("share");
+  assert.equal(events.length, 1, "Copy URL dispatches video:copy-url");
+  assert.equal(typeof events[0].url, "string");
+});
+
+test("share menu Share on Nostr routes to video:share-nostr", async (t) => {
+  const { modal, cleanup } = await setupModal();
+  t.after(cleanup);
+  modal.activeVideo = { id: "e".repeat(64) };
+  const events = [];
+  modal.addEventListener("video:share-nostr", (e) => events.push(e.detail));
+  modal.handleShareMenuAction("share-nostr");
+  assert.equal(events.length, 1, "Share on Nostr dispatches video:share-nostr");
+});
+
+test("share menu forced-source actions do not re-route through handleShareMenuAction", async (t) => {
+  const { modal, cleanup } = await setupModal();
+  t.after(cleanup);
+  modal.activeVideo = { id: "e".repeat(64) };
+  let fired = false;
+  ["video:copy-magnet", "video:copy-cdn", "video:copy-url", "video:share-nostr"].forEach(
+    (name) => modal.addEventListener(name, () => { fired = true; })
+  );
+  modal.handleShareMenuAction("copy-cdn-url");
+  modal.handleShareMenuAction("copy-webtorrent-url");
+  assert.equal(fired, false, "forced-source links self-wire; not routed here");
+});
