@@ -1,6 +1,6 @@
 # Blossom storage — first-class alongside R2 / S3 — Dev Plan
 
-Status: **DECISIONS NEEDED (D1–D10)** — no code yet. Adds Blossom (nostr-native
+Status: **DECISIONS LOCKED (D1–D10, per recommendations, 2026-07-09)** — ready to build. Adds Blossom (nostr-native
 blob storage) as a first-class upload provider next to Cloudflare R2 / generic S3
 / Backblaze B2, using the maintained `blossom-client-sdk`. Feature-flagged
 (off = no trace). Tracks TODO #30. Research: docs sources at the bottom; spec is
@@ -62,7 +62,7 @@ BUD-03 (discovery) + BUD-06 (preflight) + BUD-04 (mirror) for a good client.
 
 ## Decisions needed
 
-> **DECISION 1 — Client library. 🔵 NEEDED.**
+> **DECISION 1 — Client library. ✅ LOCKED (= recommendation below).**
 > - **A — Vendor `blossom-client-sdk` v5** (esbuild bundle like bitcoin-connect /
 >   floating-ui; its `@noble/hashes` dep is already vendored). Tracks the spec's
 >   ongoing BUD refactors; gives upload/mirror/discovery/negotiation for free.
@@ -70,56 +70,56 @@ BUD-03 (discovery) + BUD-06 (preflight) + BUD-04 (mirror) for a good client.
 > _Recommendation: **A** — the spec is actively modularizing (auth→BUD-11,
 > list/delete→BUD-12); the maintained SDK absorbs that churn, and it's small._
 
-> **DECISION 2 — Single server vs multi-server + mirror. 🔵 NEEDED.**
+> **DECISION 2 — Single server vs multi-server + mirror. ✅ LOCKED (= recommendation below).**
 > - **A — Multi-server list** (`multiServerUpload`): upload to N servers (HEAD
 >   preflight, `/mirror` to register on ones that already have the blob).
 > - **B — Single server** URL only.
 > _Recommendation: **A** — multiple live copies (resilience/censorship-resistance)
 > is the entire point of Blossom over one S3 bucket. Config becomes a server list._
 
-> **DECISION 3 — kind-10063 server discovery/publish (BUD-03). 🔵 NEEDED.**
+> **DECISION 3 — kind-10063 server discovery/publish (BUD-03). ✅ LOCKED (= recommendation below).**
 > Read the user's published server list to pre-fill their servers, and publish/
 > update it so other clients can find bitvid-hosted media.
 > _Recommendation: **read in v1** (`getServersFromServerListEvent`), **publish in
 > v1.5** (a "publish my server list" action). Spec says clients SHOULD do both._
 
-> **DECISION 4 — `/upload` vs `/media` (BUD-05). 🔵 NEEDED.**
+> **DECISION 4 — `/upload` vs `/media` (BUD-05). ✅ LOCKED (= recommendation below).**
 > `/media` strips metadata + may re-encode; `/upload` stores exact bytes.
 > _Recommendation: **`/upload` for videos** (keeps the exact file so the torrent
 > infohash/seed stays valid), optional **`/media` for thumbnails/avatars** later
 > (privacy/EXIF strip)._
 
-> **DECISION 5 — Signer wiring. 🔵 NEEDED.**
+> **DECISION 5 — Signer wiring. ✅ LOCKED (= recommendation below).**
 > _Recommendation: reuse bitvid's **active signer adapter** as the SDK `signer`
 > (NIP-07 / NIP-46 / nsec all already produce `async (tpl) → signed event`). No new
 > crypto. Respect the signer circuit-breaker; reuse one auth across a mirror set
 > (the SDK supports this) so a multi-server upload isn't N prompts._
 
-> **DECISION 6 — Torrent parity. 🔵 NEEDED.**
+> **DECISION 6 — Torrent parity. ✅ LOCKED (= recommendation below).**
 > S3 uploads also build a magnet + seed via WebTorrent. Keep that for Blossom?
 > _Recommendation: **Yes** — keep parity (Blossom URL as the hosted source +
 > magnet as the P2P fallback). If the server's blob descriptor already returns
 > `magnet`/`infohash`, prefer/verify it; else compute as today. sha256 = the
 > shared content id._
 
-> **DECISION 7 — Management (list/delete/orphan-GC). 🔵 NEEDED.**
+> **DECISION 7 — Management (list/delete/orphan-GC). ✅ LOCKED (= recommendation below).**
 > BUD-12 `GET /list/<pubkey>` + `DELETE /<sha256>` for the storage-management UI
 > (My Videos orphan tools #8/#13).
 > _Recommendation: **v2** — v1 ships upload; wire list/delete + orphan parity after._
 
-> **DECISION 8 — Storage-pane config type. 🔵 NEEDED.**
+> **DECISION 8 — Storage-pane config type. ✅ LOCKED (= recommendation below).**
 > _Recommendation: add a **"Blossom"** option to `#storageProvider` that swaps the
 > S3 fields (endpoint/region/access-key/secret/bucket + CORS helper) for a **keyless
 > multi-server list** (add/remove server URLs, mark default, "test", optional
 > "import from my kind-10063 list" / "publish my list"). New connection-payload
 > variant `{ servers: [...] }` in the per-provider slot model._
 
-> **DECISION 9 — Feature flag. 🔵 NEEDED.**
+> **DECISION 9 — Feature flag. ✅ LOCKED (= recommendation below).**
 > _Recommendation: `FEATURE_BLOSSOM_STORAGE` in `config/instance-config.js`
 > (default off = no trace), wired like `FEATURE_AUDIO_INGEST` /
 > `FEATURE_BITCOIN_CONNECT`. Off ⇒ no Blossom option, SDK never imported._
 
-> **DECISION 10 — Privacy posture. 🔵 NEEDED.**
+> **DECISION 10 — Privacy posture. ✅ LOCKED (= recommendation below).**
 > Blossom blobs are **public + content-addressed** (anyone with the URL/sha256 can
 > fetch), same as a public S3 bucket. There are no private blobs in the base spec.
 > _Recommendation: treat Blossom as public hosting (bitvid videos are already
