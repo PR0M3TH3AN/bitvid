@@ -580,6 +580,25 @@
     display: none;
   }
 
+  /* "Advanced — paste a connection manually" disclosure in the Wallet pane
+     (Bitcoin Connect). A subtle rotating caret replaces the default marker. */
+  .wallet-advanced__summary {
+    list-style: none;
+  }
+
+  .wallet-advanced__summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .wallet-advanced__summary::before {
+    content: "▸ ";
+    color: var(--text-subtle);
+  }
+
+  .wallet-advanced[open] > .wallet-advanced__summary::before {
+    content: "▾ ";
+  }
+
   .popularity-modal__backdrop {
     z-index: var(--z-overlay-popover);
     padding: var(--space-md);

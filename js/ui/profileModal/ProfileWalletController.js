@@ -42,6 +42,8 @@ export class ProfileWalletController {
 
     this.walletBitcoinConnectRow = null;
     this.walletBitcoinConnectButton = null;
+    this.walletAdvanced = null;
+    this.walletAdvancedSummary = null;
     this._bitcoinConnectModulePromise = null;
     this._bitcoinConnectInitialized = false;
   }
@@ -62,6 +64,10 @@ export class ProfileWalletController {
       document.getElementById("profileWalletBitcoinConnectRow") || null;
     this.walletBitcoinConnectButton =
       document.getElementById("profileWalletBitcoinConnect") || null;
+    this.walletAdvanced =
+      document.getElementById("profileWalletAdvanced") || null;
+    this.walletAdvancedSummary =
+      document.getElementById("profileWalletAdvancedSummary") || null;
 
     // Backwards compatibility alias if needed by tests/external code
     this.mainController.profileWalletStatusText = this.walletStatusText;
@@ -69,16 +75,25 @@ export class ProfileWalletController {
     this.applyBitcoinConnectVisibility();
   }
 
-  // Reveal the "Connect wallet" button only when the deployment enables the flag.
-  // Off ⇒ the row stays hidden and the vendored bundle is never imported.
+  // Bitcoin Connect on ⇒ show the "Connect wallet" button and tuck the manual URI
+  // field under an "Advanced" disclosure (Connect is the primary path, manual the
+  // backup). Off ⇒ hide the button, and force the disclosure open with its summary
+  // hidden so the URI field just shows plainly (unchanged legacy behavior). Off
+  // also means the vendored bundle is never imported.
   applyBitcoinConnectVisibility() {
-    if (!(this.walletBitcoinConnectRow instanceof HTMLElement)) {
-      return;
+    const enabled = FEATURE_BITCOIN_CONNECT === true;
+
+    if (this.walletBitcoinConnectRow instanceof HTMLElement) {
+      this.walletBitcoinConnectRow.classList.toggle("hidden", !enabled);
     }
-    this.walletBitcoinConnectRow.classList.toggle(
-      "hidden",
-      FEATURE_BITCOIN_CONNECT !== true,
-    );
+
+    if (this.walletAdvanced instanceof HTMLElement) {
+      // When disabled, keep the field visible (open) and drop the toggle chrome.
+      this.walletAdvanced.open = !enabled;
+    }
+    if (this.walletAdvancedSummary instanceof HTMLElement) {
+      this.walletAdvancedSummary.classList.toggle("hidden", !enabled);
+    }
   }
 
   registerEventListeners() {

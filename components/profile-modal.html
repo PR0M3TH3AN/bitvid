@@ -885,15 +885,26 @@
                   </p>
                 </div>
                 <div class="space-y-4">
-                  <label class="block text-sm text-muted-strong" for="profileWalletUri">
-                    <span class="mb-2 block font-medium">Wallet Connect URI</span>
-                    <input
-                      id="profileWalletUri"
-                      type="url"
-                      placeholder="nostr+walletconnect://<public-key>?relay=wss://relay.example.com"
-                      class="input"
-                    />
-                  </label>
+                  <details id="profileWalletAdvanced" class="wallet-advanced">
+                    <summary
+                      id="profileWalletAdvancedSummary"
+                      class="wallet-advanced__summary cursor-pointer text-xs font-medium text-muted-strong hover:text-text"
+                    >
+                      Advanced — paste a connection manually
+                    </summary>
+                    <label
+                      class="mt-3 block text-sm text-muted-strong"
+                      for="profileWalletUri"
+                    >
+                      <span class="mb-2 block font-medium">Wallet Connect URI</span>
+                      <input
+                        id="profileWalletUri"
+                        type="url"
+                        placeholder="nostr+walletconnect://<public-key>?relay=wss://relay.example.com"
+                        class="input"
+                      />
+                    </label>
+                  </details>
                   <label class="block text-sm text-muted-strong" for="profileWalletDefaultZap">
                     <span class="mb-2 block font-medium">Default zap amount (sats)</span>
                     <input
