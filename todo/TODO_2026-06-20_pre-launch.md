@@ -2017,11 +2017,32 @@ example: event `95053d75…` "Nostr Compass Podcast #20" (pubkey `b7ed68b0…`).
       instead of the `<video>` element. This event already carries the metadata a
       good audio UI wants: `title`, `image`, `duration`, `summary`, `channel`,
       `show`, plus podcast `t` tags — so cards can show cover art + show/episode.
-- [ ] **Discovery/schema:** decide the canonical audio signal — honor NIP-54-style
-      podcast events and/or native 30078 with `m audio/*`; consider a `t` marker
-      (`audio`/`podcast`/`music`) parallel to `t:video` so the Audio tab has a clean
-      feed filter (like the video feed's `#t video`), and gate the tab behind its
-      own config flag (mirrors the streaming tab pattern in #16).
+- [ ] **Discovery/schema — audio kinds & NIPs to support (surveyed 2026-07-09).**
+      bitvid supports NIP-71 video (21/22/34235/34236) + native 30078; nothing
+      audio-specific yet. Standard audio surfaces bitvid does NOT support:
+      - **NIP-A0 Voice Messages — `kind 1222` (root) + `kind 1244` (reply).** Native
+        short audio notes: content = URL to an audio file (rec. `audio/mp4`/.m4a,
+        ≤60s). The closest thing to a first-class "audio note." Best Audio-tab target.
+      - **NIP-73 External Content IDs — Podcast GUIDs.** `i`/`k` tags:
+        `podcast:guid` (feed), `podcast:item:guid` (episode),
+        `podcast:publisher:guid`. THE bridge to Podcasting 2.0 / PodcastIndex /
+        Fountain — lets bitvid reference real podcast feeds/episodes, not just
+        bespoke re-uploads. Key for "podcast feeds."
+      - **NIP-53 live audio — `kind 30311` + `kind 30312` (audio rooms/spaces).**
+        Live audio overlaps #16 (which should own live video *and* audio).
+      - **NIP-71 audio variants** — `imeta m audio/*` + `waveform` (audio-only) are
+        already in the NIP-71 spec bitvid parses, so audio-as-a-variant is close.
+      - **De-facto today:** the podcasts we currently filter (Nostr Compass,
+        Nodesignal) are native **kind-30078 with `imeta m audio/*`** — a bespoke
+        re-upload, NOT a standard audio kind.
+      - **Non-standard music** (Wavlake / Stemstr) use app-specific custom kinds, not
+        ratified NIPs → treat as opt-in integrations, not core.
+      Decide the canonical audio signal (support 1222/1244 + native 30078 `m audio/*`
+      to start; NIP-73 refs + NIP-53 live audio later); consider a `t` marker
+      (`audio`/`podcast`/`music`) parallel to `t:video` for a clean feed filter, and
+      gate the tab behind its own config flag (mirrors the streaming tab in #16).
+      NOTE: earlier drafts said "NIP-54-style podcast events" — WRONG, NIP-54 is Wiki;
+      the real refs are NIP-73 (podcast GUIDs) + NIP-A0 (voice messages).
 - [ ] **Channel-profile category tabs (requested 2026-07-09).** The channel profile
       should carry the same media categories as a tab strip so a creator's page stays
       neat and self-explanatory instead of mixing everything into one grid:
