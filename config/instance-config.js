@@ -265,6 +265,18 @@ export const FEATURE_NIP71_INGEST = true;
 export const FEATURE_AUDIO_INGEST = false;
 
 /**
+ * Whether this deployment shows the "Connect wallet" button that uses Alby's
+ * Bitcoin Connect for a smooth NWC connect flow (docs/bitcoin-connect-plan.md,
+ * TODO #61). When on, the Wallet Connect pane offers Bitcoin Connect alongside
+ * the manual URI field (which stays as the backup). It only lazy-loads the
+ * vendored Bitcoin Connect bundle when the user actually clicks Connect.
+ *
+ * SHIPPING DEFAULT should be `false` ("off = no trace"). Currently `true` for
+ * local testing only — reset to `false` before pushing/shipping until verified.
+ */
+export const FEATURE_BITCOIN_CONNECT = true;
+
+/**
  * Card liveness visibility policy — what a non-owner video card does while its
  * CDN/WebTorrent liveness probes are still running:
  *   - "show-pending"  : show the card immediately, hide only if every source is
