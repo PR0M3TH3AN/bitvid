@@ -1,6 +1,7 @@
 # Audio / Music / Podcasts — Dev Plan
 
-Status: **DECISIONS NEEDED (D1–D10)** — no code yet. Sibling of the shorts
+Status: **DECISIONS LOCKED (D1–D10, per recommendations, 2026-07-09)** — ready to
+build; config flag `FEATURE_AUDIO_INGEST` wired (default off). Sibling of the shorts
 (`docs/shorts-plan.md`) and live (`docs/live-ingest-plan.md` /
 `docs/live-publish-plan.md`) plans; shares the media-category model with both.
 Tracks TODO #60. The near-term "keep audio out of the video feed" guard is
@@ -31,7 +32,7 @@ flag-gated from day one (off = no trace), whitelist-scoped like shorts/live.
 
 ## Decisions needed
 
-> **DECISION 1 — v1 source scope. 🔵 NEEDED.**
+> **DECISION 1 — v1 source scope. ✅ LOCKED (= recommendation below).**
 > Which sources count as "audio" for the first release?
 > - **Option A — Native only:** kind 30078 with `imeta m audio/*` (+ a native
 >   `t:audio` marker for new bitvid publishing). Lowest effort — reuses the whole
@@ -42,12 +43,12 @@ flag-gated from day one (off = no trace), whitelist-scoped like shorts/live.
 >   PodcastIndex GUIDs). Full podcast client. Biggest — its own phase.
 > _Recommendation: **A for v1**, B fast-follow, C as a later phase (D7)._
 
-> **DECISION 2 — Discovery / whitelist scope. 🔵 NEEDED.**
+> **DECISION 2 — Discovery / whitelist scope. ✅ LOCKED (= recommendation below).**
 > Mirror shorts D1 / live D1: list audio only from **whitelisted/trusted authors**?
 > _Recommendation: **Yes** — same scope as video/shorts/live, one consistent trust
 > model. (No separate audio allowlist.)_
 
-> **DECISION 3 — Does audio appear in the main feed, or Audio-tab only? 🔵 NEEDED.**
+> **DECISION 3 — Does audio appear in the main feed, or Audio-tab only? ✅ LOCKED (= recommendation below).**
 > - **Option A — Audio-tab only** (excluded from main/discovery video feeds).
 >   Consistent with the shipped guard that already excludes audio from video feeds,
 >   and with shorts D3 (Shorts-tab only).
@@ -55,7 +56,7 @@ flag-gated from day one (off = no trace), whitelist-scoped like shorts/live.
 > _Recommendation: **Option A** — keeps the video feed clean; audio is a
 > deliberate destination, not an interruption._
 
-> **DECISION 4 — Player model. 🔵 NEEDED (biggest UX call).**
+> **DECISION 4 — Player model. ✅ LOCKED: A for v1, architected toward B.**
 > - **Option A — Reuse the player modal in "audio mode":** detect audio → swap the
 >   `<video>` for an `<audio>` element + big poster art, reuse the existing
 >   zaps/comments/moderation/share chrome. Fastest; one modal.
@@ -65,7 +66,7 @@ flag-gated from day one (off = no trace), whitelist-scoped like shorts/live.
 > _Recommendation: **A for v1**, **B as the real target** — audio's whole value is
 > "keep listening while you browse," so plan the architecture so A can grow into B._
 
-> **DECISION 5 — Category signal / resolver. 🔵 NEEDED.**
+> **DECISION 5 — Category signal / resolver. ✅ LOCKED (= recommendation below).**
 > How is a note bucketed as audio (must be deterministic + shared)?
 > Signals, in priority: (1) `imeta m audio/*` with no video variant, (2) kind
 > `1222`/`1244` (if D1≥B), (3) `podcast:*` `i` tag (if D1=C), (4) native `t:audio`
@@ -75,7 +76,7 @@ flag-gated from day one (off = no trace), whitelist-scoped like shorts/live.
 > own audio publishing so the Audio feed has a clean relay-side `#t` filter?
 > Recommendation: **Yes.**_
 
-> **DECISION 6 — Publish vs watch-only for v1. 🔵 NEEDED.**
+> **DECISION 6 — Publish vs watch-only for v1. ✅ LOCKED (= recommendation below).**
 > - **Option A — Watch/ingest-only** (mirrors live-ingest): bitvid surfaces others'
 >   audio, no upload UI yet.
 > - **Option B — Publish too:** upload an audio file → native 30078 with
@@ -83,23 +84,23 @@ flag-gated from day one (off = no trace), whitelist-scoped like shorts/live.
 > _Recommendation: **A for v1**; split publish into its own plan/phase like
 > live-ingest vs live-publish._
 
-> **DECISION 7 — Podcast-feed interop (NIP-73). 🔵 NEEDED (later phase).**
+> **DECISION 7 — Podcast-feed interop (NIP-73). ✅ LOCKED: Yes, Phase 3.**
 > Should bitvid reference real Podcasting 2.0 feeds/episodes (link an audio note to
 > its `podcast:guid` / `podcast:item:guid`, dedupe re-uploads, interop with Fountain
 > / PodcastIndex)? _Recommendation: **Yes, but Phase 3** — high interop value, but
 > pulls in RSS/GUID resolution; not v1._
 
-> **DECISION 8 — One "Audio" category, or split Music vs Podcasts? 🔵 NEEDED.**
+> **DECISION 8 — One "Audio" category, or split Music vs Podcasts? ✅ LOCKED (= recommendation below).**
 > _Recommendation: **one Audio category** for v1 (podcasts + music together); add a
 > Music sub-filter later if Wavlake-style content appears. Splitting now needs a
 > reliable music-vs-podcast signal we don't have._
 
-> **DECISION 9 — Value-for-Value / zaps. 🔵 NEEDED.**
+> **DECISION 9 — Value-for-Value / zaps. ✅ LOCKED (= recommendation below).**
 > Podcasting 2.0 has streaming V4V (per-minute sats). bitvid has one-shot zaps.
 > _Recommendation: **reuse the existing zap system** for v1; per-minute streaming
 > V4V is a future enhancement, not v1._
 
-> **DECISION 10 — Config flag. 🔵 NEEDED.**
+> **DECISION 10 — Config flag. ✅ LOCKED (= recommendation below).**
 > Name + granularity. _Recommendation: `FEATURE_AUDIO_INGEST` (off = no trace),
 > later `FEATURE_AUDIO_PUBLISH`; matches `FEATURE_LIVE_INGEST` / shorts pattern._
 
