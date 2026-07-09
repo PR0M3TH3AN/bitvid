@@ -1492,10 +1492,13 @@ function detectImetaMediaKinds(tags = []) {
   return { hasVideo, hasAudio };
 }
 
-// Unambiguous audio-only file extensions. `.ogg` is deliberately excluded — it
-// can be video (Theora) and bitvid maps it to video/ogg — so `.ogg` is only
-// treated as audio when an `imeta m audio/*` tag says so.
-const AUDIO_ONLY_URL_PATTERN = /\.(mp3|m4a|aac|wav|flac|opus|oga|weba)(?:[?#]|$)/i;
+// Unambiguous audio-only file extensions (the fallback when an event carries no
+// `imeta m audio/*` hint). `.ogg` is deliberately excluded — it can be video
+// (Theora) and bitvid maps it to video/ogg — so `.ogg` is only treated as audio
+// when an `imeta m audio/*` tag says so. `.f4a`/`.m4b` are AAC-in-MP4 audio
+// (podcasts/audiobooks) — NOT `.mp4`/`.m4v`, which are video.
+const AUDIO_ONLY_URL_PATTERN =
+  /\.(mp3|m4a|m4b|f4a|aac|wav|flac|opus|oga|weba|mka)(?:[?#]|$)/i;
 
 // Whether a (converted) video object is an audio-only note — a podcast/music
 // note published as a native kind-30078. bitvid has no <audio> player, so these

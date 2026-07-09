@@ -226,6 +226,40 @@ test("isAudioOnlyVideoObject flags a cached .ogg only when imeta says audio", ()
   );
 });
 
+test("audio/mp4 podcast (imeta) is filtered even though it would play", () => {
+  // Real case: Nodesignal-Talk E19 — m audio/mp4 + .f4a URL. AAC-in-MP4 plays in
+  // a <video> (audio + poster), but it's still a podcast → out of the video grid.
+  const podcast = {
+    id: "66c13a72",
+    content: JSON.stringify({
+      version: 3,
+      title: "Nodesignal-Talk E19",
+      url: "https://relay.example/talk.f4a",
+      videoRootId: "root-nodesignal",
+    }),
+    tags: [
+      ["imeta", "url https://relay.example/talk.f4a", "m audio/mp4", "duration 3309"],
+    ],
+  };
+  assert.equal(convertEventToVideo(podcast).invalid, true);
+});
+
+test("audio-only .f4a/.m4b URL with no imeta is filtered (fallback)", () => {
+  assert.equal(
+    isAudioOnlyVideoObject({ url: "https://x/a.f4a", magnet: "", tags: [] }),
+    true
+  );
+  assert.equal(
+    isAudioOnlyVideoObject({ url: "https://x/book.m4b", magnet: "", tags: [] }),
+    true
+  );
+  // .mp4/.m4v remain video and must NOT be filtered by the extension fallback.
+  assert.equal(
+    isAudioOnlyVideoObject({ url: "https://x/clip.mp4", magnet: "", tags: [] }),
+    false
+  );
+});
+
 test("isAudioOnlyVideoObject keeps a normal cached video object", () => {
   assert.equal(
     isAudioOnlyVideoObject({
