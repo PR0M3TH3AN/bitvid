@@ -1010,14 +1010,31 @@ to rescue a creator who *does* get WoT-hidden, so if it happens, ship this promp
      so either is feasible. Leaning soft-only so a whitelist can't force-show illegal.
 - [ ] When a real example appears: flip the placeholder with the scope above + tests.
 
-### 30. Blossom storage support (bring to par with R2 / S3)
-- [ ] Add **Blossom** (BUD-01/02 blob storage over Nostr) as a storage provider
-      alongside Cloudflare R2 and generic S3. Bring it to functional parity where
-      possible: upload, thumbnail, `.torrent`, public URL resolution, and
-      delete/edit cleanup. Slot it into the existing storage-provider abstraction
-      (`r2Service.js` / `storageService.js`) and the Storage settings pane; auth is
-      a signed Nostr event per Blossom rather than S3 keys. Research the BUD spec
-      coverage needed for bitvid's upload/delete flows.
+### 30. Blossom storage support (bring to par with R2 / S3) — full plan in docs/blossom-plan.md
+- [ ] Add **Blossom** (nostr-native blob storage) as a first-class upload provider
+      alongside Cloudflare R2 / generic S3 / B2. Slots into the existing
+      `service.uploadFile({…}) → {url,key}` seam (`mediaUploader.js:38`) as a new
+      `blossomService` + `isBlossomProvider` branch — Blossom's upload is *simpler*
+      than S3 (no SigV4/multipart/bucket/CORS), and auth is a signed nostr event
+      (kind 24242, BUD-11) that reuses bitvid's existing signer (no new crypto).
+- [ ] **Best practice (researched 2026-07-09):** use the maintained
+      **`blossom-client-sdk` v5** (hzrd149) — ESM, only dep `@noble/hashes` which
+      bitvid already vendors. Spec has modularized: BUD-01 retrieval, BUD-02
+      `/upload`, **BUD-11 auth (kind 24242, NIP-40 expiration, `t`/`x`/`server`
+      tags, `Authorization: Nostr <base64url>`)**, BUD-12 `/list`+`DELETE`, BUD-03
+      kind-10063 discovery, BUD-04 mirror, BUD-05 `/media`, BUD-06 preflight. Core
+      min = 01+02+11; add 03/06/04.
+- [ ] **Design shifts (decisions D1–D10 in the plan):** multi-server list + mirror
+      (Blossom's whole point vs one bucket), kind-10063 read/publish, `/upload` for
+      video (keep bytes for torrent) + optional `/media` for thumbnails, keep the
+      magnet/torrent parity, and a **keyless** multi-server config form (no
+      access-key/secret/bucket) — which also *removes* the encrypted-cred-sync
+      surface for Blossom users (there's no secret, only server URLs + the signer).
+- [ ] Flag-gated `FEATURE_BLOSSOM_STORAGE` (off = no trace), vendored SDK,
+      phased: P0 flag+vendor, P1 upload+config UI, P1.5 discovery, P2
+      list/delete+orphan-GC+mirror, P3 extras. Lift = medium (upload core is SDK
+      glue; the config UI is the main cost). Public blobs only (D10 — no private
+      content on base Blossom).
 
 ### 34. NIP-71 mirror: videos show "not mirrored" + duplicate on re-mirror (BUG) — FIXED 2026-06-29 (only live Amber VERIFY remains)
 Reported 2026-06-25. Relates to #17 (NIP-71 interop) / the bitvid→NIP-71 mirror.
