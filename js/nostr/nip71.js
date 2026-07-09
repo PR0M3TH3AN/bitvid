@@ -1497,6 +1497,31 @@ function detectImetaMediaKinds(tags = []) {
 // treated as audio when an `imeta m audio/*` tag says so.
 const AUDIO_ONLY_URL_PATTERN = /\.(mp3|m4a|aac|wav|flac|opus|oga|weba)(?:[?#]|$)/i;
 
+// Whether a (converted) video object is an audio-only note — a podcast/music
+// note published as a native kind-30078. bitvid has no <audio> player, so these
+// render as a broken <video> and must be kept out of the video feeds. Operates
+// on a video object (has `url`, `magnet`, `tags`) so it works on BOTH freshly
+// converted events AND video objects rehydrated from the persisted cache (which
+// bypass convertEventToVideo). Audio-only = no magnet (a torrent could be video)
+// AND no `imeta m video/*` variant AND (an `imeta m audio/*` variant OR an
+// unambiguous audio URL). See TODO #60.
+export function isAudioOnlyVideoObject(video) {
+  if (!video || typeof video !== "object") {
+    return false;
+  }
+  const url = typeof video.url === "string" ? video.url.trim() : "";
+  const magnet = typeof video.magnet === "string" ? video.magnet.trim() : "";
+  if (magnet) {
+    return false;
+  }
+  const { hasVideo, hasAudio } = detectImetaMediaKinds(video.tags);
+  if (hasVideo) {
+    return false;
+  }
+  const urlLooksAudioOnly = url ? AUDIO_ONLY_URL_PATTERN.test(url) : false;
+  return hasAudio || urlLooksAudioOnly;
+}
+
 export function convertEventToVideo(event = {}) {
   const safeTrim = (value) => (typeof value === "string" ? value.trim() : "");
 
@@ -1545,14 +1570,8 @@ export function convertEventToVideo(event = {}) {
 
   // Keep audio-only notes (podcasts/music published as native video events) out
   // of the video feed: bitvid has no <audio> player, so they render as a broken
-  // <video>. Treat as audio-only only when there's NO video signal — an `imeta
-  // m audio/*` variant (with no video variant) or an unambiguous audio URL — and
-  // no magnet (a torrent could still be video). See TODO #60 for the future
-  // dedicated Audio tab that will surface these properly.
-  const { hasVideo: imetaHasVideo, hasAudio: imetaHasAudio } =
-    detectImetaMediaKinds(tags);
-  const urlLooksAudioOnly = url ? AUDIO_ONLY_URL_PATTERN.test(url) : false;
-  if (!magnet && !imetaHasVideo && (imetaHasAudio || urlLooksAudioOnly)) {
+  // <video>. See TODO #60 for the future dedicated Audio tab.
+  if (isAudioOnlyVideoObject({ url, magnet, tags })) {
     return { id: event.id, invalid: true, reason: "audio-only source (no video)" };
   }
 

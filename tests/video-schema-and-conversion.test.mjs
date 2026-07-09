@@ -5,7 +5,10 @@ import {
   NOTE_TYPES,
   getNostrEventSchema,
 } from "../js/nostrEventSchemas.js";
-import { convertEventToVideo } from "../js/nostr/nip71.js";
+import {
+  convertEventToVideo,
+  isAudioOnlyVideoObject,
+} from "../js/nostr/nip71.js";
 
 test("video post schema documents nsfw and kids flags", () => {
   const schema = getNostrEventSchema(NOTE_TYPES.VIDEO_POST);
@@ -187,4 +190,51 @@ test("a normal video (mp4) event is unaffected by the audio guard", () => {
   const parsed = convertEventToVideo(video);
   assert.equal(parsed.invalid, false);
   assert.equal(parsed.url, "https://cdn.example/real.mp4");
+});
+
+// isAudioOnlyVideoObject operates on a CONVERTED video object (url/magnet/tags),
+// so the same guard also filters objects rehydrated from the persisted cache
+// (which bypass convertEventToVideo) at the feed query boundary + hydration.
+
+test("isAudioOnlyVideoObject flags a cached audio object (imeta audio)", () => {
+  // Shaped like the real cached "Nostr Compass #15" note.
+  const cachedAudio = {
+    id: "64a3c44c",
+    url: "https://relay.example/f7556db6.mp3",
+    magnet: "",
+    tags: [["imeta", "url https://relay.example/f7556db6.mp3", "m audio/mpeg"]],
+  };
+  assert.equal(isAudioOnlyVideoObject(cachedAudio), true);
+});
+
+test("isAudioOnlyVideoObject flags a cached .ogg only when imeta says audio", () => {
+  const cachedOggAudio = {
+    url: "https://relay.example/ep.ogg",
+    magnet: "",
+    tags: [["imeta", "url https://relay.example/ep.ogg", "m audio/ogg"]],
+  };
+  const cachedOggNoImeta = {
+    url: "https://relay.example/ep.ogg",
+    magnet: "",
+    tags: [],
+  };
+  assert.equal(isAudioOnlyVideoObject(cachedOggAudio), true, "audio imeta → audio");
+  assert.equal(
+    isAudioOnlyVideoObject(cachedOggNoImeta),
+    false,
+    ".ogg alone is ambiguous → kept"
+  );
+});
+
+test("isAudioOnlyVideoObject keeps a normal cached video object", () => {
+  assert.equal(
+    isAudioOnlyVideoObject({
+      url: "https://cdn.example/real.mp4",
+      magnet: "",
+      tags: [],
+    }),
+    false
+  );
+  assert.equal(isAudioOnlyVideoObject(null), false);
+  assert.equal(isAudioOnlyVideoObject({}), false);
 });

@@ -25,6 +25,7 @@ import {
   buildNip71MetadataTags,
   collectNip71PointerRequests,
   convertEventToVideo,
+  isAudioOnlyVideoObject,
   extractNip71MetadataFromTags,
   getDTagValueFromTags,
   mergeNip71MetadataIntoVideo as mergeNip71MetadataIntoVideoHelper,
@@ -4469,9 +4470,13 @@ export class NostrClient {
   }
 
   getActiveVideos() {
-    return Array.from(this.activeMap.values()).sort(
-      (a, b) => b.created_at - a.created_at
-    );
+    // Filter audio-only notes (podcasts/music) here too, not just at ingest:
+    // video objects rehydrated from the persisted cache bypass
+    // convertEventToVideo, so a note cached before the audio guard existed would
+    // otherwise still reach the feed. See TODO #60.
+    return Array.from(this.activeMap.values())
+      .filter((video) => !isAudioOnlyVideoObject(video))
+      .sort((a, b) => b.created_at - a.created_at);
   }
 
   // Optimistically add a just-published video event to the local caches so it

@@ -30,7 +30,7 @@ const GRANDFATHERED = {
   "js/ui/components/VideoModal.js": 4976,
   "js/app.js": 5602,
   "js/channelProfile.js": 5806,
-  "js/nostr/client.js": 4356,
+  "js/nostr/client.js": 4362,
   "js/ui/components/VideoCard.js": 3129,
   "js/nostrEventSchemas.js": 3541,
   "js/ui/loginModalController.js": 2552,
