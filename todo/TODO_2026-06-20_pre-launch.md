@@ -1989,7 +1989,7 @@ passphrase-encrypted). Items 51, 56, 57 are all facets of that.
       provider with a REQUIRED key-backup step, then inline kind-0 profile setup
       (name + avatar), then the tour.
 
-### 60. Audio tab — podcasts / music / audio support (FUTURE)
+### 60. Audio tab — podcasts / music / audio support (FUTURE) — full plan in docs/audio-integration-plan.md
 Reported 2026-07-09. Today an audio note (e.g. a podcast published as a native
 kind-30078 with `imeta … m audio/ogg` + an `.ogg` URL) leaks into the video grid
 and can't play: `convertEventToVideo` accepts it (it has a `url`), `VideoCard` gives
