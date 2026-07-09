@@ -2085,3 +2085,21 @@ example: event `95053d75…` "Nostr Compass Podcast #20" (pubkey `b7ed68b0…`).
       media grid — plan the category resolver + per-tab loaders together so video /
       audio / live / shorts don't each grow a bespoke fetch, and so the channel-profile
       tabs and sidebar tabs share one source of truth.
+
+### 61. Bitcoin Connect — smooth NWC wallet connect UX — full plan in docs/bitcoin-connect-plan.md
+Requested 2026-07-09. Add Alby's Bitcoin Connect (getalby/bitcoin-connect,
+bitcoin-connect.com) as a polished "connect your wallet" modal for NWC, feeding
+bitvid's EXISTING NWC pipeline; keep manual URI entry as the backup/advanced path.
+- [ ] Verified feasible: BC's NWC connector exposes the raw pairing URI via
+      `provider.client.nostrWalletConnectUrl` (on `onConnected`), which flows straight
+      into `nwcSettingsService.validateWalletUri` → the existing per-npub store. No
+      change to how bitvid pays or stores — one new way to obtain the same string.
+- [ ] Decisions D1–D6 in the plan (recommendations: vendor + lazy import;
+      `persistConnection:false` + `disconnect()` after extract; NWC-only connector;
+      least-privilege `requestMethods` incl. `pay_invoice`; Connect = primary CTA with
+      manual under "Advanced"; `FEATURE_BITCOIN_CONNECT` flag, off = no trace).
+- [ ] Security: NWC URI is a bearer SPENDING secret — never log it; pin+vendor the
+      (Alpha) lib; re-validate the extracted string; payment invariants
+      (PLATFORM_FEE_PERCENT=30, preimage verify, no pay_invoice auto-resend) untouched.
+- [ ] Phased + flag-gated: Phase 0 flag+vendor, Phase 1 connect button, Phase 2
+      polish (balance/reconnect), Phase 3 optional WebLN path for Alby-extension/Hub.
