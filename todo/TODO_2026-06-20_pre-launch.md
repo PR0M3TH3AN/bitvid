@@ -279,7 +279,7 @@ Audit started 2026-06-23. See the doc for architecture map + findings. Summary:
 - [x] Comment box confirmed WORKING (the "message doesn't work" was the popover
       mis-position making it hard to use — see 3a).
 
-### 4. View counter accuracy & reliability — DEEP AUDIT
+### 4. View counter accuracy & reliability — DEEP AUDIT — DONE 2026-06-24
 Audit finding (2026-06-24): counts INFLATE. `viewCounter.js` dedupes locally by
 (viewer, time-window) correctly, but two things defeated it: (a)
 `generateViewEventDedupeTag` built the kind-30079 `d` tag with random entropy +
@@ -421,7 +421,7 @@ un-hides when WebTorrent flips green). The real gaps:
       brand-new person, confirm the thread opens on THEM and the sent message lands
       in that conversation after refresh.
 
-### 20. Feed / grid loading reliability — some videos missing (BUG)
+### 20. Feed / grid loading reliability — some videos missing (BUG) — FIXED (streaming/first-relay-wins render is a separate latency follow-up under #17d)
 Two related intermittent symptoms; likely the same root cause (a one-shot,
 all-relays-settle fetch that drops slow-relay results — see 17d).
 - [x] **Profile / Channel page sometimes doesn't pull in all of a creator's
@@ -504,7 +504,7 @@ toward freshness and looked identical. Gave each a structural identity:
 - [ ] Consider removing the CDN/WebTorrent source badge from the card (clutter).
 - [ ] Run `npm run test:visual` after layout changes; update baselines deliberately.
 
-### 41. Native browser dialogs → site notification system
+### 41. Native browser dialogs → site notification system — DONE 2026-06-30
 - [x] **DONE 2026-06-30.** Replaced every `alert()`/`confirm()` (no `prompt()` existed)
       with the app's notification system so dialogs are styled + consistent.
       - `alert()` (13) → toasts: `this.showError` where the component already had it
@@ -584,7 +584,7 @@ toward freshness and looked identical. Gave each a structural identity:
       Storage Status → switch destination → summary updates and the upload
       lands in the chosen bucket; with 1 connection the picker stays hidden.
 
-### 45. Upload modal: suggest tags from the user's previous videos (UX)
+### 45. Upload modal: suggest tags from the user's previous videos (UX) — DONE 2026-07-01
 - [x] **DONE 2026-07-01.** The Hashtags section of the upload modal now shows one-tap
       chips of the user's most-used past hashtags ("Reuse a tag from your videos:").
       Source: `app.getUserHashtagSuggestions()` reads the user's own videos
@@ -597,7 +597,7 @@ toward freshness and looked identical. Gave each a structural identity:
       for users with no past tags. Rendered on modal open. Tests:
       `tests/hashtag-suggestions.test.mjs` (5, pure ranking). Lint + build green.
 
-### 46. Feed auto-refreshes after posting a video (UX)
+### 46. Feed auto-refreshes after posting a video (UX) — DONE 2026-06-30
 - [x] **DONE 2026-06-30.** `publishVideoNote` now (1) **optimistically injects** the
       just-published legacy event into the shared client cache via a new
       `nostrClient.ingestLocalVideoEvent(rawEvent)` (+ thin `nostrService` wrapper), so the
@@ -664,7 +664,7 @@ toward freshness and looked identical. Gave each a structural identity:
       video → within ~2min of tab re-entry its rank + badge reflect the new
       total.
 
-### 48. Fluent profile switching across signing methods (nsec / NIP-46 / NIP-07)
+### 48. Fluent profile switching across signing methods (nsec / NIP-46 / NIP-07) — DONE 2026-06-30
 - [x] **nsec switching FIXED 2026-06-30.** Switching to a saved nsec profile used to fail
       silently ("secret-required") — `switchProfile` called the nsec provider with no
       passphrase and never prompted. Now `handleProfileSwitchRequest` detects an nsec
@@ -807,15 +807,27 @@ toward freshness and looked identical. Gave each a structural identity:
 - [ ] Define the submission schema + the admin action → list-mutation mapping; reuse
       the existing admin list stores (whitelist/blacklist) for the writes.
 
-### 24. User-level allowlist override for the Web-of-Trust mute list
-- [ ] Let a user keep (and import) a personal **allowlist** that the client ALWAYS
-      shows content from, overriding the inherited WoT/trusted-mute list. So even if a
-      trusted curator mutes an author, the user can force that author's content to
-      appear in their own feeds. Persist it (NIP-51 list, encrypted/opt-in), make it
-      importable, and apply it at the render-time moderation filter as a final
-      allow-override after the WoT mute/block checks.
+### 24. User-level allowlist override for the Web-of-Trust mute list — CORE DONE 2026-07-08
+- [x] **Core render-time allow-override — DONE 2026-07-08.** A per-author (per-npub)
+      override that ALWAYS shows a creator's content, overriding the inherited
+      WoT/trusted-mute warning (blur/hide) for every one of that author's videos until
+      reset. Stored in a dedicated cache (`bitvid:moderationAuthorOverrides:v1`,
+      `js/state/cache.js`) and applied as the final allow-override at the single
+      render-time integration point (`js/services/moderationDecorator.js` — sets
+      `overrideActive` when `getAuthorModerationOverride(pubkey).showAnyway`). Two entry
+      points: (a) the **Safety tab** "Trusted creators" npub input + list with per-row
+      Reset (`ProfileModerationController`), and (b) an **"Always show creator"** button
+      on every blurred/warned surface (VideoCard, VideoModal, SimilarContentCard) that
+      dispatches a `video:trust-author` event handled once in `applicationBootstrap.js`.
+      Tests: `tests/author-moderation-override.test.mjs` (5). Committed a0131c71 (Safety
+      tab) + 5844a36a (overlay button).
+- [ ] **Remaining (deferred, not blocking launch): NIP-51 sync + import.** The override
+      is currently **device-local** (localStorage), not a published NIP-51 list, so it
+      doesn't roam across devices and can't be imported/shared. Follow-up: persist as an
+      encrypted/opt-in NIP-51 list and make it importable, reusing the cross-login sync
+      machinery (#15).
 
-### 25. Per-video / per-event admin block list (granular moderation)
+### 25. Per-video / per-event admin block list (granular moderation) — DONE 2026-07-01
 - [x] **DONE 2026-06-30 (full vertical slice).** Admins (any editor — same gate as the
       author blacklist) can now hide a SINGLE video without blocking its author.
       - **Record:** a published kind-30000 NIP-51 list under d-tag
@@ -996,7 +1008,7 @@ to rescue a creator who *does* get WoT-hidden, so if it happens, ship this promp
       a signed Nostr event per Blossom rather than S3 keys. Research the BUD spec
       coverage needed for bitvid's upload/delete flows.
 
-### 34. NIP-71 mirror: videos show "not mirrored" + duplicate on re-mirror (BUG)
+### 34. NIP-71 mirror: videos show "not mirrored" + duplicate on re-mirror (BUG) — FIXED 2026-06-29 (only live Amber VERIFY remains)
 Reported 2026-06-25. Relates to #17 (NIP-71 interop) / the bitvid→NIP-71 mirror.
 - [ ] **Mirrored videos report as NOT mirrored.** All videos were mirrored, but the UI
       now shows them un-mirrored even though the NIP-71 mirror events exist. The
@@ -1772,7 +1784,7 @@ passphrase-encrypted). Items 51, 56, 57 are all facets of that.
       remembered (disk vs session tier) in the UI, and consider a "keep unlocked" toggle
       in the storage/wallet panes for users who set it up there rather than via a prompt.
 
-### 52. After editing a video, the video grids don't refresh to show the update (BUG)
+### 52. After editing a video, the video grids don't refresh to show the update (BUG) — FIXED 2026-07-02
 - [x] **FIXED 2026-07-02.** The edit flow already re-ran `loadVideos()`, but the cache
       still held the PRE-edit version: unlike new publishes (#46), the edit never
       ingested its signed replaceable event locally, so grids re-rendered stale until
@@ -1781,7 +1793,7 @@ passphrase-encrypted). Items 51, 56, 57 are all facets of that.
       store + `videos:updated`), so grids show the new title/thumbnail/etc.
       immediately. Test: `tests/services/nostr-service.test.mjs` (+1).
 
-### 53. Channel-profile link in the video player modal doesn't work (BUG)
+### 53. Channel-profile link in the video player modal doesn't work (BUG) — FIXED 2026-07-02
 - [x] **FIXED 2026-07-02.** Event-name mismatch: `VideoModal.handleCreatorNavigation`
       dispatched `"navigate:profile"`, but ModalManager only listens for
       `"creator:navigate"` → the click went into the void (same class as the old
@@ -1792,8 +1804,8 @@ passphrase-encrypted). Items 51, 56, 57 are all facets of that.
       `tests/video-modal-controllers.test.mjs` (+2 — dispatches creator:navigate with
       the pubkey, never the dead event; no-op without a pubkey). Lint + build green.
 
-### 54. Like / dislike buttons in the video player modal don't work (BUG)
-- [ ] The reaction (like/dislike) buttons in the player modal are unresponsive / don't
+### 54. Like / dislike buttons in the video player modal don't work (BUG) — FIXED 2026-07-02 (only live VERIFY remains)
+- [x] The reaction (like/dislike) buttons in the player modal are unresponsive / don't
       persist. Audit `reactionController` wiring into the video modal (event binding,
       active-signer availability, publish path). Note: reactions require signing — verify
       this isn't another "lost signer after refresh" (#57) surfacing as a dead button; if
@@ -1976,3 +1988,89 @@ passphrase-encrypted). Items 51, 56, 57 are all facets of that.
 - [ ] **Phase 4:** fresh-npub bootstrap — "Create account" via the existing generate
       provider with a REQUIRED key-backup step, then inline kind-0 profile setup
       (name + avatar), then the tour.
+
+### 60. Audio tab — podcasts / music / audio support (FUTURE) — full plan in docs/audio-integration-plan.md
+Reported 2026-07-09. Today an audio note (e.g. a podcast published as a native
+kind-30078 with `imeta … m audio/ogg` + an `.ogg` URL) leaks into the video grid
+and can't play: `convertEventToVideo` accepts it (it has a `url`), `VideoCard` gives
+it a `data-play-url`, but the source is audio-only. bitvid maps `.ogg → video/ogg`
+and hands it to a `<video>` element → black frame + audio on Chrome/FF, or
+`MEDIA_ERR_SRC_NOT_SUPPORTED` on Safari/iOS. There is no `<audio>`/podcast player.
+The NIP-71 *ingest* guard (`nip71IngestAdapter.js` — "exclude audio/image/etc.")
+only covers ingested kinds 21/22/34235/34236, not the native 30078 path. Real
+example: event `95053d75…` "Nostr Compass Podcast #20" (pubkey `b7ed68b0…`).
+- [x] **Near-term (launch hygiene) — DONE 2026-07-09.** `convertEventToVideo`
+      (`js/nostr/nip71.js`) now marks audio-only notes `invalid` (reason
+      "audio-only source (no video)") so every feed/grid ingestion path that already
+      drops invalid filters them out: main feed buffer (`videoEventBuffer.js:145`),
+      author/channel batch fetch (`client.js:4192`), local ingest (`client.js:4500`).
+      Audio-only = no magnet AND no `imeta m video/*` AND (an `imeta m audio/*`
+      variant OR an unambiguous audio URL `.mp3/.m4a/.aac/.wav/.flac/.opus/.oga/.weba`).
+      `.ogg` is NOT filtered on extension alone (ambiguous → video/ogg) — only when
+      an `imeta m audio/*` says so. A video imeta variant always wins. Tests:
+      `tests/video-schema-and-conversion.test.mjs` (+5, 8/8). NOTE: the direct
+      open-by-nevent path (`client.js:4129`) still resolves an audio event on
+      purpose — an explicit link should still load; only feeds are filtered.
+- [ ] **The feature:** a dedicated **Audio** sidebar tab (podcasts / music / audio)
+      with its own player. Detect `audio/*` sources and render an `<audio>` UI
+      (poster from the `image`/thumbnail tag + transport controls, duration, seek)
+      instead of the `<video>` element. This event already carries the metadata a
+      good audio UI wants: `title`, `image`, `duration`, `summary`, `channel`,
+      `show`, plus podcast `t` tags — so cards can show cover art + show/episode.
+- [ ] **Discovery/schema — audio kinds & NIPs to support (surveyed 2026-07-09).**
+      bitvid supports NIP-71 video (21/22/34235/34236) + native 30078; nothing
+      audio-specific yet. Standard audio surfaces bitvid does NOT support:
+      - **NIP-A0 Voice Messages — `kind 1222` (root) + `kind 1244` (reply).** Native
+        short audio notes: content = URL to an audio file (rec. `audio/mp4`/.m4a,
+        ≤60s). The closest thing to a first-class "audio note." Best Audio-tab target.
+      - **NIP-73 External Content IDs — Podcast GUIDs.** `i`/`k` tags:
+        `podcast:guid` (feed), `podcast:item:guid` (episode),
+        `podcast:publisher:guid`. THE bridge to Podcasting 2.0 / PodcastIndex /
+        Fountain — lets bitvid reference real podcast feeds/episodes, not just
+        bespoke re-uploads. Key for "podcast feeds."
+      - **NIP-53 live audio — `kind 30311` + `kind 30312` (audio rooms/spaces).**
+        Live audio overlaps #16 (which should own live video *and* audio).
+      - **NIP-71 audio variants** — `imeta m audio/*` + `waveform` (audio-only) are
+        already in the NIP-71 spec bitvid parses, so audio-as-a-variant is close.
+      - **De-facto today:** the podcasts we currently filter (Nostr Compass,
+        Nodesignal) are native **kind-30078 with `imeta m audio/*`** — a bespoke
+        re-upload, NOT a standard audio kind.
+      - **Non-standard music** (Wavlake / Stemstr) use app-specific custom kinds, not
+        ratified NIPs → treat as opt-in integrations, not core.
+      Decide the canonical audio signal (support 1222/1244 + native 30078 `m audio/*`
+      to start; NIP-73 refs + NIP-53 live audio later); consider a `t` marker
+      (`audio`/`podcast`/`music`) parallel to `t:video` for a clean feed filter, and
+      gate the tab behind its own config flag (mirrors the streaming tab in #16).
+      NOTE: earlier drafts said "NIP-54-style podcast events" — WRONG, NIP-54 is Wiki;
+      the real refs are NIP-73 (podcast GUIDs) + NIP-A0 (voice messages).
+- [ ] **Channel-profile category tabs (requested 2026-07-09).** The channel profile
+      should carry the same media categories as a tab strip so a creator's page stays
+      neat and self-explanatory instead of mixing everything into one grid:
+      - **Videos** (current default — kind 30078 video / NIP-71 21+34235),
+      - **Audio** (audio-only notes — podcasts / music; the #60 audio player),
+      - **Live** / **Streams** (NIP-53 kind 30311 — see #16; show live now + past),
+      - **Shorts** (NIP-71 kind 22 short-form vertical — see #16).
+      Each tab is its **own category playlist** that only loads/renders when that tab
+      is selected (lazy per-tab fetch, no cross-contamination — the audio guard keeps
+      Audio out of Videos and vice-versa). Only show a tab when the creator actually
+      has content of that type (hide empty categories). Mirror the same tab set on the
+      main feed/sidebar so the sidebar category ↔ channel tab stay consistent.
+- [ ] **Profile modal: "My Videos" → "My Content" with tabs (requested 2026-07-09).**
+      The creator-side management view (`js/ui/profileModal/MyVideosController.js`)
+      is the owner mirror of the channel-profile tabs: rename the pane/label to
+      **My Content** and give it the same category tabs (Videos / Audio / Live /
+      Shorts), each listing only that category's notes. Per-tab keeps the management
+      rows (edit, delete/undelete, mirror-to-apps toggle, storage status) scoped and
+      uncluttered. Reuse the shared category resolver below so an item shows under the
+      same tab here as on the public channel. Keep the empty-category hiding, or show
+      an empty-state CTA ("Publish your first audio note") per tab.
+- [ ] **Shared category model:** define one media-category resolver
+      (`video | audio | live | short`) derived from kind + `imeta m` + `t` markers,
+      used by the sidebar feeds, the public channel tabs, AND the profile-modal
+      "My Content" tabs, so a note lands in exactly one category everywhere. This is
+      the natural home for the #17 unified media grid.
+- [ ] **Cross-refs:** shares the "new media type behind a sidebar tab + config flag"
+      shape with #16 (live streams / NIP-53, incl. kind-22 shorts) and the #17 unified
+      media grid — plan the category resolver + per-tab loaders together so video /
+      audio / live / shorts don't each grow a bespoke fetch, and so the channel-profile
+      tabs and sidebar tabs share one source of truth.

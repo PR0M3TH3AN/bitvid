@@ -9,6 +9,11 @@
 //   - refreshMirrorStates() looks up relay truth (batched), corrects the button
 //     label, AND reconciles the local flag so it becomes a correct cache.
 
+// Self-contained localStorage shim: the mirror flag helpers read the global
+// `localStorage`, so without this the suite only passed by relying on another
+// test file leaking the shim into the shared global (brittle load-order
+// dependency). Importing it here makes this file honest in isolation.
+import "./test-helpers/setup-localstorage.mjs";
 import test, { beforeEach, afterEach } from "node:test";
 import { strict as assert } from "node:assert";
 import { JSDOM } from "jsdom";

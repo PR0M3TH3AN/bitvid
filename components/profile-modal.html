@@ -1612,6 +1612,56 @@
                     data-orientation="vertical"
                   ></ul>
                 </div>
+                <div class="space-y-3 border-t border-border/60 pt-4">
+                  <div class="space-y-1">
+                    <h4 class="text-sm font-semibold text-text">
+                      Trusted creators
+                    </h4>
+                    <p class="text-xs text-muted">
+                      Turn off web-of-trust warnings for a creator across all
+                      their videos. They stay listed here until you reset them.
+                    </p>
+                  </div>
+                  <div class="flex flex-wrap items-end gap-2">
+                    <label class="min-w-0 flex-1 space-y-1">
+                      <span class="text-xs font-medium text-muted"
+                        >Creator npub</span
+                      >
+                      <input
+                        id="profileAuthorOverrideInput"
+                        type="text"
+                        class="form-control"
+                        placeholder="npub1…"
+                        autocomplete="off"
+                        spellcheck="false"
+                      />
+                    </label>
+                    <button
+                      id="profileAuthorOverrideAddBtn"
+                      type="button"
+                      class="btn focus-ring"
+                    >
+                      Always show
+                    </button>
+                  </div>
+                  <p
+                    id="profileAuthorOverrideStatus"
+                    class="text-xs text-muted"
+                    role="status"
+                    aria-live="polite"
+                  ></p>
+                  <div
+                    id="profileAuthorOverridesEmpty"
+                    class="card border border-dashed border-border/60 p-4 text-center text-xs text-muted"
+                  >
+                    No trusted creators yet.
+                  </div>
+                  <ul
+                    id="profileAuthorOverridesList"
+                    class="grid-stack hidden"
+                    data-orientation="vertical"
+                  ></ul>
+                </div>
               </div>
 
               <div id="profileLinkPreviewSettings" class="card space-y-4 p-5">

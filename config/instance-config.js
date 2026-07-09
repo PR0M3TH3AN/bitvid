@@ -253,6 +253,18 @@ export const ALLOW_NSFW_CONTENT = false;
 export const FEATURE_NIP71_INGEST = true;
 
 /**
+ * Whether this deployment enables the Audio / Music / Podcast experience
+ * (dedicated Audio player, sidebar tab, and the channel / "My Content" Audio
+ * tabs — see docs/audio-integration-plan.md and TODO #60).
+ *
+ * Defaults to `false` — "off = no trace": with it off, nothing audio renders and
+ * audio-only notes stay filtered out of the video feeds (current behavior). Flip
+ * to `true` to light up the Audio surfaces. Watch/ingest-first; a separate
+ * publish flag will gate uploading audio later.
+ */
+export const FEATURE_AUDIO_INGEST = false;
+
+/**
  * Card liveness visibility policy — what a non-owner video card does while its
  * CDN/WebTorrent liveness probes are still running:
  *   - "show-pending"  : show the card immediately, hide only if every source is

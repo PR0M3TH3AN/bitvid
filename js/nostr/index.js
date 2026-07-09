@@ -18,6 +18,7 @@ export {
   buildNip71VideoEvent,
   collectNip71PointerRequests,
   convertEventToVideo,
+  isAudioOnlyVideoObject,
   extractNip71MetadataFromTags,
   getDTagValueFromTags,
   mergeNip71MetadataIntoVideo,

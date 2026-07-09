@@ -251,6 +251,7 @@ export class VideoModal {
     this.moderationBadgeText = null;
     this.moderationActionsContainer = null;
     this.moderationPrimaryButton = null;
+    this.moderationTrustAuthorButton = null;
     this.moderationBlockButton = null;
     this.moderationPrimaryMode = "";
     this.moderationBadgeId = "";
@@ -268,6 +269,8 @@ export class VideoModal {
       this.handleModerationHideClick.bind(this);
     this.handleModerationBlockClick =
       this.handleModerationBlockClick.bind(this);
+    this.handleModerationTrustAuthorClick =
+      this.handleModerationTrustAuthorClick.bind(this);
     this.handleGlobalModerationOverride =
       this.handleGlobalModerationOverride.bind(this);
     this.handleGlobalModerationBlock =
@@ -556,6 +559,12 @@ export class VideoModal {
         );
       }
     }
+    if (this.moderationTrustAuthorButton) {
+      this.moderationTrustAuthorButton.removeEventListener(
+        "click",
+        this.handleModerationTrustAuthorClick,
+      );
+    }
     if (this.moderationBlockButton) {
       this.moderationBlockButton.removeEventListener(
         "click",
@@ -568,6 +577,7 @@ export class VideoModal {
     this.moderationActionsContainer = null;
     this.moderationPrimaryButton = null;
     this.moderationPrimaryMode = "";
+    this.moderationTrustAuthorButton = null;
     this.moderationBlockButton = null;
 
     const previousScrollRegion = this.scrollRegion;
@@ -2009,8 +2019,28 @@ export class VideoModal {
         }
         actionsAttached = true;
       }
+
+      if (mode === "override") {
+        const trustButton = this.ensureModerationTrustAuthorButton();
+        if (trustButton) {
+          trustButton.disabled = false;
+          trustButton.removeAttribute("aria-busy");
+          if (badgeId) {
+            trustButton.setAttribute("aria-describedby", badgeId);
+          } else {
+            trustButton.removeAttribute("aria-describedby");
+          }
+          if (actions && trustButton.parentElement !== actions) {
+            actions.appendChild(trustButton);
+          }
+          actionsAttached = true;
+        }
+      } else {
+        this.removeModerationTrustAuthorButton();
+      }
     } else {
       this.removeModerationPrimaryButton();
+      this.removeModerationTrustAuthorButton();
     }
 
     if (this.shouldShowModerationBlockAction(context)) {
@@ -2158,6 +2188,65 @@ export class VideoModal {
 
     this.moderationPrimaryButton = null;
     this.moderationPrimaryMode = "";
+  }
+
+  ensureModerationTrustAuthorButton() {
+    if (!this.document) {
+      return null;
+    }
+
+    if (!this.moderationTrustAuthorButton) {
+      const button = this.document.createElement("button");
+      button.type = "button";
+      button.className = "moderation-badge__action flex-shrink-0";
+      button.dataset.moderationAction = "trust-author";
+      button.textContent = "Always show creator";
+      button.setAttribute(
+        "aria-label",
+        "Always show videos from this creator"
+      );
+      button.addEventListener("click", this.handleModerationTrustAuthorClick);
+      this.moderationTrustAuthorButton = button;
+    }
+
+    return this.moderationTrustAuthorButton;
+  }
+
+  removeModerationTrustAuthorButton() {
+    const button = this.moderationTrustAuthorButton;
+    if (!button) {
+      return;
+    }
+
+    button.removeEventListener("click", this.handleModerationTrustAuthorClick);
+    if (button.parentElement) {
+      button.parentElement.removeChild(button);
+    }
+
+    this.moderationTrustAuthorButton = null;
+  }
+
+  handleModerationTrustAuthorClick(event) {
+    if (event) {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+    }
+
+    const pubkey =
+      this.activeVideo?.pubkey ||
+      this.activeVideo?.author?.pubkey ||
+      "";
+    if (!pubkey || typeof document === "undefined") {
+      return;
+    }
+
+    try {
+      document.dispatchEvent(
+        new CustomEvent("video:trust-author", { detail: { pubkey } })
+      );
+    } catch (error) {
+      devLogger?.warn?.("[VideoModal] trust-author dispatch failed", error);
+    }
   }
 
   ensureModerationBlockButton() {

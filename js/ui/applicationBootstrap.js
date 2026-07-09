@@ -58,6 +58,9 @@ import {
   getDmPrivacySettings,
   setDmPrivacySettings,
   clearModerationOverride,
+  getAuthorModerationOverridesList,
+  setAuthorModerationOverride,
+  clearAuthorModerationOverride,
   persistSavedProfiles,
   getSavedProfiles,
   getActiveProfilePubkey,
@@ -92,6 +95,30 @@ import {
   closeStaticModal,
 } from "./components/staticModalAccessibility.js";
 import ModalManager from "./ModalManager.js";
+
+// After an account-level ("trusted creator") override is set/cleared, refresh
+// the feed so every video by that author re-decorates (warning on/off), and
+// fire the shared moderation-override event so the Safety tab list refreshes.
+function notifyAuthorModerationOverrideChanged(app, pubkey) {
+  try {
+    if (typeof document !== "undefined") {
+      document.dispatchEvent(
+        new CustomEvent("video:moderation-override", {
+          detail: { authorPubkey: pubkey || "", accountLevel: true },
+        }),
+      );
+    }
+  } catch (error) {
+    // best-effort
+  }
+  try {
+    if (typeof app?.onVideosShouldRefresh === "function") {
+      void app.onVideosShouldRefresh({ reason: "author-moderation-override" });
+    }
+  } catch (error) {
+    // best-effort
+  }
+}
 
 export default class ApplicationBootstrap {
   constructor({
@@ -550,6 +577,22 @@ export default class ApplicationBootstrap {
           getModerationOverrides: () => getModerationOverridesList(),
           clearModerationOverride: (descriptor) =>
             clearModerationOverride(descriptor),
+          // Account-level ("trusted creator") WoT overrides. Setting/clearing
+          // one re-renders the feed so every video by that author updates, and
+          // fires the shared event so the Safety tab list refreshes.
+          getAuthorModerationOverrides: () => getAuthorModerationOverridesList(),
+          setAuthorModerationOverride: (pubkey) => {
+            const entry = setAuthorModerationOverride(pubkey, {
+              showAnyway: true,
+            });
+            notifyAuthorModerationOverrideChanged(app, pubkey);
+            return entry;
+          },
+          clearAuthorModerationOverride: (pubkey) => {
+            const removed = clearAuthorModerationOverride(pubkey);
+            notifyAuthorModerationOverrideChanged(app, pubkey);
+            return removed;
+          },
           loadVideos: (forceFetch, context) =>
             app.loadVideos(forceFetch, context),
           onVideosShouldRefresh: (context) =>
@@ -1077,6 +1120,24 @@ export default class ApplicationBootstrap {
           "bitvid:submissions-changed",
           onSubmissionsChanged,
         ),
+      );
+    }
+    // #24: "Always show this creator" overlay button → set the account-level
+    // web-of-trust override for that author + refresh the feed. Fired by the
+    // moderation badge on video cards / the player / similar cards.
+    if (typeof document !== "undefined") {
+      const onTrustAuthor = (event) => {
+        const pubkey =
+          typeof event?.detail?.pubkey === "string" ? event.detail.pubkey : "";
+        if (!pubkey) {
+          return;
+        }
+        setAuthorModerationOverride(pubkey, { showAnyway: true });
+        notifyAuthorModerationOverrideChanged(app, pubkey);
+      };
+      document.addEventListener("video:trust-author", onTrustAuthor);
+      nostrUnsubscribes.push(() =>
+        document.removeEventListener("video:trust-author", onTrustAuthor),
       );
     }
     const submissionsPollId = setInterval(() => {

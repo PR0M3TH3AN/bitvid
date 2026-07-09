@@ -134,6 +134,8 @@ export class SimilarContentCard {
       this.handleModerationHideClick(event);
     this.boundModerationBlockHandler = (event) =>
       this.handleModerationBlockClick(event);
+    this.boundTrustAuthorHandler = (event) =>
+      this.handleTrustAuthorClick(event);
 
     this.build();
   }
@@ -524,6 +526,43 @@ export class SimilarContentCard {
     return button;
   }
 
+  createModerationTrustAuthorButton() {
+    const button = this.document.createElement("button");
+    button.classList.add(
+      "moderation-badge__action",
+      "flex-shrink-0",
+      "text-xs",
+      "py-1",
+      "px-2"
+    );
+    button.type = "button";
+    button.dataset.moderationAction = "trust-author";
+    button.setAttribute("aria-label", "Always show videos from this creator");
+    button.textContent = "Always show creator";
+    button.addEventListener("click", this.boundTrustAuthorHandler);
+    button.classList.add("pointer-events-auto");
+    return button;
+  }
+
+  handleTrustAuthorClick(event) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+
+    const pubkey =
+      this.video?.pubkey || this.video?.author?.pubkey || "";
+    if (!pubkey || typeof document === "undefined") {
+      return;
+    }
+
+    try {
+      document.dispatchEvent(
+        new CustomEvent("video:trust-author", { detail: { pubkey } })
+      );
+    } catch (error) {
+      // Non-fatal: trust-author is a convenience action.
+    }
+  }
+
   handleShowAnywayClick(event) {
     event?.preventDefault?.();
     event?.stopPropagation?.();
@@ -720,6 +759,7 @@ export class SimilarContentCard {
         actions.appendChild(showButton);
         this.moderationActionButton = showButton;
         this.moderationActionButtonMode = "override";
+        actions.appendChild(this.createModerationTrustAuthorButton());
       }
     }
 

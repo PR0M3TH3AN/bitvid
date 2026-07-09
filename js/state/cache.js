@@ -33,6 +33,12 @@ const URL_PROBE_TIMEOUT_RETRY_MS = 15 * 1000; // 15 seconds
 
 const MODERATION_OVERRIDE_STORAGE_KEY = "bitvid:moderationOverrides:v2";
 const MODERATION_OVERRIDE_STORAGE_VERSION = 2;
+// Account-level ("trusted creator") web-of-trust overrides, keyed by author hex.
+// A showAnyway entry suppresses the WoT blur/hide/warning for ALL of that
+// author's videos until the viewer resets it in the Safety tab.
+const AUTHOR_MODERATION_OVERRIDE_STORAGE_KEY =
+  "bitvid:moderationAuthorOverrides:v1";
+const AUTHOR_MODERATION_OVERRIDE_STORAGE_VERSION = 1;
 const MODERATION_SETTINGS_STORAGE_KEY = "bitvid:moderationSettings:v1";
 const MODERATION_SETTINGS_STORAGE_VERSION = 3;
 const DM_PRIVACY_SETTINGS_STORAGE_KEY = "bitvid:dmPrivacySettings:v1";
@@ -198,6 +204,7 @@ const profileCache = new Map();
 const urlHealthCache = new Map();
 const urlHealthInFlight = new Map();
 const moderationOverrides = new Map();
+const authorModerationOverrides = new Map();
 
 function hasSavedProfilesChanged(previousProfiles, nextProfiles) {
   if (previousProfiles === nextProfiles) {
@@ -1718,6 +1725,169 @@ export function clearModerationOverride(
   }
 
   return removed;
+}
+
+// ---- Account-level ("trusted creator") web-of-trust overrides ---------------
+// Keyed by author hex; a showAnyway entry suppresses the WoT blur/hide/warning
+// for EVERY video by that author until reset. Mirrors the per-video store above.
+
+function normalizeAuthorOverrideHex(pubkey) {
+  const hex = normalizeHexPubkey(pubkey);
+  return hex ? hex.toLowerCase() : "";
+}
+
+export function getAuthorModerationOverridesList() {
+  return Array.from(authorModerationOverrides.values()).map((entry) => ({
+    ...entry,
+  }));
+}
+
+export function getAuthorModerationOverride(pubkey) {
+  const hex = normalizeAuthorOverrideHex(pubkey);
+  if (!hex) {
+    return null;
+  }
+  const entry = authorModerationOverrides.get(hex);
+  return entry ? { ...entry } : null;
+}
+
+export function hasAuthorModerationOverride(pubkey) {
+  const hex = normalizeAuthorOverrideHex(pubkey);
+  if (!hex) {
+    return false;
+  }
+  return authorModerationOverrides.get(hex)?.showAnyway === true;
+}
+
+export function setAuthorModerationOverride(
+  pubkey,
+  override = {},
+  { persist = true } = {},
+) {
+  const hex = normalizeAuthorOverrideHex(pubkey);
+  if (!hex) {
+    return null;
+  }
+
+  const showAnyway = override?.showAnyway === true;
+  if (!showAnyway) {
+    const removed = authorModerationOverrides.delete(hex);
+    if (removed && persist) {
+      persistAuthorModerationOverridesToStorage();
+    }
+    return null;
+  }
+
+  const updatedAt = Number.isFinite(override?.updatedAt)
+    ? Math.floor(override.updatedAt)
+    : Date.now();
+  const existing = authorModerationOverrides.get(hex);
+  const nextEntry = { authorPubkey: hex, showAnyway: true, updatedAt };
+  const changed =
+    !existing ||
+    existing.showAnyway !== true ||
+    existing.updatedAt !== updatedAt;
+
+  authorModerationOverrides.set(hex, nextEntry);
+  if (persist && changed) {
+    persistAuthorModerationOverridesToStorage();
+  }
+  return { ...nextEntry };
+}
+
+export function clearAuthorModerationOverride(pubkey, { persist = true } = {}) {
+  const hex = normalizeAuthorOverrideHex(pubkey);
+  if (!hex) {
+    return false;
+  }
+  const removed = authorModerationOverrides.delete(hex);
+  if (removed && persist) {
+    persistAuthorModerationOverridesToStorage();
+  }
+  return removed;
+}
+
+export function loadAuthorModerationOverridesFromStorage() {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+  const raw = localStorage.getItem(AUTHOR_MODERATION_OVERRIDE_STORAGE_KEY);
+  if (!raw) {
+    return;
+  }
+  try {
+    const payload = JSON.parse(raw);
+    if (
+      !payload ||
+      typeof payload !== "object" ||
+      payload.version !== AUTHOR_MODERATION_OVERRIDE_STORAGE_VERSION ||
+      !Array.isArray(payload.entries)
+    ) {
+      return;
+    }
+    authorModerationOverrides.clear();
+    for (const entry of payload.entries) {
+      if (!entry || entry.showAnyway !== true) {
+        continue;
+      }
+      const hex = normalizeAuthorOverrideHex(entry.authorPubkey || entry.pubkey);
+      if (!hex) {
+        continue;
+      }
+      const updatedAt = Number.isFinite(entry.updatedAt)
+        ? Math.floor(entry.updatedAt)
+        : Date.now();
+      authorModerationOverrides.set(hex, {
+        authorPubkey: hex,
+        showAnyway: true,
+        updatedAt,
+      });
+    }
+  } catch (error) {
+    authorModerationOverrides.clear();
+    userLogger.warn(
+      "[cache.loadAuthorModerationOverridesFromStorage] Failed to parse payload:",
+      error,
+    );
+  }
+}
+
+export function persistAuthorModerationOverridesToStorage() {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+  const entries = [];
+  for (const entry of authorModerationOverrides.values()) {
+    if (!entry || entry.showAnyway !== true) {
+      continue;
+    }
+    entries.push({
+      authorPubkey: entry.authorPubkey,
+      showAnyway: true,
+      updatedAt: Number.isFinite(entry.updatedAt)
+        ? Math.floor(entry.updatedAt)
+        : Date.now(),
+    });
+  }
+  try {
+    if (entries.length === 0) {
+      localStorage.removeItem(AUTHOR_MODERATION_OVERRIDE_STORAGE_KEY);
+      return;
+    }
+    localStorage.setItem(
+      AUTHOR_MODERATION_OVERRIDE_STORAGE_KEY,
+      JSON.stringify({
+        version: AUTHOR_MODERATION_OVERRIDE_STORAGE_VERSION,
+        savedAt: Date.now(),
+        entries,
+      }),
+    );
+  } catch (error) {
+    userLogger.warn(
+      "[cache.persistAuthorModerationOverridesToStorage] Failed to persist overrides:",
+      error,
+    );
+  }
 }
 
 function buildUrlProbeKey(url, options = {}) {
