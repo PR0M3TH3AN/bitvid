@@ -1999,13 +1999,18 @@ and hands it to a `<video>` element → black frame + audio on Chrome/FF, or
 The NIP-71 *ingest* guard (`nip71IngestAdapter.js` — "exclude audio/image/etc.")
 only covers ingested kinds 21/22/34235/34236, not the native 30078 path. Real
 example: event `95053d75…` "Nostr Compass Podcast #20" (pubkey `b7ed68b0…`).
-- [ ] **Near-term (launch hygiene, separate small task):** stop audio-only notes
-      from rendering as broken video. Extend the existing audio guard to the native
-      path (`convertEventToVideo` / author-fetch): if the only source is audio
-      (`imeta m audio/*`, or an audio-only `.ogg/.mp3/.m4a/.opus/.wav` URL with no
-      video track) mark it filtered so it doesn't appear in the video grid. Mirrors
-      the ingest adapter's behavior. Test: audio-only event → filtered; video event
-      → unaffected. (This is the immediate fix; the tab below is the real feature.)
+- [x] **Near-term (launch hygiene) — DONE 2026-07-09.** `convertEventToVideo`
+      (`js/nostr/nip71.js`) now marks audio-only notes `invalid` (reason
+      "audio-only source (no video)") so every feed/grid ingestion path that already
+      drops invalid filters them out: main feed buffer (`videoEventBuffer.js:145`),
+      author/channel batch fetch (`client.js:4192`), local ingest (`client.js:4500`).
+      Audio-only = no magnet AND no `imeta m video/*` AND (an `imeta m audio/*`
+      variant OR an unambiguous audio URL `.mp3/.m4a/.aac/.wav/.flac/.opus/.oga/.weba`).
+      `.ogg` is NOT filtered on extension alone (ambiguous → video/ogg) — only when
+      an `imeta m audio/*` says so. A video imeta variant always wins. Tests:
+      `tests/video-schema-and-conversion.test.mjs` (+5, 8/8). NOTE: the direct
+      open-by-nevent path (`client.js:4129`) still resolves an audio event on
+      purpose — an explicit link should still load; only feeds are filtered.
 - [ ] **The feature:** a dedicated **Audio** sidebar tab (podcasts / music / audio)
       with its own player. Detect `audio/*` sources and render an `<audio>` UI
       (poster from the `image`/thumbnail tag + transport controls, duration, seek)

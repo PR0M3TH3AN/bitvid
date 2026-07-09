@@ -76,3 +76,115 @@ test("convertEventToVideo normalizes nsfw and kids booleans", () => {
   assert.equal(defaultParsed.isNsfw, false);
   assert.equal(defaultParsed.isForKids, false);
 });
+
+// TODO #60: audio-only notes (podcasts/music published as native kind-30078)
+// must not leak into the video feed — bitvid has no <audio> player, so they
+// render as a broken <video>. convertEventToVideo marks them invalid so every
+// feed/grid ingestion path (which already drops invalid) filters them out.
+
+test("audio-only event with imeta m audio/* is filtered as invalid", () => {
+  const podcast = {
+    id: "evt-audio-imeta",
+    content: JSON.stringify({
+      version: 3,
+      title: "Nostr Compass Podcast #20",
+      url: "https://relay.example/episode.ogg",
+      videoRootId: "root-podcast",
+    }),
+    tags: [
+      [
+        "imeta",
+        "url https://relay.example/episode.ogg",
+        "m audio/ogg",
+        "duration 5254",
+      ],
+    ],
+  };
+
+  const parsed = convertEventToVideo(podcast);
+  assert.equal(parsed.invalid, true, "audio-only note should be invalid");
+  assert.match(parsed.reason, /audio-only/);
+});
+
+test("audio-only url extension (mp3) with no imeta is filtered", () => {
+  const track = {
+    id: "evt-audio-ext",
+    content: JSON.stringify({
+      version: 3,
+      title: "A song",
+      url: "https://cdn.example/track.mp3?v=2",
+      videoRootId: "root-track",
+    }),
+    tags: [],
+  };
+
+  assert.equal(convertEventToVideo(track).invalid, true);
+});
+
+test(".ogg url WITHOUT an audio imeta is kept (ambiguous → treated as video)", () => {
+  const ambiguousOgg = {
+    id: "evt-ogg-ambiguous",
+    content: JSON.stringify({
+      version: 3,
+      title: "Theora clip",
+      url: "https://cdn.example/clip.ogg",
+      videoRootId: "root-ogg",
+    }),
+    tags: [],
+  };
+
+  const parsed = convertEventToVideo(ambiguousOgg);
+  assert.equal(parsed.invalid, false, ".ogg alone must not be filtered");
+  assert.equal(parsed.url, "https://cdn.example/clip.ogg");
+});
+
+test("a video imeta variant wins even when an audio variant is also present", () => {
+  const mixed = {
+    id: "evt-mixed",
+    content: JSON.stringify({
+      version: 3,
+      title: "Talk with audio alt",
+      url: "https://cdn.example/talk.mp4",
+      videoRootId: "root-mixed",
+    }),
+    tags: [
+      ["imeta", "url https://cdn.example/talk.mp4", "m video/mp4"],
+      ["imeta", "url https://cdn.example/talk.ogg", "m audio/ogg"],
+    ],
+  };
+
+  assert.equal(convertEventToVideo(mixed).invalid, false);
+});
+
+test("an audio url paired with a magnet is kept (torrent may be video)", () => {
+  const withMagnet = {
+    id: "evt-audio-magnet",
+    content: JSON.stringify({
+      version: 3,
+      title: "Torrented",
+      url: "https://cdn.example/preview.mp3",
+      magnet: "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567",
+      videoRootId: "root-magnet",
+    }),
+    tags: [["imeta", "url https://cdn.example/preview.mp3", "m audio/mpeg"]],
+  };
+
+  assert.equal(convertEventToVideo(withMagnet).invalid, false);
+});
+
+test("a normal video (mp4) event is unaffected by the audio guard", () => {
+  const video = {
+    id: "evt-video",
+    content: JSON.stringify({
+      version: 3,
+      title: "Real video",
+      url: "https://cdn.example/real.mp4",
+      videoRootId: "root-video",
+    }),
+    tags: [["imeta", "url https://cdn.example/real.mp4", "m video/mp4"]],
+  };
+
+  const parsed = convertEventToVideo(video);
+  assert.equal(parsed.invalid, false);
+  assert.equal(parsed.url, "https://cdn.example/real.mp4");
+});

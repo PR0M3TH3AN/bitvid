@@ -1461,6 +1461,42 @@ function inferMimeTypeFromUrl(url) {
  * @param {import("nostr-tools").Event} event - The raw event.
  * @returns {Object} The normalized video object, or { invalid: true, reason: string }.
  */
+// Inspect an event's `imeta` tags for declared media types. Native bitvid notes
+// (kind 30078) can carry `imeta` variants with an `m <mime>` field just like
+// NIP-71 events; a podcast/music note advertises `m audio/*`. Mirrors the
+// video/audio split in nip71IngestAdapter.js so the native path stays consistent.
+function detectImetaMediaKinds(tags = []) {
+  let hasVideo = false;
+  let hasAudio = false;
+  for (const tag of Array.isArray(tags) ? tags : []) {
+    if (!Array.isArray(tag) || tag[0] !== "imeta") {
+      continue;
+    }
+    for (let i = 1; i < tag.length; i += 1) {
+      const entry = tag[i];
+      if (typeof entry !== "string") {
+        continue;
+      }
+      const trimmed = entry.trim();
+      if (!/^m\s+/i.test(trimmed)) {
+        continue;
+      }
+      const mime = trimmed.replace(/^m\s+/i, "").trim().toLowerCase();
+      if (mime.startsWith("video/")) {
+        hasVideo = true;
+      } else if (mime.startsWith("audio/")) {
+        hasAudio = true;
+      }
+    }
+  }
+  return { hasVideo, hasAudio };
+}
+
+// Unambiguous audio-only file extensions. `.ogg` is deliberately excluded — it
+// can be video (Theora) and bitvid maps it to video/ogg — so `.ogg` is only
+// treated as audio when an `imeta m audio/*` tag says so.
+const AUDIO_ONLY_URL_PATTERN = /\.(mp3|m4a|aac|wav|flac|opus|oga|weba)(?:[?#]|$)/i;
+
 export function convertEventToVideo(event = {}) {
   const safeTrim = (value) => (typeof value === "string" ? value.trim() : "");
 
@@ -1505,6 +1541,19 @@ export function convertEventToVideo(event = {}) {
 
   if (!url && !magnet) {
     return { id: event.id, invalid: true, reason: "missing playable source" };
+  }
+
+  // Keep audio-only notes (podcasts/music published as native video events) out
+  // of the video feed: bitvid has no <audio> player, so they render as a broken
+  // <video>. Treat as audio-only only when there's NO video signal — an `imeta
+  // m audio/*` variant (with no video variant) or an unambiguous audio URL — and
+  // no magnet (a torrent could still be video). See TODO #60 for the future
+  // dedicated Audio tab that will surface these properly.
+  const { hasVideo: imetaHasVideo, hasAudio: imetaHasAudio } =
+    detectImetaMediaKinds(tags);
+  const urlLooksAudioOnly = url ? AUDIO_ONLY_URL_PATTERN.test(url) : false;
+  if (!magnet && !imetaHasVideo && (imetaHasAudio || urlLooksAudioOnly)) {
+    return { id: event.id, invalid: true, reason: "audio-only source (no video)" };
   }
 
   const thumbnail = safeTrim(parsedContent.thumbnail);
