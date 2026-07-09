@@ -121,3 +121,41 @@ test("uploadVideo with a torrent uploads the .torrent as a blob and builds a mag
   assert.match(result.magnet, /xs=https%3A%2F%2Fa%2F/, "xs = blossom .torrent url");
   assert.equal(result.torrentUrl, `https://a/${"b".repeat(64)}`);
 });
+
+// --- BUD-12 management primitives (Phase 2) ---
+
+test("deleteFile guards + calls deleteBlob with a delete auth", async () => {
+  const svc = new BlossomService();
+  const calls = [];
+  svc.loadSdk = async () => ({
+    createDeleteAuth: async (s, hash) => ({ kind: 24242, t: "delete", hash }),
+    deleteBlob: async (server, hash, opts) => {
+      if (typeof opts?.onAuth === "function") await opts.onAuth();
+      calls.push({ server, hash });
+      return true;
+    },
+  });
+  await assert.rejects(() => svc.deleteFile({ sha256: SHA, signer }), /server and a sha256/);
+  await assert.rejects(() => svc.deleteFile({ server: "https://a", signer }), /server and a sha256/);
+  await assert.rejects(
+    () => svc.deleteFile({ server: "https://a", sha256: SHA, signer: null }),
+    /requires a signer/,
+  );
+  const ok = await svc.deleteFile({ server: "https://a", sha256: SHA, signer });
+  assert.equal(ok, true);
+  assert.deepEqual(calls[0], { server: "https://a", hash: SHA });
+});
+
+test("listFiles returns the server's blob descriptors for a pubkey", async () => {
+  const svc = new BlossomService();
+  svc.loadSdk = async () => ({
+    createListAuth: async () => ({ kind: 24242, t: "list" }),
+    listBlobs: async (server, pubkey) => [
+      { url: `${server}/${SHA}`, sha256: SHA, size: 1, type: "video/mp4" },
+    ],
+  });
+  await assert.rejects(() => svc.listFiles({ pubkey: "pk" }), /server and a pubkey/);
+  const blobs = await svc.listFiles({ server: "https://a", pubkey: "f".repeat(64), signer });
+  assert.equal(blobs.length, 1);
+  assert.equal(blobs[0].sha256, SHA);
+});

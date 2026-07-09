@@ -179,6 +179,55 @@ export class BlossomService {
 
     return result;
   }
+
+  /**
+   * Delete a blob from one Blossom server (BUD-12 `DELETE /<sha256>`), authorized
+   * by a signed kind-24242 delete auth (BUD-11). Returns true on success.
+   */
+  async deleteFile({ server, sha256, signer } = {}) {
+    const url = typeof server === "string" ? server.trim() : "";
+    const hash = typeof sha256 === "string" ? sha256.trim() : "";
+    if (!url || !hash) {
+      throw new Error("Blossom delete requires a server and a sha256.");
+    }
+    if (typeof signer !== "function") {
+      throw new Error("Blossom delete requires a signer.");
+    }
+    const sdk = await this.loadSdk();
+    const { deleteBlob, createDeleteAuth } = sdk;
+    if (
+      typeof deleteBlob !== "function" ||
+      typeof createDeleteAuth !== "function"
+    ) {
+      throw new Error("Blossom SDK is missing delete exports.");
+    }
+    return deleteBlob(url, hash, {
+      onAuth: () => createDeleteAuth(signer, hash),
+    });
+  }
+
+  /**
+   * List a user's blobs on a Blossom server (BUD-12 `GET /list/<pubkey>`). Some
+   * servers require a signed list auth; provide the signer to cover those.
+   * Returns the array of blob descriptors.
+   */
+  async listFiles({ server, pubkey, signer } = {}) {
+    const url = typeof server === "string" ? server.trim() : "";
+    const pk = typeof pubkey === "string" ? pubkey.trim() : "";
+    if (!url || !pk) {
+      throw new Error("Blossom list requires a server and a pubkey.");
+    }
+    const sdk = await this.loadSdk();
+    const { listBlobs, createListAuth } = sdk;
+    if (typeof listBlobs !== "function") {
+      throw new Error("Blossom SDK is missing list exports.");
+    }
+    const opts =
+      typeof signer === "function" && typeof createListAuth === "function"
+        ? { onAuth: () => createListAuth(signer) }
+        : {};
+    return listBlobs(url, pk, opts);
+  }
 }
 
 const blossomService = new BlossomService();

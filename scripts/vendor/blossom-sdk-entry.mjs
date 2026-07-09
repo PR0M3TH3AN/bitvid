@@ -9,6 +9,7 @@ export {
   createUploadAuth,
   createMirrorAuth,
   createListAuth,
+  createDeleteAuth,
   encodeAuthorizationHeader,
 } from "blossom-client-sdk/auth";
 export {
