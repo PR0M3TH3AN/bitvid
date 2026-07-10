@@ -80,26 +80,49 @@ export class BlossomService {
     }
 
     const sdk = await this.loadSdk();
-    const { multiServerUpload, createUploadAuth } = sdk;
+    const { uploadBlob, createUploadAuth } = sdk;
     if (
-      typeof multiServerUpload !== "function" ||
+      typeof uploadBlob !== "function" ||
       typeof createUploadAuth !== "function"
     ) {
       throw new Error("Blossom SDK is missing expected exports.");
     }
 
-    // One auth per action, scoped to the blob's sha256; the SDK reuses it across
-    // the mirror set so a multi-server upload isn't N signer prompts.
-    const results = await multiServerUpload(serverList, file, {
-      onAuth: (server, sha256) => createUploadAuth(signer, sha256, { type }),
-      onProgress: typeof onProgress === "function" ? onProgress : undefined,
+    // Upload DIRECTLY to each server (BUD-02 `PUT /upload`), in parallel, rather
+    // than the SDK's upload-one-then-`/mirror` flow — the server-to-server mirror
+    // step fails from a browser (CORS) on many servers. A fresh signed upload auth
+    // (BUD-11, scoped to the blob's sha256) is created per request.
+    const onAuth = (server, sha256) =>
+      createUploadAuth(signer, sha256, { type });
+    const settled = await Promise.allSettled(
+      serverList.map((server) =>
+        uploadBlob(server, file, {
+          onAuth,
+          onProgress: typeof onProgress === "function" ? onProgress : undefined,
+        }),
+      ),
+    );
+
+    const descriptors = [];
+    const failures = [];
+    settled.forEach((r, i) => {
+      if (r.status === "fulfilled" && r.value && typeof r.value.url === "string") {
+        descriptors.push(r.value);
+      } else {
+        const reason = r.reason;
+        failures.push(
+          `${serverList[i]}: ${reason?.message || reason || "no blob URL returned"}`,
+        );
+      }
     });
 
-    const descriptors = Array.from(results?.values?.() || []);
-    const primary =
-      descriptors.find((d) => typeof d?.url === "string" && d.url) || null;
+    const primary = descriptors.find((d) => typeof d?.url === "string" && d.url);
     if (!primary) {
-      throw new Error("Blossom upload did not return a usable blob URL.");
+      throw new Error(
+        `Blossom upload failed on all server(s) — ${failures.join("; ")}. ` +
+          `Common causes: the server blocks browser uploads (CORS), rejects the ` +
+          `file size, or requires payment/allowlisting. Try blossom.band.`,
+      );
     }
 
     return {

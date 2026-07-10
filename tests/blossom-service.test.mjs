@@ -16,23 +16,25 @@ import { FEATURE_BLOSSOM_STORAGE } from "../js/constants.js";
 const SHA = "a".repeat(64);
 const signer = async (draft) => ({ ...draft, id: "id", sig: "sig", pubkey: "pk" });
 
-// A BlossomService whose SDK is mocked: multiServerUpload returns a descriptor
-// map keyed by server, echoing the file so we can assert which blob was sent.
-function mockService() {
+// A BlossomService whose SDK is mocked: uploadBlob uploads directly to each
+// server (BUD-02 /upload) and returns a descriptor, echoing the blob so we can
+// assert which servers were hit. `failServers` simulates per-server failures.
+function mockService({ failServers = [] } = {}) {
   const uploads = [];
   const svc = new BlossomService();
   svc.loadSdk = async () => ({
     createUploadAuth: async (s, sha256, opts) => ({ kind: 24242, sha256, opts }),
-    multiServerUpload: async (servers, file, opts) => {
-      uploads.push({ servers: [...servers], file });
+    uploadBlob: async (server, file, opts) => {
       // Give each blob a distinct sha256 so video vs .torrent URLs differ.
       const sha = file?.name?.includes(".torrent") ? "b".repeat(64) : SHA;
-      if (typeof opts?.onAuth === "function") await opts.onAuth(servers[0], sha);
-      const map = new Map();
-      for (const server of servers) {
-        map.set(server, { url: `${server}/${sha}`, sha256: sha, size: 1, type: "x" });
+      if (typeof opts?.onAuth === "function") {
+        await opts.onAuth(server, sha, "upload", file);
       }
-      return map;
+      uploads.push({ server, file });
+      if (failServers.includes(server)) {
+        throw new Error("CORS blocked");
+      }
+      return { url: `${server}/${sha}`, sha256: sha, size: 1, type: "x" };
     },
   });
   return { svc, uploads };
@@ -70,7 +72,7 @@ test("uploadFile guards: file, servers, signer required", async () => {
   );
 });
 
-test("uploadFile returns the primary descriptor url + sha256 key, mirrored to all servers", async () => {
+test("uploadFile uploads directly to every server and returns the primary url", async () => {
   const { svc, uploads } = mockService();
   const out = await svc.uploadFile({
     file: new File([new Uint8Array([1])], "v.mp4"),
@@ -79,7 +81,34 @@ test("uploadFile returns the primary descriptor url + sha256 key, mirrored to al
   });
   assert.equal(out.url, `https://a/${SHA}`);
   assert.equal(out.key, SHA);
-  assert.deepEqual(uploads[0].servers, ["https://a", "https://b"], "mirrored to both");
+  assert.deepEqual(
+    uploads.map((u) => u.server).sort(),
+    ["https://a", "https://b"],
+    "uploaded to both servers directly (no /mirror)",
+  );
+});
+
+test("uploadFile survives partial failure — one server down, another succeeds", async () => {
+  const { svc } = mockService({ failServers: ["https://a"] });
+  const out = await svc.uploadFile({
+    file: new File([new Uint8Array([1])], "v.mp4"),
+    servers: ["https://a", "https://b"],
+    signer,
+  });
+  assert.equal(out.url, `https://b/${SHA}`, "falls back to the working server");
+});
+
+test("uploadFile throws a descriptive error when ALL servers fail", async () => {
+  const { svc } = mockService({ failServers: ["https://a", "https://b"] });
+  await assert.rejects(
+    () =>
+      svc.uploadFile({
+        file: new File([new Uint8Array([1])], "v.mp4"),
+        servers: ["https://a", "https://b"],
+        signer,
+      }),
+    /failed on all server\(s\).*CORS blocked/s,
+  );
 });
 
 test("uploadVideo without a torrent returns a blossom storagePointer and no magnet", async () => {
