@@ -592,6 +592,41 @@ export class StorageService {
   }
 
   /**
+   * Save a KEYLESS connection (e.g. Blossom): all config lives in the plaintext
+   * meta and there is no secret to encrypt, so this does NOT require unlock().
+   * Used for providers whose auth is the user's Nostr signer, not a stored key.
+   */
+  async saveKeylessConnection(pubkey, connectionId, meta = {}) {
+    const account = (await this._getAccount(pubkey)) || {
+      pubkey,
+      connections: {},
+    };
+    if (!account.connections) {
+      account.connections = {};
+    }
+    if (meta.defaultForUploads) {
+      for (const key in account.connections) {
+        const conn = account.connections[key];
+        if (conn.meta) {
+          conn.meta.defaultForUploads = false;
+        }
+      }
+    }
+    account.connections[connectionId] = {
+      id: connectionId,
+      provider: meta.provider || connectionId,
+      meta: {
+        ...meta,
+        lastSaved: Date.now(),
+        provider: meta.provider || connectionId,
+      },
+      encrypted: null,
+    };
+    await this._saveAccount(account);
+    userLogger.log(`[StorageService] Saved keyless connection ${connectionId}`);
+  }
+
+  /**
    * Retrieves and decrypts a connection.
    * Requires unlock() to be called first.
    */

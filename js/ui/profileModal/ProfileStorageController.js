@@ -805,25 +805,18 @@ export class ProfileStorageController {
       const isDefaultBlossom = this.storageDefaultInput?.checked || false;
       this.setStorageFormStatus("Saving...", "info");
       try {
-        await saveProviderConnection(storageService, pubkey, {
+        // Keyless: no secret to encrypt, so no storage unlock needed.
+        await storageService.saveKeylessConnection(pubkey, BLOSSOM_PROVIDER, {
           provider: BLOSSOM_PROVIDER,
-          payload: { provider: BLOSSOM_PROVIDER },
-          meta: {
-            provider: BLOSSOM_PROVIDER,
-            servers,
-            defaultForUploads: isDefaultBlossom,
-            label: `Blossom (${servers.length} server${servers.length === 1 ? "" : "s"})`,
-          },
-          isDefault: isDefaultBlossom,
+          servers,
+          defaultForUploads: isDefaultBlossom,
+          label: `Blossom (${servers.length} server${servers.length === 1 ? "" : "s"})`,
         });
         this.setStorageFormStatus("Blossom servers saved.", "success");
         this.mainController.showSuccess("Blossom storage saved.");
       } catch (error) {
         devLogger.error("Failed to save Blossom connection:", error);
-        this.setStorageFormStatus(
-          "Failed to save Blossom servers. Unlock storage first if prompted.",
-          "error",
-        );
+        this.setStorageFormStatus("Failed to save Blossom servers.", "error");
       }
       return;
     }
