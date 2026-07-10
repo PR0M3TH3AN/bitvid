@@ -814,6 +814,29 @@ export class ProfileStorageController {
         });
         this.setStorageFormStatus("Blossom servers saved.", "success");
         this.mainController.showSuccess("Blossom storage saved.");
+
+        // Keep the encrypted synced copy current if the user opted in — the
+        // account record (which carries the Blossom servers in plaintext meta)
+        // is re-encrypted to self and published, so it roams like the S3 path.
+        if (storageSyncService.isEnabled(pubkey)) {
+          try {
+            const syncResult = await storageSyncService.push(pubkey, {
+              confirmOverwrite: () => confirmSyncOverwrite(STORAGE_SYNC_LABEL),
+            });
+            if (syncResult?.ok) {
+              this.setSyncStatus("Synced copy updated.", "success");
+            } else if (syncResult?.conflict) {
+              this.setSyncStatus(
+                "Synced copy on your account is newer — not overwritten.",
+              );
+            }
+          } catch (syncError) {
+            devLogger.warn(
+              "[ProfileModal] Blossom re-sync after save failed:",
+              syncError,
+            );
+          }
+        }
       } catch (error) {
         devLogger.error("Failed to save Blossom connection:", error);
         this.setStorageFormStatus("Failed to save Blossom servers.", "error");
