@@ -29,6 +29,8 @@ import blossomServiceDefault, {
   isBlossomProvider,
   resolveBlossomServers,
 } from "../../services/blossomService.js";
+import { buildTorrentMetadataEvent } from "../../nostrEventSchemas.js";
+import { FEATURE_BLOSSOM_TORRENT_METADATA } from "../../constants.js";
 
 const INFO_HASH_PATTERN = /^[a-f0-9]{40}$/;
 
@@ -53,6 +55,7 @@ export class MediaUploader {
     safeEncodeNpub,
     blossomService,
     getSigner,
+    signAndPublishEvent,
   } = {}) {
     this.r2Service = r2Service || null;
     this.s3Service = s3Service || null;
@@ -65,6 +68,11 @@ export class MediaUploader {
     // provider is "blossom", so S3/R2 uploads are completely unaffected.
     this.blossomService = blossomService || blossomServiceDefault;
     this.getSigner = typeof getSigner === "function" ? getSigner : null;
+    // Sign + publish an unsigned Nostr event to the user's relays. Used only to
+    // publish the WebTorrent piece-map companion event for Blossom videos when
+    // FEATURE_BLOSSOM_TORRENT_METADATA is on. See docs/blossom-torrent-metadata-plan.md.
+    this.signAndPublishEvent =
+      typeof signAndPublishEvent === "function" ? signAndPublishEvent : null;
   }
 
   serviceFor(provider) {
@@ -379,6 +387,30 @@ export class MediaUploader {
     return { url: uploaded.url, key: uploaded.key };
   }
 
+  // Build the flag-gated companion-metadata publisher passed to blossomService
+  // (Tier 2). Returns undefined unless FEATURE_BLOSSOM_TORRENT_METADATA is on, a
+  // publish path is wired, and the active pubkey is known — in which case
+  // blossomService only calls it when the .torrent couldn't be hosted.
+  resolveTorrentMetadataPublisher() {
+    if (!FEATURE_BLOSSOM_TORRENT_METADATA || !this.signAndPublishEvent) {
+      return undefined;
+    }
+    const pubkey =
+      typeof this.getCurrentPubkey === "function" ? this.getCurrentPubkey() : "";
+    if (!pubkey || typeof pubkey !== "string") {
+      return undefined;
+    }
+    return async ({ infoHash, torrentBase64 }) => {
+      const event = buildTorrentMetadataEvent({
+        pubkey,
+        created_at: Math.floor(Date.now() / 1000),
+        infoHash,
+        torrentBase64,
+      });
+      await this.signAndPublishEvent(event);
+    };
+  }
+
   async uploadVideoToBlossom(file, { credentials, onProgress } = {}) {
     const emit = (fraction, label) => {
       if (typeof onProgress === "function") onProgress({ fraction, label });
@@ -396,6 +428,7 @@ export class MediaUploader {
       signer,
       generateTorrent: (args) => this.generateTorrentMetadata(args),
       onProgress: (fraction) => emit(fraction, null),
+      publishTorrentMetadata: this.resolveTorrentMetadataPublisher(),
     });
     emit(
       1,

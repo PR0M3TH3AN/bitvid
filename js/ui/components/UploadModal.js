@@ -26,6 +26,7 @@ import {
   deriveStoragePointerFromUrl,
 } from "../../utils/storagePointer.js";
 import {
+  nostrClient,
   getActiveSigner,
   requestDefaultExtensionPermissions,
 } from "../../nostrClientFacade.js";
@@ -101,6 +102,7 @@ export class UploadModal {
         this.getCurrentPubkey ? this.getCurrentPubkey() : null,
       safeEncodeNpub: (pubkey) => this.safeEncodeNpub(pubkey),
       getSigner: () => getActiveSigner(),
+      signAndPublishEvent: (event) => nostrClient.signAndPublishEvent(event),
     });
     this.eventTarget =
       eventTarget instanceof EventTarget ? eventTarget : new EventTarget();

@@ -293,6 +293,23 @@ export const FEATURE_BITCOIN_CONNECT = true;
 export const FEATURE_BLOSSOM_STORAGE = true;
 
 /**
+ * FEATURE_BLOSSOM_TORRENT_METADATA — restore WebTorrent/P2P for Blossom-hosted
+ * videos without hosting a `.torrent` file. Blossom servers reject a `.torrent`
+ * (415), so a Blossom video's magnet ships webseed-only (no `xs=`) and can't
+ * bootstrap WebTorrent. With this on, bitvid publishes the torrent piece-map as a
+ * separate, infohash-keyed Nostr event (kind 30078, `d=bitvid:torrent:<infohash>`)
+ * and fetches it lazily only when the torrent path actually runs.
+ * See docs/blossom-torrent-metadata-plan.md.
+ *
+ * Defaults to `false` ("off = no trace"): off ⇒ no companion event is published
+ * and the playback lookup is skipped (Blossom stays URL-only, exactly as today).
+ *
+ * Currently `true` for LOCAL testing of the companion-event flow — reset to
+ * `false` (shipping default) before pushing/promoting.
+ */
+export const FEATURE_BLOSSOM_TORRENT_METADATA = true;
+
+/**
  * Card liveness visibility policy — what a non-owner video card does while its
  * CDN/WebTorrent liveness probes are still running:
  *   - "show-pending"  : show the card immediately, hide only if every source is

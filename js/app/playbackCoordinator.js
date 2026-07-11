@@ -41,6 +41,7 @@ export function createPlaybackCoordinator(deps) {
     userLogger,
     nostrClient,
     torrentClient,
+    torrentMetadataService,
     emit,
     accessControl,
     isValidMagnetUri,
@@ -382,6 +383,52 @@ export function createPlaybackCoordinator(deps) {
           ? hostedUrlWebSeed.trim()
           : "";
 
+      // Blossom videos ship a webseed-only magnet (no xs=). When the piece-map
+      // lookup is wired (flag on) and the magnet lacks xs=, fetch the verified
+      // .torrent from the video's infohash-keyed companion event so WebTorrent has
+      // metadata to bootstrap from. Best-effort + verified upstream: null ⇒ the
+      // bare magnet is used (may still work via peers, else the URL fallback runs).
+      let companionTorrentBytes = null;
+      if (
+        torrentMetadataService &&
+        typeof extractBtihFromMagnet === "function" &&
+        typeof magnet === "string" &&
+        !/[?&]xs=/.test(magnet)
+      ) {
+        const infoHash = extractBtihFromMagnet(magnet);
+        const author =
+          this.currentVideo && typeof this.currentVideo.pubkey === "string"
+            ? this.currentVideo.pubkey
+            : "";
+        if (infoHash && author) {
+          try {
+            const relays =
+              Array.isArray(nostrClient?.readRelays) &&
+              nostrClient.readRelays.length
+                ? nostrClient.readRelays
+                : nostrClient?.relays || [];
+            const resolved = await torrentMetadataService.fetch({
+              infoHash,
+              author,
+              // Route relay reads through the subscription manager (one-shot,
+              // deduped, timeout-bounded) — never pool.list directly.
+              queryEvents: (filter) =>
+                nostrClient
+                  .getSubscriptionManager()
+                  .list({ filters: [filter], relays }),
+            });
+            if (resolved?.torrentBytes) {
+              companionTorrentBytes = resolved.torrentBytes;
+            }
+          } catch (error) {
+            devLogger?.warn?.(
+              "[playback] companion torrent-metadata lookup failed:",
+              error
+            );
+          }
+        }
+      }
+
       const attemptStream = async (candidate) => {
         const trimmedCandidate =
           typeof candidate === "string" ? candidate.trim() : "";
@@ -429,6 +476,9 @@ export function createPlaybackCoordinator(deps) {
           {
             urlList: sanitizedUrlList,
             hostedUrlWebSeed: sanitizedHostedWebSeed,
+            // Verified piece-map from the companion event (Blossom videos); when
+            // present, streamVideo adds this buffer instead of the bare magnet.
+            torrentFileBytes: companionTorrentBytes,
             hooks: {
               // Surface a mid-stream stall instead of silently freezing on a
               // buffering frame: tell the user whether the swarm is just slow

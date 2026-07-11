@@ -25,7 +25,9 @@ import {
   DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
   DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
   FEED_TYPES,
+  FEATURE_BLOSSOM_TORRENT_METADATA,
 } from "./constants.js";
+import torrentMetadataService from "./services/torrentMetadataService.js";
 import { updateVideoCardSourceVisibility } from "./utils/cardSourceVisibility.js";
 import { collectVideoTags } from "./utils/videoTags.js";
 import { normalizeHashtag } from "./utils/hashtagNormalization.js";
@@ -642,6 +644,11 @@ class Application {
         userLogger,
         nostrClient,
         torrentClient,
+        // Torrent piece-map lookup for Blossom videos — passed only when the flag
+        // is on, so its presence in the coordinator IS the gate.
+        torrentMetadataService: FEATURE_BLOSSOM_TORRENT_METADATA
+          ? torrentMetadataService
+          : null,
         emit,
         accessControl,
         isValidMagnetUri,

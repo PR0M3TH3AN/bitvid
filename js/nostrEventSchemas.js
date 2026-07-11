@@ -2493,6 +2493,88 @@ export function buildViewEvent(params) {
   return event;
 }
 
+// --- WebTorrent piece-map companion event (NIP-78 app data) ------------------
+// Restores P2P for Blossom-hosted videos (whose magnet is webseed-only because
+// Blossom rejects a .torrent) by publishing the torrent metadata as a separate,
+// infohash-keyed event that bitvid fetches lazily on the torrent path.
+// See docs/blossom-torrent-metadata-plan.md.
+export const TORRENT_METADATA_KIND = 30078;
+export const TORRENT_METADATA_DTAG_PREFIX = "bitvid:torrent:";
+export const TORRENT_METADATA_ENVELOPE_VERSION = 1;
+
+// Normalize an infohash to the lowercase-hex form used in the addressing key.
+// BitTorrent v1 (WebTorrent) infohashes are 40 hex chars.
+export function normalizeInfoHash(infoHash) {
+  const hex = typeof infoHash === "string" ? infoHash.trim().toLowerCase() : "";
+  return /^[0-9a-f]{40}$/.test(hex) ? hex : "";
+}
+
+// The parameterized-replaceable `d`-tag value that addresses a video's piece-map.
+export function torrentMetadataDTag(infoHash) {
+  const hex = normalizeInfoHash(infoHash);
+  return hex ? `${TORRENT_METADATA_DTAG_PREFIX}${hex}` : "";
+}
+
+/**
+ * Builds the WebTorrent piece-map companion event (kind 30078). The `content` is a
+ * versioned JSON envelope carrying the full `.torrent` file bytes (base64); the
+ * `info` dict inside is what determines the infohash, so storing the raw bytes
+ * keeps the reconstructed infohash exact. Addressed by `d = bitvid:torrent:<hex>`
+ * so bitvid can look it up from a magnet's `btih`.
+ *
+ * @param {Object} params
+ * @param {string} params.pubkey - Author (the video's author) hex pubkey.
+ * @param {number} params.created_at - Unix seconds.
+ * @param {string} params.infoHash - BitTorrent v1 infohash (40 hex chars).
+ * @param {string} params.torrentBase64 - base64 of the full `.torrent` file bytes.
+ * @param {string} [params.videoEventId] - The video event id (back-reference only).
+ * @returns {Object} Unsigned event.
+ */
+export function buildTorrentMetadataEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    infoHash,
+    torrentBase64,
+    videoEventId = "",
+  } = params || {};
+
+  const hex = normalizeInfoHash(infoHash);
+  if (!hex) {
+    throw new Error(
+      "buildTorrentMetadataEvent requires a valid 40-hex-char infoHash."
+    );
+  }
+  if (typeof torrentBase64 !== "string" || !torrentBase64) {
+    throw new Error(
+      "buildTorrentMetadataEvent requires a non-empty base64 torrent payload."
+    );
+  }
+
+  const tags = [
+    ["d", `${TORRENT_METADATA_DTAG_PREFIX}${hex}`],
+    ["x", hex],
+    ["client", "bitvid"],
+  ];
+  if (typeof videoEventId === "string" && videoEventId.trim()) {
+    tags.push(["e", videoEventId.trim()]);
+  }
+
+  const content = JSON.stringify({
+    v: TORRENT_METADATA_ENVELOPE_VERSION,
+    infohash: hex,
+    torrent: torrentBase64,
+  });
+
+  return {
+    kind: TORRENT_METADATA_KIND,
+    pubkey,
+    created_at,
+    tags,
+    content: ensureValidUtf8Content(content),
+  };
+}
+
 /**
  * Builds a Zap Request event (Kind 9734).
  * Used to request an invoice from a Lightning Service Provider (LSP).

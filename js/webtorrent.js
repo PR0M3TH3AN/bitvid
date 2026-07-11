@@ -951,12 +951,22 @@ export class TorrentClient {
         chromeOptions.urlList = candidateUrls;
       }
 
+      // When the caller supplies verified .torrent bytes (the piece-map from a
+      // Blossom video's companion event — already infohash-checked upstream), add
+      // that buffer directly so WebTorrent has metadata without a peer or xs=.
+      // The trusted webseed still rides along via chromeOptions.urlList.
+      const torrentSource =
+        opts?.torrentFileBytes instanceof Uint8Array &&
+        opts.torrentFileBytes.length
+          ? opts.torrentFileBytes
+          : magnetURI;
+
       return new Promise((resolve, reject) => {
         // 3) Add the torrent to the client and handle accordingly.
         if (isFirefoxBrowser) {
           this.log("Starting torrent download (Firefox path)");
           this.client.add(
-            magnetURI,
+            torrentSource,
             { ...chromeOptions, maxWebConns: 4 },
             (torrent) => {
               this.log("Torrent added (Firefox path):", torrent.name);
@@ -972,7 +982,7 @@ export class TorrentClient {
           );
         } else {
           this.log("Starting torrent download (Chrome path)");
-          this.client.add(magnetURI, chromeOptions, (torrent) => {
+          this.client.add(torrentSource, chromeOptions, (torrent) => {
             this.log("Torrent added (Chrome path):", torrent.name);
             this.handleTorrentStream(
               torrent,
