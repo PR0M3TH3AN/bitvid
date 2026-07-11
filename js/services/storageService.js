@@ -194,6 +194,31 @@ export class StorageService {
     this.dbPromise = null;
     // Cache decrypted master keys in memory: Map<pubkey, CryptoKey>
     this.masterKeys = new Map();
+    // Observers notified when a pubkey's connection set changes (e.g. a Nostr
+    // sync import), so open UIs (the upload modal) can refresh live.
+    this._changeListeners = new Set();
+  }
+
+  /**
+   * Subscribe to connection-set changes. The listener receives `{ pubkey }`.
+   * Returns an unsubscribe function.
+   */
+  onConnectionsChanged(listener) {
+    if (typeof listener !== "function") {
+      return () => {};
+    }
+    this._changeListeners.add(listener);
+    return () => this._changeListeners.delete(listener);
+  }
+
+  _emitConnectionsChanged(pubkey) {
+    for (const listener of this._changeListeners) {
+      try {
+        listener({ pubkey });
+      } catch (error) {
+        // A misbehaving observer must never break a storage write.
+      }
+    }
   }
 
   /**
@@ -717,6 +742,8 @@ export class StorageService {
     await this._saveAccount(toSave);
     // Drop any in-memory master key so the next unlock uses the imported envelope.
     this.lock(pubkey);
+    // Let open UIs (e.g. the upload modal) reflect the newly-synced connections.
+    this._emitConnectionsChanged(pubkey);
     return toSave;
   }
 

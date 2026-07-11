@@ -131,6 +131,18 @@ export class UploadModal {
     // #44: per-modal upload-destination override (null = account default).
     this.selectedConnectionId = null;
 
+    // Live-refresh the storage destination if connections change under an open
+    // modal — e.g. credentials synced from Nostr — so the user doesn't have to
+    // reopen. Scoped to the active user + open state.
+    if (this.storageService?.onConnectionsChanged) {
+      this.storageService.onConnectionsChanged(({ pubkey } = {}) => {
+        if (!this.isVisible) return;
+        const current = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
+        if (pubkey && current && pubkey !== current) return;
+        void this.refreshStorageFromSync(current);
+      });
+    }
+
     // Upload State
     this.videoUploadState = {
         status: 'idle', // idle, uploading, complete, error
@@ -922,6 +934,26 @@ export class UploadModal {
         chip.disabled = isSelected;
       }
     });
+  }
+
+  // Re-derive the storage destination after connections change under an open
+  // modal (e.g. a Nostr sync import). Mirrors the open-time flow: a sync import
+  // may re-lock storage with a new master-key envelope, so re-attempt auto-unlock
+  // (Blossom stays keyless), recompute the unlocked state, then reload + repaint.
+  async refreshStorageFromSync(pubkey) {
+    if (!this.storageService || !this.isVisible) return;
+    const key =
+      pubkey || (this.getCurrentPubkey ? this.getCurrentPubkey() : null);
+    try {
+      await this.maybeAutoUnlockStorage(key);
+      this.isStorageUnlocked = key
+        ? this.storageService.isUnlocked(key)
+        : false;
+      await this.loadFromStorage();
+      this.updateLockUi();
+    } catch (error) {
+      devLogger.warn?.("[UploadModal] storage-sync refresh failed:", error);
+    }
   }
 
   async loadFromStorage() {

@@ -212,4 +212,32 @@ describe("saving multiple providers does not clash", () => {
       "the synced record contains every provider's connection",
     );
   });
+
+  test("importing a synced record notifies connection-change observers (open UIs refresh)", async () => {
+    await saveProviderConnection(storageService, pubkey, {
+      provider: "cloudflare_r2",
+      payload: r2Payload,
+      meta: { provider: "cloudflare_r2" },
+      isDefault: true,
+    });
+    const record = await storageService.exportAccountRecord(pubkey);
+
+    let fired = null;
+    const off = storageService.onConnectionsChanged((e) => {
+      fired = e;
+    });
+    await storageService.importAccountRecord(pubkey, record);
+    off();
+
+    assert.deepEqual(
+      fired,
+      { pubkey },
+      "a Nostr sync import fires a connection-change event so the open upload modal can refresh",
+    );
+
+    // Unsubscribe actually detaches — a second import must not re-fire this listener.
+    fired = null;
+    await storageService.importAccountRecord(pubkey, record);
+    assert.equal(fired, null, "off() detached the observer");
+  });
 });
