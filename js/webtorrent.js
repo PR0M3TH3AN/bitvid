@@ -941,7 +941,17 @@ export class TorrentClient {
       // Cap peer connections for the streaming torrent too. 30 is plenty to
       // saturate playback bandwidth while avoiding the WebRTC-handshake storm
       // that can peg the main thread (WebTorrent's default is 55).
-      const chromeOptions = { strategy: "sequential", maxConns: 30 };
+      // Announce to the WSS trackers explicitly. The magnet path already carries
+      // trackers (playbackUtils augments it), but a .torrent-buffer add
+      // (torrentFileBytes, from a Blossom video's companion event) has an EMPTY
+      // embedded announce list — without this it would reach no tracker, discover
+      // no WebRTC peers, and stream from the webseed only (looks like "1 peer").
+      // WebTorrent merges this with any trackers already on the source, deduped.
+      const chromeOptions = {
+        strategy: "sequential",
+        maxConns: 30,
+        announce: [...WSS_TRACKERS],
+      };
       /**
        * CRITICAL: Passing `urlList` ensures the client can stream from the webseed.
        * Without this, videos with 0 P2P peers will fail to play even if a valid
