@@ -86,7 +86,12 @@ export function fillStorageForm(c, conn) {
   } = conn.meta || {};
 
   if (c.storageProviderInput) {
-    c.storageProviderInput.value = provider || "cloudflare_r2";
+    // The provider lives at the top level for legacy connections but only in
+    // `meta` for the decrypted/keyless shape returned by getConnection — mirror
+    // connectionProvider()'s fallback so the selector reflects the loaded (default)
+    // connection instead of silently reverting to Cloudflare.
+    c.storageProviderInput.value =
+      provider || conn.meta?.provider || "cloudflare_r2";
   }
   const resolvedEndpoint =
     endpoint || accountId || payloadAccountId || payloadEndpoint || "";

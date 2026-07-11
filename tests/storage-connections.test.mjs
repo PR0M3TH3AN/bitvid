@@ -18,9 +18,39 @@ import {
   computeDefaultForUploads,
   legacyDuplicateIds,
   saveProviderConnection,
+  fillStorageForm,
 } from "../js/ui/profileModal/storageConnections.js";
 
 // --- Pure decision logic ---
+
+describe("fillStorageForm provider selector", () => {
+  // getConnection returns { ...payload, meta } — the provider is only in `meta` for
+  // the decrypted/keyless shape (payload has no top-level provider). The selector
+  // must reflect it, not silently revert to Cloudflare.
+  test("selects the connection's provider from meta when there's no top-level provider", () => {
+    const c = { storageProviderInput: { value: "cloudflare_r2" }, updateStorageFormVisibility: () => {}, handlePublicUrlInput: () => {} };
+    fillStorageForm(c, { meta: { provider: "backblaze_b2" } });
+    assert.equal(c.storageProviderInput.value, "backblaze_b2");
+  });
+
+  test("selects a keyless Blossom default (no payload/provider, provider only in meta)", () => {
+    const c = { storageProviderInput: { value: "cloudflare_r2" }, updateStorageFormVisibility: () => {}, handlePublicUrlInput: () => {} };
+    fillStorageForm(c, { meta: { provider: "blossom", defaultForUploads: true } });
+    assert.equal(c.storageProviderInput.value, "blossom");
+  });
+
+  test("prefers a top-level provider when present", () => {
+    const c = { storageProviderInput: { value: "" }, updateStorageFormVisibility: () => {}, handlePublicUrlInput: () => {} };
+    fillStorageForm(c, { provider: "generic_s3", meta: { provider: "cloudflare_r2" } });
+    assert.equal(c.storageProviderInput.value, "generic_s3");
+  });
+
+  test("falls back to cloudflare_r2 only when no provider is known", () => {
+    const c = { storageProviderInput: { value: "blossom" }, updateStorageFormVisibility: () => {}, handlePublicUrlInput: () => {} };
+    fillStorageForm(c, { meta: {} });
+    assert.equal(c.storageProviderInput.value, "cloudflare_r2");
+  });
+});
 
 describe("per-provider connection helpers", () => {
   test("computeDefaultForUploads: explicit choice, first-ever, and 'was already default'", () => {
