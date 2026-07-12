@@ -240,4 +240,44 @@ describe("saving multiple providers does not clash", () => {
     await storageService.importAccountRecord(pubkey, record);
     assert.equal(fired, null, "off() detached the observer");
   });
+
+  test("a Blossom-only (keyless) account syncs without an encryptedMasterKey", async () => {
+    // Blossom connections are keyless (encrypted: null), so a Blossom-only account
+    // legitimately has no encryptedMasterKey. Importing it must still work.
+    const record = {
+      pubkey,
+      connections: {
+        blossom: {
+          id: "blossom",
+          provider: "blossom",
+          meta: { provider: "blossom", servers: ["https://blossom.band"] },
+          encrypted: null,
+        },
+      },
+    };
+    await storageService.importAccountRecord(pubkey, record); // must not throw
+    const conns = await storageService.listConnections(pubkey);
+    assert.deepEqual(conns.map((c) => c.id), ["blossom"]);
+    assert.deepEqual(conns[0].meta.servers, ["https://blossom.band"]);
+  });
+
+  test("an encrypted (R2/S3) connection still requires the master-key envelope", async () => {
+    // A record carrying an encrypted payload can't be unlocked without the
+    // envelope — importing it without one must still be rejected.
+    const record = {
+      pubkey,
+      connections: {
+        default: {
+          id: "default",
+          provider: "cloudflare_r2",
+          meta: { provider: "cloudflare_r2" },
+          encrypted: { cipher: "deadbeef", iv: "00" },
+        },
+      },
+    };
+    await assert.rejects(
+      () => storageService.importAccountRecord(pubkey, record),
+      /Invalid storage account record/,
+    );
+  });
 });

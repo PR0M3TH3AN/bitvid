@@ -735,7 +735,21 @@ export class StorageService {
     if (!pubkey) {
       throw new Error("Pubkey required to import storage account record.");
     }
-    if (!record || typeof record !== "object" || !record.encryptedMasterKey) {
+    if (!record || typeof record !== "object") {
+      throw new Error("Invalid storage account record.");
+    }
+    // A Blossom-only account is keyless (no encrypted payloads), so it legitimately
+    // has no encryptedMasterKey. Require the envelope ONLY when the record actually
+    // carries an encrypted connection that would need it to unlock — otherwise a
+    // Blossom-only account can't sync across devices.
+    const connections =
+      record.connections && typeof record.connections === "object"
+        ? record.connections
+        : {};
+    const hasEncryptedConnection = Object.values(connections).some(
+      (conn) => conn && conn.encrypted != null,
+    );
+    if (hasEncryptedConnection && !record.encryptedMasterKey) {
       throw new Error("Invalid storage account record.");
     }
     const toSave = { ...record, pubkey };
