@@ -2575,6 +2575,44 @@ export function buildTorrentMetadataEvent(params) {
   };
 }
 
+// --- Blossom server list (BUD-03, kind 10063) --------------------------------
+// A user's preferred Blossom media servers, in order. Lets other clients discover
+// where a user hosts blobs, and lets bitvid pre-fill its storage pane from it.
+export const BLOSSOM_SERVER_LIST_KIND = 10063;
+
+/**
+ * Builds a Blossom server-list event (BUD-03, kind 10063): one `['server', <url>]`
+ * tag per server, in preference order, de-duped.
+ *
+ * @param {Object} params
+ * @param {string} params.pubkey
+ * @param {number} params.created_at
+ * @param {string[]} params.servers - Ordered server URLs.
+ * @returns {Object} Unsigned event.
+ */
+export function buildBlossomServerListEvent(params) {
+  const { pubkey, created_at, servers } = params || {};
+  const seen = new Set();
+  const tags = [];
+  if (Array.isArray(servers)) {
+    for (const entry of servers) {
+      const url = typeof entry === "string" ? entry.trim() : "";
+      if (url && !seen.has(url)) {
+        seen.add(url);
+        tags.push(["server", url]);
+      }
+    }
+  }
+  tags.push(["client", "bitvid"]);
+  return {
+    kind: BLOSSOM_SERVER_LIST_KIND,
+    pubkey,
+    created_at,
+    tags,
+    content: "",
+  };
+}
+
 /**
  * Builds a Zap Request event (Kind 9734).
  * Used to request an invoice from a Lightning Service Provider (LSP).

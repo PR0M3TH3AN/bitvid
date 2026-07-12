@@ -9,6 +9,10 @@ import {
 import { getActiveSigner } from "../../nostr/client.js";
 import { FEATURE_BLOSSOM_STORAGE } from "../../constants.js";
 import { BLOSSOM_PROVIDER } from "../../services/blossomService.js";
+import {
+  importBlossomServerList,
+  publishBlossomServerList,
+} from "./blossomServerList.js";
 import { DEFAULT_NIP07_ENCRYPTION_METHODS } from "../../nostr/nip07Permissions.js";
 import { storageSyncService } from "../../services/storageSyncService.js";
 import { StorageCorsHelp } from "./storageCorsHelp.js";
@@ -106,6 +110,12 @@ export class ProfileStorageController {
       document.getElementById("storageBlossomSection") || null;
     this.storageBlossomServersInput =
       document.getElementById("storageBlossomServers") || null;
+    this.storageBlossomImportBtn =
+      document.getElementById("storageBlossomImportBtn") || null;
+    this.storageBlossomPublishBtn =
+      document.getElementById("storageBlossomPublishBtn") || null;
+    this.storageBlossomServerListStatus =
+      document.getElementById("storageBlossomServerListStatus") || null;
     this.storageProviderBlossomOption =
       document.getElementById("storageProviderBlossomOption") || null;
     // Reveal the Blossom provider option only when the deployment enables it.
@@ -158,6 +168,18 @@ export class ProfileStorageController {
     if (this.storageClearBtn instanceof HTMLElement) {
       this.storageClearBtn.addEventListener("click", () => {
         void this.handleClearStorage();
+      });
+    }
+
+    if (this.storageBlossomImportBtn instanceof HTMLElement) {
+      this.storageBlossomImportBtn.addEventListener("click", () => {
+        void this.handleImportBlossomServerList();
+      });
+    }
+
+    if (this.storageBlossomPublishBtn instanceof HTMLElement) {
+      this.storageBlossomPublishBtn.addEventListener("click", () => {
+        void this.handlePublishBlossomServerList();
       });
     }
 
@@ -558,6 +580,50 @@ export class ProfileStorageController {
 
   clearStorageUnlockFailureState() {
     this.storageUnlockFailure = null;
+  }
+
+  setBlossomServerListStatus(message, kind = "info") {
+    if (!(this.storageBlossomServerListStatus instanceof HTMLElement)) return;
+    this.storageBlossomServerListStatus.textContent = message || "";
+    const tone =
+      kind === "error"
+        ? "text-status-danger"
+        : kind === "success"
+          ? "text-status-success"
+          : "text-muted";
+    this.storageBlossomServerListStatus.className = `text-xs ${tone}`;
+  }
+
+  blossomServerListArgs() {
+    return {
+      client: this.mainController.services?.nostrClient,
+      pubkey: this.mainController.normalizeHexPubkey(
+        this.mainController.getActivePubkey(),
+      ),
+    };
+  }
+
+  async handleImportBlossomServerList() {
+    this.setBlossomServerListStatus("Fetching your server list…");
+    const res = await importBlossomServerList(this.blossomServerListArgs());
+    if (
+      res.servers?.length &&
+      this.storageBlossomServersInput instanceof HTMLElement
+    ) {
+      this.storageBlossomServersInput.value = res.servers.join("\n");
+    }
+    if (res.error) devLogger.warn("[ProfileModal] Blossom import:", res.error);
+    this.setBlossomServerListStatus(res.message, res.kind);
+  }
+
+  async handlePublishBlossomServerList() {
+    this.setBlossomServerListStatus("Publishing your server list…");
+    const res = await publishBlossomServerList({
+      ...this.blossomServerListArgs(),
+      servers: this.parseBlossomServers(),
+    });
+    if (res.error) devLogger.warn("[ProfileModal] Blossom publish:", res.error);
+    this.setBlossomServerListStatus(res.message, res.kind);
   }
 
   // After a page reload, a persisted nsec session restores the logged-in pubkey + UI

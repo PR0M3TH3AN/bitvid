@@ -10,6 +10,8 @@ import {
   normalizeInfoHash,
   torrentMetadataDTag,
   TORRENT_METADATA_KIND,
+  buildBlossomServerListEvent,
+  BLOSSOM_SERVER_LIST_KIND,
 } from "../js/nostrEventSchemas.js";
 
 const INFOHASH = "0123456789abcdef0123456789abcdef01234567"; // 40 hex
@@ -76,4 +78,21 @@ test("buildTorrentMetadataEvent rejects an invalid infohash or empty payload", (
     () => buildTorrentMetadataEvent({ pubkey: PK, created_at: 1, infoHash: INFOHASH, torrentBase64: "" }),
     /non-empty base64 torrent payload/,
   );
+});
+
+test("buildBlossomServerListEvent builds a de-duped kind-10063 server list (BUD-03)", () => {
+  const ev = buildBlossomServerListEvent({
+    pubkey: PK,
+    created_at: 1700000000,
+    servers: [" https://a ", "https://a", "https://b", ""],
+  });
+  assert.equal(ev.kind, BLOSSOM_SERVER_LIST_KIND);
+  assert.equal(ev.kind, 10063);
+  assert.deepEqual(
+    ev.tags.filter((t) => t[0] === "server"),
+    [["server", "https://a"], ["server", "https://b"]],
+    "one server tag per unique url, in order",
+  );
+  assert.deepEqual(ev.tags.find((t) => t[0] === "client"), ["client", "bitvid"]);
+  assert.equal(ev.content, "");
 });

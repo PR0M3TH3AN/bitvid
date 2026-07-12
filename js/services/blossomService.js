@@ -129,6 +129,32 @@ export function ensureTypedFile(file) {
   }
 }
 
+// Extract the blob id (sha256, 64 hex) from a Blossom URL — the last path segment
+// minus any extension (`https://<host>/<sha256>.mp4` → `<sha256>`). Returns "" when
+// the URL doesn't point at a Blossom-style content-addressed blob.
+export function blobSha256FromUrl(url) {
+  const raw = typeof url === "string" ? url.trim() : "";
+  if (!raw) return "";
+  try {
+    const path = new URL(raw).pathname;
+    const last = path.split("/").pop() || "";
+    const hex = last.split(".")[0].toLowerCase();
+    return /^[0-9a-f]{64}$/.test(hex) ? hex : "";
+  } catch {
+    return "";
+  }
+}
+
+// Read the server URLs from a user's kind-10063 Blossom server-list event (BUD-03):
+// one `["server", <url>]` tag per server, in preference order. De-duped + trimmed.
+export function serversFromServerListEvent(event) {
+  const tags = Array.isArray(event?.tags) ? event.tags : [];
+  const urls = tags
+    .filter((t) => Array.isArray(t) && t[0] === "server" && typeof t[1] === "string")
+    .map((t) => t[1]);
+  return resolveBlossomServers({ servers: urls });
+}
+
 export class BlossomService {
   constructor(deps = {}) {
     this.deps = deps;
@@ -404,6 +430,43 @@ export class BlossomService {
     return deleteBlob(url, hash, {
       onAuth: () => createDeleteAuth(signer, hash),
     });
+  }
+
+  /**
+   * Delete the blob behind a Blossom URL from every configured server
+   * (best-effort). Used by orphan cleanup when a Blossom-hosted video/thumbnail is
+   * superseded or deleted. A non-Blossom URL (no 64-hex blob id) is a no-op.
+   *
+   * @returns {Promise<{sha256:string, deleted:string[], failed:{server:string,error:string}[]}>}
+   */
+  async deleteByUrl({ url, servers, signer } = {}) {
+    const sha256 = blobSha256FromUrl(url);
+    if (!sha256) {
+      return { sha256: "", deleted: [], failed: [] };
+    }
+    let serverList = resolveBlossomServers({ servers });
+    if (serverList.length === 0) {
+      // No explicit servers — delete from the blob URL's own origin (the server
+      // that served it). Callers with the full mirror set should pass `servers`.
+      try {
+        serverList = [new URL(url).origin];
+      } catch {
+        serverList = [];
+      }
+    }
+    const deleted = [];
+    const failed = [];
+    await Promise.allSettled(
+      serverList.map(async (server) => {
+        try {
+          await this.deleteFile({ server, sha256, signer });
+          deleted.push(server);
+        } catch (error) {
+          failed.push({ server, error: error?.message || String(error) });
+        }
+      }),
+    );
+    return { sha256, deleted, failed };
   }
 
   /**

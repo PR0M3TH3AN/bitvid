@@ -10,6 +10,8 @@ import blossomService, {
   BLOSSOM_PROVIDER,
   isBlossomProvider,
   resolveBlossomServers,
+  blobSha256FromUrl,
+  serversFromServerListEvent,
 } from "../js/services/blossomService.js";
 import { FEATURE_BLOSSOM_STORAGE } from "../js/constants.js";
 
@@ -373,6 +375,109 @@ test("deleteFile guards + calls deleteBlob with a delete auth", async () => {
   const ok = await svc.deleteFile({ server: "https://a", sha256: SHA, signer });
   assert.equal(ok, true);
   assert.deepEqual(calls[0], { server: "https://a", hash: SHA });
+});
+
+test("blobSha256FromUrl extracts the 64-hex blob id (or '' for non-blobs)", () => {
+  const sha = "a".repeat(64);
+  assert.equal(blobSha256FromUrl(`https://npub1x.blossom.band/${sha}.mp4`), sha);
+  assert.equal(blobSha256FromUrl(`https://blossom.band/${sha}`), sha);
+  assert.equal(blobSha256FromUrl(`https://cdn.example/u/2026/clip.mp4`), "", "not a blob path");
+  assert.equal(blobSha256FromUrl("not a url"), "");
+  assert.equal(blobSha256FromUrl(""), "");
+});
+
+test("deleteByUrl maps a Blossom URL to its blob and deletes it on every server", async () => {
+  const svc = new BlossomService();
+  const calls = [];
+  svc.loadSdk = async () => ({
+    createDeleteAuth: async () => ({ kind: 24242, t: "delete" }),
+    deleteBlob: async (server, hash) => {
+      calls.push({ server, hash });
+      return true;
+    },
+  });
+  const sha = "b".repeat(64);
+  const out = await svc.deleteByUrl({
+    url: `https://blossom.band/${sha}.mp4`,
+    servers: ["https://a", "https://b"],
+    signer,
+  });
+  assert.equal(out.sha256, sha);
+  assert.deepEqual(out.deleted.sort(), ["https://a", "https://b"]);
+  assert.deepEqual(calls.map((c) => c.hash), [sha, sha]);
+});
+
+test("deleteByUrl falls back to the URL's own origin when no servers are given", async () => {
+  const svc = new BlossomService();
+  const calls = [];
+  svc.loadSdk = async () => ({
+    createDeleteAuth: async () => ({}),
+    deleteBlob: async (server, hash) => {
+      calls.push({ server, hash });
+      return true;
+    },
+  });
+  const sha = "d".repeat(64);
+  const out = await svc.deleteByUrl({
+    url: `https://npub1x.blossom.band/${sha}.mp4`,
+    signer,
+  });
+  assert.equal(out.sha256, sha);
+  assert.deepEqual(out.deleted, ["https://npub1x.blossom.band"], "deleted from the URL origin");
+  assert.equal(calls[0].server, "https://npub1x.blossom.band");
+});
+
+test("deleteByUrl is a no-op for a non-Blossom URL", async () => {
+  const svc = new BlossomService();
+  let called = false;
+  svc.loadSdk = async () => ({
+    createDeleteAuth: async () => ({}),
+    deleteBlob: async () => {
+      called = true;
+    },
+  });
+  const out = await svc.deleteByUrl({
+    url: "https://cdn.example/video.mp4",
+    servers: ["https://a"],
+    signer,
+  });
+  assert.equal(out.sha256, "");
+  assert.equal(called, false, "no delete attempted for a non-blob URL");
+});
+
+test("deleteByUrl reports per-server failures without throwing", async () => {
+  const svc = new BlossomService();
+  svc.loadSdk = async () => ({
+    createDeleteAuth: async () => ({}),
+    deleteBlob: async (server) => {
+      if (server === "https://a") throw new Error("403 forbidden");
+      return true;
+    },
+  });
+  const sha = "c".repeat(64);
+  const out = await svc.deleteByUrl({
+    url: `https://x/${sha}`,
+    servers: ["https://a", "https://b"],
+    signer,
+  });
+  assert.deepEqual(out.deleted, ["https://b"]);
+  assert.equal(out.failed.length, 1);
+  assert.match(out.failed[0].error, /403/);
+});
+
+test("serversFromServerListEvent reads + de-dupes the BUD-03 server tags", () => {
+  const event = {
+    kind: 10063,
+    tags: [
+      ["server", " https://a "],
+      ["server", "https://a"],
+      ["server", "https://b"],
+      ["client", "x"],
+      ["server", ""],
+    ],
+  };
+  assert.deepEqual(serversFromServerListEvent(event), ["https://a", "https://b"]);
+  assert.deepEqual(serversFromServerListEvent(null), []);
 });
 
 test("listFiles returns the server's blob descriptors for a pubkey", async () => {

@@ -1027,6 +1027,16 @@
                                 <textarea id="storageBlossomServers" rows="3" class="input" placeholder="https://blossom.example.com
 https://another.blossom.example"></textarea>
                             </label>
+                            <!-- BUD-03 kind-10063 discovery: import the list you've published, or publish the list above. -->
+                            <div class="flex flex-wrap gap-2">
+                                <button id="storageBlossomImportBtn" type="button" class="btn-ghost focus-ring text-xs">
+                                    Import from my server list
+                                </button>
+                                <button id="storageBlossomPublishBtn" type="button" class="btn-ghost focus-ring text-xs">
+                                    Publish my server list
+                                </button>
+                            </div>
+                            <p id="storageBlossomServerListStatus" class="text-xs text-muted" role="status"></p>
                         </div>
 
                         <!-- S3-family fields (R2 / B2 / Custom S3). Hidden for Blossom. -->
