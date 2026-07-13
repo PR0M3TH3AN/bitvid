@@ -580,6 +580,25 @@
     display: none;
   }
 
+  /* "Advanced — paste a connection manually" disclosure in the Wallet pane
+     (Bitcoin Connect). A subtle rotating caret replaces the default marker. */
+  .wallet-advanced__summary {
+    list-style: none;
+  }
+
+  .wallet-advanced__summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .wallet-advanced__summary::before {
+    content: "▸ ";
+    color: var(--text-subtle);
+  }
+
+  .wallet-advanced[open] > .wallet-advanced__summary::before {
+    content: "▾ ";
+  }
+
   .popularity-modal__backdrop {
     z-index: var(--z-overlay-popover);
     padding: var(--space-md);
@@ -5846,7 +5865,11 @@
   .dm-contact-row--active:hover,
   .dm-contact-row--active:focus-visible {
     background: color-mix(in srgb, var(--color-accent) 16%, transparent);
-    border-color: color-mix(in srgb, var(--color-accent) 60%, var(--border-strong));
+    border-color: color-mix(
+      in srgb,
+      var(--color-accent) 60%,
+      var(--border-strong)
+    );
     box-shadow: inset 3px 0 0 0 var(--color-accent);
   }
 

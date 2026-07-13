@@ -17,11 +17,16 @@ import { buildR2Key, buildPublicUrl } from "../../r2.js";
 import { buildS3ObjectUrl } from "../../services/s3Service.js";
 import { PROVIDERS } from "../../services/storageService.js";
 import {
+  BLOSSOM_PROVIDER,
+  isBlossomProvider,
+} from "../../services/blossomService.js";
+import {
   buildStoragePointerValue,
   buildStoragePrefixFromKey,
   deriveStoragePointerFromUrl,
 } from "../../utils/storagePointer.js";
 import {
+  nostrClient,
   getActiveSigner,
   requestDefaultExtensionPermissions,
 } from "../../nostrClientFacade.js";
@@ -96,6 +101,8 @@ export class UploadModal {
       getCurrentPubkey: () =>
         this.getCurrentPubkey ? this.getCurrentPubkey() : null,
       safeEncodeNpub: (pubkey) => this.safeEncodeNpub(pubkey),
+      getSigner: () => getActiveSigner(),
+      signAndPublishEvent: (event) => nostrClient.signAndPublishEvent(event),
     });
     this.eventTarget =
       eventTarget instanceof EventTarget ? eventTarget : new EventTarget();
@@ -118,8 +125,23 @@ export class UploadModal {
     this.activeProvider = null;
     this.isStorageUnlocked = false;
     this.storageConfigured = false;
+    // Blossom connections have no encrypted secret, so they never need a PIN
+    // unlock — the upload authorizes with the Nostr signer instead.
+    this.activeProviderIsBlossom = false;
     // #44: per-modal upload-destination override (null = account default).
     this.selectedConnectionId = null;
+
+    // Live-refresh the storage destination if connections change under an open
+    // modal — e.g. credentials synced from Nostr — so the user doesn't have to
+    // reopen. Scoped to the active user + open state.
+    if (this.storageService?.onConnectionsChanged) {
+      this.storageService.onConnectionsChanged(({ pubkey } = {}) => {
+        if (!this.isVisible) return;
+        const current = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
+        if (pubkey && current && pubkey !== current) return;
+        void this.refreshStorageFromSync(current);
+      });
+    }
 
     // Upload State
     this.videoUploadState = {
@@ -555,9 +577,10 @@ export class UploadModal {
           e.target.value = ""; // Clear selection
           return;
       }
-      if (!this.isStorageUnlocked) {
+      if (!this.isStorageUnlocked && !this.activeProviderIsBlossom) {
           // #56: unlock inline (silent restore or one passphrase prompt) and
-          // continue with this same file pick instead of erroring.
+          // continue with this same file pick instead of erroring. Blossom has no
+          // secret to unlock — it authorizes with the Nostr signer at upload time.
           const unlocked = await this.ensureStorageUnlockedForUpload();
           if (!unlocked) {
               e.target.value = "";
@@ -663,8 +686,9 @@ export class UploadModal {
           this.resetThumbnailPicker();
           return;
       }
-      if (!this.isStorageUnlocked) {
+      if (!this.isStorageUnlocked && !this.activeProviderIsBlossom) {
           // #56: prompt to unlock inline instead of silently dropping the pick.
+          // Blossom needs no unlock (signer-authorized at upload time).
           const unlocked = await this.ensureStorageUnlockedForUpload();
           if (!unlocked) {
               this.resetThumbnailPicker();
@@ -912,6 +936,26 @@ export class UploadModal {
     });
   }
 
+  // Re-derive the storage destination after connections change under an open
+  // modal (e.g. a Nostr sync import). Mirrors the open-time flow: a sync import
+  // may re-lock storage with a new master-key envelope, so re-attempt auto-unlock
+  // (Blossom stays keyless), recompute the unlocked state, then reload + repaint.
+  async refreshStorageFromSync(pubkey) {
+    if (!this.storageService || !this.isVisible) return;
+    const key =
+      pubkey || (this.getCurrentPubkey ? this.getCurrentPubkey() : null);
+    try {
+      await this.maybeAutoUnlockStorage(key);
+      this.isStorageUnlocked = key
+        ? this.storageService.isUnlocked(key)
+        : false;
+      await this.loadFromStorage();
+      this.updateLockUi();
+    } catch (error) {
+      devLogger.warn?.("[UploadModal] storage-sync refresh failed:", error);
+    }
+  }
+
   async loadFromStorage() {
       if (!this.storageService) return;
       const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
@@ -933,12 +977,20 @@ export class UploadModal {
         if (targetConn) {
             this.storageConfigured = true;
             this.activeProvider = targetConn.provider;
+            this.activeProviderIsBlossom = isBlossomProvider(targetConn.provider);
 
             // UI Updates
             this.toggleStorageView("summary");
             const providerName = this.getProviderLabel(targetConn.provider || targetConn.meta?.provider);
-            const bucketName = targetConn.meta?.bucket || "Unknown Bucket";
-            const urlStyle = this.describeUrlStyle(targetConn.provider, targetConn.meta?.forcePathStyle);
+            const blossomServers = Array.isArray(targetConn.meta?.servers)
+                ? targetConn.meta.servers
+                : [];
+            const bucketName = this.activeProviderIsBlossom
+                ? `${blossomServers.length} server${blossomServers.length === 1 ? "" : "s"}`
+                : targetConn.meta?.bucket || "Unknown Bucket";
+            const urlStyle = this.activeProviderIsBlossom
+                ? "Nostr-native (content-addressed)"
+                : this.describeUrlStyle(targetConn.provider, targetConn.meta?.forcePathStyle);
 
             if (this.statusText.summaryProvider) {
                 this.statusText.summaryProvider.textContent = providerName;
@@ -954,7 +1006,14 @@ export class UploadModal {
             }
             if (this.statusText.summaryCopy) this.statusText.summaryCopy.textContent = this.getSummaryCopy(targetConn.provider);
 
-            if (this.isStorageUnlocked) {
+            if (this.activeProviderIsBlossom) {
+                // No secret to decrypt — servers live in the plaintext meta.
+                this.activeCredentials = {
+                    provider: BLOSSOM_PROVIDER,
+                    servers: blossomServers,
+                    meta: targetConn.meta || {},
+                };
+            } else if (this.isStorageUnlocked) {
                 const details = await this.storageService.getConnection(pubkey, targetConn.id);
                 if (details) {
                     this.activeCredentials = details;
@@ -969,6 +1028,7 @@ export class UploadModal {
             this.storageConfigured = false;
             this.activeCredentials = null;
             this.activeProvider = null;
+            this.activeProviderIsBlossom = false;
             this.toggleStorageView("empty");
         }
         this.updateLockUi();
@@ -1063,7 +1123,8 @@ export class UploadModal {
   }
 
   updateLockUi() {
-      const locked = !this.isStorageUnlocked;
+      // Blossom has no secret to unlock — never show it as "locked".
+      const locked = !this.isStorageUnlocked && !this.activeProviderIsBlossom;
       if (this.statusText?.storageLock) {
           this.statusText.storageLock.textContent = locked ? "Locked 🔒" : "Unlocked 🔓";
           this.statusText.storageLock.className = locked ? "text-xs text-critical" : "text-xs text-success";
@@ -1079,6 +1140,9 @@ export class UploadModal {
   }
 
   getProviderLabel(provider) {
+      if (isBlossomProvider(provider)) {
+          return "Blossom";
+      }
       if (provider === PROVIDERS.R2 || provider === "cloudflare_r2") {
           return "Cloudflare R2";
       }

@@ -8,6 +8,9 @@ import {
   DEFAULT_PLAYBACK_START_TIMEOUT,
   FEATURE_NIP71_INGEST as CONFIG_FEATURE_NIP71_INGEST,
   FEATURE_AUDIO_INGEST as CONFIG_FEATURE_AUDIO_INGEST,
+  FEATURE_BITCOIN_CONNECT as CONFIG_FEATURE_BITCOIN_CONNECT,
+  FEATURE_BLOSSOM_STORAGE as CONFIG_FEATURE_BLOSSOM_STORAGE,
+  FEATURE_BLOSSOM_TORRENT_METADATA as CONFIG_FEATURE_BLOSSOM_TORRENT_METADATA,
   CARD_LIVENESS_POLICY as CONFIG_CARD_LIVENESS_POLICY,
   LIVENESS_PROBE_PREFETCH_MARGIN as CONFIG_LIVENESS_PROBE_PREFETCH_MARGIN,
   IS_DEV_MODE,
@@ -199,6 +202,17 @@ const DEFAULT_FLAGS = Object.freeze({
   // Default OFF ("off = no trace") — only an explicit `true` in the instance
   // config lights it up.
   FEATURE_AUDIO_INGEST: CONFIG_FEATURE_AUDIO_INGEST === true,
+  // Bitcoin Connect NWC "Connect wallet" flow (docs/bitcoin-connect-plan.md, #61).
+  // Default OFF; only an explicit `true` in the instance config enables it.
+  FEATURE_BITCOIN_CONNECT: CONFIG_FEATURE_BITCOIN_CONNECT === true,
+  // Blossom (nostr-native blob storage) provider (docs/blossom-plan.md, #30).
+  // Default OFF; only an explicit `true` in the instance config enables it.
+  FEATURE_BLOSSOM_STORAGE: CONFIG_FEATURE_BLOSSOM_STORAGE === true,
+  // Blossom videos: publish/lookup the WebTorrent piece-map as a companion Nostr
+  // event so P2P works without a hosted .torrent (docs/blossom-torrent-metadata-plan.md).
+  // Default OFF; only an explicit `true` in the instance config enables it.
+  FEATURE_BLOSSOM_TORRENT_METADATA:
+    CONFIG_FEATURE_BLOSSOM_TORRENT_METADATA === true,
   FEATURE_HASHTAG_PREFERENCES: false,
   FEATURE_TRUST_SEEDS: true, // Rollback: disable to drop baseline trust seeds without code changes.
   FEATURE_TRUSTED_HIDE_CONTROLS: true,
@@ -226,6 +240,10 @@ const runtimeFlags = (() => {
     FEATURE_NIP71_MIRROR: DEFAULT_FLAGS.FEATURE_NIP71_MIRROR,
     FEATURE_NIP71_INGEST: DEFAULT_FLAGS.FEATURE_NIP71_INGEST,
     FEATURE_AUDIO_INGEST: DEFAULT_FLAGS.FEATURE_AUDIO_INGEST,
+    FEATURE_BITCOIN_CONNECT: DEFAULT_FLAGS.FEATURE_BITCOIN_CONNECT,
+    FEATURE_BLOSSOM_STORAGE: DEFAULT_FLAGS.FEATURE_BLOSSOM_STORAGE,
+    FEATURE_BLOSSOM_TORRENT_METADATA:
+      DEFAULT_FLAGS.FEATURE_BLOSSOM_TORRENT_METADATA,
     FEATURE_HASHTAG_PREFERENCES: DEFAULT_FLAGS.FEATURE_HASHTAG_PREFERENCES,
     FEATURE_TRUST_SEEDS: DEFAULT_FLAGS.FEATURE_TRUST_SEEDS,
     FEATURE_TRUSTED_HIDE_CONTROLS: DEFAULT_FLAGS.FEATURE_TRUSTED_HIDE_CONTROLS,
@@ -275,6 +293,26 @@ export let FEATURE_AUDIO_INGEST = coerceBoolean(
   runtimeFlags.FEATURE_AUDIO_INGEST,
   DEFAULT_FLAGS.FEATURE_AUDIO_INGEST
 );
+
+export let FEATURE_BITCOIN_CONNECT = coerceBoolean(
+  runtimeFlags.FEATURE_BITCOIN_CONNECT,
+  DEFAULT_FLAGS.FEATURE_BITCOIN_CONNECT
+);
+
+export let FEATURE_BLOSSOM_STORAGE = coerceBoolean(
+  runtimeFlags.FEATURE_BLOSSOM_STORAGE,
+  DEFAULT_FLAGS.FEATURE_BLOSSOM_STORAGE
+);
+
+export let FEATURE_BLOSSOM_TORRENT_METADATA = coerceBoolean(
+  runtimeFlags.FEATURE_BLOSSOM_TORRENT_METADATA,
+  DEFAULT_FLAGS.FEATURE_BLOSSOM_TORRENT_METADATA
+);
+
+// Max base64 size of an embedded .torrent piece-map before bitvid falls back to
+// URL-only (the companion event is off the feed, so this is a pathological-case
+// guard, not a feature limiter). See docs/blossom-torrent-metadata-plan.md (D4).
+export const BLOSSOM_TORRENT_METADATA_MAX_BASE64 = 65536;
 
 export let FEATURE_HASHTAG_PREFERENCES = coerceBoolean(
   runtimeFlags.FEATURE_HASHTAG_PREFERENCES,

@@ -1288,8 +1288,19 @@ class PlaybackSession extends SimpleEventEmitter {
           }
         }
 
-        // Fallback to URL
-        if (httpsUrl && forcedSource !== "torrent") {
+        // Fallback to URL. Even when P2P was explicitly forced, a hosted URL is a
+        // better outcome than a hard "No playable source found" if the torrent
+        // DEFINITIVELY failed (e.g. a transient companion-lookup failure or a dead
+        // swarm). The torrent-first attempt above already ran — and, when there was
+        // no URL plan B, waited indefinitely — so we only reach here on real
+        // failure, not on a slow-but-working swarm.
+        // Rollback: restore `&& forcedSource !== "torrent"` to make forced P2P hard-fail.
+        if (httpsUrl) {
+          if (forcedSource === "torrent") {
+            this.service.log(
+              "[playVideoWithFallback] Forced torrent failed; falling back to the hosted URL."
+            );
+          }
           const urlResult = await attemptHostedPlayback();
           if (urlResult && urlResult.source === "url") {
             return urlResult;
