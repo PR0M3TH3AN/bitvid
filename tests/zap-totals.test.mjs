@@ -32,9 +32,12 @@ import {
   createZapTotalsStore,
   extractReceiptAmountSats,
   pointerKey,
+  profilePointer,
   ZAP_RECEIPT_KIND,
 } from "../js/zapTotals.js";
 import { createMostZappedSorter } from "../js/feedEngine/sorters.js";
+
+const CREATOR_HEX = "c".repeat(64);
 
 const A1 = "30078:aaaa:video-1";
 const A2 = "30078:bbbb:video-2";
@@ -301,6 +304,41 @@ test("cross-source dedup: a 9735 and a tally with the same payment_hash count on
     store.getSnapshot({ type: "a", value: A1 }),
     500,
     "same payment_hash counted once, not 1000",
+  );
+});
+
+test("profilePointer + pointerKey accept p: (channel total)", () => {
+  assert.deepEqual(profilePointer(CREATOR_HEX), ["p", CREATOR_HEX]);
+  assert.equal(profilePointer("  " + CREATOR_HEX.toUpperCase() + "  ")[1], CREATOR_HEX);
+  assert.equal(profilePointer(""), null);
+  assert.equal(pointerKey(["p", CREATOR_HEX]), `p:${CREATOR_HEX}`);
+  assert.equal(pointerKey({ type: "p", value: CREATOR_HEX }), `p:${CREATOR_HEX}`);
+});
+
+test("profile counting: a p: pointer counts #p-tagged zaps (direct + via video)", async () => {
+  // A video zap's 9735 carries both #a (video) and #p (creator). Querying the
+  // creator's p: pointer should count it toward the channel total.
+  const store = createZapTotalsStore({
+    persistKey: null,
+    isTallyEnabled: () => false, // 9735-only for this test
+    getTools: () => ({ nip57: { getSatoshisAmountFromBolt11: () => NaN } }),
+    getClient: () => ({
+      relays: ["wss://relay.example"],
+      getSubscriptionManager: () => ({
+        list: async () => [
+          receipt("r1", [["p", CREATOR_HEX], ["a", A1], amountTag(1500000)]), // 1500 sats
+          receipt("r2", [["p", CREATOR_HEX], amountTag(600000)]), // 600 sats, direct
+        ],
+      }),
+    }),
+    schedule: (fn) => { fn(); return 1; },
+  });
+  store.request({ type: "p", value: CREATOR_HEX });
+  await store.flush();
+  assert.equal(
+    store.getSnapshot({ type: "p", value: CREATOR_HEX }),
+    2100,
+    "channel total sums every #p-tagged zap",
   );
 });
 

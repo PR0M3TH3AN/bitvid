@@ -279,7 +279,7 @@ Audit started 2026-06-23. See the doc for architecture map + findings. Summary:
 - [x] Comment box confirmed WORKING (the "message doesn't work" was the popover
       mis-position making it hard to use — see 3a).
 
-### 4. View counter accuracy & reliability — DEEP AUDIT
+### 4. View counter accuracy & reliability — DEEP AUDIT — DONE 2026-06-24
 Audit finding (2026-06-24): counts INFLATE. `viewCounter.js` dedupes locally by
 (viewer, time-window) correctly, but two things defeated it: (a)
 `generateViewEventDedupeTag` built the kind-30079 `d` tag with random entropy +
@@ -421,7 +421,7 @@ un-hides when WebTorrent flips green). The real gaps:
       brand-new person, confirm the thread opens on THEM and the sent message lands
       in that conversation after refresh.
 
-### 20. Feed / grid loading reliability — some videos missing (BUG)
+### 20. Feed / grid loading reliability — some videos missing (BUG) — FIXED (streaming/first-relay-wins render is a separate latency follow-up under #17d)
 Two related intermittent symptoms; likely the same root cause (a one-shot,
 all-relays-settle fetch that drops slow-relay results — see 17d).
 - [x] **Profile / Channel page sometimes doesn't pull in all of a creator's
@@ -504,7 +504,7 @@ toward freshness and looked identical. Gave each a structural identity:
 - [ ] Consider removing the CDN/WebTorrent source badge from the card (clutter).
 - [ ] Run `npm run test:visual` after layout changes; update baselines deliberately.
 
-### 41. Native browser dialogs → site notification system
+### 41. Native browser dialogs → site notification system — DONE 2026-06-30
 - [x] **DONE 2026-06-30.** Replaced every `alert()`/`confirm()` (no `prompt()` existed)
       with the app's notification system so dialogs are styled + consistent.
       - `alert()` (13) → toasts: `this.showError` where the component already had it
@@ -584,7 +584,7 @@ toward freshness and looked identical. Gave each a structural identity:
       Storage Status → switch destination → summary updates and the upload
       lands in the chosen bucket; with 1 connection the picker stays hidden.
 
-### 45. Upload modal: suggest tags from the user's previous videos (UX)
+### 45. Upload modal: suggest tags from the user's previous videos (UX) — DONE 2026-07-01
 - [x] **DONE 2026-07-01.** The Hashtags section of the upload modal now shows one-tap
       chips of the user's most-used past hashtags ("Reuse a tag from your videos:").
       Source: `app.getUserHashtagSuggestions()` reads the user's own videos
@@ -597,7 +597,7 @@ toward freshness and looked identical. Gave each a structural identity:
       for users with no past tags. Rendered on modal open. Tests:
       `tests/hashtag-suggestions.test.mjs` (5, pure ranking). Lint + build green.
 
-### 46. Feed auto-refreshes after posting a video (UX)
+### 46. Feed auto-refreshes after posting a video (UX) — DONE 2026-06-30
 - [x] **DONE 2026-06-30.** `publishVideoNote` now (1) **optimistically injects** the
       just-published legacy event into the shared client cache via a new
       `nostrClient.ingestLocalVideoEvent(rawEvent)` (+ thin `nostrService` wrapper), so the
@@ -664,7 +664,7 @@ toward freshness and looked identical. Gave each a structural identity:
       video → within ~2min of tab re-entry its rank + badge reflect the new
       total.
 
-### 48. Fluent profile switching across signing methods (nsec / NIP-46 / NIP-07)
+### 48. Fluent profile switching across signing methods (nsec / NIP-46 / NIP-07) — DONE 2026-06-30
 - [x] **nsec switching FIXED 2026-06-30.** Switching to a saved nsec profile used to fail
       silently ("secret-required") — `switchProfile` called the nsec provider with no
       passphrase and never prompted. Now `handleProfileSwitchRequest` detects an nsec
@@ -807,15 +807,27 @@ toward freshness and looked identical. Gave each a structural identity:
 - [ ] Define the submission schema + the admin action → list-mutation mapping; reuse
       the existing admin list stores (whitelist/blacklist) for the writes.
 
-### 24. User-level allowlist override for the Web-of-Trust mute list
-- [ ] Let a user keep (and import) a personal **allowlist** that the client ALWAYS
-      shows content from, overriding the inherited WoT/trusted-mute list. So even if a
-      trusted curator mutes an author, the user can force that author's content to
-      appear in their own feeds. Persist it (NIP-51 list, encrypted/opt-in), make it
-      importable, and apply it at the render-time moderation filter as a final
-      allow-override after the WoT mute/block checks.
+### 24. User-level allowlist override for the Web-of-Trust mute list — CORE DONE 2026-07-08
+- [x] **Core render-time allow-override — DONE 2026-07-08.** A per-author (per-npub)
+      override that ALWAYS shows a creator's content, overriding the inherited
+      WoT/trusted-mute warning (blur/hide) for every one of that author's videos until
+      reset. Stored in a dedicated cache (`bitvid:moderationAuthorOverrides:v1`,
+      `js/state/cache.js`) and applied as the final allow-override at the single
+      render-time integration point (`js/services/moderationDecorator.js` — sets
+      `overrideActive` when `getAuthorModerationOverride(pubkey).showAnyway`). Two entry
+      points: (a) the **Safety tab** "Trusted creators" npub input + list with per-row
+      Reset (`ProfileModerationController`), and (b) an **"Always show creator"** button
+      on every blurred/warned surface (VideoCard, VideoModal, SimilarContentCard) that
+      dispatches a `video:trust-author` event handled once in `applicationBootstrap.js`.
+      Tests: `tests/author-moderation-override.test.mjs` (5). Committed a0131c71 (Safety
+      tab) + 5844a36a (overlay button).
+- [ ] **Remaining (deferred, not blocking launch): NIP-51 sync + import.** The override
+      is currently **device-local** (localStorage), not a published NIP-51 list, so it
+      doesn't roam across devices and can't be imported/shared. Follow-up: persist as an
+      encrypted/opt-in NIP-51 list and make it importable, reusing the cross-login sync
+      machinery (#15).
 
-### 25. Per-video / per-event admin block list (granular moderation)
+### 25. Per-video / per-event admin block list (granular moderation) — DONE 2026-07-01
 - [x] **DONE 2026-06-30 (full vertical slice).** Admins (any editor — same gate as the
       author blacklist) can now hide a SINGLE video without blocking its author.
       - **Record:** a published kind-30000 NIP-51 list under d-tag
@@ -962,6 +974,17 @@ video/mp4, range + CORS `*`) — the block is the whitelist gate, not the source
       watchdog can't re-fire.
 - [ ] **VERIFY live**: open the beacon, paste a dead magnet → spinner should clear
       with a warning after ~30s instead of hanging; paste a live magnet → resolves.
+- [x] **SEPARATE BUG — spinner-on-load, FIXED 2026-07-09.** Reported: beacon.html
+      "just shows a spinner." Root cause was NOT the watchdog (that's compiled into
+      the bundle fine) but a CSS specificity trap from the `data-ds="new"` redesign:
+      `.ds-overlay-backdrop { display: flex }` (an author rule) overrides the UA
+      `[hidden] { display: none }`, so the processing overlay — `hidden` in the HTML
+      — rendered on load as a full-screen backdrop covering the whole page. Fix:
+      added `.ds-overlay-backdrop[hidden] { display: none }` (specificity 0,2,0 wins)
+      in `css/tailwind.source.css` — same guard the video modal already uses
+      (css ~2663). No JS needed; the JS inline-style toggle still works. Rebuilt CSS
+      + dist. **VERIFY live**: beacon.html loads to the form (no spinner); the
+      spinner only appears while adding a torrent.
 
 ### 29. Admin-whitelisted users bypass the Web-of-Trust (anti-abuse) — DEFERRED (YAGNI)
 **DECISION 2026-06-24: defer until there's a real brigading incident to scope against.**
@@ -987,16 +1010,33 @@ to rescue a creator who *does* get WoT-hidden, so if it happens, ship this promp
      so either is feasible. Leaning soft-only so a whitelist can't force-show illegal.
 - [ ] When a real example appears: flip the placeholder with the scope above + tests.
 
-### 30. Blossom storage support (bring to par with R2 / S3)
-- [ ] Add **Blossom** (BUD-01/02 blob storage over Nostr) as a storage provider
-      alongside Cloudflare R2 and generic S3. Bring it to functional parity where
-      possible: upload, thumbnail, `.torrent`, public URL resolution, and
-      delete/edit cleanup. Slot it into the existing storage-provider abstraction
-      (`r2Service.js` / `storageService.js`) and the Storage settings pane; auth is
-      a signed Nostr event per Blossom rather than S3 keys. Research the BUD spec
-      coverage needed for bitvid's upload/delete flows.
+### 30. Blossom storage support (bring to par with R2 / S3) — full plan in docs/blossom-plan.md
+- [ ] Add **Blossom** (nostr-native blob storage) as a first-class upload provider
+      alongside Cloudflare R2 / generic S3 / B2. Slots into the existing
+      `service.uploadFile({…}) → {url,key}` seam (`mediaUploader.js:38`) as a new
+      `blossomService` + `isBlossomProvider` branch — Blossom's upload is *simpler*
+      than S3 (no SigV4/multipart/bucket/CORS), and auth is a signed nostr event
+      (kind 24242, BUD-11) that reuses bitvid's existing signer (no new crypto).
+- [ ] **Best practice (researched 2026-07-09):** use the maintained
+      **`blossom-client-sdk` v5** (hzrd149) — ESM, only dep `@noble/hashes` which
+      bitvid already vendors. Spec has modularized: BUD-01 retrieval, BUD-02
+      `/upload`, **BUD-11 auth (kind 24242, NIP-40 expiration, `t`/`x`/`server`
+      tags, `Authorization: Nostr <base64url>`)**, BUD-12 `/list`+`DELETE`, BUD-03
+      kind-10063 discovery, BUD-04 mirror, BUD-05 `/media`, BUD-06 preflight. Core
+      min = 01+02+11; add 03/06/04.
+- [ ] **Design shifts (decisions D1–D10 in the plan):** multi-server list + mirror
+      (Blossom's whole point vs one bucket), kind-10063 read/publish, `/upload` for
+      video (keep bytes for torrent) + optional `/media` for thumbnails, keep the
+      magnet/torrent parity, and a **keyless** multi-server config form (no
+      access-key/secret/bucket) — which also *removes* the encrypted-cred-sync
+      surface for Blossom users (there's no secret, only server URLs + the signer).
+- [ ] Flag-gated `FEATURE_BLOSSOM_STORAGE` (off = no trace), vendored SDK,
+      phased: P0 flag+vendor, P1 upload+config UI, P1.5 discovery, P2
+      list/delete+orphan-GC+mirror, P3 extras. Lift = medium (upload core is SDK
+      glue; the config UI is the main cost). Public blobs only (D10 — no private
+      content on base Blossom).
 
-### 34. NIP-71 mirror: videos show "not mirrored" + duplicate on re-mirror (BUG)
+### 34. NIP-71 mirror: videos show "not mirrored" + duplicate on re-mirror (BUG) — FIXED 2026-06-29 (only live Amber VERIFY remains)
 Reported 2026-06-25. Relates to #17 (NIP-71 interop) / the bitvid→NIP-71 mirror.
 - [ ] **Mirrored videos report as NOT mirrored.** All videos were mirrored, but the UI
       now shows them un-mirrored even though the NIP-71 mirror events exist. The
@@ -1241,10 +1281,20 @@ Reported 2026-06-25. Relates to #17 (NIP-71 interop) / the bitvid→NIP-71 mirro
       local patch is guesswork — the update is the honest fix.
 
 ### 11. Harden flaky tests (CI gate reliability)
-- [ ] `tests/ui/uploadModal-reset.test.mjs` ("UploadModal Reset Logic") intermittently
-      hangs/cancels (jsdom/webtorrent async-hang flake; documented in KNOWN_ISSUES,
-      reproduced on pre-refactor `1b11cb1b`). Make it deterministic so it can be a
-      trusted release gate. Audit e2e parallel-load flakiness too.
+- [x] `tests/ui/uploadModal-reset.test.mjs` ("UploadModal Reset Logic") — FIXED 2026-07-05.
+      The "guard against zombie callbacks" subtest mocked `modal.generateTorrentMetadata` /
+      `resolveUploadIdentifier`, but handleVideoSelection drives the upload through
+      `this.mediaUploader.uploadVideo` (a DIFFERENT object with its own helpers) — so the
+      mediaUploader still ran real `createTorrentMetadata()`/hashing on a synthetic
+      `{name:"video.mp4"}` file, throwing "invalid input type" as async activity AFTER the
+      test ended (node:test flags that as an uncaughtException) plus
+      `captureVideoMetadata()` calling `URL.createObjectURL(file)` → "must be an instance of
+      Blob". Not intermittent anymore — it was a consistent, wrong-boundary mock. Fix: mock
+      at the real DI boundary — `modal.mediaUploader.uploadVideo = () => delayedUpload` (the
+      controllable pending promise) + stub `modal.captureVideoMetadata`. Now hermetic, no
+      webtorrent/Blob, deterministic (3/3 exit 0, # pass 3). Mutation-verified: breaking the
+      videoUploadId zombie guard makes the test fail (# fail 1). See TEST_INTEGRITY.md.
+- [ ] Audit e2e parallel-load flakiness too.
 
 ### 11b. SILENTLY-EXCLUDED unit tests — 20 files never run in CI (found 2026-06-23)
 > **2026-07-03 addendum — stale-default failure was hiding in local runs:**
@@ -1276,8 +1326,10 @@ test below was failing on `main` unnoticed).
         `watch-history-feed`, `subscriptions-feed`, `discussion-count-service`,
         `feed-engine`, `zap-split`, `nostr-view-events`,
         `watchHistory/watch-history-telemetry`, `unit/ui/thumbnailBinder`.
-- [ ] **Triage + un-quarantine the 10 broken files** (first-error diagnosis 2026-06-23;
-      each needs the stale-vs-real-bug investigation the delete-flow file got):
+- [x] **ALL broken files triaged + un-quarantined (COMPLETE 2026-07-05).** The QUARANTINE
+      map in `run-unit-tests.mjs` is now empty; every unit test file runs in CI. Per-file
+      diagnosis + spec-correction history below (each got the stale-vs-real-bug
+      investigation the delete-flow file got):
       - `watch-history` (#2) — DONE + UN-QUARANTINED 2026-06-23. Three stale tests,
         all spec-corrected to shipped behavior (see TEST_INTEGRITY.md):
         (1) `testWatchHistoryPartialRelayRetry` asserted snapshot THROWS on partial
@@ -1322,15 +1374,45 @@ test below was failing on `main` unnoticed).
         parseCommunityBlacklistReferences decoded them twice; and createListEvent omitted
         the `d` tag that selectNewestEventsForReferences matches on. Fixed all three to be
         faithful to production. See TEST_INTEGRITY.md.
-      - `nostr-publish-rejection` — STILL QUARANTINED. Partially diagnosed 2026-06-25:
-        multi-precondition setup. (1) `testPublishVideoNoteDefaultsToLiveModeInDev` needs
-        dev mode — set `globalThis.__BITVID_DEV_MODE_OVERRIDE__=true` BEFORE the first
-        (dynamic) config-importing import (~line 50). (2) The `publishNip71Video` sub-test
-        then fails — `publishVideo`'s NIP-71 invocation path needs FEATURE_PUBLISH_NIP71 /
-        condition triage; possibly more after. Quarantine note carries the steps.
-      - `nostr-publish-rejection`, `nwc-client`, `user-blocks` remain quarantined
-        (see QUARANTINE map in run-unit-tests.mjs for the precise reason on each).
-      - `user-blocks` — STILL QUARANTINED: HANGS (async leak); needs a deterministic rewrite.
+      - `nostr-publish-rejection` — ✅ DONE + UN-QUARANTINED 2026-07-05. The two spec
+        precondition fixes had already landed (dev-mode override at top; NIP-71
+        auto-publish spec-corrected to expect ZERO calls with FEATURE_PUBLISH_NIP71 off).
+        Remaining issue was a post-completion HANG: the file imports the full app stack
+        (js/app.js + subscriptions + userBlocks) whose module-load timers/connection
+        managers keep the event loop alive after all assertions pass. Applied the repo's
+        established bare-assert `setTimeout(() => process.exit(0), 50)` exit after cleanup.
+        NOTE: it was never actually in the QUARANTINE map (only 2 entries: user-blocks +
+        nwc-client), so it had been silently hanging any local `npm run test:unit` (no
+        per-file timeout unless UNIT_TEST_TIMEOUT_MS is set).
+      - `nwc-client` — ✅ DONE + UN-QUARANTINED 2026-07-05. (1) Mock-shadow fixed: the
+        bootstrap's frozen canonical toolkit is preferred by readToolkitFromScope, so the
+        per-section `window.NostrTools` mocks never took effect (real @noble rejected the
+        fake keys). Removing the scope canonical lets the resolver fall through to each
+        mock. (2) Spec correction: one section expected a rejection when the toolkit
+        "lacks nip44," but mergeWithCanonical ALWAYS backfills the canonical nip44 (even
+        explicit `nip44:null`), so nip44_v2 is never absent — the wallet now advertises a
+        genuinely-unsupported scheme (`nip44_v3`) to exercise the same UNSUPPORTED_ENCRYPTION
+        path, and the assertion also checks `error.code`.
+      - `user-blocks` — ✅ DONE + UN-QUARANTINED 2026-07-05. Post-completion HANG: the
+        decrypt-timeout section installs a never-resolving nip44Decrypt that leaves a
+        background decrypt-retry timer alive (manager.reset() doesn't cancel it). Applied
+        the same `setTimeout(() => process.exit(0), 50)` exit after the final assertion.
+      - `dm-block-filter` — ✅ DONE + UN-QUARANTINED 2026-07-05. A FOURTH, pre-existing hang
+        surfaced by running the full suite with a per-file timeout (it was never in the map,
+        so it had been silently hanging local `npm run test:unit`). All subtests PASS, then
+        node:test never exits. Root cause (diagnosed via process.getActiveResourcesInfo):
+        the "integration with loaded user block list" test's `manager.loadBlocks()` opens a
+        LIVE block-list subscription through nostrClient's real SimplePool aimed at the
+        test's fake relay URLs, leaking 4 TCP sockets + reconnect timers. NOT the
+        decrypt-retry timer (verified absent). Nulling the pool did NOT help — loadBlocks
+        calls `ensurePool()` (userBlocks.js:967) to re-create+connect a real pool when pool
+        is falsy. Fix (node:test-SAFE, no force-exit): make the test hermetic — (1) a TRUTHY
+        stub pool so ensurePool() is skipped, (2) a no-op getSubscriptionManager so the
+        subscription opens nothing; the block MERGE still runs via the stubbed
+        fetchListIncrementally. Verified: clean run exits 0 (# pass 12), AND a deliberately
+        broken assertion still exits 1 (# fail 1) — failures are NOT masked. See
+        TEST_INTEGRITY.md.
+      - **QUARANTINE map is now EMPTY** — every unit test file runs in CI.
 
 ### 12. Promotion: `unstable → beta`
 - [ ] After this batch soaks and the high-priority items land, promote `unstable → beta`
@@ -1730,7 +1812,7 @@ passphrase-encrypted). Items 51, 56, 57 are all facets of that.
       remembered (disk vs session tier) in the UI, and consider a "keep unlocked" toggle
       in the storage/wallet panes for users who set it up there rather than via a prompt.
 
-### 52. After editing a video, the video grids don't refresh to show the update (BUG)
+### 52. After editing a video, the video grids don't refresh to show the update (BUG) — FIXED 2026-07-02
 - [x] **FIXED 2026-07-02.** The edit flow already re-ran `loadVideos()`, but the cache
       still held the PRE-edit version: unlike new publishes (#46), the edit never
       ingested its signed replaceable event locally, so grids re-rendered stale until
@@ -1739,7 +1821,7 @@ passphrase-encrypted). Items 51, 56, 57 are all facets of that.
       store + `videos:updated`), so grids show the new title/thumbnail/etc.
       immediately. Test: `tests/services/nostr-service.test.mjs` (+1).
 
-### 53. Channel-profile link in the video player modal doesn't work (BUG)
+### 53. Channel-profile link in the video player modal doesn't work (BUG) — FIXED 2026-07-02
 - [x] **FIXED 2026-07-02.** Event-name mismatch: `VideoModal.handleCreatorNavigation`
       dispatched `"navigate:profile"`, but ModalManager only listens for
       `"creator:navigate"` → the click went into the void (same class as the old
@@ -1750,8 +1832,8 @@ passphrase-encrypted). Items 51, 56, 57 are all facets of that.
       `tests/video-modal-controllers.test.mjs` (+2 — dispatches creator:navigate with
       the pubkey, never the dead event; no-op without a pubkey). Lint + build green.
 
-### 54. Like / dislike buttons in the video player modal don't work (BUG)
-- [ ] The reaction (like/dislike) buttons in the player modal are unresponsive / don't
+### 54. Like / dislike buttons in the video player modal don't work (BUG) — FIXED 2026-07-02 (only live VERIFY remains)
+- [x] The reaction (like/dislike) buttons in the player modal are unresponsive / don't
       persist. Audit `reactionController` wiring into the video modal (event binding,
       active-signer availability, publish path). Note: reactions require signing — verify
       this isn't another "lost signer after refresh" (#57) surfacing as a dead button; if
@@ -1934,3 +2016,107 @@ passphrase-encrypted). Items 51, 56, 57 are all facets of that.
 - [ ] **Phase 4:** fresh-npub bootstrap — "Create account" via the existing generate
       provider with a REQUIRED key-backup step, then inline kind-0 profile setup
       (name + avatar), then the tour.
+
+### 60. Audio tab — podcasts / music / audio support (FUTURE) — full plan in docs/audio-integration-plan.md
+Reported 2026-07-09. Today an audio note (e.g. a podcast published as a native
+kind-30078 with `imeta … m audio/ogg` + an `.ogg` URL) leaks into the video grid
+and can't play: `convertEventToVideo` accepts it (it has a `url`), `VideoCard` gives
+it a `data-play-url`, but the source is audio-only. bitvid maps `.ogg → video/ogg`
+and hands it to a `<video>` element → black frame + audio on Chrome/FF, or
+`MEDIA_ERR_SRC_NOT_SUPPORTED` on Safari/iOS. There is no `<audio>`/podcast player.
+The NIP-71 *ingest* guard (`nip71IngestAdapter.js` — "exclude audio/image/etc.")
+only covers ingested kinds 21/22/34235/34236, not the native 30078 path. Real
+example: event `95053d75…` "Nostr Compass Podcast #20" (pubkey `b7ed68b0…`).
+- [x] **Near-term (launch hygiene) — DONE 2026-07-09.** `convertEventToVideo`
+      (`js/nostr/nip71.js`) now marks audio-only notes `invalid` (reason
+      "audio-only source (no video)") so every feed/grid ingestion path that already
+      drops invalid filters them out: main feed buffer (`videoEventBuffer.js:145`),
+      author/channel batch fetch (`client.js:4192`), local ingest (`client.js:4500`).
+      Audio-only = no magnet AND no `imeta m video/*` AND (an `imeta m audio/*`
+      variant OR an unambiguous audio URL `.mp3/.m4a/.aac/.wav/.flac/.opus/.oga/.weba`).
+      `.ogg` is NOT filtered on extension alone (ambiguous → video/ogg) — only when
+      an `imeta m audio/*` says so. A video imeta variant always wins. Tests:
+      `tests/video-schema-and-conversion.test.mjs` (+5, 8/8). NOTE: the direct
+      open-by-nevent path (`client.js:4129`) still resolves an audio event on
+      purpose — an explicit link should still load; only feeds are filtered.
+- [ ] **The feature:** a dedicated **Audio** sidebar tab (podcasts / music / audio)
+      with its own player. Detect `audio/*` sources and render an `<audio>` UI
+      (poster from the `image`/thumbnail tag + transport controls, duration, seek)
+      instead of the `<video>` element. This event already carries the metadata a
+      good audio UI wants: `title`, `image`, `duration`, `summary`, `channel`,
+      `show`, plus podcast `t` tags — so cards can show cover art + show/episode.
+- [ ] **Discovery/schema — audio kinds & NIPs to support (surveyed 2026-07-09).**
+      bitvid supports NIP-71 video (21/22/34235/34236) + native 30078; nothing
+      audio-specific yet. Standard audio surfaces bitvid does NOT support:
+      - **NIP-A0 Voice Messages — `kind 1222` (root) + `kind 1244` (reply).** Native
+        short audio notes: content = URL to an audio file (rec. `audio/mp4`/.m4a,
+        ≤60s). The closest thing to a first-class "audio note." Best Audio-tab target.
+      - **NIP-73 External Content IDs — Podcast GUIDs.** `i`/`k` tags:
+        `podcast:guid` (feed), `podcast:item:guid` (episode),
+        `podcast:publisher:guid`. THE bridge to Podcasting 2.0 / PodcastIndex /
+        Fountain — lets bitvid reference real podcast feeds/episodes, not just
+        bespoke re-uploads. Key for "podcast feeds."
+      - **NIP-53 live audio — `kind 30311` + `kind 30312` (audio rooms/spaces).**
+        Live audio overlaps #16 (which should own live video *and* audio).
+      - **NIP-71 audio variants** — `imeta m audio/*` + `waveform` (audio-only) are
+        already in the NIP-71 spec bitvid parses, so audio-as-a-variant is close.
+      - **De-facto today:** the podcasts we currently filter (Nostr Compass,
+        Nodesignal) are native **kind-30078 with `imeta m audio/*`** — a bespoke
+        re-upload, NOT a standard audio kind.
+      - **Non-standard music** (Wavlake / Stemstr) use app-specific custom kinds, not
+        ratified NIPs → treat as opt-in integrations, not core.
+      Decide the canonical audio signal (support 1222/1244 + native 30078 `m audio/*`
+      to start; NIP-73 refs + NIP-53 live audio later); consider a `t` marker
+      (`audio`/`podcast`/`music`) parallel to `t:video` for a clean feed filter, and
+      gate the tab behind its own config flag (mirrors the streaming tab in #16).
+      NOTE: earlier drafts said "NIP-54-style podcast events" — WRONG, NIP-54 is Wiki;
+      the real refs are NIP-73 (podcast GUIDs) + NIP-A0 (voice messages).
+- [ ] **Channel-profile category tabs (requested 2026-07-09).** The channel profile
+      should carry the same media categories as a tab strip so a creator's page stays
+      neat and self-explanatory instead of mixing everything into one grid:
+      - **Videos** (current default — kind 30078 video / NIP-71 21+34235),
+      - **Audio** (audio-only notes — podcasts / music; the #60 audio player),
+      - **Live** / **Streams** (NIP-53 kind 30311 — see #16; show live now + past),
+      - **Shorts** (NIP-71 kind 22 short-form vertical — see #16).
+      Each tab is its **own category playlist** that only loads/renders when that tab
+      is selected (lazy per-tab fetch, no cross-contamination — the audio guard keeps
+      Audio out of Videos and vice-versa). Only show a tab when the creator actually
+      has content of that type (hide empty categories). Mirror the same tab set on the
+      main feed/sidebar so the sidebar category ↔ channel tab stay consistent.
+- [ ] **Profile modal: "My Videos" → "My Content" with tabs (requested 2026-07-09).**
+      The creator-side management view (`js/ui/profileModal/MyVideosController.js`)
+      is the owner mirror of the channel-profile tabs: rename the pane/label to
+      **My Content** and give it the same category tabs (Videos / Audio / Live /
+      Shorts), each listing only that category's notes. Per-tab keeps the management
+      rows (edit, delete/undelete, mirror-to-apps toggle, storage status) scoped and
+      uncluttered. Reuse the shared category resolver below so an item shows under the
+      same tab here as on the public channel. Keep the empty-category hiding, or show
+      an empty-state CTA ("Publish your first audio note") per tab.
+- [ ] **Shared category model:** define one media-category resolver
+      (`video | audio | live | short`) derived from kind + `imeta m` + `t` markers,
+      used by the sidebar feeds, the public channel tabs, AND the profile-modal
+      "My Content" tabs, so a note lands in exactly one category everywhere. This is
+      the natural home for the #17 unified media grid.
+- [ ] **Cross-refs:** shares the "new media type behind a sidebar tab + config flag"
+      shape with #16 (live streams / NIP-53, incl. kind-22 shorts) and the #17 unified
+      media grid — plan the category resolver + per-tab loaders together so video /
+      audio / live / shorts don't each grow a bespoke fetch, and so the channel-profile
+      tabs and sidebar tabs share one source of truth.
+
+### 61. Bitcoin Connect — smooth NWC wallet connect UX — full plan in docs/bitcoin-connect-plan.md
+Requested 2026-07-09. Add Alby's Bitcoin Connect (getalby/bitcoin-connect,
+bitcoin-connect.com) as a polished "connect your wallet" modal for NWC, feeding
+bitvid's EXISTING NWC pipeline; keep manual URI entry as the backup/advanced path.
+- [ ] Verified feasible: BC's NWC connector exposes the raw pairing URI via
+      `provider.client.nostrWalletConnectUrl` (on `onConnected`), which flows straight
+      into `nwcSettingsService.validateWalletUri` → the existing per-npub store. No
+      change to how bitvid pays or stores — one new way to obtain the same string.
+- [ ] Decisions D1–D6 in the plan (recommendations: vendor + lazy import;
+      `persistConnection:false` + `disconnect()` after extract; NWC-only connector;
+      least-privilege `requestMethods` incl. `pay_invoice`; Connect = primary CTA with
+      manual under "Advanced"; `FEATURE_BITCOIN_CONNECT` flag, off = no trace).
+- [ ] Security: NWC URI is a bearer SPENDING secret — never log it; pin+vendor the
+      (Alpha) lib; re-validate the extracted string; payment invariants
+      (PLATFORM_FEE_PERCENT=30, preimage verify, no pay_invoice auto-resend) untouched.
+- [ ] Phased + flag-gated: Phase 0 flag+vendor, Phase 1 connect button, Phase 2
+      polish (balance/reconnect), Phase 3 optional WebLN path for Alby-extension/Hub.

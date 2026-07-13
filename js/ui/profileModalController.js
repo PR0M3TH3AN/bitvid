@@ -45,6 +45,8 @@ import { DMSettingsModalController } from "./dm/DMSettingsModalController.js";
 import { ProfileWalletController } from "./profileModal/ProfileWalletController.js";
 import { ProfileStorageController } from "./profileModal/ProfileStorageController.js";
 import { MyVideosController } from "./profileModal/MyVideosController.js";
+import { ProfilePlaylistsController } from "./profileModal/ProfilePlaylistsController.js";
+import { FEATURE_PLAYLISTS } from "../constants.js";
 import { ProfileDirectMessageController } from "./profileModal/ProfileDirectMessageController.js";
 import { ProfileRelayController } from "./profileModal/ProfileRelayController.js";
 import { ProfileHashtagController } from "./profileModal/ProfileHashtagController.js";
@@ -53,6 +55,7 @@ import { ProfileModerationController } from "./profileModal/ProfileModerationCon
 import { ProfileBlockListController } from "./profileModal/ProfileBlockListController.js";
 import { ProfileEditController } from "./profileModal/ProfileEditController.js";
 import { isInStackedModal } from "./focusTrapStacking.js";
+import { decorateAdminAvatar } from "./adminBadge.js";
 
 const noop = () => {};
 
@@ -530,6 +533,7 @@ export class ProfileModalController {
     this.walletController = new ProfileWalletController(this);
     this.storageController = new ProfileStorageController(this);
     this.myVideosController = new MyVideosController(this);
+    this.playlistsController = new ProfilePlaylistsController(this);
     this.mobileViewState = "menu";
     this.lastMobileViewState = "menu";
     this.setActivePane(this.getActivePane());
@@ -696,6 +700,12 @@ export class ProfileModalController {
     this.navButtons.storage = document.getElementById("profileNavStorage") || null;
     this.navButtons.myvideos =
       document.getElementById("profileNavMyVideos") || null;
+    this.navButtons.playlists =
+      document.getElementById("profileNavPlaylists") || null;
+    // Hide the Playlists tab entirely while the feature is off.
+    if (!FEATURE_PLAYLISTS && this.navButtons.playlists) {
+      this.navButtons.playlists.classList.add("hidden");
+    }
     this.navButtons.hashtags =
       document.getElementById("profileNavHashtags") || null;
     this.navButtons.subscriptions =
@@ -711,6 +721,12 @@ export class ProfileModalController {
     this.navButtons.admin = document.getElementById("profileNavAdmin") || null;
     this.navButtons.safety = document.getElementById("profileNavSafety") || null;
 
+    // Pending-submissions dots: on the Admin nav tab and the Submissions subtab.
+    this.adminNavUnreadDot =
+      document.getElementById("profileNavAdminUnreadDot") || null;
+    this.adminSubmissionsDot =
+      document.getElementById("adminSubtabSubmissionsDot") || null;
+
     this.profileEditBtn = document.getElementById("profileEditBtn") || null;
     this.profileEditBackBtn = document.getElementById("profileEditBackBtn") || null;
 
@@ -721,6 +737,8 @@ export class ProfileModalController {
     this.panes.storage = document.getElementById("profilePaneStorage") || null;
     this.panes.myvideos =
       document.getElementById("profilePaneMyVideos") || null;
+    this.panes.playlists =
+      document.getElementById("profilePanePlaylists") || null;
     this.panes.hashtags = document.getElementById("profilePaneHashtags") || null;
     this.panes.subscriptions =
       document.getElementById("profilePaneSubscriptions") || null;
@@ -816,6 +834,7 @@ export class ProfileModalController {
     this.walletController.cacheDomReferences();
     this.storageController.cacheDomReferences();
     this.myVideosController.cacheDomReferences();
+    this.playlistsController.cacheDomReferences();
 
     if (this.dmController.pendingMessagesRender) {
       const { messages, actorPubkey } = this.dmController.pendingMessagesRender;
@@ -1338,6 +1357,26 @@ export class ProfileModalController {
       "is-visible",
       Boolean(visible) && isVisible,
     );
+  }
+
+  // Pending-submissions dots for admins: on the Admin nav tab (gated on that tab
+  // being visible) and on the Submissions subtab button inside the admin pane.
+  setSubmissionsUnreadIndicator(visible) {
+    const show = Boolean(visible);
+    const adminButton = this.navButtons.admin;
+    const adminNavVisible =
+      adminButton instanceof HTMLElement &&
+      !adminButton.classList.contains("hidden") &&
+      !adminButton.hasAttribute("hidden");
+    if (this.adminNavUnreadDot instanceof HTMLElement) {
+      this.adminNavUnreadDot.classList.toggle(
+        "is-visible",
+        show && adminNavVisible,
+      );
+    }
+    if (this.adminSubmissionsDot instanceof HTMLElement) {
+      this.adminSubmissionsDot.classList.toggle("is-visible", show);
+    }
   }
 
 
@@ -1976,6 +2015,7 @@ export class ProfileModalController {
     this.walletController.registerEventListeners();
     this.storageController.registerEventListeners();
     this.myVideosController.registerEventListeners();
+    this.playlistsController.registerEventListeners();
     this.adminController.registerEventListeners();
     this.moderationController.registerEventListeners();
 
@@ -2593,6 +2633,13 @@ export class ProfileModalController {
       if (this.identityCardAvatar.src !== activeAvatarSrc) {
         this.identityCardAvatar.src = activeAvatarSrc;
       }
+      // Ring + star on the "Acting as" avatar when the active profile is admin.
+      if (this.identityCardAvatar.parentElement) {
+        decorateAdminAvatar(
+          this.identityCardAvatar.parentElement,
+          hasActiveProfile ? activeMeta?.npub || "" : "",
+        );
+      }
     }
 
     const listEl = this.switcherList;
@@ -2731,7 +2778,9 @@ export class ProfileModalController {
           }
 
           metaSpan.append(topLine, nameSpan, npubSpan);
-          button.append(avatarSpan, metaSpan);
+          // Ring + star on a saved profile's avatar when that account is admin.
+          const avatarNode = decorateAdminAvatar(avatarSpan, entry.pubkey);
+          button.append(avatarNode, metaSpan);
 
           const ariaLabel = isSelected
             ? `${cardDisplayName} selected`
@@ -3413,6 +3462,8 @@ export class ProfileModalController {
         this.storageController.populateStoragePane();
       } else if (target === "myvideos") {
         void this.myVideosController.populate({ forceFetch: true });
+      } else if (target === "playlists") {
+        void this.playlistsController.refresh();
       } else if (target === "hashtags") {
         this.hashtagController.populateHashtagPreferences();
         if (activeHex && this.services.hashtagPreferences) {
@@ -3860,7 +3911,7 @@ export class ProfileModalController {
 
       deduped.forEach(({ hex, label }) => {
         const item = document.createElement("li");
-        item.className = "card flex items-center justify-between gap-4 p-4";
+        item.className = "card profile-account-card";
 
         let cachedProfile = null;
         if (hex && typeof this.services.getProfileCacheEntry === "function") {
@@ -3892,7 +3943,7 @@ export class ProfileModalController {
         });
 
         const actions = document.createElement("div");
-        actions.className = "flex flex-wrap items-center justify-end gap-2";
+        actions.className = "profile-account-card__actions";
 
         const viewButton = this.createViewChannelButton({
           targetNpub: encodedNpub,
@@ -4179,7 +4230,7 @@ export class ProfileModalController {
 
       deduped.forEach(({ hex, label }) => {
         const item = document.createElement("li");
-        item.className = "card flex items-center justify-between gap-4 p-4";
+        item.className = "card profile-account-card";
 
         let cachedProfile = null;
         if (hex && typeof this.services.getProfileCacheEntry === "function") {
@@ -4211,7 +4262,7 @@ export class ProfileModalController {
         });
 
         const actions = document.createElement("div");
-        actions.className = "flex flex-wrap items-center justify-end gap-2";
+        actions.className = "profile-account-card__actions";
 
         const viewButton = this.createViewChannelButton({
           targetNpub: encodedNpub,

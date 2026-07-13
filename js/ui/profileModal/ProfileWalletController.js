@@ -1,6 +1,13 @@
 import { devLogger } from "../../utils/logger.js";
+import { FEATURE_BITCOIN_CONNECT } from "../../constants.js";
 import { showConfirm } from "../confirmDialog.js";
 import { NWC_URI_SCHEME } from "../profileModalContract.js";
+
+// Vendored, pinned Bitcoin Connect bundle (scripts/build-bitcoin-connect.mjs).
+// Lazy-imported only when the user clicks "Connect wallet", so its ~700KB never
+// weighs on the main bundle. See docs/bitcoin-connect-plan.md.
+const BITCOIN_CONNECT_BUNDLE_URL =
+  "../../../vendor/bitcoin-connect.bundle.min.js";
 import { createWalletSyncService } from "../../services/walletSyncService.js";
 import { runWalletZappabilityCheck } from "./walletZappabilityCheck.js";
 import {
@@ -32,6 +39,13 @@ export class ProfileWalletController {
     this.walletSyncRestoreBtn = null;
     this.walletSyncStatus = null;
     this._walletSyncService = null;
+
+    this.walletBitcoinConnectRow = null;
+    this.walletBitcoinConnectButton = null;
+    this.walletAdvanced = null;
+    this.walletAdvancedSummary = null;
+    this._bitcoinConnectModulePromise = null;
+    this._bitcoinConnectInitialized = false;
   }
 
   cacheDomReferences() {
@@ -46,9 +60,40 @@ export class ProfileWalletController {
     this.walletSyncToggle = document.getElementById("walletSyncToggle") || null;
     this.walletSyncRestoreBtn = document.getElementById("walletSyncRestoreBtn") || null;
     this.walletSyncStatus = document.getElementById("walletSyncStatus") || null;
+    this.walletBitcoinConnectRow =
+      document.getElementById("profileWalletBitcoinConnectRow") || null;
+    this.walletBitcoinConnectButton =
+      document.getElementById("profileWalletBitcoinConnect") || null;
+    this.walletAdvanced =
+      document.getElementById("profileWalletAdvanced") || null;
+    this.walletAdvancedSummary =
+      document.getElementById("profileWalletAdvancedSummary") || null;
 
     // Backwards compatibility alias if needed by tests/external code
     this.mainController.profileWalletStatusText = this.walletStatusText;
+
+    this.applyBitcoinConnectVisibility();
+  }
+
+  // Bitcoin Connect on ⇒ show the "Connect wallet" button and tuck the manual URI
+  // field under an "Advanced" disclosure (Connect is the primary path, manual the
+  // backup). Off ⇒ hide the button, and force the disclosure open with its summary
+  // hidden so the URI field just shows plainly (unchanged legacy behavior). Off
+  // also means the vendored bundle is never imported.
+  applyBitcoinConnectVisibility() {
+    const enabled = FEATURE_BITCOIN_CONNECT === true;
+
+    if (this.walletBitcoinConnectRow instanceof HTMLElement) {
+      this.walletBitcoinConnectRow.classList.toggle("hidden", !enabled);
+    }
+
+    if (this.walletAdvanced instanceof HTMLElement) {
+      // When disabled, keep the field visible (open) and drop the toggle chrome.
+      this.walletAdvanced.open = !enabled;
+    }
+    if (this.walletAdvancedSummary instanceof HTMLElement) {
+      this.walletAdvancedSummary.classList.toggle("hidden", !enabled);
+    }
   }
 
   registerEventListeners() {
@@ -87,6 +132,15 @@ export class ProfileWalletController {
     if (this.walletDisconnectButton instanceof HTMLElement) {
       this.walletDisconnectButton.addEventListener("click", () => {
         void this.handleWalletDisconnect();
+      });
+    }
+
+    if (
+      FEATURE_BITCOIN_CONNECT === true &&
+      this.walletBitcoinConnectButton instanceof HTMLElement
+    ) {
+      this.walletBitcoinConnectButton.addEventListener("click", () => {
+        void this.handleBitcoinConnect();
       });
     }
 
@@ -519,6 +573,104 @@ export class ProfileWalletController {
     }
 
     return { valid: true, sanitized: value };
+  }
+
+  // Lazy-load + one-time init of the vendored Bitcoin Connect bundle. Restricts
+  // the modal to NWC and requests only the methods bitvid actually calls. Does
+  // NOT let Bitcoin Connect persist the connection — bitvid owns the secret.
+  async ensureBitcoinConnectModule() {
+    if (this._bitcoinConnectModulePromise) {
+      return this._bitcoinConnectModulePromise;
+    }
+    this._bitcoinConnectModulePromise = (async () => {
+      const bc = await import(BITCOIN_CONNECT_BUNDLE_URL);
+      if (!this._bitcoinConnectInitialized) {
+        bc.init({
+          appName: "bitvid",
+          filters: ["nwc"],
+          persistConnection: false,
+          providerConfig: {
+            nwc: {
+              authorizationUrlOptions: {
+                requestMethods: [
+                  "pay_invoice",
+                  "get_balance",
+                  "make_invoice",
+                  "lookup_invoice",
+                ],
+              },
+            },
+          },
+        });
+        // One persistent handler: extract the NWC URI, hand it to the SAME
+        // validate→save path as the manual field, then disconnect so bitvid is
+        // the only holder of the spending secret. NEVER log the URI.
+        bc.onConnected(async (provider) => {
+          const uri =
+            typeof provider?.client?.nostrWalletConnectUrl === "string"
+              ? provider.client.nostrWalletConnectUrl
+              : "";
+          try {
+            if (uri && this.walletUriInput instanceof HTMLElement) {
+              this.setSecretInputValue(this.walletUriInput, uri);
+              await this.handleWalletSave();
+            } else if (!uri) {
+              this.updateWalletStatus(
+                "That wallet didn't expose an NWC connection. Paste one manually below.",
+                "error",
+              );
+            }
+          } catch (error) {
+            devLogger.error("[wallet] Bitcoin Connect save failed", error);
+          } finally {
+            try {
+              bc.disconnect();
+            } catch (disconnectError) {
+              devLogger.warn(
+                "[wallet] Bitcoin Connect disconnect failed",
+                disconnectError,
+              );
+            }
+            try {
+              bc.closeModal?.();
+            } catch (closeError) {
+              // non-fatal
+            }
+          }
+        });
+        this._bitcoinConnectInitialized = true;
+      }
+      return bc;
+    })().catch((error) => {
+      // Reset so a later click can retry a failed load.
+      this._bitcoinConnectModulePromise = null;
+      throw error;
+    });
+    return this._bitcoinConnectModulePromise;
+  }
+
+  async handleBitcoinConnect() {
+    if (FEATURE_BITCOIN_CONNECT !== true || this.isWalletBusy()) {
+      return;
+    }
+    let bc;
+    try {
+      bc = await this.ensureBitcoinConnectModule();
+    } catch (error) {
+      devLogger.error("[wallet] Failed to load Bitcoin Connect", error);
+      this.updateWalletStatus(
+        "Couldn't load the wallet connector. Try again, or paste a connection manually.",
+        "error",
+      );
+      this.mainController.showError?.("Couldn't load the wallet connector.");
+      return;
+    }
+    try {
+      bc.launchModal();
+    } catch (error) {
+      devLogger.error("[wallet] Bitcoin Connect launch failed", error);
+      this.updateWalletStatus("Couldn't open the wallet connector.", "error");
+    }
   }
 
   async handleWalletSave() {

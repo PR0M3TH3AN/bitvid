@@ -252,6 +252,61 @@
     display: block;
   }
 
+  /* Admin "verified" star — sits in the corner opposite the notification dot.
+     A gold star on a page-colored disc so it stays legible on any avatar, and
+     pairs visually with the red dot. Positioned top-left by default (the dot is
+     top-right); per-surface rules below tune the inset for larger avatars. */
+  .admin-star {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 3;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--space-sm);
+    height: var(--space-sm);
+    border-radius: var(--radius-full);
+    border: var(--border-width-hairline) solid var(--color-page);
+    background-color: var(--status-warning);
+    color: var(--color-warning-on);
+    font-size: var(--font-size-3xs);
+    line-height: 1;
+    pointer-events: none;
+  }
+
+  #profileButton .admin-star {
+    top: var(--space-2xs);
+    left: var(--space-2xs);
+  }
+
+  /* Non-clipped relative shell that decorateAdminAvatar wraps around a circular
+     avatar so the corner star isn't clipped. Sizes to the avatar it holds. */
+  .admin-avatar-wrap {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+  }
+
+  /* Gold ring hugging an admin avatar. A thin page-colored gap makes it read as
+     a ring, not a border. box-shadow isn't clipped by the avatar's own
+     overflow, so it works on clipped circular avatars. */
+  .admin-ring {
+    box-shadow:
+      0 0 0 var(--border-width-hairline) var(--color-page),
+      0 0 0 calc(var(--border-width-hairline) * 3) var(--status-warning);
+  }
+
+  /* Gold ring around the avatar when the logged-in user is an admin — the
+     unmistakable "you're an admin" signal on your own profile button. A thin
+     page-colored gap separates the avatar from the ring so it reads as a ring,
+     not a border. Box-shadow isn't clipped by the avatar's own overflow. */
+  #profileButton.is-admin > div {
+    box-shadow:
+      0 0 0 var(--border-width-hairline) var(--color-page),
+      0 0 0 calc(var(--border-width-hairline) * 3) var(--status-warning);
+  }
+
   .header-icon-toggle[data-theme-state="light"]:hover,
   .header-icon-toggle[data-theme-state="light"]:focus-visible {
     color: var(--color-text);
@@ -516,6 +571,32 @@
     background: var(--overlay-backdrop-color);
     backdrop-filter: blur(var(--overlay-backdrop-blur));
     -webkit-backdrop-filter: blur(var(--overlay-backdrop-blur));
+  }
+
+  /* `display: flex` above overrides the UA `[hidden] { display: none }`, so an
+     overlay with the `hidden` attribute (e.g. the beacon processing spinner)
+     would render on load and cover the whole page. Restore hide-on-hidden. */
+  .ds-overlay-backdrop[hidden] {
+    display: none;
+  }
+
+  /* "Advanced — paste a connection manually" disclosure in the Wallet pane
+     (Bitcoin Connect). A subtle rotating caret replaces the default marker. */
+  .wallet-advanced__summary {
+    list-style: none;
+  }
+
+  .wallet-advanced__summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .wallet-advanced__summary::before {
+    content: "▸ ";
+    color: var(--text-subtle);
+  }
+
+  .wallet-advanced[open] > .wallet-advanced__summary::before {
+    content: "▾ ";
   }
 
   .popularity-modal__backdrop {
@@ -2706,8 +2787,11 @@
   }
 
   .comment-thread__avatar {
+    position: relative;
     inline-size: var(--comment-avatar-size);
     block-size: var(--comment-avatar-size);
+    /* rounded so the admin ring (box-shadow) reads as a circle */
+    border-radius: var(--radius-full);
   }
 
   .comment-thread__avatar img {
@@ -2921,6 +3005,334 @@
   .video-modal__zaps {
     color: var(--color-zap);
     font-variant-numeric: tabular-nums;
+  }
+
+  /* Zap orange as a currentColor source for the popularity chart's zaps line
+     + legend swatch (mirrors how the views line uses .text-accent). */
+  .text-zap {
+    color: var(--color-zap);
+  }
+
+  .popularity-legend {
+    display: flex;
+    gap: var(--space-md);
+    align-items: center;
+    font-size: var(--font-size-2xs);
+    color: var(--color-text-muted);
+    margin-block-start: var(--space-2xs);
+  }
+
+  .popularity-legend__item {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-3xs);
+  }
+
+  .popularity-legend__swatch {
+    inline-size: var(--space-sm);
+    block-size: var(--size-3px, 0.1875rem);
+    border-radius: var(--radius-full);
+    background-color: currentColor;
+  }
+
+  /* #37: channel playlists — each card is a stacked "pile of clips" cover with a
+     themed gradient scrim and the title set bold over it. */
+  .playlist-grid {
+    @apply grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4;
+    gap: var(--space-lg);
+  }
+
+  .playlist-card {
+    position: relative;
+    display: block;
+    aspect-ratio: 16 / 9;
+    text-decoration: none;
+    /* leave room for the offset stack layers to peek out */
+    margin-block-start: var(--space-2xs);
+    margin-inline-end: var(--space-xs);
+    transition: transform 0.14s ease-out;
+  }
+
+  /* Two offset layers behind the cover read as a stack of videos. */
+  .playlist-card::before,
+  .playlist-card::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: var(--radius-md);
+    background-color: var(--color-page-alt);
+    border: var(--border-width-hairline) solid var(--color-overlay-strong);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .playlist-card::before {
+    transform: translate(var(--size-5px), calc(-1 * var(--size-5px)))
+      rotate(2.5deg);
+  }
+
+  .playlist-card::after {
+    transform: translate(calc(-1 * var(--size-4px)), calc(-1 * var(--size-3px)))
+      rotate(-2deg);
+  }
+
+  .playlist-card__thumb {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background-color: var(--color-page-alt);
+    box-shadow: var(--shadow-md);
+  }
+
+  .playlist-card:hover {
+    transform: translateY(-2px);
+  }
+
+  .playlist-card:hover .playlist-card__thumb {
+    box-shadow: var(--shadow-lg);
+  }
+
+  .playlist-card__image {
+    position: absolute;
+    inset: 0;
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: cover;
+  }
+
+  /* Themed scrim: accent-tinted dark at the base fading to clear, so the bold
+     title reads over any cover (always dark, so the title is always white). */
+  .playlist-card__scrim {
+    position: absolute;
+    inset: 0;
+    background-image: linear-gradient(
+      to top,
+      color-mix(in srgb, var(--color-accent-strong) 62%, black) 0%,
+      color-mix(in srgb, var(--color-accent) 26%, transparent) 45%,
+      transparent 74%
+    );
+  }
+
+  .playlist-card__count {
+    position: absolute;
+    z-index: 2;
+    inset-block-start: var(--space-2xs);
+    inset-inline-end: var(--space-2xs);
+    border-radius: var(--radius-sm);
+    padding-block: var(--space-3xs);
+    padding-inline: var(--space-2xs);
+    font-size: var(--font-size-2xs);
+    font-weight: 600;
+    color: var(--color-white);
+    background-color: var(--color-overlay-strong);
+  }
+
+  .playlist-card__title {
+    position: absolute;
+    z-index: 2;
+    inset-inline: 0;
+    inset-block-end: 0;
+    margin: 0;
+    padding: var(--space-sm);
+    font-size: var(--font-size-sm);
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--color-white);
+    text-shadow: 0 var(--size-2px) var(--size-3px) var(--color-overlay-black);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* #37: profile modal "Playlists" management pane — collapsible rows. */
+  .playlist-row {
+    border: var(--border-width-hairline) solid var(--color-border-subtle);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background-color: var(--color-page-alt);
+  }
+
+  .playlist-row + .playlist-row {
+    margin-block-start: var(--space-2xs);
+  }
+
+  .playlist-row__head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-sm);
+    cursor: pointer;
+  }
+
+  .playlist-row__chevron svg {
+    color: var(--color-text-muted);
+    transition: transform 0.15s ease-out;
+  }
+
+  .playlist-row__chevron[data-open="true"] svg {
+    transform: rotate(90deg);
+  }
+
+  .playlist-row__meta {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+  }
+
+  .playlist-row__title {
+    margin: 0;
+    font-weight: 600;
+    color: var(--color-text-strong);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .playlist-row__count {
+    margin: 0;
+    font-size: var(--font-size-2xs);
+    color: var(--color-text-muted);
+  }
+
+  .playlist-row__actions {
+    display: flex;
+    gap: var(--space-2xs);
+    flex-shrink: 0;
+  }
+
+  .playlist-row__videos {
+    border-block-start: var(--border-width-hairline) solid
+      var(--color-border-subtle);
+    padding: var(--space-2xs) var(--space-sm) var(--space-sm);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xs);
+  }
+
+  .playlist-row__empty {
+    padding-block: var(--space-2xs);
+    font-size: var(--font-size-sm);
+    color: var(--color-text-muted);
+  }
+
+  .playlist-video {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    cursor: grab;
+  }
+
+  .playlist-video:active {
+    cursor: grabbing;
+  }
+
+  .playlist-video--dragging {
+    opacity: 0.5;
+  }
+
+  .playlist-video--drop-target {
+    box-shadow: inset 0 var(--size-2px) 0 0 var(--color-accent);
+  }
+
+  .playlist-video__title {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    font-size: var(--font-size-sm);
+    color: var(--color-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .playlist-video__controls {
+    display: flex;
+    gap: var(--space-3xs);
+    flex-shrink: 0;
+  }
+
+  /* #23: admin Submissions cards. */
+  .submission-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xs);
+    padding: var(--space-sm);
+    border: var(--border-width-hairline) solid var(--color-border-subtle);
+    border-radius: var(--radius-md);
+    background-color: var(--color-page-alt);
+  }
+
+  .submission-card + .submission-card {
+    margin-block-start: var(--space-2xs);
+  }
+
+  .submission-card__head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+  }
+
+  .submission-card__type {
+    padding-block: var(--space-3xs);
+    padding-inline: var(--space-2xs);
+    border-radius: var(--radius-full);
+    font-size: var(--font-size-2xs);
+    font-weight: 600;
+    color: var(--color-white);
+    background-color: var(--color-accent-strong);
+  }
+
+  .submission-card__applicant {
+    min-inline-size: 0;
+    font-size: var(--font-size-2xs);
+    color: var(--color-text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .submission-card__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3xs);
+  }
+
+  .submission-card__heading {
+    margin: 0;
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--color-text-strong);
+  }
+
+  .submission-card__line {
+    margin: 0;
+    font-size: var(--font-size-sm);
+    color: var(--color-text);
+    word-break: break-word;
+  }
+
+  .submission-card__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+    align-items: flex-start;
+  }
+
+  /* Each action pairs its button with a one-line description so a moderator
+     knows exactly what the control does before clicking. */
+  .submission-card__action {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3xs);
+    min-inline-size: 0;
+  }
+
+  .submission-card__action-hint {
+    font-size: var(--font-size-2xs);
+    color: var(--color-text-muted);
+    max-inline-size: 22ch;
   }
 
   /* #43: always-visible active-identity pill. Rendered after the header in
@@ -3158,6 +3570,13 @@
     overflow-x: visible;
   }
 
+  /* Nav buttons host an absolutely-positioned unread dot, so they must be the
+     positioning context — otherwise the dot resolves against the whole nav
+     column (top:50%/left:-6px of the list, not the button). */
+  .profile-modal__nav > button {
+    position: relative;
+  }
+
   .profile-nav__unread-dot {
     position: absolute;
     top: 50%;
@@ -3175,6 +3594,79 @@
 
   .profile-nav__unread-dot.is-visible {
     display: block;
+  }
+
+  /* Pending-submissions dot on the Admin pane's "Submissions" subtab. The
+     subtabs sit in a horizontal row, so this dot rides the top-right corner
+     (not the left edge like the vertical nav dots). */
+  .admin-subtab-has-dot {
+    position: relative;
+  }
+
+  .admin-subtab-dot {
+    position: absolute;
+    top: calc(-1 * var(--space-3xs));
+    right: calc(-1 * var(--space-3xs));
+    width: var(--space-sm);
+    height: var(--space-sm);
+    border-radius: var(--radius-full);
+    border: var(--border-width-hairline) solid var(--surface-panel);
+    background-color: var(--status-danger);
+    display: none;
+    pointer-events: none;
+  }
+
+  .admin-subtab-dot.is-visible {
+    display: block;
+  }
+
+  /* Compact creator/account cards (Subscriptions, Friends, Blocked, Admin
+     lists, Moderation). Desktop lays them out in a row: summary left, actions
+     right. `.profile-account-card` is the card itself (padded); the
+     `--row` variant is for a nested flex row inside an already-padded card. */
+  .profile-account-card,
+  .profile-account-card__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-md);
+  }
+
+  .profile-account-card {
+    padding: var(--space-md);
+  }
+
+  .profile-account-card__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-2xs);
+  }
+
+  /* Phones: stack the card so the name/npub get the full width (no more
+     4-line-wrapped npub in a crammed column), with the actions as a full-width
+     row of equal-width buttons below. */
+  @media (max-width: calc(theme("screens.sm") - 0.02px)) {
+    .profile-account-card,
+    .profile-account-card__row {
+      flex-direction: column;
+      align-items: stretch;
+      gap: var(--space-sm);
+    }
+
+    .profile-account-card {
+      padding: var(--space-sm);
+    }
+
+    .profile-account-card__actions > * {
+      flex: 1 1 auto;
+    }
+
+    /* tighter buttons so all three fit one clean row */
+    .profile-account-card__actions .btn-ghost {
+      padding-inline: var(--space-sm);
+    }
   }
 
   .profile-modal__panes {
@@ -3245,18 +3737,30 @@
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: var(--space-xs);
+      /* Every tile the SAME height, so a 2-line label can't stretch its row
+         taller than the others (the "ragged grid of ellipses" fix). */
+      grid-auto-rows: var(--profile-modal-nav-tile-height);
     }
 
     .profile-modal__nav > button {
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: flex-start;
+      justify-content: center;
       text-align: center;
       gap: var(--space-2xs);
       width: 100%;
-      padding-block: var(--space-sm);
-      padding-inline: var(--space-2xs);
+      block-size: 100%;
+      /* Consistent rounded-square tiles, not rounded-full ellipses (btn's
+         default) that turn into circles once a tile gets taller. */
+      border-radius: var(--radius-xl);
+      /* Subtle fill so they read as solid cards, not floating outlines. The
+         active tile's bg-primary (higher specificity) still wins. */
+      background-color: var(--color-panel);
+      padding-block: var(--space-xs);
+      padding-inline: var(--space-3xs);
+      line-height: 1.15;
+      overflow: hidden;
       /* wrap labels at spaces, not mid-word */
       overflow-wrap: break-word;
       word-break: normal;
@@ -3267,6 +3771,16 @@
     .profile-modal__nav > button svg {
       width: var(--space-lg);
       height: var(--space-lg);
+      flex-shrink: 0;
+    }
+
+    /* In the tile grid the unread dot rides the tile's top-right corner instead
+       of the vertical-nav left edge (where it landed in the grid gutter). */
+    .profile-modal__nav > button .profile-nav__unread-dot {
+      top: var(--space-2xs);
+      left: auto;
+      right: var(--space-2xs);
+      transform: none;
     }
   }
 
@@ -4218,6 +4732,12 @@
   body.iframe-form label + .textarea,
   body.iframe-form label + .select {
     margin-top: var(--space-xs);
+  }
+
+  body.iframe-form .form-hint {
+    margin-top: var(--space-xs);
+    font-size: var(--font-size-2xs);
+    color: var(--color-text-muted);
   }
 
   body.iframe-form .checkbox-group,
@@ -5345,7 +5865,11 @@
   .dm-contact-row--active:hover,
   .dm-contact-row--active:focus-visible {
     background: color-mix(in srgb, var(--color-accent) 16%, transparent);
-    border-color: color-mix(in srgb, var(--color-accent) 60%, var(--border-strong));
+    border-color: color-mix(
+      in srgb,
+      var(--color-accent) 60%,
+      var(--border-strong)
+    );
     box-shadow: inset 3px 0 0 0 var(--color-accent);
   }
 
@@ -5395,6 +5919,14 @@
     background: var(--color-accent);
     color: var(--color-white);
     font-size: var(--font-size-3xs);
+  }
+
+  /* Non-clipped relative shell used only when a DM avatar needs an admin star
+     in its corner (the .dm-avatar itself clips to a circle). */
+  .dm-avatar-wrap {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
   }
 
   .dm-avatar {
@@ -5523,6 +6055,14 @@
     object-fit: cover;
     background-color: var(--surface-sunken);
     border: var(--border-width-hairline) solid var(--border-subtle);
+  }
+
+  /* Non-clipped relative shell used only when a message avatar needs an admin
+     star; the plain .dm-message-avatar img has no wrapper otherwise. */
+  .dm-message-avatar-wrap {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
   }
 
   .dm-message-bubble {

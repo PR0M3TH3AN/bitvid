@@ -7,12 +7,23 @@ import {
   renderBlockedVideosList,
 } from "./blockedVideosSection.js";
 import { showConfirm } from "../confirmDialog.js";
+import { FEATURE_SUBMISSIONS } from "../../constants.js";
+import {
+  populateSubmissions,
+  handleSubmissionsClick,
+} from "./submissionsSection.js";
 
 const noop = () => {};
 
 // Admin pane sub-tabs, in toolbar order. "moderators" is only shown to the
-// super admin (its tab button is hidden otherwise).
-const ADMIN_SUBTABS = ["whitelist", "blacklist", "blockedVideos", "moderators"];
+// super admin; "submissions" only when FEATURE_SUBMISSIONS is on.
+const ADMIN_SUBTABS = [
+  "whitelist",
+  "blacklist",
+  "blockedVideos",
+  "moderators",
+  "submissions",
+];
 const DEFAULT_ADMIN_SUBTAB = "whitelist";
 
 export class ProfileAdminController {
@@ -84,18 +95,27 @@ export class ProfileAdminController {
     this.blockedVideoInput = document.getElementById("adminBlockedVideoInput") || null;
     this.blockedVideosRefreshBtn = document.getElementById("adminBlockedVideosRefreshBtn") || null;
 
+    this.submissionsSection = document.getElementById("adminSubmissionsSection") || null;
+    this.submissionsList = document.getElementById("adminSubmissionsList") || null;
+    this.submissionsEmpty = document.getElementById("adminSubmissionsEmpty") || null;
+    this.submissionsLoading = document.getElementById("adminSubmissionsLoading") || null;
+    this.submissionsRefreshBtn = document.getElementById("adminSubmissionsRefreshBtn") || null;
+    this.pendingSubmissions = [];
+
     this.subtabBar = document.getElementById("adminSubtabBar") || null;
     this.subtabButtons = {
       whitelist: document.getElementById("adminSubtabWhitelist") || null,
       blacklist: document.getElementById("adminSubtabBlacklist") || null,
       blockedVideos: document.getElementById("adminSubtabBlockedVideos") || null,
       moderators: document.getElementById("adminSubtabModerators") || null,
+      submissions: document.getElementById("adminSubtabSubmissions") || null,
     };
     this.subtabSections = {
       whitelist: this.whitelistSection,
       blacklist: this.blacklistSection,
       blockedVideos: this.blockedVideosSection,
       moderators: this.moderatorSection,
+      submissions: this.submissionsSection,
     };
   }
 
@@ -212,6 +232,17 @@ export class ProfileAdminController {
       }
     }
 
+    if (this.submissionsRefreshBtn instanceof HTMLElement) {
+      this.submissionsRefreshBtn.addEventListener("click", () => {
+        void populateSubmissions(this);
+      });
+    }
+    if (this.submissionsList instanceof HTMLElement) {
+      this.submissionsList.addEventListener("click", (event) =>
+        handleSubmissionsClick(this, event),
+      );
+    }
+
     if (this.addBlockedVideoButton instanceof HTMLElement) {
       this.addBlockedVideoButton.addEventListener("click", () => {
         void this.handleAddBlockedVideo();
@@ -282,6 +313,10 @@ export class ProfileAdminController {
         section.classList.toggle("hidden", !isActive);
         section.setAttribute("aria-hidden", (!isActive).toString());
       }
+    }
+
+    if (target === "submissions") {
+      void populateSubmissions(this);
     }
   }
 
@@ -566,8 +601,20 @@ export class ProfileAdminController {
       }
     }
 
+    // Submissions tab is only shown when the feature is enabled.
+    const submissionsTab = this.subtabButtons?.submissions;
+    if (submissionsTab instanceof HTMLElement) {
+      submissionsTab.classList.toggle("hidden", !FEATURE_SUBMISSIONS);
+      if (!FEATURE_SUBMISSIONS) {
+        submissionsTab.setAttribute("aria-selected", "false");
+      }
+    }
+
     this.populateAdminLists();
     this.populateBlockedVideos();
+    if (FEATURE_SUBMISSIONS) {
+      void populateSubmissions(this);
+    }
     // Re-apply the current sub-tab so exactly one section is visible (and so a
     // now-hidden Moderators tab falls back to the default).
     this.selectAdminSubtab(this.activeSubtab);

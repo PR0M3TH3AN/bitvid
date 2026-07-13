@@ -161,8 +161,7 @@ export class ProfileAdminRenderer {
 
     values.forEach((npub) => {
       const item = document.createElement("li");
-      item.className =
-        "card flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between";
+      item.className = "card profile-account-card";
 
       const normalizedNpub = typeof npub === "string" ? npub.trim() : "";
       const comparableNpub =
@@ -216,8 +215,7 @@ export class ProfileAdminRenderer {
       }
 
       const actions = document.createElement("div");
-      actions.className =
-        "flex flex-wrap items-center justify-end gap-2 sm:flex-none";
+      actions.className = "profile-account-card__actions";
 
       const viewButton = this.mainController.createViewChannelButton({
         targetNpub: encodedNpub,

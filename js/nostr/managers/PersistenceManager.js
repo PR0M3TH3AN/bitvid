@@ -1,4 +1,5 @@
 import { EventsCacheStore } from "./EventsCacheStore.js";
+import { isAudioOnlyVideoObject } from "../nip71.js";
 import { devLogger, userLogger } from "../../utils/logger.js";
 import { isDevMode } from "../../config.js";
 import { NOTE_TYPES } from "../../nostrEventSchemas.js";
@@ -151,6 +152,12 @@ export class PersistenceManager {
 
     for (const [id, video] of eventEntries) {
       if (!id || !video || typeof video !== "object") {
+        continue;
+      }
+
+      // Drop audio-only notes (podcasts/music) cached before the audio guard
+      // existed so they don't get rehydrated into the feed. See TODO #60.
+      if (isAudioOnlyVideoObject(video)) {
         continue;
       }
 

@@ -1,5 +1,5 @@
 import { nostrClient } from "../nostrClientFacade.js";
-import { convertEventToVideo } from "../nostr/index.js";
+import { convertEventToVideo, isAudioOnlyVideoObject } from "../nostr/index.js";
 import { accessControl } from "../accessControl.js";
 import { ALLOW_NSFW_CONTENT } from "../config.js";
 import { devLogger, userLogger } from "../utils/logger.js";
@@ -1499,6 +1499,13 @@ export class NostrService {
     isAuthorBlocked = () => false,
   } = {}) {
     if (!video || typeof video !== "object") {
+      return false;
+    }
+
+    // Audio-only notes (podcasts/music) have no <video> to play — keep them out
+    // of every video grid, even the viewer's own channel. Catches objects
+    // rehydrated from a pre-guard cache that skipped convertEventToVideo (#60).
+    if (isAudioOnlyVideoObject(video)) {
       return false;
     }
 

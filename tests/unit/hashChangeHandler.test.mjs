@@ -36,8 +36,13 @@ test('createHashChangeHandler', async (t) => {
     loadedView = null;
     mockLocation.hash = '';
     await handler();
-    // Default is most-recent-videos if not logged in
-    assert.equal(loadedView, 'views/most-recent-videos.html');
+    // spec_correction (todo-11): commit 04621efc (2026-06-24, "Trending defaults")
+    // made TRENDING the deliberate logged-out landing (FEATURE_TRENDING_FEED
+    // defaults on; hashChangeHandler.js:95-99). This test still expected the OLD
+    // default (most-recent-videos) — the same stale spec the sibling
+    // tests/app/hash-change-handler.test.mjs was already corrected for. Equally
+    // strict: the correct observable outcome is views/trending.html.
+    assert.equal(loadedView, 'views/trending.html');
   });
 
   await t.test('redirects legacy view', async () => {

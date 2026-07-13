@@ -1,3 +1,5 @@
+import { decorateAdminAvatar, isAdminActor } from "../adminBadge.js";
+
 const DEFAULT_AVATAR_ALT = "Avatar";
 
 function getInitials(label = "") {
@@ -19,6 +21,7 @@ export function Avatar({
   size = "md",
   initials = "",
   status = "",
+  adminId = "",
 } = {}) {
   if (!doc) {
     throw new Error("Avatar requires a document reference.");
@@ -51,6 +54,12 @@ export function Avatar({
     fallback.className = "dm-avatar__fallback";
     fallback.textContent = resolvedInitials || "?";
     avatar.appendChild(fallback);
+  }
+
+  // Only admin avatars get decorated (ring + wrapped corner star); non-admin
+  // avatars are returned exactly as before to keep existing layouts untouched.
+  if (adminId && isAdminActor(adminId)) {
+    return decorateAdminAvatar(avatar, adminId, { doc });
   }
 
   return avatar;

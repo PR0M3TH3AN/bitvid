@@ -2,12 +2,15 @@
 
 import { nostrClient } from "./nostrClientFacade.js";
 import { convertChannelEvent, buildChannelVideoFilters, loadCachedChannelVideos, saveCachedChannelVideos, mergeChannelVideoSources } from "./channelProfileVideos.js";
+import { wireChannelZapTotal } from "./channelZapTotal.js";
+import { wireChannelPlaylists } from "./channelPlaylists.js";
 import { dedupeVideos } from "./utils/videoDeduper.js";
 import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
 import { subscriptions } from "./subscriptions.js";
 import { attachHealthBadges } from "./gridHealth.js";
 import { attachUrlHealthBadges } from "./urlHealthObserver.js";
 import { accessControl } from "./accessControl.js";
+import { applyAdminStar, applyAdminRing } from "./ui/adminBadge.js";
 import { getApplication } from "./applicationContext.js";
 import { escapeHTML } from "./utils/domUtils.js";
 import { formatShortNpub } from "./utils/formatters.js";
@@ -5157,6 +5160,10 @@ function applyChannelProfileMetadata({
   }
 
   const blurPubkey = pubkey || currentChannelHex || "";
+  applyAdminStar(document.getElementById("channelAvatarWrap"), blurPubkey);
+  // Ring the inner rounded avatar box (the wrap is a non-clipped positioning
+  // shell; the box-shadow ring belongs on the circular element itself).
+  applyAdminRing(avatarEl?.parentElement, blurPubkey);
   updateChannelModerationVisuals({
     bannerEl,
     avatarEl,
@@ -5227,6 +5234,12 @@ function applyChannelProfileMetadata({
   }
 
   setChannelZapVisibility(Boolean(lightningAddress));
+
+  // #47: total sats zapped to this creator (p:<pubkey> pointer in the store).
+  wireChannelZapTotal(currentChannelHex);
+
+  // #37: creator playlists section (no-op unless FEATURE_PLAYLISTS is on).
+  wireChannelPlaylists(currentChannelHex);
 }
 
 async function fetchChannelProfileFromRelays(pubkey) {
@@ -5526,46 +5539,124 @@ async function loadUserVideos(pubkey) {
     // 1) Build filters for this pubkey's videos: native kind-30078 + NIP-71.
     const filters = buildChannelVideoFilters(pubkey);
 
-    // 2) Collect raw events from all relays
+    // Accumulate raw events across every source (deduped by id) so the grid can
+    // paint PROGRESSIVELY as each relay/source returns, instead of blocking on
+    // the slowest relay's 8s timeout.
     const events = [];
+    const seenEventIds = new Set();
+    const addEvents = (list) => {
+      let added = 0;
+      for (const evt of Array.isArray(list) ? list : []) {
+        if (evt && evt.id && !seenEventIds.has(evt.id)) {
+          seenEventIds.add(evt.id);
+          events.push(evt);
+          added += 1;
+        }
+      }
+      return added;
+    };
+
+    // Serialized, coalesced re-render. Mid-flight renders NEVER pass
+    // allowEmptyMessage, so a partial/slow fetch can't flash "No videos" — that
+    // message is reserved for the single final render below.
+    let renderInFlight = null;
+    let renderPending = false;
+    const scheduleRender = () => {
+      renderPending = true;
+      if (renderInFlight) {
+        return renderInFlight;
+      }
+      renderInFlight = (async () => {
+        while (renderPending) {
+          renderPending = false;
+          if (loadToken !== currentVideoLoadToken || !container) {
+            break;
+          }
+          const partial = buildRenderableChannelVideos({
+            events: mergeChannelVideoSources(
+              events,
+              getCachedChannelVideoEvents(pubkey)
+            ),
+            app,
+          });
+          const paintedNow = await renderChannelVideosFromList({
+            videos: partial,
+            container,
+            app,
+            loadToken,
+            allowEmptyMessage: false,
+          });
+          if (paintedNow) {
+            hasVisibleContent = true;
+            renderedFromCache = true;
+          }
+        }
+        renderInFlight = null;
+      })();
+      return renderInFlight;
+    };
+
     const knownRelays = Array.isArray(nostrClient.relays)
       ? nostrClient.relays
       : Array.from(nostrClient.relays || []);
-    const relayList = knownRelays.filter((url) => isValidRelayUrl(url));
+    // ALWAYS include the bundled defaults. A creator's videos can live only on
+    // a default relay (e.g. a NIP-71 video that's only on nos.lol) that the
+    // user's capped NIP-65 read set excludes — otherwise a known, whitelisted
+    // video never shows on the channel because we never query the one relay
+    // that has it.
+    const relayList = [
+      ...new Set([...knownRelays, ...DEFAULT_RELAY_URLS]),
+    ].filter((url) => isValidRelayUrl(url));
 
+    // Route one fetch through the app's PROVEN path (the same one "My Videos"
+    // uses on refresh). It streams into the shared cache, so this grid, its
+    // revisits, and every other grid all benefit — then re-render from it.
+    const sharedFetch = (async () => {
+      try {
+        if (typeof app?.nostrService?.fetchVideosByAuthors === "function") {
+          await app.nostrService.fetchVideosByAuthors([pubkey]);
+          await scheduleRender();
+        }
+      } catch (error) {
+        // best-effort; the scoped relay fetch below still populates the grid
+      }
+    })();
+
+    // Scoped relay fetch (also covers NIP-71 cross-posts), rendered
+    // progressively as each relay returns rather than awaiting them all.
     if (relayList.length === 0) {
       try {
         const fallbackEvents = await listRelayWithTimeout(
           Array.from(DEFAULT_RELAY_URLS),
           filters
         );
-        if (Array.isArray(fallbackEvents)) {
-          events.push(...fallbackEvents);
+        if (addEvents(fallbackEvents) > 0) {
+          await scheduleRender();
         }
       } catch (error) {
         userLogger.error("Relay error (default pool):", error);
       }
     } else {
-      const settled = await pMapSettled(
+      await pMapSettled(
         relayList,
-        (url) => listRelayWithTimeout([url], filters),
+        async (url) => {
+          try {
+            const relayEvents = await listRelayWithTimeout([url], filters);
+            if (addEvents(relayEvents) > 0) {
+              await scheduleRender();
+            }
+            return relayEvents;
+          } catch (error) {
+            userLogger.error(`Relay error (${url}):`, error);
+            return [];
+          }
+        },
         { concurrency: RELAY_BACKGROUND_CONCURRENCY }
       );
-      settled.forEach((result, index) => {
-        const relayUrl = relayList[index];
-
-        if (result.status === "fulfilled") {
-          const relayEvents = Array.isArray(result.value) ? result.value : [];
-          events.push(...relayEvents);
-          return;
-        }
-
-        if (result.reason) {
-          userLogger.error(`Relay error (${relayUrl}):`, result.reason);
-        }
-      });
     }
 
+    await sharedFetch;
+    await renderInFlight;
     await ensureAccessPromise;
 
     if (loadToken !== currentVideoLoadToken) {
@@ -5577,21 +5668,28 @@ async function loadUserVideos(pubkey) {
       return;
     }
 
-    const videos = buildRenderableChannelVideos({ events: mergeChannelVideoSources(events, getCachedChannelVideoEvents(pubkey)), app });
-    saveCachedChannelVideos(pubkey, videos);
-    const rendered = await renderChannelVideosFromList({
-      videos,
-      container,
+    // Persist the merged set. Only do a final render when nothing painted during
+    // progressive rendering — that render carries the empty message, shown ONLY
+    // now that every source has genuinely settled.
+    const videos = buildRenderableChannelVideos({
+      events: mergeChannelVideoSources(events, getCachedChannelVideoEvents(pubkey)),
       app,
-      loadToken,
-      allowEmptyMessage: !hasVisibleContent
     });
+    saveCachedChannelVideos(pubkey, videos);
 
-    if (rendered) {
-      hasVisibleContent = true;
+    if (!hasVisibleContent) {
+      const rendered = await renderChannelVideosFromList({
+        videos,
+        container,
+        app,
+        loadToken,
+        allowEmptyMessage: true,
+      });
+      if (rendered) {
+        hasVisibleContent = true;
+      }
+      renderedFromCache = rendered || renderedFromCache;
     }
-
-    renderedFromCache = rendered || renderedFromCache;
   } catch (err) {
     if (
       loadToken === currentVideoLoadToken &&

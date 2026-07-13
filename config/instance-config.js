@@ -253,6 +253,63 @@ export const ALLOW_NSFW_CONTENT = false;
 export const FEATURE_NIP71_INGEST = true;
 
 /**
+ * Whether this deployment enables the Audio / Music / Podcast experience
+ * (dedicated Audio player, sidebar tab, and the channel / "My Content" Audio
+ * tabs — see docs/audio-integration-plan.md and TODO #60).
+ *
+ * Defaults to `false` — "off = no trace": with it off, nothing audio renders and
+ * audio-only notes stay filtered out of the video feeds (current behavior). Flip
+ * to `true` to light up the Audio surfaces. Watch/ingest-first; a separate
+ * publish flag will gate uploading audio later.
+ */
+export const FEATURE_AUDIO_INGEST = false;
+
+/**
+ * Whether this deployment shows the "Connect wallet" button that uses Alby's
+ * Bitcoin Connect for a smooth NWC connect flow (docs/bitcoin-connect-plan.md,
+ * TODO #61). When on, the Wallet Connect pane offers Bitcoin Connect alongside
+ * the manual URI field (which stays as the backup). It only lazy-loads the
+ * vendored Bitcoin Connect bundle when the user actually clicks Connect.
+ *
+ * SHIPPING DEFAULT should be `false` ("off = no trace"). Currently `true` for
+ * local testing only — reset to `false` before pushing/shipping until verified.
+ */
+export const FEATURE_BITCOIN_CONNECT = true;
+
+/**
+ * Whether this deployment offers Blossom (nostr-native blob storage) as a
+ * first-class upload provider alongside Cloudflare R2 / generic S3 / Backblaze B2
+ * (docs/blossom-plan.md, TODO #30). Blossom uploads authorize with the user's
+ * existing nostr signer (kind-24242 auth events) instead of S3 access keys, and
+ * mirror to multiple servers for resilience.
+ *
+ * Defaults to `false` ("off = no trace"): with it off the Storage pane shows only
+ * R2 / S3 / B2 as today and the vendored Blossom SDK is never imported. Flip to
+ * `true` to expose the Blossom provider.
+ *
+ * Currently `true` for LOCAL testing of Phase 1b — reset to `false` (shipping
+ * default) before pushing/promoting until the upload flow is verified.
+ */
+export const FEATURE_BLOSSOM_STORAGE = true;
+
+/**
+ * FEATURE_BLOSSOM_TORRENT_METADATA — restore WebTorrent/P2P for Blossom-hosted
+ * videos without hosting a `.torrent` file. Blossom servers reject a `.torrent`
+ * (415), so a Blossom video's magnet ships webseed-only (no `xs=`) and can't
+ * bootstrap WebTorrent. With this on, bitvid publishes the torrent piece-map as a
+ * separate, infohash-keyed Nostr event (kind 30078, `d=bitvid:torrent:<infohash>`)
+ * and fetches it lazily only when the torrent path actually runs.
+ * See docs/blossom-torrent-metadata-plan.md.
+ *
+ * Defaults to `false` ("off = no trace"): off ⇒ no companion event is published
+ * and the playback lookup is skipped (Blossom stays URL-only, exactly as today).
+ *
+ * Currently `true` for LOCAL testing of the companion-event flow — reset to
+ * `false` (shipping default) before pushing/promoting.
+ */
+export const FEATURE_BLOSSOM_TORRENT_METADATA = true;
+
+/**
  * Card liveness visibility policy — what a non-owner video card does while its
  * CDN/WebTorrent liveness probes are still running:
  *   - "show-pending"  : show the card immediately, hide only if every source is

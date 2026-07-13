@@ -1,5 +1,9 @@
 import { devLogger } from "../utils/logger.js";
 import r2Service from "../services/r2Service.js";
+import blossomService, {
+  blobSha256FromUrl,
+} from "../services/blossomService.js";
+import { getActiveSigner } from "../nostrClientRegistry.js";
 import { readRelayPublishSummary } from "../nostrPublish.js";
 
 export default class EditModalController {
@@ -124,6 +128,26 @@ export default class EditModalController {
             devLogger.log(
               `[edit] Removed ${cleanup.deleted.length} superseded storage object(s).`
             );
+          }
+
+          // Blossom orphans are content-addressed blobs, not R2/S3 keys — delete
+          // them via BUD-12 (best-effort, from each blob URL's own origin).
+          const blossomUrls = orphans
+            .map((o) => o.url || o.thumbnail || "")
+            .filter((u) => blobSha256FromUrl(u));
+          if (blossomUrls.length) {
+            const activeSigner = getActiveSigner();
+            if (activeSigner && typeof activeSigner.signEvent === "function") {
+              const signer = (draft) => activeSigner.signEvent(draft);
+              for (const url of blossomUrls) {
+                const res = await blossomService.deleteByUrl({ url, signer });
+                if (res.deleted?.length) {
+                  devLogger.log(
+                    `[edit] Deleted superseded Blossom blob ${res.sha256}.`
+                  );
+                }
+              }
+            }
           }
         }
       } catch (cleanupErr) {

@@ -6,6 +6,9 @@ import {
 } from "./components/videoMenuRenderers.js";
 import createPopover from "./overlay/popoverEngine.js";
 import { handleBlacklistEventAction } from "./moreMenu/blacklistEventAction.js";
+import { openPlaylistPicker } from "./playlistPicker.js";
+import { buildVideoAddressPointer } from "../utils/videoPointer.js";
+import { FEATURE_PLAYLISTS } from "../constants.js";
 import {
   prepareStaticModal,
   openStaticModal,
@@ -731,6 +734,7 @@ export default class MoreMenuController {
         playbackUrl: entry.context.playbackUrl,
         playbackMagnet: entry.context.playbackMagnet,
         canManageBlacklist: entry.context.canManageBlacklist,
+        canManagePlaylists: entry.context.canManagePlaylists,
         context: entry.context.context || "card",
         designSystem: entry.context.designSystem || this.designSystem,
       });
@@ -906,6 +910,8 @@ export default class MoreMenuController {
       playbackMagnet = "",
       context = "card",
       canManageBlacklist = this.callbacks.canCurrentUserManageBlacklist(),
+      canManagePlaylists = FEATURE_PLAYLISTS &&
+        !!this.callbacks.getCurrentUserPubkey?.(),
       designSystem = null,
       onAction = null,
       onClose = null,
@@ -924,6 +930,7 @@ export default class MoreMenuController {
       playbackUrl,
       playbackMagnet,
       canManageBlacklist,
+      canManagePlaylists,
       context,
       designSystem: designSystem || this.designSystem,
       onAction,
@@ -1197,6 +1204,40 @@ export default class MoreMenuController {
           userLogger.warn("[MoreMenu] Failed to open popularity modal:", error);
           this.callbacks.showError("Couldn’t open popularity.");
         }
+        break;
+      }
+      case "add-to-playlist": {
+        let targetVideo = video || null;
+        if (!targetVideo && dataset?.eventId) {
+          targetVideo =
+            this.callbacks.getVideoByEventId(dataset.eventId) || null;
+        }
+        if (!targetVideo && context === "modal") {
+          targetVideo = currentVideo || null;
+        }
+        if (!targetVideo) {
+          this.callbacks.showError("No video selected.");
+          break;
+        }
+        const coordinate = buildVideoAddressPointer(targetVideo);
+        if (!coordinate) {
+          this.callbacks.showError("Couldn’t identify this video.");
+          break;
+        }
+        try {
+          this.activePopover?.close?.();
+        } catch (error) {
+          // ignore
+        }
+        openPlaylistPicker({
+          videoCoordinate: coordinate,
+          notify: (kind, message) =>
+            kind === "success"
+              ? this.callbacks.showSuccess(message)
+              : this.callbacks.showError(message),
+        }).catch((error) => {
+          userLogger.warn("[MoreMenu] Add-to-playlist failed:", error);
+        });
         break;
       }
       case "remove-history": {

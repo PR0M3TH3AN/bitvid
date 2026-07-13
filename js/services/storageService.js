@@ -194,6 +194,31 @@ export class StorageService {
     this.dbPromise = null;
     // Cache decrypted master keys in memory: Map<pubkey, CryptoKey>
     this.masterKeys = new Map();
+    // Observers notified when a pubkey's connection set changes (e.g. a Nostr
+    // sync import), so open UIs (the upload modal) can refresh live.
+    this._changeListeners = new Set();
+  }
+
+  /**
+   * Subscribe to connection-set changes. The listener receives `{ pubkey }`.
+   * Returns an unsubscribe function.
+   */
+  onConnectionsChanged(listener) {
+    if (typeof listener !== "function") {
+      return () => {};
+    }
+    this._changeListeners.add(listener);
+    return () => this._changeListeners.delete(listener);
+  }
+
+  _emitConnectionsChanged(pubkey) {
+    for (const listener of this._changeListeners) {
+      try {
+        listener({ pubkey });
+      } catch (error) {
+        // A misbehaving observer must never break a storage write.
+      }
+    }
   }
 
   /**
@@ -592,6 +617,41 @@ export class StorageService {
   }
 
   /**
+   * Save a KEYLESS connection (e.g. Blossom): all config lives in the plaintext
+   * meta and there is no secret to encrypt, so this does NOT require unlock().
+   * Used for providers whose auth is the user's Nostr signer, not a stored key.
+   */
+  async saveKeylessConnection(pubkey, connectionId, meta = {}) {
+    const account = (await this._getAccount(pubkey)) || {
+      pubkey,
+      connections: {},
+    };
+    if (!account.connections) {
+      account.connections = {};
+    }
+    if (meta.defaultForUploads) {
+      for (const key in account.connections) {
+        const conn = account.connections[key];
+        if (conn.meta) {
+          conn.meta.defaultForUploads = false;
+        }
+      }
+    }
+    account.connections[connectionId] = {
+      id: connectionId,
+      provider: meta.provider || connectionId,
+      meta: {
+        ...meta,
+        lastSaved: Date.now(),
+        provider: meta.provider || connectionId,
+      },
+      encrypted: null,
+    };
+    await this._saveAccount(account);
+    userLogger.log(`[StorageService] Saved keyless connection ${connectionId}`);
+  }
+
+  /**
    * Retrieves and decrypts a connection.
    * Requires unlock() to be called first.
    */
@@ -675,13 +735,29 @@ export class StorageService {
     if (!pubkey) {
       throw new Error("Pubkey required to import storage account record.");
     }
-    if (!record || typeof record !== "object" || !record.encryptedMasterKey) {
+    if (!record || typeof record !== "object") {
+      throw new Error("Invalid storage account record.");
+    }
+    // A Blossom-only account is keyless (no encrypted payloads), so it legitimately
+    // has no encryptedMasterKey. Require the envelope ONLY when the record actually
+    // carries an encrypted connection that would need it to unlock — otherwise a
+    // Blossom-only account can't sync across devices.
+    const connections =
+      record.connections && typeof record.connections === "object"
+        ? record.connections
+        : {};
+    const hasEncryptedConnection = Object.values(connections).some(
+      (conn) => conn && conn.encrypted != null,
+    );
+    if (hasEncryptedConnection && !record.encryptedMasterKey) {
       throw new Error("Invalid storage account record.");
     }
     const toSave = { ...record, pubkey };
     await this._saveAccount(toSave);
     // Drop any in-memory master key so the next unlock uses the imported envelope.
     this.lock(pubkey);
+    // Let open UIs (e.g. the upload modal) reflect the newly-synced connections.
+    this._emitConnectionsChanged(pubkey);
     return toSave;
   }
 

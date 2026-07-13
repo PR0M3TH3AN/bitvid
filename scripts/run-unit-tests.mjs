@@ -13,10 +13,7 @@ process.env.NODE_ENV = "test";
 // imported `node:test`, silently excluding ~20 bare-assert files; several were
 // failing on main, unnoticed). Each entry MUST cite why and link the triage item.
 // Remove an entry as soon as its file is fixed. See todo/TODO_2026-06-20_pre-launch.md todo-11b.
-const QUARANTINE = new Map([
-  ["tests/user-blocks.test.mjs", "HANG — async leak; needs a deterministic rewrite. triage todo-11b"],
-  ["tests/nwc-client.test.mjs", "FAIL — mocks nostr-tools but is shadowed by the frozen canonical toolkit the bootstrap installs (real @noble rejects the fake keys). The underlying production bug (parseNwcUri passed a hex secret to getPublicKey, which needs bytes — NWC connection broken) is FIXED and guarded by tests/nwc-parse-uri.test.mjs; this file needs a mock-injection rework. triage todo-11b (NWC / item #3)"],
-]);
+const QUARANTINE = new Map([]);
 
 const rootDir = path.dirname(fileURLToPath(new URL("../package.json", import.meta.url)));
 const testsDir = path.join(rootDir, "tests");

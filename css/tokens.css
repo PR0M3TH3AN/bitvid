@@ -301,6 +301,8 @@
   /* Measurement primitives */
   --size-2px: 2px;
   --size-3px: 3px;
+  --size-4px: 4px;
+  --size-5px: 5px;
   --size-12px: 12px;
   --size-24px: 24px;
   --size-30px: 30px;
@@ -357,6 +359,9 @@
   --notification-banner-max-inline: var(--size-28rem);
   --profile-modal-nav-min-width: max-content;
   --profile-modal-nav-max-width: max-content;
+  /* Uniform height for the mobile tab-grid tiles (roomy enough for a 2-line
+     label, so a wrapping tile never stretches its row taller than the rest). */
+  --profile-modal-nav-tile-height: 5rem;
   --profile-modal-scrollbar-offset: var(--space-2xs);
   --modal-embed-height: 80vh;
   --profile-history-max-height: 26.25rem;

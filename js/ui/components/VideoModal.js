@@ -6,6 +6,7 @@ import {
 } from "./videoMenuRenderers.js";
 import { attachAmbientBackground } from "../ambientBackground.js";
 import { applyDesignSystemAttributes } from "../../designSystem.js";
+import { decorateAdminAvatar } from "../adminBadge.js";
 import { devLogger } from "../../utils/logger.js";
 import { CommentsController } from "./video-modal/commentsController.js";
 import { ReactionsController } from "./video-modal/reactionsController.js";
@@ -250,6 +251,7 @@ export class VideoModal {
     this.moderationBadgeText = null;
     this.moderationActionsContainer = null;
     this.moderationPrimaryButton = null;
+    this.moderationTrustAuthorButton = null;
     this.moderationBlockButton = null;
     this.moderationPrimaryMode = "";
     this.moderationBadgeId = "";
@@ -267,6 +269,8 @@ export class VideoModal {
       this.handleModerationHideClick.bind(this);
     this.handleModerationBlockClick =
       this.handleModerationBlockClick.bind(this);
+    this.handleModerationTrustAuthorClick =
+      this.handleModerationTrustAuthorClick.bind(this);
     this.handleGlobalModerationOverride =
       this.handleGlobalModerationOverride.bind(this);
     this.handleGlobalModerationBlock =
@@ -555,6 +559,12 @@ export class VideoModal {
         );
       }
     }
+    if (this.moderationTrustAuthorButton) {
+      this.moderationTrustAuthorButton.removeEventListener(
+        "click",
+        this.handleModerationTrustAuthorClick,
+      );
+    }
     if (this.moderationBlockButton) {
       this.moderationBlockButton.removeEventListener(
         "click",
@@ -567,6 +577,7 @@ export class VideoModal {
     this.moderationActionsContainer = null;
     this.moderationPrimaryButton = null;
     this.moderationPrimaryMode = "";
+    this.moderationTrustAuthorButton = null;
     this.moderationBlockButton = null;
 
     const previousScrollRegion = this.scrollRegion;
@@ -2008,8 +2019,28 @@ export class VideoModal {
         }
         actionsAttached = true;
       }
+
+      if (mode === "override") {
+        const trustButton = this.ensureModerationTrustAuthorButton();
+        if (trustButton) {
+          trustButton.disabled = false;
+          trustButton.removeAttribute("aria-busy");
+          if (badgeId) {
+            trustButton.setAttribute("aria-describedby", badgeId);
+          } else {
+            trustButton.removeAttribute("aria-describedby");
+          }
+          if (actions && trustButton.parentElement !== actions) {
+            actions.appendChild(trustButton);
+          }
+          actionsAttached = true;
+        }
+      } else {
+        this.removeModerationTrustAuthorButton();
+      }
     } else {
       this.removeModerationPrimaryButton();
+      this.removeModerationTrustAuthorButton();
     }
 
     if (this.shouldShowModerationBlockAction(context)) {
@@ -2157,6 +2188,65 @@ export class VideoModal {
 
     this.moderationPrimaryButton = null;
     this.moderationPrimaryMode = "";
+  }
+
+  ensureModerationTrustAuthorButton() {
+    if (!this.document) {
+      return null;
+    }
+
+    if (!this.moderationTrustAuthorButton) {
+      const button = this.document.createElement("button");
+      button.type = "button";
+      button.className = "moderation-badge__action flex-shrink-0";
+      button.dataset.moderationAction = "trust-author";
+      button.textContent = "Always show creator";
+      button.setAttribute(
+        "aria-label",
+        "Always show videos from this creator"
+      );
+      button.addEventListener("click", this.handleModerationTrustAuthorClick);
+      this.moderationTrustAuthorButton = button;
+    }
+
+    return this.moderationTrustAuthorButton;
+  }
+
+  removeModerationTrustAuthorButton() {
+    const button = this.moderationTrustAuthorButton;
+    if (!button) {
+      return;
+    }
+
+    button.removeEventListener("click", this.handleModerationTrustAuthorClick);
+    if (button.parentElement) {
+      button.parentElement.removeChild(button);
+    }
+
+    this.moderationTrustAuthorButton = null;
+  }
+
+  handleModerationTrustAuthorClick(event) {
+    if (event) {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+    }
+
+    const pubkey =
+      this.activeVideo?.pubkey ||
+      this.activeVideo?.author?.pubkey ||
+      "";
+    if (!pubkey || typeof document === "undefined") {
+      return;
+    }
+
+    try {
+      document.dispatchEvent(
+        new CustomEvent("video:trust-author", { detail: { pubkey } })
+      );
+    } catch (error) {
+      devLogger?.warn?.("[VideoModal] trust-author dispatch failed", error);
+    }
   }
 
   ensureModerationBlockButton() {
@@ -2464,6 +2554,10 @@ export class VideoModal {
     if (this.creatorAvatar) {
       this.creatorAvatar.src = avatarUrl || "assets/svg/default-profile.svg";
       this.creatorAvatar.alt = name || "Unknown";
+      // Ring + star on the player's creator avatar when the author is admin.
+      if (this.creatorAvatar.parentElement) {
+        decorateAdminAvatar(this.creatorAvatar.parentElement, npub || "");
+      }
     }
     if (this.creatorNpub) {
       this.creatorNpub.textContent = npub || "";
@@ -3356,6 +3450,81 @@ export class VideoModal {
     }
   }
 
+  // Delegated click handler for the share popover's menu-action buttons
+  // (Copy URL / Copy Magnet / Copy CDN / Share on Nostr). The forced-source
+  // test links self-wire their own copy, so they are skipped here.
+  bindShareMenuActions(panel) {
+    if (!panel || typeof panel.addEventListener !== "function") {
+      return;
+    }
+    panel.addEventListener("click", (event) => {
+      const target = event.target;
+      const button =
+        target && typeof target.closest === "function"
+          ? target.closest("button[data-action]")
+          : null;
+      if (!button || button.disabled) {
+        return;
+      }
+      const action = button.dataset?.action || "";
+      if (action === "copy-webtorrent-url" || action === "copy-cdn-url") {
+        return; // self-wired in createVideoShareMenuPanel
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      this.handleShareMenuAction(action);
+      this.modalSharePopover?.close?.();
+    });
+  }
+
+  handleShareMenuAction(action) {
+    const video = this.activeVideo;
+    switch (action) {
+      case "copy-magnet":
+        this.dispatch("video:copy-magnet", { video });
+        break;
+      case "copy-cdn":
+        this.dispatch("video:copy-cdn", { video });
+        break;
+      case "share-nostr":
+        this.dispatch("video:share-nostr", {
+          video,
+          trigger: this.shareBtn || null,
+        });
+        break;
+      case "share":
+        // "Copy URL" — the shareable deep link to this video.
+        this.dispatch("video:copy-url", {
+          video,
+          url: this.buildShareUrl(video),
+        });
+        break;
+      default:
+        break;
+    }
+  }
+
+  // Plain `?v=<nevent>` share link (no forced playback source).
+  buildShareUrl(video) {
+    const eventId =
+      video && typeof video.id === "string" ? video.id.trim() : "";
+    if (!eventId) {
+      return "";
+    }
+    const win = this.window || globalThis;
+    const neventEncode = win?.NostrTools?.nip19?.neventEncode;
+    const loc = win?.location;
+    if (typeof neventEncode !== "function" || !loc) {
+      return "";
+    }
+    try {
+      const nevent = neventEncode({ id: eventId });
+      return `${loc.origin}${loc.pathname}?v=${encodeURIComponent(nevent)}`;
+    } catch (error) {
+      return "";
+    }
+  }
+
   setupModalSharePopover() {
     if (!this.playerModal || !this.shareBtn) {
       return;
@@ -3389,6 +3558,10 @@ export class VideoModal {
             this.buildForcedSourceShareUrl(this.activeVideo, playback),
         });
         if (panel) {
+          // The share menu's Copy URL / Copy Magnet / Copy CDN / Share on Nostr
+          // items only set `data-action` (like the ⋯ menu) — unlike the ⋯ menu,
+          // nothing wired their clicks, so they were dead. Delegate them here.
+          this.bindShareMenuActions(panel);
           container.appendChild(panel);
         }
         return panel;

@@ -7,6 +7,10 @@ import {
   DEFAULT_PLAYBACK_SOURCE,
   DEFAULT_PLAYBACK_START_TIMEOUT,
   FEATURE_NIP71_INGEST as CONFIG_FEATURE_NIP71_INGEST,
+  FEATURE_AUDIO_INGEST as CONFIG_FEATURE_AUDIO_INGEST,
+  FEATURE_BITCOIN_CONNECT as CONFIG_FEATURE_BITCOIN_CONNECT,
+  FEATURE_BLOSSOM_STORAGE as CONFIG_FEATURE_BLOSSOM_STORAGE,
+  FEATURE_BLOSSOM_TORRENT_METADATA as CONFIG_FEATURE_BLOSSOM_TORRENT_METADATA,
   CARD_LIVENESS_POLICY as CONFIG_CARD_LIVENESS_POLICY,
   LIVENESS_PROBE_PREFETCH_MARGIN as CONFIG_LIVENESS_PROBE_PREFETCH_MARGIN,
   IS_DEV_MODE,
@@ -194,6 +198,21 @@ const DEFAULT_FLAGS = Object.freeze({
   // Inbound ingest of NIP-71 videos published by other Nostr apps. Sourced from
   // the admin instance config so a deployer flips it in one place.
   FEATURE_NIP71_INGEST: CONFIG_FEATURE_NIP71_INGEST !== false,
+  // Audio / Music / Podcast surfaces (docs/audio-integration-plan.md, TODO #60).
+  // Default OFF ("off = no trace") — only an explicit `true` in the instance
+  // config lights it up.
+  FEATURE_AUDIO_INGEST: CONFIG_FEATURE_AUDIO_INGEST === true,
+  // Bitcoin Connect NWC "Connect wallet" flow (docs/bitcoin-connect-plan.md, #61).
+  // Default OFF; only an explicit `true` in the instance config enables it.
+  FEATURE_BITCOIN_CONNECT: CONFIG_FEATURE_BITCOIN_CONNECT === true,
+  // Blossom (nostr-native blob storage) provider (docs/blossom-plan.md, #30).
+  // Default OFF; only an explicit `true` in the instance config enables it.
+  FEATURE_BLOSSOM_STORAGE: CONFIG_FEATURE_BLOSSOM_STORAGE === true,
+  // Blossom videos: publish/lookup the WebTorrent piece-map as a companion Nostr
+  // event so P2P works without a hosted .torrent (docs/blossom-torrent-metadata-plan.md).
+  // Default OFF; only an explicit `true` in the instance config enables it.
+  FEATURE_BLOSSOM_TORRENT_METADATA:
+    CONFIG_FEATURE_BLOSSOM_TORRENT_METADATA === true,
   FEATURE_HASHTAG_PREFERENCES: false,
   FEATURE_TRUST_SEEDS: true, // Rollback: disable to drop baseline trust seeds without code changes.
   FEATURE_TRUSTED_HIDE_CONTROLS: true,
@@ -201,6 +220,8 @@ const DEFAULT_FLAGS = Object.freeze({
   FEATURE_TRENDING_FEED: true, // "Trending" tab: recently-added ranked by view count. Disable to hide the tab.
   FEATURE_MOST_ZAPPED_FEED: true, // "Most Zapped" tab: recently-added ranked by zap total. Disable to hide the tab.
   FEATURE_ZAP_TALLY: true, // bitvid-native preimage-verified zap tally (publish + count). Rollback: set false.
+  FEATURE_PLAYLISTS: true, // Creator playlists (#37): channel section + playlist view + add-to-playlist (⋯ menu). Rollback: set false to hide all playlist UI.
+  FEATURE_SUBMISSIONS: true, // Structured submissions (#23): admin Submissions tab + forms publish kind-30083 instead of DMs. Rollback: set false to hide the admin tab (forms still publish 30083).
   TRUSTED_MUTE_HIDE_THRESHOLD: DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
   TRUSTED_SPAM_HIDE_THRESHOLD: DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
   WSS_TRACKERS: DEFAULT_WSS_TRACKERS,
@@ -218,6 +239,11 @@ const runtimeFlags = (() => {
     FEATURE_PUBLISH_NIP71: DEFAULT_FLAGS.FEATURE_PUBLISH_NIP71,
     FEATURE_NIP71_MIRROR: DEFAULT_FLAGS.FEATURE_NIP71_MIRROR,
     FEATURE_NIP71_INGEST: DEFAULT_FLAGS.FEATURE_NIP71_INGEST,
+    FEATURE_AUDIO_INGEST: DEFAULT_FLAGS.FEATURE_AUDIO_INGEST,
+    FEATURE_BITCOIN_CONNECT: DEFAULT_FLAGS.FEATURE_BITCOIN_CONNECT,
+    FEATURE_BLOSSOM_STORAGE: DEFAULT_FLAGS.FEATURE_BLOSSOM_STORAGE,
+    FEATURE_BLOSSOM_TORRENT_METADATA:
+      DEFAULT_FLAGS.FEATURE_BLOSSOM_TORRENT_METADATA,
     FEATURE_HASHTAG_PREFERENCES: DEFAULT_FLAGS.FEATURE_HASHTAG_PREFERENCES,
     FEATURE_TRUST_SEEDS: DEFAULT_FLAGS.FEATURE_TRUST_SEEDS,
     FEATURE_TRUSTED_HIDE_CONTROLS: DEFAULT_FLAGS.FEATURE_TRUSTED_HIDE_CONTROLS,
@@ -226,6 +252,8 @@ const runtimeFlags = (() => {
     FEATURE_TRENDING_FEED: DEFAULT_FLAGS.FEATURE_TRENDING_FEED,
     FEATURE_MOST_ZAPPED_FEED: DEFAULT_FLAGS.FEATURE_MOST_ZAPPED_FEED,
     FEATURE_ZAP_TALLY: DEFAULT_FLAGS.FEATURE_ZAP_TALLY,
+    FEATURE_PLAYLISTS: DEFAULT_FLAGS.FEATURE_PLAYLISTS,
+    FEATURE_SUBMISSIONS: DEFAULT_FLAGS.FEATURE_SUBMISSIONS,
     TRUSTED_MUTE_HIDE_THRESHOLD: DEFAULT_FLAGS.TRUSTED_MUTE_HIDE_THRESHOLD,
     TRUSTED_SPAM_HIDE_THRESHOLD: DEFAULT_FLAGS.TRUSTED_SPAM_HIDE_THRESHOLD,
     WSS_TRACKERS: [...DEFAULT_FLAGS.WSS_TRACKERS],
@@ -261,6 +289,31 @@ export let FEATURE_NIP71_INGEST = coerceBoolean(
   DEFAULT_FLAGS.FEATURE_NIP71_INGEST
 );
 
+export let FEATURE_AUDIO_INGEST = coerceBoolean(
+  runtimeFlags.FEATURE_AUDIO_INGEST,
+  DEFAULT_FLAGS.FEATURE_AUDIO_INGEST
+);
+
+export let FEATURE_BITCOIN_CONNECT = coerceBoolean(
+  runtimeFlags.FEATURE_BITCOIN_CONNECT,
+  DEFAULT_FLAGS.FEATURE_BITCOIN_CONNECT
+);
+
+export let FEATURE_BLOSSOM_STORAGE = coerceBoolean(
+  runtimeFlags.FEATURE_BLOSSOM_STORAGE,
+  DEFAULT_FLAGS.FEATURE_BLOSSOM_STORAGE
+);
+
+export let FEATURE_BLOSSOM_TORRENT_METADATA = coerceBoolean(
+  runtimeFlags.FEATURE_BLOSSOM_TORRENT_METADATA,
+  DEFAULT_FLAGS.FEATURE_BLOSSOM_TORRENT_METADATA
+);
+
+// Max base64 size of an embedded .torrent piece-map before bitvid falls back to
+// URL-only (the companion event is off the feed, so this is a pathological-case
+// guard, not a feature limiter). See docs/blossom-torrent-metadata-plan.md (D4).
+export const BLOSSOM_TORRENT_METADATA_MAX_BASE64 = 65536;
+
 export let FEATURE_HASHTAG_PREFERENCES = coerceBoolean(
   runtimeFlags.FEATURE_HASHTAG_PREFERENCES,
   DEFAULT_FLAGS.FEATURE_HASHTAG_PREFERENCES
@@ -279,6 +332,16 @@ export let FEATURE_MOST_ZAPPED_FEED = coerceBoolean(
 export let FEATURE_ZAP_TALLY = coerceBoolean(
   runtimeFlags.FEATURE_ZAP_TALLY,
   DEFAULT_FLAGS.FEATURE_ZAP_TALLY
+);
+
+export let FEATURE_PLAYLISTS = coerceBoolean(
+  runtimeFlags.FEATURE_PLAYLISTS,
+  DEFAULT_FLAGS.FEATURE_PLAYLISTS
+);
+
+export let FEATURE_SUBMISSIONS = coerceBoolean(
+  runtimeFlags.FEATURE_SUBMISSIONS,
+  DEFAULT_FLAGS.FEATURE_SUBMISSIONS
 );
 
 export let FEATURE_TRUST_SEEDS = coerceBoolean(
@@ -598,4 +661,5 @@ export const FEED_TYPES = Object.freeze({
   CHANNEL: "channel-profile",
   DOCS: "docs",
   SEARCH: "search",
+  PLAYLIST: "playlist",
 });

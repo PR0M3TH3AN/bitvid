@@ -18,9 +18,39 @@ import {
   computeDefaultForUploads,
   legacyDuplicateIds,
   saveProviderConnection,
+  fillStorageForm,
 } from "../js/ui/profileModal/storageConnections.js";
 
 // --- Pure decision logic ---
+
+describe("fillStorageForm provider selector", () => {
+  // getConnection returns { ...payload, meta } — the provider is only in `meta` for
+  // the decrypted/keyless shape (payload has no top-level provider). The selector
+  // must reflect it, not silently revert to Cloudflare.
+  test("selects the connection's provider from meta when there's no top-level provider", () => {
+    const c = { storageProviderInput: { value: "cloudflare_r2" }, updateStorageFormVisibility: () => {}, handlePublicUrlInput: () => {} };
+    fillStorageForm(c, { meta: { provider: "backblaze_b2" } });
+    assert.equal(c.storageProviderInput.value, "backblaze_b2");
+  });
+
+  test("selects a keyless Blossom default (no payload/provider, provider only in meta)", () => {
+    const c = { storageProviderInput: { value: "cloudflare_r2" }, updateStorageFormVisibility: () => {}, handlePublicUrlInput: () => {} };
+    fillStorageForm(c, { meta: { provider: "blossom", defaultForUploads: true } });
+    assert.equal(c.storageProviderInput.value, "blossom");
+  });
+
+  test("prefers a top-level provider when present", () => {
+    const c = { storageProviderInput: { value: "" }, updateStorageFormVisibility: () => {}, handlePublicUrlInput: () => {} };
+    fillStorageForm(c, { provider: "generic_s3", meta: { provider: "cloudflare_r2" } });
+    assert.equal(c.storageProviderInput.value, "generic_s3");
+  });
+
+  test("falls back to cloudflare_r2 only when no provider is known", () => {
+    const c = { storageProviderInput: { value: "blossom" }, updateStorageFormVisibility: () => {}, handlePublicUrlInput: () => {} };
+    fillStorageForm(c, { meta: {} });
+    assert.equal(c.storageProviderInput.value, "cloudflare_r2");
+  });
+});
 
 describe("per-provider connection helpers", () => {
   test("computeDefaultForUploads: explicit choice, first-ever, and 'was already default'", () => {
@@ -180,6 +210,74 @@ describe("saving multiple providers does not clash", () => {
       Object.keys(record.connections).sort(),
       ["backblaze_b2", "cloudflare_r2"],
       "the synced record contains every provider's connection",
+    );
+  });
+
+  test("importing a synced record notifies connection-change observers (open UIs refresh)", async () => {
+    await saveProviderConnection(storageService, pubkey, {
+      provider: "cloudflare_r2",
+      payload: r2Payload,
+      meta: { provider: "cloudflare_r2" },
+      isDefault: true,
+    });
+    const record = await storageService.exportAccountRecord(pubkey);
+
+    let fired = null;
+    const off = storageService.onConnectionsChanged((e) => {
+      fired = e;
+    });
+    await storageService.importAccountRecord(pubkey, record);
+    off();
+
+    assert.deepEqual(
+      fired,
+      { pubkey },
+      "a Nostr sync import fires a connection-change event so the open upload modal can refresh",
+    );
+
+    // Unsubscribe actually detaches — a second import must not re-fire this listener.
+    fired = null;
+    await storageService.importAccountRecord(pubkey, record);
+    assert.equal(fired, null, "off() detached the observer");
+  });
+
+  test("a Blossom-only (keyless) account syncs without an encryptedMasterKey", async () => {
+    // Blossom connections are keyless (encrypted: null), so a Blossom-only account
+    // legitimately has no encryptedMasterKey. Importing it must still work.
+    const record = {
+      pubkey,
+      connections: {
+        blossom: {
+          id: "blossom",
+          provider: "blossom",
+          meta: { provider: "blossom", servers: ["https://blossom.band"] },
+          encrypted: null,
+        },
+      },
+    };
+    await storageService.importAccountRecord(pubkey, record); // must not throw
+    const conns = await storageService.listConnections(pubkey);
+    assert.deepEqual(conns.map((c) => c.id), ["blossom"]);
+    assert.deepEqual(conns[0].meta.servers, ["https://blossom.band"]);
+  });
+
+  test("an encrypted (R2/S3) connection still requires the master-key envelope", async () => {
+    // A record carrying an encrypted payload can't be unlocked without the
+    // envelope — importing it without one must still be rejected.
+    const record = {
+      pubkey,
+      connections: {
+        default: {
+          id: "default",
+          provider: "cloudflare_r2",
+          meta: { provider: "cloudflare_r2" },
+          encrypted: { cipher: "deadbeef", iv: "00" },
+        },
+      },
+    };
+    await assert.rejects(
+      () => storageService.importAccountRecord(pubkey, record),
+      /Invalid storage account record/,
     );
   });
 });

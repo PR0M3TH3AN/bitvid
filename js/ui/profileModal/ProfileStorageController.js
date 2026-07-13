@@ -7,6 +7,12 @@ import {
   derivePublicBaseUrl,
 } from "../../services/s3Service.js";
 import { getActiveSigner } from "../../nostr/client.js";
+import { FEATURE_BLOSSOM_STORAGE } from "../../constants.js";
+import { BLOSSOM_PROVIDER } from "../../services/blossomService.js";
+import {
+  importBlossomServerList,
+  publishBlossomServerList,
+} from "./blossomServerList.js";
 import { DEFAULT_NIP07_ENCRYPTION_METHODS } from "../../nostr/nip07Permissions.js";
 import { storageSyncService } from "../../services/storageSyncService.js";
 import { StorageCorsHelp } from "./storageCorsHelp.js";
@@ -97,6 +103,47 @@ export class ProfileStorageController {
     this.storageSyncToggle = document.getElementById("storageSyncToggle") || null;
     this.storageSyncRestoreBtn = document.getElementById("storageSyncRestoreBtn") || null;
     this.storageSyncStatus = document.getElementById("storageSyncStatus") || null;
+
+    // Blossom (nostr-native) — keyless multi-server storage.
+    this.storageS3Fields = document.getElementById("storageS3Fields") || null;
+    this.storageBlossomSection =
+      document.getElementById("storageBlossomSection") || null;
+    this.storageBlossomServersInput =
+      document.getElementById("storageBlossomServers") || null;
+    this.storageBlossomImportBtn =
+      document.getElementById("storageBlossomImportBtn") || null;
+    this.storageBlossomPublishBtn =
+      document.getElementById("storageBlossomPublishBtn") || null;
+    this.storageBlossomServerListStatus =
+      document.getElementById("storageBlossomServerListStatus") || null;
+    this.storageProviderBlossomOption =
+      document.getElementById("storageProviderBlossomOption") || null;
+    // Reveal the Blossom provider option only when the deployment enables it.
+    if (
+      FEATURE_BLOSSOM_STORAGE === true &&
+      this.storageProviderBlossomOption instanceof HTMLElement
+    ) {
+      this.storageProviderBlossomOption.classList.remove("hidden");
+    }
+  }
+
+  parseBlossomServers() {
+    const raw = this.storageBlossomServersInput?.value || "";
+    const out = [];
+    const seen = new Set();
+    for (const line of raw.split(/[\n,]/)) {
+      const url = line.trim().replace(/\/+$/, "");
+      if (!url || seen.has(url)) {
+        continue;
+      }
+      // Only accept absolute http(s) server URLs.
+      if (!/^https?:\/\//i.test(url)) {
+        continue;
+      }
+      seen.add(url);
+      out.push(url);
+    }
+    return out;
   }
 
   registerEventListeners() {
@@ -121,6 +168,18 @@ export class ProfileStorageController {
     if (this.storageClearBtn instanceof HTMLElement) {
       this.storageClearBtn.addEventListener("click", () => {
         void this.handleClearStorage();
+      });
+    }
+
+    if (this.storageBlossomImportBtn instanceof HTMLElement) {
+      this.storageBlossomImportBtn.addEventListener("click", () => {
+        void this.handleImportBlossomServerList();
+      });
+    }
+
+    if (this.storageBlossomPublishBtn instanceof HTMLElement) {
+      this.storageBlossomPublishBtn.addEventListener("click", () => {
+        void this.handlePublishBlossomServerList();
       });
     }
 
@@ -336,7 +395,35 @@ export class ProfileStorageController {
       this.mainController.getActivePubkey(),
     );
     const storageService = this.mainController.services?.storageService;
-    if (!pubkey || !storageService || !storageService.isUnlocked?.(pubkey)) {
+    if (!pubkey || !storageService) {
+      return;
+    }
+
+    const selectedProvider = this.storageProviderInput?.value || "cloudflare_r2";
+
+    // Blossom servers live in plaintext connection meta — load them without an
+    // unlock (there's no encrypted secret to decrypt).
+    if (selectedProvider === BLOSSOM_PROVIDER) {
+      try {
+        const connections = await storageService.listConnections(pubkey);
+        const match = findProviderConnection(connections, BLOSSOM_PROVIDER);
+        const servers = Array.isArray(match?.meta?.servers)
+          ? match.meta.servers
+          : [];
+        if (this.storageBlossomServersInput instanceof HTMLElement) {
+          this.storageBlossomServersInput.value = servers.join("\n");
+        }
+        if (this.storageDefaultInput instanceof HTMLElement) {
+          this.storageDefaultInput.checked =
+            match?.meta?.defaultForUploads === true;
+        }
+      } catch (error) {
+        devLogger.warn("[ProfileModal] Failed to load Blossom servers:", error);
+      }
+      return;
+    }
+
+    if (!storageService.isUnlocked?.(pubkey)) {
       return;
     }
     const provider = this.storageProviderInput?.value || "cloudflare_r2";
@@ -364,6 +451,21 @@ export class ProfileStorageController {
 
   updateStorageFormVisibility() {
     const provider = this.storageProviderInput?.value || "cloudflare_r2";
+
+    // Blossom has no bucket/keys/CORS — swap the whole S3 field group for the
+    // keyless multi-server section.
+    const isBlossom = provider === BLOSSOM_PROVIDER;
+    if (this.storageS3Fields instanceof HTMLElement) {
+      this.storageS3Fields.classList.toggle("hidden", isBlossom);
+    }
+    if (this.storageBlossomSection instanceof HTMLElement) {
+      this.storageBlossomSection.classList.toggle("hidden", !isBlossom);
+    }
+    if (isBlossom) {
+      this.corsHelp.setVisible(false);
+      return;
+    }
+
     const isR2 = provider === "cloudflare_r2";
     // B2 derives its endpoint from the region, so its raw Endpoint field is hidden.
     const isB2 = provider === PROVIDERS.B2;
@@ -478,6 +580,50 @@ export class ProfileStorageController {
 
   clearStorageUnlockFailureState() {
     this.storageUnlockFailure = null;
+  }
+
+  setBlossomServerListStatus(message, kind = "info") {
+    if (!(this.storageBlossomServerListStatus instanceof HTMLElement)) return;
+    this.storageBlossomServerListStatus.textContent = message || "";
+    const tone =
+      kind === "error"
+        ? "text-status-danger"
+        : kind === "success"
+          ? "text-status-success"
+          : "text-muted";
+    this.storageBlossomServerListStatus.className = `text-xs ${tone}`;
+  }
+
+  blossomServerListArgs() {
+    return {
+      client: this.mainController.services?.nostrClient,
+      pubkey: this.mainController.normalizeHexPubkey(
+        this.mainController.getActivePubkey(),
+      ),
+    };
+  }
+
+  async handleImportBlossomServerList() {
+    this.setBlossomServerListStatus("Fetching your server list…");
+    const res = await importBlossomServerList(this.blossomServerListArgs());
+    if (
+      res.servers?.length &&
+      this.storageBlossomServersInput instanceof HTMLElement
+    ) {
+      this.storageBlossomServersInput.value = res.servers.join("\n");
+    }
+    if (res.error) devLogger.warn("[ProfileModal] Blossom import:", res.error);
+    this.setBlossomServerListStatus(res.message, res.kind);
+  }
+
+  async handlePublishBlossomServerList() {
+    this.setBlossomServerListStatus("Publishing your server list…");
+    const res = await publishBlossomServerList({
+      ...this.blossomServerListArgs(),
+      servers: this.parseBlossomServers(),
+    });
+    if (res.error) devLogger.warn("[ProfileModal] Blossom publish:", res.error);
+    this.setBlossomServerListStatus(res.message, res.kind);
   }
 
   // After a page reload, a persisted nsec session restores the logged-in pubkey + UI
@@ -710,6 +856,60 @@ export class ProfileStorageController {
     if (!storageService) return;
 
     const provider = this.storageProviderInput?.value || "cloudflare_r2";
+
+    // Blossom: keyless. Persist the server list in the (plaintext) connection meta;
+    // there is no secret to encrypt and no bucket/endpoint to validate.
+    if (provider === BLOSSOM_PROVIDER) {
+      const servers = this.parseBlossomServers();
+      if (servers.length === 0) {
+        this.setStorageFormStatus(
+          "Add at least one Blossom server URL (https://…).",
+          "error",
+        );
+        return;
+      }
+      const isDefaultBlossom = this.storageDefaultInput?.checked || false;
+      this.setStorageFormStatus("Saving...", "info");
+      try {
+        // Keyless: no secret to encrypt, so no storage unlock needed.
+        await storageService.saveKeylessConnection(pubkey, BLOSSOM_PROVIDER, {
+          provider: BLOSSOM_PROVIDER,
+          servers,
+          defaultForUploads: isDefaultBlossom,
+          label: `Blossom (${servers.length} server${servers.length === 1 ? "" : "s"})`,
+        });
+        this.setStorageFormStatus("Blossom servers saved.", "success");
+        this.mainController.showSuccess("Blossom storage saved.");
+
+        // Keep the encrypted synced copy current if the user opted in — the
+        // account record (which carries the Blossom servers in plaintext meta)
+        // is re-encrypted to self and published, so it roams like the S3 path.
+        if (storageSyncService.isEnabled(pubkey)) {
+          try {
+            const syncResult = await storageSyncService.push(pubkey, {
+              confirmOverwrite: () => confirmSyncOverwrite(STORAGE_SYNC_LABEL),
+            });
+            if (syncResult?.ok) {
+              this.setSyncStatus("Synced copy updated.", "success");
+            } else if (syncResult?.conflict) {
+              this.setSyncStatus(
+                "Synced copy on your account is newer — not overwritten.",
+              );
+            }
+          } catch (syncError) {
+            devLogger.warn(
+              "[ProfileModal] Blossom re-sync after save failed:",
+              syncError,
+            );
+          }
+        }
+      } catch (error) {
+        devLogger.error("Failed to save Blossom connection:", error);
+        this.setStorageFormStatus("Failed to save Blossom servers.", "error");
+      }
+      return;
+    }
+
     let endpointOrAccount = this.storageEndpointInput?.value?.trim() || "";
     const region = this.storageRegionInput?.value?.trim() || "auto";
     const accessKeyId = this.storageAccessKeyInput?.value?.trim() || "";
@@ -860,6 +1060,40 @@ export class ProfileStorageController {
     }
 
     const provider = this.storageProviderInput?.value || "cloudflare_r2";
+
+    // Blossom: no credentials to test. Best-effort reachability ping of each
+    // server (CORS may block it — a failure here doesn't mean upload will fail,
+    // so it's informational). The real verification is an upload.
+    if (provider === BLOSSOM_PROVIDER) {
+      const servers = this.parseBlossomServers();
+      if (servers.length === 0) {
+        this.setStorageFormStatus(
+          "Add at least one Blossom server URL first.",
+          "error",
+        );
+        return;
+      }
+      this.setStorageFormStatus("Checking servers…", "info");
+      let reachable = 0;
+      await Promise.all(
+        servers.map(async (server) => {
+          try {
+            await fetch(server, { method: "HEAD", mode: "cors" });
+            reachable += 1;
+          } catch {
+            // CORS/offline — inconclusive, not necessarily a failure.
+          }
+        }),
+      );
+      this.setStorageFormStatus(
+        reachable > 0
+          ? `Reached ${reachable}/${servers.length} server(s). Upload to fully verify.`
+          : `Couldn't reach the server(s) from the browser (CORS may block a HEAD). Save and try an upload to verify.`,
+        reachable > 0 ? "success" : "info",
+      );
+      return;
+    }
+
     let endpointOrAccount = this.storageEndpointInput?.value?.trim() || "";
     const region = this.storageRegionInput?.value?.trim() || "auto";
     const accessKeyId = this.storageAccessKeyInput?.value?.trim() || "";

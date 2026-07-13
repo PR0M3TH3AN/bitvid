@@ -151,17 +151,9 @@ describe("UploadModal Reset Logic", () => {
       let resolveUpload;
       const delayedUpload = new Promise(r => { resolveUpload = r; });
 
-      const slowR2Service = {
-          prepareUpload: async () => ({
-               settings: {},
-               bucketEntry: { bucket: 'test', publicBaseUrl: 'https://test.com' }
-          }),
-          uploadFile: () => delayedUpload // Return promise that waits
-      };
-
       const modal = new UploadModal({
           storageService: mockStorageService,
-          r2Service: slowR2Service,
+          r2Service: mockR2Service,
           getCurrentPubkey: () => "pk1",
           removeTrackingScripts: () => {},
           setGlobalModalState: () => {},
@@ -175,9 +167,19 @@ describe("UploadModal Reset Logic", () => {
       modal.activeProvider = "cloudflare_r2";
       modal.activeCredentials = { accountId: 'acc', accessKeyId: 'key', secretAccessKey: 'sec' };
 
-      // Mock generateTorrentMetadata BEFORE calling handleVideoSelection
-      modal.generateTorrentMetadata = async () => ({ hasValidInfoHash: false });
-      modal.resolveUploadIdentifier = async () => "mock-identifier";
+      // handleVideoSelection() drives the upload through this.mediaUploader.uploadVideo
+      // — NOT the modal's own generate/resolve helpers — so mock at THAT boundary.
+      // Returning the controllable pending promise lets us reset mid-upload and then
+      // release a "zombie" completion. This isolates the unit under test (the modal's
+      // videoUploadId versioning guard) from real webtorrent/S3, which is what the
+      // test intends. Previously the test mocked modal.generateTorrentMetadata /
+      // resolveUploadIdentifier (the wrong object), so the mediaUploader still ran
+      // real createTorrentMetadata()/hashing on a synthetic file — throwing "invalid
+      // input type" as async activity after the test ended.
+      modal.mediaUploader.uploadVideo = () => delayedUpload;
+      // captureVideoMetadata() does URL.createObjectURL(file), which needs a real
+      // Blob; stub it so the synthetic file below doesn't throw an async Blob error.
+      modal.captureVideoMetadata = async () => {};
 
       // Start upload
       const file = { name: "video.mp4" };

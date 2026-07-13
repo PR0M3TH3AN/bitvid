@@ -47,6 +47,11 @@ export class ProfileModerationController {
     this.moderationStatusText = document.getElementById("profileModerationStatus") || null;
     this.moderationOverridesList = document.getElementById("profileModerationOverridesList") || null;
     this.moderationOverridesEmpty = document.getElementById("profileModerationOverridesEmpty") || null;
+    this.authorOverrideInput = document.getElementById("profileAuthorOverrideInput") || null;
+    this.authorOverrideAddBtn = document.getElementById("profileAuthorOverrideAddBtn") || null;
+    this.authorOverrideStatus = document.getElementById("profileAuthorOverrideStatus") || null;
+    this.authorOverridesList = document.getElementById("profileAuthorOverridesList") || null;
+    this.authorOverridesEmpty = document.getElementById("profileAuthorOverridesEmpty") || null;
     this.moderationTrustedContactsCount = document.getElementById("profileModerationTrustedContactsCount") || null;
     this.moderationTrustedMuteCount = document.getElementById("profileModerationTrustedMuteCount") || null;
     this.moderationTrustedReportCount = document.getElementById("profileModerationTrustedReportCount") || null;
@@ -102,9 +107,24 @@ export class ProfileModerationController {
       });
     }
 
+    if (this.authorOverrideAddBtn instanceof HTMLElement) {
+      this.authorOverrideAddBtn.addEventListener("click", () => {
+        void this.handleAddAuthorOverride();
+      });
+    }
+    if (this.authorOverrideInput instanceof HTMLInputElement) {
+      this.authorOverrideInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          void this.handleAddAuthorOverride();
+        }
+      });
+    }
+
     if (!this.boundModerationOverridesUpdate && typeof document !== "undefined") {
       this.boundModerationOverridesUpdate = () => {
         this.refreshModerationOverridesUi();
+        this.refreshAuthorOverridesUi();
       };
       document.addEventListener(
         "video:moderation-override",
@@ -501,7 +521,7 @@ export class ProfileModerationController {
       item.className = "card space-y-2 p-4";
 
       const row = document.createElement("div");
-      row.className = "flex items-center justify-between gap-4";
+      row.className = "profile-account-card__row";
 
       const authorKey = entry.authorPubkey;
       let profileSummary = null;
@@ -516,7 +536,7 @@ export class ProfileModerationController {
       profileSummary = this.mainController.dmController.createCompactProfileSummary(summaryData);
 
       const actions = document.createElement("div");
-      actions.className = "flex flex-wrap items-center justify-end gap-2";
+      actions.className = "profile-account-card__actions";
 
       const resetButton = this.mainController.createRemoveButton({
         label: "Reset",
@@ -566,6 +586,159 @@ export class ProfileModerationController {
       typeof this.mainController.services.batchFetchProfiles === "function"
     ) {
       this.mainController.services.batchFetchProfiles(entriesNeedingFetch);
+    }
+  }
+
+  setAuthorOverrideStatus(message) {
+    if (this.authorOverrideStatus instanceof HTMLElement) {
+      this.authorOverrideStatus.textContent = message || "";
+    }
+  }
+
+  async handleAddAuthorOverride() {
+    const input =
+      this.authorOverrideInput instanceof HTMLInputElement
+        ? this.authorOverrideInput.value.trim()
+        : "";
+    if (!input) {
+      this.setAuthorOverrideStatus("Enter a creator npub.");
+      return false;
+    }
+    const hex = this.mainController.normalizeHexPubkey(input);
+    if (!hex) {
+      this.setAuthorOverrideStatus("That doesn't look like a valid npub.");
+      return false;
+    }
+    if (
+      typeof this.mainController.services.setAuthorModerationOverride !==
+      "function"
+    ) {
+      return false;
+    }
+    try {
+      this.mainController.services.setAuthorModerationOverride(hex);
+      if (this.authorOverrideInput instanceof HTMLInputElement) {
+        this.authorOverrideInput.value = "";
+      }
+      this.setAuthorOverrideStatus("");
+      this.refreshAuthorOverridesUi();
+      this.mainController.showSuccess("Warnings turned off for this creator.");
+      return true;
+    } catch (error) {
+      this.mainController.showError(
+        "Couldn't add that creator. Please try again.",
+      );
+      return false;
+    }
+  }
+
+  async handleAuthorOverrideReset(entry) {
+    if (
+      !entry ||
+      !entry.authorPubkey ||
+      typeof this.mainController.services.clearAuthorModerationOverride !==
+        "function"
+    ) {
+      return false;
+    }
+    try {
+      this.mainController.services.clearAuthorModerationOverride(
+        entry.authorPubkey,
+      );
+      this.refreshAuthorOverridesUi();
+      this.mainController.showSuccess("Warnings restored for this creator.");
+      return true;
+    } catch (error) {
+      this.mainController.showError("Unable to reset this creator.");
+      return false;
+    }
+  }
+
+  refreshAuthorOverridesUi() {
+    if (
+      !(this.authorOverridesList instanceof HTMLElement) ||
+      !(this.authorOverridesEmpty instanceof HTMLElement)
+    ) {
+      return;
+    }
+
+    const services = this.mainController.services;
+    const raw =
+      typeof services.getAuthorModerationOverrides === "function"
+        ? services.getAuthorModerationOverrides()
+        : [];
+    const entries = (Array.isArray(raw) ? raw : [])
+      .map((entry) => ({
+        authorPubkey:
+          typeof entry?.authorPubkey === "string"
+            ? this.mainController.normalizeHexPubkey(entry.authorPubkey) ||
+              entry.authorPubkey
+            : "",
+        updatedAt: Number.isFinite(entry?.updatedAt)
+          ? Math.floor(entry.updatedAt)
+          : 0,
+      }))
+      .filter((entry) => entry.authorPubkey)
+      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+
+    this.authorOverridesList.textContent = "";
+
+    if (!entries.length) {
+      this.authorOverridesEmpty.classList.remove("hidden");
+      this.authorOverridesList.classList.add("hidden");
+      return;
+    }
+
+    this.authorOverridesEmpty.classList.add("hidden");
+    this.authorOverridesList.classList.remove("hidden");
+
+    const entriesNeedingFetch = new Set();
+
+    entries.forEach((entry) => {
+      const item = document.createElement("li");
+      item.className = "card profile-account-card";
+
+      const authorKey = entry.authorPubkey;
+      if (
+        authorKey &&
+        typeof services.getProfileCacheEntry === "function" &&
+        !services.getProfileCacheEntry(authorKey)
+      ) {
+        entriesNeedingFetch.add(authorKey);
+      }
+
+      const summaryData =
+        this.mainController.dmController.resolveProfileSummaryForPubkey(
+          authorKey,
+        );
+      const summary =
+        this.mainController.dmController.createCompactProfileSummary(
+          summaryData,
+        );
+
+      const actions = document.createElement("div");
+      actions.className = "profile-account-card__actions";
+      const resetButton = this.mainController.createRemoveButton({
+        label: "Reset",
+        onRemove: () => this.handleAuthorOverrideReset(entry),
+      });
+
+      if (summary) {
+        item.appendChild(summary);
+      }
+      if (resetButton) {
+        actions.appendChild(resetButton);
+        item.appendChild(actions);
+      }
+
+      this.authorOverridesList.appendChild(item);
+    });
+
+    if (
+      entriesNeedingFetch.size &&
+      typeof services.batchFetchProfiles === "function"
+    ) {
+      services.batchFetchProfiles(entriesNeedingFetch);
     }
   }
 
@@ -620,6 +793,7 @@ export class ProfileModerationController {
     this.updateTrustedHideControlsVisibility();
     this.updateModerationTrustStats();
     this.refreshModerationOverridesUi();
+    this.refreshAuthorOverridesUi();
 
     this.applyModerationSettingsControlState({ resetStatus: true });
   }

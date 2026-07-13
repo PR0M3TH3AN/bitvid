@@ -25,7 +25,9 @@ import {
   DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
   DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
   FEED_TYPES,
+  FEATURE_BLOSSOM_TORRENT_METADATA,
 } from "./constants.js";
+import torrentMetadataService from "./services/torrentMetadataService.js";
 import { updateVideoCardSourceVisibility } from "./utils/cardSourceVisibility.js";
 import { collectVideoTags } from "./utils/videoTags.js";
 import { normalizeHashtag } from "./utils/hashtagNormalization.js";
@@ -102,6 +104,8 @@ import {
 import { resolveSignerCapabilities } from "./nostr/signerCapabilities.js";
 import { rankHashtagsByFrequency } from "./utils/hashtagSuggestions.js";
 import { launchBitvidTour } from "./ui/onboarding/bitvidTour.js";
+import { shouldOfferOnboarding } from "./services/onboardingService.js";
+import { showConfirm } from "./ui/confirmDialog.js";
 import {
   decideSignerEnsure,
   isSignerCapable,
@@ -175,6 +179,10 @@ import {
   setModerationOverride,
   clearModerationOverride,
   loadModerationOverridesFromStorage,
+  getAuthorModerationOverridesList,
+  setAuthorModerationOverride,
+  clearAuthorModerationOverride,
+  loadAuthorModerationOverridesFromStorage,
   getModerationSettings,
   getDefaultModerationSettings,
   setModerationSettings,
@@ -636,6 +644,11 @@ class Application {
         userLogger,
         nostrClient,
         torrentClient,
+        // Torrent piece-map lookup for Blossom videos — passed only when the flag
+        // is on, so its presence in the coordinator IS the gate.
+        torrentMetadataService: FEATURE_BLOSSOM_TORRENT_METADATA
+          ? torrentMetadataService
+          : null,
         emit,
         accessControl,
         isValidMagnetUri,
@@ -916,6 +929,7 @@ class Application {
     }
 
     loadModerationOverridesFromStorage();
+    loadAuthorModerationOverridesFromStorage();
     loadModerationSettingsFromStorage();
     loadDmPrivacySettingsFromStorage();
     this.moderationSettings = this.normalizeModerationSettings(
@@ -1759,11 +1773,38 @@ class Application {
     }
 
     if (pubkey) {
-      // Best-effort, never blocks login: offer to restore encrypted settings
-      // synced from another device.
-      this.maybeOfferSettingsRestore(pubkey);
+      // Order matters: offer the tour FIRST so it opens the "tour gate"
+      // synchronously when it will run. The settings-restore prompt then waits
+      // on that gate before showing its dialog, so it can't pop over the tour.
       this.maybeOfferOnboardingTour(pubkey);
+      this.maybeOfferSettingsRestore(pubkey);
     }
+  }
+
+  // A gate the settings-restore prompt awaits so its confirmation dialog never
+  // pops over the onboarding tour. Opened synchronously when the tour will run,
+  // resolved when the tour finishes/exits (or fails to start).
+  _openTourGate() {
+    if (this._tourGateResolve) {
+      return;
+    }
+    this._tourGate = new Promise((resolve) => {
+      this._tourGateResolve = resolve;
+    });
+  }
+
+  _closeTourGate() {
+    const resolve = this._tourGateResolve;
+    this._tourGateResolve = null;
+    this._tourGate = null;
+    if (typeof resolve === "function") {
+      resolve();
+    }
+  }
+
+  // Resolves immediately unless the onboarding tour is (about to be) active.
+  whenOnboardingTourInactive() {
+    return this._tourGate || Promise.resolve();
   }
 
   // First login of this pubkey on this device: offer the guided tour
@@ -1775,14 +1816,26 @@ class Application {
     if (!key) {
       return;
     }
+    // If the tour will actually run, open the gate NOW (synchronously) so the
+    // settings-restore prompt waits — even though the tour itself starts on a
+    // delay. If it won't run, leave the gate closed so restore proceeds normally.
+    if (!shouldOfferOnboarding(key)) {
+      return;
+    }
+    this._openTourGate();
     setTimeout(() => {
       try {
         if (!this.isUserLoggedIn()) {
+          this._closeTourGate();
           return;
         }
-        this.startOnboardingTour({ pubkey: key, force: false });
+        const started = this.startOnboardingTour({ pubkey: key, force: false });
+        if (!started) {
+          this._closeTourGate();
+        }
       } catch (error) {
         devLogger.warn("[Application] Onboarding tour offer failed:", error);
+        this._closeTourGate();
       }
     }, 3500);
   }
@@ -1795,7 +1848,7 @@ class Application {
     if (!key) {
       return false;
     }
-    return launchBitvidTour({
+    const started = launchBitvidTour({
       pubkey: key,
       force,
       openProfilePane: (pane) => {
@@ -1805,7 +1858,13 @@ class Application {
           devLogger.warn("[Application] Tour deep-link failed:", error);
         }
       },
+      // Release the settings-restore prompt once the tour is done/exited.
+      onEnd: () => this._closeTourGate(),
     });
+    if (!started) {
+      this._closeTourGate();
+    }
+    return started;
   }
 
   // One-time offer to restore encrypted storage/wallet settings on login (todo
@@ -1826,6 +1885,13 @@ class Application {
             walletSync: createWalletSyncService({
               nwcSettings: this.nwcSettingsService,
             }),
+            // Never show the restore dialog over the onboarding tour — wait for
+            // it to finish/exit first. (The remote existence check still runs in
+            // parallel; only the confirmation dialog is held back.)
+            confirm: async (message) => {
+              await this.whenOnboardingTourInactive();
+              return showConfirm(message, { confirmLabel: "Restore" });
+            },
           });
         }
         Promise.resolve(

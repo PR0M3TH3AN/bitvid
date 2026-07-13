@@ -5,6 +5,7 @@ import { initKidsView } from "./kidsView.js";
 import { initExploreView } from "./exploreView.js";
 import { initTrendingView } from "./trendingView.js";
 import { initMostZappedView } from "./mostZappedView.js";
+import { initPlaylistView } from "./playlistView.js";
 import { subscriptions } from "./subscriptions.js";
 import { getApplication } from "./applicationContext.js";
 import { applyDesignSystemAttributes } from "./designSystem.js";
@@ -231,6 +232,10 @@ export const viewInitRegistry = {
   [FEED_TYPES.CHANNEL]: () => {
     // Call the initialization function from channelProfile.js
     initChannelProfileView();
+  },
+  [FEED_TYPES.PLAYLIST]: () => {
+    // #37: render a creator playlist's ordered videos.
+    initPlaylistView({ getApp: getApplication });
   },
   [FEED_TYPES.SEARCH]: async () => {
     try {

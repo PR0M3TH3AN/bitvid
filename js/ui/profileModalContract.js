@@ -511,6 +511,27 @@ const SERVICE_CONTRACT = [
     fallback: () => () => false,
   },
   {
+    key: "getAuthorModerationOverrides",
+    type: "function",
+    description:
+      "Returns the account-level (per-creator) web-of-trust overrides for the active viewer.",
+    fallback: () => () => [],
+  },
+  {
+    key: "setAuthorModerationOverride",
+    type: "function",
+    description:
+      "Adds an account-level override that suppresses WoT warnings for all of a creator's videos.",
+    fallback: () => () => null,
+  },
+  {
+    key: "clearAuthorModerationOverride",
+    type: "function",
+    description:
+      "Clears an account-level (per-creator) override so the WoT warnings return.",
+    fallback: () => () => false,
+  },
+  {
     key: "loadVideos",
     type: "function",
     description: "Triggers a video reload so UI reflects profile or permission changes.",

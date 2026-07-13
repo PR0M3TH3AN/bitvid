@@ -221,11 +221,12 @@
 
         // Set the recipient's NPUB (your personal NPUB)
         const recipientNpub =
-          "npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe";
+          "npub15jnttpymeytm80hatjqcvhhqhzrhx6gxp8pq0wn93rhnu8s9h9dsha32lx";
         const RELAYS = [
           "wss://relay.snort.social",
           "wss://relay.damus.io",
           "wss://relay.primal.net",
+          "wss://nos.lol",
         ];
         const pool = new SimplePool();
 
@@ -360,21 +361,31 @@ For further discussions, reach out through bitvid’s Nostr support channels.
 
               // Encrypt the feature request content
               log("Encrypting feature request content (nip04)...");
-              const ciphertext = await nip04.encrypt(
-                ephemeralPriv,
-                targetPubHex,
-                featureRequestContent
-              );
-              log("[DEBUG] Ciphertext: " + ciphertext);
-              log("Encryption done.");
-
-              // Build the event template
+              // Build a structured bitvid submission (kind 30083, PUBLIC — no
+              // encryption). Published from the ephemeral key.
               const now = Math.floor(Date.now() / 1000);
+              const submissionId =
+                "sub-" +
+                now.toString(36) +
+                "-" +
+                Math.random().toString(36).slice(2, 10);
+              const tags = [
+                ["d", submissionId],
+                ["k", "feature"],
+              ];
+              if (userNpub) {
+                tags.push(["applicant", userNpub]);
+              }
+              tags.push(
+                ["p", targetPubHex],
+                ["t", "bitvid-submission"],
+                ["client", "bitvid"]
+              );
               const eventTemplate = {
-                kind: 4,
+                kind: 30083,
                 created_at: now,
-                tags: [["p", targetPubHex]],
-                content: ciphertext,
+                tags,
+                content: featureRequestContent,
               };
               log(
                 "[DEBUG] Event template before finalizing: " +
@@ -394,7 +405,7 @@ For further discussions, reach out through bitvid’s Nostr support channels.
               for (const url of RELAYS) {
                 log("Connecting to " + url + " for subscription...");
                 const relay = await Relay.connect(url);
-                relay.subscribe([{ authors: [ephemeralPubHex], kinds: [4] }], {
+                relay.subscribe([{ authors: [ephemeralPubHex], kinds: [30083] }], {
                   onEvent(foundEvent) {
                     if (foundEvent.id === event.id) {
                       log(

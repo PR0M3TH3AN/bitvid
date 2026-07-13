@@ -9,6 +9,8 @@ import { createModalAccessibility } from "./modalAccessibility.js";
 import { Nip71FormManager } from "./nip71FormManager.js";
 import { MediaUploader } from "./mediaUploader.js";
 import { initEditModalUpload } from "./editModalUpload.js";
+import { getActiveSigner } from "../../nostrClientRegistry.js";
+import { nostrClient } from "../../nostrClientFacade.js";
 import { devLogger } from "../../utils/logger.js";
 
 export class EditModal {
@@ -51,6 +53,8 @@ export class EditModal {
         this.getCurrentPubkey ? this.getCurrentPubkey() : null,
       safeEncodeNpub:
         typeof safeEncodeNpub === "function" ? safeEncodeNpub : (p) => p,
+      getSigner: () => getActiveSigner(),
+      signAndPublishEvent: (event) => nostrClient.signAndPublishEvent(event),
     });
     this.getMode =
       typeof getMode === "function"

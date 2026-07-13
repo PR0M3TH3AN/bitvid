@@ -10,17 +10,45 @@ import { showConfirm } from "../ui/confirmDialog.js";
 import { setSyncEnabled } from "./settingsSyncFlags.js";
 
 const OFFERED_KEY = "bitvid:settings-sync:offered:v1";
+// Set when the user explicitly declines a restore offer, so the "re-offer while
+// the item is missing locally" behavior below doesn't nag them on every login.
+const DISMISSED_KEY = "bitvid:settings-sync:dismissed:v1";
 
-function readOffered() {
+function readMap(storageKey) {
   try {
     if (typeof localStorage === "undefined") {
       return {};
     }
-    const raw = localStorage.getItem(OFFERED_KEY);
+    const raw = localStorage.getItem(storageKey);
     const parsed = raw ? JSON.parse(raw) : {};
     return parsed && typeof parsed === "object" ? parsed : {};
   } catch (error) {
     return {};
+  }
+}
+
+function readOffered() {
+  return readMap(OFFERED_KEY);
+}
+
+function isDismissed(pubkey, kind) {
+  const entry = readMap(DISMISSED_KEY)[pubkey];
+  return Boolean(entry && typeof entry === "object" && entry[kind]);
+}
+
+function markDismissed(pubkey, kind) {
+  try {
+    if (typeof localStorage === "undefined") {
+      return;
+    }
+    const map = readMap(DISMISSED_KEY);
+    const kinds =
+      map[pubkey] && typeof map[pubkey] === "object" ? { ...map[pubkey] } : {};
+    kinds[kind] = true;
+    map[pubkey] = kinds;
+    localStorage.setItem(DISMISSED_KEY, JSON.stringify(map));
+  } catch (error) {
+    // Best-effort.
   }
 }
 
@@ -78,11 +106,27 @@ export function createSettingsRestorePrompt({
       ["wallet", walletSync],
     ];
     for (const [kind, service] of services) {
+      // Enabled items auto-pull silently elsewhere; declined items stay quiet.
       if (
         !service?.isAvailable?.() ||
         service.isEnabled(pubkey) ||
-        hasOffered(pubkey, kind)
+        isDismissed(pubkey, kind)
       ) {
+        continue;
+      }
+      // Re-offer whenever the item is MISSING locally (e.g. a fresh device or a
+      // cleared wallet) so a Nostr backup gets surfaced — "restore like storage".
+      // Only when we DO have it locally do we respect the once-per-device flag
+      // (no nagging). Unknown (no hasLocal) → assume present → keep old behavior.
+      let localCopy = true;
+      if (typeof service.hasLocal === "function") {
+        try {
+          localCopy = Boolean(await service.hasLocal(pubkey));
+        } catch (error) {
+          localCopy = true;
+        }
+      }
+      if (localCopy && hasOffered(pubkey, kind)) {
         continue;
       }
       try {
@@ -147,6 +191,10 @@ export function createSettingsRestorePrompt({
         `Restore ${candidates.length > 1 ? "them" : "it"} to this device?`
     );
     if (!accepted) {
+      // Remember the decline so we don't re-offer a missing item every login.
+      for (const kind of candidates) {
+        markDismissed(key, kind);
+      }
       return { offered: true, accepted: false };
     }
 
