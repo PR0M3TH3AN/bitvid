@@ -46,7 +46,7 @@ jobs:
       # `path: dist` stores the site files at the artifact root (index.html at top),
       # so the downloaded .zip extracts straight to the nsite site directory.
       - name: Upload site archive
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: bitvid-site-${{ github.ref_name }}-${{ steps.vars.outputs.sha }}
           path: dist
