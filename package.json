@@ -11,6 +11,7 @@
     "prepare": "npm run build:css",
     "serve": "npx serve",
     "build": "node scripts/build-dist.mjs && npm run verify:dist:deploy-artifact",
+    "archive": "npm run build && rm -f bitvid-site.zip && (cd dist && zip -qr ../bitvid-site.zip .) && echo 'Wrote bitvid-site.zip (upload to your nsite deployer).'",
     "build:css": "postcss css/tailwind.source.css -o css/tailwind.generated.css",
     "build:beacon:bundle": "node scripts/build-beacon.mjs",
     "build:beacon": "npm run build:beacon:bundle && npm run lint:inline-styles",

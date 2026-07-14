@@ -1,0 +1,49 @@
+# Build a fresh, downloadable site archive on every push (any branch), so a
+# ready-to-upload copy of the compiled app is always available for a MANUAL nsite
+# publish (NIP-5A). This does NOT publish anything or touch any signing key — it
+# just builds `dist/` and uploads it as a workflow artifact (GitHub serves
+# artifacts as a .zip on download). See docs/nsite-mirror-plan.md.
+name: Build site archive
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One archive build in flight per branch; a newer push supersedes an older one.
+concurrency:
+  group: nsite-archive-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build static site
+        run: npm run build
+
+      - name: Short SHA
+        id: vars
+        run: echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      # `path: dist` stores the site files at the artifact root (index.html at top),
+      # so the downloaded .zip extracts straight to the nsite site directory.
+      - name: Upload site archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: bitvid-site-${{ github.ref_name }}-${{ steps.vars.outputs.sha }}
+          path: dist
+          if-no-files-found: error
+          retention-days: 30
