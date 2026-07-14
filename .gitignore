@@ -19,3 +19,6 @@ TEST_LOG.mdtest_logs/nip-hits.txt
 
 # Vercel CLI local link/state
 .vercel
+
+# Local site archive for manual nsite upload (npm run archive)
+bitvid-site.zip
