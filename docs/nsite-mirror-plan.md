@@ -148,8 +148,10 @@ push to any branch
   ├── Vercel  → production build → bitvid.network            (primary, unchanged)
   └── GitHub Action (.github/workflows/nsite-archive.yml)   [SHIPPED]
         npm ci && npm run build → dist/
-          → actions/upload-artifact: downloadable site .zip (root = index.html)
-          (no signing key, publishes nothing)
+          → any branch: actions/upload-artifact → downloadable site .zip (30d)
+          → main only:  GitHub Release (site-<date>-<sha>, --latest) w/ bitvid-site.zip
+                        stable URL: /releases/latest/download/bitvid-site.zip
+          (no Nostr signing key, does not publish to nsite)
 
 manual release (maintainer, when promoting to prod)
   download latest archive  (or: npm run archive → bitvid-site.zip)
@@ -162,10 +164,32 @@ manual release (maintainer, when promoting to prod)
 ## The archive workflow (shipped)
 
 `.github/workflows/nsite-archive.yml` — runs on **push to any branch** + manual
-`workflow_dispatch`. It builds `dist/` and uploads it as an artifact named
-`bitvid-site-<branch>-<shortsha>` (30-day retention). GitHub serves the artifact as
-a `.zip` on download, with `index.html` at the root — drop-in for an nsite deployer.
-It holds **no secret** and publishes nothing.
+`workflow_dispatch`. It holds **no Nostr signing key** and does not publish to nsite;
+it only produces the compiled `dist/` for a manual publish:
+
+- **Every branch** → uploads `dist/` as an artifact `bitvid-site-<branch>-<shortsha>`
+  (30-day retention). GitHub serves it as a `.zip` on download, `index.html` at the
+  root — drop-in for an nsite deployer. Grab the latest for a branch with
+  `gh run download` (see below).
+- **`main` only** → additionally cuts an **immutable GitHub Release** (tag
+  `site-<date>-<shortsha>`, marked `--latest`) with `bitvid-site.zip` attached, giving
+  a **stable download URL** for the current production archive:
+
+  ```
+  https://github.com/PR0M3TH3AN/bitvid/releases/latest/download/bitvid-site.zip
+  ```
+
+  The Release contains only the public compiled app (identical to what Vercel serves),
+  so it's safe to expose permanently; it doubles as the per-release snapshot from D8.
+
+Grab the latest archive for a non-prod branch:
+
+```bash
+gh run download -R PR0M3TH3AN/bitvid \
+  "$(gh run list -R PR0M3TH3AN/bitvid --workflow=nsite-archive.yml \
+       --branch unstable --status success -L1 --json databaseId -q '.[0].databaseId')" \
+  --dir ./site-archive
+```
 
 Locally, `npm run archive` produces the same thing as `bitvid-site.zip` (gitignored)
 for an offline/manual publish.

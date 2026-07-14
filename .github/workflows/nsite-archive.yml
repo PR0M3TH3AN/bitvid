@@ -1,8 +1,13 @@
 # Build a fresh, downloadable site archive on every push (any branch), so a
 # ready-to-upload copy of the compiled app is always available for a MANUAL nsite
-# publish (NIP-5A). This does NOT publish anything or touch any signing key — it
-# just builds `dist/` and uploads it as a workflow artifact (GitHub serves
-# artifacts as a .zip on download). See docs/nsite-mirror-plan.md.
+# publish (NIP-5A). This does NOT publish to nsite or touch any Nostr signing key —
+# it just builds `dist/`.
+#   - every branch: upload it as a 30-day workflow artifact.
+#   - main only:     also cut an immutable GitHub Release with the .zip attached,
+#                    giving a stable download URL:
+#                    https://github.com/PR0M3TH3AN/bitvid/releases/latest/download/bitvid-site.zip
+# The Release contains only the public compiled app (same as Vercel serves) — no
+# secret. See docs/nsite-mirror-plan.md.
 name: Build site archive
 
 on:
@@ -47,3 +52,46 @@ jobs:
           path: dist
           if-no-files-found: error
           retention-days: 30
+
+  # Production only: publish an immutable GitHub Release with the .zip attached, so
+  # the latest prod archive is always at a stable URL:
+  #   https://github.com/PR0M3TH3AN/bitvid/releases/latest/download/bitvid-site.zip
+  # This is purely a download convenience + per-release snapshot — it does NOT
+  # publish to nsite and holds no Nostr signing key (that step stays manual).
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # `npm run archive` builds dist/ and writes bitvid-site.zip (index.html at root).
+      - name: Build site archive
+        run: npm run archive
+
+      - name: Publish site release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="site-$(date -u +%Y%m%d)-${GITHUB_SHA::7}"
+          notes="Compiled bitvid static app (\`dist/\`) at ${GITHUB_SHA}.
+          Stable latest link: https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/bitvid-site.zip"
+          # Re-runs of the same commit reuse the tag: refresh the asset instead of failing.
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" bitvid-site.zip --clobber
+            gh release edit "$tag" --latest
+          else
+            gh release create "$tag" bitvid-site.zip \
+              --title "Site archive $tag" \
+              --notes "$notes" \
+              --latest
+          fi
