@@ -277,6 +277,19 @@ export const FEATURE_AUDIO_INGEST = false;
 export const FEATURE_BITCOIN_CONNECT = true;
 
 /**
+ * Whether the login modal offers BitLogin (a portable Nostr identity behind a
+ * login name/password, https://github.com/PR0M3TH3AN/bitlogin) as the primary
+ * sign-in method, with the NIP-07 extension, nsec, and NIP-46 options
+ * collapsed under "Other login options" (js/ui/bitloginModalIntegration.js).
+ * The vendored widget bundle (vendor/bitlogin/, scripts/build-bitlogin-widget.mjs)
+ * only lazy-loads once the login modal's HTML is present in the DOM.
+ *
+ * Unstable-branch experiment (AGENTS.md §1) -- reset to `false` before this
+ * reaches main until verified end-to-end against production relays.
+ */
+export const FEATURE_BITLOGIN = true;
+
+/**
  * Whether this deployment offers Blossom (nostr-native blob storage) as a
  * first-class upload provider alongside Cloudflare R2 / generic S3 / Backblaze B2
  * (docs/blossom-plan.md, TODO #30). Blossom uploads authorize with the user's

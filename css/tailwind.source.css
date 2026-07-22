@@ -880,6 +880,29 @@
     position: relative;
   }
 
+  /* Maps the <bitlogin-auth> widget's own theming hooks onto bitvid's design
+     tokens (components/login-modal.html), so it reads as part of this site
+     rather than a foreign embed, and follows the light/dark theme toggle
+     automatically since every token below is itself theme-aware. */
+  bitlogin-auth {
+    display: block;
+    --bl-accent: var(--color-accent-strong);
+    --bl-accent-hover: var(--color-accent);
+    --bl-accent-fg: rgb(255 255 255);
+    --bl-bg: var(--surface-panel);
+    --bl-fg: var(--text-primary);
+    --bl-muted: var(--text-muted);
+    --bl-border: var(--border-default);
+    --bl-input-bg: var(--surface-sunken);
+    --bl-danger: var(--status-danger);
+    --bl-danger-bg: var(--status-danger-surface);
+    --bl-warn: var(--status-warning);
+    --bl-warn-bg: var(--status-warning-surface);
+    --bl-radius: var(--radius-lg);
+    --bl-font-family: inherit;
+    --bl-max-width: none;
+  }
+
   .btn-ghost[data-state="active"],
   .btn-ghost[aria-pressed="true"] {
     @apply border-transparent bg-primary text-white shadow-md;

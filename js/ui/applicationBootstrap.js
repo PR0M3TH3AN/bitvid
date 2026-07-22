@@ -41,6 +41,7 @@ import ProfileIdentityController from "./profileIdentityController.js";
 import VideoListViewController from "./videoListViewController.js";
 import ProfileModalController from "./profileModalController.js";
 import LoginModalController from "./loginModalController.js";
+import { wireBitloginLogin } from "./bitloginModalIntegration.js";
 import { VideoListView } from "./views/VideoListView.js";
 import MoreMenuController from "./moreMenuController.js";
 import VideoSettingsMenuController from "./videoSettingsMenuController.js";
@@ -429,6 +430,7 @@ export default class ApplicationBootstrap {
         authProviders: this.services.authProviders || authProviders,
         getAuthProvider: this.services.getAuthProvider || getAuthProvider,
       });
+    wireBitloginLogin(app);
     app.authEventUnsubscribes.push(
       app.authService.on("auth:login", (detail) => {
         const maybePromise = app.handleAuthLogin(detail);

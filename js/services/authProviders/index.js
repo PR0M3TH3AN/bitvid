@@ -2,6 +2,7 @@ import nip07 from "./nip07.js";
 import nip46 from "./nip46.js";
 import nsec from "./nsec.js";
 import generate from "./generate.js";
+import bitlogin from "./bitlogin.js";
 
 function normalizeProviderId(provider, fallbackId) {
   if (provider && typeof provider.id === "string") {
@@ -39,7 +40,7 @@ function normalizeProviderMetadata(provider, fallbackId) {
   return Object.freeze({ id, label, description, badgeVariant });
 }
 
-const providerList = [nip07, nip46, nsec, generate].filter(Boolean);
+const providerList = [nip07, nip46, nsec, generate, bitlogin].filter(Boolean);
 const providerMap = {};
 const metadataMap = {};
 
@@ -96,6 +97,19 @@ builtInMetadata.forEach((entry) => {
 
 export const providers = Object.freeze({ ...providerMap });
 export const providerMetadata = Object.freeze({ ...metadataMap });
+
+// BitLogin gets its own permanent, always-visible widget in the login modal
+// (components/login-modal.html) rather than a grid button -- it isn't a single
+// button-click-then-await-a-promise flow like the others, it's a whole
+// multi-screen sign-in/create/recover UI. Excluding it here keeps the modal's
+// provider grid ("Other login options") free of a redundant, do-nothing button
+// for it, while `providers.bitlogin` above still resolves normally for
+// AuthService.requestLogin({ providerId: "bitlogin" }).
+export const providersForModal = Object.freeze(
+  Object.fromEntries(
+    Object.entries(providerMap).filter(([id]) => id !== "bitlogin"),
+  ),
+);
 
 const unknownMetadataCache = new Map();
 
