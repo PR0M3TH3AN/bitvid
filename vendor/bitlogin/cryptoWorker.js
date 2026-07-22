@@ -3231,10 +3231,13 @@ class Pe {
 const gn = [
   "wss://relay.damus.io",
   "wss://nos.lol",
-  "wss://relay.nostr.band"
+  "wss://relay.nostr.band",
+  "wss://nostr.wine",
+  "wss://relay.snort.social"
 ], fn = [
   "wss://purplepag.es",
-  "wss://relay.nostr.band"
+  "wss://relay.nostr.band",
+  "wss://nostr-pub.wellorder.net"
 ], mn = "bitlogin", H = "kv", wn = 1;
 function bn() {
   return new Promise((e, t) => {
