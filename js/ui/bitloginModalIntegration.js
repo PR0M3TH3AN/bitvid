@@ -9,11 +9,12 @@
 // gets its own widget in the modal instead of a grid button (see
 // providersForModal in js/services/authProviders/index.js) and its own small
 // integration module here rather than special-casing LoginModalController.
-import { devLogger } from "../utils/logger.js";
+import { devLogger, userLogger } from "../utils/logger.js";
 import { closeStaticModal } from "./components/staticModalAccessibility.js";
 import { setModalState as setGlobalModalState } from "../state/appState.js";
 import { createBitloginAdapter } from "../nostr/adapters/bitloginAdapter.js";
 import { setPendingBitloginResult } from "../services/authProviders/bitlogin.js";
+import bitloginProvider from "../services/authProviders/bitlogin.js";
 import { FEATURE_BITLOGIN } from "../constants.js";
 
 // Vendored, pinned BitLogin widget bundle (scripts/build-bitlogin-widget.mjs).
@@ -44,6 +45,13 @@ function closeLoginModal() {
   }
 }
 
+// Cheap insurance against wireBitloginLogin() ever running twice for the same
+// element (e.g. a future bootstrap change that calls it more than once): the
+// same <bitlogin-auth> instance should only ever get one "bitlogin-login"
+// listener, since two would each race the shared, single-read `pendingResult`
+// and each independently call requestLogin() for one real sign-in.
+const wiredWidgets = new WeakSet();
+
 function attachWidget(app, widget) {
   const mount = document.getElementById("bitloginMount");
   if (!FEATURE_BITLOGIN) {
@@ -58,6 +66,11 @@ function attachWidget(app, widget) {
   if (mount instanceof HTMLElement) {
     mount.hidden = false;
   }
+
+  if (wiredWidgets.has(widget)) {
+    return;
+  }
+  wiredWidgets.add(widget);
 
   loadBitloginWidgetOnce().catch((error) => {
     devLogger.warn("[BitLogin] Failed to load the widget bundle:", error);
@@ -81,7 +94,35 @@ function attachWidget(app, widget) {
       await app.authService.requestLogin({ providerId: "bitlogin" });
       closeLoginModal();
     } catch (error) {
-      devLogger.warn("[BitLogin] Sign-in failed to apply:", error);
+      // bitvid rejecting the sign-in (e.g. the invite-only access-control
+      // check) leaves the widget itself still showing its own "Signed in"
+      // screen -- BitLogin succeeded on its own terms, bitvid just didn't
+      // accept the identity. Reset the widget and surface the real reason
+      // through the same error-banner path every other sign-in method uses
+      // (devLogger.warn is a silent no-op outside dev mode -- see
+      // IS_DEV_MODE in config/instance-config.js -- so relying on it here
+      // meant a rejected user saw no feedback at all).
+      userLogger.warn("[BitLogin] Sign-in failed to apply:", error);
+      const maybePromise = app?.handleLoginModalError?.({
+        error,
+        provider: bitloginProvider,
+      });
+      if (maybePromise && typeof maybePromise.then === "function") {
+        maybePromise.catch((handlerError) => {
+          devLogger.warn(
+            "[BitLogin] handleLoginModalError threw:",
+            handlerError,
+          );
+        });
+      }
+      try {
+        await widget.logout();
+      } catch (logoutError) {
+        devLogger.warn(
+          "[BitLogin] Failed to reset widget after a rejected sign-in:",
+          logoutError,
+        );
+      }
     }
   });
 }
