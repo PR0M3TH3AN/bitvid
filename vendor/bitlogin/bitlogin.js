@@ -1,6 +1,6 @@
-import { r as y, e as w, E as v, p as Q, R as k, i as h, a as u } from "./bitlogin-shared-QIBe5Omw.js";
+import { r as y, e as w, E as v, p as Q, R as k, i as h, a as d } from "./bitlogin-shared-n51Pos3V.js";
 const x = 6, p = 64;
-function d(a = x) {
+function u(a = x) {
   const e = w(), t = [];
   for (let r = 0; r < a; r++)
     t.push(e[y(e.length)]);
@@ -45,10 +45,10 @@ function L(a) {
   let e = 0;
   return /[a-z]/u.test(a) && (e += 26), /[A-Z]/u.test(a) && (e += 26), /[0-9]/u.test(a) && (e += 10), /[^a-zA-Z0-9]/u.test(a) && (e += 33), e || 1;
 }
-function C(a) {
+function S(a) {
   return a.length * Math.log2(L(a));
 }
-function S(a) {
+function C(a) {
   if (/^(.)\1*$/u.test(a) || /(.)\1{2,}/u.test(a))
     return !0;
   const e = a.toLowerCase(), t = ["0123456789", "abcdefghijklmnopqrstuvwxyz"];
@@ -60,9 +60,9 @@ function S(a) {
     }
   return !1;
 }
-function f(a, e) {
-  const t = C(a);
-  return a.length < m ? { ok: !1, entropyBits: t, reason: `Must be at least ${m} characters.` } : P.has(a.toLowerCase()) ? { ok: !1, entropyBits: t, reason: "This is on a list of extremely common passwords." } : e.length >= 3 && a.toLowerCase().includes(e) ? { ok: !1, entropyBits: t, reason: "Must not contain your login name." } : S(a) ? { ok: !1, entropyBits: t, reason: "Too predictable (repeated characters or a simple sequence)." } : t < b ? {
+function g(a, e) {
+  const t = S(a);
+  return a.length < m ? { ok: !1, entropyBits: t, reason: `Must be at least ${m} characters.` } : P.has(a.toLowerCase()) ? { ok: !1, entropyBits: t, reason: "This is on a list of extremely common passwords." } : e.length >= 3 && a.toLowerCase().includes(e) ? { ok: !1, entropyBits: t, reason: "Must not contain your login name." } : C(a) ? { ok: !1, entropyBits: t, reason: "Too predictable (repeated characters or a simple sequence)." } : t < b ? {
     ok: !1,
     entropyBits: t,
     reason: `Estimated entropy (~${t.toFixed(0)} bits) is below the required ${b}. Use a longer password or mix character types.`
@@ -146,6 +146,9 @@ class E {
   }
   getSessionStatus() {
     return this.call("getSessionStatus", {});
+  }
+  restoreSession() {
+    return this.call("restoreSession", {});
   }
   logout() {
     return this.call("logout", {});
@@ -504,7 +507,7 @@ class F extends HTMLElement {
   }
   connectedCallback() {
     const e = R(this);
-    if (this.vaultRelayUrls = e.vaultRelayUrls ?? [], this.discoveryRelayUrls = e.discoveryRelayUrls ?? [], this.worker.configure({ vaultRelayUrls: this.vaultRelayUrls, discoveryRelayUrls: this.discoveryRelayUrls }), this.root.addEventListener("click", (t) => this.onClick(t)), this.root.addEventListener("submit", (t) => this.onSubmit(t)), this.root.addEventListener("input", (t) => this.onInput(t)), this.root.addEventListener("change", (t) => void this.onFileChange(t)), this.render(), this.installedProvider = $(this.worker, () => this.vaultRelayUrls), !window.nostr)
+    if (this.vaultRelayUrls = e.vaultRelayUrls ?? [], this.discoveryRelayUrls = e.discoveryRelayUrls ?? [], this.worker.configure({ vaultRelayUrls: this.vaultRelayUrls, discoveryRelayUrls: this.discoveryRelayUrls }).then(() => this.tryRestoreSession()), this.root.addEventListener("click", (t) => this.onClick(t)), this.root.addEventListener("submit", (t) => this.onSubmit(t)), this.root.addEventListener("input", (t) => this.onInput(t)), this.root.addEventListener("change", (t) => void this.onFileChange(t)), this.render(), this.installedProvider = $(this.worker, () => this.vaultRelayUrls), !window.nostr)
       try {
         window.nostr = this.installedProvider;
       } catch {
@@ -645,7 +648,7 @@ class F extends HTMLElement {
   readManualPassword(e) {
     const t = this.field("manualPassword"), s = this.field("manualPasswordConfirm");
     this.manualPasswordDraft = t, this.manualPasswordConfirmDraft = s;
-    const r = f(t, e);
+    const r = g(t, e);
     return r.ok ? t !== s ? { password: "", error: "Passwords do not match. Please re-enter both." } : { password: t } : { password: "", error: `Password not accepted: ${r.reason}` };
   }
   /**
@@ -702,20 +705,20 @@ class F extends HTMLElement {
         this.goto("confirm-phrase");
         return;
       case "goto-change-password":
-        this.changePasswordNewCredential = d().secret, this.manualPasswordMode = !1, this.manualPasswordFeedback = null, this.manualPasswordDraft = "", this.manualPasswordConfirmDraft = "", this.goto("change-password");
+        this.changePasswordNewCredential = u().secret, this.manualPasswordMode = !1, this.manualPasswordFeedback = null, this.manualPasswordDraft = "", this.manualPasswordConfirmDraft = "", this.goto("change-password");
         return;
       case "goto-export":
         this.goto("export");
         return;
       case "regenerate-credential":
-        this.generatedCredential = d().secret, this.savedCheckbox = !1, this.render();
+        this.generatedCredential = u().secret, this.savedCheckbox = !1, this.render();
         return;
       case "toggle-manual-password":
         this.manualPasswordMode = !this.manualPasswordMode, this.manualPasswordFeedback = null, this.manualPasswordDraft = "", this.manualPasswordConfirmDraft = "", this.savedCheckbox = !1, this.render();
         return;
       case "copy-credential": {
-        const r = this.root.querySelector("#credential-box"), n = t, o = n.textContent ?? "Copy", l = (g) => {
-          n.textContent = g, setTimeout(() => {
+        const r = this.root.querySelector("#credential-box"), n = t, o = n.textContent ?? "Copy", l = (f) => {
+          n.textContent = f, setTimeout(() => {
             n.isConnected && (n.textContent = o);
           }, 2e3);
         };
@@ -785,7 +788,7 @@ class F extends HTMLElement {
     const t = e.target;
     if (!(t instanceof HTMLInputElement) || t.name !== "manualPassword" && t.name !== "manualPasswordConfirm") return;
     const s = this.root.querySelector('input[name="manualPassword"]')?.value ?? "", r = this.root.querySelector('input[name="manualPasswordConfirm"]')?.value ?? "";
-    this.manualPasswordFeedback = s ? f(s, this.loginName) : null;
+    this.manualPasswordFeedback = s ? g(s, this.loginName) : null;
     const n = this.root.querySelector("#manual-password-feedback");
     if (n)
       if (!this.manualPasswordFeedback)
@@ -845,7 +848,7 @@ class F extends HTMLElement {
       this.errorMessage = "Login name must be 3-32 characters: a-z, 0-9, '.', '_', '-', and not start/end with punctuation.", this.render();
       return;
     }
-    this.loginName = e, this.generatedCredential = d().secret, this.savedCheckbox = !1, this.manualPasswordMode = !1, this.manualPasswordFeedback = null, this.manualPasswordDraft = "", this.manualPasswordConfirmDraft = "", this.goto("create-credential");
+    this.loginName = e, this.generatedCredential = u().secret, this.savedCheckbox = !1, this.manualPasswordMode = !1, this.manualPasswordFeedback = null, this.manualPasswordDraft = "", this.manualPasswordConfirmDraft = "", this.goto("create-credential");
   }
   async handleCreateCredentialSubmit() {
     this.savedCheckbox = this.root.querySelector("#saved-check")?.checked ?? !1;
@@ -870,7 +873,7 @@ class F extends HTMLElement {
     });
     this.importKey = "", this.importPreviewNpub = "", this.recoveryPhrase = t.recoveryPhrase;
     const s = this.recoveryPhrase.split(" "), r = D(s.length, 3);
-    this.confirmSlots = r.map((n) => ({ index: n, value: "" })), this.session = { publicKey: t.everydayPublicKey, npub: u(t.everydayPublicKey), accountId: t.accountId }, this.busy = !1, this.goto("confirm-phrase"), this.worker.publishProfileAndRelayLists({
+    this.confirmSlots = r.map((n) => ({ index: n, value: "" })), this.session = { publicKey: t.everydayPublicKey, npub: d(t.everydayPublicKey), accountId: t.accountId }, this.busy = !1, this.goto("confirm-phrase"), this.worker.publishProfileAndRelayLists({
       name: this.loginName,
       generalRelays: this.vaultRelayUrls,
       dmRelays: this.vaultRelayUrls
@@ -890,6 +893,28 @@ class F extends HTMLElement {
     await this.attemptLogin(e, t);
   }
   /**
+   * Called once per connectedCallback, right after "configure" -- restores whatever
+   * a prior login/register/rotate cached locally (§21), so a page reload lands
+   * straight on the dashboard instead of asking for the login name + password
+   * again. Silent by design: no flashSuccess() stamp (that's reserved for a
+   * deliberate action the user just took) and no offerToSaveCredential (there's
+   * no password in hand to save). If the welcome screen already rendered by the
+   * time this resolves, goto() just re-renders over it -- a brief flash, not a
+   * correctness issue.
+   */
+  async tryRestoreSession() {
+    try {
+      const e = await this.worker.restoreSession();
+      if (!e.restored || !e.everydayPublicKey) return;
+      this.session = {
+        publicKey: e.everydayPublicKey,
+        npub: d(e.everydayPublicKey),
+        accountId: e.accountId
+      }, this.noteSignerClaim(this.claimSigner()), this.dispatchEvent(new CustomEvent("bitlogin-login", { detail: { publicKey: e.everydayPublicKey } })), this.goto("dashboard");
+    } catch {
+    }
+  }
+  /**
    * Shared by the login form and the "continue anyway" rollback-confirmation step so both
    * paths grant a session identically -- claimSigner() and the bitlogin-login event only ever
    * fire once a RollbackDetectedError (if any) has been resolved one way or the other.
@@ -898,7 +923,7 @@ class F extends HTMLElement {
     this.setBusy(!0);
     try {
       const r = await this.worker.login({ loginName: e, password: t, acknowledgeRollback: s });
-      this.loginName = e, this.session = { publicKey: r.everydayPublicKey, npub: u(r.everydayPublicKey), accountId: r.accountId }, this.sessionWarnings = [r.rollbackWarning, r.relayDisagreementWarning].filter((n) => !!n), this.busy = !1, this.noteSignerClaim(this.claimSigner()), this.dispatchEvent(new CustomEvent("bitlogin-login", { detail: { publicKey: r.everydayPublicKey } })), this.flashSuccess("dashboard", "Signed in"), this.offerToSaveCredential(e, t);
+      this.loginName = e, this.session = { publicKey: r.everydayPublicKey, npub: d(r.everydayPublicKey), accountId: r.accountId }, this.sessionWarnings = [r.rollbackWarning, r.relayDisagreementWarning].filter((n) => !!n), this.busy = !1, this.noteSignerClaim(this.claimSigner()), this.dispatchEvent(new CustomEvent("bitlogin-login", { detail: { publicKey: r.everydayPublicKey } })), this.flashSuccess("dashboard", "Signed in"), this.offerToSaveCredential(e, t);
     } catch (r) {
       if (r instanceof Error && r.name === "RollbackDetectedError") {
         this.pendingRollback = { kind: "login", loginName: e, password: t }, this.rollbackMessage = r.message, this.busy = !1, this.goto("rollback-confirm");
@@ -923,7 +948,7 @@ class F extends HTMLElement {
       generalRelaysCount: t.generalRelays.length,
       dmRelaysCount: t.dmRelays.length,
       chainWarning: t.chainWarning
-    }, this.session = { publicKey: t.everydayPublicKey, npub: u(t.everydayPublicKey), accountId: t.accountId }, this.newCredentialAfterRecovery = d().secret, this.manualPasswordMode = !1, this.manualPasswordFeedback = null, this.manualPasswordDraft = "", this.manualPasswordConfirmDraft = "", this.busy = !1, this.goto("recover-new-credentials");
+    }, this.session = { publicKey: t.everydayPublicKey, npub: d(t.everydayPublicKey), accountId: t.accountId }, this.newCredentialAfterRecovery = u().secret, this.manualPasswordMode = !1, this.manualPasswordFeedback = null, this.manualPasswordDraft = "", this.manualPasswordConfirmDraft = "", this.busy = !1, this.goto("recover-new-credentials");
   }
   async handleRecoverNewCredentialsSubmit() {
     const e = this.field("newLoginName").trim().toLowerCase();

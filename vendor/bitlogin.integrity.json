@@ -2,17 +2,17 @@
   "package": "@bitlogin/widget",
   "version": "0.1.0",
   "files": {
-    "bitlogin-shared-QIBe5Omw.js": {
-      "sha256": "7ce4ed0a5c3c7f744e864f55745f7fa78482cbfa19cd30eb551f67a415f55191",
-      "bytes": 288275
+    "bitlogin-shared-n51Pos3V.js": {
+      "sha256": "bf7ee691d519f3f9fed7fe1d0955389ea33d0b6de5282432d4815c82cdffe25e",
+      "bytes": 288287
     },
     "bitlogin.js": {
-      "sha256": "539253ea709e9554f3dcff872beff40c2ca847b3564f53885b8fd89a7a2747d1",
-      "bytes": 66045
+      "sha256": "927646a94a1bb0fff4a0080778f2fc58be60107f1e4e1250369074f980f19ac4",
+      "bytes": 67232
     },
     "cryptoWorker.js": {
-      "sha256": "06a7aaf0be2ff4e80b46f609b868aa4ccfbd402cf0604031500316830ff2f528",
-      "bytes": 73937
+      "sha256": "ba5ded0d533f394e02b5a1a66949f6c5c17e3af1ab83db34dc7b4c3c48506a0c",
+      "bytes": 76304
     }
   }
 }
