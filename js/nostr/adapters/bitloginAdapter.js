@@ -17,6 +17,10 @@ export function createBitloginAdapter(widgetElement, pubkey) {
       widgetElement.nip44Encrypt(peerPubkey, plaintext),
     nip44Decrypt: async (peerPubkey, payload) =>
       widgetElement.nip44Decrypt(peerPubkey, payload),
+    nip04Encrypt: async (peerPubkey, plaintext) =>
+      widgetElement.nip04Encrypt(peerPubkey, plaintext),
+    nip04Decrypt: async (peerPubkey, payload) =>
+      widgetElement.nip04Decrypt(peerPubkey, payload),
     requestPermissions: async () => ({ ok: true }),
     destroy: async () => {
       try {
@@ -30,7 +34,7 @@ export function createBitloginAdapter(widgetElement, pubkey) {
     capabilities: {
       sign: true,
       nip44: true,
-      nip04: false,
+      nip04: true,
     },
   };
 

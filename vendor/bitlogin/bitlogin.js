@@ -1,6 +1,6 @@
 import { r as y, e as w, E as v, p as Q, R as k, i as h, a as u } from "./bitlogin-shared-QIBe5Omw.js";
 const x = 6, p = 64;
-function c(a = x) {
+function d(a = x) {
   const e = w(), t = [];
   for (let r = 0; r < a; r++)
     t.push(e[y(e.length)]);
@@ -54,8 +54,8 @@ function S(a) {
   const e = a.toLowerCase(), t = ["0123456789", "abcdefghijklmnopqrstuvwxyz"];
   for (const s of t)
     for (let r = 0; r + 4 <= s.length; r++) {
-      const o = s.slice(r, r + 4), n = [...o].reverse().join("");
-      if (e.includes(o) || e.includes(n))
+      const n = s.slice(r, r + 4), o = [...n].reverse().join("");
+      if (e.includes(n) || e.includes(o))
         return !0;
     }
   return !1;
@@ -75,22 +75,22 @@ class E {
   constructor() {
     const e = ["cryptoWorker", ".js"].join(""), t = new URL(e, import.meta.url);
     this.worker = new Worker(t, { type: "module" }), this.worker.addEventListener("message", (s) => {
-      const r = s.data, o = this.pending.get(r.id);
-      if (o)
+      const r = s.data, n = this.pending.get(r.id);
+      if (n)
         if (this.pending.delete(r.id), r.ok)
-          o.resolve(r.result);
+          n.resolve(r.result);
         else {
-          const n = new Error(r.error);
-          n.name = r.errorName ?? "Error", o.reject(n);
+          const o = new Error(r.error);
+          o.name = r.errorName ?? "Error", n.reject(o);
         }
     });
   }
   call(e, t) {
     const s = `${Date.now().toString(36)}-${(this.counter++).toString(36)}`;
-    return new Promise((r, o) => {
-      this.pending.set(s, { resolve: r, reject: o });
-      const n = { id: s, action: e, payload: t };
-      this.worker.postMessage(n);
+    return new Promise((r, n) => {
+      this.pending.set(s, { resolve: r, reject: n });
+      const o = { id: s, action: e, payload: t };
+      this.worker.postMessage(o);
     });
   }
   configure(e) {
@@ -129,6 +129,12 @@ class E {
   nip44Decrypt(e) {
     return this.call("nip44Decrypt", e);
   }
+  nip04Encrypt(e) {
+    return this.call("nip04Encrypt", e);
+  }
+  nip04Decrypt(e) {
+    return this.call("nip04Decrypt", e);
+  }
   exportIdentity() {
     return this.call("exportIdentity", {});
   }
@@ -149,7 +155,7 @@ class E {
   }
 }
 const N = "BitLogin: no identity is unlocked yet. Add <bitlogin-auth> to the page and let the user sign in, or call it programmatically before invoking window.nostr.";
-function d(a) {
+function c(a) {
   return a.catch((e) => {
     throw e.message.includes("No identity is unlocked") ? new Error(N) : e;
   });
@@ -157,11 +163,11 @@ function d(a) {
 function $(a, e) {
   return {
     async getPublicKey() {
-      const { publicKey: t } = await d(a.getPublicKey());
+      const { publicKey: t } = await c(a.getPublicKey());
       return t;
     },
     async signEvent(t) {
-      return d(a.signEvent(t));
+      return c(a.signEvent(t));
     },
     async getRelays() {
       const t = {};
@@ -170,11 +176,21 @@ function $(a, e) {
     },
     nip44: {
       async encrypt(t, s) {
-        const { ciphertext: r } = await d(a.nip44Encrypt({ peerPublicKey: t, plaintext: s }));
+        const { ciphertext: r } = await c(a.nip44Encrypt({ peerPublicKey: t, plaintext: s }));
         return r;
       },
       async decrypt(t, s) {
-        const { plaintext: r } = await d(a.nip44Decrypt({ peerPublicKey: t, payload: s }));
+        const { plaintext: r } = await c(a.nip44Decrypt({ peerPublicKey: t, payload: s }));
+        return r;
+      }
+    },
+    nip04: {
+      async encrypt(t, s) {
+        const { ciphertext: r } = await c(a.nip04Encrypt({ peerPublicKey: t, plaintext: s }));
+        return r;
+      },
+      async decrypt(t, s) {
+        const { plaintext: r } = await c(a.nip04Decrypt({ peerPublicKey: t, payload: s }));
         return r;
       }
     },
@@ -482,7 +498,9 @@ class F extends HTMLElement {
   pendingRollback = null;
   rollbackMessage = "";
   constructor() {
-    super(), this.root = this.attachShadow({ mode: "open" }), this.worker = new E();
+    super(), this.root = this.attachShadow({ mode: "open" });
+    const e = new CSSStyleSheet();
+    e.replaceSync(M), this.root.adoptedStyleSheets = [e], this.worker = new E();
   }
   connectedCallback() {
     const e = R(this);
@@ -515,6 +533,17 @@ class F extends HTMLElement {
   }
   async nip44Decrypt(e, t) {
     return (await this.worker.nip44Decrypt({ peerPublicKey: e, payload: t })).plaintext;
+  }
+  /**
+   * Legacy relative to nip44Encrypt/nip44Decrypt above, but still what a real NIP-07
+   * extension exposes as window.nostr.nip04 -- implemented for drop-in parity with sites
+   * (or their older DM code paths) that still expect NIP-04 rather than NIP-44.
+   */
+  async nip04Encrypt(e, t) {
+    return (await this.worker.nip04Encrypt({ peerPublicKey: e, plaintext: t })).ciphertext;
+  }
+  async nip04Decrypt(e, t) {
+    return (await this.worker.nip04Decrypt({ peerPublicKey: e, payload: t })).plaintext;
   }
   async logout() {
     await this.worker.logout(), this.session = null, this.releaseSigner(), this.dispatchEvent(new CustomEvent("bitlogin-logout")), this.goto("welcome");
@@ -673,21 +702,21 @@ class F extends HTMLElement {
         this.goto("confirm-phrase");
         return;
       case "goto-change-password":
-        this.changePasswordNewCredential = c().secret, this.manualPasswordMode = !1, this.manualPasswordFeedback = null, this.manualPasswordDraft = "", this.manualPasswordConfirmDraft = "", this.goto("change-password");
+        this.changePasswordNewCredential = d().secret, this.manualPasswordMode = !1, this.manualPasswordFeedback = null, this.manualPasswordDraft = "", this.manualPasswordConfirmDraft = "", this.goto("change-password");
         return;
       case "goto-export":
         this.goto("export");
         return;
       case "regenerate-credential":
-        this.generatedCredential = c().secret, this.savedCheckbox = !1, this.render();
+        this.generatedCredential = d().secret, this.savedCheckbox = !1, this.render();
         return;
       case "toggle-manual-password":
         this.manualPasswordMode = !this.manualPasswordMode, this.manualPasswordFeedback = null, this.manualPasswordDraft = "", this.manualPasswordConfirmDraft = "", this.savedCheckbox = !1, this.render();
         return;
       case "copy-credential": {
-        const r = this.root.querySelector("#credential-box"), o = t, n = o.textContent ?? "Copy", l = (g) => {
-          o.textContent = g, setTimeout(() => {
-            o.isConnected && (o.textContent = n);
+        const r = this.root.querySelector("#credential-box"), n = t, o = n.textContent ?? "Copy", l = (g) => {
+          n.textContent = g, setTimeout(() => {
+            n.isConnected && (n.textContent = o);
           }, 2e3);
         };
         if (!r || !navigator.clipboard?.writeText) {
@@ -757,16 +786,16 @@ class F extends HTMLElement {
     if (!(t instanceof HTMLInputElement) || t.name !== "manualPassword" && t.name !== "manualPasswordConfirm") return;
     const s = this.root.querySelector('input[name="manualPassword"]')?.value ?? "", r = this.root.querySelector('input[name="manualPasswordConfirm"]')?.value ?? "";
     this.manualPasswordFeedback = s ? f(s, this.loginName) : null;
-    const o = this.root.querySelector("#manual-password-feedback");
-    if (o)
+    const n = this.root.querySelector("#manual-password-feedback");
+    if (n)
       if (!this.manualPasswordFeedback)
-        o.textContent = "", o.className = "notice info";
+        n.textContent = "", n.className = "notice info";
       else {
         const l = this.manualPasswordFeedback.entropyBits.toFixed(0);
-        this.manualPasswordFeedback.ok ? (o.textContent = `Looks good (~${l} bits estimated).`, o.className = "notice info") : (o.textContent = `${this.manualPasswordFeedback.reason} (~${l} bits estimated)`, o.className = "notice warn");
+        this.manualPasswordFeedback.ok ? (n.textContent = `Looks good (~${l} bits estimated).`, n.className = "notice info") : (n.textContent = `${this.manualPasswordFeedback.reason} (~${l} bits estimated)`, n.className = "notice warn");
       }
-    const n = this.root.querySelector("#manual-password-match-feedback");
-    n && (r ? r === s ? (n.textContent = "Passwords match.", n.className = "notice info") : (n.textContent = "Passwords do not match.", n.className = "notice warn") : (n.textContent = "", n.className = "notice info"));
+    const o = this.root.querySelector("#manual-password-match-feedback");
+    o && (r ? r === s ? (o.textContent = "Passwords match.", o.className = "notice info") : (o.textContent = "Passwords do not match.", o.className = "notice warn") : (o.textContent = "", o.className = "notice info"));
   }
   /**
    * Reads and validates an optional recovery-export file (§19.5) for the recover-phrase
@@ -816,18 +845,18 @@ class F extends HTMLElement {
       this.errorMessage = "Login name must be 3-32 characters: a-z, 0-9, '.', '_', '-', and not start/end with punctuation.", this.render();
       return;
     }
-    this.loginName = e, this.generatedCredential = c().secret, this.savedCheckbox = !1, this.manualPasswordMode = !1, this.manualPasswordFeedback = null, this.manualPasswordDraft = "", this.manualPasswordConfirmDraft = "", this.goto("create-credential");
+    this.loginName = e, this.generatedCredential = d().secret, this.savedCheckbox = !1, this.manualPasswordMode = !1, this.manualPasswordFeedback = null, this.manualPasswordDraft = "", this.manualPasswordConfirmDraft = "", this.goto("create-credential");
   }
   async handleCreateCredentialSubmit() {
     this.savedCheckbox = this.root.querySelector("#saved-check")?.checked ?? !1;
     let e = this.generatedCredential;
     if (this.manualPasswordMode) {
-      const { password: o, error: n } = this.readManualPassword(this.loginName);
-      if (n) {
-        this.errorMessage = n, this.render();
+      const { password: n, error: o } = this.readManualPassword(this.loginName);
+      if (o) {
+        this.errorMessage = o, this.render();
         return;
       }
-      e = o;
+      e = n;
     }
     if (!this.savedCheckbox) {
       this.errorMessage = this.manualPasswordMode ? "Please confirm you've saved your password (or written it down) before continuing." : "Please confirm you saved your password before continuing.", this.render();
@@ -840,8 +869,8 @@ class F extends HTMLElement {
       importKey: this.importKey || void 0
     });
     this.importKey = "", this.importPreviewNpub = "", this.recoveryPhrase = t.recoveryPhrase;
-    const s = this.recoveryPhrase.split(" "), r = T(s.length, 3);
-    this.confirmSlots = r.map((o) => ({ index: o, value: "" })), this.session = { publicKey: t.everydayPublicKey, npub: u(t.everydayPublicKey), accountId: t.accountId }, this.busy = !1, this.goto("confirm-phrase"), this.worker.publishProfileAndRelayLists({
+    const s = this.recoveryPhrase.split(" "), r = D(s.length, 3);
+    this.confirmSlots = r.map((n) => ({ index: n, value: "" })), this.session = { publicKey: t.everydayPublicKey, npub: u(t.everydayPublicKey), accountId: t.accountId }, this.busy = !1, this.goto("confirm-phrase"), this.worker.publishProfileAndRelayLists({
       name: this.loginName,
       generalRelays: this.vaultRelayUrls,
       dmRelays: this.vaultRelayUrls
@@ -869,7 +898,7 @@ class F extends HTMLElement {
     this.setBusy(!0);
     try {
       const r = await this.worker.login({ loginName: e, password: t, acknowledgeRollback: s });
-      this.loginName = e, this.session = { publicKey: r.everydayPublicKey, npub: u(r.everydayPublicKey), accountId: r.accountId }, this.sessionWarnings = [r.rollbackWarning, r.relayDisagreementWarning].filter((o) => !!o), this.busy = !1, this.noteSignerClaim(this.claimSigner()), this.dispatchEvent(new CustomEvent("bitlogin-login", { detail: { publicKey: r.everydayPublicKey } })), this.flashSuccess("dashboard", "Signed in"), this.offerToSaveCredential(e, t);
+      this.loginName = e, this.session = { publicKey: r.everydayPublicKey, npub: u(r.everydayPublicKey), accountId: r.accountId }, this.sessionWarnings = [r.rollbackWarning, r.relayDisagreementWarning].filter((n) => !!n), this.busy = !1, this.noteSignerClaim(this.claimSigner()), this.dispatchEvent(new CustomEvent("bitlogin-login", { detail: { publicKey: r.everydayPublicKey } })), this.flashSuccess("dashboard", "Signed in"), this.offerToSaveCredential(e, t);
     } catch (r) {
       if (r instanceof Error && r.name === "RollbackDetectedError") {
         this.pendingRollback = { kind: "login", loginName: e, password: t }, this.rollbackMessage = r.message, this.busy = !1, this.goto("rollback-confirm");
@@ -894,7 +923,7 @@ class F extends HTMLElement {
       generalRelaysCount: t.generalRelays.length,
       dmRelaysCount: t.dmRelays.length,
       chainWarning: t.chainWarning
-    }, this.session = { publicKey: t.everydayPublicKey, npub: u(t.everydayPublicKey), accountId: t.accountId }, this.newCredentialAfterRecovery = c().secret, this.manualPasswordMode = !1, this.manualPasswordFeedback = null, this.manualPasswordDraft = "", this.manualPasswordConfirmDraft = "", this.busy = !1, this.goto("recover-new-credentials");
+    }, this.session = { publicKey: t.everydayPublicKey, npub: u(t.everydayPublicKey), accountId: t.accountId }, this.newCredentialAfterRecovery = d().secret, this.manualPasswordMode = !1, this.manualPasswordFeedback = null, this.manualPasswordDraft = "", this.manualPasswordConfirmDraft = "", this.busy = !1, this.goto("recover-new-credentials");
   }
   async handleRecoverNewCredentialsSubmit() {
     const e = this.field("newLoginName").trim().toLowerCase();
@@ -958,7 +987,7 @@ class F extends HTMLElement {
   }
   render() {
     const e = this.pendingSuccessLabel ? this.renderSuccessOverlay(this.pendingSuccessLabel) : "";
-    this.root.innerHTML = `<style>${M}</style><div class="card">${this.renderScreen()}${e}</div>`;
+    this.root.innerHTML = `<div class="card">${this.renderScreen()}${e}</div>`;
   }
   renderSuccessOverlay(e) {
     return `
@@ -1224,13 +1253,13 @@ class F extends HTMLElement {
     }
   }
 }
-function T(a, e) {
-  const t = Array.from({ length: a }, (r, o) => o), s = [];
+function D(a, e) {
+  const t = Array.from({ length: a }, (r, n) => n), s = [];
   for (let r = 0; r < e && t.length > 0; r++) {
-    const o = Math.floor(Math.random() * t.length);
-    s.push(t.splice(o, 1)[0]);
+    const n = Math.floor(Math.random() * t.length);
+    s.push(t.splice(n, 1)[0]);
   }
-  return s.sort((r, o) => r - o);
+  return s.sort((r, n) => r - n);
 }
 function i(a) {
   return a.replace(/[&<>"']/gu, (e) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[e]);

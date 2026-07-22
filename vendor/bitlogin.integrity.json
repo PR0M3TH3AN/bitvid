@@ -7,12 +7,12 @@
       "bytes": 288275
     },
     "bitlogin.js": {
-      "sha256": "7bbe34092ff5c110d947ac4cec7500cd32824868e51118387566896660a31228",
-      "bytes": 65009
+      "sha256": "539253ea709e9554f3dcff872beff40c2ca847b3564f53885b8fd89a7a2747d1",
+      "bytes": 66045
     },
     "cryptoWorker.js": {
-      "sha256": "061d4db248e5a789f61c505dfbc3fe073b6373b3c9a590c331144840e7b654b0",
-      "bytes": 64890
+      "sha256": "06a7aaf0be2ff4e80b46f609b868aa4ccfbd402cf0604031500316830ff2f528",
+      "bytes": 73937
     }
   }
 }

@@ -102,7 +102,7 @@ describe("BitLogin auth provider", () => {
 });
 
 describe("createBitloginAdapter", () => {
-  it("delegates signing and NIP-44 calls to the live widget element, never window.nostr", async () => {
+  it("delegates signing and NIP-44/NIP-04 calls to the live widget element, never window.nostr", async () => {
     const calls = [];
     const fakeWidget = {
       signEvent: async (event) => {
@@ -117,6 +117,14 @@ describe("createBitloginAdapter", () => {
         calls.push(["nip44Decrypt", peer, payload]);
         return "plaintext";
       },
+      nip04Encrypt: async (peer, plaintext) => {
+        calls.push(["nip04Encrypt", peer, plaintext]);
+        return "legacy-ciphertext";
+      },
+      nip04Decrypt: async (peer, payload) => {
+        calls.push(["nip04Decrypt", peer, payload]);
+        return "legacy-plaintext";
+      },
       logout: async () => {
         calls.push(["logout"]);
       },
@@ -127,19 +135,25 @@ describe("createBitloginAdapter", () => {
     assert.equal(adapter.type, "bitlogin");
     assert.equal(adapter.pubkey, HEX_PUBKEY);
     assert.equal(adapter.canSign(), true);
-    assert.deepEqual(adapter.capabilities, { sign: true, nip44: true, nip04: false });
+    // NIP-04 is real, load-bearing capability info: js/nostr/client.js only offers a
+    // nip04Encrypt/Decrypt code path to callers when signerCapabilities.nip04 is true.
+    assert.deepEqual(adapter.capabilities, { sign: true, nip44: true, nip04: true });
 
     const signed = await adapter.signEvent({ kind: 1, content: "hi" });
     assert.equal(signed.id, "signed");
 
     await adapter.nip44Encrypt("peer-pubkey", "hello");
     await adapter.nip44Decrypt("peer-pubkey", "ciphertext");
+    await adapter.nip04Encrypt("peer-pubkey", "hello");
+    await adapter.nip04Decrypt("peer-pubkey", "legacy-ciphertext");
     await adapter.destroy();
 
     assert.deepEqual(calls, [
       ["signEvent", { kind: 1, content: "hi" }],
       ["nip44Encrypt", "peer-pubkey", "hello"],
       ["nip44Decrypt", "peer-pubkey", "ciphertext"],
+      ["nip04Encrypt", "peer-pubkey", "hello"],
+      ["nip04Decrypt", "peer-pubkey", "legacy-ciphertext"],
       ["logout"],
     ]);
   });
