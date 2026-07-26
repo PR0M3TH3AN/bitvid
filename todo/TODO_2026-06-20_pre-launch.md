@@ -648,6 +648,13 @@ toward freshness and looked identical. Gave each a structural identity:
           link, viewManager registry, feedCoordinator case/loader,
           `FEED_TYPES.MOST_ZAPPED`, `FEATURE_MOST_ZAPPED_FEED` flag (default
           on; off hides the tab like Trending's flag).
+        - **Discovery hardened 2026-07-26:** fetches the bounded catalog for
+          creator-whitelist pubkeys only (never an unscoped relay query), then
+          ranks those videos by zaps. The normal blacklist and Web-of-Trust
+          stages still run; whitelist membership is not a moderation override.
+          The catalog is briefly cached so zap-total re-ranks do not repeatedly
+          scan relays, and an in-flight result is re-filtered after whitelist
+          changes so removed creators cannot briefly appear.
       Tests: `tests/zap-totals.test.mjs` (5). Lint + build green.
 - [x] **Follow-up DONE 2026-07-03 — per-card zap badges.** Video cards now show
       the zap total in bitcoin ORANGE (new `--color-zap` token, both themes),
@@ -659,7 +666,8 @@ toward freshness and looked identical. Gave each a structural identity:
       schedules the batched receipt fetch, and one change listener updates
       every bound card as batches land. Test:
       `tests/video-card-zap-totals.test.mjs` (drives the REAL store).
-- [ ] **VERIFY on unstable:** open Most Zapped → zapped videos rise as receipts
+- [ ] **VERIFY on unstable:** open Most Zapped → only whitelisted creators are
+      discovered; zapped videos rise as receipts
       load (unzapped feed reads as Recent at first) and their cards show the
       orange right-aligned sats badge; unzapped cards show no badge; zap a
       video → within ~2min of tab re-entry its rank + badge reflect the new

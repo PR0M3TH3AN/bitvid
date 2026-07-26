@@ -21,6 +21,7 @@ export {
 } from "./sorters.js";
 export {
   createActiveNostrSource,
+  createWhitelistedAuthorsNostrSource,
   createSubscriptionAuthorsSource,
   createWatchHistoryPointerSource,
 } from "./sources.js";
