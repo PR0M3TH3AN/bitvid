@@ -46,6 +46,14 @@ function closeLoginModal() {
   }
 }
 
+function isHtmlElement(value, documentRef = document) {
+  const HTMLElementConstructor =
+    documentRef?.defaultView?.HTMLElement || globalThis.HTMLElement;
+  return typeof HTMLElementConstructor === "function"
+    ? value instanceof HTMLElementConstructor
+    : Boolean(value && value.nodeType === 1);
+}
+
 // Cheap insurance against wireBitloginLogin() ever running twice for the same
 // element (e.g. a future bootstrap change that calls it more than once): the
 // same <bitlogin-auth> instance should only ever get one "bitlogin-login"
@@ -82,12 +90,12 @@ function attachWidget(app, widget) {
     // Unstable-branch experiment (AGENTS.md §1, config/instance-config.js) --
     // leave the permanent, statically-declared markup in place but never load
     // the vendored bundle or show the (otherwise-empty, unupgraded) element.
-    if (mount instanceof HTMLElement) {
+    if (isHtmlElement(mount)) {
       mount.hidden = true;
     }
     return;
   }
-  if (mount instanceof HTMLElement) {
+  if (isHtmlElement(mount)) {
     mount.hidden = false;
   }
 
@@ -162,22 +170,29 @@ function attachWidget(app, widget) {
  * @param {{ authService: { requestLogin: Function } }} app
  */
 export function wireBitloginLogin(app) {
-  if (!app?.authService) {
+  if (!app?.authService || typeof document === "undefined") {
     return;
   }
 
-  const existing = document.getElementById("bitloginWidget");
-  if (existing instanceof HTMLElement) {
+  const documentRef = document;
+  const existing = documentRef.getElementById("bitloginWidget");
+  if (isHtmlElement(existing, documentRef)) {
     attachWidget(app, existing);
     return;
   }
 
-  const observer = new MutationObserver(() => {
-    const widget = document.getElementById("bitloginWidget");
-    if (widget instanceof HTMLElement) {
+  const Observer =
+    documentRef.defaultView?.MutationObserver || globalThis.MutationObserver;
+  if (typeof Observer !== "function" || !documentRef.body) {
+    return;
+  }
+
+  const observer = new Observer(() => {
+    const widget = documentRef.getElementById("bitloginWidget");
+    if (isHtmlElement(widget, documentRef)) {
       observer.disconnect();
       attachWidget(app, widget);
     }
   });
-  observer.observe(document.body, { childList: true, subtree: true });
+  observer.observe(documentRef.body, { childList: true, subtree: true });
 }
