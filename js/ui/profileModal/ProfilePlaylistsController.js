@@ -79,6 +79,8 @@ export class ProfilePlaylistsController {
     this.playlists = [];
     this.expanded = new Set();
     this.loading = false;
+    this.refreshRequestId = 0;
+    this.fetchCreatorPlaylists = fetchCreatorPlaylists;
     this._drag = null;
     this._dropTarget = null;
     this._onChanged = () => {
@@ -139,16 +141,22 @@ export class ProfilePlaylistsController {
       return;
     }
 
+    const requestId = ++this.refreshRequestId;
     this.setLoading(true);
     let playlists = [];
     try {
-      playlists = await fetchCreatorPlaylists(this.pubkey, {
+      playlists = await this.fetchCreatorPlaylists(this.pubkey, {
         includeEmpty: true,
       });
     } catch (error) {
       devLogger.warn("[playlists] Failed to load playlists for pane:", error);
     }
     this.playlists = playlists;
+    this.setLoading(false);
+    // Show the playlist structure as soon as the list itself is available.
+    // Resolving every referenced video only improves labels/thumbnails and
+    // must not keep the management pane blank on a cold cache.
+    this.render();
 
     // Fetch the referenced creators' videos so the expanded sublists can show
     // real titles/thumbnails (cache may be cold in the modal).
@@ -165,15 +173,16 @@ export class ProfilePlaylistsController {
     }
     const nostrService = this.mainController.services?.nostrService;
     if (authors.size && typeof nostrService?.fetchVideosByAuthors === "function") {
-      try {
-        await nostrService.fetchVideosByAuthors([...authors]);
-      } catch (error) {
-        // best effort — fall back to coordinate labels
-      }
+      void nostrService.fetchVideosByAuthors([...authors])
+        .catch(() => {
+          // Best effort — keep the coordinate labels if metadata is unavailable.
+        })
+        .then(() => {
+          if (this.refreshRequestId === requestId) {
+            this.render();
+          }
+        });
     }
-
-    this.setLoading(false);
-    this.render();
   }
 
   // coord -> { title, thumbnail } from the app's active videos.

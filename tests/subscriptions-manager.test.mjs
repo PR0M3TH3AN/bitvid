@@ -1324,6 +1324,7 @@ test("loadSubscriptions uses overlap window and deterministic latest-event tie-b
     subscribedPubkeys: [oldAuthor],
     createdAt: 1000,
     eventId: "cached-event",
+    eventPubkey: pubkey,
   });
 
   nostrClient.fetchListIncrementally = async (params = {}) => {
@@ -1371,6 +1372,104 @@ test("loadSubscriptions uses overlap window and deterministic latest-event tie-b
     nostrClient.pool = originalPool;
     nostrClient.fetchListIncrementally = originalFetchIncremental;
     nostrClient.sessionActor = originalSessionActor;
+    manager.decryptSubscriptionEvent = originalDecryptSubscriptionEvent;
+    localStorage.clear();
+    profileCache.memoryCache.clear();
+    profileCache.activePubkey = null;
+  }
+});
+
+test("loadSubscriptions never applies a different BitLogin session actor's list", async () => {
+  const SubscriptionsManager = subscriptions.constructor;
+  const manager = new SubscriptionsManager();
+  const activePubkey = "a".repeat(64);
+  const sessionPubkey = "b".repeat(64);
+  const activeAuthor = "c".repeat(64);
+  const sessionAuthor = "d".repeat(64);
+  const originalFetchIncremental = nostrClient.fetchListIncrementally;
+  const originalSessionActor = nostrClient.sessionActor;
+  const originalPool = nostrClient.pool;
+  const originalDecryptSubscriptionEvent = manager.decryptSubscriptionEvent;
+
+  nostrClient.sessionActor = { pubkey: sessionPubkey };
+  nostrClient.pool = { list: async () => [] };
+  nostrClient.fetchListIncrementally = async ({ pubkey }) => {
+    assert.equal(pubkey, activePubkey, "only the active account may be fetched");
+    return [
+      {
+        id: "active-list",
+        pubkey: activePubkey,
+        created_at: 100,
+        content: "active-ciphertext",
+        tags: [["encrypted", "nip04"]],
+      },
+      {
+        id: "foreign-list",
+        pubkey: sessionPubkey,
+        created_at: 200,
+        content: "foreign-ciphertext",
+        tags: [["encrypted", "nip04"]],
+      },
+    ];
+  };
+  manager.decryptSubscriptionEvent = async (event) => ({
+    ok: true,
+    plaintext: JSON.stringify([["p", event.id === "active-list" ? activeAuthor : sessionAuthor]]),
+  });
+
+  try {
+    await manager.updateFromRelays(activePubkey, { allowPermissionPrompt: false });
+    assert.equal(manager.subsEventId, "active-list");
+    assert.deepEqual(manager.getSubscribedAuthors(), [activeAuthor]);
+  } finally {
+    nostrClient.fetchListIncrementally = originalFetchIncremental;
+    nostrClient.sessionActor = originalSessionActor;
+    nostrClient.pool = originalPool;
+    manager.decryptSubscriptionEvent = originalDecryptSubscriptionEvent;
+    localStorage.clear();
+    profileCache.memoryCache.clear();
+    profileCache.activePubkey = null;
+  }
+});
+
+test("loadSubscriptions repairs a legacy cached list with a full active-account fetch", async () => {
+  const SubscriptionsManager = subscriptions.constructor;
+  const manager = new SubscriptionsManager();
+  const activePubkey = "e".repeat(64);
+  const staleAuthor = "f".repeat(64);
+  const correctAuthor = "1".repeat(64);
+  const originalFetchIncremental = nostrClient.fetchListIncrementally;
+  const originalPool = nostrClient.pool;
+  const originalDecryptSubscriptionEvent = manager.decryptSubscriptionEvent;
+
+  profileCache.setProfileData(activePubkey, "subscriptions", {
+    subscribedPubkeys: [staleAuthor],
+    eventId: "legacy-foreign-event",
+    createdAt: 9999,
+  });
+  nostrClient.pool = { list: async () => [] };
+  nostrClient.fetchListIncrementally = async (params) => {
+    assert.equal(params.since, 0, "legacy source-less cache must not suppress a full fetch");
+    return [{
+      id: "correct-active-event",
+      pubkey: activePubkey,
+      created_at: 100,
+      content: "correct-ciphertext",
+      tags: [["encrypted", "nip04"]],
+    }];
+  };
+  manager.decryptSubscriptionEvent = async () => ({
+    ok: true,
+    plaintext: JSON.stringify([["p", correctAuthor]]),
+  });
+
+  try {
+    await manager.updateFromRelays(activePubkey, { allowPermissionPrompt: false });
+    assert.deepEqual(manager.getSubscribedAuthors(), [correctAuthor]);
+    assert.equal(manager.subsEventPubkey, activePubkey);
+  } finally {
+    nostrClient.fetchListIncrementally = originalFetchIncremental;
+    nostrClient.pool = originalPool;
     manager.decryptSubscriptionEvent = originalDecryptSubscriptionEvent;
     localStorage.clear();
     profileCache.memoryCache.clear();

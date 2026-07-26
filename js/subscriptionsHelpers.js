@@ -196,6 +196,7 @@ export function parseCachedSubscriptionSnapshot(cached) {
       subscribedPubkeys: normalized,
       eventId: null,
       createdAt: null,
+      eventPubkey: null,
       hasSnapshot: true,
     };
   }
@@ -220,6 +221,7 @@ export function parseCachedSubscriptionSnapshot(cached) {
     const createdAt = Number.isFinite(createdAtCandidate)
       ? Math.floor(createdAtCandidate)
       : null;
+    const eventPubkey = normalizeHexPubkey(cached.eventPubkey);
     const hasSnapshot =
       Array.isArray(cached.subscribedPubkeys) ||
       Array.isArray(cached.subPubkeys) ||
@@ -229,6 +231,7 @@ export function parseCachedSubscriptionSnapshot(cached) {
       subscribedPubkeys: normalized,
       eventId,
       createdAt,
+      eventPubkey,
       hasSnapshot,
     };
   }
@@ -237,6 +240,7 @@ export function parseCachedSubscriptionSnapshot(cached) {
     subscribedPubkeys: [],
     eventId: null,
     createdAt: null,
+    eventPubkey: null,
     hasSnapshot: false,
   };
 }

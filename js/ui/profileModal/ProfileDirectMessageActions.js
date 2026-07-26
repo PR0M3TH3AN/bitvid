@@ -753,7 +753,11 @@ export class ProfileDirectMessageActions {
   handleDirectMessagesUpdated(detail = {}) {
     if (
       this.controller.activeMessagesRequest &&
-      detail?.reason !== "load-incremental"
+      detail?.reason !== "load-incremental" &&
+      // A persisted, locally encrypted snapshot is safe to show while the
+      // slower relay history/decryption pass is still running. Suppressing it
+      // made the DM pane appear blank until that full pass completed.
+      detail?.reason !== "snapshot"
     ) {
       return;
     }

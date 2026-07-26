@@ -180,6 +180,7 @@ class SubscriptionsManager {
     this.subscribedPubkeys = new Set();
     this.subsEventId = null;
     this.subsEventCreatedAt = null;
+    this.subsEventPubkey = null;
     // Last live-subscription event id we triggered a refresh for (loop guard).
     this._lastHandledListEventId = null;
     // Most recently fetched list ciphertext, reused by decrypt retries so they
@@ -247,6 +248,7 @@ class SubscriptionsManager {
       this.subscribedPubkeys = new Set(cachedSnapshot.subscribedPubkeys);
       this.subsEventId = cachedSnapshot.eventId;
       this.subsEventCreatedAt = cachedSnapshot.createdAt;
+      this.subsEventPubkey = cachedSnapshot.eventPubkey;
       this.currentUserPubkey = normalizedUserPubkey;
       this.uiReady = true;
       this.dataReady = true;
@@ -281,6 +283,7 @@ class SubscriptionsManager {
       subscribedPubkeys: Array.from(this.subscribedPubkeys),
       eventId: this.subsEventId,
       createdAt: this.subsEventCreatedAt,
+      eventPubkey: this.subsEventPubkey,
     });
   }
 
@@ -389,63 +392,39 @@ class SubscriptionsManager {
           profileCache.getProfileData(normalizedUserPubkey, "subscriptions"),
         );
         hadCachedSnapshot = cachedSnapshot.hasSnapshot;
-        const shouldForceFullFetch = !cachedSnapshot.hasSnapshot;
+        // Legacy snapshots did not record the source author. Fetch their full
+        // authoritative state once so a cache created by an older buggy build
+        // cannot keep suppressing the real list with an invalid timestamp.
+        const shouldForceFullFetch =
+          !cachedSnapshot.hasSnapshot ||
+          cachedSnapshot.eventPubkey !== normalizedUserPubkey;
         const incrementalSince = shouldForceFullFetch
           ? 0
           : computeIncrementalSinceWithOverlap(cachedSnapshot.createdAt, 1);
 
-        // Fetch user and session actor subscription lists in parallel to reduce
-        // total relay wait time during login.
-        const fetchPromises = [
-          nostrClient.fetchListIncrementally({
-            kind: SUBSCRIPTION_SET_KIND,
-            pubkey: normalizedUserPubkey,
-            dTag: SUBSCRIPTION_LIST_IDENTIFIER,
-            relayUrls,
-            since: incrementalSince,
-            timeoutMs: 12000,
-          }),
-        ];
-
-        const normalizedSessionActorPubkey = normalizeNostrPubkey(
-          nostrClient?.sessionActor?.pubkey,
-        );
-        const shouldFetchSessionActor =
-          normalizedSessionActorPubkey &&
-          normalizedSessionActorPubkey !== normalizedUserPubkey;
-        if (shouldFetchSessionActor) {
-          const sessionCachedSnapshot = parseCachedSubscriptionSnapshot(
-            profileCache.getProfileData(
-              normalizedSessionActorPubkey,
-              "subscriptions",
-            ),
-          );
-          const shouldForceSessionFetch = !sessionCachedSnapshot.hasSnapshot;
-          const sessionSince = shouldForceSessionFetch
-            ? 0
-            : computeIncrementalSinceWithOverlap(sessionCachedSnapshot.createdAt, 1);
-          fetchPromises.push(
-            nostrClient.fetchListIncrementally({
-              kind: SUBSCRIPTION_SET_KIND,
-              pubkey: normalizedSessionActorPubkey,
-              dTag: SUBSCRIPTION_LIST_IDENTIFIER,
-              relayUrls,
-              since: sessionSince,
-              timeoutMs: 12000,
-            }),
-          );
-        }
-
-        const fetchResults = await Promise.all(fetchPromises);
-        let events = fetchResults[0] || [];
-        if (shouldFetchSessionActor && fetchResults[1]?.length) {
-          events = events.concat(fetchResults[1]);
-        }
+        // Subscription lists are private, account-scoped state. In particular,
+        // a BitLogin session actor can differ from the active profile pubkey.
+        // Never mix its events into this read: choosing the newest event across
+        // both accounts could overwrite the active account's subscriptions.
+        const events = await nostrClient.fetchListIncrementally({
+          kind: SUBSCRIPTION_SET_KIND,
+          pubkey: normalizedUserPubkey,
+          dTag: SUBSCRIPTION_LIST_IDENTIFIER,
+          relayUrls,
+          since: incrementalSince,
+          timeoutMs: 12000,
+        });
 
         if (events.length) {
           const deduped = new Map();
           for (const event of events) {
-            if (!event || typeof event !== "object" || !event.id) {
+            if (
+              !event ||
+              typeof event !== "object" ||
+              !event.id ||
+              (event.pubkey &&
+                normalizeHexPubkey(event.pubkey) !== normalizedUserPubkey)
+            ) {
               continue;
             }
             const existing = deduped.get(event.id);
@@ -471,6 +450,7 @@ class SubscriptionsManager {
           this.subscribedPubkeys.clear();
           this.subsEventId = null;
           this.subsEventCreatedAt = null;
+          this.subsEventPubkey = null;
           this.uiReady = true;
           this.dataReady = true;
           this.loaded = true;
@@ -513,6 +493,7 @@ class SubscriptionsManager {
       this.subsEventCreatedAt = Number.isFinite(newest.created_at)
         ? newest.created_at
         : null;
+      this.subsEventPubkey = normalizedUserPubkey;
 
       let decryptResult;
       try {
@@ -687,6 +668,7 @@ class SubscriptionsManager {
     this.subscribedPubkeys.clear();
     this.subsEventId = null;
     this.subsEventCreatedAt = null;
+    this.subsEventPubkey = null;
     this._lastHandledListEventId = null;
     this._pendingDecryptEvent = null;
     this.currentUserPubkey = null;
