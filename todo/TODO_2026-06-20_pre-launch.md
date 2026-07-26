@@ -615,7 +615,7 @@ toward freshness and looked identical. Gave each a structural identity:
       handled).
 
 ### 47. "Most Zapped" sidebar tab (trending-by-zaps)
-- [ ] **NEXT (planned, not started): bitvid-native zap tally.** Full spec +
+- [x] **DONE 2026-07-26: bitvid-native zap tally.** Full spec +
       ordered task checklist in `docs/zap-tally-plan.md`. Problem: NIP-57 zap
       receipts (9735) are published by the RECIPIENT's LNURL server, and
       custodial wallets (Strike) don't — so paid zaps leave no on-relay record
@@ -624,12 +624,13 @@ toward freshness and looked identical. Gave each a structural identity:
       the preimage→payment_hash + description_hash→zapRequest binding, reusing
       the existing bolt11 decode in `zapReceiptValidator.js`), counted alongside
       real 9735s (deduped by payment_hash, 9735-preferred). Behind
-      `FEATURE_ZAP_TALLY` (default off). Plan also covers a
+      `FEATURE_ZAP_TALLY` (default on). Plan also covers a
       SECOND orange zaps-over-time line on the per-video Popularity chart with a
       legend (red=Views/orange=Zaps) and visible date labels (docs §5.9). See the
-      plan for the file-by-file changes. Current state (commit `cbc62306`): 9735 counting + optimistic
-      bump + durable local ledger (`bitvid:sentZaps:v1`) already shipped; the
-      tally is the missing global/cross-user source.
+      plan for the file-by-file changes. Current state: kind-9735 counting,
+      optimistic bump + durable local ledger (`bitvid:sentZaps:v1`), and the
+      verified tally source are shipped; receipts and tallies are deduped by
+      payment hash.
 - [x] **DONE 2026-07-03.** Full Trending-pattern clone ranked by SATS:
         - `js/zapTotals.js` — per-pointer kind-9735 aggregation. The feed's
           getZapTotal reads the cached total AND schedules a BATCHED one-shot
@@ -651,8 +652,8 @@ toward freshness and looked identical. Gave each a structural identity:
 - [x] **Follow-up DONE 2026-07-03 — per-card zap badges.** Video cards now show
       the zap total in bitcoin ORANGE (new `--color-zap` token, both themes),
       RIGHT-ALIGNED in the engagement row (views/comments stay left; CSS
-      `margin-inline-start: auto` on `.video-card__zaps`). Hidden until a
-      nonzero total is known (no "0 sats" noise). Binder
+      `margin-inline-start: auto` on `.video-card__zaps`). The badge is visible
+      from bind (showing `0 sats` until receipts arrive). Binder
       (`js/ui/views/videoCardZapTotals.js`, VideoListView file-size budget)
       fills `[data-zap-total]` from the shared zapTotals cache — bind() also
       schedules the batched receipt fetch, and one change listener updates
