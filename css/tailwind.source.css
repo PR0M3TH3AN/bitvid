@@ -751,6 +751,22 @@
     transition-property: border-color, box-shadow, transform;
   }
 
+  .site-update-notice {
+    @apply fixed bottom-5 right-5 z-50 flex max-w-sm flex-col items-end gap-3;
+  }
+
+  .site-update-notice__button {
+    @apply btn focus-ring rounded-full px-4 py-3 text-sm shadow-lg;
+  }
+
+  .site-update-notice__panel {
+    @apply w-full rounded-2xl border border-border bg-overlay-panel-soft p-4 text-left text-text shadow-modal backdrop-blur-sm;
+  }
+
+  .site-update-notice__close {
+    @apply btn-ghost focus-ring -mr-2 -mt-2 h-9 w-9 rounded-full p-0 text-lg leading-none;
+  }
+
   .login-option::after {
     content: "";
     position: absolute;
@@ -4512,6 +4528,39 @@
     overflow-y: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
+  }
+
+  /* The player owns a single scroll region.  On mobile, `100vh` can extend
+     underneath the browser controls/home indicator, which previously made the
+     final composer action hard to reach.  Prefer the dynamic viewport and keep
+     scrolling on the panel (where the sticky player navigation listens). */
+  @media (max-width: calc(theme("screens.lg") - 0.02px)) {
+    #playerModal {
+      height: 100vh;
+      height: 100dvh;
+      min-height: 100vh;
+      min-height: 100dvh;
+      overflow: hidden;
+    }
+
+    #playerModal > .bv-modal__panel {
+      block-size: 100%;
+      min-block-size: 0;
+      overflow-x: hidden;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    #playerModal .player-modal__container {
+      block-size: auto;
+      min-block-size: 100%;
+    }
+
+    #playerModal .comment-composer {
+      padding-bottom: max(var(--space-lg), env(safe-area-inset-bottom));
+      scroll-margin-block-end: max(var(--space-lg), env(safe-area-inset-bottom));
+    }
   }
 
   #modalVideo {

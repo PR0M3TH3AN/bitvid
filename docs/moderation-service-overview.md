@@ -9,7 +9,7 @@ Instead of a centralized moderation authority, the service builds a local "trust
 - **Viewer**: The currently logged-in user.
 - **Trusted Contacts**: Users followed by the Viewer (Kind 3 contact list).
 - **Trusted Seeds**: An optional set of admin-defined pubkeys that provide a baseline of trust (e.g., project maintainers).
-- **Admin Whitelist/Blacklist**: Hardcoded lists in `accessControl` that override dynamic trust.
+- **Admin Whitelist/Blacklist**: Nostr-backed lists in `accessControl`. The creator whitelist controls access only; a blacklist always filters first and suppresses its members' content and reports.
 
 ### 2. Trust Aggregation
 When a piece of content (Event) is reported (Kind 1984), the service aggregates these reports but *only counts reports from trusted users*.

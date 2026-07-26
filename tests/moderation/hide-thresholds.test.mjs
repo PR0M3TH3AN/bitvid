@@ -329,7 +329,7 @@ test("moderation stage bypasses hard hides on home feed", async () => {
   assert.equal(hideWhy.hideBypass, "feed-policy");
 });
 
-test("moderation stage hides admin-whitelisted videos once thresholds fire", async () => {
+test("moderation stage hides admin-whitelisted videos when web-of-trust thresholds fire", async () => {
   const whitelistedHex = hex("f");
   const videoId = hex("4");
 
@@ -400,4 +400,3 @@ test("moderation stage hides admin-whitelisted videos once thresholds fire", asy
   assert.equal(hideWhy.adminWhitelist, true);
   assert.equal(hideWhy.trustedReportCount, 6);
 });
-

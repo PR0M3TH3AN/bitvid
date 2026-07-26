@@ -25,6 +25,7 @@ import { FEATURE_BITLOGIN } from "../constants.js";
 // side effect, which retroactively upgrades the already-present <bitlogin-auth>
 // tag in the modal's static HTML once it resolves.
 const BITLOGIN_WIDGET_BUNDLE_URL = "../../vendor/bitlogin/bitlogin.js";
+const PUBKEY_PATTERN = /^[0-9a-f]{64}$/i;
 
 let widgetLoadPromise = null;
 
@@ -52,6 +53,29 @@ function closeLoginModal() {
 // and each independently call requestLogin() for one real sign-in.
 const wiredWidgets = new WeakSet();
 
+/**
+ * A CustomEvent's detail is not an authentication boundary: any same-origin
+ * script can dispatch one. Re-read the key from the widget's crypto worker and
+ * require it to match before BitVid adopts the identity or its signer.
+ */
+export async function resolveVerifiedBitloginPubkey(widget, claimedPubkey) {
+  const claimed = typeof claimedPubkey === "string" ? claimedPubkey.trim() : "";
+  if (!PUBKEY_PATTERN.test(claimed) || typeof widget?.getPublicKey !== "function") {
+    return "";
+  }
+  try {
+    const actual = await widget.getPublicKey();
+    const normalizedActual = typeof actual === "string" ? actual.trim() : "";
+    if (!PUBKEY_PATTERN.test(normalizedActual) || normalizedActual.toLowerCase() !== claimed.toLowerCase()) {
+      return "";
+    }
+    return normalizedActual.toLowerCase();
+  } catch (error) {
+    devLogger.warn("[BitLogin] Unable to verify the widget signer:", error);
+    return "";
+  }
+}
+
 function attachWidget(app, widget) {
   const mount = document.getElementById("bitloginMount");
   if (!FEATURE_BITLOGIN) {
@@ -77,11 +101,13 @@ function attachWidget(app, widget) {
   });
 
   widget.addEventListener("bitlogin-login", async (event) => {
-    const pubkey =
+    const claimedPubkey =
       event?.detail && typeof event.detail.publicKey === "string"
         ? event.detail.publicKey.trim()
         : "";
+    const pubkey = await resolveVerifiedBitloginPubkey(widget, claimedPubkey);
     if (!pubkey) {
+      userLogger.warn("[BitLogin] Ignored an unverifiable login event.");
       return;
     }
 

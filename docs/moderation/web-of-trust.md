@@ -20,7 +20,7 @@
 - `hideIfTrustedMuteCount(author, category) >= trustedMuteHideThresholds[category] ?? DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD`
 - `hideIfTrustedSpamReports(event) >= DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD`
 
-Threshold constants are exported from [`config/instance-config.js`](../../config/instance-config.js) so operators can change the defaults without touching moderation code. Inspect the `DEFAULT_BLUR_THRESHOLD`, `DEFAULT_AUTOPLAY_BLOCK_THRESHOLD`, `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD`, and `DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD` exports to set your policy. The upstream repo includes example values (blur at 1, autoplay block at 1, trusted mute hide at 20, trusted spam hide at 1), but treat those as guidance rather than hard-coded requirements. Per-category trusted mute hide thresholds now live in moderation settings as `trustedMuteHideThresholds` (e.g., `{ spam: 5, nudity: 10 }`), and any category not present falls back to the default trusted mute hide threshold. When evaluating trusted mutes we use the content's report type if available, otherwise we fall back to any category metadata attached to trusted mute list entries.
+Threshold constants are exported from [`config/instance-config.js`](../../config/instance-config.js) so operators can change the defaults without touching moderation code. The hosted baseline requires 3 trusted reports to blur or block autoplay, 20 trusted mutes to hide an author, and 5 trusted spam reports to hide a video. Per-category trusted mute hide thresholds now live in moderation settings as `trustedMuteHideThresholds` (e.g., `{ spam: 5, nudity: 10 }`), and any category not present falls back to the default trusted mute hide threshold. When evaluating trusted mutes we use the content's report type if available, otherwise we fall back to any category metadata attached to trusted mute list entries.
 
 ### Trusted mute decay window
 - Trusted mute counts are **time-bounded**: only mute lists updated within the rolling window (currently 60 days) contribute to `trustedMuteCount`.
@@ -34,7 +34,7 @@ Threshold constants are exported from [`config/instance-config.js`](../../config
 ## Admin lists (opt-in)
 - We recognize curated lists using `30000` events:
   - `['d','bitvid:admin:blacklist']` → hard-hide when subscribed.
-- `['d','bitvid:admin:whitelist']` → improves Discovery ranking when subscribed but no longer bypasses moderation gates.
+- `['d','bitvid:admin:whitelist']` → controls creator access only; it does not add a reporter to the trust graph or alter moderation decisions.
   - `['d','bitvid:admin:editors']` → trusted channel editors.
 - Users can subscribe/unsubscribe any time.
 
@@ -42,7 +42,7 @@ Threshold constants are exported from [`config/instance-config.js`](../../config
 
 1. **Personal blocks win first.** If a viewer blocks an author or reporter, we ignore their content and reports regardless of admin lists.
 2. **Admin blacklist applies next.** Entries on `bitvid:admin:blacklist` are hard-hidden and their reports suppressed before looking at thresholds.
-3. **F1 thresholds run last.** Blur/autoplay gating only evaluates trusted-report counts after personal blocks and admin blacklists. Admin whitelists contribute to Discovery ranking when a viewer subscribes, but they never override moderation gates or a viewer block.
+3. **F1 thresholds run last.** Blur/autoplay gating evaluates trusted-report counts after personal blocks and admin blacklists. The creator whitelist is not an input to these decisions.
 
 ## Pseudocode
 

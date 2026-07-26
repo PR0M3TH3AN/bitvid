@@ -54,8 +54,8 @@ list. Blocking still follows the precedence rules above.
 - A video has 3 `nudity` reports from those seed accounts.
 
 Result:
-- Thumbnail is blurred if `DEFAULT_BLUR_THRESHOLD` is 1 (met).
-- Autoplay is blocked if `DEFAULT_AUTOPLAY_BLOCK_THRESHOLD` is 1 (met).
+- Thumbnail is blurred because the 3 trusted reports meet `DEFAULT_BLUR_THRESHOLD`.
+- Autoplay is blocked because the 3 trusted reports meet `DEFAULT_AUTOPLAY_BLOCK_THRESHOLD`.
 - No hard hide unless trusted mute/spam thresholds are met.
 
 ### Example 2: Logged-in viewer with personal blocks

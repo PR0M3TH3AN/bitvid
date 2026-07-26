@@ -20,7 +20,7 @@ Instead of a central authority deciding what is "safe," the service aggregates r
 -   Users can report content for reasons like `nudity`, `spam`, `illegal`, etc.
 -   Reports are public events signed by the reporter.
 -   The service subscribes to reports for active content and aggregates them locally.
--   **Crucially**: Reports from users *outside* the trusted contact list are ignored (unless whitelisted by admin).
+-   **Crucially**: Reports from users *outside* the trusted contact list are ignored. Creator whitelist membership does not establish moderation trust.
 
 ### NIP-51 Mutes (Kind 10000)
 -   Users can mute other users to hide their content entirely.
@@ -28,7 +28,7 @@ Instead of a central authority deciding what is "safe," the service aggregates r
 -   It also supports "Trusted Mutes" where mutes from trusted contacts can influence visibility (though this feature is evolving).
 
 ### Admin Overrides
--   The service integrates with `AccessControl` to respect an instance-wide **Blacklist** (always hidden) and **Whitelist** (always trusted).
+-   The service integrates with `AccessControl` to respect an instance-wide **Blacklist** (always hidden). The creator whitelist is access-only and never establishes moderation trust.
 
 ## Architecture & Data Flow
 
@@ -89,7 +89,7 @@ await moderationService.submitReport({
 ## Invariants
 
 -   **Trust is Subjective**: A report only counts if the *viewer* follows the reporter. Changing the viewer changes all trust scores immediately.
--   **Admin Trumps Trust**: Blacklisted users are ignored even if followed. Whitelisted users are trusted even if not followed.
+-   **Admin Trumps Trust**: Blacklisted users are ignored even if followed. Creator whitelist membership neither grants nor removes trust.
 -   **Reactive**: The service emits events (`summary`, `contacts`, `user-blocks`) to drive UI updates; it does not directly manipulate the DOM.
 
 ## When to Change
