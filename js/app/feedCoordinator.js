@@ -1016,8 +1016,21 @@ export function createFeedCoordinator(deps) {
 
       const recommendationFeed =
         feedType === FEED_TYPES.FOR_YOU || feedType === FEED_TYPES.EXPLORE;
+      let exploreActivation = null;
       if (recommendationFeed && typeof this.ensureExploreDataService === "function") {
-        await this.ensureExploreDataService();
+        // Recommendation indexes are an enhancement, not a prerequisite for
+        // showing cached videos.  Activating the worker here used to leave a
+        // returning For You view stuck on its static loading markup whenever
+        // worker startup was slow or unavailable.
+        exploreActivation = Promise.resolve(this.ensureExploreDataService()).catch(
+          (error) => {
+            devLogger.warn(
+              `[Application] Recommendation data activation failed for ${feedType}:`,
+              error,
+            );
+            return null;
+          },
+        );
       } else if (this.exploreDataService?.setActive) {
         this.exploreDataService.setActive(false);
       }
@@ -1116,6 +1129,23 @@ export function createFeedCoordinator(deps) {
       this.videosMap = this.nostrService.getVideosMap();
       if (this.videoListView) {
         this.videoListView.state.videosMap = this.videosMap;
+      }
+
+      // Re-score once the optional recommendation indexes are ready, but only
+      // if the user is still looking at this feed. The first render above is
+      // deliberately cache-first and must not wait for worker startup.
+      if (exploreActivation) {
+        void exploreActivation.then(() => {
+          if (!this.isFeedActive(feedType)) {
+            return;
+          }
+          return this.refreshFeed(feedType, { reason: "recommendation-data-ready" });
+        }).catch((error) => {
+          devLogger.warn(
+            `[Application] Failed to refresh ${feedType} after recommendation data activation:`,
+            error,
+          );
+        });
       }
     },
 

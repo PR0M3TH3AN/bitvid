@@ -85,3 +85,61 @@ test('createFeedCoordinator - loadForYouVideos', async (t) => {
       assert.strictEqual(app.videoSubscription, 'mock-subscription', 'Should update videoSubscription');
   });
 });
+
+test("loadForYouVideos renders without waiting for recommendation worker activation", async () => {
+  let resolveActivation;
+  const activation = new Promise((resolve) => {
+    resolveActivation = resolve;
+  });
+  let loadVideosStarted = false;
+  const mockDeps = {
+    devLogger: { log: mock.fn(), warn: mock.fn() },
+    userLogger: { warn: mock.fn() },
+    nostrClient: {},
+    getSidebarLoadingMarkup: mock.fn(() => '<div>Loading...</div>'),
+    watchHistoryService: {},
+    subscriptions: {},
+    createActiveNostrSource: mock.fn(),
+    createBlacklistFilterStage: mock.fn(),
+    createDisinterestFilterStage: mock.fn(),
+    createDedupeByRootStage: mock.fn(),
+    createExploreDiversitySorter: mock.fn(),
+    createExploreScorerStage: mock.fn(),
+    createKidsAudienceFilterStage: mock.fn(),
+    createKidsScorerStage: mock.fn(),
+    createKidsScoreSorter: mock.fn(),
+    createModerationStage: mock.fn(),
+    createResolvePostedAtStage: mock.fn(),
+    createTagPreferenceFilterStage: mock.fn(),
+    createWatchHistorySuppressionStage: mock.fn(),
+    createChronologicalSorter: mock.fn(),
+    createSubscriptionAuthorsSource: mock.fn(),
+    registerWatchHistoryFeed: mock.fn(),
+  };
+  const coordinator = createFeedCoordinator(mockDeps);
+  const app = {
+    ...coordinator,
+    nostrService: {
+      getFilteredActiveVideos: mock.fn(() => [{ id: "cached" }]),
+      loadVideos: mock.fn(async ({ onVideos }) => {
+        loadVideosStarted = true;
+        onVideos([{ id: "cached", title: "Cached", created_at: 1 }], { reason: "cache" });
+        return [{ id: "cached", title: "Cached", created_at: 1 }];
+      }),
+      getVideoSubscription: mock.fn(() => null),
+      getVideosMap: mock.fn(() => new Map()),
+    },
+    videoListView: { state: {}, render: mock.fn() },
+    mountVideoListView: mock.fn(() => ({ innerHTML: "" })),
+    checkRelayHealthWarning: mock.fn(),
+    setFeedTelemetryContext: mock.fn(),
+    isAuthorBlocked: mock.fn(() => false),
+    refreshFeed: mock.fn(async () => {}),
+    ensureExploreDataService: mock.fn(() => activation),
+    blacklistedEventIds: new Set(),
+  };
+
+  await app.loadForYouVideos(false);
+  assert.equal(loadVideosStarted, true);
+  resolveActivation();
+});
