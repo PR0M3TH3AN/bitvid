@@ -19,10 +19,20 @@ function clonePointerDescriptor(pointer) {
     value:
       typeof pointer.value === "string" && pointer.value.trim()
         ? pointer.value.trim()
-        : "",
+        : ""
   };
   if (typeof pointer.relay === "string" && pointer.relay.trim()) {
     descriptor.relay = pointer.relay.trim();
+  }
+  const eventId =
+    typeof pointer.eventId === "string" && pointer.eventId.trim()
+      ? pointer.eventId.trim()
+      : typeof pointer.pointerEventId === "string" &&
+          pointer.pointerEventId.trim()
+        ? pointer.pointerEventId.trim()
+        : "";
+  if (eventId) {
+    descriptor.eventId = eventId;
   }
   return descriptor;
 }
@@ -36,7 +46,16 @@ function canonicalizePointerForState(pointerInput) {
   if (!key) {
     return null;
   }
-  const descriptor = clonePointerDescriptor(normalized);
+  const descriptor = clonePointerDescriptor({
+    ...normalized,
+    eventId:
+      typeof pointerInput?.eventId === "string" && pointerInput.eventId.trim()
+        ? pointerInput.eventId
+        : typeof pointerInput?.pointerEventId === "string" &&
+            pointerInput.pointerEventId.trim()
+          ? pointerInput.pointerEventId
+          : ""
+  });
   return descriptor ? { key, pointer: descriptor } : null;
 }
 
@@ -50,7 +69,7 @@ function ensurePointerState(key, pointer) {
       lastUpdatedAt: 0,
       latestCreatedAt: 0,
       lastSyncedAt: 0,
-      hydrated: false,
+      hydrated: false
     };
     pointerStates.set(key, state);
     return state;
@@ -59,8 +78,16 @@ function ensurePointerState(key, pointer) {
     const descriptor = clonePointerDescriptor(pointer);
     if (!state.pointer) {
       state.pointer = descriptor;
-    } else if (descriptor?.relay && !state.pointer.relay) {
-      state.pointer = { ...state.pointer, relay: descriptor.relay };
+    } else {
+      state.pointer = {
+        ...state.pointer,
+        ...(descriptor?.relay && !state.pointer.relay
+          ? { relay: descriptor.relay }
+          : {}),
+        ...(descriptor?.eventId && !state.pointer.eventId
+          ? { eventId: descriptor.eventId }
+          : {})
+      };
     }
   }
   return state;
@@ -174,7 +201,10 @@ function applyReactionToState(key, pointer, event) {
     state.lastUpdatedAt = Date.now();
     if (Number.isFinite(normalized.created_at)) {
       const created = Math.max(0, Math.floor(normalized.created_at));
-      if (!Number.isFinite(state.latestCreatedAt) || created > state.latestCreatedAt) {
+      if (
+        !Number.isFinite(state.latestCreatedAt) ||
+        created > state.latestCreatedAt
+      ) {
         state.latestCreatedAt = created;
       }
     }
@@ -198,7 +228,7 @@ function snapshotState(state) {
     reactions[pubkey] = {
       content: record.content,
       created_at: record.created_at,
-      eventId: record.eventId,
+      eventId: record.eventId
     };
   }
   const latestCreatedAt = Number.isFinite(state.latestCreatedAt)
@@ -212,7 +242,7 @@ function snapshotState(state) {
     lastUpdatedAt: state.lastUpdatedAt,
     latestCreatedAt,
     lastSyncedAt: state.lastSyncedAt,
-    hydrated: Boolean(state.hydrated),
+    hydrated: Boolean(state.hydrated)
   };
 }
 
@@ -271,7 +301,7 @@ function subscribeToPointer(pointerInput, handler) {
       .catch((error) => {
         devLogger.warn(
           "[reactionCounter] Failed to hydrate reaction history:",
-          error,
+          error
         );
       })
       .finally(() => {
@@ -299,7 +329,7 @@ function subscribeToPointer(pointerInput, handler) {
               .catch((error) => {
                 devLogger.warn(
                   "[reactionCounter] Failed to hydrate reaction history after pool init:",
-                  error,
+                  error
                 );
               })
               .finally(() => {
@@ -314,7 +344,7 @@ function subscribeToPointer(pointerInput, handler) {
         .catch((error) => {
           devLogger.warn(
             "[reactionCounter] Failed to initialize nostr pool for reactions:",
-            error,
+            error
           );
         });
     }
@@ -372,12 +402,19 @@ function ingestLocalReaction({ event, pointer }) {
     if (!canonical) {
       return;
     }
-    const changed = applyReactionToState(canonical.key, canonical.pointer, event);
+    const changed = applyReactionToState(
+      canonical.key,
+      canonical.pointer,
+      event
+    );
     if (changed) {
       notifyHandlers(canonical.key);
     }
   } catch (error) {
-    userLogger.warn("[reactionCounter] Failed to ingest local reaction:", error);
+    userLogger.warn(
+      "[reactionCounter] Failed to ingest local reaction:",
+      error
+    );
   }
 }
 
@@ -446,7 +483,7 @@ function gatherRelayCandidates(pointer) {
   return relays;
 }
 
-function buildReactionFilters(pointer, { limit, since } = {}) {
+export function buildReactionFilters(pointer, { limit, since } = {}) {
   if (!pointer || typeof pointer !== "object") {
     return [];
   }
@@ -460,23 +497,29 @@ function buildReactionFilters(pointer, { limit, since } = {}) {
     return [];
   }
 
-  const filter = { kinds: [REACTION_EVENT_KIND] };
+  const withBounds = (filter) => {
+    if (Number.isFinite(limit) && limit > 0) {
+      filter.limit = Math.max(1, Math.floor(limit));
+    }
+    if (Number.isFinite(since) && since >= 0) {
+      filter.since = Math.max(0, Math.floor(since));
+    }
+    return filter;
+  };
 
-  if (type === "a") {
-    filter["#a"] = [value];
-  } else {
-    filter["#e"] = [value];
+  if (type === "e") {
+    return [withBounds({ kinds: [REACTION_EVENT_KIND], "#e": [value] })];
   }
 
-  if (Number.isFinite(limit) && limit > 0) {
-    filter.limit = Math.max(1, Math.floor(limit));
+  const filters = [withBounds({ kinds: [REACTION_EVENT_KIND], "#a": [value] })];
+  const eventId =
+    typeof pointer.eventId === "string" && pointer.eventId.trim()
+      ? pointer.eventId.trim()
+      : "";
+  if (eventId) {
+    filters.push(withBounds({ kinds: [REACTION_EVENT_KIND], "#e": [eventId] }));
   }
-
-  if (Number.isFinite(since) && since >= 0) {
-    filter.since = Math.max(0, Math.floor(since));
-  }
-
-  return [filter];
+  return filters;
 }
 
 function buildPointerQuery(pointer, options = {}) {
@@ -556,7 +599,10 @@ function ensureReactionHydration(key, pointer, state) {
 
   const promise = hydratePointerState(key, pointer, state)
     .catch((error) => {
-      devLogger.warn("[reactionCounter] Failed to hydrate reaction history:", error);
+      devLogger.warn(
+        "[reactionCounter] Failed to hydrate reaction history:",
+        error
+      );
     })
     .finally(() => {
       pointerHydrationPromises.delete(key);
@@ -577,7 +623,10 @@ function teardownLiveSubscription(key) {
     try {
       unsub();
     } catch (error) {
-      devLogger.warn("[reactionCounter] Failed to tear down reaction stream:", error);
+      devLogger.warn(
+        "[reactionCounter] Failed to tear down reaction stream:",
+        error
+      );
     }
   }
 }
@@ -618,7 +667,10 @@ function ensureReactionLiveSubscription(key, pointer) {
   try {
     subscription = query.pool.sub(query.relays, query.filters);
   } catch (error) {
-    devLogger.warn("[reactionCounter] Failed to subscribe to reaction events:", error);
+    devLogger.warn(
+      "[reactionCounter] Failed to subscribe to reaction events:",
+      error
+    );
     return null;
   }
 
@@ -660,7 +712,7 @@ function ensureReactionLiveSubscription(key, pointer) {
 
   pointerSubscriptions.set(key, {
     signature,
-    unsub: unsubscribe,
+    unsub: unsubscribe
   });
 
   return unsubscribe;
@@ -688,7 +740,8 @@ export const reactionCounter = {
       })();
 
       const pointerRelay =
-        typeof publishOptions.pointerRelay === "string" && publishOptions.pointerRelay.trim()
+        typeof publishOptions.pointerRelay === "string" &&
+        publishOptions.pointerRelay.trim()
           ? publishOptions.pointerRelay.trim()
           : pointerRelayFromPointer;
 
@@ -750,7 +803,7 @@ export const reactionCounter = {
 
       const result = await nostrClient.publishVideoReaction(
         enrichedPointer,
-        publishOptions,
+        publishOptions
       );
       if (!result || !result.ok) {
         userLogger.warn(
@@ -768,21 +821,24 @@ export const reactionCounter = {
               ? publishOptions.actorPubkey
               : undefined,
           content: publishOptions.content,
-          created_at: publishOptions.created_at,
+          created_at: publishOptions.created_at
         };
         if (eventPayload && eventPayload.pubkey) {
           ingestLocalReaction({
             pointer: enrichedPointer,
-            event: eventPayload,
+            event: eventPayload
           });
         }
       }
       return result;
     } catch (error) {
-      userLogger.warn("[reactionCounter] Failed to publish reaction event:", error);
+      userLogger.warn(
+        "[reactionCounter] Failed to publish reaction event:",
+        error
+      );
       throw error;
     }
-  },
+  }
 };
 
 reactionCounter.subscribe = subscribeToPointer;
@@ -793,5 +849,5 @@ export default reactionCounter;
 export {
   subscribeToPointer as subscribeToReactions,
   unsubscribeFromPointer as unsubscribeFromReactions,
-  getPointerSnapshot as getReactionSnapshot,
+  getPointerSnapshot as getReactionSnapshot
 };

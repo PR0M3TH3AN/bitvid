@@ -15,36 +15,36 @@ describe("ReactionController", () => {
       subscribe: (pointer, cb) => {
         return () => {};
       },
-      publish: async () => ({ ok: true }),
+      publish: async () => ({ ok: true })
     };
 
     mockVideoModal = {
       updateReactionSummary: () => {},
-      setUserReaction: () => {},
+      setUserReaction: () => {}
     };
 
     mockUi = {
       getVideoModal: () => mockVideoModal,
-      showError: () => {},
+      showError: () => {}
     };
 
     mockState = {
       getCurrentVideo: () => ({ id: "v1", pubkey: "p1" }),
       getCurrentVideoPointer: () => ["e", "v1"],
-      getCurrentVideoPointerKey: () => "e:v1",
+      getCurrentVideoPointerKey: () => "e:v1"
     };
 
     mockCallbacks = {
       isUserLoggedIn: () => true,
       normalizeHexPubkey: (val) => val,
-      getPubkey: () => "user1",
+      getPubkey: () => "user1"
     };
 
     controller = new ReactionController({
       services: { reactionCounter: mockReactionCounter },
       ui: mockUi,
       state: mockState,
-      callbacks: mockCallbacks,
+      callbacks: mockCallbacks
     });
   });
 
@@ -54,7 +54,26 @@ describe("ReactionController", () => {
     controller.subscribe(["e", "v1"], "e:v1");
 
     assert.strictEqual(subscribeMock.mock.callCount(), 1);
-    assert.deepStrictEqual(subscribeMock.mock.calls[0].arguments[0], ["e", "v1"]);
+    assert.deepStrictEqual(subscribeMock.mock.calls[0].arguments[0], [
+      "e",
+      "v1"
+    ]);
+  });
+
+  it("includes the immutable event ID when subscribing to addressable videos", (t) => {
+    const subscribeMock = t.mock.method(mockReactionCounter, "subscribe");
+
+    controller.subscribe(
+      ["a", "34235:p1:episode-42", "wss://relay.example"],
+      "a:34235:p1:episode-42"
+    );
+
+    assert.deepStrictEqual(subscribeMock.mock.calls[0].arguments[0], {
+      type: "a",
+      value: "34235:p1:episode-42",
+      relay: "wss://relay.example",
+      eventId: "v1"
+    });
   });
 
   it("should handle reaction update from subscription", (t) => {
@@ -63,35 +82,41 @@ describe("ReactionController", () => {
       subCallback = cb;
       return () => {};
     };
-    const updateSummaryMock = t.mock.method(mockVideoModal, "updateReactionSummary");
+    const updateSummaryMock = t.mock.method(
+      mockVideoModal,
+      "updateReactionSummary"
+    );
 
     controller.subscribe(["e", "v1"], "e:v1");
     // subscribe calls unsubscribe which calls resetState which calls updateReactionSummary (1st call)
 
     subCallback({
-        total: 10,
-        counts: { "+": 10 },
-        reactions: { "user1": { content: "+" } }
+      total: 10,
+      counts: { "+": 10 },
+      reactions: { user1: { content: "+" } }
     });
     // subCallback calls updateReactionSummary (2nd call)
 
     assert.strictEqual(updateSummaryMock.mock.callCount(), 2);
     assert.deepStrictEqual(updateSummaryMock.mock.calls[1].arguments[0], {
-        total: 10,
-        counts: { "+": 10, "-": 0 },
-        userReaction: "+"
+      total: 10,
+      counts: { "+": 10, "-": 0 },
+      userReaction: "+"
     });
   });
 
   it("should apply optimistic update on handleReaction", async (t) => {
-    const updateSummaryMock = t.mock.method(mockVideoModal, "updateReactionSummary");
+    const updateSummaryMock = t.mock.method(
+      mockVideoModal,
+      "updateReactionSummary"
+    );
     const publishMock = t.mock.method(mockReactionCounter, "publish");
 
     // Pre-seed state
     controller.reactionState = {
-        total: 5,
-        counts: { "+": 5, "-": 0 },
-        userReaction: ""
+      total: 5,
+      counts: { "+": 5, "-": 0 },
+      userReaction: ""
     };
 
     await controller.handleReaction({ reaction: "+" });
@@ -110,16 +135,19 @@ describe("ReactionController", () => {
 
   it("should rollback optimistic update on publish failure", async (t) => {
     mockReactionCounter.publish = async () => ({ ok: false });
-    const updateSummaryMock = t.mock.method(mockVideoModal, "updateReactionSummary");
+    const updateSummaryMock = t.mock.method(
+      mockVideoModal,
+      "updateReactionSummary"
+    );
 
     // We need to update controller.ui.showError because constructor copied the reference
     const showErrorMock = t.mock.method(mockUi, "showError");
     controller.ui.showError = showErrorMock;
 
     controller.reactionState = {
-        total: 5,
-        counts: { "+": 5, "-": 0 },
-        userReaction: ""
+      total: 5,
+      counts: { "+": 5, "-": 0 },
+      userReaction: ""
     };
 
     await controller.handleReaction({ reaction: "+" });

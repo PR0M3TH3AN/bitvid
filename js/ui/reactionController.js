@@ -4,16 +4,16 @@ import { pointerArrayToKey } from "../utils/pointer.js";
 export default class ReactionController {
   constructor({ services = {}, ui = {}, state = {}, callbacks = {} } = {}) {
     this.services = {
-      reactionCounter: services.reactionCounter,
+      reactionCounter: services.reactionCounter
     };
     this.ui = {
       getVideoModal: ui.getVideoModal || (() => null),
-      showError: ui.showError || (() => {}),
+      showError: ui.showError || (() => {})
     };
     this.state = {
       getCurrentVideo: state.getCurrentVideo || (() => null),
       getCurrentVideoPointer: state.getCurrentVideoPointer || (() => null),
-      getCurrentVideoPointerKey: state.getCurrentVideoPointerKey || (() => null),
+      getCurrentVideoPointerKey: state.getCurrentVideoPointerKey || (() => null)
     };
     this.callbacks = {
       isUserLoggedIn: callbacks.isUserLoggedIn || (() => false),
@@ -22,13 +22,13 @@ export default class ReactionController {
       // Ensure a sign-capable signer before publishing a reaction (kind 7). A
       // reloaded nsec session can lose its in-memory key; this re-unlocks it with
       // one passphrase prompt instead of the reaction silently failing (TODO #54).
-      ensureSigner: callbacks.ensureSigner || (async () => ({ ok: true })),
+      ensureSigner: callbacks.ensureSigner || (async () => ({ ok: true }))
     };
 
     this.reactionState = {
       counts: { "+": 0, "-": 0 },
       total: 0,
-      userReaction: "",
+      userReaction: ""
     };
     this.unsub = null;
     this.pointerKey = null;
@@ -46,14 +46,14 @@ export default class ReactionController {
     this.reactionState = {
       counts: { "+": 0, "-": 0 },
       total: 0,
-      userReaction: "",
+      userReaction: ""
     };
     const videoModal = this.ui.getVideoModal();
     if (videoModal?.updateReactionSummary) {
       videoModal.updateReactionSummary({
         total: 0,
         counts: { "+": 0, "-": 0 },
-        userReaction: "",
+        userReaction: ""
       });
     }
   }
@@ -65,7 +65,7 @@ export default class ReactionController {
       } catch (error) {
         devLogger.warn(
           "[reaction] Failed to tear down modal subscription:",
-          error,
+          error
         );
       }
     }
@@ -88,59 +88,83 @@ export default class ReactionController {
     }
 
     try {
-      const normalizedUser = this.callbacks.normalizeHexPubkey(this.callbacks.getPubkey());
-      const unsubscribe = this.services.reactionCounter.subscribe(pointer, (snapshot) => {
-        const counts = { ...this.reactionState.counts };
-        if (snapshot?.counts && typeof snapshot.counts === "object") {
-          for (const [key, value] of Object.entries(snapshot.counts)) {
-            counts[key] = this.normalizeReactionCount(value);
-          }
+      const currentVideo = this.state.getCurrentVideo();
+      const reactionTarget = (() => {
+        if (!Array.isArray(pointer) || pointer[0] !== "a") {
+          return pointer;
         }
-        if (!Object.prototype.hasOwnProperty.call(counts, "+")) {
-          counts["+"] = 0;
-        }
-        if (!Object.prototype.hasOwnProperty.call(counts, "-")) {
-          counts["-"] = 0;
-        }
-
-        let total = Number.isFinite(snapshot?.total)
-          ? Math.max(0, Number(snapshot.total))
-          : 0;
-        if (!Number.isFinite(total) || total === 0) {
-          total = 0;
-          for (const value of Object.values(counts)) {
-            total += this.normalizeReactionCount(value);
-          }
-        }
-
-        let userReaction = "";
-        if (normalizedUser && snapshot?.reactions) {
-          const record = snapshot.reactions[normalizedUser] || null;
-          if (record && typeof record.content === "string") {
-            userReaction =
-              record.content === "+"
-                ? "+"
-                : record.content === "-"
-                  ? "-"
-                  : "";
-          }
-        }
-
-        this.reactionState = {
-          counts,
-          total,
-          userReaction,
+        const eventId =
+          typeof currentVideo?.id === "string" && currentVideo.id.trim()
+            ? currentVideo.id.trim()
+            : typeof currentVideo?.eventId === "string" &&
+                currentVideo.eventId.trim()
+              ? currentVideo.eventId.trim()
+              : "";
+        return {
+          type: "a",
+          value: pointer[1],
+          relay: pointer[2],
+          eventId
         };
+      })();
+      const normalizedUser = this.callbacks.normalizeHexPubkey(
+        this.callbacks.getPubkey()
+      );
+      const unsubscribe = this.services.reactionCounter.subscribe(
+        reactionTarget,
+        (snapshot) => {
+          const counts = { ...this.reactionState.counts };
+          if (snapshot?.counts && typeof snapshot.counts === "object") {
+            for (const [key, value] of Object.entries(snapshot.counts)) {
+              counts[key] = this.normalizeReactionCount(value);
+            }
+          }
+          if (!Object.prototype.hasOwnProperty.call(counts, "+")) {
+            counts["+"] = 0;
+          }
+          if (!Object.prototype.hasOwnProperty.call(counts, "-")) {
+            counts["-"] = 0;
+          }
 
-        const currentModal = this.ui.getVideoModal();
-        if (currentModal?.updateReactionSummary) {
-          currentModal.updateReactionSummary({
-            total,
+          let total = Number.isFinite(snapshot?.total)
+            ? Math.max(0, Number(snapshot.total))
+            : 0;
+          if (!Number.isFinite(total) || total === 0) {
+            total = 0;
+            for (const value of Object.values(counts)) {
+              total += this.normalizeReactionCount(value);
+            }
+          }
+
+          let userReaction = "";
+          if (normalizedUser && snapshot?.reactions) {
+            const record = snapshot.reactions[normalizedUser] || null;
+            if (record && typeof record.content === "string") {
+              userReaction =
+                record.content === "+"
+                  ? "+"
+                  : record.content === "-"
+                    ? "-"
+                    : "";
+            }
+          }
+
+          this.reactionState = {
             counts,
-            userReaction,
-          });
+            total,
+            userReaction
+          };
+
+          const currentModal = this.ui.getVideoModal();
+          if (currentModal?.updateReactionSummary) {
+            currentModal.updateReactionSummary({
+              total,
+              counts,
+              userReaction
+            });
+          }
         }
-      });
+      );
 
       this.pointerKey = pointerKey;
       this.unsub = () => {
@@ -149,7 +173,7 @@ export default class ReactionController {
         } catch (error) {
           devLogger.warn(
             "[reaction] Failed to tear down modal subscription:",
-            error,
+            error
           );
         } finally {
           this.unsub = null;
@@ -159,7 +183,7 @@ export default class ReactionController {
     } catch (error) {
       devLogger.warn(
         "[reaction] Failed to subscribe modal reaction counter:",
-        error,
+        error
       );
       this.resetState();
     }
@@ -171,7 +195,7 @@ export default class ReactionController {
     }
 
     const previousCounts = {
-      ...(this.reactionState?.counts || {}),
+      ...(this.reactionState?.counts || {})
     };
     const previousTotalValue = Number.isFinite(this.reactionState?.total)
       ? Math.max(0, Number(this.reactionState.total))
@@ -206,7 +230,7 @@ export default class ReactionController {
     const updatedCounts = {
       ...previousCounts,
       "+": likeCount,
-      "-": dislikeCount,
+      "-": dislikeCount
     };
 
     let updatedTotal = likeCount + dislikeCount;
@@ -217,7 +241,7 @@ export default class ReactionController {
     this.reactionState = {
       counts: updatedCounts,
       total: updatedTotal,
-      userReaction: nextReaction,
+      userReaction: nextReaction
     };
 
     const videoModal = this.ui.getVideoModal();
@@ -225,7 +249,7 @@ export default class ReactionController {
       videoModal.updateReactionSummary({
         total: updatedTotal,
         counts: updatedCounts,
-        userReaction: nextReaction,
+        userReaction: nextReaction
       });
     }
 
@@ -241,7 +265,7 @@ export default class ReactionController {
     return {
       counts: previousCounts,
       total: fallbackPreviousTotal,
-      userReaction: previousReaction,
+      userReaction: previousReaction
     };
   }
 
@@ -285,7 +309,7 @@ export default class ReactionController {
     this.reactionState = {
       counts,
       total,
-      userReaction,
+      userReaction
     };
 
     const videoModal = this.ui.getVideoModal();
@@ -293,7 +317,7 @@ export default class ReactionController {
       videoModal.updateReactionSummary({
         total,
         counts,
-        userReaction,
+        userReaction
       });
     }
   }
@@ -307,11 +331,7 @@ export default class ReactionController {
     const requestedReaction =
       typeof detail.reaction === "string" ? detail.reaction : "";
     const normalizedReaction =
-      requestedReaction === "+"
-        ? "+"
-        : requestedReaction === "-"
-          ? "-"
-          : "";
+      requestedReaction === "+" ? "+" : requestedReaction === "-" ? "-" : "";
 
     if (!normalizedReaction) {
       return;
@@ -319,14 +339,16 @@ export default class ReactionController {
 
     const previousReaction = this.reactionState?.userReaction || "";
     const pointer = this.state.getCurrentVideoPointer();
-    const pointerKey = this.state.getCurrentVideoPointerKey() || (pointer ? pointerArrayToKey(pointer) : null);
+    const pointerKey =
+      this.state.getCurrentVideoPointerKey() ||
+      (pointer ? pointerArrayToKey(pointer) : null);
 
     if (!pointer || !pointerKey) {
       if (videoModal) {
         videoModal.setUserReaction(previousReaction);
       }
       devLogger.info(
-        "[reaction] Ignoring reaction request until modal pointer is available.",
+        "[reaction] Ignoring reaction request until modal pointer is available."
       );
       return;
     }
@@ -350,7 +372,7 @@ export default class ReactionController {
         need: "sign",
         pubkey: this.callbacks.getPubkey(),
         promptMessage:
-          "Re-enter your PIN / passphrase to unlock your key and react to videos.",
+          "Re-enter your PIN / passphrase to unlock your key and react to videos."
       });
     } catch (error) {
       devLogger.warn("[reaction] Signer gate failed:", error);
@@ -359,7 +381,10 @@ export default class ReactionController {
     if (ensured && ensured.ok === false) {
       videoModal.setUserReaction(previousReaction);
       // cancelled = user backed out; bad-passphrase already showed its own toast.
-      if (ensured.reason !== "cancelled" && ensured.reason !== "bad-passphrase") {
+      if (
+        ensured.reason !== "cancelled" &&
+        ensured.reason !== "bad-passphrase"
+      ) {
         this.ui.showError("Connect a signer to react to videos.");
       }
       return;
@@ -367,11 +392,12 @@ export default class ReactionController {
 
     let rollbackSnapshot = null;
     try {
-      rollbackSnapshot = this.applyOptimisticUpdate(
-        normalizedReaction
-      );
+      rollbackSnapshot = this.applyOptimisticUpdate(normalizedReaction);
     } catch (error) {
-      devLogger.warn("[reaction] Failed to apply optimistic reaction state:", error);
+      devLogger.warn(
+        "[reaction] Failed to apply optimistic reaction state:",
+        error
+      );
     }
 
     try {
@@ -380,7 +406,7 @@ export default class ReactionController {
         content: normalizedReaction,
         video: currentVideo,
         currentVideoPubkey: currentVideo?.pubkey,
-        pointerKey,
+        pointerKey
       });
 
       if (!result?.ok) {
