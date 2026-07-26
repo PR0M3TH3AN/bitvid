@@ -237,7 +237,7 @@ export function createPlaybackCoordinator(deps) {
         this.log("Autoplay failed:", err);
         if (!this.modalVideo.muted) {
           this.log("Falling back to muted autoplay.");
-          this.modalVideo.muted = true;
+          this.playbackService.muteForAutoplayFallback(this.modalVideo);
           this.modalVideo.play().catch((err2) => {
             this.log("Muted autoplay also failed:", err2);
           });

@@ -2,6 +2,10 @@ import { userLogger } from "../utils/logger.js";
 import { PLAYBACK_START_TIMEOUT } from "../constants.js";
 import { getCurrentVideo, setCurrentVideo } from "../state/appState.js";
 import {
+  consumeAutoplayFallbackMute,
+  muteForAutoplayFallback,
+} from "../utils/autoplayPreference.js";
+import {
   SimpleEventEmitter,
   extractWebSeedsFromMagnet,
 } from "./playbackHelpers.js";
@@ -330,11 +334,17 @@ export class PlaybackService {
       return;
     }
     const storedUnmuted = localStorage.getItem("unmutedAutoplay");
-    const userWantsUnmuted = storedUnmuted === "true";
+    // Sound is the default for an explicit watch action. Browsers may still
+    // reject unmuted autoplay, in which case the coordinator retries muted.
+    // Preserve a viewer's explicit mute choice across subsequent videos.
+    const userWantsUnmuted = storedUnmuted !== "false";
     videoElement.muted = !userWantsUnmuted;
 
     if (!videoElement.dataset.autoplayBound) {
       videoElement.addEventListener("volumechange", () => {
+        if (consumeAutoplayFallbackMute(videoElement)) {
+          return;
+        }
         localStorage.setItem(
           "unmutedAutoplay",
           (!videoElement.muted).toString()
@@ -342,6 +352,10 @@ export class PlaybackService {
       });
       videoElement.dataset.autoplayBound = "true";
     }
+  }
+
+  muteForAutoplayFallback(videoElement) {
+    return muteForAutoplayFallback(videoElement);
   }
 
   /**
