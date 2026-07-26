@@ -167,7 +167,7 @@ function injectVersionInfo() {
       let content = fs.readFileSync(indexHtmlPath, 'utf8');
 
       const versionHtml = `
-      <div class="mt-4 text-xs text-muted opacity-50 font-mono">
+      <div class="mt-4 text-xs text-muted opacity-50 font-mono" data-site-version="${hash.slice(0, 8)}" data-site-version-date="${date}">
         v: ${hash.slice(0, 8)} • ${date}
       </div>`;
 

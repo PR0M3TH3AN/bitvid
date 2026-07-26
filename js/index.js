@@ -54,6 +54,7 @@ import { userBlocks } from "./userBlocks.js";
 import { relayManager } from "./relayManager.js";
 import createApplication from "./bootstrap.js";
 import SearchFilterModal from "./ui/components/SearchFilterModal.js";
+import { initializeSiteUpdateNotice } from "./ui/siteUpdateNotice.js";
 import { installTestHarness } from "./testHarness.js";
 
 validateInstanceConfig();
@@ -1320,6 +1321,7 @@ async function bootstrapInterface() {
 }
 
 async function initializeInterface() {
+  initializeSiteUpdateNotice();
   startApplication();
 
   try {

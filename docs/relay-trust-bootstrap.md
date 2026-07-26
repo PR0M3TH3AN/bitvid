@@ -38,7 +38,7 @@ Bootstrapping is intentionally defensive so the UI can initialize quickly:
 - **Access control hydration**: `waitForAccessControl()` races `accessControl.ensureReady()` against a 3.5s timeout. If hydration times out, bootstrapping logs a dev warning and falls back to defaults.
 - **Immediate apply**: Seeds are applied immediately after the first hydration attempt, even if the admin list hydration failed, so moderation does not block on relay availability.
 - **Retry when relays are ready**: If hydration failed, `bootstrapTrustedSeeds()` checks for relay readiness via `nostrService.nostrClient.relays` (and pool existence). If relays become available within 3.5s, it retries admin list hydration once. If relays never become ready, it logs a dev warning and re-applies the current seeds to keep moderation functional.
-- **Change listeners**: `accessControl.onWhitelistChange()` and `accessControl.onEditorsChange()` are registered so any subsequent admin/editor updates re-run seed application and recompute moderation summaries.
+- **Change listeners**: `accessControl.onEditorsChange()` and `accessControl.onBlacklistChange()` are registered so changes affecting the moderator roster or eligibility re-run seed application and recompute moderation summaries. Creator-whitelist changes do not affect trust seeds.
 
 ## Relay list persistence and refresh
 

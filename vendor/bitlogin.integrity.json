@@ -1,0 +1,18 @@
+{
+  "package": "@bitlogin/widget",
+  "version": "0.1.0",
+  "files": {
+    "bitlogin-shared-QIBe5Omw.js": {
+      "sha256": "7ce4ed0a5c3c7f744e864f55745f7fa78482cbfa19cd30eb551f67a415f55191",
+      "bytes": 288275
+    },
+    "bitlogin.js": {
+      "sha256": "55312cef3462a2e41043b57bd3c87a80bad4e077dd6e529faf25fa55db4ba7a8",
+      "bytes": 67232
+    },
+    "cryptoWorker.js": {
+      "sha256": "49a421e1026ad94243ceb0653f3761820d4e98e19b8fbe469307cd692f9a8489",
+      "bytes": 79173
+    }
+  }
+}

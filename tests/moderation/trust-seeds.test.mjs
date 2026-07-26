@@ -224,22 +224,7 @@ test("bootstrap seeds track editor roster and ignore whitelist-only changes", as
     "initial editor roster should seed trust"
   );
 
-  const whitelistListener = Array.from(whitelistListeners)[0];
-  if (typeof whitelistListener === "function") {
-    whitelistListener(["npub1whitelistentrywhitelistentrywhitelistentry"]);
-  }
-
-  assert.equal(
-    setTrustedSeedsCalls.length,
-    2,
-    "whitelist change should retrigger trusted seed derivation"
-  );
-  const [, whitelistSeeds] = setTrustedSeedsCalls;
-  assert.deepEqual(
-    new Set(whitelistSeeds),
-    new Set(initialSeeds),
-    "whitelist updates should not introduce new trusted seeds"
-  );
+  assert.equal(whitelistListeners.size, 0, "creator whitelist changes must not affect trust seeds");
 
   currentEditors = [
     "npub1newmoderatorexamplemoderatorexamplemoderator",
@@ -251,10 +236,10 @@ test("bootstrap seeds track editor roster and ignore whitelist-only changes", as
 
   assert.equal(
     setTrustedSeedsCalls.length,
-    3,
+    2,
     "editor change should recompute trusted seed roster"
   );
-  const latestSeeds = setTrustedSeedsCalls[2];
+  const latestSeeds = setTrustedSeedsCalls[1];
   assert.deepEqual(
     new Set(latestSeeds),
     new Set([ADMIN_SUPER_NPUB, ...currentEditors]),

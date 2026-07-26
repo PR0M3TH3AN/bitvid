@@ -1135,13 +1135,14 @@ export function createModerationStage({
         trustedMuteCategory,
       );
 
+      const adminWhitelist = adminStatus?.whitelisted === true;
+      const adminWhitelistBypass = false;
+
       const blockAutoplay =
         trustedCount >= normalizedAutoplayThreshold || trustedMuted || viewerMuted;
       const blurFromReports = trustedCount >= normalizedBlurThreshold;
       let blurThumbnail = blurFromReports;
       let blurReason = blurThumbnail ? "trusted-report" : "";
-      const adminWhitelist = adminStatus?.whitelisted === true;
-      const adminWhitelistBypass = false;
 
       if (!item.metadata || typeof item.metadata !== "object") {
         item.metadata = {};

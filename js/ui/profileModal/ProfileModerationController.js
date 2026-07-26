@@ -857,7 +857,7 @@ export class ProfileModerationController {
       if (isBlocked(status.hex)) {
         return false;
       }
-      return Boolean(status.whitelisted || trustedContacts.has(status.hex));
+      return trustedContacts.has(status.hex);
     };
 
     if (service.trustedMuteLists instanceof Map) {
