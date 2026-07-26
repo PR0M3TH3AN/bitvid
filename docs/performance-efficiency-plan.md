@@ -1,6 +1,6 @@
 # BitVid Performance & Efficiency Plan
 
-Status: **Stage 2 in progress — startup hardening validated locally; recommendation indexes now activate on demand**
+Status: **Stage 2 complete locally — recommendation indexes are demand-driven and coalesced; Stage 3 source-health cancellation audited next**
 
 ## Goal
 
@@ -173,13 +173,14 @@ old diagnostic behavior.
 
 ## Stage 2 — Lazy recommendation indexes
 
-Implemented first slice: `ExploreDataService` is no longer created during
+Implemented: `ExploreDataService` is no longer created during
 ordinary bootstrap. Home/Profile sessions therefore create no recommendation
 worker or recommendation intervals. Opening For You or Explore creates and
 activates the service; events received while inactive mark it dirty and are
-included in the activation refresh. Focused lifecycle, feed-coordinator, and
-build checks pass; browser validation of both recommendation views remains the
-next gate before further Stage 2 coalescing work.
+included in the activation refresh. Concurrent history/IDF signals share one
+running rebuild and retain one forced follow-up pass. Focused lifecycle,
+feed-coordinator, production-build, and browser navigation checks pass; manual
+For You/Explore validation confirmed normal recommendations and responsive Home.
 
 ### Change
 
@@ -223,6 +224,24 @@ Feature-scoped lifecycle change behind a small coordinator boundary; restore
 eager initialization if feed freshness regresses.
 
 ## Stage 3 — Bound source-health work to visible cards
+
+### Audit findings (2026-07-26)
+
+- `createCardObserver` retains an `IntersectionObserver` per grid container but
+  has no disposal API. `VideoListView.render()` replaces card DOM without
+  disconnecting the old observer, so detached cards can stay observed.
+- `gridHealth` has a globally bounded, priority-ordered torrent queue, but its
+  queued jobs have no owner/cancellation handle. A discarded card can therefore
+  still start a real tracker/WebRTC probe.
+- URL health uses an independent observer and video-probe wait queue with the
+  same missing ownership boundary. Its fetch timeout aborts only on timeout,
+  not when the card/grid disappears.
+
+Implementation order: add disposable observer registrations and call them from
+grid replacement/unmount; associate queued jobs with card owners and prune jobs
+when their last owner disappears; finally pass an abort signal into active URL
+and torrent probes. Cache/in-flight deduplication stays shared so one visible
+card never cancels work still needed by another visible card.
 
 ### Change
 

@@ -26,6 +26,7 @@ export function createCardObserver(options = {}) {
     prepareEntries,
     onCardVisible,
     onCardRegister,
+    onCardUnregister,
     createState,
   } = options;
 
@@ -37,7 +38,9 @@ export function createCardObserver(options = {}) {
       return state;
     }
 
-    const observedCards = new WeakSet();
+    // A Set is intentional here: disposal must enumerate every card so the
+    // browser observer cannot retain detached feed nodes after a rerender.
+    const observedCards = new Set();
     const customState = normalizeState(
       typeof createState === "function" ? createState(container) : {}
     );
@@ -201,9 +204,34 @@ export function createCardObserver(options = {}) {
     return state ? state.customState : null;
   }
 
+  function disconnect(container) {
+    const state = containerState.get(container);
+    if (!state) {
+      return;
+    }
+
+    for (const card of state.observedCards) {
+      if (typeof onCardUnregister === "function") {
+        try {
+          onCardUnregister({
+            card,
+            state: state.customState,
+            context: { container: state.container, observer: state.observer },
+          });
+        } catch (err) {
+          userLogger.warn("[cardObserver] onCardUnregister failed", err);
+        }
+      }
+    }
+    state.observedCards.clear();
+    state.observer.disconnect();
+    containerState.delete(container);
+  }
+
   return {
     observe,
     refresh,
     getState,
+    disconnect,
   };
 }

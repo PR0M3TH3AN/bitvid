@@ -75,12 +75,12 @@ function triggerUrlCheck(card, state) {
 
 export function attachUrlHealthBadges(container, onCheck) {
   if (!(container instanceof HTMLElement)) {
-    return;
+    return () => {};
   }
 
   const state = urlCardObserver.observe(container);
   if (state && typeof onCheck === "function") {
     state.onCheck = onCheck;
   }
+  return () => urlCardObserver.disconnect(container);
 }
-

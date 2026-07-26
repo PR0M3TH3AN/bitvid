@@ -166,11 +166,10 @@ export default class ApplicationBootstrap {
     app.streamHealthSnapshots = new Map();
     app.boundStreamHealthBadgeHandler = (detail) =>
       app.handleStreamHealthBadgeUpdate(detail);
-    app.attachHealthBadgesWithCache = (container) => {
+    app.attachHealthBadgesWithCache = (container) =>
       attachHealthBadges(container, {
         onUpdate: app.boundStreamHealthBadgeHandler,
       });
-    };
     app.defaultModerationSettings = getDefaultModerationSettings();
     app.moderationSettings = { ...app.defaultModerationSettings };
     app.relayManager = relayManager;

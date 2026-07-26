@@ -573,10 +573,11 @@ const gridCardObserver = createCardObserver({
 
 export function attachHealthBadges(container, options = {}) {
   if (!(container instanceof HTMLElement)) {
-    return;
+    return () => {};
   }
   if (options && typeof options.onUpdate === "function") {
     badgeUpdateListeners.add(options.onUpdate);
   }
   gridCardObserver.observe(container);
+  return () => gridCardObserver.disconnect(container);
 }

@@ -373,3 +373,25 @@ test("most-zapped sorter: sats desc, recency tie-break, muted sinks", () => {
     "sats desc, newer wins ties, trusted-muted last regardless of sats",
   );
 });
+
+test("most-zapped sorter keeps strict zap order when one creator has several top videos", () => {
+  const item = (id, author, sats, createdAt) => ({
+    video: { id, pubkey: author, created_at: createdAt },
+    metadata: {},
+    sats,
+  });
+  const items = [
+    item("creator-a-top", "creator-a", 900, 100),
+    item("creator-a-second", "creator-a", 800, 200),
+    item("creator-b", "creator-b", 700, 300),
+  ];
+  const sorted = createMostZappedSorter()(items, {
+    runtime: { getZapTotal: (video) => items.find((entry) => entry.video === video)?.sats || 0 },
+  });
+
+  assert.deepEqual(
+    sorted.map((entry) => entry.video.id),
+    ["creator-a-top", "creator-a-second", "creator-b"],
+    "a diversity rule must not move a lower-zapped video above a higher-zapped one",
+  );
+});

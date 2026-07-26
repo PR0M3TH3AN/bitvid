@@ -148,6 +148,10 @@ export default class ExploreDataService {
     this.active = false;
     this.historyDirty = true;
     this.idfDirty = true;
+    this.historyRefreshInFlight = null;
+    this.idfRefreshInFlight = null;
+    this.historyRefreshFollowUp = null;
+    this.idfRefreshFollowUp = null;
   }
 
   initialize({ active = false } = {}) {
@@ -274,7 +278,33 @@ export default class ExploreDataService {
     }, this.refreshDebounceMs);
   }
 
-  async refreshWatchHistoryTagCounts({ force = false, reason } = {}) {
+  async refreshWatchHistoryTagCounts(options = {}) {
+    if (this.historyRefreshInFlight) {
+      // Keep only one fresh pass after the current worker task. Rebuilding for
+      // every relay/event/timer signal is exactly the burst this lifecycle is
+      // intended to prevent.
+      this.historyRefreshFollowUp = {
+        force: true,
+        reason: options.reason || "coalesced",
+      };
+      return this.historyRefreshInFlight;
+    }
+
+    const run = this._refreshWatchHistoryTagCounts(options);
+    this.historyRefreshInFlight = Promise.resolve(run).finally(() => {
+      this.historyRefreshInFlight = null;
+      const followUp = this.historyRefreshFollowUp;
+      this.historyRefreshFollowUp = null;
+      if (followUp && this.active) {
+        void this.refreshWatchHistoryTagCounts(followUp);
+      } else if (followUp) {
+        this.historyDirty = true;
+      }
+    });
+    return this.historyRefreshInFlight;
+  }
+
+  async _refreshWatchHistoryTagCounts({ force = false, reason } = {}) {
     const now = Date.now();
     if (!force && this.watchHistoryTagCountsUpdatedAt) {
       const elapsed = now - this.watchHistoryTagCountsUpdatedAt;
@@ -308,7 +338,30 @@ export default class ExploreDataService {
     }
   }
 
-  async refreshTagIdf({ force = false, videos, reason } = {}) {
+  async refreshTagIdf(options = {}) {
+    if (this.idfRefreshInFlight) {
+      this.idfRefreshFollowUp = {
+        force: true,
+        reason: options.reason || "coalesced",
+      };
+      return this.idfRefreshInFlight;
+    }
+
+    const run = this._refreshTagIdf(options);
+    this.idfRefreshInFlight = Promise.resolve(run).finally(() => {
+      this.idfRefreshInFlight = null;
+      const followUp = this.idfRefreshFollowUp;
+      this.idfRefreshFollowUp = null;
+      if (followUp && this.active) {
+        void this.refreshTagIdf(followUp);
+      } else if (followUp) {
+        this.idfDirty = true;
+      }
+    });
+    return this.idfRefreshInFlight;
+  }
+
+  async _refreshTagIdf({ force = false, videos, reason } = {}) {
     const now = Date.now();
     if (!force && this.tagIdfUpdatedAt) {
       const elapsed = now - this.tagIdfUpdatedAt;
@@ -361,6 +414,8 @@ export default class ExploreDataService {
       clearTimeout(this.tagIdfRefreshHandle);
       this.tagIdfRefreshHandle = null;
     }
+    this.historyRefreshFollowUp = null;
+    this.idfRefreshFollowUp = null;
 
     this.unsubscribeHandlers.forEach((unsubscribe) => {
       if (typeof unsubscribe === "function") {

@@ -10,7 +10,7 @@ import { markAsNormalized } from "./utils.js";
 // re-runs the feed on the metric cache's debounced change signal).
 //   - Trending (#27): runtime.getViewCount (viewCounter cache)
 //   - Most Zapped (#47): runtime.getZapTotal (zapTotals cache)
-function createCountRankedSorter(resolveMetric) {
+function createCountRankedSorter(resolveMetric, { spreadByAuthor = true } = {}) {
   return function countRankedSorter(items = [], context = {}) {
     if (!Array.isArray(items)) {
       return [];
@@ -54,9 +54,12 @@ function createCountRankedSorter(resolveMetric) {
 
     const live = items.filter((entry) => !isMuted(entry));
     const muted = items.filter((entry) => isMuted(entry));
-    // Rank by the metric, then spread authors so the tab isn't walls of one
-    // creator. The top-ranked item is still chosen first, so it stays topmost.
-    return [...spreadAuthors(live.sort(compare)), ...muted.sort(compare)];
+    const rankedLive = live.sort(compare);
+    // Trending benefits from a little creator diversity. Most Zapped is a
+    // literal leaderboard, so it must retain strict total ordering instead of
+    // moving a larger zap total below a smaller one to avoid repeat authors.
+    const orderedLive = spreadByAuthor ? spreadAuthors(rankedLive) : rankedLive;
+    return [...orderedLive, ...muted.sort(compare)];
   };
 }
 
@@ -66,7 +69,10 @@ export function createTrendingSorter() {
 
 // "Most Zapped" (#47): same ranking mechanics over sats totals.
 export function createMostZappedSorter() {
-  return createCountRankedSorter((context) => context?.runtime?.getZapTotal);
+  return createCountRankedSorter(
+    (context) => context?.runtime?.getZapTotal,
+    { spreadByAuthor: false },
+  );
 }
 
 // Round-robin interleave by author: one video per creator per pass, each pass in

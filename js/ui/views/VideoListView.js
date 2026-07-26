@@ -32,6 +32,8 @@ export class VideoListView {
       (typeof window !== "undefined" ? window : null);
     this.container = null;
     this.mediaLoader = mediaLoader;
+    this.healthBadgeDetach = null;
+    this.urlHealthBadgeDetach = null;
 
     this.badgeHelpers = {
       attachHealthBadges: badgeHelpers.attachHealthBadges || (() => {}),
@@ -236,6 +238,7 @@ export class VideoListView {
     }
 
     if (this.container) {
+      this.teardownHealthBadgeObservers();
       this.container.removeEventListener("click", this._boundClickHandler);
     }
 
@@ -262,6 +265,7 @@ export class VideoListView {
 
     const markup = this.renderers.getLoadingMarkup(message);
     if (typeof markup === "string") {
+      this.teardownHealthBadgeObservers();
       this.container.innerHTML = markup;
     }
   }
@@ -278,6 +282,16 @@ export class VideoListView {
     if (this.popularTagHelper) {
       this.popularTagHelper.destroy();
     }
+  }
+
+  teardownHealthBadgeObservers() {
+    for (const detach of [this.healthBadgeDetach, this.urlHealthBadgeDetach]) {
+      if (typeof detach === "function") {
+        detach();
+      }
+    }
+    this.healthBadgeDetach = null;
+    this.urlHealthBadgeDetach = null;
   }
 
   setPlaybackHandler(handler) {
@@ -374,6 +388,7 @@ export class VideoListView {
         return displayVideos;
       }
       this.lastRenderedVideoSignature = EMPTY_VIDEO_LIST_SIGNATURE;
+      this.teardownHealthBadgeObservers();
       this.container.innerHTML = `
         <p class="flex justify-center items-center h-full w-full text-center text-subtle">
           No public videos available yet. Be the first to upload one!
@@ -413,7 +428,10 @@ export class VideoListView {
     }));
     const signature = JSON.stringify(signaturePayload);
 
-    if (signature === this.lastRenderedVideoSignature) {
+    const hasRenderedCards = Boolean(
+      this.container.querySelector('[data-component="video-card"]'),
+    );
+    if (signature === this.lastRenderedVideoSignature && hasRenderedCards) {
       return displayVideos;
     }
     this.lastRenderedVideoSignature = signature;
@@ -788,11 +806,12 @@ export class VideoListView {
         });
     }
 
+    this.teardownHealthBadgeObservers();
     this.container.innerHTML = "";
     this.container.appendChild(fragment);
 
-    this.badgeHelpers.attachHealthBadges(this.container);
-    this.badgeHelpers.attachUrlHealthBadges(this.container, ({ badgeEl, url, eventId }) => {
+    this.healthBadgeDetach = this.badgeHelpers.attachHealthBadges(this.container);
+    this.urlHealthBadgeDetach = this.badgeHelpers.attachUrlHealthBadges(this.container, ({ badgeEl, url, eventId }) => {
       this.utils.handleUrlHealthBadge({
         video: this.state.videosMap.get(eventId) || { id: eventId },
         url,

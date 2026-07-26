@@ -33,3 +33,33 @@ test("ExploreDataService stays idle until a recommendation feed activates it", a
   assert.equal(idfRefreshes, 1, "inactive feeds do not rebuild recommendation indexes");
   service.destroy();
 });
+
+test("ExploreDataService coalesces a refresh burst into one running pass and one follow-up", async () => {
+  const service = new ExploreDataService({
+    historyRefreshIntervalMs: 0,
+    idfRefreshIntervalMs: 0,
+  });
+  service.active = true;
+  let runs = 0;
+  let releaseFirst;
+  service._refreshTagIdf = async () => {
+    runs += 1;
+    if (runs === 1) {
+      await new Promise((resolve) => {
+        releaseFirst = resolve;
+      });
+    }
+    return new Map();
+  };
+
+  const first = service.refreshTagIdf({ force: true, reason: "initial" });
+  const duplicate = service.refreshTagIdf({ reason: "relay-event" });
+  service.refreshTagIdf({ reason: "timer" });
+  assert.equal(runs, 1, "only one rebuild starts during the burst");
+
+  releaseFirst();
+  await Promise.all([first, duplicate]);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(runs, 2, "the burst produces exactly one follow-up rebuild");
+  service.destroy();
+});
