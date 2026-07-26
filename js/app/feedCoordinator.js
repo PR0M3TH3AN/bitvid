@@ -1014,6 +1014,14 @@ export function createFeedCoordinator(deps) {
       devLogger.log(`Starting loadFeedVideos(${feedType})... (forceFetch =`, forceFetch, ")");
       this.setFeedTelemetryContext(feedType);
 
+      const recommendationFeed =
+        feedType === FEED_TYPES.FOR_YOU || feedType === FEED_TYPES.EXPLORE;
+      if (recommendationFeed && typeof this.ensureExploreDataService === "function") {
+        await this.ensureExploreDataService();
+      } else if (this.exploreDataService?.setActive) {
+        this.exploreDataService.setActive(false);
+      }
+
       let includeTags = false;
       let loadingMessage = "Fetching videos\u2026";
       let refreshMethod = null;

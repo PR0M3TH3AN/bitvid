@@ -144,26 +144,47 @@ export default class ExploreDataService {
     this.tagIdfInterval = null;
     this.unsubscribeHandlers = [];
     this.handleVisibility = this.handleVisibility.bind(this);
+    this.initialized = false;
+    this.active = false;
+    this.historyDirty = true;
+    this.idfDirty = true;
   }
 
-  initialize() {
-    this.refreshWatchHistoryTagCounts({ force: true, reason: "init" });
-    this.refreshTagIdf({ force: true, reason: "init" });
+  initialize({ active = false } = {}) {
+    if (this.initialized) {
+      return this.setActive(active);
+    }
+    this.initialized = true;
     this.subscribeToUpdates();
     if (typeof document !== "undefined") {
       document.addEventListener("visibilitychange", this.handleVisibility);
     }
+    return this.setActive(active);
+  }
+
+  async setActive(active) {
+    this.active = active === true;
+    if (!this.active || (typeof document !== "undefined" && document.hidden)) {
+      this.clearIntervals();
+      return;
+    }
     this.startIntervals();
+    const forceHistory = this.historyDirty || !this.watchHistoryTagCountsUpdatedAt;
+    const forceIdf = this.idfDirty || !this.tagIdfUpdatedAt;
+    this.historyDirty = false;
+    this.idfDirty = false;
+    await Promise.all([
+      this.refreshWatchHistoryTagCounts({ force: forceHistory, reason: "active" }),
+      this.refreshTagIdf({ force: forceIdf, reason: "active" }),
+    ]);
   }
 
   handleVisibility() {
     if (typeof document === "undefined") return;
     if (document.hidden) {
       this.clearIntervals();
-    } else {
-      this.refreshWatchHistoryTagCounts({ reason: "visibility" });
-      this.refreshTagIdf({ reason: "visibility" });
-      this.startIntervals();
+    } else if (this.active) {
+      void this.setActive(true);
     }
   }
 
@@ -226,6 +247,10 @@ export default class ExploreDataService {
   }
 
   queueWatchHistoryRefresh(reason) {
+    if (!this.active) {
+      this.historyDirty = true;
+      return;
+    }
     if (this.watchHistoryRefreshHandle) {
       return;
     }
@@ -236,6 +261,10 @@ export default class ExploreDataService {
   }
 
   queueTagIdfRefresh(reason) {
+    if (!this.active) {
+      this.idfDirty = true;
+      return;
+    }
     if (this.tagIdfRefreshHandle) {
       return;
     }

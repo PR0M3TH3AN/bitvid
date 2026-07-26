@@ -1,6 +1,6 @@
 # BitVid Performance & Efficiency Plan
 
-Status: **Stage 0 in progress — local-only measurement harness added; no runtime optimization changes implemented**
+Status: **Stage 2 in progress — startup hardening validated locally; recommendation indexes now activate on demand**
 
 ## Goal
 
@@ -172,6 +172,14 @@ One isolated commit; restoring the previous activation condition restores the
 old diagnostic behavior.
 
 ## Stage 2 — Lazy recommendation indexes
+
+Implemented first slice: `ExploreDataService` is no longer created during
+ordinary bootstrap. Home/Profile sessions therefore create no recommendation
+worker or recommendation intervals. Opening For You or Explore creates and
+activates the service; events received while inactive mark it dirty and are
+included in the activation refresh. Focused lifecycle, feed-coordinator, and
+build checks pass; browser validation of both recommendation views remains the
+next gate before further Stage 2 coalescing work.
 
 ### Change
 

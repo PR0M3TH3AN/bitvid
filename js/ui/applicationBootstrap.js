@@ -360,18 +360,22 @@ export default class ApplicationBootstrap {
       onViewLogged: (detail) => app.handleFeedViewTelemetry(detail),
     });
 
-    app.exploreDataService =
-      this.services.exploreDataService ||
-      new ExploreDataService({
-        watchHistoryService,
-        nostrService: app.nostrService,
-        getActiveActor: () =>
-          typeof app.pubkey === "string" && app.pubkey ? app.pubkey : "",
-        logger: devLogger,
-      });
-    if (app.exploreDataService && typeof app.exploreDataService.initialize === "function") {
-      app.exploreDataService.initialize();
-    }
+    app.exploreDataService = this.services.exploreDataService || null;
+    app.ensureExploreDataService = async () => {
+      if (!app.exploreDataService) {
+        app.exploreDataService = new ExploreDataService({
+          watchHistoryService,
+          nostrService: app.nostrService,
+          getActiveActor: () =>
+            typeof app.pubkey === "string" && app.pubkey ? app.pubkey : "",
+          logger: devLogger,
+        });
+      }
+      if (typeof app.exploreDataService.initialize === "function") {
+        await app.exploreDataService.initialize({ active: true });
+      }
+      return app.exploreDataService;
+    };
 
     const playbackDependencies = {
       torrentClient: this.services.torrentClient || torrentClient,
