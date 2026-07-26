@@ -1029,7 +1029,7 @@
   }
 
   .moderation-badge {
-    @apply inline-flex flex-col items-start gap-sm rounded-xl border px-3 py-1.5 text-xs font-semibold normal-case tracking-tight shadow-sm;
+    @apply inline-flex max-w-full flex-col items-start gap-sm rounded-xl border px-3 py-1.5 text-xs font-semibold normal-case tracking-tight shadow-sm;
   }
 
   .moderation-badge--interactive {
@@ -1037,11 +1037,11 @@
   }
 
   .moderation-badge__actions {
-    @apply inline-flex flex-nowrap items-center gap-sm;
+    @apply flex max-w-full flex-wrap items-center gap-sm;
   }
 
   .moderation-badge__label {
-    @apply inline-flex items-center gap-xs whitespace-nowrap;
+    @apply inline-flex min-w-0 items-center gap-xs;
   }
 
   .moderation-badge[data-variant="warning"] {
@@ -1081,11 +1081,12 @@
   }
 
   .moderation-badge__text {
-    @apply whitespace-nowrap text-xs font-semibold tracking-tight;
+    @apply min-w-0 text-xs font-semibold tracking-tight;
   }
 
   .moderation-badge__action {
-    @apply inline-flex items-center gap-1.5 rounded-full border border-status-warning-border bg-status-warning-surface px-3 py-1 text-xs font-semibold normal-case tracking-tight text-status-warning-on transition duration-150 ease-out;
+    @apply inline-flex max-w-full items-center gap-1.5 rounded-full border border-status-warning-border bg-status-warning-surface px-3 py-1 text-xs font-semibold normal-case tracking-tight text-status-warning-on transition duration-150 ease-out;
+    overflow-wrap: anywhere;
     background-color: color-mix(
       in srgb,
       var(--status-warning) 16%,

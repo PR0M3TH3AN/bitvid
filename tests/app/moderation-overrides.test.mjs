@@ -7,6 +7,11 @@ import {
   createModerationAppHarness,
 } from "../helpers/moderation-test-helpers.mjs";
 import { userBlocks } from "../../js/userBlocks.js";
+import {
+  clearAuthorModerationOverride,
+  hasAuthorModerationOverride,
+  setAuthorModerationOverride,
+} from "../../js/state/cache.js";
 
 const REPORTER_HEX = "b".repeat(64);
 const MUTER_HEX = "c".repeat(64);
@@ -107,6 +112,37 @@ test("handleModerationOverride resumes deferred playback", async (t) => {
     url: "https://example.com/video.mp4",
     magnet: "",
   });
+});
+
+test("Restore default moderation clears both video and creator overrides", async (t) => {
+  withMockedNostrTools(t);
+
+  const app = await createModerationAppHarness();
+  app.moderationDecorator.updateSettings({
+    autoplayBlockThreshold: 1,
+    blurThreshold: 1,
+  });
+  const authorHex = "8".repeat(64);
+  const videoId = "e".repeat(64);
+  const video = {
+    id: videoId,
+    pubkey: authorHex,
+    moderation: buildModerationState(),
+  };
+
+  t.after(() => clearAuthorModerationOverride(authorHex));
+  setAuthorModerationOverride(authorHex, { showAnyway: true });
+  app.handleModerationOverride({ video });
+  assert.equal(hasAuthorModerationOverride(authorHex), true);
+  assert.equal(video.moderation.viewerOverride?.showAnyway, true);
+
+  const restored = app.handleModerationHide({ video });
+
+  assert.equal(restored, true);
+  assert.equal(hasAuthorModerationOverride(authorHex), false);
+  assert.equal(video.moderation.viewerOverride, undefined);
+  assert.equal(video.moderation.blockAutoplay, true);
+  assert.equal(video.moderation.blurThumbnail, true);
 });
 
 test("handleModerationBlock requests a block, clears overrides, and refreshes hidden state", async (t) => {

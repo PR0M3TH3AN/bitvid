@@ -108,6 +108,7 @@ test("VideoCard renders moderation badges and respects viewer override", async (
   withMockedNostrTools(t);
 
   const app = await createModerationAppHarness();
+  app.moderationDecorator.updateSettings({ trustedSpamHideThreshold: 3 });
   const videoId = "a".repeat(64);
 
   const video = {
@@ -204,6 +205,7 @@ test(
     withMockedNostrTools(t);
 
     const app = await createModerationAppHarness();
+    app.moderationDecorator.updateSettings({ trustedSpamHideThreshold: 3 });
     const videoId = "b".repeat(64);
 
     const video = {
@@ -336,7 +338,7 @@ test("VideoCard blurs viewer-muted creators", async (t) => {
   assert.equal(card.moderationBadgeEl.dataset.moderationState, "blocked");
 });
 
-test("VideoCard blurs thumbnails when trusted mute triggers without reports", async (t) => {
+test("VideoCard keeps a single trusted mute as a non-blocking ranking signal", async (t) => {
   const { document } = setupDom(t);
   withMockedNostrTools(t);
 
@@ -380,26 +382,16 @@ test("VideoCard blurs thumbnails when trusted mute triggers without reports", as
 
   document.body.appendChild(card.getRoot());
 
-  assert.equal(video.moderation.blurThumbnail, true);
-  assert.equal(video.moderation.blurReason, "trusted-mute");
+  assert.equal(video.moderation.blurThumbnail, false);
+  assert.equal(video.moderation.blurReason, "");
   assert.equal(
     normalizeVideoModerationContext(card.video?.moderation).activeBlur,
-    true,
+    false,
   );
-  assert.equal(card.thumbnailEl.dataset.thumbnailState, "blurred");
-  assert.equal(card.authorPicEl.dataset.visualState, "blurred");
-  assert.equal(card.getRoot().dataset.autoplayPolicy, "blocked");
-  assert.equal(card.moderationBadgeEl.dataset.moderationState, "trusted-mute");
-  assert.equal(
-    card.moderationBadgeTextEl.textContent,
-    "Content or user blocked by a trusted contact.",
-  );
-  assert.ok(card.moderationBlockButton);
-  assert.equal(
-    card.moderationBlockButton?.dataset?.moderationAction,
-    "block",
-  );
-  assert.equal(card.moderationBlockButton.textContent, "Block");
+  assert.equal(card.thumbnailEl.dataset.thumbnailState, undefined);
+  assert.equal(card.authorPicEl.dataset.visualState, undefined);
+  assert.equal(card.getRoot().dataset.autoplayPolicy, undefined);
+  assert.equal(card.moderationBadgeEl, null);
 });
 
 test("VideoCard block action restores trusted mute hide state after override", async (t) => {

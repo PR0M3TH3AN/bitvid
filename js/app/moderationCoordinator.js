@@ -19,6 +19,7 @@ export function createModerationCoordinator(deps) {
     ModerationActionController,
     setModerationOverride,
     clearModerationOverride,
+    clearAuthorModerationOverride,
     userBlocks,
     buildVideoAddressPointer,
     VIDEO_EVENT_KIND,
@@ -210,6 +211,7 @@ export function createModerationCoordinator(deps) {
         services: {
           setModerationOverride,
           clearModerationOverride,
+          clearAuthorModerationOverride,
           userBlocks,
         },
         selectors: {

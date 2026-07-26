@@ -56,7 +56,7 @@ Expected:
 }
 ```
 
-Expected: author’s items are downranked/blurred for this viewer. When the mute threshold (`TRUSTED_MUTE_HIDE_THRESHOLD`, sourced from `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD` in [`config/instance-config.js`](../../config/instance-config.js); upstream example: 20) is met, cards render with "Hidden · {count} trusted mute(s)" and require a "Show anyway" override to display content plus a "Restore default moderation" control to revert.
+Expected: author’s items are downranked for this viewer without blur, playback blocking, or a warning badge. When the mute threshold (`TRUSTED_MUTE_HIDE_THRESHOLD`, sourced from `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD` in [`config/instance-config.js`](../../config/instance-config.js); upstream example: 20) is met, cards render with "Hidden · {count} trusted mute(s)" and require a "Show anyway" override to display content plus a "Restore default moderation" control to revert.
 
 **Exercises:** [`ModerationService.ingestTrustedMuteEvent()`](../../js/services/moderationService.js) updates [`ModerationService.isAuthorMutedByTrusted()`](../../js/services/moderationService.js) / [`getTrustedMutersForAuthor()`](../../js/services/moderationService.js), which [`createModerationStage()`](../../js/feedEngine/stages.js) propagates to the video item before [`VideoCard.refreshModerationUi()`](../../js/ui/components/VideoCard.js) renders the mute state.
 

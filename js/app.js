@@ -735,6 +735,7 @@ class Application {
         ModerationActionController,
         setModerationOverride,
         clearModerationOverride,
+        clearAuthorModerationOverride,
         userBlocks,
         buildVideoAddressPointer,
         VIDEO_EVENT_KIND,

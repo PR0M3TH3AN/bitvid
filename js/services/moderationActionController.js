@@ -17,6 +17,10 @@ export default class ModerationActionController {
         typeof services.clearModerationOverride === "function"
           ? services.clearModerationOverride
           : null,
+      clearAuthorModerationOverride:
+        typeof services.clearAuthorModerationOverride === "function"
+          ? services.clearAuthorModerationOverride
+          : null,
       userBlocks:
         services.userBlocks && typeof services.userBlocks === "object"
           ? services.userBlocks
@@ -240,6 +244,10 @@ export default class ModerationActionController {
     }
 
     this.clearModerationOverride(video);
+    // The same Restore control is used after either a per-video override or
+    // an "Always show creator" override. Clear both scopes so the visible
+    // state can actually return to the default moderation decision.
+    this.clearAuthorModerationOverride(video);
 
     const target = this.resolveTargetVideo(video);
     this.clearViewerOverride(target);
@@ -498,6 +506,26 @@ export default class ModerationActionController {
     } catch (error) {
       devLogger.warn(
         "[ModerationActionController] Failed to clear moderation override:",
+        error,
+      );
+    }
+  }
+
+  clearAuthorModerationOverride(video) {
+    if (!this.services.clearAuthorModerationOverride) {
+      return;
+    }
+
+    const descriptor = this.getModerationOverrideDescriptor(video);
+    if (!descriptor?.authorPubkey) {
+      return;
+    }
+
+    try {
+      this.services.clearAuthorModerationOverride(descriptor.authorPubkey);
+    } catch (error) {
+      devLogger.warn(
+        "[ModerationActionController] Failed to clear author moderation override:",
         error,
       );
     }

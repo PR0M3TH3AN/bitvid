@@ -160,7 +160,6 @@ export function normalizeVideoModerationContext(moderationInput) {
     context.originalBlur ||
     context.originalBlockAutoplay ||
     context.trustedCount > 0 ||
-    context.trustedMuted ||
     context.overrideActive ||
     context.originalHidden ||
     context.activeHidden ||

@@ -1138,8 +1138,11 @@ export function createModerationStage({
       const adminWhitelist = adminStatus?.whitelisted === true;
       const adminWhitelistBypass = false;
 
-      const blockAutoplay =
-        trustedCount >= normalizedAutoplayThreshold || trustedMuted || viewerMuted;
+      // A trusted mute is a ranking signal, not a content verdict. It sinks an
+      // author in feed sorters, but a single stale or bad-faith mute must not
+      // blur a creator or stop playback. Only the report threshold, the
+      // viewer's own mute, or the higher mute-hide threshold can do that.
+      const blockAutoplay = trustedCount >= normalizedAutoplayThreshold || viewerMuted;
       const blurFromReports = trustedCount >= normalizedBlurThreshold;
       let blurThumbnail = blurFromReports;
       let blurReason = blurThumbnail ? "trusted-report" : "";
@@ -1269,22 +1272,18 @@ export function createModerationStage({
         }
       }
 
-      if (!blurThumbnail && (viewerMuted || trustedMuted || hideTriggered)) {
+      if (!blurThumbnail && (viewerMuted || hideTriggered)) {
         blurThumbnail = true;
         if (hideTriggered) {
           blurReason = hideReason || "trusted-hide";
         } else if (viewerMuted) {
           blurReason = "viewer-mute";
-        } else if (trustedMuted) {
-          blurReason = "trusted-mute";
         }
       } else if (blurThumbnail) {
         if (hideTriggered) {
           blurReason = hideReason || "trusted-hide";
         } else if (viewerMuted && !blurFromReports) {
           blurReason = "viewer-mute";
-        } else if (trustedMuted && !blurFromReports) {
-          blurReason = "trusted-mute";
         } else if (!blurReason && blurFromReports) {
           blurReason = "trusted-report";
         }

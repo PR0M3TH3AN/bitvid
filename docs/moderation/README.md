@@ -36,7 +36,7 @@ bitvid is follow-centric. Your Home feed comes from people you follow (F1). Disc
 - The badge tooltip and `aria-label` continue to list the specific trusted contacts who muted or reported the content when that metadata is available.
 - Viewers who override a trusted mute hide keep a **Block** pill on the same badge so they can block the creator without hunting through another menu.
 - Selecting **Block** immediately publishes an account block for the creator, clears any temporary overrides, and reloads the feed so the author disappears from subsequent fetches.
-- Trusted mute decisions now block autoplay even when report thresholds have not fired, and any associated avatars or channel banners adopt the blurred state alongside the primary thumbnail so the entire card reflects the moderation choice.
+- Trusted mutes are a ranking-only signal until their hide threshold is reached. A single stale or bad-faith mute never blurs a creator, blocks playback, or adds a warning badge; feed sorters place those items later. At the configured mute-hide threshold, the card is hidden and its visuals are blurred like any other hide decision.
 
 ## Where to extend
 Thread new moderation behaviors through the same service → stage → app → UI flow above. Extending the existing layers keeps overrides, feature flags, and QA hooks consistent—avoid spinning up parallel moderation modules unless the architecture document explicitly calls for it.

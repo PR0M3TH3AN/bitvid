@@ -300,20 +300,23 @@ export class ModerationDecorator {
         : "";
 
     const thresholds = this.getActiveModerationThresholds();
-    const computedBlockAutoplayBase =
-      trustedCount >= thresholds.autoplayBlockThreshold || trustedMuted;
+    // Trusted mutes are deliberately limited to feed ranking. A single muted
+    // list entry must not become a visible strike against a creator.
+    const computedBlockAutoplayBase = trustedCount >= thresholds.autoplayBlockThreshold;
     const computedBlockAutoplay =
       computedBlockAutoplayBase || viewerMuted || existingBlockAutoplay;
 
     const blurFromReports = trustedCount >= thresholds.blurThreshold;
+    const preservesExistingBlur =
+      existingBlurThumbnail &&
+      existingBlurReason !== "trusted-mute" &&
+      existingBlurReason !== "trusted-mute-hide";
     let computedBlurThumbnail =
-      blurFromReports || trustedMuted || viewerMuted || existingBlurThumbnail;
+      blurFromReports || viewerMuted || preservesExistingBlur;
     let computedBlurReason = "";
 
     if (blurFromReports) {
       computedBlurReason = "trusted-report";
-    } else if (trustedMuted) {
-      computedBlurReason = "trusted-mute";
     } else if (viewerMuted) {
       computedBlurReason = "viewer-mute";
     } else if (existingBlurThumbnail && existingBlurReason) {
@@ -352,22 +355,18 @@ export class ModerationDecorator {
       hideTriggered = true;
     }
 
-    if (!computedBlurThumbnail && (viewerMuted || trustedMuted || hideTriggered)) {
+    if (!computedBlurThumbnail && (viewerMuted || hideTriggered)) {
       computedBlurThumbnail = true;
       if (hideTriggered) {
         computedBlurReason = hideReason || "trusted-hide";
       } else if (viewerMuted) {
         computedBlurReason = "viewer-mute";
-      } else if (trustedMuted) {
-        computedBlurReason = "trusted-mute";
       }
     } else if (computedBlurThumbnail) {
       if (hideTriggered) {
         computedBlurReason = hideReason || "trusted-hide";
-      } else if (viewerMuted && !blurFromReports && !trustedMuted) {
+      } else if (viewerMuted && !blurFromReports) {
         computedBlurReason = "viewer-mute";
-      } else if (trustedMuted && !blurFromReports) {
-        computedBlurReason = "trusted-mute";
       } else if (!computedBlurReason && blurFromReports) {
         computedBlurReason = "trusted-report";
       }

@@ -6,6 +6,7 @@ import {
   getDefaultModerationSettings,
   setModerationOverride,
   clearModerationOverride,
+  clearAuthorModerationOverride,
 } from "../../js/state/cache.js";
 import { userBlocks } from "../../js/userBlocks.js";
 import { HEX64_REGEX } from "../../js/utils/hex.js";
@@ -453,6 +454,7 @@ export async function createModerationAppHarness(options = {}) {
       userBlocks: app.userBlocks,
       setModerationOverride,
       clearModerationOverride,
+      clearAuthorModerationOverride,
     },
     auth: {
       isLoggedIn: () => app.isUserLoggedIn(),

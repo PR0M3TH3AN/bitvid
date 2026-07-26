@@ -169,6 +169,13 @@ test("moderation stage annotates trusted mute metadata", async () => {
   assert.equal(mutedItem.video.moderation.trustedMuteCount, 1);
   assert.equal(mutedItem.metadata.moderation.trustedMuted, true);
   assert.equal(mutedItem.metadata.moderation.trustedMuteCount, 1);
+  assert.equal(mutedItem.video.moderation.blockAutoplay, false);
+  assert.equal(mutedItem.video.moderation.blurThumbnail, false);
+  assert.equal(
+    mutedItem.video.moderation.blurReason,
+    undefined,
+    "a single trusted mute downranks without visibly flagging the creator",
+  );
 
   const trustedMuteReason = reasons.find((entry) => entry.reason === "trusted-mute");
   assert.ok(trustedMuteReason);
