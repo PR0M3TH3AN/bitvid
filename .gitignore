@@ -22,3 +22,4 @@ TEST_LOG.mdtest_logs/nip-hits.txt
 
 # Local site archive for manual nsite upload (npm run archive)
 bitvid-site.zip
+.env*
