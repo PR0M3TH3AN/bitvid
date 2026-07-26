@@ -57,7 +57,16 @@ class MockTorrent extends EventEmitter {
   }
 
   destroy(opts, cb) {
+      this.destroyed = true;
+      this.destroyedDuringWire = this.emittingWire === true;
       if (typeof cb === 'function') cb();
+  }
+
+  emit(eventName, ...args) {
+      if (eventName === 'wire') this.emittingWire = true;
+      const result = super.emit(eventName, ...args);
+      if (eventName === 'wire') this.emittingWire = false;
+      return result;
   }
 }
 
@@ -117,5 +126,19 @@ describe("WebTorrent Regression Tests", () => {
     assert.strictEqual(result.webseedOnly, false, "Should not be webseed only");
     assert.strictEqual(result.healthy, false, "Should be unhealthy");
     assert.strictEqual(result.reason, "timeout", "Reason should be 'timeout'");
+  });
+
+  it("defers probe cleanup until after a successful wire callback returns", async () => {
+    const client = new TorrentClient({ webTorrentClass: MockWebTorrent });
+    const magnet = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567";
+    const result = await client.probePeers(magnet, {
+      timeoutMs: 1000,
+      urlList: ["http://localhost:8080/video.mp4"],
+    });
+    const torrent = client.probeClient.torrents[0];
+
+    assert.equal(result.healthy, true);
+    assert.equal(torrent.destroyed, true, "temporary probe torrent is cleaned up before its queue slot releases");
+    assert.equal(torrent.destroyedDuringWire, false, "probe cleanup is not synchronous with the wire event");
   });
 });

@@ -1,6 +1,6 @@
 # BitVid Performance & Efficiency Plan
 
-Status: **planned — deeper system audit complete; no performance changes implemented**
+Status: **Stage 0 in progress — local-only measurement harness added; no runtime optimization changes implemented**
 
 ## Goal
 
@@ -86,11 +86,25 @@ intact.
 7. **Measure both wall time and retained state.** A faster task that retains a
    large worker snapshot, observer target, cache record, or probe client is not
    an efficiency win.
+8. **Preserve discovery boundaries.** A lifecycle or batching optimization must
+   use the same scoped relay/source selection for historical fetch and live
+   subscription. Never make a feature appear faster by querying a smaller,
+   unrelated source set and silently omitting valid user data.
+   Every affected feature needs a regression fixture containing data available
+   only through its scoped historical source and data arriving live afterward.
 
 ## Measurement harness (Stage 0)
 
 Create a local-only, opt-in performance harness. It must be disabled by
 default and absent from production behavior.
+
+Implemented baseline surface: on `localhost`, `127.0.0.1`, or `::1`, set
+`localStorage.__bitvidPerformanceHarness__ = "1"` and reload. The console API
+`window.__bitvidPerformance.snapshot()` reports bounded long-task, resource,
+navigation, heap (when supported), mark, and manually supplied gauge data.
+`mark`, `setGauge`, and `increment` are available for later stage-specific
+instrumentation. The harness does not initialize on a public host, even if the
+storage key is set.
 
 ### Measurements
 
@@ -115,6 +129,8 @@ default and absent from production behavior.
 5. Open hosted playback, then close it.
 6. Open torrent-backed playback, then close it.
 7. Background the tab for two minutes and restore it.
+8. Load an inbox with both legacy NIP-04 and historical NIP-17 conversations,
+   then receive a live NIP-17 message; verify all conversations are present.
 
 ### Stage gate
 
@@ -122,13 +138,14 @@ Record baseline results before any optimization. The harness itself must have a
 test proving it does not initialize unless its explicit local debug flag is
 set.
 
-## Stage 1 — Make localhost relay monitoring explicit
+## Stage 1 — Make localhost relay monitoring explicit — complete
 
 ### Change
 
 Change `js/devReqMonitor.js` so it only installs when
-`localStorage.__bitvidReqMonitor__ === "1"` (or an equivalent explicit local
-debug flag). Do not auto-enable merely because the host is localhost.
+`localStorage.__bitvidReqMonitor__ === "1"` on a loopback host. Do not
+auto-enable merely because the host is localhost, and never permit the monitor
+on a public host.
 
 ### Why
 
@@ -142,6 +159,12 @@ local performance testing.
 - With the flag on: existing relay-storm warnings still identify REQ kinds.
 - No production host can enable it without the explicit local flag.
 - Compare idle local CPU/long-task baseline before and after.
+
+Implemented with `isRequestMonitorEnabled()` / `installRequestMonitor()` and
+regression coverage for disabled localhost, enabled loopback, and public-host
+rejection. To use it during a targeted local relay investigation, set
+`localStorage.__bitvidReqMonitor__ = "1"` and reload; remove the key or set it
+to any other value for normal profiling.
 
 ### Rollback
 

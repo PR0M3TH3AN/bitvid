@@ -41,6 +41,9 @@ const MAX_OPEN_ATTEMPTS = 30; // ~60s of retries
 // (kind 30000), which during cold-start competes with the initial feed load; a
 // fallback covers the empty-feed case where no videos:updated ever fires.
 const FEED_READY_FALLBACK_MS = 12000;
+// Some relays do not reliably send EOSE. Do not hold the first visible update
+// forever, but give the initial relay burst time to settle before painting it.
+const INITIAL_SYNC_FALLBACK_MS = 5000;
 
 export function createNip71IngestService({
   nostrClient,
@@ -54,6 +57,7 @@ export function createNip71IngestService({
   maxOpenAttempts = MAX_OPEN_ATTEMPTS,
   refreshThrottleMs = REFRESH_THROTTLE_MS,
   feedReadyFallbackMs = FEED_READY_FALLBACK_MS,
+  initialSyncFallbackMs = INITIAL_SYNC_FALLBACK_MS,
 } = {}) {
   let subscription = null;
   let buffer = [];
@@ -67,6 +71,9 @@ export function createNip71IngestService({
   let deferArmed = false;
   let deferTimer = null;
   let offFeedReady = null;
+  let initialSyncing = false;
+  let initialRefreshPending = false;
+  let initialSyncTimer = null;
 
   function isAvailable() {
     return (
@@ -183,7 +190,13 @@ export function createNip71IngestService({
     );
 
     if (injected > 0) {
-      requestRefresh();
+      if (initialSyncing) {
+        // Keep native BitVid, NIP-71 videos, and future NIP-71 media types in
+        // the store immediately; defer only the expensive full-feed repaint.
+        initialRefreshPending = true;
+      } else {
+        requestRefresh();
+      }
     }
 
     return injected;
@@ -211,6 +224,10 @@ export function createNip71IngestService({
 
   function emitRefresh() {
     lastRefreshAt = Date.now();
+    const performanceHarness = globalThis?.__bitvidPerformance;
+    const performanceRef = globalThis?.performance;
+    const startedAt = typeof performanceRef?.now === "function" ? performanceRef.now() : 0;
+    performanceHarness?.mark?.("nip71-refresh-filter-start");
     let videos = [];
     try {
       videos =
@@ -220,6 +237,11 @@ export function createNip71IngestService({
     } catch (error) {
       logger?.warn?.("[nip71Ingest] getFilteredActiveVideos failed", error);
     }
+    const filteredAt = typeof performanceRef?.now === "function" ? performanceRef.now() : startedAt;
+    performanceHarness?.mark?.("nip71-refresh-filter-end", {
+      durationMs: Math.max(0, filteredAt - startedAt),
+      videos: videos.length,
+    });
     // Confirm ingested videos survive the feed filter (whitelist/NSFW/etc.).
     const foreignCount = Array.isArray(videos)
       ? videos.filter((v) => v?.source === "nip71-ingest").length
@@ -233,6 +255,37 @@ export function createNip71IngestService({
         deleted: [],
         reason: "nip71-ingest",
       });
+    }
+    const emittedAt = typeof performanceRef?.now === "function" ? performanceRef.now() : filteredAt;
+    performanceHarness?.mark?.("nip71-refresh-dispatch-end", {
+      filterMs: Math.max(0, filteredAt - startedAt),
+      dispatchMs: Math.max(0, emittedAt - filteredAt),
+      videos: videos.length,
+    });
+    if (performanceHarness && (filteredAt - startedAt > 50 || emittedAt - filteredAt > 50)) {
+      userLogger.info(
+        `[nip71Ingest] refresh timing: filter ${Math.round(filteredAt - startedAt)}ms, dispatch ${Math.round(emittedAt - filteredAt)}ms, videos ${videos.length}`,
+      );
+    }
+  }
+
+  function finishInitialSync() {
+    if (!initialSyncing) {
+      return;
+    }
+    if (initialSyncTimer) {
+      clearTimeout(initialSyncTimer);
+      initialSyncTimer = null;
+    }
+    if (flushTimer) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+      flush();
+    }
+    initialSyncing = false;
+    if (initialRefreshPending) {
+      initialRefreshPending = false;
+      requestRefresh();
     }
   }
 
@@ -255,7 +308,7 @@ export function createNip71IngestService({
         deferTimer = null;
       }
       deferArmed = false;
-      start();
+      start({ coalesceInitialSync: true });
     };
 
     if (typeof nostrService?.on === "function") {
@@ -265,12 +318,17 @@ export function createNip71IngestService({
     return true;
   }
 
-  function start() {
+  function start({ coalesceInitialSync = false } = {}) {
     if (started || !isAvailable()) {
       return false;
     }
     started = true;
     attemptsLeft = maxOpenAttempts;
+    initialSyncing = coalesceInitialSync;
+    initialRefreshPending = false;
+    if (initialSyncing) {
+      initialSyncTimer = setTimeout(finishInitialSync, initialSyncFallbackMs);
+    }
 
     // Re-subscribe when the whitelist changes so the author scope stays current.
     if (typeof accessControl?.onWhitelistChange === "function") {
@@ -320,6 +378,7 @@ export function createNip71IngestService({
             scheduleFlush();
           }
         },
+        onEose: finishInitialSync,
       });
       const authorCount = Array.isArray(filters[0]?.authors)
         ? filters[0].authors.length
@@ -348,6 +407,12 @@ export function createNip71IngestService({
       clearTimeout(pendingRefreshTimer);
       pendingRefreshTimer = null;
     }
+    if (initialSyncTimer) {
+      clearTimeout(initialSyncTimer);
+      initialSyncTimer = null;
+    }
+    initialSyncing = false;
+    initialRefreshPending = false;
     buffer = [];
     if (subscription && typeof subscription.close === "function") {
       try {

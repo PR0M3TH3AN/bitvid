@@ -39,6 +39,10 @@ Welcome to the bitvid documentation. This directory contains detailed architectu
 
 ## Active plans
 
+- **[Performance & Efficiency Plan](./performance-efficiency-plan.md)**: A
+  measurement-first staged plan for reducing client CPU, memory, and network
+  work without degrading Nostr discovery, feed freshness, moderation, or
+  playback. Tracked as TODO #34.
 - **[BitUnlock Permission-Layer TODO](../todo/TODO_2026-07-23_bitunlock-permission-layer.md)**: Ordered implementation checklist for the BitUnlock-backed media permission and subscription work.
 
 For more details on contributing, please see [CONTRIBUTING.md](../CONTRIBUTING.md).

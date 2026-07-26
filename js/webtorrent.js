@@ -138,6 +138,29 @@ export class TorrentClient {
       let timeoutId = null;
       let pollId = null;
 
+      // A successful probe commonly settles from WebTorrent's `wire` event.
+      // Do not destroy the temporary torrent while that event is still being
+      // dispatched: WebTorrent continues its handshake bookkeeping after
+      // listeners return, and synchronous destruction can leave its bitfield
+      // null (`recalculate(...).fill` in the bundled client). The next task
+      // guarantees the callback has fully unwound before cleanup.
+      const disposeProbeTorrent = (target, onDisposed = () => {}) => {
+        if (!target) {
+          onDisposed();
+          return;
+        }
+        const dispose = () => {
+          try {
+            target.destroy({ destroyStore: true });
+          } catch (err) {
+            // A completed or already-destroyed probe is harmless.
+          } finally {
+            onDisposed();
+          }
+        };
+        setTimeout(dispose, 0);
+      };
+
       const finalize = (overrides = {}) => {
         if (settled) {
           return;
@@ -151,14 +174,6 @@ export class TorrentClient {
           clearInterval(pollId);
           pollId = null;
         }
-        if (torrent) {
-          try {
-            torrent.destroy({ destroyStore: true });
-          } catch (err) {
-            // ignore
-          }
-        }
-
         const endedAt =
           typeof performance !== "undefined" && performance?.now
             ? performance.now()
@@ -178,7 +193,10 @@ export class TorrentClient {
           ...overrides,
         };
         emit("torrent-probe-result", result);
-        resolve(result);
+        // Keep the grid-health queue slot occupied until the delayed teardown
+        // completes. Otherwise the next probe can begin before this probe has
+        // detached its tracker listeners, briefly exceeding listener limits.
+        disposeProbeTorrent(torrent, () => resolve(result));
       };
 
       try {

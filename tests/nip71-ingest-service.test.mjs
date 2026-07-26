@@ -20,6 +20,7 @@ function makeHarness({ whitelistOn = false, whitelist = [] } = {}) {
   const allEvents = new Map();
   let capturedFilters = null;
   let onEvent = null;
+  let onEose = null;
   let closed = false;
   let whitelistListener = null;
 
@@ -27,6 +28,7 @@ function makeHarness({ whitelistOn = false, whitelist = [] } = {}) {
     subscribe(opts) {
       capturedFilters = opts.filters;
       onEvent = opts.onEvent;
+      onEose = opts.onEose;
       return {
         close() {
           closed = true;
@@ -81,6 +83,7 @@ function makeHarness({ whitelistOn = false, whitelist = [] } = {}) {
       return closed;
     },
     fireEvent: (e) => onEvent?.(e),
+    triggerEose: () => onEose?.(),
     triggerWhitelistChange: () => whitelistListener?.(),
     triggerFeedReady: () => feedListeners.forEach((fn) => fn({})),
     nostrClient,
@@ -260,6 +263,26 @@ test("startWhenFeedReady falls back to starting if the feed never emits", async 
   assert.equal(h.capturedFilters, null);
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert.ok(h.capturedFilters, "fallback timer started ingest");
+  svc.stop();
+});
+
+test("initial NIP-71 sync keeps every event but emits one consolidated feed update", () => {
+  const h = makeHarness();
+  const svc = makeService(h, { feedReadyFallbackMs: 100000, initialSyncFallbackMs: 100000 });
+
+  svc.startWhenFeedReady();
+  h.triggerFeedReady();
+  h.fireEvent(foreignEvent({ id: "a", kind: 34235, tags: [["d", "ra"], ["title", "A"], ["imeta", "url https://e/a.mp4", "m video/mp4"]] }));
+  h.fireEvent(foreignEvent({ id: "b", kind: 34235, tags: [["d", "rb"], ["title", "B"], ["imeta", "url https://e/b.mp4", "m video/mp4"]] }));
+  svc.flush();
+
+  assert.ok(h.activeMap.has("ROOT:ra") && h.activeMap.has("ROOT:rb"), "all initial NIP-71 events are retained");
+  assert.equal(h.emitted.filter((e) => e.name === "videos:updated").length, 0, "no partial-startup repaint");
+
+  h.triggerEose();
+  const refreshes = h.emitted.filter((e) => e.name === "videos:updated");
+  assert.equal(refreshes.length, 1, "one consolidated update at initial sync completion");
+  assert.equal(refreshes[0].detail.reason, "nip71-ingest");
   svc.stop();
 });
 

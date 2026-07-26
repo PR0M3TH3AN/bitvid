@@ -9,6 +9,8 @@ describe("NostrService", () => {
     // Reset state
     nostrService.videosMap = new Map();
     nostrService.dmMessages = [];
+    nostrService.dmMessageIndex = new Map();
+    nostrService.dmActorPubkey = null;
 
     // Mock the internal nostrClient
     mockClient = {
@@ -143,6 +145,32 @@ describe("NostrService", () => {
       nostrService.clearDirectMessages({ emit: false, keepSnapshot: false });
       assert.deepEqual(nostrService.dmMessages, []);
       assert.equal(nostrService.dmMessageIndex.size, 0);
+    });
+  });
+
+  describe("loadDirectMessages", () => {
+    it("uses the actor NIP-17 relay list for the initial historical inbox fetch", async () => {
+      const actor = "a".repeat(64);
+      const dmRelay = "wss://dm-relay.example.com";
+      mockClient.readRelays = ["wss://discovery.example.com"];
+      mockClient.pool.list.mock.mockImplementation(async () => [
+        {
+          pubkey: actor,
+          created_at: 10,
+          tags: [["relay", dmRelay]],
+        },
+      ]);
+      mockClient.listDirectMessages = mock.fn(async () => []);
+
+      await nostrService.loadDirectMessages({ actorPubkey: actor, initialLoad: true });
+
+      assert.equal(mockClient.listDirectMessages.mock.callCount(), 1);
+      const [, options] = mockClient.listDirectMessages.mock.calls[0].arguments;
+      assert.deepEqual(
+        options.relays,
+        [dmRelay],
+        "historical NIP-17 messages must use the same relay list as the live subscription",
+      );
     });
   });
 });

@@ -1071,6 +1071,12 @@ export class NostrService {
 
     this.dmActorPubkey = normalizedActor;
 
+    const relaySelection = await this.resolveDirectMessageRelaySelection(
+      normalizedActor,
+      relays,
+    );
+    const resolvedRelays = relaySelection.relays;
+
     let resolvedSince =
       Number.isFinite(sinceCandidate) && sinceCandidate >= 0
         ? Math.floor(sinceCandidate)
@@ -1095,7 +1101,7 @@ export class NostrService {
     let messages = [];
     try {
       messages = await this.nostrClient.listDirectMessages(normalizedActor, {
-        relays,
+        relays: resolvedRelays,
         ...options,
         limit: resolvedLimit,
         decryptLimit: resolvedDecryptLimit,
@@ -1133,6 +1139,14 @@ export class NostrService {
       messages: snapshot,
       actorPubkey: normalizedActor,
     });
+    if (relaySelection.warning === DM_RELAY_WARNING_FALLBACK) {
+      this.emit("directMessages:relayWarning", {
+        actorPubkey: normalizedActor,
+        warning: relaySelection.warning,
+        relays: resolvedRelays,
+        source: relaySelection.source,
+      });
+    }
     this.emit("directMessages:updated", {
       messages: snapshot,
       reason: "load",
@@ -1154,6 +1168,35 @@ export class NostrService {
     });
 
     return snapshot;
+  }
+
+  async resolveDirectMessageRelaySelection(actorPubkey, relays = null) {
+    if (Array.isArray(relays)) {
+      return { relays, source: "explicit", warning: null };
+    }
+
+    const discoveryRelays = Array.isArray(this.nostrClient?.readRelays)
+      ? this.nostrClient.readRelays
+      : Array.isArray(this.nostrClient?.relays)
+      ? this.nostrClient.relays
+      : [];
+
+    let pool = this.nostrClient?.pool || null;
+    if (!pool && typeof this.nostrClient?.ensurePool === "function") {
+      try {
+        pool = await this.nostrClient.ensurePool();
+      } catch (error) {
+        devLogger.warn("[nostrService] Failed to initialize DM relay pool.", error);
+      }
+    }
+
+    return resolveDmRelaySelection({
+      pubkey: actorPubkey,
+      discoveryRelays,
+      fallbackRelays: discoveryRelays,
+      pool,
+      log: { dev: devLogger, user: userLogger },
+    });
   }
 
   async ensureDirectMessageSubscription({ actorPubkey, relays, ...handlers } = {}) {
@@ -1189,34 +1232,11 @@ export class NostrService {
       this.stopDirectMessageSubscription();
     }
 
-    let resolvedRelays = Array.isArray(relays) ? relays : null;
-    let relaySelection = null;
-
-    if (!resolvedRelays) {
-      const discoveryRelays = Array.isArray(this.nostrClient?.readRelays)
-        ? this.nostrClient.readRelays
-        : Array.isArray(this.nostrClient?.relays)
-        ? this.nostrClient.relays
-        : [];
-
-      let pool = this.nostrClient?.pool || null;
-      if (!pool && typeof this.nostrClient?.ensurePool === "function") {
-        try {
-          pool = await this.nostrClient.ensurePool();
-        } catch (error) {
-          devLogger.warn("[nostrService] Failed to initialize DM relay pool.", error);
-        }
-      }
-
-      relaySelection = await resolveDmRelaySelection({
-        pubkey: normalizedActor,
-        discoveryRelays,
-        fallbackRelays: discoveryRelays,
-        pool,
-        log: { dev: devLogger, user: userLogger },
-      });
-      resolvedRelays = relaySelection.relays;
-    }
+    const relaySelection = await this.resolveDirectMessageRelaySelection(
+      normalizedActor,
+      relays,
+    );
+    const resolvedRelays = relaySelection.relays;
 
     try {
       const subscription = this.nostrClient.subscribeDirectMessages(

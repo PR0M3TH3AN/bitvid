@@ -30,6 +30,21 @@ tests → `npm run build` + `npm run test:unit` green → commit + push.
 
 ## Open — high priority (launch-blocking candidates)
 
+### 34. Performance and efficiency — staged, measurement-first plan
+
+- [x] Establish the local-only measurement harness (`js/performanceHarness.js`)
+      and capture the agreed baseline before changing runtime behavior. Enable
+      only on loopback with `localStorage.__bitvidPerformanceHarness__ = "1"`.
+- [ ] Then implement and independently verify the staged lifecycle work:
+      ~~explicit localhost relay diagnostics~~ (complete), lazy/coalesced Explore and For You
+      indexing, cancellable source-health probes, bounded event-cache growth,
+      service-worker/image-cache cadence, and only then measured visual/bundle
+      loading improvements.
+- **Plan and acceptance criteria:**
+      [`docs/performance-efficiency-plan.md`](../docs/performance-efficiency-plan.md).
+      Preserve live Nostr ingestion, feed freshness, source fallback, WebTorrent
+      playback, moderation decisions, and recommendation inputs at every stage.
+
 ### 33. Login / profile / session persistence broken with NIP-46 (Amber) — AUDIT (BUG)
 Reported 2026-06-25. All symptoms observed with a **NIP-46 remote signer (Amber)**.
 Likely a shared root cause in session/identity persistence + multi-account handling.

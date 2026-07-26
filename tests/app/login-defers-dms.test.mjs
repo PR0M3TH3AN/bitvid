@@ -178,3 +178,37 @@ test("login reloads the open video comment thread", async () => {
 
   assert.deepEqual(loadedVideos, [activeVideo]);
 });
+
+test("duplicate login for the active identity joins the existing list sync", async () => {
+  const coord = makeCoordinator({
+    loadDirectMessages: async () => ({ ok: true }),
+    refreshUnreadDmIndicator: async () => {},
+  });
+  let releaseBlocks;
+  const blocksGate = new Promise((resolve) => {
+    releaseBlocks = resolve;
+  });
+  let blockLoads = 0;
+  coord.authService.loadBlocksForPubkey = async () => {
+    blockLoads += 1;
+    await blocksGate;
+    return true;
+  };
+  const detail = {
+    pubkey: ACTIVE_PUBKEY,
+    identityChanged: false,
+    postLogin: { profile: { name: "tester" } },
+    postLoginPromise: Promise.resolve({ profile: { name: "tester" } }),
+  };
+
+  await coord.handleAuthLogin(detail);
+  const duplicate = coord.handleAuthLogin({ ...detail });
+  for (let attempt = 0; attempt < 20 && blockLoads === 0; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  assert.equal(blockLoads, 1, "duplicate login must not start a second list sync");
+
+  releaseBlocks();
+  await duplicate;
+  assert.equal(coord._authLoginSync, null, "dedupe guard releases after list sync settles");
+});

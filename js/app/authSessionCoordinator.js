@@ -176,6 +176,22 @@ export function createAuthSessionCoordinator(deps) {
 
   return {
     async handleAuthLogin(detail = {}) {
+      const requestedPubkey =
+        this.normalizeHexPubkey?.(detail?.pubkey || this.pubkey) ||
+        detail?.pubkey ||
+        this.pubkey ||
+        "";
+      const inFlightLogin = this._authLoginSync;
+      if (
+        requestedPubkey &&
+        inFlightLogin?.pubkey === requestedPubkey &&
+        inFlightLogin?.promise
+      ) {
+        userLogger.info("[auth-login-duplicate-ignored]", {
+          pubkey: requestedPubkey,
+        });
+        return inFlightLogin.promise;
+      }
       const authLoginStart = now();
       userLogger.info("[auth-login-start]", {
         pubkey: detail?.pubkey || this.pubkey || null,
@@ -720,6 +736,20 @@ export function createAuthSessionCoordinator(deps) {
 
         return listSyncDetail;
       });
+
+      // A provider/widget can repeat its success event while the first login is
+      // still hydrating lists. The identity is already active, so replaying the
+      // full lifecycle only doubles relay work and grid refreshes. Join the
+      // original lifecycle until its required list sync settles instead.
+      const authLoginSync = Promise.resolve(listStatePromise).finally(() => {
+        if (this._authLoginSync?.promise === authLoginSync) {
+          this._authLoginSync = null;
+        }
+      });
+      this._authLoginSync = {
+        pubkey: activePubkey || requestedPubkey,
+        promise: authLoginSync,
+      };
 
       // DMs are intentionally NOT eagerly loaded at login. A cold DM load
       // (limit: 50) is a burst of nip-07 decrypts that competes with the

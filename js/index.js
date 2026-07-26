@@ -3,6 +3,7 @@
 import { validateInstanceConfig } from "../config/validate-config.js";
 import "./bufferPolyfill.js";
 import "./devReqMonitor.js"; // dev-only relay REQ-rate monitor (localhost only)
+import { initPerformanceHarness } from "./performanceHarness.js";
 import {
   getApplication,
   setApplication,
@@ -58,6 +59,10 @@ import { initializeSiteUpdateNotice } from "./ui/siteUpdateNotice.js";
 import { installTestHarness } from "./testHarness.js";
 
 validateInstanceConfig();
+
+// Local-only, explicit opt-in measurement. This is a no-op in production and
+// does not patch application APIs or change scheduling.
+initPerformanceHarness();
 
 // Install test harness early so relay overrides apply before connections.
 // Only activates when ?__test__=1 or localStorage __bitvidTestMode__ is set.

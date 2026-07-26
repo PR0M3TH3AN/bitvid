@@ -111,21 +111,36 @@ class FakeRelayPool {
 }
 
 async function configureNostrTools() {
-  const previousCanonical = globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__;
+  const previousCanonicalDescriptor = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "__BITVID_CANONICAL_NOSTR_TOOLS__",
+  );
   const previousNostrTools = globalThis.NostrTools;
   const previousReady = globalThis.nostrToolsReady;
 
   const nostrTools = await import("nostr-tools");
 
-  globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__ = nostrTools;
+  // nostrToolsBootstrap deliberately exposes this value as read-only. Test
+  // setup must replace its *configurable descriptor*, rather than assigning to
+  // the property and failing after another test/import initialized bootstrap.
+  Object.defineProperty(globalThis, "__BITVID_CANONICAL_NOSTR_TOOLS__", {
+    configurable: true,
+    enumerable: false,
+    writable: true,
+    value: nostrTools,
+  });
   globalThis.NostrTools = nostrTools;
   globalThis.nostrToolsReady = Promise.resolve({ ok: true, value: nostrTools });
 
   const restore = () => {
-    if (previousCanonical === undefined) {
+    if (!previousCanonicalDescriptor) {
       delete globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__;
     } else {
-      globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__ = previousCanonical;
+      Object.defineProperty(
+        globalThis,
+        "__BITVID_CANONICAL_NOSTR_TOOLS__",
+        previousCanonicalDescriptor,
+      );
     }
 
     if (previousNostrTools === undefined) {
