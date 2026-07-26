@@ -232,7 +232,18 @@ export function createAuthSessionCoordinator(deps) {
       }
 
       this.applyAuthenticatedUiState();
-      this.commentController?.refreshAuthState?.();
+      const activeModalVideo =
+        typeof this.videoModal?.getCurrentVideo === "function"
+          ? this.videoModal.getCurrentVideo()
+          : this.commentController?.currentVideo || null;
+      if (this.commentController && activeModalVideo) {
+        // Login can reconfigure relay-backed services. Reload the active thread
+        // instead of only enabling its composer so readable comments survive
+        // the transition from guest to authenticated state.
+        this.commentController.load(activeModalVideo);
+      } else {
+        this.commentController?.refreshAuthState?.();
+      }
       this.updateShareNostrAuthState({ reason: "auth-login" });
       if (typeof this.refreshUnreadDmIndicator === "function") {
         void this.refreshUnreadDmIndicator({ reason: "auth-login" });
