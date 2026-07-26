@@ -4,6 +4,7 @@ Welcome to the bitvid documentation. This directory contains detailed architectu
 
 ## Core Systems
 
+- **[BitUnlock Permission Layer](./BITUNLOCK_PERMISSION_LAYER_PLAN.md)**: Architecture and phased plan for purchases, rentals, creator memberships, platform subscriptions, bundles, events, and short-lived playback authorization using BitUnlock as BitVid's permission layer.
 - **[Application Coordinators](./app-coordinators.md)**: Overview of the coordinator pattern used to manage app-wide state and services.
 - **[Data-Flow Refactor — Dev Plan & Spec](./architecture-refactor.md)**: The incremental plan to put all subsystems on a shared, governed relay/data foundation (SubscriptionManager, stores, unidirectional flow).
 - **[Known Bugs (deferred)](./KNOWN_BUGS.md)**: Confirmed defects/limitations found during the refactor, queued to fix later.
@@ -35,5 +36,9 @@ Welcome to the bitvid documentation. This directory contains detailed architectu
 - **[Instance Configuration](./instance-config.md)**: Guide to configuring a bitvid instance.
 - **[Deployment Notes](./deployment-notes.md)**: Notes and checklists for deploying bitvid.
 - **[Manual QA Checklist](./qa.md)**: The standard manual QA script for releases.
+
+## Active plans
+
+- **[BitUnlock Permission-Layer TODO](../todo/TODO_2026-07-23_bitunlock-permission-layer.md)**: Ordered implementation checklist for the BitUnlock-backed media permission and subscription work.
 
 For more details on contributing, please see [CONTRIBUTING.md](../CONTRIBUTING.md).
