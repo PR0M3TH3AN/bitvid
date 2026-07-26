@@ -1,6 +1,44 @@
 # BitVid Performance & Efficiency Plan
 
-Status: **Stage 2 complete locally — recommendation indexes are demand-driven and coalesced; Stage 3 source-health cancellation audited next**
+Status: **Stage 2 shipped; Stage 3 in progress — observer teardown shipped, probe cancellation next**
+
+## Progress snapshot — 2026-07-26
+
+The plan is being delivered as independent, test-gated slices on `unstable`.
+
+### Shipped
+
+- **Stage 0 foundation:** the opt-in local performance harness is available;
+  it remains disabled unless the loopback-only storage flag is set.
+- **Stage 1 complete:** localhost relay-request monitoring is explicit opt-in.
+- **Stage 2 complete:** `ExploreDataService` is demand-created for For You and
+  Explore, pauses outside active recommendation views, coalesces concurrent
+  history/IDF refreshes, and no longer blocks cached For You rendering.
+- **Stage 3 first slice:** card, URL-health, and grid-health observers are
+  disposed when feed markup is replaced or unmounted.
+- **Stage 7 first slice:** recommendation refresh bursts are coalesced into one
+  active pass plus one follow-up; Most Zapped ordering has regression coverage.
+
+### Remaining
+
+- Capture and retain the complete Stage 0 baseline scenarios, including cache
+  size, worker lifetime, probe counts, and browser CPU/RSS.
+- Finish Stage 3 with owner-aware queue pruning and abort signals for URL and
+  WebTorrent probes, then verify hidden-card reveal and fallback behavior.
+- Finish Stage 7 with bounded, category-aware event-cache eviction and same-feed
+  refresh coalescing without swallowing explicit refreshes.
+- Implement Stage 5's service-worker update cadence and image-cache freshness
+  policy after measuring warm-feed revalidation.
+- Profile before changing Stage 4 (modal visuals) or Stage 6 (bundle/lazy
+  loading); these remain unstarted and measurement-dependent.
+
+### Current release evidence
+
+- `5f439d68`: lazy recommendation indexes.
+- `687f8c43`: lifecycle disposal, refresh coalescing, and Most Zapped ordering.
+- `bb6614e3`: cache-first For You navigation rendering.
+- Targeted regression suites and production builds pass for each shipped slice;
+  the current remote tip is `origin/unstable` at `bb6614e3`.
 
 ## Goal
 
@@ -93,7 +131,7 @@ intact.
    Every affected feature needs a regression fixture containing data available
    only through its scoped historical source and data arriving live afterward.
 
-## Measurement harness (Stage 0)
+## Measurement harness (Stage 0) — foundation shipped; baseline capture remains
 
 Create a local-only, opt-in performance harness. It must be disabled by
 default and absent from production behavior.
@@ -225,6 +263,9 @@ eager initialization if feed freshness regresses.
 
 ## Stage 3 — Bound source-health work to visible cards
 
+**Progress:** first lifecycle-disposal slice shipped in `687f8c43`; queue
+ownership, cancellation, and abortable active probes remain.
+
 ### Audit findings (2026-07-26)
 
 - `createCardObserver` retains an `IntersectionObserver` per grid container but
@@ -344,6 +385,9 @@ or basic playback path in a way that creates visible delay.
 - Build artifact, cache, E2E, and visual tests pass.
 
 ## Stage 7 — Cache budget and feed-refresh coalescing
+
+**Progress:** recommendation-index refresh coalescing shipped in `5f439d68`;
+the event-cache budget and full same-feed refresh coordinator remain.
 
 ### Change
 

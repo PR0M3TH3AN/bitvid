@@ -41,14 +41,21 @@ tests → `npm run build` + `npm run test:unit` green → commit + push.
 
 ### 34. Performance and efficiency — staged, measurement-first plan
 
-- [x] Establish the local-only measurement harness (`js/performanceHarness.js`)
-      and capture the agreed baseline before changing runtime behavior. Enable
-      only on loopback with `localStorage.__bitvidPerformanceHarness__ = "1"`.
-- [ ] Then implement and independently verify the staged lifecycle work:
-      ~~explicit localhost relay diagnostics~~ (complete), lazy/coalesced Explore and For You
-      indexing, cancellable source-health probes, bounded event-cache growth,
-      service-worker/image-cache cadence, and only then measured visual/bundle
-      loading improvements.
+- [x] Establish the local-only measurement harness (`js/performanceHarness.js`);
+      it is enabled only on loopback with
+      `localStorage.__bitvidPerformanceHarness__ = "1"`.
+- [ ] Capture and retain the complete Stage 0 baseline scenarios (cache size,
+      worker lifetime, probe counts, browser CPU/RSS, and warm-feed behavior).
+- [x] Complete Stage 1: explicit localhost relay diagnostics.
+- [x] Complete Stage 2: lazy and coalesced Explore/For You indexes, including
+      cache-first rendering when returning to For You.
+- [ ] **Stage 3 in progress:** observer teardown is shipped; cancellable URL and
+      WebTorrent queue/probe work remains.
+- [ ] **Stage 7 in progress:** recommendation refresh coalescing is shipped;
+      bounded event-cache growth and full feed-refresh coalescing remain.
+- [ ] Stage 5: service-worker/image-cache cadence.
+- [ ] Stage 4 and Stage 6: measured playback-visual and bundle/lazy-loading
+      improvements.
 - **Plan and acceptance criteria:**
       [`docs/performance-efficiency-plan.md`](../docs/performance-efficiency-plan.md).
       Preserve live Nostr ingestion, feed freshness, source fallback, WebTorrent
