@@ -17,9 +17,9 @@ import {
 } from "./nip71MirrorFlags.js";
 import { devLogger } from "../utils/logger.js";
 
-// On publish of a NEW video, auto-mirror it when the account opted into
-// "auto-share new public videos" and it's eligible. Sets the per-video flag so
-// later edits/deletes keep it in sync. Best-effort.
+// On publish of a NEW video, mirror it when the account default permits it and
+// this upload has not explicitly opted out. Sets the per-video flag so later
+// edits/deletes keep it in sync. Best-effort.
 export async function syncNip71MirrorAfterPublish(detail = {}) {
   const pubkey = typeof detail?.pubkey === "string" ? detail.pubkey : "";
   const legacyEvent = detail?.result?.legacy;
@@ -38,7 +38,8 @@ export async function syncNip71MirrorAfterPublish(detail = {}) {
   const withPubkey = { ...video, pubkey };
   const decision = resolvePublishSync({
     featureOn: FEATURE_NIP71_MIRROR,
-    autoShare: isAutoShareEnabled(pubkey),
+    autoShare:
+      isAutoShareEnabled(pubkey) && detail?.payload?.mirrorNip71 !== false,
     eligible: nip71MirrorService.canMirror(withPubkey).ok,
   });
   if (decision.action !== "publish") {
@@ -54,17 +55,38 @@ export async function syncNip71MirrorAfterPublish(detail = {}) {
   }
 }
 
-export async function syncNip71MirrorAfterEdit({ updatedData, pubkey } = {}) {
+export async function syncNip71MirrorAfterEdit({
+  updatedData,
+  originalEvent,
+  result,
+  pubkey,
+} = {}) {
   if (!updatedData || typeof updatedData !== "object") {
     return;
   }
+  let publishedVideo = null;
+  try {
+    if (result && typeof result === "object") {
+      const parsed = convertEventToVideo(result);
+      if (parsed && !parsed.invalid) {
+        publishedVideo = parsed;
+      }
+    }
+  } catch (error) {
+    devLogger.warn("[nip71MirrorSync] couldn't parse edited video", error);
+  }
   const videoRootId =
-    typeof updatedData.videoRootId === "string" ? updatedData.videoRootId : "";
+    (typeof publishedVideo?.videoRootId === "string" && publishedVideo.videoRootId) ||
+    (typeof updatedData.videoRootId === "string" && updatedData.videoRootId) ||
+    (typeof originalEvent?.videoRootId === "string" && originalEvent.videoRootId) ||
+    "";
   const authorPubkey = typeof pubkey === "string" ? pubkey : "";
   if (!videoRootId || !authorPubkey) {
     return;
   }
-  const video = { ...updatedData, pubkey: authorPubkey, videoRootId };
+  // Prefer the actual signed canonical result: it includes fields preserved by
+  // the edit builder (root, dimensions, hashes) that the form does not resend.
+  const video = { ...updatedData, ...publishedVideo, pubkey: authorPubkey, videoRootId };
   const decision = resolveEditSync({
     featureOn: FEATURE_NIP71_MIRROR,
     enabled: isMirrorEnabled(authorPubkey, videoRootId),
@@ -78,8 +100,12 @@ export async function syncNip71MirrorAfterEdit({ updatedData, pubkey } = {}) {
       await nip71MirrorService.publish(video);
     } else {
       // "unshare": no longer eligible (e.g. flipped private) — pull it down.
-      await nip71MirrorService.remove(video);
-      setMirrorEnabled(authorPubkey, videoRootId, false);
+      const removal = await nip71MirrorService.remove(video);
+      // Keep the flag when the relay operation failed so a later edit can retry
+      // rather than silently orphaning a previously public mirror.
+      if (removal?.ok) {
+        setMirrorEnabled(authorPubkey, videoRootId, false);
+      }
     }
   } catch (error) {
     devLogger.warn("[nip71MirrorSync] edit sync failed", error);
@@ -95,8 +121,13 @@ export function initNip71MirrorSync(nostrService) {
     return () => {};
   }
   registered = true;
-  const offEdit = nostrService.on("videos:edited", ({ updatedData, pubkey } = {}) => {
-    void syncNip71MirrorAfterEdit({ updatedData, pubkey });
+  const offEdit = nostrService.on("videos:edited", ({
+    updatedData,
+    originalEvent,
+    result,
+    pubkey,
+  } = {}) => {
+    void syncNip71MirrorAfterEdit({ updatedData, originalEvent, result, pubkey });
   });
   const offDelete = nostrService.on("videos:deleted", ({ videoRootId, video, pubkey } = {}) => {
     void syncNip71MirrorAfterDelete({ videoRootId, video, pubkey });

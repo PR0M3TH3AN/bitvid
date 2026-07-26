@@ -72,6 +72,36 @@ export function createNip71MirrorService({
       return [];
     }
   },
+  // One relay query for all roots in the My Videos view. Kept separate from the
+  // single-root lookup so publish/remove can remain narrowly scoped.
+  fetchMirrorsByRoots = async ({ pubkey, roots }) => {
+    const sm = getSubscriptionManager();
+    const relays = getWriteRelays() || [];
+    const uniqueRoots = [...new Set((Array.isArray(roots) ? roots : []).map(str).filter(Boolean))];
+    if (!sm || typeof sm.list !== "function" || !relays.length || !uniqueRoots.length) {
+      return [];
+    }
+    try {
+      const events = await sm.list({
+        filters: [
+          {
+            kinds: [NIP71_NORMAL_VIDEO_KIND, NIP71_SHORT_VIDEO_KIND],
+            authors: [pubkey],
+            "#d": uniqueRoots,
+          },
+        ],
+        relays,
+      });
+      return (Array.isArray(events) ? events : []).map((event) => ({
+        root: str(event?.tags?.find((tag) => Array.isArray(tag) && tag[0] === "d")?.[1]),
+        kind: event?.kind,
+        created_at: Number(event?.created_at) || 0,
+      }));
+    } catch (error) {
+      userLogger.warn("[nip71Mirror] mirror batch lookup failed:", error);
+      return [];
+    }
+  },
   publishEventToRelays = defaultPublishEventToRelays,
   summarizePublishResults = defaultSummarize,
   signEvent = async (template) => {
@@ -131,26 +161,37 @@ export function createNip71MirrorService({
     let forcedShort = options.short; // explicit caller override always wins
     let staleKind = null;
     let reusedExistingKind = false;
-    if (forcedShort === undefined && pubkey && root) {
+    let newestExisting = null;
+    if (pubkey && root) {
       const existing = await fetchExistingMirrors({ pubkey, root });
       if (Array.isArray(existing) && existing.length) {
         const newest = existing.reduce((a, b) =>
           (b.created_at || 0) > (a.created_at || 0) ? b : a,
         );
-        forcedShort = newest.kind === NIP71_SHORT_VIDEO_KIND;
-        reusedExistingKind = true;
-        const otherKind = forcedShort
-          ? NIP71_NORMAL_VIDEO_KIND
-          : NIP71_SHORT_VIDEO_KIND;
-        if (existing.some((e) => e.kind === otherKind)) {
-          staleKind = otherKind;
+        newestExisting = newest;
+        if (forcedShort === undefined) {
+          forcedShort = newest.kind === NIP71_SHORT_VIDEO_KIND;
+          reusedExistingKind = true;
+          const otherKind = forcedShort
+            ? NIP71_NORMAL_VIDEO_KIND
+            : NIP71_SHORT_VIDEO_KIND;
+          if (existing.some((e) => e.kind === otherKind)) {
+            staleKind = otherKind;
+          }
         }
       }
     }
+    // Addressable events only replace an older coordinate. Match the canonical
+    // edit path: a fast second edit or a clock behind an existing relay event
+    // must still advance the mirror.
+    const createdAt = Math.max(
+      Math.floor(now() / 1000),
+      (Number(newestExisting?.created_at) || 0) + 1,
+    );
 
     const built = buildMirrorEvent(
       { ...video, pubkey },
-      { ...options, short: forcedShort, createdAt: Math.floor(now() / 1000) },
+      { ...options, short: forcedShort, createdAt },
     );
     if (!built.ok) {
       return { ok: false, reason: built.reason };
@@ -181,7 +222,7 @@ export function createNip71MirrorService({
         const del = await signEvent({
           kind: 5,
           pubkey,
-          created_at: Math.floor(now() / 1000),
+          created_at: createdAt,
           content: "Removed duplicate NIP-71 mirror",
           tags: [
             ["a", `${staleKind}:${pubkey}:${root}`],
@@ -220,7 +261,13 @@ export function createNip71MirrorService({
       return { ok: false, error: "invalid" };
     }
 
-    const createdAt = Math.floor(now() / 1000);
+    const existing = await fetchExistingMirrors({ pubkey, root });
+    const newestCreatedAt = Array.isArray(existing)
+      ? existing.reduce((max, event) => Math.max(max, Number(event?.created_at) || 0), 0)
+      : 0;
+    // NIP-09 only deletes addressable versions at or before the delete event,
+    // and empty replacements must likewise win their coordinate.
+    const createdAt = Math.max(Math.floor(now() / 1000), newestCreatedAt + 1);
     const reason = str(options.reason) || "Removed NIP-71 mirror";
 
     const deleteEvent = {
@@ -236,20 +283,17 @@ export function createNip71MirrorService({
       ],
     };
 
-    const width = Number(video?.width);
-    const height = Number(video?.height);
-    const portrait =
-      Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0 && height > width;
-    const tombstoneKind =
-      options.short === true || (options.short !== false && portrait) ? 34236 : 34235;
-    const tombstone = {
-      kind: tombstoneKind,
+    // Empty-replace both coordinates. The NIP-09 delete is the canonical
+    // teardown, but clients that ignore it must not retain an old mirror when
+    // a source replacement changed portrait/landscape orientation.
+    const tombstones = [NIP71_NORMAL_VIDEO_KIND, NIP71_SHORT_VIDEO_KIND].map((kind) => ({
+      kind,
       pubkey,
       created_at: createdAt,
       // No imeta → nothing plays; title kept so the entry reads as removed.
       tags: [["d", root], ["title", str(video?.title) || "[removed]"], ["client", "bitvid"]],
       content: "",
-    };
+    }));
 
     const relays = getWriteRelays() || [];
     const pool = getPool();
@@ -259,7 +303,7 @@ export function createNip71MirrorService({
 
     let publishedOk = 0;
     let total = 0;
-    for (const template of [deleteEvent, tombstone]) {
+    for (const template of [deleteEvent, ...tombstones]) {
       total += 1;
       let signed;
       try {
@@ -307,22 +351,15 @@ export function createNip71MirrorService({
     if (!pubkey || !roots.length) {
       return out;
     }
-    // fetchExistingMirrors filters on a single #d; query each root but in one
-    // round via the shared lookup (the SubscriptionManager batches internally).
-    const results = await Promise.all(
-      roots.map(async (root) => {
-        const existing = await fetchExistingMirrors({ pubkey, root });
-        const kinds = [
-          ...new Set(
-            (Array.isArray(existing) ? existing : [])
-              .map((e) => e.kind)
-              .filter(Boolean),
-          ),
-        ];
-        return [root, kinds];
-      }),
-    );
-    for (const [root, kinds] of results) {
+    const events = await fetchMirrorsByRoots({ pubkey, roots });
+    const kindsByRoot = new Map(roots.map((root) => [root, new Set()]));
+    for (const event of Array.isArray(events) ? events : []) {
+      if (kindsByRoot.has(event?.root) && event?.kind) {
+        kindsByRoot.get(event.root).add(event.kind);
+      }
+    }
+    for (const [root, kindsSet] of kindsByRoot) {
+      const kinds = [...kindsSet];
       out.set(root, {
         mirrored: kinds.length > 0,
         kinds,

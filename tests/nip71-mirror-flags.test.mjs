@@ -85,14 +85,14 @@ test("resolveDeleteSync: attempts teardown whenever the feature is on, regardles
   assert.deepEqual(resolveDeleteSync({ featureOn: false, enabled: false }), { action: "none" });
 });
 
-test("auto-share preference persists per pubkey, off by default", () => {
+test("auto-share preference is on by default and supports a durable opt-out", () => {
   localStorage.clear();
-  assert.equal(isAutoShareEnabled(PK), false);
-  setAutoShareEnabled(PK, true);
   assert.equal(isAutoShareEnabled(PK), true);
-  assert.equal(isAutoShareEnabled("c".repeat(64)), false, "scoped per pubkey");
   setAutoShareEnabled(PK, false);
   assert.equal(isAutoShareEnabled(PK), false);
+  assert.equal(isAutoShareEnabled("c".repeat(64)), true, "default is scoped per pubkey");
+  setAutoShareEnabled(PK, true);
+  assert.equal(isAutoShareEnabled(PK), true);
 });
 
 test("resolvePublishSync: auto-mirror a new video only when auto-share on AND eligible", () => {

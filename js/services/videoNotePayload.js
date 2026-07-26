@@ -459,6 +459,11 @@ export function normalizeVideoNotePayload(input) {
 
   const publishPayload = {
     legacyFormData,
+    // This is publish-session control metadata, not canonical video content.
+    // Keep it outside legacyFormData so it is never serialized into the 30078
+    // event, but preserve the uploader's explicit NIP-71 opt-out for the
+    // post-publish mirror hook.
+    mirrorNip71: rawPayload.mirrorNip71 !== false,
   };
 
   if (normalizedNip71) {

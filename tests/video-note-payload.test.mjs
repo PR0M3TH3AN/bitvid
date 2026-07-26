@@ -28,6 +28,22 @@ test("normalizes minimal payload with hosted URL", () => {
   assert.equal(payload.legacyFormData.enableComments, true);
   assert.equal(payload.legacyFormData.isNsfw, false);
   assert.equal(payload.legacyFormData.isForKids, false);
+  assert.equal(payload.mirrorNip71, true, "public uploads mirror by default");
+});
+
+test("preserves an explicit per-upload NIP-71 mirror opt-out outside canonical content", () => {
+  const { payload, errors } = normalizeVideoNotePayload({
+    title: "Private distribution choice",
+    url: "https://cdn.example.com/video.mp4",
+    mirrorNip71: false,
+  });
+  assert.deepEqual(errors, []);
+  assert.equal(payload.mirrorNip71, false);
+  assert.equal(
+    Object.hasOwn(payload.legacyFormData, "mirrorNip71"),
+    false,
+    "opt-out does not leak into the canonical 30078 payload",
+  );
 });
 
 test("normalizes mode and boolean flags", () => {

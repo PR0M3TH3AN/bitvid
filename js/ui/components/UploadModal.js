@@ -318,6 +318,7 @@ export class UploadModal {
         nsfw: $("#check-nsfw"),
         kids: $("#check-kids"),
         comments: $("#check-comments"),
+        noNip71Mirror: $("#check-no-nip71-mirror"),
         summaryUnlock: $("#check-summary-unlock"),
 
         advanced: $("#btn-advanced-toggle"),
@@ -1212,6 +1213,10 @@ export class UploadModal {
             this.inputs.thumbnail?.value?.trim() ||
             "",
           enableComments: this.toggles.comments?.checked || true,
+          // Public hosted videos mirror to NIP-71 by default. This per-upload
+          // checkbox is an explicit opt-out; eligibility still enforces the
+          // private/NSFW/HTTPS policy at the mirror boundary.
+          mirrorNip71: this.toggles.noNip71Mirror?.checked !== true,
           ...audienceFlags,
 
           // Auto-captured at file-select (best-effort; absent ⇒ omitted). Drives

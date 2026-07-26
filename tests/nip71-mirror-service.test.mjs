@@ -106,11 +106,11 @@ test("publish is unavailable without a signer / pubkey", async () => {
   assert.equal(result.error, "unavailable");
 });
 
-test("remove() publishes a NIP-09 delete (both addressable kinds) AND a tombstone", async () => {
+test("remove() publishes a NIP-09 delete and tombstones both addressable kinds", async () => {
   const { service, relay } = makeService();
   const result = await service.remove(baseVideo());
   assert.equal(result.ok, true);
-  assert.equal(relay.events.length, 2, "delete + empty-replace tombstone");
+  assert.equal(relay.events.length, 3, "delete + empty replacements for both kinds");
 
   const del = relay.events.find((e) => e.kind === 5);
   assert.ok(del, "must publish a NIP-09 kind-5 delete");
@@ -122,21 +122,19 @@ test("remove() publishes a NIP-09 delete (both addressable kinds) AND a tombston
   const kTags = del.tags.filter((t) => t[0] === "k").map((t) => t[1]).sort();
   assert.deepEqual(kTags, ["34235", "34236"]);
 
-  const tomb = relay.events.find((e) => e.kind === 34235 || e.kind === 34236);
-  assert.ok(tomb, "must publish an empty-replace tombstone");
-  assert.equal(tomb.tags.find((t) => t[0] === "d")[1], "root-1", "same d-tag");
-  assert.equal(
-    tomb.tags.some((t) => t[0] === "imeta"),
-    false,
-    "tombstone has no playable imeta",
-  );
+  const tombs = relay.events.filter((e) => e.kind === 34235 || e.kind === 34236);
+  assert.deepEqual(tombs.map((event) => event.kind).sort(), [34235, 34236]);
+  for (const tomb of tombs) {
+    assert.equal(tomb.tags.find((t) => t[0] === "d")[1], "root-1", "same d-tag");
+    assert.equal(tomb.tags.some((t) => t[0] === "imeta"), false, "not playable");
+  }
 });
 
 test("remove() tombstone uses the short kind for portrait videos", async () => {
   const { service, relay } = makeService();
   await service.remove(baseVideo({ width: 1080, height: 1920 }));
-  const tomb = relay.events.find((e) => e.kind === 34235 || e.kind === 34236);
-  assert.equal(tomb.kind, 34236, "portrait => 34236 tombstone");
+  const tombs = relay.events.filter((e) => e.kind === 34235 || e.kind === 34236);
+  assert.deepEqual(tombs.map((event) => event.kind).sort(), [34235, 34236]);
 });
 
 test("remove() is unavailable without a signer", async () => {
@@ -150,7 +148,7 @@ test("remove() is unavailable without a signer", async () => {
 // (34236 short for portrait, else 34235), but (kind,pubkey,d) is the addressable
 // identity — so a kind flip between mirror attempts produced a DUPLICATE in NIP-71
 // clients. publish() must reuse the kind of any existing mirror instead.
-function makeServiceWithExisting(existing) {
+function makeServiceWithExisting(existing, { now = () => Date.now() } = {}) {
   const relay = makeRelay();
   const signer = { signEvent: async (tpl) => ({ ...tpl, id: "id", sig: "sig" }) };
   const service = createNip71MirrorService({
@@ -163,6 +161,7 @@ function makeServiceWithExisting(existing) {
     signEvent: signer.signEvent,
     allowNsfw: () => false,
     fetchExistingMirrors: async () => existing,
+    now,
   });
   return { service, relay };
 }
@@ -206,6 +205,48 @@ test("an explicit options.short override is respected over any existing mirror",
   assert.equal(result.ok, true);
   assert.equal(result.reusedExistingKind, false);
   assert.equal(relay.events[0].kind, 34235, "explicit override wins");
+});
+
+test("re-mirror advances past an existing addressable timestamp", async () => {
+  const { service, relay } = makeServiceWithExisting(
+    [{ kind: 34235, created_at: 500 }],
+    { now: () => 500_000 },
+  );
+  const result = await service.publish(baseVideo());
+  assert.equal(result.ok, true);
+  assert.equal(relay.events[0].created_at, 501, "mirror replacement must win its coordinate");
+});
+
+test("remove advances its delete and tombstones past an existing mirror", async () => {
+  const { service, relay } = makeServiceWithExisting(
+    [{ kind: 34235, created_at: 500 }],
+    { now: () => 500_000 },
+  );
+  const result = await service.remove(baseVideo());
+  assert.equal(result.ok, true);
+  assert.deepEqual(relay.events.map((event) => event.created_at), [501, 501, 501]);
+});
+
+test("findMirrors resolves a library in one batched relay lookup", async () => {
+  let batchCalls = 0;
+  const service = createNip71MirrorService({
+    getActivePubkey: () => PUBKEY,
+    fetchMirrorsByRoots: async ({ roots }) => {
+      batchCalls += 1;
+      assert.deepEqual(roots.sort(), ["root-a", "root-b"]);
+      return [
+        { root: "root-a", kind: 34235, created_at: 10 },
+        { root: "root-b", kind: 34236, created_at: 11 },
+      ];
+    },
+  });
+  const states = await service.findMirrors([
+    { videoRootId: "root-a" },
+    { videoRootId: "root-b" },
+  ]);
+  assert.equal(batchCalls, 1);
+  assert.deepEqual(states.get("root-a"), { mirrored: true, kinds: [34235], duplicate: false });
+  assert.deepEqual(states.get("root-b"), { mirrored: true, kinds: [34236], duplicate: false });
 });
 
 test("findMirror derives mirror state from relays (truth), flagging duplicates", async () => {

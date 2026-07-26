@@ -75,9 +75,10 @@ export function resolveMirrorToggle({ enabled, eligibility } = {}) {
   return { action: "publish" };
 }
 
-// Account-level "auto-share new public videos" preference (per pubkey, off by
-// default). When on, newly published eligible public videos are mirrored
-// automatically — no per-video opt-in needed.
+// Account-level default for new public videos (per pubkey, on by default). A
+// missing value means "share" so existing users receive the new default; an
+// explicit false is the durable account-level opt-out. An individual upload can
+// still opt out without changing this preference.
 function readAutoShare() {
   try {
     if (typeof localStorage === "undefined") {
@@ -93,7 +94,7 @@ function readAutoShare() {
 
 export function isAutoShareEnabled(pubkey) {
   const pk = norm(pubkey);
-  return pk ? readAutoShare()[pk] === true : false;
+  return pk ? readAutoShare()[pk] !== false : false;
 }
 
 export function setAutoShareEnabled(pubkey, enabled) {
@@ -102,11 +103,7 @@ export function setAutoShareEnabled(pubkey, enabled) {
     return;
   }
   const map = readAutoShare();
-  if (enabled === true) {
-    map[pk] = true;
-  } else {
-    delete map[pk];
-  }
+  map[pk] = enabled === true;
   try {
     if (typeof localStorage !== "undefined") {
       localStorage.setItem(AUTO_SHARE_KEY, JSON.stringify(map));
@@ -116,8 +113,9 @@ export function setAutoShareEnabled(pubkey, enabled) {
   }
 }
 
-// On publish of a NEW video: mirror it only when auto-share is on AND it's
-// eligible (public + hosted URL + allowed). Otherwise do nothing.
+// On publish of a NEW video: mirror it only when the account default and the
+// per-upload choice permit it, and it is eligible (public + hosted URL +
+// allowed). Otherwise do nothing.
 export function resolvePublishSync({ featureOn, autoShare, eligible } = {}) {
   if (featureOn !== true || autoShare !== true) {
     return { action: "none" };

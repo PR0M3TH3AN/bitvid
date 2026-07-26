@@ -6,10 +6,16 @@ import "./test-helpers/setup-localstorage.mjs";
 import assert from "node:assert/strict";
 import test, { mock } from "node:test";
 import {
+  syncNip71MirrorAfterEdit,
+  syncNip71MirrorAfterPublish,
   syncNip71MirrorAfterDelete,
   initNip71MirrorSync,
 } from "../js/services/nip71MirrorSync.js";
-import { isMirrorEnabled, setMirrorEnabled } from "../js/services/nip71MirrorFlags.js";
+import {
+  isMirrorEnabled,
+  setMirrorEnabled,
+  setAutoShareEnabled,
+} from "../js/services/nip71MirrorFlags.js";
 import { nip71MirrorService } from "../js/services/nip71MirrorService.js";
 
 const PK = "a".repeat(64);
@@ -60,6 +66,102 @@ test("delete sync never throws when teardown fails (best-effort)", async () => {
     assert.equal(isMirrorEnabled(PK, "root-z"), false, "flag stays clear even on failure");
   } finally {
     removeSpy.mock.restore();
+  }
+});
+
+test("editing a mirrored video uses the original root when the form omits it", async () => {
+  localStorage.clear();
+  setMirrorEnabled(PK, "root-edit", true);
+  const canMirror = mock.method(nip71MirrorService, "canMirror", () => ({ ok: true }));
+  const publishSpy = mock.method(nip71MirrorService, "publish", async () => ({ ok: true }));
+  try {
+    await syncNip71MirrorAfterEdit({
+      updatedData: { title: "Edited", url: "https://cdn.example/video.mp4" },
+      originalEvent: { videoRootId: "root-edit" },
+      pubkey: PK,
+    });
+    assert.equal(publishSpy.mock.callCount(), 1, "mirror is republished after a normal edit");
+    assert.equal(publishSpy.mock.calls[0].arguments[0].videoRootId, "root-edit");
+  } finally {
+    canMirror.mock.restore();
+    publishSpy.mock.restore();
+  }
+});
+
+test("failed edit-time unshare keeps the flag so a later edit retries cleanup", async () => {
+  localStorage.clear();
+  setMirrorEnabled(PK, "root-retry", true);
+  const canMirror = mock.method(nip71MirrorService, "canMirror", () => ({ ok: false, reason: "private" }));
+  const removeSpy = mock.method(nip71MirrorService, "remove", async () => ({ ok: false }));
+  try {
+    await syncNip71MirrorAfterEdit({
+      updatedData: { isPrivate: true },
+      originalEvent: { videoRootId: "root-retry" },
+      pubkey: PK,
+    });
+    assert.equal(removeSpy.mock.callCount(), 1);
+    assert.equal(isMirrorEnabled(PK, "root-retry"), true, "failed cleanup stays retryable");
+  } finally {
+    canMirror.mock.restore();
+    removeSpy.mock.restore();
+  }
+});
+
+test("a per-upload opt-out prevents the default NIP-71 mirror", async () => {
+  localStorage.clear();
+  setAutoShareEnabled(PK, true);
+  const publishSpy = mock.method(nip71MirrorService, "publish", async () => ({ ok: true }));
+  try {
+    await syncNip71MirrorAfterPublish({
+      pubkey: PK,
+      payload: { mirrorNip71: false },
+      result: {
+        legacy: {
+          id: "event-id",
+          pubkey: PK,
+          created_at: 1,
+          tags: [["d", "root-opt-out"]],
+          content: JSON.stringify({
+            videoRootId: "root-opt-out",
+            title: "No mirror",
+            url: "https://cdn.example/video.mp4",
+          }),
+        },
+      },
+    });
+    assert.equal(publishSpy.mock.callCount(), 0);
+  } finally {
+    publishSpy.mock.restore();
+  }
+});
+
+test("a new eligible upload mirrors by default", async () => {
+  localStorage.clear();
+  const canMirror = mock.method(nip71MirrorService, "canMirror", () => ({ ok: true }));
+  const publishSpy = mock.method(nip71MirrorService, "publish", async () => ({ ok: true }));
+  try {
+    await syncNip71MirrorAfterPublish({
+      pubkey: PK,
+      payload: { mirrorNip71: true },
+      result: {
+        legacy: {
+          id: "event-id-default",
+          pubkey: PK,
+          created_at: 1,
+          tags: [["d", "root-default"]],
+          content: JSON.stringify({
+            videoRootId: "root-default",
+            title: "Default mirror",
+            url: "https://cdn.example/video.mp4",
+          }),
+        },
+      },
+    });
+    assert.equal(publishSpy.mock.callCount(), 1);
+    assert.equal(isMirrorEnabled(PK, "root-default"), true);
+  } finally {
+    canMirror.mock.restore();
+    publishSpy.mock.restore();
   }
 });
 

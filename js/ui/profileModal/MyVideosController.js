@@ -601,10 +601,14 @@ export class MyVideosController {
         }
       } else {
         const result = await nip71MirrorService.remove(video);
-        setMirrorEnabled(this.pubkey, video.videoRootId, false);
-        this.mainController.showSuccess?.(
-          result?.ok ? "Removed from other Nostr apps." : "Stopped sharing locally.",
-        );
+        if (result?.ok) {
+          setMirrorEnabled(this.pubkey, video.videoRootId, false);
+          this.mainController.showSuccess?.("Removed from other Nostr apps.");
+        } else {
+          this.mainController.showError?.(
+            "Couldn't remove the shared mirror. Please try again.",
+          );
+        }
       }
     } catch (error) {
       devLogger.warn("[myVideos] mirror toggle failed:", error);
