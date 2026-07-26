@@ -30,6 +30,7 @@ import {
   waitForActiveController as waitForActiveControllerHelper,
 } from "./webtorrentHelpers.js";
 import { devLogger, userLogger } from "./utils/logger.js";
+import { muteForAutoplayFallback } from "./utils/autoplayPreference.js";
 import { emit } from "./embedDiagnostics.js";
 
 const DEFAULT_PROBE_TRACKERS = Object.freeze([...WSS_TRACKERS]);
@@ -561,7 +562,7 @@ export class TorrentClient {
           return;
         }
         this.log(`Retrying with muted autoplay (${context} path).`);
-        videoElement.muted = true;
+        muteForAutoplayFallback(videoElement);
         videoElement.play().catch((err2) => {
           this.log(`Muted autoplay also failed (${context} path):`, err2);
         });

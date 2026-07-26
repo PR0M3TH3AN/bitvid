@@ -44,21 +44,27 @@ describe("PlaybackService", () => {
     const service = new PlaybackService();
     const video = document.createElement("video");
 
-    // Default: muted (unless localStorage says unmuted)
+    // Default: sound on unless the viewer explicitly chose mute.
     localStorage.removeItem("unmutedAutoplay");
     service.prepareVideoElement(video);
-    assert.equal(video.muted, true);
+    assert.equal(video.muted, false);
     assert.equal(video.dataset.autoplayBound, "true");
 
-    // Simulate volume change
-    video.muted = false;
+    // Simulate an explicit mute choice.
+    video.muted = true;
     video.dispatchEvent(new window.Event("volumechange"));
-    assert.equal(localStorage.getItem("unmutedAutoplay"), "true");
+    assert.equal(localStorage.getItem("unmutedAutoplay"), "false");
 
     // Test respecting stored value
     const video2 = document.createElement("video");
     service.prepareVideoElement(video2);
-    assert.equal(video2.muted, false);
+    assert.equal(video2.muted, true);
+
+    // A browser-policy fallback is temporary and must not become a saved mute.
+    localStorage.setItem("unmutedAutoplay", "true");
+    video2.muted = false;
+    service.muteForAutoplayFallback(video2);
+    assert.equal(localStorage.getItem("unmutedAutoplay"), "true");
   });
 
   test("registerUrlPlaybackWatchdogs triggers onFallback on error", () => {
