@@ -30,6 +30,15 @@ tests → `npm run build` + `npm run test:unit` green → commit + push.
 
 ## Open — high priority (launch-blocking candidates)
 
+### 35. Channel subscriber/follower counts — scoped, deferred
+
+- [ ] Approve the public/private product definition and implement only after
+      protocol research, bounded profile-only reads, and privacy/performance
+      tests. Do **not** infer a global count from BitVid's encrypted private
+      subscription lists.
+- **Scope, recommendation, and acceptance criteria:**
+      [`docs/channel-subscriber-counts-plan.md`](../docs/channel-subscriber-counts-plan.md).
+
 ### 34. Performance and efficiency — staged, measurement-first plan
 
 - [x] Establish the local-only measurement harness (`js/performanceHarness.js`)
