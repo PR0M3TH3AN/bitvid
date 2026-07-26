@@ -151,3 +151,30 @@ test("login does not eagerly load DM history; it is deferred", async () => {
     "the lightweight unread DM indicator should still run so the badge stays accurate",
   );
 });
+
+test("login reloads the open video comment thread", async () => {
+  globalThis.window.location = { search: "", href: "http://localhost/" };
+
+  const coord = makeCoordinator({
+    loadDirectMessages: async () => ({ ok: true }),
+    refreshUnreadDmIndicator: async () => {},
+  });
+  const activeVideo = { id: "b".repeat(64), title: "Open video" };
+  const loadedVideos = [];
+  coord.videoModal = { getCurrentVideo: () => activeVideo };
+  coord.commentController = {
+    load: (video) => loadedVideos.push(video),
+    refreshAuthState: () => {
+      throw new Error("an open thread should be reloaded, not only refreshed");
+    },
+  };
+
+  await coord.handleAuthLogin({
+    pubkey: ACTIVE_PUBKEY,
+    identityChanged: true,
+    postLogin: { profile: { name: "tester" } },
+    postLoginPromise: Promise.resolve({ profile: { name: "tester" } }),
+  });
+
+  assert.deepEqual(loadedVideos, [activeVideo]);
+});
