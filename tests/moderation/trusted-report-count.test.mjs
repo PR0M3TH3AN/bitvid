@@ -167,7 +167,7 @@ test("blocking and unblocking reporters recomputes trusted summaries", async (t)
   assert.deepEqual(setActiveCalls, [[eventId], [eventId]]);
 });
 
-test("trustedReportCount only counts eligible F1 reporters and admin whitelist", (t) => {
+test("trustedReportCount only counts eligible F1 reporters, not creator whitelist entries", (t) => {
   withMockedNostrTools(t);
 
   const eventId = "c".repeat(64);
@@ -217,14 +217,14 @@ test("trustedReportCount only counts eligible F1 reporters and admin whitelist",
   }
 
   const summary = service.getTrustedReportSummary(eventId);
-  assert.equal(summary.totalTrusted, 2);
+  assert.equal(summary.totalTrusted, 1);
   assert.equal(summary.types.nudity.total, 3);
-  assert.equal(summary.types.nudity.trusted, 2);
-  assert.equal(service.trustedReportCount(eventId, "nudity"), 2);
+  assert.equal(summary.types.nudity.trusted, 1);
+  assert.equal(service.trustedReportCount(eventId, "nudity"), 1);
 
   const reporters = service.getTrustedReporters(eventId, "nudity");
   assert.deepEqual(
     reporters.map((entry) => entry.pubkey).sort(),
-    [adminWhitelisted, f1Reporter].sort(),
+    [f1Reporter],
   );
 });

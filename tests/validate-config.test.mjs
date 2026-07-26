@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import {
+  DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+  DEFAULT_BLUR_THRESHOLD,
+  DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
+} from "../config/instance-config.js";
 import { validateInstanceConfig } from "../config/validate-config.js";
 
 // Common valid overrides to use as a base
@@ -9,6 +14,12 @@ const VALID_OVERRIDES = {
   PLATFORM_FEE_PERCENT: 5,
   PLATFORM_LUD16_OVERRIDE: "test@example.com",
 };
+
+test("instance moderation defaults require multiple trusted reports", () => {
+  assert.equal(DEFAULT_BLUR_THRESHOLD, 3);
+  assert.equal(DEFAULT_AUTOPLAY_BLOCK_THRESHOLD, 3);
+  assert.equal(DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD, 5);
+});
 
 test("validateInstanceConfig succeeds with valid configuration", () => {
   assert.doesNotThrow(() => validateInstanceConfig(VALID_OVERRIDES));

@@ -6,7 +6,7 @@ import {
   DEFAULT_BLUR_THRESHOLD,
 } from "../js/constants.js";
 
-test("moderation stage enforces admin lists without whitelist bypass", async () => {
+test("moderation stage keeps web-of-trust actions separate from creator access", async () => {
   const whitelistedHex = "1".repeat(64);
   const blockedHex = "2".repeat(64);
   const blacklistedHex = "3".repeat(64);
@@ -496,17 +496,22 @@ test("moderation stage propagates whitelist, muters, and threshold updates", asy
   assert.equal(updatedMuted.video.moderation.blurReason, undefined);
 });
 
-test("moderation stage blurs viewer-muted authors", async () => {
+test("moderation stage preserves a viewer mute for a whitelisted creator", async () => {
   const mutedHex = "f".repeat(64);
 
   const service = {
     async refreshViewerFromClient() {},
     async setActiveEventIds() {},
     getAdminListSnapshot() {
-      return { whitelist: new Set(), whitelistHex: new Set(), blacklist: new Set(), blacklistHex: new Set() };
+      return {
+        whitelist: new Set([`npub${mutedHex}`]),
+        whitelistHex: new Set([mutedHex]),
+        blacklist: new Set(),
+        blacklistHex: new Set(),
+      };
     },
     getAccessControlStatus(identifier) {
-      return { hex: identifier, whitelisted: false, blacklisted: false };
+      return { hex: identifier, whitelisted: identifier === mutedHex, blacklisted: false };
     },
     getTrustedReportSummary() {
       return null;
@@ -551,6 +556,7 @@ test("moderation stage blurs viewer-muted authors", async () => {
 
   assert.equal(entry.video.moderation.viewerMuted, true);
   assert.equal(entry.metadata.moderation.viewerMuted, true);
+  assert.equal(entry.video.moderation.adminWhitelistBypass, false);
   assert.equal(entry.video.moderation.blockAutoplay, true);
   assert.equal(entry.video.moderation.blurThumbnail, true);
   assert.equal(entry.video.moderation.blurReason, "viewer-mute");

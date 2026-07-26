@@ -163,6 +163,14 @@ function createController(options = {}) {
     });
 }
 
+test('login modal keeps Nostr sign-in options visible beside BitLogin', () => {
+    const nostrSection = container.querySelector('[aria-labelledby="nostrLoginOptionsTitle"]');
+    assert.ok(nostrSection, 'Nostr login options should be visible without expanding a disclosure');
+    assert.ok(nostrSection.querySelector('[data-login-providers]'));
+    assert.equal(container.querySelector('details'), null);
+    assert.match(container.querySelector('#bitloginMount').textContent, /BitLogin/);
+});
+
 test('LoginModalController shows custom error for empty nsec input', async (t) => {
     const providers = [{ id: 'nsec', label: 'Secret Key', login: async () => {} }];
     const authService = { requestLogin: async () => {} };

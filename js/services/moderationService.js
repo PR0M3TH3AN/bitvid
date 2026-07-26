@@ -1910,7 +1910,7 @@ export class ModerationService {
    *
    * Algorithm:
    * 1. Iterate over all reports for the event.
-   * 2. Check if the reporter is in the `trustedContacts` set (or Admin Whitelist).
+   * 2. Check if the reporter is in the `trustedContacts` set.
    * 3. If trusted, increment the count for that report type (e.g., "nudity").
    * 4. Update the summary state and emit change events if thresholds are crossed.
    *
@@ -1966,7 +1966,7 @@ export class ModerationService {
         continue;
       }
 
-      const isTrustedReporter = status.whitelisted || this.trustedContacts.has(reporterHex);
+      const isTrustedReporter = this.trustedContacts.has(reporterHex);
 
       for (const [type, detail] of typeMap.entries()) {
         let stats = typeStats.get(type);
@@ -2092,7 +2092,7 @@ export class ModerationService {
         continue;
       }
 
-      const isTrustedReporter = status.whitelisted || this.trustedContacts.has(reporterHex);
+      const isTrustedReporter = this.trustedContacts.has(reporterHex);
       if (!isTrustedReporter) {
         continue;
       }

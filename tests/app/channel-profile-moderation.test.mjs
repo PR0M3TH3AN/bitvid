@@ -296,9 +296,10 @@ test("moderation override clears channel blur via event wiring", async (t) => {
 
   const container = document.getElementById("channelVideoList");
   const moderationState = {
-    trustedCount: 2,
+    // BitVid's current default blur threshold is three trusted reports.
+    trustedCount: 3,
     summary: {
-      types: { nudity: { trusted: 2 } },
+      types: { nudity: { trusted: 3 } },
     },
   };
   const video = createVideoFixture({

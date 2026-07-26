@@ -277,6 +277,20 @@ export const FEATURE_AUDIO_INGEST = false;
 export const FEATURE_BITCOIN_CONNECT = true;
 
 /**
+ * Whether the login modal offers BitLogin (a portable Nostr identity behind a
+ * login name/password, https://github.com/PR0M3TH3AN/bitlogin) as the primary
+ * sign-in method, with the NIP-07 extension, nsec, and NIP-46 options
+ * collapsed under "Other login options" (js/ui/bitloginModalIntegration.js).
+ * The vendored widget bundle (vendor/bitlogin/, scripts/build-bitlogin-widget.mjs)
+ * only lazy-loads once the login modal's HTML is present in the DOM.
+ *
+ * Enabled on unstable for the final production-relay smoke test. Keep this
+ * gated from beta/main until that manual login, reload, logout, and recovery
+ * pass is confirmed.
+ */
+export const FEATURE_BITLOGIN = true;
+
+/**
  * Whether this deployment offers Blossom (nostr-native blob storage) as a
  * first-class upload provider alongside Cloudflare R2 / generic S3 / Backblaze B2
  * (docs/blossom-plan.md, TODO #30). Blossom uploads authorize with the user's
@@ -359,9 +373,9 @@ export const DEFAULT_TRUST_SEED_NPUBS = [
  * When a video receives at least this many trusted reports for the active
  * category (for example, `nudity`), thumbnails render with the blurred preview
  * by default. Align this value with your moderation policy — the upstream
- * deployment targets 1 trusted report before blurring.
+ * deployment requires 3 trusted reports before blurring.
  */
-export const DEFAULT_BLUR_THRESHOLD = 1;
+export const DEFAULT_BLUR_THRESHOLD = 3;
 
 /**
  * Baseline trusted-report count that blocks autoplay during browsing.
@@ -369,9 +383,9 @@ export const DEFAULT_BLUR_THRESHOLD = 1;
  * Videos that meet or exceed this count will not autoplay in feeds unless the
  * viewer explicitly opts in. Increase the number for a more permissive stance
  * or decrease it if you want autoplay to stop sooner. The upstream deployment
- * targets 1 trusted report before blocking autoplay.
+ * requires 3 trusted reports before blocking autoplay.
  */
-export const DEFAULT_AUTOPLAY_BLOCK_THRESHOLD = 1;
+export const DEFAULT_AUTOPLAY_BLOCK_THRESHOLD = 3;
 
 /**
  * Trusted mute threshold that hides creators globally.
@@ -388,10 +402,10 @@ export const DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD = 20;
  *
  * When a video's trusted report count reaches this number, bitvid treats it as
  * spam or policy violating content and removes it from default feeds. Align
- * the value with your moderation policy — 1 trusted report is the upstream
+ * the value with your moderation policy — 5 trusted reports is the current
  * baseline.
  */
-export const DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD = 1;
+export const DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD = 5;
 
 /**
  * Optional theme accent overrides for light and dark mode.

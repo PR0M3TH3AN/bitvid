@@ -40,8 +40,8 @@ Create three distinct F1 reporter keys; each sends:
 Expected:
 
 * After 1 report → no blur; autoplay allowed.
-* Once reports reach `DEFAULT_AUTOPLAY_BLOCK_THRESHOLD` → autoplay blocked (the upstream configuration currently sets this to 2, but rely on your `config/instance-config.js` value).
-* Once reports reach `DEFAULT_BLUR_THRESHOLD` → thumbnail blurred; reason chip shown (upstream example: 1). At the spam threshold (`TRUSTED_SPAM_HIDE_THRESHOLD` sourced from `DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD` in [`config/instance-config.js`](../../config/instance-config.js)) the card hides entirely and the badge copy switches to "Hidden · {count} trusted spam report(s)" until the viewer overrides it.
+* Once reports reach `DEFAULT_AUTOPLAY_BLOCK_THRESHOLD` → autoplay blocked (the hosted configuration currently sets this to 3, but rely on your `config/instance-config.js` value).
+* Once reports reach `DEFAULT_BLUR_THRESHOLD` → thumbnail blurred; reason chip shown (the hosted default is 3). At the spam threshold (`TRUSTED_SPAM_HIDE_THRESHOLD` sourced from `DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD` in [`config/instance-config.js`](../../config/instance-config.js), currently 5) the card hides entirely and the badge copy switches to "Hidden · {count} trusted spam report(s)" until the viewer overrides it.
 
 **Exercises:** [`ModerationService.ingestReportEvent()`](../../js/services/moderationService.js) and [`ModerationService.getTrustedReportSummary()`](../../js/services/moderationService.js) wire through [`createModerationStage()`](../../js/feedEngine/stages.js) so [`bitvidApp.decorateVideoModeration()`](../../js/app.js) can hand the summary to [`VideoCard.refreshModerationUi()`](../../js/ui/components/VideoCard.js).
 

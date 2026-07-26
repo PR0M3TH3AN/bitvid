@@ -67,7 +67,7 @@ import {
   normalizeVideoNotePayload,
 } from "./services/videoNotePayload.js";
 import getAuthProvider, {
-  providers as authProviders,
+  providersForModal as authProviders,
 } from "./services/authProviders/index.js";
 import hashtagPreferences, {
   HASHTAG_PREFERENCES_EVENTS,
