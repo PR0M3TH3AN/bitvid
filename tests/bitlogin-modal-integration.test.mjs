@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { resolveVerifiedBitloginPubkey } from "../js/ui/bitloginModalIntegration.js";
+import {
+  resolveVerifiedBitloginPubkey,
+  wireBitloginLogin,
+} from "../js/ui/bitloginModalIntegration.js";
 
 const PUBKEY = "a".repeat(64);
 
@@ -18,4 +21,23 @@ test("BitLogin rejects a forged event pubkey even when its claimed account has a
 test("BitLogin rejects malformed claims and widgets without a worker-backed public key", async () => {
   assert.equal(await resolveVerifiedBitloginPubkey({}, PUBKEY), "");
   assert.equal(await resolveVerifiedBitloginPubkey({ getPublicKey: async () => PUBKEY }, "npub1nope"), "");
+});
+
+test("BitLogin bootstrap safely defers when MutationObserver is unavailable", () => {
+  const originalDocument = globalThis.document;
+  const originalObserver = globalThis.MutationObserver;
+  globalThis.document = {
+    body: {},
+    defaultView: {},
+    getElementById: () => null,
+  };
+  try {
+    delete globalThis.MutationObserver;
+    assert.doesNotThrow(() => wireBitloginLogin({ authService: {} }));
+  } finally {
+    if (originalDocument === undefined) delete globalThis.document;
+    else globalThis.document = originalDocument;
+    if (originalObserver === undefined) delete globalThis.MutationObserver;
+    else globalThis.MutationObserver = originalObserver;
+  }
 });

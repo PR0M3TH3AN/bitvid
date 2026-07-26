@@ -62,6 +62,89 @@ export function createActiveNostrSource({ service } = {}) {
   };
 }
 
+// Bounded discovery source for curated surfaces such as Most Zapped. It never
+// falls back to an unscoped relay request: the caller must provide approved
+// creator pubkeys in runtime.whitelistedAuthors. The successful remote result
+// is retained briefly so an asynchronous ranking update does not turn into a
+// second full relay scan for the same author set.
+export function createWhitelistedAuthorsNostrSource({
+  service,
+  refreshTtlMs = 2 * 60 * 1000,
+  now = () => Date.now(),
+} = {}) {
+  const resolvedService = resolveService(service, nostrService);
+  let cachedAuthorsKey = "";
+  let cachedVideos = [];
+  let fetchedAt = 0;
+  let inFlight = null;
+
+  const normalizeAuthors = (input) =>
+    Array.from(
+      new Set(
+        toArray(input)
+          .map(normalizeAuthor)
+          .filter(Boolean),
+      ),
+    ).sort();
+
+  return async function whitelistedAuthorsNostrSource(context = {}) {
+    const authors = normalizeAuthors(context?.runtime?.whitelistedAuthors);
+    const authorsKey = authors.join(",");
+    if (!authors.length) {
+      cachedAuthorsKey = "";
+      cachedVideos = [];
+      fetchedAt = 0;
+      return [];
+    }
+
+    const cacheIsCurrent =
+      authorsKey === cachedAuthorsKey &&
+      now() - fetchedAt < Math.max(0, Number(refreshTtlMs) || 0);
+
+    if (!cacheIsCurrent && !inFlight) {
+      const fetchByAuthors = resolvedService?.fetchVideosByAuthors;
+      inFlight = Promise.resolve(
+        typeof fetchByAuthors === "function"
+          ? fetchByAuthors.call(resolvedService, authors)
+          : [],
+      )
+        .then((videos) => {
+          const allowed = new Set(authors);
+          cachedAuthorsKey = authorsKey;
+          cachedVideos = (Array.isArray(videos) ? videos : []).filter(
+            (video) => allowed.has(normalizeAuthor(video?.pubkey)),
+          );
+          fetchedAt = now();
+          return cachedVideos;
+        })
+        .catch((error) => {
+          context?.log?.(
+            "[whitelisted-authors-source] Failed to fetch approved creators",
+            error,
+          );
+          return authorsKey === cachedAuthorsKey ? cachedVideos : [];
+        })
+        .finally(() => {
+          inFlight = null;
+        });
+    }
+
+    const videos = cacheIsCurrent ? cachedVideos : await inFlight;
+    // The whitelist may change while a prior author-scoped request is still in
+    // flight. Filter again at return time so that stale results can never
+    // briefly render after an administrator removes a creator.
+    const allowed = new Set(authors);
+    return (Array.isArray(videos) ? videos : [])
+      .filter((video) => allowed.has(normalizeAuthor(video?.pubkey)))
+      .map((video) => ({
+        video,
+        metadata: {
+          source: "nostr:whitelisted-authors",
+        },
+      }));
+  };
+}
+
 export function createSubscriptionAuthorsSource({ service } = {}) {
   const resolvedService = resolveService(service, nostrService);
 
