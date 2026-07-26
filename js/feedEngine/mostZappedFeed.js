@@ -1,8 +1,9 @@
 // js/feedEngine/mostZappedFeed.js
 //
-// The "Most Zapped" tab (#47): the recently-added (active) source ranked by
-// ZAP TOTAL (sats from kind-9735 receipts). Mirrors trendingFeed.js — lives
-// outside feedCoordinator.js (size cap) and is wired in via thin delegations.
+// The "Most Zapped" tab (#47): the catalog of approved creators ranked by
+// ZAP TOTAL (sats from kind-9735 receipts). It is intentionally scoped to the
+// creator whitelist for discovery, but still runs the ordinary moderation
+// stages — whitelisting does not waive Web-of-Trust handling.
 // The metric getter uses requestVideoZapTotal, which returns the cached total
 // AND schedules a batched receipt fetch for unknown pointers; the Most Zapped
 // view re-runs the feed on zapTotals' change signal so the order settles as
@@ -11,7 +12,7 @@
 import { FEED_TYPES } from "../constants.js";
 import { requestVideoZapTotal } from "../zapTotals.js";
 import {
-  createActiveNostrSource,
+  createWhitelistedAuthorsNostrSource,
   createBlacklistFilterStage,
   createDedupeByRootStage,
   createModerationStage,
@@ -43,6 +44,19 @@ function makeGetZapTotal(app) {
   };
 }
 
+function getWhitelistedAuthors(app) {
+  const accessControl = app?.nostrService?.accessControl;
+  if (typeof accessControl?.getWhitelistPubkeys !== "function") {
+    return [];
+  }
+  try {
+    const authors = accessControl.getWhitelistPubkeys();
+    return Array.isArray(authors) ? authors : [];
+  } catch (error) {
+    return [];
+  }
+}
+
 export function buildMostZappedFeedRuntime(app) {
   const blacklist =
     app.blacklistedEventIds instanceof Set
@@ -59,6 +73,7 @@ export function buildMostZappedFeedRuntime(app) {
       ? { ...moderationThresholds }
       : undefined,
     getZapTotal: makeGetZapTotal(app),
+    whitelistedAuthors: getWhitelistedAuthors(app),
   };
 }
 
@@ -94,7 +109,7 @@ export function registerMostZappedFeed(app) {
 
   try {
     return app.feedEngine.registerFeed(FEED_TYPES.MOST_ZAPPED, {
-      source: createActiveNostrSource({ service: app.nostrService }),
+      source: createWhitelistedAuthorsNostrSource({ service: app.nostrService }),
       stages: [
         createBlacklistFilterStage({
           shouldIncludeVideo: (video, options) =>
