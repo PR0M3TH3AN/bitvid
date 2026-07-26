@@ -284,10 +284,11 @@ export const FEATURE_BITCOIN_CONNECT = true;
  * The vendored widget bundle (vendor/bitlogin/, scripts/build-bitlogin-widget.mjs)
  * only lazy-loads once the login modal's HTML is present in the DOM.
  *
- * Unstable-branch experiment (AGENTS.md §1) -- reset to `false` before this
- * reaches main until verified end-to-end against production relays.
+ * Enabled on unstable for the final production-relay smoke test. Keep this
+ * gated from beta/main until that manual login, reload, logout, and recovery
+ * pass is confirmed.
  */
-export const FEATURE_BITLOGIN = false;
+export const FEATURE_BITLOGIN = true;
 
 /**
  * Whether this deployment offers Blossom (nostr-native blob storage) as a
