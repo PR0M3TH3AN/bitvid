@@ -574,8 +574,16 @@ for (const _ of [0]) {
       const menuWrapper = document.querySelector('[data-profile-mobile-menu]');
       const paneWrapper = document.querySelector('[data-profile-mobile-pane]');
       const backButton = document.getElementById('profileModalBack');
+      const mobileLockButton = document.getElementById('profileMobileLockNowBtn');
+      const mobileLogoutButton = document.getElementById('profileMobileLogoutBtn');
+      const mobileActions = mobileLogoutButton?.closest(
+        '.profile-modal__mobile-actions',
+      );
 
       assert.ok(layout && menuWrapper && paneWrapper && backButton);
+      assert.equal(mobileActions?.getAttribute('aria-label'), 'Session actions');
+      assert.equal(mobileLockButton?.closest('nav'), null);
+      assert.equal(mobileLogoutButton?.closest('nav'), null);
 
       assert.equal(layout?.dataset.mobileView, 'menu');
       assert.equal(menuWrapper?.getAttribute('aria-hidden'), 'false');

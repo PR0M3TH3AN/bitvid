@@ -100,7 +100,15 @@
         >
           <!-- Left navigation column -->
           <div class="profile-modal__menu" data-profile-mobile-menu aria-hidden="false">
-            <nav class="profile-modal__nav" aria-label="Profile sections">
+            <div class="profile-modal__menu-heading">
+              <h3 id="profileModalMenuHeading" class="profile-modal__menu-title">
+                Profile &amp; settings
+              </h3>
+              <p class="profile-modal__menu-hint">
+                Choose what you want to manage
+              </p>
+            </div>
+            <nav class="profile-modal__nav" aria-labelledby="profileModalMenuHeading">
               <button
                 id="profileNavAccount"
                 type="button"
@@ -108,6 +116,7 @@
                 aria-controls="profilePaneAccount"
                 aria-selected="true"
                 data-state="active"
+                data-mobile-description="Profile and account settings"
               >
                 <svg
                   class="h-4 w-4"
@@ -130,6 +139,7 @@
                 class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
                 aria-controls="profilePaneRelays"
                 aria-selected="false"
+                data-mobile-description="Manage your relay connections"
               >
                 <svg
                   class="h-4 w-4"
@@ -152,6 +162,7 @@
                 class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
                 aria-controls="profilePaneWallet"
                 aria-selected="false"
+                data-mobile-description="Manage your wallet and payments"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -173,6 +184,7 @@
                 class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
                 aria-controls="profilePaneStorage"
                 aria-selected="false"
+                data-mobile-description="Manage your stored files"
               >
                 <svg
                   class="h-4 w-4"
@@ -195,6 +207,7 @@
                 class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
                 aria-controls="profilePaneMyVideos"
                 aria-selected="false"
+                data-mobile-description="View and manage your videos"
               >
                 <svg
                   class="h-4 w-4"
@@ -217,6 +230,7 @@
                 class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
                 aria-controls="profilePanePlaylists"
                 aria-selected="false"
+                data-mobile-description="Organize your playlists"
               >
                 <svg
                   class="h-4 w-4"
@@ -239,6 +253,7 @@
                 class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
                 aria-controls="profilePaneHashtags"
                 aria-selected="false"
+                data-mobile-description="Explore and follow hashtags"
               >
                 <svg
                   class="h-4 w-4"
@@ -261,6 +276,7 @@
                 class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
                 aria-controls="profilePaneSubscriptions"
                 aria-selected="false"
+                data-mobile-description="Manage your subscriptions"
               >
                 <svg
                   class="h-4 w-4"
@@ -286,6 +302,7 @@
                 class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
                 aria-controls="profilePaneFriends"
                 aria-selected="false"
+                data-mobile-description="Find and manage your friends"
               >
                 <svg
                   class="h-4 w-4"
@@ -308,6 +325,7 @@
                 class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
                 aria-controls="profilePaneSafety"
                 aria-selected="false"
+                data-mobile-description="Privacy and safety settings"
               >
                 <svg
                   class="h-4 w-4"
@@ -330,6 +348,7 @@
                 class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
                 aria-controls="profilePaneBlocked"
                 aria-selected="false"
+                data-mobile-description="Manage blocked users"
               >
                 <svg
                   class="h-4 w-4"
@@ -352,6 +371,7 @@
                 class="btn-ghost focus-ring relative w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
                 aria-controls="profilePaneMessages"
                 aria-selected="false"
+                data-mobile-description="View your messages"
               >
                 <svg
                   class="h-4 w-4"
@@ -379,6 +399,7 @@
                 class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
                 aria-controls="profilePaneHistory"
                 aria-selected="false"
+                data-mobile-description="View your watch history"
               >
                 <svg
                   class="h-4 w-4"
@@ -408,6 +429,7 @@
                 class="btn-ghost focus-ring hidden w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
                 aria-controls="profilePaneAdmin"
                 aria-selected="false"
+                data-mobile-description="Moderate users and content"
               >
                 <svg
                   class="h-4 w-4"
@@ -429,10 +451,12 @@
                   aria-hidden="true"
                 ></span>
               </button>
+            </nav>
+            <div class="profile-modal__mobile-actions" role="group" aria-label="Session actions">
               <button
                 id="profileMobileLockNowBtn"
                 type="button"
-                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium mt-6 lg:hidden hidden"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium lg:hidden hidden"
                 title="Forget your unlocked key on this device and re-lock storage + wallet now"
               >
                 <svg
@@ -453,7 +477,7 @@
               <button
                 id="profileMobileLogoutBtn"
                 type="button"
-                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium mt-2 lg:hidden"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium lg:hidden"
                 data-variant="critical"
               >
                 <svg
@@ -471,7 +495,7 @@
                 </svg>
                 Logout
               </button>
-            </nav>
+            </div>
           </div>
 
           <!-- Right content panes -->

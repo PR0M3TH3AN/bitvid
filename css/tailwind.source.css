@@ -767,6 +767,44 @@
     @apply btn-ghost focus-ring -mr-2 -mt-2 h-9 w-9 rounded-full p-0 text-lg leading-none;
   }
 
+  .site-tagline__text {
+    text-wrap: balance;
+  }
+
+  @media (max-width: calc(theme("screens.md") - 0.02px)) {
+    /* Both controls are fixed to the lower-right corner on phones. Keep the
+       site-update notice above the search FAB so neither tap target obscures
+       the other. */
+    .site-update-notice {
+      right: var(--space-lg);
+      bottom: calc(
+        var(--space-lg) + var(--space-2xl-plus) + var(--space-sm)
+      );
+      max-inline-size: min(
+        var(--size-20rem),
+        calc(100vw - (var(--space-lg) * 2))
+      );
+    }
+
+    .site-update-notice__button {
+      min-block-size: var(--size-11);
+      padding-inline: var(--space-md);
+      padding-block: var(--space-sm);
+    }
+
+    .site-tagline {
+      margin-block: var(--space-lg) var(--space-xl);
+      padding-inline: var(--space-md);
+    }
+
+    .site-tagline .site-tagline__text {
+      font-size: var(--font-size-lg);
+      line-height: var(--line-height-tight);
+      letter-spacing: var(--tracking-normal);
+      color: var(--color-text-muted);
+    }
+  }
+
   .login-option::after {
     content: "";
     position: absolute;
@@ -3592,6 +3630,12 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-sm);
+    min-block-size: 0;
+  }
+
+  .profile-modal__menu-heading,
+  .profile-modal__mobile-actions {
+    display: none;
   }
 
   .profile-modal__pane-wrapper {
@@ -3772,54 +3816,176 @@
      Chromium drops the whole block. `theme("screens.lg")` resolves to a literal at
      build time, which is valid. */
   @media (max-width: calc(theme("screens.lg") - 0.02px)) {
+    .profile-modal__identity {
+      align-self: stretch;
+      max-inline-size: none;
+      min-block-size: var(--size-6rem);
+      margin-inline: var(--profile-modal-padding-inline);
+      margin-block: 0;
+      padding: var(--space-md);
+      border: 0;
+      border-radius: var(--radius-xl);
+      color: var(--color-white);
+      background:
+        radial-gradient(
+          100% 130% at 100% 0%,
+          color-mix(in srgb, var(--color-accent) 82%, transparent),
+          transparent 58%
+        ),
+        linear-gradient(
+          120deg,
+          var(--color-text-strong) 0%,
+          color-mix(in srgb, var(--color-text-strong) 82%, var(--color-accent)) 100%
+        );
+    }
+
+    .profile-modal__identity-avatar {
+      inline-size: var(--space-2xl-plus);
+      block-size: var(--space-2xl-plus);
+      border-color: var(--color-white);
+    }
+
+    .profile-modal__identity-kicker {
+      color: var(--color-white);
+    }
+
+    .profile-modal__identity-name {
+      font-size: var(--font-size-lg);
+      color: var(--color-white);
+    }
+
+    .profile-modal__menu {
+      flex: 1 1 auto;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding-block-end: var(--space-2xs);
+      scrollbar-gutter: stable;
+    }
+
+    .profile-modal__menu-heading {
+      display: block;
+      padding-block: var(--space-xs) var(--space-sm);
+    }
+
+    .profile-modal__menu-title {
+      margin: 0;
+      font-size: var(--font-size-sm);
+      font-weight: 700;
+      letter-spacing: var(--tracking-wide);
+      color: var(--color-text);
+    }
+
+    .profile-modal__menu-hint {
+      margin: var(--space-3xs) 0 0;
+      font-size: var(--font-size-xs);
+      color: var(--color-text-muted);
+    }
+
     .profile-modal__nav {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      display: flex;
+      flex-direction: column;
       gap: var(--space-xs);
-      /* Every tile the SAME height, so a 2-line label can't stretch its row
-         taller than the others (the "ragged grid of ellipses" fix). */
-      grid-auto-rows: var(--profile-modal-nav-tile-height);
+      align-self: stretch;
     }
 
     .profile-modal__nav > button {
-      display: flex;
-      flex-direction: column;
+      display: grid;
+      grid-template-columns: var(--space-2xl-plus) minmax(0, 1fr) var(--space-lg);
+      grid-template-rows: auto auto;
       align-items: center;
-      justify-content: center;
-      text-align: center;
-      gap: var(--space-2xs);
+      justify-content: start;
+      column-gap: var(--space-md);
+      row-gap: var(--space-3xs);
       width: 100%;
-      block-size: 100%;
-      /* Consistent rounded-square tiles, not rounded-full ellipses (btn's
-         default) that turn into circles once a tile gets taller. */
-      border-radius: var(--radius-xl);
-      /* Subtle fill so they read as solid cards, not floating outlines. The
-         active tile's bg-primary (higher specificity) still wins. */
+      min-block-size: var(--size-5-75rem);
+      text-align: start;
+      font-size: var(--font-size-sm);
+      font-weight: 700;
+      line-height: var(--line-height-tight);
+      border-radius: var(--radius-lg);
+      border-color: var(--color-border-subtle);
       background-color: var(--color-panel);
-      padding-block: var(--space-xs);
-      padding-inline: var(--space-3xs);
-      line-height: 1.15;
+      padding: var(--space-sm);
       overflow: hidden;
-      /* wrap labels at spaces, not mid-word */
-      overflow-wrap: break-word;
-      word-break: normal;
-      hyphens: none;
+      box-shadow: var(--shadow-sm);
     }
 
-    /* slightly larger glyph for the tile */
+    .profile-modal__nav > button[data-state="active"] {
+      color: var(--color-text);
+      border-color: color-mix(in srgb, var(--color-accent) 36%, transparent);
+      background-color: color-mix(in srgb, var(--color-accent) 9%, var(--color-panel));
+      box-shadow:
+        inset var(--size-3px) 0 0 var(--color-accent),
+        var(--shadow-md);
+    }
+
+    .profile-modal__nav > button:focus-visible {
+      outline-offset: calc(var(--space-3xs) * -1);
+    }
+
     .profile-modal__nav > button svg {
-      width: var(--space-lg);
-      height: var(--space-lg);
-      flex-shrink: 0;
+      grid-column: 1;
+      grid-row: 1 / span 2;
+      width: var(--space-xl);
+      height: var(--space-xl);
+      padding: var(--space-sm);
+      box-sizing: content-box;
+      border-radius: var(--radius-md);
+      color: var(--color-text);
+      background-color: var(--color-page-alt);
     }
 
-    /* In the tile grid the unread dot rides the tile's top-right corner instead
-       of the vertical-nav left edge (where it landed in the grid gutter). */
+    .profile-modal__nav > button::before {
+      content: "";
+      grid-column: 3;
+      grid-row: 1 / span 2;
+      inline-size: var(--space-xs);
+      block-size: var(--space-xs);
+      border-block-start: var(--border-width-hairline) solid currentColor;
+      border-inline-end: var(--border-width-hairline) solid currentColor;
+      transform: rotate(45deg);
+    }
+
+    .profile-modal__nav > button::after {
+      content: attr(data-mobile-description);
+      grid-column: 2;
+      grid-row: 2;
+      align-self: start;
+      color: var(--color-text-muted);
+      font-size: var(--font-size-xs);
+      font-weight: 400;
+      line-height: var(--line-height-tight);
+    }
+
+    .profile-modal__nav > button[data-state="active"] svg {
+      color: var(--color-white);
+      background-color: var(--color-accent);
+    }
+
     .profile-modal__nav > button .profile-nav__unread-dot {
-      top: var(--space-2xs);
+      top: var(--space-sm);
       left: auto;
-      right: var(--space-2xs);
+      right: calc(var(--space-sm) + var(--space-lg));
       transform: none;
+    }
+
+    .profile-modal__mobile-actions {
+      display: flex;
+      flex: 0 0 auto;
+      gap: var(--space-xs);
+      padding-block: var(--space-xs) var(--space-3xs);
+      background: linear-gradient(
+        to bottom,
+        color-mix(in srgb, var(--color-page) 0%, transparent),
+        var(--color-page) var(--space-sm)
+      );
+    }
+
+    .profile-modal__mobile-actions > button {
+      flex: 1 1 0;
+      justify-content: center;
+      min-block-size: var(--size-11);
+      border-radius: var(--radius-lg);
     }
   }
 
