@@ -135,11 +135,17 @@ export default async function handler(req, res) {
   const requestUrl = new URL(req.url || "/", `${proto}://${host}`);
   const pointer = requestUrl.searchParams.get("v") || "";
 
+  // Derive the origin from the REQUEST, not from a constant. Otherwise every
+  // non-production deployment (unstable, previews) advertises production's
+  // canonical URL and — worse — a twitter:player pointing at production's
+  // embed, so testing a preview link silently exercises the live site.
+  const origin = `${proto}://${host}`;
+
   const shareUrl = pointer
-    ? `${SITE_ORIGIN}/?v=${encodeURIComponent(pointer)}`
-    : SITE_ORIGIN;
+    ? `${origin}/?v=${encodeURIComponent(pointer)}`
+    : origin;
   const embedUrl = pointer
-    ? `${SITE_ORIGIN}/embed.html?pointer=${encodeURIComponent(pointer)}`
+    ? `${origin}/embed.html?pointer=${encodeURIComponent(pointer)}`
     : "";
 
   const renderFallback = (reason) => {
@@ -149,7 +155,11 @@ export default async function handler(req, res) {
     res.setHeader("Cache-Control", "public, s-maxage=300, stale-while-revalidate=600");
     res.setHeader("X-Bitvid-OG", reason);
     res.status(200).send(
-      renderOgHtml({ video: null, shareUrl, fallback: FALLBACK })
+      renderOgHtml({
+        video: null,
+        shareUrl,
+        fallback: { ...FALLBACK, url: origin, image: `${origin}/assets/jpg/bitvid.jpg` },
+      })
     );
   };
 
@@ -242,9 +252,15 @@ export default async function handler(req, res) {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("Cache-Control", "public, s-maxage=300, stale-while-revalidate=600");
     res.setHeader("X-Bitvid-OG", "video");
-    res
-      .status(200)
-      .send(renderOgHtml({ video, shareUrl, embedUrl, fallback: FALLBACK, gate }));
+    res.status(200).send(
+      renderOgHtml({
+        video,
+        shareUrl,
+        embedUrl,
+        fallback: { ...FALLBACK, url: origin, image: `${origin}/assets/jpg/bitvid.jpg` },
+        gate,
+      })
+    );
   } catch (err) {
     renderFallback("error");
   } finally {
