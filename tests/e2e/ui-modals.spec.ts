@@ -211,8 +211,16 @@ test.describe("component modal pages", () => {
         waitUntil: "networkidle",
       });
 
-      const modal = page.locator(".bv-modal");
-      await expect(modal).toHaveCount(1);
+      // A component page may legitimately ship more than one modal root:
+      // profile-modal.html also bundles #storageCorsModal, the B2/S3 CORS setup
+      // helper added in d7ad1516. Asserting exactly one was incidental to what
+      // this test is actually for -- "the page renders a modal that opens and
+      // closes" -- so require at least one and drive the primary one, which is
+      // what the injected script's document.querySelector(".bv-modal") already
+      // operates on.
+      const modals = page.locator(".bv-modal");
+      expect(await modals.count()).toBeGreaterThan(0);
+      const modal = modals.first();
 
       // Inject logic to initialize the modal since we are viewing a partial/component in isolation.
       await page.addScriptTag({
