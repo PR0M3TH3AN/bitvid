@@ -141,6 +141,68 @@ test(".ogg url WITHOUT an audio imeta is kept (ambiguous → treated as video)",
   assert.equal(parsed.url, "https://cdn.example/clip.ogg");
 });
 
+// HLS playlists are a CONTAINER format, not an assertion about content. The
+// `audio/mpegurl` / `audio/x-mpegurl` spellings are legacy aliases for an HLS
+// playlist of any kind, so they must not vote "audio-only" — otherwise an HLS
+// video ladder published with the legacy type is misfiled as a podcast and
+// silently dropped from every video feed.
+test("HLS playlist events are kept regardless of the playlist mime spelling", () => {
+  const makeHlsEvent = (mime, id) => ({
+    id,
+    content: JSON.stringify({
+      version: 3,
+      title: "Why I'm (sort of) not worried about AI",
+      url: "https://almond.apps2.slidestr.net/3751b84f.m3u8",
+      videoRootId: `root-${id}`,
+    }),
+    tags: [
+      [
+        "imeta",
+        "dim 1280x720",
+        "url https://almond.apps2.slidestr.net/3751b84f.m3u8",
+        `m ${mime}`,
+        "duration 3512",
+      ],
+    ],
+  });
+
+  for (const mime of [
+    "application/vnd.apple.mpegurl",
+    "application/x-mpegurl",
+    "audio/mpegurl",
+    "audio/x-mpegurl",
+    "APPLICATION/VND.APPLE.MPEGURL",
+  ]) {
+    const parsed = convertEventToVideo(makeHlsEvent(mime, `evt-hls-${mime}`));
+    assert.equal(
+      parsed.invalid,
+      false,
+      `HLS note with "m ${mime}" must not be filtered as audio-only`
+    );
+    assert.equal(parsed.url, "https://almond.apps2.slidestr.net/3751b84f.m3u8");
+  }
+});
+
+test("a genuine audio/* variant still filters an HLS-tagged note", () => {
+  // The playlist type abstains; it must not *rescue* a note that also carries a
+  // real audio-only variant and no video variant.
+  const audioHls = {
+    id: "evt-hls-audio",
+    content: JSON.stringify({
+      version: 3,
+      title: "Podcast, HLS packaged",
+      url: "https://cdn.example/episode.m3u8",
+      videoRootId: "root-hls-audio",
+    }),
+    tags: [
+      ["imeta", "url https://cdn.example/episode.m3u8", "m application/x-mpegurl"],
+      ["imeta", "url https://cdn.example/episode.mp3", "m audio/mpeg"],
+    ],
+  };
+
+  assert.equal(convertEventToVideo(audioHls).invalid, true);
+});
+
 test("a video imeta variant wins even when an audio variant is also present", () => {
   const mixed = {
     id: "evt-mixed",

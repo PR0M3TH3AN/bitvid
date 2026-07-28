@@ -189,6 +189,17 @@ export const DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD =
 export const DEFAULT_TRUST_SEED_NPUBS = SANITIZED_DEFAULT_TRUST_SEED_NPUBS;
 export const PLAYBACK_START_TIMEOUT = SANITIZED_DEFAULT_PLAYBACK_START_TIMEOUT;
 
+// HLS needs a bigger start window than a progressive MP4. Before the first
+// frame can render, hls.js must lazy-load its (vendored) bundle, fetch the
+// master playlist, fetch the chosen variant playlist, then fetch the init
+// segment and the first media segment — four or more serial round trips versus
+// the single ranged GET a plain MP4 needs. The 3s default fires mid-startup and
+// reports a perfectly healthy stream as "No playable source found."
+export const HLS_PLAYBACK_START_TIMEOUT = Math.max(
+  SANITIZED_DEFAULT_PLAYBACK_START_TIMEOUT,
+  15000
+);
+
 const DEFAULT_FLAGS = Object.freeze({
   URL_FIRST_ENABLED: DEFAULT_PLAYBACK_SOURCE !== "torrent", // try URL before magnet in the player
   FEATURE_WATCH_HISTORY_V2: true,

@@ -1,5 +1,8 @@
 import { userLogger } from "../utils/logger.js";
-import { PLAYBACK_START_TIMEOUT } from "../constants.js";
+import {
+  HLS_PLAYBACK_START_TIMEOUT,
+  PLAYBACK_START_TIMEOUT,
+} from "../constants.js";
 import { getCurrentVideo, setCurrentVideo } from "../state/appState.js";
 import {
   consumeAutoplayFallbackMute,
@@ -9,6 +12,7 @@ import {
   SimpleEventEmitter,
   extractWebSeedsFromMagnet,
 } from "./playbackHelpers.js";
+import { attachHlsSource, detachHls, isHlsUrl } from "./hlsPlayback.js";
 // js/services/playbackService.js
 
 /**
@@ -855,6 +859,10 @@ class PlaybackSession extends SimpleEventEmitter {
 
       const resetVideoElement = () => {
         if (!activeVideoEl) return;
+        // Kill any hls.js instance BEFORE touching src/load(): a live instance
+        // keeps appending to the MediaSource and would fight the reset (and
+        // leak its worker) when we move to the next mirror or to WebTorrent.
+        detachHls(activeVideoEl);
         try {
           activeVideoEl.pause();
         } catch (err) {
@@ -1055,6 +1063,11 @@ class PlaybackSession extends SimpleEventEmitter {
             };
           });
 
+          // Whatever MediaError the element already carries from a previous
+          // load. Identity comparison works because starting a new load clears
+          // `error` to null and a fresh failure allocates a new MediaError.
+          const staleMediaError = activeVideoEl.error || null;
+
           const attachWatchdogs = ({ stallMs = 8000 } = {}) => {
             this.registerWatchdogs(activeVideoEl, {
               stallMs,
@@ -1071,7 +1084,17 @@ class PlaybackSession extends SimpleEventEmitter {
                   attachWatchdogs({ stallMs: 0 });
                   return;
                 }
-                const errorMessage = getHostedVideoErrorMessage(activeVideoEl);
+                // Only report a MediaError this attempt actually produced.
+                // teardownVideoElement()/resetVideoElement() clear `src` and
+                // call load(), which leaves a stale MEDIA_ERR_SRC_NOT_SUPPORTED
+                // ("Empty src attribute") on the element. Reading it blindly
+                // reported "Hosted playback failed: source not supported or
+                // blocked." for a stream that was playing perfectly — a
+                // failure message attributed to the wrong load entirely.
+                const errorMessage =
+                  activeVideoEl.error && activeVideoEl.error !== staleMediaError
+                    ? getHostedVideoErrorMessage(activeVideoEl)
+                    : "";
                 if (errorMessage) {
                   this.emit("status", { message: errorMessage });
                 }
@@ -1079,9 +1102,6 @@ class PlaybackSession extends SimpleEventEmitter {
               },
             });
           };
-
-          // Use default stall timeout here; the initial start timeout is handled by the race wrapper
-          attachWatchdogs({ stallMs: 8000 });
 
           const handleFatalPlaybackError = (err) => {
             this.service.log(
@@ -1091,6 +1111,14 @@ class PlaybackSession extends SimpleEventEmitter {
             outcomeResolver({ status: "fallback", reason: "play-error" });
           };
 
+          // Bind the source BEFORE arming the watchdogs. hls.js's attachMedia()
+          // points `src` at a MediaSource blob URL, which aborts any load still
+          // pending on the reused modal element and fires `abort`/`emptied`.
+          // With watchdogs already live those read as a playback failure and
+          // abandon a stream that is about to play fine. A plain `src =` is
+          // safe either way: media events are dispatched asynchronously, so
+          // listeners registered later in the same task still observe them.
+          let hlsAttached = true;
           try {
             // Guarantee the direct load is CORS-free regardless of how we got
             // here (see resetVideoElement) so any hosted URL plays reliably.
@@ -1100,8 +1128,57 @@ class PlaybackSession extends SimpleEventEmitter {
               // ignore
             }
             activeVideoEl.crossOrigin = null;
-            activeVideoEl.src = candidateUrl;
-            const playPromise = activeVideoEl.play();
+
+            // HLS cannot be assigned to `src` outside Safari — it needs hls.js
+            // + MSE. attachHlsSource() handles both paths and resolves once the
+            // manifest is parsed. A null result means HLS is unplayable here
+            // (or already failed fatally), and the outcome promise is settled,
+            // so skip play() and let the normal fallback plumbing take over.
+            if (isHlsUrl(candidateUrl)) {
+              const hlsHandle = await attachHlsSource(
+                activeVideoEl,
+                candidateUrl,
+                {
+                  log: (...args) => this.service.log(...args),
+                  onFatalError: (message) => {
+                    this.emit("status", { message });
+                    outcomeResolver({
+                      status: "fallback",
+                      reason: "hls-error",
+                      errorMessage: message,
+                    });
+                  },
+                }
+              );
+              if (!hlsHandle) {
+                hlsAttached = false;
+                // A fatal HLS error already resolved the outcome with a
+                // specific message; this only covers "no HLS support at all".
+                const message =
+                  "Hosted playback failed: this browser cannot play HLS streams.";
+                this.emit("status", { message });
+                outcomeResolver({
+                  status: "fallback",
+                  reason: "hls-unsupported",
+                  errorMessage: message,
+                });
+              }
+            } else {
+              activeVideoEl.src = candidateUrl;
+            }
+          } catch (err) {
+            hlsAttached = false;
+            handleFatalPlaybackError(err);
+          }
+
+          try {
+            // Use default stall timeout here; the initial start timeout is
+            // handled by the race wrapper.
+            if (hlsAttached) {
+              attachWatchdogs({ stallMs: 8000 });
+            }
+
+            const playPromise = hlsAttached ? activeVideoEl.play() : null;
             if (playPromise && typeof playPromise.catch === "function") {
               playPromise.catch((err) => {
                 if (err?.name === "NotAllowedError") {
@@ -1215,9 +1292,15 @@ class PlaybackSession extends SimpleEventEmitter {
           let lastUrlResult = null;
           for (let i = 0; i < this.hostedSourceCandidates.length; i += 1) {
             const candidateUrl = this.hostedSourceCandidates[i];
+            // HLS starts slower by construction (see HLS_PLAYBACK_START_TIMEOUT).
+            // `forcedSource` still means "wait indefinitely", so keep 0 as 0.
+            const candidateTimeout =
+              effectiveTimeout && isHlsUrl(candidateUrl)
+                ? Math.max(effectiveTimeout, HLS_PLAYBACK_START_TIMEOUT)
+                : effectiveTimeout;
             const urlResult = await withTimeout(
               attemptHostedPlayback(candidateUrl),
-              effectiveTimeout,
+              candidateTimeout,
               "URL Playback"
             );
 

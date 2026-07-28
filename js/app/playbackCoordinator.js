@@ -3,11 +3,17 @@
 /**
  * URL-first + magnet fallback playback pipeline.
  *
- * All module-level dependencies are injected from the Application
- * composition root rather than imported at module scope.
+ * Stateful collaborators (clients, services, app state) are injected from the
+ * Application composition root rather than imported at module scope. Pure,
+ * stateless helper modules are imported directly, as in the other coordinators.
  *
  * Methods use `this` which is bound to the Application instance.
  */
+import {
+  attachHlsSource,
+  detachHls,
+  isHlsUrl,
+} from "../services/hlsPlayback.js";
 
 /**
  * Normalize a deep-link / caller "force this playback source" value to the
@@ -355,7 +361,23 @@ export function createPlaybackCoordinator(deps) {
         return false;
       }
 
-      target.src = sanitizedUrl;
+      // HLS playlists cannot be assigned to `src` outside Safari; route them
+      // through hls.js/MSE (see js/services/hlsPlayback.js).
+      if (isHlsUrl(sanitizedUrl)) {
+        const handle = await attachHlsSource(target, sanitizedUrl, {
+          log: (...args) => devLogger.log(...args),
+        });
+        if (!handle) {
+          devLogger.warn(
+            "[playHttp] HLS source could not be attached:",
+            sanitizedUrl
+          );
+          return false;
+        }
+      } else {
+        detachHls(target);
+        target.src = sanitizedUrl;
+      }
 
       try {
         await target.play();

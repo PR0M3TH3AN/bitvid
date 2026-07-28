@@ -1,4 +1,9 @@
 import { SHORT_TIMEOUT_MS } from "../constants.js";
+import {
+  isHlsUrl,
+  prefersNativeHls,
+  probeHlsManifest,
+} from "../services/hlsPlayback.js";
 
 export default class UrlHealthController {
   constructor({
@@ -273,6 +278,21 @@ export default class UrlHealthController {
     const trimmed = typeof url === "string" ? url.trim() : "";
     if (!trimmed || typeof document === "undefined") {
       return { outcome: "error" };
+    }
+
+    // A bare <video> cannot load an .m3u8 on the browsers bitvid actually runs
+    // hls.js on. Worse, Chrome neither plays it NOR errors — it emits no events
+    // at all, so this probe burned the full timeout on every healthy HLS card.
+    // Since playback will use hls.js (which fetches the playlist over CORS), a
+    // readable #EXTM3U response is the accurate signal — and far cheaper than
+    // pulling in the hls.js bundle just to paint a badge.
+    if (isHlsUrl(trimmed) && !prefersNativeHls()) {
+      const defaultTimeout =
+        this.constants.URL_PROBE_TIMEOUT_MS || SHORT_TIMEOUT_MS;
+      const effective =
+        Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : defaultTimeout;
+      const outcome = await probeHlsManifest(trimmed, effective);
+      return { outcome };
     }
 
     if (this.activeVideoProbes >= this.MAX_CONCURRENT_VIDEO_PROBES) {

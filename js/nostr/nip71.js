@@ -1465,6 +1465,17 @@ function inferMimeTypeFromUrl(url) {
 // (kind 30078) can carry `imeta` variants with an `m <mime>` field just like
 // NIP-71 events; a podcast/music note advertises `m audio/*`. Mirrors the
 // video/audio split in nip71IngestAdapter.js so the native path stays consistent.
+// HLS playlist MIME types. `audio/mpegurl` / `audio/x-mpegurl` are LEGACY
+// aliases for an HLS playlist of any kind — they do NOT assert audio-only
+// content, and a publisher using one for a video ladder would otherwise be
+// misfiled as a podcast and dropped from the video feeds by
+// isAudioOnlyVideoObject(). A playlist is a container, so it votes for neither
+// side and we let the URL/`imeta m video/*` signals decide.
+// Kept inline (not imported from js/services/hlsPlayback.js) so this parser
+// stays free of any DOM/logger dependency — it also runs inside workers.
+const HLS_PLAYLIST_MIME_PATTERN =
+  /^(?:application|audio|video)\/(?:x-|vnd\.apple\.)?mpegurl$/i;
+
 function detectImetaMediaKinds(tags = []) {
   let hasVideo = false;
   let hasAudio = false;
@@ -1482,6 +1493,9 @@ function detectImetaMediaKinds(tags = []) {
         continue;
       }
       const mime = trimmed.replace(/^m\s+/i, "").trim().toLowerCase();
+      if (HLS_PLAYLIST_MIME_PATTERN.test(mime.split(";")[0].trim())) {
+        continue;
+      }
       if (mime.startsWith("video/")) {
         hasVideo = true;
       } else if (mime.startsWith("audio/")) {

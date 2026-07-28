@@ -3,11 +3,13 @@
 /**
  * Modal open/close lifecycle and controller routing.
  *
- * All module-level dependencies are injected from the Application
- * composition root rather than imported at module scope.
+ * Stateful collaborators (clients, services, app state) are injected from the
+ * Application composition root rather than imported at module scope. Pure,
+ * stateless helper modules are imported directly, as in the other coordinators.
  *
  * Methods use `this` which is bound to the Application instance.
  */
+import { detachHls } from "../services/hlsPlayback.js";
 
 /**
  * @param {object} deps - Injected dependencies.
@@ -561,6 +563,11 @@ export function createModalCoordinator(deps) {
       this.log(
         `[teardownVideoElement] Resetting video (replaceNode=${replaceNode}) readyState=${videoElement.readyState} networkState=${videoElement.networkState} src=${describeSource()}`
       );
+
+      // Destroy any hls.js instance FIRST. It owns a MediaSource, a transmuxing
+      // worker and in-flight segment fetches; clearing `src` without destroying
+      // it leaves those running (and downloading) after the modal is closed.
+      safe(() => detachHls(videoElement));
 
       safe(() => videoElement.pause());
 
