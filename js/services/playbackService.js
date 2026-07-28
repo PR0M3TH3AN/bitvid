@@ -1183,6 +1183,10 @@ class PlaybackSession extends SimpleEventEmitter {
               playPromise.catch((err) => {
                 if (err?.name === "NotAllowedError") {
                   autoplayBlocked = true;
+                  // Suspend the start timeout: we are waiting on the viewer,
+                  // not on a slow source, and falling back to P2P here strands
+                  // them on a swarm that may have no peers.
+                  startTimeoutGuard.deferred = true;
                   this.service.log(
                     "[playVideoWithFallback] Autoplay blocked by browser; awaiting user interaction.",
                     err
@@ -1196,6 +1200,7 @@ class PlaybackSession extends SimpleEventEmitter {
                     activeVideoEl.removeEventListener("play", restoreOnPlay);
                     this.cleanupWatchdog();
                     autoplayBlocked = false;
+                    startTimeoutGuard.deferred = false;
                     attachWatchdogs({ stallMs: 8000 });
                   };
                   activeVideoEl.addEventListener("play", restoreOnPlay, {
@@ -1248,10 +1253,29 @@ class PlaybackSession extends SimpleEventEmitter {
       };
 
       // --- Timeout Wrapper ---
+      // `startTimeoutGuard.deferred` is set when the browser blocks autoplay and
+      // we are waiting on a user gesture. That is NOT a stalled source, and
+      // treating it as one was breaking mobile outright: a deep link from a
+      // nostr client arrives with no user gesture, so autoplay is refused, the
+      // 3s start timeout fired anyway, and a video with a magnet got yanked into
+      // WebTorrent -- which then found no peers and played nothing, while the
+      // "Press play" prompt the viewer was meant to act on had already been
+      // torn down. Desktop usually hides this because an established Media
+      // Engagement score lets autoplay through.
+      const startTimeoutGuard = { deferred: false };
       const withTimeout = (promise, ms, label = "Operation") => {
         if (!ms || ms <= 0) return promise;
         return new Promise((resolve, reject) => {
           const timer = setTimeout(() => {
+            if (startTimeoutGuard.deferred) {
+              // Waiting on the viewer, not on the network. Let the underlying
+              // attempt settle on its own: it resolves when they press play, or
+              // when a real media error/stall fires.
+              this.service.log(
+                `[playVideoWithFallback] ${label} start timeout suppressed; autoplay is blocked and we are awaiting a user gesture.`
+              );
+              return;
+            }
             this.service.log(`[playVideoWithFallback] ${label} timed out after ${ms}ms.`);
             resolve({ status: "fallback", reason: "timeout", source: "timeout" });
           }, ms);
