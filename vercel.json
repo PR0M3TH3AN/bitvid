@@ -7,37 +7,32 @@
       "unstable": true
     }
   },
-  "rewrites": [
-    {
-      "source": "/",
-      "has": [
-        { "type": "query", "key": "v" },
-        {
-          "type": "header",
-          "key": "user-agent",
-          "value": ".*(facebookexternalhit|Twitterbot|Slackbot|Discordbot|TelegramBot|WhatsApp|LinkedInBot|Pinterest|redditbot|Embedly|Iframely|Mastodon|Bluesky|SkypeUriPreview|vkShare|Googlebot|bingbot|Applebot|YandexBot|DuckDuckBot|Baiduspider|PetalBot|primal).*"
-        }
-      ],
-      "destination": "/api/og"
-    }
-  ],
   "headers": [
     {
       "source": "/sw.min.js",
       "headers": [
-        { "key": "Cache-Control", "value": "no-cache, must-revalidate" }
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, must-revalidate"
+        }
       ]
     },
     {
       "source": "/",
       "headers": [
-        { "key": "Cache-Control", "value": "no-cache, must-revalidate" }
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, must-revalidate"
+        }
       ]
     },
     {
       "source": "/(.*\\.html)",
       "headers": [
-        { "key": "Cache-Control", "value": "no-cache, must-revalidate" }
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, must-revalidate"
+        }
       ]
     }
   ]
