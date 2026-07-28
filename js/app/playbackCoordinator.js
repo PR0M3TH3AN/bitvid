@@ -203,7 +203,41 @@ export function createPlaybackCoordinator(deps) {
       if (!base) {
         return "";
       }
-      return `${base}?v=${encodeURIComponent(nevent)}`;
+      // getShareUrlBase() strips the trailing slash, so add the path separator
+      // back. `https://bitvid.network?v=...` is legal and browsers normalize
+      // it, but it reads as a typo in a shared note and some link parsers
+      // mis-detect where the URL ends.
+      return `${base}/?v=${encodeURIComponent(nevent)}`;
+    },
+
+    /**
+     * Relay hints to embed in a shared pointer.
+     *
+     * Without these an `nevent` is just a bare id: a viewer whose relay set
+     * doesn't happen to carry the event cannot resolve it, and bitvid falls
+     * back to the home feed — the "shared link just opens bitvid.network"
+     * report. Capped to a few because the hints inflate every shared URL.
+     */
+    getSharePointerRelays() {
+      const candidates = Array.isArray(nostrClient?.writeRelays)
+        ? nostrClient.writeRelays
+        : Array.isArray(nostrClient?.relays)
+          ? nostrClient.relays
+          : [];
+      const seen = new Set();
+      const out = [];
+      for (const entry of candidates) {
+        const url = typeof entry === "string" ? entry.trim() : "";
+        if (!url || !/^wss?:\/\//i.test(url) || seen.has(url)) {
+          continue;
+        }
+        seen.add(url);
+        out.push(url);
+        if (out.length >= 3) {
+          break;
+        }
+      }
+      return out;
     },
 
     buildShareUrlFromEventId(eventId) {
@@ -212,7 +246,24 @@ export function createPlaybackCoordinator(deps) {
       }
 
       try {
-        const nevent = window.NostrTools.nip19.neventEncode({ id: eventId });
+        const pointer = { id: eventId };
+
+        // Author + relay hints make the pointer resolvable by someone who does
+        // not already follow this creator. The author also lets clients look
+        // the event up by author+kind if the id itself has aged out.
+        const known = this.videosMap?.get?.(eventId);
+        const author =
+          typeof known?.pubkey === "string" ? known.pubkey.trim() : "";
+        if (/^[0-9a-f]{64}$/i.test(author)) {
+          pointer.author = author.toLowerCase();
+        }
+
+        const relays = this.getSharePointerRelays();
+        if (relays.length) {
+          pointer.relays = relays;
+        }
+
+        const nevent = window.NostrTools.nip19.neventEncode(pointer);
         return this.buildShareUrlFromNevent(nevent);
       } catch (err) {
         devLogger.error("Error generating nevent for share URL:", err);
