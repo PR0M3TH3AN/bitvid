@@ -3453,6 +3453,32 @@ export class VideoModal {
   // Delegated click handler for the share popover's menu-action buttons
   // (Copy URL / Copy Magnet / Copy CDN / Share on Nostr). The forced-source
   // test links self-wire their own copy, so they are skipped here.
+  /**
+   * Update the login/signer gate for the share menu's "Share on Nostr" item.
+   *
+   * This state was initialized to `false` and never written, so
+   * `createVideoShareMenuPanel` always rendered the item disabled — the entry
+   * looked like inert text no matter who was logged in, and the click
+   * delegation in bindShareMenuActions() bails on `button.disabled`. The app
+   * pushes real state here from syncAuthUiState().
+   */
+  setShareNostrAuthState({ isLoggedIn = false, hasSigner = false } = {}) {
+    const next = { isLoggedIn: !!isLoggedIn, hasSigner: !!hasSigner };
+    const changed =
+      next.isLoggedIn !== this.shareNostrAuthState.isLoggedIn ||
+      next.hasSigner !== this.shareNostrAuthState.hasSigner;
+    this.shareNostrAuthState = next;
+
+    // The popover renders its panel on open, so a menu that is already open
+    // would keep showing the stale (disabled) item. Close it so the next open
+    // renders against current state.
+    if (changed) {
+      this.modalSharePopover?.close?.();
+    }
+
+    return changed;
+  }
+
   bindShareMenuActions(panel) {
     if (!panel || typeof panel.addEventListener !== "function") {
       return;

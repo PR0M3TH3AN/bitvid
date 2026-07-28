@@ -9,6 +9,7 @@
  * Methods use `this` which is bound to the Application instance.
  */
 import { SHORT_TIMEOUT_MS, DEBOUNCE_DELAY_MS } from "../constants.js";
+import { getActiveSigner } from "../nostrClientRegistry.js";
 
 export function createUiCoordinator(deps) {
   const {
@@ -187,10 +188,51 @@ export function createUiCoordinator(deps) {
     },
 
     syncAuthUiState() {
-      if (this.isUserLoggedIn()) {
+      // Auth-dependent chrome has to follow login/logout/account switches, but
+      // syncAuthUiState() was only ever called at bootstrap — so everything it
+      // gates (notably the share menu's "Share on Nostr" item) kept its
+      // logged-out state for the entire session. Self-install a listener on the
+      // first run rather than adding a call site in js/app.js, which is at its
+      // file-size cap.
+      if (
+        !this.__authUiSyncBound &&
+        typeof window !== "undefined" &&
+        typeof window?.addEventListener === "function"
+      ) {
+        this.__authUiSyncBound = true;
+        window.addEventListener("bitvid:auth-changed", () => {
+          try {
+            this.syncAuthUiState();
+          } catch (error) {
+            devLogger.warn("[Application] Auth UI resync failed:", error);
+          }
+        });
+      }
+
+      const loggedIn = this.isUserLoggedIn();
+      if (loggedIn) {
         this.applyAuthenticatedUiState();
       } else {
         this.applyLoggedOutUiState();
+      }
+
+      // Gate the share menu's "Share on Nostr" item. Without this the modal's
+      // shareNostrAuthState stays at its initial `false` forever and the item
+      // renders permanently disabled — indistinguishable from plain text.
+      if (typeof this.videoModal?.setShareNostrAuthState === "function") {
+        let signer = null;
+        try {
+          signer = getActiveSigner();
+        } catch (error) {
+          devLogger.warn("[Application] Failed to read active signer:", error);
+        }
+        this.videoModal.setShareNostrAuthState({
+          isLoggedIn: loggedIn,
+          // Mirrors ShareNostrController.handleShare(): a signer that cannot
+          // sign is no signer at all, and enabling the item would only produce
+          // an error toast on click.
+          hasSigner: !!signer && typeof signer.signEvent === "function",
+        });
       }
     },
 
