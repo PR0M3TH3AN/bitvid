@@ -351,8 +351,28 @@ export class ShareNostrModal {
       typeof payload?.shareUrl === "string" ? payload.shareUrl.trim() : "";
     const thumbnail =
       typeof payload?.thumbnail === "string" ? payload.thumbnail.trim() : "";
+    const mirrorNaddr =
+      typeof payload?.mirrorNaddr === "string" ? payload.mirrorNaddr.trim() : "";
 
-    return `${title} — Check out this video on bitvid 👇\n\n${shareUrl}\n\n${thumbnail}`;
+    const lines = [`${title} — Check out this video on bitvid 👇`];
+    if (shareUrl) {
+      lines.push(shareUrl);
+    }
+
+    if (mirrorNaddr) {
+      // A `nostr:naddr…` reference renders as a NATIVE video quote card in
+      // nostr clients — the closest thing to a rich preview that doesn't
+      // depend on any client fetching OpenGraph tags. The raw thumbnail URL is
+      // deliberately omitted here: the quote card already shows the thumbnail,
+      // and including both rendered the same image twice.
+      lines.push(`nostr:${mirrorNaddr}`);
+    } else if (thumbnail) {
+      // No mirror to quote — fall back to the bare thumbnail URL, which the
+      // note's NIP-92 `imeta` tag describes so clients inline it as an image.
+      lines.push(thumbnail);
+    }
+
+    return lines.join("\n\n");
   }
 
   setVideo(payload) {
@@ -380,6 +400,8 @@ export class ShareNostrModal {
         title,
         shareUrl,
         thumbnail,
+        mirrorNaddr:
+          typeof payload?.mirrorNaddr === "string" ? payload.mirrorNaddr : "",
       });
     }
 

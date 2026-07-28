@@ -11,6 +11,16 @@ import { queueSignEvent as defaultQueueSignEvent } from "../nostr/signRequestQue
 import { DEFAULT_NIP07_PERMISSION_METHODS as defaultPermissionMethods } from "../nostr/nip07Permissions.js";
 import { nostrClient as defaultNostrClient } from "../nostrClientFacade.js";
 import { userLogger as defaultUserLogger, devLogger as defaultDevLogger } from "../utils/logger.js";
+import { nip71MirrorService as defaultMirrorService } from "../services/nip71MirrorService.js";
+import {
+  buildMirrorCoordinate,
+  buildMirrorNaddr,
+  resolveMirrorKind,
+} from "../nostr/mirrorPointer.js";
+
+// Best-effort: a share must never hang on a relay read. If the mirror lookup
+// doesn't answer in time we simply fall back to the thumbnail-URL note.
+const MIRROR_LOOKUP_TIMEOUT_MS = 2500;
 
 export default class ShareNostrController {
   constructor({ ui, state, services = {} }) {
@@ -27,6 +37,87 @@ export default class ShareNostrController {
       nostrClient: services.nostrClient || defaultNostrClient,
       userLogger: services.userLogger || defaultUserLogger,
       devLogger: services.devLogger || defaultDevLogger,
+      mirrorService:
+        services.mirrorService === undefined
+          ? defaultMirrorService
+          : services.mirrorService,
+      nip19: services.nip19 || null,
+    };
+  }
+
+  resolveNip19() {
+    return (
+      this.services.nip19 ||
+      (typeof window !== "undefined" ? window?.NostrTools?.nip19 : null) ||
+      null
+    );
+  }
+
+  /**
+   * Resolve an `naddr` for the video's NIP-71 mirror, or "" when there isn't
+   * one. Embedding this makes nostr clients render a native video quote card
+   * instead of a bare link — but ONLY when the mirror actually exists on
+   * relays. A pointer to a missing event renders as a broken/empty quote box,
+   * which is worse than the plain-link fallback, so this verifies before
+   * pointing and stays silent on any failure.
+   */
+  async resolveMirrorPointer(video) {
+    const mirrorService = this.services.mirrorService;
+    const pubkey = typeof video?.pubkey === "string" ? video.pubkey.trim() : "";
+    const videoRootId =
+      typeof video?.videoRootId === "string" ? video.videoRootId.trim() : "";
+
+    if (!pubkey || !videoRootId || !mirrorService) {
+      return { naddr: "", coordinate: "" };
+    }
+    if (
+      typeof mirrorService.isAvailable === "function" &&
+      !mirrorService.isAvailable()
+    ) {
+      return { naddr: "", coordinate: "" };
+    }
+    if (typeof mirrorService.findMirror !== "function") {
+      return { naddr: "", coordinate: "" };
+    }
+
+    let result = null;
+    try {
+      result = await Promise.race([
+        mirrorService.findMirror({ pubkey, videoRootId }),
+        new Promise((resolve) =>
+          setTimeout(() => resolve(null), MIRROR_LOOKUP_TIMEOUT_MS)
+        ),
+      ]);
+    } catch (error) {
+      this.services.devLogger.warn(
+        "[ShareNostrController] Mirror lookup failed; sharing without a quote.",
+        error
+      );
+      return { naddr: "", coordinate: "" };
+    }
+
+    if (!result?.mirrored) {
+      return { naddr: "", coordinate: "" };
+    }
+
+    const kind = resolveMirrorKind({
+      kinds: result.kinds,
+      width: video?.width,
+      height: video?.height,
+    });
+    const relays = Array.isArray(this.services.nostrClient?.writeRelays)
+      ? this.services.nostrClient.writeRelays
+      : this.services.nostrClient?.relays || [];
+
+    return {
+      naddr: buildMirrorNaddr({
+        pubkey,
+        videoRootId,
+        kind,
+        relays,
+        nip19: this.resolveNip19(),
+      }),
+      coordinate: buildMirrorCoordinate({ pubkey, videoRootId, kind }),
     };
   }
 
@@ -52,6 +143,8 @@ export default class ShareNostrController {
         ? targetVideo.shareUrl.trim()
         : this.state.buildShareUrlFromEventId(targetVideo.id);
 
+    const mirror = await this.resolveMirrorPointer(targetVideo);
+
     const payload = {
       id: targetVideo.id,
       title: targetVideo.title,
@@ -59,6 +152,10 @@ export default class ShareNostrController {
       authorName: targetVideo.creatorName || targetVideo.authorName || "",
       thumbnail: targetVideo.thumbnail,
       shareUrl,
+      // Present only when a NIP-71 mirror was confirmed on relays. Drives the
+      // quote-card note body and the `a` tag on the published event.
+      mirrorNaddr: mirror.naddr,
+      mirrorCoordinate: mirror.coordinate,
     };
 
     try {
@@ -167,7 +264,23 @@ export default class ShareNostrController {
       pubkey: eventPubkey,
       created_at: Math.floor(Date.now() / 1000),
       content: typeof payload?.content === "string" ? payload.content : "",
-      video: { id: videoId, pubkey: videoPubkey },
+      // title/thumbnail drive the NIP-92 `imeta` hint so the thumbnail URL in
+      // the note body renders as an image rather than a bare link. When a
+      // mirror pointer is present the note quotes the mirror instead, and
+      // buildShareEvent drops the imeta so the image isn't rendered twice.
+      video: {
+        id: videoId,
+        pubkey: videoPubkey,
+        title: videoTitle,
+        thumbnail:
+          typeof video?.thumbnail === "string" ? video.thumbnail.trim() : "",
+        mirrorNaddr:
+          typeof video?.mirrorNaddr === "string" ? video.mirrorNaddr.trim() : "",
+        mirrorCoordinate:
+          typeof video?.mirrorCoordinate === "string"
+            ? video.mirrorCoordinate.trim()
+            : "",
+      },
       relays: relayEntries,
     });
 

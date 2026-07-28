@@ -23,6 +23,7 @@ import {
   buildStoragePointerValue,
   deriveStoragePointerFromUrl,
 } from "./utils/storagePointer.js";
+import { inferImageMimeTypeFromUrl } from "./utils/mime.js";
 
 /**
  * Enumeration of all supported Nostr event types in the application.
@@ -1798,6 +1799,52 @@ export function buildShareEvent(params) {
   const normalizedVideoPubkey = normalizePointerIdentifier(video?.pubkey);
   if (normalizedVideoPubkey) {
     tags.push(["p", normalizedVideoPubkey, "", "mention"]);
+  }
+
+  // Addressable coordinate of the video's NIP-71 mirror, when one exists. Lets
+  // quote-aware clients and indexers link the share note to the video event
+  // that its body quotes via `nostr:naddr1…`.
+  const mirrorCoordinate =
+    typeof video?.mirrorCoordinate === "string"
+      ? video.mirrorCoordinate.trim()
+      : "";
+  if (/^\d+:[0-9a-f]{64}:/i.test(mirrorCoordinate)) {
+    tags.push(["a", mirrorCoordinate, "", "mention"]);
+  }
+
+  // NIP-92 `imeta` for the thumbnail. The share content ends with the raw
+  // thumbnail URL, and many clients only render such a URL inline when an
+  // imeta entry describes it — without this the viewer just sees a bare link.
+  // Only emitted for http(s) thumbnails: relative paths and data: URIs are
+  // meaningless to a reader on another client.
+  //
+  // SKIPPED when the note quotes a mirror: the quote card already renders the
+  // video with its own thumbnail, and the body carries no bare image URL to
+  // describe. Emitting both showed the same image twice.
+  const quotesMirror =
+    typeof video?.mirrorNaddr === "string" && video.mirrorNaddr.trim() !== "";
+  const thumbnailUrl =
+    typeof video?.thumbnail === "string" ? video.thumbnail.trim() : "";
+  if (!quotesMirror && /^https?:\/\//i.test(thumbnailUrl)) {
+    const imeta = ["imeta", `url ${thumbnailUrl}`];
+
+    // Omit `m` entirely when the extension is unrecognized. A wrong media type
+    // is worse than a missing one — clients use it to decide whether to render
+    // the URL as an image at all.
+    const mimeType = inferImageMimeTypeFromUrl(thumbnailUrl);
+    if (mimeType) {
+      imeta.push(`m ${mimeType}`);
+    }
+
+    // Alt text for screen readers, and a caption fallback in clients that show
+    // it. Newlines would corrupt the space-delimited imeta entry, so collapse.
+    const altText =
+      typeof video?.title === "string" ? video.title.replace(/\s+/g, " ").trim() : "";
+    if (altText) {
+      imeta.push(`alt ${altText}`);
+    }
+
+    tags.push(imeta);
   }
 
   const seenRelayTags = new Set();
