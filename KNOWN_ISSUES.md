@@ -43,3 +43,10 @@
 - **Status:** Not reproducible (2026-07-30)
 - **Description:** Intermittent `cancelledByParent` / "Promise resolution is still pending" hang, order/timing dependent.
 - **Current state:** Passes cleanly (`pass=3 fail=0 cancelled=0`) in isolation and across repeated full-suite sweeps on 2026-07-28–30. Left on file because the original failure was ordering-dependent; if it recurs, capture the full-suite ordering that produced it.
+
+## Run Notes (2026-07-30)
+
+### Visual baselines are CI-canonical — local `test:visual` may fail the kitchen-sink diff
+- **Status:** By design (since `ab120a03`)
+- **Description:** `tests/visual/baselines.json` is regenerated on ubuntu-latest by the `update-visual-baselines` workflow (trigger: `workflow_dispatch` once promoted, or a commit containing `[update-visual-baselines]`). Baselines can only match one environment, and the CI gate is the one that matters — so a dev machine with different Chromium/font rendering may now fail `npm run test:visual` locally (typically the kitchen-sink default theme) even though CI is green.
+- **Workaround:** Run visual tests in the pinned container via `scripts/run-playwright-docker.sh`, or rely on CI. Never regenerate baselines from a dev machine.
