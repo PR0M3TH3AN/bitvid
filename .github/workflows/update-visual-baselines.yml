@@ -11,19 +11,29 @@
 # runner image, browser install and font stack as the comparison removes the
 # environment variable from the equation entirely.
 #
-# Deliberately workflow_dispatch ONLY: baselines are a review artifact, and
-# regenerating them must be an explicit human decision made when a visual
-# change is intentional — never a side effect of a push.
+# Two explicit triggers, both requiring deliberate human intent — regenerating
+# baselines must never be a side effect of ordinary work:
+#
+#   1. workflow_dispatch — only usable once this file reaches the default
+#      branch (GitHub does not index dispatchable workflows on other branches).
+#   2. A push whose head commit message contains [update-visual-baselines] —
+#      works from unstable today, before any promotion. The workflow's own
+#      commit omits the token, so it cannot retrigger itself.
 name: Update visual baselines
 
 on:
   workflow_dispatch:
+  push:
+    branches: [unstable]
 
 permissions:
   contents: write
 
 jobs:
   update-baselines:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.head_commit.message, '[update-visual-baselines]')
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
