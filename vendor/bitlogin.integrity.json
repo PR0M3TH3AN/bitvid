@@ -2,17 +2,25 @@
   "package": "@bitlogin/widget",
   "version": "0.1.0",
   "files": {
-    "bitlogin-shared-QIBe5Omw.js": {
-      "sha256": "7ce4ed0a5c3c7f744e864f55745f7fa78482cbfa19cd30eb551f67a415f55191",
-      "bytes": 288275
+    "bitlogin-shared-B2Rc9khL.js": {
+      "sha256": "6a9df1b27d73499d3bd488182b3134e0173c6b0bf1b5537cddc0e9ec4073d8e7",
+      "bytes": 288486
+    },
+    "bitlogin-shared-DxcpMAo3.js": {
+      "sha256": "b6cb73f3544a8c378416c50740a91eaea700c4af3e4f6b131bb3694e7c816758",
+      "bytes": 483718
+    },
+    "bitlogin-shared-IsyHQNSG.js": {
+      "sha256": "bd6d38087df246792cd61b82323f2997ecf478d3abcc3885235f45a925614131",
+      "bytes": 545712
     },
     "bitlogin.js": {
-      "sha256": "55312cef3462a2e41043b57bd3c87a80bad4e077dd6e529faf25fa55db4ba7a8",
-      "bytes": 67232
+      "sha256": "0d118d599efd30d4c0d0c197d463fd64900e803aa1a84c7880e1780bed9f3aba",
+      "bytes": 85342
     },
     "cryptoWorker.js": {
-      "sha256": "49a421e1026ad94243ceb0653f3761820d4e98e19b8fbe469307cd692f9a8489",
-      "bytes": 79173
+      "sha256": "4210e0d6e7c5fc33e4df2dd3eedbe9434439600d0e60fcb3cad90699c198d452",
+      "bytes": 104078
     }
   }
 }
