@@ -1,13 +1,13 @@
-import { r as y, e as w, E as v, p as Q, R as k, i as h, a as d } from "./bitlogin-shared-QIBe5Omw.js";
-const x = 6, p = 64;
-function u(a = x) {
-  const e = w(), t = [];
-  for (let r = 0; r < a; r++)
-    t.push(e[y(e.length)]);
-  const s = a * v;
-  if (s < p)
-    throw new Error(`Passphrase of ${a} words provides only ~${s.toFixed(1)} bits; must exceed ${p}.`);
-  return { kind: "passphrase", secret: t.join(" "), entropyBits: s };
+import { r as w, e as k, E as Q, p as x, R as C, i as p, a as d } from "./bitlogin-shared-B2Rc9khL.js";
+const S = 6, f = 64;
+function u(r = S) {
+  const e = k(), t = [];
+  for (let s = 0; s < r; s++)
+    t.push(e[w(e.length)]);
+  const a = r * Q;
+  if (a < f)
+    throw new Error(`Passphrase of ${r} words provides only ~${a.toFixed(1)} bits; must exceed ${f}.`);
+  return { kind: "passphrase", secret: t.join(" "), entropyBits: a };
 }
 const b = 64, m = 12, P = /* @__PURE__ */ new Set([
   "password",
@@ -41,56 +41,77 @@ const b = 64, m = 12, P = /* @__PURE__ */ new Set([
   "passw0rd",
   "correcthorsebatterystaple"
 ]);
-function L(a) {
+function L(r) {
   let e = 0;
-  return /[a-z]/u.test(a) && (e += 26), /[A-Z]/u.test(a) && (e += 26), /[0-9]/u.test(a) && (e += 10), /[^a-zA-Z0-9]/u.test(a) && (e += 33), e || 1;
+  return /[a-z]/u.test(r) && (e += 26), /[A-Z]/u.test(r) && (e += 26), /[0-9]/u.test(r) && (e += 10), /[^a-zA-Z0-9]/u.test(r) && (e += 33), e || 1;
 }
-function S(a) {
-  return a.length * Math.log2(L(a));
+function E(r) {
+  return r.length * Math.log2(L(r));
 }
-function C(a) {
-  if (/^(.)\1*$/u.test(a) || /(.)\1{2,}/u.test(a))
+function $(r) {
+  if (/^(.)\1*$/u.test(r) || /(.)\1{2,}/u.test(r))
     return !0;
-  const e = a.toLowerCase(), t = ["0123456789", "abcdefghijklmnopqrstuvwxyz"];
-  for (const s of t)
-    for (let r = 0; r + 4 <= s.length; r++) {
-      const n = s.slice(r, r + 4), o = [...n].reverse().join("");
+  const e = r.toLowerCase(), t = ["0123456789", "abcdefghijklmnopqrstuvwxyz"];
+  for (const a of t)
+    for (let s = 0; s + 4 <= a.length; s++) {
+      const n = a.slice(s, s + 4), o = [...n].reverse().join("");
       if (e.includes(n) || e.includes(o))
         return !0;
     }
   return !1;
 }
-function g(a, e) {
-  const t = S(a);
-  return a.length < m ? { ok: !1, entropyBits: t, reason: `Must be at least ${m} characters.` } : P.has(a.toLowerCase()) ? { ok: !1, entropyBits: t, reason: "This is on a list of extremely common passwords." } : e.length >= 3 && a.toLowerCase().includes(e) ? { ok: !1, entropyBits: t, reason: "Must not contain your login name." } : C(a) ? { ok: !1, entropyBits: t, reason: "Too predictable (repeated characters or a simple sequence)." } : t < b ? {
+function g(r, e) {
+  const t = E(r);
+  return r.length < m ? { ok: !1, entropyBits: t, reason: `Must be at least ${m} characters.` } : P.has(r.toLowerCase()) ? { ok: !1, entropyBits: t, reason: "This is on a list of extremely common passwords." } : e.length >= 3 && r.toLowerCase().includes(e) ? { ok: !1, entropyBits: t, reason: "Must not contain your login name." } : $(r) ? { ok: !1, entropyBits: t, reason: "Too predictable (repeated characters or a simple sequence)." } : t < b ? {
     ok: !1,
     entropyBits: t,
     reason: `Estimated entropy (~${t.toFixed(0)} bits) is below the required ${b}. Use a longer password or mix character types.`
   } : { ok: !0, entropyBits: t };
 }
-class E {
+const R = 6e4;
+class N {
   worker;
   pending = /* @__PURE__ */ new Map();
   counter = 0;
+  dead = !1;
   constructor() {
     const e = ["cryptoWorker", ".js"].join(""), t = new URL(e, import.meta.url);
     this.worker = new Worker(t, { type: "module" }), this.worker.addEventListener("message", (s) => {
-      const r = s.data, n = this.pending.get(r.id);
-      if (n)
-        if (this.pending.delete(r.id), r.ok)
-          n.resolve(r.result);
+      const n = s.data;
+      if (!n || typeof n != "object" || typeof n.id != "string") return;
+      const o = this.pending.get(n.id);
+      if (o)
+        if (this.pending.delete(n.id), clearTimeout(o.timer), n.ok)
+          o.resolve(n.result);
         else {
-          const o = new Error(r.error);
-          o.name = r.errorName ?? "Error", n.reject(o);
+          const l = new Error(n.error);
+          l.name = n.errorName ?? "Error", o.reject(l);
         }
     });
+    const a = (s) => () => this.failAll(s);
+    this.worker.addEventListener("error", a("The BitLogin crypto worker stopped unexpectedly.")), this.worker.addEventListener(
+      "messageerror",
+      a("The BitLogin crypto worker sent an unreadable message.")
+    );
+  }
+  /** Settles every outstanding call with an error. Idempotent. */
+  failAll(e) {
+    const t = [...this.pending.values()];
+    this.pending.clear();
+    for (const a of t)
+      clearTimeout(a.timer), a.reject(new Error(e));
   }
   call(e, t) {
-    const s = `${Date.now().toString(36)}-${(this.counter++).toString(36)}`;
-    return new Promise((r, n) => {
-      this.pending.set(s, { resolve: r, reject: n });
-      const o = { id: s, action: e, payload: t };
-      this.worker.postMessage(o);
+    if (this.dead)
+      return Promise.reject(new Error("This BitLogin session was torn down; reload the page to sign in again."));
+    const a = `${Date.now().toString(36)}-${(this.counter++).toString(36)}`;
+    return new Promise((s, n) => {
+      const o = setTimeout(() => {
+        this.pending.delete(a), n(new Error(`BitLogin's ${e} call timed out.`));
+      }, R);
+      this.pending.set(a, { resolve: s, reject: n, timer: o });
+      const l = { id: a, action: e, payload: t };
+      this.worker.postMessage(l);
     });
   }
   configure(e) {
@@ -150,64 +171,88 @@ class E {
   restoreSession() {
     return this.call("restoreSession", {});
   }
+  vaultStatus() {
+    return this.call("vaultStatus", {});
+  }
+  vaultList() {
+    return this.call("vaultList", {});
+  }
+  vaultSaveNwc(e) {
+    return this.call("vaultSaveNwc", e);
+  }
+  vaultFindForOrigin() {
+    return this.call("vaultFindForOrigin", {});
+  }
+  vaultRevealNwc(e) {
+    return this.call("vaultRevealNwc", e);
+  }
+  vaultSetBinding(e) {
+    return this.call("vaultSetBinding", e);
+  }
+  vaultDelete(e) {
+    return this.call("vaultDelete", e);
+  }
+  vaultOfferCheck(e) {
+    return this.call("vaultOfferCheck", e);
+  }
   logout() {
     return this.call("logout", {});
   }
   terminate() {
-    this.worker.terminate();
+    this.dead = !0, this.worker.terminate(), this.failAll("The BitLogin crypto worker was terminated.");
   }
 }
-const N = "BitLogin: no identity is unlocked yet. Add <bitlogin-auth> to the page and let the user sign in, or call it programmatically before invoking window.nostr.";
-function c(a) {
-  return a.catch((e) => {
-    throw e.message.includes("No identity is unlocked") ? new Error(N) : e;
+const M = "BitLogin: no identity is unlocked yet. Add <bitlogin-auth> to the page and let the user sign in, or call it programmatically before invoking window.nostr.";
+function c(r) {
+  return r.catch((e) => {
+    throw e.message.includes("No identity is unlocked") ? new Error(M) : e;
   });
 }
-function $(a, e) {
+function B(r, e) {
   return {
     async getPublicKey() {
-      const { publicKey: t } = await c(a.getPublicKey());
+      const { publicKey: t } = await c(r.getPublicKey());
       return t;
     },
     async signEvent(t) {
-      return c(a.signEvent(t));
+      return c(r.signEvent(t));
     },
     async getRelays() {
       const t = {};
-      for (const s of e()) t[s] = { read: !0, write: !0 };
+      for (const a of e()) t[a] = { read: !0, write: !0 };
       return t;
     },
     nip44: {
-      async encrypt(t, s) {
-        const { ciphertext: r } = await c(a.nip44Encrypt({ peerPublicKey: t, plaintext: s }));
-        return r;
+      async encrypt(t, a) {
+        const { ciphertext: s } = await c(r.nip44Encrypt({ peerPublicKey: t, plaintext: a }));
+        return s;
       },
-      async decrypt(t, s) {
-        const { plaintext: r } = await c(a.nip44Decrypt({ peerPublicKey: t, payload: s }));
-        return r;
+      async decrypt(t, a) {
+        const { plaintext: s } = await c(r.nip44Decrypt({ peerPublicKey: t, payload: a }));
+        return s;
       }
     },
     nip04: {
-      async encrypt(t, s) {
-        const { ciphertext: r } = await c(a.nip04Encrypt({ peerPublicKey: t, plaintext: s }));
-        return r;
+      async encrypt(t, a) {
+        const { ciphertext: s } = await c(r.nip04Encrypt({ peerPublicKey: t, plaintext: a }));
+        return s;
       },
-      async decrypt(t, s) {
-        const { plaintext: r } = await c(a.nip04Decrypt({ peerPublicKey: t, payload: s }));
-        return r;
+      async decrypt(t, a) {
+        const { plaintext: s } = await c(r.nip04Decrypt({ peerPublicKey: t, payload: a }));
+        return s;
       }
     },
     _bitlogin: !0
   };
 }
-function R(a) {
-  const e = a.getAttribute("vault-relays"), t = a.getAttribute("discovery-relays");
+function T(r) {
+  const e = r.getAttribute("vault-relays"), t = r.getAttribute("discovery-relays");
   return {
-    vaultRelayUrls: e ? e.split(",").map((s) => s.trim()).filter(Boolean) : void 0,
-    discoveryRelayUrls: t ? t.split(",").map((s) => s.trim()).filter(Boolean) : void 0
+    vaultRelayUrls: e ? e.split(",").map((a) => a.trim()).filter(Boolean) : void 0,
+    discoveryRelayUrls: t ? t.split(",").map((a) => a.trim()).filter(Boolean) : void 0
   };
 }
-const M = (
+const q = (
   /* css */
   `
 :host {
@@ -448,8 +493,60 @@ button.link {
 }
 @keyframes bl-spin { to { transform: rotate(360deg); } }
 `
-);
-class F extends HTMLElement {
+), y = "bc:config", U = /^nostr\+walletconnect:\/\//iu;
+let h = null;
+function F(r) {
+  if (!h) {
+    try {
+      localStorage.removeItem(y);
+    } catch {
+    }
+    h = import("./bitlogin-shared-IsyHQNSG.js").then((e) => (e.init({
+      appName: r,
+      filters: ["nwc"],
+      showBalance: !1,
+      autoConnect: !1,
+      persistConnection: !1,
+      providerConfig: {
+        nwc: {
+          authorizationUrlOptions: {
+            name: r,
+            requestMethods: ["pay_invoice"]
+          }
+        }
+      }
+    }), e)).catch((e) => {
+      throw h = null, e;
+    });
+  }
+  return h;
+}
+function I(r) {
+  const e = r instanceof Error ? r.message : String(r);
+  return /closed|cancell?ed|dismissed|aborted/iu.test(e);
+}
+async function O(r) {
+  const e = await F(r);
+  try {
+    const t = await e.requestProvider(), a = e.getConnectorConfig()?.nwcUrl, s = t.client?.nostrWalletConnectUrl, n = typeof a == "string" ? a : typeof s == "string" ? s : "";
+    if (!U.test(n.trim()))
+      throw new Error("The wallet did not return an NWC connection. Try again or paste one manually.");
+    return n.trim();
+  } catch (t) {
+    if (I(t)) return null;
+    throw t;
+  } finally {
+    try {
+      e.disconnect();
+    } catch {
+    }
+    try {
+      localStorage.removeItem(y);
+    } catch {
+    }
+  }
+}
+class D extends HTMLElement {
   root;
   worker;
   vaultRelayUrls = [];
@@ -500,14 +597,30 @@ class F extends HTMLElement {
   // signer or dispatching bitlogin-login, and requires an explicit second step to proceed.
   pendingRollback = null;
   rollbackMessage = "";
+  // ---- Connection Vault request flow (vault-ux.md §2-§4, reveal mode) ----
+  // stage "auth": waiting for the user to sign in first; the goto("dashboard")
+  // hook resumes the request exactly once. stage "active": the vault screens
+  // own navigation until finishVaultRequest() settles the promise.
+  vaultRequest = null;
+  vaultCandidate = null;
+  /** True when the account cannot store the connection (no vault root); the
+   *  flow still hands the URI to the app, labeled as unsaved. */
+  vaultUnsaved = !1;
+  vaultUnsavedReason;
+  vaultConnections = null;
+  /** offerNwcConnection state: the app already holds this URI; the only
+   *  question on screen is whether a copy enters the user's vault. */
+  /** Claimed synchronously by offerNwcConnection before any await (see there). */
+  offerInFlight = !1;
+  vaultOffer = null;
   constructor() {
     super(), this.root = this.attachShadow({ mode: "open" });
     const e = new CSSStyleSheet();
-    e.replaceSync(M), this.root.adoptedStyleSheets = [e], this.worker = new E();
+    e.replaceSync(q), this.root.adoptedStyleSheets = [e], this.worker = new N();
   }
   connectedCallback() {
-    const e = R(this);
-    if (this.vaultRelayUrls = e.vaultRelayUrls ?? [], this.discoveryRelayUrls = e.discoveryRelayUrls ?? [], this.worker.configure({ vaultRelayUrls: this.vaultRelayUrls, discoveryRelayUrls: this.discoveryRelayUrls }).then(() => this.tryRestoreSession()), this.root.addEventListener("click", (t) => this.onClick(t)), this.root.addEventListener("submit", (t) => this.onSubmit(t)), this.root.addEventListener("input", (t) => this.onInput(t)), this.root.addEventListener("change", (t) => void this.onFileChange(t)), this.render(), this.installedProvider = $(this.worker, () => this.vaultRelayUrls), !window.nostr)
+    const e = T(this);
+    if (this.vaultRelayUrls = e.vaultRelayUrls ?? [], this.discoveryRelayUrls = e.discoveryRelayUrls ?? [], this.worker.configure({ vaultRelayUrls: this.vaultRelayUrls, discoveryRelayUrls: this.discoveryRelayUrls }).then(() => this.tryRestoreSession()), this.root.addEventListener("click", (t) => this.onClick(t)), this.root.addEventListener("submit", (t) => this.onSubmit(t)), this.root.addEventListener("input", (t) => this.onInput(t)), this.root.addEventListener("change", (t) => void this.onFileChange(t)), this.render(), this.installedProvider = B(this.worker, () => this.vaultRelayUrls), !window.nostr)
       try {
         window.nostr = this.installedProvider;
       } catch {
@@ -550,6 +663,186 @@ class F extends HTMLElement {
   }
   async logout() {
     await this.worker.logout(), this.session = null, this.releaseSigner(), this.dispatchEvent(new CustomEvent("bitlogin-logout")), this.goto("welcome");
+  }
+  /**
+   * Connection Vault request API (connection-vault.md §12, vault-ux.md §2-§4).
+   *
+   * Asks the user to share an NWC wallet connection with THIS page's origin
+   * and resolves the raw `nostr+walletconnect://` URI, or null if the user
+   * declines or dismisses. REVEAL MODE, stated plainly: the caller receives
+   * the full bearer credential and everything its wallet-side budget allows —
+   * an embedded same-origin widget cannot broker (§CV12.3), so it does not
+   * pretend to. The consent copy tells the user the same thing.
+   *
+   * If nobody is signed in, the widget shows its sign-in flow first and
+   * resumes the request after. If the account already has a connection bound
+   * to this origin, the user sees a one-tap approval; otherwise a guided
+   * import (Bitcoin Connect chooser, or paste).
+   */
+  async requestNwcConnection(e = {}) {
+    if (this.vaultRequest) throw new Error("A wallet connection request is already in progress.");
+    const t = window.location.origin, a = e.appName?.trim() || window.location.hostname || "This app";
+    return new Promise((s) => {
+      this.vaultRequest = { appName: a, reason: e.reason, origin: t, stage: "auth", resolve: s }, this.dispatchEvent(new CustomEvent("bitlogin-request-pending")), (async () => {
+        try {
+          if (!(await this.worker.getSessionStatus()).unlocked) {
+            this.goto("login");
+            return;
+          }
+          await this.continueVaultRequest();
+        } catch (n) {
+          this.fail(n);
+        }
+      })();
+    });
+  }
+  /**
+   * Offer-to-save (the inverse of requestNwcConnection): the app OBTAINED an
+   * NWC URI by its own means — its own wallet chooser, its own paste box —
+   * and offers the user a portable copy. Consent-gated in this widget's own
+   * UI, never silent: the write goes to the user's account (encrypted events
+   * under their vault identity), and nothing enters or leaves the vault
+   * without the user seeing it happen in BitLogin's chrome.
+   *
+   * Resolves "saved", "declined", "already-saved" (same wallet + secret
+   * exists; its origin binding was refreshed, no UI shown), or "unavailable"
+   * (no session or no vault root — the offer is quietly impossible, and an
+   * app should treat that as a no-op rather than an error).
+   */
+  async offerNwcConnection(e, t = {}) {
+    if (this.vaultOffer || this.vaultRequest || this.offerInFlight) return "unavailable";
+    this.offerInFlight = !0;
+    try {
+      return await this.runOfferNwcConnection(e, t);
+    } finally {
+      this.offerInFlight = !1;
+    }
+  }
+  async runOfferNwcConnection(e, t) {
+    if (!(await this.worker.getSessionStatus().catch(() => ({ unlocked: !1 }))).unlocked || !(await this.worker.vaultStatus()).enabled) return "unavailable";
+    if ((await this.worker.vaultOfferCheck({ uri: e })).duplicate) return "already-saved";
+    const o = t.appName?.trim() || window.location.hostname || "This app";
+    return new Promise((l) => {
+      this.vaultOffer = {
+        uri: e,
+        appName: o,
+        label: t.label?.trim() || `${o} wallet`,
+        resolve: l
+      }, this.dispatchEvent(new CustomEvent("bitlogin-offer-pending")), this.goto("vault-offer");
+    });
+  }
+  finishVaultOffer(e) {
+    const t = this.vaultOffer;
+    t && (this.vaultOffer = null, t.resolve(e), this.goto(this.session ? "dashboard" : "welcome"));
+  }
+  async acceptVaultOffer() {
+    const e = this.vaultOffer;
+    if (e) {
+      this.setBusy(!0);
+      try {
+        const t = this.field("vaultOfferLabel").trim() || e.label;
+        await this.worker.vaultSaveNwc({ uri: e.uri, label: t }), this.setBusy(!1), this.finishVaultOffer("saved"), this.flashSuccess(this.screen, "Wallet saved"), this.dispatchEvent(
+          new CustomEvent("bitlogin-connection-granted", { detail: { origin: window.location.origin } })
+        );
+      } catch (t) {
+        this.setBusy(!1), this.fail(t);
+      }
+    }
+  }
+  /** Settles the pending request exactly once and returns to a neutral screen. */
+  finishVaultRequest(e) {
+    const t = this.vaultRequest;
+    t && (this.vaultRequest = null, this.vaultCandidate = null, this.vaultUnsaved = !1, this.vaultUnsavedReason = void 0, t.resolve(e), e !== null && this.dispatchEvent(
+      new CustomEvent("bitlogin-connection-granted", { detail: { origin: t.origin } })
+    ), this.goto(this.session ? "dashboard" : "welcome"));
+  }
+  async continueVaultRequest() {
+    const e = this.vaultRequest;
+    if (!e) return;
+    e.stage = "active";
+    const t = await this.worker.vaultStatus();
+    if (!t.enabled) {
+      this.vaultUnsaved = !0, this.vaultUnsavedReason = t.reason, this.goto("vault-import");
+      return;
+    }
+    this.vaultUnsaved = !1;
+    const a = await this.worker.vaultFindForOrigin();
+    a.connection ? (this.vaultCandidate = a.connection, this.goto("vault-consent")) : this.goto("vault-import");
+  }
+  async approveVaultCandidate() {
+    const e = this.vaultCandidate;
+    if (!(!e || !this.vaultRequest)) {
+      this.setBusy(!0);
+      try {
+        const { uri: t } = await this.worker.vaultRevealNwc({ connectionId: e.connectionId });
+        this.setBusy(!1), this.finishVaultRequest(t), this.flashSuccess(this.screen, "Wallet shared");
+      } catch (t) {
+        this.setBusy(!1), this.fail(t);
+      }
+    }
+  }
+  async runVaultBcChooser() {
+    const e = this.vaultRequest;
+    if (e) {
+      this.setBusy(!0);
+      try {
+        const t = await O(e.appName);
+        if (t === null) {
+          this.setBusy(!1);
+          return;
+        }
+        await this.saveAndShareVaultUri(t, this.field("vaultLabel"));
+      } catch (t) {
+        this.setBusy(!1), this.fail(t);
+      }
+    }
+  }
+  async handleVaultImportSubmit() {
+    const e = this.field("vaultUri").trim();
+    if (e) {
+      this.setBusy(!0);
+      try {
+        await this.saveAndShareVaultUri(e, this.field("vaultLabel"));
+      } catch (t) {
+        this.setBusy(!1), this.fail(t);
+      }
+    }
+  }
+  async saveAndShareVaultUri(e, t) {
+    const a = this.vaultRequest;
+    if (!a) return;
+    if (this.vaultUnsaved) {
+      this.setBusy(!1), this.finishVaultRequest(e);
+      return;
+    }
+    const s = t.trim() || `${a.appName} wallet`;
+    await this.worker.vaultSaveNwc({ uri: e, label: s }), this.setBusy(!1), this.finishVaultRequest(e), this.flashSuccess(this.screen, "Wallet connected");
+  }
+  async loadVaultManage() {
+    this.vaultConnections = null, this.goto("vault-manage");
+    try {
+      const e = await this.worker.vaultList();
+      this.vaultConnections = e.connections;
+    } catch (e) {
+      this.errorMessage = e instanceof Error ? e.message : String(e), this.vaultConnections = [];
+    }
+    this.render();
+  }
+  async vaultUnbind(e) {
+    this.setBusy(!0);
+    try {
+      await this.worker.vaultSetBinding({ connectionId: e, origin: null }), this.busy = !1, await this.loadVaultManage();
+    } catch (t) {
+      this.setBusy(!1), this.fail(t);
+    }
+  }
+  async vaultDeleteConnection(e) {
+    this.setBusy(!0);
+    try {
+      await this.worker.vaultDelete({ connectionId: e }), this.busy = !1, await this.loadVaultManage();
+    } catch (t) {
+      this.setBusy(!1), this.fail(t);
+    }
   }
   /**
    * (Re)installs this element's own provider as window.nostr, taking over from whatever is
@@ -614,6 +907,18 @@ class F extends HTMLElement {
     return !1;
   }
   goto(e) {
+    if (e === "dashboard" && this.vaultRequest?.stage === "auth") {
+      this.continueVaultRequest().catch((t) => this.fail(t));
+      return;
+    }
+    if (e === "welcome" && this.vaultRequest) {
+      this.finishVaultRequest(null);
+      return;
+    }
+    if (e === "welcome" && this.vaultOffer) {
+      this.finishVaultOffer("declined");
+      return;
+    }
     this.screen = e, this.errorMessage = void 0, this.render();
   }
   setBusy(e) {
@@ -646,10 +951,10 @@ class F extends HTMLElement {
    * validation-failure re-render can restore it (see renderManualPasswordFields).
    */
   readManualPassword(e) {
-    const t = this.field("manualPassword"), s = this.field("manualPasswordConfirm");
-    this.manualPasswordDraft = t, this.manualPasswordConfirmDraft = s;
-    const r = g(t, e);
-    return r.ok ? t !== s ? { password: "", error: "Passwords do not match. Please re-enter both." } : { password: t } : { password: "", error: `Password not accepted: ${r.reason}` };
+    const t = this.field("manualPassword"), a = this.field("manualPasswordConfirm");
+    this.manualPasswordDraft = t, this.manualPasswordConfirmDraft = a;
+    const s = g(t, e);
+    return s.ok ? t !== a ? { password: "", error: "Passwords do not match. Please re-enter both." } : { password: t } : { password: "", error: `Password not accepted: ${s.reason}` };
   }
   /**
    * Explicitly asks the browser to offer saving this credential via the Credential
@@ -665,17 +970,39 @@ class F extends HTMLElement {
    */
   async offerToSaveCredential(e, t) {
     try {
-      const s = window.PasswordCredential;
-      if (!s || !navigator.credentials?.store) return;
-      const r = new s({ id: e, password: t, name: e });
-      await navigator.credentials.store(r);
+      const a = window.PasswordCredential;
+      if (!a || !navigator.credentials?.store) return;
+      const s = new a({ id: e, password: t, name: e });
+      await navigator.credentials.store(s);
     } catch {
     }
   }
   async onClick(e) {
+    if (!e.isTrusted) return;
     const t = e.target.closest("[data-action]");
     if (!t) return;
     switch (t.dataset.action) {
+      case "vault-offer-save":
+        return this.acceptVaultOffer();
+      case "vault-offer-decline":
+        this.finishVaultOffer("declined");
+        return;
+      case "vault-approve":
+        return this.approveVaultCandidate();
+      case "vault-different":
+        this.vaultCandidate = null, this.goto("vault-import");
+        return;
+      case "vault-bc":
+        return this.runVaultBcChooser();
+      case "vault-cancel":
+        this.finishVaultRequest(null);
+        return;
+      case "goto-vault-manage":
+        return this.loadVaultManage();
+      case "vault-unbind":
+        return this.vaultUnbind(t.dataset.id);
+      case "vault-delete":
+        return this.vaultDeleteConnection(t.dataset.id);
       case "goto-create":
         this.loginName = "", this.importKey = "", this.importPreviewNpub = "", this.goto("create-name");
         return;
@@ -717,16 +1044,16 @@ class F extends HTMLElement {
         this.manualPasswordMode = !this.manualPasswordMode, this.manualPasswordFeedback = null, this.manualPasswordDraft = "", this.manualPasswordConfirmDraft = "", this.savedCheckbox = !1, this.render();
         return;
       case "copy-credential": {
-        const r = this.root.querySelector("#credential-box"), n = t, o = n.textContent ?? "Copy", l = (f) => {
-          n.textContent = f, setTimeout(() => {
+        const s = this.root.querySelector("#credential-box"), n = t, o = n.textContent ?? "Copy", l = (v) => {
+          n.textContent = v, setTimeout(() => {
             n.isConnected && (n.textContent = o);
           }, 2e3);
         };
-        if (!r || !navigator.clipboard?.writeText) {
+        if (!s || !navigator.clipboard?.writeText) {
           l("Copy not available — select the text manually");
           return;
         }
-        navigator.clipboard.writeText(r.textContent ?? "").then(
+        navigator.clipboard.writeText(s.textContent ?? "").then(
           () => l("Copied"),
           () => l("Copy failed — select the text manually")
         );
@@ -741,8 +1068,8 @@ class F extends HTMLElement {
       case "logout":
         return this.logout();
       case "rollback-retry": {
-        const r = this.pendingRollback?.kind;
-        this.pendingRollback = null, this.goto(r === "change-password" ? "change-password" : "login");
+        const s = this.pendingRollback?.kind;
+        this.pendingRollback = null, this.goto(s === "change-password" ? "change-password" : "login");
         return;
       }
       case "rollback-continue":
@@ -752,10 +1079,10 @@ class F extends HTMLElement {
     }
   }
   async onSubmit(e) {
-    e.preventDefault();
-    const s = e.target.dataset.form;
+    if (e.preventDefault(), !e.isTrusted) return;
+    const a = e.target.dataset.form;
     try {
-      switch (s) {
+      switch (a) {
         case "import-key":
           return await this.handlePreviewImport();
         case "create-name":
@@ -772,11 +1099,13 @@ class F extends HTMLElement {
           return await this.handleRecoverNewCredentialsSubmit();
         case "change-password":
           return await this.handleChangePasswordSubmit();
+        case "vault-import":
+          return await this.handleVaultImportSubmit();
         default:
           return;
       }
-    } catch (r) {
-      this.fail(r);
+    } catch (s) {
+      this.fail(s);
     }
   }
   /**
@@ -787,8 +1116,8 @@ class F extends HTMLElement {
   onInput(e) {
     const t = e.target;
     if (!(t instanceof HTMLInputElement) || t.name !== "manualPassword" && t.name !== "manualPasswordConfirm") return;
-    const s = this.root.querySelector('input[name="manualPassword"]')?.value ?? "", r = this.root.querySelector('input[name="manualPasswordConfirm"]')?.value ?? "";
-    this.manualPasswordFeedback = s ? g(s, this.loginName) : null;
+    const a = this.root.querySelector('input[name="manualPassword"]')?.value ?? "", s = this.root.querySelector('input[name="manualPasswordConfirm"]')?.value ?? "";
+    this.manualPasswordFeedback = a ? g(a, this.loginName) : null;
     const n = this.root.querySelector("#manual-password-feedback");
     if (n)
       if (!this.manualPasswordFeedback)
@@ -798,7 +1127,7 @@ class F extends HTMLElement {
         this.manualPasswordFeedback.ok ? (n.textContent = `Looks good (~${l} bits estimated).`, n.className = "notice info") : (n.textContent = `${this.manualPasswordFeedback.reason} (~${l} bits estimated)`, n.className = "notice warn");
       }
     const o = this.root.querySelector("#manual-password-match-feedback");
-    o && (r ? r === s ? (o.textContent = "Passwords match.", o.className = "notice info") : (o.textContent = "Passwords do not match.", o.className = "notice warn") : (o.textContent = "", o.className = "notice info"));
+    o && (s ? s === a ? (o.textContent = "Passwords match.", o.className = "notice info") : (o.textContent = "Passwords do not match.", o.className = "notice warn") : (o.textContent = "", o.className = "notice info"));
   }
   /**
    * Reads and validates an optional recovery-export file (§19.5) for the recover-phrase
@@ -808,16 +1137,16 @@ class F extends HTMLElement {
   async onFileChange(e) {
     const t = e.target;
     if (!(t instanceof HTMLInputElement) || t.name !== "offlineExportFile" || t.type !== "file") return;
-    const s = t.files?.[0];
-    if (!s) {
+    const a = t.files?.[0];
+    if (!a) {
       this.offlineExportFile = null, this.offlineExportFileNotice = void 0, this.render();
       return;
     }
     try {
-      const r = await s.text();
-      this.offlineExportFile = Q(JSON.parse(r)), this.offlineExportFileNotice = `Loaded recovery export from ${new Date(this.offlineExportFile.created_at * 1e3).toLocaleString()}.`;
-    } catch (r) {
-      this.offlineExportFile = null, this.offlineExportFileNotice = r instanceof k || r instanceof SyntaxError ? `Couldn't read that file: ${r.message}` : `Couldn't read that file: ${String(r)}`;
+      const s = await a.text();
+      this.offlineExportFile = x(JSON.parse(s)), this.offlineExportFileNotice = `Loaded recovery export from ${new Date(this.offlineExportFile.created_at * 1e3).toLocaleString()}.`;
+    } catch (s) {
+      this.offlineExportFile = null, this.offlineExportFileNotice = s instanceof C || s instanceof SyntaxError ? `Couldn't read that file: ${s.message}` : `Couldn't read that file: ${String(s)}`;
     }
     this.render();
   }
@@ -844,7 +1173,7 @@ class F extends HTMLElement {
   }
   handleCreateNameSubmit() {
     const e = this.field("loginName").trim().toLowerCase();
-    if (!h(e)) {
+    if (!p(e)) {
       this.errorMessage = "Login name must be 3-32 characters: a-z, 0-9, '.', '_', '-', and not start/end with punctuation.", this.render();
       return;
     }
@@ -872,8 +1201,8 @@ class F extends HTMLElement {
       importKey: this.importKey || void 0
     });
     this.importKey = "", this.importPreviewNpub = "", this.recoveryPhrase = t.recoveryPhrase;
-    const s = this.recoveryPhrase.split(" "), r = D(s.length, 3);
-    this.confirmSlots = r.map((n) => ({ index: n, value: "" })), this.session = { publicKey: t.everydayPublicKey, npub: d(t.everydayPublicKey), accountId: t.accountId }, this.busy = !1, this.goto("confirm-phrase"), this.worker.publishProfileAndRelayLists({
+    const a = this.recoveryPhrase.split(" "), s = K(a.length, 3);
+    this.confirmSlots = s.map((n) => ({ index: n, value: "" })), this.session = { publicKey: t.everydayPublicKey, npub: d(t.everydayPublicKey), accountId: t.accountId }, this.busy = !1, this.goto("confirm-phrase"), this.worker.publishProfileAndRelayLists({
       name: this.loginName,
       generalRelays: this.vaultRelayUrls,
       dmRelays: this.vaultRelayUrls
@@ -919,17 +1248,17 @@ class F extends HTMLElement {
    * paths grant a session identically -- claimSigner() and the bitlogin-login event only ever
    * fire once a RollbackDetectedError (if any) has been resolved one way or the other.
    */
-  async attemptLogin(e, t, s = !1) {
+  async attemptLogin(e, t, a = !1) {
     this.setBusy(!0);
     try {
-      const r = await this.worker.login({ loginName: e, password: t, acknowledgeRollback: s });
-      this.loginName = e, this.session = { publicKey: r.everydayPublicKey, npub: d(r.everydayPublicKey), accountId: r.accountId }, this.sessionWarnings = [r.rollbackWarning, r.relayDisagreementWarning].filter((n) => !!n), this.busy = !1, this.noteSignerClaim(this.claimSigner()), this.dispatchEvent(new CustomEvent("bitlogin-login", { detail: { publicKey: r.everydayPublicKey } })), this.flashSuccess("dashboard", "Signed in"), this.offerToSaveCredential(e, t);
-    } catch (r) {
-      if (r instanceof Error && r.name === "RollbackDetectedError") {
-        this.pendingRollback = { kind: "login", loginName: e, password: t }, this.rollbackMessage = r.message, this.busy = !1, this.goto("rollback-confirm");
+      const s = await this.worker.login({ loginName: e, password: t, acknowledgeRollback: a });
+      this.loginName = e, this.session = { publicKey: s.everydayPublicKey, npub: d(s.everydayPublicKey), accountId: s.accountId }, this.sessionWarnings = [s.rollbackWarning, s.relayDisagreementWarning].filter((n) => !!n), this.busy = !1, this.noteSignerClaim(this.claimSigner()), this.dispatchEvent(new CustomEvent("bitlogin-login", { detail: { publicKey: s.everydayPublicKey } })), this.flashSuccess("dashboard", "Signed in"), this.offerToSaveCredential(e, t);
+    } catch (s) {
+      if (s instanceof Error && s.name === "RollbackDetectedError") {
+        this.pendingRollback = { kind: "login", loginName: e, password: t }, this.rollbackMessage = s.message, this.busy = !1, this.goto("rollback-confirm");
         return;
       }
-      this.fail(r);
+      this.fail(s);
     }
   }
   async handleRollbackContinue() {
@@ -952,18 +1281,18 @@ class F extends HTMLElement {
   }
   async handleRecoverNewCredentialsSubmit() {
     const e = this.field("newLoginName").trim().toLowerCase();
-    if (!h(e)) {
+    if (!p(e)) {
       this.errorMessage = "Login name must be 3-32 characters: a-z, 0-9, '.', '_', '-', and not start/end with punctuation.", this.render();
       return;
     }
     let t = this.newCredentialAfterRecovery;
     if (this.manualPasswordMode) {
-      const { password: s, error: r } = this.readManualPassword(e);
-      if (r) {
-        this.errorMessage = r, this.render();
+      const { password: a, error: s } = this.readManualPassword(e);
+      if (s) {
+        this.errorMessage = s, this.render();
         return;
       }
-      t = s;
+      t = a;
     }
     this.setBusy(!0), await this.worker.completeRecovery({ newLoginName: e, newPassword: t }), this.loginName = e, this.busy = !1, this.sessionWarnings = [], this.noteSignerClaim(this.claimSigner()), this.dispatchEvent(new CustomEvent("bitlogin-login", { detail: { publicKey: this.session?.publicKey } })), this.flashSuccess("dashboard", "Account recovered"), this.offerToSaveCredential(e, t);
   }
@@ -971,36 +1300,36 @@ class F extends HTMLElement {
     const e = this.field("oldPassword");
     let t = this.changePasswordNewCredential;
     if (this.manualPasswordMode) {
-      const { password: s, error: r } = this.readManualPassword(this.loginName);
-      if (r) {
-        this.errorMessage = r, this.render();
+      const { password: a, error: s } = this.readManualPassword(this.loginName);
+      if (s) {
+        this.errorMessage = s, this.render();
         return;
       }
-      t = s;
+      t = a;
     }
     await this.attemptChangePassword(e, t);
   }
   /** Shared by the rotation form and the "continue anyway" rollback-confirmation step; see attemptLogin. */
-  async attemptChangePassword(e, t, s = !1) {
+  async attemptChangePassword(e, t, a = !1) {
     this.setBusy(!0);
     try {
       await this.worker.changePassword({
         loginName: this.loginName,
         oldPassword: e,
         newPassword: t,
-        acknowledgeRollback: s
+        acknowledgeRollback: a
       }), this.busy = !1, this.sessionWarnings = [], this.noteSignerClaim(this.claimSigner()), this.flashSuccess("dashboard", "Password updated"), this.offerToSaveCredential(this.loginName, t);
-    } catch (r) {
-      if (r instanceof Error && r.name === "RollbackDetectedError") {
-        this.pendingRollback = { kind: "change-password", oldPassword: e, newPassword: t }, this.rollbackMessage = r.message, this.busy = !1, this.goto("rollback-confirm");
+    } catch (s) {
+      if (s instanceof Error && s.name === "RollbackDetectedError") {
+        this.pendingRollback = { kind: "change-password", oldPassword: e, newPassword: t }, this.rollbackMessage = s.message, this.busy = !1, this.goto("rollback-confirm");
         return;
       }
-      this.fail(r);
+      this.fail(s);
     }
   }
   async handleDownloadRecoveryExport() {
-    const e = await this.worker.buildRecoveryExport(), t = new Blob([JSON.stringify(e, null, 2)], { type: "application/json" }), s = URL.createObjectURL(t), r = document.createElement("a");
-    r.href = s, r.download = "bitlogin-recovery-export.json", r.click(), URL.revokeObjectURL(s);
+    const e = await this.worker.buildRecoveryExport(), t = new Blob([JSON.stringify(e, null, 2)], { type: "application/json" }), a = URL.createObjectURL(t), s = document.createElement("a");
+    s.href = a, s.download = "bitlogin-recovery-export.json", s.click(), URL.revokeObjectURL(a);
   }
   async handleSignTestEvent() {
     const e = await this.worker.signEvent({ kind: 1, content: `Hello from BitLogin at ${(/* @__PURE__ */ new Date()).toISOString()}` });
@@ -1222,15 +1551,98 @@ class F extends HTMLElement {
         return `
           <h2>Signed in</h2>
           ${this.renderWarnings()}
-          <p class="pubkey">${this.session?.npub ?? ""}</p>
+          <p class="pubkey">${i(this.session?.npub ?? "")}</p>
           ${this.renderError()}
           <button class="secondary" type="button" data-action="sign-test-event">Sign a test event</button>
           ${this.lastSignedEventJson ? `<div class="credential-box" style="white-space:pre-wrap">${i(this.lastSignedEventJson)}</div>` : ""}
           <div class="divider"></div>
+          <button class="secondary" type="button" data-action="goto-vault-manage">Wallet connections</button>
           <button class="secondary" type="button" data-action="goto-change-password">Rotate password</button>
           <button class="secondary" type="button" data-action="goto-export">Export identity</button>
           <button class="secondary" type="button" data-action="logout">Log out</button>
         `;
+      case "vault-consent": {
+        const e = this.vaultRequest, t = this.vaultCandidate;
+        if (!e || !t) return '<div class="notice error">No wallet request is in progress.</div>';
+        const a = new Date(t.createdAt * 1e3).toLocaleDateString();
+        return `
+          <h2>Share a wallet with ${i(e.appName)}?</h2>
+          ${e.reason ? `<p class="sub">Reason given: ${i(e.reason)}</p>` : ""}
+          ${this.renderError()}
+          <div class="credential-box">
+            <strong>${i(t.label)}</strong><br />
+            Connected ${i(a)} · wallet ${i((t.walletPubkey ?? "").slice(0, 10))}…
+          </div>
+          <div class="notice info">${i(e.appName)} will receive this connection and can spend within the budget your wallet enforces, until you revoke it from Wallet connections.</div>
+          <button class="primary" type="button" data-action="vault-approve" ${this.busy ? "disabled" : ""}>
+            ${this.busy ? '<span class="spinner"></span>Sharing…' : "Use this wallet"}
+          </button>
+          <button class="secondary" type="button" data-action="vault-different">Use a different wallet</button>
+          <button class="link" type="button" data-action="vault-cancel">Cancel</button>
+        `;
+      }
+      case "vault-import": {
+        const e = this.vaultRequest;
+        if (!e) return '<div class="notice error">No wallet request is in progress.</div>';
+        const t = this.vaultUnsaved ? `<div class="notice warn">${this.vaultUnsavedReason === "no-vault" ? "This account predates the Connection Vault, so the connection will be handed to the app but not saved to your account. Enable the vault from your account manager (recovery phrase required) to make wallets portable." : "Sign in again to save connections to your account — until then the connection will be handed to the app but not saved."}</div>` : "";
+        return `
+          <h2>Connect a wallet for ${i(e.appName)}</h2>
+          ${e.reason ? `<p class="sub">Reason given: ${i(e.reason)}</p>` : ""}
+          ${t}
+          ${this.renderError()}
+          <button class="primary" type="button" data-action="vault-bc" ${this.busy ? "disabled" : ""}>
+            ${this.busy ? '<span class="spinner"></span>Waiting for your wallet…' : "Connect a wallet"}
+          </button>
+          <div class="divider"></div>
+          <form data-form="vault-import">
+            <label for="vaultUri">Or paste an NWC connection</label>
+            <input type="password" name="vaultUri" id="vaultUri" autocomplete="off" placeholder="nostr+walletconnect://…" />
+            <label for="vaultLabel">Name this connection</label>
+            <input type="text" name="vaultLabel" id="vaultLabel" autocomplete="off" maxlength="120" value="${i(`${e.appName} wallet`)}" />
+            <button class="secondary" type="submit" ${this.busy ? "disabled" : ""}>
+              ${this.vaultUnsaved ? "Share without saving" : "Save and share"}
+            </button>
+          </form>
+          <div class="notice info">Set a spending budget on the wallet's own authorization page — the wallet is the only place a budget is actually enforced.</div>
+          <button class="link" type="button" data-action="vault-cancel">Cancel</button>
+        `;
+      }
+      case "vault-offer": {
+        const e = this.vaultOffer;
+        return e ? `
+          <h2>Save this wallet to your BitLogin?</h2>
+          <p class="sub">${i(e.appName)} just connected a wallet on this device. Saved to your BitLogin, the connection follows you — on a new device it's one tap instead of another paste.</p>
+          ${this.renderError()}
+          <label for="vaultOfferLabel">Name this connection</label>
+          <input type="text" name="vaultOfferLabel" id="vaultOfferLabel" autocomplete="off" maxlength="120" value="${i(e.label)}" />
+          <button class="primary" type="button" data-action="vault-offer-save" ${this.busy ? "disabled" : ""}>
+            ${this.busy ? '<span class="spinner"></span>Saving…' : "Save to BitLogin"}
+          </button>
+          <button class="link" type="button" data-action="vault-offer-decline" ${this.busy ? "disabled" : ""}>No thanks — keep it on this device only</button>
+          <div class="notice info">Stored encrypted on your account; ${i(e.appName)} keeps working either way. Remove it any time from Wallet connections.</div>
+        ` : '<div class="notice error">No wallet offer is in progress.</div>';
+      }
+      case "vault-manage": {
+        const e = this.vaultConnections, t = e === null ? '<p class="sub">Loading…</p>' : e.length === 0 ? `<p class="sub">No connections stored yet. They're added when you connect a wallet inside an app.</p>` : e.map(
+          (a) => `
+          <div class="credential-box">
+            <strong>${i(a.label)}</strong> <span class="sub">(${i(a.connectionType)})</span><br />
+            ${a.origin ? `Linked to ${i(a.origin)}` : "Not linked to an app"}
+            <div>
+              ${a.origin ? `<button class="link" type="button" data-action="vault-unbind" data-id="${i(a.connectionId)}" ${this.busy ? "disabled" : ""}>Revoke app access</button>` : ""}
+              <button class="link" type="button" data-action="vault-delete" data-id="${i(a.connectionId)}" ${this.busy ? "disabled" : ""}>Remove from BitLogin</button>
+            </div>
+          </div>`
+        ).join("");
+        return `
+          <h2>Wallet connections</h2>
+          <p class="sub">Connections your apps use, stored encrypted on your account and restored on any device you sign in to.</p>
+          ${this.renderError()}
+          ${t}
+          <div class="notice info">"Remove from BitLogin" deletes the stored copy only — the connection itself keeps working for any app that already has it. To revoke spending authority, delete the connection inside your wallet app.</div>
+          <button class="link" data-action="goto-dashboard">Back</button>
+        `;
+      }
       case "rollback-confirm":
         return `
           <h2>This looks like a stale or revoked credential</h2>
@@ -1278,30 +1690,30 @@ class F extends HTMLElement {
     }
   }
 }
-function D(a, e) {
-  const t = Array.from({ length: a }, (r, n) => n), s = [];
-  for (let r = 0; r < e && t.length > 0; r++) {
+function K(r, e) {
+  const t = Array.from({ length: r }, (s, n) => n), a = [];
+  for (let s = 0; s < e && t.length > 0; s++) {
     const n = Math.floor(Math.random() * t.length);
-    s.push(t.splice(n, 1)[0]);
+    a.push(t.splice(n, 1)[0]);
   }
-  return s.sort((r, n) => r - n);
+  return a.sort((s, n) => s - n);
 }
-function i(a) {
-  return a.replace(/[&<>"']/gu, (e) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[e]);
+function i(r) {
+  return r.replace(/[&<>"']/gu, (e) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[e]);
 }
-customElements.get("bitlogin-auth") || customElements.define("bitlogin-auth", F);
+customElements.get("bitlogin-auth") || customElements.define("bitlogin-auth", D);
 window.bitlogin = {
   version: "0.1.0",
   isActiveSigner() {
     return window.nostr?._bitlogin === !0;
   },
   releaseSigner() {
-    const a = window;
-    return a.nostr?._bitlogin === !0 ? (delete a.nostr, window.dispatchEvent(new CustomEvent("bitlogin-signer-released")), !0) : !1;
+    const r = window;
+    return r.nostr?._bitlogin === !0 ? (delete r.nostr, window.dispatchEvent(new CustomEvent("bitlogin-signer-released")), !0) : !1;
   }
 };
 export {
-  F as BitLoginAuthElement,
-  E as WorkerClient,
-  $ as createNip07Provider
+  D as BitLoginAuthElement,
+  N as WorkerClient,
+  B as createNip07Provider
 };
