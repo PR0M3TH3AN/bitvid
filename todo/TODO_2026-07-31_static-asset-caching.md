@@ -51,7 +51,10 @@ deploy verification; it does not rename assets or rewrite references.
       a deploy is picked up within ten minutes, and nothing can pin a user to a
       stale bundle. Choose this if hashing is not happening soon.
 
-Decide A vs B before touching `vercel.json`; they are not stackable.
+**DECIDED 2026-07-31: Option A.** Content-hash the filenames, then apply
+`immutable`. Do not ship Option B as an interim step — the two are not
+stackable, and a bounded `max-age` shipped now becomes the thing nobody
+revisits.
 
 ## Also worth doing
 
