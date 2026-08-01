@@ -1,61 +1,77 @@
-import { v as ie, g as _, s as ee, c as zn, K as Bn, b as jt, d as it, f as at, h as te, u as ue, j as Gn, k as Fn, l as H, m as J, n as ct, S as st, o as lt, q as $e, D as ke, t as We, w as ut, x as Hn, y as Jn, z as Yn, A as Qn, B as Ge, C as At, F as $t, G as Xn, H as Zn, I as er, J as Le, L as Wt, M as tr, N as nr, O as dt, P as ze, Q as Ce, T as rr, U as zt, V as or, W as ir, X as xe, Y as ge, Z as ar, _ as we, $ as _e, a0 as Bt, a1 as yt, a2 as cr, a3 as Gt, a4 as Ft, a5 as sr, a6 as lr, a as Ct, a7 as ur } from "./bitlogin-shared-B2Rc9khL.js";
-class be extends Error {
+import { v as ae, g as k, s as ne, b as er, c as be, K as tr, d as Yt, f as yt, h as ht, j as re, u as Y, k as nr, l as rr, m as V, n as X, o as Ge, S as pt, q as ft, t as Fe, D as Ee, w as He, x as vt, y as or, z as ir, A as ar, B as cr, C as Qe, F as Mt, G as gt, H as sr, I as lr, J as ur, L as Ue, M as wt, N as dr, O as yr, P as bt, Q as Je, T as Se, U as hr, V as Xt, W as x, X as pr, Y as fr, Z as vr, _ as mt, $ as Qt, a0 as Pe, a1 as gr, a2 as Me, a3 as Zt, a4 as me, a5 as wr, a6 as it, a7 as br, a as Ut, a8 as mr } from "./bitlogin-shared-DTz11m56.js";
+class _e extends Error {
   reason;
   constructor(t) {
     super("Account not found or credentials incorrect."), this.name = "AccountNotFoundError", this.reason = t;
   }
 }
-class ye extends Error {
+class le extends Error {
   constructor(t) {
     super(t), this.name = "RegistrationFailedError";
   }
 }
-class Ht extends Error {
+class en extends Error {
   constructor(t = "An account already exists with this login name and password. Sign in instead, or choose different credentials.") {
     super(t), this.name = "AccountAlreadyExistsError";
   }
 }
-class Me extends Error {
+class Ne extends Error {
   constructor(t) {
     super(t), this.name = "RecoveryFailedError";
   }
 }
-class Jt extends Error {
+class tn extends Error {
   seenGeneration;
   capsuleGeneration;
   constructor(t, n) {
     super(`This credential capsule reports generation ${n}, but this device has already seen generation ${t}. Refusing to log in with older, possibly-revoked credentials.`), this.name = "RollbackDetectedError", this.seenGeneration = t, this.capsuleGeneration = n;
   }
 }
-function ht(e, t) {
+function We(e, t) {
   const n = t ?? Math.floor(Date.now() / 1e3);
   return e == null ? n : Math.max(n, e + 1);
 }
-const dr = { generation: -1, recoveryGeneration: -1 };
-function pt(e) {
+const _r = { generation: -1, recoveryGeneration: -1 };
+function _t(e) {
   return `bitlogin:hwm:${e}`;
 }
-async function vt(e, t) {
-  const n = await e.get(pt(t));
-  return n ? JSON.parse(n) : dr;
+async function kt(e, t) {
+  const n = await e.get(_t(t));
+  return n ? JSON.parse(n) : _r;
 }
-async function Yt(e, t, n) {
-  const r = await vt(e, t), o = {
+async function nn(e, t, n) {
+  const r = await kt(e, t), o = {
     generation: Math.max(r.generation, n.generation ?? -1),
     recoveryGeneration: Math.max(r.recoveryGeneration, n.recoveryGeneration ?? -1)
   };
-  return await e.set(pt(t), JSON.stringify(o)), o;
+  return await e.set(_t(t), JSON.stringify(o)), o;
 }
-async function yr(e, t, n = { generation: 0, recoveryGeneration: -1 }) {
-  await e.set(pt(t), JSON.stringify(n));
+async function kr(e, t, n = { generation: 0, recoveryGeneration: -1 }) {
+  await e.set(_t(t), JSON.stringify(n));
 }
-function hr() {
+function Er(e) {
+  const t = e.split(".");
+  if (t.length !== 4 || t.some((r) => !/^\d{1,3}$/u.test(r)))
+    return !1;
+  const n = t.map(Number);
+  return n.every((r) => r >= 0 && r <= 255) && n[0] === 127;
+}
+function Ye(e) {
+  let t;
+  try {
+    t = new URL(e);
+  } catch {
+    return !1;
+  }
+  return t.username || t.password || t.hash ? !1 : t.protocol === "wss:" ? !0 : t.protocol !== "ws:" ? !1 : t.hostname === "localhost" || t.hostname === "[::1]" || Er(t.hostname);
+}
+function Pr() {
   const e = globalThis.WebSocket;
   if (!e)
     throw new Error("No global WebSocket implementation is available in this environment.");
   return e;
 }
-class pr {
+class Kr {
   url;
   ws = null;
   connectPromise = null;
@@ -65,11 +81,13 @@ class pr {
   connectTimeoutMs;
   authenticated = !1;
   constructor(t, n = {}) {
+    if (!Ye(t))
+      throw new Error("Relay URL must use secure WebSockets, except for an explicit loopback development endpoint.");
     this.url = t, this.authPrivateKey = n.authPrivateKey, this.connectTimeoutMs = n.connectTimeoutMs ?? 8e3;
   }
   async connect() {
     return this.connectPromise ? this.connectPromise : (this.connectPromise = new Promise((t, n) => {
-      const r = hr(), o = new r(this.url);
+      const r = Pr(), o = new r(this.url);
       this.ws = o;
       const i = setTimeout(() => {
         n(new Error(`Timed out connecting to relay ${this.url}`));
@@ -104,22 +122,31 @@ class pr {
       return;
     const [r, ...o] = n;
     if (r === "EVENT") {
-      const [i, a] = o, c = this.subs.get(i);
-      c && ie(a) && c.events.push(a);
+      const [i, a] = o;
+      if (typeof i != "string")
+        return;
+      const c = this.subs.get(i);
+      c && ae(a) && Rr(a, c.filter) && c.events.push(a);
       return;
     }
     if (r === "EOSE") {
       const [i] = o;
+      if (typeof i != "string")
+        return;
       this.subs.get(i)?.onEose();
       return;
     }
     if (r === "OK") {
       const [i, a, c] = o;
+      if (typeof i != "string" || typeof a != "boolean" || c !== void 0 && typeof c != "string")
+        return;
       this.pendingPublishes.get(i)?.({ ok: a, message: c ?? "" }), this.pendingPublishes.delete(i);
       return;
     }
     if (r === "AUTH") {
       const [i] = o;
+      if (typeof i != "string")
+        return;
       this.respondToAuthChallenge(i);
       return;
     }
@@ -127,10 +154,10 @@ class pr {
   async respondToAuthChallenge(t) {
     if (!this.authPrivateKey)
       return;
-    const n = _(this.authPrivateKey), r = ee({
+    const n = k(this.authPrivateKey), r = ne({
       pubkey: n,
       created_at: Math.floor(Date.now() / 1e3),
-      kind: Bn,
+      kind: tr,
       tags: [
         ["relay", this.url],
         ["challenge", t]
@@ -154,26 +181,32 @@ class pr {
   }
   async queryOnce(t, n = 8e3) {
     await this.connect();
-    const r = zn({
-      pubkey: "0".repeat(64),
-      created_at: Date.now(),
-      kind: 0,
-      tags: [],
-      content: JSON.stringify(t) + Math.random()
-    }).slice(0, 16);
+    const r = er(be(8));
     return new Promise((o, i) => {
       const a = [], c = (l) => {
         clearTimeout(s), this.subs.delete(r), this.send(["CLOSE", r]), l ? i(l) : o(a);
       }, s = setTimeout(() => c(new Error("relay did not answer the subscription before the timeout")), n);
-      this.subs.set(r, { events: a, onEose: () => c() }), this.send(["REQ", r, t]);
+      this.subs.set(r, { events: a, filter: t, onEose: () => c() }), this.send(["REQ", r, t]);
     });
   }
+}
+function Rr(e, t) {
+  if (t.ids && !t.ids.some((n) => e.id.startsWith(n)) || t.authors && !t.authors.some((n) => e.pubkey.startsWith(n)) || t.kinds && !t.kinds.includes(e.kind) || t.since !== void 0 && e.created_at < t.since || t.until !== void 0 && e.created_at > t.until)
+    return !1;
+  for (const [n, r] of Object.entries(t)) {
+    if (!n.startsWith("#") || !Array.isArray(r))
+      continue;
+    const o = n.slice(1), i = r;
+    if (!e.tags.some((a) => a[0] === o && i.some((c) => c === (a[1] ?? ""))))
+      return !1;
+  }
+  return !0;
 }
 class C {
   connections = /* @__PURE__ */ new Map();
   constructor(t, n = {}) {
     for (const r of new Set(t))
-      this.connections.set(r, new pr(r, n));
+      this.connections.set(r, new Kr(r, n));
   }
   get relayUrls() {
     return [...this.connections.keys()];
@@ -212,221 +245,212 @@ class C {
       t.close();
   }
 }
-function se(e) {
+function ye(e) {
   return e.filter((t) => t.result.ok).length;
 }
-function vr(e, t, n) {
-  return ee({ pubkey: _(e), created_at: n, kind: jt, tags: [], content: JSON.stringify(t) }, e);
+function Ar(e, t, n) {
+  return ne({ pubkey: k(e), created_at: n, kind: Yt, tags: [], content: JSON.stringify(t) }, e);
 }
-function fr(e, t, n) {
+function xr(e, t, n) {
   const r = t.map((o) => {
     const i = ["r", o.url];
     return o.read && !o.write && i.push("read"), o.write && !o.read && i.push("write"), i;
   });
-  return ee({ pubkey: _(e), created_at: n, kind: it, tags: r, content: "" }, e);
+  return ne({ pubkey: k(e), created_at: n, kind: yt, tags: r, content: "" }, e);
 }
-function gr(e, t, n) {
-  return ee({
-    pubkey: _(e),
+function Cr(e, t, n) {
+  return ne({
+    pubkey: k(e),
     created_at: n,
-    kind: at,
+    kind: ht,
     tags: t.map((r) => ["relay", r]),
     content: ""
   }, e);
 }
-function wr(e) {
+function Nr(e) {
   return e.tags.filter((t) => t[0] === "r" && t[1]).map((t) => t[1]);
 }
-function br(e) {
+function Sr(e) {
   return e.tags.filter((t) => t[0] === "relay" && t[1]).map((t) => t[1]);
 }
-async function mr(e) {
-  const t = _(e.everydayPrivateKey), n = Math.floor(Date.now() / 1e3), r = [.../* @__PURE__ */ new Set([...e.generalRelays, ...e.dmRelays, ...e.discoveryRelays])], o = new C(r), [i, a, c] = await Promise.all([
-    o.queryQuorum({ authors: [t], kinds: [jt] }),
-    o.queryQuorum({ authors: [t], kinds: [it] }),
-    o.queryQuorum({ authors: [t], kinds: [at] })
+async function Ir(e) {
+  const t = k(e.everydayPrivateKey), n = Math.floor(Date.now() / 1e3), r = [.../* @__PURE__ */ new Set([...e.generalRelays, ...e.dmRelays, ...e.discoveryRelays])], o = new C(r), [i, a, c] = await Promise.all([
+    o.queryQuorum({ authors: [t], kinds: [Yt] }),
+    o.queryQuorum({ authors: [t], kinds: [yt] }),
+    o.queryQuorum({ authors: [t], kinds: [ht] })
   ]);
   o.closeAll();
   const s = i.outcomes.some((p) => p.events.length > 0), l = a.outcomes.some((p) => p.events.length > 0), u = c.outcomes.some((p) => p.events.length > 0), y = new C(r);
   let v = null, w = null, g = null;
   const f = [];
   if (!s && (e.name || e.about || e.picture)) {
-    const p = vr(e.everydayPrivateKey, { name: e.name, about: e.about, picture: e.picture }, n);
+    const p = Ar(e.everydayPrivateKey, { name: e.name, about: e.about, picture: e.picture }, n);
     f.push(y.publishAll(p).then((h) => void (v = h)));
   }
   if (!l) {
-    const p = fr(e.everydayPrivateKey, e.generalRelays.map((h) => ({ url: h, read: !0, write: !0 })), n);
+    const p = xr(e.everydayPrivateKey, e.generalRelays.map((h) => ({ url: h, read: !0, write: !0 })), n);
     f.push(y.publishAll(p).then((h) => void (w = h)));
   }
   if (!u) {
-    const p = gr(e.everydayPrivateKey, e.dmRelays, n);
+    const p = Cr(e.everydayPrivateKey, e.dmRelays, n);
     f.push(y.publishAll(p).then((h) => void (g = h)));
   }
   return await Promise.all(f), y.closeAll(), {
-    profilePublished: v !== null && se(v) > 0,
-    relayListAcknowledgedCount: w !== null ? se(w) : 0,
-    dmRelayListAcknowledgedCount: g !== null ? se(g) : 0,
+    profilePublished: v !== null && ye(v) > 0,
+    relayListAcknowledgedCount: w !== null ? ye(w) : 0,
+    dmRelayListAcknowledgedCount: g !== null ? ye(g) : 0,
     profileSkippedExisting: s,
     relayListSkippedExisting: l,
     dmRelayListSkippedExisting: u
   };
 }
-async function me(e, t, n) {
-  const r = n.minAcks ?? 2, o = n.minReadbacks ?? 2, i = await e.publishAll(t, n.timeoutMs), a = se(i), s = (await e.queryQuorum({ kinds: [te], authors: [t.pubkey], "#d": [n.dTag], limit: 5 }, n.timeoutMs)).outcomes.filter((l) => l.events.some((u) => u.id === t.id)).length;
+async function ke(e, t, n) {
+  const r = n.minAcks ?? 2, o = n.minReadbacks ?? 2, i = await e.publishAll(t, n.timeoutMs), a = ye(i), s = (await e.queryQuorum({ kinds: [re], authors: [t.pubkey], "#d": [n.dTag], limit: 5 }, n.timeoutMs)).outcomes.filter((l) => l.events.some((u) => u.id === t.id)).length;
   return {
     acknowledgedCount: a,
     readbackVerifiedCount: s,
     success: a >= r && s >= o
   };
 }
-function kr(e) {
-  const t = Gn(e);
+function Tr(e) {
+  const t = nr(e);
   if (t === void 0)
     throw new Error("Value is not JSON-serializable for canonicalization.");
   return t;
 }
-function _r(e) {
-  return ue(kr(e));
+function Lr(e) {
+  return Y(Tr(e));
 }
-const De = [1024, 2048, 4096], de = 4;
-function Er(e) {
-  const t = de + e.length, n = De.find((i) => i >= t);
+const qe = [1024, 2048, 4096], pe = 4;
+function Or(e) {
+  const t = pe + e.length, n = qe.find((i) => i >= t);
   if (n === void 0)
-    throw new Error(`Payload of ${e.length} bytes exceeds the largest padding bucket (${De[De.length - 1]} bytes minus ${de}-byte length prefix).`);
+    throw new Error(`Payload of ${e.length} bytes exceeds the largest padding bucket (${qe[qe.length - 1]} bytes minus ${pe}-byte length prefix).`);
   const r = new Uint8Array(n);
-  return new DataView(r.buffer).setUint32(0, e.length, !1), r.set(e, de), r;
+  return new DataView(r.buffer).setUint32(0, e.length, !1), r.set(e, pe), r;
 }
-function Pr(e) {
-  if (!De.includes(e.length))
+function Mr(e) {
+  if (!qe.includes(e.length))
     throw new Error(`Padded plaintext length ${e.length} does not match a known bucket.`);
   const n = new DataView(e.buffer, e.byteOffset, e.byteLength).getUint32(0, !1);
-  if (n > e.length - de)
+  if (n > e.length - pe)
     throw new Error("Declared payload length exceeds the padded bucket size.");
-  const r = e.slice(de, de + n), o = e.slice(de + n);
+  const r = e.slice(pe, pe + n), o = e.slice(pe + n);
   for (const i of o)
     if (i !== 0)
       throw new Error("Padding bytes are not all zero; capsule plaintext is malformed.");
   return r;
 }
-function ft() {
+function Et() {
   const e = globalThis.crypto;
   if (!e || !e.subtle)
     throw new Error("WebCrypto SubtleCrypto is not available in this environment.");
   return e;
 }
-async function Qt(e) {
+async function rn(e) {
   if (e.length !== 32)
     throw new Error("AES-256-GCM key must be exactly 32 bytes.");
-  return ft().subtle.importKey("raw", e, "AES-GCM", !1, ["encrypt", "decrypt"]);
+  return Et().subtle.importKey("raw", e, "AES-GCM", !1, ["encrypt", "decrypt"]);
 }
-async function Kr(e, t, n) {
-  const r = Fn(), o = await Qt(e), i = await ft().subtle.encrypt({ name: "AES-GCM", iv: r, additionalData: n, tagLength: 128 }, o, t);
+async function on(e, t, n) {
+  const r = rr(), o = await rn(e), i = await Et().subtle.encrypt({ name: "AES-GCM", iv: r, additionalData: n, tagLength: 128 }, o, t);
   return { nonce: r, ciphertext: new Uint8Array(i) };
 }
-async function Rr(e, t, n, r) {
-  const o = await Qt(e);
+async function an(e, t, n, r) {
+  const o = await rn(e);
   try {
-    const i = await ft().subtle.decrypt({ name: "AES-GCM", iv: t, additionalData: r, tagLength: 128 }, o, n);
+    const i = await Et().subtle.decrypt({ name: "AES-GCM", iv: t, additionalData: r, tagLength: 128 }, o, n);
     return new Uint8Array(i);
   } catch {
     throw new Error("AES-256-GCM authentication failed: capsule is corrupted, tampered, or the wrong key was used.");
   }
 }
-function Xt(e) {
-  return ue(`bitlogin|password-capsule|v1|${e}|30078|bitlogin:password:v1`);
+function cn(e) {
+  return Y(`bitlogin|password-capsule|v1|${e}|30078|bitlogin:password:v1`);
 }
-function Zt(e) {
-  return ue(`bitlogin|recovery-capsule|v1|${e}|30078|bitlogin:recovery:v1`);
+function sn(e) {
+  return Y(`bitlogin|recovery-capsule|v1|${e}|30078|bitlogin:recovery:v1`);
 }
-async function gt(e, t, n) {
-  const r = _r(e), o = Er(r), i = await Kr(t, o, n);
+async function Pt(e, t, n) {
+  const r = Lr(e), o = Or(r), i = await on(t, o, n);
   return {
     version: 1,
     algorithm: "aes-256-gcm",
-    nonce: H(i.nonce),
-    ciphertext: H(i.ciphertext)
+    nonce: V(i.nonce),
+    ciphertext: V(i.ciphertext)
   };
 }
-async function wt(e, t, n) {
+async function Kt(e, t, n) {
   if (e.version !== 1 || e.algorithm !== "aes-256-gcm")
     throw new Error(`Unsupported capsule envelope version/algorithm: ${e.version}/${e.algorithm}`);
-  const r = J(e.nonce), o = J(e.ciphertext), i = await Rr(t, r, o, n), a = Pr(i);
-  return JSON.parse(ct(a));
+  const r = X(e.nonce), o = X(e.ciphertext), i = await an(t, r, o, n), a = Mr(i);
+  return JSON.parse(Ge(a));
 }
-class Be extends Error {
+class Rt extends Error {
   constructor(t) {
     super(t), this.name = "CapsuleValidationError";
   }
 }
-const Ar = /* @__PURE__ */ new Set(["wss:", "ws:"]), Cr = 1e6, xr = /^[0-9a-f]{64}$/u;
-function P(e, t) {
+const Ur = 1e6, Dr = /^[0-9a-f]{64}$/u;
+function E(e, t) {
   if (!e)
-    throw new Be(t);
+    throw new Rt(t);
 }
-function qe(e) {
-  return typeof e == "string" && xr.test(e);
+function $e(e) {
+  return typeof e == "string" && Dr.test(e);
 }
-function en(e) {
-  P(Array.isArray(e), "vault_relay_hints must be an array (§12.4.7).");
-  for (const t of e) {
-    P(typeof t == "string", "Each relay hint must be a string (§12.4.7).");
-    let n;
-    try {
-      n = new URL(t);
-    } catch {
-      throw new Be(`Invalid relay URL: ${String(t)} (§12.4.7)`);
-    }
-    P(Ar.has(n.protocol), `Relay URL uses a disallowed scheme: ${t} (§12.4.7)`);
-  }
+function ln(e) {
+  E(Array.isArray(e), "vault_relay_hints must be an array (§12.4.7).");
+  for (const t of e)
+    E(typeof t == "string", "Each relay hint must be a string (§12.4.7)."), E(Ye(t), `Relay URL must use secure WebSockets, except for an explicit loopback development endpoint (§12.4.7): ${t}`);
 }
-function tn(e) {
-  P(typeof e == "string", "account_id must be a string (§12.4.2).");
+function un(e) {
+  E(typeof e == "string", "account_id must be a string (§12.4.2).");
   let t;
   try {
-    t = J(e);
+    t = X(e);
   } catch {
-    throw new Be("account_id is not valid base64url (§12.4.2).");
+    throw new Rt("account_id is not valid base64url (§12.4.2).");
   }
-  P(t.length === 16, "account_id must decode to exactly 128 bits (§12.4.2).");
+  E(t.length === 16, "account_id must decode to exactly 128 bits (§12.4.2).");
 }
-function nn(e, t) {
-  P(typeof e == "string", "operational_private_key must be a string (§12.4.3).");
-  const n = J(e);
-  P(n.length === 32, "operational_private_key must be exactly 32 bytes (§12.4.3)."), P(lt(n), "operational_private_key is not a valid secp256k1 scalar (§12.4.3)."), P(qe(t), "operational_public_key must be lowercase 64-char hex (§12.4.4).");
-  const r = _(n);
-  P(r === t, "operational_public_key does not match the derived public key (§12.4.4).");
+function dn(e, t) {
+  E(typeof e == "string", "operational_private_key must be a string (§12.4.3).");
+  const n = X(e);
+  E(n.length === 32, "operational_private_key must be exactly 32 bytes (§12.4.3)."), E(ft(n), "operational_private_key is not a valid secp256k1 scalar (§12.4.3)."), E($e(t), "operational_public_key must be lowercase 64-char hex (§12.4.4).");
+  const r = k(n);
+  E(r === t, "operational_public_key does not match the derived public key (§12.4.4).");
 }
-function rn(e) {
+function ze(e, t) {
+  E(typeof t == "string", `${e} must be a string (§CV5.2).`);
+  let n;
+  try {
+    n = X(t);
+  } catch {
+    throw new Rt(`${e} is not valid base64url (§CV5.2).`);
+  }
+  E(n.length === 32, `${e} must decode to exactly 32 bytes (§CV5.2).`);
+}
+function Vr(e) {
   const t = e.connection_vault_root, n = e.vault_sudo_key;
-  if (!(t === void 0 && n === void 0)) {
-    P(t !== void 0 && n !== void 0, "connection_vault_root and vault_sudo_key must appear together (§CV5.2).");
-    for (const [r, o] of [
-      ["connection_vault_root", t],
-      ["vault_sudo_key", n]
-    ]) {
-      P(typeof o == "string", `${r} must be a string (§CV5.2).`);
-      let i;
-      try {
-        i = J(o);
-      } catch {
-        throw new Be(`${r} is not valid base64url (§CV5.2).`);
-      }
-      P(i.length === 32, `${r} must decode to exactly 32 bytes (§CV5.2).`);
-    }
-  }
+  t === void 0 && n === void 0 || (E(t !== void 0 && n !== void 0, "connection_vault_root and vault_sudo_key must appear together (§CV5.2)."), ze("connection_vault_root", t), ze("vault_sudo_key", n));
 }
-function on(e, t) {
-  P(Number.isInteger(e) && e >= 0 && e <= Cr, `${t} is out of supported bounds (§12.4.8).`);
+function qr(e) {
+  const t = e.connection_vault_root, n = e.vault_sudo_key;
+  t === void 0 && n === void 0 || (E(t !== void 0, "vault_sudo_key cannot appear without connection_vault_root (§CV5.2)."), ze("connection_vault_root", t), n !== void 0 && ze("vault_sudo_key", n));
 }
-function Sr(e) {
-  P(e.schema === $e, `Unsupported or unknown schema: ${String(e.schema)} (§12.4.1)`), tn(e.account_id), on(e.generation, "generation"), nn(e.operational_private_key, e.operational_public_key), P(qe(e.recovery_public_key), "recovery_public_key must be lowercase 64-char hex (§12.4.5)."), en(e.vault_relay_hints), rn(e);
+function yn(e, t) {
+  E(Number.isInteger(e) && e >= 0 && e <= Ur, `${t} is out of supported bounds (§12.4.8).`);
+}
+function jr(e) {
+  E(e.schema === Fe, `Unsupported or unknown schema: ${String(e.schema)} (§12.4.1)`), un(e.account_id), yn(e.generation, "generation"), dn(e.operational_private_key, e.operational_public_key), E($e(e.recovery_public_key), "recovery_public_key must be lowercase 64-char hex (§12.4.5)."), ln(e.vault_relay_hints), qr(e);
   const t = e.recovery_capsule_event;
-  P(!!t && typeof t == "object", "recovery_capsule_event must be present (§12.4.6)."), P(ie(t), "Embedded recovery_capsule_event has an invalid event id or signature (§12.4.6)."), P(t.pubkey === e.recovery_public_key, "Embedded recovery_capsule_event author does not match recovery_public_key (§12.4.5).");
+  E(!!t && typeof t == "object", "recovery_capsule_event must be present (§12.4.6)."), E(ae(t), "Embedded recovery_capsule_event has an invalid event id or signature (§12.4.6)."), E(t.pubkey === e.recovery_public_key, "Embedded recovery_capsule_event author does not match recovery_public_key (§12.4.5).");
 }
-function Nr(e) {
-  P(e.schema === st, `Unsupported or unknown schema: ${String(e.schema)} (§12.4.1)`), tn(e.account_id), on(e.recovery_generation, "recovery_generation"), P(e.previous_recovery_event_id === null || qe(e.previous_recovery_event_id), "previous_recovery_event_id must be null or lowercase 64-char hex (§12.3)."), nn(e.operational_private_key, e.operational_public_key), P(qe(e.recovery_public_key), "recovery_public_key must be lowercase 64-char hex."), en(e.vault_relay_hints), rn(e);
+function Wr(e) {
+  E(e.schema === pt, `Unsupported or unknown schema: ${String(e.schema)} (§12.4.1)`), un(e.account_id), yn(e.recovery_generation, "recovery_generation"), E(e.previous_recovery_event_id === null || $e(e.previous_recovery_event_id), "previous_recovery_event_id must be null or lowercase 64-char hex (§12.3)."), dn(e.operational_private_key, e.operational_public_key), E($e(e.recovery_public_key), "recovery_public_key must be lowercase 64-char hex."), ln(e.vault_relay_hints), Vr(e);
 }
-function Ir(e) {
+function $r(e) {
   const t = /* @__PURE__ */ new Map();
   for (const r of e) {
     const o = t.get(r.recoveryGeneration);
@@ -459,56 +483,56 @@ function Ir(e) {
   }
   return { consistent: !0 };
 }
-async function bt(e) {
-  const t = _(e.locatorPrivateKey), n = await gt(e.payload, e.capsuleKey, Xt(t));
-  return ee({
+async function At(e) {
+  const t = k(e.locatorPrivateKey), n = await Pt(e.payload, e.capsuleKey, cn(t));
+  return ne({
     pubkey: t,
     created_at: e.payload.created_at,
-    kind: te,
-    tags: [["d", ke]],
+    kind: re,
+    tags: [["d", Ee]],
     content: JSON.stringify(n)
   }, e.locatorPrivateKey);
 }
-function Tr(e) {
-  const t = _(e.oldLocatorPrivateKey);
-  return ee({
+function zr(e) {
+  const t = k(e.oldLocatorPrivateKey);
+  return ne({
     pubkey: t,
     created_at: e.createdAt,
-    kind: te,
-    tags: [["d", ke]],
+    kind: re,
+    tags: [["d", Ee]],
     content: ""
   }, e.oldLocatorPrivateKey);
 }
-async function Lr(e, t) {
-  if (!ie(e))
+async function Br(e, t) {
+  if (!ae(e))
     throw new Error("Credential capsule event has an invalid id or signature.");
-  const n = JSON.parse(e.content), r = await wt(n, t, Xt(e.pubkey));
-  return Sr(r), r;
+  const n = JSON.parse(e.content), r = await Kt(n, t, cn(e.pubkey));
+  return jr(r), r;
 }
-async function an(e) {
-  const t = _(e.recoveryPrivateKey), n = await gt(e.payload, e.capsuleKey, Zt(t));
-  return ee({
+async function hn(e) {
+  const t = k(e.recoveryPrivateKey), n = await Pt(e.payload, e.capsuleKey, sn(t));
+  return ne({
     pubkey: t,
     created_at: e.payload.created_at,
-    kind: te,
-    tags: [["d", We]],
+    kind: re,
+    tags: [["d", He]],
     content: JSON.stringify(n)
   }, e.recoveryPrivateKey);
 }
-async function cn(e, t) {
-  if (!ie(e))
+async function pn(e, t) {
+  if (!ae(e))
     throw new Error("Recovery capsule event has an invalid id or signature.");
-  const n = JSON.parse(e.content), r = await wt(n, t, Zt(e.pubkey));
-  return Nr(r), r;
+  const n = JSON.parse(e.content), r = await Kt(n, t, sn(e.pubkey));
+  return Wr(r), r;
 }
-function xt(e, t, n) {
+function Dt(e, t, n) {
   const r = /* @__PURE__ */ new Map();
   for (const o of e)
-    o.pubkey === t && o.kind === te && ut(o, "d") === n && ie(o) && r.set(o.id, o);
+    o.pubkey === t && o.kind === re && vt(o, "d") === n && ae(o) && r.set(o.id, o);
   return [...r.values()].sort((o, i) => i.created_at - o.created_at);
 }
-async function sn(e, t, n, r, o) {
-  const i = await e.queryQuorum({ kinds: [te], authors: [t], "#d": [n], limit: 5 }, o), a = i.outcomes.flatMap((v) => v.events), c = xt(a, t, n), s = [];
+async function fn(e, t, n, r, o) {
+  const i = await e.queryQuorum({ kinds: [re], authors: [t], "#d": [n], limit: 5 }, o), a = i.outcomes.flatMap((v) => v.events), c = Dt(a, t, n), s = [];
   for (const v of c)
     try {
       const w = await r(v);
@@ -518,7 +542,7 @@ async function sn(e, t, n, r, o) {
     }
   const l = s.find((v) => v.payload !== null) ?? null, u = i.outcomes.map((v) => ({
     responded: v.responded,
-    events: xt(v.events, t, n)
+    events: Dt(v.events, t, n)
   })).filter((v) => v.responded && v.events.length > 0).map((v) => v.events[0].id), y = new Set(u).size > 1;
   return {
     quorumMet: i.quorumMet,
@@ -529,32 +553,32 @@ async function sn(e, t, n, r, o) {
     relayDisagreement: y
   };
 }
-async function Se(e, t, n, r = 8e3) {
-  return sn(e, t, ke, (o) => Lr(o, n), r);
+async function Ie(e, t, n, r = 8e3) {
+  return fn(e, t, Ee, (o) => Br(o, n), r);
 }
-async function Ur(e, t, n, r = 8e3) {
-  return sn(e, t, We, (o) => cn(o, n), r);
+async function Gr(e, t, n, r = 8e3) {
+  return fn(e, t, He, (o) => pn(o, n), r);
 }
-function Or(e) {
+function Fr(e) {
   const t = e.filter((n) => n.payload !== null);
-  return t.length < 2 ? { consistent: !0 } : Ir(t.map((n) => ({
+  return t.length < 2 ? { consistent: !0 } : $r(t.map((n) => ({
     eventId: n.event.id,
     recoveryGeneration: n.payload.recovery_generation,
     previousRecoveryEventId: n.payload.previous_recovery_event_id
   })));
 }
-async function Mr(e, t, n, r) {
+async function Hr(e, t, n, r) {
   const [o, i] = await Promise.all([
     e.publishAll(t, r),
     e.publishAll(n, r)
   ]);
   return {
-    credentialAcknowledgedCount: se(o),
-    recoveryAcknowledgedCount: se(i),
+    credentialAcknowledgedCount: ye(o),
+    recoveryAcknowledgedCount: ye(i),
     relaysTried: e.relayUrls.length
   };
 }
-const ln = `abandon
+const vn = `abandon
 ability
 able
 about
@@ -2603,198 +2627,237 @@ zero
 zone
 zoo`.split(`
 `);
-function Dr(e, t, n, r) {
-  Yn(e);
-  const o = Qn({ dkLen: 32, asyncTick: 10 }, r), { c: i, dkLen: a, asyncTick: c } = o;
-  if (Ge(i), Ge(a), Ge(c), i < 1)
+function Jr(e, t, n, r) {
+  ar(e);
+  const o = cr({ dkLen: 32, asyncTick: 10 }, r), { c: i, dkLen: a, asyncTick: c } = o;
+  if (Qe(i), Qe(a), Qe(c), i < 1)
     throw new Error("iterations (c) should be >= 1");
-  const s = At(t), l = At(n), u = new Uint8Array(a), y = $t.create(e, s), v = y._cloneInto().update(l);
+  const s = Mt(t), l = Mt(n), u = new Uint8Array(a), y = gt.create(e, s), v = y._cloneInto().update(l);
   return { c: i, dkLen: a, asyncTick: c, DK: u, PRF: y, PRFSalt: v };
 }
-function Vr(e, t, n, r, o) {
-  return e.destroy(), t.destroy(), r && r.destroy(), Xn(o), n;
+function Yr(e, t, n, r, o) {
+  return e.destroy(), t.destroy(), r && r.destroy(), sr(o), n;
 }
-async function qr(e, t, n, r) {
-  const { c: o, dkLen: i, asyncTick: a, DK: c, PRF: s, PRFSalt: l } = Dr(e, t, n, r);
+async function Xr(e, t, n, r) {
+  const { c: o, dkLen: i, asyncTick: a, DK: c, PRF: s, PRFSalt: l } = Jr(e, t, n, r);
   let u;
-  const y = new Uint8Array(4), v = Hn(y), w = new Uint8Array(s.outputLen);
+  const y = new Uint8Array(4), v = or(y), w = new Uint8Array(s.outputLen);
   for (let g = 1, f = 0; f < i; g++, f += s.outputLen) {
     const p = c.subarray(f, f + s.outputLen);
-    v.setInt32(0, g, !1), (u = l._cloneInto(u)).update(y).digestInto(w), p.set(w.subarray(0, p.length)), await Jn(o - 1, a, () => {
+    v.setInt32(0, g, !1), (u = l._cloneInto(u)).update(y).digestInto(w), p.set(w.subarray(0, p.length)), await ir(o - 1, a, () => {
       s._cloneInto(u).update(w).digestInto(w);
       for (let h = 0; h < p.length; h++)
         p[h] ^= w[h];
     });
   }
-  return Vr(s, l, c, u, w);
+  return Yr(s, l, c, u, w);
 }
 /*! scure-bip39 - MIT License (c) 2022 Patricio Palladino, Paul Miller (paulmillr.com) */
-const jr = (e) => e[0] === "あいこくしん";
-function un(e) {
+const Qr = (e) => e[0] === "あいこくしん";
+function gn(e) {
   if (typeof e != "string")
     throw new TypeError("invalid mnemonic type: " + typeof e);
   return e.normalize("NFKD");
 }
-function dn(e) {
-  const t = un(e), n = t.split(" ");
+function wn(e) {
+  const t = gn(e), n = t.split(" ");
   if (![12, 15, 18, 21, 24].includes(n.length))
     throw new Error("Invalid mnemonic");
   return { nfkd: t, words: n };
 }
-function yn(e) {
-  er(e, 16, 20, 24, 28, 32);
+function bn(e) {
+  ur(e, 16, 20, 24, 28, 32);
 }
-const $r = (e) => {
+const Zr = (e) => {
   const t = 8 - e.length / 4;
-  return new Uint8Array([Wt(e)[0] >> t << t]);
+  return new Uint8Array([wt(e)[0] >> t << t]);
 };
-function hn(e) {
+function mn(e) {
   if (!Array.isArray(e) || e.length !== 2048 || typeof e[0] != "string")
     throw new Error("Wordlist: expected array of 2048 strings");
   return e.forEach((t) => {
     if (typeof t != "string")
       throw new Error("wordlist: non-string element: " + t);
-  }), Le.chain(Le.checksum(1, $r), Le.radix2(11, !0), Le.alphabet(e));
+  }), Ue.chain(Ue.checksum(1, Zr), Ue.radix2(11, !0), Ue.alphabet(e));
 }
-function Wr(e, t) {
-  const { words: n } = dn(e), r = hn(t).decode(n);
-  return yn(r), r;
+function eo(e, t) {
+  const { words: n } = wn(e), r = mn(t).decode(n);
+  return bn(r), r;
 }
-function zr(e, t) {
-  return yn(e), hn(t).encode(e).join(jr(t) ? "　" : " ");
+function to(e, t) {
+  return bn(e), mn(t).encode(e).join(Qr(t) ? "　" : " ");
 }
-function Br(e, t) {
+function no(e, t) {
   try {
-    Wr(e, t);
+    eo(e, t);
   } catch {
     return !1;
   }
   return !0;
 }
-const Gr = (e) => un("mnemonic" + e);
-function Fr(e, t = "") {
-  return qr(Zn, dn(e).nfkd, Gr(t), { c: 2048, dkLen: 64 });
+const ro = (e) => gn("mnemonic" + e);
+function oo(e, t = "") {
+  return Xr(lr, wn(e).nfkd, ro(t), { c: 2048, dkLen: 64 });
 }
-function Hr(e) {
+function io(e) {
   if (e.length !== 16)
     throw new Error("Recovery phrase entropy must be exactly 128 bits (16 bytes).");
-  return zr(e, ln);
+  return to(e, vn);
 }
-function Jr(e) {
+function ao(e) {
   try {
-    return Br(pn(e), ln);
+    return no(_n(e), vn);
   } catch {
     return !1;
   }
 }
-function pn(e) {
+function _n(e) {
   return e.trim().normalize("NFKD").split(/\s+/u).join(" ");
 }
-async function vn(e) {
-  return Fr(pn(e), "");
+async function kn(e) {
+  return oo(_n(e), "");
 }
-const mt = tr.id, Ne = "aes-256-gcm-v1", Ie = "bitlogin-bip39-hkdf-v1";
-async function fn(e) {
-  const t = ze(e.loginName), n = e.now ?? Math.floor(Date.now() / 1e3), { locatorPrivateKey: r, capsuleKey: o } = await Ce(e.password, t), i = _(r), a = new C(e.vaultRelayUrls, { authPrivateKey: r });
-  let c;
+const xt = dr.id, Te = "aes-256-gcm-v1", Le = "bitlogin-bip39-hkdf-v1";
+async function En(e) {
+  const t = Je(e.loginName), n = e.now ?? Math.floor(Date.now() / 1e3), { locatorPrivateKey: r, capsuleKey: o } = await Se(e.password, t);
   try {
-    c = await Se(a, i, o, e.timeoutMs);
-  } finally {
-    a.closeAll();
-  }
-  if (!c.quorumMet)
-    throw new ye("Couldn't verify this login name and password aren't already registered. Please retry, or add more vault relays.");
-  if (c.candidates.length > 0)
-    throw new Ht();
-  const s = Hr(rr()), l = await vn(s), { recoveryPrivateKey: u, capsuleKey: y } = zt(l), v = _(u), w = e.everydayPrivateKey !== void 0;
-  if (w && !lt(e.everydayPrivateKey))
-    throw new ye("The provided key is not a valid secp256k1 private key.");
-  const g = w ? e.everydayPrivateKey : or(), f = _(g), p = H(ir()), h = xe(32), b = xe(32), m = {
-    schema: st,
-    account_id: p,
-    recovery_generation: 0,
-    previous_recovery_event_id: null,
-    operational_private_key: H(g),
-    operational_public_key: f,
-    recovery_public_key: v,
-    connection_vault_root: H(h),
-    vault_sudo_key: H(b),
-    created_at: n,
-    vault_relay_hints: e.vaultRelayUrls,
-    protocol: { capsule_encryption: Ne, recovery_derivation: Ie }
-  }, K = await an({
-    recoveryPrivateKey: u,
-    capsuleKey: y,
-    payload: m
-  }), F = {
-    schema: $e,
-    account_id: p,
-    generation: 0,
-    operational_private_key: H(g),
-    operational_public_key: f,
-    recovery_public_key: v,
-    recovery_capsule_event: K,
-    connection_vault_root: H(h),
-    vault_sudo_key: H(b),
-    created_at: n,
-    vault_relay_hints: e.vaultRelayUrls,
-    protocol: {
-      password_kdf: mt,
-      capsule_encryption: Ne,
-      recovery_derivation: Ie
+    const i = k(r), a = new C(e.vaultRelayUrls, {
+      authPrivateKey: r
+    });
+    let c;
+    try {
+      c = await Ie(a, i, o, e.timeoutMs);
+    } finally {
+      a.closeAll();
     }
-  }, E = await bt({
-    locatorPrivateKey: r,
-    capsuleKey: o,
-    payload: F
-  }), R = new C(e.vaultRelayUrls, { authPrivateKey: u }), A = await me(R, K, {
-    dTag: We,
-    minAcks: e.minAcknowledgements,
-    timeoutMs: e.timeoutMs
-  });
-  R.closeAll();
-  const x = new C(e.vaultRelayUrls, { authPrivateKey: r }), N = await me(x, E, {
-    dTag: ke,
-    minAcks: e.minAcknowledgements,
-    timeoutMs: e.timeoutMs
-  });
-  if (x.closeAll(), !A.success || !N.success)
-    throw new ye("Registration did not reach the required relay acknowledgement and readback quorum. Please retry, or add more vault relays.");
-  return {
-    normalizedLoginName: t,
-    recoveryPhrase: s,
-    everydayPrivateKey: g,
-    everydayPublicKey: f,
-    recoveryPublicKey: v,
-    locatorPublicKey: i,
-    accountId: p,
-    imported: w,
-    connectionVaultRoot: h,
-    vaultSudoKey: b,
-    credentialEvent: E,
-    recoveryEvent: K,
-    credentialPublish: N,
-    recoveryPublish: A
-  };
+    if (!c.quorumMet)
+      throw new le("Couldn't verify this login name and password aren't already registered. Please retry, or add more vault relays.");
+    if (c.candidates.length > 0)
+      throw new en();
+    const s = e.everydayPrivateKey !== void 0;
+    if (s && !ft(e.everydayPrivateKey))
+      throw new le("The provided key is not a valid secp256k1 private key.");
+    const l = io(hr()), u = await kn(l);
+    let y, v;
+    try {
+      ({ recoveryPrivateKey: y, capsuleKey: v } = Xt(u));
+    } finally {
+      x(u);
+    }
+    const w = s ? e.everydayPrivateKey : pr(), g = be(32), f = be(32);
+    let p = !1;
+    try {
+      const h = k(y), b = k(w), m = V(fr()), P = {
+        schema: pt,
+        account_id: m,
+        recovery_generation: 0,
+        previous_recovery_event_id: null,
+        operational_private_key: V(w),
+        operational_public_key: b,
+        recovery_public_key: h,
+        connection_vault_root: V(g),
+        vault_sudo_key: V(f),
+        created_at: n,
+        vault_relay_hints: e.vaultRelayUrls,
+        protocol: {
+          capsule_encryption: Te,
+          recovery_derivation: Le
+        }
+      }, N = await hn({
+        recoveryPrivateKey: y,
+        capsuleKey: v,
+        payload: P
+      }), K = new C(e.vaultRelayUrls, {
+        authPrivateKey: y
+      });
+      let R;
+      try {
+        R = await ke(K, N, {
+          dTag: He,
+          minAcks: e.minAcknowledgements,
+          timeoutMs: e.timeoutMs
+        });
+      } finally {
+        K.closeAll();
+      }
+      if (!R.success)
+        throw new le("The recovery capsule did not reach the required relay acknowledgement and readback quorum. No login credential was published. Please retry, or add more vault relays.");
+      const A = {
+        schema: Fe,
+        account_id: m,
+        generation: 0,
+        operational_private_key: V(w),
+        operational_public_key: b,
+        recovery_public_key: h,
+        recovery_capsule_event: N,
+        connection_vault_root: V(g),
+        created_at: n,
+        vault_relay_hints: e.vaultRelayUrls,
+        protocol: {
+          password_kdf: xt,
+          capsule_encryption: Te,
+          recovery_derivation: Le
+        }
+      }, S = await At({
+        locatorPrivateKey: r,
+        capsuleKey: o,
+        payload: A
+      }), L = new C(e.vaultRelayUrls, {
+        authPrivateKey: r
+      });
+      let I;
+      try {
+        I = await ke(L, S, {
+          dTag: Ee,
+          minAcks: e.minAcknowledgements,
+          timeoutMs: e.timeoutMs
+        });
+      } finally {
+        L.closeAll();
+      }
+      if (!I.success)
+        throw new le("Registration did not reach the required credential acknowledgement and readback quorum. Please retry, or add more vault relays.");
+      return p = !0, {
+        normalizedLoginName: t,
+        recoveryPhrase: l,
+        everydayPrivateKey: w,
+        everydayPublicKey: b,
+        recoveryPublicKey: h,
+        locatorPublicKey: i,
+        accountId: m,
+        imported: s,
+        connectionVaultRoot: g,
+        vaultSudoKey: f,
+        credentialEvent: S,
+        recoveryEvent: N,
+        credentialPublish: I,
+        recoveryPublish: R
+      };
+    } finally {
+      x(y, v), p || (s || x(w), x(g, f));
+    }
+  } finally {
+    x(r, o);
+  }
 }
-async function Yr(e) {
-  const { nsecOrHex: t, ...n } = e, r = gn(t);
-  return fn({ ...n, everydayPrivateKey: r });
+async function co(e) {
+  const { nsecOrHex: t, ...n } = e, r = Pn(t);
+  return En({ ...n, everydayPrivateKey: r });
 }
-function gn(e) {
+function Pn(e) {
   const t = e.trim();
   let n;
   if (t.startsWith("nsec1"))
-    n = nr(t);
+    n = yr(t);
   else if (/^[0-9a-fA-F]{64}$/u.test(t))
-    n = dt(t.toLowerCase());
+    n = bt(t.toLowerCase());
   else
-    throw new ye("Enter a valid nsec (nsec1…) or a 64-character hex private key.");
-  if (!lt(n))
-    throw new ye("The provided key is not a valid secp256k1 private key.");
+    throw new le("Enter a valid nsec (nsec1…) or a 64-character hex private key.");
+  if (!ft(n))
+    throw new le("The provided key is not a valid secp256k1 private key.");
   return n;
 }
-class wn {
+class Kn {
   map = /* @__PURE__ */ new Map();
   async get(t) {
     return this.map.get(t);
@@ -2806,30 +2869,33 @@ class wn {
     this.map.delete(t);
   }
 }
-async function Qr(e) {
-  const t = ze(e.loginName), { locatorPrivateKey: n, capsuleKey: r } = await Ce(e.password, t), o = _(n), i = new C(e.vaultRelayUrls, { authPrivateKey: n });
+async function so(e) {
+  const t = Je(e.loginName), { locatorPrivateKey: n, capsuleKey: r } = await Se(e.password, t), o = k(n), i = new C(e.vaultRelayUrls, {
+    authPrivateKey: n
+  });
   try {
-    const a = await Se(i, o, r, e.timeoutMs);
+    const a = await Ie(i, o, r, e.timeoutMs);
     if (!a.quorumMet)
-      throw new be("quorum-not-met");
+      throw new _e("quorum-not-met");
     if (!a.best)
-      throw new be(a.candidates.length > 0 ? "no-valid-candidate" : "no-matching-event");
-    const c = a.best.payload, s = e.store ?? new wn(), l = await vt(s, c.operational_public_key), u = c.generation < l.generation;
+      throw new _e(a.candidates.length > 0 ? "no-valid-candidate" : "no-matching-event");
+    const c = a.best.payload, s = e.store ?? new Kn(), l = await kt(s, c.operational_public_key), u = c.generation < l.generation;
     if (u && !e.acknowledgeRollback)
-      throw new Jt(l.generation, c.generation);
+      throw new tn(l.generation, c.generation);
     const y = u ? `This device previously saw credential generation ${l.generation}, but the accepted capsule is generation ${c.generation}. Relays may be serving stale data, or an old capsule is being replayed.` : void 0;
-    await Yt(s, c.operational_public_key, { generation: c.generation });
+    await nn(s, c.operational_public_key, {
+      generation: c.generation
+    });
     const v = a.relayDisagreement ? 'Configured relays returned different credential capsules as "latest" for this account. Some relays may be stale, censored, or malicious.' : void 0;
     return {
-      everydayPrivateKey: J(c.operational_private_key),
+      everydayPrivateKey: X(c.operational_private_key),
       everydayPublicKey: c.operational_public_key,
       recoveryPublicKey: c.recovery_public_key,
       accountId: c.account_id,
       generation: c.generation,
       credentialEvent: a.best.event,
       recoveryCapsuleEvent: c.recovery_capsule_event,
-      connectionVaultRoot: c.connection_vault_root ? J(c.connection_vault_root) : void 0,
-      vaultSudoKey: c.vault_sudo_key ? J(c.vault_sudo_key) : void 0,
+      connectionVaultRoot: c.connection_vault_root ? X(c.connection_vault_root) : void 0,
       rollbackWarning: y,
       relayDisagreementWarning: v
     };
@@ -2837,47 +2903,63 @@ async function Qr(e) {
     i.closeAll();
   }
 }
-function St(e) {
-  return e.filter((t) => ie(t)).sort((t, n) => n.created_at - t.created_at)[0];
+function Vt(e) {
+  return e.filter((t) => ae(t)).sort((t, n) => n.created_at - t.created_at)[0];
 }
-async function Xr(e) {
-  if (!Jr(e.phrase))
-    throw new Me("This does not look like a valid 12-word BitLogin recovery phrase.");
-  const t = await vn(e.phrase), { recoveryPrivateKey: n, capsuleKey: r } = zt(t);
-  ge(t);
-  const o = _(n), i = new C(e.vaultRelayUrls, { authPrivateKey: n });
+async function lo(e) {
+  if (!ao(e.phrase))
+    throw new Ne("This does not look like a valid 12-word BitLogin recovery phrase.");
+  const t = await kn(e.phrase), { recoveryPrivateKey: n, capsuleKey: r } = Xt(t);
+  x(t);
+  const o = k(n), i = new C(e.vaultRelayUrls, {
+    authPrivateKey: n
+  });
   let a;
   try {
-    a = await Ur(i, o, r, e.timeoutMs);
+    a = await Gr(i, o, r, e.timeoutMs);
   } finally {
     i.closeAll();
   }
   if (e.offlineRecoveryCapsuleEvents?.length) {
     const f = [];
     for (const m of e.offlineRecoveryCapsuleEvents)
-      if (ie(m))
+      if (ae(m))
         try {
-          f.push({ event: m, payload: await cn(m, r) });
-        } catch (K) {
-          f.push({ event: m, payload: null, error: K.message });
+          f.push({
+            event: m,
+            payload: await pn(m, r)
+          });
+        } catch (P) {
+          f.push({
+            event: m,
+            payload: null,
+            error: P.message
+          });
         }
     const p = /* @__PURE__ */ new Map();
     for (const m of [...a.candidates, ...f])
       p.set(m.event.id, m);
-    const h = [...p.values()].sort((m, K) => K.event.created_at - m.event.created_at), b = h.find((m) => m.payload !== null) ?? null;
-    a = { ...a, candidates: h, best: b, quorumMet: a.quorumMet || b !== null };
+    const h = [...p.values()].sort((m, P) => P.event.created_at - m.event.created_at), b = h.find((m) => m.payload !== null) ?? null;
+    a = {
+      ...a,
+      candidates: h,
+      best: b,
+      quorumMet: a.quorumMet || b !== null
+    };
   }
   if (!a.quorumMet)
-    throw new be("quorum-not-met");
+    throw new _e("quorum-not-met");
   if (!a.best)
-    throw new be(a.candidates.length > 0 ? "no-valid-candidate" : "no-matching-event");
-  const c = a.best.payload, s = Or(a.candidates), l = J(c.operational_private_key), u = c.operational_public_key, y = [.../* @__PURE__ */ new Set([...e.discoveryRelayUrls, ...c.vault_relay_hints])], v = new C(y);
+    throw new _e(a.candidates.length > 0 ? "no-valid-candidate" : "no-matching-event");
+  const c = a.best.payload, s = Fr(a.candidates), l = X(c.operational_private_key), u = c.operational_public_key, y = [
+    .../* @__PURE__ */ new Set([...e.discoveryRelayUrls, ...c.vault_relay_hints])
+  ], v = new C(y);
   let w = [], g = [];
   try {
-    const f = await v.queryQuorum({ kinds: [it], authors: [u], limit: 5 }, e.timeoutMs), p = St(f.outcomes.flatMap((m) => m.events));
-    p && (w = wr(p));
-    const h = await v.queryQuorum({ kinds: [at], authors: [u], limit: 5 }, e.timeoutMs), b = St(h.outcomes.flatMap((m) => m.events));
-    b && (g = br(b));
+    const f = await v.queryQuorum({ kinds: [yt], authors: [u], limit: 5 }, e.timeoutMs), p = Vt(f.outcomes.flatMap((m) => m.events));
+    p && (w = Nr(p));
+    const h = await v.queryQuorum({ kinds: [ht], authors: [u], limit: 5 }, e.timeoutMs), b = Vt(h.outcomes.flatMap((m) => m.events));
+    b && (g = Sr(b));
   } finally {
     v.closeAll();
   }
@@ -2895,77 +2977,121 @@ async function Xr(e) {
     chainWarning: s.consistent ? void 0 : s.warning
   };
 }
-async function Zr(e) {
-  const t = e.now ?? Math.floor(Date.now() / 1e3), n = ze(e.newLoginName), { recovered: r } = e, o = r.currentRecoveryPayload.connection_vault_root !== void 0 ? {
+async function uo(e) {
+  const t = e.now ?? Math.floor(Date.now() / 1e3), n = Je(e.newLoginName), { recovered: r } = e, o = r.currentRecoveryPayload.connection_vault_root !== void 0 ? {
     connection_vault_root: r.currentRecoveryPayload.connection_vault_root,
     vault_sudo_key: r.currentRecoveryPayload.vault_sudo_key
-  } : {}, i = {
-    schema: st,
-    account_id: r.accountId,
-    recovery_generation: r.currentRecoveryPayload.recovery_generation + 1,
-    previous_recovery_event_id: r.currentRecoveryEvent.id,
-    operational_private_key: H(r.everydayPrivateKey),
-    operational_public_key: r.everydayPublicKey,
-    recovery_public_key: r.recoveryPublicKey,
-    ...o,
-    created_at: ht(r.currentRecoveryEvent.created_at, t),
-    vault_relay_hints: e.vaultRelayUrls,
-    protocol: { capsule_encryption: Ne, recovery_derivation: Ie }
-  }, a = await an({
-    recoveryPrivateKey: r.recoveryPrivateKey,
-    capsuleKey: r.recoveryCapsuleKey,
-    payload: i
-  }), c = new C(e.vaultRelayUrls, { authPrivateKey: r.recoveryPrivateKey }), s = await me(c, a, {
-    dTag: We,
-    minAcks: e.minAcknowledgements,
-    timeoutMs: e.timeoutMs
-  });
-  c.closeAll();
-  const { locatorPrivateKey: l, capsuleKey: u } = await Ce(e.newPassword, n), y = _(l), v = new C(e.vaultRelayUrls, { authPrivateKey: l });
-  let w;
+  } : {}, i = r.currentRecoveryPayload.connection_vault_root !== void 0 ? {
+    connection_vault_root: r.currentRecoveryPayload.connection_vault_root
+  } : {}, { locatorPrivateKey: a, capsuleKey: c } = await Se(e.newPassword, n);
   try {
-    w = await Se(v, y, u, e.timeoutMs);
-  } finally {
-    v.closeAll();
-  }
-  if (!w.quorumMet)
-    throw new Me("Couldn't verify the new login name and password aren't already registered. Please retry, or add more vault relays.");
-  if (w.candidates.length > 0)
-    throw new Me("Another account is already registered with that login name and password. Pick a different one.");
-  const g = {
-    schema: $e,
-    account_id: r.accountId,
-    generation: 0,
-    operational_private_key: H(r.everydayPrivateKey),
-    operational_public_key: r.everydayPublicKey,
-    recovery_public_key: r.recoveryPublicKey,
-    recovery_capsule_event: a,
-    ...o,
-    created_at: t,
-    vault_relay_hints: e.vaultRelayUrls,
-    protocol: {
-      password_kdf: mt,
-      capsule_encryption: Ne,
-      recovery_derivation: Ie
+    const s = k(a), l = new C(e.vaultRelayUrls, {
+      authPrivateKey: a
+    });
+    let u;
+    try {
+      u = await Ie(l, s, c, e.timeoutMs);
+    } finally {
+      l.closeAll();
     }
-  }, f = await bt({ locatorPrivateKey: l, capsuleKey: u, payload: g }), p = new C(e.vaultRelayUrls, { authPrivateKey: l }), h = await me(p, f, {
-    dTag: ke,
-    minAcks: e.minAcknowledgements,
-    timeoutMs: e.timeoutMs
-  });
-  if (p.closeAll(), !s.success || !h.success)
-    throw new Me("Could not publish the refreshed recovery and credential capsules to enough relays. Please retry.");
-  return e.store && await yr(e.store, r.everydayPublicKey, {
-    generation: 0,
-    recoveryGeneration: r.currentRecoveryPayload.recovery_generation + 1
-  }), { normalizedLoginName: n, locatorPublicKey: y, credentialEvent: f, refreshedRecoveryEvent: a, credentialPublish: h, recoveryPublish: s };
+    if (!u.quorumMet)
+      throw new Ne("Couldn't verify the new login name and password aren't already registered. Please retry, or add more vault relays.");
+    const y = u.best?.payload ?? null, v = y !== null && y.account_id === r.accountId && y.operational_public_key === r.everydayPublicKey && y.recovery_public_key === r.recoveryPublicKey && y.generation === 0 && y.recovery_capsule_event.id === r.currentRecoveryEvent.id;
+    if (u.candidates.length > 0 && !v)
+      throw new Ne("Another account is already registered with that login name and password. Pick a different one.");
+    const w = r.currentRecoveryPayload.recovery_generation + 1, g = {
+      schema: pt,
+      account_id: r.accountId,
+      recovery_generation: w,
+      previous_recovery_event_id: r.currentRecoveryEvent.id,
+      operational_private_key: V(r.everydayPrivateKey),
+      operational_public_key: r.everydayPublicKey,
+      recovery_public_key: r.recoveryPublicKey,
+      ...o,
+      created_at: We(r.currentRecoveryEvent.created_at, t),
+      vault_relay_hints: e.vaultRelayUrls,
+      protocol: {
+        capsule_encryption: Te,
+        recovery_derivation: Le
+      }
+    }, f = await hn({
+      recoveryPrivateKey: r.recoveryPrivateKey,
+      capsuleKey: r.recoveryCapsuleKey,
+      payload: g
+    }), p = new C(e.vaultRelayUrls, {
+      authPrivateKey: r.recoveryPrivateKey
+    });
+    let h;
+    try {
+      h = await ke(p, f, {
+        dTag: He,
+        minAcks: e.minAcknowledgements,
+        timeoutMs: e.timeoutMs
+      });
+    } finally {
+      p.closeAll();
+    }
+    if (!h.success)
+      throw new Ne("Could not publish the refreshed recovery capsule to enough relays. No new credential was published; please retry.");
+    r.currentRecoveryEvent = f, r.currentRecoveryPayload = g;
+    const b = {
+      schema: Fe,
+      account_id: r.accountId,
+      generation: 0,
+      operational_private_key: V(r.everydayPrivateKey),
+      operational_public_key: r.everydayPublicKey,
+      recovery_public_key: r.recoveryPublicKey,
+      recovery_capsule_event: f,
+      ...i,
+      // A retry may be repairing a credential that reached only one relay.
+      // It must replace that partial event deterministically on every relay.
+      created_at: u.best ? We(u.best.event.created_at, t) : t,
+      vault_relay_hints: e.vaultRelayUrls,
+      protocol: {
+        password_kdf: xt,
+        capsule_encryption: Te,
+        recovery_derivation: Le
+      }
+    }, m = await At({
+      locatorPrivateKey: a,
+      capsuleKey: c,
+      payload: b
+    }), P = new C(e.vaultRelayUrls, {
+      authPrivateKey: a
+    });
+    let N;
+    try {
+      N = await ke(P, m, {
+        dTag: Ee,
+        minAcks: e.minAcknowledgements,
+        timeoutMs: e.timeoutMs
+      });
+    } finally {
+      P.closeAll();
+    }
+    if (!N.success)
+      throw new Ne("Could not publish the new credential capsule to enough relays. Please retry.");
+    return e.store && await kr(e.store, r.everydayPublicKey, {
+      generation: 0,
+      recoveryGeneration: w
+    }), {
+      normalizedLoginName: n,
+      locatorPublicKey: s,
+      credentialEvent: m,
+      refreshedRecoveryEvent: f,
+      credentialPublish: N,
+      recoveryPublish: h
+    };
+  } finally {
+    x(a, c);
+  }
 }
-function bn(e) {
-  const t = _(e.privateKey);
-  return ee({
+function Rn(e) {
+  const t = k(e.privateKey);
+  return ne({
     pubkey: t,
     created_at: e.createdAt,
-    kind: ar,
+    kind: vr,
     tags: [
       ["e", e.eventIdToDelete],
       ["k", String(e.deletedEventKind)]
@@ -2973,75 +3099,85 @@ function bn(e) {
     content: e.reason ?? ""
   }, e.privateKey);
 }
-async function eo(e) {
-  const t = e.now ?? Math.floor(Date.now() / 1e3), n = ze(e.loginName), r = await Ce(e.oldPassword, n), o = _(r.locatorPrivateKey), i = new C(e.vaultRelayUrls, { authPrivateKey: r.locatorPrivateKey });
+async function yo(e) {
+  const t = e.now ?? Math.floor(Date.now() / 1e3), n = Je(e.loginName), r = await Se(e.oldPassword, n), o = k(r.locatorPrivateKey), i = new C(e.vaultRelayUrls, {
+    authPrivateKey: r.locatorPrivateKey
+  });
   let a;
   try {
-    a = await Se(i, o, r.capsuleKey, e.timeoutMs);
+    a = await Ie(i, o, r.capsuleKey, e.timeoutMs);
   } finally {
     i.closeAll();
   }
   if (!a.quorumMet)
-    throw new be("quorum-not-met");
+    throw new _e("quorum-not-met");
   if (!a.best)
-    throw new be(a.candidates.length > 0 ? "no-valid-candidate" : "no-matching-event");
-  const c = a.best.payload, s = a.best.event, l = e.store ?? new wn(), u = await vt(l, c.operational_public_key);
+    throw new _e(a.candidates.length > 0 ? "no-valid-candidate" : "no-matching-event");
+  const c = a.best.payload, s = a.best.event, l = e.store ?? new Kn(), u = await kt(l, c.operational_public_key);
   if (c.generation < u.generation && !e.acknowledgeRollback)
-    throw new Jt(u.generation, c.generation);
-  const y = await Ce(e.newPassword, n), v = _(y.locatorPrivateKey), w = new C(e.vaultRelayUrls, { authPrivateKey: y.locatorPrivateKey });
+    throw new tn(u.generation, c.generation);
+  const y = await Se(e.newPassword, n), v = k(y.locatorPrivateKey), w = new C(e.vaultRelayUrls, {
+    authPrivateKey: y.locatorPrivateKey
+  });
   let g;
   try {
-    g = await Se(w, v, y.capsuleKey, e.timeoutMs);
+    g = await Ie(w, v, y.capsuleKey, e.timeoutMs);
   } finally {
     w.closeAll();
   }
   if (!g.quorumMet)
-    throw new ye("Couldn't verify the new password isn't already registered under this login name. Please retry, or add more vault relays.");
+    throw new le("Couldn't verify the new password isn't already registered under this login name. Please retry, or add more vault relays.");
   if (g.candidates.length > 0)
-    throw new Ht("Another account is already registered with this login name and the new password you chose. Pick a different new password.");
+    throw new en("Another account is already registered with this login name and the new password you chose. Pick a different new password.");
   const f = c.generation + 1, p = {
-    schema: $e,
+    schema: Fe,
     account_id: c.account_id,
     generation: f,
     operational_private_key: c.operational_private_key,
     operational_public_key: c.operational_public_key,
     recovery_public_key: c.recovery_public_key,
     recovery_capsule_event: c.recovery_capsule_event,
-    // Carried forward like every other long-lived field (§CV5.2): dropping
-    // the vault roots on a password change would strand every connection
-    // record until the next phrase ceremony.
-    ...c.connection_vault_root !== void 0 ? { connection_vault_root: c.connection_vault_root, vault_sudo_key: c.vault_sudo_key } : {},
+    // Carry only the session root. A legacy credential may contain the sudo
+    // key, but rotation deliberately scrubs it; personal-tier access remains
+    // phrase-gated through the recovery capsule.
+    ...c.connection_vault_root !== void 0 ? { connection_vault_root: c.connection_vault_root } : {},
     created_at: t,
     vault_relay_hints: e.vaultRelayUrls,
     protocol: {
-      password_kdf: mt,
-      capsule_encryption: Ne,
-      recovery_derivation: Ie
+      password_kdf: xt,
+      capsule_encryption: Te,
+      recovery_derivation: Le
     }
-  }, h = await bt({
+  }, h = await At({
     locatorPrivateKey: y.locatorPrivateKey,
     capsuleKey: y.capsuleKey,
     payload: p
-  }), b = new C(e.vaultRelayUrls, { authPrivateKey: y.locatorPrivateKey }), m = await me(b, h, {
-    dTag: ke,
+  }), b = new C(e.vaultRelayUrls, {
+    authPrivateKey: y.locatorPrivateKey
+  }), m = await ke(b, h, {
+    dTag: Ee,
     minAcks: e.minAcknowledgements,
     timeoutMs: e.timeoutMs
   });
   if (b.closeAll(), !m.success)
-    throw new ye("The new credential capsule did not reach the required relay acknowledgement and readback quorum. Your existing password still works; nothing was changed. Please retry.");
-  const K = Tr({
+    throw new le("The new credential capsule did not reach the required relay acknowledgement and readback quorum. Your existing password still works; nothing was changed. Please retry.");
+  const P = zr({
     oldLocatorPrivateKey: r.locatorPrivateKey,
-    createdAt: ht(s.created_at, t)
-  }), F = bn({
+    createdAt: We(s.created_at, t)
+  }), N = Rn({
     privateKey: r.locatorPrivateKey,
     eventIdToDelete: s.id,
-    deletedEventKind: te,
+    deletedEventKind: re,
     createdAt: t
-  }), E = new C(e.vaultRelayUrls, { authPrivateKey: r.locatorPrivateKey }), [R, A] = await Promise.all([
-    E.publishAll(K, e.timeoutMs),
-    E.publishAll(F, e.timeoutMs)
+  }), K = new C(e.vaultRelayUrls, {
+    authPrivateKey: r.locatorPrivateKey
+  }), [R, A] = await Promise.all([
+    K.publishAll(P, e.timeoutMs),
+    K.publishAll(N, e.timeoutMs)
   ]);
-  return E.closeAll(), await Yt(l, c.operational_public_key, { generation: f }), {
+  return K.closeAll(), await nn(l, c.operational_public_key, {
+    generation: f
+  }), {
     normalizedLoginName: n,
     oldLocatorPublicKey: o,
     newLocatorPublicKey: v,
@@ -3049,74 +3185,124 @@ async function eo(e) {
     recoveryPublicKey: c.recovery_public_key,
     recoveryCapsuleEvent: c.recovery_capsule_event,
     newCredentialEvent: h,
-    tombstoneEvent: K,
-    deletionRequestEvent: F,
+    tombstoneEvent: P,
+    deletionRequestEvent: N,
     newCredentialPublish: m,
-    tombstoneAcknowledgedCount: se(R),
-    deletionAcknowledgedCount: se(A)
+    tombstoneAcknowledgedCount: ye(R),
+    deletionAcknowledgedCount: ye(A)
   };
 }
+const ho = "bitlogin/connection-vault-root/v1", po = "bitlogin/connection-vault-signing/v1", fo = "bitlogin/connection-record-encryption/v1", vo = "bitlogin/connection-vault-personal/v1", at = "bitlogin:connection:";
+function go(e) {
+  if (e.length !== 32)
+    throw new Error("connection_vault_root must be exactly 32 bytes.");
+  return mt(Qt(ho), e);
+}
+function Ke(e) {
+  return gr(e, po).scalar;
+}
+function An(e) {
+  const t = Ke(e);
+  try {
+    return k(t);
+  } finally {
+    x(t);
+  }
+}
+function wo(e, t) {
+  if (t.length !== 32)
+    throw new Error("vault_sudo_key must be exactly 32 bytes.");
+  if (e.length !== 32)
+    throw new Error("connection_vault_root must be exactly 32 bytes.");
+  return mt(Qt(vo), Pe(e, t));
+}
+function xn(e, t) {
+  const n = Xe(t);
+  return Me(e, Pe(Y(fo), new Uint8Array([0]), n), 32);
+}
+function bo() {
+  return V(be(16));
+}
+function Xe(e) {
+  const t = X(e);
+  if (t.length !== 16)
+    throw new Error("connection_id must decode to exactly 16 bytes (§CV7).");
+  return t;
+}
+function Cn(e) {
+  return Xe(e), `${at}${e}`;
+}
+function Nn(e) {
+  if (!e.startsWith(at))
+    return null;
+  const t = e.slice(at.length);
+  try {
+    return Xe(t), t;
+  } catch {
+    return null;
+  }
+}
 /*! noble-ciphers - MIT License (c) 2023 Paul Miller (paulmillr.com) */
-function to(e) {
+function mo(e) {
   return e instanceof Uint8Array || ArrayBuffer.isView(e) && e.constructor.name === "Uint8Array" && "BYTES_PER_ELEMENT" in e && e.BYTES_PER_ELEMENT === 1;
 }
-function Nt(e) {
+function qt(e) {
   if (typeof e != "boolean")
     throw new TypeError(`boolean expected, not ${e}`);
 }
-function Fe(e) {
+function Ze(e) {
   if (typeof e != "number")
     throw new TypeError("number expected, got " + typeof e);
   if (!Number.isSafeInteger(e) || e < 0)
     throw new RangeError("positive integer expected, got " + e);
 }
-function T(e, t, n = "") {
-  const r = to(e), o = e?.length, i = t !== void 0;
+function M(e, t, n = "") {
+  const r = mo(e), o = e?.length, i = t !== void 0;
   if (!r || i && o !== t) {
     const a = n && `"${n}" `, c = i ? ` of length ${t}` : "", s = r ? `length=${o}` : `type=${typeof e}`, l = a + "expected Uint8Array" + c + ", got " + s;
     throw r ? new RangeError(l) : new TypeError(l);
   }
   return e;
 }
-function S(e) {
+function T(e) {
   return new Uint32Array(e.buffer, e.byteOffset, Math.floor(e.byteLength / 4));
 }
-function pe(...e) {
+function ve(...e) {
   for (let t = 0; t < e.length; t++)
     e[t].fill(0);
 }
-const Y = new Uint8Array(new Uint32Array([287454020]).buffer)[0] === 68, no = (e) => e << 24 & 4278190080 | e << 8 & 16711680 | e >>> 8 & 65280 | e >>> 24 & 255, ro = (e) => {
+const Q = new Uint8Array(new Uint32Array([287454020]).buffer)[0] === 68, _o = (e) => e << 24 & 4278190080 | e << 8 & 16711680 | e >>> 8 & 65280 | e >>> 24 & 255, ko = (e) => {
   for (let t = 0; t < e.length; t++)
-    e[t] = no(e[t]);
+    e[t] = _o(e[t]);
   return e;
-}, L = Y ? (e) => e : ro;
-function oo(e, t) {
+}, U = Q ? (e) => e : ko;
+function Eo(e, t) {
   return !e.byteLength || !t.byteLength ? !1 : e.buffer === t.buffer && // best we can do, may fail with an obscure Proxy
   e.byteOffset < t.byteOffset + t.byteLength && // a starts before b end
   t.byteOffset < e.byteOffset + e.byteLength;
 }
-function mn(e, t) {
-  if (oo(e, t) && e.byteOffset < t.byteOffset)
+function Sn(e, t) {
+  if (Eo(e, t) && e.byteOffset < t.byteOffset)
     throw new Error("complex overlap of input and output is not supported");
 }
-function io(e, t) {
+function Po(e, t) {
   if (t == null || typeof t != "object")
     throw new Error("options must be defined");
   return Object.assign(e, t);
 }
-const ao = /* @__NO_SIDE_EFFECTS__ */ (e, t) => {
+const Ko = /* @__NO_SIDE_EFFECTS__ */ (e, t) => {
   function n(r, ...o) {
-    if (T(r, void 0, "key"), e.nonceLength !== void 0) {
+    if (M(r, void 0, "key"), e.nonceLength !== void 0) {
       const u = o[0];
-      T(u, e.varSizeNonce ? void 0 : e.nonceLength, "nonce");
+      M(u, e.varSizeNonce ? void 0 : e.nonceLength, "nonce");
     }
     const i = e.tagLength;
-    i && o[1] !== void 0 && T(o[1], void 0, "AAD");
+    i && o[1] !== void 0 && M(o[1], void 0, "AAD");
     const a = t(r, ...o), c = (u, y) => {
       if (y !== void 0) {
         if (u !== 2)
           throw new Error("cipher output not supported");
-        T(y, void 0, "output");
+        M(y, void 0, "output");
       }
     };
     let s = !1;
@@ -3124,10 +3310,10 @@ const ao = /* @__NO_SIDE_EFFECTS__ */ (e, t) => {
       encrypt(u, y) {
         if (s)
           throw new Error("cannot encrypt() twice with same key + nonce");
-        return s = !0, T(u), c(a.encrypt.length, y), a.encrypt(u, y);
+        return s = !0, M(u), c(a.encrypt.length, y), a.encrypt(u, y);
       },
       decrypt(u, y) {
-        if (T(u), i && u.length < i)
+        if (M(u), i && u.length < i)
           throw new Error('"ciphertext" expected length bigger than tagLength=' + i);
         return c(a.decrypt.length, y), a.decrypt(u, y);
       }
@@ -3135,33 +3321,33 @@ const ao = /* @__NO_SIDE_EFFECTS__ */ (e, t) => {
   }
   return Object.assign(n, e), n;
 };
-function kt(e, t, n = !0) {
+function Ct(e, t, n = !0) {
   if (t === void 0)
     return new Uint8Array(e);
-  if (T(t, void 0, "output"), t.length !== e)
+  if (M(t, void 0, "output"), t.length !== e)
     throw new Error('"output" expected Uint8Array of length ' + e + ", got: " + t.length);
-  if (n && !oe(t))
+  if (n && !ie(t))
     throw new Error("invalid output, must be aligned");
   return t;
 }
-function oe(e) {
+function ie(e) {
   return e.byteOffset % 4 === 0;
 }
-function he(e) {
-  return Uint8Array.from(T(e));
+function fe(e) {
+  return Uint8Array.from(M(e));
 }
-const kn = (e) => Uint8Array.from(e.split(""), (t) => t.charCodeAt(0)), co = L(S(kn("expand 16-byte k"))), so = L(S(kn("expand 32-byte k")));
-function k(e, t) {
+const In = (e) => Uint8Array.from(e.split(""), (t) => t.charCodeAt(0)), Ro = U(T(In("expand 16-byte k"))), Ao = U(T(In("expand 32-byte k")));
+function _(e, t) {
   return e << t | e >>> 32 - t;
 }
-const Pe = 64, lo = 16, Ze = 2 ** 32 - 1, It = /* @__PURE__ */ Uint32Array.of();
-function uo(e, t, n, r, o, i, a, c) {
-  const s = o.length, l = new Uint8Array(Pe), u = S(l), y = Y && oe(o) && oe(i), v = y ? S(o) : It, w = y ? S(i) : It;
-  if (!Y) {
+const Re = 64, xo = 16, ct = 2 ** 32 - 1, jt = /* @__PURE__ */ Uint32Array.of();
+function Co(e, t, n, r, o, i, a, c) {
+  const s = o.length, l = new Uint8Array(Re), u = T(l), y = Q && ie(o) && ie(i), v = y ? T(o) : jt, w = y ? T(i) : jt;
+  if (!Q) {
     for (let g = 0; g < s; a++) {
-      if (e(t, n, r, u, a, c), L(u), a >= Ze)
+      if (e(t, n, r, u, a, c), U(u), a >= ct)
         throw new Error("arx: counter overflow");
-      const f = Math.min(Pe, s - g);
+      const f = Math.min(Re, s - g);
       for (let p = 0, h; p < f; p++)
         h = g + p, i[h] = o[h] ^ l[p];
       g += f;
@@ -3169,16 +3355,16 @@ function uo(e, t, n, r, o, i, a, c) {
     return;
   }
   for (let g = 0; g < s; a++) {
-    if (e(t, n, r, u, a, c), a >= Ze)
+    if (e(t, n, r, u, a, c), a >= ct)
       throw new Error("arx: counter overflow");
-    const f = Math.min(Pe, s - g);
-    if (y && f === Pe) {
+    const f = Math.min(Re, s - g);
+    if (y && f === Re) {
       const p = g / 4;
       if (g % 4 !== 0)
         throw new Error("arx: invalid block position");
-      for (let h = 0, b; h < lo; h++)
+      for (let h = 0, b; h < xo; h++)
         b = p + h, w[b] = v[b] ^ u[h];
-      g += Pe;
+      g += Re;
       continue;
     }
     for (let p = 0, h; p < f; p++)
@@ -3186,143 +3372,162 @@ function uo(e, t, n, r, o, i, a, c) {
     g += f;
   }
 }
-function yo(e, t) {
-  const { allowShortKeys: n, extendNonceFn: r, counterLength: o, counterRight: i, rounds: a } = io({ allowShortKeys: !1, counterLength: 8, counterRight: !1, rounds: 20 }, t);
+function No(e, t) {
+  const { allowShortKeys: n, extendNonceFn: r, counterLength: o, counterRight: i, rounds: a } = Po({ allowShortKeys: !1, counterLength: 8, counterRight: !1, rounds: 20 }, t);
   if (typeof e != "function")
     throw new Error("core must be a function");
-  return Fe(o), Fe(a), Nt(i), Nt(n), (c, s, l, u, y = 0) => {
-    T(c, void 0, "key"), T(s, void 0, "nonce"), T(l, void 0, "data");
+  return Ze(o), Ze(a), qt(i), qt(n), (c, s, l, u, y = 0) => {
+    M(c, void 0, "key"), M(s, void 0, "nonce"), M(l, void 0, "data");
     const v = l.length;
-    if (u = kt(v, u, !1), Fe(y), y < 0 || y >= Ze)
+    if (u = Ct(v, u, !1), Ze(y), y < 0 || y >= ct)
       throw new Error("arx: counter overflow");
     const w = [];
     let g = c.length, f, p;
     if (g === 32)
-      w.push(f = he(c)), p = so;
+      w.push(f = fe(c)), p = Ao;
     else if (g === 16 && n)
-      f = new Uint8Array(32), f.set(c), f.set(c, 16), p = co, w.push(f);
+      f = new Uint8Array(32), f.set(c), f.set(c, 16), p = Ro, w.push(f);
     else
-      throw T(c, 32, "arx key"), new Error("invalid key size");
-    (!Y || !oe(s)) && w.push(s = he(s));
-    let h = S(f);
+      throw M(c, 32, "arx key"), new Error("invalid key size");
+    (!Q || !ie(s)) && w.push(s = fe(s));
+    let h = T(f);
     if (r) {
       if (s.length !== 24)
         throw new Error("arx: extended nonce must be 24 bytes");
-      const K = s.subarray(0, 16);
-      if (Y)
-        r(p, h, S(K), h);
+      const P = s.subarray(0, 16);
+      if (Q)
+        r(p, h, T(P), h);
       else {
-        const F = L(Uint32Array.from(p));
-        r(F, h, S(K), h), pe(F), L(h);
+        const N = U(Uint32Array.from(p));
+        r(N, h, T(P), h), ve(N), U(h);
       }
       s = s.subarray(16);
-    } else Y || L(h);
+    } else Q || U(h);
     const b = 16 - o;
     if (b !== s.length)
       throw new Error(`arx: nonce must be ${b} or 16 bytes`);
     if (b !== 12) {
-      const K = new Uint8Array(12);
-      K.set(s, i ? 0 : 12 - s.length), s = K, w.push(s);
+      const P = new Uint8Array(12);
+      P.set(s, i ? 0 : 12 - s.length), s = P, w.push(s);
     }
-    const m = L(S(s));
+    const m = U(T(s));
     try {
-      return uo(e, p, h, m, l, u, y, a), u;
+      return Co(e, p, h, m, l, u, y, a), u;
     } finally {
-      pe(...w);
+      ve(...w);
     }
   };
 }
-function ho(e, t, n, r, o, i = 20) {
-  let a = e[0], c = e[1], s = e[2], l = e[3], u = t[0], y = t[1], v = t[2], w = t[3], g = t[4], f = t[5], p = t[6], h = t[7], b = o, m = n[0], K = n[1], F = n[2], E = a, R = c, A = s, x = l, N = u, O = y, M = v, D = w, V = g, q = f, j = p, $ = h, W = b, z = m, B = K, G = F;
-  for (let Rt = 0; Rt < i; Rt += 2)
-    E = E + N | 0, W = k(W ^ E, 16), V = V + W | 0, N = k(N ^ V, 12), E = E + N | 0, W = k(W ^ E, 8), V = V + W | 0, N = k(N ^ V, 7), R = R + O | 0, z = k(z ^ R, 16), q = q + z | 0, O = k(O ^ q, 12), R = R + O | 0, z = k(z ^ R, 8), q = q + z | 0, O = k(O ^ q, 7), A = A + M | 0, B = k(B ^ A, 16), j = j + B | 0, M = k(M ^ j, 12), A = A + M | 0, B = k(B ^ A, 8), j = j + B | 0, M = k(M ^ j, 7), x = x + D | 0, G = k(G ^ x, 16), $ = $ + G | 0, D = k(D ^ $, 12), x = x + D | 0, G = k(G ^ x, 8), $ = $ + G | 0, D = k(D ^ $, 7), E = E + O | 0, G = k(G ^ E, 16), j = j + G | 0, O = k(O ^ j, 12), E = E + O | 0, G = k(G ^ E, 8), j = j + G | 0, O = k(O ^ j, 7), R = R + M | 0, W = k(W ^ R, 16), $ = $ + W | 0, M = k(M ^ $, 12), R = R + M | 0, W = k(W ^ R, 8), $ = $ + W | 0, M = k(M ^ $, 7), A = A + D | 0, z = k(z ^ A, 16), V = V + z | 0, D = k(D ^ V, 12), A = A + D | 0, z = k(z ^ A, 8), V = V + z | 0, D = k(D ^ V, 7), x = x + N | 0, B = k(B ^ x, 16), q = q + B | 0, N = k(N ^ q, 12), x = x + N | 0, B = k(B ^ x, 8), q = q + B | 0, N = k(N ^ q, 7);
-  let I = 0;
-  r[I++] = a + E | 0, r[I++] = c + R | 0, r[I++] = s + A | 0, r[I++] = l + x | 0, r[I++] = u + N | 0, r[I++] = y + O | 0, r[I++] = v + M | 0, r[I++] = w + D | 0, r[I++] = g + V | 0, r[I++] = f + q | 0, r[I++] = p + j | 0, r[I++] = h + $ | 0, r[I++] = b + W | 0, r[I++] = m + z | 0, r[I++] = K + B | 0, r[I++] = F + G | 0;
+function So(e, t, n, r, o, i = 20) {
+  let a = e[0], c = e[1], s = e[2], l = e[3], u = t[0], y = t[1], v = t[2], w = t[3], g = t[4], f = t[5], p = t[6], h = t[7], b = o, m = n[0], P = n[1], N = n[2], K = a, R = c, A = s, S = l, L = u, I = y, q = v, j = w, W = g, $ = f, z = p, B = h, G = b, F = m, H = P, J = N;
+  for (let Ot = 0; Ot < i; Ot += 2)
+    K = K + L | 0, G = _(G ^ K, 16), W = W + G | 0, L = _(L ^ W, 12), K = K + L | 0, G = _(G ^ K, 8), W = W + G | 0, L = _(L ^ W, 7), R = R + I | 0, F = _(F ^ R, 16), $ = $ + F | 0, I = _(I ^ $, 12), R = R + I | 0, F = _(F ^ R, 8), $ = $ + F | 0, I = _(I ^ $, 7), A = A + q | 0, H = _(H ^ A, 16), z = z + H | 0, q = _(q ^ z, 12), A = A + q | 0, H = _(H ^ A, 8), z = z + H | 0, q = _(q ^ z, 7), S = S + j | 0, J = _(J ^ S, 16), B = B + J | 0, j = _(j ^ B, 12), S = S + j | 0, J = _(J ^ S, 8), B = B + J | 0, j = _(j ^ B, 7), K = K + I | 0, J = _(J ^ K, 16), z = z + J | 0, I = _(I ^ z, 12), K = K + I | 0, J = _(J ^ K, 8), z = z + J | 0, I = _(I ^ z, 7), R = R + q | 0, G = _(G ^ R, 16), B = B + G | 0, q = _(q ^ B, 12), R = R + q | 0, G = _(G ^ R, 8), B = B + G | 0, q = _(q ^ B, 7), A = A + j | 0, F = _(F ^ A, 16), W = W + F | 0, j = _(j ^ W, 12), A = A + j | 0, F = _(F ^ A, 8), W = W + F | 0, j = _(j ^ W, 7), S = S + L | 0, H = _(H ^ S, 16), $ = $ + H | 0, L = _(L ^ $, 12), S = S + L | 0, H = _(H ^ S, 8), $ = $ + H | 0, L = _(L ^ $, 7);
+  let O = 0;
+  r[O++] = a + K | 0, r[O++] = c + R | 0, r[O++] = s + A | 0, r[O++] = l + S | 0, r[O++] = u + L | 0, r[O++] = y + I | 0, r[O++] = v + q | 0, r[O++] = w + j | 0, r[O++] = g + W | 0, r[O++] = f + $ | 0, r[O++] = p + z | 0, r[O++] = h + B | 0, r[O++] = b + G | 0, r[O++] = m + F | 0, r[O++] = P + H | 0, r[O++] = N + J | 0;
 }
-const _n = /* @__PURE__ */ yo(ho, {
+const Tn = /* @__PURE__ */ No(So, {
   counterRight: !1,
   counterLength: 4,
   allowShortKeys: !1
-}), En = 2, et = 1, Pn = 65536, tt = 4294967295;
-function Tt(e, t) {
-  const n = _e(new Uint8Array([2]), dt(t)), o = Bt.getSharedSecret(e, n, !0).slice(1, 33);
-  return yt(ue("nip44-v2"), o);
+}), Ln = 2, st = 1, On = 65536, Io = 4294967295, To = 132, Lo = 99, lt = 1024 * 1024;
+function Wt(e, t) {
+  const n = Pe(new Uint8Array([2]), bt(t)), o = Zt.getSharedSecret(e, n, !0).slice(1, 33);
+  return mt(Y("nip44-v2"), o);
 }
-function Kn(e, t) {
-  const n = Gt(e, t, 76);
+function Mn(e, t) {
+  if (e.length !== 32)
+    throw new Error("NIP-44 conversation key must be exactly 32 bytes.");
+  if (t.length !== 32)
+    throw new Error("NIP-44 nonce must be exactly 32 bytes.");
+  const n = Me(e, t, 76);
   return {
     chachaKey: n.slice(0, 32),
     chachaNonce: n.slice(32, 44),
     hmacKey: n.slice(44, 76)
   };
 }
-function Rn(e) {
+function Nt(e) {
   if (e <= 32)
     return 32;
   const t = 2 ** Math.floor(Math.log2(e - 1) + 1), n = t <= 256 ? 32 : t / 8;
   return n * (Math.floor((e - 1) / n) + 1);
 }
-function po(e) {
-  if (e < Pn) {
+const Un = 39 + Nt(lt) + 32, Oo = Math.ceil(Un / 3) * 4;
+function Mo(e) {
+  if (e < On) {
     const n = new Uint8Array(2);
     return new DataView(n.buffer).setUint16(0, e, !1), n;
   }
   const t = new Uint8Array(6);
   return new DataView(t.buffer).setUint32(2, e, !1), t;
 }
-function vo(e) {
+function Uo(e) {
   const t = e.length;
-  if (t < et || t > tt)
-    throw new Error(`NIP-44 plaintext length must be between ${et} and ${tt} bytes.`);
-  const n = po(t), r = Rn(t), o = new Uint8Array(n.length + r);
+  if (t < st || t > lt)
+    throw new Error(`NIP-44 plaintext length must be between ${st} and ${lt} bytes on this platform.`);
+  const n = Mo(t), r = Nt(t), o = new Uint8Array(n.length + r);
   return o.set(n, 0), o.set(e, n.length), o;
 }
-function fo(e) {
+function Do(e) {
   const t = new DataView(e.buffer, e.byteOffset, e.byteLength), n = t.getUint16(0, !1);
   let r, o;
   if (n === 0) {
-    if (r = t.getUint32(2, !1), o = 6, r < Pn)
+    if (r = t.getUint32(2, !1), o = 6, r < On)
       throw new Error("NIP-44 payload has inconsistent padding.");
   } else
     r = n, o = 2;
-  if (r < et || r > tt || e.length !== o + Rn(r))
+  if (r < st || r > Io || e.length !== o + Nt(r))
     throw new Error("NIP-44 payload has inconsistent padding.");
   return e.slice(o, o + r);
 }
-function An(e, t, n) {
-  return $t(Wt, e, _e(t, n));
+function Dn(e, t, n) {
+  return gt(wt, e, Pe(t, n));
 }
-function go(e, t, n) {
-  const r = xe(32), { chachaKey: o, chachaNonce: i, hmacKey: a } = Kn(e, r), c = vo(ue(t)), s = _n(o, i, c), l = An(a, r, s);
-  return we.encode(_e(new Uint8Array([En]), r, s, l));
+function Vo(e, t) {
+  return qo(e, t, be(32));
 }
-function wo(e, t) {
-  const n = we.decode(t);
-  if (n[0] !== En)
+function qo(e, t, n) {
+  if (n.length !== 32)
+    throw new Error("NIP-44 nonce must be exactly 32 bytes.");
+  const { chachaKey: r, chachaNonce: o, hmacKey: i } = Mn(e, n), a = Uo(Y(t)), c = Tn(r, o, a), s = Dn(i, n, c);
+  return me.encode(Pe(new Uint8Array([Ln]), n, c, s));
+}
+function jo(e, t) {
+  if (t.startsWith("#"))
+    throw new Error("Unsupported NIP-44 non-base64 encoding.");
+  if (t.length < To || t.length > Oo)
+    throw new Error("NIP-44 payload size is outside this platform's supported range.");
+  const n = me.decode(t);
+  if (n.length < Lo || n.length > Un)
+    throw new Error("NIP-44 decoded payload size is outside this platform's supported range.");
+  if (n[0] !== Ln)
     throw new Error(`Unsupported NIP-44 version: ${n[0]}`);
-  const r = n.slice(1, 33), o = n.slice(n.length - 32), i = n.slice(33, n.length - 32), { chachaKey: a, chachaNonce: c, hmacKey: s } = Kn(e, r), l = An(s, r, i);
-  if (!cr(o, l))
+  const r = n.slice(1, 33);
+  if (r.length !== 32)
+    throw new Error("NIP-44 nonce must be exactly 32 bytes.");
+  const o = n.slice(n.length - 32), i = n.slice(33, n.length - 32), { chachaKey: a, chachaNonce: c, hmacKey: s } = Mn(e, r), l = Dn(s, r, i);
+  if (!wr(o, l))
     throw new Error("NIP-44 MAC verification failed: payload is corrupted, tampered, or uses the wrong key.");
-  const u = _n(a, c, i);
-  return ct(fo(u));
+  const u = Tn(a, c, i);
+  return Ge(Do(u));
 }
-const le = 16, bo = 283;
-function mo(e) {
+const he = 16, Wo = 283;
+function $o(e) {
   if (![16, 24, 32].includes(e.length))
     throw new Error('"aes key" expected Uint8Array of length 16/24/32, got length=' + e.length);
 }
-function _t(e) {
-  return e << 1 ^ bo & -(e >> 7);
+function St(e) {
+  return e << 1 ^ Wo & -(e >> 7);
 }
-function fe(e, t) {
+function we(e, t) {
   let n = 0;
   for (; t > 0; t >>= 1)
-    n ^= e & -(t & 1), e = _t(e);
+    n ^= e & -(t & 1), e = St(e);
   return n;
 }
-const nt = /* @__PURE__ */ (() => {
+const ut = /* @__PURE__ */ (() => {
   const e = new Uint8Array(256);
-  for (let n = 0, r = 1; n < 256; n++, r ^= _t(r))
+  for (let n = 0, r = 1; n < 256; n++, r ^= St(r))
     e[n] = r;
   const t = new Uint8Array(256);
   t[0] = 99;
@@ -3330,12 +3535,12 @@ const nt = /* @__PURE__ */ (() => {
     let r = e[255 - n];
     r |= r << 8, t[e[n]] = (r ^ r >> 4 ^ r >> 5 ^ r >> 6 ^ r >> 7 ^ 99) & 255;
   }
-  return pe(e), t;
-})(), ko = /* @__PURE__ */ nt.map((e, t) => nt.indexOf(t)), _o = (e) => e << 24 | e >>> 8, He = (e) => e << 8 | e >>> 24;
-function Cn(e, t) {
+  return ve(e), t;
+})(), zo = /* @__PURE__ */ ut.map((e, t) => ut.indexOf(t)), Bo = (e) => e << 24 | e >>> 8, et = (e) => e << 8 | e >>> 24;
+function Vn(e, t) {
   if (e.length !== 256)
     throw new Error("Wrong sbox length");
-  const n = new Uint32Array(256).map((l, u) => t(e[u])), r = n.map(He), o = r.map(He), i = o.map(He), a = new Uint32Array(256 * 256), c = new Uint32Array(256 * 256), s = new Uint16Array(256 * 256);
+  const n = new Uint32Array(256).map((l, u) => t(e[u])), r = n.map(et), o = r.map(et), i = o.map(et), a = new Uint32Array(256 * 256), c = new Uint32Array(256 * 256), s = new Uint16Array(256 * 256);
   for (let l = 0; l < 256; l++)
     for (let u = 0; u < 256; u++) {
       const y = l * 256 + u;
@@ -3343,89 +3548,89 @@ function Cn(e, t) {
     }
   return { sbox: e, sbox2: s, T0: n, T1: r, T2: o, T3: i, T01: a, T23: c };
 }
-const Et = /* @__PURE__ */ Cn(nt, (e) => fe(e, 3) << 24 | e << 16 | e << 8 | fe(e, 2)), xn = /* @__PURE__ */ Cn(ko, (e) => fe(e, 11) << 24 | fe(e, 13) << 16 | fe(e, 9) << 8 | fe(e, 14)), Eo = /* @__PURE__ */ (() => {
+const It = /* @__PURE__ */ Vn(ut, (e) => we(e, 3) << 24 | e << 16 | e << 8 | we(e, 2)), qn = /* @__PURE__ */ Vn(zo, (e) => we(e, 11) << 24 | we(e, 13) << 16 | we(e, 9) << 8 | we(e, 14)), Go = /* @__PURE__ */ (() => {
   const e = new Uint8Array(16);
-  for (let t = 0, n = 1; t < 16; t++, n = _t(n))
+  for (let t = 0, n = 1; t < 16; t++, n = St(n))
     e[t] = n;
   return e;
 })();
-function Sn(e) {
-  T(e);
+function jn(e) {
+  M(e);
   const t = e.length;
-  mo(e);
-  const { sbox2: n } = Et, r = [];
-  (!Y || !oe(e)) && r.push(e = he(e));
-  const o = L(S(e)), i = o.length, a = (s) => Z(n, s, s, s, s), c = new Uint32Array(t + 28);
+  $o(e);
+  const { sbox2: n } = It, r = [];
+  (!Q || !ie(e)) && r.push(e = fe(e));
+  const o = U(T(e)), i = o.length, a = (s) => te(n, s, s, s, s), c = new Uint32Array(t + 28);
   c.set(o);
   for (let s = i; s < c.length; s++) {
     let l = c[s - 1];
-    s % i === 0 ? l = a(_o(l)) ^ Eo[s / i - 1] : i > 6 && s % i === 4 && (l = a(l)), c[s] = c[s - i] ^ l;
+    s % i === 0 ? l = a(Bo(l)) ^ Go[s / i - 1] : i > 6 && s % i === 4 && (l = a(l)), c[s] = c[s - i] ^ l;
   }
-  return pe(...r), c;
+  return ve(...r), c;
 }
-function Po(e) {
-  const t = Sn(e), n = t.slice(), r = t.length, { sbox2: o } = Et, { T0: i, T1: a, T2: c, T3: s } = xn;
+function Fo(e) {
+  const t = jn(e), n = t.slice(), r = t.length, { sbox2: o } = It, { T0: i, T1: a, T2: c, T3: s } = qn;
   for (let l = 0; l < r; l += 4)
     for (let u = 0; u < 4; u++)
       n[l + u] = t[r - l - 4 + u];
-  pe(t);
+  ve(t);
   for (let l = 4; l < r - 4; l++) {
-    const u = n[l], y = Z(o, u, u, u, u);
+    const u = n[l], y = te(o, u, u, u, u);
     n[l] = i[y & 255] ^ a[y >>> 8 & 255] ^ c[y >>> 16 & 255] ^ s[y >>> 24];
   }
   return n;
 }
-function ce(e, t, n, r, o, i) {
+function ue(e, t, n, r, o, i) {
   return e[n << 8 & 65280 | r >>> 8 & 255] ^ t[o >>> 8 & 65280 | i >>> 24 & 255];
 }
-function Z(e, t, n, r, o) {
+function te(e, t, n, r, o) {
   return e[t & 255 | n & 65280] | e[r >>> 16 & 255 | o >>> 16 & 65280] << 16;
 }
-function Lt(e, t, n, r, o) {
-  const { sbox2: i, T01: a, T23: c } = Et;
+function $t(e, t, n, r, o) {
+  const { sbox2: i, T01: a, T23: c } = It;
   let s = 0;
   t ^= e[s++], n ^= e[s++], r ^= e[s++], o ^= e[s++];
   const l = e.length / 4 - 2;
   for (let g = 0; g < l; g++) {
-    const f = e[s++] ^ ce(a, c, t, n, r, o), p = e[s++] ^ ce(a, c, n, r, o, t), h = e[s++] ^ ce(a, c, r, o, t, n), b = e[s++] ^ ce(a, c, o, t, n, r);
+    const f = e[s++] ^ ue(a, c, t, n, r, o), p = e[s++] ^ ue(a, c, n, r, o, t), h = e[s++] ^ ue(a, c, r, o, t, n), b = e[s++] ^ ue(a, c, o, t, n, r);
     t = f, n = p, r = h, o = b;
   }
-  const u = e[s++] ^ Z(i, t, n, r, o), y = e[s++] ^ Z(i, n, r, o, t), v = e[s++] ^ Z(i, r, o, t, n), w = e[s++] ^ Z(i, o, t, n, r);
+  const u = e[s++] ^ te(i, t, n, r, o), y = e[s++] ^ te(i, n, r, o, t), v = e[s++] ^ te(i, r, o, t, n), w = e[s++] ^ te(i, o, t, n, r);
   return { s0: u, s1: y, s2: v, s3: w };
 }
-function Ko(e, t, n, r, o) {
-  const { sbox2: i, T01: a, T23: c } = xn;
+function Ho(e, t, n, r, o) {
+  const { sbox2: i, T01: a, T23: c } = qn;
   let s = 0;
   t ^= e[s++], n ^= e[s++], r ^= e[s++], o ^= e[s++];
   const l = e.length / 4 - 2;
   for (let g = 0; g < l; g++) {
-    const f = e[s++] ^ ce(a, c, t, o, r, n), p = e[s++] ^ ce(a, c, n, t, o, r), h = e[s++] ^ ce(a, c, r, n, t, o), b = e[s++] ^ ce(a, c, o, r, n, t);
+    const f = e[s++] ^ ue(a, c, t, o, r, n), p = e[s++] ^ ue(a, c, n, t, o, r), h = e[s++] ^ ue(a, c, r, n, t, o), b = e[s++] ^ ue(a, c, o, r, n, t);
     t = f, n = p, r = h, o = b;
   }
-  const u = e[s++] ^ Z(i, t, o, r, n), y = e[s++] ^ Z(i, n, t, o, r), v = e[s++] ^ Z(i, r, n, t, o), w = e[s++] ^ Z(i, o, r, n, t);
+  const u = e[s++] ^ te(i, t, o, r, n), y = e[s++] ^ te(i, n, t, o, r), v = e[s++] ^ te(i, r, n, t, o), w = e[s++] ^ te(i, o, r, n, t);
   return { s0: u, s1: y, s2: v, s3: w };
 }
-function Ro(e) {
-  if (T(e), e.length % le !== 0)
-    throw new Error("aes-(cbc/ecb).decrypt ciphertext should consist of blocks with size " + le);
+function Jo(e) {
+  if (M(e), e.length % he !== 0)
+    throw new Error("aes-(cbc/ecb).decrypt ciphertext should consist of blocks with size " + he);
 }
-function Ao(e, t, n) {
-  T(e);
+function Yo(e, t, n) {
+  M(e);
   let r = e.length;
-  const o = r % le;
+  const o = r % he;
   if (!t && o !== 0)
     throw new Error("aec/(cbc-ecb): unpadded plaintext with disabled padding");
   if (t) {
-    let c = le - o;
-    c || (c = le), r = r + c;
+    let c = he - o;
+    c || (c = he), r = r + c;
   }
-  n = kt(r, n), mn(e, n), (!Y || !oe(e)) && (e = he(e));
-  const i = S(e);
-  L(i);
-  const a = S(n);
+  n = Ct(r, n), Sn(e, n), (!Q || !ie(e)) && (e = fe(e));
+  const i = T(e);
+  U(i);
+  const a = T(n);
   return { b: i, o: a, out: n };
 }
-function Co(e, t) {
+function Xo(e, t) {
   if (!t)
     return e;
   const n = e.length;
@@ -3442,75 +3647,80 @@ function Co(e, t) {
     throw new Error("aes/pkcs7: wrong padding");
   return e.subarray(0, n - r);
 }
-function xo(e) {
-  const t = new Uint8Array(16), n = S(t);
+function Qo(e) {
+  const t = new Uint8Array(16), n = T(t);
   t.set(e);
-  const r = le - e.length;
-  for (let o = le - r; o < le; o++)
+  const r = he - e.length;
+  for (let o = he - r; o < he; o++)
     t[o] = r;
   return n;
 }
-const Nn = /* @__PURE__ */ ao({ blockSize: 16, nonceLength: 16 }, function(t, n, r = {}) {
+const Wn = /* @__PURE__ */ Ko({ blockSize: 16, nonceLength: 16 }, function(t, n, r = {}) {
   const o = !r.disablePadding;
   return {
     encrypt(i, a) {
-      const c = Sn(t), { b: s, o: l, out: u } = Ao(i, o, a);
+      const c = jn(t), { b: s, o: l, out: u } = Yo(i, o, a);
       let y = n;
       const v = [c];
-      (!Y || !oe(y)) && v.push(y = he(y));
-      const w = S(y);
-      L(w);
+      (!Q || !ie(y)) && v.push(y = fe(y));
+      const w = T(y);
+      U(w);
       let g = w[0], f = w[1], p = w[2], h = w[3], b = 0;
       for (; b + 4 <= s.length; )
-        g ^= s[b + 0], f ^= s[b + 1], p ^= s[b + 2], h ^= s[b + 3], { s0: g, s1: f, s2: p, s3: h } = Lt(c, g, f, p, h), l[b++] = g, l[b++] = f, l[b++] = p, l[b++] = h;
+        g ^= s[b + 0], f ^= s[b + 1], p ^= s[b + 2], h ^= s[b + 3], { s0: g, s1: f, s2: p, s3: h } = $t(c, g, f, p, h), l[b++] = g, l[b++] = f, l[b++] = p, l[b++] = h;
       if (o) {
-        const m = xo(i.subarray(b * 4));
-        L(m), g ^= m[0], f ^= m[1], p ^= m[2], h ^= m[3], { s0: g, s1: f, s2: p, s3: h } = Lt(c, g, f, p, h), l[b++] = g, l[b++] = f, l[b++] = p, l[b++] = h;
+        const m = Qo(i.subarray(b * 4));
+        U(m), g ^= m[0], f ^= m[1], p ^= m[2], h ^= m[3], { s0: g, s1: f, s2: p, s3: h } = $t(c, g, f, p, h), l[b++] = g, l[b++] = f, l[b++] = p, l[b++] = h;
       }
-      return L(l), pe(...v), u;
+      return U(l), ve(...v), u;
     },
     decrypt(i, a) {
-      Ro(i);
-      const c = Po(t);
+      Jo(i);
+      const c = Fo(t);
       let s = n;
       const l = [c];
-      (!Y || !oe(s)) && l.push(s = he(s));
-      const u = S(s);
-      L(u), a = kt(i.length, a), mn(i, a), (!Y || !oe(i)) && l.push(i = he(i));
-      const y = S(i), v = S(a);
-      L(y);
+      (!Q || !ie(s)) && l.push(s = fe(s));
+      const u = T(s);
+      U(u), a = Ct(i.length, a), Sn(i, a), (!Q || !ie(i)) && l.push(i = fe(i));
+      const y = T(i), v = T(a);
+      U(y);
       let w = u[0], g = u[1], f = u[2], p = u[3];
       for (let h = 0; h + 4 <= y.length; ) {
-        const b = w, m = g, K = f, F = p;
+        const b = w, m = g, P = f, N = p;
         w = y[h + 0], g = y[h + 1], f = y[h + 2], p = y[h + 3];
-        const { s0: E, s1: R, s2: A, s3: x } = Ko(c, w, g, f, p);
-        v[h++] = E ^ b, v[h++] = R ^ m, v[h++] = A ^ K, v[h++] = x ^ F;
+        const { s0: K, s1: R, s2: A, s3: S } = Ho(c, w, g, f, p);
+        v[h++] = K ^ b, v[h++] = R ^ m, v[h++] = A ^ P, v[h++] = S ^ N;
       }
-      return L(v), pe(...l), Co(a, o);
+      return U(v), ve(...l), Xo(a, o);
     }
   };
 });
-function In(e, t) {
-  const n = _e(new Uint8Array([2]), dt(t));
-  return Bt.getSharedSecret(e, n, !0).slice(1, 33);
+function $n(e, t) {
+  const n = Pe(new Uint8Array([2]), bt(t));
+  return Zt.getSharedSecret(e, n, !0).slice(1, 33);
 }
-function So(e, t, n, r) {
-  const o = In(e, t), i = xe(16), a = Nn(o, i).encrypt(ue(n));
-  return `${we.encode(a)}?iv=${we.encode(i)}`;
+function Zo(e, t, n) {
+  return ei(e, t, n, be(16));
 }
-function No(e, t, n) {
+function ei(e, t, n, r) {
+  if (r.length !== 16)
+    throw new Error("NIP-04 iv must be exactly 16 bytes.");
+  const o = $n(e, t), i = Wn(o, r).encrypt(Y(n));
+  return `${me.encode(i)}?iv=${me.encode(r)}`;
+}
+function ti(e, t, n) {
   const r = n.indexOf("?iv=");
   if (r === -1)
     throw new Error('NIP-04 payload is missing its "?iv=" suffix.');
-  const o = we.decode(n.slice(0, r)), i = we.decode(n.slice(r + 4)), a = In(e, t), c = Nn(a, i).decrypt(o);
-  return ct(c);
+  const o = me.decode(n.slice(0, r)), i = me.decode(n.slice(r + 4)), a = $n(e, t), c = Wn(a, i).decrypt(o);
+  return Ge(c);
 }
-class Ue {
+class De {
   privateKey;
   publicKeyHex;
   destroyed = !1;
   constructor(t) {
-    this.privateKey = t, this.publicKeyHex = _(t);
+    this.privateKey = t, this.publicKeyHex = k(t);
   }
   assertAlive() {
     if (this.destroyed)
@@ -3520,7 +3730,7 @@ class Ue {
     return this.assertAlive(), this.publicKeyHex;
   }
   signEvent(t) {
-    return this.assertAlive(), ee({
+    return this.assertAlive(), ne({
       pubkey: this.publicKeyHex,
       created_at: t.created_at ?? Math.floor(Date.now() / 1e3),
       kind: t.kind,
@@ -3529,138 +3739,83 @@ class Ue {
     }, this.privateKey);
   }
   nip44Encrypt(t, n) {
-    return this.assertAlive(), go(Tt(this.privateKey, t), n);
+    return this.assertAlive(), Vo(Wt(this.privateKey, t), n);
   }
   nip44Decrypt(t, n) {
-    return this.assertAlive(), wo(Tt(this.privateKey, t), n);
+    return this.assertAlive(), jo(Wt(this.privateKey, t), n);
   }
   /** Legacy relative to nip44Encrypt above, but still what a real NIP-07 extension exposes as
    * window.nostr.nip04.encrypt -- implemented for drop-in parity. */
   nip04Encrypt(t, n) {
-    return this.assertAlive(), So(this.privateKey, t, n);
+    return this.assertAlive(), Zo(this.privateKey, t, n);
   }
   nip04Decrypt(t, n) {
-    return this.assertAlive(), No(this.privateKey, t, n);
+    return this.assertAlive(), ti(this.privateKey, t, n);
   }
   /** Best-practical secret wipe (§11.10, §21.4): overwrites the private key buffer in place. */
   destroy() {
-    ge(this.privateKey), this.destroyed = !0;
+    x(this.privateKey), this.destroyed = !0;
   }
 }
-const Io = [
-  "wss://relay.damus.io",
-  "wss://nos.lol",
-  "wss://relay.nostr.band",
-  "wss://nostr.wine",
-  "wss://relay.snort.social"
-], To = [
-  "wss://purplepag.es",
-  "wss://relay.nostr.band",
-  "wss://nostr-pub.wellorder.net"
-], Tn = "bitlogin.connection.v1", Ln = "bitlogin.connection.nwc.v1", Lo = "bitlogin/connection-vault-root/v1", Uo = "bitlogin/connection-vault-signing/v1", Oo = "bitlogin/connection-record-encryption/v1", Mo = "bitlogin/connection-vault-personal/v1", rt = "bitlogin:connection:";
-function Do(e) {
-  if (e.length !== 32)
-    throw new Error("connection_vault_root must be exactly 32 bytes.");
-  return yt(Ft(Lo), e);
-}
-function Ee(e) {
-  return sr(e, Uo).scalar;
-}
-function Vo(e) {
-  return _(Ee(e));
-}
-function qo(e, t) {
-  if (t.length !== 32)
-    throw new Error("vault_sudo_key must be exactly 32 bytes.");
-  if (e.length !== 32)
-    throw new Error("connection_vault_root must be exactly 32 bytes.");
-  return yt(Ft(Mo), _e(e, t));
-}
-function Un(e, t) {
-  const n = Pt(t);
-  return Gt(e, _e(ue(Oo), new Uint8Array([0]), n), 32);
-}
-function jo() {
-  return H(xe(16));
-}
-function Pt(e) {
-  const t = J(e);
-  if (t.length !== 16)
-    throw new Error("connection_id must decode to exactly 16 bytes (§CV7).");
-  return t;
-}
-function On(e) {
-  return Pt(e), `${rt}${e}`;
-}
-function Mn(e) {
-  if (!e.startsWith(rt))
-    return null;
-  const t = e.slice(rt.length);
-  try {
-    return Pt(t), t;
-  } catch {
-    return null;
-  }
-}
-const Ut = 120, $o = /* @__PURE__ */ new Set(["active", "suspended", "deleted"]), Wo = /* @__PURE__ */ new Set(["connectable", "personal"]);
-class ve extends Error {
+const ni = ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.nostr.band", "wss://nostr.wine", "wss://relay.snort.social"], ri = ["wss://purplepag.es", "wss://relay.nostr.band", "wss://nostr-pub.wellorder.net"], zn = "bitlogin.connection.v1", Bn = "bitlogin.connection.nwc.v1", zt = 120, oi = /* @__PURE__ */ new Set(["active", "suspended", "deleted"]), ii = /* @__PURE__ */ new Set(["connectable", "personal"]);
+class ge extends Error {
   constructor(t) {
     super(t), this.name = "ConnectionRecordError";
   }
 }
-function Dn(e, t) {
-  return ue(`bitlogin|connection-record|v1|${e}|30078|${t}`);
+function Gn(e, t) {
+  return Y(`bitlogin|connection-record|v1|${e}|30078|${t}`);
 }
-function Vn(e) {
+function Fn(e) {
   const t = e, n = (i) => {
-    throw new ve(i);
+    throw new ge(i);
   };
-  (!t || typeof t != "object") && n("Connection record must be an object."), t.schema !== Tn && n("Unsupported connection record schema (§CV8.3)."), typeof t.connection_id != "string" && n("connection_id must be a string (§CV7)."), (typeof t.connection_type != "string" || t.connection_type.length === 0) && n("connection_type must be a non-empty string (§CV8.3)."), Wo.has(t.tier) || n("tier must be connectable or personal."), $o.has(t.state) || n("state must be active, suspended, or deleted (§CV8.3)."), (typeof t.label != "string" || t.label.length > Ut) && n(`label must be a string of at most ${Ut} characters.`), (!Number.isInteger(t.created_at) || !Number.isInteger(t.updated_at)) && n("created_at and updated_at must be integers (§CV8.3).");
+  (!t || typeof t != "object") && n("Connection record must be an object."), t.schema !== zn && n("Unsupported connection record schema (§CV8.3)."), typeof t.connection_id != "string" && n("connection_id must be a string (§CV7)."), (typeof t.connection_type != "string" || t.connection_type.length === 0) && n("connection_type must be a non-empty string (§CV8.3)."), ii.has(t.tier) || n("tier must be connectable or personal."), oi.has(t.state) || n("state must be active, suspended, or deleted (§CV8.3)."), (typeof t.label != "string" || t.label.length > zt) && n(`label must be a string of at most ${zt} characters.`), (!Number.isInteger(t.created_at) || !Number.isInteger(t.updated_at)) && n("created_at and updated_at must be integers (§CV8.3).");
   const r = t.credential;
   (!r || typeof r != "object" || typeof r.schema != "string") && n("credential must be an object naming its profile schema (§CV8.3).");
   const o = t.application_binding;
   (!o || typeof o != "object" || o.origin !== null && typeof o.origin != "string" || o.app_pubkey !== null && typeof o.app_pubkey != "string") && n("application_binding must carry origin and app_pubkey (string or null)."), t.notes !== null && typeof t.notes != "string" && n("notes must be a string or null.");
 }
-async function Je(e) {
-  Vn(e.record);
-  const t = Ee(e.vaultPrk), n = _(t), r = On(e.record.connection_id), o = Un(e.recordPrk, e.record.connection_id), i = await gt(e.record, o, Dn(n, r));
-  return ee({
+async function tt(e) {
+  Fn(e.record);
+  const t = Ke(e.vaultPrk), n = k(t), r = Cn(e.record.connection_id), o = xn(e.recordPrk, e.record.connection_id), i = await Pt(e.record, o, Gn(n, r));
+  return ne({
     pubkey: n,
-    created_at: ht(e.previousCreatedAt, e.now),
-    kind: te,
+    created_at: We(e.previousCreatedAt, e.now),
+    kind: re,
     tags: [["d", r]],
     content: JSON.stringify(i)
   }, t);
 }
-async function zo(e, t, n) {
-  if (!ie(e))
-    throw new ve("Connection record event has an invalid id or signature.");
-  const r = _(Ee(t));
+async function ai(e, t, n) {
+  if (!ae(e))
+    throw new ge("Connection record event has an invalid id or signature.");
+  const r = k(Ke(t));
   if (e.pubkey !== r)
-    throw new ve("Connection record event is not signed by this vault's identity.");
-  const o = ut(e, "d") ?? "", i = Mn(o);
+    throw new ge("Connection record event is not signed by this vault's identity.");
+  const o = vt(e, "d") ?? "", i = Nn(o);
   if (i === null)
-    throw new ve("Connection record event has a malformed d tag.");
-  const a = JSON.parse(e.content), c = Dn(e.pubkey, o), s = [
+    throw new ge("Connection record event has a malformed d tag.");
+  const a = JSON.parse(e.content), c = Gn(e.pubkey, o), s = [
     { prk: t, tier: "connectable" },
     ...n ? [{ prk: n, tier: "personal" }] : []
   ];
   for (const l of s) {
     let u;
     try {
-      u = await wt(a, Un(l.prk, i), c);
+      u = await Kt(a, xn(l.prk, i), c);
     } catch {
       continue;
     }
-    if (Vn(u), u.connection_id !== i)
-      throw new ve("Connection record id does not match its d tag.");
+    if (Fn(u), u.connection_id !== i)
+      throw new ge("Connection record id does not match its d tag.");
     if (u.tier !== l.tier)
-      throw new ve("Connection record tier does not match the key that decrypted it.");
+      throw new ge("Connection record tier does not match the key that decrypted it.");
     return { record: u, tier: l.tier, event: e };
   }
   return null;
 }
-function Bo(e, t) {
+function ci(e, t) {
   return {
     ...e,
     state: "deleted",
@@ -3669,50 +3824,44 @@ function Bo(e, t) {
     updated_at: t
   };
 }
-const je = /^[0-9a-f]{64}$/u;
-class re extends Error {
+const Be = /^[0-9a-f]{64}$/u;
+class ce extends Error {
   constructor(t) {
     super(t), this.name = "NwcParseError";
   }
 }
-function Ot(e) {
+function Bt(e) {
   const t = e.trim();
   if (!/^nostr\+walletconnect:\/\//iu.test(t))
-    throw new re("Not an NWC URI: it must start with nostr+walletconnect://");
+    throw new ce("Not an NWC URI: it must start with nostr+walletconnect://");
   let n;
   try {
     n = new URL(t.replace(/^nostr\+walletconnect:\/\//iu, "http://"));
   } catch {
-    throw new re("The NWC URI is malformed.");
+    throw new ce("The NWC URI is malformed.");
   }
   const r = n.hostname.toLowerCase();
-  if (!je.test(r))
-    throw new re("The NWC URI's wallet service pubkey is not 64-char hex.");
+  if (!Be.test(r))
+    throw new ce("The NWC URI's wallet service pubkey is not 64-char hex.");
   const o = [], i = [];
   let a = null, c = null;
   for (const [s, l] of n.searchParams.entries())
     if (s === "relay") {
-      let u;
-      try {
-        u = new URL(l);
-      } catch {
-        throw new re("A relay parameter in the NWC URI is not a valid URL.");
-      }
-      if (u.protocol !== "wss:" && u.protocol !== "ws:")
-        throw new re("A relay parameter in the NWC URI is not a websocket URL.");
+      if (!Ye(l))
+        throw new ce("An NWC relay must use secure WebSockets, except for an explicit loopback development endpoint.");
       o.push(l);
     } else if (s === "secret") {
       const u = l.toLowerCase();
-      if (!je.test(u))
-        throw new re("The NWC URI's secret is not a 64-char hex client key.");
+      if (!Be.test(u))
+        throw new ce("The NWC URI's secret is not a 64-char hex client key.");
       a = u;
     } else s === "lud16" ? c = l : i.push([s, l]);
   if (o.length === 0)
-    throw new re("The NWC URI names no relay.");
+    throw new ce("The NWC URI names no relay.");
   if (a === null)
-    throw new re("The NWC URI carries no secret.");
+    throw new ce("The NWC URI carries no secret.");
   return {
-    schema: Ln,
+    schema: Bn,
     wallet_pubkey: r,
     relays: o,
     secret: a,
@@ -3720,8 +3869,8 @@ function Ot(e) {
     extra_params: i
   };
 }
-function Go(e) {
-  qn(e);
+function si(e) {
+  Hn(e);
   const t = new URLSearchParams();
   for (const n of e.relays)
     t.append("relay", n);
@@ -3730,32 +3879,102 @@ function Go(e) {
     t.append(n, r);
   return `nostr+walletconnect://${e.wallet_pubkey}?${t.toString()}`;
 }
-function Fo(e, t) {
+function li(e, t) {
   return e.wallet_pubkey === t.wallet_pubkey && e.secret === t.secret;
 }
-function qn(e) {
+function Hn(e) {
   const t = e, n = (r) => {
-    throw new re(r);
+    throw new ce(r);
   };
-  (!t || typeof t != "object") && n("NWC credential must be an object."), t.schema !== Ln && n("NWC credential has the wrong schema."), (typeof t.wallet_pubkey != "string" || !je.test(t.wallet_pubkey)) && n("NWC credential wallet_pubkey must be 64-char lowercase hex."), (!Array.isArray(t.relays) || t.relays.length === 0 || t.relays.some((r) => typeof r != "string")) && n("NWC credential must name at least one relay."), (typeof t.secret != "string" || !je.test(t.secret)) && n("NWC credential secret must be 64-char lowercase hex."), t.lud16 !== null && typeof t.lud16 != "string" && n("NWC credential lud16 must be a string or null."), (!Array.isArray(t.extra_params) || t.extra_params.some((r) => !Array.isArray(r) || r.length !== 2 || typeof r[0] != "string" || typeof r[1] != "string")) && n("NWC credential extra_params must be [key, value] string pairs.");
+  (!t || typeof t != "object") && n("NWC credential must be an object."), t.schema !== Bn && n("NWC credential has the wrong schema."), (typeof t.wallet_pubkey != "string" || !Be.test(t.wallet_pubkey)) && n("NWC credential wallet_pubkey must be 64-char lowercase hex."), (!Array.isArray(t.relays) || t.relays.length === 0 || t.relays.some((r) => typeof r != "string")) && n("NWC credential must name at least one relay."), t.relays.some((r) => !Ye(r)) && n("NWC relays must use secure WebSockets, except for explicit loopback development endpoints."), (typeof t.secret != "string" || !Be.test(t.secret)) && n("NWC credential secret must be 64-char lowercase hex."), t.lud16 !== null && typeof t.lud16 != "string" && n("NWC credential lud16 must be a string or null."), (!Array.isArray(t.extra_params) || t.extra_params.some((r) => !Array.isArray(r) || r.length !== 2 || typeof r[0] != "string" || typeof r[1] != "string")) && n("NWC credential extra_params must be [key, value] string pairs.");
 }
-function jn(e, t) {
-  return `bitlogin:vault-hwm:${e}:${t}`;
+const ui = "bitlogin:vault-hwm:v2:", di = "bitlogin/vault-hwm-index/v2", Jn = "bitlogin/vault-hwm-encryption/v2", yi = /^[0-9a-f]{64}$/u;
+class de extends Error {
+  constructor() {
+    super("The local Connection Vault rollback marker is invalid or has been tampered with."), this.name = "RecordHighWaterMarkError";
+  }
 }
-async function $n(e, t, n) {
-  const r = await e.get(jn(t, n));
-  return r ? JSON.parse(r) : null;
+function Tt(e) {
+  if (!e || typeof e != "object")
+    return !1;
+  const t = e;
+  return Number.isInteger(t.createdAt) && (t.createdAt ?? -1) >= 0 && typeof t.eventId == "string" && yi.test(t.eventId);
 }
-async function Wn(e, t, n, r) {
-  const o = await $n(e, t, n);
-  o && o.createdAt > r.createdAt || o && o.createdAt === r.createdAt && o.eventId <= r.eventId || await e.set(jn(t, n), JSON.stringify(r));
+function Yn(e, t) {
+  Xe(t);
+  const n = Me(e, di, 32), r = Y(t);
+  try {
+    return `${ui}${V(gt(wt, n, r))}`;
+  } finally {
+    x(n, r);
+  }
 }
-async function Ho(e) {
-  const t = Ee(e.vaultPrk), n = new C(e.relayUrls, { authPrivateKey: t });
+function hi(e, t) {
+  return `bitlogin:vault-hwm:${An(e)}:${t}`;
+}
+async function pi(e, t, n) {
+  const r = Me(e, Jn, 32), o = Y(JSON.stringify(n)), i = Y(t);
+  try {
+    const a = await on(r, o, i), c = {
+      v: 2,
+      nonce: V(a.nonce),
+      ciphertext: V(a.ciphertext)
+    };
+    return JSON.stringify(c);
+  } finally {
+    x(r, o, i);
+  }
+}
+async function fi(e, t, n) {
+  const r = Me(e, Jn, 32), o = Y(t);
+  let i;
+  try {
+    const a = JSON.parse(n);
+    if (a.v !== 2 || typeof a.nonce != "string" || typeof a.ciphertext != "string")
+      throw new de();
+    i = await an(r, X(a.nonce), X(a.ciphertext), o);
+    const c = JSON.parse(Ge(i));
+    if (!Tt(c))
+      throw new de();
+    return c;
+  } catch (a) {
+    throw a instanceof de ? a : new de();
+  } finally {
+    x(r, o), i && x(i);
+  }
+}
+async function Xn(e, t, n, r) {
+  const o = Yn(t, n);
+  await e.set(o, await pi(t, o, r));
+}
+async function Qn(e, t, n) {
+  const r = Yn(t, n), o = await e.get(r);
+  if (o !== void 0)
+    return fi(t, r, o);
+  const i = hi(t, n), a = await e.get(i);
+  if (a === void 0)
+    return null;
+  try {
+    const c = JSON.parse(a);
+    if (!Tt(c))
+      throw new de();
+    return await Xn(e, t, n, c), await e.delete(i), c;
+  } catch (c) {
+    throw c instanceof de ? c : new de();
+  }
+}
+async function Zn(e, t, n, r) {
+  if (!Tt(r))
+    throw new de();
+  const o = await Qn(e, t, n);
+  o && it({ created_at: r.createdAt, id: r.eventId }, { created_at: o.createdAt, id: o.eventId }) <= 0 || await Xn(e, t, n, r);
+}
+async function vi(e) {
+  const t = Ke(e.vaultPrk), n = new C(e.relayUrls, { authPrivateKey: t });
   let r;
   try {
-    r = await me(n, e.event, {
-      dTag: On(e.connectionId),
+    r = await ke(n, e.event, {
+      dTag: Cn(e.connectionId),
       minAcks: e.minAcknowledgements,
       // The readback bar follows the ack bar: a caller publishing to fewer
       // relays (a targeted repair, a test) has already lowered its quorum.
@@ -3763,40 +3982,43 @@ async function Ho(e) {
       timeoutMs: e.timeoutMs
     });
   } finally {
-    n.closeAll();
+    n.closeAll(), x(t);
   }
-  return r.success && await Wn(e.store, e.event.pubkey, e.connectionId, {
+  return r.success && await Zn(e.store, e.vaultPrk, e.connectionId, {
     createdAt: e.event.created_at,
     eventId: e.event.id
   }), r;
 }
-const Mt = 500;
-async function Jo(e) {
-  const t = Ee(e.vaultPrk), n = _(t), r = new C(e.relayUrls, { authPrivateKey: t });
+const Gt = 500;
+async function gi(e) {
+  const t = Ke(e.vaultPrk), n = k(t), r = new C(e.relayUrls, { authPrivateKey: t });
   let o;
   try {
-    o = await r.queryQuorum({ kinds: [te], authors: [n], limit: Mt }, e.timeoutMs);
+    o = await r.queryQuorum({ kinds: [re], authors: [n], limit: Gt }, e.timeoutMs);
   } finally {
-    r.closeAll();
+    r.closeAll(), x(t);
   }
-  const i = o.outcomes.some((l) => l.events.length >= Mt), a = /* @__PURE__ */ new Map();
+  const i = o.outcomes.some((l) => l.events.length >= Gt), a = /* @__PURE__ */ new Map();
   for (const l of o.outcomes.flatMap((u) => u.events)) {
-    if (!ie(l) || l.pubkey !== n)
+    if (!ae(l) || l.pubkey !== n)
       continue;
-    const u = Mn(ut(l, "d") ?? "");
+    const u = Nn(vt(l, "d") ?? "");
     if (u === null)
       continue;
     const y = a.get(u);
-    (!y || l.created_at > y.created_at) && a.set(u, l);
+    (!y || it(l, y) > 0) && a.set(u, l);
   }
   const c = /* @__PURE__ */ new Map(), s = [];
   for (const [l, u] of a) {
-    const y = await $n(e.store, n, l);
-    if (y !== null && (u.created_at < y.createdAt || u.created_at === y.createdAt && u.id < y.eventId)) {
+    const y = await Qn(e.store, e.vaultPrk, l);
+    if (y !== null && it(u, {
+      created_at: y.createdAt,
+      id: y.eventId
+    }) < 0) {
       s.push(l);
       continue;
     }
-    c.set(l, u), await Wn(e.store, n, l, {
+    c.set(l, u), await Zn(e.store, e.vaultPrk, l, {
       createdAt: u.created_at,
       eventId: u.id
     });
@@ -3809,25 +4031,25 @@ async function Jo(e) {
     truncated: i
   };
 }
-class Yo {
+class wi {
   vaultPrk;
   personalPrk = null;
   destroyed = !1;
   connectionVaultRoot;
   vaultPublicKey;
   constructor(t) {
-    this.connectionVaultRoot = t.slice(), this.vaultPrk = Do(this.connectionVaultRoot), this.vaultPublicKey = Vo(this.vaultPrk);
+    this.connectionVaultRoot = t.slice(), this.vaultPrk = go(this.connectionVaultRoot), this.vaultPublicKey = An(this.vaultPrk);
   }
   get sudoActive() {
     return this.personalPrk !== null;
   }
   /** Opens a sudo window. Consumes (wipes) the caller's sudo key copy. */
   enableSudo(t) {
-    this.endSudo(), this.personalPrk = qo(this.connectionVaultRoot, t), ge(t);
+    this.endSudo(), this.personalPrk = wo(this.connectionVaultRoot, t), x(t);
   }
   /** Closes the sudo window and wipes the personal-tier key material. */
   endSudo() {
-    this.personalPrk && ge(this.personalPrk), this.personalPrk = null;
+    this.personalPrk && x(this.personalPrk), this.personalPrk = null;
   }
   /**
    * Wipes everything this session holds, permanently.
@@ -3843,7 +4065,7 @@ class Yo {
    * Failing loudly is the only safe behaviour.
    */
   destroy() {
-    this.endSudo(), ge(this.vaultPrk, this.connectionVaultRoot), this.destroyed = !0;
+    this.endSudo(), x(this.vaultPrk, this.connectionVaultRoot), this.destroyed = !0;
   }
   prkForTier(t) {
     if (this.destroyed)
@@ -3857,8 +4079,8 @@ class Yo {
   /** Builds a fresh record + its signed event. Purely local; publish separately. */
   async createConnection(t) {
     const n = t.now ?? Math.floor(Date.now() / 1e3), r = {
-      schema: Tn,
-      connection_id: jo(),
+      schema: zn,
+      connection_id: bo(),
       connection_type: t.connection_type,
       tier: t.tier,
       state: "active",
@@ -3866,9 +4088,12 @@ class Yo {
       created_at: n,
       updated_at: n,
       credential: t.credential,
-      application_binding: t.application_binding ?? { origin: null, app_pubkey: null },
+      application_binding: t.application_binding ?? {
+        origin: null,
+        app_pubkey: null
+      },
       notes: t.notes ?? null
-    }, o = await Je({
+    }, o = await tt({
       vaultPrk: this.vaultPrk,
       recordPrk: this.prkForTier(t.tier),
       record: r,
@@ -3886,7 +4111,7 @@ class Yo {
       connection_id: t.record.connection_id,
       created_at: t.record.created_at,
       updated_at: o
-    }, a = await Je({
+    }, a = await tt({
       vaultPrk: this.vaultPrk,
       recordPrk: this.prkForTier(i.tier),
       record: i,
@@ -3897,7 +4122,7 @@ class Yo {
   }
   /** §CV11 step 2: the encrypted tombstone replacement. */
   async deleteConnection(t, n) {
-    const r = n ?? Math.floor(Date.now() / 1e3), o = Bo(t.record, r), i = await Je({
+    const r = n ?? Math.floor(Date.now() / 1e3), o = ci(t.record, r), i = await tt({
       vaultPrk: this.vaultPrk,
       recordPrk: this.prkForTier(o.tier),
       record: o,
@@ -3908,7 +4133,7 @@ class Yo {
   }
   /** Trial-decrypts one event; personal-tier records resolve only inside a sudo window. */
   decryptEvent(t) {
-    return this.destroyed ? Promise.reject(new Error("This vault session was destroyed; create a new one from the account's root.")) : zo(t, this.vaultPrk, this.personalPrk ?? void 0);
+    return this.destroyed ? Promise.reject(new Error("This vault session was destroyed; create a new one from the account's root.")) : ai(t, this.vaultPrk, this.personalPrk ?? void 0);
   }
   /** §CV11 step 3: a NIP-09 deletion request for a replaced record event,
    *  signed by the vault identity. Best-effort by contract — the encrypted
@@ -3916,18 +4141,18 @@ class Yo {
   buildDeletionRequest(t, n) {
     if (this.destroyed)
       throw new Error("This vault session was destroyed; create a new one from the account's root.");
-    return bn({
-      privateKey: Ee(this.vaultPrk),
+    return Rn({
+      privateKey: Ke(this.vaultPrk),
       eventIdToDelete: t,
-      deletedEventKind: te,
+      deletedEventKind: re,
       createdAt: n ?? Math.floor(Date.now() / 1e3)
     });
   }
   publish(t) {
-    return Ho({ vaultPrk: this.vaultPrk, ...t });
+    return vi({ vaultPrk: this.vaultPrk, ...t });
   }
   fetchEvents(t) {
-    return Jo({ vaultPrk: this.vaultPrk, ...t });
+    return gi({ vaultPrk: this.vaultPrk, ...t });
   }
   /**
    * Fetches and decrypts everything decryptable right now. Outside a sudo
@@ -3955,40 +4180,40 @@ class Yo {
     };
   }
 }
-const Qo = "bitlogin", ae = "kv", Q = "device-keys", Xo = 2;
-function Zo() {
+const bi = "bitlogin", se = "kv", Z = "device-keys", mi = 2;
+function _i() {
   return new Promise((e, t) => {
-    const n = indexedDB.open(Qo, Xo);
+    const n = indexedDB.open(bi, mi);
     n.onupgradeneeded = () => {
       const r = n.result;
-      r.objectStoreNames.contains(ae) || r.createObjectStore(ae), r.objectStoreNames.contains(Q) || r.createObjectStore(Q);
+      r.objectStoreNames.contains(se) || r.createObjectStore(se), r.objectStoreNames.contains(Z) || r.createObjectStore(Z);
     }, n.onsuccess = () => e(n.result), n.onerror = () => t(n.error);
   });
 }
-class ei {
+class ki {
   dbPromise = null;
   db() {
-    return this.dbPromise || (this.dbPromise = Zo()), this.dbPromise;
+    return this.dbPromise || (this.dbPromise = _i()), this.dbPromise;
   }
   async get(t) {
     const n = await this.db();
     return new Promise((r, o) => {
-      const a = n.transaction(ae, "readonly").objectStore(ae).get(t);
+      const a = n.transaction(se, "readonly").objectStore(se).get(t);
       a.onsuccess = () => r(a.result), a.onerror = () => o(a.error);
     });
   }
   async set(t, n) {
     const r = await this.db();
     return new Promise((o, i) => {
-      const a = r.transaction(ae, "readwrite");
-      a.objectStore(ae).put(n, t), a.oncomplete = () => o(), a.onerror = () => i(a.error);
+      const a = r.transaction(se, "readwrite");
+      a.objectStore(se).put(n, t), a.oncomplete = () => o(), a.onerror = () => i(a.error);
     });
   }
   async delete(t) {
     const n = await this.db();
     return new Promise((r, o) => {
-      const i = n.transaction(ae, "readwrite");
-      i.objectStore(ae).delete(t), i.oncomplete = () => r(), i.onerror = () => o(i.error);
+      const i = n.transaction(se, "readwrite");
+      i.objectStore(se).delete(t), i.oncomplete = () => r(), i.onerror = () => o(i.error);
     });
   }
   /**
@@ -3998,7 +4223,7 @@ class ei {
    */
   async getOrCreateDeviceKey(t) {
     const n = await this.db(), r = await new Promise((i, a) => {
-      const c = n.transaction(Q, "readonly").objectStore(Q).get(t);
+      const c = n.transaction(Z, "readonly").objectStore(Z).get(t);
       c.onsuccess = () => i(c.result), c.onerror = () => a(c.error);
     });
     if (r) return r;
@@ -4009,12 +4234,12 @@ class ei {
     );
     try {
       return await new Promise((i, a) => {
-        const c = n.transaction(Q, "readwrite");
-        c.objectStore(Q).add(o, t), c.oncomplete = () => i(), c.onerror = () => a(c.error);
+        const c = n.transaction(Z, "readwrite");
+        c.objectStore(Z).add(o, t), c.oncomplete = () => i(), c.onerror = () => a(c.error);
       }), o;
     } catch {
       const i = await new Promise((a, c) => {
-        const s = n.transaction(Q, "readonly").objectStore(Q).get(t);
+        const s = n.transaction(Z, "readonly").objectStore(Z).get(t);
         s.onsuccess = () => a(s.result), s.onerror = () => c(s.error);
       });
       if (i) return i;
@@ -4024,29 +4249,29 @@ class ei {
   async deleteDeviceKey(t) {
     const n = await this.db();
     return new Promise((r, o) => {
-      const i = n.transaction(Q, "readwrite");
-      i.objectStore(Q).delete(t), i.oncomplete = () => r(), i.onerror = () => o(i.error);
+      const i = n.transaction(Z, "readwrite");
+      i.objectStore(Z).delete(t), i.oncomplete = () => r(), i.onerror = () => o(i.error);
     });
   }
 }
-const Te = "bitlogin:session:v1", Kt = "bitlogin:session-device-key:v1";
-function Dt(e) {
+const Oe = "bitlogin:session:v1", Lt = "bitlogin:session-device-key:v1";
+function Ft(e) {
   let t = "";
   for (const n of e) t += String.fromCharCode(n);
   return btoa(t);
 }
-function Vt(e) {
+function Ht(e) {
   const t = atob(e);
   return Uint8Array.from(t, (n) => n.charCodeAt(0));
 }
-function qt(e) {
+function Jt(e) {
   const t = new Uint8Array(e.byteLength);
   return t.set(e), t.buffer;
 }
-function ti(e) {
+function Ei(e) {
   return !!(e && typeof e == "object" && e.v === 2 && typeof e.iv == "string" && typeof e.ciphertext == "string");
 }
-async function ni(e, t) {
+async function Pi(e, t) {
   const n = {
     everydayPrivateKeyHex: Array.from(t.everydayPrivateKey, (r) => r.toString(16).padStart(2, "0")).join(""),
     accountId: t.accountId,
@@ -4063,34 +4288,34 @@ async function ni(e, t) {
   };
   try {
     if (typeof e.getOrCreateDeviceKey != "function") {
-      await e.delete(Te);
+      await e.delete(Oe);
       return;
     }
-    const r = await e.getOrCreateDeviceKey(Kt), o = crypto.getRandomValues(new Uint8Array(12)), i = new TextEncoder().encode(JSON.stringify(n)), a = await crypto.subtle.encrypt({ name: "AES-GCM", iv: o }, r, i), c = {
+    const r = await e.getOrCreateDeviceKey(Lt), o = crypto.getRandomValues(new Uint8Array(12)), i = new TextEncoder().encode(JSON.stringify(n)), a = await crypto.subtle.encrypt({ name: "AES-GCM", iv: o }, r, i), c = {
       v: 2,
-      iv: Dt(o),
-      ciphertext: Dt(new Uint8Array(a))
+      iv: Ft(o),
+      ciphertext: Ft(new Uint8Array(a))
     };
-    await e.set(Te, JSON.stringify(c));
+    await e.set(Oe, JSON.stringify(c));
   } catch {
   }
 }
-async function ri(e) {
+async function Ki(e) {
   let t;
   try {
-    t = await e.get(Te);
+    t = await e.get(Oe);
   } catch {
     return null;
   }
   if (!t) return null;
   try {
     const n = JSON.parse(t);
-    if (!ti(n) || typeof e.getOrCreateDeviceKey != "function")
-      return await e.delete(Te), null;
-    const r = await e.getOrCreateDeviceKey(Kt), o = await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv: qt(Vt(n.iv)) },
+    if (!Ei(n) || typeof e.getOrCreateDeviceKey != "function")
+      return await e.delete(Oe), null;
+    const r = await e.getOrCreateDeviceKey(Lt), o = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: Jt(Ht(n.iv)) },
       r,
-      qt(Vt(n.ciphertext))
+      Jt(Ht(n.ciphertext))
     ), i = JSON.parse(new TextDecoder().decode(o));
     return typeof i.everydayPrivateKeyHex != "string" || typeof i.accountId != "string" || typeof i.recoveryPublicKey != "string" || !i.activeCredentialEvent || !i.activeRecoveryEvent ? null : {
       everydayPrivateKey: Uint8Array.from(
@@ -4113,10 +4338,22 @@ async function ri(e) {
     return null;
   }
 }
-async function oi(e) {
+async function Ri(e) {
   try {
-    await e.delete(Te), typeof e.deleteDeviceKey == "function" && await e.deleteDeviceKey(Kt);
+    await e.delete(Oe), typeof e.deleteDeviceKey == "function" && await e.deleteDeviceKey(Lt);
   } catch {
+  }
+}
+class Ai {
+  tail = Promise.resolve();
+  run(t) {
+    const n = this.tail.then(t, t);
+    return this.tail = n.then(
+      () => {
+      },
+      () => {
+      }
+    ), n;
   }
 }
 const d = {
@@ -4131,21 +4368,21 @@ const d = {
   vaultKnown: !1,
   vault: null
 };
-let U = [...Io], Ye = [...To];
-const X = new ei();
-function ne() {
+let D = [...ni], nt = [...ri];
+const ee = new ki(), xi = new Ai();
+function oe() {
   if (!d.signer || !d.everydayPrivateKey)
     throw new Error("No identity is unlocked in this session.");
   return { signer: d.signer, everydayPrivateKey: d.everydayPrivateKey };
 }
-function Ke() {
+function Ae() {
   d.signer?.destroy(), d.everydayPrivateKey && d.everydayPrivateKey.fill(0), d.signer = null, d.everydayPrivateKey = null, d.accountId = null, d.recoveryPublicKey = null, d.activeCredentialEvent = null, d.activeRecoveryEvent = null, d.vault?.destroy(), d.vault = null, d.connectionVaultRoot && d.connectionVaultRoot.fill(0), d.connectionVaultRoot = null, d.vaultKnown = !1, d.pendingRecovery && (d.pendingRecovery.recoveryPrivateKey.fill(0), d.pendingRecovery.everydayPrivateKey.fill(0), d.pendingRecovery = null);
 }
-function Qe(e, t) {
-  d.connectionVaultRoot = e ?? null, d.vaultKnown = !0, d.vault = null, t && ge(t);
+function rt(e, t) {
+  d.connectionVaultRoot = e ?? null, d.vaultKnown = !0, d.vault = null, t && x(t);
 }
-async function Oe() {
-  !d.everydayPrivateKey || !d.accountId || !d.recoveryPublicKey || !d.activeCredentialEvent || !d.activeRecoveryEvent || await ni(X, {
+async function Ve() {
+  !d.everydayPrivateKey || !d.accountId || !d.recoveryPublicKey || !d.activeCredentialEvent || !d.activeRecoveryEvent || await Pi(ee, {
     everydayPrivateKey: d.everydayPrivateKey,
     accountId: d.accountId,
     recoveryPublicKey: d.recoveryPublicKey,
@@ -4155,22 +4392,22 @@ async function Oe() {
     ...d.vaultKnown ? { vaultEnabled: d.connectionVaultRoot !== null } : {}
   });
 }
-function Re() {
+function xe() {
   try {
     return new URL(self.location.href).origin;
   } catch {
     return "";
   }
 }
-function ot() {
+function dt() {
   if (!d.signer) throw new Error("No identity is unlocked in this session.");
   if (!d.connectionVaultRoot)
     throw new Error(
       d.vaultKnown ? "This account predates the Connection Vault. Enable it from your BitLogin account manager (recovery phrase required)." : "Sign in again to use wallet connections on this device."
     );
-  return d.vault ??= new Yo(d.connectionVaultRoot.slice()), d.vault;
+  return d.vault ??= new wi(d.connectionVaultRoot.slice()), d.vault;
 }
-function Ae(e) {
+function Ce(e) {
   const { record: t } = e, n = {
     connectionId: t.connection_id,
     connectionType: t.connection_type,
@@ -4186,28 +4423,31 @@ function Ae(e) {
   }
   return n;
 }
-async function Ve() {
-  const e = ot(), t = await e.listConnections({ relayUrls: U, store: X });
+async function je() {
+  const e = dt(), t = await e.listConnections({ relayUrls: D, store: ee });
   return {
     vault: e,
     connections: t.connections.filter((n) => n.record.state !== "deleted"),
-    rollbackWarnings: t.rollbackWarnings
+    rollbackWarnings: t.rollbackWarnings,
+    unreadable: t.unreadable,
+    truncated: t.truncated,
+    quorumMet: t.quorumMet
   };
 }
-async function Xe(e) {
-  const { vault: t, connections: n } = await Ve(), r = n.find((o) => o.record.connection_id === e);
+async function ot(e) {
+  const { vault: t, connections: n } = await je(), r = n.find((o) => o.record.connection_id === e);
   if (!r) throw new Error("That connection no longer exists.");
   return { vault: t, connection: r };
 }
-async function ii(e, t) {
+async function Ci(e, t) {
   switch (e) {
     case "configure": {
       const n = t;
-      return n.vaultRelayUrls?.length && (U = n.vaultRelayUrls), n.discoveryRelayUrls?.length && (Ye = n.discoveryRelayUrls), {};
+      return n.vaultRelayUrls?.length && (D = n.vaultRelayUrls), n.discoveryRelayUrls?.length && (nt = n.discoveryRelayUrls), {};
     }
     case "register": {
-      const n = t, r = n.importKey ? await Yr({ nsecOrHex: n.importKey, loginName: n.loginName, password: n.password, vaultRelayUrls: U }) : await fn({ loginName: n.loginName, password: n.password, vaultRelayUrls: U });
-      return Ke(), d.signer = new Ue(r.everydayPrivateKey), d.everydayPrivateKey = r.everydayPrivateKey, d.accountId = r.accountId, d.recoveryPublicKey = r.recoveryPublicKey, d.activeCredentialEvent = r.credentialEvent, d.activeRecoveryEvent = r.recoveryEvent, Qe(r.connectionVaultRoot, r.vaultSudoKey), await Oe(), {
+      const n = t, r = n.importKey ? await co({ nsecOrHex: n.importKey, loginName: n.loginName, password: n.password, vaultRelayUrls: D }) : await En({ loginName: n.loginName, password: n.password, vaultRelayUrls: D });
+      return Ae(), d.signer = new De(r.everydayPrivateKey), d.everydayPrivateKey = r.everydayPrivateKey, d.accountId = r.accountId, d.recoveryPublicKey = r.recoveryPublicKey, d.activeCredentialEvent = r.credentialEvent, d.activeRecoveryEvent = r.recoveryEvent, rt(r.connectionVaultRoot, r.vaultSudoKey), await Ve(), {
         recoveryPhrase: r.recoveryPhrase,
         everydayPublicKey: r.everydayPublicKey,
         recoveryPublicKey: r.recoveryPublicKey,
@@ -4218,18 +4458,18 @@ async function ii(e, t) {
       };
     }
     case "previewImportKey": {
-      const r = gn(t.nsecOrHex), o = _(r), i = { everydayPublicKey: o, npub: Ct(o) };
+      const r = Pn(t.nsecOrHex), o = k(r), i = { everydayPublicKey: o, npub: Ut(o) };
       return r.fill(0), i;
     }
     case "login": {
-      const n = t, r = await Qr({
+      const n = t, r = await so({
         loginName: n.loginName,
         password: n.password,
-        vaultRelayUrls: U,
-        store: X,
+        vaultRelayUrls: D,
+        store: ee,
         acknowledgeRollback: n.acknowledgeRollback
       });
-      return Ke(), d.signer = new Ue(r.everydayPrivateKey), d.everydayPrivateKey = r.everydayPrivateKey, d.accountId = r.accountId, d.recoveryPublicKey = r.recoveryPublicKey, d.activeCredentialEvent = r.credentialEvent, d.activeRecoveryEvent = r.recoveryCapsuleEvent, Qe(r.connectionVaultRoot, r.vaultSudoKey), await Oe(), {
+      return Ae(), d.signer = new De(r.everydayPrivateKey), d.everydayPrivateKey = r.everydayPrivateKey, d.accountId = r.accountId, d.recoveryPublicKey = r.recoveryPublicKey, d.activeCredentialEvent = r.credentialEvent, d.activeRecoveryEvent = r.recoveryCapsuleEvent, rt(r.connectionVaultRoot, r.vaultSudoKey), await Ve(), {
         everydayPublicKey: r.everydayPublicKey,
         accountId: r.accountId,
         generation: r.generation,
@@ -4238,14 +4478,14 @@ async function ii(e, t) {
       };
     }
     case "recover": {
-      const n = t, r = await Xr({
+      const n = t, r = await lo({
         phrase: n.phrase,
-        vaultRelayUrls: U,
-        discoveryRelayUrls: Ye,
+        vaultRelayUrls: D,
+        discoveryRelayUrls: nt,
         offlineRecoveryCapsuleEvents: n.offlineExportFile?.recovery_capsule_events
       });
-      return Ke(), d.pendingRecovery = r, d.signer = new Ue(r.everydayPrivateKey), d.everydayPrivateKey = r.everydayPrivateKey, d.accountId = r.accountId, d.recoveryPublicKey = r.recoveryPublicKey, d.activeRecoveryEvent = r.currentRecoveryEvent, Qe(
-        r.currentRecoveryPayload.connection_vault_root ? J(r.currentRecoveryPayload.connection_vault_root) : void 0
+      return Ae(), d.pendingRecovery = r, d.signer = new De(r.everydayPrivateKey), d.everydayPrivateKey = r.everydayPrivateKey, d.accountId = r.accountId, d.recoveryPublicKey = r.recoveryPublicKey, d.activeRecoveryEvent = r.currentRecoveryEvent, rt(
+        r.currentRecoveryPayload.connection_vault_root ? X(r.currentRecoveryPayload.connection_vault_root) : void 0
       ), {
         everydayPublicKey: r.everydayPublicKey,
         accountId: r.accountId,
@@ -4257,29 +4497,29 @@ async function ii(e, t) {
     case "completeRecovery": {
       const n = t;
       if (!d.pendingRecovery) throw new Error("No recovery is in progress in this session.");
-      const r = await Zr({
+      const r = await uo({
         recovered: d.pendingRecovery,
         newLoginName: n.newLoginName,
         newPassword: n.newPassword,
-        vaultRelayUrls: U,
-        store: X
+        vaultRelayUrls: D,
+        store: ee
       });
-      return d.activeCredentialEvent = r.credentialEvent, d.activeRecoveryEvent = r.refreshedRecoveryEvent, d.pendingRecovery.recoveryPrivateKey.fill(0), d.pendingRecovery = null, await Oe(), {
+      return d.activeCredentialEvent = r.credentialEvent, d.activeRecoveryEvent = r.refreshedRecoveryEvent, d.pendingRecovery.recoveryPrivateKey.fill(0), d.pendingRecovery = null, await Ve(), {
         locatorPublicKey: r.locatorPublicKey,
         credentialEventId: r.credentialEvent.id,
         refreshedRecoveryEventId: r.refreshedRecoveryEvent.id
       };
     }
     case "changePassword": {
-      const n = t, r = await eo({
+      const n = t, r = await yo({
         loginName: n.loginName,
         oldPassword: n.oldPassword,
         newPassword: n.newPassword,
-        vaultRelayUrls: U,
-        store: X,
+        vaultRelayUrls: D,
+        store: ee,
         acknowledgeRollback: n.acknowledgeRollback
       });
-      return d.activeCredentialEvent = r.newCredentialEvent, d.recoveryPublicKey = r.recoveryPublicKey, d.activeRecoveryEvent = r.recoveryCapsuleEvent, await Oe(), {
+      return d.activeCredentialEvent = r.newCredentialEvent, d.recoveryPublicKey = r.recoveryPublicKey, d.activeRecoveryEvent = r.recoveryCapsuleEvent, await Ve(), {
         newLocatorPublicKey: r.newLocatorPublicKey,
         newGeneration: r.newGeneration,
         tombstoneAcknowledgedCount: r.tombstoneAcknowledgedCount,
@@ -4287,51 +4527,51 @@ async function ii(e, t) {
       };
     }
     case "publishProfileAndRelayLists": {
-      const n = t, { everydayPrivateKey: r } = ne();
-      return mr({
+      const n = t, { everydayPrivateKey: r } = oe();
+      return Ir({
         everydayPrivateKey: r,
         name: n.name,
         about: n.about,
         picture: n.picture,
         generalRelays: n.generalRelays,
         dmRelays: n.dmRelays,
-        discoveryRelays: Ye
+        discoveryRelays: nt
       });
     }
     case "getPublicKey": {
-      const { signer: n } = ne();
+      const { signer: n } = oe();
       return { publicKey: n.getPublicKey() };
     }
     case "signEvent": {
-      const { signer: n } = ne(), r = t;
+      const { signer: n } = oe(), r = t;
       return n.signEvent({ kind: r.kind, tags: r.tags, content: r.content, created_at: r.created_at });
     }
     case "nip44Encrypt": {
-      const { signer: n } = ne(), r = t;
+      const { signer: n } = oe(), r = t;
       return { ciphertext: n.nip44Encrypt(r.peerPublicKey, r.plaintext) };
     }
     case "nip44Decrypt": {
-      const { signer: n } = ne(), r = t;
+      const { signer: n } = oe(), r = t;
       return { plaintext: n.nip44Decrypt(r.peerPublicKey, r.payload) };
     }
     case "nip04Encrypt": {
-      const { signer: n } = ne(), r = t;
+      const { signer: n } = oe(), r = t;
       return { ciphertext: n.nip04Encrypt(r.peerPublicKey, r.plaintext) };
     }
     case "nip04Decrypt": {
-      const { signer: n } = ne(), r = t;
+      const { signer: n } = oe(), r = t;
       return { plaintext: n.nip04Decrypt(r.peerPublicKey, r.payload) };
     }
     case "exportIdentity": {
-      const { everydayPrivateKey: n, signer: r } = ne();
-      return { nsec: ur(n), npub: Ct(r.getPublicKey()) };
+      const { everydayPrivateKey: n, signer: r } = oe();
+      return { nsec: mr(n), npub: Ut(r.getPublicKey()) };
     }
     case "buildRecoveryExport": {
-      if (ne(), !d.recoveryPublicKey || !d.activeRecoveryEvent)
+      if (oe(), !d.recoveryPublicKey || !d.activeRecoveryEvent)
         throw new Error("No recovery capsule is known in this session yet.");
-      return lr({
+      return br({
         recoveryPublicKeyHex: d.recoveryPublicKey,
-        vaultRelayUrls: U,
+        vaultRelayUrls: D,
         recoveryCapsuleEvents: [d.activeRecoveryEvent],
         relayListEvents: []
       });
@@ -4339,7 +4579,7 @@ async function ii(e, t) {
     case "repairReplicas": {
       if (!d.activeCredentialEvent || !d.activeRecoveryEvent)
         throw new Error("No active capsule events are known in this session yet.");
-      const n = new C(U), r = await Mr(n, d.activeCredentialEvent, d.activeRecoveryEvent);
+      const n = new C(D), r = await Hr(n, d.activeCredentialEvent, d.activeRecoveryEvent);
       return n.closeAll(), r;
     }
     case "getSessionStatus":
@@ -4350,20 +4590,20 @@ async function ii(e, t) {
     // corrupt cache is not an error: it just means the widget falls through to its
     // normal welcome screen, exactly like it always has.
     case "restoreSession": {
-      const n = await ri(X);
-      return n ? (Ke(), d.signer = new Ue(n.everydayPrivateKey), d.everydayPrivateKey = n.everydayPrivateKey, d.accountId = n.accountId, d.recoveryPublicKey = n.recoveryPublicKey, d.activeCredentialEvent = n.activeCredentialEvent, d.activeRecoveryEvent = n.activeRecoveryEvent, d.connectionVaultRoot = n.connectionVaultRoot ?? null, d.vaultKnown = n.vaultEnabled !== void 0, { restored: !0, everydayPublicKey: d.signer.getPublicKey(), accountId: n.accountId }) : { restored: !1 };
+      const n = await Ki(ee);
+      return n ? (Ae(), d.signer = new De(n.everydayPrivateKey), d.everydayPrivateKey = n.everydayPrivateKey, d.accountId = n.accountId, d.recoveryPublicKey = n.recoveryPublicKey, d.activeCredentialEvent = n.activeCredentialEvent, d.activeRecoveryEvent = n.activeRecoveryEvent, d.connectionVaultRoot = n.connectionVaultRoot ?? null, d.vaultKnown = n.vaultEnabled !== void 0, { restored: !0, everydayPublicKey: d.signer.getPublicKey(), accountId: n.accountId }) : { restored: !1 };
     }
     case "logout":
-      return Ke(), await oi(X), {};
+      return Ae(), await Ri(ee), {};
     // ---- Connection Vault (connection-vault.md §12, reveal mode) ----
     case "vaultStatus":
-      return d.signer ? d.connectionVaultRoot ? { enabled: !0, vaultPublicKey: ot().vaultPublicKey } : { enabled: !1, reason: d.vaultKnown ? "no-vault" : "stale-cache" } : { enabled: !1 };
+      return d.signer ? d.connectionVaultRoot ? { enabled: !0, vaultPublicKey: dt().vaultPublicKey } : { enabled: !1, reason: d.vaultKnown ? "no-vault" : "stale-cache" } : { enabled: !1 };
     case "vaultList": {
-      const { connections: n, rollbackWarnings: r } = await Ve();
-      return { connections: n.map(Ae), rollbackWarnings: r };
+      const { connections: n, rollbackWarnings: r, unreadable: o, truncated: i, quorumMet: a } = await je();
+      return { connections: n.map(Ce), rollbackWarnings: r, unreadable: o, truncated: i, quorumMet: a };
     }
     case "vaultSaveNwc": {
-      const n = t, r = Re(), o = ot(), i = Ot(n.uri), a = n.label.trim().slice(0, 120) || "Wallet connection", { record: c, event: s } = await o.createConnection({
+      const n = t, r = xe(), o = dt(), i = Bt(n.uri), a = n.label.trim().slice(0, 120) || "Wallet connection", { record: c, event: s } = await o.createConnection({
         connection_type: "nwc",
         tier: "connectable",
         label: a,
@@ -4373,68 +4613,68 @@ async function ii(e, t) {
       if (!(await o.publish({
         event: s,
         connectionId: c.connection_id,
-        relayUrls: U,
-        store: X
+        relayUrls: D,
+        store: ee
       })).success)
         throw new Error("The connection could not be saved to enough relays. Please try again.");
       const u = await o.decryptEvent(s);
-      return Ae(u);
+      return Ce(u);
     }
     case "vaultFindForOrigin": {
-      const n = Re(), { connections: r } = await Ve(), o = r.find(
+      const n = xe(), { connections: r } = await je(), o = r.find(
         (i) => i.record.connection_type === "nwc" && i.record.state === "active" && i.record.application_binding.origin === n
       );
-      return { connection: o ? Ae(o) : null };
+      return { connection: o ? Ce(o) : null };
     }
     case "vaultRevealNwc": {
-      const n = t, { connection: r } = await Xe(n.connectionId);
+      const n = t, { connection: r } = await ot(n.connectionId);
       if (r.record.connection_type !== "nwc" || r.record.state !== "active")
         throw new Error("That connection is not an active wallet connection.");
       const o = r.record.application_binding.origin;
-      if (o !== null && o !== Re())
+      if (o !== null && o !== xe())
         throw new Error("That connection belongs to a different site.");
       const i = r.record.credential;
-      return qn(i), { uri: Go(i) };
+      return Hn(i), { uri: si(i) };
     }
     case "vaultSetBinding": {
-      const n = t, { vault: r, connection: o } = await Xe(n.connectionId), i = n.origin === null ? null : Re(), { record: a, event: c } = await r.updateConnection(o, {
+      const n = t, { vault: r, connection: o } = await ot(n.connectionId), i = n.origin === null ? null : xe(), { record: a, event: c } = await r.updateConnection(o, {
         application_binding: { origin: i, app_pubkey: null }
       });
       if (!(await r.publish({
         event: c,
         connectionId: a.connection_id,
-        relayUrls: U,
-        store: X
+        relayUrls: D,
+        store: ee
       })).success) throw new Error("The change could not reach enough relays. Please try again.");
       const l = await r.decryptEvent(c);
-      return Ae(l);
+      return Ce(l);
     }
     case "vaultDelete": {
-      const n = t, { vault: r, connection: o } = await Xe(n.connectionId), { record: i, event: a } = await r.deleteConnection(o);
+      const n = t, { vault: r, connection: o } = await ot(n.connectionId), { record: i, event: a } = await r.deleteConnection(o);
       if (!(await r.publish({
         event: a,
         connectionId: i.connection_id,
-        relayUrls: U,
-        store: X
+        relayUrls: D,
+        store: ee
       })).success) throw new Error("The deletion could not reach enough relays. Please try again.");
       try {
-        const s = r.buildDeletionRequest(o.event.id), l = new C(U);
+        const s = r.buildDeletionRequest(o.event.id), l = new C(D);
         await l.publishAll(s), l.closeAll();
       } catch {
       }
       return {};
     }
     case "vaultOfferCheck": {
-      const n = t, r = Re(), o = Ot(n.uri), { connections: i } = await Ve(), a = i.find(
-        (c) => c.record.connection_type === "nwc" && Fo(c.record.credential, o)
+      const n = t, r = xe(), o = Bt(n.uri), { connections: i } = await je(), a = i.find(
+        (c) => c.record.connection_type === "nwc" && li(c.record.credential, o)
       );
-      return a ? a.record.application_binding.origin !== r ? { duplicate: !1 } : { duplicate: !0, connection: Ae(a) } : { duplicate: !1 };
+      return a ? a.record.application_binding.origin !== r ? { duplicate: !1 } : { duplicate: !0, connection: Ce(a) } : { duplicate: !1 };
     }
     default:
       throw new Error(`Unknown worker action: ${e}`);
   }
 }
-const ai = /* @__PURE__ */ new Set([
+const Ni = /* @__PURE__ */ new Set([
   "configure",
   "register",
   "previewImportKey",
@@ -4467,7 +4707,7 @@ const ai = /* @__PURE__ */ new Set([
 self.addEventListener("message", (e) => {
   const t = e.data;
   if (!t || typeof t != "object" || typeof t.id != "string") return;
-  if (typeof t.action != "string" || !ai.has(t.action)) {
+  if (typeof t.action != "string" || !Ni.has(t.action)) {
     const i = {
       id: t.id,
       ok: !1,
@@ -4478,7 +4718,7 @@ self.addEventListener("message", (e) => {
     return;
   }
   const { id: n, action: r, payload: o } = e.data;
-  ii(r, o).then(
+  xi.run(() => Ci(r, o)).then(
     (i) => {
       const a = { id: n, ok: !0, result: i };
       self.postMessage(a);

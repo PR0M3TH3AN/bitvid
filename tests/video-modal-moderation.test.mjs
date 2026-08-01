@@ -125,14 +125,33 @@ test("VideoModal blurs and restores playback when moderation overlay toggles", a
     });
 
     await t.test("trusted mute blur state matches moderation context", async () => {
+      // Fixture mirrors what moderationDecorator actually emits. Two things
+      // made the old hand-rolled shape stop exercising this path:
+      //
+      // 1. normalizeVideoModerationContext derives `shouldShow` from
+      //    `original.blurThumbnail` and `trustedCount`, NOT from a flat
+      //    `blurThumbnail`/`trustedMuteCount`. The old fixture set fields the
+      //    helper never reads, so shouldShow was false and applyModerationOverlay
+      //    took its early return and deleted the blur it was asserting on.
+      // 2. 4525c1c6 made a lone trusted mute a non-blocking ranking signal (see
+      //    "VideoCard keeps a single trusted mute as a non-blocking ranking
+      //    signal"), so trusted-mute alone no longer forces the overlay.
+      //
+      // The scenario under test is still "a trusted mute that DID trigger a
+      // blur renders blurred with a trusted-mute badge", so the fixture now
+      // carries the decorator's `original` block that represents exactly that.
       const video = {
         id: "event-trusted-mute",
         title: "Trusted mute video",
         moderation: {
           blurThumbnail: true,
+          blurReason: "trusted-mute",
           trustedMuted: true,
+          trustedCount: 2,
           trustedMuteCount: 2,
+          trustedMuterDisplayNames: ["Carol", "Dave"],
           trustedMuteDisplayNames: ["Carol", "Dave"],
+          original: { blurThumbnail: true, blurReason: "trusted-mute" },
         },
       };
 

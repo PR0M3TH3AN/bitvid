@@ -92,18 +92,32 @@ test("trusted report summaries respect personal blocks and admin lists", async (
 
   service.recomputeSummaryForEvent(eventId);
 
+  // 18e08bf2 ("refine trust controls") removed `status.whitelisted ||` from
+  // isTrustedReporter and updated the doc comment from "trustedContacts set (or
+  // Admin Whitelist)" to "trustedContacts set". Being on the admin whitelist is
+  // permission to publish, not a statement that your reports carry weight, so a
+  // whitelisted reporter now counts toward the report TOTAL but not toward
+  // TRUSTED.
+  //
+  // Counted reporters: trusted (t=100), whitelisted (t=400), random (t=300).
+  // Excluded entirely: blacklisted (admin list) and blocked (personal block).
   const summary = service.getTrustedReportSummary(eventId);
-  assert.equal(summary.totalTrusted, 2);
-  assert.equal(summary.types.nudity.total, 3);
-  assert.equal(summary.types.nudity.trusted, 2);
-  assert.equal(summary.types.nudity.latest, 400);
+  assert.equal(summary.totalTrusted, 1, "only the trusted contact is trusted");
+  assert.equal(summary.types.nudity.total, 3, "whitelisted still counts as a report");
+  assert.equal(summary.types.nudity.trusted, 1);
+  assert.equal(
+    summary.types.nudity.latest,
+    400,
+    "latest still reflects the whitelisted reporter's timestamp"
+  );
 
   const reporters = service.getTrustedReporters(eventId, "nudity");
   assert.deepEqual(
     reporters.map((entry) => entry.pubkey),
-    [whitelistedHex, trustedHex]
+    [trustedHex],
+    "the whitelisted reporter is no longer surfaced as a trusted reporter"
   );
-  assert.equal(service.trustedReportCount(eventId, "nudity"), 2);
+  assert.equal(service.trustedReportCount(eventId, "nudity"), 1);
 });
 
 test("user block updates recompute summaries and emit notifications", async (t) => {

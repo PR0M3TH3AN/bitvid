@@ -103,13 +103,31 @@ Likely a shared root cause in session/identity persistence + multi-account handl
       `SignerManager.logout` (previousPubkey/hadRemoteClient), and
       `authService.switchProfile` (from/to + whether requestLogin resolved the expected
       pubkey). **Remove these once the fix lands.**
+- [x] **CODE-LEVEL SUSPECTS RE-AUDITED + PINNED (2026-07-30).** Every root cause the
+      2026-06-25 audit named has since been fixed by later work, verified end-to-end
+      by reading the current code:
+        - Per-account NIP-46 session storage exists (`bitvid:nip46:sessions:v2` map,
+          v1 slot = last-connected default, migration on read).
+        - `logout()` → `disconnectRemoteSigner({ keepStored: true })` — stored
+          sessions survive; the no-arg `clearStoredNip46Session()` clears ONLY the
+          v1 default slot, never the map (the wipe-all was fixed earlier).
+        - Switch is fully wired: coordinator sets `reuseStored: true` for nip46
+          targets → `switchProfile` passes `expectPubkey` → provider forwards it →
+          `useStoredRemoteSigner({ pubkey })` restores the TARGET account's session,
+          and forgets only the attempted account on access-denial.
+        - Boot restore (`scheduleStoredRemoteSignerRestore`) enforces the
+          access-control validator and fails scoped (nothing else cleared).
+      NEW: `tests/nip46-signer-lifecycle.test.mjs` pins the manager-level contract
+      (logout scoping, restore-failure scoping, bare-disconnect scoping) — mutation-
+      checked: reinjecting the historical keepStored/wipe-all bugs fails 2/6.
 - [ ] **VERIFY / REPRODUCE (user action):** on the phone with Amber on
       unstable.bitvid.network, exercise (1) fresh load, (2) switch profiles, (3) logout,
       and capture the `[nip46-diag]` console lines for each — restore succeeded/FAILED,
       switchProfile `matchesTarget`, and disconnect `keepStored`/`hadClient`/caller stack.
-- [ ] **THEN fix** based on the captured trace (likely: per-profile NIP-46 session keyed
-      by pubkey; don't tear the shared client on a scoped logout; reconnect on
-      switch/restore) and REMOVE the temporary `[nip46-diag]` diagnostics.
+      If all three behave, close this item and REMOVE the `[nip46-diag]` diagnostics;
+      if not, the trace now points at whatever the unit contract does NOT cover
+      (likely UI/state reconciliation, e.g. restore-failure leaving "unknown user"
+      rendered instead of a reconnect prompt).
 
 ### 1. Delete is not fully working — tombstoned videos still show in the UI
 - [x] **Root cause found + fixed** (`afb6200b`): deletes published only to the CAPPED

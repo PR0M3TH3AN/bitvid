@@ -13,13 +13,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createUiCoordinator } from "../js/app/uiCoordinator.js";
 import { VideoModal } from "../js/ui/components/VideoModal.js";
-import {
-  clearActiveSigner,
-  registerSigner,
-  setActiveSigner,
-} from "../js/nostrClientRegistry.js";
 
 const PUBKEY = "b".repeat(64);
 
@@ -71,103 +65,44 @@ test("setShareNostrAuthState tolerates no popover", () => {
   );
 });
 
-// --- syncAuthUiState wiring ----------------------------------------------
+// --- app wiring ----------------------------------------------------------
+// bitvid ALREADY routed auth changes to the modal: Application
+// .updateShareNostrAuthState() is called on init, login, logout, pubkey-change
+// and signer-change, and it forwards to videoModal.setShareNostrAuthState().
+// That method simply did not exist, so the call short-circuited on its own
+// `if (!this.videoModal?.setShareNostrAuthState) return;` guard and the gate
+// stayed shut forever. These pin the contract that guard depends on.
 
-function makeApp({ loggedIn }) {
-  const coordinator = createUiCoordinator({
-    devLogger: { warn() {}, error() {}, log() {} },
-  });
-  const pushed = [];
-  const app = {
-    ...coordinator,
-    isUserLoggedIn: () => loggedIn,
-    // Stub the DOM-touching branches; this test is about the share gate.
-    applyAuthenticatedUiState() {},
-    applyLoggedOutUiState() {},
-    videoModal: {
-      setShareNostrAuthState(state) {
-        pushed.push({ ...state });
-      },
-    },
-  };
-  return { app, pushed };
-}
+test("the app's updateShareNostrAuthState contract is satisfied", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile(new URL("../js/app.js", import.meta.url), "utf8");
 
-test("syncAuthUiState pushes the gate into the video modal", () => {
-  const { app, pushed } = makeApp({ loggedIn: true });
-  app.syncAuthUiState();
-  assert.equal(pushed.length, 1);
-  assert.equal(pushed[0].isLoggedIn, true);
-});
+  // The guard short-circuits when the method is absent, which is exactly how
+  // this stayed broken silently. If the method is ever renamed, fail loudly.
+  assert.match(source, /videoModal\?\.setShareNostrAuthState/);
+  assert.match(source, /videoModal\.setShareNostrAuthState\(\{/);
 
-test("logged out propagates as a closed gate", () => {
-  const { app, pushed } = makeApp({ loggedIn: false });
-  app.syncAuthUiState();
-  assert.deepEqual(pushed[0], { isLoggedIn: false, hasSigner: false });
-});
-
-test("hasSigner reflects a registered, signing-capable signer", () => {
-  clearActiveSigner();
-  const { app, pushed } = makeApp({ loggedIn: true });
-
-  app.syncAuthUiState();
-  assert.equal(pushed[0].hasSigner, false, "no signer registered yet");
-
-  registerSigner(PUBKEY, { pubkey: PUBKEY, signEvent: async (e) => e });
-  setActiveSigner(PUBKEY);
-  app.syncAuthUiState();
-  assert.equal(pushed[1].hasSigner, true);
-
-  clearActiveSigner();
-  app.syncAuthUiState();
-  assert.equal(pushed[2].hasSigner, false, "logout must close the gate again");
-});
-
-test("a signer that cannot sign does not open the gate", () => {
-  // Mirrors ShareNostrController.handleShare(): enabling the item for a signer
-  // without signEvent would only produce an error toast on click.
-  clearActiveSigner();
-  registerSigner(PUBKEY, { pubkey: PUBKEY });
-  setActiveSigner(PUBKEY);
-
-  const { app, pushed } = makeApp({ loggedIn: true });
-  app.syncAuthUiState();
-  assert.equal(pushed[0].hasSigner, false);
-  clearActiveSigner();
-});
-
-test("syncAuthUiState re-runs on bitvid:auth-changed, and binds only once", () => {
-  // The original bug's second half: the gate was computed once at bootstrap and
-  // never again, so logging in mid-session left the button disabled.
-  const listeners = [];
-  const originalWindow = globalThis.window;
-  globalThis.window = {
-    addEventListener(type, handler) {
-      listeners.push({ type, handler });
-    },
-  };
-
-  try {
-    const { app, pushed } = makeApp({ loggedIn: false });
-    app.syncAuthUiState();
-    assert.equal(pushed.length, 1);
-
-    const bound = listeners.filter((l) => l.type === "bitvid:auth-changed");
-    assert.equal(bound.length, 1, "listener installed on first sync");
-
-    bound[0].handler();
-    assert.equal(pushed.length, 2, "auth change re-syncs the gate");
-
-    // Re-entrancy: the resync must not stack a new listener every time.
-    assert.equal(
-      listeners.filter((l) => l.type === "bitvid:auth-changed").length,
-      1
+  // The lifecycle points that must keep the gate in sync.
+  for (const reason of ["init", "signer-change", "pubkey-change"]) {
+    assert.ok(
+      source.includes(`reason: "${reason}"`),
+      `app.js should refresh the share gate on ${reason}`
     );
-  } finally {
-    if (originalWindow === undefined) {
-      delete globalThis.window;
-    } else {
-      globalThis.window = originalWindow;
-    }
   }
+
+  assert.equal(
+    typeof VideoModal.prototype.setShareNostrAuthState,
+    "function",
+    "VideoModal must expose the method app.js calls"
+  );
+});
+
+test("login and logout both refresh the gate", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile(
+    new URL("../js/app/authSessionCoordinator.js", import.meta.url),
+    "utf8"
+  );
+  assert.ok(source.includes('reason: "auth-login"'));
+  assert.ok(source.includes('reason: "auth-logout"'));
 });

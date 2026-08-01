@@ -33,6 +33,43 @@ if (packageJson.name !== "@bitlogin/widget") {
   throw new Error("BITLOGIN_ENTRY must point to a BitLogin checkout (packages/widget/package.json not found there).");
 }
 
+// Provenance (BitUnlock entropy audit M1, ported). Hashes prove the vendored
+// bytes have not changed since they were committed; they cannot say WHICH
+// BitLogin commit produced them. @bitlogin/widget is a private package pinned
+// at 0.1.0 across many substantive changes, so the version string distinguishes
+// nothing. Resolved BEFORE the dist build and before vendorDir is deleted, so
+// refusing a dirty checkout leaves the committed vendored files untouched.
+const git = (args) => execSync(`git ${args}`, { cwd: bitloginRoot, encoding: "utf8" }).trim();
+
+let source;
+try {
+  const dirty = git("status --porcelain") !== "";
+  if (dirty && process.env.BITLOGIN_ALLOW_DIRTY !== "1") {
+    throw new Error(
+      "DIRTY_CHECKOUT: the BitLogin checkout has uncommitted changes, so the artifact this "
+        + "would produce corresponds to no commit and cannot be reproduced. Commit there first, "
+        + "or set BITLOGIN_ALLOW_DIRTY=1 for a throwaway local build.",
+    );
+  }
+  source = {
+    repository: git("remote get-url origin"),
+    commit: git("rev-parse HEAD"),
+    commitDate: git("log -1 --format=%cI"),
+    dirty,
+    provenance: dirty ? "dirty" : "attributed",
+    toolchain: { node: process.version, vite: packageJson.devDependencies?.vite },
+  };
+} catch (error) {
+  if (error.message.startsWith("DIRTY_CHECKOUT:")) {
+    throw new Error(error.message.replace("DIRTY_CHECKOUT: ", ""));
+  }
+  throw new Error(
+    `Could not read BitLogin git provenance from ${bitloginRoot}: ${error.message}. `
+      + "Vendoring from a non-git source leaves the artifact unattributable; refusing.",
+  );
+}
+console.log(`[vendor-bitlogin] vendoring @bitlogin/widget from ${source.commit.slice(0, 12)}`);
+
 if (!existsSync(widgetDist)) {
   console.log("[build-bitlogin-widget] dist missing, building @bitlogin/core then @bitlogin/widget first...");
   execSync("npm run build -w @bitlogin/core", { cwd: bitloginRoot, stdio: "inherit" });
@@ -56,7 +93,7 @@ for (const name of distEntries) {
 
 await writeFile(
   integrityFile,
-  `${JSON.stringify({ package: packageJson.name, version: packageJson.version, files }, null, 2)}\n`,
+  `${JSON.stringify({ package: packageJson.name, version: packageJson.version, source, files }, null, 2)}\n`,
 );
 
 try {
