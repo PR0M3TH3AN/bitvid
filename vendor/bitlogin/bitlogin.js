@@ -1,116 +1,57 @@
-import { r as w, e as k, E as Q, p as x, R as C, i as p, a as d } from "./bitlogin-shared-B2Rc9khL.js";
-const S = 6, f = 64;
-function u(r = S) {
-  const e = k(), t = [];
-  for (let s = 0; s < r; s++)
-    t.push(e[w(e.length)]);
-  const a = r * Q;
-  if (a < f)
-    throw new Error(`Passphrase of ${r} words provides only ~${a.toFixed(1)} bits; must exceed ${f}.`);
-  return { kind: "passphrase", secret: t.join(" "), entropyBits: a };
+import { r as g, e as v, E as m, p as w, R as Q, i as p, a as u } from "./bitlogin-shared-DTz11m56.js";
+const k = 6, b = 64;
+function d(a = k) {
+  const e = v(), t = [];
+  for (let r = 0; r < a; r++)
+    t.push(e[g(e.length)]);
+  const s = a * m;
+  if (s < b)
+    throw new Error(`Passphrase of ${a} words provides only ~${s.toFixed(1)} bits; must exceed ${b}.`);
+  return { kind: "passphrase", secret: t.join(" "), entropyBits: s };
 }
-const b = 64, m = 12, P = /* @__PURE__ */ new Set([
-  "password",
-  "password1",
-  "password123",
-  "123456",
-  "123456789",
-  "12345678",
-  "qwerty",
-  "qwerty123",
-  "letmein",
-  "welcome",
-  "monkey",
-  "dragon",
-  "master",
-  "abc123",
-  "iloveyou",
-  "admin",
-  "login",
-  "starwars",
-  "sunshine",
-  "princess",
-  "football",
-  "baseball",
-  "trustno1",
-  "000000",
-  "111111",
-  "123123",
-  "1234567890",
-  "changeme",
-  "passw0rd",
-  "correcthorsebatterystaple"
-]);
-function L(r) {
-  let e = 0;
-  return /[a-z]/u.test(r) && (e += 26), /[A-Z]/u.test(r) && (e += 26), /[0-9]/u.test(r) && (e += 10), /[^a-zA-Z0-9]/u.test(r) && (e += 33), e || 1;
-}
-function E(r) {
-  return r.length * Math.log2(L(r));
-}
-function $(r) {
-  if (/^(.)\1*$/u.test(r) || /(.)\1{2,}/u.test(r))
-    return !0;
-  const e = r.toLowerCase(), t = ["0123456789", "abcdefghijklmnopqrstuvwxyz"];
-  for (const a of t)
-    for (let s = 0; s + 4 <= a.length; s++) {
-      const n = a.slice(s, s + 4), o = [...n].reverse().join("");
-      if (e.includes(n) || e.includes(o))
-        return !0;
-    }
-  return !1;
-}
-function g(r, e) {
-  const t = E(r);
-  return r.length < m ? { ok: !1, entropyBits: t, reason: `Must be at least ${m} characters.` } : P.has(r.toLowerCase()) ? { ok: !1, entropyBits: t, reason: "This is on a list of extremely common passwords." } : e.length >= 3 && r.toLowerCase().includes(e) ? { ok: !1, entropyBits: t, reason: "Must not contain your login name." } : $(r) ? { ok: !1, entropyBits: t, reason: "Too predictable (repeated characters or a simple sequence)." } : t < b ? {
-    ok: !1,
-    entropyBits: t,
-    reason: `Estimated entropy (~${t.toFixed(0)} bits) is below the required ${b}. Use a longer password or mix character types.`
-  } : { ok: !0, entropyBits: t };
-}
-const R = 6e4;
-class N {
+const x = 6e4;
+class S {
   worker;
   pending = /* @__PURE__ */ new Map();
   counter = 0;
   dead = !1;
   constructor() {
     const e = ["cryptoWorker", ".js"].join(""), t = new URL(e, import.meta.url);
-    this.worker = new Worker(t, { type: "module" }), this.worker.addEventListener("message", (s) => {
-      const n = s.data;
-      if (!n || typeof n != "object" || typeof n.id != "string") return;
-      const o = this.pending.get(n.id);
+    this.worker = new Worker(t, { type: "module" }), this.worker.addEventListener("message", (r) => {
+      const i = r.data;
+      if (!i || typeof i != "object" || typeof i.id != "string") return;
+      const o = this.pending.get(i.id);
       if (o)
-        if (this.pending.delete(n.id), clearTimeout(o.timer), n.ok)
-          o.resolve(n.result);
+        if (this.pending.delete(i.id), clearTimeout(o.timer), i.ok)
+          o.resolve(i.result);
         else {
-          const l = new Error(n.error);
-          l.name = n.errorName ?? "Error", o.reject(l);
+          const l = new Error(i.error);
+          l.name = i.errorName ?? "Error", o.reject(l);
         }
     });
-    const a = (s) => () => this.failAll(s);
-    this.worker.addEventListener("error", a("The BitLogin crypto worker stopped unexpectedly.")), this.worker.addEventListener(
+    const s = (r) => () => this.failAll(r);
+    this.worker.addEventListener("error", s("The BitLogin crypto worker stopped unexpectedly.")), this.worker.addEventListener(
       "messageerror",
-      a("The BitLogin crypto worker sent an unreadable message.")
+      s("The BitLogin crypto worker sent an unreadable message.")
     );
   }
   /** Settles every outstanding call with an error. Idempotent. */
   failAll(e) {
     const t = [...this.pending.values()];
     this.pending.clear();
-    for (const a of t)
-      clearTimeout(a.timer), a.reject(new Error(e));
+    for (const s of t)
+      clearTimeout(s.timer), s.reject(new Error(e));
   }
   call(e, t) {
     if (this.dead)
       return Promise.reject(new Error("This BitLogin session was torn down; reload the page to sign in again."));
-    const a = `${Date.now().toString(36)}-${(this.counter++).toString(36)}`;
-    return new Promise((s, n) => {
+    const s = `${Date.now().toString(36)}-${(this.counter++).toString(36)}`;
+    return new Promise((r, i) => {
       const o = setTimeout(() => {
-        this.pending.delete(a), n(new Error(`BitLogin's ${e} call timed out.`));
-      }, R);
-      this.pending.set(a, { resolve: s, reject: n, timer: o });
-      const l = { id: a, action: e, payload: t };
+        this.pending.delete(s), i(new Error(`BitLogin's ${e} call timed out.`));
+      }, x);
+      this.pending.set(s, { resolve: r, reject: i, timer: o });
+      const l = { id: s, action: e, payload: t };
       this.worker.postMessage(l);
     });
   }
@@ -202,57 +143,57 @@ class N {
     this.dead = !0, this.worker.terminate(), this.failAll("The BitLogin crypto worker was terminated.");
   }
 }
-const M = "BitLogin: no identity is unlocked yet. Add <bitlogin-auth> to the page and let the user sign in, or call it programmatically before invoking window.nostr.";
-function c(r) {
-  return r.catch((e) => {
-    throw e.message.includes("No identity is unlocked") ? new Error(M) : e;
+const L = "BitLogin: no identity is unlocked yet. Add <bitlogin-auth> to the page and let the user sign in, or call it programmatically before invoking window.nostr.";
+function c(a) {
+  return a.catch((e) => {
+    throw e.message.includes("No identity is unlocked") ? new Error(L) : e;
   });
 }
-function B(r, e) {
+function C(a, e) {
   return {
     async getPublicKey() {
-      const { publicKey: t } = await c(r.getPublicKey());
+      const { publicKey: t } = await c(a.getPublicKey());
       return t;
     },
     async signEvent(t) {
-      return c(r.signEvent(t));
+      return c(a.signEvent(t));
     },
     async getRelays() {
       const t = {};
-      for (const a of e()) t[a] = { read: !0, write: !0 };
+      for (const s of e()) t[s] = { read: !0, write: !0 };
       return t;
     },
     nip44: {
-      async encrypt(t, a) {
-        const { ciphertext: s } = await c(r.nip44Encrypt({ peerPublicKey: t, plaintext: a }));
-        return s;
+      async encrypt(t, s) {
+        const { ciphertext: r } = await c(a.nip44Encrypt({ peerPublicKey: t, plaintext: s }));
+        return r;
       },
-      async decrypt(t, a) {
-        const { plaintext: s } = await c(r.nip44Decrypt({ peerPublicKey: t, payload: a }));
-        return s;
+      async decrypt(t, s) {
+        const { plaintext: r } = await c(a.nip44Decrypt({ peerPublicKey: t, payload: s }));
+        return r;
       }
     },
     nip04: {
-      async encrypt(t, a) {
-        const { ciphertext: s } = await c(r.nip04Encrypt({ peerPublicKey: t, plaintext: a }));
-        return s;
+      async encrypt(t, s) {
+        const { ciphertext: r } = await c(a.nip04Encrypt({ peerPublicKey: t, plaintext: s }));
+        return r;
       },
-      async decrypt(t, a) {
-        const { plaintext: s } = await c(r.nip04Decrypt({ peerPublicKey: t, payload: a }));
-        return s;
+      async decrypt(t, s) {
+        const { plaintext: r } = await c(a.nip04Decrypt({ peerPublicKey: t, payload: s }));
+        return r;
       }
     },
     _bitlogin: !0
   };
 }
-function T(r) {
-  const e = r.getAttribute("vault-relays"), t = r.getAttribute("discovery-relays");
+function E(a) {
+  const e = a.getAttribute("vault-relays"), t = a.getAttribute("discovery-relays");
   return {
-    vaultRelayUrls: e ? e.split(",").map((a) => a.trim()).filter(Boolean) : void 0,
-    discoveryRelayUrls: t ? t.split(",").map((a) => a.trim()).filter(Boolean) : void 0
+    vaultRelayUrls: e ? e.split(",").map((s) => s.trim()).filter(Boolean) : void 0,
+    discoveryRelayUrls: t ? t.split(",").map((s) => s.trim()).filter(Boolean) : void 0
   };
 }
-const q = (
+const R = (
   /* css */
   `
 :host {
@@ -493,16 +434,16 @@ button.link {
 }
 @keyframes bl-spin { to { transform: rotate(360deg); } }
 `
-), y = "bc:config", U = /^nostr\+walletconnect:\/\//iu;
+), y = "bc:config", $ = /^nostr\+walletconnect:\/\//iu;
 let h = null;
-function F(r) {
+function N(a) {
   if (!h) {
     try {
       localStorage.removeItem(y);
     } catch {
     }
-    h = import("./bitlogin-shared-IsyHQNSG.js").then((e) => (e.init({
-      appName: r,
+    h = import("./bitlogin-shared-BxVSgyOf.js").then((e) => (e.init({
+      appName: a,
       filters: ["nwc"],
       showBalance: !1,
       autoConnect: !1,
@@ -510,7 +451,7 @@ function F(r) {
       providerConfig: {
         nwc: {
           authorizationUrlOptions: {
-            name: r,
+            name: a,
             requestMethods: ["pay_invoice"]
           }
         }
@@ -521,19 +462,19 @@ function F(r) {
   }
   return h;
 }
-function I(r) {
-  const e = r instanceof Error ? r.message : String(r);
+function P(a) {
+  const e = a instanceof Error ? a.message : String(a);
   return /closed|cancell?ed|dismissed|aborted/iu.test(e);
 }
-async function O(r) {
-  const e = await F(r);
+async function B(a) {
+  const e = await N(a);
   try {
-    const t = await e.requestProvider(), a = e.getConnectorConfig()?.nwcUrl, s = t.client?.nostrWalletConnectUrl, n = typeof a == "string" ? a : typeof s == "string" ? s : "";
-    if (!U.test(n.trim()))
+    const t = await e.requestProvider(), s = e.getConnectorConfig()?.nwcUrl, r = t.client?.nostrWalletConnectUrl, i = typeof s == "string" ? s : typeof r == "string" ? r : "";
+    if (!$.test(i.trim()))
       throw new Error("The wallet did not return an NWC connection. Try again or paste one manually.");
-    return n.trim();
+    return i.trim();
   } catch (t) {
-    if (I(t)) return null;
+    if (P(t)) return null;
     throw t;
   } finally {
     try {
@@ -546,7 +487,19 @@ async function O(r) {
     }
   }
 }
-class D extends HTMLElement {
+function T(a) {
+  const e = [];
+  return a.rollbackWarnings.length > 0 && e.push(
+    `${a.rollbackWarnings.length} wallet record${a.rollbackWarnings.length === 1 ? " was" : "s were"} withheld because relays served an older version than this device previously accepted.`
+  ), a.quorumMet || e.push(
+    "Not enough vault relays answered. This connection list may be incomplete."
+  ), a.truncated && e.push(
+    "A relay returned the maximum record page. Some wallet connections may be missing."
+  ), a.unreadable.length > 0 && e.push(
+    `${a.unreadable.length} encrypted wallet record${a.unreadable.length === 1 ? " was" : "s were"} unreadable and omitted.`
+  ), e;
+}
+class I extends HTMLElement {
   root;
   worker;
   vaultRelayUrls = [];
@@ -560,16 +513,6 @@ class D extends HTMLElement {
   savedCheckbox = !1;
   recoveryPhrase = "";
   confirmSlots = [];
-  // Manual password opt-in (§9.3). Off by default; the generated passphrase remains the
-  // recommendation. manualPasswordFeedback is updated on every keystroke WITHOUT a full
-  // re-render (see onInput) so the field never loses focus while the user is typing.
-  // manualPasswordDraft/manualPasswordConfirmDraft re-populate the fields' value attribute
-  // across a validation-failure re-render, so a rejected password isn't silently wiped,
-  // forcing the user to retype it (and re-check "I saved it") from scratch.
-  manualPasswordMode = !1;
-  manualPasswordFeedback = null;
-  manualPasswordDraft = "";
-  manualPasswordConfirmDraft = "";
   // Import flow (§SF10). importKey holds the pasted nsec/hex only until registration completes.
   importKey = "";
   importPreviewNpub = "";
@@ -608,6 +551,7 @@ class D extends HTMLElement {
   vaultUnsaved = !1;
   vaultUnsavedReason;
   vaultConnections = null;
+  vaultIntegrityWarnings = [];
   /** offerNwcConnection state: the app already holds this URI; the only
    *  question on screen is whether a copy enters the user's vault. */
   /** Claimed synchronously by offerNwcConnection before any await (see there). */
@@ -616,11 +560,11 @@ class D extends HTMLElement {
   constructor() {
     super(), this.root = this.attachShadow({ mode: "open" });
     const e = new CSSStyleSheet();
-    e.replaceSync(q), this.root.adoptedStyleSheets = [e], this.worker = new N();
+    e.replaceSync(R), this.root.adoptedStyleSheets = [e], this.worker = new S();
   }
   connectedCallback() {
-    const e = T(this);
-    if (this.vaultRelayUrls = e.vaultRelayUrls ?? [], this.discoveryRelayUrls = e.discoveryRelayUrls ?? [], this.worker.configure({ vaultRelayUrls: this.vaultRelayUrls, discoveryRelayUrls: this.discoveryRelayUrls }).then(() => this.tryRestoreSession()), this.root.addEventListener("click", (t) => this.onClick(t)), this.root.addEventListener("submit", (t) => this.onSubmit(t)), this.root.addEventListener("input", (t) => this.onInput(t)), this.root.addEventListener("change", (t) => void this.onFileChange(t)), this.render(), this.installedProvider = B(this.worker, () => this.vaultRelayUrls), !window.nostr)
+    const e = E(this);
+    if (this.vaultRelayUrls = e.vaultRelayUrls ?? [], this.discoveryRelayUrls = e.discoveryRelayUrls ?? [], this.worker.configure({ vaultRelayUrls: this.vaultRelayUrls, discoveryRelayUrls: this.discoveryRelayUrls }).then(() => this.tryRestoreSession()), this.root.addEventListener("click", (t) => this.onClick(t)), this.root.addEventListener("submit", (t) => this.onSubmit(t)), this.root.addEventListener("change", (t) => void this.onFileChange(t)), this.render(), this.installedProvider = C(this.worker, () => this.vaultRelayUrls), !window.nostr)
       try {
         window.nostr = this.installedProvider;
       } catch {
@@ -681,17 +625,17 @@ class D extends HTMLElement {
    */
   async requestNwcConnection(e = {}) {
     if (this.vaultRequest) throw new Error("A wallet connection request is already in progress.");
-    const t = window.location.origin, a = e.appName?.trim() || window.location.hostname || "This app";
-    return new Promise((s) => {
-      this.vaultRequest = { appName: a, reason: e.reason, origin: t, stage: "auth", resolve: s }, this.dispatchEvent(new CustomEvent("bitlogin-request-pending")), (async () => {
+    const t = window.location.origin, s = e.appName?.trim() || window.location.hostname || "This app";
+    return new Promise((r) => {
+      this.vaultRequest = { appName: s, reason: e.reason, origin: t, stage: "auth", resolve: r }, this.dispatchEvent(new CustomEvent("bitlogin-request-pending")), (async () => {
         try {
           if (!(await this.worker.getSessionStatus()).unlocked) {
             this.goto("login");
             return;
           }
           await this.continueVaultRequest();
-        } catch (n) {
-          this.fail(n);
+        } catch (i) {
+          this.fail(i);
         }
       })();
     });
@@ -766,8 +710,8 @@ class D extends HTMLElement {
       return;
     }
     this.vaultUnsaved = !1;
-    const a = await this.worker.vaultFindForOrigin();
-    a.connection ? (this.vaultCandidate = a.connection, this.goto("vault-consent")) : this.goto("vault-import");
+    const s = await this.worker.vaultFindForOrigin();
+    s.connection ? (this.vaultCandidate = s.connection, this.goto("vault-consent")) : this.goto("vault-import");
   }
   async approveVaultCandidate() {
     const e = this.vaultCandidate;
@@ -786,7 +730,7 @@ class D extends HTMLElement {
     if (e) {
       this.setBusy(!0);
       try {
-        const t = await O(e.appName);
+        const t = await B(e.appName);
         if (t === null) {
           this.setBusy(!1);
           return;
@@ -809,20 +753,20 @@ class D extends HTMLElement {
     }
   }
   async saveAndShareVaultUri(e, t) {
-    const a = this.vaultRequest;
-    if (!a) return;
+    const s = this.vaultRequest;
+    if (!s) return;
     if (this.vaultUnsaved) {
       this.setBusy(!1), this.finishVaultRequest(e);
       return;
     }
-    const s = t.trim() || `${a.appName} wallet`;
-    await this.worker.vaultSaveNwc({ uri: e, label: s }), this.setBusy(!1), this.finishVaultRequest(e), this.flashSuccess(this.screen, "Wallet connected");
+    const r = t.trim() || `${s.appName} wallet`;
+    await this.worker.vaultSaveNwc({ uri: e, label: r }), this.setBusy(!1), this.finishVaultRequest(e), this.flashSuccess(this.screen, "Wallet connected");
   }
   async loadVaultManage() {
-    this.vaultConnections = null, this.goto("vault-manage");
+    this.vaultConnections = null, this.vaultIntegrityWarnings = [], this.goto("vault-manage");
     try {
       const e = await this.worker.vaultList();
-      this.vaultConnections = e.connections;
+      this.vaultConnections = e.connections, this.vaultIntegrityWarnings = T(e);
     } catch (e) {
       this.errorMessage = e instanceof Error ? e.message : String(e), this.vaultConnections = [];
     }
@@ -931,32 +875,6 @@ class D extends HTMLElement {
     return this.root.querySelector(`[name="${e}"]`)?.value ?? "";
   }
   /**
-   * Shared manual-password field markup (§9.3), reused on every screen that lets a user set
-   * their own password (initial creation, phrase recovery, and password rotation) so the
-   * option isn't only available at signup.
-   */
-  renderManualPasswordFields() {
-    return `
-      <label for="manualPassword">Password</label>
-      <input type="password" name="manualPassword" id="manualPassword" autocomplete="new-password" required minlength="12" value="${i(this.manualPasswordDraft)}" />
-      <div class="notice info" id="manual-password-feedback"></div>
-      <label for="manualPasswordConfirm">Confirm password</label>
-      <input type="password" name="manualPasswordConfirm" id="manualPasswordConfirm" autocomplete="new-password" required minlength="12" value="${i(this.manualPasswordConfirmDraft)}" />
-      <div class="notice info" id="manual-password-match-feedback"></div>
-    `;
-  }
-  /**
-   * Reads and validates the manual-password fields against a caller-supplied login name.
-   * Always stashes what was typed into manualPasswordDraft/manualPasswordConfirmDraft so a
-   * validation-failure re-render can restore it (see renderManualPasswordFields).
-   */
-  readManualPassword(e) {
-    const t = this.field("manualPassword"), a = this.field("manualPasswordConfirm");
-    this.manualPasswordDraft = t, this.manualPasswordConfirmDraft = a;
-    const s = g(t, e);
-    return s.ok ? t !== a ? { password: "", error: "Passwords do not match. Please re-enter both." } : { password: t } : { password: "", error: `Password not accepted: ${s.reason}` };
-  }
-  /**
    * Explicitly asks the browser to offer saving this credential via the Credential
    * Management API (Chromium-based browsers only — Firefox and Safari never implemented
    * `PasswordCredential`). This is the primary fix for password-manager integration here,
@@ -970,10 +888,10 @@ class D extends HTMLElement {
    */
   async offerToSaveCredential(e, t) {
     try {
-      const a = window.PasswordCredential;
-      if (!a || !navigator.credentials?.store) return;
-      const s = new a({ id: e, password: t, name: e });
-      await navigator.credentials.store(s);
+      const s = window.PasswordCredential;
+      if (!s || !navigator.credentials?.store) return;
+      const r = new s({ id: e, password: t, name: e });
+      await navigator.credentials.store(r);
     } catch {
     }
   }
@@ -1032,28 +950,25 @@ class D extends HTMLElement {
         this.goto("confirm-phrase");
         return;
       case "goto-change-password":
-        this.changePasswordNewCredential = u().secret, this.manualPasswordMode = !1, this.manualPasswordFeedback = null, this.manualPasswordDraft = "", this.manualPasswordConfirmDraft = "", this.goto("change-password");
+        this.changePasswordNewCredential = d().secret, this.goto("change-password");
         return;
       case "goto-export":
         this.goto("export");
         return;
       case "regenerate-credential":
-        this.generatedCredential = u().secret, this.savedCheckbox = !1, this.render();
-        return;
-      case "toggle-manual-password":
-        this.manualPasswordMode = !this.manualPasswordMode, this.manualPasswordFeedback = null, this.manualPasswordDraft = "", this.manualPasswordConfirmDraft = "", this.savedCheckbox = !1, this.render();
+        this.generatedCredential = d().secret, this.savedCheckbox = !1, this.render();
         return;
       case "copy-credential": {
-        const s = this.root.querySelector("#credential-box"), n = t, o = n.textContent ?? "Copy", l = (v) => {
-          n.textContent = v, setTimeout(() => {
-            n.isConnected && (n.textContent = o);
+        const r = this.root.querySelector("#credential-box"), i = t, o = i.textContent ?? "Copy", l = (f) => {
+          i.textContent = f, setTimeout(() => {
+            i.isConnected && (i.textContent = o);
           }, 2e3);
         };
-        if (!s || !navigator.clipboard?.writeText) {
+        if (!r || !navigator.clipboard?.writeText) {
           l("Copy not available — select the text manually");
           return;
         }
-        navigator.clipboard.writeText(s.textContent ?? "").then(
+        navigator.clipboard.writeText(r.textContent ?? "").then(
           () => l("Copied"),
           () => l("Copy failed — select the text manually")
         );
@@ -1068,8 +983,8 @@ class D extends HTMLElement {
       case "logout":
         return this.logout();
       case "rollback-retry": {
-        const s = this.pendingRollback?.kind;
-        this.pendingRollback = null, this.goto(s === "change-password" ? "change-password" : "login");
+        const r = this.pendingRollback?.kind;
+        this.pendingRollback = null, this.goto(r === "change-password" ? "change-password" : "login");
         return;
       }
       case "rollback-continue":
@@ -1080,9 +995,9 @@ class D extends HTMLElement {
   }
   async onSubmit(e) {
     if (e.preventDefault(), !e.isTrusted) return;
-    const a = e.target.dataset.form;
+    const s = e.target.dataset.form;
     try {
-      switch (a) {
+      switch (s) {
         case "import-key":
           return await this.handlePreviewImport();
         case "create-name":
@@ -1104,30 +1019,9 @@ class D extends HTMLElement {
         default:
           return;
       }
-    } catch (s) {
-      this.fail(s);
+    } catch (r) {
+      this.fail(r);
     }
-  }
-  /**
-   * Live entropy/strength and match feedback for the manual-password fields, updated by
-   * DIRECTLY patching feedback elements' text — never calling this.render() — so neither
-   * input loses focus or cursor position while the user is typing (§9.3).
-   */
-  onInput(e) {
-    const t = e.target;
-    if (!(t instanceof HTMLInputElement) || t.name !== "manualPassword" && t.name !== "manualPasswordConfirm") return;
-    const a = this.root.querySelector('input[name="manualPassword"]')?.value ?? "", s = this.root.querySelector('input[name="manualPasswordConfirm"]')?.value ?? "";
-    this.manualPasswordFeedback = a ? g(a, this.loginName) : null;
-    const n = this.root.querySelector("#manual-password-feedback");
-    if (n)
-      if (!this.manualPasswordFeedback)
-        n.textContent = "", n.className = "notice info";
-      else {
-        const l = this.manualPasswordFeedback.entropyBits.toFixed(0);
-        this.manualPasswordFeedback.ok ? (n.textContent = `Looks good (~${l} bits estimated).`, n.className = "notice info") : (n.textContent = `${this.manualPasswordFeedback.reason} (~${l} bits estimated)`, n.className = "notice warn");
-      }
-    const o = this.root.querySelector("#manual-password-match-feedback");
-    o && (s ? s === a ? (o.textContent = "Passwords match.", o.className = "notice info") : (o.textContent = "Passwords do not match.", o.className = "notice warn") : (o.textContent = "", o.className = "notice info"));
   }
   /**
    * Reads and validates an optional recovery-export file (§19.5) for the recover-phrase
@@ -1137,16 +1031,16 @@ class D extends HTMLElement {
   async onFileChange(e) {
     const t = e.target;
     if (!(t instanceof HTMLInputElement) || t.name !== "offlineExportFile" || t.type !== "file") return;
-    const a = t.files?.[0];
-    if (!a) {
+    const s = t.files?.[0];
+    if (!s) {
       this.offlineExportFile = null, this.offlineExportFileNotice = void 0, this.render();
       return;
     }
     try {
-      const s = await a.text();
-      this.offlineExportFile = x(JSON.parse(s)), this.offlineExportFileNotice = `Loaded recovery export from ${new Date(this.offlineExportFile.created_at * 1e3).toLocaleString()}.`;
-    } catch (s) {
-      this.offlineExportFile = null, this.offlineExportFileNotice = s instanceof C || s instanceof SyntaxError ? `Couldn't read that file: ${s.message}` : `Couldn't read that file: ${String(s)}`;
+      const r = await s.text();
+      this.offlineExportFile = w(JSON.parse(r)), this.offlineExportFileNotice = `Loaded recovery export from ${new Date(this.offlineExportFile.created_at * 1e3).toLocaleString()}.`;
+    } catch (r) {
+      this.offlineExportFile = null, this.offlineExportFileNotice = r instanceof Q || r instanceof SyntaxError ? `Couldn't read that file: ${r.message}` : `Couldn't read that file: ${String(r)}`;
     }
     this.render();
   }
@@ -1177,21 +1071,13 @@ class D extends HTMLElement {
       this.errorMessage = "Login name must be 3-32 characters: a-z, 0-9, '.', '_', '-', and not start/end with punctuation.", this.render();
       return;
     }
-    this.loginName = e, this.generatedCredential = u().secret, this.savedCheckbox = !1, this.manualPasswordMode = !1, this.manualPasswordFeedback = null, this.manualPasswordDraft = "", this.manualPasswordConfirmDraft = "", this.goto("create-credential");
+    this.loginName = e, this.generatedCredential = d().secret, this.savedCheckbox = !1, this.goto("create-credential");
   }
   async handleCreateCredentialSubmit() {
     this.savedCheckbox = this.root.querySelector("#saved-check")?.checked ?? !1;
-    let e = this.generatedCredential;
-    if (this.manualPasswordMode) {
-      const { password: n, error: o } = this.readManualPassword(this.loginName);
-      if (o) {
-        this.errorMessage = o, this.render();
-        return;
-      }
-      e = n;
-    }
+    const e = this.generatedCredential;
     if (!this.savedCheckbox) {
-      this.errorMessage = this.manualPasswordMode ? "Please confirm you've saved your password (or written it down) before continuing." : "Please confirm you saved your password before continuing.", this.render();
+      this.errorMessage = "Please confirm you saved your password before continuing.", this.render();
       return;
     }
     this.setBusy(!0);
@@ -1201,8 +1087,8 @@ class D extends HTMLElement {
       importKey: this.importKey || void 0
     });
     this.importKey = "", this.importPreviewNpub = "", this.recoveryPhrase = t.recoveryPhrase;
-    const a = this.recoveryPhrase.split(" "), s = K(a.length, 3);
-    this.confirmSlots = s.map((n) => ({ index: n, value: "" })), this.session = { publicKey: t.everydayPublicKey, npub: d(t.everydayPublicKey), accountId: t.accountId }, this.busy = !1, this.goto("confirm-phrase"), this.worker.publishProfileAndRelayLists({
+    const s = this.recoveryPhrase.split(" "), r = M(s.length, 3);
+    this.confirmSlots = r.map((i) => ({ index: i, value: "" })), this.session = { publicKey: t.everydayPublicKey, npub: u(t.everydayPublicKey), accountId: t.accountId }, this.busy = !1, this.goto("confirm-phrase"), this.worker.publishProfileAndRelayLists({
       name: this.loginName,
       generalRelays: this.vaultRelayUrls,
       dmRelays: this.vaultRelayUrls
@@ -1237,7 +1123,7 @@ class D extends HTMLElement {
       if (!e.restored || !e.everydayPublicKey) return;
       this.session = {
         publicKey: e.everydayPublicKey,
-        npub: d(e.everydayPublicKey),
+        npub: u(e.everydayPublicKey),
         accountId: e.accountId
       }, this.noteSignerClaim(this.claimSigner()), this.dispatchEvent(new CustomEvent("bitlogin-login", { detail: { publicKey: e.everydayPublicKey } })), this.goto("dashboard");
     } catch {
@@ -1248,17 +1134,17 @@ class D extends HTMLElement {
    * paths grant a session identically -- claimSigner() and the bitlogin-login event only ever
    * fire once a RollbackDetectedError (if any) has been resolved one way or the other.
    */
-  async attemptLogin(e, t, a = !1) {
+  async attemptLogin(e, t, s = !1) {
     this.setBusy(!0);
     try {
-      const s = await this.worker.login({ loginName: e, password: t, acknowledgeRollback: a });
-      this.loginName = e, this.session = { publicKey: s.everydayPublicKey, npub: d(s.everydayPublicKey), accountId: s.accountId }, this.sessionWarnings = [s.rollbackWarning, s.relayDisagreementWarning].filter((n) => !!n), this.busy = !1, this.noteSignerClaim(this.claimSigner()), this.dispatchEvent(new CustomEvent("bitlogin-login", { detail: { publicKey: s.everydayPublicKey } })), this.flashSuccess("dashboard", "Signed in"), this.offerToSaveCredential(e, t);
-    } catch (s) {
-      if (s instanceof Error && s.name === "RollbackDetectedError") {
-        this.pendingRollback = { kind: "login", loginName: e, password: t }, this.rollbackMessage = s.message, this.busy = !1, this.goto("rollback-confirm");
+      const r = await this.worker.login({ loginName: e, password: t, acknowledgeRollback: s });
+      this.loginName = e, this.session = { publicKey: r.everydayPublicKey, npub: u(r.everydayPublicKey), accountId: r.accountId }, this.sessionWarnings = [r.rollbackWarning, r.relayDisagreementWarning].filter((i) => !!i), this.busy = !1, this.noteSignerClaim(this.claimSigner()), this.dispatchEvent(new CustomEvent("bitlogin-login", { detail: { publicKey: r.everydayPublicKey } })), this.flashSuccess("dashboard", "Signed in"), this.offerToSaveCredential(e, t);
+    } catch (r) {
+      if (r instanceof Error && r.name === "RollbackDetectedError") {
+        this.pendingRollback = { kind: "login", loginName: e, password: t }, this.rollbackMessage = r.message, this.busy = !1, this.goto("rollback-confirm");
         return;
       }
-      this.fail(s);
+      this.fail(r);
     }
   }
   async handleRollbackContinue() {
@@ -1277,7 +1163,7 @@ class D extends HTMLElement {
       generalRelaysCount: t.generalRelays.length,
       dmRelaysCount: t.dmRelays.length,
       chainWarning: t.chainWarning
-    }, this.session = { publicKey: t.everydayPublicKey, npub: d(t.everydayPublicKey), accountId: t.accountId }, this.newCredentialAfterRecovery = u().secret, this.manualPasswordMode = !1, this.manualPasswordFeedback = null, this.manualPasswordDraft = "", this.manualPasswordConfirmDraft = "", this.busy = !1, this.goto("recover-new-credentials");
+    }, this.session = { publicKey: t.everydayPublicKey, npub: u(t.everydayPublicKey), accountId: t.accountId }, this.newCredentialAfterRecovery = d().secret, this.busy = !1, this.goto("recover-new-credentials");
   }
   async handleRecoverNewCredentialsSubmit() {
     const e = this.field("newLoginName").trim().toLowerCase();
@@ -1285,51 +1171,34 @@ class D extends HTMLElement {
       this.errorMessage = "Login name must be 3-32 characters: a-z, 0-9, '.', '_', '-', and not start/end with punctuation.", this.render();
       return;
     }
-    let t = this.newCredentialAfterRecovery;
-    if (this.manualPasswordMode) {
-      const { password: a, error: s } = this.readManualPassword(e);
-      if (s) {
-        this.errorMessage = s, this.render();
-        return;
-      }
-      t = a;
-    }
+    const t = this.newCredentialAfterRecovery;
     this.setBusy(!0), await this.worker.completeRecovery({ newLoginName: e, newPassword: t }), this.loginName = e, this.busy = !1, this.sessionWarnings = [], this.noteSignerClaim(this.claimSigner()), this.dispatchEvent(new CustomEvent("bitlogin-login", { detail: { publicKey: this.session?.publicKey } })), this.flashSuccess("dashboard", "Account recovered"), this.offerToSaveCredential(e, t);
   }
   async handleChangePasswordSubmit() {
-    const e = this.field("oldPassword");
-    let t = this.changePasswordNewCredential;
-    if (this.manualPasswordMode) {
-      const { password: a, error: s } = this.readManualPassword(this.loginName);
-      if (s) {
-        this.errorMessage = s, this.render();
-        return;
-      }
-      t = a;
-    }
+    const e = this.field("oldPassword"), t = this.changePasswordNewCredential;
     await this.attemptChangePassword(e, t);
   }
   /** Shared by the rotation form and the "continue anyway" rollback-confirmation step; see attemptLogin. */
-  async attemptChangePassword(e, t, a = !1) {
+  async attemptChangePassword(e, t, s = !1) {
     this.setBusy(!0);
     try {
       await this.worker.changePassword({
         loginName: this.loginName,
         oldPassword: e,
         newPassword: t,
-        acknowledgeRollback: a
+        acknowledgeRollback: s
       }), this.busy = !1, this.sessionWarnings = [], this.noteSignerClaim(this.claimSigner()), this.flashSuccess("dashboard", "Password updated"), this.offerToSaveCredential(this.loginName, t);
-    } catch (s) {
-      if (s instanceof Error && s.name === "RollbackDetectedError") {
-        this.pendingRollback = { kind: "change-password", oldPassword: e, newPassword: t }, this.rollbackMessage = s.message, this.busy = !1, this.goto("rollback-confirm");
+    } catch (r) {
+      if (r instanceof Error && r.name === "RollbackDetectedError") {
+        this.pendingRollback = { kind: "change-password", oldPassword: e, newPassword: t }, this.rollbackMessage = r.message, this.busy = !1, this.goto("rollback-confirm");
         return;
       }
-      this.fail(s);
+      this.fail(r);
     }
   }
   async handleDownloadRecoveryExport() {
-    const e = await this.worker.buildRecoveryExport(), t = new Blob([JSON.stringify(e, null, 2)], { type: "application/json" }), a = URL.createObjectURL(t), s = document.createElement("a");
-    s.href = a, s.download = "bitlogin-recovery-export.json", s.click(), URL.revokeObjectURL(a);
+    const e = await this.worker.buildRecoveryExport(), t = new Blob([JSON.stringify(e, null, 2)], { type: "application/json" }), s = URL.createObjectURL(t), r = document.createElement("a");
+    r.href = s, r.download = "bitlogin-recovery-export.json", r.click(), URL.revokeObjectURL(s);
   }
   async handleSignTestEvent() {
     const e = await this.worker.signEvent({ kind: 1, content: `Hello from BitLogin at ${(/* @__PURE__ */ new Date()).toISOString()}` });
@@ -1358,7 +1227,7 @@ class D extends HTMLElement {
             <path d="M27 32.5l3.6 3.6L38 28.2" fill="none" stroke="url(#bl-success-brass)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
         </span>
-        <p class="success-label">${i(e)}</p>
+        <p class="success-label">${n(e)}</p>
       </div>
     `;
   }
@@ -1376,10 +1245,10 @@ class D extends HTMLElement {
     }, 1100);
   }
   renderError() {
-    return this.errorMessage ? `<div class="notice error">${i(this.errorMessage)}</div>` : "";
+    return this.errorMessage ? `<div class="notice error">${n(this.errorMessage)}</div>` : "";
   }
   renderWarnings() {
-    return this.sessionWarnings.map((e) => `<div class="notice warn">${i(e)}</div>`).join("");
+    return this.sessionWarnings.map((e) => `<div class="notice warn">${n(e)}</div>`).join("");
   }
   /** The widget's own brand lockup (mark + wordmark), inlined as vector paths rather than
    * relying on the host page having loaded any particular font -- shown once, on the
@@ -1414,7 +1283,7 @@ class D extends HTMLElement {
             </button>
           </form>
           ${e ? `<div class="notice info">This key's public identity:</div>
-                 <div class="credential-box">${i(this.importPreviewNpub)}</div>
+                 <div class="credential-box">${n(this.importPreviewNpub)}</div>
                  <button class="primary" type="button" data-action="import-continue">This is my identity — continue</button>` : ""}
           <button class="link" data-action="goto-welcome">Back</button>
         `;
@@ -1433,36 +1302,21 @@ class D extends HTMLElement {
         `;
       case "create-credential": {
         const e = this.busy ? `<span class="spinner"></span>${this.importKey ? "Importing…" : "Creating account…"}` : this.importKey ? "Import account" : "Create account";
-        return this.manualPasswordMode ? `
-            <h2>Choose your own password</h2>
-            <p class="sub">Not recommended: a downloadable encrypted file can be guessed against forever, offline, with no rate limit. BitLogin can only run basic checks here — not a breach-database lookup — so weak or reused passwords are still your risk to carry.</p>
-            <div class="notice warn">Offline guessing against this password can never be fully prevented. The generated passphrase remains the safer default.</div>
-            ${this.renderError()}
-            <form data-form="create-credential">
-              ${this.renderManualPasswordFields()}
-              <label class="checkbox-row">
-                <input type="checkbox" id="saved-check" ${this.savedCheckbox ? "checked" : ""} />
-                I have saved this password somewhere safe.
-              </label>
-              <button class="primary" type="submit" ${this.busy ? "disabled" : ""}>${e}</button>
-            </form>
-            <button class="link" data-action="toggle-manual-password">Use a generated password instead (recommended)</button>
-          ` : `
+        return `
           <h2>Your generated password</h2>
           <p class="sub">BitLogin generates your password because no server can rate-limit guesses against a downloadable encrypted file.</p>
-          <div class="credential-box" id="credential-box">${i(this.generatedCredential)}</div>
+          <div class="credential-box" id="credential-box">${n(this.generatedCredential)}</div>
           <button class="secondary" type="button" data-action="copy-credential">Copy</button>
           <button class="secondary" type="button" data-action="regenerate-credential">Generate a different one</button>
           ${this.renderError()}
           <form data-form="create-credential" autocomplete="on">
-            <input type="text" name="username" autocomplete="username" value="${i(this.loginName)}" readonly hidden />
+            <input type="text" name="username" autocomplete="username" value="${n(this.loginName)}" readonly hidden />
             <label class="checkbox-row">
               <input type="checkbox" id="saved-check" ${this.savedCheckbox ? "checked" : ""} />
               I have saved this password somewhere safe.
             </label>
             <button class="primary" type="submit" ${this.busy ? "disabled" : ""}>${e}</button>
           </form>
-          <button class="link" data-action="toggle-manual-password">Use my own password instead (not recommended)</button>
         `;
       }
       case "confirm-phrase":
@@ -1471,7 +1325,7 @@ class D extends HTMLElement {
           <p class="sub">These 12 words can recover your identity if you forget your password or lose all your devices. We cannot recover these words for you.</p>
           <p class="small">Do not enter a Bitcoin or other cryptocurrency-wallet recovery phrase into BitLogin. This is a BitLogin-only phrase.</p>
           <div class="phrase-grid">
-            ${this.recoveryPhrase.split(" ").map((e, t) => `<div class="phrase-word"><span>${t + 1}.</span>${i(e)}</div>`).join("")}
+            ${this.recoveryPhrase.split(" ").map((e, t) => `<div class="phrase-word"><span>${t + 1}.</span>${n(e)}</div>`).join("")}
           </div>
           ${this.renderError()}
           <button class="primary" type="button" data-action="goto-verify-phrase">I've saved my phrase — continue</button>
@@ -1520,7 +1374,7 @@ class D extends HTMLElement {
             <label for="offlineExportFile" style="margin-top:14px">Recovery export file (optional)</label>
             <input type="file" name="offlineExportFile" id="offlineExportFile" accept=".json,application/json" />
             <p class="small">Only needed if relays are unreachable -- the phrase above is still required either way. The file alone can never recover an account by itself.</p>
-            ${this.offlineExportFileNotice ? `<div class="notice ${this.offlineExportFile ? "info" : "warn"}">${i(this.offlineExportFileNotice)}</div>` : ""}
+            ${this.offlineExportFileNotice ? `<div class="notice ${this.offlineExportFile ? "info" : "warn"}">${n(this.offlineExportFileNotice)}</div>` : ""}
             <button class="primary" type="submit" ${this.busy ? "disabled" : ""}>
               ${this.busy ? '<span class="spinner"></span>Recovering…' : "Continue"}
             </button>
@@ -1528,33 +1382,30 @@ class D extends HTMLElement {
           <button class="link" data-action="goto-welcome">Back</button>
         `;
       case "recover-new-credentials": {
-        const e = this.recoveredPreview?.chainWarning ? `<div class="notice warn">${i(this.recoveredPreview.chainWarning)}</div>` : "", t = this.busy ? '<span class="spinner"></span>Finishing recovery…' : "Finish recovery";
+        const e = this.recoveredPreview?.chainWarning ? `<div class="notice warn">${n(this.recoveredPreview.chainWarning)}</div>` : "", t = this.busy ? '<span class="spinner"></span>Finishing recovery…' : "Finish recovery";
         return `
           <h2>Identity recovered</h2>
           <p class="sub">Found your account. Restored ${this.recoveredPreview?.generalRelaysCount ?? 0} general relay(s) and ${this.recoveredPreview?.dmRelaysCount ?? 0} DM relay(s) from your public events.</p>
           ${e}
-          <p class="sub">Now set a new login name and password.</p>
-          ${this.manualPasswordMode ? '<div class="notice warn">Offline guessing against this password can never be fully prevented. The generated passphrase remains the safer default.</div>' : `<div class="credential-box">${i(this.newCredentialAfterRecovery)}</div>`}
+          <p class="sub">Now set a new login name. BitLogin generated a new high-entropy password for this account.</p>
+          <div class="credential-box" id="credential-box">${n(this.newCredentialAfterRecovery)}</div>
+          <button class="secondary" type="button" data-action="copy-credential">Copy generated password</button>
           ${this.renderError()}
           <form data-form="recover-new-credentials">
             <label for="newLoginName">New login name</label>
             <input type="text" name="newLoginName" id="newLoginName" autocomplete="off" required />
-            ${this.manualPasswordMode ? this.renderManualPasswordFields() : ""}
             <button class="primary" type="submit" ${this.busy ? "disabled" : ""}>${t}</button>
           </form>
-          <button class="link" data-action="toggle-manual-password">
-            ${this.manualPasswordMode ? "Use a generated password instead (recommended)" : "Use my own password instead (not recommended)"}
-          </button>
         `;
       }
       case "dashboard":
         return `
           <h2>Signed in</h2>
           ${this.renderWarnings()}
-          <p class="pubkey">${i(this.session?.npub ?? "")}</p>
+          <p class="pubkey">${n(this.session?.npub ?? "")}</p>
           ${this.renderError()}
           <button class="secondary" type="button" data-action="sign-test-event">Sign a test event</button>
-          ${this.lastSignedEventJson ? `<div class="credential-box" style="white-space:pre-wrap">${i(this.lastSignedEventJson)}</div>` : ""}
+          ${this.lastSignedEventJson ? `<div class="credential-box" style="white-space:pre-wrap">${n(this.lastSignedEventJson)}</div>` : ""}
           <div class="divider"></div>
           <button class="secondary" type="button" data-action="goto-vault-manage">Wallet connections</button>
           <button class="secondary" type="button" data-action="goto-change-password">Rotate password</button>
@@ -1564,16 +1415,16 @@ class D extends HTMLElement {
       case "vault-consent": {
         const e = this.vaultRequest, t = this.vaultCandidate;
         if (!e || !t) return '<div class="notice error">No wallet request is in progress.</div>';
-        const a = new Date(t.createdAt * 1e3).toLocaleDateString();
+        const s = new Date(t.createdAt * 1e3).toLocaleDateString();
         return `
-          <h2>Share a wallet with ${i(e.appName)}?</h2>
-          ${e.reason ? `<p class="sub">Reason given: ${i(e.reason)}</p>` : ""}
+          <h2>Share a wallet with ${n(e.appName)}?</h2>
+          ${e.reason ? `<p class="sub">Reason given: ${n(e.reason)}</p>` : ""}
           ${this.renderError()}
           <div class="credential-box">
-            <strong>${i(t.label)}</strong><br />
-            Connected ${i(a)} · wallet ${i((t.walletPubkey ?? "").slice(0, 10))}…
+            <strong>${n(t.label)}</strong><br />
+            Connected ${n(s)} · wallet ${n((t.walletPubkey ?? "").slice(0, 10))}…
           </div>
-          <div class="notice info">${i(e.appName)} will receive this connection and can spend within the budget your wallet enforces, until you revoke it from Wallet connections.</div>
+          <div class="notice info">${n(e.appName)} will receive this connection and can spend within the budget your wallet enforces, until you revoke it from Wallet connections.</div>
           <button class="primary" type="button" data-action="vault-approve" ${this.busy ? "disabled" : ""}>
             ${this.busy ? '<span class="spinner"></span>Sharing…' : "Use this wallet"}
           </button>
@@ -1586,8 +1437,8 @@ class D extends HTMLElement {
         if (!e) return '<div class="notice error">No wallet request is in progress.</div>';
         const t = this.vaultUnsaved ? `<div class="notice warn">${this.vaultUnsavedReason === "no-vault" ? "This account predates the Connection Vault, so the connection will be handed to the app but not saved to your account. Enable the vault from your account manager (recovery phrase required) to make wallets portable." : "Sign in again to save connections to your account — until then the connection will be handed to the app but not saved."}</div>` : "";
         return `
-          <h2>Connect a wallet for ${i(e.appName)}</h2>
-          ${e.reason ? `<p class="sub">Reason given: ${i(e.reason)}</p>` : ""}
+          <h2>Connect a wallet for ${n(e.appName)}</h2>
+          ${e.reason ? `<p class="sub">Reason given: ${n(e.reason)}</p>` : ""}
           ${t}
           ${this.renderError()}
           <button class="primary" type="button" data-action="vault-bc" ${this.busy ? "disabled" : ""}>
@@ -1598,7 +1449,7 @@ class D extends HTMLElement {
             <label for="vaultUri">Or paste an NWC connection</label>
             <input type="password" name="vaultUri" id="vaultUri" autocomplete="off" placeholder="nostr+walletconnect://…" />
             <label for="vaultLabel">Name this connection</label>
-            <input type="text" name="vaultLabel" id="vaultLabel" autocomplete="off" maxlength="120" value="${i(`${e.appName} wallet`)}" />
+            <input type="text" name="vaultLabel" id="vaultLabel" autocomplete="off" maxlength="120" value="${n(`${e.appName} wallet`)}" />
             <button class="secondary" type="submit" ${this.busy ? "disabled" : ""}>
               ${this.vaultUnsaved ? "Share without saving" : "Save and share"}
             </button>
@@ -1611,26 +1462,26 @@ class D extends HTMLElement {
         const e = this.vaultOffer;
         return e ? `
           <h2>Save this wallet to your BitLogin?</h2>
-          <p class="sub">${i(e.appName)} just connected a wallet on this device. Saved to your BitLogin, the connection follows you — on a new device it's one tap instead of another paste.</p>
+          <p class="sub">${n(e.appName)} just connected a wallet on this device. Saved to your BitLogin, the connection follows you — on a new device it's one tap instead of another paste.</p>
           ${this.renderError()}
           <label for="vaultOfferLabel">Name this connection</label>
-          <input type="text" name="vaultOfferLabel" id="vaultOfferLabel" autocomplete="off" maxlength="120" value="${i(e.label)}" />
+          <input type="text" name="vaultOfferLabel" id="vaultOfferLabel" autocomplete="off" maxlength="120" value="${n(e.label)}" />
           <button class="primary" type="button" data-action="vault-offer-save" ${this.busy ? "disabled" : ""}>
             ${this.busy ? '<span class="spinner"></span>Saving…' : "Save to BitLogin"}
           </button>
           <button class="link" type="button" data-action="vault-offer-decline" ${this.busy ? "disabled" : ""}>No thanks — keep it on this device only</button>
-          <div class="notice info">Stored encrypted on your account; ${i(e.appName)} keeps working either way. Remove it any time from Wallet connections.</div>
+          <div class="notice info">Stored encrypted on your account; ${n(e.appName)} keeps working either way. Remove it any time from Wallet connections.</div>
         ` : '<div class="notice error">No wallet offer is in progress.</div>';
       }
       case "vault-manage": {
         const e = this.vaultConnections, t = e === null ? '<p class="sub">Loading…</p>' : e.length === 0 ? `<p class="sub">No connections stored yet. They're added when you connect a wallet inside an app.</p>` : e.map(
-          (a) => `
+          (s) => `
           <div class="credential-box">
-            <strong>${i(a.label)}</strong> <span class="sub">(${i(a.connectionType)})</span><br />
-            ${a.origin ? `Linked to ${i(a.origin)}` : "Not linked to an app"}
+            <strong>${n(s.label)}</strong> <span class="sub">(${n(s.connectionType)})</span><br />
+            ${s.origin ? `Linked to ${n(s.origin)}` : "Not linked to an app"}
             <div>
-              ${a.origin ? `<button class="link" type="button" data-action="vault-unbind" data-id="${i(a.connectionId)}" ${this.busy ? "disabled" : ""}>Revoke app access</button>` : ""}
-              <button class="link" type="button" data-action="vault-delete" data-id="${i(a.connectionId)}" ${this.busy ? "disabled" : ""}>Remove from BitLogin</button>
+              ${s.origin ? `<button class="link" type="button" data-action="vault-unbind" data-id="${n(s.connectionId)}" ${this.busy ? "disabled" : ""}>Revoke app access</button>` : ""}
+              <button class="link" type="button" data-action="vault-delete" data-id="${n(s.connectionId)}" ${this.busy ? "disabled" : ""}>Remove from BitLogin</button>
             </div>
           </div>`
         ).join("");
@@ -1638,6 +1489,7 @@ class D extends HTMLElement {
           <h2>Wallet connections</h2>
           <p class="sub">Connections your apps use, stored encrypted on your account and restored on any device you sign in to.</p>
           ${this.renderError()}
+          ${this.vaultIntegrityWarnings.map((s) => `<div class="notice warn">${n(s)}</div>`).join("")}
           ${t}
           <div class="notice info">"Remove from BitLogin" deletes the stored copy only — the connection itself keeps working for any app that already has it. To revoke spending authority, delete the connection inside your wallet app.</div>
           <button class="link" data-action="goto-dashboard">Back</button>
@@ -1646,7 +1498,7 @@ class D extends HTMLElement {
       case "rollback-confirm":
         return `
           <h2>This looks like a stale or revoked credential</h2>
-          <div class="notice warn">${i(this.rollbackMessage)}</div>
+          <div class="notice warn">${n(this.rollbackMessage)}</div>
           <p class="sub">This usually means the password just entered was rotated away in an earlier session on this device, and a relay hasn't caught up with that change. If you rotated your password, use the new one instead. Only continue if you're confident this is relay lag, not a stale credential.</p>
           <button class="primary" type="button" data-action="rollback-retry">Try again</button>
           <button class="link" type="button" data-action="rollback-continue">I understand the risk — continue anyway</button>
@@ -1656,19 +1508,16 @@ class D extends HTMLElement {
         return `
           <h2>Rotate password</h2>
           <p class="sub">Your old password's capsule will be tombstoned and a deletion request issued. This does not erase copies an attacker may already have downloaded, and a relay that hasn't processed the deletion may keep serving the old password's capsule until a device that has already seen the new generation refuses it.</p>
-          ${this.manualPasswordMode ? '<div class="notice warn">Offline guessing against this password can never be fully prevented. The generated passphrase remains the safer default.</div>' : `<div class="credential-box">${i(this.changePasswordNewCredential)}</div>`}
+          <div class="credential-box" id="credential-box">${n(this.changePasswordNewCredential)}</div>
+          <button class="secondary" type="button" data-action="copy-credential">Copy generated password</button>
           ${this.renderError()}
           <form data-form="change-password">
             <label for="oldPassword">Current password</label>
             <input type="password" name="oldPassword" id="oldPassword" autocomplete="current-password" required />
-            ${this.manualPasswordMode ? this.renderManualPasswordFields() : ""}
             <button class="primary" type="submit" ${this.busy ? "disabled" : ""}>
               ${this.busy ? '<span class="spinner"></span>Rotating…' : "Confirm rotation"}
             </button>
           </form>
-          <button class="link" data-action="toggle-manual-password">
-            ${this.manualPasswordMode ? "Use a generated password instead (recommended)" : "Use my own password instead (not recommended)"}
-          </button>
           <button class="link" data-action="goto-dashboard">Cancel</button>
         `;
       case "export":
@@ -1676,11 +1525,11 @@ class D extends HTMLElement {
           <h2>Export identity</h2>
           <p class="sub">Your public identity (npub) is safe to share. Your private key (nsec) is not.</p>
           <label>Public key (npub)</label>
-          <div class="credential-box">${i(this.session?.npub ?? "")}</div>
+          <div class="credential-box">${n(this.session?.npub ?? "")}</div>
           <button class="secondary" type="button" data-action="download-recovery-export">Download recovery export</button>
           ${this.renderError()}
           <button class="secondary" type="button" data-action="reveal-nsec">Reveal private key (nsec)</button>
-          ${this.exportedNsec ? `<div class="notice warn">Never share this. Anyone with it controls your identity.</div><div class="credential-box">${i(
+          ${this.exportedNsec ? `<div class="notice warn">Never share this. Anyone with it controls your identity.</div><div class="credential-box">${n(
           this.exportedNsec
         )}</div>` : ""}
           <button class="link" data-action="goto-dashboard">Back</button>
@@ -1690,30 +1539,28 @@ class D extends HTMLElement {
     }
   }
 }
-function K(r, e) {
-  const t = Array.from({ length: r }, (s, n) => n), a = [];
-  for (let s = 0; s < e && t.length > 0; s++) {
-    const n = Math.floor(Math.random() * t.length);
-    a.push(t.splice(n, 1)[0]);
-  }
-  return a.sort((s, n) => s - n);
+function M(a, e) {
+  const t = Array.from({ length: a }, (r, i) => i), s = [];
+  for (let r = 0; r < e && t.length > 0; r++)
+    s.push(t.splice(g(t.length), 1)[0]);
+  return s.sort((r, i) => r - i);
 }
-function i(r) {
-  return r.replace(/[&<>"']/gu, (e) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[e]);
+function n(a) {
+  return a.replace(/[&<>"']/gu, (e) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[e]);
 }
-customElements.get("bitlogin-auth") || customElements.define("bitlogin-auth", D);
+customElements.get("bitlogin-auth") || customElements.define("bitlogin-auth", I);
 window.bitlogin = {
   version: "0.1.0",
   isActiveSigner() {
     return window.nostr?._bitlogin === !0;
   },
   releaseSigner() {
-    const r = window;
-    return r.nostr?._bitlogin === !0 ? (delete r.nostr, window.dispatchEvent(new CustomEvent("bitlogin-signer-released")), !0) : !1;
+    const a = window;
+    return a.nostr?._bitlogin === !0 ? (delete a.nostr, window.dispatchEvent(new CustomEvent("bitlogin-signer-released")), !0) : !1;
   }
 };
 export {
-  D as BitLoginAuthElement,
-  N as WorkerClient,
-  B as createNip07Provider
+  I as BitLoginAuthElement,
+  S as WorkerClient,
+  C as createNip07Provider
 };
