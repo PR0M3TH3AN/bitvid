@@ -10406,7 +10406,7 @@ function J1(e, t) {
 function Y1(e, t) {
   return e.tags.find((n) => n[0] === t)?.[1];
 }
-const M1 = 0, q1 = 5, j1 = 10002, R1 = 10050, _1 = 22242, P1 = 30078, L1 = "bitlogin:password:v1", T1 = "bitlogin:recovery:v1", X1 = "bitlogin.credential.v1", Z1 = "bitlogin.recovery.v1", kn = "bitlogin.recovery-export.v3";
+const M1 = 0, q1 = 5, j1 = 10002, R1 = 10050, _1 = 22242, P1 = 24133, L1 = 30078, T1 = "bitlogin:password:v1", X1 = "bitlogin:recovery:v1", Z1 = "bitlogin.credential.v1", $1 = "bitlogin.recovery.v1", kn = "bitlogin.recovery-export.v3";
 var Ut, Ur;
 function g1() {
   return Ur || (Ur = 1, Ut = function e(t) {
@@ -10423,7 +10423,7 @@ function g1() {
   }), Ut;
 }
 var A1 = g1();
-const $1 = /* @__PURE__ */ Kr(A1);
+const W1 = /* @__PURE__ */ Kr(A1);
 /*! scure-base - MIT License (c) 2022 Paul Miller (paulmillr.com) */
 function Ue(e) {
   return e instanceof Uint8Array || ArrayBuffer.isView(e) && e.constructor.name === "Uint8Array";
@@ -10638,7 +10638,7 @@ function p1(e, t) {
     }
   };
 }
-const W1 = {
+const e2 = {
   alphabet: er,
   chain: Wt,
   checksum: p1,
@@ -10654,7 +10654,7 @@ const W1 = {
   if (e.length > 0 && !n.test(e))
     throw new Error("invalid base64");
   return Uint8Array.fromBase64(e, { alphabet: r, lastChunkHandling: "strict" });
-}, e2 = I1 ? {
+}, t2 = I1 ? {
   encode(e) {
     return f1(e), e.toBase64();
   },
@@ -10740,19 +10740,19 @@ function y1(e) {
   };
 }
 const nr = /* @__PURE__ */ y1("bech32");
-function t2(e) {
+function r2(e) {
   return nr.encodeFromBytes("npub", Je(e));
 }
-function r2(e) {
+function n2(e) {
   return nr.encodeFromBytes("nsec", e);
 }
-function n2(e) {
+function i2(e) {
   const { prefix: t, bytes: n } = nr.decodeToBytes(e);
   if (t !== "nsec" || n.length !== 32)
     throw new Error("Not a valid nsec.");
   return n;
 }
-function i2(e) {
+function a2(e) {
   return {
     schema: kn,
     recovery_public_key: e.recoveryPublicKeyHex,
@@ -10767,7 +10767,7 @@ class oe extends Error {
     super(t), this.name = "RecoveryExportParseError";
   }
 }
-function a2(e) {
+function o2(e) {
   if (typeof e != "object" || e === null)
     throw new oe("Recovery export must be a JSON object.");
   const t = e;
@@ -10792,68 +10792,69 @@ function a2(e) {
   return t;
 }
 export {
-  Rr as $,
-  ft as A,
-  x1 as B,
-  rt as C,
-  L1 as D,
+  q1 as $,
+  bt as A,
+  Q1 as B,
+  ft as C,
+  T1 as D,
   w1 as E,
-  E1 as F,
-  pt as G,
-  Ce as H,
-  D1 as I,
-  pe as J,
+  x1 as F,
+  rt as G,
+  E1 as H,
+  pt as I,
+  Ce as J,
   _1 as K,
-  W1 as L,
-  he as M,
-  We as N,
-  n2 as O,
-  Je as P,
-  i1 as Q,
+  D1 as L,
+  pe as M,
+  e2 as N,
+  he as O,
+  We as P,
+  i2 as Q,
   oe as R,
-  Z1 as S,
-  N1 as T,
-  C1 as U,
-  K1 as V,
-  _r as W,
-  O1 as X,
-  v1 as Y,
-  q1 as Z,
-  jr as _,
-  t2 as a,
-  qr as a0,
-  mn as a1,
-  Rt as a2,
+  $1 as S,
+  Je as T,
+  i1 as U,
+  N1 as V,
+  C1 as W,
+  K1 as X,
+  _r as Y,
+  O1 as Z,
+  v1 as _,
+  qe as a,
+  Rr as a0,
+  qr as a1,
+  mn as a2,
   mt as a3,
-  e2 as a4,
+  t2 as a4,
   G1 as a5,
-  J1 as a6,
-  i2 as a7,
-  r2 as a8,
-  Kr as a9,
+  P1 as a6,
+  J1 as a7,
+  a2 as a8,
+  n2 as a9,
+  Kr as aa,
   jt as b,
-  qe as c,
-  M1 as d,
+  Rt as c,
+  S1 as d,
   b1 as e,
-  j1 as f,
+  r2 as f,
   V1 as g,
-  R1 as h,
+  jr as h,
   H1 as i,
-  P1 as j,
-  $1 as k,
-  k1 as l,
-  S1 as m,
-  F1 as n,
-  U1 as o,
-  a2 as p,
-  s1 as q,
+  M1 as j,
+  j1 as k,
+  R1 as l,
+  L1 as m,
+  W1 as n,
+  k1 as o,
+  o2 as p,
+  F1 as q,
   B1 as r,
   z1 as s,
-  X1 as t,
+  U1 as t,
   De as u,
   Fr as v,
-  T1 as w,
-  Y1 as x,
-  bt as y,
-  Q1 as z
+  s1 as w,
+  Z1 as x,
+  X1 as y,
+  Y1 as z
 };
