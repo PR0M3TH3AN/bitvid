@@ -23,3 +23,7 @@ TEST_LOG.mdtest_logs/nip-hits.txt
 # Local site archive for manual nsite upload (npm run archive)
 bitvid-site.zip
 .env*
+
+# Agent runtime state (local only)
+memory-update.md
+memory-update.json
