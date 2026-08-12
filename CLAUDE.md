@@ -314,7 +314,7 @@ const dTag = event.tags.find(t => t[0] === 'd')?.[1];
 
 ### NIP-07 Signer Reliability (hard-won)
 
-The #1 cause of "DMs / hashtags / watch-history / lists won't load after login" is an **unresponsive NIP-07 signer**, not bitvid. The extension's MV3 background worker can die and `window.nostr` calls then hang forever — no client change fixes a dead signer. **Diagnose with a raw `window.nostr` probe** (`getPublicKey → nip04.encrypt → nip04.decrypt`) in the console; if that hangs, it's the extension (recommend nos2x/Alby). See `AGENTS.md` §17 and `docs/KNOWN_BUGS.md` #0.
+The #1 cause of "DMs / hashtags / watch-history / lists won't load after login" is an **unresponsive NIP-07 signer**, not bitvid. The extension's MV3 background worker can die and `window.nostr` calls then hang forever — no client change fixes a dead signer. **Diagnose with a raw `window.nostr` probe** (`getPublicKey → nip04.encrypt → nip04.decrypt`) in the console; if that hangs, it's the extension (recommend nos2x/Alby). See `docs/lessons/nip07-signer-reliability.md` (summarized in `AGENTS.md` §17) and `docs/KNOWN_BUGS.md` #0.
 
 Resilience invariants — **do not regress**:
 
@@ -328,7 +328,7 @@ Resilience invariants — **do not regress**:
 
 ## Testing & Validation: Scenario-First, Cheat-Resistant (Dark Factory Rules)
 
-The testing and validation rules are canonical in `AGENTS.md` — see its "Testing & Validation" section, §16 "Scenario-First Tests & Test Integrity (Dark Factory Standard)". In short: validation replaces human code review here, tests are behavioral scenarios that assert externally observable outcomes at boundaries, and you must **never alter a test merely to make it pass** — expectation changes are allowed only via the Spec Correction Protocol with an accompanying Test Integrity Note. Read AGENTS.md §16 in full before adding or modifying any test.
+The testing and validation invariant is stated in `AGENTS.md` §16 "Scenario-First Tests & Test Integrity (Dark Factory Standard)", and the full standard lives in [`docs/testing/test-integrity.md`](docs/testing/test-integrity.md). In short: validation replaces human code review here, tests are behavioral scenarios that assert externally observable outcomes at boundaries, and you must **never alter a test merely to make it pass** — expectation changes are allowed only via the Spec Correction Protocol with an accompanying Test Integrity Note. Read `docs/testing/test-integrity.md` in full before adding or modifying any test.
 
 ---
 
@@ -369,7 +369,7 @@ View with: `./scripts/show-artifacts.sh`
 
 ### Agent E2E Testing (Playwright)
 
-bitvid includes a test harness for programmatic Playwright testing without browser extensions or real relays. See `AGENTS.md` Section 14 for the full reference. Quick start:
+bitvid includes a test harness for programmatic Playwright testing without browser extensions or real relays. See `docs/testing/agent-playwright-harness.md` for the full reference (summarized in `AGENTS.md` §14). Quick start:
 
 ```typescript
 import { test, expect } from "./helpers/bitvidTestFixture";
@@ -388,7 +388,7 @@ Key capabilities:
 - **Mock relay**: Each test gets an isolated in-memory relay with HTTP seeding
 - **Relay override**: `?__test__=1&__testRelays__=ws://localhost:8877` redirects all connections
 - **State inspection**: `window.__bitvidTest__.getAppState()` returns login status, relays, etc.
-- **Stable selectors**: All key elements have `data-testid` attributes (see AGENTS.md Section 14)
+- **Stable selectors**: All key elements have `data-testid` attributes (see `docs/testing/agent-playwright-harness.md`)
 
 ---
 

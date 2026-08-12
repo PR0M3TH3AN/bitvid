@@ -65,12 +65,8 @@ For any nostr related work, please review the nip documentation located in /docs
 
 ### 4a. Cloudflare/S3 upload-path gotchas (audited 2026-06-16)
 
-* **Two near-identical upload services exist** — `js/services/r2Service.js` (Cloudflare R2) and `js/services/s3UploadService.js` (generic S3). They share `buildR2Key`, `resolveUploadIdentifier`, and the magnet build but are *copies*. **Any fix to one must be mirrored in the other** or they silently drift.
-* **Storage-key collisions = data loss — FIXED 2026-06-16.** `buildR2Key` (`js/r2.js`) builds `u/<npub>/<namespace>/<slug>.<ext>` where `namespace` used to fall back to the literal `"uploads"` and `slug` to `"video"` (e.g. a non-ASCII filename, or no info-hash) — so a URL-first upload with no info-hash and a duplicate filename overwrote the previous object while the old note still pointed at that URL. WebTorrent uploads were always safe (info-hash namespaces the key = content-addressed). Fix: `computeStorageContentHash(file)` (`js/r2.js`) derives a content-based namespace when no info-hash is available (full SHA-256 for ≤512 MB, sampled metadata+edge fingerprint above that to avoid buffering huge files), wired into **both** `r2Service` and `s3UploadService`. Test: `tests/storage-key-collision.test.mjs`. **If you add a third upload path, reuse `computeStorageContentHash`.**
-* **Whole-file hash before upload.** When the modal doesn't pre-seed an info-hash, `resolveUploadIdentifier` runs `calculateTorrentInfoHash(file)`, which reads the *entire* file before the upload begins and before any progress is emitted — on multi-GB files this looks like a hang. Emit a "preparing/hashing" status or parallelize.
-* **Publish can report success unconfirmed.** `publishEventToRelay` (`js/nostrPublish.js`) has an optimistic-success fallthrough when the relay handle exposes no `on()`/`then()` — a note may show "Published" with no relay ACK. Don't tighten blindly (legacy `seen`-only relays rely on it), but log it.
-* **Silent partial failures.** Thumbnail and `.torrent` upload failures are caught and `warn`-only; the video note still publishes with no user signal. Empty (0-byte) files hit `CompleteMultipartUpload` with `Parts:[]` and surface a cryptic error — guard `file.size === 0`.
-* **Object cleanup (deletes/edits).** `R2Service.deleteVideoStorage()` removes the backing objects so "deleted" videos aren't left publicly downloadable. Contract to preserve: it's **best-effort and never throws** (must not block note deletion), it derives keys via `collectVideoStorageKeys()` and **only ever touches URLs under the owner's bucket base** (never external/3rd-party URLs), and it skips cleanly when storage is locked/credential-less. Wired into delete (`app.handleDeleteModalConfirm`) and edit-with-replaced-URL (`editModalController.handleSubmit`). Edit cleanup intentionally does **not** delete thumbnails (the new note may still reference them) and only fires when both old and new URLs are present and different.
+**Invariants:** `js/services/r2Service.js` and `js/services/s3UploadService.js` are near-identical copies — any fix to one must be mirrored in the other; storage keys must stay content-addressed (reuse `computeStorageContentHash` in `js/r2.js` for any new upload path); `R2Service.deleteVideoStorage()` stays best-effort, never throws, and only touches URLs under the owner's bucket base.
+Full writeup: [`docs/lessons/cloudflare-s3-upload-gotchas.md`](docs/lessons/cloudflare-s3-upload-gotchas.md).
 
 ---
 
@@ -324,127 +320,8 @@ Three automated lint checks protect the codebase from common growth problems. Th
 
 ## 14. Playwright Agent Testing Infrastructure
 
-bitvid includes a test harness and fixtures that let Playwright CLI agents programmatically log in, seed relay data, and inspect app state — no browser extensions or real relays required.
-
-### Activating Test Mode
-
-Add `?__test__=1` to the URL, or set `localStorage.__bitvidTestMode__ = "1"` via `addInitScript`. This installs `window.__bitvidTest__` on the page.
-
-### Overriding Relays
-
-Point the app at a local mock relay instead of production:
-
-```
-?__test__=1&__testRelays__=ws://127.0.0.1:8877
-```
-
-Or set `localStorage.__bitvidTestRelays__` to a JSON array of relay URLs.
-
-### Test Harness API (`window.__bitvidTest__`)
-
-| Method | Returns | Purpose |
-|--------|---------|---------|
-| `loginWithNsec(hexKey)` | `Promise<string>` (pubkey) | Programmatic login, bypasses the modal |
-| `logout()` | `void` | Clear active signer |
-| `getAppState()` | `{ isLoggedIn, activePubkey, relays, ... }` | Inspect current state |
-| `getFeedItems()` | `Array<{ title, pubkey, dTag, hasUrl, hasMagnet }>` | Scrape video cards from DOM |
-| `waitForFeedItems(n, ms)` | `Promise<Array>` | Wait for N cards to appear |
-| `waitForSelector(sel, ms)` | `Promise<true>` | Wait for a DOM element |
-| `getRelayHealth()` | `{ relays, unreachable, backoff }` | Relay connection status |
-| `applyRelayOverrides(urls)` | `boolean` | Redirect relay connections |
-| `setTestRelays(urls)` | `{ ok, relays }` | Align relayManager + nostrClient to a deterministic relay set |
-| `setSignerDecryptBehavior(mode, opts?)` | `{ ok, mode, ... }` | Force decrypt behavior (`passthrough`, `timeout`, `error`, `delay`) for signer-based list sync tests |
-| `getListSyncEvents()` | `Array<{ source, at, detail }>` | Read captured sync timeline (`bitvid:auth-loading-state` + `userBlocks` status) |
-| `clearListSyncEvents()` | `void` | Reset captured sync events between assertions |
-| `waitForListSyncEvent(criteria, ms?)` | `Promise<Event>` | Wait for sync milestones (`status`, `reason`, `source`) |
-| `nostrClient` | `NostrClient` | Direct access for advanced use |
-
-### Mock Relay (`scripts/agent/simple-relay.mjs`)
-
-Start with `startRelay(port, { httpPort })`. Alongside the Nostr WebSocket protocol, exposes an HTTP API:
-
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/seed` | `POST` | Inject signed events (single object or array) |
-| `/events` | `GET` | List all stored events |
-| `/events` | `DELETE` | Clear all events |
-| `/health` | `GET` | Event count + connection count |
-
-Programmatic API: `relay.seedEvent(event)`, `relay.clearEvents()`, `relay.getEvents()`.
-
-### Playwright Fixture (`tests/e2e/helpers/bitvidTestFixture.ts`)
-
-Import `test` and `expect` from the fixture for tests that need the full stack:
-
-```typescript
-import { test, expect } from "./helpers/bitvidTestFixture";
-
-test("agent can seed and view videos", async ({ page, gotoApp, loginAs, seedEvent }) => {
-  await seedEvent({ title: "Test Video", url: "https://example.com/v.mp4" });
-  await gotoApp();
-  await loginAs(page);
-  // ... assertions
-});
-```
-
-**Available fixture values:**
-
-| Fixture | Type | Purpose |
-|---------|------|---------|
-| `relay` | Relay instance | Auto-started/stopped per test |
-| `seedEvent(video)` | `(TestVideoEvent) => Promise` | Create a signed kind 30078 event and inject it |
-| `seedRawEvent(event)` | `(any) => Promise` | Inject a pre-built event |
-| `clearRelay()` | `() => Promise` | Wipe all relay events |
-| `gotoApp(path?)` | `(string?) => Promise` | Navigate with test mode + relay overrides |
-| `loginAs(page)` | `(Page) => Promise<string>` | Login with deterministic test key |
-| `setTestRelays(page, relays)` | `(Page, string[]) => Promise<{ok, relays}>` | Force relay alignment through harness + relayManager |
-| `setDecryptBehavior(page, mode, opts?)` | `(Page, mode, opts?) => Promise` | Force signer decrypt behavior (`passthrough`, `timeout`, `error`, `delay`) |
-| `startDiagnostics(page, opts?)` | `(Page, opts?) => Promise<{stop()}>` | Capture console/page errors and list-sync telemetry for assertions |
-| `testPubkey` | `string` | Hex pubkey of the test key |
-| `relayUrl` | `string` | WebSocket URL of the mock relay |
-
-### `data-testid` Selectors
-
-Use these for stable element targeting:
-
-| Selector | Element |
-|----------|---------|
-| `[data-testid="login-button"]` | Header login button |
-| `[data-testid="upload-button"]` | Header upload button (hidden until logged in) |
-| `[data-testid="profile-button"]` | Header profile button (hidden until logged in) |
-| `[data-testid="profile-permission-prompt"]` | Profile list-sync permission CTA container |
-| `[data-testid="profile-permission-prompt-button"]` | Profile list-sync permission/retry CTA button |
-| `[data-testid="search-input"]` | Header search field |
-| `[data-testid="login-modal"]` | Login modal container |
-| `[data-testid="login-provider-button"]` | Login provider option buttons |
-| `[data-testid="nsec-secret-input"]` | Private key textarea in nsec login |
-| `[data-testid="nsec-submit"]` | Nsec login submit button |
-| `[data-testid="upload-modal"]` | Upload modal container |
-| `[data-testid="upload-title"]` | Video title input |
-| `[data-testid="upload-url"]` | Video URL input |
-| `[data-testid="upload-magnet"]` | Magnet link input |
-| `[data-testid="upload-submit"]` | Publish button |
-| `[data-testid="hashtags-sync-status"]` | Profile hashtag sync status message |
-| `[data-testid="subscriptions-sync-status"]` | Profile subscriptions sync status message |
-| `[data-testid="blocked-refresh-button"]` | Profile blocked creators refresh button |
-| `[data-testid="blocked-sync-status"]` | Profile blocked creators sync status message |
-| `[data-testid="blocked-list"]` | Blocked creators list container |
-| `[data-testid="blocked-empty-state"]` | Blocked creators empty state |
-| `[data-testid="video-modal"]` | Video player modal |
-| `[data-testid="video-card"]` | Individual video card in the feed |
-| `[data-testid="video-list"]` | Video feed grid container |
-
-### Key Files
-
-| File | Purpose |
-|------|---------|
-| `js/testHarness.js` | Test harness module (installs `window.__bitvidTest__`) |
-| `scripts/agent/simple-relay.mjs` | Mock relay with HTTP seeding API |
-| `tests/e2e/helpers/bitvidTestFixture.ts` | Reusable Playwright fixture |
-| `tests/e2e/agent-testability.spec.ts` | Infrastructure validation tests |
-| `scripts/playwright/run-extension-persistent.mjs` | Dedicated persistent-context launcher for extension smoke tests |
-| `docs/testing/playwright-integration-recommendations-2026-02-22.md` | Playwright/extension integration recommendations and follow-ups |
-| `docs/testing/playwright-function-coverage.md` | Playwright coverage integration, latest baseline metrics, and improvement plan |
+bitvid ships a test harness (`window.__bitvidTest__`, enabled via `?__test__=1`), a mock relay (`scripts/agent/simple-relay.mjs`), and a reusable Playwright fixture (`tests/e2e/helpers/bitvidTestFixture.ts`) so agents can programmatically log in, seed relay data, and inspect app state — no browser extensions or real relays required.
+Full reference (harness API, mock relay, fixtures, `data-testid` selectors): [`docs/testing/agent-playwright-harness.md`](docs/testing/agent-playwright-harness.md).
 
 ---
 
@@ -553,127 +430,15 @@ When finishing a task or handing off, provide:
 
 ## 16. Scenario-First Tests & Test Integrity (Dark Factory Standard)
 
-In this repo, **validation replaces code review**. That means our test/scenario system is the *only* thing standing between “working software” and “green-but-worthless software.”
-
-Agents will naturally optimize for short-term goals (e.g., “get CI green”) unless we constrain them. If we ever allow “edit tests until they pass,” we destroy the signal, and over time the suite becomes meaningless.
-
-### Core philosophy: scenarios > checklists
-
-We treat tests as **behavioral specifications** expressed as **scenarios**:
-- “User stories” / end-to-end behaviors (Given/When/Then or equivalent)
-- Assertions focus on **externally observable outcomes** at boundaries (API responses, persisted state, emitted events, CLI output, UI state), not internal call sequences.
-- We prefer *minimal coupling* to implementation details so refactors don’t require rewriting “truth.”
-
-(StrongDM reached the same conclusion: repo-local tests are easy to reward-hack; scenarios and satisfaction-based validation reduce “teaching to the test.”)
-
-### Non-negotiable constitution (anti-cheat)
-
-**Hard rules (always on):**
-1) **Never weaken, delete, or rewrite a test just to make CI pass.**
-2) **Never change expected behavior to match buggy output** (“rubber-stamp the snapshot”, “update golden”, “adjust assertion”) unless it is a **spec correction** (see below).
-3) Do not “fix” flaky tests with retries, sleeps, timeouts, or looser assertions. **Remove nondeterminism** instead (control time, randomness, IO, network).
-4) Prefer black-box assertions at system boundaries; avoid tests that merely mirror internal logic.
-
-### Definitions
-
-- **Scenario**: a behavioral spec (often end-to-end) describing what must happen for a user/system in a real environment.
-- **Invariant**: a property that must always hold across many inputs/states (great for property-based or metamorphic testing).
-- **Holdout scenario**: an evaluation scenario kept outside the agent-editable area to reduce overfitting / reward-hacking.
-
-### When tests may change (spec correction protocol)
-
-Changing a test expectation is allowed **only** when the test was enforcing the wrong behavior.
-
-If you believe a test should change:
-1) Identify the **scenario/spec** that defines correct behavior.
-2) Explain precisely why the old expectation was wrong.
-3) Replace it with an **equally strict or stricter** behavior-based check.
-4) Record a **Test Integrity Note** (below) and, if applicable, a short spec note (e.g., `docs/spec_changes/<date>-<slug>.md`).
-
-If you cannot point to scenario/spec truth, **do not change the test**. Add a “Needs Spec Clarification” note instead.
-
-### “Test Integrity Note” (required for any PR touching tests)
-
-Every PR that adds/changes tests must include this machine-readable block in the PR description (or in a `TEST_INTEGRITY.md` entry referenced by the PR):
-
-```yaml
-test_integrity_note:
-  change_type: ["new_tests" | "refactor_tests" | "spec_correction" | "flake_fix"]
-  scenarios:
-    - id: SCN-<slug>
-      given: "<preconditions>"
-      when: "<stimulus>"
-      then: "<observable outcomes>"
-  observable_outcomes:
-    - "<what the user/system can observe at the boundary>"
-  determinism_controls:
-    - "<fake clock / fixed seed / hermetic env / service virtualization>"
-  anti_cheat_rationale:
-    prevents:
-      - "hard-coded return value"
-      - "over-mocking internal logic"
-      - "snapshot rubber-stamping"
-      - "retry/sleep-based flake masking"
-  relaxation:
-    did_relax_any_assertion: false
-    if_true_explain_spec_basis: ""
-```
-
-### Test portfolio guidance (scenario-first, still layered)
-
-We want a balanced suite:
-
-- **Scenario/E2E**: user-story validation at boundaries (few, high value, high fidelity)
-- **Integration/contract**: service boundaries, serialization, persistence, workflows
-- **Unit/invariants**: properties that kill trivial cheats (“return true” shouldn’t survive)
-
-For cheat resistance, strongly prefer:
-- invariants/property-based tests for critical logic
-- metamorphic relations where “exact expected output” is hard
-- periodic mutation testing to “test the tests” (surviving mutants indicate missing assertions)
-
-### External dependency realism (service virtualization / “digital twins”)
-
-Where third-party services are involved, we prefer deterministic “behavioral clones” (mocks/stubs at the API boundary that reproduce edge cases and contracts) over live calls. This keeps scenarios realistic without being flaky or rate-limited, and it makes high-volume scenario validation affordable.
-
-### Role: Test Integrity & Scenario Spec Agent (Enforcer)
-
-This repo includes (or assumes) a dedicated agent role whose only job is to protect validation integrity.
-
-This agent’s goal is NOT “make CI green.” Its goal is “make the suite reflect reality and reject fake passes.”
-
-**Authority:**
-- May add new scenarios, invariants, and tests.
-- May refactor tests to be more behavioral and less procedural.
-- May improve determinism (fixed seeds, fake clocks, hermetic env).
-- May only change expectations via the Spec Correction Protocol above.
-
-**Prohibitions:**
-- Must never weaken tests to pass.
-- Must never edit holdout scenarios (if configured).
-- Must never solve flakiness via retries/sleeps/loosening.
-
-**Deliverables each run:**
-- Scenario list (Given/When/Then)
-- Proposed test diffs
-- Test Integrity Note
-- “Cheat vectors blocked” summary (what trivial implementations it prevents)
+**Invariant:** validation replaces code review in this repo — never weaken, delete, or rewrite a test merely to make it pass, and never mask flakiness with retries/sleeps/looser assertions. Expectation changes are allowed only via the Spec Correction Protocol with an accompanying Test Integrity Note.
+Read the full standard before adding or modifying any test: [`docs/testing/test-integrity.md`](docs/testing/test-integrity.md).
 
 ---
 
 ## 17. NIP-07 Signer Reliability & Encrypted-List Loading (hard-won, 2026-06-16)
 
-The single biggest source of "DMs / hashtags / watch-history / block & subscription lists won't load after login" is **not** bitvid — it's an **unresponsive NIP-07 signer**. The extension's MV3 background service-worker can die or its content-script↔worker channel can orphan, after which raw `window.nostr` calls hang forever. No client change can force a dead signer to answer.
-
-* **Diagnose first, don't guess.** Run a single raw `window.nostr` probe in the page console (`getPublicKey → nip04.encrypt → nip04.decrypt`) that bypasses bitvid entirely. If *that* hangs, it's the extension/environment. Recommend a well-maintained signer (nos2x, Alby); KeysBand's dead worker was the root cause and switching to nos2x fixed everything.
-* **Resilience invariants — do not regress these** (see `docs/KNOWN_BUGS.md` #0 for the full history and the files):
-  1. **Cap relay fan-out** (`js/nostr/toolkit.js` `capReadRelays`, ≤8, user-relays-first + 2 reserved default slots). An uncapped cold-login REQ storm to ~20 dead NIP-65 relays starves the single-threaded signer's postMessage round-trips.
-  2. **Circuit breaker** on the NIP-07 channel (`js/nostr/nip07Permissions.js`): after N consecutive *timeouts* fast-fail instead of hanging ~15s each. Channel-death errors must count toward opening (not reset it); interactive permission prompts bypass it; one periodic probe detects recovery.
-  3. **Never swallow a transient decrypt error as an empty result.** Re-throw channel-death/timeout sub-errors so the retry path runs — returning `[]` turns "signer is slow" into "user has no blocks/lists" and kills retries.
-  4. **Generous decrypt budget** (~25–30s/call, ~60s backoff cap); a 6s timeout kills slow-but-responsive signers mid-decrypt. Handshake variant timeout is ~20s for the same reason.
-  5. **One actionable user notice** (`js/utils/signerHealthNotice.js`) after a few timeouts with `signerStatus: "present"` — not a silent forever-retry.
-* **Don't render into closed modals at login.** Once a responsive signer makes decryption instant, eagerly populating every profile panel at login (friends avatars, subscriptions, blocks, DM summaries) freezes the main thread ~10–15s. Populate each pane lazily on open (`selectPane`) and gate data-change re-render listeners on "is the view open".
-* **Deterministic testing.** Reproduce signer-dependent bugs headlessly with a fake `window.nostr` (Playwright `exposeBinding` + `addInitScript`) + a mock relay + configurable channel models (healthy/slow/overload/dead, latency override). See `scripts/perf/nip07-channel-sim.mjs`.
+**Invariant:** the #1 cause of "DMs / hashtags / watch-history / lists won't load after login" is an unresponsive NIP-07 signer, not bitvid — diagnose with a raw `window.nostr` probe first, and do not regress the five resilience invariants (capped relay fan-out, NIP-07 circuit breaker, re-thrown transient decrypt errors, generous decrypt budgets, lazy modal population).
+Full writeup: [`docs/lessons/nip07-signer-reliability.md`](docs/lessons/nip07-signer-reliability.md). See also `docs/KNOWN_BUGS.md` #0.
 
 ---
 
