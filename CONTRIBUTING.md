@@ -242,3 +242,12 @@ If you find a vulnerability, please email **[security@bitvid.network](mailto:sec
 ## Trademark
 
 The **bitvid** name and logos are trademarks (see `TRADEMARKS.md`). Don’t use them in ways that imply official sponsorship or confuse users. “Powered by bitvid” attribution is encouraged.
+
+## AI-assisted contributions
+
+AI-assisted changes are subject to the same testing, security, and review
+requirements as any other change; the contributor remains responsible for
+understanding what they submit. Do not submit unvalidated generated code,
+credentials, or agent-generated trusted memory without evidence and review.
+The canonical backlog and planning rules are in `AGENTS.md`; durable agent
+plans live under `.agents/plans/`.

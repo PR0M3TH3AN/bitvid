@@ -27,3 +27,7 @@ bitvid-site.zip
 # Agent runtime state (local only)
 memory-update.md
 memory-update.json
+
+# Agent-local memory state (never committed)
+.agents/private/
+.agents/state/

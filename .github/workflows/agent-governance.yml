@@ -1,0 +1,65 @@
+name: Agent governance
+
+on:
+  push:
+    paths:
+      - "AGENTS.md"
+      - "CLAUDE.md"
+      - ".agents/**"
+  pull_request:
+    paths:
+      - "AGENTS.md"
+      - "CLAUDE.md"
+      - ".agents/**"
+
+jobs:
+  lint-agent-artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate agent artifacts
+        run: |
+          python3 - <<'EOF'
+          import json, os, sys
+          hard_fail = False
+
+          # decisions.jsonl: every line must be valid JSON with required keys
+          path = ".agents/memory/decisions.jsonl"
+          if os.path.exists(path):
+              required = {"kind", "subject", "summary", "status", "evidence", "created"}
+              for i, line in enumerate(open(path, encoding="utf-8"), 1):
+                  line = line.strip()
+                  if not line:
+                      continue
+                  try:
+                      rec = json.loads(line)
+                  except json.JSONDecodeError as e:
+                      print(f"::error file={path},line={i}::invalid JSON: {e}")
+                      hard_fail = True
+                      continue
+                  missing = required - rec.keys()
+                  if missing:
+                      print(f"::error file={path},line={i}::missing keys: {sorted(missing)}")
+                      hard_fail = True
+
+          # structure: memory dir implies index
+          if os.path.isdir(".agents") and not os.path.exists(".agents/MEMORY.md"):
+              print("::error::.agents/ exists but .agents/MEMORY.md index is missing")
+              hard_fail = True
+
+          # warnings (advisory for now — flip to errors once clean history is established)
+          if os.path.exists("AGENTS.md"):
+              size = os.path.getsize("AGENTS.md")
+              if size > 32768:
+                  print(f"::warning file=AGENTS.md::{size} bytes exceeds the 32 KiB context budget")
+          if os.path.exists("CLAUDE.md"):
+              lines = sum(1 for _ in open("CLAUDE.md", encoding="utf-8"))
+              if lines > 40:
+                  print(f"::warning file=CLAUDE.md::{lines} lines — expected a thin wrapper over AGENTS.md")
+          for f in ("architecture.md", "conventions.md", "lessons.md"):
+              p = f".agents/memory/{f}"
+              if os.path.exists(p) and os.path.getsize(p) > 25 * 1024:
+                  print(f"::warning file={p}::exceeds 25 KB — curate or split")
+
+          sys.exit(1 if hard_fail else 0)
+          EOF

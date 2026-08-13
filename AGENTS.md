@@ -431,24 +431,23 @@ When finishing a task or handing off, provide:
 ## 16. Scenario-First Tests & Test Integrity (Dark Factory Standard)
 
 **Invariant:** validation replaces code review in this repo — never weaken, delete, or rewrite a test merely to make it pass, and never mask flakiness with retries/sleeps/looser assertions. Expectation changes are allowed only via the Spec Correction Protocol with an accompanying Test Integrity Note.
-Read the full standard before adding or modifying any test: [`docs/testing/test-integrity.md`](docs/testing/test-integrity.md).
+Read the full standard before adding or modifying any test: `docs/testing/test-integrity.md`.
 
 ---
 
 ## 17. NIP-07 Signer Reliability & Encrypted-List Loading (hard-won, 2026-06-16)
 
 **Invariant:** the #1 cause of "DMs / hashtags / watch-history / lists won't load after login" is an unresponsive NIP-07 signer, not bitvid — diagnose with a raw `window.nostr` probe first, and do not regress the five resilience invariants (capped relay fan-out, NIP-07 circuit breaker, re-thrown transient decrypt errors, generous decrypt budgets, lazy modal population).
-Full writeup: [`docs/lessons/nip07-signer-reliability.md`](docs/lessons/nip07-signer-reliability.md). See also `docs/KNOWN_BUGS.md` #0.
+Full writeup: `docs/lessons/nip07-signer-reliability.md`. See also `docs/KNOWN_BUGS.md` #0.
+
+---
+
+## Repo memory
+
+Curated agent memory lives in `.agents/` (index `.agents/MEMORY.md`); read it first. Propose additions in `.agents/proposals/`; `.agents/memory/` changes only via reviewed commits. Code/tests/config outrank memory.
 
 ---
 
 ## Next
 
-Please read these documents next.
-
-* `docs/nostr-event-schemas.md`
-* `js/nostrEventSchemas.js`
-
-And if you need to create new nostr kinds please keep the logic centralized there in `nostrEventSchemas.js` and the `nostr-event-schemas.md` up to date.
-
-**End of AGENTS.md**
+Read `docs/nostr-event-schemas.md` and `js/nostrEventSchemas.js` next; keep new nostr kinds centralized there and the doc up to date.

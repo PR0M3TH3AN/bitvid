@@ -1,0 +1,6 @@
+# Agent instruction and memory surfaces require maintainer review
+/AGENTS.md @PR0M3TH3AN
+/CLAUDE.md @PR0M3TH3AN
+/.agents/ @PR0M3TH3AN
+/SECURITY.md @PR0M3TH3AN
+/.github/workflows/agent-governance.yml @PR0M3TH3AN
