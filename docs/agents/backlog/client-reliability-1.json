@@ -1,7 +1,7 @@
 {
  "id": "client-reliability-1",
  "area": "client-reliability",
- "status": "open",
+ "status": "in-progress",
  "title": "Diagnose and fix profile-modal suite hang without weakening assertions",
  "blockedOn": null,
  "addedOn": "2026-10-19",
