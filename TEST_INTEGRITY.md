@@ -624,3 +624,42 @@ test_integrity_note:
 Mutation evidence: removing the product display/visibility exclusion causes this scenario to fail with the hidden control IDs in its focus list (exit 1, 1 failed/0 passed). Mutant reverted. This fixes expensive JSDOM style evaluation in the test harness, not a demonstrated browser defect. Application CSS/layout remains outside this unit fixture's scope.
 
 Fixture mutation: omitting native hidden-attribute filtering also fails the contract (exit 1, 1 failed/0 passed); restored before final checks.
+
+---
+
+# client-reliability-2
+
+```yaml
+test_integrity_note:
+  change_type: ["flake_fix", "new_tests"]
+  scenarios:
+    - id: SCN-concurrent-init-hermetic-subscription
+      given: "two init callers share a pool initialization held at a deterministic barrier, with a virtual successful relay connection"
+      when: "pool initialization is released and the second caller opens then closes a video subscription"
+      then: "the second caller waits for pool readiness, real L1 feed setup reaches the fake pool, and unsubscribe closes the transport exactly once with no reconnect timer"
+  observable_outcomes:
+    - "second init promise remains pending until the pool barrier is released"
+    - "pool is ready after awaiting the second caller; both init promises settle"
+    - "post-init subscription requests video events from a nonempty relay set"
+    - "subscription transport closes once, including repeated unsubscribe"
+    - "the process exits naturally with no public relay IO or reconnect retries"
+  determinism_controls:
+    - "deferred pool barrier replaces the old 50ms delay"
+    - "fake pool at the actual transport boundary; real init, L1, and feed cleanup"
+    - "manager connection boundary reports success rather than triggering background reconnect"
+    - "local-data/signer restore are virtualized; teardown awaits init, closes feed and resets reconnect state even after failure"
+  anti_cheat_rationale:
+    prevents:
+      - "early-return init mutant fails while pool initialization is held"
+      - "no-op subscription cannot satisfy the observed transport request"
+      - "no-op cleanup cannot satisfy exact close count"
+      - "failure fixture cannot hide a reconnect timer behind a passing assertion"
+      - "retry/sleep/forced-exit masking: no timeout changes or forced exit"
+  relaxation:
+    did_relax_any_assertion: false
+    if_true_explain_spec_basis: ""
+```
+
+Original concurrent-promise, pool-ready and post-init no-throw assertions remain. The old empty connection result accidentally modeled failure; init correctly scheduled manager-owned retries that bypassed its client-level stub. The fixture now models successful init at the manager boundary and releases its feed subscription. This is harness cleanup, not a Nostr product change.
+
+Mutants: a test-local historical early-return init variant fails the pending-barrier assertion (exit1, 1 failed); a connection-failure fixture variant fails the no-retry assertion (exit1, 1 failed). Both exit naturally and are reverted. No product file was edited for either mutant.

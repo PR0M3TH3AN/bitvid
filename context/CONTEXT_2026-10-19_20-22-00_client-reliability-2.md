@@ -1,0 +1,5 @@
+- Goal: make tests/race/nostr-client-init-race.test.mjs hermetic and naturally exit while preserving concurrent init, pool readiness, and post-init subscription coverage.
+- Temporary ownership granted by dispatch via landed RULE-CHANGES/prompt and owner resume instruction; no Nostr product/shared helper/global runner edits.
+- Revalidated unchanged from filedAt f303ab0e72; prior isolated assertion60.91ms passes but process timeout10s/exit124, full gate timeout60s at file227.
+- Plan: inspect NIP01 and real init/L1 subscription lifecycle; replace delay with deferred pool barrier; virtualize current pool boundary, close subscription; add observable boundary/cleanup assertions; mutant-check, run both isolated suites, commit separately, merge unstable, lint and full60s/file gates, land normally or route further blockers.
+- Preserve prior profile-modal commits and all assertions. No browser, real wallet, signer, external relay or deploy operations.
