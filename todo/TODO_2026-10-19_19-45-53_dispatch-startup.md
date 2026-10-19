@@ -1,0 +1,5 @@
+- [x] Read startup rules and owner direction.
+- [x] Write fleet/GOAL.md and PROGRAM.md.
+- [ ] Inspect TODO candidates and existing fleet backlog.
+- [ ] Run baseline tests and lint; log results.
+- [ ] Prepare first-team scope and request launch approval.
