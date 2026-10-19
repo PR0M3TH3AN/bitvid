@@ -31,3 +31,6 @@ memory-update.json
 # Agent-local memory state (never committed)
 .agents/private/
 .agents/state/
+fleet/inbox/
+.task
+.fleet/

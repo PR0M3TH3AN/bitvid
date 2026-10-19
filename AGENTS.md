@@ -451,3 +451,16 @@ Curated agent memory lives in `.agents/` (index `.agents/MEMORY.md`); read it fi
 ## Next
 
 Read `docs/nostr-event-schemas.md` and `js/nostrEventSchemas.js` next; keep new nostr kinds centralized there and the doc up to date.
+
+# Agent fleet
+
+This repo uses agent-fleet-kit. The `agent-fleet` MCP server (`fleet-mcp`) is a convenience. Editing backlog JSON and mailbox files directly is fine. Do not hand-edit the landing queue while a drain is merging, and do not push main.
+
+- `area_info` for the owner of a path.
+- `backlog_claim` with an item id marks it in-progress. Pick the item from PROGRAM.md. Without an id the tool does not choose one. Idle is a correct result.
+- `mailbox_read` at the start of a turn; `mailbox_send` to reach a peer. Mail is always delivered. The prompt says when to act.
+- `commit` to stage and commit in your area worktree. Codex `workspace-write` keeps `.git` read-only, so do not run `git commit` yourself. Pass `message` and the file paths (or `all: true`), and `cwd` or `area` when this server is not already in the worktree. `submit: true` also queues the tip. A doesNotOwn path warns and still commits. The same operation is `fleet commit -m "..." --area <id> [--submit] -- <paths>`.
+- `landq_submit` queues the committed tip and starts a drain. A dirty worktree warns; only HEAD is queued. Then go back to work. At your next natural checkpoint, `land_status` (or `fleet landq status <id>`) is a quick lookup, and its wait is optional. Never infer the lander or the land result from silence. States: queued, gating, landed with the main sha, rejected with the reason, or unknown. If no drain is alive, the answer says so and names `fleet lander start`.
+- A scarce machine is a prompt convention: say so in `.task` and wait if a peer has it. There is no slot lock.
+
+Sessions, worktrees, and cron are the `fleet` CLI. Submit starts the drain; do not run a second merge by hand.

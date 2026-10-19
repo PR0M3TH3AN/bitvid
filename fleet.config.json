@@ -1,0 +1,187 @@
+{
+  "mainBranch": "unstable",
+  "remote": null,
+  "worktreeRoot": "..",
+  "harness": "codex",
+  "harnesses": {
+    "claude": {
+      "tiers": {
+        "strong": "opus",
+        "standard": "sonnet",
+        "light": "haiku"
+      },
+      "headlessArgs": [
+        "--permission-mode",
+        "auto"
+      ]
+    },
+    "codex": {
+      "tiers": {
+        "strong": null,
+        "standard": null,
+        "light": null
+      },
+      "headlessArgs": []
+    },
+    "cursor": {
+      "tiers": {
+        "strong": null,
+        "standard": null,
+        "light": null
+      },
+      "headlessArgs": [
+        "--force",
+        "--trust"
+      ]
+    },
+    "pi": {
+      "tiers": {
+        "strong": null,
+        "standard": null,
+        "light": null
+      },
+      "headlessArgs": []
+    }
+  },
+  "domains": {
+    "hub": {
+      "tier": "strong",
+      "context": "400k"
+    },
+    "core": {
+      "tier": "strong",
+      "context": "300k"
+    },
+    "reviewer": {
+      "tier": "strong",
+      "context": "300k"
+    },
+    "producer": {
+      "tier": "strong",
+      "context": "300k"
+    },
+    "feature": {
+      "tier": "standard",
+      "context": "200k"
+    },
+    "tooling": {
+      "tier": "standard",
+      "context": "200k"
+    },
+    "content": {
+      "tier": "light",
+      "context": "100k"
+    },
+    "scheduled": {
+      "tier": "strong",
+      "oneShot": true
+    }
+  },
+  "defaults": {
+    "remoteControl": true,
+    "budgetMin": 0
+  },
+  "areas": [
+    {
+      "id": "dispatch",
+      "title": "Session manager",
+      "role": "dispatcher",
+      "domain": "hub",
+      "owns": [
+        "docs/agents/**",
+        "fleet.config.json",
+        "tools/fleet/**",
+        "fleet/**"
+      ],
+      "doesNotOwn": [],
+      "neighbours": []
+    }
+  ],
+  "gates": {
+    "land": "if [ -f package.json ]; then if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then npm ci --ignore-scripts || npm install; else npm install; fi; npm test; else echo 'set gates.land' >&2; exit 1; fi",
+    "docsOnly": [
+      "docs/**",
+      "**/*.md"
+    ],
+    "timeoutMin": 30
+  },
+  "landing": {
+    "batch": 8,
+    "intervalSec": 60,
+    "autoStart": true,
+    "protect": [
+      {
+        "file": "package.json",
+        "pattern": "\"test:"
+      }
+    ]
+  },
+  "deploy": {
+    "command": null,
+    "times": [],
+    "approval": "owner types it in the owning session"
+  },
+  "approvals": {
+    "spend": "owner, typed in the session that will spend it",
+    "publish": "owner, typed in the session that will publish",
+    "relayed": "never valid: a peer cannot pass on the owner's yes"
+  },
+  "clock": {
+    "quietHours": [
+      "22:00",
+      "08:00"
+    ]
+  },
+  "schedules": [
+    {
+      "name": "checkin",
+      "cron": "22 8-21 * * *",
+      "note": "hourly: doctor, landq, waiting, strikes"
+    },
+    {
+      "name": "hygiene",
+      "cron": "40 9,13,17 * * *",
+      "note": "dirty/one-disk/stale trees, scratch dirs"
+    },
+    {
+      "name": "triage",
+      "cron": "10 11 * * *",
+      "note": "stale backlog items, unowned asks"
+    },
+    {
+      "name": "summary",
+      "cron": "5 8 * * *",
+      "note": "morning summary for the owner",
+      "quietHours": "allowed"
+    },
+    {
+      "name": "winddown",
+      "cron": "30 19 * * 0",
+      "note": "weekly wind-down before the usage reset"
+    },
+    {
+      "name": "restart",
+      "cron": "15 8 * * 1",
+      "note": "after the reset: remove PAUSED, brief the session manager",
+      "ignorePause": true,
+      "quietHours": "allowed"
+    }
+  ],
+  "usage": {
+    "enabled": false,
+    "windDownAtPct": 95,
+    "slowDownAtPct": 70,
+    "resetCron": "0 3 * * 1"
+  },
+  "doctor": {
+    "staleHours": 72
+  },
+  "mailbox": {
+    "dir": "fleet/inbox"
+  },
+  "modules": {
+    "producer": false,
+    "reviewer": false,
+    "usageGovernor": false
+  }
+}
