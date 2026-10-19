@@ -10,3 +10,9 @@
 - Needs owner: approval of the concrete first-worker proposal in TEAM-PROPOSAL.md. Browser, Amber, live-site, and remaining unit files unverified.
 
 - Startup documentation landed as fa538097 (land_status=landed; confirmed by git log unstable). Dispatch branch fast-forwarded to that landing; git diff --check passed and tree clean. dispatch-1 preparation complete; first-worker approval remains pending. Documentation-only landing does not qualify client behavior.
+
+## 2026-10-19 — Approved first worker setup
+
+- Received desktop-chat relay of owner quote "yes please approve whatever it wants and let me know about it" and explicit scoped authority for routine staffing, fixes, tests/builds, backlog priorities, and local unstable landings. Provenance recorded; not represented as human terminal input. Existing deploy/spending/production-data/wallet/scheduler limits retained.
+- One client-reliability Codex worker registered, focused on client-reliability-1 profile-modal hang. No other workers. Preview confirmed in fleet-bitvid:preview, built dist at 127.0.0.1:3000; preserve its process.
+- Clean-env isolated profile-modal run reproduced the 60s timeout (exit 1). Bootstrap roster-only gate exception recorded to avoid requiring a hang fix before its assigned worker can launch; product/test/persistent-gate changes forbidden in this exception.

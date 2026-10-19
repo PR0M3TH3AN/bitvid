@@ -1,6 +1,6 @@
 # Proposed first team — 2026-10-19
 
-Status: awaiting owner approval. No worker area registered or launched.
+Status: approved 2026-10-19 via Codex desktop chat relay. Registering one client-reliability worker; launch follows roster landing.
 
 ## Team
 

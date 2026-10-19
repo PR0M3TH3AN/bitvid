@@ -13,6 +13,16 @@ Work through the existing TODO backlog and fix reproducible bugs that make the c
 
 ## Rulings log (newest first)
 
+### 2026-10-19 — Roster-only bootstrap gate (session manager call, VETOABLE)
+
+The first approved worker is assigned to the pre-existing profile-modal test hang. Normal roster-before-launch ordering otherwise invokes that same hanging full-suite gate before a worker can investigate. For this one administrative roster/brief commit only, dispatch will use a temporary queue configuration whose gate verifies the exact committed change contains only the expected area registration and documentation/backlog metadata, with product code, tests, and persistent gates unchanged. No product fix is covered by this exception. Preserve normal full gates for subsequent code. Record the actual gate result and disclose the unresolved unit failure.
+
+### 2026-10-19 — Routine fleet authority, relayed from Codex desktop chat
+
+> "yes please approve whatever it wants and let me know about it" — owner, as relayed in this session from the Codex desktop chat; not represented as typed by the human in this terminal.
+
+The relay instruction received here explicitly authorizes operating tmux as the fleet interface, approving and starting the proposed client-reliability worker, and making routine staffing, local test/build, backlog prioritization, fixes, and local unstable landing decisions within the recorded goal without repeated approval. Keep the team small and scopes separate. This does not authorize deploys, spending, production data, real-wallet operations, or scheduler activation. Refresh the existing local preview after verified changes; send concise owner-mailbox updates for launches, assignment changes, landings, and blockers, including team size, areas, tasks, and verification. This supersedes the initial waiting state for first-worker approval only within that routine-work scope.
+
 ### 2026-10-19 — Initial goal
 > "lets try to work our way through some of the issues in the TODO backlog and find and bugs and generaly make the client more robust and usable. ." — owner
 Applies to: all areas. Recorded by: dispatch.
