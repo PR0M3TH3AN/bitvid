@@ -8,8 +8,8 @@ Read fleet/GOAL.md and PROGRAM.md. Robustness/usability/TODO work is authorized.
 
 | area | item | state | next step |
 | --- | --- | --- | --- |
-| dispatch | dispatch-2 | roster preparation | verify administrative-only landing, create worktree and launch exactly one worker; report through owner mailbox |
-| client-reliability | client-reliability-1 | approved, not yet launched | classify/fix reproducible profile-modal suite timeout, preserve assertions, mutation-check regression and run full gates |
+| dispatch | dispatch-2 | active coordination | roster landed 9e6c310d; one worker running; monitor results, owner updates, and preview refresh |
+| client-reliability | client-reliability-1 | running in fleet-bitvid:client-reliability | classify/fix reproducible profile-modal suite timeout, preserve assertions, mutation-check regression and run full gates |
 
 ## Evidence and local preview
 
