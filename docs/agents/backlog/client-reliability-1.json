@@ -1,9 +1,9 @@
 {
  "id": "client-reliability-1",
  "area": "client-reliability",
- "status": "blocked",
+ "status": "in-progress",
  "title": "Diagnose and fix profile-modal suite hang without weakening assertions",
- "blockedOn": "dispatch: unowned tests/race/nostr-client-init-race.test.mjs retains background relay work; full gate fails after 226/425 passed; fix dbdac18d passes isolated27/27 and lint11/11",
+ "blockedOn": null,
  "addedOn": "2026-10-19",
  "filedAt": "8b204687d2c0020c0fe97cedb3e9f8661a8d709a"
 }
