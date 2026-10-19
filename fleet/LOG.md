@@ -19,3 +19,9 @@
 
 - Launch verified: fleet status reports client-reliability running pid 138193; tmux pane shows it reading rules/backlog. Team: 2 agents total, 1 worker. Roster landed at 9e6c310d (durable landed state and git log unstable). Exact bootstrap validator passed for 13 files, product/tests/persistent gate settings unchanged; normal configuration remains active for future landings. Owner launch update sent.
 - Preview check: HTTP 200 at http://127.0.0.1:3000; existing built-dist process preserved. No product changes to rebuild yet. No scheduler or additional worker activation.
+
+## 2026-10-19: Profile-modal progress and bounded follow-up
+
+- Reviewed dbdac18d and 6da037f5: test-only computed-style fixture optimization plus native-style focus contract. All 26 original scenarios retain assertions, one contract added; product/fixture mutants fail per committed evidence. No browser defect established. Dispatch independently ran 27/27 in2.46s (exit0); worker lint11/11.
+- Full worker run: 226 file exits passed, race suite retained relay work after its assertion passed; 198 files untested. Dispatch isolated reproduction: assertion passed62ms, process timeout10s/exit124. No client fixes submitted or landed.
+- Assigned client-reliability-2 to same single worker: temporary ownership of one race test and regression/integrity notes. No Nostr product/global runner scope; preserve assertions, hermetic IO and natural exit, then normal full gates. No additional worker. Preview stays on verified unstable.

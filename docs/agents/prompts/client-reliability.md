@@ -1,5 +1,15 @@
 # Area: Client reliability (`client-reliability`)
 
+## Current bounded follow-up: client-reliability-2
+
+Dispatch grants temporary ownership of tests/race/nostr-client-init-race.test.mjs, its Test Integrity Note, and client-reliability-2 backlog/notes. This extends the initial scope; no second worker or Nostr product-code ownership is granted. Merge unstable to receive this prompt and item before claiming it. Keep the existing profile-modal commits separate. Both items await normal full-gate success before landing.
+
+Evidence: race assertion passes in about 61ms but the process retains public-relay retries and exceeds isolated 10s/full-run 60s diagnostic bounds. Dispatch independently reproduced this (assertion 62ms, process exit124), and independently verified your profile-modal tree 27/27 in2.46s.
+
+Inspect the real post-init subscription boundary and cleanup. Make the harness hermetic, preserve concurrent-init/pool-ready/post-init-subscription assertions, and exit naturally without public relay traffic or retry timers. Read docs/nips/01.md and relevant subscription/lifecycle documentation before Nostr-related investigation. Product Nostr code, shared helpers, and the global runner remain excluded; report exact evidence/file needs before broader edits.
+
+No force-exit, unref-only masking, retries, added sleeps, loose assertions, quarantine, or timeout increases. A deterministic deferred barrier may replace the existing mock delay if appropriate. Pin the actual boundary with a regression and deliberately broken variant; record the integrity note. Run the race file to natural completion, the profile-modal suite, lint, and then full npm test with the existing diagnostic bound. Commit separately with client-reliability-2, merge unstable, verify that tree, and submit through unchanged normal landing gates once the full suite is green. Route any further unowned blocker with exact counts instead of broadening yourself.
+
 ## Role and first assignment
 
 Improve client robustness and usability through small, reproducible fixes from the TODO backlog. Start with client-reliability-1: classify and fix the profile-modal controller suite hang, then report before picking a different subsystem. You are the only worker; dispatch owns staffing and priorities.
