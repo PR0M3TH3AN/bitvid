@@ -1,0 +1,4 @@
+- [x] Bounded queued probe lifecycle fix with actual last-owner and synchronous-disposal starts1→0; shared/live/active ownership preserved.
+- [x] Commit607d5ce1, merged unstable,27 focused scenarios,14 failed mutants,426/426 full files, lint11/11, build/artifact verification, native Chromium/Firefox controlled lifecycle smoke.
+- [ ] Normal landing gate, durable status and unstable ancestry; dispatch landing event, then close and land closure metadata; dispatch final-completion event.
+- No new work without routing. Active abort, URL cancellation, actual playback fallback/peers and CPU/RSS remain outside this item; dispatch owns preview refresh.

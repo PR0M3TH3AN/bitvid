@@ -1,7 +1,7 @@
 {
  "id": "client-reliability-3",
  "area": "client-reliability",
- "status": "open",
+ "status": "in-progress",
  "title": "Cancel queued torrent health probes when their last feed owner is disposed",
  "blockedOn": null,
  "addedOn": "2026-10-19",

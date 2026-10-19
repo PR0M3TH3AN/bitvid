@@ -1,0 +1,6 @@
+- [x] Rules/mailbox/claim/revalidate; actual five-card baseline reproduces1 obsolete start.
+- [x] Last-owner queued cancellation, shared owners, cancellation settlement/cache/inflight identity; active unchanged and stale registrations inert.
+- [x] Nine focused lifecycle scenarios; six existing priority scenarios; related source visibility/observer suites. Eleven deliberately broken variants fail and are reverted.
+- [x] Lint11/11, build/artifact verification; Chromium/Firefox built-dist/native-observer local smoke0 obsolete starts/0 stale updates/hidden reveal/source health visibility.
+- [ ] Commit, merge unstable, full npm test60s/file and final lint; normal landing, durable status/ancestry, dispatch landing event, close, closure records and final mailbox event.
+- Not verified: real media fallback or peers, active abort, CPU/RSS, URL checks, owner preview refresh/deploy. Dispatch owns preview rebuild.
