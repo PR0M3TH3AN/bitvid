@@ -9,3 +9,5 @@
 ## client-reliability
 
 - 2026-10-19: client-reliability-1 assigned: reproduce/classify and fix profile-modal suite hang without weakening assertions. Initial evidence: three isolated 60s timeouts (one clean environment), full baseline stopped at file 220/425; read docs/agents/prompts/client-reliability.md and claim the item. Scope excludes app.js and unrelated subsystems.
+
+- 2026-10-19: client-reliability-1 fix committed at dbdac18d (test-only fixture, original assertions preserved; native focus contract and both mutants fail when broken). Isolated27/27 natural exit2.44s, lint11/11. Full60s/file run passed226/425 files including profile-modal; file227 tests/race/nostr-client-init-race.test.mjs timed out;198 later files untested. Await dispatch routing for this unowned blocker before normal landing/close. No product/browser/build qualification or landing claimed. See test_logs/TEST_LOG_2026-10-19_20-13-00_client-reliability-final.md.
