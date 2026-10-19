@@ -599,7 +599,7 @@ test_integrity_note:
   change_type: ["flake_fix", "new_tests"]
   scenarios:
     - id: SCN-profile-focus-style-contract
-      given: "modal controls include visible, disabled, CSS-hidden, inherited-hidden, aria-hidden, and hidden-input cases"
+      given: "modal controls include visible, disabled, CSS-hidden, inherited-hidden, aria-hidden, hidden-input, and hidden-attribute cases"
       when: "the real controller collects focus targets using fixture and native JSDOM styles, and the user tabs from the last control"
       then: "both resolvers retain only visible enabled controls and Tab wraps to the first"
   observable_outcomes:
@@ -622,3 +622,5 @@ test_integrity_note:
 ```
 
 Mutation evidence: removing the product display/visibility exclusion causes this scenario to fail with the hidden control IDs in its focus list (exit 1, 1 failed/0 passed). Mutant reverted. This fixes expensive JSDOM style evaluation in the test harness, not a demonstrated browser defect. Application CSS/layout remains outside this unit fixture's scope.
+
+Fixture mutation: omitting native hidden-attribute filtering also fails the contract (exit 1, 1 failed/0 passed); restored before final checks.

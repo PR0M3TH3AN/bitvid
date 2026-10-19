@@ -137,7 +137,7 @@ beforeEach(() => {
   document.head.appendChild(focusStyles);
   nativeGetComputedStyle = window.getComputedStyle.bind(window);
   window.getComputedStyle = (element) => ({
-    display: element.matches('.focus-test-display-none, input[type="hidden"]') ? 'none' : 'block',
+    display: element.matches('.focus-test-display-none, [hidden], input[type="hidden"]') ? 'none' : 'block',
     visibility: element.closest('.focus-test-visibility-hidden') ? 'hidden' : 'visible',
   });
 
@@ -1095,6 +1095,7 @@ test('focus trap excludes hidden and disabled controls with fixture and native s
   addControl('visibility-hidden', (control) => { control.classList.add('focus-test-visibility-hidden'); });
   addControl('aria-hidden', (control) => { control.setAttribute('aria-hidden', 'true'); });
   addControl('hidden-input', (control) => { control.type = 'hidden'; });
+  addControl('hidden-attribute', (control) => { control.hidden = true; });
   const inherited = addControl('inherited-visibility');
   const hiddenParent = document.createElement('div');
   hiddenParent.classList.add('focus-test-visibility-hidden');
