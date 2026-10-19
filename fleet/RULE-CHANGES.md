@@ -9,6 +9,9 @@ a landing rule changes.
 
 ## 2026-10-19
 
+- client-reliability-3 redirects the existing single worker to queued torrent-probe ownership in js/gridHealth.js, an optional small queue helper, and focused lifecycle tests. Prior validation tasks are done. Active probes, URL checks, WebTorrent implementation, cache/concurrency policy and kit remain out of scope. Completion must send dispatch mailbox evidence; mailbox delivery is not a session wakeup. No scheduler/kit changes.
+
+
 - Bounded routing: existing client-reliability worker temporarily owns tests/race/nostr-client-init-race.test.mjs plus its regression/integrity notes for client-reliability-2. Nostr product code and global runner remain excluded. Preserve assertions, separate commits, and normal landing gates.
 
 - One-time first-worker bootstrap: the administrative roster/brief commit may land through a temporary queue configuration with an exact roster-and-documentation-only validator because the worker is assigned to the existing full-suite hang. No product/test/persistent-gate change is permitted by this check. Record the exception and actual result; subsequent code uses the normal full gate.
