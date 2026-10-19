@@ -663,3 +663,71 @@ test_integrity_note:
 Original concurrent-promise, pool-ready and post-init no-throw assertions remain. The old empty connection result accidentally modeled failure; init correctly scheduled manager-owned retries that bypassed its client-level stub. The fixture now models successful init at the manager boundary and releases its feed subscription. This is harness cleanup, not a Nostr product change.
 
 Mutants: a test-local historical early-return init variant fails the pending-barrier assertion (exit1, 1 failed); a connection-failure fixture variant fails the no-retry assertion (exit1, 1 failed). Both exit naturally and are reverted. No product file was edited for either mutant.
+
+---
+
+# client-reliability-3
+
+```yaml
+test_integrity_note:
+  change_type: ["new_tests"]
+  scenarios:
+    - id: SCN-last-probe-owner-disposal
+      given: "five real DOM cards register through actual gridHealth/cardObserver; four probes are active and one queued"
+      when: "the feed is disposed/removed and active probes finish"
+      then: "zero obsolete probes start"
+    - id: SCN-shared-queued-owner
+      given: "two cards share one queued torrent source"
+      when: "one registration disposes while its DOM remains connected"
+      then: "the live owner still probes and becomes healthy; disposed owner receives no stale UI/callback"
+    - id: SCN-cancelled-replacement-inflight
+      given: "last owner cancels queued work then a replacement requests the same source before old settlement"
+      when: "old completion drains and another owner joins before a slot frees"
+      then: "no unhealthy cancellation cache is written, only one new probe starts, and both replacements become healthy/cacheable"
+    - id: SCN-probe-priority-concurrency
+      given: "four active probes, queued mixed priorities and a cancelled source"
+      when: "slots free one at a time"
+      then: "four-slot maximum and stable priority order remain; cancelled work never starts"
+    - id: SCN-hidden-healthy-reveal
+      given: "a hide-all card is hidden pending liveness"
+      when: "registration eagerly probes and returns healthy"
+      then: "raw magnet/webseed bytes reach probe IO and the card reveals without an intersection"
+    - id: SCN-active-shared-late-entry
+      given: "an active source loses its owner, receives a late observer entry and gains a live owner"
+      when: "the unchanged active probe completes"
+      then: "no duplicate starts or disposed result writes; live owner becomes healthy"
+    - id: SCN-repeat-disposal-reattach
+      given: "a disposed container has a new queued registration"
+      when: "the old disposer is called again"
+      then: "new owner survives and becomes healthy"
+    - id: SCN-ownerless-active-cache
+      given: "an already active probe has no remaining owner"
+      when: "it finishes before a later live card requests that source"
+      then: "the active result remains cached; no new probe or stale UI write occurs"
+    - id: SCN-existing-probe-cache-ttl
+      given: "completed healthy and negative results"
+      when: "cards request before, at, and after the existing TTL boundary"
+      then: "both cached outcomes reuse until the existing inclusive TTL expires, then both probe again"
+  observable_outcomes:
+    - "actual probePeers start count/order, arguments and maximum active count"
+    - "real DOM badge health/hidden state, observer disposal and callback counts"
+    - "storage cache absence for cancellation and reuse/expiry for completed probes"
+  determinism_controls:
+    - "actual gridHealth/cardObserver and DOM, controllable observer and deferred probePeers IO"
+    - "explicit viewport geometry, unique sources and isolated storage; fake Date.now only for TTL scenario"
+    - "task-turn promise draining without wall-clock sleeps, polling or retries"
+    - "native Chromium/Firefox observer smoke against built dist, external traffic blocked"
+  anti_cheat_rationale:
+    prevents:
+      - "unconditional queue cancellation: shared-owner mutant fails"
+      - "no-op cancellation, stale inflight deletion or cancelled cache poisoning"
+      - "changed concurrency/priority or hidden eager path"
+      - "stale result/listener/observer effects and repeated old disposal"
+      - "cancelling or dropping cache from already active work"
+      - "timeout/retry/sleep masking or hard-coded healthy results"
+  relaxation:
+    did_relax_any_assertion: false
+    if_true_explain_spec_basis: ""
+```
+
+Grouped mutation coverage: last-owner cancellation mutant kills SCN-last-probe-owner-disposal; unconditional cancel kills SCN-shared-queued-owner; unconditional inflight deletion and cancelled-normalization mutants each kill SCN-cancelled-replacement-inflight; reversed queue priority kills SCN-probe-priority-concurrency; disabled eager path kills SCN-hidden-healthy-reveal; stale result guard and late-entry membership mutants each kill SCN-active-shared-late-entry; non-idempotent disposer kills SCN-repeat-disposal-reattach; owner-dependent active caching kills SCN-ownerless-active-cache; missing cache writes kills SCN-existing-probe-cache-ttl. All11 variants exit1 with1 failed scenario,0 cancelled, and are reverted. Browser checks corroborate the same disposal/shared-owner/hidden-reveal/source-visibility scenarios with native observers; no browser CPU or actual media fallback claim.
