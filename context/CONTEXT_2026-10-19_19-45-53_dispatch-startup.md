@@ -1,0 +1,1 @@
+Goal: TODO backlog progress, bug fixes, robustness and usability. Scope: dispatch triage and proposed first team. Non-goals: product edits, worker launch before approval, deploys, spending, production data. Done: goal recorded, baseline measured, concrete first-team proposal presented.
