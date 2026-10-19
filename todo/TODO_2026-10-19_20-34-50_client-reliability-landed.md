@@ -1,0 +1,6 @@
+- [x] Both test fixes, integrity notes, preserved assertions and failing mutants.
+- [x] Isolated profile27/27 + race1/1 natural exit, lint11/11, full425/425 files exit0.
+- [x] Normal landing gate exit0; durable landed de6918ce and unstable ancestry verified.
+- [x] client-reliability-1 and client-reliability-2 closed after landing.
+- [ ] Queue closure metadata and verify its durable landing; then idle if backlog empty.
+- No outstanding product work in these two items; browser/build and real IO remain outside qualification.
