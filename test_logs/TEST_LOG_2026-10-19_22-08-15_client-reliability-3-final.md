@@ -1,0 +1,11 @@
+# client-reliability-3 final product tree607d5ce1a1265d6586eac8428004e6a891201061
+
+- `git merge unstable`: already up to date; no source edits after final validation/mutation restoration.
+- `env -u NODE_TEST_CONTEXT UNIT_TEST_TIMEOUT_MS=60000 npm test`: exit0, all426/426 files completed,0 quarantined; runner does not report aggregate scenario count. New lifecycle file passed and prior425 files were reached/completed.
+- `npm run lint` on committed tree (unrestricted for required git subprocess access): exit0, all11 stages.
+- `npm run build` on corrected product contents: exit0, including verify:dist:deploy-artifact. Corrected product contents identical to607d5ce1; only notes/test assertions changed before commit. Browserslist age warning pre-existing; no dependency updates.
+- Direct readable focused suites: lifecycle11/11, priority6/6, source visibility9/9, observer disposal1/1; total27 scenarios/4 files, all exit0 naturally,0 failed/cancelled/skipped. Timings513.51/381.59/394.34/225.61ms respectively in final parallel focused runs.
+- All14 independently broken variants rerun against corrected product tree: each exit1,1 failed/0 cancelled; original source restored before checks. Grouped mapping in TEST_INTEGRITY.md. No assertions relaxed or existing tests removed.
+- Corrected built dist Chromium and Firefox with native IntersectionObserver/deferred probe IO: each4 initial active/0 obsolete starts after disposal, shared live card healthy/disposed card checking/0 stale notifications, hidden healthy card revealed, torrent-only and hosted-only source visibility true,0 page errors and0 attempted external requests. Ephemeral loopback server/browser resources closed, shared browser released, owner port3000 untouched.
+- Baseline actual five-card boundary at66832dc3:4 active+1 queued,1 obsolete start after dispose/remove; fixed0. Additional synchronous checking-callback disposal baseline1 post-dispose start, fixed0. No CPU/RSS improvement measurement/claim.
+- Unverified/out of scope: actual media playback fallback, live torrent peers/trackers, active-probe abort behavior, URL checks/cancellation, full Stage3 performance plan, signer/wallet/production/deploy. Normal queued gate/durable landing and ancestry remain before closing client-reliability-3; dispatch owns preview refresh.
