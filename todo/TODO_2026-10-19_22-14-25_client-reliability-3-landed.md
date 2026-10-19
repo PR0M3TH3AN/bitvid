@@ -1,0 +1,6 @@
+- [x] Bounded queued ownership, shared listeners and stale/reentrant disposal guards; obsolete starts1→0.
+- [x] Focused27/27,14 reverted mutants,full426/426,lint11/11,build+Chromium/Firefox native smoke.
+- [x] Normal queue gate exit0; durable landing7d20a509 and unstable ancestry verified; dispatch landing event delivered.
+- [x] client-reliability-3 closed after durable verification.
+- [ ] Verify closure metadata landing and send dispatch final-completion event, then idle; no new work without routing.
+- Dispatch preview refresh pending its resume; file mailbox is not a wakeup. Actual media/peers/CPU and active/URL lifecycle remain outside scope.
