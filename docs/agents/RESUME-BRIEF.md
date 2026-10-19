@@ -1,23 +1,22 @@
-# RESUME BRIEF — written YYYY-MM-DD HH:MM (<why the fleet stopped>)
+# Resume brief — 2026-10-19 approved worker startup
 
-Written by the dispatcher at every wind-down; read first by every session at restart.
+## Goal and authority
 
-## First reads on restart
+Read fleet/GOAL.md and PROGRAM.md. Robustness/usability/TODO work is authorized. First client-reliability worker and routine local staffing/fixes/tests/builds/landings approved through Codex desktop chat relay; no deploys, spending, production data, real-wallet operations, or schedulers.
 
-1. `git log --oneline <main> -20` — what landed while the fleet was dark.
-2. Remove `<stateDir>/PAUSED` (the restart job does this).
-3. TODO: anything scheduled to run while dark, and where its output is.
+## Mid-flight
 
-## Mid-flight (per area)
+| area | item | state | next step |
+| --- | --- | --- | --- |
+| dispatch | dispatch-2 | roster preparation | verify administrative-only landing, create worktree and launch exactly one worker; report through owner mailbox |
+| client-reliability | client-reliability-1 | approved, not yet launched | classify/fix reproducible profile-modal suite timeout, preserve assertions, mutation-check regression and run full gates |
 
-| area | item | state | SHA / branch | next step |
-| --- | --- | --- | --- | --- |
-| TODO | | | | |
+## Evidence and local preview
 
-## Waiting on the owner
+Baseline product SHA d9059116; startup docs landed through 3e451aac. Lint 11/11; 219 unit files exited 0 before file 220 (profile-modal-controller) timed out at 60s; 205 files untested. Isolated unrestricted and clean-env reruns timed out. No client fix yet.
 
-- TODO
+Preserve fleet-bitvid:preview serving dispatch dist at http://127.0.0.1:3000. After verified changes land, update dispatch from unstable and rebuild locally. No scheduler activation or extra worker launch implied.
 
-## Held (do not land until)
+## Bootstrap exception
 
-- TODO
+One administrative roster/brief commit uses temporary exact-scope validation because the worker's assigned existing hang blocks full-suite completion. Persistent gate settings, product code, and tests must be unchanged. Subsequent code uses normal full gates. No additional owner approval pending within routine scope.

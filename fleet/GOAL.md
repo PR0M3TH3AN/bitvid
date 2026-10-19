@@ -20,5 +20,5 @@ Work through the existing TODO backlog, find and fix bugs, and make the client m
 ## Operating limits
 
 - No deploys, spending, production data, or real-wallet operations; conservative session-manager defaults, not additional owner rulings.
-- First worker launch requires the owner's approval of the proposed team.
+- First worker approval received 2026-10-19 via Codex desktop chat relay; routine staffing, fixes, tests/builds, and local unstable landings are authorized within this goal. Record relay provenance; no repeated routine approval required.
 - No scheduler or cron activation is implied by fleet startup.

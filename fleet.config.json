@@ -94,7 +94,35 @@
         "fleet/**"
       ],
       "doesNotOwn": [],
-      "neighbours": []
+      "neighbours": [
+        "client-reliability"
+      ]
+    },
+    {
+      "id": "client-reliability",
+      "title": "Client reliability",
+      "role": "area",
+      "domain": "feature",
+      "provider": "codex",
+      "owns": [
+        "tests/profile-modal-controller.test.mjs",
+        "js/ui/profileModalController.js",
+        "js/ui/profileModal/**",
+        "docs/agents/backlog/client-reliability-*.json"
+      ],
+      "doesNotOwn": [
+        "js/app.js",
+        "js/app/**",
+        "js/nostr/**",
+        "js/services/**",
+        "scripts/run-unit-tests.mjs",
+        "fleet.config.json",
+        "tools/fleet/**",
+        "css/**"
+      ],
+      "neighbours": [
+        "dispatch"
+      ]
     }
   ],
   "gates": {
