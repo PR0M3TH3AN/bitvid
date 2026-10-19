@@ -11,3 +11,7 @@
 ## client-reliability
 
 - 2026-10-19: client-reliability-1 assigned: reproduce/classify and fix profile-modal suite hang without weakening assertions. Initial evidence: three isolated 60s timeouts (one clean environment), full baseline stopped at file 220/425; read docs/agents/prompts/client-reliability.md and claim the item. Scope excludes app.js and unrelated subsystems.
+
+- 2026-10-19: client-reliability-1 fix committed at dbdac18d (test-only fixture, original assertions preserved; native focus contract and both mutants fail when broken). Isolated27/27 natural exit2.44s, lint11/11. Full60s/file run passed226/425 files including profile-modal; file227 tests/race/nostr-client-init-race.test.mjs timed out;198 later files untested. Await dispatch routing for this unowned blocker before normal landing/close. No product/browser/build qualification or landing claimed. See test_logs/TEST_LOG_2026-10-19_20-13-00_client-reliability-final.md.
+
+- 2026-10-19: client-reliability-1 and client-reliability-2 ready for normal landing at181eae95: profile27/27 and race1/1 natural exit; all425 unit files passed with60s/file bound; lint11/11. Four deliberately broken variants fail and are reverted. Dispatch routing unblocked the second item; no product Nostr/shared-runner changes. Remaining: durable normal queue landing, unstable verification, then backlog close. Browser/build and real IO unverified (test-only scope). See test_logs/TEST_LOG_2026-10-19_20-35-00_client-reliability-both.md.

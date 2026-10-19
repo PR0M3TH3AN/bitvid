@@ -1,0 +1,3 @@
+- Goal: classify and fix profile-modal-controller suite hang at current HEAD 9e6c310d (unchanged from filedAt 8b204687).
+- Scope: owned test and narrow modal lifecycle helpers only. Preserve assertions; no retries, sleeps, timeout increases, quarantine or forced success exit.
+- Done: deterministic regression, failing mutant, isolated natural exit, full 60s/file unit run, lint; build/browser if product changes; fleet commit, merge unstable, checks, queue and durable landing.

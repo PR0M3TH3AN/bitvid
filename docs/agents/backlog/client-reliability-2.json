@@ -1,7 +1,7 @@
 {
  "id": "client-reliability-2",
  "area": "client-reliability",
- "status": "open",
+ "status": "in-progress",
  "title": "Make Nostr initialization race test hermetic and release retained relay work",
  "blockedOn": null,
  "addedOn": "2026-10-19",

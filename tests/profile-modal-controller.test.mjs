@@ -19,6 +19,7 @@ const defaultActorHex = 'a'.repeat(64);
 
 let dom;
 let container;
+let nativeGetComputedStyle;
 
 async function waitForAnimationFrame(window, cycles = 1) {
   for (let i = 0; i < cycles; i += 1) {
@@ -125,6 +126,21 @@ beforeEach(() => {
   global.requestAnimationFrame = window.requestAnimationFrame;
   global.cancelAnimationFrame = window.cancelAnimationFrame;
 
+  // This fixture loads markup without application stylesheets. Virtualize the
+  // two computed properties consumed by the focus trap rather than asking JSDOM
+  // to resolve every CSS property for every control on each pane refresh.
+  const focusStyles = document.createElement('style');
+  focusStyles.textContent = `
+    .focus-test-display-none { display: none; }
+    .focus-test-visibility-hidden { visibility: hidden; }
+  `;
+  document.head.appendChild(focusStyles);
+  nativeGetComputedStyle = window.getComputedStyle.bind(window);
+  window.getComputedStyle = (element) => ({
+    display: element.matches('.focus-test-display-none, [hidden], input[type="hidden"]') ? 'none' : 'block',
+    visibility: element.closest('.focus-test-visibility-hidden') ? 'hidden' : 'visible',
+  });
+
   window.confirm = () => true;
   global.confirm = window.confirm;
 
@@ -181,6 +197,7 @@ afterEach(() => {
     delete window.__matchMediaMocks;
   }
   container = null;
+  nativeGetComputedStyle = null;
 });
 
 function normalizeTestTag(value) {
@@ -1060,6 +1077,52 @@ test('load() injects markup and caches expected elements', async () => {
   assert.ok(controller.relayList instanceof window.HTMLElement);
   assert.ok(controller.blockList instanceof window.HTMLElement);
   assert.ok(controller.walletController.walletStatusText instanceof window.HTMLElement);
+});
+
+test('focus trap excludes hidden and disabled controls with fixture and native styles', () => {
+  const panel = document.createElement('div');
+  container.appendChild(panel);
+  const addControl = (id, configure = () => {}) => {
+    const control = document.createElement('input');
+    control.id = id;
+    configure(control);
+    panel.appendChild(control);
+    return control;
+  };
+  const visible = addControl('visible');
+  addControl('disabled', (control) => { control.disabled = true; });
+  addControl('display-none', (control) => { control.classList.add('focus-test-display-none'); });
+  addControl('visibility-hidden', (control) => { control.classList.add('focus-test-visibility-hidden'); });
+  addControl('aria-hidden', (control) => { control.setAttribute('aria-hidden', 'true'); });
+  addControl('hidden-input', (control) => { control.type = 'hidden'; });
+  addControl('hidden-attribute', (control) => { control.hidden = true; });
+  const inherited = addControl('inherited-visibility');
+  const hiddenParent = document.createElement('div');
+  hiddenParent.classList.add('focus-test-visibility-hidden');
+  panel.appendChild(hiddenParent);
+  hiddenParent.appendChild(inherited);
+  const last = addControl('last');
+
+  const controller = createController();
+  controller.profileModalPanel = panel;
+  const fixtureGetComputedStyle = window.getComputedStyle;
+  try {
+    for (const resolveStyle of [fixtureGetComputedStyle, nativeGetComputedStyle]) {
+      window.getComputedStyle = resolveStyle;
+      controller.updateFocusTrap();
+      assert.deepEqual(controller.focusableElements.map((control) => control.id), ['visible', 'last']);
+      last.focus();
+      const tab = new window.KeyboardEvent('keydown', {
+        key: 'Tab', bubbles: true, cancelable: true,
+      });
+      last.dispatchEvent(tab);
+      assert.equal(tab.defaultPrevented, true);
+      assert.strictEqual(document.activeElement, visible);
+    }
+  } finally {
+    window.getComputedStyle = fixtureGetComputedStyle;
+    controller.hide({ silent: true });
+  }
 });
 
 test('show()/hide() toggle panes, trap focus, and refresh the wallet pane', async () => {

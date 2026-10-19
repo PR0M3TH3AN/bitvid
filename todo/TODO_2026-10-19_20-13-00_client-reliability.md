@@ -1,0 +1,6 @@
+- [x] Claim/revalidate client-reliability-1 at startup HEAD9e6c310d.
+- [x] Classify timeout as expensive JSDOM computed styles; baseline26/26 natural completion57.04s.
+- [x] Implement test-only fixture; preserve all assertions; native-JSDOM contract and two failing mutants.
+- [x] Commit, merge unstable and verify isolated27/27 and lint11/11 on dbdac18d.
+- [ ] Full unit gate:226 files passed; file227 Nostr-client race timed out60s;198 untested.
+- [ ] Dispatch routing of unowned race-suite blocker, then normal full gate, queue submission, durable landing and close.
