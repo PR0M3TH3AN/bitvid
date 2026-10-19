@@ -210,6 +210,59 @@ test("disposing one of two queued source owners preserves the live owner", async
   );
 });
 
+test("disposal from a checking callback prevents probe submission", async (t) => {
+  const f = fixture(t);
+  const feed = f.feed([magnet()], {
+    onUpdate: ({ state }) => {
+      if (state === "checking") feed.dispose();
+    }
+  });
+  feed.observer.show();
+  await flush();
+  assert.equal(
+    f.calls.length,
+    0,
+    "checking notification must not submit work after synchronous disposal"
+  );
+});
+
+test("shared badge listener stays deduplicated until its last registration disposes", async (t) => {
+  const f = fixture(t);
+  const updates = [];
+  const listener = (event) => updates.push(event);
+  const first = f.feed([magnet()], { onUpdate: listener });
+  const live = f.feed([magnet()], { onUpdate: listener });
+  first.observer.show();
+  assert.equal(
+    updates.length,
+    1,
+    "same callback must receive each update once across registrations"
+  );
+  first.dispose();
+  updates.length = 0;
+  live.observer.show();
+  assert.equal(
+    updates.length,
+    1,
+    "disposing one registration must retain the shared callback"
+  );
+  f.calls[1].finish();
+  await flush();
+  assert.deepEqual(
+    updates.map((event) => event.state),
+    ["checking", "healthy"]
+  );
+  live.dispose();
+  updates.length = 0;
+  const other = f.feed([magnet()]);
+  other.observer.show();
+  assert.equal(
+    updates.length,
+    0,
+    "last listener owner disposal must stop later notifications"
+  );
+});
+
 test("cancelled source can be re-requested before old settlement without cache poison or duplicate work", async (t) => {
   const f = fixture(t);
   f.saturate();
@@ -317,9 +370,17 @@ test("active probe remains shared while disposed owners and late observer entrie
   const first = f.feed([source]);
   first.observer.show();
   first.dispose();
+  const liveUpdates = [];
+  const live = f.feed([source], {
+    onUpdate: (event) => liveUpdates.push(event)
+  });
   first.observer.show(); // An already-delivered entry may arrive after disconnect.
-  const live = f.feed([source]);
   live.observer.show();
+  assert.equal(
+    liveUpdates.some((event) => event.card === first.cards[0]),
+    false,
+    "late observer entries must not emit disposed-card badge events"
+  );
   assert.equal(
     f.calls.length,
     1,

@@ -21,14 +21,14 @@ import {
   getLivenessProbePrefetchMargin,
 } from "./constants.js";
 
-const badgeUpdateListeners = new Set();
+const badgeUpdateListeners = new Map();
 
 function notifyBadgeUpdate(payload) {
   if (!payload) {
     return;
   }
 
-  badgeUpdateListeners.forEach((listener) => {
+  badgeUpdateListeners.forEach((_owners, listener) => {
     if (typeof listener !== "function") {
       return;
     }
@@ -479,7 +479,7 @@ function setBadge(card, state, details) {
   notifyBadgeUpdate(payload);
 }
 
-function handleCardVisible({ card, pendingByCard, priority = 0 }) {
+function handleCardVisible({ card, pendingByCard, liveCards, priority = 0 }) {
   if (!(card instanceof HTMLElement)) {
     return;
   }
@@ -515,6 +515,9 @@ function handleCardVisible({ card, pendingByCard, priority = 0 }) {
   }
 
   setBadge(card, "checking");
+  // Badge callbacks can synchronously dispose/rerender the feed. Do not create
+  // a new request after its unregister hook has already run.
+  if (!liveCards.has(card)) return;
 
   const encodedUrl = card.dataset.urlHealthUrl || "";
   const webSeed = encodedUrl ? decodeURIComponent(encodedUrl) : "";
@@ -601,6 +604,7 @@ const gridCardObserver = createCardObserver({
       handleCardVisible({
         card,
         pendingByCard: state.pendingByCard,
+        liveCards: state.liveCards,
         priority: PRIORITY_BASELINE,
       });
     }
@@ -624,6 +628,7 @@ const gridCardObserver = createCardObserver({
     handleCardVisible({
       card,
       pendingByCard: state.pendingByCard,
+      liveCards: state.liveCards,
       priority,
     });
   },
@@ -634,16 +639,23 @@ export function attachHealthBadges(container, options = {}) {
     return () => {};
   }
   const listener =
-    typeof options?.onUpdate === "function"
-      ? (payload) => options.onUpdate(payload)
-      : null;
-  if (listener) badgeUpdateListeners.add(listener);
+    typeof options?.onUpdate === "function" ? options.onUpdate : null;
+  if (listener) {
+    badgeUpdateListeners.set(
+      listener,
+      (badgeUpdateListeners.get(listener) || 0) + 1
+    );
+  }
   gridCardObserver.observe(container);
   let disposed = false;
   return () => {
     if (disposed) return;
     disposed = true;
-    if (listener) badgeUpdateListeners.delete(listener);
+    if (listener) {
+      const remaining = badgeUpdateListeners.get(listener) - 1;
+      if (remaining > 0) badgeUpdateListeners.set(listener, remaining);
+      else badgeUpdateListeners.delete(listener);
+    }
     gridCardObserver.disconnect(container);
   };
 }

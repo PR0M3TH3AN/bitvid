@@ -731,3 +731,32 @@ test_integrity_note:
 ```
 
 Grouped mutation coverage: last-owner cancellation mutant kills SCN-last-probe-owner-disposal; unconditional cancel kills SCN-shared-queued-owner; unconditional inflight deletion and cancelled-normalization mutants each kill SCN-cancelled-replacement-inflight; reversed queue priority kills SCN-probe-priority-concurrency; disabled eager path kills SCN-hidden-healthy-reveal; stale result guard and late-entry membership mutants each kill SCN-active-shared-late-entry; non-idempotent disposer kills SCN-repeat-disposal-reattach; owner-dependent active caching kills SCN-ownerless-active-cache; missing cache writes kills SCN-existing-probe-cache-ttl. All11 variants exit1 with1 failed scenario,0 cancelled, and are reverted. Browser checks corroborate the same disposal/shared-owner/hidden-reveal/source-visibility scenarios with native observers; no browser CPU or actual media fallback claim.
+
+Additional client-reliability-3 scenarios (same invariant and controls):
+
+```yaml
+test_integrity_note:
+  change_type: ["new_tests"]
+  scenarios:
+    - id: SCN-shared-badge-listener-lifetime
+      given: "two feed registrations share the app callback"
+      when: "badge updates occur and registrations dispose one at a time"
+      then: "each event notifies once, one surviving owner retains the callback, last disposal stops notifications"
+    - id: SCN-checking-callback-disposal
+      given: "a live card's checking callback synchronously disposes the feed"
+      when: "badge notification returns to probe submission"
+      then: "no probe is submitted after unregister"
+  observable_outcomes:
+    - "callback event count/state sequence and external probe start count"
+  determinism_controls:
+    - "real badge/observer path, synchronous disposal callback and deferred probe IO"
+  anti_cheat_rationale:
+    prevents:
+      - "duplicated shared callbacks or dropping live callback owners"
+      - "post-disposal work submitted after synchronous reentrant teardown"
+  relaxation:
+    did_relax_any_assertion: false
+    if_true_explain_spec_basis: ""
+```
+
+Duplicate wrapper and unconditional listener release variants each fail SCN-shared-badge-listener-lifetime. Removing the post-checking membership guard fails SCN-checking-callback-disposal (actual starts1 vs expected0). These3 additional variants exit1 with1 failed/0 cancelled and are reverted; total14 killed variants for11 lifecycle scenarios. Original source/priority/observer expectations remain unchanged.
