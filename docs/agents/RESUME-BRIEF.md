@@ -1,24 +1,10 @@
-# Resume brief — 2026-10-19 approved worker startup
+# Resume brief: 2026-10-19 client-facing follow-up
 
-## Goal and authority
+Read PROGRAM and GOAL for scoped desktop-chat routine-work authority. No deploys, spending, production data, wallets or schedulers.
 
-Read fleet/GOAL.md and PROGRAM.md. Robustness/usability/TODO work is authorized. First client-reliability worker and routine local staffing/fixes/tests/builds/landings approved through Codex desktop chat relay; no deploys, spending, production data, real-wallet operations, or schedulers.
+## Current state
 
-## Mid-flight
-
-| area | item | state | next step |
-| --- | --- | --- | --- |
-| dispatch | dispatch-2 | active coordination | roster landed 9e6c310d; one worker running; monitor results, owner updates, and preview refresh |
-| client-reliability | client-reliability-1 and client-reliability-2 | profile fix committed dbdac18d/6da037f5; follow-up routed | merge updated prompt; fix retained relay work in the race test, then normal full gate before landing |
-
-## Evidence and local preview
-
-Baseline product SHA d9059116; startup docs landed through 3e451aac. Lint 11/11; 219 unit files exited 0 before file 220 (profile-modal-controller) timed out at 60s; 205 files untested. Isolated unrestricted and clean-env reruns timed out. No client fix yet.
-
-Preserve fleet-bitvid:preview serving dispatch dist at http://127.0.0.1:3000. After verified changes land, update dispatch from unstable and rebuild locally. No scheduler activation or extra worker launch implied.
-
-## Bootstrap exception
-
-One administrative roster/brief commit uses temporary exact-scope validation because the worker's assigned existing hang blocks full-suite completion. Persistent gate settings, product code, and tests must be unchanged. Subsequent code uses normal full gates. No additional owner approval pending within routine scope.
-
-Latest checkpoint: independent profile-modal27/27 in2.46s. Worker full run226 file exits before race-suite retained relay work;198 untested. Independent isolated race assertion62ms, process timeout10s/exit124. Preview unchanged; no test fix landed yet.
+- Tests-only fixes1/2 normally landed de6918ce; closure f9adfc8f, both done. Durable status and unstable ancestry verified; full425/425 file evidence and lint11/11. Dispatch independently verified profile27/27, race1/1 natural exit and lint11/11. Dispatch synced.
+- Same single client-reliability worker next: item3, queued torrent-probe lifetime. Five-card actual badge/observer scenario:4 active +1 queued; dispose and remove grid, release active;1 obsolete start (expected0). Reproduce before fixing; preserve shared-owner checks, cache/inflight correctness, priority/concurrency and hidden reveal. Product scope and checks in current area prompt.
+- Preserve built-dist preview in fleet-bitvid:preview at http://127.0.0.1:3000. Dispatch rebuilds after verified product landings; current prior changes are test-only.
+- Completion requires a dispatch mailbox evidence event. File delivery does not wake an idle session; operator input currently resumes dispatch. Do not claim unattended monitoring or add scheduler/kit infrastructure in this checkpoint.

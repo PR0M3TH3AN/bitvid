@@ -1,42 +1,30 @@
-# Area: Client reliability (`client-reliability`)
+# Area: Client reliability (client-reliability)
 
-## Current bounded follow-up: client-reliability-2
+## Current assignment: client-reliability-3
 
-Dispatch grants temporary ownership of tests/race/nostr-client-init-race.test.mjs, its Test Integrity Note, and client-reliability-2 backlog/notes. This extends the initial scope; no second worker or Nostr product-code ownership is granted. Merge unstable to receive this prompt and item before claiming it. Keep the existing profile-modal commits separate. Both items await normal full-gate success before landing.
+Improve robustness/usability with one bounded client-facing fix from pre-launch TODO #34 Stage3: cancel queued torrent health probes when the last card/feed owner is disposed. Prior items1 and2 are done, normally landed at de6918ce and closed at f9adfc8f (425/425 unit files, lint11/11). Do not redo them.
 
-Evidence: race assertion passes in about 61ms but the process retains public-relay retries and exceeds isolated 10s/full-run 60s diagnostic bounds. Dispatch independently reproduced this (assertion 62ms, process exit124), and independently verified your profile-modal tree 27/27 in2.46s.
+## Current evidence
 
-Inspect the real post-init subscription boundary and cleanup. Make the harness hermetic, preserve concurrent-init/pool-ready/post-init-subscription assertions, and exit naturally without public relay traffic or retry timers. Read docs/nips/01.md and relevant subscription/lifecycle documentation before Nostr-related investigation. Product Nostr code, shared helpers, and the global runner remain excluded; report exact evidence/file needs before broader edits.
+At f9adfc8f, dispatch ran /tmp/bitvid-dispatch-obsolete-probe-scenario.mjs. It imports actual gridHealth.js and torrentClient, uses real DOM cards and attachHealthBadges with a controllable IntersectionObserver, and replaces only the external probePeers boundary with deferred promises (no live network). Five cards enter: four probes start, one waits. Dispose the returned observer registration, remove feed DOM, then release active probes: one obsolete probe still starts, expected zero. The assertion fails with1!==0. This is stronger than the earlier isolated ProbeQueue class inspection; it is not a browser CPU or real-torrent measurement. Inspect the diagnostic for fixture details and reproduce against your own worktree before editing. Retain a proper regression in the repository.
 
-No force-exit, unref-only masking, retries, added sleeps, loose assertions, quarantine, or timeout increases. A deterministic deferred barrier may replace the existing mock delay if appropriate. Pin the actual boundary with a regression and deliberately broken variant; record the integrity note. Run the race file to natural completion, the profile-modal suite, lint, and then full npm test with the existing diagnostic bound. Commit separately with client-reliability-2, merge unstable, verify that tree, and submit through unchanged normal landing gates once the full suite is green. Route any further unowned blocker with exact counts instead of broadening yourself.
+## Ownership for this item
 
-## Role and first assignment
+Temporary explicit ownership: js/gridHealth.js; a small queue/owner helper if needed (prefer js/gridHealthQueue.js); focused lifecycle tests (prefer tests/grid-health-lifecycle.test.mjs); relevant existing grid-health tests and Test Integrity Note; your backlog/evidence/area notes. Existing js/dom/cardObserver.js already exposes onCardUnregister: use that boundary. Report specific evidence before editing that shared module or VideoListView lifecycle.
 
-Improve client robustness and usability through small, reproducible fixes from the TODO backlog. Start with client-reliability-1: classify and fix the profile-modal controller suite hang, then report before picking a different subsystem. You are the only worker; dispatch owns staffing and priorities.
+Do not edit js/app.js, URL-health plumbing, js/webtorrent.js or vendor bundle, active-probe abort behavior, playback/magnet helpers, cache policy/TTLs, concurrency limits, signers, payments, styling, test runner, fleet config, or kit infrastructure. No other worker owns this bounded scope. No subagents needed.
 
-At d9059116 (product unchanged by startup docs), `UNIT_TEST_TIMEOUT_MS=60000 npm test` completed 219 files, then tests/profile-modal-controller.test.mjs timed out as file 220/425. An isolated unrestricted run also timed out. The last started scenario was show()/hide() focus/wallet. Root cause is not classified. The dispatch shell inherited NODE_TEST_CONTEXT=child-v8, which explains binary test output; inspect a readable reporter and clean environment before calling this a product defect. A clean-environment reproduction is being checked at launch preparation.
+## Plan and done
 
-## You own
+1. Read current RULE-CHANGES, PROGRAM, RESUME-BRIEF, KNOWN_ISSUES, AGENTS, repo memory and test integrity standard. Merge unstable, claim client-reliability-3, reproduce actual five-card lifecycle before edits, and record started/queued counts.
+2. Associate queued work with live card/feed owners. Disposing the last owner prevents the queued probe from starting; discarding one owner must not cancel shared work needed by a live card. Leave already-active probe behavior unchanged.
+3. Preserve deduplication, priority and current concurrency (four), healthy/negative TTLs, valid magnet bytes and WSS policy. Cancelled jobs must settle without creating unhealthy cache entries or deleting newer inflight entries. Later live cards must be able to request the same source. Disposed registrations must not receive stale UI effects.
+4. Test actual observer/queue/probe boundaries: last-owner disposal, two owners sharing a queued source, re-request after cancellation, concurrency/priority preservation, and a healthy hidden-card reveal path. Use controlled probes and no public relay/torrent traffic. Kill a deliberately broken variant for each new scenario or explain grouped mutant coverage; include integrity notes. No arbitrary sleeps/retries/relaxed assertions.
+5. Run focused suites, full npm test with the existing60s/file diagnostic bound, npm run lint, npm run build, and a local browser lifecycle/health smoke where available. This is product code: report browser/source-fallback verification and any gap honestly. Reserve the shared browser in .task. No CPU improvement claim without measurement; this item measures obsolete starts, not the entire performance plan.
+6. Commit with client-reliability-3, merge unstable (never rebase), verify merged tree, submit through unchanged normal landq, verify durable landed status and unstable ancestry, then close item. Route new out-of-scope failures to dispatch; do not weaken gates or broaden automatically.
 
-- tests/profile-modal-controller.test.mjs and narrow profile-modal lifecycle/helper code required by the diagnosed defect, including js/ui/profileModalController.js and js/ui/profileModal/**.
-- Your backlog item, area notes, focused regression, and Test Integrity Note.
+## Completion handoff and operating limits
 
-## You do NOT own
+Send a dispatch mailbox event when blocked, when code lands, and at final completion, including SHA, exact checks/counts, unverified behavior and next step. The generated startup message said to report only when blocked; the new assignment explicitly replaces that reporting instruction with landing/final-completion events as well. The previous completion left no unread dispatch event. File-mailbox delivery only records a message: it does not start a Codex turn or wake idle dispatch. The operator currently supplies the new turn/tmux input; do not claim unattended monitoring. No scheduler or kit changes in this task. No additional work after this item without routing.
 
-js/app.js, js/app/**, signers/Nostr core, storage credentials, payments, global test discovery, fleet config/tools, styling, unrelated suites, or the preview server. Ask dispatch for a specific scope adjustment if evidence points outside ownership. Do not alter another worktree or process. No subagents needed.
-
-## Done and checks
-
-1. Read KNOWN_ISSUES.md, .agents/MEMORY.md, PROGRAM.md, RESUME-BRIEF.md, RULE-CHANGES.md, and docs/testing/test-integrity.md. Read your mailbox and claim client-reliability-1. Revalidate at HEAD.
-2. Reproduce the blocked await or retained resource at the actual boundary. Distinguish client behavior, harness assumptions, and environmental artifacts. Preserve every assertion and correct behavior; do not add retries/sleeps, raise timeouts, quarantine/delete tests, or force a successful process exit.
-3. Fix the cause with deterministic setup/cleanup or narrow client behavior as the evidence warrants. Add a scenario regression and prove a deliberately broken variant fails. Record a Test Integrity Note for test edits.
-4. Run the isolated suite to natural completion and the full unit suite with a 60s per-file diagnostic bound; also run npm run lint. Product code changes require npm run build and relevant local browser checks. Report file/test counts precisely and disclose what was not verified. Do not call the full suite green if it stops early.
-5. Commit with client-reliability-1 in the message using fleet commit, merge unstable (never rebase), validate that tree, and submit through landq. Close the item only after durable landed state and unstable verification. Return the SHA and exact checks to dispatch. Explain what slowed you down and one tool/data improvement if any.
-
-## Standing rules
-
-- 2026-10-19 owner direction: "lets try to work our way through some of the issues in the TODO backlog and find and bugs and generaly make the client more robust and usable. ."
-- Routine work launch approved through the Codex desktop chat relay; no deploys, spending, production data, real-wallet operations, or schedules.
-- Preserve the owner preview at http://127.0.0.1:3000 in fleet-bitvid:preview. Dispatch refreshes its built dist after verified changes land.
-- Send routine completion and blockers directly to dispatch via mailbox; dispatch sends owner event updates.
-- Keep .task current; acquire any shared browser convention through .task before browser work. Sandbox denial is not permission to bypass controls.
+Owner routine-work delegation was relayed from Codex desktop chat and recorded with provenance in PROGRAM. No deploys, spending, production data, real-wallet operations, or schedulers. Preserve fleet-bitvid:preview at http://127.0.0.1:3000; dispatch syncs and rebuilds after verified product changes land. Keep .task current, communicate directly via mailbox, and disclose tool/permission blockers without bypassing controls.
