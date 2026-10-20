@@ -1,6 +1,12 @@
 # Area: Client reliability (client-reliability)
 
-## Current assignment: client-reliability-5 — prevent orphaned mirror continuation
+## Current assignment: client-reliability-6 — profile history wiring audit
+
+Owner continuing quality objective is in GOAL/PROGRAM; use fleet/QUALITY.md. Item5 done0bd0b1c3/closuredc852597. Claim item6,merge verified unstable non-destructively,read current rules/KNOWN_ISSUES/test integrity. High-priority TODO2 explicitly asks profile-pane remove wiring regression. Current controller comment says no-op onHistoryReady override was removed; current history-pane test injects fake renderer and validates lazy init,not real remove. Revalidate whole test corpus before assuming a gap.
+
+Investigation/scratch/evidence only now: trace actual ProfileModalController→createWatchHistoryRenderer→default removal→history controller/service with controlled local state/IO; verify local-only delete/clear and synced callback options only through fake publish boundary,no signer/relay/private data. Prove what current assertions cover and whether historical no-op override would escape them. Prefer actual wiring invocation over source-string assertions. Classify a remaining product failure separately from missing regression; send exact HEAD/commands/counts/reproduction or mutant result,proposed smallest retained test/fix scope. If already covered,close audit with evidence and next priority. No product or committed test changes until dispatch routes scope; no app/history service/cache ownership expansion. Your existing profile modal modules/tests read-only for investigation;unique notes/backlog allowed. QA owns full/normal gate;cheap focused checks only,no browser/build/full gate. No subagents/kit/scheduler/cloud/real signer/wallet/production activity. Send immediate read+next-action,then blocker/completion;keep .task current.
+
+## Archived completed assignment: client-reliability-5 — prevent orphaned mirror continuation
 
 Investigation at0c1dd7e8 found a narrow defect, independently reproduced by dispatch at47953970 (administrative roster only): after last-owner disposal during active primary media, primary error starts1 fresh mirror HEAD(expected0). /tmp/bitvid-dispatch-5-active-url.mjs mirror-disposed --expect-no-obsolete-head exits1 after cleanup/retry; mirror-shared control exits0/healthy,resources0/slots0. Bounded active retention/success caching itself is intentional and not a defect.
 
