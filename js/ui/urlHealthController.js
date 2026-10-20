@@ -463,6 +463,12 @@ export default class UrlHealthController {
     }
     let sawTimeout = false;
     for (const url of list) {
+      // Completed active work may still cache its result, but starting another
+      // source requires a live owner (including a card that rejoined meanwhile).
+      if (options.lifecycle && !options.lifecycle.owners.size) {
+        options.lifecycle.cancelled = true;
+        return { outcome: "cancelled" };
+      }
       let result;
       try {
         result = await this.probeUrl(url, options);

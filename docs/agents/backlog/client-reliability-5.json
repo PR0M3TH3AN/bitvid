@@ -1,9 +1,10 @@
 {
   "id": "client-reliability-5",
   "area": "client-reliability",
-  "status": "open",
+  "status": "in-progress",
   "title": "Reproduce remaining active URL or torrent probe lifecycle defect before scoping a fix",
   "blockedOn": null,
   "addedOn": "2026-10-20",
-  "filedAt": "3f627f5df3da7bcd28d910d9f8161844fa77ff74"
+  "filedAt": "3f627f5df3da7bcd28d910d9f8161844fa77ff74",
+  "evidence": "Controller guard12f92732,mergedf2a392fa:full427/427files,focused28/lifecycle18,six reverted mutants,lint11/build/browser pass;obsolete mirrorHEAD1\u21920. Slot wait10m57s respected. Normal product queue/durable ancestry pending. See test_logs/TEST_LOG_2026-10-20_13-51-00_client-reliability-5-ready.md"
 }
