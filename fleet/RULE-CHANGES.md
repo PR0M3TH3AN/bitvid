@@ -9,6 +9,9 @@ a landing rule changes.
 
 ## 2026-10-20
 
+- QA1 retained regression64143f42 landed1bb3a4fc,dispatch4/4. New QA2 actual-app local core/mobile baseline has bounded browser-only slot,no UI changes/full E2E. Client6 test-only actual history wiring regression routed after current pass/historical no-op failure. Storage2 temporary ownership deleteVideoStorage-only in r2Service+new test after2 real cached-metadata rejects/6controls;upload-copy logic unchanged,s3UploadService has no deletion counterpart,prove shared provider-aware delete for R2/S3. Full slots allocated only when validated-ready after browser release.
+
+
 - Latest14:57:03 interpreter checkpoint prioritizes remaining storage/upload/delete safety for storage worker. storage-cors-2 now read-only best-effort delete safety/current followups audit;prior feed/view audit retained deferred as storage-cors-3. Client6 history audit unchanged. No product/test writes before evidence/routing;QA expensive slot stays exclusive.
 
 

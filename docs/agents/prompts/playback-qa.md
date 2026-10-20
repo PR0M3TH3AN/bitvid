@@ -1,6 +1,14 @@
 # Area: Playback fallback QA (playback-qa)
 
-## Assignment: playback-qa-1
+## Current assignment: playback-qa-2 — actual-app local core/mobile baseline
+
+Old QA1 prepared output independently verified64143f42→1bb3a4fc(normal gate0),dispatch retained regression4/4;finish old docs closure/final evidence,then claim QA2. The full/gate slot is released;no old regression/full/browser reruns. Ongoing owner goal is in QUALITY/GOAL/PROGRAM.
+
+New bounded baseline uses actual app,existing docs/testing/agent-playwright-harness.md and tests/e2e/helpers/bitvidTestFixture.ts/local mock relay on private ports. Read KNOWN_ISSUES first. Do one controlled Chromium pass at360x800,390x844,1280x720:feed initial load/navigation (Home/Explore/ForYou where applicable),open/close Profile and Upload,card controls/touch targets/horizontal overflow/focus/required-field validation. Use local synthetic notes,test-only identities from existing harness only if needed;no real signer/peers/cloud/public media/credential access and no publishing outside local relay. Block/log all non-local HTTP/WebSocket attempts. If app cannot boot offline with existing harness,record exact blocker before substituting app/module behavior;do not call a module harness an actual-app pass.
+
+Investigation/evidence only,no product/CSS/token/helper/config/existing test edits or speculative redesign. Own scratch/QA notes/backlog only until dispatch routes a reproduced issue or useful retained scenario. Report actual viewport/flow checklist,evidence/screenshots,console/network failures and exact reproduction for any defect;distinguish known Firefox/test fixture issue from product bug. No broad E2E or build now. Browser-ONLY resource slot GRANTED after acknowledging old release/starting new baseline;record .task BEFORE opening,send starting event and close own private server/browser after this single pass or first hard blocker. No full-suite/normal submission for new task until ready+explicit slot;other workers may focused-test only while your browser run. Firefox followup only on specific parity/reproduction need after reporting. Do not repeat prior no-clearance intervention.
+
+## Archived completed assignment: playback-qa-1
 
 Independent regression/browser QA slice of pre-launch TODO34/performance-efficiency-plan Stage3 acceptance: dead hosted source falls back to viable torrent/mirror. Recent queued-probe fixes89ccb907/7d20a509 have controlled health lifecycle qualification but real playback fallback remains explicitly unverified. Existing webseed-playback.spec.ts uses public archive media and tolerates decode failure; do not modify or treat that as real offline success.
 
