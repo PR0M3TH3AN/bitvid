@@ -3,8 +3,8 @@
  "area": "playback-qa",
  "status": "blocked",
  "title": "Capture actual-app local core-flow/mobile baseline before UI changes",
- "blockedOn": "Dispatch grant/routing for narrow actual relay/filter/EOSE/ingest/render boundary measurement; app startup+crypto/media passed but unchanged 3-card wait still0.",
+ "blockedOn": "Measured actual pipeline delivers3 video events+EOSE and ingest/appmaps3 but DOMcards0; dispatch routing for read-only filtering/visibility/render boundary, no defect attribution yet.",
  "addedOn": "2026-10-20",
  "filedAt": "1bb3a4fc452969f060c09a286b72b8cd7ac4123e",
- "notes": "Latestsource-correctedactualrun15:55:01.326→15:55:18.667:realcanonicalcrypto,HEAD/GET/Range200/200/206,getApplicationReady completion andofficiallocalrelayAPI allPASS;3cards15s still0. No login/UI/other2viewports;noappdefectclaim. Browser/privateapp+relayCLOSED/RELEASE,depsremoved. Savedhealthlocal31848/unreachable[]/backoff{},noactuallocalWSframe/EOSEtrace;nextrootroute15:55:53 is measurementONLY,notnewfix. Cheapactualschemaprobe missing s invalid/addcanonical s valid,but actualconvertEventToVideo acceptsBOTH;gapnotproven0cardcause. ProposedpassiveWSREQ/EVENT/EOSE+warns/cache/DOMcounts,unchangedinputs/3cardguard/runtime/media/Buffer;awaitspecificdiagnosticgrant. Originaldrivererror/specfixesfullyrecorded;no product/test/full/build/newmirrors."
+ "notes": "Passive diagnostic16:00:32.126→16:00:50.999 onUNCHANGEDoriginal3seeds:localWSvideoREQ kinds30078/#tvideo/limit200,3EVENTids+EOSE;rawEvents/allEvents/activeMap/appVideoMapall3,initializedtrue,pool1,sharedclient. DOMtestidcards0/data-video-id0,Trendingempty. Firstmissingboundaryafteringest/appmap→DOM;no render/filterdecisioncausalityyet. s-tag schemafailure REAL but notpreventingingest/converter;notblindlycorrected. Startup+realcrypto/genuinemedia200/200/206/822pins/denyguardPASS;10otherHTTPblocked,0local404/pageerror. NoUI/remainingviewports. Ownedbrowser/serverclosed+RELEASE,depsremoved;awaitnarrowrouting,no product/test/full/build/newmirrors/assertionchange. Evidence docs/testing/playback-qa-2-pipeline-evidence.md+actualscreenshot;actualUIbaselinestillrequired."
 }
