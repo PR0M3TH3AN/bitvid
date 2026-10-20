@@ -1,6 +1,14 @@
 # Area: Storage CORS reliability (storage-cors)
 
-## Assignment: storage-cors-1 — preservation fix routed
+## Current assignment: storage-cors-2 — temporary feed/view deletion audit
+
+Storage item1 doneproductd3f4c215/closure7f99c045. Owner continuing direction calls for useful disjoint work now; this worker is temporarily lent to an independent read-only feed/view reliability slice. No other agent owns this slice. Claim storage-cors-2,merge verified unstable,read GOAL/PROGRAM/QUALITY/RULE-CHANGES/KNOWN_ISSUES plus NIP09/addressable deletion docs and centralized schema before Nostr-related investigation.
+
+High-priority pre-launch TODO1 asks seed→delete→assert-not-rendered feed/view regression; underlying tombstone guard and buffer tests exist. Dispatch inspected CRUD flow spec: settings/delete modal/cancel coverage is not proof of full stale-relay/reload suppression. Inspect all existing scenarios first;do not duplicate or misclassify known Firefox fixture flake as product bug. Trace actual client/buffer→feed/view boundary read-only. Build deterministic offline scratch at actual integration seam:seed visible owned synthetic video,apply local tombstone/delete event,deliver stale older version and refresh/cache hydration;assert card remains absent; include unaffected/live-video control. No public relay/signer/session actor publishing,real deletion/private data or app.js edits.
+
+Investigation/evidence only,no product/committed regression edits until dispatch scopes a demonstrated defect or mutant-proven coverage gap. Report exact HEAD/commands/counts,which actual renderer/cache/client boundaries are exercised,smallest proposed test/fix files and fixture limits. Do not call a mocked-only callback a full feed proof. Existing js/app.js,js/app/**,Nostr core,VideoListView,existing CRUD specs all read-only. Unique docs/testing/storage-cors-feed-* and own evidence/backlog allowed. QA owns current expensive gate:cheap focused offline checks only,no browser/build/full run. No subagents/kit/scheduler/cloud/real signer/wallet/production actions. Send immediate read+next-action and eventual evidence/blocker;keep .task current.
+
+## Archived completed assignment: storage-cors-1 — preservation fix routed
 
 Implementation routed after worker and independent dispatch offline reproduction: adding second origin replaces the entire existing rule, existingRulesPreserved0/1. Dispatch command env -u NODE_TEST_CONTEXT node /tmp/bitvid-dispatch-storage-cors-reproduce.mjs exits1 at strict false!==true after all5 characterization controls. No cloud IO.
 

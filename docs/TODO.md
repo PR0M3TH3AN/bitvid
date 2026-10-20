@@ -2,6 +2,9 @@
 
 ## dispatch
 
+- 2026-10-20 owner continuous-quality direction recorded;fleet/QUALITY.md tracks local vs real release evidence. QA full/normal slot active;client item6 profile-history wiring audit and storage item2 feed/view tombstone audit assigned now,read-only before fix routing. Remaining:actual coverage/reproduction decisions,current QA landing,local mobile/core-flow baselines and unqualified live gates.
+
+
 - 2026-10-20 storage productd3f4c215/closure7f99c045 verified;dispatch CORS9/9/build-artifact/previewHTTP200+dist match. QA exclusive full/normal slot actual grant14:49:35/read14:49:46 after65m54wait;storage-release→grant39m57 wake gap. Remaining:QA durable regression landing,final trial throughput/stall assessment,next bounded routing. Actual cloud/IAM/noCAS concurrent safety/live peers unverified.
 
 

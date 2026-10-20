@@ -9,6 +9,9 @@ a landing rule changes.
 
 ## 2026-10-20
 
+- Owner continuation now extends beyond trial until project quality is evidenced,tracked in QUALITY.md with local/live gates distinct. Existing client worker item6 investigates real profile-history removal wiring;storage worker item2 temporarily investigates feed/view tombstone coverage. Both read-only scratch/evidence,no product or committed tests before routing. QA retains expensive full/normal slot. Same3 workers,disjoint scope,no app.js writers/new features/kit/scheduler/external authority.
+
+
 - storage-cors-1 fix routed after worker+dispatch offline reproduction: preserve existing bucket CORS rules/fields; append default rule only for uncovered origins, idempotent no-PUT for equivalent coverage, only NoSuchCORSConfiguration permits absent config, other read errors no PUT. Own s3-multipart.js/s3-client.js+focused new test/integrity. No real cloud/credential operations or unrelated policy change; full gate slot follows client.
 
 
