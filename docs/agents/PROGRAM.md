@@ -13,6 +13,13 @@ Work through the existing TODO backlog and fix reproducible bugs that make the c
 
 ## Rulings log (newest first)
 
+### 2026-10-20 — Continuing quality objective, relayed by interpreter
+
+> "ok try to keep them working until the project is in a good place." — owner, relayed by interpreter; not represented as typed in dispatch.
+
+Continue the existing robustness/usability backlog beyond the trial, with bounded evidence-first tasks and adaptive staffing. Local proof and real Amber/cloud/live-peer/manual release gates stay distinct. This does not add push/deploy/spend/real-wallet/production-data/scheduler authority or authorize new product definitions. Track current quality and next work in fleet/QUALITY.md.
+
+
 ### 2026-10-20 — Bounded parallel trial, owner words relayed by interpreter
 
 > "id really like to stress test the multi agent process so if it needs more agents to get more done faster. do it" — owner, relayed by interpreter; not represented as typed by owner in dispatch.

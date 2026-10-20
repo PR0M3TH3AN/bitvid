@@ -1,6 +1,14 @@
 # Area: Storage CORS reliability (storage-cors)
 
-## Assignment: storage-cors-1 — preservation fix routed
+## Current assignment: storage-cors-2 — remaining storage/delete safety audit
+
+Storage item1 doneproductd3f4c215/closure7f99c045. Latest interpreter checkpoint14:57:03 steers this existing worker toward remaining todo/TODO_2026-06-16_r2-followups.md and current upload/delete safety. Earlier feed/view audit is deferred as storage-cors-3,not cancelled;preserve any scratch notes. Claim item2,merge verified unstable,read GOAL/PROGRAM/QUALITY/RULE-CHANGES/KNOWN_ISSUES and docs/lessons/cloudflare-s3-upload-gotchas.md.
+
+Bounded investigation only:validate current deleteVideoStorage best-effort/no-throw/owner-bucket invariant and remaining cleanup followups at actual service/caller boundary. Dispatch inspected settings/npub .trim calls before catch in r2Service:potential malformed cached connection/metadata boundary is evidence to check,not a presumed active bug. Inspect existing delete/storage-key tests and call normalization first;construct real service offline scenario with fake SDK/delete transport,valid owned/external URL controls and meaningful malformed/locked/partial-failure cases. Characterize existing all-versions/thumbnail followups without inventing retention/deletion policy. If no current defect,give evidence and choose one current managed-domain/idempotency followup from same backlog via actual callgraph;stop after one bounded actionable result or documented already-covered outcome.
+
+R2Service.deleteVideoStorage must stay best-effort,never throw,and never delete outside owner bucket. r2Service/s3UploadService are mirrored copies;any later fix would require explicit symmetric scope. For NOW all product/existing tests/read-only including js/services/r2Service.js,s3UploadService.js,storagePointer and storage/r2-mgmt.js. No real delete,cloud/provider credentials,public requests,signer/wallet/private data or app edits. Scratch/evidence/own backlog and docs/testing/storage-cors-* only;report exact HEAD/command/counts,fidelity and smallest proposed test/fix scope before product/committed regression changes. QA owns full/normal slot;cheap focused local checks only,no browser/full/build. Send immediate corrected read+next-action,then evidence/blocker;keep .task current. No new agents/features/kit/scheduler changes.
+
+## Archived completed assignment: storage-cors-1 — preservation fix routed
 
 Implementation routed after worker and independent dispatch offline reproduction: adding second origin replaces the entire existing rule, existingRulesPreserved0/1. Dispatch command env -u NODE_TEST_CONTEXT node /tmp/bitvid-dispatch-storage-cors-reproduce.mjs exits1 at strict false!==true after all5 characterization controls. No cloud IO.
 
