@@ -51,3 +51,9 @@
 - Item3 landing7d20a509 remains durable and ancestor of unstable604c8c61. Prior426-file validation is evidence-derived, not rerun. Remaining: reproduction, fix routing, actual playback/live peers/CPU-RSS qualification.
 
 - Item4 evidence accepted: dispatch independently ran last-owner --expect-fixed at604c8c61, exit1 with obsolete starts1!=0 after cleanup; shared-owner exit0, live badge healthy, settled4/active0/queued0. Routed same worker to queued URL cancellation fix in observer/controller plus focused tests. Active abort excluded. No product change landed or playback/CPU qualification yet.
+
+## 2026-10-20 — Queued URL fix complete and preview refreshed
+
+- Durable product submission7055496b landed89ccb907; closure94676453 landedf116f7c8, backlog done. Worker evidence427/427 full files,22 focused,13 reverted mutants,lint11/11,build/artifact and native Chromium+Firefox controlled IO smoke. These full/browser counts are worker-derived, not dispatch reruns.
+- Dispatch synced product89ccb907; direct Node focused lifecycle12/12,mirrors4/4,controller4/4 exit0. Initial inherited NODE_TEST_CONTEXT skipped tests; discarded that apparent success and reran direct files with env unset. Build+artifact exit0. Sandbox HTTP namespace returned000; authorized host localhost check returned200 and served index matched dist byte-for-byte (cmp exit0). Existing server untouched.
+- Product fixes obsolete queued URL starts1→0, preserves shared live owners/retry/mirrors/concurrency/hidden reveal. No active HEAD/media/HLS/torrent abort, actual decoding/playback fallback/live peers,CPU-RSS/full Stage3 qualification. Worker idle; no new item assigned. Next remaining candidate is active-probe cancellation, requiring fresh reproduction and bounded routing.
