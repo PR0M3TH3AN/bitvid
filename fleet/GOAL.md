@@ -34,3 +34,7 @@ Continue bounded robustness/usability/backlog work after the three-worker trial.
 > "Ready for me to review and test locally" — owner, relayed by interpreter.
 
 Finish current storage-cors-2 and client-reliability-6 through unchanged full gates/durable landings;complete a faithful local actual-app/core-flow/mobile baseline sufficient to expose hard local-review blockers;refresh preview3000 from integrated unstable. Prepare exact branch/SHA/URL/start-health evidence,reviewable changes,manual flows and honest limits. Then stop new optional work for owner local review. This is not production readiness,all optional backlog completion,or authorization for real accounts/cloud/peers/spending/push/deploy/schedulers. Newly reconciled public-promised playback backlog remains explicit,not silently completed or pulled into a large feature batch.
+
+## Local-review evidence checkpoint — 2026-10-20
+
+Storage2/history6 and the actual-app-discovered cold-feed blockerclient7 are normally landed. Latest codeb1174163 passed unchanged432-file gate;build6da89895 serves preview3000. Actualcold3cards+separate25-step360/390/1280core/modal follow-on coverage complete. Original strictUploadoverflowFAIL remains open2/4px at narrow widths,controlsusable,culpritunproven;do not call wholebaselineallpass. Local-review milestone includes this knownfinding and explicitlive/deferredlimits. Finish named evidence/handoff docs thenIDLE for owner review;nooptionalwork.
