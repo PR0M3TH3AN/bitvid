@@ -4,8 +4,13 @@
 //   fleet init <repo> [--spec <file>] [--provider name]
 //                                     copy templates + tools (never overwrites). Creates the
 //                                     git repo if needed. --provider (or --harness) sets harness.
-//                                     Writes fleet/context.md and starts the session manager,
-//                                     or tells you to `fleet up` and talk to it.
+//                                     Writes fleet/context.md and commits only the setup files.
+//                                     Starts the session manager at a terminal, or tells the
+//                                     user's agent to `fleet up` and talk to it.
+//   fleet setup-commit                commit only those setup files (same as the MCP tool)
+//   fleet tell <text>                 mail the session manager from the interpreter.
+//                                     An open window is woken with a short line, not the body.
+//   fleet hear                        print unread mail for the interpreter, and take it out of unread
 //   fleet worktrees [--only a,b]      create missing worktrees (one per area, branch area/<id>)
 //                                     refuses while fleet files are still uncommitted
 //   fleet up [--only a,b] [--skip a,b] [--bg] [--fresh] [--dry-run]
@@ -39,7 +44,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { KIT, loadConfig, loadAdapter, area as getArea, dispatcher, sessionName, flag, die, writeAtomic, tryGit, mainRef, today, runProcessGroup, runForeground, finishHeadless, withHandoff, applyHeadlessSession, assignLaunchSession, areaBudgetMin, readRun, writeRun, outcomeOfRun, pidAlive, killProcessGroup, landerIsUp, landerPid, startLander, writableRoots } from './lib.mjs';
-import { commitWork } from './core/ops.mjs';
+import { commitWork, setupCommit, tellDispatch, hearInterpreter, fleetStatus } from './core/ops.mjs';
 
 const argv = process.argv.slice(2);
 const cmd = argv[0];
@@ -117,8 +122,11 @@ function resumePrompt(a) {
 }
 function dispatcherWake(a) {
   return `${c.project} fleet start. You are the session manager (${a.id}). Read fleet/context.md and fleet/GOAL.md. `
-    + 'If GOAL.md is missing, ask the human the goal questions in this session and write fleet/GOAL.md yourself. '
-    + 'Do not ask them to edit a file or run a command. On the first loop, show the proposed team and ask before you start anyone. '
+    + 'If GOAL.md is missing, ask the goal questions and write fleet/GOAL.md yourself. '
+    + 'The user talks to their own agent, the interpreter. A line that says you have new fleet mail is only a wake. Read the mailbox; that takes the messages out of unread. Answer once, by mailbox, with your next action. '
+    + 'Read your mailbox at the start of every turn. The interpreter\'s yes counts for a routine decision. '
+    + 'Money, pushes, deploys, deletes, secrets, outgoing messages, and a bigger structural or directional change go to the real user. '
+    + 'Do not ask the user to edit a file, attach to tmux, or run a command. On the first loop, show the proposed team and ask before you start anyone. '
     + `Read ${c.paths.resume} and ${c.paths.program}.`
     + ruleChangeNote();
 }
@@ -281,11 +289,16 @@ function runMark(a, sessions) {
 
 async function status() {
   const sessions = readSessions();
+  const report = fleetStatus(c);
   console.log(`${c.project}  repo ${c.repo}  state ${c.stateDir}  lander ${landerIsUp(c) ? 'up' : 'DOWN'}`);
   for (const a of c.areas) {
     const budgetMin = areaBudgetMin(c, a);
-    console.log(`${a.id.padEnd(18)} ${a.role.padEnd(10)} ${a.harness.padEnd(7)} ${`${a.tier}/${a.model ?? '-'}`.padEnd(16)} ctx=${String(a.context ?? '-').padEnd(5)} rc=${a.remoteControl ? 'on ' : 'off'} budget=${budgetMin > 0 ? `${budgetMin}m` : 'unlimited'} ${fs.existsSync(a.worktree) ? '' : 'NO-WORKTREE '}${runMark(a, sessions)}`);
+    const row = report.areas.find((r) => r.id === a.id);
+    const live = row ? ` window=${row.window} unread=${row.unread} ${row.activity}` : '';
+    console.log(`${a.id.padEnd(18)} ${a.role.padEnd(10)} ${a.harness.padEnd(7)} ${`${a.tier}/${a.model ?? '-'}`.padEnd(16)} ctx=${String(a.context ?? '-').padEnd(5)} rc=${a.remoteControl ? 'on ' : 'off'} budget=${budgetMin > 0 ? `${budgetMin}m` : 'unlimited'} ${fs.existsSync(a.worktree) ? '' : 'NO-WORKTREE '}${runMark(a, sessions)}${live}`);
   }
+  if (report.interpreter.unread) console.log(`interpreter          unread=${report.interpreter.unread}`);
+  for (const id of report.recovered) console.log(`nudged ${id} again`);
 }
 
 function ensureWorktree(a) {
@@ -424,14 +437,13 @@ function fleetDirty(repo) {
 }
 
 function nextLine() {
-  return 'next: `fleet up`, then talk to the session manager. It reads fleet/context.md, asks what you want, and writes fleet/GOAL.md. You do not edit a file or run an apply command.';
+  return 'next: the user\'s agent runs `fleet up` and talks to the session manager. The user does not edit a file, attach to tmux, or run a command.';
 }
 
 function init(target, provider, spec) {
   if (!target || target.startsWith('--')) die('usage: fleet init <repo> [--spec <file>] [--provider <name>]');
   const repo = path.resolve(target);
   fs.mkdirSync(repo, { recursive: true });
-  const hadHead = tryGit(repo, 'rev-parse', '--verify', 'HEAD').ok;
   if (!tryGit(repo, 'rev-parse', '--git-dir').ok) {
     const g = spawnSync('git', ['init', '-b', 'main'], { cwd: repo, encoding: 'utf8' });
     if (g.status !== 0) die(g.stderr || 'git init failed');
@@ -463,19 +475,15 @@ function init(target, provider, spec) {
   if (provider) setConfigHarness(path.join(repo, 'fleet.config.json'), provider);
   writeAtomic(path.join(repo, 'fleet/context.md'), contextFacts(repo, spec));
   console.log('wrote fleet/context.md');
-  if (!hadHead) {
-    spawnSync('git', ['add', '-A'], { cwd: repo });
-    const email = tryGit(repo, 'config', 'user.email').out;
-    const args = [...(email ? [] : ['-c', 'user.email=fleet-init@localhost', '-c', 'user.name=fleet init']), 'commit', '-m', 'fleet init'];
-    const commit = spawnSync('git', args, { cwd: repo, encoding: 'utf8' });
-    if (commit.status !== 0) console.error(commit.stderr || commit.stdout);
-    else {
-      if (!email) console.log('no git user.email set; the initial commit uses a local fleet-init identity');
-      console.log(commit.stdout.trim());
-    }
+  const setup = setupCommit(repo);
+  if (setup.pending) {
+    console.error(setup.error || 'setup commit failed');
+    console.log('Setup files are in the worktree but not committed. Call the setup_commit MCP tool. Do not git commit, and do not ask the user to approve one.');
+  } else if (setup.committed.length) {
+    if (!tryGit(repo, 'config', 'user.email').out) console.log('no git user.email set; the setup commit uses a local fleet-init identity');
+    console.log(`committed fleet setup ${setup.sha}`);
   }
-  if (fleetDirty(repo).length) {
-    if (hadHead) console.log('This repo already has commits. Commit the fleet files, then `fleet up`. Uncommitted files are not in a new worktree.');
+  if (setup.pending || fleetDirty(repo).length) {
     console.log(nextLine());
     return repo;
   }
@@ -519,6 +527,35 @@ function commitArgs() {
   return { message, area, all, submit, paths };
 }
 
+function setupCommitCmd() {
+  const result = setupCommit(c.repo);
+  if (result.pending) die(result.error || 'setup commit failed. Do not git commit.');
+  if (!result.committed.length) console.log(result.sha ? `setup already committed ${result.sha}` : 'nothing to commit');
+  else console.log(`committed fleet setup ${result.sha}`);
+}
+
+function tellCmd() {
+  const rest = [];
+  for (let i = 1; i < argv.length; i++) {
+    if (argv[i] === '--config') { i++; continue; }
+    if (argv[i] === '--') continue;
+    rest.push(argv[i]);
+  }
+  const body = rest.join(' ').trim();
+  if (!body) die('usage: fleet tell <text>');
+  const result = tellDispatch(c, { body });
+  for (const f of result.files) console.log(f);
+  if (result.nudged) console.log(`nudged ${result.to}`);
+  else if (result.wake?.reason === 'working') console.log(`mailed ${result.to} (working, not nudged)`);
+  else console.log(`mailed ${result.to}`);
+}
+
+function hearCmd() {
+  const msgs = hearInterpreter(c);
+  if (!msgs.length) console.log('no unread messages for interpreter');
+  for (const m of msgs) console.log(`=== ${m.file}\n${m.text}`);
+}
+
 function commitCmd() {
   const { message, area, all, submit, paths } = commitArgs();
   const result = commitWork(c, { cwd: process.cwd(), area, message, paths, all, submit });
@@ -541,7 +578,7 @@ function tool(name) {
 const run = { up, down, status, supervise: () => supervise(argv[1]), worktrees, crontab,
   prompt: async () => console.log(composePrompt(getArea(c, argv[1]), await adapterFor(getArea(c, argv[1]).harness))),
   'run-job': () => runJob(argv[1]), 'sched-env': () => schedEnv(argv[1]), lander: () => lander(argv[1] ?? 'status'),
-  commit: commitCmd,
+  commit: commitCmd, 'setup-commit': setupCommitCmd, tell: tellCmd, hear: hearCmd,
   doctor: () => tool('doctor'), landq: () => tool('landq'), backlog: () => tool('backlog'),
   mailbox: () => tool('mailbox') }[cmd];
 if (!run) die(`unknown command "${cmd}" (fleet help)`);

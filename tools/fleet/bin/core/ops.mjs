@@ -2,11 +2,15 @@
 // both call these. Do not copy this logic into a plugin or a second server.
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { area as getArea, die, pidAlive, tryGit, git, mainRef, writeAtomic, today, landerIsUp, matchesAny, startLander, runTimedSync } from '../lib.mjs';
 import { send as mailboxSendFile, read as mailboxReadDir, archive as mailboxArchiveDir } from '../../adapters/mailbox.mjs';
 
 const STATUSES = ['open', 'in-progress', 'blocked', 'done', 'deferred'];
-const SPECIAL = ['owner', 'scheduler'];
+const SPECIAL = ['owner', 'scheduler', 'interpreter'];
+/** Paths a setup commit may stage. Product files are not in this list. */
+export const SETUP_PATHS = ['fleet.config.json', 'tools/fleet', 'docs/agents', 'docs/TODO.md', 'fleet', '.gitignore', 'AGENTS.md', '.agents'];
+const GITIGNORE_ADDS = new Set(['fleet/inbox/', '.task', '.fleet/']);
 const num = (id) => Number(String(id).match(/(\d+)$/)?.[1] ?? 0);
 
 function readJson(file, fallback = null) {
@@ -120,17 +124,210 @@ export function sendMailbox(c, { to, from, body, subject = '' } = {}) {
   knownParty(c, from);
   if (!body || !String(body).trim()) die('empty message');
   const targets = to === 'all' ? c.areas.map((a) => a.id).filter((id) => id !== from) : [to];
-  return targets.map((t) => { knownParty(c, t); return mailboxSendFile(c.mailbox.dir, t, from, body, subject ?? ''); });
+  const files = targets.map((t) => { knownParty(c, t); return mailboxSendFile(c.mailbox.dir, t, from, body, subject ?? ''); });
+  const wakes = targets.filter((t) => t !== from).map((t) => ({ to: t, ...nudgeMail(c, t, from) }));
+  return Object.assign(files, { wakes });
 }
 
+/** Reading takes the messages: they move to the archive, so unread means not yet read. */
 export function readMailbox(c, area) {
   knownParty(c, area);
-  return mailboxReadDir(c.mailbox.dir, area);
+  const msgs = mailboxReadDir(c.mailbox.dir, area);
+  for (const m of msgs) {
+    try { mailboxArchiveDir(c.mailbox.dir, area, m.file); } catch { /* already archived */ }
+  }
+  return msgs;
 }
 
 export function archiveMailbox(c, area, which) {
   knownParty(c, area);
   return mailboxArchiveDir(c.mailbox.dir, area, which);
+}
+
+function gitignoreIsFleetOnly(repo) {
+  const st = tryGit(repo, 'status', '--porcelain', '--', '.gitignore');
+  if (!st.ok || !st.out) return false;
+  if (st.out.split('\n').every((l) => l.startsWith('??'))) return true;
+  const diff = tryGit(repo, 'diff', '-U0', '--', '.gitignore');
+  const lines = (diff.out || '').split('\n').filter((l) => (l.startsWith('+') || l.startsWith('-')) && !l.startsWith('+++') && !l.startsWith('---'));
+  return lines.length > 0 && lines.every((l) => l.startsWith('+') && GITIGNORE_ADDS.has(l.slice(1)));
+}
+
+/**
+ * Commit only the fleet setup files in the main checkout. Runs in this process
+ * (fleet init, or the MCP server outside an agent sandbox). A sandboxed git
+ * commit cannot write the index; this is the path that can. Product files are
+ * left unstaged.
+ */
+export function setupCommit(repo, { message = 'fleet init' } = {}) {
+  if (!tryGit(repo, 'rev-parse', '--git-dir').ok) die(`not a git repo: ${repo}`);
+  const paths = [];
+  for (const spec of SETUP_PATHS) {
+    if (spec === '.gitignore') {
+      if (gitignoreIsFleetOnly(repo)) paths.push(spec);
+      continue;
+    }
+    const st = tryGit(repo, 'status', '--porcelain', '--', spec);
+    if (st.ok && st.out) paths.push(spec);
+  }
+  if (!paths.length) {
+    const head = tryGit(repo, 'rev-parse', 'HEAD');
+    return { sha: head.ok ? head.out : null, committed: [], pending: false };
+  }
+  const add = tryGit(repo, 'add', '--', ...paths);
+  if (!add.ok) return { sha: null, committed: [], pending: true, paths, error: add.err || 'git add failed' };
+  const email = tryGit(repo, 'config', 'user.email').out;
+  const args = ['-c', 'core.editor=true', ...(email ? [] : ['-c', 'user.email=fleet-init@localhost', '-c', 'user.name=fleet init']), 'commit', '-m', message, '--', ...paths];
+  const commit = tryGit(repo, ...args);
+  if (!commit.ok) return { sha: null, committed: [], pending: true, paths, error: commit.err || commit.out || 'git commit failed' };
+  return { sha: tryGit(repo, 'rev-parse', 'HEAD').out, committed: paths, pending: false };
+}
+
+/** Mail the session manager from the interpreter. The wake is the same short line as any other mail. */
+export function tellDispatch(c, { body, from = 'interpreter', subject = '' } = {}) {
+  const hub = c.areas.find((a) => a.role === 'dispatcher');
+  if (!hub) die('no session manager (role dispatcher)');
+  const files = sendMailbox(c, { to: hub.id, from, body, subject });
+  const wake = (files.wakes || []).find((w) => w.to === hub.id) || { submitted: false, reason: 'no-window' };
+  return { files: [...files], to: hub.id, from, nudged: Boolean(wake.submitted), wake };
+}
+
+export function hearInterpreter(c) {
+  return readMailbox(c, 'interpreter');
+}
+
+const NUDGE_PAUSE_MS = 200;
+const NUDGE_SETTLE_MS = 150;
+const NUDGE_RETRY_MS = 400;
+const IDLE_AFTER_MS = 3000;
+const RECOVER_AFTER_MS = 120000;
+const BUSY_RE = /esc to interrupt|esc to cancel|ctrl\+c to (?:interrupt|cancel)/i;
+
+export function nudgeLine(from) {
+  return `You have new fleet mail from ${from}. Read it with mailbox_read.`;
+}
+
+function sleepMs(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function tmuxTarget(c, areaId) {
+  return `fleet-${c.project}`.replace(/[.:]/g, '-') + `:${areaId}`;
+}
+
+function tmuxText(args) {
+  return spawnSync('tmux', args, { encoding: 'utf8' });
+}
+
+function capturePane(target) {
+  const r = tmuxText(['capture-pane', '-p', '-t', target]);
+  return r.status === 0 ? r.stdout : '';
+}
+
+function cursorRow(target, pane) {
+  const info = tmuxText(['display-message', '-p', '-t', target, '#{cursor_y}']);
+  const y = Number(String(info.stdout || '').trim());
+  const rows = String(pane).split('\n');
+  if (!Number.isInteger(y) || y < 0 || y >= rows.length) return rows[rows.length - 1] || '';
+  return rows[y] || '';
+}
+
+function stillInInput(target, line) {
+  return cursorRow(target, capturePane(target)).includes(line);
+}
+
+/**
+ * Wake an open tmux window with a short line, not the mail body.
+ * Codex and Claude treat a fast burst as a paste and swallow Enter, so the
+ * line is typed, then Enter is sent after a pause, outside that burst.
+ * If the cursor row still holds the line, Enter is sent once more.
+ * A pane that shows an interrupt hint is left alone; a later status check can nudge it.
+ */
+export function nudgeMail(c, areaId, from) {
+  const target = tmuxTarget(c, areaId);
+  if (tmuxText(['list-panes', '-t', target]).status !== 0) return { submitted: false, reason: 'no-window' };
+  const line = nudgeLine(from);
+  if (BUSY_RE.test(capturePane(target))) return { submitted: false, reason: 'working', line };
+  if (tmuxText(['send-keys', '-t', target, '-l', line]).status !== 0) return { submitted: false, reason: 'send-failed', line };
+  sleepMs(NUDGE_PAUSE_MS);
+  tmuxText(['send-keys', '-t', target, 'Enter']);
+  sleepMs(NUDGE_SETTLE_MS);
+  if (!stillInInput(target, line)) return { submitted: true, reason: 'submitted', line };
+  sleepMs(NUDGE_RETRY_MS);
+  tmuxText(['send-keys', '-t', target, 'Enter']);
+  sleepMs(NUDGE_SETTLE_MS);
+  const submitted = !stillInInput(target, line);
+  return { submitted, reason: submitted ? 'submitted' : 'not-submitted', line };
+}
+
+function unreadFiles(c, id) {
+  const box = path.join(c.mailbox.dir, id);
+  if (!fs.existsSync(box)) return [];
+  return fs.readdirSync(box).filter((f) => f.endsWith('.md') && !f.startsWith('.')).sort()
+    .map((f) => ({ file: f, path: path.join(box, f), mtimeMs: fs.statSync(path.join(box, f)).mtimeMs }));
+}
+
+function paneView(c, areaId, idleAfterMs) {
+  const target = tmuxTarget(c, areaId);
+  if (tmuxText(['list-panes', '-t', target]).status !== 0) return { window: 'dead', activity: 'unknown' };
+  const info = tmuxText(['display-message', '-p', '-t', target, '#{pane_dead} #{window_activity}']);
+  const match = String(info.stdout || '').trim().match(/^([01])\s+(\d+)$/);
+  if (info.status !== 0 || !match) return { window: 'dead', activity: 'unknown' };
+  const [, dead, stamp] = match;
+  if (dead === '1') return { window: 'dead', activity: 'unknown' };
+  const pane = capturePane(target);
+  const busy = BUSY_RE.test(pane);
+  const ageMs = Date.now() - Number(stamp) * 1000;
+  const activity = busy || ageMs < idleAfterMs ? 'working' : 'idle';
+  return { window: 'alive', activity };
+}
+
+function nudgeStatePath(c) {
+  return path.join(c.stateDir, 'mail-nudges.json');
+}
+
+function readNudgeState(c) {
+  try { return JSON.parse(fs.readFileSync(nudgeStatePath(c), 'utf8')); } catch { return {}; }
+}
+
+function senderOf(file) {
+  try {
+    const text = fs.readFileSync(file, 'utf8');
+    return text.match(/^from: (.+)$/m)?.[1]?.trim() || 'fleet';
+  } catch { return 'fleet'; }
+}
+
+/**
+ * Per-area window, unread count, and a working/idle guess from the pane.
+ * When an area is idle with mail that has been unread for a while, nudge once.
+ * That is the only recovery. It runs because someone looked at status, not on a timer.
+ */
+export function fleetStatus(c, { recoverAfterMs = RECOVER_AFTER_MS, idleAfterMs = IDLE_AFTER_MS } = {}) {
+  const state = readNudgeState(c);
+  let stateDirty = false;
+  const recovered = [];
+  const areas = c.areas.map((a) => {
+    const view = paneView(c, a.id, idleAfterMs);
+    const unread = unreadFiles(c, a.id);
+    const row = {
+      id: a.id, role: a.role, harness: a.harness,
+      window: view.window, unread: unread.length, activity: view.activity,
+    };
+    const oldest = unread[0];
+    const age = oldest ? Date.now() - oldest.mtimeMs : 0;
+    const already = (state[a.id] || []).includes(oldest?.file);
+    if (view.window === 'alive' && view.activity === 'idle' && oldest && age >= recoverAfterMs && !already) {
+      const wake = nudgeMail(c, a.id, senderOf(oldest.path));
+      state[a.id] = [...(state[a.id] || []), oldest.file];
+      stateDirty = true;
+      row.recovered = true;
+      row.recoverReason = wake.reason;
+      recovered.push(a.id);
+    }
+    return row;
+  });
+  if (stateDirty) writeAtomic(nudgeStatePath(c), JSON.stringify(state));
+  return { areas, recovered, interpreter: { unread: unreadFiles(c, 'interpreter').length } };
 }
 
 export function queuePaths(c) {
