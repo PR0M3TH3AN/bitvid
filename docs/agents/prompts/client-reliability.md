@@ -1,6 +1,18 @@
 # Area: Client reliability (client-reliability)
 
-## Current assignment: client-reliability-4 — investigation only
+## Current assignment: client-reliability-4 — queued URL probe fix
+
+Investigation is complete: at4c54858c real observer/controller/cache gives4 HEAD requests,3 active media probes and1 queued. Dispose/remove last feed then release a slot: obsolete media starts1(expected0); --expect-fixed naturally fails exit1 after cleanup. Shared live-owner control passes exit0, healthy badge, settled4/active0/queued0. Dispatch independently reproduced both against dispatch code at604c8c61 using /tmp/bitvid-dispatch-4-url-lifecycle.mjs. No public IO. Your detailed investigation evidence remains authoritative for fixture details.
+
+Implementation now authorized for item4. Temporary explicit ownership: js/urlHealthObserver.js, js/ui/urlHealthController.js, focused URL lifecycle tests, relevant existing URL health tests, Test Integrity Note and area evidence/backlog notes. Use existing onCardUnregister boundary. No shared cardObserver/VideoListView/app/state-cache module changes without evidence and routing. No HEAD/active media abort, HLS/torrent changes, cache policy/TTLs, mirror order, concurrency, signers, kit or styling changes. Existing callback consumers must remain compatible without editing app.js. If that cannot work safely, report before broadening.
+
+Before edits read current rules and test-integrity standard, merge unstable and preserve investigation notes. Retain a real observer→controller→queue regression with controlled external IO. Cancel queued work only after its last live owner disappears; settle cancellation without negative cache, mirror fallthrough, stale UI mutation or deleting newer inflight records. Preserve live shared owners and existing event/source/playable-mode dedup; later same-source registrations can retry. Keep three-media concurrency and healthy hidden-card reveal. Already-active probes retain prior lifecycle/cache behavior.
+
+Verify last-owner obsolete starts0, shared live owner remains healthy, cancellation settlement and same-source retry, disposed/reused registration stale callbacks, mirror order, concurrency and hidden-card reveal. Every new scenario needs a deliberately broken mutant that fails; preserve assertions and no sleeps/retries. Run focused suites, npm run lint, full npm test with existing60s/file diagnostic bound, npm run build/artifact check and local Chromium/Firefox controlled lifecycle/source-health smoke if available (reserve browser in .task). Report actual playback/fallback gaps; do not claim CPU/RSS benefit from probe counts.
+
+Commit with item4 id, merge unstable (never rebase), verify merged tree and normal landing gate. Durable landed status plus unstable ancestry before close. Send dispatch mailbox on blocker, product landing and final completion including SHA/checks/counts/unverified scope; dispatch owns independent verification and preview refresh. No further item without routing. No subagents needed. No deploy/push/spend/wallet/production-data/scheduler/kit changes.
+
+## Archived investigation: client-reliability-4
 
 Owner continuation relayed by interpreter on 2026-10-20 explicitly permits this bounded step during quiet hours. No recurring schedule/config change.
 

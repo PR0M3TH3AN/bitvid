@@ -9,6 +9,9 @@ a landing rule changes.
 
 ## 2026-10-20
 
+- client-reliability-4 reproduced queued URL media work after last-feed disposal (obsolete starts1, expected0); dispatch independently confirmed failure and shared-owner control. Investigation restriction superseded for bounded implementation: urlHealthObserver.js, ui/urlHealthController.js, focused tests/integrity/evidence. Active abort, HEAD/HLS/torrent, shared observer/app/cache modules, limits/TTLs remain excluded. Normal gates and durable landing required.
+
+
 - Owner continuation relayed by interpreter permits the requested bounded development step now despite quiet hours; recurring schedule/config unchanged. client-reliability-4 is read-only source-health cancellation reproduction at current HEAD, evidence notes only. Product/test fixes require dispatch routing after reproduction; mailbox tools now deliver short wakes, superseding prior no-wake limitation for updated runtime. No unattended monitoring claim.
 
 ## 2026-10-19
