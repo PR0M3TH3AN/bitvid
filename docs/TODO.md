@@ -2,6 +2,9 @@
 
 ## dispatch
 
+- 2026-10-20 trial outputs complete:QA regression1bb3a4fc/closurebbf57388 verified,dispatch independent4/4/runtime unchanged so no extra build. Same3 workers continue:client6 real history test-only retention after independent current pass/historical-noop failure;storage2 method-only malformed metadata no-throw guard after independent2rejects/6controls;QA2 actual-app local core/mobile3viewports browser-only grant. Full slots on validated-ready after QA browser release;no feature/readiness/live-proof claim.
+
+
 - 2026-10-20 owner continuous-quality direction recorded;fleet/QUALITY.md tracks local vs real release evidence. QA full/normal slot active;client item6 profile-history wiring audit and storage item2 feed/view tombstone audit assigned now,read-only before fix routing. Remaining:actual coverage/reproduction decisions,current QA landing,local mobile/core-flow baselines and unqualified live gates.
 
 
@@ -75,5 +78,8 @@
 - Parallel trial item1: reproduce CORS existing-origin preservation offline before routing fix; no cloud changes.
 
 ## playback-qa
+
+- 2026-10-20 item1 done:retained regression1bb3a4fc/closurebbf57388,full429/429/4focused/6mutants/lint11,dispatch independent4/4. Item2 nowactual-app local mock-relay/private-port core/mobile baseline,onebounded Chromium pass/noUIedits/browser-only allocation. Real peers/fullapp qualification stays open until actual evidence.
+
 
 - Parallel trial item1: local fallback qualification/regression; browser initially reserved to QA; product read-only.
