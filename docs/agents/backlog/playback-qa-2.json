@@ -1,9 +1,10 @@
 {
-  "id": "playback-qa-2",
-  "area": "playback-qa",
-  "status": "open",
-  "title": "Capture actual-app local core-flow/mobile baseline before UI changes",
-  "blockedOn": null,
-  "addedOn": "2026-10-20",
-  "filedAt": "1bb3a4fc452969f060c09a286b72b8cd7ac4123e"
+ "id": "playback-qa-2",
+ "area": "playback-qa",
+ "status": "blocked",
+ "title": "Capture actual-app local core-flow/mobile baseline before UI changes",
+ "blockedOn": "Await explicit second browser-only grant after storage release; approved genuine mirror/frozen actual built app ready.",
+ "addedOn": "2026-10-20",
+ "filedAt": "1bb3a4fc452969f060c09a286b72b8cd7ac4123e",
+ "notes": "First actual source-app pass blocked360x800(15s harness timeout,CDNBuffer denied+CSS404); no UI/viewports success claim. Dispatch approved preparation/doc-only normal submission15:14:36. Copied real prepared Buffer6.0.3 mirror SHA256507a593508c51d1397a9a5818ad0b8dbf7e3ad810feaa87cabff87ff56cf3984 plus verified genuine tarballs/provenance into own read-only /tmp/bitvid-playback-qa-2-snapshot; own Buffer APIprobes4/4 exit0. Frozen dispatch actual verifieddist811files/16145338B,manifestSHA2569997b48049fd01d7c7627c009373296c9a4203683522d31bc5ee82ff98e8599b;CSS283d0464…;465runtime/buildinputsidentical. No QA build/browser/install/fetch/productchanges; not byte-identicalCDN or independentlyrebundled/metafileverified. Only exactBufferURL localfulfillment proposed next; allothernonlocalblocked;actualapp remainsBLOCKEDpending2ndgrant."
 }
