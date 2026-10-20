@@ -176,3 +176,9 @@ for name,path,old,new in mutants:
  finally:p.write_text(original)
 print(json.dumps(results,indent=2))
 ```
+
+Pre-gate checkpoint: regression commit `025771a84d95c05842193631c1ace70539558368`.
+Merged local unstable into own branch at `acb2fdef3baf74c2526babf79eea8a2451a3aa46`;
+sandbox ORIG_HEAD lock initially read-only, then approved elevated local merge succeeded.
+Post-merge focused check:4/4, exit0; `git diff --check`: exit0. New RULE-CHANGES read.
+Full+submit scheduling explicitly waits behind client then storage per dispatch13:43:52Z.
