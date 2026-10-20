@@ -2,6 +2,9 @@
 
 ## dispatch
 
+- 2026-10-20: continuing owner direction: item5 investigation assigned to same worker, active URL media last-owner/shared-owner controls first. Remaining: reproduction and narrow fix routing or next evidenced TODO. No product fix assumed; active abort/live playback/CPU-RSS unverified.
+
+
 - 2026-10-20: item4 done: product89ccb907,closuref116f7c8 durable landed. Dispatch independent URL tests20/20,build/artifact exit0,previewHTTP200 and index matches dist. Worker full427/427,focused22,13 mutants,lint11,browser smoke recorded. Worker idle; next active-probe candidate needs fresh reproduction/routing. Actual playback/live peers/CPU-RSS/full Stage3 unfinished.
 
 

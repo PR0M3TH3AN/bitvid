@@ -9,6 +9,9 @@ a landing rule changes.
 
 ## 2026-10-20
 
+- client-reliability-5 assigned to existing worker: read-only active URL/torrent cancellation reproduction at current HEAD, starting active URL media last-owner/shared-owner controls. Evidence notes only; product/test changes need demonstrated defect and dispatch routing. Continue selecting bounded next actions under existing owner direction; no new routine approval required. No scheduler or external authority change.
+
+
 - client-reliability-4 reproduced queued URL media work after last-feed disposal (obsolete starts1, expected0); dispatch independently confirmed failure and shared-owner control. Investigation restriction superseded for bounded implementation: urlHealthObserver.js, ui/urlHealthController.js, focused tests/integrity/evidence. Active abort, HEAD/HLS/torrent, shared observer/app/cache modules, limits/TTLs remain excluded. Normal gates and durable landing required.
 
 
