@@ -1,9 +1,9 @@
 {
-  "id": "client-reliability-4",
-  "area": "client-reliability",
-  "status": "open",
-  "title": "Reproduce remaining source-health cancellation defect at current HEAD before scoping a fix",
-  "blockedOn": null,
-  "addedOn": "2026-10-20",
-  "filedAt": "604c8c61f4783717eb0cff7ca7ca33efb59aac8a"
+ "id": "client-reliability-4",
+ "area": "client-reliability",
+ "status": "in-progress",
+ "title": "Reproduce remaining source-health cancellation defect at current HEAD before scoping a fix",
+ "blockedOn": null,
+ "addedOn": "2026-10-20",
+ "filedAt": "604c8c61f4783717eb0cff7ca7ca33efb59aac8a"
 }
