@@ -81,3 +81,9 @@
 
 - Administrative drain completed: item5 routingf3c0ffd3->371e7902(normal gate exit0),storage routing4c7a897c+trial notes2a5ba463->b922c186 docs-only. Dispatch syncedb922c186. Client exclusive full/browser/normal product landing slot granted13:43:51,request13:32:54 (~10m57s resource wait),QA explicitly released browser. Storage next,QA third; normal queue unchanged.
 - Storage ready report9/9 new/original8fail/8mutants,offline lockfile install4s441packages,build pass; lint sandbox git-spawnEPERM requires approved unchanged rerun. QA retained4/4,6 restored failing mutants; same lint environment issue,temporary read-only deps linkage in own worktree. These are worker-derived,not independent reruns. No trial product/regression landing yet; preview preserved.
+
+## 2026-10-20 — Trial first product outcome and resource handoff
+
+- Client item5 submission4bc52f9d durably landed0bd0b1c3 at13:57:06,unchanged normal gate exit0;dispatch independently checked status/log/ancestry0. Worker full427/427,focused28/lifecycle18,6mutants,lint11/build,native Chromium+Firefox health lifecycle smoke0obsoleteHEAD/resources/external/pageerrors are worker-derived. Browser/server released.
+- Dispatch synced product0bd0b1c3,independent direct URL lifecycle18/18 natural exit0(336.59ms),build/artifact exit0,preserved previewHTTP200 and downloaded index byte-equal to dist(cmp0). Actual media/playback/live peers/activeabort/CPU/fullStage3 unverified.
+- Storage exclusive full/normal landing slot granted13:58:27,pickup13:58:42;request13:42:38→grant949s(15m49). QA ready95a77a7f focused4/6mutants/lint11,holding since13:43:52. No new client item while remaining trial landings validate prepared stable code;next action remains completing bounded3-worker trial,not waiting owner approval.

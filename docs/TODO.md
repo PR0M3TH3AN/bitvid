@@ -2,6 +2,9 @@
 
 ## dispatch
 
+- 2026-10-20 trial first product landed: item5 product0bd0b1c3,closuredc852597;dispatch lifecycle18/18/build-artifact/previewHTTP200+dist match. Storage slot grant13:58:27 after949s wait,full/normal landing underway;QA next,ready95a77a7f. Remaining: storage/QA durable landings,preview refresh after product changes,final trial evidence;real cloud/peers/activeabort/CPU unverified.
+
+
 - 2026-10-20 trial current: all3 pickups verified; admin notes durableb922c186. Client item5 owns exclusive full/browser/product landing from13:43:51 (~10m57s wait); storage CORS ready9/9+8mutants,next slot; QA retained4/4+6mutants,third slot,browser released. Remaining: full merged-tree validation,durable product/test landings,preview refresh and final trial outcome. No real cloud/peers/CPU qualification.
 
 
