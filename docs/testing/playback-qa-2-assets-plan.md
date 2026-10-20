@@ -176,3 +176,41 @@ const crypto=require('node:crypto');
 
 Current action: retain evidence/plan, no browser/full/build while storage holds the slot. Request dispatch review
 of exact local fulfillment+verified CSS reuse, then a new bounded browser grant before executing any adapter/build.
+
+## Approved prepared mirror and frozen snapshot (latest checkpoint)
+
+Dispatch15:14:36 mailbox approved preparation/copy of its genuine prepared mirror and verified dist, plus
+docs-only normal submission. **No second browser grant yet.** This supersedes the earlier request to build
+our own adapter: no esbuild/build/install was run by QA. Root's prepared bundle/provenance are copied as approved.
+
+Own snapshot: `/tmp/bitvid-playback-qa-2-snapshot`, files chmod0444 after copy.
+Dispatch-owned assets were only read; no other worktree/process was changed. No symlink assets were followed.
+The exact mirror and all3 tarball SHA256 values were independently verified against the earlier cache report.
+Copied root provenance states esbuild0.27.3,pins buffer6.0.3/base64-js1.5.1/ieee7541.2.1,no network/hooks.
+QA did not independently reproduce that bundler output or receive an esbuild input metafile; the earlier
+metafile-based proposal was not executed. Actual copied bytes are bound by the approved SHA256 below.
+
+Independent local mirror API sanity checks: `node --input-type=module` importing copied real Buffer, exit0,4/4:
+UTF8 bytes equal native Node Buffer; base64 round-trip; float64 read/write bytes equal native Buffer; subarray
+shares backing memory. No app/toolkit behavior replacement was used, and these probes do not qualify app boot.
+
+```json
+{
+  "source": "/home/user/Documents/GitHub/bitvid-dispatch/dist",
+  "files": 811,
+  "totalBytes": 16145338,
+  "manifestSha256": "9997b48049fd01d7c7627c009373296c9a4203683522d31bc5ee82ff98e8599b",
+  "indexSha256": "13b12280ffea5529172d081ba30aab64bb6f7140145fa17af407a09fb60786b4",
+  "bufferPolyfillSha256": "9c6412a7c3a7bda9d19ba420a0fad122b4d0e60a3af68ceb43d8eb98b68e6bff",
+  "cssSha256": "283d04642d201edba1e9bd5cbc3ede8d74fbd11b50ff0cd2732d463847d2adf3",
+  "mirrorSha256": "507a593508c51d1397a9a5818ad0b8dbf7e3ad810feaa87cabff87ff56cf3984"
+}
+```
+
+The full sorted path→SHA256 manifest remains in own scratch `dist-manifest.json`; hashed summary above is durable.
+Next granted pass serves this frozen **actual built app** instead of incomplete source checkout; existing local
+relay/harness is retained. Only exact public Buffer import URL is fulfilled from local approved bytes and the
+mirror hit logged. Every other non-local HTTP/WebSocket stays aborted/logged. No CDN fetch/pass-through,crypto
+stub,toolkit override,product import rewrite or preview3000 use. Stop/release at the next hard prerequisite.
+
+QA2 stays BLOCKED pending resource grant/actual app result; all unrun viewport/UI checks remain unverified.
