@@ -1,0 +1,4 @@
+- [x] Read mailbox/new rules, merge unstable, claim8.
+- [ ] Reproduce current active-media last-owner behavior and controls.
+- [ ] Record evidence and propose boundary/contract correction to dispatch.
+- [ ] Await explicit minimal-fix routing; no implementation authority yet.

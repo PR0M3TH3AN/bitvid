@@ -1,10 +1,10 @@
 {
-  "id": "client-reliability-8",
-  "area": "client-reliability",
-  "status": "open",
-  "title": "Measure and scope active URL-media last-owner cancellation with shared/rejoin controls",
-  "blockedOn": null,
-  "addedOn": "2026-10-20",
-  "filedAt": "6609269ea11aaff753e6d9f3d8b91eb04e219a20",
-  "evidence": "Owner continuation relayed20:44:41UTC. Stage3 still requires active owner-aware cancellation. Current lifecycle tests intentionally retain active resources/cache under previous queued-only contract. Read-only actual observer/controller controlled-IO reproduction first; explicit fix/test-contract routing required after measurements. See current area brief."
+ "id": "client-reliability-8",
+ "area": "client-reliability",
+ "status": "in-progress",
+ "title": "Measure and scope active URL-media last-owner cancellation with shared/rejoin controls",
+ "blockedOn": null,
+ "addedOn": "2026-10-20",
+ "filedAt": "6609269ea11aaff753e6d9f3d8b91eb04e219a20",
+ "evidence": "At5b77fd20 actual observer/controller controlled media last-owner retains1resource/3listeners/1timer/1slot/unsettled1;strict disposed/fifo checks naturally fail after cleanup. Queue3active/2waiting unchanged until controlled completion;shared/cross/legacy/rejoin/timeout/error/replacement7controls exit0,existing lifecycle18pass. Proposal controller retain/active-media settle cleanup only,explicit queued-only cache/rejoin test contract correction pending dispatch independent confirmation/routing. Evidence test_logs/TEST_LOG_2026-10-20_20-55-00_client-reliability-8-investigation.md. No product/tests/full/build/browser changes."
 }

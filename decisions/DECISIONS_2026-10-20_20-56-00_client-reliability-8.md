@@ -1,0 +1,4 @@
+- Implement only controller retainUrlProbe final-owner hook and active media settle/cleanup. Existing shared WeakMap owners and cancelled result paths suffice; no AbortController or observer/cache edit needed for video-element cleanup.
+- Mark cancelled synchronously before promise continuations so same-turn rejoin cannot attach to obsolete work. Clear active cancellation hook on completion; reuse existing finally for exactly-once slot/FIFO release.
+- Strict spec correction authorized at3dac0afb and recorded in docs/spec_changes/2026-10-20-client-reliability-8-active-media.md; retain live-owner cache/timeout/mirror contracts independently.
+- No full/build/browser before dispatch allocation; one unchanged normal full landing gate can be authoritative after merged focused/lint.

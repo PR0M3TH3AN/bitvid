@@ -1,0 +1,6 @@
+- [x] Investigation independently confirmed; explicit controller-only/spec-correction routing3dac0afb.
+- [x] Strict failing regression before product edits; minimal controller active cleanup.
+- [x] Final focused37/37 across3files;14restored mutants rejected;lint11pass.
+- [x] Unique spec/integrity/decision/test evidence.
+- [ ] Commit/merge verification;READY and expensive slot request.
+- [ ] Granted validation,unchanged normal full gate,durable ancestry before close.
