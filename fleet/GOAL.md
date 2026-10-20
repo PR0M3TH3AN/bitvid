@@ -28,3 +28,9 @@ Work through the existing TODO backlog, find and fix bugs, and make the client m
 > "ok try to keep them working until the project is in a good place." — owner, relayed by interpreter; not represented as typed in dispatch.
 
 Continue bounded robustness/usability/backlog work after the three-worker trial. Use fleet/QUALITY.md to track evidence and remaining gates. Passing units alone does not establish project readiness. Keep workers useful where scopes split safely; reduce idle staffing when useful independent work runs out. Stage reproductions/audits before product fixes, preserve normal local unstable landing and restricted-action limits. Amber/cloud/live peers/manual release qualification stays explicitly open until authorized real evidence exists.
+
+## Explicit stopping milestone — 2026-10-20
+
+> "Ready for me to review and test locally" — owner, relayed by interpreter.
+
+Finish current storage-cors-2 and client-reliability-6 through unchanged full gates/durable landings;complete a faithful local actual-app/core-flow/mobile baseline sufficient to expose hard local-review blockers;refresh preview3000 from integrated unstable. Prepare exact branch/SHA/URL/start-health evidence,reviewable changes,manual flows and honest limits. Then stop new optional work for owner local review. This is not production readiness,all optional backlog completion,or authorization for real accounts/cloud/peers/spending/push/deploy/schedulers. Newly reconciled public-promised playback backlog remains explicit,not silently completed or pulled into a large feature batch.
