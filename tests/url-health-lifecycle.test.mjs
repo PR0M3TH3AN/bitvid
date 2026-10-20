@@ -436,3 +436,144 @@ test("shared inflight ownership also survives a second controller using the same
   assert.equal(badge.dataset.urlHealthState, "healthy");
   assert.equal(f.heads.length, 4);
 });
+
+test("active primary error after last-owner disposal starts no mirror HEAD and permits a fresh request", async (t) => {
+  const f = fixture(t),
+    v = f.video("disposed-active-mirror");
+  v.sources = [{ url: "https://mirror.invalid/obsolete.mp4" }];
+  const old = f.feed([v]);
+  old.observer.show();
+  await flush();
+  assert.equal(f.heads.length, 1);
+  assert.equal(f.media.length, 1);
+  old.dispose();
+  f.done(f.media[0], "error");
+  await flush();
+  assert.equal(
+    f.heads.length,
+    1,
+    "disposed chain must not start a mirror HEAD"
+  );
+  assert.equal(await f.promises[0], null);
+  assert.equal(cache.getCachedUrlHealth(v.id, v.url), null);
+  assert.equal(f.controller.activeVideoProbes, 0);
+  assert.equal(f.media[0].getAttribute("src"), null);
+  assert.equal(old.badges[0].dataset.urlHealthState, "checking");
+  const fresh = f.feed([v]);
+  fresh.observer.show();
+  await flush();
+  assert.equal(f.heads.length, 2);
+  assert.equal(f.media.length, 2);
+  f.done(f.media[1]);
+  await flush();
+  assert.equal(fresh.badges[0].dataset.urlHealthState, "healthy");
+  assert.equal(cache.getCachedUrlHealth(v.id, v.url).status, "healthy");
+});
+
+for (const timing of ["shared", "rejoin"]) {
+  test(`active primary error preserves ordered mirror for a ${timing} live owner`, async (t) => {
+    const f = fixture(t),
+      v = f.video(`active-${timing}`);
+    v.sources = [
+      { url: "https://mirror.invalid/live-first.mp4" },
+      { url: "https://mirror.invalid/unused-second.mp4" }
+    ];
+    const old = f.feed([v]);
+    old.observer.show();
+    await flush();
+    if (timing === "rejoin") old.dispose();
+    const live = f.feed([v]);
+    live.observer.show();
+    await flush();
+    if (timing === "shared") old.dispose();
+    assert.equal(f.heads.length, 1);
+    assert.equal(f.promises.length, 1);
+    f.done(f.media[0], "error");
+    await flush();
+    assert.equal(f.heads.length, 2);
+    assert.equal(f.heads[1].source, v.sources[0].url);
+    assert.equal(f.media.length, 2);
+    f.done(f.media[1]);
+    await flush();
+    assert.equal(f.heads.length, 2, "healthy first mirror must stop fallback");
+    assert.equal(live.badges[0].dataset.urlHealthState, "healthy");
+    assert.equal(old.badges[0].dataset.urlHealthState, "checking");
+    assert.equal(f.controller.activeVideoProbes, 0);
+    const cached = f.feed([v]);
+    cached.observer.show();
+    await flush();
+    assert.equal(f.heads.length, 2);
+    assert.equal(cached.badges[0].dataset.urlHealthState, "healthy");
+  });
+}
+
+test("active first mirror error after disposal does not start the next mirror", async (t) => {
+  const f = fixture(t),
+    v = f.video("later-mirror");
+  v.sources = [
+    { url: "https://mirror.invalid/first.mp4" },
+    { url: "https://mirror.invalid/obsolete-second.mp4" }
+  ];
+  const old = f.feed([v]);
+  old.observer.show();
+  await flush();
+  f.done(f.media[0], "error");
+  await flush();
+  assert.equal(f.heads.length, 2);
+  old.dispose();
+  f.done(f.media[1], "error");
+  await flush();
+  assert.equal(f.heads.length, 2);
+  assert.equal(f.media.length, 2);
+  assert.equal(await f.promises[0], null);
+  assert.equal(cache.getCachedUrlHealth(v.id, v.url), null);
+  assert.equal(f.controller.activeVideoProbes, 0);
+  assert.equal(old.badges[0].dataset.urlHealthState, "checking");
+});
+
+test("disposed active media timeout releases its slot without retry resources and later requests remain playable", async (t) => {
+  const f = fixture(t),
+    v = f.video("active-timeout");
+  f.controller.constants = {
+    URL_PROBE_TIMEOUT_MS: cache.URL_PROBE_TIMEOUT_MS,
+    urlHealthConstants: cache.urlHealthConstants
+  };
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const old = f.feed([v]);
+  old.observer.show();
+  await flush();
+  old.dispose();
+  t.mock.timers.tick(cache.URL_PROBE_TIMEOUT_MS);
+  await flush();
+  assert.equal(f.heads.length, 1);
+  assert.equal(f.media.length, 1);
+  assert.equal(f.controller.activeVideoProbes, 0);
+  assert.equal(f.media[0].getAttribute("src"), null);
+  assert.equal(await f.promises[0], null);
+  assert.equal(cache.getCachedUrlHealth(v.id, v.url), null);
+  assert.equal(old.badges[0].dataset.urlHealthState, "checking");
+  const fresh = f.feed([v]);
+  fresh.observer.show();
+  await flush();
+  assert.equal(f.heads.length, 2);
+  assert.equal(f.media.length, 2);
+  f.done(f.media[1]);
+  await flush();
+  assert.equal(fresh.badges[0].dataset.urlHealthState, "healthy");
+  assert.equal(f.controller.activeVideoProbes, 0);
+});
+
+test("completed active failure without another candidate preserves its existing offline cache result", async (t) => {
+  const f = fixture(t),
+    v = f.video("final-active-failure"),
+    old = f.feed([v]);
+  old.observer.show();
+  await flush();
+  old.dispose();
+  f.done(f.media[0], "error");
+  await flush();
+  assert.equal(f.heads.length, 1);
+  assert.equal(f.controller.activeVideoProbes, 0);
+  assert.equal(cache.getCachedUrlHealth(v.id, v.url).status, "offline");
+  assert.equal(old.badges[0].dataset.urlHealthState, "checking");
+});

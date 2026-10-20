@@ -1,9 +1,11 @@
 {
   "id": "client-reliability-5",
   "area": "client-reliability",
-  "status": "open",
+  "status": "done",
   "title": "Reproduce remaining active URL or torrent probe lifecycle defect before scoping a fix",
   "blockedOn": null,
   "addedOn": "2026-10-20",
-  "filedAt": "3f627f5df3da7bcd28d910d9f8161844fa77ff74"
+  "filedAt": "3f627f5df3da7bcd28d910d9f8161844fa77ff74",
+  "evidence": "Landed0bd0b1c3 via4bc52f9d,normal gate exit0/unstable ancestry exit0. Full427files,focused28/lifecycle18,six reverted mutants,lint11/build/native browser smoke pass;obsoleteHEAD1\u21920.10m57s initial slot wait;expensive/browser released13:57UTC. See test_logs/TEST_LOG_2026-10-20_13-58-00_client-reliability-5-landed.md;activeabort/playback/CPU unverified.",
+  "closedOn": "2026-10-20"
 }

@@ -2,6 +2,9 @@
 
 ## dispatch
 
+- 2026-10-20 trial first product landed: item5 product0bd0b1c3,closuredc852597;dispatch lifecycle18/18/build-artifact/previewHTTP200+dist match. Storage slot grant13:58:27 after949s wait,full/normal landing underway;QA next,ready95a77a7f. Remaining: storage/QA durable landings,preview refresh after product changes,final trial evidence;real cloud/peers/activeabort/CPU unverified.
+
+
 - 2026-10-20 trial current: all3 pickups verified; admin notes durableb922c186. Client item5 owns exclusive full/browser/product landing from13:43:51 (~10m57s wait); storage CORS ready9/9+8mutants,next slot; QA retained4/4+6mutants,third slot,browser released. Remaining: full merged-tree validation,durable product/test landings,preview refresh and final trial outcome. No real cloud/peers/CPU qualification.
 
 
@@ -27,6 +30,14 @@
 - Coordination limitation: operator checkpoint resumed dispatch; file mailbox does not itself wake idle Codex. Completion handoff now explicitly requires mailbox evidence, but unattended dispatch wakeup is unqualified. No scheduler/kit changes at this checkpoint.
 
 ## client-reliability
+
+- 2026-10-20: item5 done/closed after normal product landing0bd0b1c3(submission4bc52f9d,gate exit0,unstable ancestry exit0). Full427files/focused28/lifecycle18/six reverted mutants/lint11/build-artifact/Chromium+Firefox controlled smoke pass;obsolete mirror HEAD1→0. Browser+expensive slot released13:57UTC after10m57s initial wait. Dispatch landing/release event sent;preview refresh dispatch-owned. Closure metadata/final follow;no next item. Active abort/actual fallback/livepeers/CPU/fullStage3 unverified.
+
+- 2026-10-20: item5 ready atmergedf2a392fa(product12f92732):full427/427 files60s-bound exit0,focused28/lifecycle18,six reverted mutants,lint11/build-artifact/native Chromium+Firefox smoke pass;obsolete mirror HEAD1→0,shared/rejoin/retry/hidden reveal pass,0 external/pageerrors. Full-slot wait10m57s recorded;browser released,expensive slot held through normal landing. Remaining queue/durable ancestry/close;active abort/real playback/CPU unverified.
+
+- 2026-10-20: item5 routed controller-only pre-candidate guard implemented; baseline16pass/2fail→fixed18/18 lifecycle,6 rejected/reverted mutants,focused28/4files,lint11/build+artifact pass. No full/browser launch while dispatch administrative drain/QA reservation holds; slot requested13:32:54UTC,await explicit grant and verified unstable merge. No active abort/observer/cache/limits change; actual fallback/CPU unverified. Unique integrity/evidence in test_logs/*client-reliability-5*.
+
+- 2026-10-20: item5 investigation at0c1dd7e8:active URL success/real4000ms controlled timeout release media/slot correctly;disposed active primary media error starts1 obsolete mirror HEAD(expected0),strict assertion naturally exits1 after cleanup/retry. Shared/rejoin owner and later same-source controls pass. Proposed controller-only pre-candidate ownership guard + focused tests; await dispatch routing. No product/tests changed; active abort/browser/fallback/CPU unverified. See test_logs/TEST_LOG_2026-10-20_13-30-00_client-reliability-5.md.
 
 - 2026-10-20: item4 done/closed after normal landing89ccb907(submission7055496b,gate exit0,unstable ancestry exit0). Full427/427 files,focused22,lifecycle12,13 reverted mutants,lint11,build/artifact/native Chromium+Firefox controlled IO pass;obsolete starts1→0. Dispatch landing event sent; preview refresh owned by dispatch. No further item without routing. Actual media fallback/live peers/active abort/CPU and whole Stage3 unverified. Closure metadata/final event follow.
 
