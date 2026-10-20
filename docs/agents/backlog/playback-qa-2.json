@@ -1,10 +1,14 @@
 {
   "id": "playback-qa-2",
   "area": "playback-qa",
-  "status": "blocked",
+  "status": "done",
   "title": "Capture actual-app local core-flow/mobile baseline before UI changes",
-  "blockedOn": "Original strict Upload overflow finding remains open:360 document362,390 document394; minor/usable geometry measured. Separate original3viewport/core/Home/focus coverage completed; await dispatch disposition, no optional CSS fix.",
+  "blockedOn": "",
   "addedOn": "2026-10-20",
   "filedAt": "1bb3a4fc452969f060c09a286b72b8cd7ac4123e",
-  "notes": "Final granted run16:25:30.066\u219216:25:33.901UTC,Chromium154,b1174163/build6da89895,frozen830files/pinsverified.9stepsPASS/1FAIL:realcrypto/startup/cold3cards/login/360feed/nav/Profile;Uploadtitle/missingsource/no-publish/6Tab checks reached,then documentoverflowfail (PNG362 vs360).No remainingHome/390/1280/Uploadclose. Allownedresourcesclosed/RELEASE,no productwrites. Exact report/driver/screenshots docs/testing/playback-qa-2-final-evidence.md. Evidenceclosure only,NOT baselinepass/close. Separate dispatch-authorized16:27:44.416\u219216:28:10.112 follow-on25steps/0hardfail:all3viewportTrending/Explore/ForYou/Home3cards/Profile+Uploadvalidation/focus/close completed. Exactmobileoverflow2px/4px,panelsfit,controlsusable;originalfailureopen,notallpass. Browser/serversclosed/RELEASE;docs-onlynormalqueue thenIDLE perdispatch."
+  "notes": "Final granted run16:25:30.066\u219216:25:33.901UTC,Chromium154,b1174163/build6da89895,frozen830files/pinsverified.9stepsPASS/1FAIL:realcrypto/startup/cold3cards/login/360feed/nav/Profile;Uploadtitle/missingsource/no-publish/6Tab checks reached,then documentoverflowfail (PNG362 vs360).No remainingHome/390/1280/Uploadclose. Allownedresourcesclosed/RELEASE,no productwrites. Exact report/driver/screenshots docs/testing/playback-qa-2-final-evidence.md. Evidenceclosure only,NOT baselinepass/close. Separate dispatch-authorized16:27:44.416\u219216:28:10.112 follow-on25steps/0hardfail:all3viewportTrending/Explore/ForYou/Home3cards/Profile+Uploadvalidation/focus/close completed. Exactmobileoverflow2px/4px,panelsfit,controlsusable;originalfailureopen,notallpass. Browser/serversclosed/RELEASE;docs-onlynormalqueue thenIDLE perdispatch. Dispatch accepted completedqualification withknownopenminorlayoutfinding16:29:54;close does not mean overflow fixed or originalbaselineallpass. Evidence17163984 landed06e920e7/durable+ancestry0.",
+  "closedOn": "2026-10-20",
+  "resolution": "Bounded qualification completed with known minor open mobile Upload document overflow (2px at360,4px at390); original strict baseline remains failed. Separate25step3viewport/core/Home/focus coverage completed. Dispatch accepted docs-only closure16:29:54; no CSS/product fix claimed.",
+  "evidence": "docs/testing/playback-qa-2-final-evidence.md",
+  "landedSha": "06e920e77e756a4ad0c7d6495a2dbd930cf8482a"
 }
