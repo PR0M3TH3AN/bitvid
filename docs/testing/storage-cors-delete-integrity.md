@@ -44,3 +44,6 @@ Focused existing+new runner4/4 files,24scenarios; lint11/11 and build/deploy-art
 Timing: storage-audit acknowledgement14:59:46UTC; evidence15:01:20UTC; fix route15:06:18UTC (298s routing wait); ready15:08:52UTC. Metadata claim followed verified unstable merge; no metadata wait blocked read-only investigation.
 
 Merged validation at020f0577ee5fb212a689bb06260f10abd47e4868:full430/430 files exit0 (NODE_TEST_CONTEXT unset,UNIT_TEST_TIMEOUT_MS60000),focused4files/24scenarios,lint11/build-artifact pass. Product7b8100a6 committed before required merge. Slot request15:08:52→grant15:09:29UTC37s;full confirmed15:15:59UTC. Normal queue pending. No product edits after mutant proof.
+
+## Durable completion
+Submission1650b3439fee7d419b68a0badcee67cee0cfa9aa durably landed2026-10-20T15:22:48.611Z ase7b9afb309d822fca9fdc1cc31e79ce7c9c33fbe. Unchanged normal install/npm-test gate exit0. Both submission and landedSHA ancestry on unstable exit0. Newer dispatch docs tip1b3ef49c was already on unstable by final log read;product remains ancestor,not necessarily latest tip. Backlog closed only after durable result and ancestry. Resource release notification actual15:23:08UTC;normal queue wait/gate15:16:23.181→15:22:48.611(~385s). Final notes only;then idle per owner local-review milestone. No extra optional feed item starts;deferred feed3 remains queued for future routing.
