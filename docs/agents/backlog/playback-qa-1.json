@@ -1,9 +1,10 @@
 {
-  "id": "playback-qa-1",
-  "area": "playback-qa",
-  "status": "open",
-  "title": "Qualify local hosted-source fallback with independent regression and browser evidence",
-  "blockedOn": null,
-  "addedOn": "2026-10-20",
-  "filedAt": "0c1dd7e86be3e28edc96aca47f7753a98990dde0"
+ "id": "playback-qa-1",
+ "area": "playback-qa",
+ "status": "in-progress",
+ "title": "Qualify local hosted-source fallback with independent regression and browser evidence",
+ "blockedOn": null,
+ "addedOn": "2026-10-20",
+ "filedAt": "0c1dd7e86be3e28edc96aca47f7753a98990dde0",
+ "notes": "QA granted14:49:35Z/consumed14:49:46Z after request13:43:52Z (65m43 to grant,11s pickup; storage release→dispatch grant39m57 foreground/wakeup lag). Merged unstable7f99c045→124be143; focused4/4,lint11/11 and full env -u NODE_TEST_CONTEXT UNIT_TEST_TIMEOUT_MS=60000 npm test exit0 all429 unit files. Regression025771a8; six isolated mutants rejected/restored. Browser Chromium+Firefox3 scenarios each passed bounded native VP8 decode; zero external requests, no real WebTorrent/full app/wholeStage3 qualification. Browser scheduling intervention recorded. Preparing unchanged normal queue submission and durable landing verification; no new item."
 }
