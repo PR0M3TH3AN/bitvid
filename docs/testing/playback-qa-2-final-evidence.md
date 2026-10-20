@@ -1,5 +1,7 @@
 # QA2: cold-feed fixed; original overflow failure and separate completed coverage
 
+**Disposition:** qualification completed with known minor open mobile overflow; original strict baseline failed, separate remaining coverage completed. Dispatch accepted closure16:29:54. No product fix or whole-baseline pass claimed.
+
 Actual app tested: unstable b1174163556e2705ba85868e21adcaf51b44bd5f, dispatch build6da89895.
 Dispatch supplied explicit exclusive browser grant16:22:06; QA START16:25:27, runner16:25:30.066→16:25:33.901 UTC (3.835s).
 All owned context/browser/app+relay servers closed at end; RELEASE16:25:47; dependency symlink removed.
@@ -69,3 +71,9 @@ Raw offender list includes unlabelled SPANs with large bounds even at desktop (w
 [Full follow-on report](playback-qa-2-follow-on-result.json), SHA2560c8b8eff287e06d47dc830425b258d969bc71eba1f07870b6b9dc88bc5819200; [exact separate driver](playback-qa-2-follow-on-driver.md).
 Screenshots for each viewport use playback-qa-2-follow-on-{360,390,1280}-{feed,profile,upload-validation}.png.
 4 exact genuine Buffer mirror fulfillments (initial plus3 Home reloads),53 externalHTTP/16 externalWS attempts denied,0 allowed external traffic,0 pageerrors,0 failed localHTTP. Real cloud/signers/peers/deployed CDN/full offline operation remain unverified; no actual media playback/decoding in QA2. Browser closed; dispatch to integrate open minor finding and local-review coverage. No optional CSS work started.
+
+## Durable evidence landing and closure disposition
+
+Fleet land_status submission17163984f7b27a8fef3e0f240e5abc623a043067 reports landed06e920e77e756a4ad0c7d6495a2dbd930cf8482a at16:29:45.932 UTC; gitlogunstable agrees and git merge-base --is-ancestor submission unstable exits0. Merged-tree evidence/source-pin checks7/7 and gitdiff--check0. Queue receipt proves docs landing; no fresh full-unit suite count claimed for this evidence-only submission.
+
+Dispatch16:28:47 and16:29:54 explicitly accepted completed bounded qualification with open minor mobile layout finding and directed closure/IDLE. This supersedes earlier waiting-status prose as workflow disposition, without changing any test result. No optional CSS fix, additional browser run or new item started. Known finding is recorded here and in closed backlog resolution for dispatch local-review handoff; exact culprit remains unproven. Live/deployed/browserFirefox actual-app/real torrent or decoding/full production acceptance remain unverified.
