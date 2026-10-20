@@ -9,7 +9,7 @@ a landing rule changes.
 
 ## 2026-10-20
 
-- Local-review hard blocker measured: coldTrending cache0 then relayEVENT3/EOSE ingests eligible3 but view remainsEMPTY/DOM0. client-reliability-7 temporary ownership ONLY nostrService.loadVideos subscription notification path + new focused regression/integrity/evidence; reproduce current method before minimal fix. Existing app/feed modules read-only unless additional evidence/routing. Preserve access/filter/deletion/cache/event semantics; no forcedrefresh baseline substitute. QA retains actual-app/browser qualification; client cheapfocused until explicit fullslot.
+- Local-review hard blocker measured: coldTrending cache0 then relayEVENT3/EOSE ingests eligible3 but view remainsEMPTY/DOM0. client-reliability-7 temporary ownership ONLY nostrService.loadVideos subscription notification path, minimal service-owned current-consumer state/subscription-clear lifecycle where proven necessary, + new focused regression/integrity/evidence; reproduce current method before minimal fix. Existing app/feed modules read-only unless additional evidence/routing. Preserve access/filter/deletion/cache/event semantics; no forcedrefresh baseline substitute. QA retains actual-app/browser qualification; client cheapfocused until explicit fullslot.
 
 - Owner stopmilestone is Ready for me to review and test locally. Finish current storage2/history6/faithful actual-app baseline+preview/handoff,then no new optional tasks before review. Reconcile upstream docs-only8d4622bb via area merge+normal queue;new playback promises stay explicit/open,do not churn current scope or declare them done from partial/static evidence. Genuine cached offline dependency mirror is testprep only,not CDN/deployed/offline production proof.
 
