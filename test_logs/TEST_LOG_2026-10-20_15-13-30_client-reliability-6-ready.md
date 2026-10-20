@@ -1,0 +1,10 @@
+# Item6 test-only ready
+
+- Retained `tests/profile-history-removal-wiring.test.mjs` only; no product/existing suite changes. Test-only routing merged from verifiedac99ae9a after audit notes8356f27d.
+- `env -u NODE_TEST_CONTEXT NODE_ENV=test node tests/profile-history-removal-wiring.test.mjs`: natural exit0,3/3pass,0failed/cancelled/skipped,1388.42ms final readable run (`/tmp/item6-retention-final.log`). Real local removal through final item+recreation,actual local Clear+recreation,and synced reduced+empty replacements through fake IO.
+- `python3 /tmp/item6-retention-mutants.py`: five/five isolated runtime faults each naturally exit1,0cancelled,cleanup after-hooks still pass. Historical no-op kills both real removal scenarios;skip clear/drop replace/wrong actor/skip last cover all new scenarios. No source file mutated; unique mapping `test_logs/TEST_INTEGRITY_client-reliability-6.md`.
+- `env -u NODE_TEST_CONTEXT node scripts/run-unit-tests.mjs profile-history-removal-wiring profile-modal-controller watch-history-local-remove watch-history-controller-local-remove watch-history-remove-snapshot`: natural exit0,5files/38scenarios (3+27+8),log `/tmp/item6-retention-focused.log`.
+- `env -u NODE_TEST_CONTEXT npm run lint` with approved git subprocess access: exit0,11stages (`/tmp/item6-retention-lint.log`).
+- Globals/app/client/local actor queues restored and DOM/subscriptions closed even on named failing mutations;network guards cover global and window fetch/WebSocket. No arbitrary sleeps/retries/live signer/relay/credentials.
+- Full/browser/build/normal queue have not been launched;await explicit full/normal slot after QA bounded browser work. Build/browser have no fresh qualification from this test-only change. No product behavior fix claimed;real signing/encryption/relay persistence/full app modal lifecycle/reload/manual confirmation and synced Clear remain unverified.
+- Retention data is behavior-based,publish twin honors merge vs replace;all emitted replacement actor/payload/options checked without locking in duplicate call count. Existing profile27 passes historical no-op in audit;new tests reject it.
