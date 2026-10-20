@@ -142,3 +142,5 @@
 
 - Interpreter reports kitbeta62c89e3 maintenance/restarts complete; all existing worktrees6609269e. Dispatch independently clean area/dispatch, queue0/no drain,3 existing worker windows alive. Kit61/61 and preview hostHTTP200 are interpreter-derived, not rerun here; sandboxHTTP000 is not server-failure evidence.
 - Exact owner continuation recorded PROGRAM/GOAL; client8 actual active URL-media reproduction with shared/rejoin/legacy controls, no product/tests before evidence and routing. Storage/QA idle; no launches/kit/scheduler/external changes. Current active abort remains unverified; no full rerun for administrative docs.
+
+- client8 coordinationc8e07cc5 durably5b77fd20(status/log/ancestry0);assignmentdelivered. Dispatch independentdirectscratch18pass/1fail natural287ms:finalownerretainsactive1/source/cache null. Initial subprocess --test opaque failure excluded. No product/tests edited;newshared/rejoincontrols/proposal awaited beforefixrouting. Evidence test_logs/TEST_LOG_2026-10-20_20-49-00_dispatch-client8.md.
