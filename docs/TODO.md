@@ -2,6 +2,9 @@
 
 ## dispatch
 
+- 2026-10-20 parallel trial: rosterbbc1be79 durably green,3 workers launched/read-next-action verified. Item5 ready12f92732 focused28/6mutants/lint/build awaits full+browser; storage-cors real origin loss independently reproduced/fix routed; playback-qa controlled native local fallback3/browser reviewed,test retention approved. Remaining trial product/test full gates,orderly durable landings and preview; actual WebTorrent/live peers/CPU unverified. Initial gate transport/capture failure corrected only by clean environment; QA browser coordination deviation recorded.
+
+
 - 2026-10-20: continuing owner direction: item5 investigation assigned to same worker, active URL media last-owner/shared-owner controls first. Remaining: reproduction and narrow fix routing or next evidenced TODO. No product fix assumed; active abort/live playback/CPU-RSS unverified.
 
 
