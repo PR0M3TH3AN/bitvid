@@ -1,9 +1,10 @@
 {
  "id": "storage-cors-2",
  "area": "storage-cors",
- "status": "in-progress",
+ "status": "done",
  "title": "Audit best-effort storage/delete safety and remaining R2 followups offline",
  "blockedOn": null,
  "addedOn": "2026-10-20",
- "filedAt": "7f99c0456931c917082d6a6680c79655221dcc82"
+ "filedAt": "7f99c0456931c917082d6a6680c79655221dcc82",
+ "closedOn": "2026-10-20"
 }
