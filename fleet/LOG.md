@@ -112,3 +112,9 @@
 - Mirroring clarification from interpreter15:03:20 agrees only matching implementations need parity;no delete method inS3UploadService means no duplicate to invent. Contract malformedsyntheticrecords robustness only,not real-user incident or note-delete-block proof;preserve owner boundary and avoid coercion/permission expansion.
 
 - Next-scope pickups verified:storage2 method-only fix15:06:34,QA2 baseline preparation15:06:36,client6 test-only retention15:06:53. QA supervisor limited read-only harness coverage prep is compatible with this assignment;do not duplicate existing specs or treat module smoke as app proof. QA must send START before browser and RELEASE;other workersfocused only untilready/fullslotgrant.
+
+## 2026-10-20 — Explicit local-review milestone and upstream documentation
+
+- Owner exact stopping quote "Ready for me to review and test locally" recorded GOAL/PROGRAM/QUALITY. Finish current bounded fixes/tests/baseline,then handoff current preview/branch/SHA/flows/limits;no optional feature churn or production claim.
+- Inspected upstream8d4622bb:only12lines in canonicalprelaunchTODO,local110/remote1 divergent count. New public-promised HIGH1RangeGET/2health-persistence-hostscore/4warmup andotherplayback followups absent from local source used earlier. Staticrevalidation sees HEAD remains,URL localStorage persistence alreadyexists,torrent mapcache,viewport healthmetadata/orderedmirrors/SWcaches partial;no whole-item completion or new demonstrated hardreviewblocker. Non-destructive docs merge/normalqueue next,no push.
+- Storage2 full430/430exit0 andnormal1650b343 gating;QA2 genuineasset planready anddocs-only25942a15 queuedbehindit. Client6ready9afe48a5 waitsfullafterstorage+shortQA2browser. No expensive successor started.
