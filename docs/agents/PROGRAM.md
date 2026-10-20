@@ -13,6 +13,13 @@ Work through the existing TODO backlog and fix reproducible bugs that make the c
 
 ## Rulings log (newest first)
 
+### 2026-10-20 — Bounded parallel trial, owner words relayed by interpreter
+
+> "id really like to stress test the multi agent process so if it needs more agents to get more done faster. do it" — owner, relayed by interpreter; not represented as typed by owner in dispatch.
+
+Interpreter requests executing dispatch plus up to3 workers now with disjoint worktrees/scopes. Routine launches are authorized; retain existing restricted-action limits. Trial measures acknowledged assignments, actual parallel evidence/checks, durable queued landings and contention, not process count.
+
+
 ### 2026-10-19 — Roster-only bootstrap gate (session manager call, VETOABLE)
 
 The first approved worker is assigned to the pre-existing profile-modal test hang. Normal roster-before-launch ordering otherwise invokes that same hanging full-suite gate before a worker can investigate. For this one administrative roster/brief commit only, dispatch will use a temporary queue configuration whose gate verifies the exact committed change contains only the expected area registration and documentation/backlog metadata, with product code, tests, and persistent gates unchanged. No product fix is covered by this exception. Preserve normal full gates for subsequent code. Record the actual gate result and disclose the unresolved unit failure.
