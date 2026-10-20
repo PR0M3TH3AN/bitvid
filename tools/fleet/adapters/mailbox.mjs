@@ -21,9 +21,11 @@ const check = (id, what) => { if (!ID_RE.test(id)) throw new Error(`bad ${what} 
 export const messaging = {
   native: false,
   instructions: [
-    'MESSAGING (file mailbox): at the start of every turn run',
-    '`node tools/fleet/bin/mailbox.mjs read <your id>`; act on each message, then',
-    '`node tools/fleet/bin/mailbox.mjs archive <your id> <file>`. To reach a peer:',
+    'MESSAGING (file mailbox): at the start of every turn, and when a turn starts',
+    'because a line says you have new fleet mail, run',
+    '`node tools/fleet/bin/mailbox.mjs read <your id>`. Reading takes the messages:',
+    'they leave unread and move to archive. That typed line is only a wake. The',
+    'mail is the message. Reply to the sender with your next action. To reach a peer:',
     '`node tools/fleet/bin/mailbox.mjs send <peer id> --from <your id> "<text>"`.',
   ].join('\n'),
 };
