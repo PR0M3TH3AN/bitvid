@@ -4,7 +4,7 @@ Last updated: 2026-10-19
 
 ## Current milestone
 
-Work through the existing TODO backlog and fix reproducible bugs that make the client less robust or usable. Validate old reports at current HEAD before assigning them; deliver small, checked changes through local unstable.
+Prepare the integrated client for owner local review/testing:finish current storage2/history6 scope,faithful actual-app/core/mobile baseline and current preview with exact evidence. Retain broader robustness/usability backlog and live gates;do not start optional work beyond this milestone. Validate old reports at HEAD and land checked changes through local unstable.
 
 ## Priorities
 
@@ -12,6 +12,13 @@ Work through the existing TODO backlog and fix reproducible bugs that make the c
 2. Session-manager sequencing (vetoable): prioritize reproducible failures in core user flows and small changes with clear completion checks.
 
 ## Rulings log (newest first)
+
+### 2026-10-20 — Explicit local-review stopping milestone,relayed by interpreter
+
+> "Ready for me to review and test locally" — owner, relayed by interpreter;not represented as typed in dispatch.
+
+Finish current storage2/history6 gates/landings,faithful local actual-app/core/mobile baseline and preview refresh,then provide local-review handoff before declaring this milestone met. Do not clear optional roadmap or claim production/live Amber/cloud/peer proof. No new restricted-action authority.
+
 
 ### 2026-10-20 — Continuing quality objective, relayed by interpreter
 

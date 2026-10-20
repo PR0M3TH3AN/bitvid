@@ -9,6 +9,9 @@ a landing rule changes.
 
 ## 2026-10-20
 
+- Owner stopmilestone is Ready for me to review and test locally. Finish current storage2/history6/faithful actual-app baseline+preview/handoff,then no new optional tasks before review. Reconcile upstream docs-only8d4622bb via area merge+normal queue;new playback promises stay explicit/open,do not churn current scope or declare them done from partial/static evidence. Genuine cached offline dependency mirror is testprep only,not CDN/deployed/offline production proof.
+
+
 - QA1 retained regression64143f42 landed1bb3a4fc,dispatch4/4. New QA2 actual-app local core/mobile baseline has bounded browser-only slot,no UI changes/full E2E. Client6 test-only actual history wiring regression routed after current pass/historical no-op failure. Storage2 temporary ownership deleteVideoStorage-only in r2Service+new test after2 real cached-metadata rejects/6controls;upload-copy logic unchanged,s3UploadService has no deletion counterpart,prove shared provider-aware delete for R2/S3. Full slots allocated only when validated-ready after browser release.
 
 
