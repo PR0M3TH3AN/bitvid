@@ -1,6 +1,14 @@
 # Area: Client reliability (client-reliability)
 
-## Current assignment: client-reliability-3
+## Current assignment: client-reliability-4 — investigation only
+
+Owner continuation relayed by interpreter on 2026-10-20 explicitly permits this bounded step during quiet hours. No recurring schedule/config change.
+
+Claim item4 after merging unstable. Read RULE-CHANGES, KNOWN_ISSUES and docs/performance-efficiency-plan.md Stage3. At current HEAD reproduce whether disposed feeds retain/start URL-health queued or active probes, or active torrent probes. Inspect js/urlHealthObserver.js, js/ui/urlHealthController.js, js/gridHealth.js and js/webtorrent.js read-only. Prefer the URL queued-owner case first; old plan concurrency and lifecycle claims may be stale. Use actual observer/controller entry points with deterministic deferred external IO boundaries and no public network. Preserve shared live-owner behavior. Measure started, queued, disposed and settled counts; record exact command, SHA, expected/actual and natural exit. Do not infer a defect merely from missing AbortSignal.
+
+This assignment authorizes investigation and scratch/evidence notes only: no product or committed regression-test changes yet, no test weakening, no browser reservation unless needed, no broad Stage3 implementation. Report the smallest reproduced defect plus proposed files/acceptance to dispatch before fixing. If not reproducible, record why and return the next evidenced TODO candidate for routing. Commit evidence/backlog notes separately through normal queue if needed. Send mailbox on blocker and final investigation result; current mailbox tools deliver a short wake, so archived text below claiming no wake is historical. No subagents needed. No deploy/push/spend/wallet/production-data/scheduler/kit changes. Preserve preview3000. Existing completed item3 evidence follows for context; do not redo it or follow its old implementation steps.
+
+## Archived completed assignment: client-reliability-3
 
 Improve robustness/usability with one bounded client-facing fix from pre-launch TODO #34 Stage3: cancel queued torrent health probes when the last card/feed owner is disposed. Prior items1 and2 are done, normally landed at de6918ce and closed at f9adfc8f (425/425 unit files, lint11/11). Do not redo them.
 

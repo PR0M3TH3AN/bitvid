@@ -2,6 +2,9 @@
 
 ## dispatch
 
+- 2026-10-20: item4 assigned to existing worker for investigation only: reproduce remaining URL/active torrent cancellation at HEAD, then route a narrow fix. No product fix yet; live playback/CPU-RSS remain unverified. Owner continuation relayed; quiet-hours exception does not change schedule.
+
+
 - 2026-10-19 latest: item3 normal product landing7d20a509 and closure7fde734d verified; dispatch synced and preview rebuilt(HTTP200). Independent original five-card scenario now0 obsolete starts(previous1), lifecycle11/11. Worker evidence426/426 full files,lint11/11,14 rejected mutants,Chromium+Firefox controlled-IO lifecycle smoke. Worker idle; no new task launched in this mail checkpoint. Remaining: actual media fallback/live-peer qualification,CPU/RSS measurements,active-probe/URL cancellation and other performance-plan slices.
 
 
