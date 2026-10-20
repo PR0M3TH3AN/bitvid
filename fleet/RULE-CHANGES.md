@@ -9,6 +9,9 @@ a landing rule changes.
 
 ## 2026-10-20
 
+- storage-cors-1 fix routed after worker+dispatch offline reproduction: preserve existing bucket CORS rules/fields; append default rule only for uncovered origins, idempotent no-PUT for equivalent coverage, only NoSuchCORSConfiguration permits absent config, other read errors no PUT. Own s3-multipart.js/s3-client.js+focused new test/integrity. No real cloud/credential operations or unrelated policy change; full gate slot follows client.
+
+
 - Item5 narrow fix routed after worker+dispatch reproduction: prevent fresh mirror HEAD after disposed last-owner active-media error; controller+focused URL lifecycle tests only. Preserve bounded active/cache/shared/rejoin/timeout semantics, no active abort. Parallel trial CLI/agent/lander launches clear inherited NODE_TEST_CONTEXT transport; exact gate/assertions unchanged. Original roster gate hit binary capture cap, not identified product assertion. No kit patch.
 
 

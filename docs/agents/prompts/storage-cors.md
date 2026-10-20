@@ -1,6 +1,12 @@
 # Area: Storage CORS reliability (storage-cors)
 
-## Assignment: storage-cors-1
+## Assignment: storage-cors-1 — preservation fix routed
+
+Implementation routed after worker and independent dispatch offline reproduction: adding second origin replaces the entire existing rule, existingRulesPreserved0/1. Dispatch command env -u NODE_TEST_CONTEXT node /tmp/bitvid-dispatch-storage-cors-reproduce.mjs exits1 at strict false!==true after all5 characterization controls. No cloud IO.
+
+Now implement only s3-multipart.js plus GetBucketCorsCommand export in s3-client.js and new storage-cors-preservation test/integrity note. Preserve every existing rule and all fields verbatim; add a separate existing-default-shaped rule for uncovered requested origins without broadening arbitrary rules. Idempotence: no PUT when existing equivalent default rule already covers all requested origins; explicitly test equivalent-rule detection and repeated calls. Missing config only on NoSuchCORSConfiguration; other read failures propagate with no PUT. Do not guess wildcard equivalence or merge restrictive/custom rule semantics. Preserve empty-origin no-op. Tests must use actual helper/command export, fake transport only, cover existing rules/wildcards/duplicates/no-config/read-denied/idempotence and bounded provider errors; do not silently replace on read failure. Do not change current default methods/headers/TTL as unrelated policy; if SDK/provider limits make safe preservation impossible, report before broadening. Offline mutants for every new scenario; preserve normal assertions/gates. Relevant focused storage suites/lint/build; request full-suite slot (client ahead), no browser/cloud need. CLI/test/lander launches clear NODE_TEST_CONTEXT. Commit item1, merge unstable, normal queue/durable ancestry before close; no premature qualification of real S3.
+
+Historical investigation context follows; its before-product restriction is superseded by the routed scope above.
 
 Bounded parallel trial: validate todo/TODO_2026-06-16_r2-followups.md CORS replace-not-merge report at current HEAD. Dispatch inspected ensureBucketCors in js/storage/s3-multipart.js: constructs PutBucketCors with requested origins only, no GetBucketCors. This is evidence for investigation, not proof every caller loses policy. Trace actual callers and required existing-origin behavior. Reproduce offline via real helper and fake S3 transport/SDK boundary: an existing origin/rule, adding a second origin, idempotent repeated call, missing config and read-failure cases. No cloud credentials/network/bucket mutation.
 
