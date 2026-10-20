@@ -619,6 +619,7 @@ export class NostrService {
       }
     });
     this.videosMap = null;
+    this.videoFeedNotification = null;
     this.videosByAuthorIndex = null;
     this.authorIndexDirty = false;
     this.moderationService = moderationService || null;
@@ -1429,6 +1430,7 @@ export class NostrService {
   }
 
   clearVideoSubscription() {
+    this.videoFeedNotification = null;
     const current = getStoredVideoSubscription();
     if (current && typeof current.unsub === "function") {
       try {
@@ -1713,6 +1715,12 @@ export class NostrService {
         this.clearVideoSubscription();
       }
 
+      // Reused relay subscriptions follow the currently displayed feed consumer.
+      const notification =
+        (getStoredVideoSubscription() && this.videoFeedNotification) || {};
+      notification.onVideos = onVideos;
+      this.videoFeedNotification = notification;
+
       const applyAndNotify = (videos, reason) => {
         const filtered = this.filterVideos(videos, {
           blacklistedEventIds,
@@ -1793,6 +1801,9 @@ export class NostrService {
         };
         const subscription = this.nostrClient.subscribeVideos(
           (updatedVideos) => {
+            if (this.videoFeedNotification !== notification) {
+              return;
+            }
             if (!Array.isArray(updatedVideos) || !updatedVideos.length) {
               return;
             }
@@ -1836,6 +1847,14 @@ export class NostrService {
                 const bCreated = Number(b?.created_at) || 0;
                 return bCreated - aCreated;
               });
+
+              if (typeof notification.onVideos === "function") {
+                try {
+                  notification.onVideos(fullList, { reason: "subscription" });
+                } catch (error) {
+                  userLogger.warn("[nostrService] onVideos handler threw", error);
+                }
+              }
 
               this.emit("videos:updated", {
                 videos: fullList,

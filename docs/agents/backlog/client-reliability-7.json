@@ -1,10 +1,11 @@
 {
   "id": "client-reliability-7",
   "area": "client-reliability",
-  "status": "open",
+  "status": "done",
   "title": "Restore cold-feed live subscription onVideos notification after eligible relay updates",
   "blockedOn": null,
   "addedOn": "2026-10-20",
   "filedAt": "386cc60e1fa3ba6d9b67a1171a1ab89c03df84ca",
-  "evidence": "QA actual app at386cc60e:cache0\u2192EVENT3/EOSE\u2192filtered3/access/include true\u2192viewEMPTY/DOM0. live service branch emits videos:updated but omits onVideos callback used by actual feed refresh. Scope/reproduction/controls in area prompt;minimal method-only fix after natural failing regression."
+  "evidence": "Service fixfecf4294 durablylandedb1174163556e2705ba85868e21adcaf51b44bd5f viaf39622da;unchanged normalgateexit0/432discovered+unique starts;new7/7,mergedfocused27/5files,nine naturallykilledmutants,lint11/11,ancestry0. Fullslotreleased16:21:30UTC;dispatch previewbuild+QA actualapp retestpending,notclaimed. Final evidence test_logs/TEST_LOG_2026-10-20_16-22-00_client-reliability-7-landed.md;IDLE/no optionaltasks.",
+  "closedOn": "2026-10-20"
 }
