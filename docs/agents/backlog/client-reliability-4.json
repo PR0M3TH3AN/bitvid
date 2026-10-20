@@ -1,10 +1,11 @@
 {
   "id": "client-reliability-4",
   "area": "client-reliability",
-  "status": "in-progress",
+  "status": "done",
   "title": "Reproduce remaining source-health cancellation defect at current HEAD before scoping a fix",
   "blockedOn": null,
   "addedOn": "2026-10-20",
   "filedAt": "604c8c61f4783717eb0cff7ca7ca33efb59aac8a",
-  "evidence": "Reproduced at4c54858c; bounded queued URL owner fix ce1381f5. Full427/427 files,focused22,new lifecycle12,13 reverted mutants,lint11,build and Chromium+Firefox controlled native observer smoke pass. Normal landing and closure pending; evidence test_logs/TEST_LOG_2026-10-20_03-23-30_client-reliability-4-ready.md"
+  "evidence": "Product landed89ccb907 via7055496b,normal gate exit0 and unstable ancestry exit0. Full427/427 files,focused22,lifecycle12,13 reverted mutants,lint11,build/artifact and Chromium+Firefox controlled-IO smoke pass;obsolete starts1\u21920. See test_logs/TEST_LOG_2026-10-20_03-29-00_client-reliability-4-landed.md. Active abort/playback fallback/live peers/CPU unverified.",
+  "closedOn": "2026-10-20"
 }
