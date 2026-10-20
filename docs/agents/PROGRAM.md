@@ -4,6 +4,8 @@ Last updated: 2026-10-20
 
 ## Current milestone
 
+Active URL-media cancellation investigation resumes under the exact owner instruction below. This supersedes the local-review idle hold only for that bounded work; broader optional work remains deferred.
+
 Local-review handoff: storage2/history6 and demonstrated cold-feed blockerclient7 are normally landed. Build6da89895/preview3000 verified;actualcold3cards and separate25-step360/390/1280core/modal coverage complete. Original strictUploadoverflow FAIL remains open(2/4px,controlsusable),not an all-green baseline. Finish docs-only evidence/handoff,then allIDLE for owner review;no optional backlog work. Broader roadmap/live signer/cloud/peer/release gates remain explicit in QUALITY/LOCAL-REVIEW.
 
 ## Priorities
@@ -12,6 +14,12 @@ Local-review handoff: storage2/history6 and demonstrated cold-feed blockerclient
 2. Session-manager sequencing (vetoable): prioritize reproducible failures in core user flows and small changes with clear completion checks.
 
 ## Rulings log (newest first)
+
+### 2026-10-20 — Resume bounded active-probe cancellation, relayed by interpreter
+
+> "Then continue with the active-probe/URL cancellation work." — owner, relayed by interpreter at20:44:41UTC; not represented as typed in dispatch.
+
+Route existing client worker to client-reliability-8: reproduce current active URL-media last-owner disposal through actual observer/controller entrypoints and controlled IO, with shared live-owner and fresh-rejoin controls. Measure resources, settlement, slot release, cache and stale callbacks before any fix. Start media before broader HEAD/HLS/torrent policy. Existing queued/orphan-mirror fixes are complete; active abort is not. Existing tests protect the previous queued-only contract; expectation changes require explicit routing and Test Integrity Note after evidence. No app.js/kit/scheduler/external/cloud/signer/push/deploy/spend authority. Other workers idle unless needed for bounded independent QA.
 
 ### 2026-10-20 — Explicit local-review stopping milestone,relayed by interpreter
 

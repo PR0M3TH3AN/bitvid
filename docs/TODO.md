@@ -2,6 +2,8 @@
 
 ## dispatch
 
+- 2026-10-20 bounded continuation: client8 active URL-media last-owner/shared/rejoin reproduction after maintenance. Await measured evidence then independent confirmation/minimal fix and explicit test-contract routing. Other optional work remains deferred; no active-abort completion claim.
+
 - 2026-10-20 LOCAL REVIEW: storage2/history6/cold-feedclient7 normally landed;latest codeb1174163 full432filegate0,dispatchnew7/7/build-artifact0. Preview3000 build6da89895/sourceb1174163/runtime-equivalentdocsdescendants. Actualcold3cardsPASS;separate25-step360/390/1280navigation/Home/Profile/Uploadvalidation/focuscoveragecomplete. OriginalUploadoverflowFAIL remainsopen2/4px(controlsusable/sourceunproven),notwholebaselineallpass. FinalQA/docsqueuehandoff thenallIDLE;nooptionalwork. Feed3/publicplaybackpromises/liveAmber/cloud/peers/manualrelease remainunfinished. See docs/agents/LOCAL-REVIEW.md.
 
 - 2026-10-20 local-review checkpoint: storage2 producte7b9afb3/closurec5818cfe and history6 regressionb3fab032/closure386cc60e durably complete. Normal latest gate431files exit0; dispatch cleanup13/13 and history3/3. Integrated preview1834b6a9 runtime equals current test/docs-only descendants. Final actual-app/mobile QA2 browser pass active; readiness awaits actual flow evidence/handoff. Feed3 and public-promised playback roadmap deferred/open; real Amber/cloud/peers/release gates remain. No optional new tasks.

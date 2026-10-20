@@ -1,0 +1,10 @@
+{
+  "id": "client-reliability-8",
+  "area": "client-reliability",
+  "status": "open",
+  "title": "Measure and scope active URL-media last-owner cancellation with shared/rejoin controls",
+  "blockedOn": null,
+  "addedOn": "2026-10-20",
+  "filedAt": "6609269ea11aaff753e6d9f3d8b91eb04e219a20",
+  "evidence": "Owner continuation relayed20:44:41UTC. Stage3 still requires active owner-aware cancellation. Current lifecycle tests intentionally retain active resources/cache under previous queued-only contract. Read-only actual observer/controller controlled-IO reproduction first; explicit fix/test-contract routing required after measurements. See current area brief."
+}
