@@ -1,6 +1,14 @@
 # Area: Client reliability (client-reliability)
 
-## Current assignment: client-reliability-5 — active probe investigation
+## Current assignment: client-reliability-5 — prevent orphaned mirror continuation
+
+Investigation at0c1dd7e8 found a narrow defect, independently reproduced by dispatch at47953970 (administrative roster only): after last-owner disposal during active primary media, primary error starts1 fresh mirror HEAD(expected0). /tmp/bitvid-dispatch-5-active-url.mjs mirror-disposed --expect-no-obsolete-head exits1 after cleanup/retry; mirror-shared control exits0/healthy,resources0/slots0. Bounded active retention/success caching itself is intentional and not a defect.
+
+Implement controller-only lifecycle guard before next mirror request: temporary ownership js/ui/urlHealthController.js, focused tests/url-health-lifecycle.test.mjs and your unique integrity/evidence notes. Existing ownership hook is sufficient. Do not change observer/app/shared cache/HEAD-media-HLS-torrent abort,TTLs/limits/mirror order. Ensure cancellation settles with explicit cancelled outcome, no negative cache, no stale UI or newer inflight deletion. Preserve shared/rejoining live owners and ordered mirrors, active healthy cache and normal timeout/retry behavior. No competing writers: storage-cors owns only storage helper; playback-qa product read-only.
+
+Read current rules/test integrity before edits; retain actual observer/controller/cache regression with controlled external IO and mock clock, no sleeps/retries. Test disposed active failure starts0 mirror HEAD; shared/rejoin owner continues; active success cache,timeout/retry and inflight identity preserved. Every new scenario needs reverted failing mutant. Relevant focused tests/lint/build; coordinate full suite/normal queue through dispatch before expensive run (roster full gate currently underway). QA initially owns shared browser: do not launch browser until dispatch allocates it; request availability and use only your own server/port. No blanket prior-suite reruns for administrative edits. Commit item5, merge unstable (never rebase), unchanged gate/durable ancestry before close. CLI/agent/lander launch must unset inherited NODE_TEST_CONTEXT test transport (operational environment correction, no assertion/gate change). Send blocker/product landing/final events with exact checks/counts/gaps. Dispatch owns preview3000 refresh. No subagents/kit/scheduler/external operations. Continue next actions via dispatch routing under existing owner direction.
+
+## Archived investigation: client-reliability-5
 
 Interpreter checkpoint2026-10-20 confirms continuing development under existing direction. Claim item5 after non-destructive merge of unstable. Read RULE-CHANGES, KNOWN_ISSUES, PROGRAM, and performance-efficiency-plan Stage3. Items3/4 are completed: queued torrent/URL cancellation shipped; do not repeat their full qualification.
 

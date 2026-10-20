@@ -1,0 +1,6 @@
+# Parallel trial setup and item5 reproduction
+
+- Open PR preflight count0. Roster47953970 normal gate rejected13:28:15 exit1; no product assertion found. Gate log stopped118th file nip17-send-gift-wrap,1047831 bytes,8877 binary markers. Launcher NODE_TEST_CONTEXT=child-v8; host controlled spawnSync output2MiB gives ENOBUFS/SIGTERM/default cap. Original rejection stored here before same-SHA retry overwrites durable result: gate exit1, hashtag-preferences/relay diagnostics tail without failing assertion.
+- Clean-env diagnostic npm test with60s/file bound reached101 files with no failure lines; stopped own process group only,exit143, not a passing full-suite claim. Roster resubmitted with env -u NODE_TEST_CONTEXT; unmodified gate running, plain-text log0 binary markers. No kit/test/gate changes.
+- env -u NODE_TEST_CONTEXT node /tmp/bitvid-dispatch-5-active-url.mjs mirror-disposed --expect-no-obsolete-head: exit1 after cleanup/retry, obsoleteHeads1 expected0; HEAD1->2 after disposed primary error, resources1->0/slots1->0; final settles/null cache; later retry succeeds.
+- Same diagnostic mirror-shared:exit0, live healthy/old checking, shared1 initial HEAD/promise, mirror success/cache/retry reuse, final resources0/slots0. Actual observer/controller/cache; external fetch/media controlled, mock clock. Native decoding/playback/peers/CPU-RSS not qualified.
