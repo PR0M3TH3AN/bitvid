@@ -1,9 +1,10 @@
 {
-  "id": "playback-qa-2",
-  "area": "playback-qa",
-  "status": "open",
-  "title": "Capture actual-app local core-flow/mobile baseline before UI changes",
-  "blockedOn": null,
-  "addedOn": "2026-10-20",
-  "filedAt": "1bb3a4fc452969f060c09a286b72b8cd7ac4123e"
+ "id": "playback-qa-2",
+ "area": "playback-qa",
+ "status": "blocked",
+ "title": "Capture actual-app local core-flow/mobile baseline before UI changes",
+ "blockedOn": "Dispatch routing for offline app assets/harness: static jsDelivr buffer import blocked; source generated CSS absent; no build/public network authorized.",
+ "addedOn": "2026-10-20",
+ "filedAt": "1bb3a4fc452969f060c09a286b72b8cd7ac4123e",
+ "notes": "HEADac99ae9a; browser-only START15:08:13, actual run15:08:16.718→15:08:32.952Z. Actual app at360x800 failed documented15s test-harness readiness bound: js/index.js imports bufferPolyfill.js statically requiring public jsDelivr buffer@6.0.3/+esm,blocked by non-local guard. Source generated CSS404 too. Stopped first hard blocker,no390/desktop/UI validation/no seeded identity/events; no product defect claim. Browser+own private app/relay servers closed,RELEASE15:08:53 sent;deps symlink removed;preview3000 untouched. Unique evidence/script+screenshot prepared; no retained test/full/build/normal submit without explicit scope/slot."
 }
