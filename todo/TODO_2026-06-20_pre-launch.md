@@ -2178,3 +2178,15 @@ bitvid's EXISTING NWC pipeline; keep manual URI entry as the backup/advanced pat
       (PLATFORM_FEE_PERCENT=30, preimage verify, no pay_invoice auto-resend) untouched.
 - [ ] Phased + flag-gated: Phase 0 flag+vendor, Phase 1 connect button, Phase 2
       polish (balance/reconnect), Phase 3 optional WebLN path for Alby-extension/Hub.
+
+## Playback reliability (from Nostr feedback, Oct 2026)
+Items 1, 2 and 4 are **HIGH PRIORITY** — publicly promised in bitvid's Nostr replies.
+
+- [ ] **HIGH PRIORITY** — 1. Probe URLs with a small Range GET (first ~1 KB) instead of HEAD; many hosts/CDNs mishandle HEAD. File: `js/ui/urlHealthController.js` (`probeUrl`).
+- [ ] **HIGH PRIORITY** — 2. Persist URL and torrent health in localStorage across visits with a per-host failure score; today the 45-minute cache is lost on reload. Files: `js/state/cache.js` (`storeUrlHealth`), `js/gridHealth.js`.
+- [ ] 3. Start direct URL and WebTorrent in parallel instead of waiting out the 8-second stall. File: `js/services/playbackService.js` (`registerUrlPlaybackWatchdogs`).
+- [ ] **HIGH PRIORITY** — 4. Warm up videos on hover or scroll-into-view by loading metadata or a small first chunk. Files: `js/app/feedCoordinator.js` and card components.
+- [ ] 5. Auto-try alternate copies: NIP-71 fallback URLs and the same Blossom sha256 on other servers. Files: `js/nostr/nip71.js`, `js/services/blossomService.js`, `js/ui/urlHealthController.js`.
+- [ ] 6. Rank lower or hide videos with timeout/unknown health in default feeds. Files: `js/gridHealth.js`, `js/app/feedCoordinator.js`.
+- [ ] 7. Replace the 10-60s banner with per-video status (e.g. "host slow, trying P2P…") and a clear failure message. Files: `components/disclaimer.html:84`, `js/app/playbackCoordinator.js`.
+- [ ] 8. Service worker caches app shell and thumbnails (not videos) for faster repeat visits. Files: `sw.min.js` source and `_headers`.
