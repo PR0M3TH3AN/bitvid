@@ -40,6 +40,8 @@
 
 ## client-reliability
 
+- 2026-10-20: item6 DONE: retained actual profile-history wiring regression landed b3fab032;normal gate exit0 with431 discovered/431 unique file starts,focused38/38,5 killed mutants,lint11/11,submitted ancestry0. Test-only,existing product behavior passes. Evidence test_logs/TEST_LOG_2026-10-20_15-41-00_client-reliability-6-landed.md. Real signers/relays/encryption/full-app modal/browser/build/synced Clear unverified. Expensive slot released;IDLE for owner local review,no optional work.
+
 - 2026-10-20: item6 test-only retention ready:new real-profile wiring3/3,focused5files/38scenarios,5 isolated runtime mutants failnaturally/0cancelled,lint11pass. Local remove/lastitem/clear/recreation andfake-synced reduced+empty replacement covered;historicalno-op rejected. No product/existing suite edits;full/normal slot pendingexplicit grant,full/browser/build unrun;real signers/relays/fullapp/syncedClear unverified. Unique integrity/evidence in test_logs/*client-reliability-6*.
 
 - 2026-10-20: item6 audit atd88716e3(profile paths unchanged throughbbf57388):real local profile remove/clear and fake-synced remove/recreation pass,0network;historical runtime no-op failsboth aftercleanup but existingprofile27/27 stillpasses;lowerlayers3files/8pass. Classify missing real-wiring regression,notcurrentproductfailure. Proposed test-only focused file+uniqueintegrity;await routing,QA expensive slot respected. Evidence test_logs/TEST_LOG_2026-10-20_15-04-00_client-reliability-6.md. No product/test changes or live signer/relay/fullapp proof.
