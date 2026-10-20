@@ -110,12 +110,13 @@ export class R2Service {
    * @param {object} [params.credentials] - pre-resolved connection settings
    * @returns {Promise<{deleted:string[],failed:Array,skipped:boolean,reason:string}>}
    */
-  async deleteVideoStorage({
-    videos = [],
-    npub = "",
-    pubkey = "",
-    credentials = null,
-  } = {}) {
+  async deleteVideoStorage(options = {}) {
+    const {
+      videos = [],
+      npub = "",
+      pubkey = "",
+      credentials = null,
+    } = options && typeof options === "object" ? options : {};
     const list = (Array.isArray(videos) ? videos : [videos]).filter(
       (entry) => entry && typeof entry === "object"
     );
@@ -130,6 +131,12 @@ export class R2Service {
       return skip("no-videos");
     }
 
+    if (
+      (npub != null && typeof npub !== "string") ||
+      (pubkey != null && typeof pubkey !== "string")
+    ) {
+      return skip("invalid-owner");
+    }
     let resolvedNpub = (npub || "").trim();
     if (!resolvedNpub && pubkey) {
       resolvedNpub = safeEncodeNpub(pubkey) || "";
@@ -150,6 +157,16 @@ export class R2Service {
       return skip("no-connection");
     }
 
+    // Cached metadata is not guaranteed to contain strings. Reject malformed
+    // settings before trimming or constructing any client; never coerce objects
+    // into credentials or a bucket URL during best-effort cleanup.
+    if (
+      typeof settings !== "object" || Array.isArray(settings) ||
+      ["accessKeyId", "secretAccessKey", "bucket", "publicBaseUrl", "baseDomain"]
+        .some((key) => settings[key] != null && typeof settings[key] !== "string")
+    ) {
+      return skip("invalid-connection");
+    }
     const accessKeyId = (settings.accessKeyId || "").trim();
     const secretAccessKey = (settings.secretAccessKey || "").trim();
     const bucket = (settings.bucket || "").trim();
