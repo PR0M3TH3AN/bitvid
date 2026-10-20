@@ -227,3 +227,73 @@ try{
  await finish();
 }catch(e){report.runError=e.stack;console.log(JSON.stringify({type:'ERROR',error:e.stack}));await finish();process.exitCode=1;}
 ```
+
+## Genuine media fixture preflight (no browser/server launch)
+
+Interpreter15:36:55 correctly identified that all3 synthetic notes referenced absent `/qa2-unplayed.webm`.
+This was fixture incompleteness,not a reproduced app defect. Provisioned only own scratch,not frozen dist/product:
+
+```sh
+ffmpeg -hide_banner -loglevel error -f lavfi -i color=c=blue:s=64x64:r=10 -t 2 -an -c:v libvpx -y /tmp/bitvid-playback-qa-2-integrated/fixtures/qa2-unplayed.webm
+ffprobe -v error -count_frames -select_streams v:0 -show_entries stream=codec_name,width,height,nb_read_frames -of json /tmp/bitvid-playback-qa-2-integrated/fixtures/qa2-unplayed.webm
+```
+
+ffmpeg6.1.1-3ubuntu5; genuine generated VP8,64×64,2.000s,1019 bytes; ffprobe read20 frames,exit0.
+Actual fixture SHA256:`d911005a5bca7fb1f3e5aa2fbee701b6476c9baf93460264c2aa5105dd0b3c69`.
+No source media downloaded/copied from another user. The generation recipe fixes content,not necessarily container
+random identifiers across regenerated files;this exact frozen input is pinned by its measured hash. No product build ran.
+
+Standalone own media handler serves exact path before static-file lookup,with video/webm/Content-Length/Accept-Ranges:
+HEAD200,no body;GET200,full genuine bytes;single prefix/open/suffix Range206 with exact bytes/Content-Range;
+unsatisfiable416;unsupported method405. In-memory contract preflight7/7,exit0. Three own-scratch broken variants
+(wrong Content-Length,truncated GET,ignored Range) each exited1; originals restored and7/7 passed again.
+No socket/browser/server was started. These checks validate fixture IO,not app/controller behavior or native-browser playback.
+
+The next explicitly granted run includes real local HTTP HEAD/GET/Range checks **before** opening Chromium.
+No response/app/controller state is faked. All822 frozen app file hashes rechecked unchanged;future runner also
+verifies the manifest and every file plus exact media hash before opening a server. Existing real Buffer/external-deny
+guard and3-card/UI assertions retained. ForYou/Explore remain observed through real post-login visibility;no forced clicks.
+
+Input data:3 actual signed synthetic kind30078 notes from existing fixture test identity,local URL only,one deliberately
+long title for narrow-card wrapping. No valid publication is attempted;invalid Upload submissions must not add a video
+event. Local media does not qualify HTTPS/CORS,live peers or production content playback.
+
+Updated prepared runner SHA256:`dc10bf51310ea0c2138367219f28212471c994efab2886ed35eb6fd10e874ad7`.
+Prior f60065c2 source above is historical;current difference is standalone genuine fixture transport+wire preflight+
+stronger snapshot/input pins only. `node --check` exit0;UI sequence still unexecuted pending dispatch grant.
+
+Exact standalone handler:
+
+```js
+import {createHash} from 'node:crypto';
+export function mediaResponse(method, range, bytes) {
+ const length=bytes.length;
+ const headers={'Content-Type':'video/webm','Content-Length':String(length),'Accept-Ranges':'bytes','ETag':'"'+createHash('sha256').update(bytes).digest('hex')+'"'};
+ if(!['GET','HEAD'].includes(method))return {status:405,headers:{Allow:'GET, HEAD','Content-Length':'0'},body:null};
+ if(method==='HEAD')return {status:200,headers,body:null};
+ if(!range)return {status:200,headers,body:bytes};
+ const m=/^bytes=(\d*)-(\d*)$/.exec(range);
+ let start,end;
+ if(m&&(m[1]||m[2])){
+  if(!m[1]){const suffix=Number(m[2]);if(suffix>0){start=Math.max(0,length-suffix);end=length-1;}}
+  else {start=Number(m[1]);end=m[2]?Math.min(Number(m[2]),length-1):length-1;}
+ }
+ if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start<0||start>=length||end<start)return {status:416,headers:{'Content-Range':`bytes */${length}`,'Content-Length':'0'},body:null};
+ return {status:206,headers:{...headers,'Content-Length':String(end-start+1),'Content-Range':`bytes ${start}-${end}/${length}`},body:bytes.subarray(start,end+1)};
+}
+```
+
+Exact socket-free preflight:
+
+```js
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {mediaResponse} from './media-fixture.mjs';
+const bytes=await readFile(new URL('./fixtures/qa2-unplayed.webm',import.meta.url));
+const head=mediaResponse('HEAD',null,bytes);assert.equal(head.status,200);assert.equal(head.headers['Content-Type'],'video/webm');assert.equal(head.headers['Content-Length'],String(bytes.length));assert.equal(head.body,null);
+const get=mediaResponse('GET',null,bytes);assert.equal(get.status,200);assert.deepEqual(get.body,bytes);assert.equal(get.headers['Content-Length'],String(bytes.length));
+for(const [range,start,end] of [['bytes=0-31',0,31],['bytes=32-',32,bytes.length-1],['bytes=-16',bytes.length-16,bytes.length-1]]){const r=mediaResponse('GET',range,bytes);assert.equal(r.status,206);assert.equal(r.headers['Content-Range'],`bytes ${start}-${end}/${bytes.length}`);assert.equal(r.headers['Content-Length'],String(end-start+1));assert.deepEqual(r.body,bytes.subarray(start,end+1));}
+const bad=mediaResponse('GET','bytes=999999-',bytes);assert.equal(bad.status,416);assert.equal(bad.headers['Content-Range'],`bytes */${bytes.length}`);assert.equal(bad.body,null);
+const method=mediaResponse('POST',null,bytes);assert.equal(method.status,405);assert.equal(method.body,null);
+console.log('local media fixture preflight7/7 pass (HEAD,GET,3ranges,416,405), no sockets');
+```
