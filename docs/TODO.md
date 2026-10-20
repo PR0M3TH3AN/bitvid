@@ -2,6 +2,9 @@
 
 ## dispatch
 
+- 2026-10-20: item4 done: product89ccb907,closuref116f7c8 durable landed. Dispatch independent URL tests20/20,build/artifact exit0,previewHTTP200 and index matches dist. Worker full427/427,focused22,13 mutants,lint11,browser smoke recorded. Worker idle; next active-probe candidate needs fresh reproduction/routing. Actual playback/live peers/CPU-RSS/full Stage3 unfinished.
+
+
 - 2026-10-20: item4 reproduction confirmed independently: obsolete URL media starts1(expected0), shared owner control pass. Worker routed to queued URL ownership/cancellation in observer/controller and focused tests. Remaining: implementation, mutant/full/browser gates, landing, preview refresh; active abort excluded.
 
 
