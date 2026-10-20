@@ -24,6 +24,7 @@ function assignAwsSdk(module) {
     AbortMultipartUploadCommand: module.AbortMultipartUploadCommand,
     ListBucketsCommand: module.ListBucketsCommand,
     HeadBucketCommand: module.HeadBucketCommand,
+    GetBucketCorsCommand: module.GetBucketCorsCommand,
     PutBucketCorsCommand: module.PutBucketCorsCommand,
     DeleteObjectCommand: module.DeleteObjectCommand,
     PutObjectCommand: module.PutObjectCommand,
