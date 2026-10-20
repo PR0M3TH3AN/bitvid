@@ -38,3 +38,9 @@ Finish current storage-cors-2 and client-reliability-6 through unchanged full ga
 ## Local-review evidence checkpoint — 2026-10-20
 
 Storage2/history6 and the actual-app-discovered cold-feed blockerclient7 are normally landed. Latest codeb1174163 passed unchanged432-file gate;build6da89895 serves preview3000. Actualcold3cards+separate25-step360/390/1280core/modal follow-on coverage complete. Original strictUploadoverflowFAIL remains open2/4px at narrow widths,controlsusable,culpritunproven;do not call wholebaselineallpass. Local-review milestone includes this knownfinding and explicitlive/deferredlimits. Finish named evidence/handoff docs thenIDLE for owner review;nooptionalwork.
+
+## Bounded continuation — 2026-10-20
+
+> "Then continue with the active-probe/URL cancellation work." — owner, relayed by interpreter20:44:41UTC.
+
+Resume existing client worker for current-HEAD active URL-media cancellation reproduction and evidence-routed minimal fix. Local-review hold remains for other optional work; no new restricted authority. Shared-owner/cache/FIFO/legacy behavior and explicit test-contract correction required.
