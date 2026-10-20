@@ -1,0 +1,9 @@
+{
+  "id": "playback-qa-2",
+  "area": "playback-qa",
+  "status": "open",
+  "title": "Capture actual-app local core-flow/mobile baseline before UI changes",
+  "blockedOn": null,
+  "addedOn": "2026-10-20",
+  "filedAt": "1bb3a4fc452969f060c09a286b72b8cd7ac4123e"
+}
