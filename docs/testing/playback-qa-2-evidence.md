@@ -1,3 +1,7 @@
+> Latest checkpoint16:08:41: [measured cold-feed render gap](playback-qa-2-render-gap.md) routed to client7.
+> Actual app now boots and ingests/admits3 videos,but no cards render. Core/mobile baseline remains blocked;
+> the source-checkout failure below is historical and no longer the active prerequisite.
+
 # playback-qa-2: actual-app offline baseline blocked
 
 Baseline HEAD: `ac99ae9a6bdbeae555a30f659b0720ae67e777e8`.
