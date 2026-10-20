@@ -6,5 +6,5 @@
   "blockedOn": null,
   "addedOn": "2026-10-20",
   "filedAt": "3f627f5df3da7bcd28d910d9f8161844fa77ff74",
-  "evidence": "At0c1dd7e8 active media error after last-owner disposal starts1 new mirror HEAD(expected0);strict diagnostic exits1 after cleanup. Success/4000ms controlled timeout/shared/rejoin/retry controls pass. Evidence test_logs/TEST_LOG_2026-10-20_13-30-00_client-reliability-5.md. Investigation only; awaiting controller pre-candidate guard routing."
+  "evidence": "Controller guard12f92732,mergedf2a392fa:full427/427files,focused28/lifecycle18,six reverted mutants,lint11/build/browser pass;obsolete mirrorHEAD1\u21920. Slot wait10m57s respected. Normal product queue/durable ancestry pending. See test_logs/TEST_LOG_2026-10-20_13-51-00_client-reliability-5-ready.md"
 }

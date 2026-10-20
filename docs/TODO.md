@@ -25,6 +25,8 @@
 
 ## client-reliability
 
+- 2026-10-20: item5 ready atmergedf2a392fa(product12f92732):full427/427 files60s-bound exit0,focused28/lifecycle18,six reverted mutants,lint11/build-artifact/native Chromium+Firefox smoke pass;obsolete mirror HEAD1→0,shared/rejoin/retry/hidden reveal pass,0 external/pageerrors. Full-slot wait10m57s recorded;browser released,expensive slot held through normal landing. Remaining queue/durable ancestry/close;active abort/real playback/CPU unverified.
+
 - 2026-10-20: item5 routed controller-only pre-candidate guard implemented; baseline16pass/2fail→fixed18/18 lifecycle,6 rejected/reverted mutants,focused28/4files,lint11/build+artifact pass. No full/browser launch while dispatch administrative drain/QA reservation holds; slot requested13:32:54UTC,await explicit grant and verified unstable merge. No active abort/observer/cache/limits change; actual fallback/CPU unverified. Unique integrity/evidence in test_logs/*client-reliability-5*.
 
 - 2026-10-20: item5 investigation at0c1dd7e8:active URL success/real4000ms controlled timeout release media/slot correctly;disposed active primary media error starts1 obsolete mirror HEAD(expected0),strict assertion naturally exits1 after cleanup/retry. Shared/rejoin owner and later same-source controls pass. Proposed controller-only pre-candidate ownership guard + focused tests; await dispatch routing. No product/tests changed; active abort/browser/fallback/CPU unverified. See test_logs/TEST_LOG_2026-10-20_13-30-00_client-reliability-5.md.
