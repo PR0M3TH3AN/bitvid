@@ -2,7 +2,7 @@
 
 Status: ready for owner local review with the known minor Upload overflow below. Workers stop optional work for review. No optional work starts before owner review.
 
-Open [the existing local preview](http://127.0.0.1:3000). It is already running; no terminal command is needed. Preview server node135479 belongs to dispatch and serves built `dist`. Build6da89895 was produced from integrated unstableb1174163, including the cold-feed fix. HTTP200 and byte equality of served and built index were verified; runtime equality for final documentation descendants will be checked before handoff. Dispatch branch is area/dispatch. Final documentation landing SHA is reported in the owner handoff; runtime/build-input equality through QA closurec017069c was verified without rebuilding.
+Open [the existing local preview](http://127.0.0.1:3000). It is already running; no terminal command is needed. Preview server node135479 belongs to dispatch and serves built `dist`. Build version6da89895 (an opaque artifact identifier, not a Git SHA) was produced from integrated unstableb1174163, including the cold-feed fix. HTTP200 and byte equality of served and built index were verified; runtime equality for final documentation descendants will be checked before handoff. Dispatch branch is area/dispatch. Final documentation landing SHA is reported in the owner handoff; runtime/build-input equality through QA closurec017069c was verified without rebuilding.
 
 ## Changes available to review
 
@@ -18,7 +18,7 @@ Latest unchanged normal gate candidate b1174163 completed successfully across432
 
 Dispatch independently checked URL lifecycle18/18, CORS9/9, fallback4/4, malformed cleanup13/13, new real history wiring3/3, and cold-feed current-consumer notification7/7. Workers also recorded failing restored mutants, focused suites, lint11 stages, and normal full gates. [History evidence](../../test_logs/TEST_LOG_2026-10-20_15-41-00_client-reliability-6-landed.md) and [dispatch evidence](../../test_logs/TEST_LOG_2026-10-20_15-45-00_dispatch-review.md) retain exact scope.
 
-Actual-app reproduction: cold Trending starts from an empty cache, receives three valid eligible local video events, and retains an empty DOM. Passive trace proves relay EVENT/EOSE, all client/app maps and filtered videos contain3, while view remainsEMPTY. Client7 fix landedb1174163 with active-consumer and stale-callback lifecycle controls plus regression coverage. The rebuilt artifact6da89895 renders all three cold-feed cards without a forced refresh. The controlled browser uses genuine cached Buffer and a genuine local VP8 fixture outside immutable app files, synthetic identity/notes and local mock relays. This does not qualify real signers, public relays or deployed CDN behavior.
+Before the fix, the actual-app reproduction was: cold Trending started from an empty cache, received three valid eligible local video events, and retained an empty DOM. Passive trace proves relay EVENT/EOSE, all client/app maps and filtered videos contain3, while view remainsEMPTY. Client7 fix landedb1174163 with active-consumer and stale-callback lifecycle controls plus regression coverage. The rebuilt artifact6da89895 renders all three cold-feed cards without a forced refresh. The controlled browser uses genuine cached Buffer and a genuine local VP8 fixture outside immutable app files, synthetic identity/notes and local mock relays. This does not qualify real signers, public relays or deployed CDN behavior.
 
 ## Actual-app baseline and known finding
 
@@ -39,7 +39,7 @@ See [QA evidence and screenshots](../testing/playback-qa-2-final-evidence.md) fo
 
 ## Remaining scope
 
-Real Amber/NIP46 account/switch/logout, encrypted relay persistence, live storage/IAM/provider behavior and concurrent CORS writes, real WebTorrent peers, production service-worker/offline/CDN behavior, real devices and manual release QA remain unverified. Known parallel Firefox hydration and isolated logout issues remain documented in KNOWN_ISSUES.md.
+Actual full-app media playback/Firefox, real Amber/NIP46 account/switch/logout, encrypted relay persistence, live storage/IAM/provider behavior and concurrent CORS writes, real WebTorrent peers, production service-worker/offline/CDN behavior, real devices and manual release QA remain unverified. Known parallel Firefox hydration and isolated logout issues remain documented in KNOWN_ISSUES.md.
 
 Feed/view tombstone audit remains deferred as storage-cors-3. Public-promised playback backlog remains open: RangeGET health compatibility, persistence/per-host scoring, parallel startup, hover/viewport warmup, complete mirror/Blossom discovery, ranking/status and service-worker followups. Partial existing implementations are not whole-item completion. See [quality matrix](../../fleet/QUALITY.md).
 
