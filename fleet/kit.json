@@ -11,6 +11,9 @@
     "docs/agents/schedules/triage.md": "0b1f52fd6a4bd14ec8be9f90e0504ed153bf2f96acd65c178ce9c3eef7a9253f",
     "docs/agents/schedules/winddown.md": "36429467ce62e1f26a7eb6c2e6111ecd490c18bf691ee3fdb73c2fda71838d74",
     "docs/agents/WIND-DOWN.md": "b27ae51b0b8e739e0fcca736e4cb44dfdd38b71fff1dd4261ff4df18d575df3a",
-    "docs/agents/STRIKES.md": "dd3047e02287207a1de96c01d5e9a1889c2c37cb75a5b3655de6e813df7f5bd9"
+    "docs/agents/STRIKES.md": "dd3047e02287207a1de96c01d5e9a1889c2c37cb75a5b3655de6e813df7f5bd9",
+    "docs/agents/prompts/interpreter.md": "6e47ffe144c8699ab32452efc9da3af1c898e0341276e41c4ba6e296fb1483d0",
+    "docs/agents/prompts/session-manager.md": "0e2bd1d22b27e3ed39b12a5a0f68366acca85c52c97eb63aefaaa97d33eb6b44",
+    ".agents/skills/agent-fleet/SKILL.md": "25d5aeef4361b3eecff525f752d990acd2ce8988b59f790ba8363eece8e646c7"
   }
 }
