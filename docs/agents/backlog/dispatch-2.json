@@ -1,9 +1,11 @@
 {
- "id": "dispatch-2",
- "area": "dispatch",
- "status": "in-progress",
- "title": "Launch approved client-reliability worker and maintain owner handoff and preview",
- "blockedOn": null,
- "addedOn": "2026-10-19",
- "filedAt": "8b204687d2c0020c0fe97cedb3e9f8661a8d709a"
+  "id": "dispatch-2",
+  "area": "dispatch",
+  "status": "done",
+  "title": "Launch approved client-reliability worker and maintain owner handoff and preview",
+  "blockedOn": null,
+  "addedOn": "2026-10-19",
+  "filedAt": "8b204687d2c0020c0fe97cedb3e9f8661a8d709a",
+  "closedOn": "2026-10-20",
+  "evidence": "Local-review handoff normally landed3fd0ab594dd412a3a223b31605d57e21536b5e4d viaf3dc7d13;QAqualificationclosurec017069c. Codeb1174163 normal432gate0,build6da89895/previewHTTP200/indexcmp0;actualcold3cards+separate25step3viewportcoverage. Original2/4pxUploadoverflowFAIL retainedopen,notallgreen;workersIDLE/nooptionalwork. Finalruntime/previewaudit and evidence inLOCAL-REVIEW/QUALITY."
 }
