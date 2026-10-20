@@ -49,3 +49,5 @@
 
 - Interpreter relays owner: "ok lets continue development. Whats being worked on? And whats next?" Requested continuation is a quiet-hours exception only; approval limits unchanged. Same single worker assigned item4 investigation: reproduce URL queued/active or torrent active cancellation at HEAD before any product fix. Dispatch owns scoping/landing/preview, worker owns reproduction/evidence; no new worker. Next candidate is the narrowest demonstrated URL queued-owner defect; no defect assumed.
 - Item3 landing7d20a509 remains durable and ancestor of unstable604c8c61. Prior426-file validation is evidence-derived, not rerun. Remaining: reproduction, fix routing, actual playback/live peers/CPU-RSS qualification.
+
+- Item4 evidence accepted: dispatch independently ran last-owner --expect-fixed at604c8c61, exit1 with obsolete starts1!=0 after cleanup; shared-owner exit0, live badge healthy, settled4/active0/queued0. Routed same worker to queued URL cancellation fix in observer/controller plus focused tests. Active abort excluded. No product change landed or playback/CPU qualification yet.

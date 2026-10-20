@@ -2,6 +2,9 @@
 
 ## dispatch
 
+- 2026-10-20: item4 reproduction confirmed independently: obsolete URL media starts1(expected0), shared owner control pass. Worker routed to queued URL ownership/cancellation in observer/controller and focused tests. Remaining: implementation, mutant/full/browser gates, landing, preview refresh; active abort excluded.
+
+
 - 2026-10-20: item4 assigned to existing worker for investigation only: reproduce remaining URL/active torrent cancellation at HEAD, then route a narrow fix. No product fix yet; live playback/CPU-RSS remain unverified. Owner continuation relayed; quiet-hours exception does not change schedule.
 
 
