@@ -16,6 +16,8 @@
 
 ## client-reliability
 
+- 2026-10-20: item4 ready atce1381f5; full427/427 file exits0 with60s/file bound,focused22/22,lifecycle12/12,13 rejected/reverted mutants,lint11/11,build/artifact and Chromium+Firefox controlled native-observer smoke pass (obsolete starts0). Remaining normal queue/durable landing/ancestry then close/report. Actual fallback/live IO/active abort/CPU remain unverified.
+
 - 2026-10-20: item4 routed implementation in URL observer/controller complete locally;12 lifecycle scenarios and13 reverted mutants, focused/lint/build pass. Queued last-owner work settles without cache/mirror/stale UI; shared owners, immediate retry and hidden reveal covered. Remaining: native browser smoke/full merged-tree gate/normal landing/closure; active abort/fallback/CPU unverified.
 
 - 2026-10-20: client-reliability-4 investigation at4c54858c reproduces queued URL media start after feed disposal: active3/queued1 before and after disposal, then1 obsolete start(expected0); shared live-owner control deduplicates and receives healthy badge. Strict assertion exits1, diagnostic/control naturally exit0. No product/tests changed; awaiting dispatch fix routing. Active abort/browser/fallback/CPU unverified. Evidence: test_logs/TEST_LOG_2026-10-20_03-10-00_client-reliability-4.md.
