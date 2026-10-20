@@ -1,9 +1,10 @@
 {
   "id": "client-reliability-4",
   "area": "client-reliability",
-  "status": "open",
+  "status": "in-progress",
   "title": "Reproduce remaining source-health cancellation defect at current HEAD before scoping a fix",
   "blockedOn": null,
   "addedOn": "2026-10-20",
-  "filedAt": "604c8c61f4783717eb0cff7ca7ca33efb59aac8a"
+  "filedAt": "604c8c61f4783717eb0cff7ca7ca33efb59aac8a",
+  "evidence": "Reproduced at4c54858c; bounded queued URL owner fix ce1381f5. Full427/427 files,focused22,new lifecycle12,13 reverted mutants,lint11,build and Chromium+Firefox controlled native observer smoke pass. Normal landing and closure pending; evidence test_logs/TEST_LOG_2026-10-20_03-23-30_client-reliability-4-ready.md"
 }

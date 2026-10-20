@@ -1,9 +1,13 @@
+import { getUrlHealthBadgeOwner } from "../urlHealthObserver.js";
 import { SHORT_TIMEOUT_MS } from "../constants.js";
 import {
   isHlsUrl,
   prefersNativeHls,
-  probeHlsManifest,
+  probeHlsManifest
 } from "../services/hlsPlayback.js";
+
+// Inflight cache is shared, so ownership also spans controller instances.
+const urlProbeRecords = new WeakMap();
 
 export default class UrlHealthController {
   constructor({
@@ -11,7 +15,7 @@ export default class UrlHealthController {
     utils = {},
     logger = {},
     constants = {},
-    callbacks = {},
+    callbacks = {}
   } = {}) {
     this.state = state;
     this.utils = utils;
@@ -44,7 +48,13 @@ export default class UrlHealthController {
     `;
   }
 
-  updateUrlHealthBadge(badgeEl, state, videoId) {
+  updateUrlHealthBadge(
+    badgeEl,
+    state,
+    videoId,
+    owner = getUrlHealthBadgeOwner(badgeEl)
+  ) {
+    if (owner && !owner.active) return;
     if (!badgeEl) {
       return;
     }
@@ -61,7 +71,7 @@ export default class UrlHealthController {
       if (typeof requestAnimationFrame === "function") {
         requestAnimationFrame(() => {
           if (badgeEl.isConnected) {
-            this.updateUrlHealthBadge(badgeEl, state, videoId);
+            this.updateUrlHealthBadge(badgeEl, state, videoId, owner);
           }
         });
       }
@@ -74,18 +84,19 @@ export default class UrlHealthController {
       offline: "❌ CDN",
       unknown: "⚠️ CDN",
       timeout: "⚠️ CDN timed out",
-      checking: "⏳ CDN",
+      checking: "⏳ CDN"
     };
     const message =
-      state?.message ||
-      fallbackMessages[status] ||
-      fallbackMessages.checking;
+      state?.message || fallbackMessages[status] || fallbackMessages.checking;
 
     const hadCompactMargin =
       badgeEl.classList.contains("mt-sm") || badgeEl.classList.contains("mt-3");
     badgeEl.dataset.urlHealthState = status;
     const cardEl = badgeEl.closest(".card[data-video-id]");
-    if (cardEl && typeof this.utils.updateVideoCardSourceVisibility === "function") {
+    if (
+      cardEl &&
+      typeof this.utils.updateVideoCardSourceVisibility === "function"
+    ) {
       cardEl.dataset.urlHealthState = status;
       this.utils.updateVideoCardSourceVisibility(cardEl);
     }
@@ -104,7 +115,7 @@ export default class UrlHealthController {
       offline: "critical",
       unknown: "neutral",
       timeout: "neutral",
-      checking: "neutral",
+      checking: "neutral"
     };
     const variant = variantMap[status];
     if (variant) {
@@ -129,7 +140,7 @@ export default class UrlHealthController {
         message,
         lastCheckedAt: Number.isFinite(state?.lastCheckedAt)
           ? state.lastCheckedAt
-          : undefined,
+          : undefined
       });
     }
   }
@@ -139,6 +150,8 @@ export default class UrlHealthController {
       return;
     }
 
+    const owner = getUrlHealthBadgeOwner(badgeEl) || { active: true };
+    if (!owner.active) return;
     const eventId = video.id;
     const trimmedUrl = typeof url === "string" ? url.trim() : "";
     if (!trimmedUrl) {
@@ -157,6 +170,8 @@ export default class UrlHealthController {
 
     this.updateUrlHealthBadge(badgeEl, { status: "checking" }, eventId);
 
+    if (!owner.active) return;
+
     // Try the primary url plus any additional NIP-71 source mirrors, so one dead
     // host doesn't mark a video offline when an alternate plays.
     const sources = Array.isArray(video?.sources) ? video.sources : [];
@@ -164,7 +179,9 @@ export default class UrlHealthController {
     const seenUrls = new Set();
     for (const candidate of [
       trimmedUrl,
-      ...sources.map((s) => (s && typeof s.url === "string" ? s.url.trim() : "")),
+      ...sources.map((s) =>
+        s && typeof s.url === "string" ? s.url.trim() : ""
+      )
     ]) {
       if (candidate && !seenUrls.has(candidate)) {
         seenUrls.add(candidate);
@@ -179,14 +196,21 @@ export default class UrlHealthController {
         ? getInFlight(eventId, trimmedUrl, probeOptions)
         : null;
 
-    if (existingProbe) {
+    const existingRecord = existingProbe && urlProbeRecords.get(existingProbe);
+    if (existingProbe && !existingRecord?.cancelled) {
+      const release = existingRecord
+        ? this.retainUrlProbe(existingRecord, owner)
+        : () => {};
+
       existingProbe
         .then((entry) => {
-          if (entry) {
-            this.updateUrlHealthBadge(badgeEl, entry, eventId);
+          release();
+          if (entry && owner.active) {
+            this.updateUrlHealthBadge(badgeEl, entry, eventId, owner);
           }
         })
         .catch((err) => {
+          release();
           this.logger.warn(
             `[urlHealth] cached probe promise rejected for ${trimmedUrl}:`,
             err
@@ -195,8 +219,14 @@ export default class UrlHealthController {
       return;
     }
 
-    const probePromise = this.probeUrlList(candidateUrls, probeOptions)
+    const record = { owners: new Set(), cancelled: false, cancelQueued: null };
+    const release = this.retainUrlProbe(record, owner);
+    const probePromise = this.probeUrlList(candidateUrls, {
+      ...probeOptions,
+      lifecycle: record
+    })
       .then((result) => {
+        if (record.cancelled || result?.outcome === "cancelled") return null;
         const outcome = result?.outcome || "error";
         let entry;
 
@@ -205,17 +235,17 @@ export default class UrlHealthController {
         } else if (outcome === "opaque" || outcome === "unknown") {
           entry = {
             status: "unknown",
-            message: "⚠️ CDN",
+            message: "⚠️ CDN"
           };
         } else if (outcome === "timeout") {
           entry = {
             status: "timeout",
-            message: "⚠️ CDN timed out",
+            message: "⚠️ CDN timed out"
           };
         } else {
           entry = {
             status: "offline",
-            message: "❌ CDN",
+            message: "❌ CDN"
           };
         }
 
@@ -236,10 +266,11 @@ export default class UrlHealthController {
         return entry;
       })
       .catch((err) => {
+        if (record.cancelled) return null;
         this.logger.warn(`[urlHealth] probe failed for ${trimmedUrl}:`, err);
         const entry = {
           status: "offline",
-          message: "❌ CDN",
+          message: "❌ CDN"
         };
         if (typeof this.state.storeUrlHealth === "function") {
           return this.state.storeUrlHealth(eventId, trimmedUrl, entry);
@@ -247,6 +278,7 @@ export default class UrlHealthController {
         return entry;
       });
 
+    urlProbeRecords.set(probePromise, record);
     if (typeof this.state.setInFlightUrlProbe === "function") {
       this.state.setInFlightUrlProbe(
         eventId,
@@ -258,11 +290,13 @@ export default class UrlHealthController {
 
     probePromise
       .then((entry) => {
-        if (entry) {
-          this.updateUrlHealthBadge(badgeEl, entry, eventId);
+        release();
+        if (entry && owner.active) {
+          this.updateUrlHealthBadge(badgeEl, entry, eventId, owner);
         }
       })
       .catch((err) => {
+        release();
         this.logger.warn(
           `[urlHealth] probe promise rejected post-cache for ${trimmedUrl}:`,
           err
@@ -270,8 +304,22 @@ export default class UrlHealthController {
       });
   }
 
-  async probeUrlWithVideoElement(url, timeoutMs) {
-    const defaultTimeout = this.constants.URL_PROBE_TIMEOUT_MS || SHORT_TIMEOUT_MS;
+  retainUrlProbe(record, owner) {
+    record.owners.add(owner);
+    const onDispose = () => {
+      record.owners.delete(owner);
+      if (!record.owners.size) record.cancelQueued?.();
+    };
+    owner.releases?.add(onDispose);
+    return () => {
+      record.owners.delete(owner);
+      owner.releases?.delete(onDispose);
+    };
+  }
+
+  async probeUrlWithVideoElement(url, timeoutMs, lifecycle) {
+    const defaultTimeout =
+      this.constants.URL_PROBE_TIMEOUT_MS || SHORT_TIMEOUT_MS;
     const effectiveTimeout =
       Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : defaultTimeout;
 
@@ -290,20 +338,49 @@ export default class UrlHealthController {
       const defaultTimeout =
         this.constants.URL_PROBE_TIMEOUT_MS || SHORT_TIMEOUT_MS;
       const effective =
-        Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : defaultTimeout;
+        Number.isFinite(timeoutMs) && timeoutMs > 0
+          ? timeoutMs
+          : defaultTimeout;
       const outcome = await probeHlsManifest(trimmed, effective);
       return { outcome };
     }
 
+    if (lifecycle && !lifecycle.owners.size) {
+      lifecycle.cancelled = true;
+      return { outcome: "cancelled" };
+    }
     if (this.activeVideoProbes >= this.MAX_CONCURRENT_VIDEO_PROBES) {
-      await new Promise((resolve) => {
-        this.videoProbeQueue.push(resolve);
+      const acquired = await new Promise((resolve) => {
+        const job = {
+          resume: () => {
+            if (lifecycle) lifecycle.cancelQueued = null;
+            // Reserve the slot synchronously, before another caller can use it.
+            this.activeVideoProbes++;
+            resolve(true);
+          }
+        };
+        this.videoProbeQueue.push(job);
+        if (lifecycle) {
+          lifecycle.cancelQueued = () => {
+            const index = this.videoProbeQueue.indexOf(job);
+            if (index < 0) return;
+            this.videoProbeQueue.splice(index, 1);
+            lifecycle.cancelled = true;
+            lifecycle.cancelQueued = null;
+            resolve(false);
+          };
+        }
       });
+      if (!acquired) return { outcome: "cancelled" };
+    } else {
+      this.activeVideoProbes++;
     }
 
-    this.activeVideoProbes++;
-
     try {
+      if (lifecycle && !lifecycle.owners.size) {
+        lifecycle.cancelled = true;
+        return { outcome: "cancelled" };
+      }
       return await new Promise((resolve) => {
         const video = document.createElement("video");
         let settled = false;
@@ -369,9 +446,7 @@ export default class UrlHealthController {
       this.activeVideoProbes--;
       if (this.videoProbeQueue.length > 0) {
         const next = this.videoProbeQueue.shift();
-        if (typeof next === "function") {
-          next();
-        }
+        next.resume();
       }
     }
   }
@@ -396,6 +471,7 @@ export default class UrlHealthController {
         continue;
       }
       const outcome = result?.outcome;
+      if (outcome === "cancelled") return result;
       if (outcome === "ok") {
         return { outcome: "ok", url };
       }
@@ -413,7 +489,8 @@ export default class UrlHealthController {
     }
 
     const confirmPlayable = options?.confirmPlayable === true;
-    const defaultTimeout = this.constants.URL_PROBE_TIMEOUT_MS || SHORT_TIMEOUT_MS;
+    const defaultTimeout =
+      this.constants.URL_PROBE_TIMEOUT_MS || SHORT_TIMEOUT_MS;
     const urlHealthConstants = this.constants.urlHealthConstants || {};
 
     const confirmWithVideoElement = async () => {
@@ -431,7 +508,8 @@ export default class UrlHealthController {
         try {
           const result = await this.probeUrlWithVideoElement(
             trimmed,
-            timeoutMs
+            timeoutMs,
+            options.lifecycle
           );
           if (result && result.outcome) {
             return result;
@@ -473,8 +551,8 @@ export default class UrlHealthController {
         method: "HEAD",
         mode: "no-cors",
         cache: "no-store",
-        signal: controller ? controller.signal : undefined,
-      }),
+        signal: controller ? controller.signal : undefined
+      })
     ];
 
     if (Number.isFinite(defaultTimeout) && defaultTimeout > 0) {
@@ -543,7 +621,7 @@ export default class UrlHealthController {
       }
       return {
         outcome: "bad",
-        status: response.status,
+        status: response.status
       };
     }
 
@@ -552,7 +630,7 @@ export default class UrlHealthController {
       if (playbackCheck.outcome === "ok") {
         return {
           ...playbackCheck,
-          status: response.status,
+          status: response.status
         };
       }
       return playbackCheck;
@@ -560,7 +638,7 @@ export default class UrlHealthController {
 
     return {
       outcome: "ok",
-      status: response.status,
+      status: response.status
     };
   }
 }

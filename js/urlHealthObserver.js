@@ -9,6 +9,13 @@ import { cardNeedsEagerLivenessProbe } from "./utils/cardSourceVisibility.js";
 const ROOT_MARGIN = getLivenessProbePrefetchMargin();
 const THRESHOLD = 0.25;
 
+// Badge ownership crosses the existing callback boundary without requiring
+// callers to forward a new argument through the app/feed controllers.
+const badgeOwners = new WeakMap();
+export function getUrlHealthBadgeOwner(badgeEl) {
+  return badgeOwners.get(badgeEl);
+}
+
 const urlCardObserver = createCardObserver({
   rootMargin: ROOT_MARGIN,
   threshold: THRESHOLD,
@@ -17,27 +24,44 @@ const urlCardObserver = createCardObserver({
       return false;
     }
     const isIntersecting = Boolean(entry.isIntersecting);
-    const ratio = typeof entry.intersectionRatio === "number" ? entry.intersectionRatio : 0;
+    const ratio =
+      typeof entry.intersectionRatio === "number" ? entry.intersectionRatio : 0;
     return isIntersecting && ratio > 0;
   },
-  createState: () => ({ onCheck: null }),
+  createState: () => ({ onCheck: null, active: true, owners: new Map() }),
   // Hide-until-verified cards start `display:none`, so the IntersectionObserver
   // never fires for them — kick the URL probe eagerly on register so they can be
   // verified and revealed (the alternative is they stay hidden forever).
   onCardRegister: ({ card, state }) => {
+    const badge = card.querySelector("[data-url-health-state]");
+    const owner = { active: true, releases: new Set() };
+    state.owners.set(card, owner);
+    if (badge) badgeOwners.set(badge, owner);
     if (cardNeedsEagerLivenessProbe(card)) {
       // attachUrlHealthBadges sets state.onCheck right AFTER observe() returns, so
       // defer one microtask to let that wiring land before we probe.
       queueMicrotask(() => triggerUrlCheck(card, state));
     }
   },
+  onCardUnregister: ({ card, state }) => {
+    const owner = state.owners.get(card);
+    if (!owner) return;
+    owner.active = false;
+    for (const release of owner.releases) release();
+    owner.releases.clear();
+    state.owners.delete(card);
+  },
   onCardVisible: ({ card, state }) => {
     triggerUrlCheck(card, state);
-  },
+  }
 });
 
 function triggerUrlCheck(card, state) {
-  if (!state || typeof state.onCheck !== "function") {
+  if (
+    !state?.active ||
+    !state.owners.get(card)?.active ||
+    typeof state.onCheck !== "function"
+  ) {
     return;
   }
 
@@ -82,5 +106,12 @@ export function attachUrlHealthBadges(container, onCheck) {
   if (state && typeof onCheck === "function") {
     state.onCheck = onCheck;
   }
-  return () => urlCardObserver.disconnect(container);
+  return () => {
+    if (!state?.active) return;
+    state.active = false;
+    // A stale disposer must never disconnect a newer registration.
+    if (urlCardObserver.getState(container) === state) {
+      urlCardObserver.disconnect(container);
+    }
+  };
 }
