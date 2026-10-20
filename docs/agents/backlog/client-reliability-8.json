@@ -1,10 +1,11 @@
 {
  "id": "client-reliability-8",
  "area": "client-reliability",
- "status": "in-progress",
+ "status": "done",
  "title": "Measure and scope active URL-media last-owner cancellation with shared/rejoin controls",
  "blockedOn": null,
  "addedOn": "2026-10-20",
  "filedAt": "6609269ea11aaff753e6d9f3d8b91eb04e219a20",
- "evidence": "At5b77fd20 actual observer/controller controlled media last-owner retains1resource/3listeners/1timer/1slot/unsettled1;strict disposed/fifo checks naturally fail after cleanup. Queue3active/2waiting unchanged until controlled completion;shared/cross/legacy/rejoin/timeout/error/replacement7controls exit0,existing lifecycle18pass. Proposal controller retain/active-media settle cleanup only,explicit queued-only cache/rejoin test contract correction pending dispatch independent confirmation/routing. Evidence test_logs/TEST_LOG_2026-10-20_20-55-00_client-reliability-8-investigation.md. No product/tests/full/build/browser changes."
+ "evidence": "Implementation3474668a durablylanded43cb1bafe69f0bb3bce698e0b748281d1a04c061 via unchanged normalgateexit0/432discovered+unique file starts;candidate ancestry0. Focused37/3files,lifecycle29,14restored failing mutants,lint11. Active media final-owner cleanup/null/no cache with same-turn replacement/shared/cross/legacy/FIFO/live timeout controls. Strict spec correction documented. FULLSLOT released21:03UTC. Dispatch integrated preview/build/native qualification pending;no worker browser/build or HEAD/HLS/torrent/realfallback/CPU proof. Evidence test_logs/TEST_LOG_2026-10-20_21-03-00_client-reliability-8-landed.md.",
+ "closedOn": "2026-10-20"
 }
