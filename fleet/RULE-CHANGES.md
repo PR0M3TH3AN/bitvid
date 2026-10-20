@@ -7,6 +7,10 @@ override a stale system prompt. Nothing filters them down to a window of days.
 The session manager adds a line here whenever a rule, a prompt, a tool's usage, or
 a landing rule changes.
 
+## 2026-10-20
+
+- Owner continuation relayed by interpreter permits the requested bounded development step now despite quiet hours; recurring schedule/config unchanged. client-reliability-4 is read-only source-health cancellation reproduction at current HEAD, evidence notes only. Product/test fixes require dispatch routing after reproduction; mailbox tools now deliver short wakes, superseding prior no-wake limitation for updated runtime. No unattended monitoring claim.
+
 ## 2026-10-19
 
 - client-reliability-3 redirects the existing single worker to queued torrent-probe ownership in js/gridHealth.js, an optional small queue helper, and focused lifecycle tests. Prior validation tasks are done. Active probes, URL checks, WebTorrent implementation, cache/concurrency policy and kit remain out of scope. Completion must send dispatch mailbox evidence; mailbox delivery is not a session wakeup. No scheduler/kit changes.

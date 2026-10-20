@@ -44,3 +44,8 @@
 - Dispatch independently reran the original actual five-card reproduction:4 active,observer disconnected,0 obsolete starts after disposal (baseline1); exit0. Landed lifecycle suite11/11,exit0 naturally,309.36ms. Dispatch npm run build including artifact verification exit0; previewHTTP200, existing server preserved.
 - Not verified: actual media fallback/live peers,CPU/RSS benefit,active abort/URL cancellation,whole Stage3,signer/wallet/production. One worker now idle with empty backlog; next ownership/cancellation slices remain unassigned until bounded evidence/scoping. No deploy/spending/scheduler/kit changes.
 - Completion reporting now worked: two evidence messages were delivered and read. This new-mail turn resumed dispatch; file-mailbox code still has no session-wake behavior, so no unattended-monitoring claim.
+
+## 2026-10-20 — Owner resumes bounded development
+
+- Interpreter relays owner: "ok lets continue development. Whats being worked on? And whats next?" Requested continuation is a quiet-hours exception only; approval limits unchanged. Same single worker assigned item4 investigation: reproduce URL queued/active or torrent active cancellation at HEAD before any product fix. Dispatch owns scoping/landing/preview, worker owns reproduction/evidence; no new worker. Next candidate is the narrowest demonstrated URL queued-owner defect; no defect assumed.
+- Item3 landing7d20a509 remains durable and ancestor of unstable604c8c61. Prior426-file validation is evidence-derived, not rerun. Remaining: reproduction, fix routing, actual playback/live peers/CPU-RSS qualification.
