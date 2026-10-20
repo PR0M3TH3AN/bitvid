@@ -197,3 +197,26 @@ Merged verified unstable7f99c045 into own branch at `124be14310a314bd4ca99d075a7
 `git diff --check`: exit0.
 `env -u NODE_TEST_CONTEXT UNIT_TEST_TIMEOUT_MS=60000 npm test`: exit0, all429 unit files passed, including the new regression; completed14:55:44Z. Actual process exit was checked, not a log-reading command. No timeout/failure or assertion changes.
 No browser/build repeat: relevant playback/magnet chain unchanged by predecessor landings.
+
+## Durable landing and closure
+
+Submitted `64143f42ed890687093e0fec7a6191189f073cb2` at14:56:10.819Z through the unchanged normal queue.
+During diagnostic, target advanced only with dispatch documentation (`d88716e3`,3 files/19 insertions);
+normal lander merged the current target and ran its unchanged install + npm test gate.
+Durable land_status and result JSON report **landed** at15:02:17.419Z, main SHA
+`1bb3a4fc452969f060c09a286b72b8cd7ac4123e`, normal gate **exit0**.
+`git merge-base --is-ancestor 64143f42ed890687093e0fec7a6191189f073cb2 unstable`: exit0.
+`git log -1 unstable`: `3f9c26e361ec977b9bd6435c987cf29b2518df3f` (later dispatch docs).
+No full-gate file count is inferred from the result tail; independently run diagnostic counted429/429.
+Expensive QA slot released15:02:30Z; browser had already been released13:40:46Z.
+Backlog closed only after durable landing/ancestry. Closure metadata will use unchanged normal queue handling.
+No new item started; dispatch asked to integrate status into shared TODO/trial outcome.
+
+Bounded result: no defect demonstrated in primary404/media-error fallback, viable mirror selection, or terminal
+settlement. Retained4-scenario regression rejects6 meaningful mutants; no product/existing test/config edits.
+Full app UI/relay path, actual WebTorrent metadata/peers/webseed consumption, post-start late stalls, HTTPS/CORS,
+HLS, performance/CPU/RSS, production and wholeStage3 remain **unverified**.
+Final verification work completed15:02:30Z, from start13:38:36Z (1h23m54s), including65m54s request-to-grant-consumption
+resource/coordination hold. Browser sandbox loopback retry and lint/Git approved sandbox boundary work were short
+tool stalls; exact per-tool blocked wall times were not independently measured. Normal queue gating14:56:10.819→15:02:17.419
+was6m6.600s. Grant wait and the39m57s dispatch wake/checkpoint lag overlap and must not be added.
