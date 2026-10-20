@@ -43,3 +43,11 @@
 - 2026-10-19: client-reliability-3 ready for normal queue at607d5ce1: full426/426 files exit0 with60s/file bound;27 focused scenarios,14 reverted mutants rejected, lint11/11, build/artifact verification pass. Corrected Chromium/Firefox built-dist/native-observer smoke:0 obsolete starts/stale callbacks/page errors/external requests; hidden reveal and source-health visibility pass. Remaining: normal queue/durable landing/ancestry then close and dispatch landing/final evidence events. Actual playback fallback/live peers, active abort/URL cancellation, CPU/RSS and full Stage3 remain unverified/out of scope.
 
 - 2026-10-19: client-reliability-3 finished and closed after verified normal landing7d20a509 (submissione522efc1, gate exit0, unstable ancestry exit0). Full426/426 files,focused27/27,14 reverted mutants,lint11/11,build/artifact verification and native Chromium/Firefox controlled-IO smokes pass; obsolete starts1→0. Dispatch landing evidence sent; closure metadata/final report follow. Dispatch owns preview sync/rebuild after its resume; mailbox does not wake idle sessions. Actual media fallback/live peers/CPU-RSS, active abort/URL cancellation and whole Stage3 remain outside qualification; no new work without routing.
+
+## storage-cors
+
+- Parallel trial item1: reproduce CORS existing-origin preservation offline before routing fix; no cloud changes.
+
+## playback-qa
+
+- Parallel trial item1: local fallback qualification/regression; browser initially reserved to QA; product read-only.

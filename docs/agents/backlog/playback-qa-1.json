@@ -1,0 +1,9 @@
+{
+  "id": "playback-qa-1",
+  "area": "playback-qa",
+  "status": "open",
+  "title": "Qualify local hosted-source fallback with independent regression and browser evidence",
+  "blockedOn": null,
+  "addedOn": "2026-10-20",
+  "filedAt": "0c1dd7e86be3e28edc96aca47f7753a98990dde0"
+}

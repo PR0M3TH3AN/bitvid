@@ -95,7 +95,9 @@
       ],
       "doesNotOwn": [],
       "neighbours": [
-        "client-reliability"
+        "client-reliability",
+        "storage-cors",
+        "playback-qa"
       ]
     },
     {
@@ -108,7 +110,12 @@
         "tests/profile-modal-controller.test.mjs",
         "js/ui/profileModalController.js",
         "js/ui/profileModal/**",
-        "docs/agents/backlog/client-reliability-*.json"
+        "docs/agents/backlog/client-reliability-*.json",
+        "js/gridHealth.js",
+        "js/urlHealthObserver.js",
+        "js/ui/urlHealthController.js",
+        "tests/grid-health-lifecycle.test.mjs",
+        "tests/url-health-lifecycle.test.mjs"
       ],
       "doesNotOwn": [
         "js/app.js",
@@ -121,7 +128,64 @@
         "css/**"
       ],
       "neighbours": [
+        "dispatch",
+        "playback-qa"
+      ]
+    },
+    {
+      "id": "storage-cors",
+      "title": "Storage CORS reliability",
+      "role": "area",
+      "domain": "feature",
+      "provider": "codex",
+      "owns": [
+        "js/storage/s3-multipart.js",
+        "js/storage/s3-client.js",
+        "tests/storage-cors-preservation.test.mjs",
+        "docs/agents/backlog/storage-cors-*.json",
+        "docs/testing/storage-cors-*.md"
+      ],
+      "doesNotOwn": [
+        "js/app.js",
+        "js/app/**",
+        "js/gridHealth.js",
+        "js/urlHealthObserver.js",
+        "js/ui/urlHealthController.js",
+        "js/services/r2Service.js",
+        "js/services/s3UploadService.js",
+        "fleet.config.json",
+        "tools/fleet/**",
+        "TEST_INTEGRITY.md",
+        "docs/TODO.md"
+      ],
+      "neighbours": [
         "dispatch"
+      ]
+    },
+    {
+      "id": "playback-qa",
+      "title": "Playback fallback QA",
+      "role": "area",
+      "domain": "feature",
+      "provider": "codex",
+      "owns": [
+        "tests/e2e/fleet-playback-fallback.spec.ts",
+        "tests/fleet-playback-fallback.test.mjs",
+        "docs/testing/playback-qa-*.md",
+        "docs/agents/backlog/playback-qa-*.json"
+      ],
+      "doesNotOwn": [
+        "js/**",
+        "fleet.config.json",
+        "tools/fleet/**",
+        "playwright.config.ts",
+        "tests/e2e/helpers/**",
+        "TEST_INTEGRITY.md",
+        "docs/TODO.md"
+      ],
+      "neighbours": [
+        "dispatch",
+        "client-reliability"
       ]
     }
   ],

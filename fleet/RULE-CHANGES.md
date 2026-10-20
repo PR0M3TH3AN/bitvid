@@ -9,6 +9,9 @@ a landing rule changes.
 
 ## 2026-10-20
 
+- Owner authorizes bounded parallel trial via interpreter: dispatch plus existing client-reliability and two new areas storage-cors/playback-qa. Separate worktrees/disjoint write ownership; no competing app/grid/URL writers. QA initially owns browser; one expensive full gate at a time coordinated through dispatch. Each worker sends read/next-action and timed contention/evidence events. No new external authority or scheduler changes.
+
+
 - client-reliability-5 assigned to existing worker: read-only active URL/torrent cancellation reproduction at current HEAD, starting active URL media last-owner/shared-owner controls. Evidence notes only; product/test changes need demonstrated defect and dispatch routing. Continue selecting bounded next actions under existing owner direction; no new routine approval required. No scheduler or external authority change.
 
 
