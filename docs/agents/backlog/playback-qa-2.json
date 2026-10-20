@@ -3,8 +3,8 @@
  "area": "playback-qa",
  "status": "blocked",
  "title": "Capture actual-app local core-flow/mobile baseline before UI changes",
- "blockedOn": "Dispatch routing for offline app assets/harness: static jsDelivr buffer import blocked; source generated CSS absent; no build/public network authorized.",
+ "blockedOn": "Dispatch review of exact genuine-cache Buffer ESM scratch adapter + byte-verified CSS reuse, then explicit browser grant after storage gate. No public fetch or app/toolkit stubs.",
  "addedOn": "2026-10-20",
  "filedAt": "1bb3a4fc452969f060c09a286b72b8cd7ac4123e",
- "notes": "HEADac99ae9a; browser-only START15:08:13, actual run15:08:16.718→15:08:32.952Z. Actual app at360x800 failed documented15s test-harness readiness bound: js/index.js imports bufferPolyfill.js statically requiring public jsDelivr buffer@6.0.3/+esm,blocked by non-local guard. Source generated CSS404 too. Stopped first hard blocker,no390/desktop/UI validation/no seeded identity/events; no product defect claim. Browser+own private app/relay servers closed,RELEASE15:08:53 sent;deps symlink removed;preview3000 untouched. Unique evidence/script+screenshot prepared; no retained test/full/build/normal submit without explicit scope/slot."
+ "notes": "Actual-app360x800 hardoffline boot blocked15:08:16.718→15:08:32.952Z,harness15s timeout from blocked static buffer CDN import,CSS404; stopped/released browser+ownservers,othersUI/viewports unverified. Read-only asset prep found genuine cached buffer6.0.3/base64-js1.5.1/ieee7541.2.1 tarballs: recomputedSHA512 equals cached registrydist.integrity; dependencies complete. Proposed only local esbuild0.27.3 repackaging(real source,no stubs),exact URL local fulfillment,allotherexternal blocked. Dispatch CSS398371B SHA256283d04642d201edba1e9bd5cbc3ede8d74fbd11b50ff0cd2732d463847d2adf3 has465 compared actual inputs0differences. Plan/hash/provenance docs/testing/playback-qa-2-assets-plan.md; no adapter/build/browser/install/networkfetch executed; no full/normal submit until routed."
 }
