@@ -1,10 +1,10 @@
 {
- "id": "playback-qa-2",
- "area": "playback-qa",
- "status": "blocked",
- "title": "Capture actual-app local core-flow/mobile baseline before UI changes",
- "blockedOn": "Client7 routed cold-feed subscription refresh fix; await durable landing + rebuilt integrated artifact + dispatch browser clearance to finish original mobile/UI baseline.",
- "addedOn": "2026-10-20",
- "filedAt": "1bb3a4fc452969f060c09a286b72b8cd7ac4123e",
- "notes": "Measured hard localreviewblocker16:06:34.174→16:06:51.787:transport3EVENT+EOSE/client+appmaps3/actualfiltered3,all3allow/serviceInclude=true,notprivate/nsfw/blocked;whitelistfalse/lockdownfalse/bodynotinert/docvisible/containerconnected. Passivecache0→subscriptionupdate3;viewcurrent0/rendered0/signature__EMPTY__/lastmetadata.reasoncache/DOM0after15s. SourceNostrService.loadVideos livecallback caches/emitswithoutonVideos usedbyfeedrefresh. Dispatch16:08:41 routedclient7method-onlyactualservicefix,QAproductread-only/browserHOLD. Originalschema s mismatch disclosed(notpreventingingest/eligibility),observerrelativeimportpageerrorseparatefromproduct;allinterventionsretained. Ownedresourcesreleased,noUIflowsorother2viewportsverified. Rendergaptrace/screenshot docs/testing/playback-qa-2-render-gap.md;finishdocs-onlyevidencequeue thenwaitfix/artifact/clearance,notbaselineclosure."
+  "id": "playback-qa-2",
+  "area": "playback-qa",
+  "status": "blocked",
+  "title": "Capture actual-app local core-flow/mobile baseline before UI changes",
+  "blockedOn": "Original strict Upload overflow finding remains open:360 document362,390 document394; minor/usable geometry measured. Separate original3viewport/core/Home/focus coverage completed; await dispatch disposition, no optional CSS fix.",
+  "addedOn": "2026-10-20",
+  "filedAt": "1bb3a4fc452969f060c09a286b72b8cd7ac4123e",
+  "notes": "Final granted run16:25:30.066\u219216:25:33.901UTC,Chromium154,b1174163/build6da89895,frozen830files/pinsverified.9stepsPASS/1FAIL:realcrypto/startup/cold3cards/login/360feed/nav/Profile;Uploadtitle/missingsource/no-publish/6Tab checks reached,then documentoverflowfail (PNG362 vs360).No remainingHome/390/1280/Uploadclose. Allownedresourcesclosed/RELEASE,no productwrites. Exact report/driver/screenshots docs/testing/playback-qa-2-final-evidence.md. Evidenceclosure only,NOT baselinepass/close. Separate dispatch-authorized16:27:44.416\u219216:28:10.112 follow-on25steps/0hardfail:all3viewportTrending/Explore/ForYou/Home3cards/Profile+Uploadvalidation/focus/close completed. Exactmobileoverflow2px/4px,panelsfit,controlsusable;originalfailureopen,notallpass. Browser/serversclosed/RELEASE;docs-onlynormalqueue thenIDLE perdispatch."
 }

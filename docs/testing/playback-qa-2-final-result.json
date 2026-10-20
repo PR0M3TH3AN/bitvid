@@ -1,0 +1,459 @@
+{
+  "driver": "noninteractive bounded actions",
+  "started": "2026-10-20T16:25:30.066Z",
+  "mirrorHits": [
+    "https://cdn.jsdelivr.net/npm/buffer@6.0.3/+esm"
+  ],
+  "blockedHttp": [
+    "https://esm.sh/@aws-sdk/client-s3@3.637.0?bundle",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/+esm",
+    "https://esm.sh/nostr-tools@2.17.0",
+    "https://esm.sh/nostr-tools@2.17.0?target=es2022&exports=nip04",
+    "https://esm.sh/nostr-tools@2.17.0/nip44?target=es2022",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://robohash.org/032ee87ce307cbf86f3eeecea732f73a19698cd07d13394a0c14b52d35798304",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/+esm",
+    "https://esm.sh/nostr-tools@2.17.0",
+    "https://esm.sh/nostr-tools@2.17.0?target=es2022&exports=nip04",
+    "https://esm.sh/nostr-tools@2.17.0/nip44?target=es2022"
+  ],
+  "blockedWs": [
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/"
+  ],
+  "failedLocal": [],
+  "pageErrors": [],
+  "consoleErrors": [
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "[bitvid] Submission failed Error: Please provide at least a Video URL or Magnet Link.\n    at UploadModal.handleExternalFlow (http://127.0.0.1:31847/js/ui/components/UploadModal.js:1342:17)\n    at UploadModal.handleSubmit (http://127.0.0.1:31847/js/ui/components/UploadModal.js:1280:25)\n    at HTMLFormElement.<anonymous> (http://127.0.0.1:31847/js/ui/components/UploadModal.js:360:14)",
+    "[bitvid] Please provide at least a Video URL or Magnet Link."
+  ],
+  "actions": [
+    {
+      "name": "actual toolkit ready",
+      "at": "2026-10-20T16:25:32.215Z",
+      "result": {
+        "callable": true,
+        "canonicalIdentity": true,
+        "frozen": true,
+        "mockFlag": false,
+        "validSeed": true,
+        "tamperedRejected": true,
+        "pubkeyMatches": true,
+        "independentSignatureVerified": true
+      },
+      "ok": true
+    },
+    {
+      "name": "actual application startup completes",
+      "at": "2026-10-20T16:25:32.252Z",
+      "result": {
+        "readyPromiseCompleted": true,
+        "relays": [
+          "ws://127.0.0.1:31848"
+        ]
+      },
+      "ok": true
+    },
+    {
+      "name": "three synthetic relay cards hydrate",
+      "at": "2026-10-20T16:25:32.266Z",
+      "result": [
+        {
+          "title": "QA local synthetic video with a deliberately long title to inspect narrow-card wrapping and controls",
+          "dTag": "qa2-0"
+        },
+        {
+          "title": "QA local synthetic video 1",
+          "dTag": "qa2-1"
+        },
+        {
+          "title": "QA local synthetic video 2",
+          "dTag": "qa2-2"
+        }
+      ],
+      "ok": true
+    },
+    {
+      "name": "local test identity login",
+      "at": "2026-10-20T16:25:32.273Z",
+      "result": {
+        "profileVisible": true,
+        "uploadVisible": true
+      },
+      "ok": true
+    },
+    {
+      "name": "360 trending navigation/feed",
+      "at": "2026-10-20T16:25:32.366Z",
+      "result": {
+        "width": 360,
+        "documentWidth": 360,
+        "cardBounds": [
+          {
+            "x": 76.796875,
+            "right": 347.203125,
+            "width": 270.40625
+          },
+          {
+            "x": 76.796875,
+            "right": 347.203125,
+            "width": 270.40625
+          },
+          {
+            "x": 76.796875,
+            "right": 347.203125,
+            "width": 270.40625
+          }
+        ],
+        "smallControls": [
+          {
+            "id": "sidebarCollapseToggle",
+            "label": "Expand sidebar",
+            "width": 35.1875,
+            "height": 35.1875
+          },
+          {
+            "id": "forYouLink",
+            "label": "For You",
+            "width": 35.1875,
+            "height": 35.1875
+          },
+          {
+            "id": "trendingLink",
+            "label": "Trending",
+            "width": 35.1875,
+            "height": 35.1875
+          },
+          {
+            "id": "mostZappedLink",
+            "label": "Most Zapped",
+            "width": 35.1875,
+            "height": 35.1875
+          },
+          {
+            "id": "",
+            "label": "Recently Added",
+            "width": 35.1875,
+            "height": 35.1875
+          },
+          {
+            "id": "",
+            "label": "For Kids",
+            "width": 35.1875,
+            "height": 35.1875
+          },
+          {
+            "id": "exploreLink",
+            "label": "Explore",
+            "width": 35.1875,
+            "height": 35.1875
+          },
+          {
+            "id": "subscriptionsLink",
+            "label": "Subscriptions",
+            "width": 35.1875,
+            "height": 35.1875
+          },
+          {
+            "id": "",
+            "label": "History",
+            "width": 35.1875,
+            "height": 35.1875
+          },
+          {
+            "id": "footerDropdownButton",
+            "label": "Show more sidebar links",
+            "width": 35.1875,
+            "height": 35.1875
+          },
+          {
+            "id": "themeToggle",
+            "label": "Switch to dark theme",
+            "width": 32,
+            "height": 32
+          },
+          {
+            "id": "uploadButton",
+            "label": "+",
+            "width": 38.390625,
+            "height": 38.390625
+          },
+          {
+            "id": "profileButton",
+            "label": "",
+            "width": 38.390625,
+            "height": 38.390625
+          },
+          {
+            "id": "trendingInfoTrigger",
+            "label": "How is this feed sorted?",
+            "width": 16,
+            "height": 16
+          },
+          {
+            "id": "",
+            "label": "#video",
+            "width": 49.8125,
+            "height": 18.21875
+          },
+          {
+            "id": "",
+            "label": "More options",
+            "width": 32,
+            "height": 32
+          },
+          {
+            "id": "",
+            "label": "Video settings",
+            "width": 32,
+            "height": 32
+          },
+          {
+            "id": "",
+            "label": "More options",
+            "width": 32,
+            "height": 32
+          },
+          {
+            "id": "",
+            "label": "Video settings",
+            "width": 32,
+            "height": 32
+          },
+          {
+            "id": "",
+            "label": "More options",
+            "width": 32,
+            "height": 32
+          },
+          {
+            "id": "",
+            "label": "Video settings",
+            "width": 32,
+            "height": 32
+          }
+        ]
+      },
+      "ok": true
+    },
+    {
+      "screenshot": "playback-qa-2-360-feed.png"
+    },
+    {
+      "name": "360 navigation explore",
+      "at": "2026-10-20T16:25:32.590Z",
+      "result": {
+        "hash": "#view=explore",
+        "headings": [
+          "Explore",
+          "\n        Login Options\n      ",
+          "\n        Application Form\n      ",
+          "\n        Content Appeals Form\n      ",
+          "\n        General Feedback Form\n      ",
+          "\n        Feature Request Form\n      ",
+          "\n        Bug Fix Form\n      ",
+          "\n        Search Filters\n      ",
+          "\n          Share a Video\n        ",
+          "",
+          "\n                      Comments\n                    ",
+          "\n                  Similar Content\n                ",
+          "Edit Video Note",
+          "Profile",
+          "Conversations",
+          "\n        Allow browser uploads (bucket CORS)\n      ",
+          "\n            Welcome to bitvid\n          ",
+          "\n          seed. zap. subscribe.\n        "
+        ]
+      },
+      "ok": true
+    },
+    {
+      "name": "360 navigation for-you",
+      "at": "2026-10-20T16:25:32.705Z",
+      "result": {
+        "hash": "#view=for-you",
+        "headings": [
+          "For You",
+          "\n        Login Options\n      ",
+          "\n        Application Form\n      ",
+          "\n        Content Appeals Form\n      ",
+          "\n        General Feedback Form\n      ",
+          "\n        Feature Request Form\n      ",
+          "\n        Bug Fix Form\n      ",
+          "\n        Search Filters\n      ",
+          "\n          Share a Video\n        ",
+          "",
+          "\n                      Comments\n                    ",
+          "\n                  Similar Content\n                ",
+          "Edit Video Note",
+          "Profile",
+          "Conversations",
+          "\n        Allow browser uploads (bucket CORS)\n      ",
+          "\n            Welcome to bitvid\n          ",
+          "\n          seed. zap. subscribe.\n        "
+        ]
+      },
+      "ok": true
+    },
+    {
+      "name": "360 navigation trending",
+      "at": "2026-10-20T16:25:32.815Z",
+      "result": {
+        "hash": "#view=trending",
+        "headings": [
+          "Trending",
+          "\n        Login Options\n      ",
+          "\n        Application Form\n      ",
+          "\n        Content Appeals Form\n      ",
+          "\n        General Feedback Form\n      ",
+          "\n        Feature Request Form\n      ",
+          "\n        Bug Fix Form\n      ",
+          "\n        Search Filters\n      ",
+          "\n          Share a Video\n        ",
+          "",
+          "\n                      Comments\n                    ",
+          "\n                  Similar Content\n                ",
+          "Edit Video Note",
+          "Profile",
+          "Conversations",
+          "\n        Allow browser uploads (bucket CORS)\n      ",
+          "\n            Welcome to bitvid\n          ",
+          "\n          seed. zap. subscribe.\n        "
+        ]
+      },
+      "ok": true
+    },
+    {
+      "name": "360 Profile open/focus/close",
+      "at": "2026-10-20T16:25:32.905Z",
+      "result": {
+        "focus": [
+          {
+            "inside": true,
+            "id": "profileModalIdentityCard",
+            "tag": "BUTTON",
+            "outline": "solid",
+            "shadow": "rgba(15, 23, 42, 0.18) 0px 3.2px 4.8px -0.8px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px"
+          },
+          {
+            "inside": true,
+            "id": "profileNavAccount",
+            "tag": "BUTTON",
+            "outline": "solid",
+            "shadow": "rgb(84, 0, 17) 3px 0px 0px 0px inset, rgba(15, 23, 42, 0.18) 0px 3.2px 4.8px -0.8px"
+          },
+          {
+            "inside": true,
+            "id": "profileNavRelays",
+            "tag": "BUTTON",
+            "outline": "solid",
+            "shadow": "rgba(15, 23, 42, 0.18) 0px 0.8px 1.6px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px"
+          },
+          {
+            "inside": true,
+            "id": "profileNavWallet",
+            "tag": "BUTTON",
+            "outline": "solid",
+            "shadow": "rgba(15, 23, 42, 0.18) 0px 0.8px 1.6px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px"
+          },
+          {
+            "inside": true,
+            "id": "profileNavStorage",
+            "tag": "BUTTON",
+            "outline": "solid",
+            "shadow": "rgba(15, 23, 42, 0.18) 0px 0.8px 1.6px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px"
+          },
+          {
+            "inside": true,
+            "id": "profileNavMyVideos",
+            "tag": "BUTTON",
+            "outline": "solid",
+            "shadow": "rgba(15, 23, 42, 0.18) 0px 0.8px 1.6px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px"
+          }
+        ],
+        "restored": "profileButton"
+      },
+      "ok": true
+    },
+    {
+      "screenshot": "playback-qa-2-360-profile.png"
+    },
+    {
+      "name": "360 Upload required fields/focus/close",
+      "at": "2026-10-20T16:25:33.252Z",
+      "ok": false,
+      "error": "Upload horizontal document overflow"
+    },
+    {
+      "screenshot": "playback-qa-2-360-upload-validation.png"
+    },
+    {
+      "screenshot": "playback-qa-2-resumed-stop.png"
+    }
+  ],
+  "fixtureHttp": {
+    "head": 200,
+    "get": 200,
+    "range": 206,
+    "bytes": 1019,
+    "contentType": "video/webm"
+  },
+  "browserVersion": "154.0.8037.97",
+  "boot": "passed",
+  "baseline": "blocked-or-failed",
+  "failedStep": "360 Upload required fields/focus/close",
+  "failure": "Upload horizontal document overflow",
+  "failureDiagnostics": {
+    "appPresent": true,
+    "relayHealth": {
+      "relays": [
+        "ws://127.0.0.1:31848"
+      ],
+      "unreachable": [],
+      "backoff": {}
+    },
+    "feedItems": [
+      {
+        "title": "QA local synthetic video with a deliberately long title to inspect narrow-card wrapping and controls",
+        "pubkey": "032ee87ce307cbf86f3eeecea732f73a19698cd07d13394a0c14b52d35798304",
+        "dTag": "qa2-0",
+        "hasUrl": true,
+        "hasMagnet": false
+      },
+      {
+        "title": "QA local synthetic video 1",
+        "pubkey": "032ee87ce307cbf86f3eeecea732f73a19698cd07d13394a0c14b52d35798304",
+        "dTag": "qa2-1",
+        "hasUrl": true,
+        "hasMagnet": false
+      },
+      {
+        "title": "QA local synthetic video 2",
+        "pubkey": "032ee87ce307cbf86f3eeecea732f73a19698cd07d13394a0c14b52d35798304",
+        "dTag": "qa2-2",
+        "hasUrl": true,
+        "hasMagnet": false
+      }
+    ],
+    "body": "Switch to dark theme\n+\nPlease provide at least a Video URL or Magnet Link.\nTrending\n#video\nQA local synthetic video with a deliberately long title to inspect narrow-card wrapping and controls\nQA local synthetic video with a deliberately long title to inspect narrow-card wrapping and controls\nQA local synthetic video with a deliberately long title to inspect narrow-card wrapping and controls\n\nUnknown\n\njust now\n✅ CDN\n0 views\n0 sats\nQA local synthetic video 1\nQA local synthetic video 1\nQA local synthetic video 1\n\nUnknown\n\njust now\n✅ CDN\n0 views\n0 sats\nQA local synthetic video 2\nQA local synthetic video 2\nQA local synthetic video 2\n\nUnknown\n\njust now\n✅ CDN\n0 views\n0 sats\nShare a Video\nUpload File\nExternal Link\nVideo URL\n\nPrimary hosted video source (URL-first playback).\n\nMagnet Link\n\nOptional WebTorrent fallback when the URL is unavailable.\n\nTitle\nDescription\nThumbnail URL\nHashtags\n+ Add Tag\nEnable Comments\nNSFW\nFor Kids\nDo not share this video to other Nostr apps\nAdvanced Options\nPublish Video\n\nseed. zap. subscribe.\nv: 6da89895 • 2026-10-20"
+  },
+  "ended": "2026-10-20T16:25:33.901Z",
+  "resourcesClosed": true
+}
