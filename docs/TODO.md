@@ -2,6 +2,9 @@
 
 ## dispatch
 
+- 2026-10-20 trial first product landed: item5 product0bd0b1c3,closuredc852597;dispatch lifecycle18/18/build-artifact/previewHTTP200+dist match. Storage slot grant13:58:27 after949s wait,full/normal landing underway;QA next,ready95a77a7f. Remaining: storage/QA durable landings,preview refresh after product changes,final trial evidence;real cloud/peers/activeabort/CPU unverified.
+
+
 - 2026-10-20 trial current: all3 pickups verified; admin notes durableb922c186. Client item5 owns exclusive full/browser/product landing from13:43:51 (~10m57s wait); storage CORS ready9/9+8mutants,next slot; QA retained4/4+6mutants,third slot,browser released. Remaining: full merged-tree validation,durable product/test landings,preview refresh and final trial outcome. No real cloud/peers/CPU qualification.
 
 
@@ -27,6 +30,8 @@
 - Coordination limitation: operator checkpoint resumed dispatch; file mailbox does not itself wake idle Codex. Completion handoff now explicitly requires mailbox evidence, but unattended dispatch wakeup is unqualified. No scheduler/kit changes at this checkpoint.
 
 ## client-reliability
+
+- 2026-10-20: item5 done/closed after normal product landing0bd0b1c3(submission4bc52f9d,gate exit0,unstable ancestry exit0). Full427files/focused28/lifecycle18/six reverted mutants/lint11/build-artifact/Chromium+Firefox controlled smoke pass;obsolete mirror HEAD1→0. Browser+expensive slot released13:57UTC after10m57s initial wait. Dispatch landing/release event sent;preview refresh dispatch-owned. Closure metadata/final follow;no next item. Active abort/actual fallback/livepeers/CPU/fullStage3 unverified.
 
 - 2026-10-20: item5 ready atmergedf2a392fa(product12f92732):full427/427 files60s-bound exit0,focused28/lifecycle18,six reverted mutants,lint11/build-artifact/native Chromium+Firefox smoke pass;obsolete mirror HEAD1→0,shared/rejoin/retry/hidden reveal pass,0 external/pageerrors. Full-slot wait10m57s recorded;browser released,expensive slot held through normal landing. Remaining queue/durable ancestry/close;active abort/real playback/CPU unverified.
 
