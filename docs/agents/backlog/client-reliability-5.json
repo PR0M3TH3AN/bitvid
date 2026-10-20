@@ -1,0 +1,9 @@
+{
+  "id": "client-reliability-5",
+  "area": "client-reliability",
+  "status": "open",
+  "title": "Reproduce remaining active URL or torrent probe lifecycle defect before scoping a fix",
+  "blockedOn": null,
+  "addedOn": "2026-10-20",
+  "filedAt": "3f627f5df3da7bcd28d910d9f8161844fa77ff74"
+}

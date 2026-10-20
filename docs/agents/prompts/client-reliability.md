@@ -1,6 +1,14 @@
 # Area: Client reliability (client-reliability)
 
-## Current assignment: client-reliability-4 — queued URL probe fix
+## Current assignment: client-reliability-5 — active probe investigation
+
+Interpreter checkpoint2026-10-20 confirms continuing development under existing direction. Claim item5 after non-destructive merge of unstable. Read RULE-CHANGES, KNOWN_ISSUES, PROGRAM, and performance-efficiency-plan Stage3. Items3/4 are completed: queued torrent/URL cancellation shipped; do not repeat their full qualification.
+
+Investigate active URL/torrent probe lifecycle at HEAD. Start with actual URL observer→controller last-owner disposal during active media work; compare a shared live-owner control, completion/cleanup and a later same-source request. Controlled external fetch/media events only; no public traffic. Measure active resource retention, settlement, slot release and stale/cache effects before disposal, after disposal and after controlled completion. Distinguish bounded timeout behavior and intentional active caching from a demonstrated resource/lifecycle defect; missing AbortSignal alone is insufficient. Inspect active HEAD/HLS/torrent read-only only if needed to identify the smallest next defect. No assumption the old plan is current.
+
+Investigation/evidence only: no product edits, no committed regression changes, no policy/limits/TTL tuning. Scratch diagnostics and your evidence/backlog notes permitted. Send dispatch exact HEAD, reproduction command, expected/actual counts, failing assertion/natural exit after cleanup, shared-owner control, smallest proposed fix files and acceptance. Dispatch will independently assess and route implementation. If no defect reproduces, report an evidence-backed next TODO candidate rather than speculate or silently stop. Preserve dirty/queued work. No subagents needed. No deploy/push/spend/wallet/production-data/scheduler/kit changes; preview3000 preserved. Mailbox event on blocker and completed investigation. Archived briefs below are historical, not new work authorization.
+
+## Archived completed assignment: client-reliability-4 — queued URL probe fix
 
 Investigation is complete: at4c54858c real observer/controller/cache gives4 HEAD requests,3 active media probes and1 queued. Dispose/remove last feed then release a slot: obsolete media starts1(expected0); --expect-fixed naturally fails exit1 after cleanup. Shared live-owner control passes exit0, healthy badge, settled4/active0/queued0. Dispatch independently reproduced both against dispatch code at604c8c61 using /tmp/bitvid-dispatch-4-url-lifecycle.mjs. No public IO. Your detailed investigation evidence remains authoritative for fixture details.
 
