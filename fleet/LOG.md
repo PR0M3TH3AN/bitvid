@@ -62,3 +62,8 @@
 
 - Interpreter checkpoint continues owner development direction; same single worker assigned item5 read-only active probe reproduction, prioritizing active URL media last-owner/shared-owner controls. No new worker or product fix scope yet. Dispatch will assess evidence and route smallest demonstrated defect; absent a defect choose next evidenced TODO.
 - MCP mailbox_read stalled; terminated its wait, global fleet mailbox read consumed the actual instruction successfully. CLI fallback used, no pane scraping/kit changes. Item4 dispatch evidence is durable3f627f5d, not still queued as earlier handoff wording said. Full/browser validation remains prior worker-derived; no repeat tests for administrative assignment.
+
+## 2026-10-20 — Parallel trial staffing
+
+- Owner parallel-trial approval relayed by interpreter and recorded verbatim in PROGRAM. Keep item5 client-reliability; add storage-cors-1 offline existing-origin preservation reproduction and playback-qa-1 independent local fallback qualification. Preflight public open PR count0. Inspection confirms helper constructs requested-origin-only PutBucketCors; QA gap documented in Stage3 and prior item4 report. Neither task assumes a new product defect.
+- Three worker target, disjoint branches/worktrees/files. QA browser first; focused offline work overlaps; full suites/product gates coordinated one at a time. Measure pickup latency, real outputs, gate/browser/tool stalls and durable queue outcomes. No credentialed cloud/live peers/production activity. Launch pending roster landing.
