@@ -1,10 +1,10 @@
 # Program — the owner's priorities and rulings
 
-Last updated: 2026-10-19
+Last updated: 2026-10-20
 
 ## Current milestone
 
-Prepare the integrated client for owner local review/testing:finish current storage2/history6 scope,faithful actual-app/core/mobile baseline and current preview with exact evidence. Retain broader robustness/usability backlog and live gates;do not start optional work beyond this milestone. Validate old reports at HEAD and land checked changes through local unstable.
+Local-review handoff: storage2/history6 and demonstrated cold-feed blockerclient7 are normally landed. Build6da89895/preview3000 verified;actualcold3cards and separate25-step360/390/1280core/modal coverage complete. Original strictUploadoverflow FAIL remains open(2/4px,controlsusable),not an all-green baseline. Finish docs-only evidence/handoff,then allIDLE for owner review;no optional backlog work. Broader roadmap/live signer/cloud/peer/release gates remain explicit in QUALITY/LOCAL-REVIEW.
 
 ## Priorities
 

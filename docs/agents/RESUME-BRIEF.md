@@ -1,18 +1,11 @@
-# Resume brief: 2026-10-19 queued-probe fix complete
+# Resume brief: 2026-10-20 local review handoff
 
-Read PROGRAM and GOAL for scoped desktop-chat routine-work authority. No deploys, spending, production data, wallets or schedulers.
+Read PROGRAM, GOAL, QUALITY, LOCAL-REVIEW and newest RULE-CHANGES. Owner stopping milestone is "Ready for me to review and test locally" (relayed by interpreter). No optional work starts until owner review/confirmed actionable feedback. No push/deploy/spend/real cloud/account/peer/scheduler authority.
 
-## Current verified state
-
-- Items1/2 test-harness fixes normally landedde6918ce,closuref9adfc8f.
-- Item3 queued torrent health lifecycle product fix normally landed7d20a509,closure7fde734d. Durable statuses and unchanged normal full gate exit0 verified; item3 done. Dispatch synced to7fde734d before its reporting commit.
-- Worker evidence:426/426 full unit files,lint11/11,27 focused scenarios/4 files,14 rejected/reverted mutants; build and native Chromium+Firefox controlled-IO lifecycle smoke pass.
-- Independent dispatch: original five-card attach/dispose/remove/release scenario now0 obsolete starts(baseline1),lifecycle11/11,natural exit0; preview build/artifact verification exit0 and HTTP200 on existing port3000.
-- Team2 total: dispatch plus1 idle client-reliability worker, empty assigned backlog. No next item started during this mail checkpoint. Remaining candidates need bounded evidence/scoping:URL/active-probe cancellation and other Stage3 slices.
-- Unverified: actual playback fallback/live peers,CPU/RSS improvement,whole Stage3,real signer/wallet/production behavior.
-
-## Communication and preview
-
-Two worker completion/landing messages arrived and were read. File mailbox delivers/stores only; this new-mail turn resumed dispatch. No claim of unattended wakeup or monitoring; no scheduler/kit change.
-
-Preserve fleet-bitvid:preview at http://127.0.0.1:3000, serving dispatch built dist refreshed from verified item3. Dispatch owns future sync/rebuild after verified product landings.
+- Storage cleanup malformed metadata producte7b9afb3/closurec5818cfe,history regressionb3fab032/closure386cc60e done.
+- Actual-app cold feed bug:eligible/cache3 butDOM0;live service omitted onVideos. Minimal current-consumer/stale-subscription notification fixb1174163556e2705ba85868e21adcaf51b44bd5f,closure09b13219. Unchanged normal432-filegateexit0,focused27/9failingmutants/lint11;dispatch independentnew7/7.
+- Previewhttp://127.0.0.1:3000 alreadyrunning,node135479/cwddispatch;preserve. Build6da89895 fromb1174163,build/artifactexit0,hostHTTP200/indexcmp0. Laterdocs-only descendants need runtime equality check,not redundantbuild.
+- QA actualcold3cardsPASS/noforcedrefresh. Original360Uploadstrictwidth assertionFAIL retained. Separate25namedsteps cover360/390/1280Trending/Explore/ForYou/Home/Profile/Uploadrequiredvalidation/6Tabcontainment/closefocusrestore. Document362at360/394at390,1280none;criticalcontrolsinside,minorusablefindingopen,exactculpritunproven. Notwholebaselineallpass. Browser/privateQAserversclosed16:28:10.112UTC.
+- Controlled genuineBuffer/cachemirror+realcrypto/localVP8/syntheticidentity+mockrelay;publicnetworkdenied. No realAmber/signers/relay/cloud/IAM/peers/production/offlineCDN/manualreleasequalification.
+- Feedtombstoneauditstorage3 andpublic-promisedplaybackbacklogremainexplicit/deferred. Priortrialparallelimplementation+95m57prepared-outputwalltime has no controlledserialbaseline/speedupclaim;39m57dispatchwakegap+serializedgates recordedLOG.
+- Client/storageIDLE;QA finishingdocs-onlyevidence/closure thenIDLE. Dispatchfinishesdurabledocs/handoff+runtimepreviewaudit,thenIDLE. See current.task/mailbox/landq for finaldocsSHA;do notinferlandingfromsilence.
