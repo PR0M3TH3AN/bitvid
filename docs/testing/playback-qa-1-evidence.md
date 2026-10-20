@@ -182,3 +182,18 @@ Merged local unstable into own branch at `acb2fdef3baf74c2526babf79eea8a2451a3aa
 sandbox ORIG_HEAD lock initially read-only, then approved elevated local merge succeeded.
 Post-merge focused check:4/4, exit0; `git diff --check`: exit0. New RULE-CHANGES read.
 Full+submit scheduling explicitly waits behind client then storage per dispatch13:43:52Z.
+
+## Granted merged integration check
+
+Authoritative dispatch mailbox grant header:2026-10-20T14:49:35Z; consumed14:49:46Z.
+Its initial body said14:11; dispatch corrected this explicitly in14:49:55 mail, consumed14:50:25Z.
+Request13:43:52→grant14:49:35=65m43s resource/coordination wait; grant consumption11s.
+Storage release14:09:38→grant14:49:35=39m57s dispatch foreground/wakeup latency, not worker/test time.
+The earlier worker reply interpreted14:11 as intended grant time; this was incorrect. It was a stale body timestamp only, with no14:11 send or delivery delay. Dispatch wake/checkpoint lag39m57s is the valid delay metric; grant consumption was11s.
+
+Merged verified unstable7f99c045 into own branch at `124be14310a314bd4ca99d075a7aacc207c238ac`.
+`env -u NODE_TEST_CONTEXT node tests/fleet-playback-fallback.test.mjs`: exit0,4/4.
+`env -u NODE_TEST_CONTEXT npm run lint`: exit0,11/11 on merged tree (approved outside sandbox for git spawn).
+`git diff --check`: exit0.
+`env -u NODE_TEST_CONTEXT UNIT_TEST_TIMEOUT_MS=60000 npm test`: exit0, all429 unit files passed, including the new regression; completed14:55:44Z. Actual process exit was checked, not a log-reading command. No timeout/failure or assertion changes.
+No browser/build repeat: relevant playback/magnet chain unchanged by predecessor landings.
