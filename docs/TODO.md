@@ -2,6 +2,8 @@
 
 ## dispatch
 
+- 2026-10-20 client8 active URL-media product43cb1baf/full432gate0,dispatch29/29/build08620a71/artifact0/previewHTTP200+cmp0. WorkercontrollednativeChromium+Firefox smokePASS/released;closuremetadata/browsernotes normaldocsqueue pending. No realdecoder/networkbyte/CPU/HEAD/HLS/torrent qualification;broaderactiveprobe scope remains unfinished. Finishdocs/handoff thenawaitnextboundedrouting.
+
 - 2026-10-20 bounded continuation: client8 active URL-media last-owner/shared/rejoin reproduction after maintenance. Await measured evidence then independent confirmation/minimal fix and explicit test-contract routing. Other optional work remains deferred; no active-abort completion claim.
 
 - 2026-10-20 LOCAL REVIEW: storage2/history6/cold-feedclient7 normally landed;latest codeb1174163 full432filegate0,dispatchnew7/7/build-artifact0. Preview3000 build6da89895/sourceb1174163/runtime-equivalentdocsdescendants. Actualcold3cardsPASS;separate25-step360/390/1280navigation/Home/Profile/Uploadvalidation/focuscoveragecomplete. OriginalUploadoverflowFAIL remainsopen2/4px(controlsusable/sourceunproven),notwholebaselineallpass. FinalQA/docsqueuehandoff thenallIDLE;nooptionalwork. Feed3/publicplaybackpromises/liveAmber/cloud/peers/manualrelease remainunfinished. See docs/agents/LOCAL-REVIEW.md.
