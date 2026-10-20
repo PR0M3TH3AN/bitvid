@@ -1,9 +1,10 @@
 {
-  "id": "playback-qa-1",
-  "area": "playback-qa",
-  "status": "open",
-  "title": "Qualify local hosted-source fallback with independent regression and browser evidence",
-  "blockedOn": null,
-  "addedOn": "2026-10-20",
-  "filedAt": "0c1dd7e86be3e28edc96aca47f7753a98990dde0"
+ "id": "playback-qa-1",
+ "area": "playback-qa",
+ "status": "in-progress",
+ "title": "Qualify local hosted-source fallback with independent regression and browser evidence",
+ "blockedOn": null,
+ "addedOn": "2026-10-20",
+ "filedAt": "0c1dd7e86be3e28edc96aca47f7753a98990dde0",
+ "notes": "Baseline bbc1be79; actual coordinator/strategy/PlaybackService + magnet helpers retained 4/4 focused scenarios; six isolated mutants rejected/restored. Native Chromium154+Firefox146 3 scenarios each: real local mirror + substituted torrent transport decode64x64/time>0; terminal fail settles; zero external requests. No real WebTorrent/full app/Stage3 qualification. Dispatch approved retention13:41:49Z; full+submit slot third after client/storage, explicit grant pending. Browser/server released; early browser overlap scheduling intervention documented in docs/testing/playback-qa-1-evidence.md. Lint11/11 exit0 after approved git-spawnEPERM rerun."
 }
