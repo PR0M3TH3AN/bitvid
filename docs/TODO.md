@@ -22,6 +22,8 @@
 
 ## client-reliability
 
+- 2026-10-20: item5 investigation at0c1dd7e8:active URL success/real4000ms controlled timeout release media/slot correctly;disposed active primary media error starts1 obsolete mirror HEAD(expected0),strict assertion naturally exits1 after cleanup/retry. Shared/rejoin owner and later same-source controls pass. Proposed controller-only pre-candidate ownership guard + focused tests; await dispatch routing. No product/tests changed; active abort/browser/fallback/CPU unverified. See test_logs/TEST_LOG_2026-10-20_13-30-00_client-reliability-5.md.
+
 - 2026-10-20: item4 done/closed after normal landing89ccb907(submission7055496b,gate exit0,unstable ancestry exit0). Full427/427 files,focused22,lifecycle12,13 reverted mutants,lint11,build/artifact/native Chromium+Firefox controlled IO pass;obsolete starts1→0. Dispatch landing event sent; preview refresh owned by dispatch. No further item without routing. Actual media fallback/live peers/active abort/CPU and whole Stage3 unverified. Closure metadata/final event follow.
 
 - 2026-10-20: item4 ready atce1381f5; full427/427 file exits0 with60s/file bound,focused22/22,lifecycle12/12,13 rejected/reverted mutants,lint11/11,build/artifact and Chromium+Firefox controlled native-observer smoke pass (obsolete starts0). Remaining normal queue/durable landing/ancestry then close/report. Actual fallback/live IO/active abort/CPU remain unverified.
