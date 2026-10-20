@@ -9,6 +9,7 @@ import {
   submitLanding, landingStatus, submissionStatus, areaInfo, commitWork,
   setupCommit, tellDispatch, hearInterpreter, fleetStatus,
 } from './core/ops.mjs';
+import { fleetUpdate } from './core/update.mjs';
 
 export const SERVER = { name: 'agent-fleet', version: '0.2.0' };
 const INSTRUCTIONS = [
@@ -17,7 +18,7 @@ const INSTRUCTIONS = [
   'mailbox_read at the start of a turn. Mail is always delivered; the prompt says when to act on it. Sandboxed agents commit with the commit tool (message plus paths, or all), not git commit. submit on that tool also queues the tip. Then go back to work. At your next natural checkpoint, land_status can report that submission. Waiting is optional. Never infer the lander or the land result from silence. landq_submit queues the committed tip (a dirty worktree warns and still queues HEAD) and starts a drain. Do not push main.',
   'A scarce machine is a prompt convention: say so in .task and wait if a peer already has it. There is no slot lock.',
   'Sessions, worktrees, and cron stay on the fleet CLI. This server does not start them.',
-  'setup_commit commits only the fleet setup files on the main checkout. A sandboxed agent uses it instead of git commit. Mail to an open tmux window wakes it with a short line, not the body. mailbox_read and hear take those messages out of unread. fleet_status reports each window alive or dead, the unread count, and a working or idle guess. An idle area with mail that has been waiting is nudged once by that check. Do not scrape the tmux pane.',
+  'setup_commit commits only the fleet setup files on the main checkout. A sandboxed agent uses it instead of git commit. update refreshes vendored runtime and the registered skill to this kit, leaves an edited prompt in place (the new template is a .kit file beside it), and commits only the paths it changed. It does not change fleet.config.json, product files, mail, or the landing queue. If that commit cannot write the index, it falls back to setup_commit. Mail to an open tmux window wakes it with a short line, not the body. mailbox_read and hear take those messages out of unread. fleet_status reports each window alive or dead, the unread count, and a working or idle guess. An idle area with mail that has been waiting is nudged once by that check. mailbox_read, hear, and tell run that same check. A second look does not nudge again. Do not scrape the tmux pane.',
 ].join(' ');
 
 const cwdProp = { type: 'string', description: 'Directory to resolve the fleet from. Defaults to this server\'s cwd.' };
@@ -34,6 +35,7 @@ export const TOOLS = [
   { name: 'land_status', description: 'Quick lookup of one submission: queued, gating, landed (landedSha), rejected (reason), or unknown. Says whether a drain is alive and when it last ticked. If it is dead, the hint is the command that starts it. wait is optional and polls until landed, rejected, or timeoutSec (default 120, max 600).', inputSchema: { type: 'object', properties: { id: { type: 'string', description: 'Submission id: the commit sha, or a unique prefix of at least 4 hex characters.' }, wait: { type: 'boolean' }, timeoutSec: { type: 'number', description: 'Seconds to poll when wait is true. Default 120. Capped at 600.' }, cwd: cwdProp }, required: ['id'] } },
   { name: 'landq_status', description: 'Landing queue overview, or one submission by sha prefix (same durable state as land_status, including the optional wait).', inputSchema: { type: 'object', properties: { sha: { type: 'string' }, id: { type: 'string' }, wait: { type: 'boolean' }, timeoutSec: { type: 'number' }, cwd: cwdProp } } },
   { name: 'setup_commit', description: 'Commit only fleet setup files in the main checkout. Does not commit product code. Use this instead of git commit when the shell cannot write the git index.', inputSchema: { type: 'object', properties: { message: { type: 'string' }, cwd: cwdProp } } },
+  { name: 'update', description: 'Bring kit-owned files up to the installed kit without re-running init. Refreshes vendored runtime and the skill for a tool that is already registered. Overwrites a prompt only when it is still the copy init wrote. An edited prompt stays, and the new template is written beside it as a .kit file. Does not change fleet.config.json, product files, worktrees, mail, or the landing queue. Commits only the paths it changed. If the shell cannot write the git index, falls back to setup_commit.', inputSchema: { type: 'object', properties: { cwd: cwdProp } } },
   { name: 'tell', description: 'Mail the session manager from the interpreter. Wakes its tmux window with a short line when that window is open. The body stays in the mail. Replies are read with hear.', inputSchema: { type: 'object', properties: { body: { type: 'string' }, subject: { type: 'string' }, cwd: cwdProp }, required: ['body'] } },
   { name: 'hear', description: 'Read unread mailbox messages for the interpreter and move them out of unread.', inputSchema: { type: 'object', properties: { cwd: cwdProp } } },
   { name: 'fleet_status', description: 'Each area: tmux window alive or dead, unread mail count, and a working or idle guess. Idle with unread mail that has been waiting is nudged once.', inputSchema: { type: 'object', properties: { cwd: cwdProp } } },
@@ -60,6 +62,7 @@ export function dispatchTool(name, args = {}) {
       ? submissionStatus(c, args.sha || args.id, { wait: Boolean(args.wait), timeoutSec: args.timeoutSec })
       : landingStatus(c);
     case 'setup_commit': return setupCommit(c.repo, { message: args.message || 'fleet init' });
+    case 'update': return fleetUpdate(c.repo);
     case 'tell': return tellDispatch(c, { body: args.body, subject: args.subject ?? '' });
     case 'hear': return hearInterpreter(c);
     case 'fleet_status': return fleetStatus(c);

@@ -129,14 +129,20 @@ export function sendMailbox(c, { to, from, body, subject = '' } = {}) {
   return Object.assign(files, { wakes });
 }
 
-/** Reading takes the messages: they move to the archive, so unread means not yet read. */
-export function readMailbox(c, area) {
+/**
+ * Reading takes the messages: they move to the archive, so unread means not yet read.
+ * Then the same one-time stale-unread check as fleet status runs. count passes
+ * recover:false so a count does not nudge.
+ */
+export function readMailbox(c, area, { recover = true } = {}) {
   knownParty(c, area);
   const msgs = mailboxReadDir(c.mailbox.dir, area);
   for (const m of msgs) {
     try { mailboxArchiveDir(c.mailbox.dir, area, m.file); } catch { /* already archived */ }
   }
-  return msgs;
+  if (!recover) return msgs;
+  const status = fleetStatus(c);
+  return Object.assign(msgs, { recovered: status.recovered });
 }
 
 export function archiveMailbox(c, area, which) {
@@ -189,7 +195,8 @@ export function tellDispatch(c, { body, from = 'interpreter', subject = '' } = {
   if (!hub) die('no session manager (role dispatcher)');
   const files = sendMailbox(c, { to: hub.id, from, body, subject });
   const wake = (files.wakes || []).find((w) => w.to === hub.id) || { submitted: false, reason: 'no-window' };
-  return { files: [...files], to: hub.id, from, nudged: Boolean(wake.submitted), wake };
+  const status = fleetStatus(c);
+  return { files: [...files], to: hub.id, from, nudged: Boolean(wake.submitted), wake, recovered: status.recovered };
 }
 
 export function hearInterpreter(c) {
@@ -300,7 +307,8 @@ function senderOf(file) {
 /**
  * Per-area window, unread count, and a working/idle guess from the pane.
  * When an area is idle with mail that has been unread for a while, nudge once.
- * That is the only recovery. It runs because someone looked at status, not on a timer.
+ * That is the only recovery. It runs when someone looks at status, reads mail,
+ * hears, or tells. A filename already nudged is not nudged again. There is no timer.
  */
 export function fleetStatus(c, { recoverAfterMs = RECOVER_AFTER_MS, idleAfterMs = IDLE_AFTER_MS } = {}) {
   const state = readNudgeState(c);

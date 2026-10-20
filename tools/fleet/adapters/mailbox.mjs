@@ -25,7 +25,9 @@ export const messaging = {
     'because a line says you have new fleet mail, run',
     '`node tools/fleet/bin/mailbox.mjs read <your id>`. Reading takes the messages:',
     'they leave unread and move to archive. That typed line is only a wake. The',
-    'mail is the message. Reply to the sender with your next action. To reach a peer:',
+    'mail is the message. That read also re-nudges, once, an idle peer whose unread',
+    'mail has been waiting. A second read does not nudge again. Reply to the sender',
+    'with your next action. To reach a peer:',
     '`node tools/fleet/bin/mailbox.mjs send <peer id> --from <your id> "<text>"`.',
   ].join('\n'),
 };

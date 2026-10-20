@@ -24,8 +24,9 @@ if (cmd === 'send') {
   const msgs = readMailbox(c, who);
   if (!msgs.length) console.log(`no unread messages for ${who}`);
   for (const m of msgs) console.log(`=== ${m.file}\n${m.text}`);
+  for (const id of msgs.recovered || []) console.log(`nudged ${id} again`);
 } else if (cmd === 'count') {
-  console.log(readMailbox(c, who).length);
+  console.log(readMailbox(c, who, { recover: false }).length);
 } else if (cmd === 'archive') {
   try { for (const n of archiveMailbox(c, who, argv[2] ?? die('archive <me> <file|--all>'))) console.log(`archived ${n}`); }
   catch (e) { die(e.message); }

@@ -8,6 +8,12 @@
 //                                     Starts the session manager at a terminal, or tells the
 //                                     user's agent to `fleet up` and talk to it.
 //   fleet setup-commit                commit only those setup files (same as the MCP tool)
+//   fleet update                      refresh vendored runtime and the registered skill
+//                                     to this kit. Untouched prompts are overwritten.
+//                                     An edited prompt stays, and the new template is
+//                                     written beside it as <file>.kit. Does not change
+//                                     fleet.config.json, product files, worktrees, mail,
+//                                     or the landing queue. Commits only paths it changed.
 //   fleet tell <text>                 mail the session manager from the interpreter.
 //                                     An open window is woken with a short line, not the body.
 //   fleet hear                        print unread mail for the interpreter, and take it out of unread
@@ -45,6 +51,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { KIT, loadConfig, loadAdapter, area as getArea, dispatcher, sessionName, flag, die, writeAtomic, tryGit, mainRef, today, runProcessGroup, runForeground, finishHeadless, withHandoff, applyHeadlessSession, assignLaunchSession, areaBudgetMin, readRun, writeRun, outcomeOfRun, pidAlive, killProcessGroup, landerIsUp, landerPid, startLander, writableRoots } from './lib.mjs';
 import { commitWork, setupCommit, tellDispatch, hearInterpreter, fleetStatus } from './core/ops.mjs';
+import { fleetUpdate, recordInstalled, isTemplatePath } from './core/update.mjs';
 
 const argv = process.argv.slice(2);
 const cmd = argv[0];
@@ -472,6 +479,11 @@ function init(target, provider, spec) {
   if (add.length) fs.appendFileSync(gi, `${cur && !cur.endsWith('\n') ? '\n' : ''}${add.join('\n')}\n`);
   console.log(`copied ${copied.length} files into ${repo}${add.length ? `; .gitignore += ${add.join(' ')}` : ''}`);
   for (const f of copied) console.log(`  ${f}`);
+  const managed = copied.map((rel) => rel.split(path.sep).join('/')).filter(isTemplatePath);
+  if (managed.length) {
+    recordInstalled(repo, managed);
+    console.log('recorded kit hashes in fleet/kit.json');
+  }
   if (provider) setConfigHarness(path.join(repo, 'fleet.config.json'), provider);
   writeAtomic(path.join(repo, 'fleet/context.md'), contextFacts(repo, spec));
   console.log('wrote fleet/context.md');
@@ -527,6 +539,32 @@ function commitArgs() {
   return { message, area, all, submit, paths };
 }
 
+function updateCmd() {
+  const result = fleetUpdate(c.repo);
+  console.log(`fleet update → kit ${result.version}`);
+  const section = (title, rows) => {
+    if (!rows.length) return;
+    console.log(`${title}:`);
+    for (const row of rows) console.log(`  ${row}`);
+  };
+  section('runtime', result.runtime);
+  section('updated', result.updated);
+  section('added', result.added);
+  if (result.merge.length) {
+    console.log('needs merge (local file kept; new template is beside it):');
+    for (const item of result.merge) console.log(`  ${item.path} -> ${item.sidecar}`);
+    console.log('If you did not edit the local file, replace it with the .kit copy and delete the .kit file. If you did, merge, then delete the .kit file.');
+  }
+  if (result.restart) console.log('restart agents after handoff: prompts changed');
+  else console.log('restart: no');
+  const commit = result.commit;
+  if (commit.pending) {
+    console.error(commit.error || 'update commit failed');
+    console.log('Commit is pending. Call the update MCP tool (or setup_commit). Do not git commit, and do not ask the user to approve one.');
+  } else if (commit.committed.length) console.log(`committed ${commit.sha}`);
+  else console.log(commit.sha ? `nothing new to commit ${commit.sha}` : 'nothing to commit');
+}
+
 function setupCommitCmd() {
   const result = setupCommit(c.repo);
   if (result.pending) die(result.error || 'setup commit failed. Do not git commit.');
@@ -548,12 +586,14 @@ function tellCmd() {
   if (result.nudged) console.log(`nudged ${result.to}`);
   else if (result.wake?.reason === 'working') console.log(`mailed ${result.to} (working, not nudged)`);
   else console.log(`mailed ${result.to}`);
+  for (const id of result.recovered || []) if (id !== result.to || !result.nudged) console.log(`nudged ${id} again`);
 }
 
 function hearCmd() {
   const msgs = hearInterpreter(c);
   if (!msgs.length) console.log('no unread messages for interpreter');
   for (const m of msgs) console.log(`=== ${m.file}\n${m.text}`);
+  for (const id of msgs.recovered || []) console.log(`nudged ${id} again`);
 }
 
 function commitCmd() {
@@ -578,7 +618,7 @@ function tool(name) {
 const run = { up, down, status, supervise: () => supervise(argv[1]), worktrees, crontab,
   prompt: async () => console.log(composePrompt(getArea(c, argv[1]), await adapterFor(getArea(c, argv[1]).harness))),
   'run-job': () => runJob(argv[1]), 'sched-env': () => schedEnv(argv[1]), lander: () => lander(argv[1] ?? 'status'),
-  commit: commitCmd, 'setup-commit': setupCommitCmd, tell: tellCmd, hear: hearCmd,
+  commit: commitCmd, 'setup-commit': setupCommitCmd, update: updateCmd, tell: tellCmd, hear: hearCmd,
   doctor: () => tool('doctor'), landq: () => tool('landq'), backlog: () => tool('backlog'),
   mailbox: () => tool('mailbox') }[cmd];
 if (!run) die(`unknown command "${cmd}" (fleet help)`);
