@@ -2,6 +2,8 @@
 
 ## dispatch
 
+- 2026-10-20 local-review checkpoint: storage2 producte7b9afb3/closurec5818cfe and history6 regressionb3fab032/closure386cc60e durably complete. Normal latest gate431files exit0; dispatch cleanup13/13 and history3/3. Integrated preview1834b6a9 runtime equals current test/docs-only descendants. Final actual-app/mobile QA2 browser pass active; readiness awaits actual flow evidence/handoff. Feed3 and public-promised playback roadmap deferred/open; real Amber/cloud/peers/release gates remain. No optional new tasks.
+
 - 2026-10-20 trial outputs complete:QA regression1bb3a4fc/closurebbf57388 verified,dispatch independent4/4/runtime unchanged so no extra build. Same3 workers continue:client6 real history test-only retention after independent current pass/historical-noop failure;storage2 method-only malformed metadata no-throw guard after independent2rejects/6controls;QA2 actual-app local core/mobile3viewports browser-only grant. Full slots on validated-ready after QA browser release;no feature/readiness/live-proof claim.
 
 
