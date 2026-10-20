@@ -1,0 +1,5 @@
+- [x] Read mailbox/current rules, merge unstable, claim8 at5b77fd20.
+- [x] Actual active URL-media disposal reproduction:2strict failures after cleanup;7controls pass;existing lifecycle18pass.
+- [x] Record exact counts and minimal controller-only proposal with explicit old-contract test corrections.
+- [ ] Dispatch independent confirmation and explicit minimal-fix/test-contract routing required.
+- No product/committed-test changes;no expensive checks/browser.

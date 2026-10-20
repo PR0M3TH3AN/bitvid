@@ -308,7 +308,10 @@ export default class UrlHealthController {
     record.owners.add(owner);
     const onDispose = () => {
       record.owners.delete(owner);
-      if (!record.owners.size) record.cancelQueued?.();
+      if (!record.owners.size) {
+        record.cancelQueued?.();
+        record.cancelActive?.();
+      }
     };
     owner.releases?.add(onDispose);
     return () => {
@@ -387,6 +390,9 @@ export default class UrlHealthController {
         let timeoutId = null;
 
         const cleanup = () => {
+          if (lifecycle?.cancelActive === cancelActive) {
+            lifecycle.cancelActive = null;
+          }
           if (timeoutId) {
             clearTimeout(timeoutId);
           }
@@ -422,6 +428,14 @@ export default class UrlHealthController {
         const handleError = () => {
           settle({ outcome: "error" });
         };
+
+        const cancelActive = () => {
+          // Mark synchronously: a same-turn owner must start fresh work rather
+          // than join the cancelled promise before its continuations run.
+          lifecycle.cancelled = true;
+          settle({ outcome: "cancelled" });
+        };
+        if (lifecycle) lifecycle.cancelActive = cancelActive;
 
         if (Number.isFinite(effectiveTimeout) && effectiveTimeout > 0) {
           timeoutId = setTimeout(() => {
@@ -463,8 +477,8 @@ export default class UrlHealthController {
     }
     let sawTimeout = false;
     for (const url of list) {
-      // Completed active work may still cache its result, but starting another
-      // source requires a live owner (including a card that rejoined meanwhile).
+      // Starting another source requires a live owner. Cancelled active media
+      // settles without caching or falling through to another mirror.
       if (options.lifecycle && !options.lifecycle.owners.size) {
         options.lifecycle.cancelled = true;
         return { outcome: "cancelled" };

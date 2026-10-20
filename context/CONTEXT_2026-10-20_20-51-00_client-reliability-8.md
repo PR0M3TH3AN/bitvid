@@ -1,0 +1,4 @@
+- Goal: measure active URL-media cancellation at integrated HEAD5b77fd20 before proposing minimal fix.
+- Scope: real observer/controller/cache with controlled external HEAD/media IO; scratch/evidence only.
+- Done: resource/listener/timer/promise/slot/FIFO/cache/inflight/stale-write measurements; shared/rejoin/cross-controller/legacy controls; exact reproduction and scoped proposal to dispatch.
+- No product/committed-test changes or full/build/browser without routing/grant. Preserve prior queued-only assertions pending explicit contract correction.
