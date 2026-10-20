@@ -297,3 +297,278 @@ const bad=mediaResponse('GET','bytes=999999-',bytes);assert.equal(bad.status,416
 const method=mediaResponse('POST',null,bytes);assert.equal(method.status,405);assert.equal(method.body,null);
 console.log('local media fixture preflight7/7 pass (HEAD,GET,3ranges,416,405), no sockets');
 ```
+
+## Final-grant attempt and authorized runner contract correction
+
+Explicit dispatch grant15:44:58.082Z,START15:45:33 before launch.
+Run15:45:39.511→15:45:46.059Z (6.548s),Chromium154.0.8037.97:actual local fixture wire
+HEAD200/GET200(1019 genuine bytes)/Range206 all passed. Buffer mirror1hit,local404=0,pageerror=0,externalguardunchanged.
+Stopped first readiness assertion;no3-card/login/UI actions executed. Screenshot:playback-qa-2-resumed-stop.png.
+
+Avoidable scratch-contract error: runner asserted `(await nostrToolsReady).ok === true`. Actual source
+`js/nostrToolsBootstrap.js` success returns `frozenCanonical` (toolkit),while failure returns `{ok:false,...}`.
+This is **not a demonstrated app/toolkit defect**. Original exact failed source/report retained in own scratch
+noninteractive-attempt-3.mjs/attempt-3-result.json;baseline remains incomplete. All owned resources closed15:45:46.059Z,
+RELEASE/intervention sent15:46:53Z. No retries or false app-success claim.
+
+Interpreter15:46:29 and dispatch15:47:12 explicitly authorized only this scratch specification correction and one
+bounded rerun after cheap offline proof. Corrected equally stronger check requires:actual returned toolkit callable
+getPublicKey/finalizeEvent/verifyEvent;identity with immutable canonical global;no mock flag;Node-signed seeded
+event verifies;independent tampered event rejects;synthetic key derives expected pubkey;browser-produced signature
+independently verifies with Node's real nostr-tools. No application/toolkit/crypto methods are replaced.
+All3-card/UI assertions and genuine fixture/artifact/traffic pins remain unchanged.
+
+Offline proof evaluated the genuine unchanged vendored bundle in a Node vm:callable APIs/sign/verify/tampered rejection/
+pubkey match/independent Node verification6/6,exit0. Initial vm-preflight plumbing required a newline after the bundle
+sourceMappingURL comment and creating challenge events in that vm's own realm;those probe setup errors were corrected
+without library/app mutation. This proof does not qualify browser loader/global identity until actual run.
+Prepared corrected runner SHA256731cc9073f3c6594fa2b77735cac34415f1f034729c2dc48dd3b5bf702592864,syntax-check0.
+
+```yaml
+test_integrity_note:
+  change_type: ["spec_correction"]
+  scope: "own scratch runner only; no registered test or product change"
+  scenarios:
+    - id: SCN-QA2-real-toolkit-readiness
+      given: "actual bootstrap resolves its frozen canonical toolkit, or an explicit failure"
+      when: "baseline checks readiness before real UI actions"
+      then: "require canonical real callable APIs and positive/negative synthetic cryptographic proofs"
+  observable_outcomes:
+    - "valid event verifies, tampered event rejects, actual generated signature independently verifies"
+  determinism_controls: ["fixed synthetic key/event; genuine vendored toolkit; no network or stubs"]
+  anti_cheat_rationale:
+    prevents: ["always-true verifier", "no-op signer", "mock toolkit mistaken for readiness"]
+  relaxation:
+    did_relax_any_assertion: true
+    if_true_explain_spec_basis: "Replaced invalid ok:true envelope assumption with source-defined actual toolkit contract and stronger crypto proofs; UI assertions unchanged."
+```
+
+## Corrected cryptographic readiness passed; zero-card setup failure
+
+Dispatch15:47:12 approved corrected bounded rerun;START15:49:25 before launch.
+Run15:49:29.399→15:49:48.277Z (18.878s),real local media wire200/200/206 passed,real canonical toolkit checks
+all passed(including browser-produced signature independently verified). Next documented harness prerequisite
+`waitForFeedItems(3,15000)` failed with0 cards. No login/navigation/modal/390/1280 checks executed.
+Owned resources closed15:49:48.277Z;explicit RELEASE sent15:50:24Z. No app defect attribution or relaxed count/timeout.
+
+Read-only source-backed setup gaps identified under dispatch15:50:54 route: `js/index.js:startApplication` assigns
+`setApplication(application)` before awaiting `application.init()`/`application.start()`. Previous runner waited
+for instance presence only;actual exported `getApplicationReady()` is the startup-completion boundary.
+Also existing fixture explicitly reapplies `setTestRelays` after harness installation;runner relied only on initial
+query/storage/install override. Install itself applies overrides,so absence of reapply is not claimed as sole cause.
+Earlier seed-mode dev/live speculation was not supported by an observed filtering rule and is NOT attributed.
+
+Cheap socket-free source ordering3/3 and genuine synthetic signature/filter match3/3 passed. Source subscription
+filter kinds30078/#tvideo matches all3 inputs. This verifies fixture input/filter compatibility,not full-app hydration.
+Routine authorized correction only awaits the real exported ready promise with15s bound and invokes existing
+fixture relay API after readiness. Exact3-card count and15s card timer,UI assertions,artifact/fixture/Buffer pins
+and external deny guard remain unchanged. Read-only failure diagnostics add actual relay health/feed count/body.
+Source gap is proven;whether it caused the previous0 cards is not claimed without the next measured result.
+Corrected prepared driver8fb7bad44a79bf4abfe9d7b4febdb64cc30dad30e78c2cd18dbb9da94c01f6dd,syntax0.
+
+Saved zero-card result:
+
+```json
+{
+  "driver": "noninteractive bounded actions",
+  "started": "2026-10-20T15:49:29.399Z",
+  "mirrorHits": [
+    "https://cdn.jsdelivr.net/npm/buffer@6.0.3/+esm"
+  ],
+  "blockedHttp": [
+    "https://esm.sh/@aws-sdk/client-s3@3.637.0?bundle",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/+esm",
+    "https://esm.sh/nostr-tools@2.17.0",
+    "https://esm.sh/nostr-tools@2.17.0?target=es2022&exports=nip04",
+    "https://esm.sh/nostr-tools@2.17.0/nip44?target=es2022",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js"
+  ],
+  "blockedWs": [],
+  "failedLocal": [],
+  "pageErrors": [],
+  "consoleErrors": [
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector"
+  ],
+  "actions": [
+    {
+      "name": "actual toolkit ready",
+      "at": "2026-10-20T15:49:32.995Z",
+      "result": {
+        "callable": true,
+        "canonicalIdentity": true,
+        "frozen": true,
+        "mockFlag": false,
+        "validSeed": true,
+        "tamperedRejected": true,
+        "pubkeyMatches": true,
+        "independentSignatureVerified": true
+      },
+      "ok": true
+    },
+    {
+      "name": "three synthetic relay cards hydrate",
+      "at": "2026-10-20T15:49:33.045Z",
+      "ok": false,
+      "error": "page.evaluate: Error: [testHarness] Timed out waiting for 3 feed items (found 0)\n    at check (http://127.0.0.1:31847/js/testHarness.js:571:11)"
+    },
+    {
+      "screenshot": "playback-qa-2-resumed-stop.png"
+    }
+  ],
+  "fixtureHttp": {
+    "head": 200,
+    "get": 200,
+    "range": 206,
+    "bytes": 1019,
+    "contentType": "video/webm"
+  },
+  "browserVersion": "154.0.8037.97",
+  "boot": "passed",
+  "baseline": "blocked-or-failed",
+  "failedStep": "three synthetic relay cards hydrate",
+  "failure": "page.evaluate: Error: [testHarness] Timed out waiting for 3 feed items (found 0)\n    at check (http://127.0.0.1:31847/js/testHarness.js:571:11)",
+  "ended": "2026-10-20T15:49:48.277Z",
+  "resourcesClosed": true
+}
+```
+
+## Startup-complete correction measured: still zero cards
+
+Dispatch15:54:23 confirmed conditional route;START15:54:58 before browser.
+Actual run15:55:01.326→15:55:18.667Z (17.341s) passed real toolkit cryptographic proofs,local media wire200/200/206,
+and actual `getApplicationReady()` completion. Official existing `setTestRelays` returnedok and local31848.
+Unchanged3-card15s wait still found0,so readiness correction is **not demonstrated as the cause/fix**.
+Failure diagnostics:appPresent true,relayHealth.relays=[ws://127.0.0.1:31848],unreachable=[],backoff={},feedItems=[];
+actual styled Trending page empty,version1834b6a9. These are configured health/cache observations,not proof of an
+actual WS subscription or delivered EVENT/EOSE. That boundary was not traced in this run.
+No login/nav/modal/remaining viewport action ran. No product defect is established. Resources closed15:55:18.667Z;
+explicit RELEASE15:55:33Z. Screenshotplayback-qa-2-resumed-stop.png SHA256e065fd4216da5cefbc9bde4b5773a4bd3ac64e9aeb642996d936755482598fab.
+
+Dispatch15:55:53 now routes narrow read-only boundary measurement,not more speculative corrections.
+Interpreter15:55:45 identified missing canonical s tag. Cheap **actual source** validation confirms:
+- validateEventStructure(videoPost,without s)→validfalse,Missing required tag for videoPost:s.
+- Same real signed note plus[s,nostr:dTag]→validtrue.
+- Actual convertEventToVideo returnsinvalidfalse for BOTH,so schema gap is real but not proven as feed failure cause.
+No seed/runtime/assertion/browser change followed this probe. Both signatures and actual relayfilter match already passed.
+The scratch seed differs from canonical existing fixture's s tag;this gap must remain explicit in fidelity claims.
+
+Missing saved boundary evidence:actual localWS creation/REQfilters,relaymatching EVENT/EOSE traffic,then ingest and
+render cachecounts. Proposed one diagnostic-only pass uses passive page websocket/frame listeners+warn/errors;
+read-only rawEvents/allEvents/activeMap/appvideosMap counts and actualDOMcard selectors at first failure.
+Original seed stays unchanged for measurement;no manual data injection,render invocation,health fakery,crypto stub,
+new mirrors or timeout/count relaxation. Requires dispatch's explicit diagnostic grant before another browser.
+
+Latest failed-run report:
+
+```json
+{
+  "driver": "noninteractive bounded actions",
+  "started": "2026-10-20T15:55:01.326Z",
+  "mirrorHits": [
+    "https://cdn.jsdelivr.net/npm/buffer@6.0.3/+esm"
+  ],
+  "blockedHttp": [
+    "https://esm.sh/@aws-sdk/client-s3@3.637.0?bundle",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/+esm",
+    "https://esm.sh/nostr-tools@2.17.0",
+    "https://esm.sh/nostr-tools@2.17.0?target=es2022&exports=nip04",
+    "https://esm.sh/nostr-tools@2.17.0/nip44?target=es2022",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js"
+  ],
+  "blockedWs": [],
+  "failedLocal": [],
+  "pageErrors": [],
+  "consoleErrors": [
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector"
+  ],
+  "actions": [
+    {
+      "name": "actual toolkit ready",
+      "at": "2026-10-20T15:55:03.441Z",
+      "result": {
+        "callable": true,
+        "canonicalIdentity": true,
+        "frozen": true,
+        "mockFlag": false,
+        "validSeed": true,
+        "tamperedRejected": true,
+        "pubkeyMatches": true,
+        "independentSignatureVerified": true
+      },
+      "ok": true
+    },
+    {
+      "name": "actual application startup completes",
+      "at": "2026-10-20T15:55:03.484Z",
+      "result": {
+        "readyPromiseCompleted": true,
+        "relays": [
+          "ws://127.0.0.1:31848"
+        ]
+      },
+      "ok": true
+    },
+    {
+      "name": "three synthetic relay cards hydrate",
+      "at": "2026-10-20T15:55:03.491Z",
+      "ok": false,
+      "error": "page.evaluate: Error: [testHarness] Timed out waiting for 3 feed items (found 0)\n    at check (http://127.0.0.1:31847/js/testHarness.js:571:11)"
+    },
+    {
+      "screenshot": "playback-qa-2-resumed-stop.png"
+    }
+  ],
+  "fixtureHttp": {
+    "head": 200,
+    "get": 200,
+    "range": 206,
+    "bytes": 1019,
+    "contentType": "video/webm"
+  },
+  "browserVersion": "154.0.8037.97",
+  "boot": "passed",
+  "baseline": "blocked-or-failed",
+  "failedStep": "three synthetic relay cards hydrate",
+  "failure": "page.evaluate: Error: [testHarness] Timed out waiting for 3 feed items (found 0)\n    at check (http://127.0.0.1:31847/js/testHarness.js:571:11)",
+  "failureDiagnostics": {
+    "appPresent": true,
+    "relayHealth": {
+      "relays": [
+        "ws://127.0.0.1:31848"
+      ],
+      "unreachable": [],
+      "backoff": {}
+    },
+    "feedItems": [],
+    "body": "Switch to dark theme\nTrending\n\nNo public videos available yet. Be the first to upload one!\n\nseed. zap. subscribe.\nv: 1834b6a9 \u2022 2026-10-20"
+  },
+  "ended": "2026-10-20T15:55:18.667Z",
+  "resourcesClosed": true
+}
+```

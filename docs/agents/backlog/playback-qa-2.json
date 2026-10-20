@@ -3,8 +3,8 @@
  "area": "playback-qa",
  "status": "blocked",
  "title": "Capture actual-app local core-flow/mobile baseline before UI changes",
- "blockedOn": "Client6 exclusive full/browser gate; await dispatch explicit final browser grant after durable history release. Noninteractive runner prepared, syntax-check only.",
+ "blockedOn": "Dispatch grant/routing for narrow actual relay/filter/EOSE/ingest/render boundary measurement; app startup+crypto/media passed but unchanged 3-card wait still0.",
  "addedOn": "2026-10-20",
  "filedAt": "1bb3a4fc452969f060c09a286b72b8cd7ac4123e",
- "notes": "BaselineINCOMPLETE and client6exclusivehold respected. Noninteractive ownrunner prepared,syntax-only;no browser/server/build/full since15:26:32 release. Interpreter15:36:55 identified missinglocalmediaendpoint;generated genuine VP8 64x64/2s1019B,ffprobe20frames,SHA256d911005a5bca7fb1f3e5aa2fbee701b6476c9baf93460264c2aa5105dd0b3c69 outsidefrozenapp. Own HEAD/GET/Range handler contract7/7inmemory,3 brokenvariants fail/restored7/7;no sockets. Futuregrantedrun realHTTPpreflight beforebrowser,all822apphashes+mediahash checked,unchangedrealBuffer/externaldeny/3card+UIassertions/loginfirstactualnav. Exactfixture/handler/preflight+updatedrunnerhash docs/testing/playback-qa-2-second-pass.md. Await explicitdispatchfinalbrowsergrant afterhistoryrelease;no product/vendor/config/test changes,no appdefectclaim."
+ "notes": "Latestsource-correctedactualrun15:55:01.326→15:55:18.667:realcanonicalcrypto,HEAD/GET/Range200/200/206,getApplicationReady completion andofficiallocalrelayAPI allPASS;3cards15s still0. No login/UI/other2viewports;noappdefectclaim. Browser/privateapp+relayCLOSED/RELEASE,depsremoved. Savedhealthlocal31848/unreachable[]/backoff{},noactuallocalWSframe/EOSEtrace;nextrootroute15:55:53 is measurementONLY,notnewfix. Cheapactualschemaprobe missing s invalid/addcanonical s valid,but actualconvertEventToVideo acceptsBOTH;gapnotproven0cardcause. ProposedpassiveWSREQ/EVENT/EOSE+warns/cache/DOMcounts,unchangedinputs/3cardguard/runtime/media/Buffer;awaitspecificdiagnosticgrant. Originaldrivererror/specfixesfullyrecorded;no product/test/full/build/newmirrors."
 }
