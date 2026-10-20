@@ -144,3 +144,86 @@ A browser-free PTY stdin handshake was independently checked after the driver fa
 Node printed PTY_READY and stayed running; a later write_stdin sent qa2-driver-ack;
 process printed PTY_HANDSHAKE_PASS and exited0. This verifies the proposed terminal transport correction
 without opening another browser/server or changing app behavior. It is not a resumed UI baseline.
+
+## Noninteractive correction prepared under interpreter hold
+
+Interpreter15:30:06 confirms history/client6 owns full/browser resource; no browser/server/build may launch
+until dispatch explicitly grants the next attempt after release. Only read-only scratch preparation performed.
+The corrected runner removes stdin entirely, has a120s resource-cleaning hard deadline and existing bounded
+locator/card-readiness waits. It requires real toolkit readiness(no __TEST_MODE__ mock flag),exactly3 synthetic
+relay video cards,then test-only login through the unchanged harness. For each360×800/390×844/1280×720 viewport:
+actual Trending/Explore/ForYou link routing; feed/card/document width observations; Profile open→6Tab focus containment
+→close→trigger focus restoration; Upload external-link mode open→native missing-title validity→title-only missing
+source error→no additional kind30078 video published→close/focus restoration. It captures feed/profile/validation
+screenshots,small-control dimensions against44px as observations only,and all network guard outcomes.
+No source/toolkit/crypto override,new public resource mirror,or expectation change. Syntax-check exit0 only;
+**none of these prepared UI actions has yet been executed**. First unavailable prerequisite or failed assertion
+stops this pass and captures evidence; no retry/sleep masking. Guard and genuine Buffer/artifact pins unchanged.
+The per-validation publication check counts video events specifically,excluding unrelated asynchronous list events.
+
+Dispatch15:30:36 explicitly approved the same own-scratch noninteractive correction only,while client6 holds
+full/browser. Final browser requires a later explicit grant and runtime diff check after test-only history landing.
+Prepared runner SHA256:`f60065c2a45b4b20485acaecd91bc5c5c937069cea4db095727c2838895588e0`.
+Exact prepared source below is evidence,not a registered/retained test or a claim of successful UI execution.
+
+```js
+import {createServer} from 'node:http';
+import {readFile,writeFile} from 'node:fs/promises';
+import {resolve,extname} from 'node:path';
+import {createInterface} from 'node:readline';
+import {createRequire} from 'node:module';
+import {chromium} from '/home/user/Documents/GitHub/bitvid/node_modules/playwright/index.mjs';
+import {startRelay} from '/home/user/Documents/GitHub/bitvid-playback-qa/scripts/agent/simple-relay.mjs';
+const require=createRequire('/home/user/Documents/GitHub/bitvid/package.json');
+const {finalizeEvent}=require('nostr-tools');
+const base='/tmp/bitvid-playback-qa-2-integrated',root=base+'/dist';
+const evidence='/home/user/Documents/GitHub/bitvid-playback-qa/docs/testing';
+const report={driver:'noninteractive bounded actions',started:new Date().toISOString(),mirrorHits:[],blockedHttp:[],blockedWs:[],failedLocal:[],pageErrors:[],consoleErrors:[],actions:[]};
+const sk=new Uint8Array(32).fill(0x7b);
+const server=createServer(async(req,res)=>{
+ let path=decodeURIComponent(new URL(req.url,'http://127.0.0.1:31847').pathname);if(path==='/')path='/index.html';const f=resolve(root,'.'+path);
+ if(!f.startsWith(root+'/')||path.includes('/.')){res.writeHead(404);res.end();return;}
+ try{const b=await readFile(f);res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.json':'application/json','.svg':'image/svg+xml','.wasm':'application/wasm','.png':'image/png','.webmanifest':'application/manifest+json'})[extname(f)]||'application/octet-stream');res.end(b);}catch{res.writeHead(404);res.end();}
+});
+let browser,relay,context,page,closed=false,hardDeadline;
+async function finish(){if(closed)return;closed=true;clearTimeout(hardDeadline);if(context)await context.close();if(browser)await browser.close();if(relay)await relay.close();await new Promise(ok=>server.close(ok));report.ended=new Date().toISOString();report.resourcesClosed=true;await writeFile(base+'/result.json',JSON.stringify(report,null,2));console.log(JSON.stringify({type:'CLOSED',ended:report.ended,mirrorHits:report.mirrorHits.length,blockedHttp:report.blockedHttp,blockedWs:report.blockedWs,failedLocal:report.failedLocal,pageErrors:report.pageErrors}));}
+hardDeadline=setTimeout(()=>{report.deadlineFailure='120s bounded runner deadline';void finish().finally(()=>process.exit(1));},120000);
+try{
+ await new Promise((ok,no)=>{server.once('error',no);server.listen(31847,'127.0.0.1',ok);});
+ relay=startRelay(31848,{httpPort:31849});
+ for(let i=0;i<3;i++){const title=i===0?'QA local synthetic video with a deliberately long title to inspect narrow-card wrapping and controls':'QA local synthetic video '+i;relay.seedEvent(finalizeEvent({kind:30078,created_at:Math.floor(Date.now()/1000)-i,tags:[['d','qa2-'+i],['t','video'],['title',title],['url','http://127.0.0.1:31847/qa2-unplayed.webm']],content:JSON.stringify({version:3,title,url:'http://127.0.0.1:31847/qa2-unplayed.webm',videoRootId:'qa2-'+i,mode:'dev',isPrivate:false,deleted:false})},sk));}
+ browser=await chromium.launch({headless:true,executablePath:'/usr/bin/google-chrome',args:['--no-sandbox']});report.browserVersion=browser.version();
+ context=await browser.newContext({viewport:{width:360,height:800},serviceWorkers:'block'});
+ const mirror=await readFile(base+'/buffer-6.0.3-local.mjs');
+ await context.route('**/*',r=>{const url=r.request().url();if(url==='https://cdn.jsdelivr.net/npm/buffer@6.0.3/+esm'){report.mirrorHits.push(url);return r.fulfill({body:mirror,contentType:'text/javascript',headers:{'Access-Control-Allow-Origin':'*'}});}const u=new URL(url);if(['127.0.0.1','localhost','[::1]'].includes(u.hostname))return r.continue();report.blockedHttp.push(url);return r.abort('blockedbyclient');});
+ await context.routeWebSocket('**/*',ws=>{const u=new URL(ws.url());if(['127.0.0.1','localhost','[::1]'].includes(u.hostname))ws.connectToServer();else{report.blockedWs.push(ws.url());ws.close();}});
+ await context.addInitScript(()=>{localStorage.setItem('hasSeenDisclaimer','true');localStorage.setItem('__bitvidTestMode__','1');localStorage.setItem('__bitvidTestRelays__',JSON.stringify(['ws://127.0.0.1:31848']));window.__bitvidTestRelays__=['ws://127.0.0.1:31848'];localStorage.setItem('bitvid_admin_whitelist_mode','false');});
+ page=await context.newPage();page.setDefaultTimeout(10000);
+ page.on('pageerror',e=>report.pageErrors.push(e.message));page.on('console',m=>{if(m.type()==='error')report.consoleErrors.push(m.text().slice(0,700));});page.on('response',r=>{if(r.status()>=400&&new URL(r.url()).hostname==='127.0.0.1')report.failedLocal.push({url:r.url(),status:r.status()});});
+ await page.goto('http://127.0.0.1:31847/?__test__=1&__testRelays__=ws%3A%2F%2F127.0.0.1%3A31848',{waitUntil:'domcontentloaded'});
+ try{await page.waitForFunction(()=>typeof window.__bitvidTest__==='object',null,{timeout:15000});await page.waitForFunction(async()=>{const m=await import('/js/applicationContext.js');return !!m.getApplication();},null,{timeout:15000});await page.locator('[data-testid="video-list"]').waitFor({state:'visible',timeout:15000});report.boot='passed';console.log(JSON.stringify({type:'BOOTED',viewport:{width:360,height:800},body:(await page.locator('body').innerText()).slice(0,3000)}));}
+ catch(e){report.boot='blocked';report.bootError=e.message;await page.screenshot({path:evidence+'/playback-qa-2-second-boot-blocker.png',fullPage:true});console.log(JSON.stringify({type:'BLOCKED',error:e.message,body:(await page.locator('body').innerText()).slice(0,1500)}));await finish();process.exit(0);}
+
+ // Noninteractive: no stdin/readline loop; each action is awaited exactly once.
+ const check=(condition,message)=>{if(!condition)throw new Error(message);};
+ const step=async(name,action)=>{const item={name,at:new Date().toISOString()};report.actions.push(item);try{item.result=await action();item.ok=true;console.log(JSON.stringify({type:'STEP',name,ok:true,result:item.result}));return item.result;}catch(e){item.ok=false;item.error=e.message;console.log(JSON.stringify({type:'STEP',name,ok:false,error:e.message}));throw e;}};
+ const capture=async(name)=>{await page.screenshot({path:evidence+'/'+name,fullPage:true});report.actions.push({screenshot:name});};
+ const layout=async()=>page.evaluate(()=>({width:innerWidth,documentWidth:document.documentElement.scrollWidth,cardBounds:[...document.querySelectorAll('[data-testid="video-card"]')].map(e=>{const r=e.getBoundingClientRect();return {x:r.x,right:r.right,width:r.width};}),smallControls:[...document.querySelectorAll('button,a,input')].filter(e=>e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden').map(e=>{const r=e.getBoundingClientRect();return {id:e.id,label:(e.getAttribute('aria-label')||e.textContent||'').trim().slice(0,80),width:r.width,height:r.height};}).filter(x=>x.width>0&&x.height>0&&(x.width<44||x.height<44))}));
+ const modalFocus=async(root)=>{const samples=[];for(let i=0;i<6;i++){await page.keyboard.press('Tab');samples.push(await page.evaluate(selector=>{const el=document.activeElement;return {inside:!!document.querySelector(selector)?.contains(el),id:el?.id,tag:el?.tagName,outline:getComputedStyle(el).outlineStyle,shadow:getComputedStyle(el).boxShadow};},root));}check(samples.every(x=>x.inside),'keyboard focus escaped '+root);return samples;};
+ try{
+  await step('actual toolkit ready',async()=>{const ready=await page.evaluate(async()=>{const m=await import('/js/nostrToolsBootstrap.js');const r=await m.nostrToolsReady;return {ok:r?.ok,reason:r?.reason,mockFlag:!!window.__TEST_MODE__};});check(ready.ok===true&&!ready.mockFlag,'real toolkit unavailable: '+JSON.stringify(ready));return ready;});
+  await step('three synthetic relay cards hydrate',async()=>{await page.evaluate(()=>window.__bitvidTest__.waitForFeedItems(3,15000));const items=await page.evaluate(()=>window.__bitvidTest__.getFeedItems());check(items.length===3,'expected exactly3 local cards,got'+items.length);return items.map(x=>({title:x.title,dTag:x.dTag}));});
+  await step('local test identity login',async()=>{await page.evaluate(()=>window.__bitvidTest__.loginWithNsec('7b'.repeat(32)));await page.locator('[data-testid="profile-button"]').waitFor({state:'visible'});await page.locator('[data-testid="upload-button"]').waitFor({state:'visible'});return {profileVisible:true,uploadVisible:true};});
+  for(const viewport of [{width:360,height:800},{width:390,height:844},{width:1280,height:720}]){
+   await page.setViewportSize(viewport);const prefix=String(viewport.width);
+   await step(prefix+' trending navigation/feed',async()=>{await page.locator('#trendingLink').click();await page.waitForFunction(()=>location.hash.includes('view=trending'));await page.evaluate(()=>window.__bitvidTest__.waitForFeedItems(3,15000));const r=await layout();check(r.documentWidth<=r.width,'horizontal document overflow');check(r.cardBounds.every(x=>x.x>=0&&x.right<=r.width),'card extends beyond viewport');return r;});
+   await capture('playback-qa-2-'+prefix+'-feed.png');
+   for(const [id,view] of [['#exploreLink','explore'],['#forYouLink','for-you'],['#trendingLink','trending']])await step(prefix+' navigation '+view,async()=>{await page.locator(id).click();await page.waitForFunction(v=>location.hash.includes('view='+v),view);return {hash:await page.evaluate(()=>location.hash),headings:await page.locator('h1,h2').allTextContents()};});
+   await step(prefix+' Profile open/focus/close',async()=>{await page.locator('[data-testid="profile-button"]').click();await page.locator('#profileModal').waitFor({state:'visible'});const focus=await modalFocus('#profileModal');await capture('playback-qa-2-'+prefix+'-profile.png');await page.locator('#closeProfileModal').click();await page.locator('#profileModal').waitFor({state:'hidden'});const restored=await page.evaluate(()=>document.activeElement?.id);check(restored==='profileButton','Profile close did not restore trigger focus');return {focus,restored};});
+   await step(prefix+' Upload required fields/focus/close',async()=>{const videoCount=()=>[...relay.getEvents().values()].filter(e=>e.kind===30078).length;const before=videoCount();await page.locator('[data-testid="upload-button"]').click();await page.locator('#uploadModal').waitFor({state:'visible'});await page.locator('#btn-mode-external').click();const focus=await modalFocus('#uploadModal');await page.locator('#input-title').fill('');await page.locator('#input-url').fill('');await page.locator('#input-magnet').fill('');await page.locator('#btn-submit').click();const missingTitle=await page.locator('#input-title').evaluate(e=>e.validity.valueMissing);check(missingTitle,'empty title not rejected by native validation');await page.locator('#input-title').fill('QA invalid local form');await page.locator('#btn-submit').click();await page.waitForFunction(()=>document.querySelector('#errorContainer')?.textContent.includes('Please provide at least a Video URL or Magnet Link.'));check(videoCount()===before,'invalid form published video event');await capture('playback-qa-2-'+prefix+'-upload-validation.png');const l=await layout();check(l.documentWidth<=l.width,'Upload horizontal document overflow');await page.locator('#closeUploadModal').click();await page.locator('#uploadModal').waitFor({state:'hidden'});const restored=await page.evaluate(()=>document.activeElement?.id);check(restored==='uploadButton','Upload close did not restore trigger focus');return {focus,missingTitle,noSourceRejected:true,noRelayPublish:true,restored,layout:l};});
+  }
+  report.baseline='completed';
+ }catch(e){report.baseline='blocked-or-failed';report.failedStep=report.actions.findLast(x=>x.ok===false)?.name;report.failure=e.message;await capture('playback-qa-2-resumed-stop.png');}
+ await finish();
+}catch(e){report.runError=e.stack;console.log(JSON.stringify({type:'ERROR',error:e.stack}));await finish();process.exitCode=1;}
+```

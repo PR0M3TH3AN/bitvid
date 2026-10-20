@@ -3,8 +3,8 @@
  "area": "playback-qa",
  "status": "blocked",
  "title": "Capture actual-app local core-flow/mobile baseline before UI changes",
- "blockedOn": "Dispatch resumption direction after driver stdin EOF; fresh integrated snapshot and genuine mirror ready, browser slot released; no demonstrated new app blocker.",
+ "blockedOn": "Client6 exclusive full/browser gate; await dispatch explicit final browser grant after durable history release. Noninteractive runner prepared, syntax-check only.",
  "addedOn": "2026-10-20",
  "filedAt": "1bb3a4fc452969f060c09a286b72b8cd7ac4123e",
- "notes": "Second actualapp attempt grant15:24:20.735/pickup15:24:27,START15:26:26,run15:26:29.558→15:26:32.207. Freshbuilt1b3ef49c/v1834b6a9 verified index5095c3f1/CSS283d0464/822filemanifest662fa755;realBuffer507a5935 localfulfillment1hit. Actual harness+Application+video-list ready360x800,no local404/pageerrors;10othernonlocalHTTP denied,0nonlocalWS. Interactive nonPTY stdinEOF closedrunner beforeactions/cardsreadiness:baselineINCOMPLETE,notappdefect or hardblocker claim. Closedbrowser/ownservers/released beforefurtherwork;no390/1280/nav/modal/focus/cardvalidation. Correctedtransport browser-freePTY handshake exit0;await boundedresumptiongrant/no unauthorizedrerun. Exactreport/controller/intervention in docs/testing/playback-qa-2-second-pass.md. No newruntime/toolkit/productchanges."
+ "notes": "BaselineINCOMPLETE: second actual1b3/v1834b6a9 shell/harness/listready360x800 but priorstdinEOF closed beforeanyUI; resourcesreleased15:26:32.207,interventionrecorded. Latestdispatch15:30:36+interpreter15:30:06 hold:client6ownsfull/browser,onlyownscratchnoninteractivecorrection. Driverf60065c2 prepared,no stdin/PTY dependency,120s cleanupdeadline,realtoolkit+3cards prerequisites,threeviewportnav/Profile/Uploadrequiredvalidation/focus/overflow/screenshots,unchangedexternalguard/realBuffer/artifactpins. node --check exit0 ONLY; UIactionsunexecuted,nobrowser/server/build/full/productchanges. Exactsource/evidence docs/testing/playback-qa-2-second-pass.md; await explicit grant/finalruntimediff,no newmirroring/expectationweakening."
 }
