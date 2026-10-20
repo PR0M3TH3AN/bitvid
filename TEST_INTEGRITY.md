@@ -760,3 +760,80 @@ test_integrity_note:
 ```
 
 Duplicate wrapper and unconditional listener release variants each fail SCN-shared-badge-listener-lifetime. Removing the post-checking membership guard fails SCN-checking-callback-disposal (actual starts1 vs expected0). These3 additional variants exit1 with1 failed/0 cancelled and are reverted; total14 killed variants for11 lifecycle scenarios. Original source/priority/observer expectations remain unchanged.
+
+
+## client-reliability-4 — queued URL media ownership
+
+```yaml
+test_integrity_note:
+  change_type: ["new_tests"]
+  scenarios:
+    - id: SCN-url-last-owner
+      given: "four cards, three active media and one queued"
+      when: "last registration is disposed and an active slot frees"
+      then: "queued promise settles null, no cache entry or obsolete media start"
+    - id: SCN-url-shared-owner
+      given: "two feeds share a queued event/source"
+      when: "one feed disposes"
+      then: "exactly one media probe serves the live badge; disposed connected badge stays checking"
+    - id: SCN-url-last-shared-owner
+      given: "two feeds share a queued event/source"
+      when: "both feeds dispose"
+      then: "queued promise settles null and never starts media"
+    - id: SCN-url-cancel-rerequest
+      given: "cancelled queued event/source has pending promise continuations"
+      when: "a new feed requests the same source immediately"
+      then: "new inflight record survives old settlement and live badge becomes healthy"
+    - id: SCN-url-cancel-mirror
+      given: "queued primary has a mirror"
+      when: "last owner disposes"
+      then: "cancelled work settles without mirror HEAD/media or stale UI/cache"
+    - id: SCN-url-registration-reuse
+      given: "hidden old feed queues an eager callback"
+      when: "dispose, reuse container, deliver old callback and old disposer"
+      then: "only the new event reaches onCheck and starts IO"
+    - id: SCN-url-active-cache
+      given: "active media belongs to a connected card"
+      when: "dispose its registration and complete active media"
+      then: "active result caches healthy, disposed badge stays checking, new card uses cache"
+    - id: SCN-url-hidden-reveal
+      given: "URL-only card is hidden pending health"
+      when: "eager media confirmation succeeds"
+      then: "card becomes visible with healthy badge"
+    - id: SCN-url-media-limit
+      given: "three active media probes plus FIFO queued work"
+      when: "slot releases while a new card enters"
+      then: "existing queued source runs first; active media stays three"
+    - id: SCN-url-mirror-order
+      given: "primary and two mirrors exist"
+      when: "primary errors then first mirror succeeds"
+      then: "primary then first mirror are requested; second mirror is untouched"
+    - id: SCN-url-legacy-callback
+      given: "connected badge lacks observer ownership"
+      when: "legacy caller invokes controller"
+      then: "media settles and healthy badge paints"
+    - id: SCN-url-cross-controller
+      given: "shared real inflight cache and two controllers"
+      when: "creator feed disposes while other feed remains"
+      then: "queued shared source starts once and other controller paints healthy"
+  observable_outcomes:
+    - "HEAD and native media IO starts, promise settlement, real cache/inflight records, connected badge and card visibility"
+    - "Observer callback emissions after disposal and container reuse"
+  determinism_controls:
+    - "jsdom cards, controllable IntersectionObserver, explicit loadeddata/error events and stubbed fetch boundary; real observer/controller/cache"
+    - "Unique event/source keys and task-turn drain; no live traffic, arbitrary sleeps, retries or relaxed assertions"
+  anti_cheat_rationale:
+    prevents:
+      - "hard-coded healthy or cancelled results"
+      - "testing a copied queue instead of real controller and observer"
+      - "cancelling shared live work or caching cancellation as offline"
+      - "stale connected DOM callbacks hidden by isConnected guards"
+      - "retry/sleep-based flake masking"
+  relaxation:
+    did_relax_any_assertion: false
+    if_true_explain_spec_basis: ""
+```
+
+All existing assertions preserved. `tests/url-health-lifecycle.test.mjs` adds12 scenarios. Mutations are temporary edits restored before gates. `python3 /tmp/item4-mutants.py` final run:13/13 variants naturally exit1 with named assertion failures (no timeouts); logs `/tmp/item4-mutant-*.log`, results `/tmp/item4-mutants.json`. No production test runner/gate changes.
+
+Coverage grouping: no-unregister→last owner; cancel-shared→shared owner/cross-controller; reuse-cancelled-inflight→immediate retry/new inflight; cache-cancellation→last/shared owner/retry/mirror cache outcomes; mirror-fallthrough→cancelled primary; grouped stale guards→shared/active disposed UI (remove both redundant owner guards together; two equivalent variants); eager-callback-stale→registration reuse; no-eager-reveal→hidden reveal; concurrency-four→three-media cap/FIFO; reverse-mirrors→mirror ordering; break-legacy-consumer→callback compatibility; controller-local-records→shared cache ownership across controllers. Initial mutation pass exposed callback-emission and first-source gaps; new assertions were strengthened, then all mutants rejected. Initial no-unregister full-file run failed assertions but hung in another scenario awaiting its intentionally broken promise; final targeted last-owner variant naturally exits1. No timeout is counted as successful mutant evidence.
