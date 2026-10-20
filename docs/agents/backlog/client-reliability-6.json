@@ -1,9 +1,10 @@
 {
   "id": "client-reliability-6",
   "area": "client-reliability",
-  "status": "open",
+  "status": "in-progress",
   "title": "Audit real profile history removal wiring and historical no-op regression coverage",
   "blockedOn": null,
   "addedOn": "2026-10-20",
-  "filedAt": "7f99c0456931c917082d6a6680c79655221dcc82"
+  "filedAt": "7f99c0456931c917082d6a6680c79655221dcc82",
+  "evidence": "Audit atd88716e3,profile paths unchanged throughbbf57388:actual local+fake-synced wiring works;historical no-op fails2diagnostics but existingprofile27survives,lowerlayer8pass. Missing regression,propose test-only real-profile file;await routing. Evidence test_logs/TEST_LOG_2026-10-20_15-04-00_client-reliability-6.md"
 }
