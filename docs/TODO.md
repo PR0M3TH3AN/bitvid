@@ -2,6 +2,9 @@
 
 ## dispatch
 
+- 2026-10-19 latest: item3 normal product landing7d20a509 and closure7fde734d verified; dispatch synced and preview rebuilt(HTTP200). Independent original five-card scenario now0 obsolete starts(previous1), lifecycle11/11. Worker evidence426/426 full files,lint11/11,14 rejected mutants,Chromium+Firefox controlled-IO lifecycle smoke. Worker idle; no new task launched in this mail checkpoint. Remaining: actual media fallback/live-peer qualification,CPU/RSS measurements,active-probe/URL cancellation and other performance-plan slices.
+
+
 - 2026-10-19: dispatch-2 ongoing coordination. Synced to f9adfc8f; normal-gate fixes de6918ce verified (425/425 file evidence, lint11/11, independent profile27/27/race1/1). Route client-reliability-3 to same worker for reproduced queued probe-after-feed-disposal bug; scope/evidence in area prompt. Next: verify actual worker resume and completion reports, keep preview current after verified product landing.
 - Coordination limitation: operator checkpoint resumed dispatch; file mailbox does not itself wake idle Codex. Completion handoff now explicitly requires mailbox evidence, but unattended dispatch wakeup is unqualified. No scheduler/kit changes at this checkpoint.
 

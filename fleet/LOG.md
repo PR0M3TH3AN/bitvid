@@ -36,3 +36,11 @@
 
 - Reporting diagnosis: fleet resumePrompt says "Report to the session manager only if blocked", which explains the absent completion event. The next explicit tmux assignment will override that reporting instruction for landing/final completion without changing kit code. Delivery still does not wake dispatch; a separate operator turn remains necessary while dispatch is idle.
 - Preview refresh: npm run build exit0, deployment-artifact verification passed. Existing server process preserved; HTTP health check follows.
+
+## 2026-10-19: Queued torrent lifecycle fix verified and preview refreshed
+
+- Read worker LANDED and FINAL COMPLETE messages with mailbox_read. Durable submissione522efc1 landed7d20a509 through unchanged normal install+full npm test gate(exit0); closure1c49eb3b landed7fde734d; item3 done. Dispatch synced to7fde734d.
+- Worker final evidence at607d5ce1:426/426 full files,27 focused scenarios across4 suites,14 rejected/reverted mutants,lint11/11,build/artifact pass; native Chromium+Firefox controlled-IO smoke reports0 obsolete starts/stale callbacks/page errors/external attempts and shared-live/hidden-reveal/source-health visibility preserved. Product diff onlyjs/gridHealth.js.
+- Dispatch independently reran the original actual five-card reproduction:4 active,observer disconnected,0 obsolete starts after disposal (baseline1); exit0. Landed lifecycle suite11/11,exit0 naturally,309.36ms. Dispatch npm run build including artifact verification exit0; previewHTTP200, existing server preserved.
+- Not verified: actual media fallback/live peers,CPU/RSS benefit,active abort/URL cancellation,whole Stage3,signer/wallet/production. One worker now idle with empty backlog; next ownership/cancellation slices remain unassigned until bounded evidence/scoping. No deploy/spending/scheduler/kit changes.
+- Completion reporting now worked: two evidence messages were delivered and read. This new-mail turn resumed dispatch; file-mailbox code still has no session-wake behavior, so no unattended-monitoring claim.
