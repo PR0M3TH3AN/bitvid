@@ -1,9 +1,9 @@
 {
-  "id": "storage-cors-1",
-  "area": "storage-cors",
-  "status": "open",
-  "title": "Reproduce existing-origin loss in bucket CORS provisioning using offline transport",
-  "blockedOn": null,
-  "addedOn": "2026-10-20",
-  "filedAt": "0c1dd7e86be3e28edc96aca47f7753a98990dde0"
+ "id": "storage-cors-1",
+ "area": "storage-cors",
+ "status": "in-progress",
+ "title": "Reproduce existing-origin loss in bucket CORS provisioning using offline transport",
+ "blockedOn": null,
+ "addedOn": "2026-10-20",
+ "filedAt": "0c1dd7e86be3e28edc96aca47f7753a98990dde0"
 }
