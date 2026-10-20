@@ -2,6 +2,9 @@
 
 ## dispatch
 
+- 2026-10-20 storage productd3f4c215/closure7f99c045 verified;dispatch CORS9/9/build-artifact/previewHTTP200+dist match. QA exclusive full/normal slot actual grant14:49:35/read14:49:46 after65m54wait;storage-release→grant39m57 wake gap. Remaining:QA durable regression landing,final trial throughput/stall assessment,next bounded routing. Actual cloud/IAM/noCAS concurrent safety/live peers unverified.
+
+
 - 2026-10-20 trial first product landed: item5 product0bd0b1c3,closuredc852597;dispatch lifecycle18/18/build-artifact/previewHTTP200+dist match. Storage slot grant13:58:27 after949s wait,full/normal landing underway;QA next,ready95a77a7f. Remaining: storage/QA durable landings,preview refresh after product changes,final trial evidence;real cloud/peers/activeabort/CPU unverified.
 
 
@@ -62,6 +65,9 @@
 - 2026-10-19: client-reliability-3 finished and closed after verified normal landing7d20a509 (submissione522efc1, gate exit0, unstable ancestry exit0). Full426/426 files,focused27/27,14 reverted mutants,lint11/11,build/artifact verification and native Chromium/Firefox controlled-IO smokes pass; obsolete starts1→0. Dispatch landing evidence sent; closure metadata/final report follow. Dispatch owns preview sync/rebuild after its resume; mailbox does not wake idle sessions. Actual media fallback/live peers/CPU-RSS, active abort/URL cancellation and whole Stage3 remain outside qualification; no new work without routing.
 
 ## storage-cors
+
+- 2026-10-20 complete:productd3f4c215/closure7f99c045,full428/428,focused13/new9,10mutants,lint11/build;dispatch independent9/9+preview verification. Idle while QA trial output integrates. Live bucket/IAM/provider serialization/concurrent noCAS safety unverified.
+
 
 - Parallel trial item1: reproduce CORS existing-origin preservation offline before routing fix; no cloud changes.
 
