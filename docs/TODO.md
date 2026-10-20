@@ -2,6 +2,8 @@
 
 ## dispatch
 
+- 2026-10-20 local-review checkpoint: storage2 producte7b9afb3/closurec5818cfe and history6 regressionb3fab032/closure386cc60e durably complete. Normal latest gate431files exit0; dispatch cleanup13/13 and history3/3. Integrated preview1834b6a9 runtime equals current test/docs-only descendants. Final actual-app/mobile QA2 browser pass active; readiness awaits actual flow evidence/handoff. Feed3 and public-promised playback roadmap deferred/open; real Amber/cloud/peers/release gates remain. No optional new tasks.
+
 - 2026-10-20 trial outputs complete:QA regression1bb3a4fc/closurebbf57388 verified,dispatch independent4/4/runtime unchanged so no extra build. Same3 workers continue:client6 real history test-only retention after independent current pass/historical-noop failure;storage2 method-only malformed metadata no-throw guard after independent2rejects/6controls;QA2 actual-app local core/mobile3viewports browser-only grant. Full slots on validated-ready after QA browser release;no feature/readiness/live-proof claim.
 
 
@@ -39,6 +41,12 @@
 - Coordination limitation: operator checkpoint resumed dispatch; file mailbox does not itself wake idle Codex. Completion handoff now explicitly requires mailbox evidence, but unattended dispatch wakeup is unqualified. No scheduler/kit changes at this checkpoint.
 
 ## client-reliability
+
+- 2026-10-20: item6 DONE: retained actual profile-history wiring regression landed b3fab032;normal gate exit0 with431 discovered/431 unique file starts,focused38/38,5 killed mutants,lint11/11,submitted ancestry0. Test-only,existing product behavior passes. Evidence test_logs/TEST_LOG_2026-10-20_15-41-00_client-reliability-6-landed.md. Real signers/relays/encryption/full-app modal/browser/build/synced Clear unverified. Expensive slot released;IDLE for owner local review,no optional work.
+
+- 2026-10-20: item6 test-only retention ready:new real-profile wiring3/3,focused5files/38scenarios,5 isolated runtime mutants failnaturally/0cancelled,lint11pass. Local remove/lastitem/clear/recreation andfake-synced reduced+empty replacement covered;historicalno-op rejected. No product/existing suite edits;full/normal slot pendingexplicit grant,full/browser/build unrun;real signers/relays/fullapp/syncedClear unverified. Unique integrity/evidence in test_logs/*client-reliability-6*.
+
+- 2026-10-20: item6 audit atd88716e3(profile paths unchanged throughbbf57388):real local profile remove/clear and fake-synced remove/recreation pass,0network;historical runtime no-op failsboth aftercleanup but existingprofile27/27 stillpasses;lowerlayers3files/8pass. Classify missing real-wiring regression,notcurrentproductfailure. Proposed test-only focused file+uniqueintegrity;await routing,QA expensive slot respected. Evidence test_logs/TEST_LOG_2026-10-20_15-04-00_client-reliability-6.md. No product/test changes or live signer/relay/fullapp proof.
 
 - 2026-10-20: item5 done/closed after normal product landing0bd0b1c3(submission4bc52f9d,gate exit0,unstable ancestry exit0). Full427files/focused28/lifecycle18/six reverted mutants/lint11/build-artifact/Chromium+Firefox controlled smoke pass;obsolete mirror HEAD1→0. Browser+expensive slot released13:57UTC after10m57s initial wait. Dispatch landing/release event sent;preview refresh dispatch-owned. Closure metadata/final follow;no next item. Active abort/actual fallback/livepeers/CPU/fullStage3 unverified.
 

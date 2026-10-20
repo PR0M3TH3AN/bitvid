@@ -1,9 +1,11 @@
 {
   "id": "client-reliability-6",
   "area": "client-reliability",
-  "status": "open",
+  "status": "done",
   "title": "Audit real profile history removal wiring and historical no-op regression coverage",
   "blockedOn": null,
   "addedOn": "2026-10-20",
-  "filedAt": "7f99c0456931c917082d6a6680c79655221dcc82"
+  "filedAt": "7f99c0456931c917082d6a6680c79655221dcc82",
+  "evidence": "Test-only retained regression9afe48a5 landed b3fab0326b3924d128b7928f4588751a003390ad via ec41d338;unchanged normal gate exit0,431 discovered/431 unique starts;focused38/38,5 mutants killed,lint11/11. Ancestry exit0. Final evidence test_logs/TEST_LOG_2026-10-20_15-41-00_client-reliability-6-landed.md. No product fix or live/browser qualification;IDLE owner local review.",
+  "closedOn": "2026-10-20"
 }
