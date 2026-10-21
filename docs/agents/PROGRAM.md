@@ -4,7 +4,7 @@ Last updated: 2026-10-20
 
 ## Current milestone
 
-Active URL-media cancellation slice is landed43cb1baf after normal432-file gate exit0;dispatch independent29/29,build08620a71/artifact pass/previewHTTP200+index equality. Worker controlled native Chromium+Firefox smoke passed and resources released. Closure evidence/metadata pending normal docs queue,then idle awaiting next bounded scope. HEAD/HLS/torrent active cancellation remains open; broader optional work remains deferred.
+Active URL-media cancellation slice is landed43cb1baf after normal432-file gate exit0;dispatch independent29/29,build08620a71/artifact pass/previewHTTP200+index equality. Worker controlled native Chromium+Firefox smoke passed and resources released. Closure/browser evidence durably landed2ea6f068;item8 done,team idle awaiting next bounded scope. HEAD/HLS/torrent active cancellation remains open; broader optional work remains deferred.
 
 Local-review handoff: storage2/history6 and demonstrated cold-feed blockerclient7 are normally landed. Build6da89895/preview3000 verified;actualcold3cards and separate25-step360/390/1280core/modal coverage complete. Original strictUploadoverflow FAIL remains open(2/4px,controlsusable),not an all-green baseline. Finish docs-only evidence/handoff,then allIDLE for owner review;no optional backlog work. Broader roadmap/live signer/cloud/peer/release gates remain explicit in QUALITY/LOCAL-REVIEW.
 

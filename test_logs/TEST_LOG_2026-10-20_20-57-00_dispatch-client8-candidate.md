@@ -17,3 +17,5 @@
 - Client exclusive native Chromium/Firefox controlled-media qualification granted after build;START/release/results pending. No claim of actual networkbyte savings,CPU/RSS/live playback,HEAD/HLS/torrent completion.
 
 - Worker native START21:04:46UTC/release21:05:25UTC;Chromium/Firefox scratch exit0 reported. Dispatch inspected /tmp/client8-native-smoke.mjs and approved-run output:actualobserver/controller/native src/load;state cache IO+HEAD controlled,pause stubbed,synthetic completion events,intercepted8media requests perbrowser.7/8 requestfailed observed respectively;not asserting universalabort/decoder/networkbytes/CPU.0publicrequests/pageerrors,ownedcontext/browser/server cleanup via finally,naturalexit. No independent duplicate browser run. Client closure/browser evidence normaldocsqueue authorized,gate/config unchanged.
+
+- Finalclosure independently land_status cfc20107=landed2ea6f068,submittedancestry0;currenttarget9cbb53f8 includes closure+dispatchhandoff. Runtime/buildinputsdiff0 vs43cb1baf. Itemdone/queue0;resourcesreleased,teamidle. Finaldocs only;no additional tests/build/browser because runtime unchanged.
