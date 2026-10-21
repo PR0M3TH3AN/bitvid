@@ -2,6 +2,8 @@
 
 ## dispatch
 
+- client8 FINAL:product43cb1baf/closure2ea6f068/handoff9cbb53f8 verified;432fullgate0,dispatch29/29/build08620a71/artifact0/preview200+cmp0,nativecontrolledbothbrowserPASS/released. AllIDLE;HEAD/HLS/torrent activeprobe work remains unfinished pending nextboundedrouting. No decoder/bytes/CPU/liveproof.
+
 - 2026-10-20 client8 active URL-media product43cb1baf/full432gate0,dispatch29/29/build08620a71/artifact0/previewHTTP200+cmp0. WorkercontrollednativeChromium+Firefox smokePASS/released;closuremetadata/browsernotes normaldocsqueue pending. No realdecoder/networkbyte/CPU/HEAD/HLS/torrent qualification;broaderactiveprobe scope remains unfinished. Finishdocs/handoff thenawaitnextboundedrouting.
 
 - 2026-10-20 bounded continuation: client8 active URL-media last-owner/shared/rejoin reproduction after maintenance. Await measured evidence then independent confirmation/minimal fix and explicit test-contract routing. Other optional work remains deferred; no active-abort completion claim.
