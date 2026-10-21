@@ -2,6 +2,8 @@
 
 ## dispatch
 
+- Next bounded item requested by interpreter2026-10-21T02:40:06Z under continuing owner instruction: existing client read-only currentHEAD active HEAD-request last-owner abort reproduction/shared/rejoin controls;no product/test edits before evidence. HLS/torrent separate. Quiet-hours22:00–08:00 hold for new starts/messages;route next foreground checkpoint at/after08:00 local without another permission loop. No scheduler created.
+
 - client8 FINAL:product43cb1baf/closure2ea6f068/handoff9cbb53f8 verified;432fullgate0,dispatch29/29/build08620a71/artifact0/preview200+cmp0,nativecontrolledbothbrowserPASS/released. AllIDLE;HEAD/HLS/torrent activeprobe work remains unfinished pending nextboundedrouting. No decoder/bytes/CPU/liveproof.
 
 - 2026-10-20 client8 active URL-media product43cb1baf/full432gate0,dispatch29/29/build08620a71/artifact0/previewHTTP200+cmp0. WorkercontrollednativeChromium+Firefox smokePASS/released;closuremetadata/browsernotes normaldocsqueue pending. No realdecoder/networkbyte/CPU/HEAD/HLS/torrent qualification;broaderactiveprobe scope remains unfinished. Finishdocs/handoff thenawaitnextboundedrouting.
