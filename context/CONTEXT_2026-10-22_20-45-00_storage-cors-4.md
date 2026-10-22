@@ -1,0 +1,5 @@
+- storage-cors-4: prevent obsolete registered feed results repainting deleted/replaced DOM.
+- Baseline26e9a787; storage3 durable63e2b519 normalgateexit0, ancestry verified; close3 after durable lookup.
+- Own coordinator only plus unique tests/notes. No app/view/engine/service/buffer edits.
+- Plan: retain actual registered pipeline/JSDOM baseline; guard refresh/load ownership; cover async runtime/engine success+error, disposal/remount, telemetry and current controls; kill restored mutants; focused/lint; request serialized normal gate; verify durable landing.
+- Definition of done: strict regressions+mutants, existing focused/lint, merged normal gate, durable status+ancestry. No live/browser qualification inferred.

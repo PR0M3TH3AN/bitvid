@@ -1,10 +1,10 @@
 {
-  "id": "storage-cors-4",
-  "area": "storage-cors",
-  "status": "open",
-  "title": "Prevent obsolete registered feed completions restoring deleted or replaced DOM",
-  "blockedOn": "Implement separately only after existing storage3 candidate is frozen and submitted",
-  "addedOn": "2026-10-22",
-  "filedAt": "89f8923c6e83b79a2b8874f811cdff2af6a809d0",
-  "brief": "docs/agents/prompts/storage-cors.md"
+ "id": "storage-cors-4",
+ "area": "storage-cors",
+ "status": "in-progress",
+ "title": "Prevent obsolete registered feed completions restoring deleted or replaced DOM",
+ "blockedOn": null,
+ "addedOn": "2026-10-22",
+ "filedAt": "89f8923c6e83b79a2b8874f811cdff2af6a809d0",
+ "brief": "docs/agents/prompts/storage-cors.md"
 }
