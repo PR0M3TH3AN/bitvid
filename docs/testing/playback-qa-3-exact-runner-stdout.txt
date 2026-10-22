@@ -1,0 +1,12 @@
+
+Running 3 tests using 1 worker
+
+(node:141920) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:141920) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 [e2e-firefox] › ../../../../../tmp/playback-qa-3-runner/e2e/runtime-coverage-expansion.spec.ts:4:7 › runtime coverage expansion › exercises for-you view empty-state and hashtag action (3.1s)
+  ✓  2 [e2e-firefox] › ../../../../../tmp/playback-qa-3-runner/e2e/runtime-coverage-expansion.spec.ts:79:7 › runtime coverage expansion › exercises explore view empty-state transitions (2.3s)
+  ✓  3 [e2e-firefox] › ../../../../../tmp/playback-qa-3-runner/e2e/runtime-coverage-expansion.spec.ts:120:7 › runtime coverage expansion › exercises kids view empty-state transitions (2.2s)
+
+  3 passed (10.0s)

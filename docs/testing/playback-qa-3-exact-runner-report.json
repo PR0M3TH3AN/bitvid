@@ -1,0 +1,214 @@
+{
+  "config": {
+    "configFile": "/tmp/playback-qa-3-runner/playwright.config.ts",
+    "rootDir": "/tmp/playback-qa-3-runner",
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": "/home/user/Documents/GitHub/bitvid-playback-qa/tests/e2e/helpers/playwrightCoverageGlobalSetup.ts",
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/tmp/playback-qa-3-runner/results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "e2e-firefox",
+        "name": "e2e-firefox",
+        "testDir": "/tmp/playback-qa-3-runner",
+        "testIgnore": [],
+        "testMatch": [
+          "e2e/**/*.spec.ts"
+        ],
+        "timeout": 120000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "/tmp/playback-qa-3-runner/report.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "runAgents": "none",
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.58.2",
+    "workers": 1,
+    "webServer": {
+      "command": "node /tmp/playback-qa-3-runner/server.cjs",
+      "url": "http://127.0.0.1:31857/docs/kitchen-sink.html",
+      "reuseExistingServer": false,
+      "timeout": 120000
+    }
+  },
+  "suites": [
+    {
+      "title": "e2e/runtime-coverage-expansion.spec.ts",
+      "file": "e2e/runtime-coverage-expansion.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "runtime coverage expansion",
+          "file": "e2e/runtime-coverage-expansion.spec.ts",
+          "line": 3,
+          "column": 6,
+          "specs": [
+            {
+              "title": "exercises for-you view empty-state and hashtag action",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "e2e-firefox",
+                  "projectName": "e2e-firefox",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3135,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-22T14:22:02.653Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "offline-boundary",
+                          "contentType": "application/json",
+                          "body": "eyJtaXJyb3JIaXRzIjoxLCJibG9ja2VkIjpbImh0dHBzOi8vZXNtLnNoL0Bhd3Mtc2RrL2NsaWVudC1zM0AzLjYzNy4wIiwiaHR0cHM6Ly9jZG4uanNkZWxpdnIubmV0L25wbS9ub3N0ci10b29sc0AyLjE3LjAvK2VzbSIsImh0dHBzOi8vZXNtLnNoL25vc3RyLXRvb2xzQDIuMTcuMCIsImh0dHBzOi8vZXNtLnNoL25vc3RyLXRvb2xzQDIuMTcuMCIsImh0dHBzOi8vZXNtLnNoL25vc3RyLXRvb2xzQDIuMTcuMC9uaXA0NCIsIndzczovL3JlbGF5LmRhbXVzLmlvLyIsIndzczovL25vcy5sb2wvIiwid3NzOi8vcmVsYXkuc25vcnQuc29jaWFsLyIsIndzczovL3JlbGF5LnByaW1hbC5uZXQvIiwid3NzOi8vcmVsYXkuZGFtdXMuaW8vIiwid3NzOi8vbm9zLmxvbC8iLCJ3c3M6Ly9yZWxheS5zbm9ydC5zb2NpYWwvIiwid3NzOi8vcmVsYXkucHJpbWFsLm5ldC8iLCJ3c3M6Ly9yZWxheS5kYW11cy5pby8iLCJ3c3M6Ly9ub3MubG9sLyIsIndzczovL3JlbGF5LnNub3J0LnNvY2lhbC8iLCJ3c3M6Ly9yZWxheS5wcmltYWwubmV0LyIsImh0dHBzOi8vY2RuLmpzZGVsaXZyLm5ldC9ucG0vbm9zdHItdG9vbHNAMi4xNy4wL2xpYi9ub3N0ci5idW5kbGUubWluLmpzIiwiaHR0cHM6Ly9jZG4uanNkZWxpdnIubmV0L25wbS9ub3N0ci10b29sc0AyLjE3LjAvbGliL25vc3RyLmJ1bmRsZS5taW4uanMiLCJodHRwczovL2Nkbi5qc2RlbGl2ci5uZXQvbnBtL25vc3RyLXRvb2xzQDIuMTcuMC9saWIvbm9zdHIuYnVuZGxlLm1pbi5qcyIsImh0dHBzOi8vY2RuLmpzZGVsaXZyLm5ldC9ucG0vbm9zdHItdG9vbHNAMi4xNy4wL2xpYi9ub3N0ci5idW5kbGUubWluLmpzIiwiaHR0cHM6Ly9jZG4uanNkZWxpdnIubmV0L25wbS9ub3N0ci10b29sc0AyLjE3LjAvbGliL25vc3RyLmJ1bmRsZS5taW4uanMiLCJ3c3M6Ly9yZWxheS5kYW11cy5pby8iLCJ3c3M6Ly9ub3MubG9sLyIsIndzczovL3JlbGF5LnNub3J0LnNvY2lhbC8iLCJ3c3M6Ly9yZWxheS5wcmltYWwubmV0LyIsIndzczovL3JlbGF5LmRhbXVzLmlvLyIsIndzczovL25vcy5sb2wvIiwid3NzOi8vcmVsYXkuc25vcnQuc29jaWFsLyIsIndzczovL3JlbGF5LnByaW1hbC5uZXQvIiwid3NzOi8vbm9zLmxvbC8iLCJ3c3M6Ly9yZWxheS5kYW11cy5pby8iLCJ3c3M6Ly9yZWxheS5wcmltYWwubmV0LyIsIndzczovL3JlbGF5LnNub3J0LnNvY2lhbC8iXX0="
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "392e8fc2af458905b98f-9ff48298987f061c177a",
+              "file": "e2e/runtime-coverage-expansion.spec.ts",
+              "line": 4,
+              "column": 7
+            },
+            {
+              "title": "exercises explore view empty-state transitions",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "e2e-firefox",
+                  "projectName": "e2e-firefox",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2267,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-22T14:22:06.278Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "offline-boundary",
+                          "contentType": "application/json",
+                          "body": "eyJtaXJyb3JIaXRzIjoxLCJibG9ja2VkIjpbImh0dHBzOi8vZXNtLnNoL0Bhd3Mtc2RrL2NsaWVudC1zM0AzLjYzNy4wIiwiaHR0cHM6Ly9jZG4uanNkZWxpdnIubmV0L25wbS9ub3N0ci10b29sc0AyLjE3LjAvK2VzbSIsImh0dHBzOi8vZXNtLnNoL25vc3RyLXRvb2xzQDIuMTcuMCIsImh0dHBzOi8vZXNtLnNoL25vc3RyLXRvb2xzQDIuMTcuMCIsImh0dHBzOi8vZXNtLnNoL25vc3RyLXRvb2xzQDIuMTcuMC9uaXA0NCIsIndzczovL3JlbGF5LmRhbXVzLmlvLyIsIndzczovL25vcy5sb2wvIiwid3NzOi8vcmVsYXkuc25vcnQuc29jaWFsLyIsIndzczovL3JlbGF5LnByaW1hbC5uZXQvIiwid3NzOi8vcmVsYXkuZGFtdXMuaW8vIiwid3NzOi8vbm9zLmxvbC8iLCJ3c3M6Ly9yZWxheS5zbm9ydC5zb2NpYWwvIiwid3NzOi8vcmVsYXkucHJpbWFsLm5ldC8iLCJodHRwczovL2Nkbi5qc2RlbGl2ci5uZXQvbnBtL25vc3RyLXRvb2xzQDIuMTcuMC9saWIvbm9zdHIuYnVuZGxlLm1pbi5qcyIsImh0dHBzOi8vY2RuLmpzZGVsaXZyLm5ldC9ucG0vbm9zdHItdG9vbHNAMi4xNy4wL2xpYi9ub3N0ci5idW5kbGUubWluLmpzIiwid3NzOi8vcmVsYXkuZGFtdXMuaW8vIiwid3NzOi8vbm9zLmxvbC8iLCJodHRwczovL2Nkbi5qc2RlbGl2ci5uZXQvbnBtL25vc3RyLXRvb2xzQDIuMTcuMC9saWIvbm9zdHIuYnVuZGxlLm1pbi5qcyIsIndzczovL3JlbGF5LnNub3J0LnNvY2lhbC8iLCJ3c3M6Ly9yZWxheS5wcmltYWwubmV0LyIsImh0dHBzOi8vY2RuLmpzZGVsaXZyLm5ldC9ucG0vbm9zdHItdG9vbHNAMi4xNy4wL2xpYi9ub3N0ci5idW5kbGUubWluLmpzIiwiaHR0cHM6Ly9jZG4uanNkZWxpdnIubmV0L25wbS9ub3N0ci10b29sc0AyLjE3LjAvbGliL25vc3RyLmJ1bmRsZS5taW4uanMiLCJ3c3M6Ly9yZWxheS5kYW11cy5pby8iLCJ3c3M6Ly9ub3MubG9sLyIsIndzczovL3JlbGF5LnNub3J0LnNvY2lhbC8iLCJ3c3M6Ly9yZWxheS5wcmltYWwubmV0LyIsIndzczovL3JlbGF5LmRhbXVzLmlvLyIsIndzczovL25vcy5sb2wvIiwid3NzOi8vcmVsYXkuc25vcnQuc29jaWFsLyIsIndzczovL3JlbGF5LnByaW1hbC5uZXQvIiwid3NzOi8vbm9zLmxvbC8iLCJ3c3M6Ly9yZWxheS5kYW11cy5pby8iLCJ3c3M6Ly9yZWxheS5wcmltYWwubmV0LyIsIndzczovL3JlbGF5LnNub3J0LnNvY2lhbC8iXX0="
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "392e8fc2af458905b98f-44c51fdca915cc6d7a20",
+              "file": "e2e/runtime-coverage-expansion.spec.ts",
+              "line": 79,
+              "column": 7
+            },
+            {
+              "title": "exercises kids view empty-state transitions",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "e2e-firefox",
+                  "projectName": "e2e-firefox",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2209,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-22T14:22:08.564Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "offline-boundary",
+                          "contentType": "application/json",
+                          "body": "eyJtaXJyb3JIaXRzIjoxLCJibG9ja2VkIjpbImh0dHBzOi8vZXNtLnNoL0Bhd3Mtc2RrL2NsaWVudC1zM0AzLjYzNy4wIiwiaHR0cHM6Ly9jZG4uanNkZWxpdnIubmV0L25wbS9ub3N0ci10b29sc0AyLjE3LjAvK2VzbSIsImh0dHBzOi8vZXNtLnNoL25vc3RyLXRvb2xzQDIuMTcuMCIsImh0dHBzOi8vZXNtLnNoL25vc3RyLXRvb2xzQDIuMTcuMCIsImh0dHBzOi8vZXNtLnNoL25vc3RyLXRvb2xzQDIuMTcuMC9uaXA0NCIsIndzczovL3JlbGF5LmRhbXVzLmlvLyIsIndzczovL25vcy5sb2wvIiwid3NzOi8vcmVsYXkuc25vcnQuc29jaWFsLyIsIndzczovL3JlbGF5LnByaW1hbC5uZXQvIiwid3NzOi8vcmVsYXkuZGFtdXMuaW8vIiwid3NzOi8vbm9zLmxvbC8iLCJ3c3M6Ly9yZWxheS5zbm9ydC5zb2NpYWwvIiwid3NzOi8vcmVsYXkucHJpbWFsLm5ldC8iLCJ3c3M6Ly9yZWxheS5kYW11cy5pby8iLCJ3c3M6Ly9ub3MubG9sLyIsIndzczovL3JlbGF5LnNub3J0LnNvY2lhbC8iLCJ3c3M6Ly9yZWxheS5wcmltYWwubmV0LyIsImh0dHBzOi8vY2RuLmpzZGVsaXZyLm5ldC9ucG0vbm9zdHItdG9vbHNAMi4xNy4wL2xpYi9ub3N0ci5idW5kbGUubWluLmpzIiwiaHR0cHM6Ly9jZG4uanNkZWxpdnIubmV0L25wbS9ub3N0ci10b29sc0AyLjE3LjAvbGliL25vc3RyLmJ1bmRsZS5taW4uanMiLCJ3c3M6Ly9yZWxheS5kYW11cy5pby8iLCJ3c3M6Ly9ub3MubG9sLyIsImh0dHBzOi8vY2RuLmpzZGVsaXZyLm5ldC9ucG0vbm9zdHItdG9vbHNAMi4xNy4wL2xpYi9ub3N0ci5idW5kbGUubWluLmpzIiwid3NzOi8vcmVsYXkuc25vcnQuc29jaWFsLyIsIndzczovL3JlbGF5LnByaW1hbC5uZXQvIiwiaHR0cHM6Ly9jZG4uanNkZWxpdnIubmV0L25wbS9ub3N0ci10b29sc0AyLjE3LjAvbGliL25vc3RyLmJ1bmRsZS5taW4uanMiLCJodHRwczovL2Nkbi5qc2RlbGl2ci5uZXQvbnBtL25vc3RyLXRvb2xzQDIuMTcuMC9saWIvbm9zdHIuYnVuZGxlLm1pbi5qcyIsIndzczovL3JlbGF5LmRhbXVzLmlvLyIsIndzczovL25vcy5sb2wvIiwid3NzOi8vcmVsYXkuc25vcnQuc29jaWFsLyIsIndzczovL3JlbGF5LnByaW1hbC5uZXQvIiwid3NzOi8vbm9zLmxvbC8iLCJ3c3M6Ly9yZWxheS5kYW11cy5pby8iLCJ3c3M6Ly9yZWxheS5wcmltYWwubmV0LyIsIndzczovL3JlbGF5LnNub3J0LnNvY2lhbC8iXX0="
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "392e8fc2af458905b98f-079002fdea00236f7003",
+              "file": "e2e/runtime-coverage-expansion.spec.ts",
+              "line": 120,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-10-22T14:22:01.436Z",
+    "duration": 9955.026,
+    "expected": 3,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}
