@@ -1,0 +1,4 @@
+- Worker playback-qa reports SHA c5b678f7, native Playwright originalinstrumentedTest/globalsetup and3selectors, workers1/retries0:3passed/0failed/0flaky/0skipped, naturalexit0,9955ms,resources released~14:22:11UTC. Exact command/output retained in worker scratch/evidence; not independently rerun by dispatch.
+- Earlier app-ready3/3 + inertdocument3/3 and originalnetworkidle+trace3/3 are separate controlled probes. Genuine Buffer3packages integrity+6sanity; newbundlehash differs historical and disclosed. No causal CI fix supported.
+- Public CI184pass/2fail/3flaky remains distinct/unreproduced;logs403/no E2Eartifact/serial/networkguard/server/serviceWorker/runner differences limit qualification.
+- QA4 mobile actualapp strict width/focus/touch/source investigation next;no product/tests/CSS edit or full/build gate. Admin diff-check verification only.
