@@ -1,0 +1,5 @@
+- [x] HEAD slice durable,normal435files/buildartifact/controlled nativebrowser complete.
+- [x] HLS source/callpath and strict offline12mode diagnostic5fail/7pass documented.
+- [ ] Dispatch independent reproduction and explicit HLS helper ownership/spec routing.
+- [ ] HLS implementation/retainedtests/verification only after routing.
+- [ ] Torrent/RangeGET and broaderStage3 separately open.
