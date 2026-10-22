@@ -2,6 +2,8 @@
 
 ## dispatch
 
+- 2026-10-22 QA3 native originalfixture3pass/no retries,CI2assertions unreproduced/open(logs403/no artifact),no fixjustified. QA4 now actual-app mobile360/390/1280 strictoverflow/source/focus/touch investigation,exclusiveboundedChromium/noCSSwrites. Remaining6priority campaign not complete.
+
 - 2026-10-22 client9 HEAD independently11modes(3fail/8controls pass),finalowner fetch/timer retained(no media slot leak);controller HEAD-only fix+strict contract/identity/ignoringabort regressions routed. HLS/torrent/RangeGET remain open;QA offline genuineBuffer rebuild prep, mobile/Amber staged.
 
 - 2026-10-22 storage3 independent7/3pass/4fail: buffer newer-version loss and service deleted snapshot/cache leakage routed separate small commits; coordinator stale render still open/read-only pending registered lifecycle evidence. QA3 app-less3pass not CI proof; genuine cached Buffer followup granted exclusive narrow browser.

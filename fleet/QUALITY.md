@@ -1,3 +1,7 @@
+# 2026-10-22 QA checkpoint
+
+Firefox CI still OPEN: public CI184pass/2fail/3flaky, two runtime coverage assertions not reproduced. Worker native original-instrumentation narrow3 passes0fail/0flaky/0skip/retries0 atc5b678f7, controlled cached genuine Buffer/network guard/serial/static server differ. No causal fix or CI clearance. QA4 mobile investigation now active; strict historical overflow remains open until current reproduction/fix. Client9 HEAD and storage3 buffer/service fixes active, coordinator unresolved. Playback/Amber staged. No fresh integrated full gate/build/preview yet.
+
 # Current campaign checkpoint — 2026-10-22
 
 All six priorities resumed via interpreter, not complete. Current baseline unstable fb54cea3. Historical matrix below remains provenance; none of its tests has been rerun for this campaign. All six worktrees clean, no HEAD-only commits; main/lander current, dispatch fast-forwarded, workers must fast-forward their own branches before investigating. Queue was empty at startup. QA3 owns initial browser/expensive slot; no competing full gate/build. See docs/agents/CAMPAIGN-2026-10-22.md for acceptance criteria and assignments. Final integrated review/build/preview outstanding. No live signer/cloud/peer qualification or remote actions authorized.
