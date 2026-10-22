@@ -1,3 +1,9 @@
+## Current assignment 2026-10-22: playback-qa-3 — Firefox deterministic CI failure
+
+Supersedes prior idle/QA2 scope below. Read current dispatch campaign brief, PROGRAM/RULE-CHANGES/KNOWN_ISSUES, harness and test integrity. Inspect own clean/unlanded state; fast-forward own branch safely to unstable, report SHA, claim QA3, send read/next-action. Interpreter reports run39536282396/job119013565277 failed Firefox at fb54cea3 while build/units/Chromium/visual passed; remote logs previously empty. This is reported evidence, not a diagnosed product failure. Inspect workflow/artifacts/read-only CI metadata if accessible; no credential disclosure/access, remote writes or workflow rerun. Identify failing step/assertion before smallest local deterministic reproduction, preserving first failure and natural exit. Do not assume known hydration flake is cause. Existing tests/helpers/config/product read-only until precise defect and dispatch ownership routing; scratch/new QA evidence only. Browser/expensive slot initially GRANTED for one narrow Firefox reproduction at a time, announce start in .task/mailbox and release promptly; no broad E2E/full npm test/build/normal product queue until separate slot. Other workers focused offline only. No retries/sleeps/weaker assertions/force exits/public fixture traffic; preserve preview3000 and peer servers. Report exact failure, command/counts/environment and unverified CI boundary. Mobile overflow/touch/focus is staged next after Firefox checkpoint; no CSS edits yet.
+
+## Archived assignment history (not current routing)
+
 # Area: Playback fallback QA (playback-qa)
 
 ## Current assignment: playback-qa-2 — actual-app local core/mobile baseline

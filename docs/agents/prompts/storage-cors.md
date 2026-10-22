@@ -1,3 +1,9 @@
+## Current assignment 2026-10-22: storage-cors-3 — feed/view tombstone stale-refresh
+
+Supersedes old idle/storage2 and deferred3 scope below. Read dispatch campaign brief, PROGRAM/RULE-CHANGES/KNOWN_ISSUES and docs/nips before Nostr investigation. Inspect own worktree and safely fast-forward clean branch to unstable; preserve any unexpected work; report SHA, claim item3, send read/next-action. Read actual tombstone/deletion/cache/view lifecycle; reproduce delete ingest followed by stale refresh/late older event/view switch with synthetic offline events/controlled IO. Check unrelated live/newer valid content and existing deletion semantics; do not invent new policy. Source read/scratch/unique evidence/backlog only; NO product/committed test edits until demonstrated defect and precise ownership routing. App/feed/services/Nostr shared modules remain read-only for now. No real signer/relay/cloud/credentials/delete; no browser/build/full suite/normal product submission yet, QA owns initial expensive/browser slot. Focused offline checks permitted, env -u NODE_TEST_CONTEXT. Report path and strict failed/control counts or already-fixed evidence, proposed smallest files/retained regression and remaining limits. No optional new storage work after this slice without campaign routing.
+
+## Archived assignment history (not current routing)
+
 # Area: Storage CORS reliability (storage-cors)
 
 ## Current assignment: storage-cors-2 — best-effort cleanup metadata guard

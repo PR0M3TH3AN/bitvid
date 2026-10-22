@@ -44,3 +44,10 @@ Storage2/history6 and the actual-app-discovered cold-feed blockerclient7 are nor
 > "Then continue with the active-probe/URL cancellation work." — owner, relayed by interpreter20:44:41UTC.
 
 Resume existing client worker for current-HEAD active URL-media cancellation reproduction and evidence-routed minimal fix. Local-review hold remains for other optional work; no new restricted authority. Shared-owner/cache/FIFO/legacy behavior and explicit test-contract correction required.
+
+## 2026-10-22 — Six-priority campaign resumed via interpreter
+
+> "yeah lets get the fleet spun up and address all of these" — owner, relayed by interpreter at 2026-10-22T14:02:34Z; not typed in dispatch.
+
+The relay identifies six priorities: Firefox deterministic CI failure; remaining active HEAD/HLS/torrent cancellation; playback reliability promises; feed/view tombstone stale-refresh; Amber sessions; mobile usability. This supersedes the prior idle/local-review and quiet-hours hold for this foreground campaign. Routine investigation, evidence-routed fixes, tests/builds and normal local unstable landing are approved. No push/deploy/spend/production data/real wallet/credential/live signer/scheduler authority. Track all six in docs/agents/CAMPAIGN-2026-10-22.md. Preserve worktrees, use three existing workers with disjoint scope, stage before fixes, serialize browser/full gates, keep app.js single-writer. Final integrated local build/preview and honest live/manual limits required.
+

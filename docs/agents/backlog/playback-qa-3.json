@@ -1,0 +1,10 @@
+{
+  "id": "playback-qa-3",
+  "area": "playback-qa",
+  "status": "open",
+  "title": "Diagnose Firefox deterministic CI failure at fb54cea3",
+  "blockedOn": null,
+  "addedOn": "2026-10-22",
+  "filedAt": "fb54cea3a2ba99b4860421724a5050af6b97c293",
+  "brief": "docs/agents/CAMPAIGN-2026-10-22.md"
+}

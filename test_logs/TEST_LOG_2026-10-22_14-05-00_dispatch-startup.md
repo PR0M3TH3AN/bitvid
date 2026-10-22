@@ -1,0 +1,5 @@
+- Baseline unstable fb54cea3 printed by git.
+- Python subprocess git status --short + rev-list HEAD...unstable:6/6 clean and0 HEAD-only, all commands exit0.
+- git merge --ff-only unstable in dispatch: initial sandbox exit128(read-only ORIG_HEAD); same approved host command exit0, ff tofb54cea3.
+- fleet status4 windows alive,3 workers idle before assignments. mailbox read2 messages. Queue startup0/no drain.
+- No lint/unit/browser/build run; only administrative files changed. Prior432 gate not fresh evidence.
