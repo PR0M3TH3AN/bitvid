@@ -1,0 +1,1 @@
+Client9 HEAD-only fix durably landed f41ac656 after normal435-filegate exit0, ancestry0; sequential build/artifact exit0. Heavy slot released. Await separate bounded native browser slot; no browser started. HLS/torrent/RangeGET and wholeStage3 remain open. No additional product changes.
