@@ -1,0 +1,13 @@
+{
+  "bytes": 65331,
+  "sha256": "2f1f8730af8c9fb08068a41c9c18356b9f48f21635fe5deed6d17fc6b9b97be7",
+  "esbuild": "0.27.3",
+  "sanityPassed": 6,
+  "historicalMatch": false,
+  "inputs": [
+    "../../../../../tmp/playback-qa-3-assets/node_modules/base64-js/index.js",
+    "../../../../../tmp/playback-qa-3-assets/node_modules/ieee754/index.js",
+    "../../../../../tmp/playback-qa-3-assets/node_modules/buffer/index.js",
+    "../../../../../tmp/playback-qa-3-assets/entry.mjs"
+  ]
+}
