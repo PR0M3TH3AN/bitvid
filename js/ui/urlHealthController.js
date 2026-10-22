@@ -344,7 +344,7 @@ export default class UrlHealthController {
         Number.isFinite(timeoutMs) && timeoutMs > 0
           ? timeoutMs
           : defaultTimeout;
-      const outcome = await probeHlsManifest(trimmed, effective);
+      const outcome = await probeHlsManifest(trimmed, effective, lifecycle);
       return { outcome };
     }
 
