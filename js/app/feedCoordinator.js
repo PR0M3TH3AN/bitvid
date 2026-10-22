@@ -56,6 +56,14 @@ export function createFeedCoordinator(deps) {
     registerWatchHistoryFeed: registerWatchHistoryFeedFn,
   } = deps;
 
+  // Each app owns one presentation target. Requests may finish for their caller
+  // after losing that target, but must not publish into a newer feed/view.
+  const refreshRequests = new WeakMap();
+  const feedLoads = new WeakMap();
+  const ownsView = (app, view, container) =>
+    app.videoListView === view &&
+    (!container || view?.container === container);
+
   return {
     registerRecentFeed() {
       if (!this.feedEngine || typeof this.feedEngine.registerFeed !== "function") {
@@ -830,6 +838,17 @@ export function createFeedCoordinator(deps) {
     },
 
     async refreshFeed(feedType, { reason, fallbackVideos } = {}) {
+      const request = {};
+      refreshRequests.set(this, request);
+      const view = this.videoListView;
+      const container = view?.container;
+      const load = feedLoads.get(this);
+      const activeFeed = this.feedTelemetryState?.activeFeed;
+      const isCurrent = () =>
+        refreshRequests.get(this) === request &&
+        feedLoads.get(this) === load &&
+        this.feedTelemetryState?.activeFeed === activeFeed &&
+        ownsView(this, view, container);
       const normalizedReason = typeof reason === "string" ? reason : undefined;
       const fallback = Array.isArray(fallbackVideos) ? fallbackVideos : [];
       let runtime = {};
@@ -902,6 +921,11 @@ export function createFeedCoordinator(deps) {
         );
       }
 
+      // A runtime preload can outlive its view before the engine even starts.
+      if (!isCurrent()) {
+        return { videos: fallback, metadata: { reason: normalizedReason, engine: "superseded" } };
+      }
+
       // 2. Check Engine
       if (!this.feedEngine || typeof this.feedEngine.run !== "function") {
         const metadata = metadataModifier({
@@ -930,6 +954,9 @@ export function createFeedCoordinator(deps) {
           if (normalizedReason) metadata.reason = normalizedReason;
           metadata = metadataModifier(metadata);
 
+          const payload = { videos, metadata };
+          if (!isCurrent()) return payload;
+
           this.latestFeedMetadata = metadata;
           this.videosMap = this.nostrService.getVideosMap();
           if (this.videoListView) {
@@ -941,7 +968,6 @@ export function createFeedCoordinator(deps) {
             this.updateFeedTelemetryMetadata(feedType, items, metadata);
           }
 
-          const payload = { videos, metadata };
           this.renderVideoList(payload);
           return payload;
         })
@@ -955,6 +981,8 @@ export function createFeedCoordinator(deps) {
             error: true,
           };
           metadata = metadataModifier(metadata);
+          const payload = { videos: fallback, metadata };
+          if (!isCurrent()) return payload;
 
           this.latestFeedMetadata = metadata;
           this.videosMap = this.nostrService.getVideosMap();
@@ -966,7 +994,6 @@ export function createFeedCoordinator(deps) {
             this.updateFeedTelemetryMetadata(feedType, [], metadata);
           }
 
-          const payload = { videos: fallback, metadata };
           this.renderVideoList(payload);
           return payload;
         });
@@ -1012,6 +1039,8 @@ export function createFeedCoordinator(deps) {
      */
     async loadFeedVideos(feedType, forceFetch = false) {
       devLogger.log(`Starting loadFeedVideos(${feedType})... (forceFetch =`, forceFetch, ")");
+      const load = {};
+      feedLoads.set(this, load);
       this.setFeedTelemetryContext(feedType);
 
       const recommendationFeed =
@@ -1102,6 +1131,13 @@ export function createFeedCoordinator(deps) {
         }
       }
 
+      const view = this.videoListView;
+      const viewContainer = view?.container;
+      const activeFeed = this.feedTelemetryState?.activeFeed;
+      const isCurrentLoad = () =>
+        feedLoads.get(this) === load &&
+        ownsView(this, view, viewContainer) &&
+        this.feedTelemetryState?.activeFeed === activeFeed;
       let initialRefreshPromise = null;
 
       const videos = await this.nostrService.loadVideos({
@@ -1109,6 +1145,7 @@ export function createFeedCoordinator(deps) {
         blacklistedEventIds: this.blacklistedEventIds,
         isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
         onVideos: (payload, detail = {}) => {
+          if (!isCurrentLoad()) return;
           const promise = refreshMethod({
             reason: detail?.reason,
             fallbackVideos: payload,
@@ -1119,12 +1156,14 @@ export function createFeedCoordinator(deps) {
         },
       });
 
+      if (!isCurrentLoad()) return;
       if (initialRefreshPromise) {
         await initialRefreshPromise;
       } else if (!Array.isArray(videos) || videos.length === 0) {
         await refreshMethod({ reason: "initial", fallbackVideos: [] });
       }
 
+      if (!isCurrentLoad()) return;
       this.videoSubscription = this.nostrService.getVideoSubscription() || null;
       this.videosMap = this.nostrService.getVideosMap();
       if (this.videoListView) {
@@ -1136,7 +1175,7 @@ export function createFeedCoordinator(deps) {
       // deliberately cache-first and must not wait for worker startup.
       if (exploreActivation) {
         void exploreActivation.then(() => {
-          if (!this.isFeedActive(feedType)) {
+          if (!isCurrentLoad()) {
             return;
           }
           return this.refreshFeed(feedType, { reason: "recommendation-data-ready" });
