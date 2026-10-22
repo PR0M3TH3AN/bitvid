@@ -1,0 +1,1 @@
+HEAD slice complete locally: durablef41ac656 normal435unique/exit0/ancestry0; build/artifact0; controlled native Chromium+Firefox lifecycle pass with synthetic media completion/public-deny. Browser/heavy resources released. Pending docs-only evidence landing; HLS/torrent/RangeGET remain open, await bounded routing/HEAD closure disposition.

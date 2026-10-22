@@ -562,16 +562,44 @@ export default class UrlHealthController {
       return result;
     };
 
+    const lifecycle = options.lifecycle;
+    if (lifecycle && (lifecycle.cancelled || !lifecycle.owners.size)) {
+      lifecycle.cancelled = true;
+      return { outcome: "cancelled" };
+    }
     const supportsAbort = typeof AbortController !== "undefined";
     const controller = supportsAbort ? new AbortController() : null;
     let timeoutId = null;
+    let resolveCancellation;
+    const cancellation = new Promise((resolve) => {
+      resolveCancellation = resolve;
+    });
+    const cancelActive = () => {
+      // Invalidate before resolving: same-turn rejoin must start fresh work.
+      lifecycle.cancelled = true;
+      resolveCancellation({ outcome: "cancelled" });
+      // Settlement must not depend on the transport observing this signal.
+      controller?.abort();
+    };
+    if (lifecycle) lifecycle.cancelActive = cancelActive;
+    const cleanupHead = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (lifecycle?.cancelActive === cancelActive) {
+        lifecycle.cancelActive = null;
+      }
+    };
 
     const racers = [
-      fetch(trimmed, {
-        method: "HEAD",
-        mode: "no-cors",
-        cache: "no-store",
-        signal: controller ? controller.signal : undefined
+      cancellation,
+      new Promise((resolve) => {
+        resolve(
+          fetch(trimmed, {
+            method: "HEAD",
+            mode: "no-cors",
+            cache: "no-store",
+            signal: controller ? controller.signal : undefined
+          })
+        );
       })
     ];
 
@@ -596,9 +624,8 @@ export default class UrlHealthController {
     try {
       responseOrTimeout = await Promise.race(racers);
     } catch (err) {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
+      cleanupHead();
+      if (lifecycle?.cancelled) return { outcome: "cancelled" };
       this.logger.warn(`[probeUrl] HEAD request failed for ${trimmed}:`, err);
       const fallback = await confirmWithVideoElement();
       if (fallback) {
@@ -609,8 +636,9 @@ export default class UrlHealthController {
         : { outcome: "unknown", error: err };
     }
 
-    if (timeoutId) {
-      clearTimeout(timeoutId);
+    cleanupHead();
+    if (lifecycle?.cancelled || responseOrTimeout?.outcome === "cancelled") {
+      return { outcome: "cancelled" };
     }
 
     if (responseOrTimeout && responseOrTimeout.outcome === "timeout") {

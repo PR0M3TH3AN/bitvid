@@ -1,0 +1,3 @@
+- HEAD slice only. Current media cancellation hook does not cover fetch; reproduce real ownership flow before proposing hook reuse.
+- Do not change product/tests without dispatch contract routing. Keep HLS/torrent and wide Stage3 completion open.
+- No redundant full/lint/build/browser for scratch investigation; QA slot untouched.
