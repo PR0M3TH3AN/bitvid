@@ -2,6 +2,8 @@
 
 ## dispatch
 
+- 2026-10-22 storage3 independent7/3pass/4fail: buffer newer-version loss and service deleted snapshot/cache leakage routed separate small commits; coordinator stale render still open/read-only pending registered lifecycle evidence. QA3 app-less3pass not CI proof; genuine cached Buffer followup granted exclusive narrow browser.
+
 - 2026-10-22 resumed six-priority campaign: Firefox QA3, active cancellation client9, tombstones storage3 now; playback dispatch4, Amber dispatch5, mobile dispatch6 staged with acceptance criteria. See docs/agents/CAMPAIGN-2026-10-22.md. All six remain unfinished; old idle/quiet-hours hold superseded for this foreground scope. Final integrated checks/build/preview and live/manual disclosure outstanding.
 
 - Next bounded item requested by interpreter2026-10-21T02:40:06Z under continuing owner instruction: existing client read-only currentHEAD active HEAD-request last-owner abort reproduction/shared/rejoin controls;no product/test edits before evidence. HLS/torrent separate. Quiet-hours22:00–08:00 hold for new starts/messages;route next foreground checkpoint at/after08:00 local without another permission loop. No scheduler created.
