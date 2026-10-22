@@ -2,6 +2,8 @@
 
 ## dispatch
 
+- 2026-10-22 client9 HEAD independently11modes(3fail/8controls pass),finalowner fetch/timer retained(no media slot leak);controller HEAD-only fix+strict contract/identity/ignoringabort regressions routed. HLS/torrent/RangeGET remain open;QA offline genuineBuffer rebuild prep, mobile/Amber staged.
+
 - 2026-10-22 storage3 independent7/3pass/4fail: buffer newer-version loss and service deleted snapshot/cache leakage routed separate small commits; coordinator stale render still open/read-only pending registered lifecycle evidence. QA3 app-less3pass not CI proof; genuine cached Buffer followup granted exclusive narrow browser.
 
 - 2026-10-22 resumed six-priority campaign: Firefox QA3, active cancellation client9, tombstones storage3 now; playback dispatch4, Amber dispatch5, mobile dispatch6 staged with acceptance criteria. See docs/agents/CAMPAIGN-2026-10-22.md. All six remain unfinished; old idle/quiet-hours hold superseded for this foreground scope. Final integrated checks/build/preview and live/manual disclosure outstanding.
