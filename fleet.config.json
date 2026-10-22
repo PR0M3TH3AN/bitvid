@@ -257,6 +257,12 @@
       "note": "after the reset: remove PAUSED, brief the session manager",
       "ignorePause": true,
       "quietHours": "allowed"
+    },
+    {
+      "name": "resources",
+      "cron": "*/15 * * * *",
+      "note": "memory, disk, temp, battery, which area is heavy",
+      "quietHours": "allowed"
     }
   ],
   "usage": {
