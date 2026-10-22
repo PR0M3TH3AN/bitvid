@@ -1,0 +1,48 @@
+{
+  "started": "2026-10-22T14:11:11.923Z",
+  "sha": "c5b678f7c9d0b92fbf786b16ae831f1be1d0b899",
+  "cases": [
+    {
+      "name": "exercises for-you view empty-state and hashtag action",
+      "result": {
+        "ok": true,
+        "profileShows": [
+          "hashtags"
+        ],
+        "forYouInitialEmpty": true,
+        "forYouLoadingEmpty": false,
+        "forYouVideoEmpty": false
+      },
+      "pass": true
+    },
+    {
+      "name": "exercises explore view empty-state transitions",
+      "result": {
+        "ok": true,
+        "emptyInitial": true,
+        "emptyDuringLoading": false,
+        "emptyWithVideo": false
+      },
+      "pass": true
+    },
+    {
+      "name": "exercises kids view empty-state transitions",
+      "result": {
+        "ok": true,
+        "emptyInitial": true,
+        "emptyDuringLoading": false,
+        "emptyWithVideo": false
+      },
+      "pass": true
+    }
+  ],
+  "blocked": [
+    "https://cdn.jsdelivr.net/npm/buffer@6.0.3/+esm",
+    "https://cdn.jsdelivr.net/npm/buffer@6.0.3/+esm",
+    "https://cdn.jsdelivr.net/npm/buffer@6.0.3/+esm"
+  ],
+  "pageErrors": [],
+  "browser": "146.0.1",
+  "ended": "2026-10-22T14:11:17.342Z",
+  "resourcesClosed": true
+}

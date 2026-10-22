@@ -1,0 +1,1084 @@
+{
+  "mirrorHits": 3,
+  "started": "2026-10-22T14:18:54.853Z",
+  "sha": "c5b678f7c9d0b92fbf786b16ae831f1be1d0b899",
+  "cases": [
+    {
+      "name": "exercises for-you view empty-state and hashtag action",
+      "result": {
+        "ok": true,
+        "profileShows": [
+          "hashtags"
+        ],
+        "forYouInitialEmpty": true,
+        "forYouLoadingEmpty": false,
+        "forYouVideoEmpty": false
+      },
+      "trace": [
+        {
+          "type": "mutation-videoList",
+          "at": 1461,
+          "node": 1,
+          "connected": true,
+          "videoList": 1,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "@debugger eval code:10:174",
+            "MutationCallback*@debugger eval code:10:4",
+            "@debugger eval code:11:5",
+            "@debugger eval code:12:7"
+          ]
+        },
+        {
+          "type": "getElementById-videoList",
+          "at": 1461,
+          "node": 1,
+          "connected": true,
+          "videoList": 1,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "Document.prototype.getElementById@debugger eval code:7:107",
+            "getElementById@http://127.0.0.1:31857/js/ui/videoListViewController.js:110:26",
+            "mount@http://127.0.0.1:31857/js/ui/videoListViewController.js:31:38",
+            "mountVideoListView@http://127.0.0.1:31857/js/app.js:3098:71"
+          ]
+        },
+        {
+          "type": "getElementById-videoList",
+          "at": 1461,
+          "node": 1,
+          "connected": true,
+          "videoList": 1,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "Document.prototype.getElementById@debugger eval code:7:107",
+            "getElementById@http://127.0.0.1:31857/js/ui/videoListViewController.js:110:26",
+            "mount@http://127.0.0.1:31857/js/ui/videoListViewController.js:31:38",
+            "mountVideoListView@http://127.0.0.1:31857/js/app.js:3098:71"
+          ]
+        },
+        {
+          "type": "before-innerHTML",
+          "at": 1461,
+          "node": 1,
+          "connected": true,
+          "videoList": 1,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:145",
+            "showLoading@http://127.0.0.1:31857/js/ui/views/VideoListView.js:269:7",
+            "loadFeedVideos@http://127.0.0.1:31857/js/app/feedCoordinator.js:1099:30",
+            "loadFeedVideos@http://127.0.0.1:31857/js/app.js:4520:23"
+          ]
+        },
+        {
+          "type": "after-innerHTML",
+          "at": 1461,
+          "node": 1,
+          "connected": true,
+          "videoList": 1,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:210",
+            "showLoading@http://127.0.0.1:31857/js/ui/views/VideoListView.js:269:7",
+            "loadFeedVideos@http://127.0.0.1:31857/js/app/feedCoordinator.js:1099:30",
+            "loadFeedVideos@http://127.0.0.1:31857/js/app.js:4520:23"
+          ]
+        },
+        {
+          "type": "getElementById-videoList",
+          "at": 1465,
+          "node": 1,
+          "connected": true,
+          "videoList": 1,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "Document.prototype.getElementById@debugger eval code:7:107",
+            "getElementById@http://127.0.0.1:31857/js/ui/videoListViewController.js:110:26",
+            "mount@http://127.0.0.1:31857/js/ui/videoListViewController.js:31:38",
+            "mountVideoListView@http://127.0.0.1:31857/js/app.js:3098:71"
+          ]
+        },
+        {
+          "type": "before-innerHTML",
+          "at": 1465,
+          "node": 1,
+          "connected": true,
+          "videoList": 1,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:145",
+            "render@http://127.0.0.1:31857/js/ui/views/VideoListView.js:392:7",
+            "renderVideoList@http://127.0.0.1:31857/js/app/feedCoordinator.js:1906:26",
+            "renderVideoList@http://127.0.0.1:31857/js/app.js:4717:23"
+          ]
+        },
+        {
+          "type": "after-innerHTML",
+          "at": 1465,
+          "node": 1,
+          "connected": true,
+          "videoList": 1,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:210",
+            "render@http://127.0.0.1:31857/js/ui/views/VideoListView.js:392:7",
+            "renderVideoList@http://127.0.0.1:31857/js/app/feedCoordinator.js:1906:26",
+            "renderVideoList@http://127.0.0.1:31857/js/app.js:4717:23"
+          ]
+        },
+        {
+          "type": "before-innerHTML",
+          "at": 1964,
+          "node": 2,
+          "connected": true,
+          "videoList": 1,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:145",
+            "@debugger eval code line 290 > eval:2:7",
+            "evaluate@debugger eval code:292:16",
+            "@debugger eval code:1:44"
+          ]
+        },
+        {
+          "type": "after-innerHTML",
+          "at": 1974,
+          "node": 2,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:210",
+            "@debugger eval code line 290 > eval:2:7",
+            "evaluate@debugger eval code:292:16",
+            "@debugger eval code:1:44"
+          ]
+        },
+        {
+          "type": "mutation-videoList",
+          "at": 1974,
+          "node": 3,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "@debugger eval code:10:174",
+            "MutationCallback*@debugger eval code:10:4",
+            "@debugger eval code:11:5",
+            "@debugger eval code:12:7"
+          ]
+        },
+        {
+          "type": "getElementById-videoList",
+          "at": 1976,
+          "node": 3,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "Document.prototype.getElementById@debugger eval code:7:107",
+            "init@http://127.0.0.1:31857/js/forYouView.js:19:51",
+            "initForYouView@http://127.0.0.1:31857/js/forYouView.js:150:8",
+            "@debugger eval code line 290 > eval:20:22"
+          ]
+        },
+        {
+          "type": "before-innerHTML",
+          "at": 1976,
+          "node": 3,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:145",
+            "updateEmptyState@http://127.0.0.1:31857/js/forYouView.js:107:7",
+            "init@http://127.0.0.1:31857/js/forYouView.js:26:10",
+            "initForYouView@http://127.0.0.1:31857/js/forYouView.js:150:8"
+          ]
+        },
+        {
+          "type": "after-innerHTML",
+          "at": 1976,
+          "node": 3,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:210",
+            "updateEmptyState@http://127.0.0.1:31857/js/forYouView.js:107:7",
+            "init@http://127.0.0.1:31857/js/forYouView.js:26:10",
+            "initForYouView@http://127.0.0.1:31857/js/forYouView.js:150:8"
+          ]
+        },
+        {
+          "type": "getElementById-videoList",
+          "at": 1977,
+          "node": 3,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "Document.prototype.getElementById@debugger eval code:7:107",
+            "@debugger eval code line 290 > eval:24:34",
+            "async*evaluate@debugger eval code:292:16",
+            "@debugger eval code:1:44"
+          ]
+        },
+        {
+          "type": "before-innerHTML",
+          "at": 1977,
+          "node": 3,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:145",
+            "@debugger eval code line 290 > eval:31:7",
+            "async*evaluate@debugger eval code:292:16",
+            "@debugger eval code:1:44"
+          ]
+        },
+        {
+          "type": "after-innerHTML",
+          "at": 1977,
+          "node": 3,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:210",
+            "@debugger eval code line 290 > eval:31:7",
+            "async*evaluate@debugger eval code:292:16",
+            "@debugger eval code:1:44"
+          ]
+        },
+        {
+          "type": "before-innerHTML",
+          "at": 1977,
+          "node": 3,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:145",
+            "@debugger eval code line 290 > eval:34:7",
+            "async*evaluate@debugger eval code:292:16",
+            "@debugger eval code:1:44"
+          ]
+        },
+        {
+          "type": "after-innerHTML",
+          "at": 1977,
+          "node": 3,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:210",
+            "@debugger eval code line 290 > eval:34:7",
+            "async*evaluate@debugger eval code:292:16",
+            "@debugger eval code:1:44"
+          ]
+        },
+        {
+          "type": "before-innerHTML",
+          "at": 1977,
+          "node": 3,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:145",
+            "@debugger eval code line 290 > eval:38:7",
+            "async*evaluate@debugger eval code:292:16",
+            "@debugger eval code:1:44"
+          ]
+        },
+        {
+          "type": "after-innerHTML",
+          "at": 1977,
+          "node": 3,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:210",
+            "@debugger eval code line 290 > eval:38:7",
+            "async*evaluate@debugger eval code:292:16",
+            "@debugger eval code:1:44"
+          ]
+        },
+        {
+          "type": "before-innerHTML",
+          "at": 1977,
+          "node": 3,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:145",
+            "updateEmptyState@http://127.0.0.1:31857/js/forYouView.js:107:7",
+            "@debugger eval code line 290 > eval:39:14",
+            "async*evaluate@debugger eval code:292:16"
+          ]
+        },
+        {
+          "type": "after-innerHTML",
+          "at": 1977,
+          "node": 3,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:210",
+            "updateEmptyState@http://127.0.0.1:31857/js/forYouView.js:107:7",
+            "@debugger eval code line 290 > eval:39:14",
+            "async*evaluate@debugger eval code:292:16"
+          ]
+        }
+      ],
+      "postResultState": {
+        "application": false,
+        "harness": true,
+        "videoLists": 1
+      },
+      "pass": true
+    },
+    {
+      "name": "exercises explore view empty-state transitions",
+      "result": {
+        "ok": true,
+        "emptyInitial": true,
+        "emptyDuringLoading": false,
+        "emptyWithVideo": false
+      },
+      "trace": [
+        {
+          "type": "mutation-videoList",
+          "at": 1325,
+          "node": 1,
+          "connected": true,
+          "videoList": 1,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "@debugger eval code:10:174",
+            "MutationCallback*@debugger eval code:10:4",
+            "@debugger eval code:11:5",
+            "@debugger eval code:12:7"
+          ]
+        },
+        {
+          "type": "getElementById-videoList",
+          "at": 1325,
+          "node": 1,
+          "connected": true,
+          "videoList": 1,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "Document.prototype.getElementById@debugger eval code:7:107",
+            "getElementById@http://127.0.0.1:31857/js/ui/videoListViewController.js:110:26",
+            "mount@http://127.0.0.1:31857/js/ui/videoListViewController.js:31:38",
+            "mountVideoListView@http://127.0.0.1:31857/js/app.js:3098:71"
+          ]
+        },
+        {
+          "type": "getElementById-videoList",
+          "at": 1325,
+          "node": 1,
+          "connected": true,
+          "videoList": 1,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "Document.prototype.getElementById@debugger eval code:7:107",
+            "getElementById@http://127.0.0.1:31857/js/ui/videoListViewController.js:110:26",
+            "mount@http://127.0.0.1:31857/js/ui/videoListViewController.js:31:38",
+            "mountVideoListView@http://127.0.0.1:31857/js/app.js:3098:71"
+          ]
+        },
+        {
+          "type": "before-innerHTML",
+          "at": 1325,
+          "node": 1,
+          "connected": true,
+          "videoList": 1,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:145",
+            "showLoading@http://127.0.0.1:31857/js/ui/views/VideoListView.js:269:7",
+            "loadFeedVideos@http://127.0.0.1:31857/js/app/feedCoordinator.js:1099:30",
+            "loadFeedVideos@http://127.0.0.1:31857/js/app.js:4520:23"
+          ]
+        },
+        {
+          "type": "after-innerHTML",
+          "at": 1325,
+          "node": 1,
+          "connected": true,
+          "videoList": 1,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:210",
+            "showLoading@http://127.0.0.1:31857/js/ui/views/VideoListView.js:269:7",
+            "loadFeedVideos@http://127.0.0.1:31857/js/app/feedCoordinator.js:1099:30",
+            "loadFeedVideos@http://127.0.0.1:31857/js/app.js:4520:23"
+          ]
+        },
+        {
+          "type": "getElementById-videoList",
+          "at": 1327,
+          "node": 1,
+          "connected": true,
+          "videoList": 1,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "Document.prototype.getElementById@debugger eval code:7:107",
+            "getElementById@http://127.0.0.1:31857/js/ui/videoListViewController.js:110:26",
+            "mount@http://127.0.0.1:31857/js/ui/videoListViewController.js:31:38",
+            "mountVideoListView@http://127.0.0.1:31857/js/app.js:3098:71"
+          ]
+        },
+        {
+          "type": "before-innerHTML",
+          "at": 1327,
+          "node": 1,
+          "connected": true,
+          "videoList": 1,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:145",
+            "render@http://127.0.0.1:31857/js/ui/views/VideoListView.js:392:7",
+            "renderVideoList@http://127.0.0.1:31857/js/app/feedCoordinator.js:1906:26",
+            "renderVideoList@http://127.0.0.1:31857/js/app.js:4717:23"
+          ]
+        },
+        {
+          "type": "after-innerHTML",
+          "at": 1328,
+          "node": 1,
+          "connected": true,
+          "videoList": 1,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:210",
+            "render@http://127.0.0.1:31857/js/ui/views/VideoListView.js:392:7",
+            "renderVideoList@http://127.0.0.1:31857/js/app/feedCoordinator.js:1906:26",
+            "renderVideoList@http://127.0.0.1:31857/js/app.js:4717:23"
+          ]
+        },
+        {
+          "type": "before-innerHTML",
+          "at": 1838,
+          "node": 2,
+          "connected": true,
+          "videoList": 1,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:145",
+            "@debugger eval code line 290 > eval:2:7",
+            "evaluate@debugger eval code:292:16",
+            "@debugger eval code:1:44"
+          ]
+        },
+        {
+          "type": "after-innerHTML",
+          "at": 1847,
+          "node": 2,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:210",
+            "@debugger eval code line 290 > eval:2:7",
+            "evaluate@debugger eval code:292:16",
+            "@debugger eval code:1:44"
+          ]
+        },
+        {
+          "type": "mutation-videoList",
+          "at": 1847,
+          "node": 3,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "@debugger eval code:10:174",
+            "MutationCallback*@debugger eval code:10:4",
+            "@debugger eval code:11:5",
+            "@debugger eval code:12:7"
+          ]
+        },
+        {
+          "type": "getElementById-videoList",
+          "at": 1849,
+          "node": 3,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "Document.prototype.getElementById@debugger eval code:7:107",
+            "init@http://127.0.0.1:31857/js/exploreView.js:16:51",
+            "initExploreView@http://127.0.0.1:31857/js/exploreView.js:118:8",
+            "@debugger eval code line 290 > eval:9:23"
+          ]
+        },
+        {
+          "type": "before-innerHTML",
+          "at": 1849,
+          "node": 3,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:145",
+            "updateEmptyState@http://127.0.0.1:31857/js/exploreView.js:82:7",
+            "init@http://127.0.0.1:31857/js/exploreView.js:22:10",
+            "initExploreView@http://127.0.0.1:31857/js/exploreView.js:118:8"
+          ]
+        },
+        {
+          "type": "after-innerHTML",
+          "at": 1850,
+          "node": 3,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:210",
+            "updateEmptyState@http://127.0.0.1:31857/js/exploreView.js:82:7",
+            "init@http://127.0.0.1:31857/js/exploreView.js:22:10",
+            "initExploreView@http://127.0.0.1:31857/js/exploreView.js:118:8"
+          ]
+        },
+        {
+          "type": "getElementById-videoList",
+          "at": 1850,
+          "node": 3,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "Document.prototype.getElementById@debugger eval code:7:107",
+            "@debugger eval code line 290 > eval:10:34",
+            "async*evaluate@debugger eval code:292:16",
+            "@debugger eval code:1:44"
+          ]
+        },
+        {
+          "type": "before-innerHTML",
+          "at": 1850,
+          "node": 3,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:145",
+            "@debugger eval code line 290 > eval:17:7",
+            "async*evaluate@debugger eval code:292:16",
+            "@debugger eval code:1:44"
+          ]
+        },
+        {
+          "type": "after-innerHTML",
+          "at": 1850,
+          "node": 3,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:210",
+            "@debugger eval code line 290 > eval:17:7",
+            "async*evaluate@debugger eval code:292:16",
+            "@debugger eval code:1:44"
+          ]
+        },
+        {
+          "type": "before-innerHTML",
+          "at": 1850,
+          "node": 3,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:145",
+            "@debugger eval code line 290 > eval:20:7",
+            "async*evaluate@debugger eval code:292:16",
+            "@debugger eval code:1:44"
+          ]
+        },
+        {
+          "type": "after-innerHTML",
+          "at": 1850,
+          "node": 3,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:210",
+            "@debugger eval code line 290 > eval:20:7",
+            "async*evaluate@debugger eval code:292:16",
+            "@debugger eval code:1:44"
+          ]
+        }
+      ],
+      "postResultState": {
+        "application": true,
+        "harness": true,
+        "videoLists": 1
+      },
+      "pass": true
+    },
+    {
+      "name": "exercises kids view empty-state transitions",
+      "result": {
+        "ok": true,
+        "emptyInitial": true,
+        "emptyDuringLoading": false,
+        "emptyWithVideo": false
+      },
+      "trace": [
+        {
+          "type": "mutation-videoList",
+          "at": 1200,
+          "node": 1,
+          "connected": true,
+          "videoList": 1,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "@debugger eval code:10:174",
+            "MutationCallback*@debugger eval code:10:4",
+            "@debugger eval code:11:5",
+            "@debugger eval code:12:7"
+          ]
+        },
+        {
+          "type": "getElementById-videoList",
+          "at": 1200,
+          "node": 1,
+          "connected": true,
+          "videoList": 1,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "Document.prototype.getElementById@debugger eval code:7:107",
+            "getElementById@http://127.0.0.1:31857/js/ui/videoListViewController.js:110:26",
+            "mount@http://127.0.0.1:31857/js/ui/videoListViewController.js:31:38",
+            "mountVideoListView@http://127.0.0.1:31857/js/app.js:3098:71"
+          ]
+        },
+        {
+          "type": "getElementById-videoList",
+          "at": 1200,
+          "node": 1,
+          "connected": true,
+          "videoList": 1,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "Document.prototype.getElementById@debugger eval code:7:107",
+            "getElementById@http://127.0.0.1:31857/js/ui/videoListViewController.js:110:26",
+            "mount@http://127.0.0.1:31857/js/ui/videoListViewController.js:31:38",
+            "mountVideoListView@http://127.0.0.1:31857/js/app.js:3098:71"
+          ]
+        },
+        {
+          "type": "before-innerHTML",
+          "at": 1200,
+          "node": 1,
+          "connected": true,
+          "videoList": 1,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:145",
+            "showLoading@http://127.0.0.1:31857/js/ui/views/VideoListView.js:269:7",
+            "loadFeedVideos@http://127.0.0.1:31857/js/app/feedCoordinator.js:1099:30",
+            "loadFeedVideos@http://127.0.0.1:31857/js/app.js:4520:23"
+          ]
+        },
+        {
+          "type": "after-innerHTML",
+          "at": 1200,
+          "node": 1,
+          "connected": true,
+          "videoList": 1,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:210",
+            "showLoading@http://127.0.0.1:31857/js/ui/views/VideoListView.js:269:7",
+            "loadFeedVideos@http://127.0.0.1:31857/js/app/feedCoordinator.js:1099:30",
+            "loadFeedVideos@http://127.0.0.1:31857/js/app.js:4520:23"
+          ]
+        },
+        {
+          "type": "getElementById-videoList",
+          "at": 1203,
+          "node": 1,
+          "connected": true,
+          "videoList": 1,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "Document.prototype.getElementById@debugger eval code:7:107",
+            "getElementById@http://127.0.0.1:31857/js/ui/videoListViewController.js:110:26",
+            "mount@http://127.0.0.1:31857/js/ui/videoListViewController.js:31:38",
+            "mountVideoListView@http://127.0.0.1:31857/js/app.js:3098:71"
+          ]
+        },
+        {
+          "type": "before-innerHTML",
+          "at": 1203,
+          "node": 1,
+          "connected": true,
+          "videoList": 1,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:145",
+            "render@http://127.0.0.1:31857/js/ui/views/VideoListView.js:392:7",
+            "renderVideoList@http://127.0.0.1:31857/js/app/feedCoordinator.js:1906:26",
+            "renderVideoList@http://127.0.0.1:31857/js/app.js:4717:23"
+          ]
+        },
+        {
+          "type": "after-innerHTML",
+          "at": 1203,
+          "node": 1,
+          "connected": true,
+          "videoList": 1,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:210",
+            "render@http://127.0.0.1:31857/js/ui/views/VideoListView.js:392:7",
+            "renderVideoList@http://127.0.0.1:31857/js/app/feedCoordinator.js:1906:26",
+            "renderVideoList@http://127.0.0.1:31857/js/app.js:4717:23"
+          ]
+        },
+        {
+          "type": "before-innerHTML",
+          "at": 1700,
+          "node": 2,
+          "connected": true,
+          "videoList": 1,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:145",
+            "@debugger eval code line 290 > eval:2:7",
+            "evaluate@debugger eval code:292:16",
+            "@debugger eval code:1:44"
+          ]
+        },
+        {
+          "type": "after-innerHTML",
+          "at": 1710,
+          "node": 2,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:210",
+            "@debugger eval code line 290 > eval:2:7",
+            "evaluate@debugger eval code:292:16",
+            "@debugger eval code:1:44"
+          ]
+        },
+        {
+          "type": "mutation-videoList",
+          "at": 1710,
+          "node": 3,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "@debugger eval code:10:174",
+            "MutationCallback*@debugger eval code:10:4",
+            "@debugger eval code:11:5",
+            "@debugger eval code:12:7"
+          ]
+        },
+        {
+          "type": "getElementById-videoList",
+          "at": 1713,
+          "node": 3,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "Document.prototype.getElementById@debugger eval code:7:107",
+            "init@http://127.0.0.1:31857/js/kidsView.js:16:51",
+            "initKidsView@http://127.0.0.1:31857/js/kidsView.js:117:8",
+            "@debugger eval code line 290 > eval:9:20"
+          ]
+        },
+        {
+          "type": "before-innerHTML",
+          "at": 1713,
+          "node": 3,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:145",
+            "updateEmptyState@http://127.0.0.1:31857/js/kidsView.js:82:7",
+            "init@http://127.0.0.1:31857/js/kidsView.js:22:10",
+            "initKidsView@http://127.0.0.1:31857/js/kidsView.js:117:8"
+          ]
+        },
+        {
+          "type": "after-innerHTML",
+          "at": 1713,
+          "node": 3,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:210",
+            "updateEmptyState@http://127.0.0.1:31857/js/kidsView.js:82:7",
+            "init@http://127.0.0.1:31857/js/kidsView.js:22:10",
+            "initKidsView@http://127.0.0.1:31857/js/kidsView.js:117:8"
+          ]
+        },
+        {
+          "type": "getElementById-videoList",
+          "at": 1714,
+          "node": 3,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "Document.prototype.getElementById@debugger eval code:7:107",
+            "@debugger eval code line 290 > eval:10:34",
+            "async*evaluate@debugger eval code:292:16",
+            "@debugger eval code:1:44"
+          ]
+        },
+        {
+          "type": "before-innerHTML",
+          "at": 1714,
+          "node": 3,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:145",
+            "@debugger eval code line 290 > eval:17:7",
+            "async*evaluate@debugger eval code:292:16",
+            "@debugger eval code:1:44"
+          ]
+        },
+        {
+          "type": "after-innerHTML",
+          "at": 1714,
+          "node": 3,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:210",
+            "@debugger eval code line 290 > eval:17:7",
+            "async*evaluate@debugger eval code:292:16",
+            "@debugger eval code:1:44"
+          ]
+        },
+        {
+          "type": "before-innerHTML",
+          "at": 1714,
+          "node": 3,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:145",
+            "@debugger eval code line 290 > eval:20:7",
+            "async*evaluate@debugger eval code:292:16",
+            "@debugger eval code:1:44"
+          ]
+        },
+        {
+          "type": "after-innerHTML",
+          "at": 1714,
+          "node": 3,
+          "connected": true,
+          "videoList": 3,
+          "body": 2,
+          "harness": true,
+          "stack": [
+            "set@debugger eval code:9:210",
+            "@debugger eval code line 290 > eval:20:7",
+            "async*evaluate@debugger eval code:292:16",
+            "@debugger eval code:1:44"
+          ]
+        }
+      ],
+      "postResultState": {
+        "application": true,
+        "harness": true,
+        "videoLists": 1
+      },
+      "pass": true
+    }
+  ],
+  "blocked": [
+    "https://esm.sh/@aws-sdk/client-s3@3.637.0",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/+esm",
+    "https://esm.sh/nostr-tools@2.17.0",
+    "https://esm.sh/nostr-tools@2.17.0",
+    "https://esm.sh/nostr-tools@2.17.0/nip44",
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/",
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/",
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/",
+    "wss://nos.lol/",
+    "wss://relay.damus.io/",
+    "wss://relay.primal.net/",
+    "wss://relay.snort.social/",
+    "https://esm.sh/@aws-sdk/client-s3@3.637.0",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/+esm",
+    "https://esm.sh/nostr-tools@2.17.0",
+    "https://esm.sh/nostr-tools@2.17.0",
+    "https://esm.sh/nostr-tools@2.17.0/nip44",
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/",
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/",
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/",
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/",
+    "wss://nos.lol/",
+    "wss://relay.damus.io/",
+    "wss://relay.primal.net/",
+    "wss://relay.snort.social/",
+    "https://esm.sh/@aws-sdk/client-s3@3.637.0",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/+esm",
+    "https://esm.sh/nostr-tools@2.17.0",
+    "https://esm.sh/nostr-tools@2.17.0",
+    "https://esm.sh/nostr-tools@2.17.0/nip44",
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/",
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/",
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "wss://nos.lol/",
+    "wss://relay.damus.io/",
+    "wss://relay.primal.net/",
+    "wss://relay.snort.social/"
+  ],
+  "pageErrors": [],
+  "browser": "146.0.1",
+  "ended": "2026-10-22T14:19:02.503Z",
+  "resourcesClosed": true
+}
