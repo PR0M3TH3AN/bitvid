@@ -2,6 +2,16 @@
 
 ## dispatch
 
+- 2026-10-22 storage3+4DONE: storage4 product7edc7ea8/closure8317da4d independently durable status/log/ancestry; worker normalgateexit0/discovery436/build29cbe6f0 artifactPASS, no independent436start audit. QA4 now sole bounded mobile browser grant21:04:02; HLS candidatecdc398b0/merged79a9a130 next full after QA release. Dispatch exact candidate35/35 natural321ms; worker129focused/19mutants/lint11. HLS gates/preview/campaign remain unfinished.
+
+- 2026-10-22 HLS follow-on: dispatch independent actual observer/controller/helper scratch atd04d501e12=7pass/5fail/cancelled0/naturalexit1/165.17ms. Final-owner GET/timer/promise retained, rejoin stale, late healthy cache, body-read disposal fail; no media-slot leak. Controller HLS handoff + optional manifest-helper cancellation only routed with strict spec/integrity/regressions. Focused/mutants/lint only while storage4 holds heavy slot; torrent/RangeGET remain separate, no HLS fix landed.
+
+- 2026-10-22 HEAD slice productf41ac656/evidenced04d501e durable status/log/ancestry verified. Worker normal435unique/buildartifact/nativeChromium+Firefox controlledHEAD pass; loadeddata synthetic, no decoder/transport-byte proof. All client resources released20:51:23Z. Storage4 sole full/normal START ACK20:52:16; client9 HLS read-only measurement ACK, broader9 remainsOPEN; QA4 HOLD. Integrated preview and other campaign priorities remain unfinished.
+
+- 2026-10-22 client9 product normally landedf41ac656: dispatch durable status/log/ancestry0, worker gateexit0/435unique starts. Sequential build active, separate bounded HEAD browser after build conditionally allocated; results pending. Storage4 candidateb21ce86c focused16/9mutants/lint11 ready, next full slot after client release; QA4 held. Integrated preview and broader campaign gates unfinished.
+
+- 2026-10-22 restart20:41UTC: a79d49df verified durably landed26e9a787, queue0. Fleet health cooling74 to66C/load3.81 to3.30, >20GiB available RAM, swap52 to51% sole suggested-limit crossing. Client9 sole full/normal slot granted; START/results pending. Storage4/QA4 held. Own sync blocked read-only Git metadata; no new product/tests/build/browser qualification.
+
 - 2026-10-22 storage4 registeredfeed/JSDOM independent4=2pass/2fail:obsolete result restores deletedDOM/overwrites replacementExplore;coordinator-only separate fix routed afterstorage3 submit. Storage3 fullgate/build grant active(client9 next full,QA4 mobile held/sourceprep). Client9 exactcandidate independent23pass. No product landing yet.
 
 - 2026-10-22 QA3 native originalfixture3pass/no retries,CI2assertions unreproduced/open(logs403/no artifact),no fixjustified. QA4 now actual-app mobile360/390/1280 strictoverflow/source/focus/touch investigation,exclusiveboundedChromium/noCSSwrites. Remaining6priority campaign not complete.
