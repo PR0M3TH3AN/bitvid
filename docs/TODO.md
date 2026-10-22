@@ -2,6 +2,8 @@
 
 ## dispatch
 
+- 2026-10-22 resumed six-priority campaign: Firefox QA3, active cancellation client9, tombstones storage3 now; playback dispatch4, Amber dispatch5, mobile dispatch6 staged with acceptance criteria. See docs/agents/CAMPAIGN-2026-10-22.md. All six remain unfinished; old idle/quiet-hours hold superseded for this foreground scope. Final integrated checks/build/preview and live/manual disclosure outstanding.
+
 - Next bounded item requested by interpreter2026-10-21T02:40:06Z under continuing owner instruction: existing client read-only currentHEAD active HEAD-request last-owner abort reproduction/shared/rejoin controls;no product/test edits before evidence. HLS/torrent separate. Quiet-hours22:00–08:00 hold for new starts/messages;route next foreground checkpoint at/after08:00 local without another permission loop. No scheduler created.
 
 - client8 FINAL:product43cb1baf/closure2ea6f068/handoff9cbb53f8 verified;432fullgate0,dispatch29/29/build08620a71/artifact0/preview200+cmp0,nativecontrolledbothbrowserPASS/released. AllIDLE;HEAD/HLS/torrent activeprobe work remains unfinished pending nextboundedrouting. No decoder/bytes/CPU/liveproof.

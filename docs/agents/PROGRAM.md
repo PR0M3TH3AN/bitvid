@@ -1,8 +1,10 @@
 # Program — the owner's priorities and rulings
 
-Last updated: 2026-10-20
+Last updated: 2026-10-22
 
 ## Current milestone
+
+Six-priority campaign resumed 2026-10-22; prior completion statements below are historical evidence. See CAMPAIGN-2026-10-22.md.
 
 Active URL-media cancellation slice is landed43cb1baf after normal432-file gate exit0;dispatch independent29/29,build08620a71/artifact pass/previewHTTP200+index equality. Worker controlled native Chromium+Firefox smoke passed and resources released. Closure/browser evidence durably landed2ea6f068;item8 done,team idle awaiting next bounded scope. HEAD/HLS/torrent active cancellation remains open; broader optional work remains deferred.
 
@@ -14,6 +16,12 @@ Local-review handoff: storage2/history6 and demonstrated cold-feed blockerclient
 2. Session-manager sequencing (vetoable): prioritize reproducible failures in core user flows and small changes with clear completion checks.
 
 ## Rulings log (newest first)
+
+## 2026-10-22 — Six-priority campaign resumed via interpreter
+
+> "yeah lets get the fleet spun up and address all of these" — owner, relayed by interpreter at 2026-10-22T14:02:34Z; not typed in dispatch.
+
+The relay identifies six priorities: Firefox deterministic CI failure; remaining active HEAD/HLS/torrent cancellation; playback reliability promises; feed/view tombstone stale-refresh; Amber sessions; mobile usability. This supersedes the prior idle/local-review and quiet-hours hold for this foreground campaign. Routine investigation, evidence-routed fixes, tests/builds and normal local unstable landing are approved. No push/deploy/spend/production data/real wallet/credential/live signer/scheduler authority. Track all six in docs/agents/CAMPAIGN-2026-10-22.md. Preserve worktrees, use three existing workers with disjoint scope, stage before fixes, serialize browser/full gates, keep app.js single-writer. Final integrated local build/preview and honest live/manual limits required.
 
 ### 2026-10-20 — Resume bounded active-probe cancellation, relayed by interpreter
 

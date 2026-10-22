@@ -1,0 +1,10 @@
+{
+  "id": "client-reliability-9",
+  "area": "client-reliability",
+  "status": "open",
+  "title": "Measure remaining active HEAD HLS torrent cancellation at current HEAD",
+  "blockedOn": null,
+  "addedOn": "2026-10-22",
+  "filedAt": "fb54cea3a2ba99b4860421724a5050af6b97c293",
+  "brief": "docs/agents/CAMPAIGN-2026-10-22.md"
+}

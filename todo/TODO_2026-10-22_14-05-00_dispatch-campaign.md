@@ -1,0 +1,6 @@
+- [x] Read actual two interpreter messages and current rules/goal/quality.
+- [x] Inspect6 worktrees and preserve work; safely fast-forward dispatch.
+- [x] Track all6 priorities with acceptance criteria and initial3 briefs.
+- [ ] Land coordination and deliver assignments; obtain read/next-action acknowledgements.
+- [ ] Independently confirm defects, route minimal fixes, serialize gates.
+- [ ] Finish staged playback/Amber/mobile and integrated local review/build/preview.

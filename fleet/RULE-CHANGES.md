@@ -7,6 +7,10 @@ override a stale system prompt. Nothing filters them down to a window of days.
 The session manager adds a line here whenever a rule, a prompt, a tool's usage, or
 a landing rule changes.
 
+## 2026-10-22
+
+- Owner six-priority resume relayed by interpreter14:02:34UTC and routine YES14:03:29UTC supersedes local-review/quiet-hours hold for this foreground campaign. Existing client9 active HEAD cancellation first (HLS/torrent separately tracked); QA3 Firefox deterministic CI run39536282396/job119013565277; storage3 tombstone stale-refresh. Investigation/source/scratch evidence only until reproduced defect and explicit implementation routing. QA owns next browser/expensive slot, must announce start/release; no full suite/normal product submission without slot. Client/storage focused offline checks only. Playback enhancements, Amber and mobile remain tracked/acceptance-scoped, not dropped. All worktrees inspected clean, no unlanded unique commits; each worker safely fast-forwards own branch before work, reports SHA. No app.js writer, new launch, test weakening, kit/scheduler or restricted external authority. See campaign brief; newer current assignments override archived prompt bodies.
+
 ## 2026-10-20
 
 - client8 minimal media-only fix routed after worker+dispatch9mode evidence: final-owner retains1src/3listeners/1timer/1slot/unsettled;7controls pass. Own controller cancellation/active media settle cleanup+focused lifecycle tests/unique integrity/spec notes only. Explicit Stage3 spec correction replaces disposed active cache/timeout/rejoin expectations with immediate cleanup/null/no cache/mirror/stale writes/fresh request; preserve separate live/shared/legacy success/error/timeout/cache/FIFO controls and identity safety. No observer/cache/HEAD/HLS/torrent/app edits. Focused+mutants+lint then request full/browser slot; unchanged normal gate/durable landing.

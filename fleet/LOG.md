@@ -154,3 +154,9 @@
 - Closure892c7f52 plus browserfinalnotes delegated client normaldocsqueue;dispatchhandoff/QUALITY/evidence docs next. Other2workersidle;no widerStage3/new optionaltask. Remaining HEAD/HLS/torrent activeprobe cancellation awaits separate bounded scope;actualmedia/playback/livecloud/signer/peers remain open.
 
 - Finalclosurecfc20107 durable2ea6f068(status/log/ancestry0),itemdone;dispatchhandofff233eaf2 durable9cbb53f8. Queue0;runtime/buildinputs vs43cb1baf diff0. Closurebrowsernotes verified,no duplicategate. FinalRESUME/handoff wording records currentpreview08620a71 vs historicalQA6da89895 and incompleteHEAD/HLS/torrent/decoder/bytes/CPU/livegates. AllworkersIDLE after bounded item;no optionalnewwork.
+
+## 2026-10-22 — Six-priority campaign restart
+
+- Interpreter relayed owner "yeah lets get the fleet spun up and address all of these" at14:02:34Z and routine YES14:03:29Z; six priorities recorded in campaign brief/PROGRAM/GOAL, no restricted external authority. Existing windows alive; no new launches.
+- Inspected all6 worktrees: status0/clean, HEAD-only0 each; unstable fb54cea3, queue0. Client7/dispatch7/QA18/storage18 commits behind; main/lander current. Dispatch safely ff-only to unstable (initial sandbox Git metadata read-only, approved host retry exit0); workers synchronize own branches before work.
+- Initial assignments client9 HEAD-first cancellation, QA3 Firefox CI diagnosis, storage3 tombstone stale-refresh; source/scratch evidence only. QA initial exclusive narrow browser/expensive slot; focused offline others. Playback/Amber/mobile acceptance-scoped and staged, not dropped. Historical432 gate not rerun; no fresh product verification yet.

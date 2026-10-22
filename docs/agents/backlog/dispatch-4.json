@@ -1,0 +1,10 @@
+{
+  "id": "dispatch-4",
+  "area": "dispatch",
+  "status": "open",
+  "title": "Scope playback Range persistence warmup and hosted P2P startup",
+  "blockedOn": "Staged after cancellation/Firefox evidence; product ownership and exact policy before edits",
+  "addedOn": "2026-10-22",
+  "filedAt": "fb54cea3a2ba99b4860421724a5050af6b97c293",
+  "brief": "docs/agents/CAMPAIGN-2026-10-22.md"
+}

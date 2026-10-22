@@ -1,3 +1,7 @@
+# Current campaign checkpoint — 2026-10-22
+
+All six priorities resumed via interpreter, not complete. Current baseline unstable fb54cea3. Historical matrix below remains provenance; none of its tests has been rerun for this campaign. All six worktrees clean, no HEAD-only commits; main/lander current, dispatch fast-forwarded, workers must fast-forward their own branches before investigating. Queue was empty at startup. QA3 owns initial browser/expensive slot; no competing full gate/build. See docs/agents/CAMPAIGN-2026-10-22.md for acceptance criteria and assignments. Final integrated review/build/preview outstanding. No live signer/cloud/peer qualification or remote actions authorized.
+
 # Quality evidence and next milestones
 
 Updated2026-10-20. Owner stopping milestone:"Ready for me to review and test locally"(relayed). Finish storage2/history6,faithful actual-app baseline and integrated preview/handoff;stop new optional work for review. Broader robustness backlog remains. This is a local qualification matrix,not a production-ready declaration.

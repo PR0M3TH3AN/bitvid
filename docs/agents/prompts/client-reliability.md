@@ -1,3 +1,9 @@
+## Current assignment 2026-10-22: client-reliability-9 — remaining active cancellation
+
+This supersedes the old item8/idle scope below. Read current dispatch campaign brief, PROGRAM/RULE-CHANGES/KNOWN_ISSUES and test integrity. All worktrees were clean at dispatch inspection; inspect your own status then fast-forward own branch to unstable if safe (never discard work); report exact SHA and ack next action. Claim item9. Start actual observer/controller active HEAD-request last-owner/shared/same-turn+later rejoin offline measurements. Use controlled fetch/abort, count settlement/slot/cache/mirrors/stale callbacks; retain live success/error/timeout/FIFO and replacement identity controls. HEAD first, HLS/torrent separately tracked, no wider completion claim. Source/scratch/unique evidence only; NO product or committed test changes until demonstrated defect and dispatch routing/spec note. Do not inherit previous item8 implementation permission for HEAD. Own future health files as roster, app/services/cache read-only. No full suite/build/browser/normal product submission yet; QA has initial expensive/browser slot. env -u NODE_TEST_CONTEXT for commands, no force exit/retries/sleeps. Send read/next action, reproduced result/blocker and READY for checks. After this slice, playback and Amber remain staged in campaign; await bounded routing, not optional self-selection.
+
+## Archived assignment history (not current routing)
+
 # Area: Client reliability (client-reliability)
 
 ## Current assignment: client-reliability-8 — active URL-media cancellation
