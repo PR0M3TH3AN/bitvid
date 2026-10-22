@@ -12,8 +12,9 @@
     "docs/agents/schedules/winddown.md": "36429467ce62e1f26a7eb6c2e6111ecd490c18bf691ee3fdb73c2fda71838d74",
     "docs/agents/WIND-DOWN.md": "b27ae51b0b8e739e0fcca736e4cb44dfdd38b71fff1dd4261ff4df18d575df3a",
     "docs/agents/STRIKES.md": "dd3047e02287207a1de96c01d5e9a1889c2c37cb75a5b3655de6e813df7f5bd9",
-    "docs/agents/prompts/interpreter.md": "1178348875ece2992ab12d5bdca6b50e728d35f47d84d9d204eaa163be36e453",
-    "docs/agents/prompts/session-manager.md": "569835c908b11b9f5cdd96520f5bd93aed4327d109c8000b9977a4a1d9aa54bd",
-    ".agents/skills/agent-fleet/SKILL.md": "25d5aeef4361b3eecff525f752d990acd2ce8988b59f790ba8363eece8e646c7"
+    "docs/agents/prompts/interpreter.md": "776b16799a9516c108b19b22755796706aef3ee9ab98bc5d6ccc33542aae3f19",
+    "docs/agents/prompts/session-manager.md": "c5c7358c439e8593792bd1a14d8dd7edf59e7f5c3f0b1f72b78293910b7c8635",
+    ".agents/skills/agent-fleet/SKILL.md": "25d5aeef4361b3eecff525f752d990acd2ce8988b59f790ba8363eece8e646c7",
+    "docs/agents/schedules/resources.md": "1e1236eea30cd2d73f68d2093339cfb9db8a97784b9af3e7ab53edf773541072"
   }
 }

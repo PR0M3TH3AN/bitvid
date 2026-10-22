@@ -41,15 +41,27 @@ export function wakeFlag(entry) {
     const age = entry.ageSec ?? '?';
     if (!last) return `still unread after ${age}s; no earlier wake`;
     if (last.outcome === 'swallowed') return `woke at ${last.t} (${last.trigger}), wake line still in the composer, still unread after ${age}s`;
+    if (last.outcome === 'timeout') return `woke at ${last.t} (${last.trigger}), pane stayed busy until the waiter stopped, still unread after ${age}s`;
+    if (last.outcome === 'deferred' || last.action === 'deferred') return `woke at ${last.t} (${last.trigger}), handed to a waiter because the pane was busy, still unread after ${age}s`;
     if (last.action === 'skipped-busy') return `woke at ${last.t} (${last.trigger}), skipped because an interrupt hint was showing, still unread after ${age}s`;
     if (last.action === 'no-window' || last.outcome === 'no-window') return `woke at ${last.t} (${last.trigger}), pane not found, still unread after ${age}s`;
     if (last.outcome === 'submitted') return `woke at ${last.t} (${last.trigger}), line left the composer, still unread after ${age}s`;
     return `woke at ${last.t} (${last.trigger}), outcome ${last.outcome}, still unread after ${age}s`;
   }
-  if (entry.action === 'no-window' || entry.outcome === 'no-window') return 'pane not found';
+  if (entry.action === 'no-window' || entry.outcome === 'no-window') {
+    const names = Array.isArray(entry.windows) && entry.windows.length ? entry.windows.join(', ') : 'none';
+    const looked = entry.lookup || entry.window || 'unknown window';
+    return `pane not found (looked up ${looked}; session windows: ${names})`;
+  }
+  if (entry.outcome === 'waiter-running') return 'a waiter is already polling this pane';
+  if (entry.outcome === 'already-read') return 'mail was read before the pane went idle, so nothing was typed';
+  if (entry.outcome === 'timeout') return 'pane stayed busy until the waiter stopped';
+  if (entry.outcome === 'deferred') return 'handed to a waiter because an interrupt hint was showing';
   if (entry.action === 'skipped-busy') return 'skipped: interrupt hint was showing, so the pane looked mid-turn';
   if (entry.action === 'send-failed') return 'send-keys failed before Enter';
+  if (entry.trigger === 'deferred' && entry.outcome === 'swallowed') return `waiter typed it; wake line still on the cursor row after ${entry.enterAttempts} Enter`;
   if (entry.outcome === 'swallowed') return `wake line still on the cursor row after ${entry.enterAttempts} Enter`;
+  if (entry.trigger === 'deferred' && entry.outcome === 'submitted') return 'waiter typed the line and it left the composer';
   if (entry.outcome === 'submitted') {
     if (entry.before && entry.before.idleSec != null && entry.before.idleSec < 3 && !entry.before.interrupt) {
       return 'typed and the line left the composer while the pane was recently active';
