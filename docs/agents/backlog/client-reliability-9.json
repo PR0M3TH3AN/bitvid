@@ -1,10 +1,11 @@
 {
   "id": "client-reliability-9",
   "area": "client-reliability",
-  "status": "open",
+  "status": "in-progress",
   "title": "Measure remaining active HEAD HLS torrent cancellation at current HEAD",
   "blockedOn": null,
   "addedOn": "2026-10-22",
   "filedAt": "fb54cea3a2ba99b4860421724a5050af6b97c293",
-  "brief": "docs/agents/CAMPAIGN-2026-10-22.md"
+  "brief": "docs/agents/CAMPAIGN-2026-10-22.md",
+  "evidence": "c5b678f7 controlled actual observer/controller HEAD: disposed/same-turn/later3 natural failures (abort0,timer1,unsettled,one obsolete fetch reused),8 shared/cross/legacy/live success-error-timeout/late completion controls pass. No product/test changes; waiting independent confirmation+HEAD-only implementation/spec routing. See test_logs/TEST_LOG_2026-10-22_14-12-00_client-reliability-9-head.md and /tmp/client9-head-repro.mjs."
 }

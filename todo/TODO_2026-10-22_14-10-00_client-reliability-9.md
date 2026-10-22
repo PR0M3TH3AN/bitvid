@@ -1,0 +1,3 @@
+- [x] Read rules/campaign/mail; clean fast-forward; claim9; ack dispatch.
+- [ ] Reproduce active HEAD final-owner disposal and controls.
+- [ ] Report evidence, proposed files and contract; await routing before implementation.

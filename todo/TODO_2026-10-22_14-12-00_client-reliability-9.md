@@ -1,0 +1,6 @@
+- [x] Safe sync/claim/ack and source review.
+- [x] HEAD disposal/rejoin3 natural failures;8 controls pass.
+- [x] Record exact commands/counts/limits and scoped proposal.
+- [ ] Dispatch independent reproduction + explicit implementation/spec routing.
+- [ ] Later: retained HEAD regression/mutants/focused/lint and allocated normal gates.
+- [ ] HLS/torrent separately measured/routed.
