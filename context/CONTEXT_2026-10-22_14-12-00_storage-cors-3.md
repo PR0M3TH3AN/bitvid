@@ -1,0 +1,4 @@
+- storage-cors-3 resumed by dispatch/campaign; baseline c5b678f7. Read-only product/retained tests, offline synthetic data only.
+- Goal: real deletion ingest followed by stale refresh/late older/view switch; preserve unrelated/newer content under existing semantics.
+- Seven scratch scenarios: three controls pass, four strict failures. Evidence docs/testing/storage-cors-3-investigation-2026-10-22.md; script /tmp/bitvid-storage-cors-3-audit.mjs.
+- Await independent reproduction/precise ownership routing. No browser/full/build/normal submission or live services authorized for this investigation.

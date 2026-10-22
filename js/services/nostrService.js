@@ -1449,7 +1449,7 @@ export class NostrService {
 
     const map = this.ensureVideosMap();
     for (const video of videos) {
-      if (video && typeof video.id === "string" && video.id) {
+      if (video && typeof video.id === "string" && video.id && !this.isVideoUnavailable(video)) {
         map.set(video.id, video);
       }
     }
@@ -1516,11 +1516,17 @@ export class NostrService {
     return this.videosByAuthorIndex;
   }
 
+  isVideoUnavailable(video) {
+    return video?.deleted === true || video?.invalid === true ||
+      (typeof this.nostrClient?.isOlderThanTombstone === "function" &&
+        this.nostrClient.isOlderThanTombstone(video));
+  }
+
   shouldIncludeVideo(video, {
     blacklistedEventIds = new Set(),
     isAuthorBlocked = () => false,
   } = {}) {
-    if (!video || typeof video !== "object") {
+    if (!video || typeof video !== "object" || this.isVideoUnavailable(video)) {
       return false;
     }
 
@@ -1737,9 +1743,7 @@ export class NostrService {
         this.emit("videos:updated", { videos: filtered, reason });
 
         // Persist the fresh filtered result for next time
-        if (filtered.length > 0) {
-          persistFilteredVideos(filtered);
-        }
+        persistFilteredVideos(filtered);
 
         return filtered;
       };
@@ -1758,6 +1762,7 @@ export class NostrService {
 
           if (optimisticFiltered.length > 0) {
             this.cacheVideos(optimisticFiltered);
+            persistFilteredVideos(optimisticFiltered);
             hasOptimisticData = true;
             optimisticResult = optimisticFiltered;
 
@@ -1821,9 +1826,12 @@ export class NostrService {
 
             if (deletedUpdates.length > 0) {
               const map = this.ensureVideosMap();
-              for (const v of deletedUpdates) {
-                if (v.id) {
-                  map.delete(v.id);
+              const deletedIds = new Set(deletedUpdates.map((video) => video.id));
+              // Deletion markers have their own event IDs. Consult the
+              // client's authoritative timestamp/key guard for cached copies.
+              for (const [id, video] of map) {
+                if (deletedIds.has(id) || this.isVideoUnavailable(video)) {
+                  map.delete(id);
                 }
               }
               this.markAuthorIndexDirty();
