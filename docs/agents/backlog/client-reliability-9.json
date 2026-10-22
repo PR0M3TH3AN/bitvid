@@ -7,5 +7,5 @@
   "addedOn": "2026-10-22",
   "filedAt": "fb54cea3a2ba99b4860421724a5050af6b97c293",
   "brief": "docs/agents/CAMPAIGN-2026-10-22.md",
-  "evidence": "HEAD-only candidate e9c960ed merged e887ceaf;60focused/4files (new23+existing29+4+4),16isolated mutants naturally exit1/0cancelled,lint11 hostexit0. Strict scope extension note;no existing tests changed. Merge from current unstable docs/evidence-only,runtime inputs equal. READY awaiting full/browser/normal submit slot;HLS/torrent separately open. test_logs/TEST_LOG_2026-10-22_14-25-00_client-reliability-9-ready.md"
+  "evidence": "HEAD-only fix e9c960ed/merged09f52bdd durably landed f41ac656 normalgateexit0,435discovered/435unique starts missingextra0,ancestry0;build/artifactexit0;controlled native Chromium+Firefox lifecycle PASS with synthetic loadeddata/publicdeny. Prior60focused/16mutants/lint11. Resources released. HLS/torrent/RangeGET separately OPEN; no wholeStage3 claim. test_logs/TEST_LOG_2026-10-22_20-52-00_client-reliability-9-browser.md"
 }
