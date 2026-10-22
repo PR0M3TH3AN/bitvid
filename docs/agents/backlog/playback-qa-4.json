@@ -1,0 +1,10 @@
+{
+  "id": "playback-qa-4",
+  "area": "playback-qa",
+  "status": "open",
+  "title": "Reproduce actual-app mobile Upload overflow and focus touch behavior",
+  "blockedOn": null,
+  "addedOn": "2026-10-22",
+  "filedAt": "e04549f816f6ec61f305e20df0ce2b59797c4651",
+  "brief": "docs/agents/prompts/playback-qa.md"
+}
