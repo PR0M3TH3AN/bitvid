@@ -6,6 +6,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { healthThresholds } from './core/health.mjs';
 
 export const KIT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 
@@ -117,6 +118,7 @@ export function loadConfig(argv = process.argv, start = process.cwd()) {
   c.landing = { batch: 8, intervalSec: 60, protect: [], ...(c.landing || {}) };
   c.clock = { quietHours: ['22:00', '08:00'], ...(c.clock || {}) };
   c.doctor = { staleHours: 72, unownedDays: 14, ...(c.doctor || {}) };
+  c.health = healthThresholds(c.health);
   c.modules = { producer: false, reviewer: false, usageGovernor: false, ...(c.modules || {}) };
   c.schedules ??= [];
   c.areas = (c.areas || []).map((a) => resolveArea(c, a));

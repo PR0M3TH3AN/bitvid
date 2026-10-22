@@ -168,16 +168,13 @@ export class VideoEventBuffer {
         this.client.allEvents.set(evt.id, video);
         this.client.dirtyEventIds.add(evt.id);
 
-        // If it's a "deleted" note, remove from activeMap
+        // recordTombstone already removes active versions at or before the
+        // deletion timestamp. A late/replayed marker must preserve newer ones.
         if (video.deleted) {
-          if (activeKey) {
-            if (wasDeletedEvent) {
+          if (activeKey && !wasDeletedEvent) {
+            const currentActive = this.client.activeMap.get(activeKey);
+            if (currentActive?.id === video.id) {
               this.client.activeMap.delete(activeKey);
-            } else {
-              const currentActive = this.client.activeMap.get(activeKey);
-              if (currentActive?.id === video.id) {
-                this.client.activeMap.delete(activeKey);
-              }
             }
           }
           updatedVideos.push(video);

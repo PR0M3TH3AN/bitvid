@@ -20,6 +20,12 @@ Ask these in your own chat. Offer the default so a one-word answer works. Pass t
 2. Anything to prioritise right now? (default: no)
 3. Anything off limits? (default: no deploys, no spending, no production data)
 
+## Codex tool approval
+
+Codex may pause on fleet mail tools such as `tell` and `mailbox_send`. The documented server setting is `default_tools_approval_mode = "auto"` under `[mcp_servers.agent-fleet]` in `~/.codex/config.toml`. One tool is `[mcp_servers.agent-fleet.tools.<tool>]` with `approval_mode = "auto"`. The values are `auto`, `prompt`, `writes`, and `approve`. `writes` still prompts for tools that are not marked read-only, and these are not. Offer to set `auto` for the agent-fleet server, and write it only after the user says yes.
+
+Those keys are `mcp_servers.<id>.default_tools_approval_mode` and `mcp_servers.<id>.tools.<tool>.approval_mode` in the Codex config reference (https://developers.openai.com/codex/config-reference) and the MCP page (https://learn.chatgpt.com/docs/extend/mcp). When `approval_policy` is `on-request` and `approvals_reviewer` is `auto_review`, MCP calls that still require approval go to that reviewer (https://learn.chatgpt.com/docs/sandboxing/auto-review). The words "internal coordination messages" are not in those pages.
+
 ## Approvals
 
 You stand in for the user on routine decisions: start this team, take a normal task. Those count.
@@ -28,7 +34,13 @@ Bring these to the user, and do not approve them yourself: money, a push, a depl
 
 ## Status
 
-When the user asks how things are going, answer in plain language: how many agents, which areas, what each is working on, what landed, and what needs the user. `fleet status` (MCP `fleet_status`) says, for each area, whether the tmux window is alive or dead, how many messages are still unread, and a working or idle guess. Idle with unread mail means that agent has not read it. Looking at status nudges that pane once if the mail has been waiting. A second look does not nudge again. Read `hear`, `fleet/LOG.md`, the landing queue, and `git log`. Offer a dev-server preview when that would help them see the work.
+When the user asks how things are going, answer in plain language: how many agents, which areas, what each is working on, what landed, and what needs the user. `fleet status` (MCP `fleet_status`) says, for each area, whether the tmux window is alive or dead, how many messages are still unread, and a working or idle guess. Idle with unread mail means that agent has not read it. Looking at status nudges that pane once if the mail has been waiting. A second look does not nudge again. If status shows unread mail that has been waiting, or a recovery nudge fired, run `fleet wakes` (MCP `wake_log`) and tell the user which case it looked like: the wake line was still in the composer, a waiter typed it after the pane was busy, the line left the composer but the mail is still unread, or the pane was not there (the log names the windows that were). Do not ask the user to open the log. Read `hear`, `fleet/LOG.md`, the landing queue, and `git log`. Offer a dev-server preview when that would help them see the work.
+
+## The machine
+
+When mail mentions memory, disk, heat, or battery, or the user asks how the machine is, run `fleet health` (MCP `health`). Say the verdict in plain words and the action the session manager suggests. Name the area that is using the CPU or memory when that is the cause. Low disk is a proposal of what to remove and the sizes, then a question for the user. Do not delete, kill a process, or change a system setting yourself.
+
+The schedules include a resource check every 15 minutes. `fleet crontab` only prints the lines. Offer to install them, and install them only after the user says yes. Do not tell the user to edit crontab.
 
 ## Update the kit
 
