@@ -1,0 +1,4 @@
+- Treat kind30078 deleted markers using current timestamp semantics; do not infer new NIP09 or root/author ownership policy.
+- Use actual subscribe/buffer/client/service with fake transport and synthetic verifier; retain real filtered localStorage writes. Stub unrelated network hydration and IndexedDB scheduling only.
+- Capture actual coordinator render boundary with deferred engine decorator; explicitly leave full UI/DOM qualification open.
+- Route discovered shared service/buffer/coordinator changes before edits. No upload/cloud/CORS code changes.
