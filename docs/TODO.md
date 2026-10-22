@@ -2,6 +2,8 @@
 
 ## dispatch
 
+- 2026-10-22 storage4 registeredfeed/JSDOM independent4=2pass/2fail:obsolete result restores deletedDOM/overwrites replacementExplore;coordinator-only separate fix routed afterstorage3 submit. Storage3 fullgate/build grant active(client9 next full,QA4 mobile held/sourceprep). Client9 exactcandidate independent23pass. No product landing yet.
+
 - 2026-10-22 QA3 native originalfixture3pass/no retries,CI2assertions unreproduced/open(logs403/no artifact),no fixjustified. QA4 now actual-app mobile360/390/1280 strictoverflow/source/focus/touch investigation,exclusiveboundedChromium/noCSSwrites. Remaining6priority campaign not complete.
 
 - 2026-10-22 client9 HEAD independently11modes(3fail/8controls pass),finalowner fetch/timer retained(no media slot leak);controller HEAD-only fix+strict contract/identity/ignoringabort regressions routed. HLS/torrent/RangeGET remain open;QA offline genuineBuffer rebuild prep, mobile/Amber staged.

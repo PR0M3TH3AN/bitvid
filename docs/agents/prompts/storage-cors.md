@@ -1,3 +1,13 @@
+## Follow-on routed scope 2026-10-22 — storage-cors-4 coordinator
+
+FIRST consume existing storage3 full/normalqueue/build grant; freeze and submit only existing buffer/service validated tip. Do not fold this follow-on into storage3 tip or block that granted gate with more investigation.
+
+Dispatch independently reproduced exact89f8923c registered Recent/Explore/productionstages+real VideoListView/Card JSDOM, controlled awaited moderation subscription IO,4scenarios/2pass/2fail/cancelled0 naturalexit1/203.65ms. Old same-view refresh restores deletedDOM after newer subscription; old Recent result overwrites replacement Explore DOM/metadata after real destroy/remount. Valid delayed pipeline and fully disposed no-remount controls pass. Separate storage4 ownership ONLY js/app/feedCoordinator.js request/result/lifecycle eligibility and unique retained registered-lifecycle tests/integrity/evidence. No app.js,VideoListView,engine,buffer/service writes for4.
+
+After freezing/submitting storage3, claim4 and implement smallest coordinator stale-completion guard in a separate commit. Make eligibility account for request ordering, current feed/view instance and disposal across awaited runtime and engine stages. Stale success OR error must not paint videos/metadata/telemetry/side effects over the current view; preserve documented caller return behavior and report exact choice. Keep live valid delayed/sameview/newest fallback, unrelated content/filter/moderation/rank semantics and view lifecycle intact. No forced refresh, broad source/cache policy or API redesign. Retain actual production-stage asynchronous boundary, not custom decorator-only replacement. Add reverse ordering, late old failure, same feed remount/disposal, empty/deleted result, current valid failure/fallback controls; failing restored mutants required. Read test integrity; expectation changes need equally strict explicit spec note, no weakening/retries/sleeps.
+
+Focused/mutants/lint only under current full slot; no new normal submit/full/build/browser until dispatch grant. Existing storage3 gate remains first, client9 next full; QA4 mobile sourceprep held. Ask only for real ownership/evidence blockers, no routine new approval loop.
+
 ## Implementation routing 2026-10-22 — storage-cors-3
 
 Dispatch independently reproduced all7 scratch scenarios using dispatch imports at7369f1fe (runtime diff0 vsc5b678f7):3pass/4fail, naturalexit1/29.89ms/network0. Temporary ownership ONLY js/nostr/videoEventBuffer.js and js/services/nostrService.js plus new uniquely named focused regression/integrity/evidence files. This supersedes investigation-only restriction for these two boundaries; existing client.js and app/feedCoordinator.js remain read-only.
