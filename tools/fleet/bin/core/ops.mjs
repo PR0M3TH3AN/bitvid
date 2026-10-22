@@ -5,6 +5,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { area as getArea, die, pidAlive, tryGit, git, mainRef, writeAtomic, today, landerIsUp, matchesAny, startLander, runTimedSync } from '../lib.mjs';
 import { send as mailboxSendFile, read as mailboxReadDir, archive as mailboxArchiveDir } from '../../adapters/mailbox.mjs';
+import { appendWakeLog, priorWakes } from './wake-log.mjs';
 
 const STATUSES = ['open', 'in-progress', 'blocked', 'done', 'deferred'];
 const SPECIAL = ['owner', 'scheduler', 'interpreter'];
@@ -119,13 +120,19 @@ function knownParty(c, id) {
   getArea(c, id);
 }
 
-export function sendMailbox(c, { to, from, body, subject = '' } = {}) {
+export function sendMailbox(c, { to, from, body, subject = '', trigger = 'send' } = {}) {
   if (!from) die('--from <your id> required');
   knownParty(c, from);
   if (!body || !String(body).trim()) die('empty message');
   const targets = to === 'all' ? c.areas.map((a) => a.id).filter((id) => id !== from) : [to];
-  const files = targets.map((t) => { knownParty(c, t); return mailboxSendFile(c.mailbox.dir, t, from, body, subject ?? ''); });
-  const wakes = targets.filter((t) => t !== from).map((t) => ({ to: t, ...nudgeMail(c, t, from) }));
+  const files = [];
+  const wakes = [];
+  for (const t of targets) {
+    knownParty(c, t);
+    const file = mailboxSendFile(c.mailbox.dir, t, from, body, subject ?? '');
+    files.push(file);
+    if (t !== from) wakes.push({ to: t, ...nudgeMail(c, t, from, { trigger, file: path.basename(file) }) });
+  }
   return Object.assign(files, { wakes });
 }
 
@@ -193,7 +200,7 @@ export function setupCommit(repo, { message = 'fleet init' } = {}) {
 export function tellDispatch(c, { body, from = 'interpreter', subject = '' } = {}) {
   const hub = c.areas.find((a) => a.role === 'dispatcher');
   if (!hub) die('no session manager (role dispatcher)');
-  const files = sendMailbox(c, { to: hub.id, from, body, subject });
+  const files = sendMailbox(c, { to: hub.id, from, body, subject, trigger: 'tell' });
   const wake = (files.wakes || []).find((w) => w.to === hub.id) || { submitted: false, reason: 'no-window' };
   const status = fleetStatus(c);
   return { files: [...files], to: hub.id, from, nudged: Boolean(wake.submitted), wake, recovered: status.recovered };
@@ -243,6 +250,25 @@ function stillInInput(target, line) {
   return cursorRow(target, capturePane(target)).includes(line);
 }
 
+function inspectPane(target) {
+  if (tmuxText(['list-panes', '-t', target]).status !== 0) return { found: false, dead: false, interrupt: false, idleSec: null, pane: '' };
+  const info = tmuxText(['display-message', '-p', '-t', target, '#{pane_dead} #{window_activity}']);
+  const match = String(info.stdout || '').trim().match(/^([01])\s+(\d+)$/);
+  const pane = capturePane(target);
+  let idleSec = null;
+  let dead = false;
+  if (match) {
+    dead = match[1] === '1';
+    idleSec = Math.max(0, Math.round(Date.now() / 1000 - Number(match[2])));
+  }
+  return { found: true, dead, interrupt: BUSY_RE.test(pane), idleSec, pane };
+}
+
+function paneTail(pane) {
+  const rows = String(pane).split('\n').map((s) => s.trim()).filter(Boolean).slice(-4);
+  return rows.map((s) => s.slice(0, 120)).join(' | ').slice(0, 400);
+}
+
 /**
  * Wake an open tmux window with a short line, not the mail body.
  * Codex and Claude treat a fast burst as a paste and swallow Enter, so the
@@ -250,21 +276,38 @@ function stillInInput(target, line) {
  * If the cursor row still holds the line, Enter is sent once more.
  * A pane that shows an interrupt hint is left alone; a later status check can nudge it.
  */
-export function nudgeMail(c, areaId, from) {
+export function nudgeMail(c, areaId, from, meta = {}) {
   const target = tmuxTarget(c, areaId);
-  if (tmuxText(['list-panes', '-t', target]).status !== 0) return { submitted: false, reason: 'no-window' };
+  const before = inspectPane(target);
+  const record = {
+    t: new Date().toISOString(),
+    area: areaId,
+    window: target,
+    file: meta.file || null,
+    trigger: meta.trigger || 'send',
+    before: { found: before.found, dead: before.dead, interrupt: before.interrupt, idleSec: before.idleSec },
+  };
+  const finish = (fields) => {
+    const { line, reason, ...logged } = fields;
+    const pane = logged.action === 'no-window' ? '' : capturePane(target);
+    appendWakeLog(c, { ...record, ...logged, tail: paneTail(pane) });
+    return { submitted: logged.outcome === 'submitted', reason, ...(line ? { line } : {}) };
+  };
+  if (!before.found) return finish({ action: 'no-window', enterAttempts: 0, outcome: 'no-window', reason: 'no-window' });
   const line = nudgeLine(from);
-  if (BUSY_RE.test(capturePane(target))) return { submitted: false, reason: 'working', line };
-  if (tmuxText(['send-keys', '-t', target, '-l', line]).status !== 0) return { submitted: false, reason: 'send-failed', line };
+  if (before.interrupt) return finish({ action: 'skipped-busy', enterAttempts: 0, outcome: 'skipped-busy', reason: 'working', line });
+  if (tmuxText(['send-keys', '-t', target, '-l', line]).status !== 0) return finish({ action: 'send-failed', enterAttempts: 0, outcome: 'send-failed', reason: 'send-failed', line });
+  let enterAttempts = 0;
+  const hitEnter = () => { tmuxText(['send-keys', '-t', target, 'Enter']); enterAttempts += 1; };
   sleepMs(NUDGE_PAUSE_MS);
-  tmuxText(['send-keys', '-t', target, 'Enter']);
+  hitEnter();
   sleepMs(NUDGE_SETTLE_MS);
-  if (!stillInInput(target, line)) return { submitted: true, reason: 'submitted', line };
+  if (!stillInInput(target, line)) return finish({ action: 'typed', enterAttempts, outcome: 'submitted', reason: 'submitted', line });
   sleepMs(NUDGE_RETRY_MS);
-  tmuxText(['send-keys', '-t', target, 'Enter']);
+  hitEnter();
   sleepMs(NUDGE_SETTLE_MS);
   const submitted = !stillInInput(target, line);
-  return { submitted, reason: submitted ? 'submitted' : 'not-submitted', line };
+  return finish({ action: 'typed', enterAttempts, outcome: submitted ? 'submitted' : 'swallowed', reason: submitted ? 'submitted' : 'not-submitted', line });
 }
 
 function unreadFiles(c, id) {
@@ -325,7 +368,12 @@ export function fleetStatus(c, { recoverAfterMs = RECOVER_AFTER_MS, idleAfterMs 
     const age = oldest ? Date.now() - oldest.mtimeMs : 0;
     const already = (state[a.id] || []).includes(oldest?.file);
     if (view.window === 'alive' && view.activity === 'idle' && oldest && age >= recoverAfterMs && !already) {
-      const wake = nudgeMail(c, a.id, senderOf(oldest.path));
+      const prior = priorWakes(c, a.id, oldest.file).slice(-5).map((p) => ({ t: p.t, trigger: p.trigger, action: p.action, outcome: p.outcome }));
+      appendWakeLog(c, {
+        t: new Date().toISOString(), kind: 'stale', area: a.id, window: tmuxTarget(c, a.id),
+        file: oldest.file, ageSec: Math.round(age / 1000), prior,
+      });
+      const wake = nudgeMail(c, a.id, senderOf(oldest.path), { trigger: 'recovery', file: oldest.file });
       state[a.id] = [...(state[a.id] || []), oldest.file];
       stateDirty = true;
       row.recovered = true;

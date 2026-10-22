@@ -37,6 +37,7 @@
 //   fleet doctor | landq | backlog | mailbox
 //                                     the same tools as tools/fleet/bin/<name>.mjs
 //   fleet status                      areas, run state (running / exited / failed / timeout / stopped), lander up or down
+//   fleet wakes                       recent wake attempts, and plain words for a likely failure
 //   fleet prompt <id>                 print the composed system prompt for an area
 //   fleet crontab                     PRINT the crontab lines for scheduled jobs (never installs)
 //   fleet run-job <name>              one headless run of docs/agents/schedules/<name>.md (sched.sh calls this)
@@ -51,6 +52,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { KIT, loadConfig, loadAdapter, area as getArea, dispatcher, sessionName, flag, die, writeAtomic, tryGit, mainRef, today, runProcessGroup, runForeground, finishHeadless, withHandoff, applyHeadlessSession, assignLaunchSession, areaBudgetMin, readRun, writeRun, outcomeOfRun, pidAlive, killProcessGroup, landerIsUp, landerPid, startLander, writableRoots } from './lib.mjs';
 import { commitWork, setupCommit, tellDispatch, hearInterpreter, fleetStatus } from './core/ops.mjs';
+import { readWakeLog } from './core/wake-log.mjs';
 import { fleetUpdate, recordInstalled, isTemplatePath } from './core/update.mjs';
 
 const argv = process.argv.slice(2);
@@ -306,6 +308,19 @@ async function status() {
   }
   if (report.interpreter.unread) console.log(`interpreter          unread=${report.interpreter.unread}`);
   for (const id of report.recovered) console.log(`nudged ${id} again`);
+}
+
+function wakesCmd() {
+  const report = readWakeLog(c);
+  if (!report.entries.length) {
+    console.log(`no wake attempts in ${report.path}`);
+    return;
+  }
+  console.log(report.path);
+  for (const e of report.entries) {
+    if (e.kind === 'stale') console.log(`${e.t}  stale ${e.area} ${e.file}  ${e.flag}`);
+    else console.log(`${e.t}  ${e.trigger} ${e.area} ${e.window} ${e.file || '-'}  ${e.action} enter=${e.enterAttempts} ${e.outcome}  ${e.flag}`);
+  }
 }
 
 function ensureWorktree(a) {
@@ -618,7 +633,7 @@ function tool(name) {
 const run = { up, down, status, supervise: () => supervise(argv[1]), worktrees, crontab,
   prompt: async () => console.log(composePrompt(getArea(c, argv[1]), await adapterFor(getArea(c, argv[1]).harness))),
   'run-job': () => runJob(argv[1]), 'sched-env': () => schedEnv(argv[1]), lander: () => lander(argv[1] ?? 'status'),
-  commit: commitCmd, 'setup-commit': setupCommitCmd, update: updateCmd, tell: tellCmd, hear: hearCmd,
+  commit: commitCmd, 'setup-commit': setupCommitCmd, update: updateCmd, tell: tellCmd, hear: hearCmd, wakes: wakesCmd,
   doctor: () => tool('doctor'), landq: () => tool('landq'), backlog: () => tool('backlog'),
   mailbox: () => tool('mailbox') }[cmd];
 if (!run) die(`unknown command "${cmd}" (fleet help)`);

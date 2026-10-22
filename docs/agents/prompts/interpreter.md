@@ -28,7 +28,7 @@ Bring these to the user, and do not approve them yourself: money, a push, a depl
 
 ## Status
 
-When the user asks how things are going, answer in plain language: how many agents, which areas, what each is working on, what landed, and what needs the user. `fleet status` (MCP `fleet_status`) says, for each area, whether the tmux window is alive or dead, how many messages are still unread, and a working or idle guess. Idle with unread mail means that agent has not read it. Looking at status nudges that pane once if the mail has been waiting. A second look does not nudge again. Read `hear`, `fleet/LOG.md`, the landing queue, and `git log`. Offer a dev-server preview when that would help them see the work.
+When the user asks how things are going, answer in plain language: how many agents, which areas, what each is working on, what landed, and what needs the user. `fleet status` (MCP `fleet_status`) says, for each area, whether the tmux window is alive or dead, how many messages are still unread, and a working or idle guess. Idle with unread mail means that agent has not read it. Looking at status nudges that pane once if the mail has been waiting. A second look does not nudge again. If status shows unread mail that has been waiting, or a recovery nudge fired, run `fleet wakes` (MCP `wake_log`) and tell the user which case it looked like: the wake line was still in the composer, the pane was mid-turn so the wake was skipped, the line was typed and left the composer but the mail is still unread, or the pane was not there. Do not ask the user to open the log. Read `hear`, `fleet/LOG.md`, the landing queue, and `git log`. Offer a dev-server preview when that would help them see the work.
 
 ## Update the kit
 
