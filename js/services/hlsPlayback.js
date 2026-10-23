@@ -378,16 +378,33 @@ export async function attachHlsSource(
  * native playback needs no CORS, so the caller should keep using the element
  * probe there.
  *
- * @returns {Promise<"ok"|"error"|"timeout">}
+ * Optional card-probe lifecycle owns cancellation through both fetch and body
+ * reading. Callers without a lifecycle retain the standalone probe behavior.
+ * @returns {Promise<"ok"|"error"|"timeout"|"cancelled">}
  */
-export async function probeHlsManifest(url, timeoutMs = 4000) {
+export async function probeHlsManifest(url, timeoutMs = 4000, lifecycle) {
   const trimmed = typeof url === "string" ? url.trim() : "";
   if (!trimmed || typeof fetch !== "function") {
     return "error";
   }
+  if (lifecycle && (lifecycle.cancelled || !lifecycle.owners.size)) {
+    lifecycle.cancelled = true;
+    return "cancelled";
+  }
 
   const controller =
     typeof AbortController === "function" ? new AbortController() : null;
+  let resolveCancellation;
+  const cancellation = new Promise((resolve) => {
+    resolveCancellation = resolve;
+  });
+  const cancelActive = () => {
+    // Invalidate synchronously so a same-turn owner starts a fresh probe.
+    lifecycle.cancelled = true;
+    resolveCancellation("cancelled");
+    controller?.abort();
+  };
+  if (lifecycle) lifecycle.cancelActive = cancelActive;
   let timedOut = false;
   const timeoutId =
     Number.isFinite(timeoutMs) && timeoutMs > 0
@@ -397,22 +414,32 @@ export async function probeHlsManifest(url, timeoutMs = 4000) {
         }, timeoutMs)
       : null;
 
-  try {
-    const response = await fetch(trimmed, {
-      method: "GET",
-      cache: "no-store",
-      signal: controller?.signal,
-    });
-    if (!response.ok) {
-      return "error";
+  const request = async () => {
+    try {
+      const response = await fetch(trimmed, {
+        method: "GET",
+        cache: "no-store",
+        signal: controller?.signal
+      });
+      if (!response.ok) {
+        return "error";
+      }
+      const text = await response.text();
+      return text.trimStart().startsWith("#EXTM3U") ? "ok" : "error";
+    } catch (err) {
+      return timedOut ? "timeout" : "error";
     }
-    const text = await response.text();
-    return text.trimStart().startsWith("#EXTM3U") ? "ok" : "error";
-  } catch (err) {
-    return timedOut ? "timeout" : "error";
+  };
+  try {
+    // Race the whole request, including response.text(): a transport or body
+    // reader may ignore abort, but obsolete card work must still settle.
+    return await Promise.race([request(), cancellation]);
   } finally {
     if (timeoutId) {
       clearTimeout(timeoutId);
+    }
+    if (lifecycle?.cancelActive === cancelActive) {
+      lifecycle.cancelActive = null;
     }
   }
 }
