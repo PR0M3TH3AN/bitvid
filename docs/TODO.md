@@ -2,6 +2,8 @@
 
 ## dispatch
 
+- 2026-10-23 resume: actual QA4 bootEPERM/release consumed; browser/runtimechecks0, prior mobile strict failures unchanged. HLS sole full/normal grant12:32:43Z at clean79a9a130 after safe merge latest672ca953; START/results pending. Health cooling77→71C/RAM68.3%/swap90% advisory; one heavy max. QA host escalation disposition/browser grant later; no app-fix/cron/autoapproval-effect claim. Overnight client wake left composer yet unread55642s, recovery now consumed.
+
 - 2026-10-22 storage3+4DONE: storage4 product7edc7ea8/closure8317da4d independently durable status/log/ancestry; worker normalgateexit0/discovery436/build29cbe6f0 artifactPASS, no independent436start audit. QA4 now sole bounded mobile browser grant21:04:02; HLS candidatecdc398b0/merged79a9a130 next full after QA release. Dispatch exact candidate35/35 natural321ms; worker129focused/19mutants/lint11. HLS gates/preview/campaign remain unfinished.
 
 - 2026-10-22 HLS follow-on: dispatch independent actual observer/controller/helper scratch atd04d501e12=7pass/5fail/cancelled0/naturalexit1/165.17ms. Final-owner GET/timer/promise retained, rejoin stale, late healthy cache, body-read disposal fail; no media-slot leak. Controller HLS handoff + optional manifest-helper cancellation only routed with strict spec/integrity/regressions. Focused/mutants/lint only while storage4 holds heavy slot; torrent/RangeGET remain separate, no HLS fix landed.
