@@ -50,3 +50,9 @@ Resume existing client worker for current-HEAD active URL-media cancellation rep
 > "yeah lets get the fleet spun up and address all of these" — owner, relayed by interpreter at 2026-10-22T14:02:34Z; not typed in dispatch.
 
 The relay identifies six priorities: Firefox deterministic CI failure; remaining active HEAD/HLS/torrent cancellation; playback reliability promises; feed/view tombstone stale-refresh; Amber sessions; mobile usability. This supersedes the prior idle/local-review and quiet-hours hold for this foreground campaign. Routine investigation, evidence-routed fixes, tests/builds and normal local unstable landing are approved. No push/deploy/spend/production data/real wallet/credential/live signer/scheduler authority. Track all six in docs/agents/CAMPAIGN-2026-10-22.md. Preserve worktrees, use three existing workers with disjoint scope, stage before fixes, serialize browser/full gates, keep app.js single-writer. Final integrated local build/preview and honest live/manual limits required.
+
+## 2026-10-23 — Existing schedule activation reported
+
+> "All seven jobs shown above" — owner, relayed by interpreter12:32:43Z; not typed in dispatch.
+
+Interpreter reports installed/readback-verified existing seven schedules: checkin,hygiene,triage,summary,winddown,restart,resources. This supersedes earlier no-scheduler-activation status only for these jobs, with resources every15minutes while laptop awake. Installation and execution not independently verified by dispatch. Preserve one-heavy-job limit and all restricted-action boundaries; no dispatch cron/settings edits.
