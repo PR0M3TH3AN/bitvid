@@ -9,6 +9,10 @@ a landing rule changes.
 
 ## 2026-10-23
 
+- Owner campaign continuation "ok lets get the fleet working some more" relayed12:48:12. Resume existing6 priorities, no further routineyes: client exactHLS prep/sole unchangedgate after resourceclearance; QA same-script EPERM/hostlaunchprep; storage disjoint read-only RangeGET audit. Interpreter freezes direct/setup targetwrites during productgates and requires actual dispatch slotACK before any heavy validation. Kit logs prove overlap12:42:49–12:46:15 with HLS interruptedgate12:41:48–12:46:14; do not attribute heat exclusively to unrelatedapps. Both rejectedruns preserved. Dispatch requires2coolingsnapshots<75C/~30sapart/load<8/ampleRAM for nextlonggate; sustained85C stop unchanged; no configoverride/gateweakening.
+
+- Interpreter12:35:35 relays owner "I would like to not have extra processes like this running when the fleet is down or paused". All scheduled/headless work must respect down/PAUSED, including weekly restart; prior ignorePause allowance superseded for these jobs. Interpreter owns local bitvid-schedule-guard.mjs and unique focused tests/cron routing; avoid concurrent edits. Guard effectiveness pending evidence; no process kills outside its owned scheduled child group, no global kit/settings scope. Preserve active HLS gate/landing, no new heavy job.
+
 - Interpreter12:32:43Z reports owner quote "All seven jobs shown above" and installation/readback of existing checkin/hygiene/triage/summary/winddown/restart/resources schedules, scoped PATH/FLEET_CONFIG and preserved prior crontab. Record as relay/interpreter evidence, not independent verification or dispatch install authority. Earlier no-cron-installed statements are historical; no execution-success claim. One heavy job maximum and restricted-action boundaries remain; no denied-action retry or assumed effective MCP approval config.
 
 ## 2026-10-22

@@ -56,3 +56,11 @@ The relay identifies six priorities: Firefox deterministic CI failure; remaining
 > "All seven jobs shown above" — owner, relayed by interpreter12:32:43Z; not typed in dispatch.
 
 Interpreter reports installed/readback-verified existing seven schedules: checkin,hygiene,triage,summary,winddown,restart,resources. This supersedes earlier no-scheduler-activation status only for these jobs, with resources every15minutes while laptop awake. Installation and execution not independently verified by dispatch. Preserve one-heavy-job limit and all restricted-action boundaries; no dispatch cron/settings edits.
+
+## 2026-10-23 — Down/pause process restriction
+
+> "I would like to not have extra processes like this running when the fleet is down or paused" — owner, relayed by interpreter12:35:35Z; not typed in dispatch.
+
+Existing schedules must respect fleet down/PAUSED, including weekly restart. Interpreter owns local guard/unique tests and installation; effectiveness remains pending evidence. Dispatch will not launch scheduled/headless work while down/paused. No unrelated-process termination or wider authority.
+
+Implementation checkpoint12:37:56Z: interpreter reports all7cron entries guarded and8focused fixture tests passing; dispatch inspected guard/policy source at3a89abd0. Preserve guarded routing during kit updates. Real-model stop and installed-cron execution not verified.

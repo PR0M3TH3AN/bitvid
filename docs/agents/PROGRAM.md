@@ -17,6 +17,18 @@ Local-review handoff: storage2/history6 and demonstrated cold-feed blockerclient
 
 ## Rulings log (newest first)
 
+## 2026-10-23 — Campaign continuation after resource interruption
+
+> "ok lets get the fleet working some more" — owner, relayed by interpreter at2026-10-23T12:48:12Z; not typed in dispatch.
+
+Continue six existing priorities, with client HLS exact-candidate prep/normal gate when safe, QA bind-permission diagnosis/host-launch prep, and disjoint storage read-only playback audit. Preserve all rejected/partial evidence. Interpreter freezes direct/setup target writes during product gates and requires actual dispatch exclusive-slot acknowledgement before heavy validation; queue snapshots do not reserve a slot. No new restricted-action authority.
+
+## 2026-10-23 — Scheduled processes must respect down and pause
+
+> "I would like to not have extra processes like this running when the fleet is down or paused" — owner, relayed by interpreter at2026-10-23T12:35:35Z; not typed in dispatch.
+
+Interpreter is implementing a local Bitvid schedule guard and focused tests in unique files. Intended scope: all seven existing schedules require a live interactive fleet run; PAUSED blocks every job including weekly restart, and a supervised scheduled child is terminated only within its owned process group when fleet pauses/goes down. At12:37:56Z interpreter reports guard installed for all seven entries and8focused fixture tests passing naturally. Dispatch inspected guard/policy source at printed unstable3a89abd0; installed crontab execution and real-model shutdown remain unverified. No always-on watcher; inactive cron ticks run only the brief guard. Existing HLS gate/landings remain untouched; no unrelated process stops, global kit change or restricted authority added.
+
 ## 2026-10-23 — Existing seven schedules authorized in interpreter session
 
 > "All seven jobs shown above" — owner, relayed by interpreter at2026-10-23T12:32:43Z; not typed in dispatch.
