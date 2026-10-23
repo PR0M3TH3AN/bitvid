@@ -2,6 +2,12 @@
 
 ## dispatch
 
+- 2026-10-23 buildc95abe22/artifactpass at103eb04c;SWcompatcheckSKIPPED Gitdelta unavailable,retainlimit. HLSevidencea482d9d2 independentlydurable. QA4 realappready360,Uploadclickblockedfirst-run disclaimer30s,no geometry/focus/touch;sourceexactinterceptclass maps components/disclaimer.html18,runneromitsaccept. QA genuineUIacceptpreponly/no productbugclaim; HLSnativebrowser solegrant13:04:31. FreshpowerACADonline1/BAT100%Discharging;no lowbatterythreshold,resourceadvisoryreviewed.
+
+- 2026-10-23 HLS product83fd2495 durable independentlystatus/log/ancestry; current savedfulllog independently437starts/437unique,lastzap-totals;normalgateexit0. StorageRangeaudit103eb04c durable. Client solebuild/artifact granted; QA4 conditionalhostbrowser afterbuildrelease+freshhealth, HLSnativebrowser later. Priorpublish/thermalrejections+398partial+firstfull-logloss preserved. Torrent/Rangeimplementation/FirefoxCI/Amber/mobile/previewintegration remainopen.
+
+- 2026-10-23 HLS replacement280f043a durablyREJECTED after resource-triggered own-gateSIGINT, worker sustained88.8→85.1C and398/437unique partial/lastvideo-modal-controllers interrupted. No fullgreen/productassertionfailure claim. Interpreter kitRELEASE12:46:56 reports84pass/9guards/upstreambeta-onlypush; exactstart/end requested to assess overlap before nextlonggate. No HLSretry/build/browser until cooling/no competingjob assessment; normalgate unchanged/required.
+
 - 2026-10-23 resume: actual QA4 bootEPERM/release consumed; browser/runtimechecks0, prior mobile strict failures unchanged. HLS sole full/normal grant12:32:43Z at clean79a9a130 after safe merge latest672ca953; START/results pending. Health cooling77→71C/RAM68.3%/swap90% advisory; one heavy max. QA host escalation disposition/browser grant later; no app-fix/cron/autoapproval-effect claim. Overnight client wake left composer yet unread55642s, recovery now consumed.
 
 - 2026-10-22 storage3+4DONE: storage4 product7edc7ea8/closure8317da4d independently durable status/log/ancestry; worker normalgateexit0/discovery436/build29cbe6f0 artifactPASS, no independent436start audit. QA4 now sole bounded mobile browser grant21:04:02; HLS candidatecdc398b0/merged79a9a130 next full after QA release. Dispatch exact candidate35/35 natural321ms; worker129focused/19mutants/lint11. HLS gates/preview/campaign remain unfinished.
