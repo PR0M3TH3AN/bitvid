@@ -1,6 +1,6 @@
 # Program — the owner's priorities and rulings
 
-Last updated: 2026-10-22
+Last updated: 2026-10-23
 
 ## Current milestone
 
@@ -16,6 +16,12 @@ Local-review handoff: storage2/history6 and demonstrated cold-feed blockerclient
 2. Session-manager sequencing (vetoable): prioritize reproducible failures in core user flows and small changes with clear completion checks.
 
 ## Rulings log (newest first)
+
+## 2026-10-23 — Existing seven schedules authorized in interpreter session
+
+> "All seven jobs shown above" — owner, relayed by interpreter at2026-10-23T12:32:43Z; not typed in dispatch.
+
+Interpreter reports installing the existing checkin, hygiene, triage, summary, winddown, restart and resources jobs in user crontab, preserving prior entries and verifying readback. Scoped PATH/FLEET_CONFIG; resources every15minutes, only while laptop awake. Installation/readback are interpreter evidence, not independently verified here. This records scope and provenance; dispatch did not install or alter cron. One-heavy-job/resource guidance and all restricted-action limits remain. It adds no push/deploy/spend/delete/credential authority. Interpreter separately reports owner-approved MCP-only autoapproval setting saved; effective state in existing sessions is unverified and does not override a denied action.
 
 ## 2026-10-22 — Six-priority campaign resumed via interpreter
 
