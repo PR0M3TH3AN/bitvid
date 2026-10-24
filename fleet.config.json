@@ -281,5 +281,8 @@
     "producer": false,
     "reviewer": false,
     "usageGovernor": false
+  },
+  "health": {
+    "cpuTempC": 85
   }
 }

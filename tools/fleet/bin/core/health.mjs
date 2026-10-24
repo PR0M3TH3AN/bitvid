@@ -5,12 +5,16 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { tmuxCommand } from './tmux.mjs';
 
 export const HEALTH_DEFAULTS = {
   diskFreePct: 10,
   diskFreeGb: 5,
   memoryAvailablePct: 15,
   swapUsedPct: 50,
+  // Occupancy alone is not tight: Linux keeps swapped pages. swapUsedPct counts
+  // only when available memory is also low. swapFullPct counts on its own.
+  swapFullPct: 90,
   cpuTempC: 90,
   batteryPct: 20,
   batteryMinutes: 30,
@@ -556,8 +560,9 @@ function listPanes(c, opt) {
   if (opt.panes) return opt.panes;
   const session = `fleet-${c?.project || 'fleet'}`.replace(/[.:]/g, '-');
   return (c?.areas || []).map((area) => {
-    const r = sh('tmux', ['list-panes', '-t', `${session}:${area.id}`, '-F', '#{pane_pid}'], 2000);
-    const pid = Number(String(r || '').trim().split(/\s+/)[0]);
+    const r = tmuxCommand(c, ['list-panes', '-t', `${session}:${area.id}`, '-F', '#{pane_pid}'], { timeout: 2000 });
+    const text = r.status === 0 ? r.stdout : null;
+    const pid = Number(String(text || '').trim().split(/\s+/)[0]);
     return { id: area.id, pid: Number.isInteger(pid) && pid > 0 ? pid : null };
   });
 }
@@ -600,8 +605,15 @@ function judge(snap, limits) {
   }
   if (mem?.swapTotalBytes > 0 && mem.swapUsedBytes != null) {
     const pct = (100 * mem.swapUsedBytes) / mem.swapTotalBytes;
-    if (pct >= limits.swapUsedPct) {
-      crossed.push({ id: 'swap', words: `swap ${Math.round(pct)}% used, at or over ${limits.swapUsedPct}%` });
+    const availablePct = mem.totalBytes > 0 && mem.availableBytes != null ? (100 * mem.availableBytes) / mem.totalBytes : null;
+    const memoryLow = availablePct != null && availablePct < limits.memoryAvailablePct;
+    const nearFull = pct >= limits.swapFullPct;
+    // Occupancy alone is normal on Linux. Count it when memory is also low, or when swap is near full.
+    if (nearFull || (memoryLow && pct >= limits.swapUsedPct)) {
+      const words = nearFull
+        ? `swap ${Math.round(pct)}% used, near full (at or over ${limits.swapFullPct}%)`
+        : `swap ${Math.round(pct)}% used while available memory is under ${limits.memoryAvailablePct}%`;
+      crossed.push({ id: 'swap', words });
     }
   }
   const seen = new Set();

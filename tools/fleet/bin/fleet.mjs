@@ -41,7 +41,8 @@
 //   fleet health [--json]            one snapshot: CPU, memory, disk, temps, battery, per-area use
 //   fleet prompt <id>                 print the composed system prompt for an area
 //   fleet crontab                     PRINT the crontab lines for scheduled jobs (never installs)
-//   fleet run-job <name>              one headless run of docs/agents/schedules/<name>.md (sched.sh calls this)
+//   fleet run-job <name>              explicit manual headless one-shot; cron uses scheduled-job
+//   fleet scheduled-job <name>       guarded cron entry: skips when down or paused
 //   fleet sched-env <name>            shell vars for sched.sh
 //   fleet lander start|status         start a drain-and-exit lander, or print its status
 //
@@ -55,6 +56,8 @@ import { KIT, loadConfig, loadAdapter, area as getArea, dispatcher, sessionName,
 import { commitWork, setupCommit, tellDispatch, hearInterpreter, fleetStatus } from './core/ops.mjs';
 import { readWakeLog } from './core/wake-log.mjs';
 import { fleetHealth, formatHealth } from './core/health.mjs';
+import { guardSchedule } from './core/schedule-guard.mjs';
+import { tmuxCommand, rememberTmuxServer } from './core/tmux.mjs';
 import { fleetUpdate, recordInstalled, isTemplatePath } from './core/update.mjs';
 
 const argv = process.argv.slice(2);
@@ -148,11 +151,12 @@ async function launch(a, { fresh, bg, dry, sessions }) {
   const ad = await adapterFor(a.harness);
   if (!ensureWorktree(a)) return true;
   const windowNames = () => {
-    const listed = spawnSync('tmux', ['list-windows', '-t', tmuxSession(), '-F', '#{window_name}'], { encoding: 'utf8' });
+    const listed = tmuxCommand(c, ['list-windows', '-t', tmuxSession(), '-F', '#{window_name}']);
     return listed.status === 0 ? listed.stdout.split('\n').filter(Boolean) : [];
   };
   const open = windowNames().includes(a.id);
   if (open && !dry) {
+    rememberTmuxServer(c);
     console.error(`warn: ${a.id} already has tmux window ${tmuxSession()}:${a.id}; skipping. \`fleet down --only ${a.id}\` closes it`);
     return true;
   }
@@ -198,8 +202,9 @@ async function launch(a, { fresh, bg, dry, sessions }) {
   const sup = [process.execPath, process.argv[1], 'supervise', a.id, '--config', c.file].map(q).join(' ');
   if (spawnSync('tmux', ['-V']).status === 0) {
     const s = tmuxSession();
-    if (spawnSync('tmux', ['has-session', '-t', s]).status !== 0) spawnSync('tmux', ['new-session', '-d', '-s', s, '-n', 'shell']);
-    spawnSync('tmux', ['new-window', '-t', s, '-n', a.id, '-c', a.worktree, sup], { stdio: 'inherit' });
+    if (tmuxCommand(c, ['has-session', '-t', s]).status !== 0) tmuxCommand(c, ['new-session', '-d', '-s', s, '-n', 'shell']);
+    tmuxCommand(c, ['new-window', '-t', s, '-n', a.id, '-c', a.worktree, sup], { stdio: 'inherit' });
+    rememberTmuxServer(c);
     console.log(`[${a.id}] tmux window ${s}:${a.id} budget=${budgetLabel}`);
   } else {
     console.log(`[${a.id}] no tmux: run this yourself\n  ${sup}`);
@@ -275,10 +280,10 @@ async function down() {
     }
     const latest = readRun(c, a.id);
     if (killed || latest?.status === 'running') writeRun(c, a.id, { ...latest, status: 'stopped', reason: 'down', endedAt: new Date().toISOString() });
-    if (!full) spawnSync('tmux', ['kill-window', '-t', `${tmuxSession()}:${a.id}`]);
+    if (!full) tmuxCommand(c, ['kill-window', '-t', `${tmuxSession()}:${a.id}`]);
   }
   if (full) {
-    spawnSync('tmux', ['kill-session', '-t', tmuxSession()]);
+    tmuxCommand(c, ['kill-session', '-t', tmuxSession()]);
     const pid = landerPid(c);
     if (stopPid(pid)) console.log(`lander stopped (${pid})`);
     else console.log('lander not running');
@@ -640,6 +645,7 @@ function tool(name) {
 
 const run = { up, down, status, supervise: () => supervise(argv[1]), worktrees, crontab,
   prompt: async () => console.log(composePrompt(getArea(c, argv[1]), await adapterFor(getArea(c, argv[1]).harness))),
+  'scheduled-job': async () => { process.exitCode = (await guardSchedule(c, argv[1])).status; },
   'run-job': () => runJob(argv[1]), 'sched-env': () => schedEnv(argv[1]), lander: () => lander(argv[1] ?? 'status'),
   commit: commitCmd, 'setup-commit': setupCommitCmd, update: updateCmd, tell: tellCmd, hear: hearCmd, wakes: wakesCmd, health: healthCmd,
   doctor: () => tool('doctor'), landq: () => tool('landq'), backlog: () => tool('backlog'),
