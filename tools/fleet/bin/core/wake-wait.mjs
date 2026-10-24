@@ -11,5 +11,6 @@ if (runningAsMain(import.meta.url)) {
     file: flag(process.argv, '--file') || '',
     pollMs: Number(flag(process.argv, '--poll-ms')) || 0,
     maxMs: Number(flag(process.argv, '--max-ms')) || 0,
+    enterOnly: process.argv.includes('--enter-only'),
   });
 }

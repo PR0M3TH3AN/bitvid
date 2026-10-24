@@ -2,10 +2,11 @@
 // both call these. Do not copy this logic into a plugin or a second server.
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { KIT, area as getArea, die, pidAlive, tryGit, git, mainRef, writeAtomic, today, landerIsUp, matchesAny, startLander, runTimedSync } from '../lib.mjs';
 import { send as mailboxSendFile, read as mailboxReadDir, archive as mailboxArchiveDir } from '../../adapters/mailbox.mjs';
 import { appendWakeLog, priorWakes } from './wake-log.mjs';
+import { tmuxCommand, tmuxSocketFacts } from './tmux.mjs';
 
 const STATUSES = ['open', 'in-progress', 'blocked', 'done', 'deferred'];
 const SPECIAL = ['owner', 'scheduler', 'interpreter'];
@@ -232,32 +233,32 @@ function tmuxTarget(c, areaId) {
   return `fleet-${c.project}`.replace(/[.:]/g, '-') + `:${areaId}`;
 }
 
-function tmuxText(args) {
-  return spawnSync('tmux', args, { encoding: 'utf8' });
+function tmuxText(c, args) {
+  return tmuxCommand(c, args);
 }
 
-function capturePane(target) {
-  const r = tmuxText(['capture-pane', '-p', '-t', target]);
+function capturePane(c, target) {
+  const r = tmuxText(c, ['capture-pane', '-p', '-t', target]);
   return r.status === 0 ? r.stdout : '';
 }
 
-function cursorRow(target, pane) {
-  const info = tmuxText(['display-message', '-p', '-t', target, '#{cursor_y}']);
+function cursorRow(c, target, pane) {
+  const info = tmuxText(c, ['display-message', '-p', '-t', target, '#{cursor_y}']);
   const y = Number(String(info.stdout || '').trim());
   const rows = String(pane).split('\n');
   if (!Number.isInteger(y) || y < 0 || y >= rows.length) return rows[rows.length - 1] || '';
   return rows[y] || '';
 }
 
-function stillInInput(target, line) {
-  return cursorRow(target, capturePane(target)).includes(line);
+function stillInInput(c, target, line) {
+  return cursorRow(c, target, capturePane(c, target)).includes(line);
 }
 
-function inspectPane(target) {
-  if (tmuxText(['list-panes', '-t', target]).status !== 0) return { found: false, dead: false, interrupt: false, idleSec: null, pane: '' };
-  const info = tmuxText(['display-message', '-p', '-t', target, '#{pane_dead} #{window_activity}']);
+function inspectPane(c, target) {
+  if (tmuxText(c, ['list-panes', '-t', target]).status !== 0) return { found: false, dead: false, interrupt: false, idleSec: null, pane: '' };
+  const info = tmuxText(c, ['display-message', '-p', '-t', target, '#{pane_dead} #{window_activity}']);
   const match = String(info.stdout || '').trim().match(/^([01])\s+(\d+)$/);
-  const pane = capturePane(target);
+  const pane = capturePane(c, target);
   let idleSec = null;
   let dead = false;
   if (match) {
@@ -279,13 +280,14 @@ function snapBefore(before) {
 /** Window names in the fleet session, so a miss says what was there. */
 function sessionWindows(c) {
   const session = `fleet-${c.project}`.replace(/[.:]/g, '-');
-  const has = tmuxText(['has-session', '-t', session]);
-  const listed = tmuxText(['list-windows', '-t', session, '-F', '#{window_index} #{window_name}']);
+  const has = tmuxText(c, ['has-session', '-t', session]);
+  const listed = tmuxText(c, ['list-windows', '-t', session, '-F', '#{window_index} #{window_name}']);
   return {
     session,
     sessionUp: has.status === 0,
     windows: listed.status === 0 ? listed.stdout.split('\n').map((s) => s.trim()).filter(Boolean) : [],
     listError: listed.status === 0 ? '' : String(listed.stderr || has.stderr || '').trim().slice(0, 200),
+    ...tmuxSocketFacts(c),
   };
 }
 
@@ -314,7 +316,7 @@ function claimWakeLock(lock) {
   }
 }
 
-function handDeferred(c, areaId, from, file) {
+function handDeferred(c, areaId, from, file, { enterOnly = false } = {}) {
   const lock = wakeLockPath(c, areaId);
   if (!claimWakeLock(lock)) return { started: false };
   const poll = Number(c.wakeWait?.pollMs) > 0 ? Number(c.wakeWait.pollMs) : WAKE_WAIT_POLL_MS;
@@ -327,12 +329,13 @@ function handDeferred(c, areaId, from, file) {
     '--file', file || '',
     '--poll-ms', String(poll),
     '--max-ms', String(max),
+    ...(enterOnly ? ['--enter-only'] : []),
   ], { detached: true, stdio: 'ignore' });
   if (!child.pid) {
     try { fs.unlinkSync(lock); } catch { /* already gone */ }
     return { started: false };
   }
-  fs.writeFileSync(lock, `${JSON.stringify({ pid: child.pid, area: areaId, file: file || null, from, t: new Date().toISOString() })}\n`);
+  fs.writeFileSync(lock, `${JSON.stringify({ pid: child.pid, area: areaId, file: file || null, from, enterOnly, t: new Date().toISOString() })}\n`);
   child.unref();
   return { started: true, pid: child.pid };
 }
@@ -359,10 +362,10 @@ function submitWake(c, areaId, from, meta, before) {
   };
   const finish = (fields) => {
     const { line: _line, reason, ...logged } = fields;
-    appendWakeLog(c, { ...record, ...logged, tail: paneTail(capturePane(target)) });
+    appendWakeLog(c, { ...record, ...logged, tail: paneTail(capturePane(c, target)) });
     return { submitted: logged.outcome === 'submitted', reason, line };
   };
-  if (tmuxText(['send-keys', '-t', target, '-l', line]).status !== 0) {
+  if (tmuxText(c, ['send-keys', '-t', target, '-l', line]).status !== 0) {
     return finish({ action: 'send-failed', enterAttempts: 0, enterDelays: [], outcome: 'send-failed', reason: 'send-failed', line });
   }
   const enterDelays = [];
@@ -370,14 +373,29 @@ function submitWake(c, areaId, from, meta, before) {
   for (const delay of ENTER_DELAYS_MS) {
     sleepMs(delay);
     enterDelays.push(delay);
-    tmuxText(['send-keys', '-t', target, 'Enter']);
+    tmuxText(c, ['send-keys', '-t', target, 'Enter']);
     enterAttempts += 1;
     sleepMs(ENTER_SETTLE_MS);
-    if (!stillInInput(target, line)) {
+    if (!stillInInput(c, target, line)) {
       return finish({ action: 'typed', enterAttempts, enterDelays, outcome: 'submitted', reason: 'submitted', line });
     }
   }
-  return finish({ action: 'typed', enterAttempts, enterDelays, outcome: 'swallowed', reason: 'not-submitted', line });
+  // The line is still in the composer. A waiter presses Enter later. Do not
+  // give up, and do not type the line a second time.
+  if (meta.handoff === false) {
+    finish({ action: 'typed', enterAttempts, enterDelays, outcome: 'deferred-enter', reason: 'composer', line });
+    return { submitted: false, reason: 'not-submitted', still: true, line, enterAttempts, enterDelays };
+  }
+  const hand = handDeferred(c, areaId, from, meta.file || '', { enterOnly: true });
+  return finish({
+    action: 'typed',
+    outcome: hand.started ? 'deferred-enter' : 'waiter-running',
+    enterAttempts,
+    enterDelays,
+    waiterPid: hand.pid || null,
+    reason: 'composer',
+    line,
+  });
 }
 
 /**
@@ -387,7 +405,7 @@ function submitWake(c, areaId, from, meta, before) {
  */
 export function nudgeMail(c, areaId, from, meta = {}) {
   const target = tmuxTarget(c, areaId);
-  const before = inspectPane(target);
+  const before = inspectPane(c, target);
   const record = {
     t: new Date().toISOString(),
     area: areaId,
@@ -398,7 +416,7 @@ export function nudgeMail(c, areaId, from, meta = {}) {
   };
   const finish = (fields) => {
     const { line, reason, ...logged } = fields;
-    const pane = logged.action === 'no-window' ? '' : capturePane(target);
+    const pane = logged.action === 'no-window' ? '' : capturePane(c, target);
     const where = logged.action === 'no-window' ? { lookup: target, ...sessionWindows(c) } : {};
     appendWakeLog(c, { ...record, ...logged, ...where, tail: paneTail(pane) });
     return { submitted: logged.outcome === 'submitted', reason, ...(line ? { line } : {}) };
@@ -421,12 +439,15 @@ export function nudgeMail(c, areaId, from, meta = {}) {
 }
 
 /** Poll until the pane is idle, the mail is read, or the window closes. One process per area. */
-export function runWakeWait(c, { area, from, file, pollMs, maxMs } = {}) {
+export function runWakeWait(c, { area, from, file, pollMs, maxMs, enterOnly = false } = {}) {
   if (!area) die('wake-wait needs --area');
   const poll = Number(pollMs) > 0 ? Number(pollMs) : WAKE_WAIT_POLL_MS;
   const max = Number(maxMs) > 0 ? Number(maxMs) : WAKE_WAIT_MAX_MS;
   const target = tmuxTarget(c, area);
+  const line = nudgeLine(from);
   const started = Date.now();
+  let laterEnters = 0;
+  let mode = enterOnly ? 'enter' : 'wait';
   const release = () => releaseWakeLock(c, area);
   const log = (fields) => {
     const where = fields.outcome === 'no-window' ? { lookup: target, ...sessionWindows(c) } : {};
@@ -438,7 +459,7 @@ export function runWakeWait(c, { area, from, file, pollMs, maxMs } = {}) {
       trigger: 'deferred',
       ...fields,
       ...where,
-      tail: fields.outcome === 'no-window' ? '' : paneTail(capturePane(target)),
+      tail: fields.outcome === 'no-window' ? '' : paneTail(capturePane(c, target)),
     });
     release();
   };
@@ -448,24 +469,41 @@ export function runWakeWait(c, { area, from, file, pollMs, maxMs } = {}) {
     if (left <= 0) break;
     sleepMs(Math.min(poll, left));
     if (file && !unread()) {
-      return log({ action: 'already-read', outcome: 'already-read', enterAttempts: 0, enterDelays: [], before: { found: true, dead: false, interrupt: false, idleSec: null } });
+      return log({ action: 'already-read', outcome: 'already-read', enterAttempts: laterEnters, enterDelays: [], before: { found: true, dead: false, interrupt: false, idleSec: null } });
     }
-    const before = inspectPane(target);
+    const before = inspectPane(c, target);
     if (!before.found) {
-      return log({ action: 'no-window', outcome: 'no-window', enterAttempts: 0, enterDelays: [], before: snapBefore(before) });
+      return log({ action: 'no-window', outcome: 'no-window', enterAttempts: laterEnters, enterDelays: [], before: snapBefore(before) });
     }
     if (before.dead) {
-      return log({ action: 'no-window', outcome: 'dead', enterAttempts: 0, enterDelays: [], before: snapBefore(before) });
+      return log({ action: 'no-window', outcome: 'dead', enterAttempts: laterEnters, enterDelays: [], before: snapBefore(before) });
     }
     if (before.interrupt) continue;
-    try {
-      return submitWake(c, area, from, { trigger: 'deferred', file: file || null }, before);
-    } finally {
-      release();
+    if (mode === 'wait') {
+      const wake = submitWake(c, area, from, { trigger: 'deferred', file: file || null, handoff: false }, before);
+      if (wake.submitted || wake.reason === 'send-failed') {
+        release();
+        return wake;
+      }
+      mode = 'enter';
+      continue;
+    }
+    if (!stillInInput(c, target, line)) {
+      return log({ action: 'later-enter', outcome: 'submitted', enterAttempts: laterEnters, enterDelays: [], before: snapBefore(before) });
+    }
+    tmuxText(c, ['send-keys', '-t', target, 'Enter']);
+    laterEnters += 1;
+    sleepMs(ENTER_SETTLE_MS);
+    if (!stillInInput(c, target, line)) {
+      return log({ action: 'later-enter', outcome: 'submitted', enterAttempts: laterEnters, enterDelays: [], before: snapBefore(before) });
     }
   }
-  const before = inspectPane(target);
-  return log({ action: 'gave-up', outcome: 'timeout', enterAttempts: 0, enterDelays: [], before: snapBefore(before) });
+  const before = inspectPane(c, target);
+  const stuck = before.found && stillInInput(c, target, line);
+  if (mode === 'enter' && stuck) {
+    return log({ action: 'later-enter', outcome: 'swallowed', enterAttempts: laterEnters, enterDelays: [], before: snapBefore(before) });
+  }
+  return log({ action: 'gave-up', outcome: 'timeout', enterAttempts: laterEnters, enterDelays: [], before: snapBefore(before) });
 }
 
 function unreadFiles(c, id) {
@@ -477,13 +515,13 @@ function unreadFiles(c, id) {
 
 function paneView(c, areaId, idleAfterMs) {
   const target = tmuxTarget(c, areaId);
-  if (tmuxText(['list-panes', '-t', target]).status !== 0) return { window: 'dead', activity: 'unknown' };
-  const info = tmuxText(['display-message', '-p', '-t', target, '#{pane_dead} #{window_activity}']);
+  if (tmuxText(c, ['list-panes', '-t', target]).status !== 0) return { window: 'dead', activity: 'unknown' };
+  const info = tmuxText(c, ['display-message', '-p', '-t', target, '#{pane_dead} #{window_activity}']);
   const match = String(info.stdout || '').trim().match(/^([01])\s+(\d+)$/);
   if (info.status !== 0 || !match) return { window: 'dead', activity: 'unknown' };
   const [, dead, stamp] = match;
   if (dead === '1') return { window: 'dead', activity: 'unknown' };
-  const pane = capturePane(target);
+  const pane = capturePane(c, target);
   const busy = BUSY_RE.test(pane);
   const ageMs = Date.now() - Number(stamp) * 1000;
   const activity = busy || ageMs < idleAfterMs ? 'working' : 'idle';

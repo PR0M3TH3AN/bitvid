@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # sched.sh <job> — the machine-level scheduler entry, called from the system crontab
 # (or a systemd timer). Runs docs/agents/schedules/<job>.md as ONE short headless run
-# in the dispatcher's worktree via `fleet run-job`, and:
+# in the dispatcher's worktree via guarded `fleet scheduled-job`, and:
 #   - skips during quiet hours unless the job has `quietHours: "allowed"` in fleet.config.json
-#   - skips while <stateDir>/PAUSED exists (wind-down, or the owner), except jobs with
-#     `ignorePause: true` (restart)
+#   - skips while <stateDir>/PAUSED exists, including the restart job
+#   - scheduled-job requires a live interactive fleet and stops its own child on down/pause
 #   - flock -n: if the previous run of this job is still going, skip instead of piling up
 #   - timeout: the job's timeoutMin (default 40). `fleet run-job` applies the same
 #     limit and kills the child process group; this `timeout` is the backstop
@@ -25,11 +25,11 @@ if [ "$QUIET_OK" != 1 ]; then
     echo "$(date -Is) quiet hours, skipped" >> "$LOG"; exit 0
   fi
 fi
-if [ -f "$STATE/PAUSED" ] && [ "$ALWAYS" != 1 ]; then
+if [ -f "$STATE/PAUSED" ]; then
   echo "$(date -Is) fleet paused ($(head -c 200 "$STATE/PAUSED")), skipped" >> "$LOG"; exit 0
 fi
 {
   echo "=== $(date -Is) $job start"
-  flock -n "$STATE/sched-$job.lock" timeout "${TIMEOUT_MIN}m" node "$HERE/fleet.mjs" run-job "$job" < /dev/null
+  flock -n "$STATE/sched-$job.lock" timeout "${TIMEOUT_MIN}m" node "$HERE/fleet.mjs" scheduled-job "$job" < /dev/null
   echo "=== $(date -Is) $job exit $?"
 } >> "$LOG" 2>&1

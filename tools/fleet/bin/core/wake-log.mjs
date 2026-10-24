@@ -40,6 +40,7 @@ export function wakeFlag(entry) {
     const last = Array.isArray(entry.prior) ? entry.prior[entry.prior.length - 1] : null;
     const age = entry.ageSec ?? '?';
     if (!last) return `still unread after ${age}s; no earlier wake`;
+    if (last.outcome === 'deferred-enter' || (last.action === 'later-enter' && last.outcome !== 'submitted')) return `woke at ${last.t} (${last.trigger}), wake line still in the composer, still unread after ${age}s`;
     if (last.outcome === 'swallowed') return `woke at ${last.t} (${last.trigger}), wake line still in the composer, still unread after ${age}s`;
     if (last.outcome === 'timeout') return `woke at ${last.t} (${last.trigger}), pane stayed busy until the waiter stopped, still unread after ${age}s`;
     if (last.outcome === 'deferred' || last.action === 'deferred') return `woke at ${last.t} (${last.trigger}), handed to a waiter because the pane was busy, still unread after ${age}s`;
@@ -51,8 +52,14 @@ export function wakeFlag(entry) {
   if (entry.action === 'no-window' || entry.outcome === 'no-window') {
     const names = Array.isArray(entry.windows) && entry.windows.length ? entry.windows.join(', ') : 'none';
     const looked = entry.lookup || entry.window || 'unknown window';
-    return `pane not found (looked up ${looked}; session windows: ${names})`;
+    const sock = entry.socket ? `socket ${entry.socket}${entry.socketExists === false ? ' missing' : ''}` : 'no recorded socket';
+    return `pane not found (looked up ${looked}; ${sock}; session windows: ${names})`;
   }
+  if (entry.action === 'later-enter' && entry.outcome === 'submitted') {
+    return entry.enterAttempts ? 'a later Enter left the composer' : 'the wake line left the composer before the later Enter';
+  }
+  if (entry.action === 'later-enter' && entry.outcome === 'swallowed') return `a later Enter still left the wake line in the composer (${entry.enterAttempts} more)`;
+  if (entry.outcome === 'deferred-enter') return `wake line still in the composer after ${entry.enterAttempts} Enter; a later Enter is waiting`;
   if (entry.outcome === 'waiter-running') return 'a waiter is already polling this pane';
   if (entry.outcome === 'already-read') return 'mail was read before the pane went idle, so nothing was typed';
   if (entry.outcome === 'timeout') return 'pane stayed busy until the waiter stopped';
