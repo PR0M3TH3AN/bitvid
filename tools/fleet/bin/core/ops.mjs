@@ -3,9 +3,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { KIT, area as getArea, die, pidAlive, tryGit, git, mainRef, writeAtomic, today, landerIsUp, matchesAny, startLander, runTimedSync } from '../lib.mjs';
+import { KIT, area as getArea, die, pidAlive, tryGit, git, mainRef, writeAtomic, today, landerIsUp, matchesAny, startLander, runTimedSync, readRun } from '../lib.mjs';
 import { send as mailboxSendFile, read as mailboxReadDir, archive as mailboxArchiveDir } from '../../adapters/mailbox.mjs';
 import { appendWakeLog, priorWakes } from './wake-log.mjs';
+import { readHoldMap, readProgressMap, STALL_MIN } from './progress.mjs';
 import { tmuxCommand, tmuxSocketFacts } from './tmux.mjs';
 
 const STATUSES = ['open', 'in-progress', 'blocked', 'done', 'deferred'];
@@ -549,17 +550,39 @@ function senderOf(file) {
  * That is the only recovery. It runs when someone looks at status, reads mail,
  * hears, or tells. A filename already nudged is not nudged again. There is no timer.
  */
-export function fleetStatus(c, { recoverAfterMs = RECOVER_AFTER_MS, idleAfterMs = IDLE_AFTER_MS } = {}) {
+export function fleetStatus(c, { recoverAfterMs = RECOVER_AFTER_MS, idleAfterMs = IDLE_AFTER_MS, views = null } = {}) {
   const state = readNudgeState(c);
   let stateDirty = false;
   const recovered = [];
+  const configured = Number(c.progress?.stallMin);
+  const stallMin = Number.isFinite(configured) && configured >= 0 ? configured : STALL_MIN;
+  const progress = readProgressMap(c);
+  const holds = readHoldMap(c);
   const areas = c.areas.map((a) => {
-    const view = paneView(c, a.id, idleAfterMs);
+    const view = views?.[a.id] || paneView(c, a.id, idleAfterMs);
     const unread = unreadFiles(c, a.id);
+    const mark = progress[a.id] || null;
+    const ageMin = mark?.at ? (Date.now() - Date.parse(mark.at)) / 60000 : null;
     const row = {
       id: a.id, role: a.role, harness: a.harness,
       window: view.window, unread: unread.length, activity: view.activity,
+      progress: mark && Number.isFinite(ageMin) ? { at: mark.at, line: mark.line, ageMin: Math.round(ageMin) } : null,
+      hold: holds[a.id] || null,
+      stalled: false,
+      stallReason: null,
     };
+    const quiet = view.window === 'alive' && unread.length === 0;
+    if (quiet && mark && Number.isFinite(ageMin) && ageMin >= stallMin) {
+      row.stalled = true;
+      row.stallReason = `no progress for ${Math.round(ageMin)} min and no unread mail`;
+    } else if (quiet && !mark) {
+      const started = Date.parse(readRun(c, a.id)?.startedAt || '');
+      const upMin = Number.isFinite(started) ? (Date.now() - started) / 60000 : null;
+      if (upMin != null && upMin >= stallMin) {
+        row.stalled = true;
+        row.stallReason = `no checkpoint for ${Math.round(upMin)} min and no unread mail`;
+      }
+    }
     const oldest = unread[0];
     const age = oldest ? Date.now() - oldest.mtimeMs : 0;
     const already = (state[a.id] || []).includes(oldest?.file);

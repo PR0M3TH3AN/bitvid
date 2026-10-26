@@ -7,6 +7,12 @@ override a stale system prompt. Nothing filters them down to a window of days.
 The session manager adds a line here whenever a rule, a prompt, a tool's usage, or
 a landing rule changes.
 
+## 2026-10-26
+
+- Owner requests kit beta 859f95f, config `[mcp_servers.agent-fleet] default_tools_approval_mode = "approve"`, saved handoffs and a controlled restart. This approval replaces the earlier auto setting; use MCP mail tools, not shell mail. Keep all product changes, queued landings, local commits and historical evidence. Interpreter owns kit setup only; the client torrent implementation scope remains the independently reviewed routing in dispatch docs/agents/ROUTING-2026-10-26-client9-torrent.md.
+- Updated health guidance supersedes older blanket swap/load holds: a nearly full swap file with ample available RAM and no swap-in is advisory; external-app load while fleet areas are idle does not hold work. Follow fresh `fleet health`, preserve health.cpuTempC=85 and one heavy job at a time. Do not stop unrelated processes. When a real heavy-work hold applies, record its owner, unblock condition and next light task rather than going idle. Earlier cooling/reproduction failures remain evidence, not permanent holds.
+- Recovery uses `fleet ready`, progress checkpoints and explicit holds. Dependencies and runners are durable under stateDir/deps and listed in manifest.txt. Continue current work from the saved handoff after interruptions, not a repeated baseline. QA corrected mobile runner retains the original failed harness result and strict A/B checks; no mobile cause or product-fix claim until actual measured evidence.
+
 ## 2026-10-23
 
 - Owner campaign continuation "ok lets get the fleet working some more" relayed12:48:12. Resume existing6 priorities, no further routineyes: client exactHLS prep/sole unchangedgate after resourceclearance; QA same-script EPERM/hostlaunchprep; storage disjoint read-only RangeGET audit. Interpreter freezes direct/setup targetwrites during productgates and requires actual dispatch slotACK before any heavy validation. Kit logs prove overlap12:42:49–12:46:15 with HLS interruptedgate12:41:48–12:46:14; do not attribute heat exclusively to unrelatedapps. Both rejectedruns preserved. Dispatch requires2coolingsnapshots<75C/~30sapart/load<8/ampleRAM for nextlonggate; sustained85C stop unchanged; no configoverride/gateweakening.
