@@ -369,13 +369,13 @@ test("active probe remains shared while disposed owners and late observer entrie
   const source = magnet();
   const first = f.feed([source]);
   first.observer.show();
-  first.dispose();
   const liveUpdates = [];
   const live = f.feed([source], {
     onUpdate: (event) => liveUpdates.push(event)
   });
+  live.observer.show(); // Retain a live owner BEFORE releasing the first.
+  first.dispose();
   first.observer.show(); // An already-delivered entry may arrive after disconnect.
-  live.observer.show();
   assert.equal(
     liveUpdates.some((event) => event.card === first.cards[0]),
     false,
@@ -414,7 +414,7 @@ test("repeated old disposal cannot cancel a reattached live registration", async
   assert.equal(renewed.cards[0].dataset.streamHealthState, "healthy");
 });
 
-test("disposed active completion remains cached for a later live owner", async (t) => {
+test("disposed active completion cannot cache and a later owner requests fresh work", async (t) => {
   const f = fixture(t);
   const source = magnet();
   const old = f.feed([source]);
@@ -427,10 +427,15 @@ test("disposed active completion remains cached for a later live owner", async (
   live.observer.show();
   assert.equal(
     f.calls.length,
-    1,
-    "ownerless active completion must retain its healthy cache result"
+    2,
+    "ownerless active completion must not replace a fresh probe"
   );
+  assert.equal(readTorrentProbeFromStorage(source.slice(-40)), null);
+  assert.equal(live.cards[0].dataset.streamHealthState, "checking");
+  f.calls[1].finish();
+  await flush();
   assert.equal(live.cards[0].dataset.streamHealthState, "healthy");
+  assert.equal(readTorrentProbeFromStorage(source.slice(-40)).value.healthy, true);
 });
 
 test("completed healthy and negative probes retain existing cache TTL behavior", async (t) => {

@@ -1,0 +1,8 @@
+- [x] Narrow implementation and explicit spec/integrity correction preserved.
+- [x] Final focused6files60/60/0cancelled.
+- [x] 19unique mutants killed; all27newcases covered, no surviving variants.
+- [x] Targetedlint4pass; sandboxhexEPERM plus unchangedhostpass retained.
+- [x] Durable candidate/log/mutant snapshots+manifest saved; SAFE TO RESTART.
+- [ ] Resume: review final delta/notes; finish READY and commit named paths.
+- [ ] Merge currentunstable (never rebase), verify runtime equality/checks.
+- [ ] Explicit grant for remaining lint/full/build/browser/submission; durable landing/ancestry before closure.

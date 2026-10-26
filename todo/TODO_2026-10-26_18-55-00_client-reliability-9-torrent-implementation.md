@@ -1,0 +1,7 @@
+- [x] Read exact dispatch routing and newest rules/current tree.
+- [x] Write explicit spec correction and integrity note before superseded expectations.
+- [ ] Implement narrow grid ownership and optional helper lifecycle.
+- [ ] Focused real-chain/helper tests, edge callbacks, shared/live/legacy/queue controls.
+- [ ] Every new scenario rejects a deliberate restored mutant.
+- [ ] Targeted lint and evidence/READY handoff.
+- [ ] Later full/build/browser/normal landing under separate resource grant.
