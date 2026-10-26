@@ -1,0 +1,5 @@
+- [x] Current rules/mailbox/HEAD applicability and existing item claim.
+- [x] Verify runtime equality, diagnostic syntax and four dist pins without executing browser.
+- [ ] Fresh dispatch scope/slot grant and cooling clearance.
+- [ ] Authorized bounded Firefox stage diagnostic; preserve exact failure/timeline/cleanup and release slot.
+- [ ] Classify prerequisite before any fixture or product changes; item9 stays open.
