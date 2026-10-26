@@ -195,20 +195,48 @@ function queueProbe(magnet, cacheKey, priority = 0, webSeeds = [], owner) {
 
   if (probeInflight.has(cacheKey)) {
     const record = probeInflight.get(cacheKey);
-    record.owners.add(owner);
-    return record;
+    if (!record.cancelled) {
+      record.owners.add(owner);
+      owner.release = () => releaseProbe(record, owner, cacheKey);
+      return record;
+    }
   }
 
   const record = { owners: new Set([owner]), cancelled: false };
+  owner.release = () => releaseProbe(record, owner, cacheKey);
+  // Publish ownership and the result before starting IO: client.add() can
+  // synchronously unregister a card or register another owner of this source.
+  let resolveJob;
+  let rejectJob;
+  record.promise = new Promise((resolve, reject) => {
+    resolveJob = resolve;
+    rejectJob = reject;
+  })
+    .then((result) => {
+      if (record.cancelled) return null;
+      const normalized = normalizeResult(result);
+      if (cacheKey) setCacheEntry(cacheKey, normalized);
+      return normalized;
+    })
+    .finally(() => {
+      if (cacheKey && probeInflight.get(cacheKey) === record) {
+        probeInflight.delete(cacheKey);
+      }
+    });
+  if (cacheKey) probeInflight.set(cacheKey, record);
   record.job = probeQueue.run(
     () =>
       torrentClient
-        .probePeers(magnet, {
-          timeoutMs: PROBE_TIMEOUT_MS,
-          maxWebConns: 2,
-          polls: PROBE_POLL_COUNT,
-          urlList: webSeeds,
-        })
+        .probePeers(
+          magnet,
+          {
+            timeoutMs: PROBE_TIMEOUT_MS,
+            maxWebConns: 2,
+            polls: PROBE_POLL_COUNT,
+            urlList: webSeeds,
+          },
+          record
+        )
         .catch((err) => ({
           healthy: false,
           peers: 0,
@@ -219,26 +247,7 @@ function queueProbe(magnet, cacheKey, priority = 0, webSeeds = [], owner) {
         })),
     priority
   );
-  record.promise = record.job.promise
-    .then((result) => {
-      if (record.cancelled) {
-        return null;
-      }
-      const normalized = normalizeResult(result);
-      if (cacheKey) {
-        setCacheEntry(cacheKey, normalized);
-      }
-      return normalized;
-    })
-    .finally(() => {
-      if (cacheKey && probeInflight.get(cacheKey) === record) {
-        probeInflight.delete(cacheKey);
-      }
-    });
-
-  if (cacheKey) {
-    probeInflight.set(cacheKey, record);
-  }
+  record.job.promise.then(resolveJob, rejectJob);
 
   return record;
 }
@@ -246,13 +255,13 @@ function queueProbe(magnet, cacheKey, priority = 0, webSeeds = [], owner) {
 function releaseProbe(record, owner, cacheKey) {
   owner.active = false;
   record.owners.delete(owner);
-  // A running probe keeps its existing lifecycle and cache behavior. Only work
-  // still waiting for a slot can be cancelled when its last card unregisters.
-  if (!record.owners.size && record.job?.cancel()) {
+  if (!record.owners.size && !record.cancelled) {
     record.cancelled = true;
     if (probeInflight.get(cacheKey) === record) {
       probeInflight.delete(cacheKey);
     }
+    record.job?.cancel();
+    record.cancelActive?.();
   }
 }
 
@@ -524,10 +533,8 @@ function handleCardVisible({ card, pendingByCard, liveCards, priority = 0 }) {
   const webSeeds = webSeed ? [webSeed] : [];
 
   const owner = { active: true };
-  const record = queueProbe(magnet, infoHash, priority, webSeeds, owner);
-  owner.release = () => releaseProbe(record, owner, infoHash);
-
   pendingByCard.set(card, owner);
+  const record = queueProbe(magnet, infoHash, priority, webSeeds, owner);
 
   record.promise
     .then((result) => {

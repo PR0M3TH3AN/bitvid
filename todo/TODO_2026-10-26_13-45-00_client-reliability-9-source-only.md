@@ -1,0 +1,6 @@
+- [x] Read current rules/PROGRAM/brief/area TODO/task/mail and reclaim item9.
+- [x] Verify current source equals landed HLS boundary and prior raw prefix evidence hash.
+- [x] Reconcile original failures and separate controlled browser results without rerun.
+- [x] Recommend bounded active torrent owner lifecycle measurements; no defect asserted from source.
+- [ ] Dispatch route next offline investigation; product changes require demonstrated defect and explicit routing.
+- [ ] Remaining item9 torrent qualification; real playback/segments/RangeGET/live scope unverified.

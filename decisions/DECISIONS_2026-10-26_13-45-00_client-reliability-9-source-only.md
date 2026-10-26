@@ -1,0 +1,5 @@
+- Preserve seven existing dirty notes verbatim alongside a new reconciliation, rather than rewriting old failed/incomplete results.
+- Treat separate Firefox prefix3/3 as controlled qualification; original header-onlyFAIL remains separate. No speculative product fix or repeated browser.
+- Use actual product SHA83fd2495 for ancestry; c95abe22 is a build identifier.
+- Next recommended investigation is active torrent final-owner disposal under item9/priority2, with real production chain and controlled IO; source hints alone are not reproduced defect or implementation authority.
+- Notes-only changes need source/hash/whitespace verification, no redundant full/lint/build. Commit evidence locally; no queue submission while source-only routing holds.

@@ -1,0 +1,8 @@
+# Client9 resumed candidate review
+
+- Restart HEAD `ab1ea6dee1da7eebd2b5c08f3d5935dfbfb045d0`; unstable `04c8c7cf61eed29424f561297ef49c6cdfa91a0a`. Reclaimed existing item9; mailbox empty. Read local rules and newer unstable rules (2026-10-26) plus saved dispatch torrent routing. No repeated baseline or new scope.
+- Review: final-owner synchronous cancellation/inflight removal, optional probePeers hook, prompt timer cleanup and deferred temporary-torrent destruction before slot release; shared client/owners and identity guards preserved. Product files only gridHealth.js and webtorrent.js; two explicitly authorized old expectations corrected. No product edits this turn.
+- `sha256sum` of four candidate source/test files matches durable manifest exactly. Existing six-file focused evidence remains 60/60, fail0/cancelled0; 19 unique killed mutants, 20 variant executions/all27 new scenarios covered. This is preserved prior-run evidence, not a new test run.
+- `git diff --check`: exit0. `git diff ab1ea6de unstable -- js tests config package.json package-lock.json`: exit0, empty. Upstream kit changes do not change those validation inputs. No duplicate focused run justified.
+- Fresh MCP health19:07:29UTC: TCPU97.1C exceeds85C threshold; load11.58, availableRAM64.2%, swapInPages0. Heavy work held; no test/build/browser/submission launched. Hold owner dispatch; next allowed light work candidate commit/merge/runtime comparison. Need fresh resource clearance and explicit slot.
+- Remaining full lint, merged-tree normal full gate, build/browser qualification and durable landing/ancestry. No live peer/network teardown, playback, CPU improvement or whole Stage3 qualification.

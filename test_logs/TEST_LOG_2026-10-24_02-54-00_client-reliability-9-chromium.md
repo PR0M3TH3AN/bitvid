@@ -1,0 +1,9 @@
+# Client9 controlled native Chromium HLS qualification
+
+- HEAD `7b667e79`; dist `c95abe22`; exact fixture SHA256 `28cf3511c0ac154e59ac519c0f68dfe4099cb37e016bae31c3564ed58db9375e`. Pinned controller/observer/helper/cache hashes matched.
+- Dispatch02:53:39Z granted one normal host approval invocation after sandbox loopback EPERM. Fresh local health02:53:50Z CPU58.1C/load1.24; swap82% advisory. START announced; normal approval mechanism accepted host invocation.
+- Command: `env -u NODE_TEST_CONTEXT -u UNIT_TEST_SHARD node /tmp/client9-hls-native-smoke-prepared.mjs chromium > /tmp/client9-hls-chromium-host-20261024T0254.log 2>&1`. Natural exit0 in0.57s; finally browser/server cleanup completed; slot immediately released.
+- Three cases passed: fetch cancellation followed by exact same-source sequential rejoin; body-read cancellation; shared live owner. Both cancellations settle null and abort GET without aborting completed HEAD; cancelled fetch writes0/stale badge checking, body cancellation writes unchanged1. Replacement healthy/badge healthy/write1. Shared owner1HEAD/1GET/no abort, remaining badge healthy/totalwrites2.
+- Method/path/occurrence timeline:0HEAD cancel,1GET cancel,2HEAD same-source replacement,3GET replacement,4HEAD body,5GET body,6HEAD shared,7GET shared. All8 responses closed. Four nonlocal requests denied; page errors0. Full exact JSON retained in unique host output.
+- Original13:16UTC Chromium replacement timeout failure and sandbox EPERM output preserved unchanged; corrected method-aware fixture now passes once. No product/assertion edits, Firefox/repeated host invocation/full/build/submission.
+- Evidence uses native observer/fetch/AbortController/Response.text against controlled loopback responses. No same-turn browser identity, decoder, segments, actual playback, live network/peers, torrent, RangeGET, CPU improvement or wholeStage3 claim. Firefox awaits separate grant.

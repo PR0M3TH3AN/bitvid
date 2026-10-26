@@ -1,0 +1,11 @@
+# Client9 active torrent ownership contract correction
+
+Authority: dispatch docs/agents/ROUTING-2026-10-26-client9-torrent.md (17:38UTC), read locally by client after interpreter18:53 relay. Independent exact12cases=7pass/5fail/naturalexit1/network0/cleanup0 confirms client baseline. This note precedes any prior expectation edits.
+
+Source: docs/performance-efficiency-plan.md Stage3 explicitly extends owner cancellation to active torrent probes and says removed cards do not retain probes. Earlier queued-only implementation intentionally left running probes eligible across final-owner disposal, a new same-source owner and cache completion.
+
+Old tests/grid-health-lifecycle.test.mjs scenarios originally at367 and417 permit last-owner active work to be rejoined and ownerless success cached. New contract: final-owner disposal synchronously marks old work cancelled/unavailable; it cannot be rejoined, cache, or paint. Timer/cancel hooks are cleaned, cancelled promise settles null, and safe temporary-torrent destruction happens after event unwind before queue slot release exactly once. A fresh same-source owner requests fresh work; old callbacks/finalizer cannot delete/cache/paint over it. Cancellation does not depend on an AbortController or cooperative transport.
+
+Retain strict independent controls: one leaving owner cannot cancel another live owner, active healthy/error/timeout caches retain existing TTL behavior, standalone helper callers preserve results, queue cap4/priority/FIFO and destroy-before-slot safety remain. The shared probe client and unrelated torrents must survive. Replace the two superseded scenarios with equally strict sharing-with-live-owner and obsolete-cache/fresh-request assertions, and add real grid+probe resource/settlement/identity tests. No silent deletion or relaxed assertions.
+
+Scope only js/gridHealth.js ownership/inflight/cache and js/webtorrent.js probePeers optional lifecycle, plus focused tests/notes. No app, playback/service-worker engine, URL/HLS, magnet/tracker policy, concurrency/TTL/config changes. Current offline source defect does not qualify real peers/network byte release, browser decoding/playback, CPU, RangeGET or all Stage3. Full/build/browser/queue still need separate resource grant.

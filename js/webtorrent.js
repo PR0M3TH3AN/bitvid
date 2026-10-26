@@ -77,12 +77,15 @@ export class TorrentClient {
 
   /**
    * Helper to check if a magnet link has active peers without starting a full
-   * download. Used for "Stream Health" badges/indicators in the UI.
+   * download. Optional lifecycle belongs to grid cards; standalone callers
+   * retain their normal wire/error/timeout results.
    */
   async probePeers(
     magnetURI,
-    { timeoutMs = 8000, maxWebConns = 2, polls = 3, urlList = [] } = {}
+    { timeoutMs = 8000, maxWebConns = 2, polls = 3, urlList = [] } = {},
+    lifecycle
   ) {
+    if (lifecycle?.cancelled || lifecycle?.owners?.size === 0) return null;
     const magnet = typeof magnetURI === "string" ? magnetURI.trim() : "";
     if (!magnet) {
       return {
@@ -137,6 +140,26 @@ export class TorrentClient {
       let torrent = null;
       let timeoutId = null;
       let pollId = null;
+      let adding = false;
+      let disposalStarted = false;
+      let result = null;
+      const cancelActive = () => {
+        lifecycle.cancelled = true;
+        finalize(null);
+      };
+      const settleHealthy = () => {
+        const peers = Math.max(1, Math.floor(normalizeNumber(torrent?.numPeers, 1)));
+        finalize({ healthy: true, peers, reason: "peer" });
+      };
+      const settleError = (err) => {
+        const peers = Math.max(0, Math.floor(normalizeNumber(torrent?.numPeers, 0)));
+        finalize({
+          reason: "error",
+          error: toError(err),
+          peers,
+          webseedOnly: peers === 0 && hasWebSeed,
+        });
+      };
 
       // A successful probe commonly settles from WebTorrent's `wire` event.
       // Do not destroy the temporary torrent while that event is still being
@@ -144,21 +167,23 @@ export class TorrentClient {
       // listeners return, and synchronous destruction can leave its bitfield
       // null (`recalculate(...).fill` in the bundled client). The next task
       // guarantees the callback has fully unwound before cleanup.
-      const disposeProbeTorrent = (target, onDisposed = () => {}) => {
-        if (!target) {
-          onDisposed();
-          return;
-        }
+      const disposeProbeTorrent = () => {
+        if (adding || disposalStarted) return;
+        disposalStarted = true;
         const dispose = () => {
           try {
-            target.destroy({ destroyStore: true });
+            torrent?.destroy({ destroyStore: true });
           } catch (err) {
             // A completed or already-destroyed probe is harmless.
           } finally {
-            onDisposed();
+            torrent?.removeListener("wire", settleHealthy);
+            torrent?.removeListener("error", settleError);
+            if (lifecycle?.cancelActive === cancelActive) lifecycle.cancelActive = null;
+            resolve(lifecycle?.cancelled ? null : result);
           }
         };
-        setTimeout(dispose, 0);
+        if (torrent) setTimeout(dispose, 0);
+        else dispose();
       };
 
       const finalize = (overrides = {}) => {
@@ -179,10 +204,10 @@ export class TorrentClient {
             ? performance.now()
             : Date.now();
 
-        const isHealthy = Boolean(overrides.healthy);
-        const peersCount = Number.isFinite(overrides.peers) ? overrides.peers : 0;
+        const isHealthy = Boolean(overrides?.healthy);
+        const peersCount = Number.isFinite(overrides?.peers) ? overrides.peers : 0;
 
-        const result = {
+        result = overrides === null ? null : {
           healthy: isHealthy,
           peers: peersCount,
           reason: isHealthy ? "peer" : "timeout",
@@ -192,13 +217,18 @@ export class TorrentClient {
           durationMs: Math.max(0, endedAt - startedAt),
           ...overrides,
         };
-        emit("torrent-probe-result", result);
+        if (result) emit("torrent-probe-result", result);
         // Keep the grid-health queue slot occupied until the delayed teardown
         // completes. Otherwise the next probe can begin before this probe has
         // detached its tracker listeners, briefly exceeding listener limits.
-        disposeProbeTorrent(torrent, () => resolve(result));
+        disposeProbeTorrent();
       };
 
+      if (lifecycle) lifecycle.cancelActive = cancelActive;
+      if (lifecycle?.cancelled || lifecycle?.owners?.size === 0) {
+        cancelActive();
+        return;
+      }
       try {
         const addOptions = {
           announce: trackers,
@@ -225,6 +255,7 @@ export class TorrentClient {
         if (hasExplicitWebSeed) {
           addOptions.urlList = urlList;
         }
+        adding = true;
         torrent = client.add(augmentedMagnet, addOptions);
       } catch (err) {
         finalize({
@@ -233,26 +264,18 @@ export class TorrentClient {
           peers: 0,
           webseedOnly: hasWebSeed,
         });
+      } finally {
+        adding = false;
+      }
+      // Even cancellation inside add() must absorb a late error until the
+      // returned torrent can be safely destroyed on the next task.
+      torrent?.on("error", settleError);
+      if (settled) {
+        disposeProbeTorrent();
         return;
       }
-
-      const settleHealthy = () => {
-        const peers = Math.max(1, Math.floor(normalizeNumber(torrent?.numPeers, 1)));
-        finalize({ healthy: true, peers, reason: "peer" });
-      };
-
       torrent.once("wire", settleHealthy);
-
-      torrent.once("error", (err) => {
-        const peers = Math.max(0, Math.floor(normalizeNumber(torrent?.numPeers, 0)));
-        finalize({
-          healthy: false,
-          reason: "error",
-          error: toError(err),
-          peers,
-          webseedOnly: peers === 0 && hasWebSeed,
-        });
-      });
+      if (settled) return;
 
       if (safeTimeout > 0) {
         timeoutId = setTimeout(() => {

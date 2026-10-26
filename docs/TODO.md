@@ -80,6 +80,10 @@
 
 ## client-reliability
 
+- 2026-10-26 19:16UTC: item9 full lint11PASS; normal queue c20635bc interrupted for sustained90.1C→86C over38s. Durable rejected/red exit1, unstable04c8c7cf unchanged, not landed. Partial275/438starts/275unique,163notstarted; original log/result preserved in state/evidence/client9-torrent-validation-20261026. Slot RELEASED, fresh resource+new gate grant required; no auto-resubmit/build/browser. Evidence test_logs/TEST_LOG_2026-10-26_19-16-00_client-reliability-9-thermal-interruption.md.
+
+- 2026-10-26 resumed item9 active-torrent candidate `1b2362d2`, merged unstable `04c8c7cf` at `1bf50c1f`; exact saved hashes/focused60/60/19distinct killed mutants preserved. Remaining full lint/full/build/browser/normal landing require dispatch slot plus fresh health; TCPU97.1C at19:07:29 exceeds85C. No new tests or submission. Hold recorded and blocker mailed; real peers/byte teardown/wholeStage3 unverified. Evidence: test_logs/TEST_LOG_2026-10-26_19-07-50_client-reliability-9-resumed-ready.md.
+
 - 2026-10-20: item6 DONE: retained actual profile-history wiring regression landed b3fab032;normal gate exit0 with431 discovered/431 unique file starts,focused38/38,5 killed mutants,lint11/11,submitted ancestry0. Test-only,existing product behavior passes. Evidence test_logs/TEST_LOG_2026-10-20_15-41-00_client-reliability-6-landed.md. Real signers/relays/encryption/full-app modal/browser/build/synced Clear unverified. Expensive slot released;IDLE for owner local review,no optional work.
 
 - 2026-10-20: item6 test-only retention ready:new real-profile wiring3/3,focused5files/38scenarios,5 isolated runtime mutants failnaturally/0cancelled,lint11pass. Local remove/lastitem/clear/recreation andfake-synced reduced+empty replacement covered;historicalno-op rejected. No product/existing suite edits;full/normal slot pendingexplicit grant,full/browser/build unrun;real signers/relays/fullapp/syncedClear unverified. Unique integrity/evidence in test_logs/*client-reliability-6*.
