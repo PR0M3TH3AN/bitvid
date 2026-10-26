@@ -133,8 +133,28 @@ have it in `.task`, and wait if a peer's `.task` says they do.
 If you are blocked, put one line in your worktree's `.task`:
 `WAITING: <who> — <what> (since <date>)` and remove it when unblocked. The
 session manager's check-in reads every `.task`, so a missed message never leaves you stuck.
-Keep `.task` (one line: what you are doing now) current before any long step, so a
+Also record the hold with MCP `hold` (or `fleet hold`): the owner, the exact
+unblock condition, and the next task you are still allowed to do. Clear it when
+the condition is met. Keep `.task` (one line: what you are doing now) current before any long step, so a
 compaction or crash loses nothing.
+
+When work actually advances, write one checkpoint with MCP `progress` (or
+`fleet progress <your id> "<what changed>"`). A live window is not progress.
+Status and the check-in flag an area with no checkpoint for 20 minutes and no
+unread mail.
+
+When health holds heavy work, keep doing light work (source review, offline
+analysis) instead of going idle. The hold names that next task.
+
+Runners, dependency manifests, pinned archives, and evidence live in your
+worktree or `{{stateDir}}/deps`, with those names in `manifest.txt`. Never only
+in `/tmp`. The npm cache is disposable. Three pinned archives disappeared from
+`/tmp` and the npm cache, and QA could not run.
+
+There is no billing hook. If the pane says the five-hour window is nearly gone
+(for example "2% remaining"), write the checkpoint, mail your next step, and
+stop. After the reset, `fleet resume` is the one step back: it checks the
+mailbox, the approval path, deps, and health, and you continue from the checkpoint.
 
 ## Reporting
 

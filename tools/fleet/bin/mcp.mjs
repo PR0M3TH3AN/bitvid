@@ -12,6 +12,8 @@ import {
 import { fleetUpdate } from './core/update.mjs';
 import { readWakeLog } from './core/wake-log.mjs';
 import { fleetHealth } from './core/health.mjs';
+import { fleetReady } from './core/ready.mjs';
+import { writeProgress, writeHold, clearHold } from './core/progress.mjs';
 
 export const SERVER = { name: 'agent-fleet', version: '0.2.0' };
 const INSTRUCTIONS = [
@@ -20,7 +22,8 @@ const INSTRUCTIONS = [
   'mailbox_read at the start of a turn. Mail is always delivered; the prompt says when to act on it. Sandboxed agents commit with the commit tool (message plus paths, or all), not git commit. submit on that tool also queues the tip. Then go back to work. At your next natural checkpoint, land_status can report that submission. Waiting is optional. Never infer the lander or the land result from silence. landq_submit queues the committed tip (a dirty worktree warns and still queues HEAD) and starts a drain. Do not push main.',
   'A scarce machine is a prompt convention: say so in .task and wait if a peer already has it. There is no slot lock.',
   'Sessions, worktrees, and cron stay on the fleet CLI. This server does not start them.',
-  'setup_commit commits only the fleet setup files on the main checkout. A sandboxed agent uses it instead of git commit. update refreshes vendored runtime and the registered skill to this kit, leaves an edited prompt in place (the new template is a .kit file beside it), and commits only the paths it changed. It does not change fleet.config.json, product files, mail, or the landing queue. If that commit cannot write the index, it falls back to setup_commit. Mail to an open tmux window wakes it with a short line, not the body. mailbox_read and hear take those messages out of unread. fleet_status reports each window alive or dead, the unread count, and a working or idle guess. An idle area with mail that has been waiting is nudged once by that check. mailbox_read, hear, and tell run that same check. A second look does not nudge again. wake_log says whether the wake line was still in the composer, a later Enter submitted it, a waiter typed it after the pane was busy, the line left the composer but the mail is still unread, or the pane was not there. The missing-pane line names the windows and the tmux socket. Tell the user that case. Do not ask them to open the log. health is one snapshot of CPU, memory, swap, disk, temperature, battery, and each area process tree. Missing sensors are unavailable. Swap occupancy alone is not tight. The config health block is guidance. A lower cpuTempC is a per-repo edit, offered to the user, not a new default. A change to ~/.codex/config.toml needs a Codex reload. Say the verdict in plain words. Do not scrape the tmux pane.',
+  'Send mail with mailbox_send or tell. A shell fleet tell or mailbox send is a sandboxed command, and the MCP approval mode does not apply to it. progress writes the checkpoint that status uses to tell progress from a live window. hold records the owner, the exact unblock condition, and the next allowed task.',
+  'setup_commit commits only the fleet setup files on the main checkout. A sandboxed agent uses it instead of git commit. update refreshes vendored runtime and the registered skill to this kit, leaves an edited prompt in place (the new template is a .kit file beside it), and commits only the paths it changed. It does not change fleet.config.json, product files, mail, or the landing queue. If that commit cannot write the index, it falls back to setup_commit. Mail to an open tmux window wakes it with a short line, not the body. mailbox_read and hear take those messages out of unread. fleet_status reports each window alive or dead, the unread count, a working or idle guess, a stall when nothing has advanced, and any hold. An idle area with mail that has been waiting is nudged once by that check. mailbox_read, hear, and tell run that same check. A second look does not nudge again. wake_log says whether the wake line was still in the composer, a later Enter submitted it, a waiter typed it after the pane was busy, the line left the composer but the mail is still unread, or the pane was not there. The missing-pane line names the windows and the tmux socket. Tell the user that case. Do not ask them to open the log. health is one snapshot of CPU, memory, swap, disk, temperature, battery, and each area process tree. Missing sensors are unavailable. Near-full swap with plenty of available memory is not tight. Load from other programs is a note, not a hold. When health holds heavy work, keep doing light work. The config health block is guidance. A lower cpuTempC is a per-repo edit, offered to the user, not a new default. A change to ~/.codex/config.toml needs a Codex reload. Say the verdict in plain words. Do not scrape the tmux pane.',
 ].join(' ');
 
 const cwdProp = { type: 'string', description: 'Directory to resolve the fleet from. Defaults to this server\'s cwd.' };
@@ -42,7 +45,10 @@ export const TOOLS = [
   { name: 'hear', description: 'Read unread mailbox messages for the interpreter and move them out of unread.', inputSchema: { type: 'object', properties: { cwd: cwdProp } } },
   { name: 'fleet_status', description: 'Each area: tmux window alive or dead, unread mail count, and a working or idle guess. Idle with unread mail that has been waiting is nudged once.', inputSchema: { type: 'object', properties: { cwd: cwdProp } } },
   { name: 'wake_log', description: 'Recent wake attempts from the fleet state dir. Each line says the pane state, what was typed or skipped, and a plain-words flag when a wake likely failed. No mail bodies.', inputSchema: { type: 'object', properties: { limit: { type: 'number' }, cwd: cwdProp } } },
-  { name: 'health', description: 'One snapshot of CPU, memory, swap, disk free, temperature, battery, and per-area CPU and memory. Missing sensors are unavailable. The verdict names which suggested limits were crossed.', inputSchema: { type: 'object', properties: { cwd: cwdProp } } },
+  { name: 'health', description: 'One snapshot of CPU, memory, swap, disk free, temperature, battery, and per-area CPU and memory. Missing sensors are unavailable. The verdict names which suggested limits were crossed. Near-full swap with plenty of free RAM is not tight. Load outside the fleet is a note.', inputSchema: { type: 'object', properties: { cwd: cwdProp } } },
+  { name: 'ready', description: 'Startup check: one mailbox round trip, whether Codex approval for agent-fleet is approve, health, durable deps, checkpoints, and holds. Does not call a model.', inputSchema: { type: 'object', properties: { cwd: cwdProp } } },
+  { name: 'progress', description: 'Record one line of real progress for an area. Status uses this to tell progress from a live window.', inputSchema: { type: 'object', properties: { area: { type: 'string' }, line: { type: 'string' }, cwd: cwdProp }, required: ['area', 'line'] } },
+  { name: 'hold', description: 'Record a hold: owner, the exact unblock condition, and the next allowed task. clear removes it.', inputSchema: { type: 'object', properties: { area: { type: 'string' }, owner: { type: 'string' }, unblock: { type: 'string' }, next: { type: 'string' }, clear: { type: 'boolean' }, cwd: cwdProp }, required: ['area'] } },
 ];
 
 function configFor(args) {
@@ -72,6 +78,9 @@ export function dispatchTool(name, args = {}) {
     case 'fleet_status': return fleetStatus(c);
     case 'wake_log': return readWakeLog(c, { limit: args.limit });
     case 'health': return fleetHealth(c);
+    case 'ready': return fleetReady(c);
+    case 'progress': return writeProgress(c, args.area, args.line);
+    case 'hold': return args.clear ? clearHold(c, args.area) : writeHold(c, args.area, { owner: args.owner, unblock: args.unblock, next: args.next });
     default: throw new FleetError(`unknown tool ${name}`);
   }
 }
