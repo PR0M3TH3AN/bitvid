@@ -1,0 +1,10 @@
+# Client10 normal product landing
+
+- Dispatch01:45:46 explicit NEW sole normalgate grant after exactcandidate QA PASS/RELEASE01:44:17.902. QA result attributed to dispatch/QA, not client runtime:4nativeclicks360/390/1280default+360reduced allINPUTtoggle/intervention0, originalpoint46.375,592.4375 works;8strictwidthsnapshots/24Tabcontained/4closefocus/3latecleanupnativecases. Active/cancelnative/visualAA and historicaloverflow remain separate.
+- Exactcandidate aff884169484bd8be01c2620efa8b3b052b31b70, unstablef01ce012 ancestor0/alreadymerged,3source/testhashes equal savedcandidate/diffcheck0. Original untrackedclient9note excluded. No redundantfocused/mutants/lint.
+- Fresh01:45:58 healthOK CPU58.9C/RAM68.5%/swap-in0; START delivered01:46:11, normalqueue exactaff88416 submitted01:46:11.266, livegatinglander275175. ONE unchanged fullproduct gate fromstart; no runner/assertion/config/timeout changes or partial resume.
+- Durable land_status LANDED at01:51:12.680 as5b0adf6b3ee65fce30041f6adf29177f01b43647; saved result records unchanged normalgate exit0, lander off.
+- Runner-equivalent independent discovery439/starts439/unique439/missing0/unexpected0; complete log notok0/nonzerofail0/nonzerocancelled0. Existing unchanged runner requires each file to exit0; no new force exit/retry introduced.
+- `git merge-base --is-ancestor aff884169484bd8be01c2620efa8b3b052b31b70 unstable`: exit0. `git log -1 unstable` and rev-parse print5b0adf6b3ee65fce30041f6adf29177f01b43647.
+- Full rawlog/result/discovery/hash copied uniquely before any next run under state/evidence/client10-animation-cleanup-20261027: test_unit-aff88416-complete-0151.log, result-aff88416-landed-0151.json, discovery-aff88416-0151.json, gate-manifest-aff88416.sha256, gate-health-0151.json. All sampledCPU below85C, highest79.1C. Post01:51:33 healthOK CPU64.9C/RAM67.7%/swap-in0.
+- RELEASE/result delivered dispatch01:51:52; nextstage hold ownerdispatch. No build/browser grant or run in this stage. Item10 remainsopen pending remainingbuild/artifact/qualification routing. Original362/360+394/390overflow/nativeactivecancel/AA/livepeer/CPU/wholeStage3 limits preserved.

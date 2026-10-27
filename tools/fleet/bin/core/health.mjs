@@ -12,8 +12,10 @@ export const HEALTH_DEFAULTS = {
   diskFreeGb: 5,
   memoryAvailablePct: 15,
   swapUsedPct: 50,
-  // Occupancy alone is not tight: Linux keeps swapped pages. swapUsedPct counts
-  // only when available memory is also low. swapFullPct counts on its own.
+  // Occupancy alone is not tight, and a full swap file is not tight while
+  // plenty of RAM is free. swapUsedPct counts only when available memory is
+  // under twice memoryAvailablePct. swapFullPct is kept so older configs load;
+  // it is not a hold by itself. Live swap-in (pswpin) is pressure on its own.
   swapFullPct: 90,
   cpuTempC: 90,
   batteryPct: 20,
@@ -187,6 +189,35 @@ export function parseDf(text) {
   if (![total, used, free].every((n) => Number.isFinite(n) && n >= 0)) return null;
   const freePct = total > 0 ? Math.round((1000 * free) / total) / 10 : null;
   return { mount: parts.slice(5).join(' '), totalBytes: total, usedBytes: used, freeBytes: free, freePct };
+}
+
+/** Linux /proc/vmstat counters. pswpin is pages read back from swap. */
+export function parseLinuxVmstat(text) {
+  const out = {};
+  for (const line of String(text || '').split('\n')) {
+    const m = /^([A-Za-z0-9_]+)\s+(\d+)$/.exec(line.trim());
+    if (m) out[m[1]] = Number(m[2]);
+  }
+  return out;
+}
+
+/** Pages swapped in between two /proc/vmstat snapshots. Null when either side lacks pswpin. */
+export function swapInPages(before, after) {
+  if (before?.pswpin == null || after?.pswpin == null) return null;
+  return Math.max(0, after.pswpin - before.pswpin);
+}
+
+/** Top non-trivial CPU lines from `ps -ax -o pid=,pcpu=,comm=`. */
+export function parseBusyPs(text) {
+  const rows = [];
+  for (const line of String(text || '').split('\n')) {
+    const m = /^\s*(\d+)\s+(\d+(?:\.\d+)?)\s+(\S+)/.exec(line);
+    if (!m) continue;
+    const cpu = Number(m[2]);
+    if (cpu < 5) continue;
+    rows.push({ pid: Number(m[1]), cpu, comm: m[3] });
+  }
+  return rows.sort((a, b) => b.cpu - a.cpu).slice(0, 3);
 }
 
 export function parseVmStat(text) {
@@ -521,20 +552,24 @@ function readWindowsBattery() {
 
 function linuxSample(sysRoot, opt) {
   if (opt.statTexts || opt.procSamples) {
+    const vm = Array.isArray(opt.vmstat) ? opt.vmstat.map((text) => parseLinuxVmstat(text)) : null;
     return {
       usagePct: opt.statTexts ? cpuUsagePct(parseCpuStat(opt.statTexts[0]), parseCpuStat(opt.statTexts[1])) : null,
       before: opt.procSamples ? opt.procSamples[0] : [],
       after: opt.procSamples ? opt.procSamples[1] : [],
       elapsedMs: opt.elapsedMs ?? 1000,
+      swapInPages: vm ? swapInPages(vm[0], vm[1]) : null,
     };
   }
-  if (opt.sampleMs === 0) return { usagePct: null, before: [], after: [], elapsedMs: 0 };
+  if (opt.sampleMs === 0) return { usagePct: null, before: [], after: [], elapsedMs: 0, swapInPages: null };
   const stat1 = parseCpuStat(readText(path.join(sysRoot, 'proc/stat')) || '');
+  const vm1 = parseLinuxVmstat(readText(path.join(sysRoot, 'proc/vmstat')) || '');
   const pages = pageSize();
   const before = readProcSnapshot(sysRoot, pages);
   const t0 = Date.now();
   pause(opt.sampleMs ?? 200);
   const stat2 = parseCpuStat(readText(path.join(sysRoot, 'proc/stat')) || '');
+  const vm2 = parseLinuxVmstat(readText(path.join(sysRoot, 'proc/vmstat')) || '');
   const after = readProcSnapshot(sysRoot, pages);
   let usagePct = cpuUsagePct(stat1, stat2);
   if (usagePct == null) {
@@ -542,7 +577,7 @@ function linuxSample(sysRoot, opt) {
     pause(opt.sampleMs ?? 200);
     usagePct = cpuUsagePct(a, cpuTimes());
   }
-  return { usagePct, before, after, elapsedMs: Math.max(1, Date.now() - t0) };
+  return { usagePct, before, after, elapsedMs: Math.max(1, Date.now() - t0), swapInPages: swapInPages(vm1, vm2) };
 }
 
 function readLoad(platform, sysRoot) {
@@ -606,13 +641,14 @@ function judge(snap, limits) {
   if (mem?.swapTotalBytes > 0 && mem.swapUsedBytes != null) {
     const pct = (100 * mem.swapUsedBytes) / mem.swapTotalBytes;
     const availablePct = mem.totalBytes > 0 && mem.availableBytes != null ? (100 * mem.availableBytes) / mem.totalBytes : null;
-    const memoryLow = availablePct != null && availablePct < limits.memoryAvailablePct;
-    const nearFull = pct >= limits.swapFullPct;
-    // Occupancy alone is normal on Linux. Count it when memory is also low, or when swap is near full.
-    if (nearFull || (memoryLow && pct >= limits.swapUsedPct)) {
-      const words = nearFull
-        ? `swap ${Math.round(pct)}% used, near full (at or over ${limits.swapFullPct}%)`
-        : `swap ${Math.round(pct)}% used while available memory is under ${limits.memoryAvailablePct}%`;
+    const softLimit = limits.memoryAvailablePct * 2;
+    const memorySoft = availablePct != null && availablePct < softLimit;
+    const swappingIn = Number(mem.swapInPages) > 0;
+    // A full swap file with plenty of free RAM is parked pages, not pressure.
+    if (swappingIn || (memorySoft && pct >= limits.swapUsedPct)) {
+      const words = swappingIn
+        ? `swap is being read in (${mem.swapInPages} pages in the sample)`
+        : `swap ${Math.round(pct)}% used while available memory is under ${softLimit}%`;
       crossed.push({ id: 'swap', words });
     }
   }
@@ -649,10 +685,43 @@ function judge(snap, limits) {
   if (snap.cpu?.load1 != null && snap.cpu.cores) {
     const per = snap.cpu.load1 / snap.cpu.cores;
     if (per >= limits.loadPerCore) {
-      crossed.push({ id: 'load', words: `load ${snap.cpu.load1} on ${snap.cpu.cores} cores (${Math.round(per * 10) / 10} per core), at or over ${limits.loadPerCore}` });
+      const fleet = fleetCpuPct(snap.areas);
+      const words = `load ${snap.cpu.load1} on ${snap.cpu.cores} cores (${Math.round(per * 10) / 10} per core)`;
+      if (fleet != null && fleet >= 10) {
+        const who = (snap.areas || []).filter((a) => a.cpuPct >= 10).map((a) => `${a.id} ${a.cpuPct}%`).join(', ');
+        crossed.push({ id: 'load', words: `${words}, and fleet areas are using CPU${who ? ` (${who})` : ''}` });
+      } else {
+        const outside = describeBusy(snap.busy);
+        const sample = snap.cpu.usagePct == null ? '' : ` A short CPU sample is ${snap.cpu.usagePct}%.`;
+        const fleetWords = fleet == null ? 'fleet area CPU was not measured' : 'fleet areas are idle';
+        snap.notes.push({ id: 'load', words: `${words} is above ${limits.loadPerCore} per core, but ${fleetWords}.${sample}${outside} This does not hold fleet work.` });
+      }
     }
   }
   return crossed;
+}
+
+function fleetCpuPct(areas) {
+  const known = (areas || []).filter((a) => a.found && a.cpuPct != null);
+  if (!known.length) return null;
+  return known.reduce((sum, a) => sum + a.cpuPct, 0);
+}
+
+function describeBusy(busy) {
+  const rows = (busy || []).filter((row) => row?.comm && Number(row.cpu) >= 1).slice(0, 3);
+  if (!rows.length) return '';
+  return ` Busy outside the fleet: ${rows.map((row) => `${row.comm} ${row.cpu}%`).join(', ')}.`;
+}
+
+function collectBusy(snap, limits, opt) {
+  if (snap.cpu?.load1 == null || !snap.cpu.cores) return [];
+  if (snap.cpu.load1 / snap.cpu.cores < limits.loadPerCore) return [];
+  const fleet = fleetCpuPct(snap.areas);
+  if (fleet != null && fleet >= 10) return [];
+  if (Array.isArray(opt.busy)) return opt.busy;
+  if (opt.psBusy == null && (opt.sampleMs === 0 || opt.skipBusy)) return [];
+  const text = opt.psBusy != null ? opt.psBusy : sh('ps', ['-ax', '-o', 'pid=,pcpu=,comm='], 2000);
+  return parseBusyPs(text);
 }
 
 function verdictOf(crossed, battery) {
@@ -690,6 +759,7 @@ export function formatHealth(snap) {
     const left = battery.minutesRemaining == null ? 'time unavailable' : `${battery.minutesRemaining} min left`;
     lines.push(`battery  ${battery.percent ?? '?'}%  ${battery.state}  ${left}`);
   }
+  for (const note of snap.notes || []) lines.push(`note  ${note.words}`);
   if (!snap.areas?.length) lines.push('areas  none');
   for (const area of snap.areas || []) {
     if (!area.found) lines.push(`area ${area.id}  window not found`);
@@ -742,6 +812,9 @@ export function fleetHealth(c = {}, opt = {}) {
       areas = readPsAreas(panes, opt);
     }
   }
+  if (memory?.status === 'ok') {
+    memory.swapInPages = opt.swapInPages != null ? opt.swapInPages : (sampled?.swapInPages ?? null);
+  }
   const snap = {
     at: opt.at || new Date().toISOString(),
     platform,
@@ -753,7 +826,9 @@ export function fleetHealth(c = {}, opt = {}) {
     battery,
     areas,
     thresholds: limits,
+    notes: [],
   };
+  snap.busy = collectBusy(snap, limits, opt);
   snap.crossed = judge(snap, limits);
   snap.verdict = verdictOf(snap.crossed, snap.battery);
   return snap;

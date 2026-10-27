@@ -24,3 +24,17 @@ conflicts appear in the retained landing log; no additional confirmed reviewer,
 peer false-green, or owner-regression event was identified in the checked
 dispatch mailbox, PROGRAM, backlog and fleet log. This is not a complete audit
 of every session conversation.
+
+## 2026-10-26 additions
+
+| date | area | tier | strike | evidence (SHA, check, who caught it) |
+|---|---|---|---|---|
+| 2026-10-26 | client-reliability | standard (feature) | red landing | `c20635bc8539328ca1677f3cf63cbe870adeb9c2`, landq.log 19:15:32.782Z; durable rejected/red gate exit 1 after sustained thermal stop (275/438 starts, incomplete). Area notified through MCP at19:16:19Z (`20261026T191619-dispatch-c43452.md`); candidate retained, no automatic retry. See `test_logs/TEST_LOG_2026-10-26_19-16-00_dispatch-interrupted-gate.md`. |
+
+2026-10-26 hourly audit: client has two confirmed red landings in the last
+seven days (Oct23 and Oct26), both thermal interruptions. Owner-facing proposal:
+consider standard -> strong under a rolling-seven-day interpretation. The
+documented strike week starts at usage reset (`usage.resetCron`: Monday03:00);
+these events straddle that reset, so only one is in the current configured week.
+No automatic tier/config change; stronger models do not establish thermal
+clearance. Preserve the dispatch-owned resource hold and explicit fresh grant.

@@ -39,6 +39,11 @@
 //   fleet status                      areas, run state (running / exited / failed / timeout / stopped), lander up or down
 //   fleet wakes                       recent wake attempts, and plain words for a likely failure
 //   fleet health [--json]            one snapshot: CPU, memory, disk, temps, battery, per-area use
+//   fleet ready [--json]              mailbox round trip, Codex approval path, health, deps, checkpoints
+//   fleet resume                      same as fleet up, after a reboot or a usage-limit stop
+//   fleet progress <area> <line>      record what just advanced. Status uses this, not the pane
+//   fleet hold <area> --owner <who> --unblock <cond> --next <task>
+//                                     record a hold. --clear removes it
 //   fleet prompt <id>                 print the composed system prompt for an area
 //   fleet crontab                     PRINT the crontab lines for scheduled jobs (never installs)
 //   fleet run-job <name>              explicit manual headless one-shot; cron uses scheduled-job
@@ -56,6 +61,8 @@ import { KIT, loadConfig, loadAdapter, area as getArea, dispatcher, sessionName,
 import { commitWork, setupCommit, tellDispatch, hearInterpreter, fleetStatus } from './core/ops.mjs';
 import { readWakeLog } from './core/wake-log.mjs';
 import { fleetHealth, formatHealth } from './core/health.mjs';
+import { fleetReady, formatReady } from './core/ready.mjs';
+import { writeProgress, writeHold, clearHold } from './core/progress.mjs';
 import { guardSchedule } from './core/schedule-guard.mjs';
 import { tmuxCommand, rememberTmuxServer } from './core/tmux.mjs';
 import { fleetUpdate, recordInstalled, isTemplatePath } from './core/update.mjs';
@@ -243,6 +250,7 @@ async function supervise(id) {
 
 async function up() {
   const fresh = has('--fresh'), bg = has('--bg'), dry = has('--dry-run');
+  if (!dry) console.log(formatReady(fleetReady(c)));
   const sessions = readSessions();
   const areas = pick();
   const order = [...areas.filter((a) => a.role !== 'dispatcher'), ...areas.filter((a) => a.role === 'dispatcher')];
@@ -312,6 +320,9 @@ async function status() {
     const row = report.areas.find((r) => r.id === a.id);
     const live = row ? ` window=${row.window} unread=${row.unread} ${row.activity}` : '';
     console.log(`${a.id.padEnd(18)} ${a.role.padEnd(10)} ${a.harness.padEnd(7)} ${`${a.tier}/${a.model ?? '-'}`.padEnd(16)} ctx=${String(a.context ?? '-').padEnd(5)} rc=${a.remoteControl ? 'on ' : 'off'} budget=${budgetMin > 0 ? `${budgetMin}m` : 'unlimited'} ${fs.existsSync(a.worktree) ? '' : 'NO-WORKTREE '}${runMark(a, sessions)}${live}`);
+    if (row?.stalled) console.log(`  ${a.id} stalled: ${row.stallReason}`);
+    if (row?.hold) console.log(`  ${a.id} hold: owner ${row.hold.owner}; unblock ${row.hold.unblock}; next ${row.hold.next}`);
+    else if (row?.progress) console.log(`  ${a.id} progress: ${row.progress.line} (${row.progress.ageMin} min ago)`);
   }
   if (report.interpreter.unread) console.log(`interpreter          unread=${report.interpreter.unread}`);
   for (const id of report.recovered) console.log(`nudged ${id} again`);
@@ -321,6 +332,34 @@ function healthCmd() {
   const report = fleetHealth(c);
   if (argv.includes('--json')) console.log(JSON.stringify(report, null, 2));
   else console.log(formatHealth(report));
+}
+
+function readyCmd() {
+  const report = fleetReady(c);
+  if (argv.includes('--json')) console.log(JSON.stringify(report, null, 2));
+  else console.log(formatReady(report));
+  if (!report.ok) process.exitCode = 1;
+}
+
+function progressCmd() {
+  const area = argv[1];
+  const words = [];
+  for (let i = 2; i < argv.length; i++) {
+    if (argv[i] === '--config') { i++; continue; }
+    words.push(argv[i]);
+  }
+  const rec = writeProgress(c, area, words.join(' '));
+  console.log(`${rec.area}  ${rec.at}  ${rec.line}`);
+}
+
+function holdCmd() {
+  const area = argv[1];
+  if (argv.includes('--clear')) {
+    console.log(`cleared hold ${clearHold(c, area).area}`);
+    return;
+  }
+  const rec = writeHold(c, area, { owner: flag(argv, '--owner'), unblock: flag(argv, '--unblock'), next: flag(argv, '--next') });
+  console.log(`hold ${rec.area}: owner ${rec.owner}; unblock ${rec.unblock}; next ${rec.next}`);
 }
 
 function wakesCmd() {
@@ -648,6 +687,7 @@ const run = { up, down, status, supervise: () => supervise(argv[1]), worktrees, 
   'scheduled-job': async () => { process.exitCode = (await guardSchedule(c, argv[1])).status; },
   'run-job': () => runJob(argv[1]), 'sched-env': () => schedEnv(argv[1]), lander: () => lander(argv[1] ?? 'status'),
   commit: commitCmd, 'setup-commit': setupCommitCmd, update: updateCmd, tell: tellCmd, hear: hearCmd, wakes: wakesCmd, health: healthCmd,
+  ready: readyCmd, resume: up, progress: progressCmd, hold: holdCmd,
   doctor: () => tool('doctor'), landq: () => tool('landq'), backlog: () => tool('backlog'),
   mailbox: () => tool('mailbox') }[cmd];
 if (!run) die(`unknown command "${cmd}" (fleet help)`);

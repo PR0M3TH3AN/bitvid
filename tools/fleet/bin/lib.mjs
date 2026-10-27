@@ -119,6 +119,7 @@ export function loadConfig(argv = process.argv, start = process.cwd()) {
   c.clock = { quietHours: ['22:00', '08:00'], ...(c.clock || {}) };
   c.doctor = { staleHours: 72, unownedDays: 14, ...(c.doctor || {}) };
   c.health = healthThresholds(c.health);
+  c.progress = { stallMin: 20, ...(c.progress || {}) };
   c.modules = { producer: false, reviewer: false, usageGovernor: false, ...(c.modules || {}) };
   c.schedules ??= [];
   c.areas = (c.areas || []).map((a) => resolveArea(c, a));
