@@ -80,6 +80,8 @@
 
 ## client-reliability
 
+- 2026-10-27 client10 DONE: product5b0adf6b normal439gate exit0/ancestry0, exactcandidateQA native4flowPASS peerattributed, build+artifact86fc5236 PASS/helpercmp0. Required build/landing evidence23c69eba durablyaf8e6540/docs-only/ancestry0; closed after durableevidence. AllslotsRELEASED, no artifactpublication/preview/deploy. Prioroverflow362/360+394/390, nativeactivecancel/visualAA/item9live/CPU/wholeStage3 remain separate/open. No new task/runtime self-selected.
+
 - 2026-10-27 01:54UTC: client10 separate localbuild+artifactverifierPASS/naturalexit0/version86fc5236/indexSHA50a89bd6/helperdistbyteequalcmp0. No trackedartifactdelta/preview/deploy. SolebuildslotRELEASED; land build+normal439gate evidence docs-only then close10; historicaloverflow/nativeactivecancel/AA/item9live limits retained. test_logs/TEST_LOG_2026-10-27_01-54-00_client-reliability-10-build.md.
 
 - 2026-10-27 01:52UTC: client10 productLANDED5b0adf6b via exactaff88416 normal439gate exit0/discovery439unique/missingextra0/ancestry0. QA exactcandidate nativepoint acceptance PASS attributeddispatch/QA; alloldoverflow/activecancelnative/AA/live limits retained. Completegateevidence state/evidence/client10-animation-cleanup-20261027; slotRELEASED. Separate remainingbuild/artifact/native routing pending, item10open. test_logs/TEST_LOG_2026-10-27_01-52-00_client-reliability-10-landed.md.

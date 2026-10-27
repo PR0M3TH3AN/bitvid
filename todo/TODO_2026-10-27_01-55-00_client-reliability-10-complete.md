@@ -1,0 +1,7 @@
+- [x] Focused17pass/19distinctkilledmutants/all17mapped/lint11pass.
+- [x] Exactaff88416QA native4flow acceptance attributed independentdispatch/QA.
+- [x] Product5b0adf6b normal439gateexit0+ancestry0.
+- [x] One localbuild+artifactPASS/version86fc5236/helpercmp0, runtimeequalvalidatedsource.
+- [x] Required evidence23c69eba durablyaf8e6540/docsOnly/ancestry0, then close10.
+- [x] AllslotsRELEASED, no artifactpublication/preview/deploy.
+- [ ] Separate campaign followups await routing; historicaloverflow/nativeactivecancel/AA/item9live/CPU/wholeStage3 not closed by10.
