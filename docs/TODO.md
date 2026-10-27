@@ -80,6 +80,8 @@
 
 ## client-reliability
 
+- 2026-10-27 client10 scoped cleanup READY: late-init recovery extracted from index animation block to59line helper;17newscenarios pass/19distinct killedmutants/all17covered/lint11pass. Existing tests/CSS/app/bootstrap untouched outside block/import. No full/build/browser/submission grant; native360point+390/1280/reducedmotion and normalgate/landing remain. Preserve prior362/360+394/390 overflow and item9live/native limits. Evidence test_logs/TEST_LOG_2026-10-27_01-39-00_client-reliability-10-ready.md.
+
 - 2026-10-26 19:43UTC: separately granted local build/artifact passes exit0 at7594c54d (runtimeaf61c271); artifact15868a91/indexSHA9c48e0fe, clean tree, no previewserver/deploy. Sandbox build swcompat history probe skipped; prior unchanged-input hostlint11pass retained. Slot RELEASED; native torrent/browser+QA timing need distinct routing, item9 staysopen. test_logs/TEST_LOG_2026-10-26_19-43-00_client-reliability-9-build.md.
 
 - 2026-10-26 19:41UTC: item9 active-torrent product LANDED af61c271 via normal eafa364d queue gate exit0; independent438discovered/438unique starts/missingextra0 and ancestry0. Complete log/result/discovery hashed under state/evidence/client9-torrent-validation-20261026, prior rejected275partial intact. lint11/savedfocused60/mutants19 retained. Normalgate slot RELEASED; separate build/native-browser routing remains, item9 open. No real peers/byte teardown/wholeStage3 claim. See test_logs/TEST_LOG_2026-10-26_19-41-00_client-reliability-9-torrent-landed.md.

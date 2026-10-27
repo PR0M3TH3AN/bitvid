@@ -1,0 +1,5 @@
+- [x] Read exactrouting/rules/knownissues/testintegrity/logging; sourcef01ce012 and preserveclient9note.
+- [ ] Claim10 and write integrity/contract.
+- [ ] Extract minimal cleanup+finishedanimation recovery, real wiring regressions.
+- [ ] Focused+deliberate mutants+lint serial with freshhealth.
+- [ ] Namedpathcommit/merge, evidence and READY; no full/build/browser/submit yet.
