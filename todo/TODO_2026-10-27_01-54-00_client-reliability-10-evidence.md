@@ -1,0 +1,5 @@
+- [x] Exactcandidate QA native4flow acceptance independently attributed.
+- [x] Productnormal439gate durably5b0adf6b and ancestry0.
+- [x] Solelocalbuild+artifactverify naturalexit0/version86fc5236/helperbyteequal; slotRELEASED.
+- [ ] Land docs-only build/landing evidence+verify ancestry, then close10.
+- [ ] Preserve historicaloverflow/nativeactivecancel/AA/item9live qualification boundaries; no new task self-selected.
