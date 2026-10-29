@@ -29,6 +29,31 @@ test.describe("Webseed Stream Playback", () => {
   });
 
   test("plays directly from HTML link (CDN mode)", async ({ page }) => {
+    // Record every src the player attaches. Asserting the FINAL src is wrong:
+    // this test already tolerates "No playable source found" in its status
+    // check (headless CI often cannot decode the archive.org H.264 sample), and
+    // when the attempt fails resetVideoElement() clears src back to "". The
+    // behaviour under test is that CDN mode ATTACHES the hosted URL, which is
+    // observable regardless of whether the remote file then decodes.
+    await page.evaluate(() => {
+      (window as any).__attachedSrcs = [];
+      new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+          const target = mutation.target as HTMLElement;
+          if (mutation.attributeName === "src" && target.tagName === "VIDEO") {
+            const value = target.getAttribute("src");
+            if (value) {
+              (window as any).__attachedSrcs.push(value);
+            }
+          }
+        }
+      }).observe(document.body, {
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["src"],
+      });
+    });
+
     // 1. Trigger playback with just the URL
     await page.evaluate(async (url) => {
       const { getApplication } = await import("/js/applicationContext.js");
@@ -55,9 +80,10 @@ test.describe("Webseed Stream Playback", () => {
     const urlToggle = page.locator('[data-source-toggle="url"]');
     await expect(urlToggle).toHaveAttribute("aria-pressed", "true");
 
-    // Check if video is attempting to play from source
-    const video = page.locator("#modalVideo");
-    await expect(video).toHaveAttribute("src", VIDEO_URL);
+    // Check the player attached the hosted URL (see the observer above).
+    await expect
+      .poll(async () => await page.evaluate(() => (window as any).__attachedSrcs))
+      .toContain(VIDEO_URL);
   });
 
   test("falls back to WebTorrent using HTML link as webseed when CDN fails", async ({ page }) => {

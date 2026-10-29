@@ -31,6 +31,16 @@ Welcome to the bitvid documentation. This directory contains detailed architectu
 - **[Design System](./design-system.md)**: Guide to the token-based design system and CSS architecture.
 - **[Menus & Popovers](./menus.md)**: Documentation for the menu and popover system.
 
+## Testing
+
+- **[Playwright Agent Testing Infrastructure](./testing/agent-playwright-harness.md)**: Full reference for the agent test harness (`window.__bitvidTest__`), mock relay, Playwright fixtures, and `data-testid` selectors.
+- **[Test Integrity (Dark Factory Standard)](./testing/test-integrity.md)**: The scenario-first testing constitution — anti-cheat rules, the Spec Correction Protocol, and the Test Integrity Note format.
+
+## Lessons & Incident Writeups
+
+- **[Cloudflare/S3 Upload-Path Gotchas](./lessons/cloudflare-s3-upload-gotchas.md)**: Audited 2026-06-16 — duplicated upload services, storage-key collisions, and object-cleanup contracts.
+- **[NIP-07 Signer Reliability](./lessons/nip07-signer-reliability.md)**: Hard-won 2026-06-16 — diagnosing unresponsive NIP-07 signers and the resilience invariants that must not regress.
+
 ## Operations
 
 - **[Instance Configuration](./instance-config.md)**: Guide to configuring a bitvid instance.

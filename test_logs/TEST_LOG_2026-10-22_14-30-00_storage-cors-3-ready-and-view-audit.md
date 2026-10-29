@@ -1,0 +1,7 @@
+- Committed fixes:buffer ed5fb64991ae4aaf5df4ac76f4bd13ca9633aea0;service fb1997de42dd1d62f2b5be30150bcab350010152.
+- Merged latest local unstable e04549f8 into own89f8923c6e83b79a2b8874f811cdff2af6a809d0. Merge had only coordination docs; runtime/test/script diff0 from checked product tip.
+- Merged rerun of12-file focused command from14:21log:exit0,59 summarized passing tests plus5 named access-control PASS lines/exit0 without final TAP footer. New tests13/13; all10 restored mutants previously killed.
+- Merged `env -u NODE_TEST_CONTEXT npm run lint` outside sandbox for approved git-grep exception:exit0,11stages. Logs /tmp/storage3-merged-focused.log and /tmp/storage3-merged-lint.log.
+- READY/full slot request sent14:22:48Z; dispatch14:25:40Z confirms first READY queue, QA still holds browser/full slot. No full/build/normal queue started; no rerunning passing checks merely waiting.
+- `env -u NODE_TEST_CONTEXT node /tmp/bitvid-storage-cors-3-registered-view-audit.mjs`:naturalexit1,2pass/2fail/0cancelled/0skipped,182.585705ms. Actual registered Recent/Explore pipelines and JSDOM view/card DOM. Preliminary fixture failures and exact controlled boundaries retained in unique registered-view evidence note.
+- Coordinator remains read-only/open. No native browser/full-app/router/live cloud/signer/relay qualification.

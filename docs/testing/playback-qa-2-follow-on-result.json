@@ -1,0 +1,3256 @@
+{
+  "driver": "noninteractive bounded actions",
+  "started": "2026-10-20T16:27:44.416Z",
+  "mirrorHits": [
+    "https://cdn.jsdelivr.net/npm/buffer@6.0.3/+esm",
+    "https://cdn.jsdelivr.net/npm/buffer@6.0.3/+esm",
+    "https://cdn.jsdelivr.net/npm/buffer@6.0.3/+esm",
+    "https://cdn.jsdelivr.net/npm/buffer@6.0.3/+esm"
+  ],
+  "blockedHttp": [
+    "https://esm.sh/@aws-sdk/client-s3@3.637.0?bundle",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/+esm",
+    "https://esm.sh/nostr-tools@2.17.0",
+    "https://esm.sh/nostr-tools@2.17.0?target=es2022&exports=nip04",
+    "https://esm.sh/nostr-tools@2.17.0/nip44?target=es2022",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://robohash.org/032ee87ce307cbf86f3eeecea732f73a19698cd07d13394a0c14b52d35798304",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/+esm",
+    "https://esm.sh/nostr-tools@2.17.0",
+    "https://esm.sh/nostr-tools@2.17.0?target=es2022&exports=nip04",
+    "https://esm.sh/nostr-tools@2.17.0/nip44?target=es2022",
+    "https://esm.sh/@aws-sdk/client-s3@3.637.0?bundle",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/+esm",
+    "https://esm.sh/nostr-tools@2.17.0",
+    "https://esm.sh/nostr-tools@2.17.0?target=es2022&exports=nip04",
+    "https://esm.sh/nostr-tools@2.17.0/nip44?target=es2022",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/+esm",
+    "https://esm.sh/nostr-tools@2.17.0",
+    "https://esm.sh/nostr-tools@2.17.0?target=es2022&exports=nip04",
+    "https://esm.sh/nostr-tools@2.17.0/nip44?target=es2022",
+    "https://esm.sh/@aws-sdk/client-s3@3.637.0?bundle",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/+esm",
+    "https://esm.sh/nostr-tools@2.17.0",
+    "https://esm.sh/nostr-tools@2.17.0?target=es2022&exports=nip04",
+    "https://esm.sh/nostr-tools@2.17.0/nip44?target=es2022",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/+esm",
+    "https://esm.sh/nostr-tools@2.17.0",
+    "https://esm.sh/nostr-tools@2.17.0?target=es2022&exports=nip04",
+    "https://esm.sh/nostr-tools@2.17.0/nip44?target=es2022",
+    "https://esm.sh/@aws-sdk/client-s3@3.637.0?bundle",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/+esm",
+    "https://esm.sh/nostr-tools@2.17.0",
+    "https://esm.sh/nostr-tools@2.17.0?target=es2022&exports=nip04",
+    "https://esm.sh/nostr-tools@2.17.0/nip44?target=es2022",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js"
+  ],
+  "blockedWs": [
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/",
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/",
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/",
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/"
+  ],
+  "failedLocal": [],
+  "pageErrors": [],
+  "consoleErrors": [
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "[bitvid] Submission failed Error: Please provide at least a Video URL or Magnet Link.\n    at UploadModal.handleExternalFlow (http://127.0.0.1:31847/js/ui/components/UploadModal.js:1342:17)\n    at UploadModal.handleSubmit (http://127.0.0.1:31847/js/ui/components/UploadModal.js:1280:25)\n    at HTMLFormElement.<anonymous> (http://127.0.0.1:31847/js/ui/components/UploadModal.js:360:14)",
+    "[bitvid] Please provide at least a Video URL or Magnet Link.",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "[bitvid] Submission failed Error: Please provide at least a Video URL or Magnet Link.\n    at UploadModal.handleExternalFlow (http://127.0.0.1:31847/js/ui/components/UploadModal.js:1342:17)\n    at UploadModal.handleSubmit (http://127.0.0.1:31847/js/ui/components/UploadModal.js:1280:25)\n    at HTMLFormElement.<anonymous> (http://127.0.0.1:31847/js/ui/components/UploadModal.js:360:14)",
+    "[bitvid] Please provide at least a Video URL or Magnet Link.",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "[bitvid] Submission failed Error: Please provide at least a Video URL or Magnet Link.\n    at UploadModal.handleExternalFlow (http://127.0.0.1:31847/js/ui/components/UploadModal.js:1342:17)\n    at UploadModal.handleSubmit (http://127.0.0.1:31847/js/ui/components/UploadModal.js:1280:25)\n    at HTMLFormElement.<anonymous> (http://127.0.0.1:31847/js/ui/components/UploadModal.js:360:14)",
+    "[bitvid] Please provide at least a Video URL or Magnet Link.",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector"
+  ],
+  "actions": [
+    {
+      "name": "actual toolkit ready",
+      "at": "2026-10-20T16:27:46.595Z",
+      "result": {
+        "callable": true,
+        "canonicalIdentity": true,
+        "frozen": true,
+        "mockFlag": false,
+        "validSeed": true,
+        "tamperedRejected": true,
+        "pubkeyMatches": true,
+        "independentSignatureVerified": true
+      },
+      "ok": true
+    },
+    {
+      "name": "actual application startup completes",
+      "at": "2026-10-20T16:27:46.625Z",
+      "result": {
+        "readyPromiseCompleted": true,
+        "relays": [
+          "ws://127.0.0.1:31848"
+        ]
+      },
+      "ok": true
+    },
+    {
+      "name": "three synthetic relay cards hydrate",
+      "at": "2026-10-20T16:27:46.642Z",
+      "result": [
+        {
+          "title": "QA local synthetic video with a deliberately long title to inspect narrow-card wrapping and controls",
+          "dTag": "qa2-0"
+        },
+        {
+          "title": "QA local synthetic video 1",
+          "dTag": "qa2-1"
+        },
+        {
+          "title": "QA local synthetic video 2",
+          "dTag": "qa2-2"
+        }
+      ],
+      "ok": true
+    },
+    {
+      "name": "local test identity login",
+      "at": "2026-10-20T16:27:46.647Z",
+      "result": {
+        "profileVisible": true,
+        "uploadVisible": true
+      },
+      "ok": true
+    },
+    {
+      "name": "360 trending navigation/feed",
+      "at": "2026-10-20T16:27:46.742Z",
+      "result": {
+        "width": 360,
+        "documentWidth": 360,
+        "cardBounds": [
+          {
+            "x": 76.796875,
+            "right": 347.203125,
+            "width": 270.40625
+          },
+          {
+            "x": 76.796875,
+            "right": 347.203125,
+            "width": 270.40625
+          },
+          {
+            "x": 76.796875,
+            "right": 347.203125,
+            "width": 270.40625
+          }
+        ],
+        "smallControls": [
+          {
+            "id": "sidebarCollapseToggle",
+            "label": "Expand sidebar",
+            "width": 35.1875,
+            "height": 35.1875
+          },
+          {
+            "id": "forYouLink",
+            "label": "For You",
+            "width": 35.1875,
+            "height": 35.1875
+          },
+          {
+            "id": "trendingLink",
+            "label": "Trending",
+            "width": 35.1875,
+            "height": 35.1875
+          },
+          {
+            "id": "mostZappedLink",
+            "label": "Most Zapped",
+            "width": 35.1875,
+            "height": 35.1875
+          },
+          {
+            "id": "",
+            "label": "Recently Added",
+            "width": 35.1875,
+            "height": 35.1875
+          },
+          {
+            "id": "",
+            "label": "For Kids",
+            "width": 35.1875,
+            "height": 35.1875
+          },
+          {
+            "id": "exploreLink",
+            "label": "Explore",
+            "width": 35.1875,
+            "height": 35.1875
+          },
+          {
+            "id": "subscriptionsLink",
+            "label": "Subscriptions",
+            "width": 35.1875,
+            "height": 35.1875
+          },
+          {
+            "id": "",
+            "label": "History",
+            "width": 35.1875,
+            "height": 35.1875
+          },
+          {
+            "id": "footerDropdownButton",
+            "label": "Show more sidebar links",
+            "width": 35.1875,
+            "height": 35.1875
+          },
+          {
+            "id": "themeToggle",
+            "label": "Switch to dark theme",
+            "width": 32,
+            "height": 32
+          },
+          {
+            "id": "uploadButton",
+            "label": "+",
+            "width": 38.390625,
+            "height": 38.390625
+          },
+          {
+            "id": "profileButton",
+            "label": "",
+            "width": 38.390625,
+            "height": 38.390625
+          },
+          {
+            "id": "trendingInfoTrigger",
+            "label": "How is this feed sorted?",
+            "width": 16,
+            "height": 16
+          },
+          {
+            "id": "",
+            "label": "#video",
+            "width": 49.8125,
+            "height": 18.21875
+          },
+          {
+            "id": "",
+            "label": "More options",
+            "width": 32,
+            "height": 32
+          },
+          {
+            "id": "",
+            "label": "Video settings",
+            "width": 32,
+            "height": 32
+          },
+          {
+            "id": "",
+            "label": "More options",
+            "width": 32,
+            "height": 32
+          },
+          {
+            "id": "",
+            "label": "Video settings",
+            "width": 32,
+            "height": 32
+          },
+          {
+            "id": "",
+            "label": "More options",
+            "width": 32,
+            "height": 32
+          },
+          {
+            "id": "",
+            "label": "Video settings",
+            "width": 32,
+            "height": 32
+          }
+        ]
+      },
+      "ok": true
+    },
+    {
+      "screenshot": "playback-qa-2-follow-on-360-feed.png"
+    },
+    {
+      "name": "360 navigation explore",
+      "at": "2026-10-20T16:27:46.968Z",
+      "result": {
+        "hash": "#view=explore",
+        "headings": [
+          "Explore",
+          "\n        Login Options\n      ",
+          "\n        Application Form\n      ",
+          "\n        Content Appeals Form\n      ",
+          "\n        Feature Request Form\n      ",
+          "\n        Bug Fix Form\n      ",
+          "\n        General Feedback Form\n      ",
+          "",
+          "\n                      Comments\n                    ",
+          "\n                  Similar Content\n                ",
+          "\n        Search Filters\n      ",
+          "Edit Video Note",
+          "\n          Share a Video\n        ",
+          "Profile",
+          "Conversations",
+          "\n        Allow browser uploads (bucket CORS)\n      ",
+          "\n            Welcome to bitvid\n          ",
+          "\n          seed. zap. subscribe.\n        "
+        ]
+      },
+      "ok": true
+    },
+    {
+      "name": "360 navigation for-you",
+      "at": "2026-10-20T16:27:47.062Z",
+      "result": {
+        "hash": "#view=for-you",
+        "headings": [
+          "For You",
+          "\n        Login Options\n      ",
+          "\n        Application Form\n      ",
+          "\n        Content Appeals Form\n      ",
+          "\n        Feature Request Form\n      ",
+          "\n        Bug Fix Form\n      ",
+          "\n        General Feedback Form\n      ",
+          "",
+          "\n                      Comments\n                    ",
+          "\n                  Similar Content\n                ",
+          "\n        Search Filters\n      ",
+          "Edit Video Note",
+          "\n          Share a Video\n        ",
+          "Profile",
+          "Conversations",
+          "\n        Allow browser uploads (bucket CORS)\n      ",
+          "\n            Welcome to bitvid\n          ",
+          "\n          seed. zap. subscribe.\n        "
+        ]
+      },
+      "ok": true
+    },
+    {
+      "name": "360 navigation trending",
+      "at": "2026-10-20T16:27:47.192Z",
+      "result": {
+        "hash": "#view=trending",
+        "headings": [
+          "Trending",
+          "\n        Login Options\n      ",
+          "\n        Application Form\n      ",
+          "\n        Content Appeals Form\n      ",
+          "\n        Feature Request Form\n      ",
+          "\n        Bug Fix Form\n      ",
+          "\n        General Feedback Form\n      ",
+          "",
+          "\n                      Comments\n                    ",
+          "\n                  Similar Content\n                ",
+          "\n        Search Filters\n      ",
+          "Edit Video Note",
+          "\n          Share a Video\n        ",
+          "Profile",
+          "Conversations",
+          "\n        Allow browser uploads (bucket CORS)\n      ",
+          "\n            Welcome to bitvid\n          ",
+          "\n          seed. zap. subscribe.\n        "
+        ]
+      },
+      "ok": true
+    },
+    {
+      "name": "360 Profile open/focus/close",
+      "at": "2026-10-20T16:27:47.286Z",
+      "result": {
+        "focus": [
+          {
+            "inside": true,
+            "id": "profileModalIdentityCard",
+            "tag": "BUTTON",
+            "outline": "solid",
+            "shadow": "rgba(15, 23, 42, 0.18) 0px 3.2px 4.8px -0.8px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px"
+          },
+          {
+            "inside": true,
+            "id": "profileNavAccount",
+            "tag": "BUTTON",
+            "outline": "solid",
+            "shadow": "rgb(84, 0, 17) 3px 0px 0px 0px inset, rgba(15, 23, 42, 0.18) 0px 3.2px 4.8px -0.8px"
+          },
+          {
+            "inside": true,
+            "id": "profileNavRelays",
+            "tag": "BUTTON",
+            "outline": "solid",
+            "shadow": "rgba(15, 23, 42, 0.18) 0px 0.8px 1.6px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px"
+          },
+          {
+            "inside": true,
+            "id": "profileNavWallet",
+            "tag": "BUTTON",
+            "outline": "solid",
+            "shadow": "rgba(15, 23, 42, 0.18) 0px 0.8px 1.6px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px"
+          },
+          {
+            "inside": true,
+            "id": "profileNavStorage",
+            "tag": "BUTTON",
+            "outline": "solid",
+            "shadow": "rgba(15, 23, 42, 0.18) 0px 0.8px 1.6px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px"
+          },
+          {
+            "inside": true,
+            "id": "profileNavMyVideos",
+            "tag": "BUTTON",
+            "outline": "solid",
+            "shadow": "rgba(15, 23, 42, 0.18) 0px 0.8px 1.6px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px"
+          }
+        ],
+        "restored": "profileButton"
+      },
+      "ok": true
+    },
+    {
+      "screenshot": "playback-qa-2-follow-on-360-profile.png"
+    },
+    {
+      "name": "360 Upload required fields/focus/close",
+      "at": "2026-10-20T16:27:47.593Z",
+      "result": {
+        "focus": [
+          {
+            "inside": true,
+            "id": "input-url",
+            "tag": "INPUT",
+            "outline": "solid",
+            "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(15, 23, 42, 0.18) 0px 0.8px 1.6px 0px"
+          },
+          {
+            "inside": true,
+            "id": "input-magnet",
+            "tag": "INPUT",
+            "outline": "solid",
+            "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(15, 23, 42, 0.18) 0px 0.8px 1.6px 0px"
+          },
+          {
+            "inside": true,
+            "id": "input-title",
+            "tag": "INPUT",
+            "outline": "solid",
+            "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(15, 23, 42, 0.18) 0px 0.8px 1.6px 0px"
+          },
+          {
+            "inside": true,
+            "id": "input-description",
+            "tag": "TEXTAREA",
+            "outline": "solid",
+            "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(15, 23, 42, 0.18) 0px 0.8px 1.6px 0px"
+          },
+          {
+            "inside": true,
+            "id": "input-thumbnail",
+            "tag": "INPUT",
+            "outline": "solid",
+            "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(15, 23, 42, 0.18) 0px 0.8px 1.6px 0px"
+          },
+          {
+            "inside": true,
+            "id": "",
+            "tag": "BUTTON",
+            "outline": "solid",
+            "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px"
+          }
+        ],
+        "missingTitle": true,
+        "noSourceRejected": true,
+        "noRelayPublish": true,
+        "restored": "uploadButton",
+        "layout": {
+          "width": 360,
+          "documentWidth": 362,
+          "cardBounds": [
+            {
+              "x": 76.796875,
+              "right": 347.203125,
+              "width": 270.40625
+            },
+            {
+              "x": 76.796875,
+              "right": 347.203125,
+              "width": 270.40625
+            },
+            {
+              "x": 76.796875,
+              "right": 347.203125,
+              "width": 270.40625
+            }
+          ],
+          "smallControls": [
+            {
+              "id": "sidebarCollapseToggle",
+              "label": "Expand sidebar",
+              "width": 35.1875,
+              "height": 35.1875
+            },
+            {
+              "id": "forYouLink",
+              "label": "For You",
+              "width": 35.1875,
+              "height": 35.1875
+            },
+            {
+              "id": "trendingLink",
+              "label": "Trending",
+              "width": 35.1875,
+              "height": 35.1875
+            },
+            {
+              "id": "mostZappedLink",
+              "label": "Most Zapped",
+              "width": 35.1875,
+              "height": 35.1875
+            },
+            {
+              "id": "",
+              "label": "Recently Added",
+              "width": 35.1875,
+              "height": 35.1875
+            },
+            {
+              "id": "",
+              "label": "For Kids",
+              "width": 35.1875,
+              "height": 35.1875
+            },
+            {
+              "id": "exploreLink",
+              "label": "Explore",
+              "width": 35.1875,
+              "height": 35.1875
+            },
+            {
+              "id": "subscriptionsLink",
+              "label": "Subscriptions",
+              "width": 35.1875,
+              "height": 35.1875
+            },
+            {
+              "id": "",
+              "label": "History",
+              "width": 35.1875,
+              "height": 35.1875
+            },
+            {
+              "id": "footerDropdownButton",
+              "label": "Show more sidebar links",
+              "width": 35.1875,
+              "height": 35.1875
+            },
+            {
+              "id": "themeToggle",
+              "label": "Switch to dark theme",
+              "width": 32,
+              "height": 32
+            },
+            {
+              "id": "uploadButton",
+              "label": "+",
+              "width": 38.390625,
+              "height": 38.390625
+            },
+            {
+              "id": "profileButton",
+              "label": "",
+              "width": 38.390625,
+              "height": 38.390625
+            },
+            {
+              "id": "trendingInfoTrigger",
+              "label": "How is this feed sorted?",
+              "width": 16,
+              "height": 16
+            },
+            {
+              "id": "",
+              "label": "#video",
+              "width": 49.8125,
+              "height": 18.21875
+            },
+            {
+              "id": "",
+              "label": "More options",
+              "width": 32,
+              "height": 32
+            },
+            {
+              "id": "",
+              "label": "Video settings",
+              "width": 32,
+              "height": 32
+            },
+            {
+              "id": "",
+              "label": "More options",
+              "width": 32,
+              "height": 32
+            },
+            {
+              "id": "",
+              "label": "Video settings",
+              "width": 32,
+              "height": 32
+            },
+            {
+              "id": "",
+              "label": "More options",
+              "width": 32,
+              "height": 32
+            },
+            {
+              "id": "",
+              "label": "Video settings",
+              "width": 32,
+              "height": 32
+            },
+            {
+              "id": "closeUploadModal",
+              "label": "Close upload modal",
+              "width": 32,
+              "height": 32
+            },
+            {
+              "id": "btn-mode-upload",
+              "label": "Upload File",
+              "width": 97.046875,
+              "height": 23.59375
+            },
+            {
+              "id": "btn-mode-external",
+              "label": "External Link",
+              "width": 106.109375,
+              "height": 23.59375
+            },
+            {
+              "id": "input-url",
+              "label": "",
+              "width": 283.25,
+              "height": 28.78125
+            },
+            {
+              "id": "input-magnet",
+              "label": "",
+              "width": 283.25,
+              "height": 28.78125
+            },
+            {
+              "id": "input-title",
+              "label": "",
+              "width": 283.25,
+              "height": 28.78125
+            },
+            {
+              "id": "input-thumbnail",
+              "label": "",
+              "width": 283.25,
+              "height": 28.78125
+            },
+            {
+              "id": "",
+              "label": "+ Add Tag",
+              "width": 67.09375,
+              "height": 22.140625
+            },
+            {
+              "id": "check-comments",
+              "label": "",
+              "width": 16,
+              "height": 16
+            },
+            {
+              "id": "check-nsfw",
+              "label": "",
+              "width": 16,
+              "height": 16
+            },
+            {
+              "id": "check-kids",
+              "label": "",
+              "width": 16,
+              "height": 16
+            },
+            {
+              "id": "check-no-nip71-mirror",
+              "label": "",
+              "width": 16,
+              "height": 16
+            },
+            {
+              "id": "btn-advanced-toggle",
+              "label": "Advanced Options",
+              "width": 283.25,
+              "height": 14
+            },
+            {
+              "id": "btn-submit",
+              "label": "Publish Video",
+              "width": 283.25,
+              "height": 40.375
+            }
+          ]
+        }
+      },
+      "ok": true
+    },
+    {
+      "screenshot": "playback-qa-2-follow-on-360-upload-validation.png"
+    },
+    {
+      "name": "360 Home navigation",
+      "at": "2026-10-20T16:27:53.359Z",
+      "result": {
+        "url": "http://127.0.0.1:31847/index.html",
+        "cards": 3
+      },
+      "ok": true
+    },
+    {
+      "name": "390 trending navigation/feed",
+      "at": "2026-10-20T16:27:55.486Z",
+      "result": {
+        "width": 390,
+        "documentWidth": 390,
+        "cardBounds": [
+          {
+            "x": 76.796875,
+            "right": 377.203125,
+            "width": 300.40625
+          },
+          {
+            "x": 76.796875,
+            "right": 377.203125,
+            "width": 300.40625
+          },
+          {
+            "x": 76.796875,
+            "right": 377.203125,
+            "width": 300.40625
+          }
+        ],
+        "smallControls": [
+          {
+            "id": "sidebarCollapseToggle",
+            "label": "Expand sidebar",
+            "width": 35.1875,
+            "height": 35.1875
+          },
+          {
+            "id": "forYouLink",
+            "label": "For You",
+            "width": 35.1875,
+            "height": 35.1875
+          },
+          {
+            "id": "trendingLink",
+            "label": "Trending",
+            "width": 35.1875,
+            "height": 35.1875
+          },
+          {
+            "id": "mostZappedLink",
+            "label": "Most Zapped",
+            "width": 35.1875,
+            "height": 35.1875
+          },
+          {
+            "id": "",
+            "label": "Recently Added",
+            "width": 35.1875,
+            "height": 35.1875
+          },
+          {
+            "id": "",
+            "label": "For Kids",
+            "width": 35.1875,
+            "height": 35.1875
+          },
+          {
+            "id": "exploreLink",
+            "label": "Explore",
+            "width": 35.1875,
+            "height": 35.1875
+          },
+          {
+            "id": "subscriptionsLink",
+            "label": "Subscriptions",
+            "width": 35.1875,
+            "height": 35.1875
+          },
+          {
+            "id": "",
+            "label": "History",
+            "width": 35.1875,
+            "height": 35.1875
+          },
+          {
+            "id": "footerDropdownButton",
+            "label": "Show more sidebar links",
+            "width": 35.1875,
+            "height": 35.1875
+          },
+          {
+            "id": "themeToggle",
+            "label": "Switch to dark theme",
+            "width": 32,
+            "height": 32
+          },
+          {
+            "id": "uploadButton",
+            "label": "+",
+            "width": 38.390625,
+            "height": 38.390625
+          },
+          {
+            "id": "profileButton",
+            "label": "",
+            "width": 38.390625,
+            "height": 38.390625
+          },
+          {
+            "id": "trendingInfoTrigger",
+            "label": "How is this feed sorted?",
+            "width": 16,
+            "height": 16
+          },
+          {
+            "id": "",
+            "label": "#video",
+            "width": 49.8125,
+            "height": 18.21875
+          },
+          {
+            "id": "",
+            "label": "More options",
+            "width": 32,
+            "height": 32
+          },
+          {
+            "id": "",
+            "label": "Video settings",
+            "width": 32,
+            "height": 32
+          },
+          {
+            "id": "",
+            "label": "More options",
+            "width": 32,
+            "height": 32
+          },
+          {
+            "id": "",
+            "label": "Video settings",
+            "width": 32,
+            "height": 32
+          },
+          {
+            "id": "",
+            "label": "More options",
+            "width": 32,
+            "height": 32
+          },
+          {
+            "id": "",
+            "label": "Video settings",
+            "width": 32,
+            "height": 32
+          }
+        ]
+      },
+      "ok": true
+    },
+    {
+      "screenshot": "playback-qa-2-follow-on-390-feed.png"
+    },
+    {
+      "name": "390 navigation explore",
+      "at": "2026-10-20T16:27:55.992Z",
+      "result": {
+        "hash": "#view=explore",
+        "headings": [
+          "Explore",
+          "\n        Login Options\n      ",
+          "\n        General Feedback Form\n      ",
+          "\n        Application Form\n      ",
+          "\n        Content Appeals Form\n      ",
+          "\n        Feature Request Form\n      ",
+          "\n        Bug Fix Form\n      ",
+          "\n        Search Filters\n      ",
+          "",
+          "\n                      Comments\n                    ",
+          "\n                  Similar Content\n                ",
+          "\n          Share a Video\n        ",
+          "Edit Video Note",
+          "Profile",
+          "Conversations",
+          "\n        Allow browser uploads (bucket CORS)\n      ",
+          "\n            Welcome to bitvid\n          ",
+          "\n          seed. zap. subscribe.\n        "
+        ]
+      },
+      "ok": true
+    },
+    {
+      "name": "390 navigation for-you",
+      "at": "2026-10-20T16:27:56.117Z",
+      "result": {
+        "hash": "#view=for-you",
+        "headings": [
+          "For You",
+          "\n        Login Options\n      ",
+          "\n        General Feedback Form\n      ",
+          "\n        Application Form\n      ",
+          "\n        Content Appeals Form\n      ",
+          "\n        Feature Request Form\n      ",
+          "\n        Bug Fix Form\n      ",
+          "\n        Search Filters\n      ",
+          "",
+          "\n                      Comments\n                    ",
+          "\n                  Similar Content\n                ",
+          "\n          Share a Video\n        ",
+          "Edit Video Note",
+          "Profile",
+          "Conversations",
+          "\n        Allow browser uploads (bucket CORS)\n      ",
+          "\n            Welcome to bitvid\n          ",
+          "\n          seed. zap. subscribe.\n        "
+        ]
+      },
+      "ok": true
+    },
+    {
+      "name": "390 navigation trending",
+      "at": "2026-10-20T16:27:56.236Z",
+      "result": {
+        "hash": "#view=trending",
+        "headings": [
+          "Trending",
+          "\n        Login Options\n      ",
+          "\n        General Feedback Form\n      ",
+          "\n        Application Form\n      ",
+          "\n        Content Appeals Form\n      ",
+          "\n        Feature Request Form\n      ",
+          "\n        Bug Fix Form\n      ",
+          "\n        Search Filters\n      ",
+          "",
+          "\n                      Comments\n                    ",
+          "\n                  Similar Content\n                ",
+          "\n          Share a Video\n        ",
+          "Edit Video Note",
+          "Profile",
+          "Conversations",
+          "\n        Allow browser uploads (bucket CORS)\n      ",
+          "\n            Welcome to bitvid\n          ",
+          "\n          seed. zap. subscribe.\n        "
+        ]
+      },
+      "ok": true
+    },
+    {
+      "name": "390 Profile open/focus/close",
+      "at": "2026-10-20T16:27:56.383Z",
+      "result": {
+        "focus": [
+          {
+            "inside": true,
+            "id": "profileModalIdentityCard",
+            "tag": "BUTTON",
+            "outline": "solid",
+            "shadow": "rgba(15, 23, 42, 0.18) 0px 3.2px 4.8px -0.8px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px"
+          },
+          {
+            "inside": true,
+            "id": "profileNavAccount",
+            "tag": "BUTTON",
+            "outline": "solid",
+            "shadow": "rgb(84, 0, 17) 3px 0px 0px 0px inset, rgba(15, 23, 42, 0.18) 0px 3.2px 4.8px -0.8px"
+          },
+          {
+            "inside": true,
+            "id": "profileNavRelays",
+            "tag": "BUTTON",
+            "outline": "solid",
+            "shadow": "rgba(15, 23, 42, 0.18) 0px 0.8px 1.6px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px"
+          },
+          {
+            "inside": true,
+            "id": "profileNavWallet",
+            "tag": "BUTTON",
+            "outline": "solid",
+            "shadow": "rgba(15, 23, 42, 0.18) 0px 0.8px 1.6px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px"
+          },
+          {
+            "inside": true,
+            "id": "profileNavStorage",
+            "tag": "BUTTON",
+            "outline": "solid",
+            "shadow": "rgba(15, 23, 42, 0.18) 0px 0.8px 1.6px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px"
+          },
+          {
+            "inside": true,
+            "id": "profileNavMyVideos",
+            "tag": "BUTTON",
+            "outline": "solid",
+            "shadow": "rgba(15, 23, 42, 0.18) 0px 0.8px 1.6px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px"
+          }
+        ],
+        "restored": "profileButton"
+      },
+      "ok": true
+    },
+    {
+      "screenshot": "playback-qa-2-follow-on-390-profile.png"
+    },
+    {
+      "name": "390 Upload required fields/focus/close",
+      "at": "2026-10-20T16:27:56.919Z",
+      "result": {
+        "focus": [
+          {
+            "inside": true,
+            "id": "input-url",
+            "tag": "INPUT",
+            "outline": "solid",
+            "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(15, 23, 42, 0.18) 0px 0.8px 1.6px 0px"
+          },
+          {
+            "inside": true,
+            "id": "input-magnet",
+            "tag": "INPUT",
+            "outline": "solid",
+            "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(15, 23, 42, 0.18) 0px 0.8px 1.6px 0px"
+          },
+          {
+            "inside": true,
+            "id": "input-title",
+            "tag": "INPUT",
+            "outline": "solid",
+            "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(15, 23, 42, 0.18) 0px 0.8px 1.6px 0px"
+          },
+          {
+            "inside": true,
+            "id": "input-description",
+            "tag": "TEXTAREA",
+            "outline": "solid",
+            "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(15, 23, 42, 0.18) 0px 0.8px 1.6px 0px"
+          },
+          {
+            "inside": true,
+            "id": "input-thumbnail",
+            "tag": "INPUT",
+            "outline": "solid",
+            "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(15, 23, 42, 0.18) 0px 0.8px 1.6px 0px"
+          },
+          {
+            "inside": true,
+            "id": "",
+            "tag": "BUTTON",
+            "outline": "solid",
+            "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px"
+          }
+        ],
+        "missingTitle": true,
+        "noSourceRejected": true,
+        "noRelayPublish": true,
+        "restored": "uploadButton",
+        "layout": {
+          "width": 390,
+          "documentWidth": 394,
+          "cardBounds": [
+            {
+              "x": 76.796875,
+              "right": 377.203125,
+              "width": 300.40625
+            },
+            {
+              "x": 76.796875,
+              "right": 377.203125,
+              "width": 300.40625
+            },
+            {
+              "x": 76.796875,
+              "right": 377.203125,
+              "width": 300.40625
+            }
+          ],
+          "smallControls": [
+            {
+              "id": "sidebarCollapseToggle",
+              "label": "Expand sidebar",
+              "width": 35.1875,
+              "height": 35.1875
+            },
+            {
+              "id": "forYouLink",
+              "label": "For You",
+              "width": 35.1875,
+              "height": 35.1875
+            },
+            {
+              "id": "trendingLink",
+              "label": "Trending",
+              "width": 35.1875,
+              "height": 35.1875
+            },
+            {
+              "id": "mostZappedLink",
+              "label": "Most Zapped",
+              "width": 35.1875,
+              "height": 35.1875
+            },
+            {
+              "id": "",
+              "label": "Recently Added",
+              "width": 35.1875,
+              "height": 35.1875
+            },
+            {
+              "id": "",
+              "label": "For Kids",
+              "width": 35.1875,
+              "height": 35.1875
+            },
+            {
+              "id": "exploreLink",
+              "label": "Explore",
+              "width": 35.1875,
+              "height": 35.1875
+            },
+            {
+              "id": "subscriptionsLink",
+              "label": "Subscriptions",
+              "width": 35.1875,
+              "height": 35.1875
+            },
+            {
+              "id": "",
+              "label": "History",
+              "width": 35.1875,
+              "height": 35.1875
+            },
+            {
+              "id": "footerDropdownButton",
+              "label": "Show more sidebar links",
+              "width": 35.1875,
+              "height": 35.1875
+            },
+            {
+              "id": "themeToggle",
+              "label": "Switch to dark theme",
+              "width": 32,
+              "height": 32
+            },
+            {
+              "id": "uploadButton",
+              "label": "+",
+              "width": 38.390625,
+              "height": 38.390625
+            },
+            {
+              "id": "profileButton",
+              "label": "",
+              "width": 38.390625,
+              "height": 38.390625
+            },
+            {
+              "id": "trendingInfoTrigger",
+              "label": "How is this feed sorted?",
+              "width": 16,
+              "height": 16
+            },
+            {
+              "id": "",
+              "label": "#video",
+              "width": 49.8125,
+              "height": 18.21875
+            },
+            {
+              "id": "",
+              "label": "More options",
+              "width": 32,
+              "height": 32
+            },
+            {
+              "id": "",
+              "label": "Video settings",
+              "width": 32,
+              "height": 32
+            },
+            {
+              "id": "",
+              "label": "More options",
+              "width": 32,
+              "height": 32
+            },
+            {
+              "id": "",
+              "label": "Video settings",
+              "width": 32,
+              "height": 32
+            },
+            {
+              "id": "",
+              "label": "More options",
+              "width": 32,
+              "height": 32
+            },
+            {
+              "id": "",
+              "label": "Video settings",
+              "width": 32,
+              "height": 32
+            },
+            {
+              "id": "closeUploadModal",
+              "label": "Close upload modal",
+              "width": 32,
+              "height": 32
+            },
+            {
+              "id": "btn-mode-upload",
+              "label": "Upload File",
+              "width": 97.046875,
+              "height": 23.59375
+            },
+            {
+              "id": "btn-mode-external",
+              "label": "External Link",
+              "width": 106.109375,
+              "height": 23.59375
+            },
+            {
+              "id": "input-url",
+              "label": "",
+              "width": 313.25,
+              "height": 28.78125
+            },
+            {
+              "id": "input-magnet",
+              "label": "",
+              "width": 313.25,
+              "height": 28.78125
+            },
+            {
+              "id": "input-title",
+              "label": "",
+              "width": 313.25,
+              "height": 28.78125
+            },
+            {
+              "id": "input-thumbnail",
+              "label": "",
+              "width": 313.25,
+              "height": 28.78125
+            },
+            {
+              "id": "",
+              "label": "+ Add Tag",
+              "width": 67.09375,
+              "height": 22.140625
+            },
+            {
+              "id": "check-comments",
+              "label": "",
+              "width": 16,
+              "height": 16
+            },
+            {
+              "id": "check-nsfw",
+              "label": "",
+              "width": 16,
+              "height": 16
+            },
+            {
+              "id": "check-kids",
+              "label": "",
+              "width": 16,
+              "height": 16
+            },
+            {
+              "id": "check-no-nip71-mirror",
+              "label": "",
+              "width": 16,
+              "height": 16
+            },
+            {
+              "id": "btn-advanced-toggle",
+              "label": "Advanced Options",
+              "width": 313.25,
+              "height": 14
+            },
+            {
+              "id": "btn-submit",
+              "label": "Publish Video",
+              "width": 313.25,
+              "height": 40.375
+            }
+          ]
+        }
+      },
+      "ok": true
+    },
+    {
+      "screenshot": "playback-qa-2-follow-on-390-upload-validation.png"
+    },
+    {
+      "name": "390 Home navigation",
+      "at": "2026-10-20T16:28:03.079Z",
+      "result": {
+        "url": "http://127.0.0.1:31847/index.html",
+        "cards": 3
+      },
+      "ok": true
+    },
+    {
+      "name": "1280 trending navigation/feed",
+      "at": "2026-10-20T16:28:05.318Z",
+      "result": {
+        "width": 1280,
+        "documentWidth": 1280,
+        "cardBounds": [
+          {
+            "x": 72,
+            "right": 353,
+            "width": 281
+          },
+          {
+            "x": 377,
+            "right": 658,
+            "width": 281
+          },
+          {
+            "x": 682,
+            "right": 963,
+            "width": 281
+          }
+        ],
+        "smallControls": [
+          {
+            "id": "sidebarCollapseToggle",
+            "label": "Expand sidebar",
+            "width": 33,
+            "height": 33
+          },
+          {
+            "id": "forYouLink",
+            "label": "For You",
+            "width": 33,
+            "height": 33
+          },
+          {
+            "id": "trendingLink",
+            "label": "Trending",
+            "width": 33,
+            "height": 33
+          },
+          {
+            "id": "mostZappedLink",
+            "label": "Most Zapped",
+            "width": 33,
+            "height": 33
+          },
+          {
+            "id": "",
+            "label": "Recently Added",
+            "width": 33,
+            "height": 33
+          },
+          {
+            "id": "",
+            "label": "For Kids",
+            "width": 33,
+            "height": 33
+          },
+          {
+            "id": "exploreLink",
+            "label": "Explore",
+            "width": 33,
+            "height": 33
+          },
+          {
+            "id": "subscriptionsLink",
+            "label": "Subscriptions",
+            "width": 33,
+            "height": 33
+          },
+          {
+            "id": "",
+            "label": "History",
+            "width": 33,
+            "height": 33
+          },
+          {
+            "id": "footerDropdownButton",
+            "label": "Show more sidebar links",
+            "width": 33,
+            "height": 33
+          },
+          {
+            "id": "",
+            "label": "Open search filters",
+            "width": 27,
+            "height": 27
+          },
+          {
+            "id": "headerSearchInput",
+            "label": "",
+            "width": 310,
+            "height": 13.125
+          },
+          {
+            "id": "",
+            "label": "Submit search",
+            "width": 27,
+            "height": 27
+          },
+          {
+            "id": "themeToggle",
+            "label": "Switch to dark theme",
+            "width": 30,
+            "height": 30
+          },
+          {
+            "id": "uploadButton",
+            "label": "+",
+            "width": 36,
+            "height": 36
+          },
+          {
+            "id": "profileButton",
+            "label": "",
+            "width": 36,
+            "height": 36
+          },
+          {
+            "id": "trendingInfoTrigger",
+            "label": "How is this feed sorted?",
+            "width": 15,
+            "height": 15
+          },
+          {
+            "id": "",
+            "label": "#video",
+            "width": 46.78125,
+            "height": 17.234375
+          },
+          {
+            "id": "",
+            "label": "More options",
+            "width": 30,
+            "height": 30
+          },
+          {
+            "id": "",
+            "label": "Video settings",
+            "width": 30,
+            "height": 30
+          },
+          {
+            "id": "",
+            "label": "More options",
+            "width": 30,
+            "height": 30
+          },
+          {
+            "id": "",
+            "label": "Video settings",
+            "width": 30,
+            "height": 30
+          },
+          {
+            "id": "",
+            "label": "More options",
+            "width": 30,
+            "height": 30
+          },
+          {
+            "id": "",
+            "label": "Video settings",
+            "width": 30,
+            "height": 30
+          }
+        ]
+      },
+      "ok": true
+    },
+    {
+      "screenshot": "playback-qa-2-follow-on-1280-feed.png"
+    },
+    {
+      "name": "1280 navigation explore",
+      "at": "2026-10-20T16:28:05.913Z",
+      "result": {
+        "hash": "#view=explore",
+        "headings": [
+          "Explore",
+          "\n        Login Options\n      ",
+          "\n        Application Form\n      ",
+          "\n        Content Appeals Form\n      ",
+          "\n        Bug Fix Form\n      ",
+          "\n        Feature Request Form\n      ",
+          "\n        General Feedback Form\n      ",
+          "\n        Search Filters\n      ",
+          "",
+          "\n                      Comments\n                    ",
+          "\n                  Similar Content\n                ",
+          "Edit Video Note",
+          "\n          Share a Video\n        ",
+          "Profile",
+          "Conversations",
+          "\n        Allow browser uploads (bucket CORS)\n      ",
+          "\n            Welcome to bitvid\n          ",
+          "\n          seed. zap. subscribe.\n        "
+        ]
+      },
+      "ok": true
+    },
+    {
+      "name": "1280 navigation for-you",
+      "at": "2026-10-20T16:28:06.026Z",
+      "result": {
+        "hash": "#view=for-you",
+        "headings": [
+          "For You",
+          "\n        Login Options\n      ",
+          "\n        Application Form\n      ",
+          "\n        Content Appeals Form\n      ",
+          "\n        Bug Fix Form\n      ",
+          "\n        Feature Request Form\n      ",
+          "\n        General Feedback Form\n      ",
+          "\n        Search Filters\n      ",
+          "",
+          "\n                      Comments\n                    ",
+          "\n                  Similar Content\n                ",
+          "Edit Video Note",
+          "\n          Share a Video\n        ",
+          "Profile",
+          "Conversations",
+          "\n        Allow browser uploads (bucket CORS)\n      ",
+          "\n            Welcome to bitvid\n          ",
+          "\n          seed. zap. subscribe.\n        "
+        ]
+      },
+      "ok": true
+    },
+    {
+      "name": "1280 navigation trending",
+      "at": "2026-10-20T16:28:06.163Z",
+      "result": {
+        "hash": "#view=trending",
+        "headings": [
+          "Trending",
+          "\n        Login Options\n      ",
+          "\n        Application Form\n      ",
+          "\n        Content Appeals Form\n      ",
+          "\n        Bug Fix Form\n      ",
+          "\n        Feature Request Form\n      ",
+          "\n        General Feedback Form\n      ",
+          "\n        Search Filters\n      ",
+          "",
+          "\n                      Comments\n                    ",
+          "\n                  Similar Content\n                ",
+          "Edit Video Note",
+          "\n          Share a Video\n        ",
+          "Profile",
+          "Conversations",
+          "\n        Allow browser uploads (bucket CORS)\n      ",
+          "\n            Welcome to bitvid\n          ",
+          "\n          seed. zap. subscribe.\n        "
+        ]
+      },
+      "ok": true
+    },
+    {
+      "name": "1280 Profile open/focus/close",
+      "at": "2026-10-20T16:28:06.280Z",
+      "result": {
+        "focus": [
+          {
+            "inside": true,
+            "id": "profileModalIdentityCard",
+            "tag": "BUTTON",
+            "outline": "solid",
+            "shadow": "rgba(202, 204, 208, 0.498) 0px 1.83617px 2.75425px 0.316847px, rgba(84, 0, 17, 0.39) 0px 0px 0px 1.55178px, rgba(0, 0, 0, 0) 0px 0px 0px 0px"
+          },
+          {
+            "inside": true,
+            "id": "profileNavAccount",
+            "tag": "BUTTON",
+            "outline": "solid",
+            "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(15, 23, 42, 0.18) 0px 3px 4.5px -0.75px"
+          },
+          {
+            "inside": true,
+            "id": "profileNavRelays",
+            "tag": "BUTTON",
+            "outline": "solid",
+            "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px"
+          },
+          {
+            "inside": true,
+            "id": "profileNavWallet",
+            "tag": "BUTTON",
+            "outline": "solid",
+            "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px"
+          },
+          {
+            "inside": true,
+            "id": "profileNavStorage",
+            "tag": "BUTTON",
+            "outline": "solid",
+            "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px"
+          },
+          {
+            "inside": true,
+            "id": "profileNavMyVideos",
+            "tag": "BUTTON",
+            "outline": "solid",
+            "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px"
+          }
+        ],
+        "restored": "profileButton"
+      },
+      "ok": true
+    },
+    {
+      "screenshot": "playback-qa-2-follow-on-1280-profile.png"
+    },
+    {
+      "name": "1280 Upload required fields/focus/close",
+      "at": "2026-10-20T16:28:06.720Z",
+      "result": {
+        "focus": [
+          {
+            "inside": true,
+            "id": "input-url",
+            "tag": "INPUT",
+            "outline": "solid",
+            "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(15, 23, 42, 0.18) 0px 0.75px 1.5px 0px"
+          },
+          {
+            "inside": true,
+            "id": "input-magnet",
+            "tag": "INPUT",
+            "outline": "solid",
+            "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(15, 23, 42, 0.18) 0px 0.75px 1.5px 0px"
+          },
+          {
+            "inside": true,
+            "id": "input-title",
+            "tag": "INPUT",
+            "outline": "solid",
+            "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(15, 23, 42, 0.18) 0px 0.75px 1.5px 0px"
+          },
+          {
+            "inside": true,
+            "id": "input-description",
+            "tag": "TEXTAREA",
+            "outline": "solid",
+            "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(15, 23, 42, 0.18) 0px 0.75px 1.5px 0px"
+          },
+          {
+            "inside": true,
+            "id": "input-thumbnail",
+            "tag": "INPUT",
+            "outline": "solid",
+            "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(15, 23, 42, 0.18) 0px 0.75px 1.5px 0px"
+          },
+          {
+            "inside": true,
+            "id": "",
+            "tag": "BUTTON",
+            "outline": "solid",
+            "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px"
+          }
+        ],
+        "missingTitle": true,
+        "noSourceRejected": true,
+        "noRelayPublish": true,
+        "restored": "uploadButton",
+        "layout": {
+          "width": 1280,
+          "documentWidth": 1280,
+          "cardBounds": [
+            {
+              "x": 72,
+              "right": 353,
+              "width": 281
+            },
+            {
+              "x": 377,
+              "right": 658,
+              "width": 281
+            },
+            {
+              "x": 682,
+              "right": 963,
+              "width": 281
+            }
+          ],
+          "smallControls": [
+            {
+              "id": "sidebarCollapseToggle",
+              "label": "Expand sidebar",
+              "width": 33,
+              "height": 33
+            },
+            {
+              "id": "forYouLink",
+              "label": "For You",
+              "width": 33,
+              "height": 33
+            },
+            {
+              "id": "trendingLink",
+              "label": "Trending",
+              "width": 33,
+              "height": 33
+            },
+            {
+              "id": "mostZappedLink",
+              "label": "Most Zapped",
+              "width": 33,
+              "height": 33
+            },
+            {
+              "id": "",
+              "label": "Recently Added",
+              "width": 33,
+              "height": 33
+            },
+            {
+              "id": "",
+              "label": "For Kids",
+              "width": 33,
+              "height": 33
+            },
+            {
+              "id": "exploreLink",
+              "label": "Explore",
+              "width": 33,
+              "height": 33
+            },
+            {
+              "id": "subscriptionsLink",
+              "label": "Subscriptions",
+              "width": 33,
+              "height": 33
+            },
+            {
+              "id": "",
+              "label": "History",
+              "width": 33,
+              "height": 33
+            },
+            {
+              "id": "footerDropdownButton",
+              "label": "Show more sidebar links",
+              "width": 33,
+              "height": 33
+            },
+            {
+              "id": "",
+              "label": "Open search filters",
+              "width": 27,
+              "height": 27
+            },
+            {
+              "id": "headerSearchInput",
+              "label": "",
+              "width": 310,
+              "height": 13.125
+            },
+            {
+              "id": "",
+              "label": "Submit search",
+              "width": 27,
+              "height": 27
+            },
+            {
+              "id": "themeToggle",
+              "label": "Switch to dark theme",
+              "width": 30,
+              "height": 30
+            },
+            {
+              "id": "uploadButton",
+              "label": "+",
+              "width": 36,
+              "height": 36
+            },
+            {
+              "id": "profileButton",
+              "label": "",
+              "width": 36,
+              "height": 36
+            },
+            {
+              "id": "trendingInfoTrigger",
+              "label": "How is this feed sorted?",
+              "width": 15,
+              "height": 15
+            },
+            {
+              "id": "",
+              "label": "#video",
+              "width": 46.78125,
+              "height": 17.234375
+            },
+            {
+              "id": "",
+              "label": "More options",
+              "width": 30,
+              "height": 30
+            },
+            {
+              "id": "",
+              "label": "Video settings",
+              "width": 30,
+              "height": 30
+            },
+            {
+              "id": "",
+              "label": "More options",
+              "width": 30,
+              "height": 30
+            },
+            {
+              "id": "",
+              "label": "Video settings",
+              "width": 30,
+              "height": 30
+            },
+            {
+              "id": "",
+              "label": "More options",
+              "width": 30,
+              "height": 30
+            },
+            {
+              "id": "",
+              "label": "Video settings",
+              "width": 30,
+              "height": 30
+            },
+            {
+              "id": "closeUploadModal",
+              "label": "Close upload modal",
+              "width": 30,
+              "height": 30
+            },
+            {
+              "id": "btn-mode-upload",
+              "label": "Upload File",
+              "width": 91.0625,
+              "height": 22.125
+            },
+            {
+              "id": "btn-mode-external",
+              "label": "External Link",
+              "width": 99.578125,
+              "height": 22.125
+            },
+            {
+              "id": "input-url",
+              "label": "",
+              "width": 418,
+              "height": 27.125
+            },
+            {
+              "id": "input-magnet",
+              "label": "",
+              "width": 418,
+              "height": 27.125
+            },
+            {
+              "id": "input-title",
+              "label": "",
+              "width": 418,
+              "height": 27.125
+            },
+            {
+              "id": "input-thumbnail",
+              "label": "",
+              "width": 418,
+              "height": 27.125
+            },
+            {
+              "id": "",
+              "label": "+ Add Tag",
+              "width": 63.0625,
+              "height": 20.890625
+            },
+            {
+              "id": "check-comments",
+              "label": "",
+              "width": 15,
+              "height": 15
+            },
+            {
+              "id": "check-nsfw",
+              "label": "",
+              "width": 15,
+              "height": 15
+            },
+            {
+              "id": "check-kids",
+              "label": "",
+              "width": 15,
+              "height": 15
+            },
+            {
+              "id": "check-no-nip71-mirror",
+              "label": "",
+              "width": 15,
+              "height": 15
+            },
+            {
+              "id": "btn-advanced-toggle",
+              "label": "Advanced Options",
+              "width": 418,
+              "height": 13.125
+            },
+            {
+              "id": "btn-submit",
+              "label": "Publish Video",
+              "width": 418,
+              "height": 38
+            }
+          ]
+        }
+      },
+      "ok": true
+    },
+    {
+      "screenshot": "playback-qa-2-follow-on-1280-upload-validation.png"
+    },
+    {
+      "name": "1280 Home navigation",
+      "at": "2026-10-20T16:28:07.601Z",
+      "result": {
+        "url": "http://127.0.0.1:31847/index.html",
+        "cards": 3
+      },
+      "ok": true
+    }
+  ],
+  "fixtureHttp": {
+    "head": 200,
+    "get": 200,
+    "range": 206,
+    "bytes": 1019,
+    "contentType": "video/webm"
+  },
+  "browserVersion": "154.0.8037.97",
+  "boot": "passed",
+  "uploadGeometry": [
+    {
+      "viewport": "360",
+      "geometry": {
+        "viewport": {
+          "width": 360,
+          "height": 800,
+          "scrollX": 0,
+          "scrollY": 0
+        },
+        "document": {
+          "id": "",
+          "tag": "HTML",
+          "x": 0,
+          "y": 0,
+          "right": 360,
+          "bottom": 1336.796875,
+          "width": 360,
+          "height": 1336.796875,
+          "clientWidth": 360,
+          "scrollWidth": 362,
+          "overflowX": "visible",
+          "position": "static"
+        },
+        "body": {
+          "id": "",
+          "tag": "BODY",
+          "x": 0,
+          "y": 0,
+          "right": 360,
+          "bottom": 1336.796875,
+          "width": 360,
+          "height": 1336.796875,
+          "clientWidth": 360,
+          "scrollWidth": 362,
+          "overflowX": "hidden",
+          "position": "static"
+        },
+        "panel": {
+          "id": "",
+          "tag": "DIV",
+          "x": 0,
+          "y": 0,
+          "right": 360,
+          "bottom": 800,
+          "width": 360,
+          "height": 800,
+          "clientWidth": 360,
+          "scrollWidth": 360,
+          "overflowX": "hidden",
+          "position": "relative"
+        },
+        "root": {
+          "id": "uploadModal",
+          "tag": "DIV",
+          "x": 0,
+          "y": 0,
+          "right": 360,
+          "bottom": 800,
+          "width": 360,
+          "height": 800,
+          "clientWidth": 360,
+          "scrollWidth": 360,
+          "overflowX": "visible",
+          "position": "fixed"
+        },
+        "active": {
+          "id": "btn-submit",
+          "tag": "BUTTON",
+          "x": 38.375,
+          "y": 715.265625,
+          "right": 321.625,
+          "bottom": 755.640625,
+          "width": 283.25,
+          "height": 40.375,
+          "clientWidth": 281,
+          "scrollWidth": 281,
+          "overflowX": "visible",
+          "position": "static"
+        },
+        "controls": [
+          {
+            "selector": "#input-title",
+            "id": "input-title",
+            "tag": "INPUT",
+            "x": 38.375,
+            "y": 247.09375,
+            "right": 321.625,
+            "bottom": 275.875,
+            "width": 283.25,
+            "height": 28.78125,
+            "clientWidth": 281,
+            "scrollWidth": 281,
+            "overflowX": "clip",
+            "position": "static"
+          },
+          {
+            "selector": "#input-url",
+            "id": "input-url",
+            "tag": "INPUT",
+            "x": 38.375,
+            "y": 62.703125,
+            "right": 321.625,
+            "bottom": 91.484375,
+            "width": 283.25,
+            "height": 28.78125,
+            "clientWidth": 281,
+            "scrollWidth": 281,
+            "overflowX": "clip",
+            "position": "static"
+          },
+          {
+            "selector": "#input-magnet",
+            "id": "input-magnet",
+            "tag": "INPUT",
+            "x": 38.375,
+            "y": 141.609375,
+            "right": 321.625,
+            "bottom": 170.390625,
+            "width": 283.25,
+            "height": 28.78125,
+            "clientWidth": 281,
+            "scrollWidth": 281,
+            "overflowX": "clip",
+            "position": "static"
+          },
+          {
+            "selector": "#btn-submit",
+            "id": "btn-submit",
+            "tag": "BUTTON",
+            "x": 38.375,
+            "y": 715.265625,
+            "right": 321.625,
+            "bottom": 755.640625,
+            "width": 283.25,
+            "height": 40.375,
+            "clientWidth": 281,
+            "scrollWidth": 281,
+            "overflowX": "visible",
+            "position": "static"
+          },
+          {
+            "selector": "#closeUploadModal",
+            "id": "closeUploadModal",
+            "tag": "BUTTON",
+            "x": 283.21875,
+            "y": 41.578125,
+            "right": 315.21875,
+            "bottom": 73.578125,
+            "width": 32,
+            "height": 32,
+            "clientWidth": 30,
+            "scrollWidth": 30,
+            "overflowX": "visible",
+            "position": "static"
+          }
+        ],
+        "offenders": [
+          {
+            "id": "",
+            "tag": "SPAN",
+            "x": 51.439674377441406,
+            "y": 362.515625,
+            "right": 1526.8771743774414,
+            "bottom": 384.125,
+            "width": 1475.4375,
+            "height": 21.609375,
+            "clientWidth": 1475,
+            "scrollWidth": 1475,
+            "overflowX": "visible",
+            "position": "static"
+          },
+          {
+            "id": "",
+            "tag": "SPAN",
+            "x": 51.439674377441406,
+            "y": 362.515625,
+            "right": 789.1584243774414,
+            "bottom": 384.125,
+            "width": 737.71875,
+            "height": 21.609375,
+            "clientWidth": 738,
+            "scrollWidth": 738,
+            "overflowX": "visible",
+            "position": "static"
+          },
+          {
+            "id": "",
+            "tag": "SPAN",
+            "x": 789.158447265625,
+            "y": 362.515625,
+            "right": 1526.877197265625,
+            "bottom": 384.125,
+            "width": 737.71875,
+            "height": 21.609375,
+            "clientWidth": 738,
+            "scrollWidth": 738,
+            "overflowX": "visible",
+            "position": "static"
+          },
+          {
+            "id": "",
+            "tag": "SPAN",
+            "x": 90.59375,
+            "y": 686.484375,
+            "right": 510.1875,
+            "bottom": 708.09375,
+            "width": 419.59375,
+            "height": 21.609375,
+            "clientWidth": 420,
+            "scrollWidth": 420,
+            "overflowX": "visible",
+            "position": "static"
+          },
+          {
+            "id": "",
+            "tag": "SPAN",
+            "x": 300.390625,
+            "y": 686.484375,
+            "right": 510.1875,
+            "bottom": 708.09375,
+            "width": 209.796875,
+            "height": 21.609375,
+            "clientWidth": 210,
+            "scrollWidth": 210,
+            "overflowX": "visible",
+            "position": "static"
+          },
+          {
+            "id": "",
+            "tag": "SPAN",
+            "x": 90.59375,
+            "y": 1010.453125,
+            "right": 510.1875,
+            "bottom": 1032.0625,
+            "width": 419.59375,
+            "height": 21.609375,
+            "clientWidth": 420,
+            "scrollWidth": 420,
+            "overflowX": "visible",
+            "position": "static"
+          },
+          {
+            "id": "",
+            "tag": "SPAN",
+            "x": 300.390625,
+            "y": 1010.453125,
+            "right": 510.1875,
+            "bottom": 1032.0625,
+            "width": 209.796875,
+            "height": 21.609375,
+            "clientWidth": 210,
+            "scrollWidth": 210,
+            "overflowX": "visible",
+            "position": "static"
+          }
+        ]
+      }
+    },
+    {
+      "viewport": "390",
+      "geometry": {
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "scrollX": 0,
+          "scrollY": 0
+        },
+        "document": {
+          "id": "",
+          "tag": "HTML",
+          "x": 0,
+          "y": 0,
+          "right": 390,
+          "bottom": 1387.421875,
+          "width": 390,
+          "height": 1387.421875,
+          "clientWidth": 390,
+          "scrollWidth": 394,
+          "overflowX": "visible",
+          "position": "static"
+        },
+        "body": {
+          "id": "",
+          "tag": "BODY",
+          "x": 0,
+          "y": 0,
+          "right": 390,
+          "bottom": 1387.421875,
+          "width": 390,
+          "height": 1387.421875,
+          "clientWidth": 390,
+          "scrollWidth": 394,
+          "overflowX": "hidden",
+          "position": "static"
+        },
+        "panel": {
+          "id": "",
+          "tag": "DIV",
+          "x": 0,
+          "y": 0,
+          "right": 390,
+          "bottom": 844,
+          "width": 390,
+          "height": 844,
+          "clientWidth": 390,
+          "scrollWidth": 390,
+          "overflowX": "hidden",
+          "position": "relative"
+        },
+        "root": {
+          "id": "uploadModal",
+          "tag": "DIV",
+          "x": 0,
+          "y": 0,
+          "right": 390,
+          "bottom": 844,
+          "width": 390,
+          "height": 844,
+          "clientWidth": 390,
+          "scrollWidth": 390,
+          "overflowX": "visible",
+          "position": "fixed"
+        },
+        "active": {
+          "id": "btn-submit",
+          "tag": "BUTTON",
+          "x": 38.375,
+          "y": 759.265625,
+          "right": 351.625,
+          "bottom": 799.640625,
+          "width": 313.25,
+          "height": 40.375,
+          "clientWidth": 311,
+          "scrollWidth": 311,
+          "overflowX": "visible",
+          "position": "static"
+        },
+        "controls": [
+          {
+            "selector": "#input-title",
+            "id": "input-title",
+            "tag": "INPUT",
+            "x": 38.375,
+            "y": 291.09375,
+            "right": 351.625,
+            "bottom": 319.875,
+            "width": 313.25,
+            "height": 28.78125,
+            "clientWidth": 311,
+            "scrollWidth": 311,
+            "overflowX": "clip",
+            "position": "static"
+          },
+          {
+            "selector": "#input-url",
+            "id": "input-url",
+            "tag": "INPUT",
+            "x": 38.375,
+            "y": 106.703125,
+            "right": 351.625,
+            "bottom": 135.484375,
+            "width": 313.25,
+            "height": 28.78125,
+            "clientWidth": 311,
+            "scrollWidth": 311,
+            "overflowX": "clip",
+            "position": "static"
+          },
+          {
+            "selector": "#input-magnet",
+            "id": "input-magnet",
+            "tag": "INPUT",
+            "x": 38.375,
+            "y": 185.609375,
+            "right": 351.625,
+            "bottom": 214.390625,
+            "width": 313.25,
+            "height": 28.78125,
+            "clientWidth": 311,
+            "scrollWidth": 311,
+            "overflowX": "clip",
+            "position": "static"
+          },
+          {
+            "selector": "#btn-submit",
+            "id": "btn-submit",
+            "tag": "BUTTON",
+            "x": 38.375,
+            "y": 759.265625,
+            "right": 351.625,
+            "bottom": 799.640625,
+            "width": 313.25,
+            "height": 40.375,
+            "clientWidth": 311,
+            "scrollWidth": 311,
+            "overflowX": "visible",
+            "position": "static"
+          },
+          {
+            "selector": "#closeUploadModal",
+            "id": "closeUploadModal",
+            "tag": "BUTTON",
+            "x": 313.21875,
+            "y": 41.578125,
+            "right": 345.21875,
+            "bottom": 73.578125,
+            "width": 32,
+            "height": 32,
+            "clientWidth": 30,
+            "scrollWidth": 30,
+            "overflowX": "visible",
+            "position": "static"
+          }
+        ],
+        "offenders": [
+          {
+            "id": "",
+            "tag": "SPAN",
+            "x": 28.115467071533203,
+            "y": 379.390625,
+            "right": 1503.5529670715332,
+            "bottom": 401,
+            "width": 1475.4375,
+            "height": 21.609375,
+            "clientWidth": 1475,
+            "scrollWidth": 1475,
+            "overflowX": "visible",
+            "position": "static"
+          },
+          {
+            "id": "",
+            "tag": "SPAN",
+            "x": 28.115467071533203,
+            "y": 379.390625,
+            "right": 765.8342170715332,
+            "bottom": 401,
+            "width": 737.71875,
+            "height": 21.609375,
+            "clientWidth": 738,
+            "scrollWidth": 738,
+            "overflowX": "visible",
+            "position": "static"
+          },
+          {
+            "id": "",
+            "tag": "SPAN",
+            "x": 765.834228515625,
+            "y": 379.390625,
+            "right": 1503.552978515625,
+            "bottom": 401,
+            "width": 737.71875,
+            "height": 21.609375,
+            "clientWidth": 738,
+            "scrollWidth": 738,
+            "overflowX": "visible",
+            "position": "static"
+          },
+          {
+            "id": "",
+            "tag": "SPAN",
+            "x": 90.59375,
+            "y": 720.234375,
+            "right": 510.1875,
+            "bottom": 741.84375,
+            "width": 419.59375,
+            "height": 21.609375,
+            "clientWidth": 420,
+            "scrollWidth": 420,
+            "overflowX": "visible",
+            "position": "static"
+          },
+          {
+            "id": "",
+            "tag": "SPAN",
+            "x": 300.390625,
+            "y": 720.234375,
+            "right": 510.1875,
+            "bottom": 741.84375,
+            "width": 209.796875,
+            "height": 21.609375,
+            "clientWidth": 210,
+            "scrollWidth": 210,
+            "overflowX": "visible",
+            "position": "static"
+          },
+          {
+            "id": "",
+            "tag": "SPAN",
+            "x": 90.59375,
+            "y": 1061.078125,
+            "right": 510.1875,
+            "bottom": 1082.6875,
+            "width": 419.59375,
+            "height": 21.609375,
+            "clientWidth": 420,
+            "scrollWidth": 420,
+            "overflowX": "visible",
+            "position": "static"
+          },
+          {
+            "id": "",
+            "tag": "SPAN",
+            "x": 300.390625,
+            "y": 1061.078125,
+            "right": 510.1875,
+            "bottom": 1082.6875,
+            "width": 209.796875,
+            "height": 21.609375,
+            "clientWidth": 210,
+            "scrollWidth": 210,
+            "overflowX": "visible",
+            "position": "static"
+          }
+        ]
+      }
+    },
+    {
+      "viewport": "1280",
+      "geometry": {
+        "viewport": {
+          "width": 1280,
+          "height": 720,
+          "scrollX": 0,
+          "scrollY": 0
+        },
+        "document": {
+          "id": "",
+          "tag": "HTML",
+          "x": 0,
+          "y": 0,
+          "right": 1280,
+          "bottom": 720,
+          "width": 1280,
+          "height": 720,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "overflowX": "visible",
+          "position": "static"
+        },
+        "body": {
+          "id": "",
+          "tag": "BODY",
+          "x": 0,
+          "y": 0,
+          "right": 1280,
+          "bottom": 720,
+          "width": 1280,
+          "height": 720,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "overflowX": "hidden",
+          "position": "static"
+        },
+        "panel": {
+          "id": "",
+          "tag": "DIV",
+          "x": 388,
+          "y": 36,
+          "right": 892,
+          "bottom": 684,
+          "width": 504,
+          "height": 648,
+          "clientWidth": 502,
+          "scrollWidth": 502,
+          "overflowX": "hidden",
+          "position": "relative"
+        },
+        "root": {
+          "id": "uploadModal",
+          "tag": "DIV",
+          "x": 0,
+          "y": 0,
+          "right": 1280,
+          "bottom": 720,
+          "width": 1280,
+          "height": 720,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "overflowX": "visible",
+          "position": "fixed"
+        },
+        "active": {
+          "id": "btn-submit",
+          "tag": "BUTTON",
+          "x": 431,
+          "y": 597.671875,
+          "right": 849,
+          "bottom": 635.671875,
+          "width": 418,
+          "height": 38,
+          "clientWidth": 416,
+          "scrollWidth": 416,
+          "overflowX": "visible",
+          "position": "static"
+        },
+        "controls": [
+          {
+            "selector": "#input-title",
+            "id": "input-title",
+            "tag": "INPUT",
+            "x": 431,
+            "y": 158.03125,
+            "right": 849,
+            "bottom": 185.15625,
+            "width": 418,
+            "height": 27.125,
+            "clientWidth": 416,
+            "scrollWidth": 416,
+            "overflowX": "clip",
+            "position": "static"
+          },
+          {
+            "selector": "#input-url",
+            "id": "input-url",
+            "tag": "INPUT",
+            "x": 431,
+            "y": -15.25,
+            "right": 849,
+            "bottom": 11.875,
+            "width": 418,
+            "height": 27.125,
+            "clientWidth": 416,
+            "scrollWidth": 416,
+            "overflowX": "clip",
+            "position": "static"
+          },
+          {
+            "selector": "#input-magnet",
+            "id": "input-magnet",
+            "tag": "INPUT",
+            "x": 431,
+            "y": 58.890625,
+            "right": 849,
+            "bottom": 86.015625,
+            "width": 418,
+            "height": 27.125,
+            "clientWidth": 416,
+            "scrollWidth": 416,
+            "overflowX": "clip",
+            "position": "static"
+          },
+          {
+            "selector": "#btn-submit",
+            "id": "btn-submit",
+            "tag": "BUTTON",
+            "x": 431,
+            "y": 597.671875,
+            "right": 849,
+            "bottom": 635.671875,
+            "width": 418,
+            "height": 38,
+            "clientWidth": 416,
+            "scrollWidth": 416,
+            "overflowX": "visible",
+            "position": "static"
+          },
+          {
+            "selector": "#closeUploadModal",
+            "id": "closeUploadModal",
+            "tag": "BUTTON",
+            "x": 813,
+            "y": 79,
+            "right": 843,
+            "bottom": 109,
+            "width": 30,
+            "height": 30,
+            "clientWidth": 28,
+            "scrollWidth": 28,
+            "overflowX": "visible",
+            "position": "static"
+          }
+        ],
+        "offenders": [
+          {
+            "id": "",
+            "tag": "SPAN",
+            "x": 85,
+            "y": 355.671875,
+            "right": 1469.09375,
+            "bottom": 375.921875,
+            "width": 1384.09375,
+            "height": 20.25,
+            "clientWidth": 1384,
+            "scrollWidth": 1384,
+            "overflowX": "visible",
+            "position": "static"
+          },
+          {
+            "id": "",
+            "tag": "SPAN",
+            "x": 777.046875,
+            "y": 355.671875,
+            "right": 1469.09375,
+            "bottom": 375.921875,
+            "width": 692.046875,
+            "height": 20.25,
+            "clientWidth": 692,
+            "scrollWidth": 692,
+            "overflowX": "visible",
+            "position": "static"
+          }
+        ]
+      }
+    }
+  ],
+  "uploadOverflowFindings": [
+    {
+      "viewport": "360",
+      "documentWidth": 362,
+      "width": 360,
+      "severity": "minor horizontal overflow; controls horizontally in viewport",
+      "geometry": {
+        "viewport": {
+          "width": 360,
+          "height": 800,
+          "scrollX": 0,
+          "scrollY": 0
+        },
+        "document": {
+          "id": "",
+          "tag": "HTML",
+          "x": 0,
+          "y": 0,
+          "right": 360,
+          "bottom": 1336.796875,
+          "width": 360,
+          "height": 1336.796875,
+          "clientWidth": 360,
+          "scrollWidth": 362,
+          "overflowX": "visible",
+          "position": "static"
+        },
+        "body": {
+          "id": "",
+          "tag": "BODY",
+          "x": 0,
+          "y": 0,
+          "right": 360,
+          "bottom": 1336.796875,
+          "width": 360,
+          "height": 1336.796875,
+          "clientWidth": 360,
+          "scrollWidth": 362,
+          "overflowX": "hidden",
+          "position": "static"
+        },
+        "panel": {
+          "id": "",
+          "tag": "DIV",
+          "x": 0,
+          "y": 0,
+          "right": 360,
+          "bottom": 800,
+          "width": 360,
+          "height": 800,
+          "clientWidth": 360,
+          "scrollWidth": 360,
+          "overflowX": "hidden",
+          "position": "relative"
+        },
+        "root": {
+          "id": "uploadModal",
+          "tag": "DIV",
+          "x": 0,
+          "y": 0,
+          "right": 360,
+          "bottom": 800,
+          "width": 360,
+          "height": 800,
+          "clientWidth": 360,
+          "scrollWidth": 360,
+          "overflowX": "visible",
+          "position": "fixed"
+        },
+        "active": {
+          "id": "btn-submit",
+          "tag": "BUTTON",
+          "x": 38.375,
+          "y": 715.265625,
+          "right": 321.625,
+          "bottom": 755.640625,
+          "width": 283.25,
+          "height": 40.375,
+          "clientWidth": 281,
+          "scrollWidth": 281,
+          "overflowX": "visible",
+          "position": "static"
+        },
+        "controls": [
+          {
+            "selector": "#input-title",
+            "id": "input-title",
+            "tag": "INPUT",
+            "x": 38.375,
+            "y": 247.09375,
+            "right": 321.625,
+            "bottom": 275.875,
+            "width": 283.25,
+            "height": 28.78125,
+            "clientWidth": 281,
+            "scrollWidth": 281,
+            "overflowX": "clip",
+            "position": "static"
+          },
+          {
+            "selector": "#input-url",
+            "id": "input-url",
+            "tag": "INPUT",
+            "x": 38.375,
+            "y": 62.703125,
+            "right": 321.625,
+            "bottom": 91.484375,
+            "width": 283.25,
+            "height": 28.78125,
+            "clientWidth": 281,
+            "scrollWidth": 281,
+            "overflowX": "clip",
+            "position": "static"
+          },
+          {
+            "selector": "#input-magnet",
+            "id": "input-magnet",
+            "tag": "INPUT",
+            "x": 38.375,
+            "y": 141.609375,
+            "right": 321.625,
+            "bottom": 170.390625,
+            "width": 283.25,
+            "height": 28.78125,
+            "clientWidth": 281,
+            "scrollWidth": 281,
+            "overflowX": "clip",
+            "position": "static"
+          },
+          {
+            "selector": "#btn-submit",
+            "id": "btn-submit",
+            "tag": "BUTTON",
+            "x": 38.375,
+            "y": 715.265625,
+            "right": 321.625,
+            "bottom": 755.640625,
+            "width": 283.25,
+            "height": 40.375,
+            "clientWidth": 281,
+            "scrollWidth": 281,
+            "overflowX": "visible",
+            "position": "static"
+          },
+          {
+            "selector": "#closeUploadModal",
+            "id": "closeUploadModal",
+            "tag": "BUTTON",
+            "x": 283.21875,
+            "y": 41.578125,
+            "right": 315.21875,
+            "bottom": 73.578125,
+            "width": 32,
+            "height": 32,
+            "clientWidth": 30,
+            "scrollWidth": 30,
+            "overflowX": "visible",
+            "position": "static"
+          }
+        ],
+        "offenders": [
+          {
+            "id": "",
+            "tag": "SPAN",
+            "x": 51.439674377441406,
+            "y": 362.515625,
+            "right": 1526.8771743774414,
+            "bottom": 384.125,
+            "width": 1475.4375,
+            "height": 21.609375,
+            "clientWidth": 1475,
+            "scrollWidth": 1475,
+            "overflowX": "visible",
+            "position": "static"
+          },
+          {
+            "id": "",
+            "tag": "SPAN",
+            "x": 51.439674377441406,
+            "y": 362.515625,
+            "right": 789.1584243774414,
+            "bottom": 384.125,
+            "width": 737.71875,
+            "height": 21.609375,
+            "clientWidth": 738,
+            "scrollWidth": 738,
+            "overflowX": "visible",
+            "position": "static"
+          },
+          {
+            "id": "",
+            "tag": "SPAN",
+            "x": 789.158447265625,
+            "y": 362.515625,
+            "right": 1526.877197265625,
+            "bottom": 384.125,
+            "width": 737.71875,
+            "height": 21.609375,
+            "clientWidth": 738,
+            "scrollWidth": 738,
+            "overflowX": "visible",
+            "position": "static"
+          },
+          {
+            "id": "",
+            "tag": "SPAN",
+            "x": 90.59375,
+            "y": 686.484375,
+            "right": 510.1875,
+            "bottom": 708.09375,
+            "width": 419.59375,
+            "height": 21.609375,
+            "clientWidth": 420,
+            "scrollWidth": 420,
+            "overflowX": "visible",
+            "position": "static"
+          },
+          {
+            "id": "",
+            "tag": "SPAN",
+            "x": 300.390625,
+            "y": 686.484375,
+            "right": 510.1875,
+            "bottom": 708.09375,
+            "width": 209.796875,
+            "height": 21.609375,
+            "clientWidth": 210,
+            "scrollWidth": 210,
+            "overflowX": "visible",
+            "position": "static"
+          },
+          {
+            "id": "",
+            "tag": "SPAN",
+            "x": 90.59375,
+            "y": 1010.453125,
+            "right": 510.1875,
+            "bottom": 1032.0625,
+            "width": 419.59375,
+            "height": 21.609375,
+            "clientWidth": 420,
+            "scrollWidth": 420,
+            "overflowX": "visible",
+            "position": "static"
+          },
+          {
+            "id": "",
+            "tag": "SPAN",
+            "x": 300.390625,
+            "y": 1010.453125,
+            "right": 510.1875,
+            "bottom": 1032.0625,
+            "width": 209.796875,
+            "height": 21.609375,
+            "clientWidth": 210,
+            "scrollWidth": 210,
+            "overflowX": "visible",
+            "position": "static"
+          }
+        ]
+      }
+    },
+    {
+      "viewport": "390",
+      "documentWidth": 394,
+      "width": 390,
+      "severity": "minor horizontal overflow; controls horizontally in viewport",
+      "geometry": {
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "scrollX": 0,
+          "scrollY": 0
+        },
+        "document": {
+          "id": "",
+          "tag": "HTML",
+          "x": 0,
+          "y": 0,
+          "right": 390,
+          "bottom": 1387.421875,
+          "width": 390,
+          "height": 1387.421875,
+          "clientWidth": 390,
+          "scrollWidth": 394,
+          "overflowX": "visible",
+          "position": "static"
+        },
+        "body": {
+          "id": "",
+          "tag": "BODY",
+          "x": 0,
+          "y": 0,
+          "right": 390,
+          "bottom": 1387.421875,
+          "width": 390,
+          "height": 1387.421875,
+          "clientWidth": 390,
+          "scrollWidth": 394,
+          "overflowX": "hidden",
+          "position": "static"
+        },
+        "panel": {
+          "id": "",
+          "tag": "DIV",
+          "x": 0,
+          "y": 0,
+          "right": 390,
+          "bottom": 844,
+          "width": 390,
+          "height": 844,
+          "clientWidth": 390,
+          "scrollWidth": 390,
+          "overflowX": "hidden",
+          "position": "relative"
+        },
+        "root": {
+          "id": "uploadModal",
+          "tag": "DIV",
+          "x": 0,
+          "y": 0,
+          "right": 390,
+          "bottom": 844,
+          "width": 390,
+          "height": 844,
+          "clientWidth": 390,
+          "scrollWidth": 390,
+          "overflowX": "visible",
+          "position": "fixed"
+        },
+        "active": {
+          "id": "btn-submit",
+          "tag": "BUTTON",
+          "x": 38.375,
+          "y": 759.265625,
+          "right": 351.625,
+          "bottom": 799.640625,
+          "width": 313.25,
+          "height": 40.375,
+          "clientWidth": 311,
+          "scrollWidth": 311,
+          "overflowX": "visible",
+          "position": "static"
+        },
+        "controls": [
+          {
+            "selector": "#input-title",
+            "id": "input-title",
+            "tag": "INPUT",
+            "x": 38.375,
+            "y": 291.09375,
+            "right": 351.625,
+            "bottom": 319.875,
+            "width": 313.25,
+            "height": 28.78125,
+            "clientWidth": 311,
+            "scrollWidth": 311,
+            "overflowX": "clip",
+            "position": "static"
+          },
+          {
+            "selector": "#input-url",
+            "id": "input-url",
+            "tag": "INPUT",
+            "x": 38.375,
+            "y": 106.703125,
+            "right": 351.625,
+            "bottom": 135.484375,
+            "width": 313.25,
+            "height": 28.78125,
+            "clientWidth": 311,
+            "scrollWidth": 311,
+            "overflowX": "clip",
+            "position": "static"
+          },
+          {
+            "selector": "#input-magnet",
+            "id": "input-magnet",
+            "tag": "INPUT",
+            "x": 38.375,
+            "y": 185.609375,
+            "right": 351.625,
+            "bottom": 214.390625,
+            "width": 313.25,
+            "height": 28.78125,
+            "clientWidth": 311,
+            "scrollWidth": 311,
+            "overflowX": "clip",
+            "position": "static"
+          },
+          {
+            "selector": "#btn-submit",
+            "id": "btn-submit",
+            "tag": "BUTTON",
+            "x": 38.375,
+            "y": 759.265625,
+            "right": 351.625,
+            "bottom": 799.640625,
+            "width": 313.25,
+            "height": 40.375,
+            "clientWidth": 311,
+            "scrollWidth": 311,
+            "overflowX": "visible",
+            "position": "static"
+          },
+          {
+            "selector": "#closeUploadModal",
+            "id": "closeUploadModal",
+            "tag": "BUTTON",
+            "x": 313.21875,
+            "y": 41.578125,
+            "right": 345.21875,
+            "bottom": 73.578125,
+            "width": 32,
+            "height": 32,
+            "clientWidth": 30,
+            "scrollWidth": 30,
+            "overflowX": "visible",
+            "position": "static"
+          }
+        ],
+        "offenders": [
+          {
+            "id": "",
+            "tag": "SPAN",
+            "x": 28.115467071533203,
+            "y": 379.390625,
+            "right": 1503.5529670715332,
+            "bottom": 401,
+            "width": 1475.4375,
+            "height": 21.609375,
+            "clientWidth": 1475,
+            "scrollWidth": 1475,
+            "overflowX": "visible",
+            "position": "static"
+          },
+          {
+            "id": "",
+            "tag": "SPAN",
+            "x": 28.115467071533203,
+            "y": 379.390625,
+            "right": 765.8342170715332,
+            "bottom": 401,
+            "width": 737.71875,
+            "height": 21.609375,
+            "clientWidth": 738,
+            "scrollWidth": 738,
+            "overflowX": "visible",
+            "position": "static"
+          },
+          {
+            "id": "",
+            "tag": "SPAN",
+            "x": 765.834228515625,
+            "y": 379.390625,
+            "right": 1503.552978515625,
+            "bottom": 401,
+            "width": 737.71875,
+            "height": 21.609375,
+            "clientWidth": 738,
+            "scrollWidth": 738,
+            "overflowX": "visible",
+            "position": "static"
+          },
+          {
+            "id": "",
+            "tag": "SPAN",
+            "x": 90.59375,
+            "y": 720.234375,
+            "right": 510.1875,
+            "bottom": 741.84375,
+            "width": 419.59375,
+            "height": 21.609375,
+            "clientWidth": 420,
+            "scrollWidth": 420,
+            "overflowX": "visible",
+            "position": "static"
+          },
+          {
+            "id": "",
+            "tag": "SPAN",
+            "x": 300.390625,
+            "y": 720.234375,
+            "right": 510.1875,
+            "bottom": 741.84375,
+            "width": 209.796875,
+            "height": 21.609375,
+            "clientWidth": 210,
+            "scrollWidth": 210,
+            "overflowX": "visible",
+            "position": "static"
+          },
+          {
+            "id": "",
+            "tag": "SPAN",
+            "x": 90.59375,
+            "y": 1061.078125,
+            "right": 510.1875,
+            "bottom": 1082.6875,
+            "width": 419.59375,
+            "height": 21.609375,
+            "clientWidth": 420,
+            "scrollWidth": 420,
+            "overflowX": "visible",
+            "position": "static"
+          },
+          {
+            "id": "",
+            "tag": "SPAN",
+            "x": 300.390625,
+            "y": 1061.078125,
+            "right": 510.1875,
+            "bottom": 1082.6875,
+            "width": 209.796875,
+            "height": 21.609375,
+            "clientWidth": 210,
+            "scrollWidth": 210,
+            "overflowX": "visible",
+            "position": "static"
+          }
+        ]
+      }
+    }
+  ],
+  "baseline": "follow-on coverage completed; original360overflow remains failed/open",
+  "ended": "2026-10-20T16:28:10.112Z",
+  "resourcesClosed": true
+}

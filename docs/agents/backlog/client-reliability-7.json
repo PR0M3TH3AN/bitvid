@@ -1,0 +1,11 @@
+{
+  "id": "client-reliability-7",
+  "area": "client-reliability",
+  "status": "done",
+  "title": "Restore cold-feed live subscription onVideos notification after eligible relay updates",
+  "blockedOn": null,
+  "addedOn": "2026-10-20",
+  "filedAt": "386cc60e1fa3ba6d9b67a1171a1ab89c03df84ca",
+  "evidence": "Service fixfecf4294 durablylandedb1174163556e2705ba85868e21adcaf51b44bd5f viaf39622da;unchanged normalgateexit0/432discovered+unique starts;new7/7,mergedfocused27/5files,nine naturallykilledmutants,lint11/11,ancestry0. Fullslotreleased16:21:30UTC;dispatch previewbuild+QA actualapp retestpending,notclaimed. Final evidence test_logs/TEST_LOG_2026-10-20_16-22-00_client-reliability-7-landed.md;IDLE/no optionaltasks.",
+  "closedOn": "2026-10-20"
+}

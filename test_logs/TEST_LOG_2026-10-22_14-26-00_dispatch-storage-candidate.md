@@ -1,0 +1,8 @@
+- Exact candidate89f8923c6e83b79a2b8874f811cdff2af6a809d0 inspected via git diff e04549f8: product delta only videoEventBuffer and nostrService, unique tests/helper/evidence. Buffer preserves authoritative timestamp guard; service excludes deleted/invalid/tombstone records and persists empty results.
+- git archive89f8923c js tests config vendor package.json extracted to isolated /tmp/bitvid-dispatch-storage3-candidate; node_modules linked read-only existing dependency source. No peer worktree mutation.
+- env -u NODE_TEST_CONTEXT node --test <two absolute newtestpaths>:exit0,2 file-level summaries,203.62ms; not counted as13 scenarios.
+- Direct env -u NODE_TEST_CONTEXT node <isolated>/tests/storage-tombstone-buffer.test.mjs:5pass/0fail/0cancelled/0skip,naturalexit0,20.513356ms.
+- Direct env -u NODE_TEST_CONTEXT node <isolated>/tests/storage-tombstone-service.test.mjs:8pass/0fail/0cancelled/0skip,naturalexit0,22.292178ms.
+- Worker broader12file focused59summarized+5named/nofooter,10killed restored mutants,lint11 are reported evidence,not rerun here. No independent full/build/browser/live signature/relay/cloud/DOM proof.
+- QA3 checkpoint48999ca2 durably4de357e4 status/log/ancestry0. QA confirms mobile grant unconsumed/HOLD14:26:01; storage exclusive normalgate/build/artifact slot granted14:26:33. Use authoritative unchanged lander fullgate once,no duplicatefull.
+- Isolated scratch tree removed by literal path after checks. Product fixes not yet landed/qualified at this checkpoint.

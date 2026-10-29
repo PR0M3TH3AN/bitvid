@@ -1,0 +1,202 @@
+{
+  "mirrorHits": 3,
+  "started": "2026-10-22T14:16:24.113Z",
+  "sha": "c5b678f7c9d0b92fbf786b16ae831f1be1d0b899",
+  "cases": [
+    {
+      "mode": "app-ready",
+      "name": "exercises for-you view empty-state and hashtag action",
+      "ready": {
+        "harness": true,
+        "videoLists": 1,
+        "heading": "Trending"
+      },
+      "result": {
+        "ok": true,
+        "profileShows": [
+          "hashtags"
+        ],
+        "forYouInitialEmpty": true,
+        "forYouLoadingEmpty": false,
+        "forYouVideoEmpty": false
+      },
+      "pass": true
+    },
+    {
+      "mode": "app-ready",
+      "name": "exercises explore view empty-state transitions",
+      "ready": {
+        "harness": true,
+        "videoLists": 1,
+        "heading": "Trending"
+      },
+      "result": {
+        "ok": true,
+        "emptyInitial": true,
+        "emptyDuringLoading": false,
+        "emptyWithVideo": false
+      },
+      "pass": true
+    },
+    {
+      "mode": "app-ready",
+      "name": "exercises kids view empty-state transitions",
+      "ready": {
+        "harness": true,
+        "videoLists": 1,
+        "heading": "Trending"
+      },
+      "result": {
+        "ok": true,
+        "emptyInitial": true,
+        "emptyDuringLoading": false,
+        "emptyWithVideo": false
+      },
+      "pass": true
+    },
+    {
+      "mode": "isolated",
+      "name": "exercises for-you view empty-state and hashtag action",
+      "result": {
+        "ok": true,
+        "profileShows": [
+          "hashtags"
+        ],
+        "forYouInitialEmpty": true,
+        "forYouLoadingEmpty": false,
+        "forYouVideoEmpty": false
+      },
+      "pass": true
+    },
+    {
+      "mode": "isolated",
+      "name": "exercises explore view empty-state transitions",
+      "result": {
+        "ok": true,
+        "emptyInitial": true,
+        "emptyDuringLoading": false,
+        "emptyWithVideo": false
+      },
+      "pass": true
+    },
+    {
+      "mode": "isolated",
+      "name": "exercises kids view empty-state transitions",
+      "result": {
+        "ok": true,
+        "emptyInitial": true,
+        "emptyDuringLoading": false,
+        "emptyWithVideo": false
+      },
+      "pass": true
+    }
+  ],
+  "blocked": [
+    "https://esm.sh/@aws-sdk/client-s3@3.637.0",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/+esm",
+    "https://esm.sh/nostr-tools@2.17.0",
+    "https://esm.sh/nostr-tools@2.17.0",
+    "https://esm.sh/nostr-tools@2.17.0/nip44",
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/",
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/",
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/",
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "wss://nos.lol/",
+    "wss://relay.damus.io/",
+    "wss://relay.primal.net/",
+    "wss://relay.snort.social/",
+    "https://esm.sh/@aws-sdk/client-s3@3.637.0",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/+esm",
+    "https://esm.sh/nostr-tools@2.17.0",
+    "https://esm.sh/nostr-tools@2.17.0",
+    "https://esm.sh/nostr-tools@2.17.0/nip44",
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/",
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/",
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/",
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "wss://nos.lol/",
+    "wss://relay.damus.io/",
+    "wss://relay.primal.net/",
+    "wss://relay.snort.social/",
+    "https://esm.sh/@aws-sdk/client-s3@3.637.0",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/+esm",
+    "https://esm.sh/nostr-tools@2.17.0",
+    "https://esm.sh/nostr-tools@2.17.0",
+    "https://esm.sh/nostr-tools@2.17.0/nip44",
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/",
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/",
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/",
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "wss://relay.damus.io/",
+    "wss://nos.lol/",
+    "wss://relay.snort.social/",
+    "wss://relay.primal.net/",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js",
+    "wss://nos.lol/",
+    "wss://relay.damus.io/",
+    "wss://relay.primal.net/",
+    "wss://relay.snort.social/"
+  ],
+  "pageErrors": [],
+  "browser": "146.0.1",
+  "ended": "2026-10-22T14:16:35.031Z",
+  "resourcesClosed": true
+}

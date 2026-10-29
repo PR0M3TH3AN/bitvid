@@ -619,6 +619,7 @@ export class NostrService {
       }
     });
     this.videosMap = null;
+    this.videoFeedNotification = null;
     this.videosByAuthorIndex = null;
     this.authorIndexDirty = false;
     this.moderationService = moderationService || null;
@@ -1429,6 +1430,7 @@ export class NostrService {
   }
 
   clearVideoSubscription() {
+    this.videoFeedNotification = null;
     const current = getStoredVideoSubscription();
     if (current && typeof current.unsub === "function") {
       try {
@@ -1447,7 +1449,7 @@ export class NostrService {
 
     const map = this.ensureVideosMap();
     for (const video of videos) {
-      if (video && typeof video.id === "string" && video.id) {
+      if (video && typeof video.id === "string" && video.id && !this.isVideoUnavailable(video)) {
         map.set(video.id, video);
       }
     }
@@ -1514,11 +1516,17 @@ export class NostrService {
     return this.videosByAuthorIndex;
   }
 
+  isVideoUnavailable(video) {
+    return video?.deleted === true || video?.invalid === true ||
+      (typeof this.nostrClient?.isOlderThanTombstone === "function" &&
+        this.nostrClient.isOlderThanTombstone(video));
+  }
+
   shouldIncludeVideo(video, {
     blacklistedEventIds = new Set(),
     isAuthorBlocked = () => false,
   } = {}) {
-    if (!video || typeof video !== "object") {
+    if (!video || typeof video !== "object" || this.isVideoUnavailable(video)) {
       return false;
     }
 
@@ -1713,6 +1721,12 @@ export class NostrService {
         this.clearVideoSubscription();
       }
 
+      // Reused relay subscriptions follow the currently displayed feed consumer.
+      const notification =
+        (getStoredVideoSubscription() && this.videoFeedNotification) || {};
+      notification.onVideos = onVideos;
+      this.videoFeedNotification = notification;
+
       const applyAndNotify = (videos, reason) => {
         const filtered = this.filterVideos(videos, {
           blacklistedEventIds,
@@ -1729,9 +1743,7 @@ export class NostrService {
         this.emit("videos:updated", { videos: filtered, reason });
 
         // Persist the fresh filtered result for next time
-        if (filtered.length > 0) {
-          persistFilteredVideos(filtered);
-        }
+        persistFilteredVideos(filtered);
 
         return filtered;
       };
@@ -1750,6 +1762,7 @@ export class NostrService {
 
           if (optimisticFiltered.length > 0) {
             this.cacheVideos(optimisticFiltered);
+            persistFilteredVideos(optimisticFiltered);
             hasOptimisticData = true;
             optimisticResult = optimisticFiltered;
 
@@ -1793,6 +1806,9 @@ export class NostrService {
         };
         const subscription = this.nostrClient.subscribeVideos(
           (updatedVideos) => {
+            if (this.videoFeedNotification !== notification) {
+              return;
+            }
             if (!Array.isArray(updatedVideos) || !updatedVideos.length) {
               return;
             }
@@ -1810,9 +1826,12 @@ export class NostrService {
 
             if (deletedUpdates.length > 0) {
               const map = this.ensureVideosMap();
-              for (const v of deletedUpdates) {
-                if (v.id) {
-                  map.delete(v.id);
+              const deletedIds = new Set(deletedUpdates.map((video) => video.id));
+              // Deletion markers have their own event IDs. Consult the
+              // client's authoritative timestamp/key guard for cached copies.
+              for (const [id, video] of map) {
+                if (deletedIds.has(id) || this.isVideoUnavailable(video)) {
+                  map.delete(id);
                 }
               }
               this.markAuthorIndexDirty();
@@ -1836,6 +1855,14 @@ export class NostrService {
                 const bCreated = Number(b?.created_at) || 0;
                 return bCreated - aCreated;
               });
+
+              if (typeof notification.onVideos === "function") {
+                try {
+                  notification.onVideos(fullList, { reason: "subscription" });
+                } catch (error) {
+                  userLogger.warn("[nostrService] onVideos handler threw", error);
+                }
+              }
 
               this.emit("videos:updated", {
                 videos: fullList,

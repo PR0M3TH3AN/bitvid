@@ -1,0 +1,12 @@
+{
+ "id": "storage-cors-3",
+ "area": "storage-cors",
+ "status": "done",
+ "title": "Audit feed/view tombstone stale-refresh regression gap with offline integration",
+ "blockedOn": null,
+ "addedOn": "2026-10-20",
+ "filedAt": "7f99c0456931c917082d6a6680c79655221dcc82",
+ "resumedOn": "2026-10-22",
+ "brief": "docs/agents/CAMPAIGN-2026-10-22.md",
+ "closedOn": "2026-10-22"
+}

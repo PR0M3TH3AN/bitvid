@@ -1,0 +1,8 @@
+- Baseline unstable fb54cea3 printed by git.
+- Python subprocess git status --short + rev-list HEAD...unstable:6/6 clean and0 HEAD-only, all commands exit0.
+- git merge --ff-only unstable in dispatch: initial sandbox exit128(read-only ORIG_HEAD); same approved host command exit0, ff tofb54cea3.
+- fleet status4 windows alive,3 workers idle before assignments. mailbox read2 messages. Queue startup0/no drain.
+- No lint/unit/browser/build run; only administrative files changed. Prior432 gate not fresh evidence.
+- Administrative validation:7/7 backlog JSON parse; initial git diff --check reported trailing blank fleet/GOAL.md (exit2), corrected in followup. No product checks implied.
+- Coordination c6022f21 durably landed c5b678f7; land_status landed + git log unstable + merge-base ancestry exit0.
+- Followup git diff --check exit0 after whitespace correction;7 backlog JSON valid. All3 worker ACKs report claim/fast-forward atc5b678f7, independent status4windows alive/working. No product verification claimed.

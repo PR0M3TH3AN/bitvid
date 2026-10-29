@@ -56,6 +56,7 @@ import { relayManager } from "./relayManager.js";
 import createApplication from "./bootstrap.js";
 import SearchFilterModal from "./ui/components/SearchFilterModal.js";
 import { initializeSiteUpdateNotice } from "./ui/siteUpdateNotice.js";
+import { initializeFadeInCleanup } from "./ui/fadeInCleanup.js";
 import { installTestHarness } from "./testHarness.js";
 
 validateInstanceConfig();
@@ -497,61 +498,9 @@ if (typeof window !== "undefined" && typeof window.addEventListener === "functio
   window.addEventListener("pageshow", handlePageShow);
 }
 
-const INTERFACE_FADE_IN_ANIMATION = "interface-fade-in";
-const VIDEO_THUMBNAIL_FADE_IN_ANIMATION = "video-thumbnail-fade-in";
-
-//
 // Centralized animation cleanup
-// ------------------------------
-// We attach a single capture-phase listener for animation events so that any
-// chrome element or thumbnail using our fade-in helpers can automatically shed
-// the temporary classes/data attributes that trigger the transition. This is
-// critical because these DOM nodes frequently persist while the surrounding
-// lists re-render; if the classes stick around, future layout shuffles would
-// replay the fade and make the UI flicker. Clearing the hooks immediately after
-// the first animation keeps the graceful entrance without introducing future
-// flashes.
-const handleFadeInAnimationComplete = (event) => {
-  const { animationName, target } = event;
-
-  if (!(target instanceof HTMLElement)) {
-    return;
-  }
-
-  if (animationName === INTERFACE_FADE_IN_ANIMATION) {
-    if (!target.classList.contains("fade-in")) {
-      return;
-    }
-
-    // Remove the transient fade-in class so future renders keep the element
-    // visible. The delays piggyback on `fade-in`, so we strip those too.
-    target.classList.remove("fade-in");
-    Array.from(target.classList).forEach((className) => {
-      if (className.startsWith("fade-in-delay-")) {
-        target.classList.remove(className);
-      }
-    });
-    return;
-  }
-
-  if (animationName !== VIDEO_THUMBNAIL_FADE_IN_ANIMATION) {
-    return;
-  }
-
-  if (
-    target.dataset &&
-    target.dataset.videoThumbnail === "true" &&
-    target.dataset.thumbnailLoaded === "true"
-  ) {
-    // Thumbnails use the same pattern: once the fade finishes we clear the flag
-    // so a later `load` event (or template reuse) does not restart the
-    // animation.
-    delete target.dataset.thumbnailLoaded;
-  }
-};
-
-document.addEventListener("animationend", handleFadeInAnimationComplete, true);
-document.addEventListener("animationcancel", handleFadeInAnimationComplete, true);
+// Recover completed startup fades as well as future animation events.
+initializeFadeInCleanup(document);
 
 // 1) Load modals (login, application, etc.)
 const fetchPartial = async (url) => {

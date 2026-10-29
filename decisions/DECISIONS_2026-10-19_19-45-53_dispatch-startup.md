@@ -1,0 +1,1 @@
+Use the existing backlog as the starting point; verify stale reports. Keep the initial team as small as evidence permits. No product edits by dispatch. Conservative operating limits are manager defaults, not attributed owner quotes.

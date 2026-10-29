@@ -491,7 +491,21 @@ test.describe("nostr runtime coverage (deterministic)", () => {
           createdAt: 42,
         }),
       );
+      // A legacy plaintext entry must be PURGED, not honored. readV1Entry()
+      // removes it from storage; readStoredSessionActorEntry() then falls back
+      // to the sole remaining (encrypted) account, so the old `=== null`
+      // assertion no longer describes the security property -- it just happened
+      // to hold before 8692dac6 added per-account storage. Assert the property
+      // directly instead: no plaintext key survives, in the returned entry or
+      // in raw storage.
       const migratedLegacyEntry = readStoredSessionActorEntry();
+      const legacyRaw = localStorage.getItem(SESSION_ACTOR_STORAGE_KEY);
+      let legacyRawPlaintextSurvives = false;
+      try {
+        legacyRawPlaintextSurvives = Boolean(legacyRaw && JSON.parse(legacyRaw)?.privateKey);
+      } catch (error) {
+        legacyRawPlaintextSurvives = false;
+      }
 
       const actorMatch = isSessionActor({
         pubkey: actor,
@@ -524,7 +538,10 @@ test.describe("nostr runtime coverage (deterministic)", () => {
         wrongPassphraseErrorCode,
         metadataValid: metadata && metadata.salt === encrypted.salt,
         metadataInvalidIsNull: invalidMetadata === null,
-        migratedLegacyEntryIsNull: migratedLegacyEntry === null,
+        migratedLegacyEntryHasPlaintextKey:
+          typeof (migratedLegacyEntry as any)?.privateKey === "string" &&
+          (migratedLegacyEntry as any).privateKey.length > 0,
+        legacyRawPlaintextSurvives,
         actorMatch,
         actorMismatch,
         nsecActor,
@@ -541,7 +558,8 @@ test.describe("nostr runtime coverage (deterministic)", () => {
     expect(result.wrongPassphraseErrorCode).toBe("decrypt-failed");
     expect(result.metadataValid).toBeTruthy();
     expect(result.metadataInvalidIsNull).toBe(true);
-    expect(result.migratedLegacyEntryIsNull).toBe(true);
+    expect(result.migratedLegacyEntryHasPlaintextKey).toBe(false);
+    expect(result.legacyRawPlaintextSurvives).toBe(false);
     expect(result.actorMatch).toBe(true);
     expect(result.actorMismatch).toBe(false);
     expect(result.nsecActor).toBe(false);

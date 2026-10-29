@@ -133,12 +133,22 @@ describe("trustBootstrap", () => {
     assert.ok(seeds.has("editor1"));
   });
 
-  it("should subscribe to accessControl changes", async () => {
+  it("should subscribe to the accessControl lists that affect seeds", async () => {
     await bootstrapTrustedSeeds();
 
-    assert.equal(accessControl.onWhitelistChange.mock.callCount(), 1);
     assert.equal(accessControl.onEditorsChange.mock.callCount(), 1);
     assert.equal(accessControl.onBlacklistChange.mock.callCount(), 1);
+  });
+
+  it("should NOT subscribe to whitelist changes", async () => {
+    // buildTrustedSeeds() derives seeds from the super admin, the editors list
+    // and the fallback seeds -- the whitelist is not an input, so re-applying
+    // seeds on a whitelist change is pure churn. 18e08bf2 ("refine trust
+    // controls") removed that subscription deliberately; this pins the removal
+    // so it is not reinstated by reflex.
+    await bootstrapTrustedSeeds();
+
+    assert.equal(accessControl.onWhitelistChange.mock.callCount(), 0);
   });
 
   it("should handle accessControl timeout and apply seeds anyway", async () => {

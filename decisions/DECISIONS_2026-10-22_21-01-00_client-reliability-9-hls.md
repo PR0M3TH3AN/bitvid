@@ -1,0 +1,4 @@
+- Explicit dispatch20:55:13Z Stage3 HLS scope extension and helper/controller ownership; keep broaderitem9OPEN. Existing HEAD/media/engine/player/nativepreference behavior and standalone manifest callers preserved.
+- Pass optional lifecycle as third helper argument; helper owns its own hook/controller/timer through fetch AND response.text, races logical cancellation independently of AbortController cooperation. Native media remains on existing path.
+- Test actual observer/controller/cache/helper with controlled IO/clock boundaries, new unique suite only; existing tests/expectations unchanged. Baseline35newcases13pass/22fail before fix (isolated copies); original12mode5fail/7pass retained.
+- Mutants isolate copies in/tmp,never mutate worktree/shared modules. Initial retainedtimer mutant hit engineclearTimeout outside manifesthelper;corrected exacthelper suffix and final19allfail naturally. Formatting outside manifesthelper restored to keep engine read-only.

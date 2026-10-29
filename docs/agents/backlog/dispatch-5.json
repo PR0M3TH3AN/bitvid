@@ -1,0 +1,10 @@
+{
+  "id": "dispatch-5",
+  "area": "dispatch",
+  "status": "open",
+  "title": "Audit Amber restore switch logout through offline real wiring",
+  "blockedOn": "Staged client followup; real Amber manual/live signer gate excluded",
+  "addedOn": "2026-10-22",
+  "filedAt": "fb54cea3a2ba99b4860421724a5050af6b97c293",
+  "brief": "docs/agents/CAMPAIGN-2026-10-22.md"
+}

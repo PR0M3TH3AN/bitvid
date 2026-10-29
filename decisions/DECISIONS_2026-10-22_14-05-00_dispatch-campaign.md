@@ -1,0 +1,5 @@
+- Reuse3 existing workers; disjoint investigations are useful, no extra agent justified yet.
+- Firefox gets browser/expensive slot first; cancellation and tombstone evidence use offline focused checks.
+- All6 priorities have durable accountable items; staged means unfinished, not cancelled.
+- Workers synchronize own clean branches; dispatch never alters peer worktrees.
+- No tests rerun for administrative docs; historical gates remain historical.

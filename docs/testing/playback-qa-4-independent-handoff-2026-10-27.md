@@ -1,0 +1,9 @@
+# QA4 independent timing handoff
+
+Own printed HEAD0ffd92a8d2072a19fe61ac6edcf5097a9538fddd; no new QA runtime or product change. Dispatch002408 mailbox and independent note read directly at /home/user/Documents/GitHub/bitvid-dispatch/test_logs/TEST_LOG_2026-10-26_19-44-00_dispatch-qa4-independent.md.
+
+Dispatch evidence, not a second QA execution: appHEAD2754a8af1f8e83912e09068135671c453c6de0ce with relevant input diff0; host command naturalexit0,2026-10-26T19:43:59.797–19:44:06.690, A_FAIL_B_PASS_SAME_GEOMETRY. Browser1/readiness1/disclaimer1/Upload1/wheel1/nativeclick2/intervention1/pageerrors0; resourcesClosedtrue/context/browser/relay/serverclosed. Strict360/360. Same native point sidebar true→true, only app.fade-in removal then INPUT true→false. Original sandbox preparation gitEPERM/browser0 result retained separately.
+
+Independent pre-navigation observations: app animationend514.8ms; production animationend cleanup listener registration3245.7ms, lag2730.9ms. This supplies the event/listener order absent in QA's original result, establishing missed startup cleanup in this controlled run. No universal production/network timing claim. RunnerSHA2566feacc4f2c3339db7747f237b3543eccfa1351919c6c02f2aa397060a89ac12c; resultSHA25610f1d3e3ce03504f8e094182f85bb7741a1929096d17f7081a46deb4092c40a5 per directly read dispatch note. QA did not independently hash or rerun dispatch artifacts this turn.
+
+Recovery/handoff only: await dispatch evidence-based cleanup ownership and validation routing. No new browser/test/build/product/CSS/config/submit authority. Original boot failure, native-click evidence, and historical362/360+394/390 overflow remain preserved; original overflow cause and real-device/AA/manual/live qualification remain open. No baseline rerun needed absent changed inputs.

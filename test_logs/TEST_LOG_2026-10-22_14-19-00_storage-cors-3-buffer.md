@@ -1,0 +1,7 @@
+- Baseline merged HEAD89c5494aaa23ae2ce2c1c044d0146c922959cdcf.
+- `env -u NODE_TEST_CONTEXT node tests/storage-tombstone-buffer.test.mjs`: old buffer exit1,2pass/3fail; fixed exit0,5pass/0fail.
+- `python3 /tmp/storage3-buffer-mutants.py`: two mutants each exit1, failures3 and5; original file restored in finally. Every new scenario rejects at least one mutant.
+- `env -u NODE_TEST_CONTEXT node scripts/run-targeted-tests.mjs tests/storage-tombstone-buffer.test.mjs tests/nostr-delete-flow.test.mjs`: exit0,5+4 pass.
+- `env -u NODE_TEST_CONTEXT node scripts/run-targeted-tests.mjs tests/nostr/videoEventBuffer.test.mjs`: exit0,6pass.
+- Mistyped nonexistent existing test path failed before tests and was corrected; retained in integrity note.
+- Lint pending after second scoped service fix. No full/build/browser/product submission while QA owns resource slot. Coordinator stale render unresolved.

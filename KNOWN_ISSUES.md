@@ -3,11 +3,10 @@
 ## Test Infrastructure
 
 ### Missing `jsdom` Dependency
-- **Status:** Active
+- **Status:** Resolved (2026-07-30)
 - **Detected:** 2026-02-26
-- **Description:** Multiple unit tests fail with `ERR_MODULE_NOT_FOUND` because `jsdom` is imported but not installed in the project.
-- **Impact:** Prevents running unit tests that rely on DOM simulation.
-- **Remediation:** `npm install --save-dev jsdom`
+- **Description:** Unit tests failed with `ERR_MODULE_NOT_FOUND` because `jsdom` was imported but not installed.
+- **Resolution:** `jsdom` has been a devDependency for some time (28.1.0 installed and in `package.json`); the jsdom-based suites run clean.
 
 ## Run Notes (2026-03-04)
 
@@ -22,19 +21,32 @@
 - **Description:** `tests/nostr-send-direct-message.test.mjs` must pass `Uint8Array` secret keys to `getPublicKey/finalizeEvent` for current `nostr-tools`.
 - **Impact:** Passing hex strings causes failures like `expected Uint8Array, got type=string`.
 
-## Run Notes (2026-06-20)
+## Run Notes (2026-06-20, updated 2026-07-30)
 
-### Additional E2E specs flake under full parallel load (pass in isolation)
+### `login-flows.spec.ts:149` — upload/profile buttons stay visible after logout
+- **Status:** Active — NOT merely a parallel-load flake
+- **Description:** Previously filed as a worker-contention flake that "passes deterministically in isolation." On 2026-07-28 it failed **in isolation** as well (chromium, local and CI `e2e-headless`), while passing in the CI `e2e-tests (e2e)` job — environment-sensitive, not load-sensitive. Direct probes of the same flow (raw `__bitvidTest__.loginWithNsec` → `logout()` against a mock relay) hide the button correctly, so the failure is specific to something in the Playwright fixture path. An attempted fix (running `applyLoggedOutUiState()` before the awaited NWC/profile teardown in `_executeAuthLogout`) did not change the outcome and was reverted rather than shipped unverified.
+- **Impact:** One e2e failure in `e2e-headless`; logout hides gated UI correctly in manual testing and direct harness probes.
+- **Next step:** Investigate alongside pre-launch TODO #33 ("logout logs out everyone" / NIP-46 session persistence) — same subsystem.
+
+### `video-upload-publish-lifecycle.spec.ts:49` / `:79` flake under full parallel load
 - **Status:** Active
-- **Description:** Under the full `test:e2e` run (378 tests, 4 workers) these intermittently fail on `not.toBeVisible`/feed-appearance timeouts, but pass deterministically when re-run in isolation (`--workers=1`): `login-flows.spec.ts:149` (upload/profile buttons hide after logout), `video-upload-publish-lifecycle.spec.ts:49` and `:79` (URL-first publish appears / owner delete). Same root cause as the Firefox feed-hydration flakes above — worker resource contention, not an app regression (verified: pass in isolation on the current branch).
-- **Impact:** Full-suite e2e is flaky; isolated reruns are green.
+- **Description:** Under the full `test:e2e` run these intermittently fail on feed-appearance timeouts but pass on retry (CI marks them flaky). Worker resource contention.
+- **Impact:** Full-suite e2e occasionally needs retries; isolated reruns are green.
 
 ### `webseed-playback.spec.ts:31` fails on Firefox headless (CDN mode)
-- **Status:** Active (pre-existing — reproduced on pre-refactor commit `1b11cb1b`)
-- **Description:** "plays directly from HTML link (CDN mode)" fails on `--project=e2e-firefox` with `#modalVideo` `src` empty instead of the test's archive.org URL. The Chromium variant and the WebTorrent-fallback variant (`:63`) both pass. Firefox-headless-specific (external URL reachability/codec), not an app regression.
-- **Impact:** One Firefox-only e2e failure; CDN playback works on Chromium and in manual testing.
+- **Status:** Resolved (2026-07-28, `f48150ed`)
+- **Description:** The test asserted the **final** `src` equals the CDN URL while simultaneously tolerating "No playable source found" in its status assertion — contradictory, because a failed hosted attempt calls `resetVideoElement()`, which clears `src`. Headless CI cannot decode the archive.org H.264 sample, so the cleared-src path was routine there.
+- **Resolution:** The test now records every `src` the player attaches via a MutationObserver and asserts the CDN URL was attached — the actual behavior under test. Green in both `e2e` and `e2e-firefox` CI jobs.
 
 ### `uploadModal-reset.test.mjs` ("UploadModal Reset Logic") hangs/cancels
-- **Status:** Active (pre-existing — reproduced on pre-refactor commit `1b11cb1b`)
-- **Description:** The jsdom-based UploadModal reset suite intermittently fails with `cancelledByParent` / "Promise resolution is still pending but the event loop has already resolved" (~12s hang). It passes or fails depending on full-suite test ordering/timing (an async-hang flake, likely a torrent-metadata/upload promise not settling under the mocked services). Not a regression from the MediaUploader extraction — it fails identically on `1b11cb1b`.
-- **Impact:** One unit suite can report `not ok 1`; the runner still exits 0. Other tests unaffected.
+- **Status:** Not reproducible (2026-07-30)
+- **Description:** Intermittent `cancelledByParent` / "Promise resolution is still pending" hang, order/timing dependent.
+- **Current state:** Passes cleanly (`pass=3 fail=0 cancelled=0`) in isolation and across repeated full-suite sweeps on 2026-07-28–30. Left on file because the original failure was ordering-dependent; if it recurs, capture the full-suite ordering that produced it.
+
+## Run Notes (2026-07-30)
+
+### Visual baselines are CI-canonical — local `test:visual` may fail the kitchen-sink diff
+- **Status:** By design (since `ab120a03`)
+- **Description:** `tests/visual/baselines.json` is regenerated on ubuntu-latest by the `update-visual-baselines` workflow (trigger: `workflow_dispatch` once promoted, or a commit containing `[update-visual-baselines]`). Baselines can only match one environment, and the CI gate is the one that matters — so a dev machine with different Chromium/font rendering may now fail `npm run test:visual` locally (typically the kitchen-sink default theme) even though CI is green.
+- **Workaround:** Run visual tests in the pinned container via `scripts/run-playwright-docker.sh`, or rely on CI. Never regenerate baselines from a dev machine.

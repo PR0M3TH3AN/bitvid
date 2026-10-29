@@ -1,0 +1,95 @@
+# Regenerate the visual-regression baselines IN the environment that compares
+# them.
+#
+# The baselines in tests/visual/baselines.json are pixel-compared on
+# ubuntu-latest CI, but they were historically captured on a developer machine.
+# Chromium builds and font fallbacks differ between the two ("Inter"/"Fira
+# Code" are not shipped or installed anywhere, so every environment renders its
+# own system fallback), so the kitchen-sink diff drifted past MAX_DIFF_RATIO on
+# CI while passing locally — ci.yml even documents the mismatch as the reason
+# visual-regression must not block deploys. Capturing the baselines on the same
+# runner image, browser install and font stack as the comparison removes the
+# environment variable from the equation entirely.
+#
+# Two explicit triggers, both requiring deliberate human intent — regenerating
+# baselines must never be a side effect of ordinary work:
+#
+#   1. workflow_dispatch — only usable once this file reaches the default
+#      branch (GitHub does not index dispatchable workflows on other branches).
+#   2. A push whose head commit message contains [update-visual-baselines] —
+#      works from unstable today, before any promotion. The workflow's own
+#      commit omits the token, so it cannot retrigger itself.
+name: Update visual baselines
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [unstable]
+
+permissions:
+  contents: write
+
+jobs:
+  update-baselines:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.head_commit.message, '[update-visual-baselines]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      # Mirror the visual-regression job's caches so the regenerated baselines
+      # come from the same dependency tree the comparison job will use.
+      - name: Cache npm directory
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-22-npm-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-22-npm-
+
+      - name: Cache node_modules
+        id: node-modules-cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-22-modules-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-22-modules-
+
+      - name: Install dependencies
+        if: steps.node-modules-cache.outputs.cache-hit != 'true'
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Regenerate baselines
+        run: npm run test:visual:update
+
+      - name: Verify the fresh baselines pass in this environment
+        run: npx playwright test --project=visual
+
+      - name: Commit updated baselines
+        run: |
+          if git diff --quiet -- tests/visual/baselines.json; then
+            echo "Baselines unchanged; nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/visual/baselines.json
+          git commit \
+            -m "test(visual): regenerate baselines on ubuntu-latest" \
+            -m "Captured by the update-visual-baselines workflow so the baseline environment matches the visual-regression job that compares against them."
+          git push

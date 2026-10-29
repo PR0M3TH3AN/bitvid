@@ -1,0 +1,1 @@
+Six-priority campaign resumed via interpreter; see docs/agents/CAMPAIGN-2026-10-22.md. Scope administrative coordination and evidence-first routing only. No product edits. Definition of done covers all six and final integrated local review with explicit live/manual limits.

@@ -1,0 +1,5 @@
+- [x] Product normal438gate durableaf61c271 and ancestry0.
+- [x] Separately granted local build+existing artifactverification exit0/version15868a91; clean tree.
+- [x] Both validation slots RELEASED; prior thermalpartial retained.
+- [ ] Land docs-only evidence through normal queue and verify ancestry.
+- [ ] Distinct native torrent/browser+QA timing routing; no real-peer/byte/wholeStage3 claim.

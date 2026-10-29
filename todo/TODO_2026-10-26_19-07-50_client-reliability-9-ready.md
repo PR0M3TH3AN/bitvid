@@ -1,0 +1,6 @@
+- [x] Resume rules/mailbox/item9 claim and saved candidate review.
+- [x] Four candidate hashes exactly match saved focused/mutant evidence; no repeat baseline/tests.
+- [x] Record thermal hold and READY scope/validation limits.
+- [ ] Commit named files via fleet; merge unstable without rebase; inspect runtime equality.
+- [ ] Dispatch fresh resource grant for remaining lint/full/build/browser/submission.
+- [ ] Normal queue durable landing plus unstable ancestry before closing item9.

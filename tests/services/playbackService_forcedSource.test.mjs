@@ -267,8 +267,18 @@ describe("PlaybackService Forced Source Logic", () => {
     assert.equal(probeUrl.mock.callCount(), 0);
   });
 
-  test("Forced Source 'torrent': Does NOT fallback to URL even if Torrent fails", async () => {
-      const probeUrl = mock.fn(async () => ({ outcome: "good" }));
+  test("Forced Source 'torrent': falls back to the hosted URL when the torrent definitively fails", async () => {
+      // Spec changed deliberately in playbackService.js: "Even when P2P was
+      // explicitly forced, a hosted URL is a better outcome than a hard 'No
+      // playable source found' if the torrent DEFINITIVELY failed." The code
+      // carries the rollback note (`restore && forcedSource !== "torrent"` to
+      // make forced P2P hard-fail), so the old assertion here -- source null,
+      // probe never called -- encodes behavior that was intentionally removed.
+      //
+      // It did not merely fail: because forced sources skip the start timeout,
+      // the now-reachable hosted attempt waited forever on a <video> that never
+      // emits, and the test hung ("Promise resolution is still pending").
+      const probeUrl = mock.fn(async () => ({ outcome: "good", status: 200 }));
 
       const playViaWebTorrent = mock.fn(async () => {
           throw new Error("Torrent failed");
@@ -283,9 +293,18 @@ describe("PlaybackService Forced Source Logic", () => {
         forcedSource: "torrent",
       });
 
-      const result = await session.start();
+      const startPromise = session.start();
 
-      assert.equal(result.source, null);
-      assert.equal(probeUrl.mock.callCount(), 0);
+      // Let the torrent attempt reject and the hosted fallback attach, then
+      // signal that the element actually started playing.
+      await new Promise(resolve => process.nextTick(resolve));
+      mock.timers.tick(10);
+      await new Promise(resolve => process.nextTick(resolve));
+      video.dispatchEvent(new window.Event("playing"));
+
+      const result = await startPromise;
+
+      assert.equal(playViaWebTorrent.mock.callCount(), 1, "P2P is still tried first");
+      assert.equal(result.source, "url", "a working CDN beats a hard failure");
   });
 });

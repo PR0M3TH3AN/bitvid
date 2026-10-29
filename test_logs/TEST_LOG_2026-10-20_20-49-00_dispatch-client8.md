@@ -1,0 +1,9 @@
+# client-reliability-8 dispatch independent reproduction
+
+- Tree: area/dispatch c8e07cc508594404c8bc71b7265021300f0b5308; js/tests diff0 versus landed unstable5b77fd2029cffe016e1cf582322eac35ba4022a1. Coordination submission c8e07cc5 land_status=landed5b77fd20, target log checked, submitted ancestry exit0. Direct local fast-forward was denied read-only ORIG_HEAD; no alternate write attempted, no product divergence.
+- `git diff --check`: exit0 for coordination docs. No product test gate claimed for that docs-only routing.
+- Adapted interpreter scratch script import paths to dispatch at /tmp/bitvid-dispatch-client8-repro.mjs; actual observer/controller/cache fixture, controlled IO and real cleanup, no repository tests/product edits.
+- `env -u NODE_TEST_CONTEXT NODE_ENV=test node --test /tmp/bitvid-dispatch-client8-repro.mjs`: exit1 with opaque subprocess-level failure, no scenario evidence. Restricted subprocess environment; not counted as product failure.
+- `env -u NODE_TEST_CONTEXT NODE_ENV=test node /tmp/bitvid-dispatch-client8-repro.mjs`: natural exit1,287.33876ms,19 tests:18 existing pass/1 new planned Stage3 assertion fails/0 cancelled/0 skipped. /tmp/bitvid-dispatch-client8-direct.log retains output.
+- New scenario measures after last-owner disposal/event-loop flush: activeProbes1(expected0), sourceRetained=true, cache=null. Fixture completes pending media afterward and naturally exits. This proves remaining active-resource gap against Stage3 owner direction, not a regression against old queued-only expectations.
+- Existing shared/rejoin/legacy/FIFO scenarios pass. New cancellation-boundary controls and minimal implementation proposal awaited from client8; product/committed-test changes not yet routed. No live/browser/full suite/HEAD/HLS/torrent cancellation qualification.

@@ -1,0 +1,5 @@
+- [x] Preserve original actual12mode baseline5fail/7pass and fixture corrections.
+- [x] Minimal optional HLS cancellation plumbing and35 new lifecycle/helper scenarios.
+- [x] Focused129/6files and19 failing isolated mutants,cancelled0.
+- [ ] Final lint11,commit/merge currentunstable and READY/resource request.
+- [ ] Allocated full/normal landing/build/nativebrowser; no wider HLSplayback/torrent/RangeGET/Stage3 claim.

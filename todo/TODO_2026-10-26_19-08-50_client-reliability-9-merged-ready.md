@@ -1,0 +1,5 @@
+- [x] Candidate committed1b2362d2 and unstable04c8c7cf merged at1bf50c1f; source inputs unchanged.
+- [x] Saved60focused/19distinct killed mutants hashes verified; no baseline/test repeat.
+- [x] Thermal hold/progress and dispatch blocker delivered; backlog and area TODO current.
+- [ ] Explicit fresh resource grant for remaining full lint/full/build/browser/submission.
+- [ ] Durable normal-gate landing and target ancestry before closing item9.

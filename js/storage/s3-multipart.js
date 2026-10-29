@@ -104,31 +104,58 @@ export async function ensureBucketCors({ s3, bucket, origins, region } = {}) {
     throw new Error("Bucket name is required to configure CORS");
   }
 
-  const { PutBucketCorsCommand } = requireAwsSdk();
-
-  const allowedOrigins = (origins || []).filter(Boolean);
+  const allowedOrigins = [...new Set((origins || []).filter(Boolean))];
   if (allowedOrigins.length === 0) {
     return;
   }
 
+  const { GetBucketCorsCommand, PutBucketCorsCommand } = requireAwsSdk();
   await ensureBucketExists({ s3, bucket, region });
+
+  let existingRules;
+  try {
+    const response = await s3.send(new GetBucketCorsCommand({ Bucket: bucket }));
+    existingRules = response.CORSRules || [];
+  } catch (error) {
+    // A denied or failed read must never turn into a destructive replacement.
+    if (error?.name !== "NoSuchCORSConfiguration") {
+      throw error;
+    }
+    existingRules = [];
+  }
+
+  const defaultRule = {
+    AllowedHeaders: ["*"],
+    AllowedMethods: ["GET", "HEAD", "PUT", "POST", "DELETE", "OPTIONS"],
+    ExposeHeaders: ["ETag", "Content-Length", "Content-Range", "Accept-Ranges"],
+    MaxAgeSeconds: 3600,
+  };
+  const equivalentRules = existingRules.filter((rule) =>
+    // Only explicit origins in equivalent default rules count as coverage.
+    // Arbitrary rules (including wildcard rules) remain completely untouched.
+    Object.keys(rule).every((key) =>
+      key === "AllowedOrigins" || key === "ID" || key in defaultRule
+    ) &&
+    rule.MaxAgeSeconds === defaultRule.MaxAgeSeconds &&
+    ["AllowedHeaders", "AllowedMethods", "ExposeHeaders"].every((key) =>
+      Array.isArray(rule[key]) &&
+      rule[key].length === defaultRule[key].length &&
+      defaultRule[key].every((value) => rule[key].includes(value))
+    )
+  );
+  const uncoveredOrigins = allowedOrigins.filter((origin) =>
+    !equivalentRules.some((rule) => rule.AllowedOrigins?.includes(origin))
+  );
+  if (uncoveredOrigins.length === 0) {
+    return;
+  }
 
   const command = new PutBucketCorsCommand({
     Bucket: bucket,
     CORSConfiguration: {
       CORSRules: [
-        {
-          AllowedHeaders: ["*"],
-          AllowedMethods: ["GET", "HEAD", "PUT", "POST", "DELETE", "OPTIONS"],
-          AllowedOrigins: allowedOrigins,
-          ExposeHeaders: [
-            "ETag",
-            "Content-Length",
-            "Content-Range",
-            "Accept-Ranges",
-          ],
-          MaxAgeSeconds: 3600,
-        },
+        ...existingRules,
+        { ...defaultRule, AllowedOrigins: uncoveredOrigins },
       ],
     },
   });

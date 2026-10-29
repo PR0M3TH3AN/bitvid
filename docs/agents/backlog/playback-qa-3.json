@@ -1,0 +1,12 @@
+{
+ "id": "playback-qa-3",
+ "area": "playback-qa",
+ "status": "blocked",
+ "title": "Diagnose Firefox deterministic CI failure at fb54cea3",
+ "blockedOn": "CI-equivalent failing execution evidence unavailable: public logs403, no Playwright artifact; exact terminal assertions identified but controlled local Firefox runs pass. Await new actionable CI evidence; no further reruns routed.",
+ "addedOn": "2026-10-22",
+ "filedAt": "fb54cea3a2ba99b4860421724a5050af6b97c293",
+ "brief": "docs/agents/CAMPAIGN-2026-10-22.md",
+ "evidence": "docs/testing/playback-qa-3-investigation.md",
+ "checkpoint": "Public CI184passed/2failed/3flaky preserved; local exact Playwright3passed/0failed/0flaky/0skipped,workers1,retries0,naturalexit0; not fixed or done."
+}

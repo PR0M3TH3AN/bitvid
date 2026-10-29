@@ -1,0 +1,6 @@
+- Grid publishes owner/release/inflight promise before synchronous client IO so disposal or same-source registration inside constructor/add is safe; cancelled identity removed synchronously and cache guarded.
+- Optional third probePeers lifecycle follows existing owner-record convention; standalone behavior unchanged. Cancel settlesnull after deferred temporary-torrent destroy call returns/throws; timers clear immediately, cancel hook/owned listeners removed at final teardown.
+- Retain inert error handler through deferred teardown, even cancellation insideadd; repeated/late callbacks are settled guards. Shared probeClient remains alive; queue slot only releases after destroy, preserving event unwind/cap4/FIFO.
+- Original tests367/417 contract corrected only after routed spec+integrity note; preserve separate shared-live/cache/TTL/timeout controls and strict noobsoletecache/freshrequest/resource assertions.
+- No live WebTorrent transport/byte teardown qualification from fake IO. Async low-level network shutdown not measured; existing teardown call ordering preserved.
+- Stop at completedfocused boundary for requested kit restart; no commit/merge/submission before restart, all snapshots saved.

@@ -1,0 +1,4 @@
+- [x] HEAD-only fix normally landed f41ac656 with435unique files and target ancestry0.
+- [x] Build/artifact and controlled native Chromium/Firefox lifecycle smoke pass; resources released.
+- [ ] Docs-only final evidence landing and HEAD closure disposition.
+- [ ] HLS/torrent/RangeGET separately routed and measured; broader Stage3 unqualified.

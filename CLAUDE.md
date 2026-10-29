@@ -2,6 +2,8 @@
 
 This document provides context and guidance for AI assistants working with the bitvid codebase. It explains the project structure, development workflows, conventions, and key architectural decisions.
 
+**Canonical guidance:** `AGENTS.md` is the canonical agent guidance for this repo; `CLAUDE.md` holds Claude-oriented codebase orientation that layers on top of it.
+
 ---
 
 ## Project Overview
@@ -312,7 +314,7 @@ const dTag = event.tags.find(t => t[0] === 'd')?.[1];
 
 ### NIP-07 Signer Reliability (hard-won)
 
-The #1 cause of "DMs / hashtags / watch-history / lists won't load after login" is an **unresponsive NIP-07 signer**, not bitvid. The extension's MV3 background worker can die and `window.nostr` calls then hang forever — no client change fixes a dead signer. **Diagnose with a raw `window.nostr` probe** (`getPublicKey → nip04.encrypt → nip04.decrypt`) in the console; if that hangs, it's the extension (recommend nos2x/Alby). See `AGENTS.md` §17 and `docs/KNOWN_BUGS.md` #0.
+The #1 cause of "DMs / hashtags / watch-history / lists won't load after login" is an **unresponsive NIP-07 signer**, not bitvid. The extension's MV3 background worker can die and `window.nostr` calls then hang forever — no client change fixes a dead signer. **Diagnose with a raw `window.nostr` probe** (`getPublicKey → nip04.encrypt → nip04.decrypt`) in the console; if that hangs, it's the extension (recommend nos2x/Alby). See `docs/lessons/nip07-signer-reliability.md` (summarized in `AGENTS.md` §17) and `docs/KNOWN_BUGS.md` #0.
 
 Resilience invariants — **do not regress**:
 
@@ -326,78 +328,7 @@ Resilience invariants — **do not regress**:
 
 ## Testing & Validation: Scenario-First, Cheat-Resistant (Dark Factory Rules)
 
-You are operating inside a “Dark Factory” workflow where **validation replaces human code review**. Passing tests is only meaningful if tests are truthful.
-
-### Prime directive
-
-**Never alter a test merely to make it pass.**
-If you change tests to match buggy behavior, you are destroying the only feedback signal and producing code with no real-world value.
-
-StrongDM describes the exact failure mode we are preventing: agents discovering shortcuts (“return true”) and narrow tests being reward-hacked, leading to a shift from “tests” to scenario-based validation.
-
-### How to think about tests here
-
-Tests are not procedural checklists. They are **behavioral specifications**:
-- Write tests as **scenarios** (Given/When/Then or equivalent).
-- Assert **externally observable outcomes** at boundaries.
-- Avoid “testing the implementation” (internal call sequences, private methods, mirrored logic).
-- Prefer deterministic/harmonic execution: fixed seeds, controlled clocks, hermetic IO, virtualized dependencies.
-
-### Prohibited behaviors (reward-hacking patterns)
-
-Do NOT:
-- weaken assertions, broaden tolerances, or reduce coverage to get green
-- update snapshots/goldens without proving the change is intended behavior
-- add retries/sleeps/timeouts to hide flakes
-- mock so heavily that tests can pass with a broken system
-- “hard-code to the test” (single fixtures, single input paths, brittle constants)
-
-### Allowed test changes: Spec Correction Protocol
-
-You may change test expectations only if the test is wrong relative to intended behavior.
-
-Required steps:
-1) Identify the scenario/spec that defines correct behavior.
-2) Explain why the previous expectation was incorrect.
-3) Replace it with an equally strict (or stricter) behavioral assertion.
-4) Provide a **Test Integrity Note** (machine-readable) documenting the change.
-
-If you cannot justify a change with scenario/spec truth: **do not change the test**. Instead, output a “Needs Spec Clarification” note and propose candidate scenarios.
-
-### Required output when you touch tests
-
-Include this YAML block in your PR description (or reference it from a `TEST_INTEGRITY.md` entry):
-
-```yaml
-test_integrity_note:
-  change_type: ["new_tests" | "refactor_tests" | "spec_correction" | "flake_fix"]
-  scenarios:
-    - id: SCN-<slug>
-      given: "<preconditions>"
-      when: "<stimulus>"
-      then: "<observable outcomes>"
-  observable_outcomes:
-    - "<boundary/output asserted>"
-  determinism_controls:
-    - "<fixed seed / fake clock / hermetic env / service virtualization>"
-  anti_cheat_rationale:
-    prevents:
-      - "hard-coded return value"
-      - "over-mocking internal logic"
-      - "snapshot rubber-stamping"
-      - "retry/sleep-based flake masking"
-  relaxation:
-    did_relax_any_assertion: false
-    if_true_explain_spec_basis: ""
-```
-
-### If external services are involved
-
-Prefer boundary-level service virtualization (“digital twins” / behavioral clones) so scenario tests remain:
-- high fidelity (realistic edge cases)
-- deterministic and replayable
-- not rate-limited / not flaky
-(StrongDM’s “Digital Twin Universe” is the reference pattern.)
+The testing and validation invariant is stated in `AGENTS.md` §16 "Scenario-First Tests & Test Integrity (Dark Factory Standard)", and the full standard lives in [`docs/testing/test-integrity.md`](docs/testing/test-integrity.md). In short: validation replaces human code review here, tests are behavioral scenarios that assert externally observable outcomes at boundaries, and you must **never alter a test merely to make it pass** — expectation changes are allowed only via the Spec Correction Protocol with an accompanying Test Integrity Note. Read `docs/testing/test-integrity.md` in full before adding or modifying any test.
 
 ---
 
@@ -438,7 +369,7 @@ View with: `./scripts/show-artifacts.sh`
 
 ### Agent E2E Testing (Playwright)
 
-bitvid includes a test harness for programmatic Playwright testing without browser extensions or real relays. See `AGENTS.md` Section 14 for the full reference. Quick start:
+bitvid includes a test harness for programmatic Playwright testing without browser extensions or real relays. See `docs/testing/agent-playwright-harness.md` for the full reference (summarized in `AGENTS.md` §14). Quick start:
 
 ```typescript
 import { test, expect } from "./helpers/bitvidTestFixture";
@@ -457,7 +388,7 @@ Key capabilities:
 - **Mock relay**: Each test gets an isolated in-memory relay with HTTP seeding
 - **Relay override**: `?__test__=1&__testRelays__=ws://localhost:8877` redirects all connections
 - **State inspection**: `window.__bitvidTest__.getAppState()` returns login status, relays, etc.
-- **Stable selectors**: All key elements have `data-testid` attributes (see AGENTS.md Section 14)
+- **Stable selectors**: All key elements have `data-testid` attributes (see `docs/testing/agent-playwright-harness.md`)
 
 ---
 

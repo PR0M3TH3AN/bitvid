@@ -1,0 +1,6 @@
+- [x] Read routing/mailbox/rules, merge unstable, claim client-reliability-2, revalidate unchanged test against filedAt.
+- [x] Read NIP01 and subscription/lifecycle docs, classify manager retry escape and missing unsubscribe.
+- [x] Add hermetic fixture, deferred pool barrier and real subscription/close assertions without relaxing existing checks.
+- [x] Prove test-local early-return and failure-connection mutants each fail naturally.
+- [ ] Run both isolated files, lint, commit separately, merge unstable and run full60s/file gate.
+- [ ] Submit normal landing queue; verify durable state and unstable; close both backlog items after landing.

@@ -1,0 +1,6 @@
+- SHA c5b678f7c9d0b92fbf786b16ae831f1be1d0b899.
+- `env -u NODE_TEST_CONTEXT node --test /tmp/bitvid-storage-cors-3-audit.mjs`: exit1, opaque child-file failure, no scenario detail; not product evidence.
+- `env -u NODE_TEST_CONTEXT node /tmp/bitvid-storage-cors-3-audit.mjs`: natural exit1; seven scenarios, three pass, four fail, zero cancelled/skipped. Zero attempted network per fixture.
+- Failures: deleted original remains in service callback/persisted list; optimistic reload emits deleted original; late older tombstone removes newer active entry; stale engine run renders deleted original after fresh refresh.
+- Passing controls: initial live/unrelated ingestion, tombstone+late older absent from active source, newer post-tombstone content allowed.
+- No product/retained tests modified, lint/build/full/browser not run. Limits and transport details in docs/testing/storage-cors-3-investigation-2026-10-22.md.

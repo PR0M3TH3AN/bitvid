@@ -1,0 +1,5 @@
+- SHA7369f1feeb76eb03f7c6c45d6da52ab8353cc1c4 printed by git rev-parse HEAD; git diff c5b678f7 HEAD -- js tests config empty/runtime-equivalent.
+- env -u NODE_TEST_CONTEXT node /tmp/bitvid-dispatch-tombstone-audit.mjs: exit1 naturally,7tests/3pass/4fail/cancelled0/skipped0,29.894975ms,fixture network attempts0. Script copied from worker scratch with only absolute imports redirected to dispatch.
+- Actual client subscribeVideos/buffer/service/feed engine/coordinator; substituted transport, verifier, metadata and persistence IO only; synthetic unsigned events, localStorage real.
+- Fails subscription emits/persists original deleted:true, optimistic reload emits deleted original, oldtombstone removes newer active, stale decorator resolves after deletion and renders deleted reference. Controls:live/unrelated,delete+older absence,strictly newer after tombstone pass.
+- No browser DOM/full registered UI lifecycle, real signer/relay/cloud or production proof. No committed test/product edits by dispatch. Implementation routed buffer/service separately; coordinator remains open.

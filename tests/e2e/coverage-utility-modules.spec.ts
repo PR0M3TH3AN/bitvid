@@ -13,12 +13,20 @@ test.describe("runtime utility module coverage", () => {
         "/js/search/searchFilters.js"
       );
 
+      // 9afbc0cb ("Decode npub authors to hex") made the author filter validate
+      // its value, because npub-form authors silently matched nothing. The old
+      // fixture used `author:abc123`, which is neither a decodable npub nor
+      // 64-char hex, so the filter is now (correctly) rejected and
+      // authorPubkeys comes back empty. Use a real pubkey to exercise the
+      // success path, and pin the rejection separately below.
+      const AUTHOR_HEX = "a".repeat(64);
+
       const parsed = parseFilterQuery(
-        'author:abc123 tag:#music,nostr kind:30078 relay:wss://relay.example after:2024-01-02 before:1707000000 duration:>=1.5m has:magnet nsfw:safe "exact phrase" looseTerm',
+        `author:${AUTHOR_HEX} tag:#music,nostr kind:30078 relay:wss://relay.example after:2024-01-02 before:1707000000 duration:>=1.5m has:magnet nsfw:safe "exact phrase" looseTerm`,
       );
 
       const withErrors = parseFilterQuery(
-        "duration:oops has:bad unknown:value before:not-a-date",
+        "duration:oops has:bad unknown:value before:not-a-date author:abc123",
       );
 
       const serialized = serializeFiltersToQuery(parsed.filters);
@@ -30,7 +38,7 @@ test.describe("runtime utility module coverage", () => {
       };
     });
 
-    expect(result.parsed.filters.authorPubkeys).toEqual(["abc123"]);
+    expect(result.parsed.filters.authorPubkeys).toEqual(["a".repeat(64)]);
     expect(result.parsed.filters.tags).toEqual(["music", "nostr"]);
     expect(result.parsed.filters.kind).toBe(30078);
     expect(result.parsed.filters.relay).toBe("wss://relay.example");
@@ -44,8 +52,13 @@ test.describe("runtime utility module coverage", () => {
     expect(result.withErrors.errors.some((e: any) => /Duration/.test(e.message))).toBe(true);
     expect(result.withErrors.errors.some((e: any) => /Has filter/.test(e.message))).toBe(true);
     expect(result.withErrors.errors.some((e: any) => /Date value/.test(e.message))).toBe(true);
+    // An undecodable author must be reported rather than silently dropped.
+    expect(
+      result.withErrors.errors.some((e: any) => /Could not decode author/.test(e.message)),
+    ).toBe(true);
+    expect(result.withErrors.filters.authorPubkeys).toEqual([]);
 
-    expect(result.serialized).toContain("author:abc123");
+    expect(result.serialized).toContain(`author:${"a".repeat(64)}`);
     expect(result.serialized).toContain("tag:music");
     expect(result.serialized).toContain("kind:30078");
     expect(result.serialized).toContain("has:magnet");
