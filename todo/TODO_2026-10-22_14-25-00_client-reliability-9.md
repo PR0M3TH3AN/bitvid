@@ -1,0 +1,6 @@
+- [x] Independent evidence and explicit HEAD implementation routing verified landed e04549f8.
+- [x] Minimal controller HEAD fix,23 real lifecycle scenarios and strict integrity/spec notes.
+- [x] Focused60/4files,16naturally failing mutants,cancelled0,lint11.
+- [ ] Commit/merge candidate and send READY + slot request.
+- [ ] Allocated full/normal gate, durable landing/ancestry, final closure.
+- [ ] HLS/torrent separately routed/measured; no wider Stage3 claim.

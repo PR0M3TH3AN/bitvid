@@ -1,0 +1,6 @@
+- [x] Actual disposal reproduction1→0 obsolete starts, queued/shared/active lifecycle preservation.
+- [x] Caller review preserves shared-handler dedup and checks synchronous checking-callback disposal1→0 starts.
+- [x] Focused27/27 across4 files (11 lifecycle+6 priority+9 visibility+1 observer),14 reverted mutants killed.
+- [x] Corrected product lint11/11, build/artifact verification and Chromium/Firefox built-dist/native-observer smoke pass; browser released.
+- [ ] Commit corrected tree, merge unstable, restart full426-file60s gate and final lint; normal queue/durable landing/ancestry, dispatch landing event, close/final report.
+- Not qualified: actual media/torrent fallback, live peers, CPU/RSS, URL cancellation or active abort. Dispatch owns preview refresh. No new item without routing.

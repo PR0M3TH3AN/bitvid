@@ -1,0 +1,5 @@
+- [x] client-reliability-1: preserve26 existing scenarios, add native style contract, mutation checks, profile27/27 natural exit.
+- [x] client-reliability-2: deterministic pool barrier, successful IO fixture, subscription cleanup, preserve original assertions; race1/1 natural exit and both mutants fail.
+- [x] Separate commits, merge unstable, lint11/11 and full425/425 file exits0 on181eae95.
+- [ ] Unchanged normal queue gate and durable landing; verify unstable ancestry, then close both backlog items.
+- Not verified: browser/build/application layout, real network/signers/wallets/production/deploy; test-only changes.

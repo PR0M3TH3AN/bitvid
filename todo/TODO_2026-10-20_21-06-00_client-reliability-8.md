@@ -1,0 +1,4 @@
+- [x] Product43cb1baf normalfull432exit0/37focused/14mutants/lint11/ancestry0;item8closed.
+- [x] Dispatch integrated build/preview plus worker native Chromium+Firefox bounded lifecycle controlledIO pass;all worker browser/server resources released.
+- [ ] Dispatch route/batch final docs metadata landing;no duplicate full/build.
+- No optional work. HEAD/HLS/torrent active cancellation,actual media fallback/CPU/livequalification remain outside completed scope.

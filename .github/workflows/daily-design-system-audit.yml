@@ -1,8 +1,6 @@
 name: Daily Design System Audit
 
 on:
-  schedule:
-    - cron: '0 9 * * *' # Run daily at 09:00 UTC
   workflow_dispatch:
 
 permissions:

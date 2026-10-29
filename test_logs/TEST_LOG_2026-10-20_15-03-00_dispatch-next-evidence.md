@@ -1,0 +1,6 @@
+# Dispatch QA integration and next evidence
+
+- QA64143f42 durable landed1bb3a4fc;git log main3f9c26e3/metadata wrappers. env -u NODE_TEST_CONTEXT node tests/fleet-playback-fallback.test.mjs:4/4,exit0,17.36ms. git diff --quiet7f99c045 HEAD -- js config css components views index.html exit0;no runtime delta from verified preview,build not repeated.
+- env -u NODE_TEST_CONTEXT NODE_ENV=test node /tmp/bitvid-dispatch-6-history-audit.mjs local:exit0,removed absent/localclear0/recreationempty/0fakepublish/0network. synced:exit0,reduced persistence+recreation,2fakepublishesreplace:true/0network. local --historical-noop:exit1 after cleanup,removed item remains/noop1/0publish. Worker existing-profile27pass under historical override is evidence-derived.
+- env -u NODE_TEST_CONTEXT NODE_ENV=test node /tmp/bitvid-dispatch-delete-audit.mjs:exit1,2malformed cachedmetadata reject vs expected0;6controls pass/0network. Real service.resolveConnection/storage metadata/delete/key helpers,transport-only SDK fake. No claim of note deletion blocked because callers catch.
+- New routes require mutant-proven focused tests/unchanged normal gates;no live signer/relay/cloud/bucket/concurrentCAS/mediapeer qualification.

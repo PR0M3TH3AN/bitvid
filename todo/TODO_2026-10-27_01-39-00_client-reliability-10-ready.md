@@ -1,0 +1,6 @@
+- [x] Exactrouting+claim10/sourcef01ce012; no repeated baseline/client9checks.
+- [x] Minimal indexblock/helper extraction and17faithful scenarios including real index section.
+- [x] All19distinctmutantskilled/all17casescovered; full lint11pass.
+- [x] Durable snapshots/logs/mutant runner+deps manifest and integrity notes.
+- [ ] Namedpathcommit then merge currentunstable; input comparison and READY review.
+- [ ] Explicit fullgate/build/browser/submission grants and durablelanding/ancestry; no current grant.

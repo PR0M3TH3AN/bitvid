@@ -1,0 +1,4 @@
+- [x] HEAD candidate merged, unchanged normal gate435unique/missing0/extra0 and durable landing f41ac656, ancestry0.
+- [x] Sequential build/artifact exit0; heavy resources released.
+- [ ] Separate allocated native browser HEAD lifecycle smoke and honest limitations.
+- [ ] HEAD slice closure disposition; HLS/torrent separately routed and still open.

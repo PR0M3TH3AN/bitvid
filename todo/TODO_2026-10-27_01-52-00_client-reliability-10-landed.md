@@ -1,0 +1,5 @@
+- [x] Exactaff88416 candidate QA acceptance attributed independent dispatch/QA.
+- [x] ONE normal unchanged439gate exit0 and durable5b0adf6b landing/ancestry0.
+- [x] Unique complete log/result/discovery/hashes and health retained; slot RELEASED.
+- [ ] Separate remainingbuild/artifact/native stage routing; no duplicate validation.
+- [ ] Close item10 only after required final stages; historicaloverflow and other livecampaign gates remain open.

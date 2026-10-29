@@ -1,0 +1,12 @@
+{
+  "id": "client-reliability-10",
+  "area": "client-reliability",
+  "status": "done",
+  "title": "Recover completed startup fade animation after delayed cleanup initialization",
+  "blockedOn": null,
+  "addedOn": "2026-10-27",
+  "filedAt": "f01ce012595d74abac3c8adca7c8eec219294c7d",
+  "brief": "/home/user/Documents/GitHub/bitvid-dispatch/docs/agents/ROUTING-2026-10-27-client10-animation-cleanup.md",
+  "evidence": "Dispatch independently measured actualapp360 animationend514.8ms before listener3245.7ms; samepointASIDEfailure\u2192onlyapp.fade-in removalINPUTtoggle, geometry unchanged. Relevantinputdiff0 vs2754a8af/currentf01ce012; PRcheck0 attributed dispatch. Explicit bounded indexcleanup+optionalhelper/focusedtests; noCSS/app/otherbootstrap. Focused/mutants/lint only; full/build/browser/submit awaitREADY+slot. Minimal cleanup extracted at f01ce012: index1405/helper59, new17scenarios17pass/fail0/cancelled0;19distinctisolatedmutantsallkilled/all17casesmapped;hostlint11pass, diffcheck0. Noexistingtestedits/full/build/browser/submission. Evidence test_logs/TEST_LOG_2026-10-27_01-39-00_client-reliability-10-ready.md; sourcewiring scenario executes actualisolatedindexsection, notfullapp; nativeCSS/hittesting remains later. Exactcandidateaff88416 QA PASS/RELEASE attributeddispatch01:45:46:4nativeclicks/intervention0 incloriginal360point/390/1280/reduced controls. NEWgrant samecandidate normalgate439discovered/439unique missingextra0/notok0/nonzerofailcancelled0 exit0; durablyLANDED5b0adf6b3ee65fce30041f6adf29177f01b43647 at01:51:12/ancestry0. Completerawlog/result/discovery/hash state/evidence/client10-animation-cleanup-20261027. GateslotRELEASE01:51:52; separatebuild/artifact routing pending, itemstaysopen. test_logs/TEST_LOG_2026-10-27_01-52-00_client-reliability-10-landed.md Separatehostbuild at36716dfe inputs0diff vsQAaff88416 naturalexit0/artifactverifierPASS/version86fc5236/indexSHA50a89bd6/helperdistcmp0. Hostswcompatguard no commitdelta; no artifactcommit/preview/deploy. BuildRELEASE01:53; docs-only durableevidence pending beforeclose10. test_logs/TEST_LOG_2026-10-27_01-54-00_client-reliability-10-build.md Required build+landing evidence23c69eba durablyLANDEDaf8e654010c116e61f9a88250779512efc6c0595 docs-only/no gates/ancestry0 at01:54:16. Client10 closed after product+evidence durable and QAvalidatedsource equality. Historicaloverflow/nativeactivecancel/AA/item9live/CPU/wholeStage3 retained separately.",
+  "closedOn": "2026-10-27"
+}

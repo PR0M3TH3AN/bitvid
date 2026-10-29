@@ -1,0 +1,4 @@
+- [x] Coordinator-only productb21ce86c,merged888807ba; focused5/new16,nine restored mutants,lint11.
+- [x] Unchanged normalgateexit0; durable7edc7ea8,ancestry0; discovery436 unique (not independent starts audit).
+- [x] Sequential buildd9424fb7/artifact29cbe6f0exit0;close4;resourcesreleased.
+- [ ] Dispatch integration of shared TODO/preview; native/full-router/live/manual qualification remains outside slice. No new optional item.

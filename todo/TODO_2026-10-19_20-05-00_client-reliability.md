@@ -1,0 +1,6 @@
+- [x] Read rules, mailbox, known issues and integrity standard; claim client-reliability-1.
+- [ ] Install worktree dependencies and reproduce at actual boundary.
+- [ ] Diagnose and make minimal deterministic fix; preserve expectations.
+- [ ] Prove scenario regression with mutant and run required checks.
+- [ ] Commit, merge unstable, validate, submit, verify landing and close.
+- GitHub overlap check failed DNS; no PR being opened. Fleet reserves this scope.

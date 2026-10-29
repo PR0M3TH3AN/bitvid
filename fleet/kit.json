@@ -1,0 +1,20 @@
+{
+  "version": "0.2.0",
+  "files": {
+    "docs/agents/prompts/COMMON.md": "b5ff5891cf101da1aa5c367569b8f375f1ceb7af5748891af9e90ae8517e47d5",
+    "docs/agents/prompts/area.md": "98359aa5ec95117b011cd4fb5bda683459dfe498cae775675c3a92e56a501d6e",
+    "docs/agents/prompts/dispatch.md": "f7b7fe719e20a5f93794b4142690778f1231c5c9c01c3244c3e9adc2d84b995c",
+    "docs/agents/schedules/checkin.md": "c45171a35dd63f2339205b77a8afeab4adfa516996052aff288f24877132c899",
+    "docs/agents/schedules/hygiene.md": "08e8adb6930ef425cf71936479f7ee125300bb2ad337f00a4e6c68789a1b5918",
+    "docs/agents/schedules/restart.md": "64056e9b2a792ac98b8951274d1db35040df0be9256724edfe7a6979a51055f3",
+    "docs/agents/schedules/summary.md": "7ecccd7ceec28b52e1ffcfcf38e7a3c8881880641c163d6da52e1c5de46e820f",
+    "docs/agents/schedules/triage.md": "0b1f52fd6a4bd14ec8be9f90e0504ed153bf2f96acd65c178ce9c3eef7a9253f",
+    "docs/agents/schedules/winddown.md": "36429467ce62e1f26a7eb6c2e6111ecd490c18bf691ee3fdb73c2fda71838d74",
+    "docs/agents/WIND-DOWN.md": "b27ae51b0b8e739e0fcca736e4cb44dfdd38b71fff1dd4261ff4df18d575df3a",
+    "docs/agents/STRIKES.md": "dd3047e02287207a1de96c01d5e9a1889c2c37cb75a5b3655de6e813df7f5bd9",
+    "docs/agents/prompts/interpreter.md": "c1c2cb3feedc7aacd0e5cae9aab554d929dd148d7cc707da6028979697332b32",
+    "docs/agents/prompts/session-manager.md": "af1da998da524be29ff6f5a625d4d86887fe33c233e56f56c808023414f1218b",
+    ".agents/skills/agent-fleet/SKILL.md": "b4eef39e6246acb86ea143e863f5800f675ce9b62bca2a83296ec5a0f34f088c",
+    "docs/agents/schedules/resources.md": "09bb4cb73c1bcabbe469b2d597762e010659f291ba66b8f02fdb47ec963d69ff"
+  }
+}

@@ -1,0 +1,4 @@
+- Dispatch independent audit confirmed7=3pass/4fail and routed buffer/service only; merged routing076ec802 after evidence67140d89, merged HEAD89c5494a.
+- Buffer defers deletion of active versions to existing client.recordTombstone; preserve guarded-event same-ID cleanup. No new deletion timestamp/key policy.
+- Service rejects deleted/invalid/client-tombstone-covered objects before author/access bypass and direct caching; prune affected cached copies using authoritative guard plus existing explicit deletion IDs. Persist cleaned optimistic snapshots and empty active results.
+- Separate buffer commit ed5fb649; service commit follows. No app/feed coordinator/client.js writes. Coordinator race remains open pending faithful registered-pipeline/view/disposal evidence and new routing.

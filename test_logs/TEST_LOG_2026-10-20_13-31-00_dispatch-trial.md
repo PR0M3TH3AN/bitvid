@@ -1,0 +1,11 @@
+# Parallel trial setup and item5 reproduction
+
+- Open PR preflight count0. Roster47953970 normal gate rejected13:28:15 exit1; no product assertion found. Gate log stopped118th file nip17-send-gift-wrap,1047831 bytes,8877 binary markers. Launcher NODE_TEST_CONTEXT=child-v8; host controlled spawnSync output2MiB gives ENOBUFS/SIGTERM/default cap. Original rejection stored here before same-SHA retry overwrites durable result: gate exit1, hashtag-preferences/relay diagnostics tail without failing assertion.
+- Clean-env diagnostic npm test with60s/file bound reached101 files with no failure lines; stopped own process group only,exit143, not a passing full-suite claim. Roster resubmitted with env -u NODE_TEST_CONTEXT; unmodified gate running, plain-text log0 binary markers. No kit/test/gate changes.
+- env -u NODE_TEST_CONTEXT node /tmp/bitvid-dispatch-5-active-url.mjs mirror-disposed --expect-no-obsolete-head: exit1 after cleanup/retry, obsoleteHeads1 expected0; HEAD1->2 after disposed primary error, resources1->0/slots1->0; final settles/null cache; later retry succeeds.
+- Same diagnostic mirror-shared:exit0, live healthy/old checking, shared1 initial HEAD/promise, mirror success/cache/retry reuse, final resources0/slots0. Actual observer/controller/cache; external fetch/media controlled, mock clock. Native decoding/playback/peers/CPU-RSS not qualified.
+
+- Corrected roster gate full normal install+npm-test passed exit0, durable47953970->bbc1be79 at13:37:27; initial attempt13:26:20,rejection13:28:15,clean retry13:30:35 (~6m53s gate). All required test files collected427, no quarantine/expectation changes. Host status confirmed new worktrees/branches/windows249026/249041 after launch.
+- Pickups: client13:27:49(tool deadline delay),storage13:38:24,QA proposal13:39:50/claimed investigation start13:38:36. Item5 focused28/28,6mutants/lint/build are worker-derived evidence; no full/browser yet.
+- QA browser.log reviewed (not independently rerun): Chromium+Firefox each3 local scenarios,decoded VP864x64/currentTime>0 with actual mirror/substituted torrent transport,0external. Browser overlapped admin gate without waiting explicit clearance; self-reported cleanup. No real peers/full-app/native torrent claim.
+- Trial remains in progress; product/test normal landings pending, preview unchanged.

@@ -87,6 +87,18 @@ for (const file of ["index.html", "embed.html"]) {
       ["'self'"],
       "base-uri must be 'self'",
     );
+
+    // index.html mounts <bitlogin-auth> (components/login-modal.html), whose
+    // crypto worker compiles an Argon2id WASM module. Without
+    // 'wasm-unsafe-eval' the browser blocks WebAssembly.compile and EVERY
+    // BitLogin password flow fails -- silently, since the page still loads.
+    // This exact omission broke sign-in on bitlogin.network for four days.
+    if (file === "index.html") {
+      assert.ok(
+        scriptSrc.includes("'wasm-unsafe-eval'"),
+        "script-src must include 'wasm-unsafe-eval' or BitLogin sign-in breaks",
+      );
+    }
   });
 
   test(`${file}: every inline <script> is hash-allowlisted in script-src`, () => {

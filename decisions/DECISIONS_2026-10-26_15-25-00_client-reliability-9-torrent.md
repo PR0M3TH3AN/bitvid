@@ -1,0 +1,5 @@
+- Investigation uses actual production chain, fake only observer delivery/WebTorrent IO/timers/persistence; no implementation or committed tests.
+- Preserve first12=5pass/7fail fixture: two control failures are JSDOM storage-event timers; separate memoryStorage IO fixture12=7pass/5fail retains identical assertions and original evidence.
+- Treat five failures as planned Stage3 active-cancellation gap, not regression against existing intentional active-sharing/cache contracts. Need explicit routed spec correction before changing those tests.
+- Smallest fix boundary gridHealth ownership/identity/cache plus probePeers lifecycle only. Preserve deferred temporary-torrent destruction after callback unwinds and release queue slot after teardown; retain shared probe client/other owners.
+- No live browser/WebTorrent/network/CPU/RangeGET claim; no product edits until independent routing.

@@ -1,0 +1,10 @@
+- Product buffer commit ed5fb64991ae4aaf5df4ac76f4bd13ca9633aea0; service edits not yet committed when checked.
+- `env -u NODE_TEST_CONTEXT node tests/storage-tombstone-service.test.mjs`: old service natural exit1,0pass/8fail; fixed exit0,8pass.
+- `python3 /tmp/storage3-service-mutants.py`: exit0,8 deliberately broken variants each exited1, product restored; failing scenario counts8/4/4/2/5/1/1/2.
+- Focused command: `env -u NODE_TEST_CONTEXT node scripts/run-targeted-tests.mjs tests/storage-tombstone-buffer.test.mjs tests/storage-tombstone-service.test.mjs tests/nostr/videoEventBuffer.test.mjs tests/nostr-delete-flow.test.mjs tests/nostr-service-live-feed-notification.test.mjs tests/nostr-service-access-control.test.mjs tests/nostr-service-access-control-ready.test.mjs tests/services/nostr-service.test.mjs tests/author-moderation-override.test.mjs tests/moderation-stage.test.mjs tests/app/feedCoordinator.test.mjs tests/app/feedCoordinatorWatchHistoryRefresh.test.mjs`.
+- Final focused exit0 across12 files:11 files summarize59 passing tests; existing access-control suite outputs5 named passing checks and exit0 but no final TAP summary. That output limit is disclosed; not called a complete footer. New tests13/13 across two files.
+- Initial focused run stopped at existing live-feed test4 (6pass/1fail); explicit same-event-ID removal restored alongside new cleanup; no test changes.
+- `env -u NODE_TEST_CONTEXT npm run lint`: initial sandbox exit2 at git-grep EPERM; approved unchanged command outside sandbox exits0,all11 stages.
+- `git diff --check`: exit0. Service net growth8 lines; grandfather limit passes.
+- Raw logs `/tmp/storage3-focused.log`, `/tmp/storage3-lint.log`, `/tmp/storage3-service-baseline.log`, `/tmp/storage3-service-mutant-results.log`.
+- No browser/full/build/queue. Coordinator stale-render remains unresolved/read-only. Live signer/relay/cloud/IndexedDB restart and DOM/full registered pipeline unverified.

@@ -23,3 +23,14 @@ TEST_LOG.mdtest_logs/nip-hits.txt
 # Local site archive for manual nsite upload (npm run archive)
 bitvid-site.zip
 .env*
+
+# Agent runtime state (local only)
+memory-update.md
+memory-update.json
+
+# Agent-local memory state (never committed)
+.agents/private/
+.agents/state/
+fleet/inbox/
+.task
+.fleet/

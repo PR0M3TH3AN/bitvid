@@ -1,0 +1,5 @@
+- [x] Source-reviewed candidate and full lint11 pass.
+- [x] ONE normal queue attempt; preserve interrupted275/438 log and rejected result, no retry.
+- [x] RELEASE exclusive slot and record dispatch thermal hold.
+- [ ] Fresh thermal/resource clearance plus new dispatch gate grant.
+- [ ] Unchanged full gate durable landing/ancestry; then separately granted build/browser follow-up.

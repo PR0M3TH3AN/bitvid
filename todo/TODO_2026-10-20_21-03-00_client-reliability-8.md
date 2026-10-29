@@ -1,0 +1,6 @@
+- [x] Investigation,independent confirmation,explicit minimal fix/spec routing.
+- [x] Controller media cleanup + strict replacement/shared/FIFO/live timeout controls.
+- [x] Focused37/3files,14restored mutants,lint11pass.
+- [x] Single unchanged fullgateexit0/432files,durable43cb1baf andcandidate ancestry0;close item8.
+- [ ] Closure metadata landing coordination with dispatch.
+- Dispatch owns later integrated preview/build/native qualification;worker IDLE/no optionaltasks.

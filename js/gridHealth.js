@@ -21,14 +21,14 @@ import {
   getLivenessProbePrefetchMargin,
 } from "./constants.js";
 
-const badgeUpdateListeners = new Set();
+const badgeUpdateListeners = new Map();
 
 function notifyBadgeUpdate(payload) {
   if (!payload) {
     return;
   }
 
-  badgeUpdateListeners.forEach((listener) => {
+  badgeUpdateListeners.forEach((_owners, listener) => {
     if (typeof listener !== "function") {
       return;
     }
@@ -183,58 +183,86 @@ function normalizeResult(result) {
   };
 }
 
-function queueProbe(magnet, cacheKey, priority = 0, webSeeds = []) {
+function queueProbe(magnet, cacheKey, priority = 0, webSeeds = [], owner) {
   if (!magnet) {
-    return Promise.resolve(null);
+    return { promise: Promise.resolve(null), owners: new Set() };
   }
 
   const cached = getCacheEntry(cacheKey);
   if (cached) {
-    return Promise.resolve(cached);
+    return { promise: Promise.resolve(cached), owners: new Set() };
   }
 
   if (probeInflight.has(cacheKey)) {
-    return probeInflight.get(cacheKey);
+    const record = probeInflight.get(cacheKey);
+    if (!record.cancelled) {
+      record.owners.add(owner);
+      owner.release = () => releaseProbe(record, owner, cacheKey);
+      return record;
+    }
   }
 
-  const job = probeQueue
-    .run(
-      () =>
-        torrentClient
-          .probePeers(magnet, {
+  const record = { owners: new Set([owner]), cancelled: false };
+  owner.release = () => releaseProbe(record, owner, cacheKey);
+  // Publish ownership and the result before starting IO: client.add() can
+  // synchronously unregister a card or register another owner of this source.
+  let resolveJob;
+  let rejectJob;
+  record.promise = new Promise((resolve, reject) => {
+    resolveJob = resolve;
+    rejectJob = reject;
+  })
+    .then((result) => {
+      if (record.cancelled) return null;
+      const normalized = normalizeResult(result);
+      if (cacheKey) setCacheEntry(cacheKey, normalized);
+      return normalized;
+    })
+    .finally(() => {
+      if (cacheKey && probeInflight.get(cacheKey) === record) {
+        probeInflight.delete(cacheKey);
+      }
+    });
+  if (cacheKey) probeInflight.set(cacheKey, record);
+  record.job = probeQueue.run(
+    () =>
+      torrentClient
+        .probePeers(
+          magnet,
+          {
             timeoutMs: PROBE_TIMEOUT_MS,
             maxWebConns: 2,
             polls: PROBE_POLL_COUNT,
             urlList: webSeeds,
-          })
-          .catch((err) => ({
-            healthy: false,
-            peers: 0,
-            reason: "error",
-            error: err,
-            appendedTrackers: false,
-            hasProbeTrackers: false,
-          })),
-      priority
-    )
-    .then((result) => {
-      const normalized = normalizeResult(result);
-      if (cacheKey) {
-        setCacheEntry(cacheKey, normalized);
-      }
-      return normalized;
-    })
-    .finally(() => {
-      if (cacheKey) {
-        probeInflight.delete(cacheKey);
-      }
-    });
+          },
+          record
+        )
+        .catch((err) => ({
+          healthy: false,
+          peers: 0,
+          reason: "error",
+          error: err,
+          appendedTrackers: false,
+          hasProbeTrackers: false,
+        })),
+    priority
+  );
+  record.job.promise.then(resolveJob, rejectJob);
 
-  if (cacheKey) {
-    probeInflight.set(cacheKey, job);
+  return record;
+}
+
+function releaseProbe(record, owner, cacheKey) {
+  owner.active = false;
+  record.owners.delete(owner);
+  if (!record.owners.size && !record.cancelled) {
+    record.cancelled = true;
+    if (probeInflight.get(cacheKey) === record) {
+      probeInflight.delete(cacheKey);
+    }
+    record.job?.cancel();
+    record.cancelActive?.();
   }
-
-  return job;
 }
 
 const PROBE_CACHE_TTL_MS = FIVE_MINUTES_MS;
@@ -255,9 +283,10 @@ class ProbeQueue {
   }
 
   run(task, priority = 0) {
-    return new Promise((resolve, reject) => {
+    let job;
+    const promise = new Promise((resolve, reject) => {
       const normalizedPriority = Number.isFinite(priority) ? priority : 0;
-      const job = {
+      job = {
         task,
         resolve,
         reject,
@@ -266,6 +295,18 @@ class ProbeQueue {
       this.enqueue(job);
       this.drain();
     });
+    return {
+      promise,
+      cancel: () => {
+        const index = this.queue.indexOf(job);
+        if (index < 0) {
+          return false;
+        }
+        this.queue.splice(index, 1);
+        job.resolve(null);
+        return true;
+      },
+    };
   }
 
   enqueue(job) {
@@ -432,10 +473,13 @@ function setBadge(card, state, details) {
     card,
     state: normalizedState,
     peers: hasPeerCount ? peersValue : null,
-    reason: details && typeof details.reason === "string" ? details.reason : null,
+    reason:
+      details && typeof details.reason === "string" ? details.reason : null,
     webseedOnly,
     checkedAt:
-      details && Number.isFinite(details.checkedAt) ? Number(details.checkedAt) : null,
+      details && Number.isFinite(details.checkedAt)
+        ? Number(details.checkedAt)
+        : null,
     text: badge.textContent,
     tooltip,
     role: entry.role,
@@ -444,7 +488,7 @@ function setBadge(card, state, details) {
   notifyBadgeUpdate(payload);
 }
 
-function handleCardVisible({ card, pendingByCard, priority = 0 }) {
+function handleCardVisible({ card, pendingByCard, liveCards, priority = 0 }) {
   if (!(card instanceof HTMLElement)) {
     return;
   }
@@ -473,25 +517,32 @@ function handleCardVisible({ card, pendingByCard, priority = 0 }) {
     const cachedState = cached.healthy
       ? "healthy"
       : cached.hasProbeTrackers
-      ? "unhealthy"
-      : "unknown";
+        ? "unhealthy"
+        : "unknown";
     setBadge(card, cachedState, cached);
     return;
   }
 
   setBadge(card, "checking");
+  // Badge callbacks can synchronously dispose/rerender the feed. Do not create
+  // a new request after its unregister hook has already run.
+  if (!liveCards.has(card)) return;
 
   const encodedUrl = card.dataset.urlHealthUrl || "";
   const webSeed = encodedUrl ? decodeURIComponent(encodedUrl) : "";
   const webSeeds = webSeed ? [webSeed] : [];
 
-  const probePromise = queueProbe(magnet, infoHash, priority, webSeeds);
+  const owner = { active: true };
+  pendingByCard.set(card, owner);
+  const record = queueProbe(magnet, infoHash, priority, webSeeds, owner);
 
-  pendingByCard.set(card, probePromise);
-
-  probePromise
+  record.promise
     .then((result) => {
+      if (!owner.active || pendingByCard.get(card) !== owner) {
+        return;
+      }
       pendingByCard.delete(card);
+      record.owners.delete(owner);
       if (!card.isConnected) {
         return;
       }
@@ -510,11 +561,15 @@ function handleCardVisible({ card, pendingByCard, priority = 0 }) {
       setBadge(card, "unhealthy", result);
     })
     .catch((err) => {
-      userLogger.warn("[gridHealth] probe failed", err);
+      if (!owner.active || pendingByCard.get(card) !== owner) {
+        return;
+      }
       pendingByCard.delete(card);
+      record.owners.delete(owner);
       if (!card.isConnected) {
         return;
       }
+      userLogger.warn("[gridHealth] probe failed", err);
       setBadge(card, "unhealthy");
     });
 }
@@ -522,7 +577,10 @@ function handleCardVisible({ card, pendingByCard, priority = 0 }) {
 const gridCardObserver = createCardObserver({
   rootMargin: ROOT_MARGIN,
   threshold: 0.01,
-  createState: () => ({ pendingByCard: new WeakMap() }),
+  createState: () => ({
+    pendingByCard: new WeakMap(),
+    liveCards: new WeakSet(),
+  }),
   prepareEntries: (entries) => {
     const viewportCenter = getViewportCenter();
     return prioritizeEntries(entries, viewportCenter);
@@ -532,10 +590,12 @@ const gridCardObserver = createCardObserver({
       return false;
     }
     const isIntersecting = Boolean(entry.isIntersecting);
-    const ratio = typeof entry.intersectionRatio === "number" ? entry.intersectionRatio : 0;
+    const ratio =
+      typeof entry.intersectionRatio === "number" ? entry.intersectionRatio : 0;
     return isIntersecting && ratio > 0;
   },
   onCardRegister: ({ card, state }) => {
+    state.liveCards.add(card);
     if (!card.dataset.magnet) {
       setBadge(card, "unhealthy", { reason: "missing-source" });
       return;
@@ -551,12 +611,21 @@ const gridCardObserver = createCardObserver({
       handleCardVisible({
         card,
         pendingByCard: state.pendingByCard,
+        liveCards: state.liveCards,
         priority: PRIORITY_BASELINE,
       });
     }
   },
+  onCardUnregister: ({ card, state }) => {
+    state.liveCards.delete(card);
+    const owner = state.pendingByCard.get(card);
+    if (owner) {
+      owner.release();
+      state.pendingByCard.delete(card);
+    }
+  },
   onCardVisible: ({ card, meta, state }) => {
-    if (!state || !(state.pendingByCard instanceof WeakMap)) {
+    if (!state?.liveCards.has(card)) {
       return;
     }
     const priority =
@@ -566,6 +635,7 @@ const gridCardObserver = createCardObserver({
     handleCardVisible({
       card,
       pendingByCard: state.pendingByCard,
+      liveCards: state.liveCards,
       priority,
     });
   },
@@ -575,9 +645,24 @@ export function attachHealthBadges(container, options = {}) {
   if (!(container instanceof HTMLElement)) {
     return () => {};
   }
-  if (options && typeof options.onUpdate === "function") {
-    badgeUpdateListeners.add(options.onUpdate);
+  const listener =
+    typeof options?.onUpdate === "function" ? options.onUpdate : null;
+  if (listener) {
+    badgeUpdateListeners.set(
+      listener,
+      (badgeUpdateListeners.get(listener) || 0) + 1
+    );
   }
   gridCardObserver.observe(container);
-  return () => gridCardObserver.disconnect(container);
+  let disposed = false;
+  return () => {
+    if (disposed) return;
+    disposed = true;
+    if (listener) {
+      const remaining = badgeUpdateListeners.get(listener) - 1;
+      if (remaining > 0) badgeUpdateListeners.set(listener, remaining);
+      else badgeUpdateListeners.delete(listener);
+    }
+    gridCardObserver.disconnect(container);
+  };
 }

@@ -1,0 +1,8 @@
+- [x] Read mailbox/current rules and write source plan.
+- [x] Measure actual current-HEAD grid/probe lifecycle offline.
+- [x] Preserve first fixture result; classify JSDOM storage timer confound; corrected IO-isolated fixture12=7pass/5fail.
+- [x] Preserve old-contract suite11/11 and enumerate required spec correction.
+- [x] Save scripts/rawlogs/hashes and narrow fix proposal.
+- [ ] Independent dispatch reproduction/explicit implementation routing.
+- [ ] Product fix, strict regressions+mutants+lint, later resource-routed full/build/browser/normal landing.
+- [ ] Remaining live/network/wholeStage3 qualification.

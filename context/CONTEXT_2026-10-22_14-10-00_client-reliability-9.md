@@ -1,0 +1,1 @@
+Client9 at c5b678f7; investigate HEAD owner cancellation only via actual observer/controller and controlled fetch. No product/retained tests/full/build/browser. HLS/torrent remain separate. Success: counts for disposal/shared/rejoin/cache/timers/media and scoped proposal to dispatch.

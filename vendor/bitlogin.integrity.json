@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "source": {
     "repository": "https://github.com/PR0M3TH3AN/bitlogin.git",
-    "commit": "205b0678cc67ecbde18278b8f46e7f8270fb519c",
-    "commitDate": "2026-07-31T22:04:01-04:00",
+    "commit": "30b4f34300f0cb6195f4bd54652ec75e814889dd",
+    "commitDate": "2026-08-04T15:41:24-04:00",
     "dirty": false,
     "provenance": "attributed",
     "toolchain": {
@@ -13,25 +13,25 @@
     }
   },
   "files": {
-    "bitlogin-shared--Zs4uvXt.js": {
-      "sha256": "550434b2ed3df975fc1d8896dca02f8622f2819d1fd9fa288049f2c22baa6bc4",
-      "bytes": 483718
+    "bitlogin-shared-CEfP5Eg9.js": {
+      "sha256": "6e19179b46deab241ffa9baded2ab0245122cf88e5b4191fcd4ca905b81a67be",
+      "bytes": 289142
     },
-    "bitlogin-shared-BxVSgyOf.js": {
-      "sha256": "d7f157c2de3d4b81de0055df2582306df9d862706d1dad35ff4096d06e1c1c93",
+    "bitlogin-shared-Co4_WTb5.js": {
+      "sha256": "ffecf43e4856105d485402c7d46ca6950b621965a85c5962daf0177f0e538237",
       "bytes": 545712
     },
-    "bitlogin-shared-DTz11m56.js": {
-      "sha256": "c52f485c6390658e8da75d7c31f01167eb4f8c22d836f9d92e22c2b0885bf79e",
-      "bytes": 289118
+    "bitlogin-shared-DeDxZ3Jc.js": {
+      "sha256": "290c293f288a16f5c753d19b0eecee795ea07b5fe31219812f260aae407de29b",
+      "bytes": 483718
     },
     "bitlogin.js": {
-      "sha256": "56eeb7584b0117e2e360c80d37a5bfddb2e1f7a8ee6d94995c24043c0e87b906",
-      "bytes": 77303
+      "sha256": "823e4ec24a8e34d96428d0c933cf16be1755a80ff105dcf52dd96391e52da513",
+      "bytes": 146039
     },
     "cryptoWorker.js": {
-      "sha256": "4d569dac3b808d118bf432d628f084c8c1d8ba76d94cf101030ace1077c63b36",
-      "bytes": 110827
+      "sha256": "adea9e4934e7b6df024cc97385ce227ad4870dad436ee8266fbe644cd5cec5b5",
+      "bytes": 126329
     }
   }
 }
