@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
       matrix:
@@ -96,7 +96,7 @@ jobs:
   # deploy-cache-state CDN purge below. Real build/lint failures still gate the
   # deploy via the build job.
   visual-regression:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       matrix:
@@ -401,7 +401,7 @@ jobs:
         run: npm run test:dm:unit
 
   e2e-tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     strategy:
       fail-fast: false
@@ -489,7 +489,7 @@ jobs:
         run: npm run test:dm:integration
 
   e2e-headless:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
       matrix:
