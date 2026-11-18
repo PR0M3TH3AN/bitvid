@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "source": {
     "repository": "https://github.com/PR0M3TH3AN/bitlogin.git",
-    "commit": "30b4f34300f0cb6195f4bd54652ec75e814889dd",
-    "commitDate": "2026-08-04T15:41:24-04:00",
+    "commit": "249cc9ef62e7f60aea9a5fcec215d23de8fbaf04",
+    "commitDate": "2026-11-18T14:35:51-05:00",
     "dirty": false,
     "provenance": "attributed",
     "toolchain": {
@@ -13,25 +13,37 @@
     }
   },
   "files": {
-    "bitlogin-shared-CEfP5Eg9.js": {
-      "sha256": "6e19179b46deab241ffa9baded2ab0245122cf88e5b4191fcd4ca905b81a67be",
-      "bytes": 289142
+    "bitlogin-headless.js": {
+      "sha256": "e1e128d76fe064b3c974feb3c6c740b7d2b64dd81bdea6790621fee659f5bb0b",
+      "bytes": 96
     },
-    "bitlogin-shared-Co4_WTb5.js": {
-      "sha256": "ffecf43e4856105d485402c7d46ca6950b621965a85c5962daf0177f0e538237",
+    "bitlogin-session.js": {
+      "sha256": "fc7484a7e6897a3d2cbaefaaebb6a667ce7d3eefdfb868673b41b1be8e2eacd5",
+      "bytes": 1337
+    },
+    "bitlogin-shared--RKqtVS5.js": {
+      "sha256": "2a5d6ad9e3452cc3ee546f30f93d54b9de9461e4e56d4814f8c2717fa6b7fa02",
       "bytes": 545712
     },
-    "bitlogin-shared-DeDxZ3Jc.js": {
-      "sha256": "290c293f288a16f5c753d19b0eecee795ea07b5fe31219812f260aae407de29b",
+    "bitlogin-shared-B-lZFF_w.js": {
+      "sha256": "34d249fb478becec06f238f5ae4fe49d8543c3615735dbf366ace77d6730a6f1",
+      "bytes": 289295
+    },
+    "bitlogin-shared-BfVp4BYH.js": {
+      "sha256": "bcbe914ce9e7593820a99d9d4d7c63f977014b5f4e425cd0931f9336865b4470",
       "bytes": 483718
     },
+    "bitlogin-shared-NDrH7ipp.js": {
+      "sha256": "5152be316041d365744b1348401d85ae3ba6983fc9b4bf9d116532515533ff96",
+      "bytes": 6681
+    },
     "bitlogin.js": {
-      "sha256": "823e4ec24a8e34d96428d0c933cf16be1755a80ff105dcf52dd96391e52da513",
-      "bytes": 146039
+      "sha256": "169c913508074b3496709e93d6fea553984f10576bb583d6a81ce22539d427eb",
+      "bytes": 162009
     },
     "cryptoWorker.js": {
-      "sha256": "adea9e4934e7b6df024cc97385ce227ad4870dad436ee8266fbe644cd5cec5b5",
-      "bytes": 126329
+      "sha256": "712242f4f71d18c7f9c53d457340f83604d3f4e8588ae7cb34797a159c1bfd64",
+      "bytes": 135019
     }
   }
 }
