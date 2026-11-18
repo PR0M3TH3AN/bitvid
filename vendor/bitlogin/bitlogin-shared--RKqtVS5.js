@@ -1,4 +1,4 @@
-import { aa as D2 } from "./bitlogin-shared-CEfP5Eg9.js";
+import { ab as D2 } from "./bitlogin-shared-B-lZFF_w.js";
 const wl = {
   debug() {
   }
@@ -7918,7 +7918,7 @@ let ke;
 async function l2() {
   try {
     if (ke) return ke;
-    const e = (await import("./bitlogin-shared-DeDxZ3Jc.js").then((t) => t.i)).default;
+    const e = (await import("./bitlogin-shared-BfVp4BYH.js").then((t) => t.i)).default;
     return ke = new e(), ke;
   } catch (e) {
     throw console.error(e), new Error("LNC is not available");
