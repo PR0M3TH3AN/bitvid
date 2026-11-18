@@ -1,4 +1,4 @@
-import { r as ve, e as Re, E as $e, v as Le, u as we, a as J, b as me, h as Pe, c as oe, d as Ne, p as Be, R as Me, f as I, i as ae } from "./bitlogin-shared-B-lZFF_w.js";
+import { r as ve, e as Re, E as $e, v as Le, u as we, a as J, b as me, h as Pe, c as oe, d as Ne, p as Be, R as Me, f as I, i as ae } from "./bitlogin-shared-DDWBXFUP.js";
 import { W as Ae } from "./bitlogin-shared-NDrH7ipp.js";
 import { c as Lt } from "./bitlogin-shared-NDrH7ipp.js";
 import { readCachedSession as Te } from "./bitlogin-session.js";
@@ -457,7 +457,7 @@ function Fe(o) {
       localStorage.removeItem(ke);
     } catch {
     }
-    G = import("./bitlogin-shared--RKqtVS5.js").then((e) => (e.init({
+    G = import("./bitlogin-shared-_kgj0aQT.js").then((e) => (e.init({
       appName: o,
       filters: ["nwc"],
       showBalance: !1,

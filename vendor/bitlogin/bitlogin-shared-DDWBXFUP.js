@@ -10410,7 +10410,7 @@ function Y1(e, t) {
 function M1(e, t) {
   return e.tags.find((n) => n[0] === t)?.[1];
 }
-const q1 = 0, j1 = 5, R1 = 10002, _1 = 10050, P1 = 22242, L1 = 24133, T1 = 30078, X1 = "bitlogin:password:v1", Z1 = "bitlogin:recovery:v1", $1 = "bitlogin.credential.v1", W1 = "bitlogin.recovery.v1", kn = "bitlogin.recovery-export.v3";
+const q1 = 0, j1 = 5, R1 = 10002, _1 = 10050, P1 = 22242, L1 = 24133, T1 = 30078, X1 = "bitlogin:password:v1", Z1 = "bitlogin:recovery:v1", $1 = "bitlogin:bootstrap-relays:v1", W1 = "bitlogin.credential.v1", e2 = "bitlogin.recovery.v1", kn = "bitlogin.recovery-export.v3";
 var Ut, Kr;
 function g1() {
   return Kr || (Kr = 1, Ut = function e(t) {
@@ -10427,7 +10427,7 @@ function g1() {
   }), Ut;
 }
 var A1 = g1();
-const e2 = /* @__PURE__ */ Jr(A1);
+const t2 = /* @__PURE__ */ Jr(A1);
 /*! scure-base - MIT License (c) 2022 Paul Miller (paulmillr.com) */
 function Ue(e) {
   return e instanceof Uint8Array || ArrayBuffer.isView(e) && e.constructor.name === "Uint8Array";
@@ -10642,7 +10642,7 @@ function p1(e, t) {
     }
   };
 }
-const t2 = {
+const r2 = {
   alphabet: ir,
   chain: nr,
   checksum: p1,
@@ -10658,7 +10658,7 @@ const t2 = {
   if (e.length > 0 && !n.test(e))
     throw new Error("invalid base64");
   return Uint8Array.fromBase64(e, { alphabet: r, lastChunkHandling: "strict" });
-}, r2 = I1 ? {
+}, n2 = I1 ? {
   encode(e) {
     return f1(e), e.toBase64();
   },
@@ -10744,19 +10744,19 @@ function y1(e) {
   };
 }
 const sr = /* @__PURE__ */ y1("bech32");
-function n2(e) {
+function i2(e) {
   return sr.encodeFromBytes("npub", Je(e));
 }
-function i2(e) {
+function a2(e) {
   return sr.encodeFromBytes("nsec", e);
 }
-function a2(e) {
+function o2(e) {
   const { prefix: t, bytes: n } = sr.decodeToBytes(e);
   if (t !== "nsec" || n.length !== 32)
     throw new Error("Not a valid nsec.");
   return n;
 }
-function o2(e) {
+function s2(e) {
   return {
     schema: kn,
     recovery_public_key: e.recoveryPublicKeyHex,
@@ -10771,7 +10771,7 @@ class oe extends Error {
     super(t), this.name = "RecoveryExportParseError";
   }
 }
-function s2(e) {
+function l2(e) {
   if (typeof e != "object" || e === null)
     throw new oe("Recovery export must be a JSON object.");
   const t = e;
@@ -10810,12 +10810,12 @@ export {
   P1 as K,
   D1 as L,
   pe as M,
-  t2 as N,
+  r2 as N,
   he as O,
   We as P,
-  a2 as Q,
+  o2 as Q,
   oe as R,
-  W1 as S,
+  e2 as S,
   Je as T,
   i1 as U,
   N1 as V,
@@ -10829,19 +10829,20 @@ export {
   Pr as a1,
   tr as a2,
   mt as a3,
-  r2 as a4,
+  n2 as a4,
   G1 as a5,
-  L1 as a6,
-  Y1 as a7,
-  o2 as a8,
-  i2 as a9,
-  V1 as aa,
-  Jr as ab,
+  $1 as a6,
+  L1 as a7,
+  Y1 as a8,
+  s2 as a9,
+  a2 as aa,
+  V1 as ab,
+  Jr as ac,
   jt as b,
   _t as c,
   S1 as d,
   b1 as e,
-  n2 as f,
+  i2 as f,
   z1 as g,
   Rt as h,
   H1 as i,
@@ -10849,9 +10850,9 @@ export {
   R1 as k,
   _1 as l,
   T1 as m,
-  e2 as n,
+  t2 as n,
   k1 as o,
-  s2 as p,
+  l2 as p,
   F1 as q,
   B1 as r,
   J1 as s,
@@ -10859,7 +10860,7 @@ export {
   De as u,
   Nr as v,
   s1 as w,
-  $1 as x,
+  W1 as x,
   Z1 as y,
   M1 as z
 };
