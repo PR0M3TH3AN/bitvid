@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "source": {
     "repository": "https://github.com/PR0M3TH3AN/bitlogin.git",
-    "commit": "249cc9ef62e7f60aea9a5fcec215d23de8fbaf04",
-    "commitDate": "2026-11-18T14:35:51-05:00",
+    "commit": "1a4aa0ea0989d341ef2a1cb0ad1dba1fbb9f0fee",
+    "commitDate": "2026-11-18T15:54:41-05:00",
     "dirty": false,
     "provenance": "attributed",
     "toolchain": {
@@ -21,29 +21,29 @@
       "sha256": "fc7484a7e6897a3d2cbaefaaebb6a667ce7d3eefdfb868673b41b1be8e2eacd5",
       "bytes": 1337
     },
-    "bitlogin-shared--RKqtVS5.js": {
-      "sha256": "2a5d6ad9e3452cc3ee546f30f93d54b9de9461e4e56d4814f8c2717fa6b7fa02",
-      "bytes": 545712
+    "bitlogin-shared-DDWBXFUP.js": {
+      "sha256": "201f59c529207c90e5e3d1a88ed5c80ef3e8520bd89f4c54259f819fb72d90f0",
+      "bytes": 289344
     },
-    "bitlogin-shared-B-lZFF_w.js": {
-      "sha256": "34d249fb478becec06f238f5ae4fe49d8543c3615735dbf366ace77d6730a6f1",
-      "bytes": 289295
-    },
-    "bitlogin-shared-BfVp4BYH.js": {
-      "sha256": "bcbe914ce9e7593820a99d9d4d7c63f977014b5f4e425cd0931f9336865b4470",
+    "bitlogin-shared-G7ILG8hf.js": {
+      "sha256": "02885d4cbf303997cdaaf631085fef17cf01d0db1203f9929394f7f5f05d2553",
       "bytes": 483718
     },
     "bitlogin-shared-NDrH7ipp.js": {
       "sha256": "5152be316041d365744b1348401d85ae3ba6983fc9b4bf9d116532515533ff96",
       "bytes": 6681
     },
+    "bitlogin-shared-_kgj0aQT.js": {
+      "sha256": "040349fe61b6d6e1641057207d154bba367758dfe73398537ab63013e7b5916a",
+      "bytes": 545712
+    },
     "bitlogin.js": {
-      "sha256": "169c913508074b3496709e93d6fea553984f10576bb583d6a81ce22539d427eb",
+      "sha256": "372fd0512235f0baaf70782bc1e00e96bbb397d1a6d0035b836ec6574b41759c",
       "bytes": 162009
     },
     "cryptoWorker.js": {
-      "sha256": "712242f4f71d18c7f9c53d457340f83604d3f4e8588ae7cb34797a159c1bfd64",
-      "bytes": 135019
+      "sha256": "0bf8b1145d9f72c618a4f764516782bb6ae222a93955b2f9932a0f7cfb6bf9bc",
+      "bytes": 139811
     }
   }
 }
