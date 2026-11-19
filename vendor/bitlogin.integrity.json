@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "source": {
     "repository": "https://github.com/PR0M3TH3AN/bitlogin.git",
-    "commit": "1a4aa0ea0989d341ef2a1cb0ad1dba1fbb9f0fee",
-    "commitDate": "2026-11-18T15:54:41-05:00",
+    "commit": "ab13cad41c09835ce8baa8752d0a28fd0d4f4ed0",
+    "commitDate": "2026-11-19T15:39:01-05:00",
     "dirty": false,
     "provenance": "attributed",
     "toolchain": {
@@ -13,37 +13,69 @@
     }
   },
   "files": {
+    "bitlogin-client.js": {
+      "sha256": "60f07767ed2068a0f3ecc9822f9f7b2130fc95cb4d8b4bfc6c0f0af5ebf6f3db",
+      "bytes": 5114
+    },
     "bitlogin-headless.js": {
-      "sha256": "e1e128d76fe064b3c974feb3c6c740b7d2b64dd81bdea6790621fee659f5bb0b",
+      "sha256": "5ea1d499de12d8ad1cd901fd5a15c062e3d1ba393d622f0583389183d0aed94c",
       "bytes": 96
     },
     "bitlogin-session.js": {
       "sha256": "fc7484a7e6897a3d2cbaefaaebb6a667ce7d3eefdfb868673b41b1be8e2eacd5",
       "bytes": 1337
     },
-    "bitlogin-shared-DDWBXFUP.js": {
-      "sha256": "201f59c529207c90e5e3d1a88ed5c80ef3e8520bd89f4c54259f819fb72d90f0",
-      "bytes": 289344
+    "bitlogin-shared-C0qJoVBo.js": {
+      "sha256": "2837109fdc444f9cddafcecb27e868a3e4f20d681cd991369793ebc464cf83e3",
+      "bytes": 1310
     },
-    "bitlogin-shared-G7ILG8hf.js": {
-      "sha256": "02885d4cbf303997cdaaf631085fef17cf01d0db1203f9929394f7f5f05d2553",
-      "bytes": 483718
+    "bitlogin-shared-C4PaJAtm.js": {
+      "sha256": "a2ce6261ea254a34c6616a55847b19750e8457628c0466ed6f758524eba3ed3c",
+      "bytes": 13215
     },
-    "bitlogin-shared-NDrH7ipp.js": {
-      "sha256": "5152be316041d365744b1348401d85ae3ba6983fc9b4bf9d116532515533ff96",
-      "bytes": 6681
+    "bitlogin-shared-CFVI_a8W.js": {
+      "sha256": "f40b5c37db507601203b08f480360e7a8c5b66dae1c9dfb61fc03124df0b16c0",
+      "bytes": 483717
     },
-    "bitlogin-shared-_kgj0aQT.js": {
-      "sha256": "040349fe61b6d6e1641057207d154bba367758dfe73398537ab63013e7b5916a",
-      "bytes": 545712
+    "bitlogin-shared-Cm1sH5zP.js": {
+      "sha256": "80943539ce3b780497c7c218bb11f5e450d433daf934c01d0ad0f211d81f0912",
+      "bytes": 67437
+    },
+    "bitlogin-shared-Da_P-cjP.js": {
+      "sha256": "d21c3dbf16cc8b91d1703e1529e4a35dba4a791758acfb7e3220e800cc8320ba",
+      "bytes": 3499
+    },
+    "bitlogin-shared-DfKVXHi6.js": {
+      "sha256": "fa93d257866a804a5495a0bc8c9d303f8b12d8e5d7a1929ab1a568e9af9f4e5a",
+      "bytes": 2554
+    },
+    "bitlogin-shared-DgyxWBMr.js": {
+      "sha256": "93d207081c08941673c6b542d1c78138d52a467c93e4d1414799c17a822f6405",
+      "bytes": 10545
+    },
+    "bitlogin-shared-Dizfd6mN.js": {
+      "sha256": "6ee522b68b9672e078f9a1cff2f45a320760896a87450e11062b230a32d5a648",
+      "bytes": 545711
+    },
+    "bitlogin-shared-QRwXh_V6.js": {
+      "sha256": "66c4229fbaf18ca90bd911dedc4b43eba72b056e25cd954c25dea85fb4bc0278",
+      "bytes": 218315
+    },
+    "bitlogin-signer.js": {
+      "sha256": "facaa06cd0618063325fb74ee3120717fd8d9ced3e27b86c7eefa1010b6da799",
+      "bytes": 6014
+    },
+    "bitlogin-window.js": {
+      "sha256": "602203bacba7d25e90f41c326606a3659bcd9fee8f6d5caf81d4821d679e177b",
+      "bytes": 4178
     },
     "bitlogin.js": {
-      "sha256": "372fd0512235f0baaf70782bc1e00e96bbb397d1a6d0035b836ec6574b41759c",
-      "bytes": 162009
+      "sha256": "f8056a43c9ac3c7da45cd72cee59676e7a3166580e8af82e2b364d5df00e6e63",
+      "bytes": 170434
     },
     "cryptoWorker.js": {
-      "sha256": "0bf8b1145d9f72c618a4f764516782bb6ae222a93955b2f9932a0f7cfb6bf9bc",
-      "bytes": 139811
+      "sha256": "8c97e2400f2ca99aeabd94da1100377ca028284a8db7586d2eecfe249a5e2055",
+      "bytes": 175792
     }
   }
 }
