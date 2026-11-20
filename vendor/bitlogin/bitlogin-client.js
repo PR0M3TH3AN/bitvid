@@ -1,66 +1,68 @@
-import { v as C } from "./bitlogin-shared-C0qJoVBo.js";
-import "./bitlogin-shared-Cm1sH5zP.js";
-import { c as N, r as x, S as I, P as L } from "./bitlogin-shared-C4PaJAtm.js";
+import { v as C } from "./bitlogin-shared-Cj9s0_W_.js";
+import { c as N, r as x, S as L, P as O } from "./bitlogin-shared-DsCziTXz.js";
 class g extends Error {
-  constructor(r) {
-    super(`BitLogin refused to ${r}. The application may not be allowed to, or the user may have signed out.`), this.name = "BitLoginRefused";
+  constructor(i) {
+    super(`BitLogin refused to ${i}. The application may not be allowed to, or the user may have signed out.`), this.name = "BitLoginRefused";
   }
 }
-const A = (i, r) => !!i && r.sign.every((s) => i.sign.includes(s)) && r.read.every((s) => i.read.includes(s)) && r.appData.every((s) => i.appData.includes(s) || i.appData.includes("*")) && r.proofs.every((s) => i.proofs.includes(s)) && r.peers.every((s) => i.peers.includes(s));
-function $(i) {
-  const r = N(i.at);
-  if (!r) throw new Error("`at` must be the sign-in address's origin, such as https://bitlogin.network");
-  const s = x(i.permissions);
-  if (!s) throw new Error("`permissions` is not a permission set BitLogin will show a user. See docs/sign-in-window.md §SW9.2.");
-  const O = i.timeoutMs ?? 2e4, a = document.createElement("iframe");
-  a.src = `${r}/signer/`, a.title = "BitLogin signer", a.setAttribute("aria-hidden", "true"), a.tabIndex = -1, a.style.cssText = "position:absolute;width:1px;height:1px;left:-9999px;top:0;border:0;opacity:0;pointer-events:none";
-  let c = { signedIn: !1 }, m = {};
+const $ = (s, i) => !!s && i.sign.every((r) => s.sign.includes(r)) && i.read.every((r) => s.read.includes(r)) && i.appData.every((r) => s.appData.includes(r) || s.appData.includes("*")) && i.proofs.every((r) => s.proofs.includes(r)) && i.peers.every((r) => s.peers.includes(r));
+function W(s) {
+  const i = N(s.at);
+  if (!i) throw new Error("`at` must be the sign-in address's origin, such as https://bitlogin.network");
+  const r = x(s.permissions);
+  if (!r) throw new Error("`permissions` is not a permission set BitLogin will show a user. See docs/sign-in-window.md §SW9.2.");
+  const S = s.timeoutMs ?? 2e4, a = document.createElement("iframe");
+  a.src = `${i}/signer/`, a.title = "BitLogin signer", a.setAttribute("aria-hidden", "true"), a.tabIndex = -1, a.style.cssText = "position:absolute;width:1px;height:1px;left:-9999px;top:0;border:0;opacity:0;pointer-events:none";
+  let c = { signedIn: !1 }, m = {}, y;
   const d = /* @__PURE__ */ new Set(), u = /* @__PURE__ */ new Map();
-  let h = !1;
-  const S = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), (e) => e.toString(16).padStart(2, "0")).join(""), B = (e) => {
-    const t = e.unlocked === !0 && typeof e.pubkey == "string", n = t ? x(e.permissions) ?? void 0 : void 0, o = t && A(n, s);
+  let v = !1;
+  const B = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), (e) => e.toString(16).padStart(2, "0")).join(""), P = (e) => {
+    const t = e.unlocked === !0 && typeof e.pubkey == "string";
+    typeof e.taken == "boolean" && (y = e.taken);
+    const n = t ? x(e.permissions) ?? void 0 : void 0, o = t && $(n, r);
     m = { unlocked: t, ...t ? { pubkey: e.pubkey } : {} };
-    const p = {
+    const l = {
       signedIn: o,
       ...o ? { pubkey: e.pubkey } : {},
       ...o && typeof e.name == "string" ? { name: e.name } : {},
       ...o && typeof e.until == "number" ? { until: e.until } : {},
-      ...t && !o ? { needsMore: !0 } : {}
-    }, R = JSON.stringify(p) !== JSON.stringify(c);
-    if (c = p, R) for (const M of d) M(c);
-  }, v = (e) => {
-    if (e.source !== a.contentWindow || e.origin !== r) return;
+      ...t && !o ? { needsMore: !0 } : {},
+      ...y !== void 0 ? { canAsk: y } : {}
+    }, M = JSON.stringify(l) !== JSON.stringify(c);
+    if (c = l, M) for (const A of d) A(c);
+  }, b = (e) => {
+    if (e.source !== a.contentWindow || e.origin !== i) return;
     const t = e.data;
-    if (!t || typeof t != "object" || t.nswp !== I || t.v !== L) return;
-    if (t.t === "ready") return void y();
-    if (t.t === "state" && B(t), typeof t.id != "string") return;
+    if (!t || typeof t != "object" || t.nswp !== L || t.v !== O) return;
+    if (t.t === "ready") return void f();
+    if (t.t === "state" && P(t), typeof t.id != "string") return;
     const n = u.get(t.id);
     n && (u.delete(t.id), clearTimeout(n.timer), n.resolve(t));
-  }, T = (e) => a.contentWindow?.postMessage({ nswp: I, v: L, ...e }, r), l = (e) => new Promise((t, n) => {
-    if (h) return n(new Error("This BitLogin client was destroyed."));
-    const o = S(), p = setTimeout(() => {
+  }, T = (e) => a.contentWindow?.postMessage({ nswp: L, v: O, ...e }, i), p = (e) => new Promise((t, n) => {
+    if (v) return n(new Error("This BitLogin client was destroyed."));
+    const o = B(), l = setTimeout(() => {
       u.delete(o), n(new Error("BitLogin's signer did not answer."));
-    }, O);
-    u.set(o, { resolve: t, reject: n, timer: p }), b.then(() => T({ ...e, id: o }));
+    }, S);
+    u.set(o, { resolve: t, reject: n, timer: l }), k.then(() => T({ ...e, id: o }));
   });
-  let y = () => {
+  let f = () => {
   };
-  const b = new Promise((e) => {
-    y = e;
+  const k = new Promise((e) => {
+    f = e;
   });
-  let k = null;
-  const w = () => k ??= (async () => (await b, await l({ t: "want", permissions: s }), c))().catch((e) => {
-    throw k = null, e;
+  let I = null;
+  const w = () => I ??= (async () => (await k, await p({ t: "want", permissions: r }), c))().catch((e) => {
+    throw I = null, e;
   });
-  window.addEventListener("message", v), a.addEventListener("load", () => y()), (i.mount ?? document.body).append(a), w().catch(() => {
+  window.addEventListener("message", b), a.addEventListener("load", () => f()), (s.mount ?? document.body).append(a), w().catch(() => {
   });
-  const f = async (e, t) => {
-    const n = await l(e);
+  const h = async (e, t) => {
+    const n = await p(e);
     if (n.t !== "text" || typeof n.text != "string") throw new g(t);
     return n.text;
   }, E = (e) => ({
-    encrypt: (t, n) => f({ t: "encrypt", peer: t, text: n, scheme: e }, "encrypt that"),
-    decrypt: (t, n) => f({ t: "decrypt", peer: t, text: n, scheme: e }, "decrypt that")
+    encrypt: (t, n) => h({ t: "encrypt", peer: t, text: n, scheme: e }, "encrypt that"),
+    decrypt: (t, n) => h({ t: "decrypt", peer: t, text: n, scheme: e }, "decrypt that")
   });
   return {
     ready: () => w(),
@@ -70,40 +72,50 @@ function $(i) {
     },
     async signIn() {
       await w();
-      const e = window.open(`${r}/connect/`, "bitlogin-connect", "popup,width=480,height=760");
+      const e = window.open(`${i}/connect/`, "bitlogin-connect", "popup,width=480,height=760");
       return e ? new Promise((t) => {
-        const n = P((p) => p.signedIn ? (clearInterval(o), t(!0), !0) : !1), o = setInterval(() => {
-          e.closed && (clearInterval(o), l({ t: "state" }).catch(() => {
+        const n = R((l) => l.signedIn ? (clearInterval(o), t(!0), !0) : !1), o = setInterval(() => {
+          e.closed && (clearInterval(o), p({ t: "state" }).catch(() => {
           }).then(() => {
             n(), t(c.signedIn);
           }));
         }, 400);
       }) : !1;
     },
+    async switchAccount() {
+      await w();
+      const e = window.open(`${i}/connect/#switch`, "bitlogin-connect", "popup,width=480,height=760");
+      return e ? new Promise((t) => {
+        const n = setInterval(() => {
+          e.closed && (clearInterval(n), p({ t: "state" }).catch(() => {
+          }).then(() => t(c.signedIn)));
+        }, 400);
+      }) : !1;
+    },
     async signOut() {
-      await l({ t: "lock" });
+      await p({ t: "lock" });
     },
     async getPublicKey() {
       if (!c.signedIn || !c.pubkey) throw new g("say who is signed in");
       return c.pubkey;
     },
     async signEvent(e) {
-      const t = await l({ t: "sign", event: e }), n = t.event;
+      const t = await p({ t: "sign", event: e }), n = t.event;
       if (t.t !== "signed" || !C(n)) throw new g("sign that");
       if (n.pubkey !== m.pubkey || n.kind !== e.kind || n.content !== e.content) throw new g("sign that");
       return n;
     },
     nip44: E("nip44"),
     nip04: E("nip04"),
-    decryptEvent: (e) => f({ t: "read", event: e }, "read that"),
+    decryptEvent: (e) => h({ t: "read", event: e }, "read that"),
     destroy() {
-      h = !0, window.removeEventListener("message", v);
+      v = !0, window.removeEventListener("message", b);
       for (const e of u.values())
         clearTimeout(e.timer), e.reject(new Error("This BitLogin client was destroyed."));
       u.clear(), d.clear(), a.remove();
     }
   };
-  function P(e) {
+  function R(e) {
     const t = (n) => {
       e(n) && d.delete(t);
     };
@@ -112,5 +124,5 @@ function $(i) {
 }
 export {
   g as BitLoginRefused,
-  $ as createBitLoginClient
+  W as createBitLoginClient
 };

@@ -1,22 +1,20 @@
-import { e as ke, E as xe, p as Se, R as Ce, a as T, i as ie } from "./bitlogin-shared-QRwXh_V6.js";
-import { r as ye } from "./bitlogin-shared-Cm1sH5zP.js";
-import "./bitlogin-shared-DfKVXHi6.js";
-import { W as Qe } from "./bitlogin-shared-DgyxWBMr.js";
-import { c as Ct } from "./bitlogin-shared-DgyxWBMr.js";
-import { v as Ee } from "./bitlogin-shared-C0qJoVBo.js";
-import { b as se, c as $e, e as oe, d as Le, a as Pe, f as Re, p as Ne } from "./bitlogin-shared-Da_P-cjP.js";
-import { readCachedSession as Be } from "./bitlogin-session.js";
+import { e as Se, E as Ce, p as ye, R as $e, a as T, i as re } from "./bitlogin-shared-D5YLu70u.js";
+import { r as ge, v as Ee } from "./bitlogin-shared-Cj9s0_W_.js";
+import { W as Le } from "./bitlogin-shared-D-JqvHzL.js";
+import { c as $t } from "./bitlogin-shared-D-JqvHzL.js";
+import { b as se, c as Re, e as oe, d as Pe, a as Qe, f as Ne, p as Be } from "./bitlogin-shared-D6Hzbnis.js";
+import { readCachedSession as Ae } from "./bitlogin-session.js";
 const Me = 6, ae = 64;
-function Y(o = Me) {
-  const e = ke(), t = [];
-  for (let r = 0; r < o; r++)
-    t.push(e[ye(e.length)]);
-  const n = o * xe;
+function G(o = Me) {
+  const e = Se(), t = [];
+  for (let i = 0; i < o; i++)
+    t.push(e[ge(e.length)]);
+  const n = o * Ce;
   if (n < ae)
     throw new Error(`Passphrase of ${o} words provides only ~${n.toFixed(1)} bits; must exceed ${ae}.`);
   return { kind: "passphrase", secret: t.join(" "), entropyBits: n };
 }
-function Ae(o, e) {
+function Te(o, e) {
   return {
     getPublicKey: () => o.getPublicKey(),
     signEvent: (t) => o.signEvent(t),
@@ -36,13 +34,13 @@ function Ae(o, e) {
     _bitlogin: !0
   };
 }
-const Te = "BitLogin: no identity is unlocked yet. Add <bitlogin-auth> to the page and let the user sign in, or call it programmatically before invoking window.nostr.";
+const Ie = "BitLogin: no identity is unlocked yet. Add <bitlogin-auth> to the page and let the user sign in, or call it programmatically before invoking window.nostr.";
 function K(o) {
   return o.catch((e) => {
-    throw e.message.includes("No identity is unlocked") ? new Error(Te) : e;
+    throw e.message.includes("No identity is unlocked") ? new Error(Ie) : e;
   });
 }
-function kt(o, e) {
+function xt(o, e) {
   return {
     async getPublicKey() {
       const { publicKey: t } = await K(o.getPublicKey());
@@ -58,35 +56,35 @@ function kt(o, e) {
     },
     nip44: {
       async encrypt(t, n) {
-        const { ciphertext: r } = await K(o.nip44Encrypt({ peerPublicKey: t, plaintext: n }));
-        return r;
+        const { ciphertext: i } = await K(o.nip44Encrypt({ peerPublicKey: t, plaintext: n }));
+        return i;
       },
       async decrypt(t, n) {
-        const { plaintext: r } = await K(o.nip44Decrypt({ peerPublicKey: t, payload: n }));
-        return r;
+        const { plaintext: i } = await K(o.nip44Decrypt({ peerPublicKey: t, payload: n }));
+        return i;
       }
     },
     nip04: {
       async encrypt(t, n) {
-        const { ciphertext: r } = await K(o.nip04Encrypt({ peerPublicKey: t, plaintext: n }));
-        return r;
+        const { ciphertext: i } = await K(o.nip04Encrypt({ peerPublicKey: t, plaintext: n }));
+        return i;
       },
       async decrypt(t, n) {
-        const { plaintext: r } = await K(o.nip04Decrypt({ peerPublicKey: t, payload: n }));
-        return r;
+        const { plaintext: i } = await K(o.nip04Decrypt({ peerPublicKey: t, payload: n }));
+        return i;
       }
     },
     _bitlogin: !0
   };
 }
-function Ie(o) {
+function De(o) {
   const e = o.getAttribute("vault-relays"), t = o.getAttribute("discovery-relays");
   return {
     vaultRelayUrls: e ? e.split(",").map((n) => n.trim()).filter(Boolean) : void 0,
     discoveryRelayUrls: t ? t.split(",").map((n) => n.trim()).filter(Boolean) : void 0
   };
 }
-const De = (
+const _e = (
   /* css */
   `
 :host {
@@ -420,6 +418,28 @@ button:focus-visible { outline: 2px solid var(--bl-accent); outline-offset: 2px;
   color: var(--bl-muted);
   word-break: break-all;
 }
+.who { display: flex; align-items: center; gap: 12px; margin: 10px 0 12px; }
+.who-pic {
+  flex: none; width: 44px; height: 44px; border-radius: 50%; overflow: hidden;
+  display: grid; place-items: center; font-weight: 700; font-size: 18px;
+  background: var(--bl-input-bg); border: 1px solid var(--bl-border); color: var(--bl-fg);
+}
+.who-pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.who-text { min-width: 0; }
+.who-text p { margin: 0; }
+.who-name { font-weight: 600; font-size: 15px; overflow-wrap: anywhere; }
+.account-list { display: grid; gap: 8px; margin: 10px 0 14px; }
+.account-line { display: grid; gap: 2px; }
+.account-row {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+  padding: 8px 10px; border-radius: 10px; border: 1px solid var(--bl-border);
+  background: var(--bl-input-bg); color: var(--bl-fg); font: inherit; margin: 0;
+}
+button.account-row { cursor: pointer; }
+button.account-row:hover { border-color: var(--bl-fg); }
+.account-row.current { background: transparent; }
+.account-row .who-text { display: grid; flex: 1; }
+.account-row .small { flex: none; }
 .divider { border-top: 1px solid var(--bl-border); margin: 18px 0; }
 .small { font-size: 12px; color: var(--bl-muted); }
 .health-list { margin: 12px 0 6px; border: 1px solid var(--bl-border); border-radius: 9px; overflow: hidden; }
@@ -431,6 +451,9 @@ button:focus-visible { outline: 2px solid var(--bl-accent); outline-offset: 2px;
 .health-note { flex: 1 1 100%; color: var(--bl-muted); font-size: 12px; word-break: break-word; }
 .checkbox-row { display: flex; align-items: flex-start; gap: 8px; margin: 14px 0; font-size: 13px; }
 .checkbox-row input { margin-top: 3px; }
+.risk-list { margin: 8px 0 4px; padding-left: 18px; }
+.risk-list li { margin: 6px 0; }
+.notice .secondary { margin-top: 8px; }
 .spinner {
   display: inline-block;
   width: 14px; height: 14px;
@@ -453,15 +476,15 @@ button:focus-visible { outline: 2px solid var(--bl-accent); outline-offset: 2px;
 }
 .qr-wrap svg { display: block; width: 100%; height: auto; }
 `
-), ge = "bc:config", _e = /^nostr\+walletconnect:\/\//iu;
-let G = null;
-function Ue(o) {
-  if (!G) {
+), be = "bc:config", Ue = /^nostr\+walletconnect:\/\//iu;
+let z = null;
+function Oe(o) {
+  if (!z) {
     try {
-      localStorage.removeItem(ge);
+      localStorage.removeItem(be);
     } catch {
     }
-    G = import("./bitlogin-shared-Dizfd6mN.js").then((e) => (e.init({
+    z = import("./bitlogin-shared-CGO-deNx.js").then((e) => (e.init({
       appName: o,
       filters: ["nwc"],
       showBalance: !1,
@@ -476,24 +499,24 @@ function Ue(o) {
         }
       }
     }), e)).catch((e) => {
-      throw G = null, e;
+      throw z = null, e;
     });
   }
-  return G;
+  return z;
 }
-function Oe(o) {
+function Ke(o) {
   const e = o instanceof Error ? o.message : String(o);
   return /closed|cancell?ed|dismissed|aborted/iu.test(e);
 }
-async function Ke(o) {
-  const e = await Ue(o);
+async function Fe(o) {
+  const e = await Oe(o);
   try {
-    const t = await e.requestProvider(), n = e.getConnectorConfig()?.nwcUrl, r = t.client?.nostrWalletConnectUrl, a = typeof n == "string" ? n : typeof r == "string" ? r : "";
-    if (!_e.test(a.trim()))
+    const t = await e.requestProvider(), n = e.getConnectorConfig()?.nwcUrl, i = t.client?.nostrWalletConnectUrl, a = typeof n == "string" ? n : typeof i == "string" ? i : "";
+    if (!Ue.test(a.trim()))
       throw new Error("The wallet did not return an NWC connection. Try again or paste one manually.");
     return a.trim();
   } catch (t) {
-    if (Oe(t)) return null;
+    if (Ke(t)) return null;
     throw t;
   } finally {
     try {
@@ -501,12 +524,12 @@ async function Ke(o) {
     } catch {
     }
     try {
-      localStorage.removeItem(ge);
+      localStorage.removeItem(be);
     } catch {
     }
   }
 }
-function Fe(o) {
+function qe(o) {
   const e = [];
   return o.rollbackWarnings.length > 0 && e.push(
     `${o.rollbackWarnings.length} wallet record${o.rollbackWarnings.length === 1 ? " was" : "s were"} withheld because relays served an older version than this device previously accepted.`
@@ -518,30 +541,30 @@ function Fe(o) {
     `${o.unreadable.length} encrypted wallet record${o.unreadable.length === 1 ? " was" : "s were"} unreadable and omitted.`
   ), e;
 }
-const qe = 2;
-function We(o) {
-  const { totalCount: e, reachableCount: t, credentialCurrentCount: n, recoveryCurrentCount: r } = o, a = `Sign-in copy on ${n} of ${e} relays, recovery copy on ${r} of ${e}.`;
-  if (t === 0 && n === 0 && r === 0)
+const We = 2;
+function He(o) {
+  const { totalCount: e, reachableCount: t, credentialCurrentCount: n, recoveryCurrentCount: i } = o, a = `Sign-in copy on ${n} of ${e} relays, recovery copy on ${i} of ${e}.`;
+  if (t === 0 && n === 0 && i === 0)
     return {
       level: "unknown",
       headline: "Couldn't reach any relay",
       detail: "None of the relays answered, so this says nothing about your account. Check your connection and try again.",
       repairUseful: !1
     };
-  if (n === 0 && o.relays.some((i) => i.credential === "newer"))
+  if (n === 0 && o.relays.some((r) => r.credential === "newer"))
     return {
       level: "stale",
       headline: "This device is out of date",
       detail: "Relays hold a newer sign-in copy than this device does, which usually means the password was changed somewhere else. Log out and sign in again with your current password.",
       repairUseful: !1
     };
-  const s = Math.min(n, r);
+  const s = Math.min(n, i);
   return s === 0 ? {
     level: "lost",
     headline: "Relays have dropped your account",
-    detail: `${a} Until this is fixed, ${n === 0 && r === 0 ? "neither your password nor your recovery phrase" : n === 0 ? "your password" : "your recovery phrase"} can find it from a new device. This device still has it: re-send it now, and keep your private key saved.`,
+    detail: `${a} Until this is fixed, ${n === 0 && i === 0 ? "neither your password nor your recovery phrase" : n === 0 ? "your password" : "your recovery phrase"} can find it from a new device. This device still has it: re-send it now, and keep your private key saved.`,
     repairUseful: !0
-  } : s < qe ? {
+  } : s < We ? {
     level: "at-risk",
     headline: "Your account is down to one relay",
     detail: `${a} Re-send it to the others before that one drops it too.`,
@@ -558,7 +581,7 @@ function We(o) {
     repairUseful: !1
   };
 }
-function He(o) {
+function je(o) {
   switch (o) {
     case "current":
       return "stored";
@@ -572,25 +595,25 @@ function He(o) {
       return "no answer";
   }
 }
-const le = 140;
-function ce(o) {
+const ce = 140;
+function le(o) {
   const e = o.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/gu, " ").replace(/\s+/gu, " ").trim();
-  return e.length > le ? `${e.slice(0, le - 1)}…` : e;
+  return e.length > ce ? `${e.slice(0, ce - 1)}…` : e;
 }
-function je(o, e) {
+function Ve(o, e) {
   const t = [], n = [
     ["sign-in", o.credential, e?.credential],
     ["recovery", o.recovery, e?.recovery]
   ];
-  for (const [r, a, s] of n)
+  for (const [i, a, s] of n)
     if (!(a === "current" || a === "unreachable"))
       if (s && !s.ok) {
-        const i = ce(s.message);
-        t.push(`Refused the ${r} copy${i ? `: ${i}` : " without giving a reason"}`);
-      } else s?.ok && a === "missing" && t.push(`Said it accepted the ${r} copy, but does not return it`);
-  return t.length === 0 && o.error && (o.credential === "unreachable" || o.recovery === "unreachable") && t.push(`No answer: ${ce(o.error)}`), [...new Set(t)];
+        const r = le(s.message);
+        t.push(`Refused the ${i} copy${r ? `: ${r}` : " without giving a reason"}`);
+      } else s?.ok && a === "missing" && t.push(`Said it accepted the ${i} copy, but does not return it`);
+  return t.length === 0 && o.error && (o.credential === "unreachable" || o.recovery === "unreachable") && t.push(`No answer: ${le(o.error)}`), [...new Set(t)];
 }
-function Ve(o) {
+function Ye(o) {
   return [
     "BitLogin private key backup",
     `Saved: ${o.createdAt.toISOString()}`,
@@ -603,7 +626,8 @@ function Ve(o) {
     "",
     "This key is the identity itself. If relays ever drop your BitLogin account,",
     "your recovery phrase alone cannot bring it back, but this key can: choose",
-    '"Import a Nostr key" under "More sign-in options", or use it in any Nostr app.',
+    '"Restore from an export file" under "More sign-in options" and pick this file,',
+    'or paste the key under "Import a Nostr key", or use it in any Nostr app.',
     ""
   ].join(`
 `);
@@ -613,7 +637,7 @@ class Z extends Error {
     super(`The active signer (${t}) does not support ${e}.`), this.name = "SignerUnsupportedError";
   }
 }
-class Ye extends Error {
+class Ge extends Error {
   constructor(e, t) {
     super(
       `The signer did not answer ${e} within ${Math.round(t / 1e3)}s. It may be waiting for your approval in another window, or unavailable -- check your signer and try again.`
@@ -624,16 +648,16 @@ function ue(o = window) {
   const e = o.nostr;
   return !e || typeof e != "object" || e._bitlogin === !0 || typeof e.getPublicKey != "function" || typeof e.signEvent != "function" ? null : e;
 }
-const Ge = 12e4;
+const ze = 12e4;
 function F(o, e, t) {
-  return new Promise((n, r) => {
-    const a = setTimeout(() => r(new Ye(e, t)), t);
+  return new Promise((n, i) => {
+    const a = setTimeout(() => i(new Ge(e, t)), t);
     o.then(
       (s) => {
         clearTimeout(a), n(s);
       },
       (s) => {
-        clearTimeout(a), r(s);
+        clearTimeout(a), i(s);
       }
     );
   });
@@ -644,7 +668,7 @@ class Ze {
   provider;
   timeoutMs;
   constructor(e, t = {}) {
-    this.provider = e, this.timeoutMs = t.timeoutMs ?? Ge, this.capabilities = {
+    this.provider = e, this.timeoutMs = t.timeoutMs ?? ze, this.capabilities = {
       nip44: typeof e.nip44?.encrypt == "function" && typeof e.nip44?.decrypt == "function",
       nip04: typeof e.nip04?.encrypt == "function" && typeof e.nip04?.decrypt == "function",
       getRelays: typeof e.getRelays == "function"
@@ -692,7 +716,7 @@ class Ze {
     return F(this.provider.nip04.decrypt(e, t), "nip04.decrypt", this.timeoutMs);
   }
 }
-class ze {
+class Je {
   constructor(e, t) {
     this.worker = e, this.userPubkey = t;
   }
@@ -725,98 +749,98 @@ class ze {
     return (await this.worker.nip46Nip04Decrypt({ peerPublicKey: e, payload: t })).plaintext;
   }
 }
-const q = function(o, e) {
-  let r = o;
-  const a = H[e];
-  let s = null, i = 0, h = null;
-  const w = [], b = {}, f = function(c, p) {
-    i = r * 4 + 17, s = (function(l) {
-      const d = new Array(l);
-      for (let u = 0; u < l; u += 1) {
-        d[u] = new Array(l);
-        for (let g = 0; g < l; g += 1)
+const W = function(o, e) {
+  let i = o;
+  const a = j[e];
+  let s = null, r = 0, h = null;
+  const v = [], w = {}, f = function(l, p) {
+    r = i * 4 + 17, s = (function(c) {
+      const d = new Array(c);
+      for (let u = 0; u < c; u += 1) {
+        d[u] = new Array(c);
+        for (let g = 0; g < c; g += 1)
           d[u][g] = null;
       }
       return d;
-    })(i), y(0, 0), y(i - 7, 0), y(0, i - 7), $(), N(), M(c, p), r >= 7 && P(c), h == null && (h = ve(r, a, w)), B(h, p);
-  }, y = function(c, p) {
-    for (let l = -1; l <= 7; l += 1)
-      if (!(c + l <= -1 || i <= c + l))
+    })(r), y(0, 0), y(r - 7, 0), y(0, r - 7), L(), N(), A(l, p), i >= 7 && P(l), h == null && (h = ke(i, a, v)), B(h, p);
+  }, y = function(l, p) {
+    for (let c = -1; c <= 7; c += 1)
+      if (!(l + c <= -1 || r <= l + c))
         for (let d = -1; d <= 7; d += 1)
-          p + d <= -1 || i <= p + d || (0 <= l && l <= 6 && (d == 0 || d == 6) || 0 <= d && d <= 6 && (l == 0 || l == 6) || 2 <= l && l <= 4 && 2 <= d && d <= 4 ? s[c + l][p + d] = !0 : s[c + l][p + d] = !1);
+          p + d <= -1 || r <= p + d || (0 <= c && c <= 6 && (d == 0 || d == 6) || 0 <= d && d <= 6 && (c == 0 || c == 6) || 2 <= c && c <= 4 && 2 <= d && d <= 4 ? s[l + c][p + d] = !0 : s[l + c][p + d] = !1);
   }, x = function() {
-    let c = 0, p = 0;
-    for (let l = 0; l < 8; l += 1) {
-      f(!0, l);
-      const d = _.getLostPoint(b);
-      (l == 0 || c > d) && (c = d, p = l);
+    let l = 0, p = 0;
+    for (let c = 0; c < 8; c += 1) {
+      f(!0, c);
+      const d = _.getLostPoint(w);
+      (c == 0 || l > d) && (l = d, p = c);
     }
     return p;
   }, N = function() {
-    for (let c = 8; c < i - 8; c += 1)
-      s[c][6] == null && (s[c][6] = c % 2 == 0);
-    for (let c = 8; c < i - 8; c += 1)
-      s[6][c] == null && (s[6][c] = c % 2 == 0);
-  }, $ = function() {
-    const c = _.getPatternPosition(r);
-    for (let p = 0; p < c.length; p += 1)
-      for (let l = 0; l < c.length; l += 1) {
-        const d = c[p], u = c[l];
+    for (let l = 8; l < r - 8; l += 1)
+      s[l][6] == null && (s[l][6] = l % 2 == 0);
+    for (let l = 8; l < r - 8; l += 1)
+      s[6][l] == null && (s[6][l] = l % 2 == 0);
+  }, L = function() {
+    const l = _.getPatternPosition(i);
+    for (let p = 0; p < l.length; p += 1)
+      for (let c = 0; c < l.length; c += 1) {
+        const d = l[p], u = l[c];
         if (s[d][u] == null)
           for (let g = -2; g <= 2; g += 1)
-            for (let v = -2; v <= 2; v += 1)
-              g == -2 || g == 2 || v == -2 || v == 2 || g == 0 && v == 0 ? s[d + g][u + v] = !0 : s[d + g][u + v] = !1;
+            for (let m = -2; m <= 2; m += 1)
+              g == -2 || g == 2 || m == -2 || m == 2 || g == 0 && m == 0 ? s[d + g][u + m] = !0 : s[d + g][u + m] = !1;
       }
-  }, P = function(c) {
-    const p = _.getBCHTypeNumber(r);
-    for (let l = 0; l < 18; l += 1) {
-      const d = !c && (p >> l & 1) == 1;
-      s[Math.floor(l / 3)][l % 3 + i - 8 - 3] = d;
+  }, P = function(l) {
+    const p = _.getBCHTypeNumber(i);
+    for (let c = 0; c < 18; c += 1) {
+      const d = !l && (p >> c & 1) == 1;
+      s[Math.floor(c / 3)][c % 3 + r - 8 - 3] = d;
     }
-    for (let l = 0; l < 18; l += 1) {
-      const d = !c && (p >> l & 1) == 1;
-      s[l % 3 + i - 8 - 3][Math.floor(l / 3)] = d;
+    for (let c = 0; c < 18; c += 1) {
+      const d = !l && (p >> c & 1) == 1;
+      s[c % 3 + r - 8 - 3][Math.floor(c / 3)] = d;
     }
-  }, M = function(c, p) {
-    const l = a << 3 | p, d = _.getBCHTypeInfo(l);
+  }, A = function(l, p) {
+    const c = a << 3 | p, d = _.getBCHTypeInfo(c);
     for (let u = 0; u < 15; u += 1) {
-      const g = !c && (d >> u & 1) == 1;
-      u < 6 ? s[u][8] = g : u < 8 ? s[u + 1][8] = g : s[i - 15 + u][8] = g;
+      const g = !l && (d >> u & 1) == 1;
+      u < 6 ? s[u][8] = g : u < 8 ? s[u + 1][8] = g : s[r - 15 + u][8] = g;
     }
     for (let u = 0; u < 15; u += 1) {
-      const g = !c && (d >> u & 1) == 1;
-      u < 8 ? s[8][i - u - 1] = g : u < 9 ? s[8][15 - u - 1 + 1] = g : s[8][15 - u - 1] = g;
+      const g = !l && (d >> u & 1) == 1;
+      u < 8 ? s[8][r - u - 1] = g : u < 9 ? s[8][15 - u - 1 + 1] = g : s[8][15 - u - 1] = g;
     }
-    s[i - 8][8] = !c;
-  }, B = function(c, p) {
-    let l = -1, d = i - 1, u = 7, g = 0;
-    const v = _.getMaskFunction(p);
-    for (let S = i - 1; S > 0; S -= 2)
+    s[r - 8][8] = !l;
+  }, B = function(l, p) {
+    let c = -1, d = r - 1, u = 7, g = 0;
+    const m = _.getMaskFunction(p);
+    for (let S = r - 1; S > 0; S -= 2)
       for (S == 6 && (S -= 1); ; ) {
         for (let C = 0; C < 2; C += 1)
           if (s[d][S - C] == null) {
             let E = !1;
-            g < c.length && (E = (c[g] >>> u & 1) == 1), v(d, S - C) && (E = !E), s[d][S - C] = E, u -= 1, u == -1 && (g += 1, u = 7);
+            g < l.length && (E = (l[g] >>> u & 1) == 1), m(d, S - C) && (E = !E), s[d][S - C] = E, u -= 1, u == -1 && (g += 1, u = 7);
           }
-        if (d += l, d < 0 || i <= d) {
-          d -= l, l = -l;
+        if (d += c, d < 0 || r <= d) {
+          d -= c, c = -c;
           break;
         }
       }
-  }, we = function(c, p) {
-    let l = 0, d = 0, u = 0;
-    const g = new Array(p.length), v = new Array(p.length);
+  }, me = function(l, p) {
+    let c = 0, d = 0, u = 0;
+    const g = new Array(p.length), m = new Array(p.length);
     for (let k = 0; k < p.length; k += 1) {
-      const Q = p[k].dataCount, R = p[k].totalCount - Q;
-      d = Math.max(d, Q), u = Math.max(u, R), g[k] = new Array(Q);
-      for (let A = 0; A < g[k].length; A += 1)
-        g[k][A] = 255 & c.getBuffer()[A + l];
-      l += Q;
-      const J = _.getErrorCorrectPolynomial(R), ne = j(g[k], J.getLength() - 1).mod(J);
-      v[k] = new Array(J.getLength() - 1);
-      for (let A = 0; A < v[k].length; A += 1) {
-        const re = A + ne.getLength() - v[k].length;
-        v[k][A] = re >= 0 ? ne.getAt(re) : 0;
+      const $ = p[k].dataCount, Q = p[k].totalCount - $;
+      d = Math.max(d, $), u = Math.max(u, Q), g[k] = new Array($);
+      for (let M = 0; M < g[k].length; M += 1)
+        g[k][M] = 255 & l.getBuffer()[M + c];
+      c += $;
+      const J = _.getErrorCorrectPolynomial(Q), ne = V(g[k], J.getLength() - 1).mod(J);
+      m[k] = new Array(J.getLength() - 1);
+      for (let M = 0; M < m[k].length; M += 1) {
+        const ie = M + ne.getLength() - m[k].length;
+        m[k][M] = ie >= 0 ? ne.getAt(ie) : 0;
       }
     }
     let S = 0;
@@ -825,113 +849,113 @@ const q = function(o, e) {
     const C = new Array(S);
     let E = 0;
     for (let k = 0; k < d; k += 1)
-      for (let Q = 0; Q < p.length; Q += 1)
-        k < g[Q].length && (C[E] = g[Q][k], E += 1);
+      for (let $ = 0; $ < p.length; $ += 1)
+        k < g[$].length && (C[E] = g[$][k], E += 1);
     for (let k = 0; k < u; k += 1)
-      for (let Q = 0; Q < p.length; Q += 1)
-        k < v[Q].length && (C[E] = v[Q][k], E += 1);
+      for (let $ = 0; $ < p.length; $ += 1)
+        k < m[$].length && (C[E] = m[$][k], E += 1);
     return C;
-  }, ve = function(c, p, l) {
-    const d = he.getRSBlocks(c, p), u = de();
-    for (let v = 0; v < l.length; v += 1) {
-      const S = l[v];
-      u.put(S.getMode(), 4), u.put(S.getLength(), _.getLengthInBits(S.getMode(), c)), S.write(u);
+  }, ke = function(l, p, c) {
+    const d = he.getRSBlocks(l, p), u = de();
+    for (let m = 0; m < c.length; m += 1) {
+      const S = c[m];
+      u.put(S.getMode(), 4), u.put(S.getLength(), _.getLengthInBits(S.getMode(), l)), S.write(u);
     }
     let g = 0;
-    for (let v = 0; v < d.length; v += 1)
-      g += d[v].dataCount;
+    for (let m = 0; m < d.length; m += 1)
+      g += d[m].dataCount;
     if (u.getLengthInBits() > g * 8)
       throw "code length overflow. (" + u.getLengthInBits() + ">" + g * 8 + ")";
     for (u.getLengthInBits() + 4 <= g * 8 && u.put(0, 4); u.getLengthInBits() % 8 != 0; )
       u.putBit(!1);
     for (; !(u.getLengthInBits() >= g * 8 || (u.put(236, 8), u.getLengthInBits() >= g * 8)); )
       u.put(17, 8);
-    return we(u, d);
+    return me(u, d);
   };
-  b.addData = function(c, p) {
+  w.addData = function(l, p) {
     p = p || "Byte";
-    let l = null;
+    let c = null;
     switch (p) {
       case "Numeric":
-        l = Je(c);
+        c = Xe(l);
         break;
       case "Alphanumeric":
-        l = Xe(c);
+        c = et(l);
         break;
       case "Byte":
-        l = et(c);
+        c = tt(l);
         break;
       case "Kanji":
-        l = tt(c);
+        c = nt(l);
         break;
       default:
         throw "mode:" + p;
     }
-    w.push(l), h = null;
-  }, b.isDark = function(c, p) {
-    if (c < 0 || i <= c || p < 0 || i <= p)
-      throw c + "," + p;
-    return s[c][p];
-  }, b.getModuleCount = function() {
-    return i;
-  }, b.make = function() {
-    if (r < 1) {
-      let c = 1;
-      for (; c < 40; c++) {
-        const p = he.getRSBlocks(c, a), l = de();
-        for (let u = 0; u < w.length; u++) {
-          const g = w[u];
-          l.put(g.getMode(), 4), l.put(g.getLength(), _.getLengthInBits(g.getMode(), c)), g.write(l);
+    v.push(c), h = null;
+  }, w.isDark = function(l, p) {
+    if (l < 0 || r <= l || p < 0 || r <= p)
+      throw l + "," + p;
+    return s[l][p];
+  }, w.getModuleCount = function() {
+    return r;
+  }, w.make = function() {
+    if (i < 1) {
+      let l = 1;
+      for (; l < 40; l++) {
+        const p = he.getRSBlocks(l, a), c = de();
+        for (let u = 0; u < v.length; u++) {
+          const g = v[u];
+          c.put(g.getMode(), 4), c.put(g.getLength(), _.getLengthInBits(g.getMode(), l)), g.write(c);
         }
         let d = 0;
         for (let u = 0; u < p.length; u++)
           d += p[u].dataCount;
-        if (l.getLengthInBits() <= d * 8)
+        if (c.getLengthInBits() <= d * 8)
           break;
       }
-      r = c;
+      i = l;
     }
     f(!1, x());
-  }, b.createTableTag = function(c, p) {
-    c = c || 2, p = typeof p > "u" ? c * 4 : p;
-    let l = "";
-    l += '<table style="', l += " border-width: 0px; border-style: none;", l += " border-collapse: collapse;", l += " padding: 0px; margin: " + p + "px;", l += '">', l += "<tbody>";
-    for (let d = 0; d < b.getModuleCount(); d += 1) {
-      l += "<tr>";
-      for (let u = 0; u < b.getModuleCount(); u += 1)
-        l += '<td style="', l += " border-width: 0px; border-style: none;", l += " border-collapse: collapse;", l += " padding: 0px; margin: 0px;", l += " width: " + c + "px;", l += " height: " + c + "px;", l += " background-color: ", l += b.isDark(d, u) ? "#000000" : "#ffffff", l += ";", l += '"/>';
-      l += "</tr>";
+  }, w.createTableTag = function(l, p) {
+    l = l || 2, p = typeof p > "u" ? l * 4 : p;
+    let c = "";
+    c += '<table style="', c += " border-width: 0px; border-style: none;", c += " border-collapse: collapse;", c += " padding: 0px; margin: " + p + "px;", c += '">', c += "<tbody>";
+    for (let d = 0; d < w.getModuleCount(); d += 1) {
+      c += "<tr>";
+      for (let u = 0; u < w.getModuleCount(); u += 1)
+        c += '<td style="', c += " border-width: 0px; border-style: none;", c += " border-collapse: collapse;", c += " padding: 0px; margin: 0px;", c += " width: " + l + "px;", c += " height: " + l + "px;", c += " background-color: ", c += w.isDark(d, u) ? "#000000" : "#ffffff", c += ";", c += '"/>';
+      c += "</tr>";
     }
-    return l += "</tbody>", l += "</table>", l;
-  }, b.createSvgTag = function(c, p, l, d) {
+    return c += "</tbody>", c += "</table>", c;
+  }, w.createSvgTag = function(l, p, c, d) {
     let u = {};
-    typeof arguments[0] == "object" && (u = arguments[0], c = u.cellSize, p = u.margin, l = u.alt, d = u.title), c = c || 2, p = typeof p > "u" ? c * 4 : p, l = typeof l == "string" ? { text: l } : l || {}, l.text = l.text || null, l.id = l.text ? l.id || "qrcode-description" : null, d = typeof d == "string" ? { text: d } : d || {}, d.text = d.text || null, d.id = d.text ? d.id || "qrcode-title" : null;
-    const g = b.getModuleCount() * c + p * 2;
-    let v, S, C, E, k = "", Q;
-    for (Q = "l" + c + ",0 0," + c + " -" + c + ",0 0,-" + c + "z ", k += '<svg version="1.1" xmlns="http://www.w3.org/2000/svg"', k += u.scalable ? "" : ' width="' + g + 'px" height="' + g + 'px"', k += ' viewBox="0 0 ' + g + " " + g + '" ', k += ' preserveAspectRatio="xMinYMin meet"', k += d.text || l.text ? ' role="img" aria-labelledby="' + O([d.id, l.id].join(" ").trim()) + '"' : "", k += ">", k += d.text ? '<title id="' + O(d.id) + '">' + O(d.text) + "</title>" : "", k += l.text ? '<description id="' + O(l.id) + '">' + O(l.text) + "</description>" : "", k += '<rect width="100%" height="100%" fill="white" cx="0" cy="0"/>', k += '<path d="', C = 0; C < b.getModuleCount(); C += 1)
-      for (E = C * c + p, v = 0; v < b.getModuleCount(); v += 1)
-        b.isDark(C, v) && (S = v * c + p, k += "M" + S + "," + E + Q);
+    typeof arguments[0] == "object" && (u = arguments[0], l = u.cellSize, p = u.margin, c = u.alt, d = u.title), l = l || 2, p = typeof p > "u" ? l * 4 : p, c = typeof c == "string" ? { text: c } : c || {}, c.text = c.text || null, c.id = c.text ? c.id || "qrcode-description" : null, d = typeof d == "string" ? { text: d } : d || {}, d.text = d.text || null, d.id = d.text ? d.id || "qrcode-title" : null;
+    const g = w.getModuleCount() * l + p * 2;
+    let m, S, C, E, k = "", $;
+    for ($ = "l" + l + ",0 0," + l + " -" + l + ",0 0,-" + l + "z ", k += '<svg version="1.1" xmlns="http://www.w3.org/2000/svg"', k += u.scalable ? "" : ' width="' + g + 'px" height="' + g + 'px"', k += ' viewBox="0 0 ' + g + " " + g + '" ', k += ' preserveAspectRatio="xMinYMin meet"', k += d.text || c.text ? ' role="img" aria-labelledby="' + O([d.id, c.id].join(" ").trim()) + '"' : "", k += ">", k += d.text ? '<title id="' + O(d.id) + '">' + O(d.text) + "</title>" : "", k += c.text ? '<description id="' + O(c.id) + '">' + O(c.text) + "</description>" : "", k += '<rect width="100%" height="100%" fill="white" cx="0" cy="0"/>', k += '<path d="', C = 0; C < w.getModuleCount(); C += 1)
+      for (E = C * l + p, m = 0; m < w.getModuleCount(); m += 1)
+        w.isDark(C, m) && (S = m * l + p, k += "M" + S + "," + E + $);
     return k += '" stroke="transparent" fill="black"/>', k += "</svg>", k;
-  }, b.createDataURL = function(c, p) {
-    c = c || 2, p = typeof p > "u" ? c * 4 : p;
-    const l = b.getModuleCount() * c + p * 2, d = p, u = l - p;
-    return st(l, l, function(g, v) {
-      if (d <= g && g < u && d <= v && v < u) {
-        const S = Math.floor((g - d) / c), C = Math.floor((v - d) / c);
-        return b.isDark(C, S) ? 0 : 1;
+  }, w.createDataURL = function(l, p) {
+    l = l || 2, p = typeof p > "u" ? l * 4 : p;
+    const c = w.getModuleCount() * l + p * 2, d = p, u = c - p;
+    return ot(c, c, function(g, m) {
+      if (d <= g && g < u && d <= m && m < u) {
+        const S = Math.floor((g - d) / l), C = Math.floor((m - d) / l);
+        return w.isDark(C, S) ? 0 : 1;
       } else
         return 1;
     });
-  }, b.createImgTag = function(c, p, l) {
-    c = c || 2, p = typeof p > "u" ? c * 4 : p;
-    const d = b.getModuleCount() * c + p * 2;
+  }, w.createImgTag = function(l, p, c) {
+    l = l || 2, p = typeof p > "u" ? l * 4 : p;
+    const d = w.getModuleCount() * l + p * 2;
     let u = "";
-    return u += "<img", u += ' src="', u += b.createDataURL(c, p), u += '"', u += ' width="', u += d, u += '"', u += ' height="', u += d, u += '"', l && (u += ' alt="', u += O(l), u += '"'), u += "/>", u;
+    return u += "<img", u += ' src="', u += w.createDataURL(l, p), u += '"', u += ' width="', u += d, u += '"', u += ' height="', u += d, u += '"', c && (u += ' alt="', u += O(c), u += '"'), u += "/>", u;
   };
-  const O = function(c) {
+  const O = function(l) {
     let p = "";
-    for (let l = 0; l < c.length; l += 1) {
-      const d = c.charAt(l);
+    for (let c = 0; c < l.length; c += 1) {
+      const d = l.charAt(c);
       switch (d) {
         case "<":
           p += "&lt;";
@@ -951,55 +975,55 @@ const q = function(o, e) {
       }
     }
     return p;
-  }, me = function(c) {
-    c = typeof c > "u" ? 2 : c;
-    const l = b.getModuleCount() * 1 + c * 2, d = c, u = l - c;
-    let g, v, S, C, E;
+  }, xe = function(l) {
+    l = typeof l > "u" ? 2 : l;
+    const c = w.getModuleCount() * 1 + l * 2, d = l, u = c - l;
+    let g, m, S, C, E;
     const k = {
       "██": "█",
       "█ ": "▀",
       " █": "▄",
       "  ": " "
-    }, Q = {
+    }, $ = {
       "██": "▀",
       "█ ": "▀",
       " █": " ",
       "  ": " "
     };
-    let R = "";
-    for (g = 0; g < l; g += 2) {
-      for (S = Math.floor((g - d) / 1), C = Math.floor((g + 1 - d) / 1), v = 0; v < l; v += 1)
-        E = "█", d <= v && v < u && d <= g && g < u && b.isDark(S, Math.floor((v - d) / 1)) && (E = " "), d <= v && v < u && d <= g + 1 && g + 1 < u && b.isDark(C, Math.floor((v - d) / 1)) ? E += " " : E += "█", R += c < 1 && g + 1 >= u ? Q[E] : k[E];
-      R += `
+    let Q = "";
+    for (g = 0; g < c; g += 2) {
+      for (S = Math.floor((g - d) / 1), C = Math.floor((g + 1 - d) / 1), m = 0; m < c; m += 1)
+        E = "█", d <= m && m < u && d <= g && g < u && w.isDark(S, Math.floor((m - d) / 1)) && (E = " "), d <= m && m < u && d <= g + 1 && g + 1 < u && w.isDark(C, Math.floor((m - d) / 1)) ? E += " " : E += "█", Q += l < 1 && g + 1 >= u ? $[E] : k[E];
+      Q += `
 `;
     }
-    return l % 2 && c > 0 ? R.substring(0, R.length - l - 1) + Array(l + 1).join("▀") : R.substring(0, R.length - 1);
+    return c % 2 && l > 0 ? Q.substring(0, Q.length - c - 1) + Array(c + 1).join("▀") : Q.substring(0, Q.length - 1);
   };
-  return b.createASCII = function(c, p) {
-    if (c = c || 1, c < 2)
-      return me(p);
-    c -= 1, p = typeof p > "u" ? c * 2 : p;
-    const l = b.getModuleCount() * c + p * 2, d = p, u = l - p;
-    let g, v, S, C;
-    const E = Array(c + 1).join("██"), k = Array(c + 1).join("  ");
-    let Q = "", R = "";
-    for (g = 0; g < l; g += 1) {
-      for (S = Math.floor((g - d) / c), R = "", v = 0; v < l; v += 1)
-        C = 1, d <= v && v < u && d <= g && g < u && b.isDark(S, Math.floor((v - d) / c)) && (C = 0), R += C ? E : k;
-      for (S = 0; S < c; S += 1)
-        Q += R + `
+  return w.createASCII = function(l, p) {
+    if (l = l || 1, l < 2)
+      return xe(p);
+    l -= 1, p = typeof p > "u" ? l * 2 : p;
+    const c = w.getModuleCount() * l + p * 2, d = p, u = c - p;
+    let g, m, S, C;
+    const E = Array(l + 1).join("██"), k = Array(l + 1).join("  ");
+    let $ = "", Q = "";
+    for (g = 0; g < c; g += 1) {
+      for (S = Math.floor((g - d) / l), Q = "", m = 0; m < c; m += 1)
+        C = 1, d <= m && m < u && d <= g && g < u && w.isDark(S, Math.floor((m - d) / l)) && (C = 0), Q += C ? E : k;
+      for (S = 0; S < l; S += 1)
+        $ += Q + `
 `;
     }
-    return Q.substring(0, Q.length - 1);
-  }, b.renderTo2dContext = function(c, p) {
+    return $.substring(0, $.length - 1);
+  }, w.renderTo2dContext = function(l, p) {
     p = p || 2;
-    const l = b.getModuleCount();
-    for (let d = 0; d < l; d++)
-      for (let u = 0; u < l; u++)
-        c.fillStyle = b.isDark(d, u) ? "black" : "white", c.fillRect(u * p, d * p, p, p);
-  }, b;
+    const c = w.getModuleCount();
+    for (let d = 0; d < c; d++)
+      for (let u = 0; u < c; u++)
+        l.fillStyle = w.isDark(d, u) ? "black" : "white", l.fillRect(u * p, d * p, p, p);
+  }, w;
 };
-q.stringToBytes = function(o) {
+W.stringToBytes = function(o) {
   const e = [];
   for (let t = 0; t < o.length; t += 1) {
     const n = o.charCodeAt(t);
@@ -1007,45 +1031,45 @@ q.stringToBytes = function(o) {
   }
   return e;
 };
-q.createStringToBytes = function(o, e) {
+W.createStringToBytes = function(o, e) {
   const t = (function() {
-    const r = rt(o), a = function() {
-      const h = r.read();
+    const i = rt(o), a = function() {
+      const h = i.read();
       if (h == -1) throw "eof";
       return h;
     };
     let s = 0;
-    const i = {};
+    const r = {};
     for (; ; ) {
-      const h = r.read();
+      const h = i.read();
       if (h == -1) break;
-      const w = a(), b = a(), f = a(), y = String.fromCharCode(h << 8 | w), x = b << 8 | f;
-      i[y] = x, s += 1;
+      const v = a(), w = a(), f = a(), y = String.fromCharCode(h << 8 | v), x = w << 8 | f;
+      r[y] = x, s += 1;
     }
     if (s != e)
       throw s + " != " + e;
-    return i;
+    return r;
   })(), n = 63;
-  return function(r) {
+  return function(i) {
     const a = [];
-    for (let s = 0; s < r.length; s += 1) {
-      const i = r.charCodeAt(s);
-      if (i < 128)
-        a.push(i);
+    for (let s = 0; s < i.length; s += 1) {
+      const r = i.charCodeAt(s);
+      if (r < 128)
+        a.push(r);
       else {
-        const h = t[r.charAt(s)];
+        const h = t[i.charAt(s)];
         typeof h == "number" ? (h & 255) == h ? a.push(h) : (a.push(h >>> 8), a.push(h & 255)) : a.push(n);
       }
     }
     return a;
   };
 };
-const L = {
+const R = {
   MODE_NUMBER: 1,
   MODE_ALPHA_NUM: 2,
   MODE_8BIT_BYTE: 4,
   MODE_KANJI: 8
-}, H = {
+}, j = {
   L: 1,
   M: 0,
   Q: 3,
@@ -1101,139 +1125,139 @@ const L = {
     [6, 32, 58, 84, 110, 136, 162],
     [6, 26, 54, 82, 110, 138, 166],
     [6, 30, 58, 86, 114, 142, 170]
-  ], e = 1335, t = 7973, n = 21522, r = {}, a = function(s) {
-    let i = 0;
+  ], e = 1335, t = 7973, n = 21522, i = {}, a = function(s) {
+    let r = 0;
     for (; s != 0; )
-      i += 1, s >>>= 1;
-    return i;
+      r += 1, s >>>= 1;
+    return r;
   };
-  return r.getBCHTypeInfo = function(s) {
-    let i = s << 10;
-    for (; a(i) - a(e) >= 0; )
-      i ^= e << a(i) - a(e);
-    return (s << 10 | i) ^ n;
-  }, r.getBCHTypeNumber = function(s) {
-    let i = s << 12;
-    for (; a(i) - a(t) >= 0; )
-      i ^= t << a(i) - a(t);
-    return s << 12 | i;
-  }, r.getPatternPosition = function(s) {
+  return i.getBCHTypeInfo = function(s) {
+    let r = s << 10;
+    for (; a(r) - a(e) >= 0; )
+      r ^= e << a(r) - a(e);
+    return (s << 10 | r) ^ n;
+  }, i.getBCHTypeNumber = function(s) {
+    let r = s << 12;
+    for (; a(r) - a(t) >= 0; )
+      r ^= t << a(r) - a(t);
+    return s << 12 | r;
+  }, i.getPatternPosition = function(s) {
     return o[s - 1];
-  }, r.getMaskFunction = function(s) {
+  }, i.getMaskFunction = function(s) {
     switch (s) {
       case D.PATTERN000:
-        return function(i, h) {
-          return (i + h) % 2 == 0;
+        return function(r, h) {
+          return (r + h) % 2 == 0;
         };
       case D.PATTERN001:
-        return function(i, h) {
-          return i % 2 == 0;
+        return function(r, h) {
+          return r % 2 == 0;
         };
       case D.PATTERN010:
-        return function(i, h) {
+        return function(r, h) {
           return h % 3 == 0;
         };
       case D.PATTERN011:
-        return function(i, h) {
-          return (i + h) % 3 == 0;
+        return function(r, h) {
+          return (r + h) % 3 == 0;
         };
       case D.PATTERN100:
-        return function(i, h) {
-          return (Math.floor(i / 2) + Math.floor(h / 3)) % 2 == 0;
+        return function(r, h) {
+          return (Math.floor(r / 2) + Math.floor(h / 3)) % 2 == 0;
         };
       case D.PATTERN101:
-        return function(i, h) {
-          return i * h % 2 + i * h % 3 == 0;
+        return function(r, h) {
+          return r * h % 2 + r * h % 3 == 0;
         };
       case D.PATTERN110:
-        return function(i, h) {
-          return (i * h % 2 + i * h % 3) % 2 == 0;
+        return function(r, h) {
+          return (r * h % 2 + r * h % 3) % 2 == 0;
         };
       case D.PATTERN111:
-        return function(i, h) {
-          return (i * h % 3 + (i + h) % 2) % 2 == 0;
+        return function(r, h) {
+          return (r * h % 3 + (r + h) % 2) % 2 == 0;
         };
       default:
         throw "bad maskPattern:" + s;
     }
-  }, r.getErrorCorrectPolynomial = function(s) {
-    let i = j([1], 0);
+  }, i.getErrorCorrectPolynomial = function(s) {
+    let r = V([1], 0);
     for (let h = 0; h < s; h += 1)
-      i = i.multiply(j([1, U.gexp(h)], 0));
-    return i;
-  }, r.getLengthInBits = function(s, i) {
-    if (1 <= i && i < 10)
+      r = r.multiply(V([1, U.gexp(h)], 0));
+    return r;
+  }, i.getLengthInBits = function(s, r) {
+    if (1 <= r && r < 10)
       switch (s) {
-        case L.MODE_NUMBER:
+        case R.MODE_NUMBER:
           return 10;
-        case L.MODE_ALPHA_NUM:
+        case R.MODE_ALPHA_NUM:
           return 9;
-        case L.MODE_8BIT_BYTE:
+        case R.MODE_8BIT_BYTE:
           return 8;
-        case L.MODE_KANJI:
+        case R.MODE_KANJI:
           return 8;
         default:
           throw "mode:" + s;
       }
-    else if (i < 27)
+    else if (r < 27)
       switch (s) {
-        case L.MODE_NUMBER:
+        case R.MODE_NUMBER:
           return 12;
-        case L.MODE_ALPHA_NUM:
+        case R.MODE_ALPHA_NUM:
           return 11;
-        case L.MODE_8BIT_BYTE:
+        case R.MODE_8BIT_BYTE:
           return 16;
-        case L.MODE_KANJI:
+        case R.MODE_KANJI:
           return 10;
         default:
           throw "mode:" + s;
       }
-    else if (i < 41)
+    else if (r < 41)
       switch (s) {
-        case L.MODE_NUMBER:
+        case R.MODE_NUMBER:
           return 14;
-        case L.MODE_ALPHA_NUM:
+        case R.MODE_ALPHA_NUM:
           return 13;
-        case L.MODE_8BIT_BYTE:
+        case R.MODE_8BIT_BYTE:
           return 16;
-        case L.MODE_KANJI:
+        case R.MODE_KANJI:
           return 12;
         default:
           throw "mode:" + s;
       }
     else
-      throw "type:" + i;
-  }, r.getLostPoint = function(s) {
-    const i = s.getModuleCount();
+      throw "type:" + r;
+  }, i.getLostPoint = function(s) {
+    const r = s.getModuleCount();
     let h = 0;
-    for (let f = 0; f < i; f += 1)
-      for (let y = 0; y < i; y += 1) {
+    for (let f = 0; f < r; f += 1)
+      for (let y = 0; y < r; y += 1) {
         let x = 0;
         const N = s.isDark(f, y);
-        for (let $ = -1; $ <= 1; $ += 1)
-          if (!(f + $ < 0 || i <= f + $))
+        for (let L = -1; L <= 1; L += 1)
+          if (!(f + L < 0 || r <= f + L))
             for (let P = -1; P <= 1; P += 1)
-              y + P < 0 || i <= y + P || $ == 0 && P == 0 || N == s.isDark(f + $, y + P) && (x += 1);
+              y + P < 0 || r <= y + P || L == 0 && P == 0 || N == s.isDark(f + L, y + P) && (x += 1);
         x > 5 && (h += 3 + x - 5);
       }
-    for (let f = 0; f < i - 1; f += 1)
-      for (let y = 0; y < i - 1; y += 1) {
+    for (let f = 0; f < r - 1; f += 1)
+      for (let y = 0; y < r - 1; y += 1) {
         let x = 0;
         s.isDark(f, y) && (x += 1), s.isDark(f + 1, y) && (x += 1), s.isDark(f, y + 1) && (x += 1), s.isDark(f + 1, y + 1) && (x += 1), (x == 0 || x == 4) && (h += 3);
       }
-    for (let f = 0; f < i; f += 1)
-      for (let y = 0; y < i - 6; y += 1)
+    for (let f = 0; f < r; f += 1)
+      for (let y = 0; y < r - 6; y += 1)
         s.isDark(f, y) && !s.isDark(f, y + 1) && s.isDark(f, y + 2) && s.isDark(f, y + 3) && s.isDark(f, y + 4) && !s.isDark(f, y + 5) && s.isDark(f, y + 6) && (h += 40);
-    for (let f = 0; f < i; f += 1)
-      for (let y = 0; y < i - 6; y += 1)
+    for (let f = 0; f < r; f += 1)
+      for (let y = 0; y < r - 6; y += 1)
         s.isDark(y, f) && !s.isDark(y + 1, f) && s.isDark(y + 2, f) && s.isDark(y + 3, f) && s.isDark(y + 4, f) && !s.isDark(y + 5, f) && s.isDark(y + 6, f) && (h += 40);
-    let w = 0;
-    for (let f = 0; f < i; f += 1)
-      for (let y = 0; y < i; y += 1)
-        s.isDark(y, f) && (w += 1);
-    const b = Math.abs(100 * w / i / i - 50) / 5;
-    return h += b * 10, h;
-  }, r;
+    let v = 0;
+    for (let f = 0; f < r; f += 1)
+      for (let y = 0; y < r; y += 1)
+        s.isDark(y, f) && (v += 1);
+    const w = Math.abs(100 * v / r / r - 50) / 5;
+    return h += w * 10, h;
+  }, i;
 })(), U = (function() {
   const o = new Array(256), e = new Array(256);
   for (let n = 0; n < 8; n += 1)
@@ -1254,37 +1278,37 @@ const L = {
       n -= 255;
     return o[n];
   }, t;
-})(), j = function(o, e) {
+})(), V = function(o, e) {
   if (typeof o.length > "u")
     throw o.length + "/" + e;
   const t = (function() {
-    let r = 0;
-    for (; r < o.length && o[r] == 0; )
-      r += 1;
-    const a = new Array(o.length - r + e);
-    for (let s = 0; s < o.length - r; s += 1)
-      a[s] = o[s + r];
+    let i = 0;
+    for (; i < o.length && o[i] == 0; )
+      i += 1;
+    const a = new Array(o.length - i + e);
+    for (let s = 0; s < o.length - i; s += 1)
+      a[s] = o[s + i];
     return a;
   })(), n = {};
-  return n.getAt = function(r) {
-    return t[r];
+  return n.getAt = function(i) {
+    return t[i];
   }, n.getLength = function() {
     return t.length;
-  }, n.multiply = function(r) {
-    const a = new Array(n.getLength() + r.getLength() - 1);
+  }, n.multiply = function(i) {
+    const a = new Array(n.getLength() + i.getLength() - 1);
     for (let s = 0; s < n.getLength(); s += 1)
-      for (let i = 0; i < r.getLength(); i += 1)
-        a[s + i] ^= U.gexp(U.glog(n.getAt(s)) + U.glog(r.getAt(i)));
-    return j(a, 0);
-  }, n.mod = function(r) {
-    if (n.getLength() - r.getLength() < 0)
+      for (let r = 0; r < i.getLength(); r += 1)
+        a[s + r] ^= U.gexp(U.glog(n.getAt(s)) + U.glog(i.getAt(r)));
+    return V(a, 0);
+  }, n.mod = function(i) {
+    if (n.getLength() - i.getLength() < 0)
       return n;
-    const a = U.glog(n.getAt(0)) - U.glog(r.getAt(0)), s = new Array(n.getLength());
-    for (let i = 0; i < n.getLength(); i += 1)
-      s[i] = n.getAt(i);
-    for (let i = 0; i < r.getLength(); i += 1)
-      s[i] ^= U.gexp(U.glog(r.getAt(i)) + a);
-    return j(s, 0).mod(r);
+    const a = U.glog(n.getAt(0)) - U.glog(i.getAt(0)), s = new Array(n.getLength());
+    for (let r = 0; r < n.getLength(); r += 1)
+      s[r] = n.getAt(r);
+    for (let r = 0; r < i.getLength(); r += 1)
+      s[r] ^= U.gexp(U.glog(i.getAt(r)) + a);
+    return V(s, 0).mod(i);
   }, n;
 }, he = (function() {
   const o = [
@@ -1492,31 +1516,31 @@ const L = {
     [18, 75, 47, 31, 76, 48],
     [34, 54, 24, 34, 55, 25],
     [20, 45, 15, 61, 46, 16]
-  ], e = function(r, a) {
+  ], e = function(i, a) {
     const s = {};
-    return s.totalCount = r, s.dataCount = a, s;
-  }, t = {}, n = function(r, a) {
+    return s.totalCount = i, s.dataCount = a, s;
+  }, t = {}, n = function(i, a) {
     switch (a) {
-      case H.L:
-        return o[(r - 1) * 4 + 0];
-      case H.M:
-        return o[(r - 1) * 4 + 1];
-      case H.Q:
-        return o[(r - 1) * 4 + 2];
-      case H.H:
-        return o[(r - 1) * 4 + 3];
+      case j.L:
+        return o[(i - 1) * 4 + 0];
+      case j.M:
+        return o[(i - 1) * 4 + 1];
+      case j.Q:
+        return o[(i - 1) * 4 + 2];
+      case j.H:
+        return o[(i - 1) * 4 + 3];
       default:
         return;
     }
   };
-  return t.getRSBlocks = function(r, a) {
-    const s = n(r, a);
+  return t.getRSBlocks = function(i, a) {
+    const s = n(i, a);
     if (typeof s > "u")
-      throw "bad rs block @ typeNumber:" + r + "/errorCorrectionLevel:" + a;
-    const i = s.length / 3, h = [];
-    for (let w = 0; w < i; w += 1) {
-      const b = s[w * 3 + 0], f = s[w * 3 + 1], y = s[w * 3 + 2];
-      for (let x = 0; x < b; x += 1)
+      throw "bad rs block @ typeNumber:" + i + "/errorCorrectionLevel:" + a;
+    const r = s.length / 3, h = [];
+    for (let v = 0; v < r; v += 1) {
+      const w = s[v * 3 + 0], f = s[v * 3 + 1], y = s[v * 3 + 2];
+      for (let x = 0; x < w; x += 1)
         h.push(e(f, y));
     }
     return h;
@@ -1528,58 +1552,58 @@ const L = {
   return t.getBuffer = function() {
     return o;
   }, t.getAt = function(n) {
-    const r = Math.floor(n / 8);
-    return (o[r] >>> 7 - n % 8 & 1) == 1;
-  }, t.put = function(n, r) {
-    for (let a = 0; a < r; a += 1)
-      t.putBit((n >>> r - a - 1 & 1) == 1);
+    const i = Math.floor(n / 8);
+    return (o[i] >>> 7 - n % 8 & 1) == 1;
+  }, t.put = function(n, i) {
+    for (let a = 0; a < i; a += 1)
+      t.putBit((n >>> i - a - 1 & 1) == 1);
   }, t.getLengthInBits = function() {
     return e;
   }, t.putBit = function(n) {
-    const r = Math.floor(e / 8);
-    o.length <= r && o.push(0), n && (o[r] |= 128 >>> e % 8), e += 1;
+    const i = Math.floor(e / 8);
+    o.length <= i && o.push(0), n && (o[i] |= 128 >>> e % 8), e += 1;
   }, t;
-}, Je = function(o) {
-  const e = L.MODE_NUMBER, t = o, n = {};
+}, Xe = function(o) {
+  const e = R.MODE_NUMBER, t = o, n = {};
   n.getMode = function() {
     return e;
   }, n.getLength = function(s) {
     return t.length;
   }, n.write = function(s) {
-    const i = t;
+    const r = t;
     let h = 0;
-    for (; h + 2 < i.length; )
-      s.put(r(i.substring(h, h + 3)), 10), h += 3;
-    h < i.length && (i.length - h == 1 ? s.put(r(i.substring(h, h + 1)), 4) : i.length - h == 2 && s.put(r(i.substring(h, h + 2)), 7));
+    for (; h + 2 < r.length; )
+      s.put(i(r.substring(h, h + 3)), 10), h += 3;
+    h < r.length && (r.length - h == 1 ? s.put(i(r.substring(h, h + 1)), 4) : r.length - h == 2 && s.put(i(r.substring(h, h + 2)), 7));
   };
-  const r = function(s) {
-    let i = 0;
+  const i = function(s) {
+    let r = 0;
     for (let h = 0; h < s.length; h += 1)
-      i = i * 10 + a(s.charAt(h));
-    return i;
+      r = r * 10 + a(s.charAt(h));
+    return r;
   }, a = function(s) {
     if ("0" <= s && s <= "9")
       return s.charCodeAt(0) - 48;
     throw "illegal char :" + s;
   };
   return n;
-}, Xe = function(o) {
-  const e = L.MODE_ALPHA_NUM, t = o, n = {};
+}, et = function(o) {
+  const e = R.MODE_ALPHA_NUM, t = o, n = {};
   n.getMode = function() {
     return e;
   }, n.getLength = function(a) {
     return t.length;
   }, n.write = function(a) {
     const s = t;
-    let i = 0;
-    for (; i + 1 < s.length; )
+    let r = 0;
+    for (; r + 1 < s.length; )
       a.put(
-        r(s.charAt(i)) * 45 + r(s.charAt(i + 1)),
+        i(s.charAt(r)) * 45 + i(s.charAt(r + 1)),
         11
-      ), i += 2;
-    i < s.length && a.put(r(s.charAt(i)), 6);
+      ), r += 2;
+    r < s.length && a.put(i(s.charAt(r)), 6);
   };
-  const r = function(a) {
+  const i = function(a) {
     if ("0" <= a && a <= "9")
       return a.charCodeAt(0) - 48;
     if ("A" <= a && a <= "Z")
@@ -1608,53 +1632,53 @@ const L = {
     }
   };
   return n;
-}, et = function(o) {
-  const e = L.MODE_8BIT_BYTE, t = q.stringToBytes(o), n = {};
+}, tt = function(o) {
+  const e = R.MODE_8BIT_BYTE, t = W.stringToBytes(o), n = {};
   return n.getMode = function() {
     return e;
-  }, n.getLength = function(r) {
+  }, n.getLength = function(i) {
     return t.length;
-  }, n.write = function(r) {
+  }, n.write = function(i) {
     for (let a = 0; a < t.length; a += 1)
-      r.put(t[a], 8);
+      i.put(t[a], 8);
   }, n;
-}, tt = function(o) {
-  const e = L.MODE_KANJI, t = q.stringToBytes;
+}, nt = function(o) {
+  const e = R.MODE_KANJI, t = W.stringToBytes;
   (function(a, s) {
-    const i = t(a);
-    if (i.length != 2 || (i[0] << 8 | i[1]) != s)
+    const r = t(a);
+    if (r.length != 2 || (r[0] << 8 | r[1]) != s)
       throw "sjis not supported.";
   })("友", 38726);
-  const n = t(o), r = {};
-  return r.getMode = function() {
+  const n = t(o), i = {};
+  return i.getMode = function() {
     return e;
-  }, r.getLength = function(a) {
+  }, i.getLength = function(a) {
     return ~~(n.length / 2);
-  }, r.write = function(a) {
+  }, i.write = function(a) {
     const s = n;
-    let i = 0;
-    for (; i + 1 < s.length; ) {
-      let h = (255 & s[i]) << 8 | 255 & s[i + 1];
+    let r = 0;
+    for (; r + 1 < s.length; ) {
+      let h = (255 & s[r]) << 8 | 255 & s[r + 1];
       if (33088 <= h && h <= 40956)
         h -= 33088;
       else if (57408 <= h && h <= 60351)
         h -= 49472;
       else
-        throw "illegal char at " + (i + 1) + "/" + h;
-      h = (h >>> 8 & 255) * 192 + (h & 255), a.put(h, 13), i += 2;
+        throw "illegal char at " + (r + 1) + "/" + h;
+      h = (h >>> 8 & 255) * 192 + (h & 255), a.put(h, 13), r += 2;
     }
-    if (i < s.length)
-      throw "illegal char at " + (i + 1);
-  }, r;
-}, be = function() {
+    if (r < s.length)
+      throw "illegal char at " + (r + 1);
+  }, i;
+}, we = function() {
   const o = [], e = {};
   return e.writeByte = function(t) {
     o.push(t & 255);
   }, e.writeShort = function(t) {
     e.writeByte(t), e.writeByte(t >>> 8);
-  }, e.writeBytes = function(t, n, r) {
-    n = n || 0, r = r || t.length;
-    for (let a = 0; a < r; a += 1)
+  }, e.writeBytes = function(t, n, i) {
+    n = n || 0, i = i || t.length;
+    for (let a = 0; a < i; a += 1)
       e.writeByte(t[a + n]);
   }, e.writeString = function(t) {
     for (let n = 0; n < t.length; n += 1)
@@ -1668,181 +1692,198 @@ const L = {
       n > 0 && (t += ","), t += o[n];
     return t += "]", t;
   }, e;
-}, nt = function() {
+}, it = function() {
   let o = 0, e = 0, t = 0, n = "";
-  const r = {}, a = function(i) {
-    n += String.fromCharCode(s(i & 63));
-  }, s = function(i) {
-    if (i < 0)
-      throw "n:" + i;
-    if (i < 26)
-      return 65 + i;
-    if (i < 52)
-      return 97 + (i - 26);
-    if (i < 62)
-      return 48 + (i - 52);
-    if (i == 62)
+  const i = {}, a = function(r) {
+    n += String.fromCharCode(s(r & 63));
+  }, s = function(r) {
+    if (r < 0)
+      throw "n:" + r;
+    if (r < 26)
+      return 65 + r;
+    if (r < 52)
+      return 97 + (r - 26);
+    if (r < 62)
+      return 48 + (r - 52);
+    if (r == 62)
       return 43;
-    if (i == 63)
+    if (r == 63)
       return 47;
-    throw "n:" + i;
+    throw "n:" + r;
   };
-  return r.writeByte = function(i) {
-    for (o = o << 8 | i & 255, e += 8, t += 1; e >= 6; )
+  return i.writeByte = function(r) {
+    for (o = o << 8 | r & 255, e += 8, t += 1; e >= 6; )
       a(o >>> e - 6), e -= 6;
-  }, r.flush = function() {
+  }, i.flush = function() {
     if (e > 0 && (a(o << 6 - e), o = 0, e = 0), t % 3 != 0) {
-      const i = 3 - t % 3;
-      for (let h = 0; h < i; h += 1)
+      const r = 3 - t % 3;
+      for (let h = 0; h < r; h += 1)
         n += "=";
     }
-  }, r.toString = function() {
+  }, i.toString = function() {
     return n;
-  }, r;
+  }, i;
 }, rt = function(o) {
   const e = o;
-  let t = 0, n = 0, r = 0;
+  let t = 0, n = 0, i = 0;
   const a = {};
   a.read = function() {
-    for (; r < 8; ) {
+    for (; i < 8; ) {
       if (t >= e.length) {
-        if (r == 0)
+        if (i == 0)
           return -1;
-        throw "unexpected end of file./" + r;
+        throw "unexpected end of file./" + i;
       }
       const h = e.charAt(t);
       if (t += 1, h == "=")
-        return r = 0, -1;
+        return i = 0, -1;
       if (h.match(/^\s$/))
         continue;
-      n = n << 6 | s(h.charCodeAt(0)), r += 6;
+      n = n << 6 | s(h.charCodeAt(0)), i += 6;
     }
-    const i = n >>> r - 8 & 255;
-    return r -= 8, i;
+    const r = n >>> i - 8 & 255;
+    return i -= 8, r;
   };
-  const s = function(i) {
-    if (65 <= i && i <= 90)
-      return i - 65;
-    if (97 <= i && i <= 122)
-      return i - 97 + 26;
-    if (48 <= i && i <= 57)
-      return i - 48 + 52;
-    if (i == 43)
+  const s = function(r) {
+    if (65 <= r && r <= 90)
+      return r - 65;
+    if (97 <= r && r <= 122)
+      return r - 97 + 26;
+    if (48 <= r && r <= 57)
+      return r - 48 + 52;
+    if (r == 43)
       return 62;
-    if (i == 47)
+    if (r == 47)
       return 63;
-    throw "c:" + i;
+    throw "c:" + r;
   };
   return a;
-}, it = function(o, e) {
-  const t = o, n = e, r = new Array(o * e), a = {};
-  a.setPixel = function(w, b, f) {
-    r[b * t + w] = f;
-  }, a.write = function(w) {
-    w.writeString("GIF87a"), w.writeShort(t), w.writeShort(n), w.writeByte(128), w.writeByte(0), w.writeByte(0), w.writeByte(0), w.writeByte(0), w.writeByte(0), w.writeByte(255), w.writeByte(255), w.writeByte(255), w.writeString(","), w.writeShort(0), w.writeShort(0), w.writeShort(t), w.writeShort(n), w.writeByte(0);
-    const b = 2, f = i(b);
-    w.writeByte(b);
+}, st = function(o, e) {
+  const t = o, n = e, i = new Array(o * e), a = {};
+  a.setPixel = function(v, w, f) {
+    i[w * t + v] = f;
+  }, a.write = function(v) {
+    v.writeString("GIF87a"), v.writeShort(t), v.writeShort(n), v.writeByte(128), v.writeByte(0), v.writeByte(0), v.writeByte(0), v.writeByte(0), v.writeByte(0), v.writeByte(255), v.writeByte(255), v.writeByte(255), v.writeString(","), v.writeShort(0), v.writeShort(0), v.writeShort(t), v.writeShort(n), v.writeByte(0);
+    const w = 2, f = r(w);
+    v.writeByte(w);
     let y = 0;
     for (; f.length - y > 255; )
-      w.writeByte(255), w.writeBytes(f, y, 255), y += 255;
-    w.writeByte(f.length - y), w.writeBytes(f, y, f.length - y), w.writeByte(0), w.writeString(";");
+      v.writeByte(255), v.writeBytes(f, y, 255), y += 255;
+    v.writeByte(f.length - y), v.writeBytes(f, y, f.length - y), v.writeByte(0), v.writeString(";");
   };
-  const s = function(w) {
-    const b = w;
+  const s = function(v) {
+    const w = v;
     let f = 0, y = 0;
     const x = {};
-    return x.write = function(N, $) {
-      if (N >>> $)
+    return x.write = function(N, L) {
+      if (N >>> L)
         throw "length over";
-      for (; f + $ >= 8; )
-        b.writeByte(255 & (N << f | y)), $ -= 8 - f, N >>>= 8 - f, y = 0, f = 0;
-      y = N << f | y, f = f + $;
+      for (; f + L >= 8; )
+        w.writeByte(255 & (N << f | y)), L -= 8 - f, N >>>= 8 - f, y = 0, f = 0;
+      y = N << f | y, f = f + L;
     }, x.flush = function() {
-      f > 0 && b.writeByte(y);
+      f > 0 && w.writeByte(y);
     }, x;
-  }, i = function(w) {
-    const b = 1 << w, f = (1 << w) + 1;
-    let y = w + 1;
+  }, r = function(v) {
+    const w = 1 << v, f = (1 << v) + 1;
+    let y = v + 1;
     const x = h();
-    for (let B = 0; B < b; B += 1)
+    for (let B = 0; B < w; B += 1)
       x.add(String.fromCharCode(B));
-    x.add(String.fromCharCode(b)), x.add(String.fromCharCode(f));
-    const N = be(), $ = s(N);
-    $.write(b, y);
-    let P = 0, M = String.fromCharCode(r[P]);
-    for (P += 1; P < r.length; ) {
-      const B = String.fromCharCode(r[P]);
-      P += 1, x.contains(M + B) ? M = M + B : ($.write(x.indexOf(M), y), x.size() < 4095 && (x.size() == 1 << y && (y += 1), x.add(M + B)), M = B);
+    x.add(String.fromCharCode(w)), x.add(String.fromCharCode(f));
+    const N = we(), L = s(N);
+    L.write(w, y);
+    let P = 0, A = String.fromCharCode(i[P]);
+    for (P += 1; P < i.length; ) {
+      const B = String.fromCharCode(i[P]);
+      P += 1, x.contains(A + B) ? A = A + B : (L.write(x.indexOf(A), y), x.size() < 4095 && (x.size() == 1 << y && (y += 1), x.add(A + B)), A = B);
     }
-    return $.write(x.indexOf(M), y), $.write(f, y), $.flush(), N.toByteArray();
+    return L.write(x.indexOf(A), y), L.write(f, y), L.flush(), N.toByteArray();
   }, h = function() {
-    const w = {};
-    let b = 0;
+    const v = {};
+    let w = 0;
     const f = {};
     return f.add = function(y) {
       if (f.contains(y))
         throw "dup key:" + y;
-      w[y] = b, b += 1;
+      v[y] = w, w += 1;
     }, f.size = function() {
-      return b;
+      return w;
     }, f.indexOf = function(y) {
-      return w[y];
+      return v[y];
     }, f.contains = function(y) {
-      return typeof w[y] < "u";
+      return typeof v[y] < "u";
     }, f;
   };
   return a;
-}, st = function(o, e, t) {
-  const n = it(o, e);
-  for (let i = 0; i < e; i += 1)
+}, ot = function(o, e, t) {
+  const n = st(o, e);
+  for (let r = 0; r < e; r += 1)
     for (let h = 0; h < o; h += 1)
-      n.setPixel(h, i, t(h, i));
-  const r = be();
-  n.write(r);
-  const a = nt(), s = r.toByteArray();
-  for (let i = 0; i < s.length; i += 1)
-    a.writeByte(s[i]);
+      n.setPixel(h, r, t(h, r));
+  const i = we();
+  n.write(i);
+  const a = it(), s = i.toByteArray();
+  for (let r = 0; r < s.length; r += 1)
+    a.writeByte(s[r]);
   return a.flush(), "data:image/gif;base64," + a;
 };
-q.stringToBytes;
-const I = 4, ot = 0.42, ee = "#14101f", at = "#ffffff";
+W.stringToBytes;
+const I = 4, at = 0.42, ee = "#14101f", ct = "#ffffff";
 function lt(o, e, t) {
-  const n = (a) => a < 7, r = (a) => a >= t - 7;
-  return n(o) && n(e) || n(o) && r(e) || r(o) && n(e);
+  const n = (a) => a < 7, i = (a) => a >= t - 7;
+  return n(o) && n(e) || n(o) && i(e) || i(o) && n(e);
 }
 function X(o, e) {
   return `<rect x="${o + 0.5}" y="${e + 0.5}" width="6" height="6" rx="2.1" fill="none" stroke="${ee}" stroke-width="1"/><rect x="${o + 2}" y="${e + 2}" width="3" height="3" rx="1.1" fill="${ee}"/>`;
 }
-function ct(o, e = "QR code") {
-  const t = q(0, "M");
+function ut(o, e = "QR code") {
+  const t = W(0, "M");
   t.addData(o), t.make();
-  const n = t.getModuleCount(), r = n + I * 2, a = [];
-  a.push(`<rect x="0" y="0" width="${r}" height="${r}" rx="3" fill="${at}"/>`), a.push(X(I, I)), a.push(X(I + n - 7, I)), a.push(X(I, I + n - 7));
+  const n = t.getModuleCount(), i = n + I * 2, a = [];
+  a.push(`<rect x="0" y="0" width="${i}" height="${i}" rx="3" fill="${ct}"/>`), a.push(X(I, I)), a.push(X(I + n - 7, I)), a.push(X(I, I + n - 7));
   for (let s = 0; s < n; s++)
-    for (let i = 0; i < n; i++) {
-      if (lt(s, i, n) || !t.isDark(s, i)) continue;
-      const h = I + i + 0.5, w = I + s + 0.5;
-      a.push(`<circle cx="${h}" cy="${w}" r="${ot}" fill="${ee}"/>`);
+    for (let r = 0; r < n; r++) {
+      if (lt(s, r, n) || !t.isDark(s, r)) continue;
+      const h = I + r + 0.5, v = I + s + 0.5;
+      a.push(`<circle cx="${h}" cy="${v}" r="${at}" fill="${ee}"/>`);
     }
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${r} ${r}" role="img" aria-label="${e}" shape-rendering="geometricPrecision">${a.join("")}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${i} ${i}" role="img" aria-label="${e}" shape-rendering="geometricPrecision">${a.join("")}</svg>`;
 }
-let V = null;
-function ut(o, e) {
-  V = { owner: o, info: e };
+let Y = null;
+function ht(o, e) {
+  Y = { owner: o, info: e };
 }
-function z(o) {
-  V?.owner === o && (V = null);
+function H(o) {
+  Y?.owner === o && (Y = null);
 }
 function pe() {
-  return V ? { ...V.info } : null;
+  return Y ? { ...Y.info } : null;
 }
-const W = {
+const ve = {
+  /** A file larger than this is not read. An export is a few kilobytes. */
+  bytes: 2e6
+}, dt = /nsec1[023456789acdefghjklmnpqrstuvwxyz]{58}(?![023456789acdefghjklmnpqrstuvwxyz])/gu;
+function pt(o) {
+  if (typeof o != "string" || o.length === 0) return { kind: "unknown", why: "The file is empty." };
+  if (o.length > ve.bytes) return { kind: "unknown", why: "The file is too large to be a BitLogin export." };
+  const e = o.trim();
+  if (e.startsWith("{"))
+    try {
+      return { kind: "recovery-export", file: ye(JSON.parse(e)) };
+    } catch (n) {
+      return { kind: "unknown", why: `It looks like a recovery export, but it can't be read: ${n instanceof Error ? n.message : String(n)}` };
+    }
+  const t = [...new Set(e.match(dt) ?? [])];
+  return t.length === 1 ? { kind: "key", key: t[0] } : t.length > 1 ? { kind: "unknown", why: 'The file holds more than one private key. Paste the one you mean under "Import a Nostr key".' } : { kind: "unknown", why: `This is not a file BitLogin's "Export identity" made: it holds neither a recovery export nor a private key.` };
+}
+const q = {
   extension: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M6.5 6.7h.01"/><path d="M9.3 6.7h.01"/></svg>',
   remote: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3"/><path d="M21 14v0.01"/><path d="M14 21h0.01"/><path d="M17.5 17.5L21 21"/></svg>',
   importKey: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="12" r="3.5"/><path d="M11.5 12H21"/><path d="M18 12v3.2"/><path d="M14.8 12v2.2"/></svg>',
   recover: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 5v5h5"/><path d="M4.2 14a8 8 0 1 0 1.9-8.3L2.5 10"/></svg>',
   passkey: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5c-3 0-5.5 2.4-5.5 5.4v2.3c0 3.4-.7 5.3-1.6 6.8"/><path d="M12 7.2a2.9 2.9 0 0 0-2.9 2.9v2.1c0 2.6-.5 4.6-1.3 6.3"/><path d="M12 10.5v2.2c0 2.7-.4 4.9-1.1 6.8"/><path d="M15 9.6c.3.7.4 1.5.4 2.4 0 2.9-.3 5.3-.9 7.3"/><path d="M17.5 8.9c.6 3.4.4 7.1-.4 10.2"/></svg>'
-}, ht = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>', dt = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>';
+}, ft = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>', yt = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>';
 class te extends HTMLElement {
   root;
   worker;
@@ -1863,6 +1904,8 @@ class te extends HTMLElement {
   // Import flow (§SF10). importKey holds the pasted nsec/hex only until registration completes.
   importKey = "";
   importPreviewNpub = "";
+  /** The user ticked that they read how an imported key is kept (on relays, encrypted) before going on. */
+  importAck = !1;
   recoverPhraseInput = "";
   recoveredPreview = null;
   newCredentialAfterRecovery = "";
@@ -1871,6 +1914,17 @@ class te extends HTMLElement {
   offlineExportFile = null;
   offlineExportFileNotice;
   session = null;
+  /**
+   * The signed-in account's own signed profile (kind 0), as the worker fetched and checked it: so the signed-in
+   * view can show a name and a picture, and one account is not mistaken for another. Kept with the key it is
+   * for, and shown only for that key. Null until relays answer, and where there is none.
+   */
+  profile = null;
+  profileAsked = "";
+  /** The accounts kept signed in on this device (docs/account-switching.md), as the worker lists them. */
+  accounts = [];
+  /** An account that was chosen while the lock was locked: switched to once it is open. */
+  pendingSwitch = "";
   // ---- Alternative-method sessions (docs/login-methods.md §LM4, §LM5, §LM7) ----
   // `pending*` state holds a candidate between "the signer answered" and the user
   // confirming that npub is theirs; only `altSigner` routes the public API. Thin by
@@ -1955,13 +2009,13 @@ class te extends HTMLElement {
   constructor() {
     super(), this.root = this.attachShadow({ mode: "open" });
     const e = new CSSStyleSheet();
-    e.replaceSync(De), this.root.adoptedStyleSheets = [e], this.worker = new Qe(), this.worker.onNotification = (t) => {
+    e.replaceSync(_e), this.root.adoptedStyleSheets = [e], this.worker = new Le(), this.worker.onNotification = (t) => {
       t.notify === "nip46-auth-url" && (this.bunkerAuthUrl = t.url, this.render());
     };
   }
   connectedCallback() {
-    const e = Ie(this);
-    if (this.vaultRelayUrls = e.vaultRelayUrls ?? [], this.discoveryRelayUrls = e.discoveryRelayUrls ?? [], this.worker.configure({ vaultRelayUrls: this.vaultRelayUrls, discoveryRelayUrls: this.discoveryRelayUrls }).then(() => this.tryRestoreSession()), this.root.addEventListener("click", (t) => this.onClick(t)), this.root.addEventListener("submit", (t) => this.onSubmit(t)), this.root.addEventListener("change", (t) => void this.onFileChange(t)), this.root.addEventListener("input", (t) => this.keepGeneratedPassword(t)), this.lockWatch = setInterval(() => void this.noticeLocked(), 3e4), this.render(), this.installedProvider = Ae(this, () => this.vaultRelayUrls), !window.nostr)
+    const e = De(this);
+    if (this.vaultRelayUrls = e.vaultRelayUrls ?? [], this.discoveryRelayUrls = e.discoveryRelayUrls ?? [], this.worker.configure({ vaultRelayUrls: this.vaultRelayUrls, discoveryRelayUrls: this.discoveryRelayUrls }).then(() => this.tryRestoreSession()), this.root.addEventListener("click", (t) => this.onClick(t)), this.root.addEventListener("submit", (t) => this.onSubmit(t)), this.root.addEventListener("change", (t) => void this.onFileChange(t)), this.root.addEventListener("input", (t) => this.keepGeneratedPassword(t)), this.lockWatch = setInterval(() => void this.noticeLocked(), 3e4), this.render(), this.installedProvider = Te(this, () => this.vaultRelayUrls), !window.nostr)
       try {
         window.nostr = this.installedProvider;
       } catch {
@@ -1970,7 +2024,7 @@ class te extends HTMLElement {
   disconnectedCallback() {
     this.lockWatch !== null && clearInterval(this.lockWatch), this.lockWatch = null, this.successDismissTimer !== null && clearTimeout(this.successDismissTimer);
     const e = !!(this.session || this.altSigner);
-    z(this), this.releaseSigner(), e && console.error(
+    H(this), this.releaseSigner(), e && console.error(
       `[BitLogin] <bitlogin-auth> was removed from the DOM while a session was active. Its crypto worker is now torn down, so later signEvent/getPublicKey calls will reject. If this was an incidental re-render, mount the element in a stable container your re-renders don't replace; see the BitLogin README, "Integration gotcha".`
     ), this.worker.terminate(
       "BitLogin's <bitlogin-auth> element was removed from the DOM, tearing down its signer. Re-mount the widget or reload the page to sign in again."
@@ -2013,10 +2067,67 @@ class te extends HTMLElement {
   }
   async logout() {
     if (this.altSigner) {
-      this.altSigner.method === "nip46" && this.worker.nip46Disconnect(), this.altSigner = null, this.session = null, this.passkeySession = !1, this.phraseRebuildsIdentity = !1, z(this), this.releaseSigner(), this.dispatchEvent(new CustomEvent("bitlogin-logout")), this.goto("welcome");
+      this.altSigner.method === "nip46" && this.worker.nip46Disconnect(), this.altSigner = null, this.session = null, this.passkeySession = !1, this.phraseRebuildsIdentity = !1, H(this), this.releaseSigner(), this.dispatchEvent(new CustomEvent("bitlogin-logout")), this.goto("welcome");
       return;
     }
-    await this.worker.logout(), this.session = null, this.passkeySession = !1, this.phraseRebuildsIdentity = !1, z(this), this.releaseSigner(), this.dispatchEvent(new CustomEvent("bitlogin-logout")), this.goto("welcome");
+    await this.worker.logout(), this.session = null, this.passkeySession = !1, this.phraseRebuildsIdentity = !1, H(this), this.releaseSigner(), this.dispatchEvent(new CustomEvent("bitlogin-logout")), this.goto("welcome"), this.refreshAccounts();
+  }
+  /** The accounts kept on this device, read again from the worker; the view is drawn again where it shows them. */
+  async refreshAccounts() {
+    try {
+      this.accounts = (await this.worker.accountsList()).accounts;
+    } catch {
+      this.accounts = [];
+    }
+    (this.screen === "welcome" || this.screen === "accounts" || this.screen === "dashboard") && this.render();
+  }
+  /** The account in hand is no longer the one signed in here: the host is told, and nothing of it is left. */
+  endSession() {
+    const e = !!this.session;
+    this.session = null, this.passkeySession = !1, this.phraseRebuildsIdentity = !1, this.loginName = "", this.sessionWarnings = [], this.lastSignedEventJson = "", H(this), this.releaseSigner(), e && this.dispatchEvent(new CustomEvent("bitlogin-logout"));
+  }
+  /**
+   * Switch to another account kept on this device (docs/account-switching.md): no password, no relay. A host
+   * hears bitlogin-logout for the one and bitlogin-login for the other. With the lock locked, it is opened first.
+   */
+  async switchAccount(e) {
+    if (!e || this.altSigner || e === this.session?.publicKey) return this.goto(this.session ? "dashboard" : "welcome");
+    this.errorMessage = void 0;
+    let t;
+    try {
+      t = await this.worker.accountsSwitch(e);
+    } catch {
+      return this.errorMessage = "That account could not be opened here.", this.render();
+    }
+    if (t.locked)
+      return this.pendingSwitch = e, this.lock = await this.worker.lockStatus().catch(() => null), this.showLocked();
+    if (this.pendingSwitch = "", !t.restored || !t.everydayPublicKey)
+      return this.endSession(), this.goto("welcome"), this.errorMessage = "That account is no longer kept on this device. Sign in to it the ordinary way.", this.refreshAccounts();
+    this.endSession(), this.takeRestored(t), this.refreshAccounts();
+  }
+  /** Make room to sign in as another account. Everyone kept here stays kept. */
+  async addAccount() {
+    await this.worker.accountsAdd(), this.endSession(), this.goto("welcome"), this.refreshAccounts();
+  }
+  /** A picture, or the first letter of a name where there is none or it can't be fetched. */
+  renderAvatar(e, t) {
+    const n = (e || "?").trim().slice(0, 1).toUpperCase();
+    return t ? `<img data-avatar="${b(n)}" src="${b(t)}" alt="" referrerpolicy="no-referrer" />` : b(n);
+  }
+  /** The accounts kept here, as rows to press. `others` leaves out the one signed in. */
+  renderAccountRows(e) {
+    return this.accounts.filter((t) => !(e && t.active)).map((t) => {
+      const n = `${t.npub.slice(0, 12)}…${t.npub.slice(-6)}`, i = `
+          <span class="who-pic" aria-hidden="true">${this.renderAvatar(t.name ?? "", t.picture)}</span>
+          <span class="who-text">
+            <span class="who-name">${b(t.name || "An account with no name")}</span>
+            <span class="pubkey">${b(n)}</span>
+          </span>`;
+      return t.active ? `<div class="account-row current" data-account="${b(t.pubkey)}">${i}<span class="small">Signed in</span></div>` : `<div class="account-line">
+               <button class="account-row" type="button" data-action="account-switch" data-pubkey="${b(t.pubkey)}" data-account="${b(t.pubkey)}">${i}</button>
+               ${e ? "" : `<button class="link" type="button" data-action="account-remove" data-pubkey="${b(t.pubkey)}">Remove from this device</button>`}
+             </div>`;
+    }).join("");
   }
   /**
    * Connection Vault request API (connection-vault.md §12, vault-ux.md §2-§4).
@@ -2037,8 +2148,8 @@ class te extends HTMLElement {
     if (this.vaultRequest) throw new Error("A wallet connection request is already in progress.");
     if (this.altSigner) return null;
     const t = window.location.origin, n = e.appName?.trim() || window.location.hostname || "This app";
-    return new Promise((r) => {
-      this.vaultRequest = { appName: n, reason: e.reason, origin: t, stage: "auth", resolve: r }, this.dispatchEvent(new CustomEvent("bitlogin-request-pending")), (async () => {
+    return new Promise((i) => {
+      this.vaultRequest = { appName: n, reason: e.reason, origin: t, stage: "auth", resolve: i }, this.dispatchEvent(new CustomEvent("bitlogin-request-pending")), (async () => {
         try {
           if (!(await this.worker.getSessionStatus()).unlocked) {
             this.goto("login");
@@ -2077,12 +2188,12 @@ class te extends HTMLElement {
     if (!(await this.worker.getSessionStatus().catch(() => ({ unlocked: !1 }))).unlocked || !(await this.worker.vaultStatus()).enabled) return "unavailable";
     if ((await this.worker.vaultOfferCheck({ uri: e })).duplicate) return "already-saved";
     const s = t.appName?.trim() || window.location.hostname || "This app";
-    return new Promise((i) => {
+    return new Promise((r) => {
       this.vaultOffer = {
         uri: e,
         appName: s,
         label: t.label?.trim() || `${s} wallet`,
-        resolve: i
+        resolve: r
       }, this.dispatchEvent(new CustomEvent("bitlogin-offer-pending")), this.goto("vault-offer");
     });
   }
@@ -2141,7 +2252,7 @@ class te extends HTMLElement {
     if (e) {
       this.setBusy(!0);
       try {
-        const t = await Ke(e.appName);
+        const t = await Fe(e.appName);
         if (t === null) {
           this.setBusy(!1);
           return;
@@ -2170,14 +2281,14 @@ class te extends HTMLElement {
       this.setBusy(!1), this.finishVaultRequest(e);
       return;
     }
-    const r = t.trim() || `${n.appName} wallet`;
-    await this.worker.vaultSaveNwc({ uri: e, label: r }), this.setBusy(!1), this.finishVaultRequest(e), this.flashSuccess(this.screen, "Wallet connected");
+    const i = t.trim() || `${n.appName} wallet`;
+    await this.worker.vaultSaveNwc({ uri: e, label: i }), this.setBusy(!1), this.finishVaultRequest(e), this.flashSuccess(this.screen, "Wallet connected");
   }
   async loadVaultManage() {
     this.vaultConnections = null, this.vaultIntegrityWarnings = [], this.goto("vault-manage");
     try {
       const e = await this.worker.vaultList();
-      this.vaultConnections = e.connections, this.vaultIntegrityWarnings = Fe(e);
+      this.vaultConnections = e.connections, this.vaultIntegrityWarnings = qe(e);
     } catch (e) {
       this.errorMessage = e instanceof Error ? e.message : String(e), this.vaultConnections = [];
     }
@@ -2236,12 +2347,13 @@ class te extends HTMLElement {
    * detail shape: which method granted the session and what it can do (§LM3). The
    * pre-existing `publicKey` field is unchanged for hosts written before `method`. */
   dispatchLogin() {
+    this.refreshAccounts();
     const e = this.altSigner?.capabilities ?? {
       nip44: !0,
       nip04: !0,
       getRelays: !0
     };
-    this.session && ut(this, {
+    this.session && ht(this, {
       method: this.session.method,
       publicKey: this.session.publicKey,
       npub: this.session.npub
@@ -2321,14 +2433,14 @@ class te extends HTMLElement {
   renderSavablePassword(e) {
     return `
       <label for="generatedPassword">New password</label>
-      <input type="password" name="password" id="generatedPassword" autocomplete="new-password" spellcheck="false" data-generated value="${m(e)}" />
+      <input type="password" name="password" id="generatedPassword" autocomplete="new-password" spellcheck="false" data-generated value="${b(e)}" />
       <p class="small">Filled in for you, so that your browser or password manager can offer to save this login when you continue.</p>
     `;
   }
   renderSavableLogin(e, t) {
     return `
       <label for="savedLoginName">Login name</label>
-      <input type="text" name="username" id="savedLoginName" autocomplete="username" value="${m(e)}" readonly />
+      <input type="text" name="username" id="savedLoginName" autocomplete="username" value="${b(e)}" readonly />
       ${this.renderSavablePassword(t)}
     `;
   }
@@ -2354,8 +2466,8 @@ class te extends HTMLElement {
     try {
       const n = window.PasswordCredential;
       if (!n || !navigator.credentials?.store) return;
-      const r = new n({ id: e, password: t, name: e });
-      await navigator.credentials.store(r);
+      const i = new n({ id: e, password: t, name: e });
+      await navigator.credentials.store(i);
     } catch {
     }
   }
@@ -2386,10 +2498,13 @@ class te extends HTMLElement {
       case "vault-delete":
         return this.vaultDeleteConnection(t.dataset.id);
       case "goto-create":
-        this.loginName = "", this.importKey = "", this.importPreviewNpub = "", this.goto("create-name");
+        this.loginName = "", this.importKey = "", this.importPreviewNpub = "", this.importAck = !1, this.goto("create-name");
         return;
       case "goto-import":
-        this.importKey = "", this.importPreviewNpub = "", this.goto("import-key");
+        this.importKey = "", this.importPreviewNpub = "", this.importAck = !1, this.goto("import-key");
+        return;
+      case "goto-restore-file":
+        this.offlineExportFile = null, this.offlineExportFileNotice = void 0, this.importKey = "", this.importPreviewNpub = "", this.importAck = !1, this.goto("restore-file");
         return;
       case "preview-import":
         return this.handlePreviewImport();
@@ -2417,9 +2532,9 @@ class te extends HTMLElement {
       case "passkey-register":
         return this.handlePasskeyRegisterCeremony();
       case "passkey-new":
-        return this.importKey = "", this.importPreviewNpub = "", void this.runPasskeyRegistration();
+        return this.importKey = "", this.importPreviewNpub = "", this.importAck = !1, void this.runPasskeyRegistration();
       case "passkey-import":
-        this.importKey = "", this.importPreviewNpub = "", this.goto("import-key");
+        this.importKey = "", this.importPreviewNpub = "", this.importAck = !1, this.goto("import-key");
         return;
       case "extension-signin":
         return this.handleExtensionSignIn();
@@ -2433,9 +2548,9 @@ class te extends HTMLElement {
         this.handleBunkerConfirm();
         return;
       case "copy-bunker-uri": {
-        const r = t, a = r.textContent ?? "Copy", s = (i) => {
-          r.textContent = i, setTimeout(() => {
-            r.isConnected && (r.textContent = a);
+        const i = t, a = i.textContent ?? "Copy", s = (r) => {
+          i.textContent = r, setTimeout(() => {
+            i.isConnected && (i.textContent = a);
           }, 2e3);
         };
         if (!this.bunkerConnectUri || !navigator.clipboard?.writeText) {
@@ -2458,27 +2573,27 @@ class te extends HTMLElement {
         this.goto("confirm-phrase");
         return;
       case "goto-change-password":
-        this.changePasswordNewCredential = Y().secret, this.goto("change-password");
+        this.changePasswordNewCredential = G().secret, this.goto("change-password");
         return;
       case "goto-export":
         this.goto("export");
         return;
       case "regenerate-credential":
-        this.generatedCredential = Y().secret, this.savedCheckbox = !1, this.render();
+        this.generatedCredential = G().secret, this.savedCheckbox = !1, this.render();
         return;
       case "copy-credential": {
-        const r = this.root.querySelector("#credential-box"), a = t, s = a.textContent ?? "Copy", i = (h) => {
+        const i = this.root.querySelector("#credential-box"), a = t, s = a.textContent ?? "Copy", r = (h) => {
           a.textContent = h, setTimeout(() => {
             a.isConnected && (a.textContent = s);
           }, 2e3);
         };
-        if (!r || !navigator.clipboard?.writeText) {
-          i("Copy not available — select the text manually");
+        if (!i || !navigator.clipboard?.writeText) {
+          r("Copy not available — select the text manually");
           return;
         }
-        navigator.clipboard.writeText(r.textContent ?? "").then(
-          () => i("Copied"),
-          () => i("Copy failed — select the text manually")
+        navigator.clipboard.writeText(i.textContent ?? "").then(
+          () => r("Copied"),
+          () => r("Copy failed — select the text manually")
         );
         return;
       }
@@ -2498,6 +2613,16 @@ class te extends HTMLElement {
         return this.handleRevealNsec();
       case "logout":
         return this.logout();
+      case "goto-accounts":
+        this.refreshAccounts(), this.goto("accounts");
+        return;
+      case "account-switch":
+        return this.switchAccount(t.dataset.pubkey ?? "");
+      case "account-add":
+        return this.addAccount();
+      case "account-remove":
+        return await this.worker.accountsRemove(t.dataset.pubkey ?? "").catch(() => {
+        }), this.refreshAccounts();
       case "lock-now":
         return this.lockNowPressed();
       case "goto-lock-settings":
@@ -2514,8 +2639,8 @@ class te extends HTMLElement {
         this.lock = await this.worker.lockDisable(), this.lockNote = "The lock is off.", this.render();
         return;
       case "rollback-retry": {
-        const r = this.pendingRollback?.kind;
-        this.pendingRollback = null, this.goto(r === "change-password" ? "change-password" : "login");
+        const i = this.pendingRollback?.kind;
+        this.pendingRollback = null, this.goto(i === "change-password" ? "change-password" : "login");
         return;
       }
       case "rollback-continue":
@@ -2558,8 +2683,8 @@ class te extends HTMLElement {
         default:
           return;
       }
-    } catch (r) {
-      this.fail(r);
+    } catch (i) {
+      this.fail(i);
     }
   }
   /**
@@ -2569,6 +2694,7 @@ class te extends HTMLElement {
    */
   async onFileChange(e) {
     const t = e.target;
+    if (t instanceof HTMLInputElement && t.name === "restoreFile" && t.type === "file") return this.onRestoreFile(t);
     if (!(t instanceof HTMLInputElement) || t.name !== "offlineExportFile" || t.type !== "file") return;
     const n = t.files?.[0];
     if (!n) {
@@ -2576,12 +2702,42 @@ class te extends HTMLElement {
       return;
     }
     try {
-      const r = await n.text();
-      this.offlineExportFile = Se(JSON.parse(r)), this.offlineExportFileNotice = `Loaded recovery export from ${new Date(this.offlineExportFile.created_at * 1e3).toLocaleString()}.`;
-    } catch (r) {
-      this.offlineExportFile = null, this.offlineExportFileNotice = r instanceof Ce || r instanceof SyntaxError ? `Couldn't read that file: ${r.message}` : `Couldn't read that file: ${String(r)}`;
+      const i = await n.text();
+      this.offlineExportFile = ye(JSON.parse(i)), this.offlineExportFileNotice = `Loaded recovery export from ${new Date(this.offlineExportFile.created_at * 1e3).toLocaleString()}.`;
+    } catch (i) {
+      this.offlineExportFile = null, this.offlineExportFileNotice = i instanceof $e || i instanceof SyntaxError ? `Couldn't read that file: ${i.message}` : `Couldn't read that file: ${String(i)}`;
     }
     this.render();
+  }
+  /**
+   * "Restore from an export file": either file that Export identity makes is read, and the user is taken to the
+   * step that uses it. A recovery export goes to the recovery phrase, which it is useless without. A key file
+   * goes to "Import a Nostr key" with the key already checked, where the identity it holds is shown before
+   * anything is made. The file itself is never kept, and a key read from one is held as a pasted one is.
+   */
+  async onRestoreFile(e) {
+    const t = e.files?.[0];
+    if (!t) return;
+    if (this.errorMessage = void 0, t.size > ve.bytes)
+      return this.errorMessage = "That file is too large to be a BitLogin export.", this.render();
+    let n;
+    try {
+      n = pt(await t.text());
+    } catch {
+      n = { kind: "unknown", why: "The file could not be read." };
+    }
+    if (n.kind === "recovery-export")
+      return this.offlineExportFile = n.file, this.offlineExportFileNotice = `Loaded recovery export from ${new Date(n.file.created_at * 1e3).toLocaleString()}. Enter the recovery phrase for that account to restore it.`, this.rebuildPreview = null, this.recoverPhraseInput = "", this.goto("recover-phrase");
+    if (n.kind === "key") {
+      this.setBusy(!0);
+      try {
+        const i = await this.worker.previewImportKey({ nsecOrHex: n.key });
+        return this.importKey = n.key, this.importPreviewNpub = i.npub, this.importAck = !1, this.busy = !1, this.goto("import-key");
+      } catch (i) {
+        return this.importKey = "", this.importPreviewNpub = "", this.importAck = !1, this.fail(i);
+      }
+    }
+    this.errorMessage = n.why, this.render();
   }
   async handlePreviewImport() {
     const e = this.field("importKey").trim();
@@ -2592,14 +2748,18 @@ class te extends HTMLElement {
     this.setBusy(!0);
     try {
       const t = await this.worker.previewImportKey({ nsecOrHex: e });
-      this.importKey = e, this.importPreviewNpub = t.npub, this.busy = !1, this.render();
+      this.importKey = e, this.importPreviewNpub = t.npub, this.importAck = !1, this.busy = !1, this.render();
     } catch (t) {
-      this.importKey = "", this.importPreviewNpub = "", this.fail(t);
+      this.importKey = "", this.importPreviewNpub = "", this.importAck = !1, this.fail(t);
     }
   }
   handleImportContinue() {
     if (!this.importKey || !this.importPreviewNpub) {
       this.errorMessage = "Check your key before continuing.", this.render();
+      return;
+    }
+    if (this.importAck = this.root.querySelector("#import-ack-check")?.checked ?? !1, !this.importAck) {
+      this.errorMessage = "Tick the box to say you understand where this key will be kept, or go back and choose another way in.", this.render();
       return;
     }
     if (this.pendingPasskey) {
@@ -2613,16 +2773,16 @@ class te extends HTMLElement {
    *  after rendering the appropriate message (cancelled / PRF-unsupported). */
   async runPasskeyCeremony(e) {
     try {
-      const t = e === "get" ? await navigator.credentials.get(se()) : await navigator.credentials.create($e("BitLogin"));
+      const t = e === "get" ? await navigator.credentials.get(se()) : await navigator.credentials.create(Re("BitLogin"));
       if (!t) throw new Error("The passkey ceremony returned nothing.");
       let n = oe(t);
       if (!n && e === "create") {
-        const r = await navigator.credentials.get(
+        const i = await navigator.credentials.get(
           se(void 0, t.rawId)
         );
-        n = r ? oe(r) : null;
+        n = i ? oe(i) : null;
       }
-      return n ? Le(n) : (this.busy = !1, this.errorMessage = te.PRF_UNSUPPORTED_MESSAGE, this.render(), null);
+      return n ? Pe(n) : (this.busy = !1, this.errorMessage = te.PRF_UNSUPPORTED_MESSAGE, this.render(), null);
     } catch (t) {
       return this.busy = !1, this.errorMessage = t instanceof Error && t.name === "NotAllowedError" ? "The passkey prompt was cancelled or timed out." : t instanceof Error ? t.message : String(t), this.render(), null;
     }
@@ -2674,9 +2834,9 @@ class te extends HTMLElement {
           password: e.password,
           importKey: this.importKey || void 0
         });
-        this.importKey = "", this.importPreviewNpub = "", this.pendingPasskey = null, this.loginName = e.loginName, this.registeredByImport = t.imported, this.phraseRebuildsIdentity = t.everydayKeyDerived, this.recoveryPhrase = t.recoveryPhrase;
-        const n = this.recoveryPhrase.split(" "), r = fe(n.length, 3);
-        this.confirmSlots = r.map((a) => ({ index: a, value: "" })), this.session = {
+        this.importKey = "", this.importPreviewNpub = "", this.importAck = !1, this.pendingPasskey = null, this.loginName = e.loginName, this.registeredByImport = t.imported, this.phraseRebuildsIdentity = t.everydayKeyDerived, this.recoveryPhrase = t.recoveryPhrase;
+        const n = this.recoveryPhrase.split(" "), i = fe(n.length, 3);
+        this.confirmSlots = i.map((a) => ({ index: a, value: "" })), this.session = {
           publicKey: t.everydayPublicKey,
           npub: T(t.everydayPublicKey),
           accountId: t.accountId,
@@ -2700,11 +2860,11 @@ class te extends HTMLElement {
   }
   handleCreateNameSubmit() {
     const e = this.field("loginName").trim().toLowerCase();
-    if (!ie(e)) {
+    if (!re(e)) {
       this.errorMessage = "Login name must be 3-32 characters: a-z, 0-9, '.', '_', '-', and not start/end with punctuation.", this.render();
       return;
     }
-    this.loginName = e, this.generatedCredential = Y().secret, this.savedCheckbox = !1, this.goto("create-credential");
+    this.loginName = e, this.generatedCredential = G().secret, this.savedCheckbox = !1, this.goto("create-credential");
   }
   async handleCreateCredentialSubmit() {
     this.savedCheckbox = this.root.querySelector("#saved-check")?.checked ?? !1;
@@ -2719,9 +2879,9 @@ class te extends HTMLElement {
       password: e,
       importKey: this.importKey || void 0
     });
-    this.importKey = "", this.importPreviewNpub = "", this.registeredByImport = t.imported, this.phraseRebuildsIdentity = t.everydayKeyDerived, this.recoveryPhrase = t.recoveryPhrase;
-    const n = this.recoveryPhrase.split(" "), r = fe(n.length, 3);
-    this.confirmSlots = r.map((a) => ({ index: a, value: "" })), this.session = { publicKey: t.everydayPublicKey, npub: T(t.everydayPublicKey), accountId: t.accountId, method: "bitlogin" }, this.busy = !1, this.goto("confirm-phrase"), this.worker.publishProfileAndRelayLists({
+    this.importKey = "", this.importPreviewNpub = "", this.importAck = !1, this.registeredByImport = t.imported, this.phraseRebuildsIdentity = t.everydayKeyDerived, this.recoveryPhrase = t.recoveryPhrase;
+    const n = this.recoveryPhrase.split(" "), i = fe(n.length, 3);
+    this.confirmSlots = i.map((a) => ({ index: a, value: "" })), this.session = { publicKey: t.everydayPublicKey, npub: T(t.everydayPublicKey), accountId: t.accountId, method: "bitlogin" }, this.busy = !1, this.goto("confirm-phrase"), this.worker.publishProfileAndRelayLists({
       name: this.loginName,
       generalRelays: this.vaultRelayUrls,
       dmRelays: this.vaultRelayUrls
@@ -2835,7 +2995,7 @@ class te extends HTMLElement {
       this.goto("welcome");
       return;
     }
-    this.pendingBunker = null, this.altSigner = new ze(this.worker, e.userPubkey), this.session = { publicKey: e.userPubkey, npub: e.npub, method: "nip46" }, this.sessionWarnings = [], this.vaultRequest && this.finishVaultRequest(null), this.noteSignerClaim(this.claimSigner()), this.dispatchLogin(), this.flashSuccess("dashboard", "Signed in");
+    this.pendingBunker = null, this.altSigner = new Je(this.worker, e.userPubkey), this.session = { publicKey: e.userPubkey, npub: e.npub, method: "nip46" }, this.sessionWarnings = [], this.vaultRequest && this.finishVaultRequest(null), this.noteSignerClaim(this.claimSigner()), this.dispatchLogin(), this.flashSuccess("dashboard", "Signed in");
   }
   /**
    * Called once per connectedCallback, right after "configure" -- restores whatever
@@ -2854,7 +3014,7 @@ class te extends HTMLElement {
   /** The session is gone from memory and sealed at rest: say so to the host, and ask to unlock. */
   showLocked() {
     const e = !!this.session;
-    this.session = null, z(this), this.releaseSigner(), e && this.dispatchEvent(new CustomEvent("bitlogin-logout")), this.lockNote = "", this.goto("unlock");
+    this.session = null, H(this), this.releaseSigner(), e && this.dispatchEvent(new CustomEvent("bitlogin-logout")), this.lockNote = "", this.goto("unlock");
   }
   async noticeLocked() {
     if (!(!this.session || this.altSigner || !this.lock?.on))
@@ -2869,10 +3029,16 @@ class te extends HTMLElement {
   }
   /** What an unlock came back with: in, wrong with tries left, or removed. */
   async afterUnlock(e) {
-    if (this.busy = !1, e.ok && e.everydayPublicKey) {
+    this.busy = !1;
+    const t = this.pendingSwitch;
+    if (e.ok && t && t !== e.everydayPublicKey)
+      return this.lock = await this.worker.lockStatus(), e.everydayPublicKey && this.takeRestored(e), this.switchAccount(t);
+    if (this.pendingSwitch = "", e.ok && e.everydayPublicKey) {
       this.lock = await this.worker.lockStatus(), this.takeRestored(e);
       return;
     }
+    if (e.ok)
+      return this.lock = await this.worker.lockStatus(), this.goto("welcome"), this.refreshAccounts();
     if (e.removed) {
       this.lock = null, this.goto("welcome"), this.errorMessage = "Too many wrong tries. The lock and what this browser kept were removed. Sign in again the ordinary way.", this.render();
       return;
@@ -2882,7 +3048,7 @@ class te extends HTMLElement {
   async unlockWithDevice() {
     if (!this.lock?.credentialId) return;
     this.errorMessage = void 0;
-    const e = await Pe(this.lock.credentialId);
+    const e = await Qe(this.lock.credentialId);
     if (!e) {
       this.errorMessage = "The device didn't unlock it. Use your PIN.", this.render();
       return;
@@ -2907,7 +3073,7 @@ class te extends HTMLElement {
   }
   async lockAddDevice() {
     this.errorMessage = void 0;
-    const e = await Re();
+    const e = await Ne();
     if (!e) {
       this.errorMessage = "This device or browser couldn't set that up. The PIN still works.", this.render();
       return;
@@ -2930,7 +3096,7 @@ class te extends HTMLElement {
   async tryRestoreSession() {
     try {
       const e = await this.worker.restoreSession();
-      if (this.lock = await this.worker.lockStatus().catch(() => null), e.locked) return this.goto("unlock");
+      if (this.lock = await this.worker.lockStatus().catch(() => null), this.refreshAccounts(), e.locked) return this.goto("unlock");
       if (!e.restored || !e.everydayPublicKey) return;
       this.session = {
         publicKey: e.everydayPublicKey,
@@ -2949,14 +3115,14 @@ class te extends HTMLElement {
   async attemptLogin(e, t, n = !1) {
     this.setBusy(!0);
     try {
-      const r = await this.worker.login({ loginName: e, password: t, acknowledgeRollback: n });
-      this.loginName = e, this.session = { publicKey: r.everydayPublicKey, npub: T(r.everydayPublicKey), accountId: r.accountId, method: "bitlogin" }, this.sessionWarnings = [r.rollbackWarning, r.relayDisagreementWarning].filter((a) => !!a), this.phraseRebuildsIdentity = r.everydayKeyDerived, this.busy = !1, this.noteSignerClaim(this.claimSigner()), this.dispatchLogin(), this.flashSuccess("dashboard", "Signed in"), this.offerToSaveCredential(e, t);
-    } catch (r) {
-      if (r instanceof Error && r.name === "RollbackDetectedError") {
-        this.pendingRollback = { kind: "login", loginName: e, password: t }, this.rollbackMessage = r.message, this.busy = !1, this.goto("rollback-confirm");
+      const i = await this.worker.login({ loginName: e, password: t, acknowledgeRollback: n });
+      this.loginName = e, this.session = { publicKey: i.everydayPublicKey, npub: T(i.everydayPublicKey), accountId: i.accountId, method: "bitlogin" }, this.sessionWarnings = [i.rollbackWarning, i.relayDisagreementWarning].filter((a) => !!a), this.phraseRebuildsIdentity = i.everydayKeyDerived, this.busy = !1, this.noteSignerClaim(this.claimSigner()), this.dispatchLogin(), this.flashSuccess("dashboard", "Signed in"), this.offerToSaveCredential(e, t);
+    } catch (i) {
+      if (i instanceof Error && i.name === "RollbackDetectedError") {
+        this.pendingRollback = { kind: "login", loginName: e, password: t }, this.rollbackMessage = i.message, this.busy = !1, this.goto("rollback-confirm");
         return;
       }
-      this.fail(r);
+      this.fail(i);
     }
   }
   async handleRollbackContinue() {
@@ -2975,13 +3141,13 @@ class te extends HTMLElement {
       t = await this.worker.recover({ phrase: e, offlineExportFile: this.offlineExportFile ?? void 0 });
     } catch (n) {
       if (!(n instanceof Error) || n.name !== "AccountNotFoundError") throw n;
-      let r;
+      let i;
       try {
-        r = await this.worker.previewPhraseRebuild({ phrase: e });
+        i = await this.worker.previewPhraseRebuild({ phrase: e });
       } catch {
         throw n;
       }
-      this.recoverPhraseInput = e, this.rebuildPreview = { npub: r.npub, profileFound: r.profileFound, relayListFound: r.relayListFound }, this.busy = !1, this.goto("recover-rebuild");
+      this.recoverPhraseInput = e, this.rebuildPreview = { npub: i.npub, profileFound: i.profileFound, relayListFound: i.relayListFound }, this.busy = !1, this.goto("recover-rebuild");
       return;
     }
     this.recoveredByRebuild = !1, this.adoptRecoverResult(t);
@@ -3003,11 +3169,11 @@ class te extends HTMLElement {
       generalRelaysCount: e.generalRelays.length,
       dmRelaysCount: e.dmRelays.length,
       chainWarning: e.chainWarning
-    }, this.session = { publicKey: e.everydayPublicKey, npub: T(e.everydayPublicKey), accountId: e.accountId, method: "bitlogin" }, this.phraseRebuildsIdentity = e.everydayKeyDerived, this.newCredentialAfterRecovery = Y().secret, this.busy = !1, this.goto("recover-new-credentials");
+    }, this.session = { publicKey: e.everydayPublicKey, npub: T(e.everydayPublicKey), accountId: e.accountId, method: "bitlogin" }, this.phraseRebuildsIdentity = e.everydayKeyDerived, this.newCredentialAfterRecovery = G().secret, this.busy = !1, this.goto("recover-new-credentials");
   }
   async handleRecoverNewCredentialsSubmit() {
     const e = this.field("newLoginName").trim().toLowerCase();
-    if (!ie(e)) {
+    if (!re(e)) {
       this.errorMessage = "Login name must be 3-32 characters: a-z, 0-9, '.', '_', '-', and not start/end with punctuation.", this.render();
       return;
     }
@@ -3028,16 +3194,16 @@ class te extends HTMLElement {
         newPassword: t,
         acknowledgeRollback: n
       }), this.busy = !1, this.sessionWarnings = [], this.noteSignerClaim(this.claimSigner()), this.flashSuccess("dashboard", "Password updated"), this.offerToSaveCredential(this.loginName, t);
-    } catch (r) {
-      if (r instanceof Error && r.name === "RollbackDetectedError") {
-        this.pendingRollback = { kind: "change-password", oldPassword: e, newPassword: t }, this.rollbackMessage = r.message, this.busy = !1, this.goto("rollback-confirm");
+    } catch (i) {
+      if (i instanceof Error && i.name === "RollbackDetectedError") {
+        this.pendingRollback = { kind: "change-password", oldPassword: e, newPassword: t }, this.rollbackMessage = i.message, this.busy = !1, this.goto("rollback-confirm");
         return;
       }
-      this.fail(r);
+      this.fail(i);
     }
   }
   downloadTextFile(e, t, n) {
-    const r = new Blob([t], { type: n }), a = URL.createObjectURL(r), s = document.createElement("a");
+    const i = new Blob([t], { type: n }), a = URL.createObjectURL(i), s = document.createElement("a");
     s.href = a, s.download = e, s.click(), URL.revokeObjectURL(a);
   }
   async handleDownloadRecoveryExport() {
@@ -3048,7 +3214,7 @@ class te extends HTMLElement {
   handleDownloadKeyBackup() {
     !this.exportedNsec || !this.session || this.downloadTextFile(
       "bitlogin-private-key.txt",
-      Ve({ npub: this.session.npub, nsec: this.exportedNsec, createdAt: /* @__PURE__ */ new Date() }),
+      Ye({ npub: this.session.npub, nsec: this.exportedNsec, createdAt: /* @__PURE__ */ new Date() }),
       "text/plain"
     );
   }
@@ -3087,7 +3253,7 @@ class te extends HTMLElement {
     return this.phraseRebuildsIdentity ? "Relays can drop an account at any time. Your recovery phrase can rebuild your identity even then. It cannot bring back saved wallet connections; the recovery export file keeps those." : "Relays can drop an account at any time, and this account's key is not contained in its recovery phrase (it was imported, or the account predates phrase-derived keys). Keep your recovery phrase <strong>and</strong> your private key: the phrase only works while a relay, or your recovery export file, still holds the account.";
   }
   renderReplicaHealth() {
-    const e = this.replicaHealthBusy, t = this.replicaHealth, n = this.replicaRepairNote ? `<p class="small">${m(this.replicaRepairNote)}</p>` : "", r = `<div class="notice info">${this.renderBackupAdvice()} <button class="link-inline" type="button" data-action="goto-export">Open Export identity</button></div>`;
+    const e = this.replicaHealthBusy, t = this.replicaHealth, n = this.replicaRepairNote ? `<p class="small">${b(this.replicaRepairNote)}</p>` : "", i = `<div class="notice info">${this.renderBackupAdvice()} <button class="link-inline" type="button" data-action="goto-export">Open Export identity</button></div>`;
     if (!t)
       return `
         ${this.renderScreenHead("Account backup health", "goto-dashboard")}
@@ -3095,33 +3261,33 @@ class te extends HTMLElement {
         ${this.renderError()}
         ${n}
         ${e ? "" : '<button class="secondary" type="button" data-action="health-recheck">Check again</button>'}
-        ${r}
+        ${i}
       `;
-    const a = We(t), s = a.level === "healthy" ? "info" : a.level === "lost" || a.level === "at-risk" ? "error" : "warn", i = (b, f) => `<span class="health-cell ${f === "current" ? "ok" : "bad"}">${b}: ${m(He(f))}</span>`, h = t.relays.map(
-      (b) => `
+    const a = He(t), s = a.level === "healthy" ? "info" : a.level === "lost" || a.level === "at-risk" ? "error" : "warn", r = (w, f) => `<span class="health-cell ${f === "current" ? "ok" : "bad"}">${w}: ${b(je(f))}</span>`, h = t.relays.map(
+      (w) => `
         <div class="health-row">
-          <span class="health-relay">${m(b.relayUrl.replace(/^wss?:\/\//u, ""))}</span>
-          ${i("Sign-in", b.credential)}
-          ${i("Recovery", b.recovery)}
-          ${je(
-        b,
-        this.replicaRepairReplies?.find((f) => f.relayUrl === b.relayUrl)
-      ).map((f) => `<span class="health-note">${m(f)}</span>`).join("")}
+          <span class="health-relay">${b(w.relayUrl.replace(/^wss?:\/\//u, ""))}</span>
+          ${r("Sign-in", w.credential)}
+          ${r("Recovery", w.recovery)}
+          ${Ve(
+        w,
+        this.replicaRepairReplies?.find((f) => f.relayUrl === w.relayUrl)
+      ).map((f) => `<span class="health-note">${b(f)}</span>`).join("")}
         </div>`
-    ).join(""), w = `<button class="${a.repairUseful ? "primary" : "secondary"}" type="button" data-action="health-repair" ${e ? "disabled" : ""}>
+    ).join(""), v = `<button class="${a.repairUseful ? "primary" : "secondary"}" type="button" data-action="health-repair" ${e ? "disabled" : ""}>
         ${e === "repairing" ? '<span class="spinner"></span>Re-sending…' : "Re-send my account to every relay"}
       </button>`;
     return `
       ${this.renderScreenHead("Account backup health", "goto-dashboard")}
       <p class="sub">Your encrypted account lives on public relays. This asks each one for the exact copies this device holds and verifies what comes back.</p>
-      <div class="notice ${s}"><strong>${m(a.headline)}.</strong> ${m(a.detail)}</div>
+      <div class="notice ${s}"><strong>${b(a.headline)}.</strong> ${b(a.detail)}</div>
       ${this.renderError()}
       <div class="health-list">${h}</div>
-      <p class="small">Checked ${m(new Date(t.checkedAt * 1e3).toLocaleTimeString())}.</p>
+      <p class="small">Checked ${b(new Date(t.checkedAt * 1e3).toLocaleTimeString())}.</p>
       ${n}
-      ${a.level === "stale" || a.level === "unknown" ? "" : w}
+      ${a.level === "stale" || a.level === "unknown" ? "" : v}
       <button class="secondary" type="button" data-action="health-recheck" ${e ? "disabled" : ""}>Check again</button>
-      ${r}
+      ${i}
     `;
   }
   async handleSignTestEvent() {
@@ -3138,7 +3304,40 @@ class te extends HTMLElement {
   }
   render() {
     const e = this.pendingSuccessLabel ? this.renderSuccessOverlay(this.pendingSuccessLabel) : "";
-    this.root.innerHTML = `<div class="card">${this.renderScreen()}${e}</div>`, this.exposeParts();
+    this.root.innerHTML = `<div class="card">${this.renderScreen()}${e}</div>`;
+    for (const t of this.root.querySelectorAll("img[data-avatar]"))
+      t.addEventListener("error", () => t.replaceWith(document.createTextNode(t.dataset.avatar ?? "?")), { once: !0 });
+    this.exposeParts();
+  }
+  /**
+   * Who is signed in, for the signed-in view: a picture (or a letter), the name from their own signed profile,
+   * and the whole key. The profile is asked for once per account, behind the view; the view is drawn again when
+   * it arrives. Everything from a profile is escaped, and a picture is only ever an https address the worker
+   * cleaned.
+   */
+  renderWho() {
+    const e = this.session;
+    if (!e) return "";
+    e.method === "bitlogin" && this.profileAsked !== e.publicKey && (this.profileAsked = e.publicKey, this.fetchProfile(e.publicKey));
+    const t = this.profile?.pubkey === e.publicKey ? this.profile.found : null, n = t?.name || (e.method === "bitlogin" ? this.loginName : "") || "";
+    return `
+      <div class="who">
+        <span class="who-pic" aria-hidden="true">${this.renderAvatar(n, t?.picture)}</span>
+        <div class="who-text">
+          ${n ? `<p class="who-name">${b(n)}</p>` : ""}
+          ${t?.about ? `<p class="small who-about">${b(t.about)}</p>` : ""}
+          <p class="pubkey">${b(e.npub)}</p>
+        </div>
+      </div>`;
+  }
+  async fetchProfile(e) {
+    try {
+      const t = (await this.worker.loadProfile({})).profile ?? null;
+      if (this.session?.publicKey !== e) return;
+      this.profile = { pubkey: e, found: t }, t && this.screen === "dashboard" && this.render();
+    } catch {
+      this.profileAsked === e && (this.profileAsked = "");
+    }
   }
   /**
    * Stamps `part` attributes onto the freshly rendered markup so a host page can
@@ -3155,14 +3354,14 @@ class te extends HTMLElement {
    * stable. Purely decorative nodes (success overlay, spinner) stay unexposed.
    */
   exposeParts() {
-    const e = (n, ...r) => n.setAttribute("part", r.join(" ")), t = this.root.querySelector(".card");
+    const e = (n, ...i) => n.setAttribute("part", i.join(" ")), t = this.root.querySelector(".card");
     t && e(t, "card"), this.root.querySelectorAll("button, a").forEach((n) => {
       n.classList.contains("primary") ? e(n, "button", "button-primary") : n.classList.contains("secondary") ? e(n, "button", "button-secondary") : n.classList.contains("link") || n.classList.contains("link-inline") ? e(n, "link") : e(n, "button");
     }), this.root.querySelectorAll("input").forEach((n) => {
       e(n, n.type === "checkbox" ? "checkbox" : "input");
     }), this.root.querySelectorAll("h2").forEach((n) => e(n, "heading")), this.root.querySelectorAll(".sub, .small, .field-hint").forEach((n) => e(n, "text")), this.root.querySelectorAll(".notice").forEach((n) => {
-      const r = n.classList.contains("warn") ? "notice-warn" : n.classList.contains("error") ? "notice-error" : n.classList.contains("info") ? "notice-info" : null;
-      r ? e(n, "notice", r) : e(n, "notice");
+      const i = n.classList.contains("warn") ? "notice-warn" : n.classList.contains("error") ? "notice-error" : n.classList.contains("info") ? "notice-info" : null;
+      i ? e(n, "notice", i) : e(n, "notice");
     });
   }
   renderSuccessOverlay(e) {
@@ -3180,7 +3379,7 @@ class te extends HTMLElement {
             <path d="M27 32.5l3.6 3.6L38 28.2" fill="none" stroke="url(#bl-success-brass)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
         </span>
-        <p class="success-label">${m(e)}</p>
+        <p class="success-label">${b(e)}</p>
       </div>
     `;
   }
@@ -3203,15 +3402,15 @@ class te extends HTMLElement {
   renderScreenHead(e, t = "goto-welcome") {
     return `
       <div class="screen-head">
-        <button class="icon-back" type="button" data-action="${t}" aria-label="Back">${dt}</button>
+        <button class="icon-back" type="button" data-action="${t}" aria-label="Back">${yt}</button>
         <h2>${e}</h2>
       </div>`;
   }
   renderError() {
-    return this.errorMessage ? `<div class="notice error">${m(this.errorMessage)}</div>` : "";
+    return this.errorMessage ? `<div class="notice error">${b(this.errorMessage)}</div>` : "";
   }
   renderWarnings() {
-    return this.sessionWarnings.map((e) => `<div class="notice warn">${m(e)}</div>`).join("");
+    return this.sessionWarnings.map((e) => `<div class="notice warn">${b(e)}</div>`).join("");
   }
   /** The widget's own brand lockup (mark + wordmark), inlined as vector paths rather than
    * relying on the host page having loaded any particular font -- shown once, on the
@@ -3222,39 +3421,45 @@ class te extends HTMLElement {
   renderScreen() {
     switch (this.screen) {
       case "welcome": {
-        const e = (a, s, i, h, w = !1) => `
-          <button class="option-row" type="button" data-action="${a}" ${w ? "disabled" : ""}>
+        const e = (a, s, r, h, v = !1) => `
+          <button class="option-row" type="button" data-action="${a}" ${v ? "disabled" : ""}>
             <span class="option-icon">${s}</span>
-            <span class="option-text"><span>${i}</span><span class="option-sub">${h}</span></span>
+            <span class="option-text"><span>${r}</span><span class="option-sub">${h}</span></span>
           </button>`, t = ue() ? e(
           "extension-signin",
-          W.extension,
+          q.extension,
           this.busy ? "Asking your extension…" : "Nostr extension",
           "Use the signer extension in this browser",
           this.busy
-        ) : "", n = Ne() ? e(
+        ) : "", n = Be() ? e(
           "goto-passkey",
-          W.passkey,
+          q.passkey,
           "Continue with a passkey",
           "Kept in your phone or browser's password manager"
-        ) : "", r = this.moreOptionsOpen ? `<div class="option-menu">
+        ) : "", i = this.moreOptionsOpen ? `<div class="option-menu">
               <div class="option-group-label">Use an account you already have</div>
               ${n}
               ${t}
-              ${e("goto-bunker", W.remote, "Remote signer", "Scan a code with Amber or another signer app")}
-              ${e("goto-import", W.importKey, "Import a Nostr key", "Wrap an existing identity in a login name and password")}
-              ${e("goto-recover", W.recover, "Recover account", "Sign back in with your 12-word recovery phrase")}
+              ${e("goto-bunker", q.remote, "Remote signer", "Scan a code with Amber or another signer app")}
+              ${e("goto-import", q.importKey, "Import a Nostr key", "Stores an encrypted copy of your key on public relays")}
+              ${e("goto-recover", q.recover, "Recover account", "Sign back in with your 12-word recovery phrase")}
+              ${e("goto-restore-file", q.recover, "Restore from an export file", "Use a file saved from Export identity")}
             </div>` : "";
         return `
           ${this.renderBrandLockup()}
           <p class="sub">A portable Nostr identity with a familiar login name and password.</p>
           ${this.renderError()}
+          ${this.accounts.length > 0 && !this.session ? `<div class="account-list" data-continue-as>
+                   <p class="small">Continue as an account kept on this device:</p>
+                   ${this.renderAccountRows(!0)}
+                 </div>
+                 <div class="divider"></div>` : ""}
           <button class="primary" data-action="goto-login">Sign in</button>
           <button class="secondary" data-action="goto-create">Create account</button>
           <button class="options-toggle ${this.moreOptionsOpen ? "open" : ""}" type="button" data-action="toggle-more" aria-expanded="${this.moreOptionsOpen}">
-            More sign-in options ${ht}
+            More sign-in options ${ft}
           </button>
-          ${r}
+          ${i}
         `;
       }
       case "passkey":
@@ -3283,7 +3488,7 @@ class te extends HTMLElement {
         return `
           ${this.renderScreenHead("Sign in with your extension")}
           <p class="sub">Your Nostr signer extension reports this identity:</p>
-          <div class="credential-box">${m(this.extensionPreviewNpub)}</div>
+          <div class="credential-box">${b(this.extensionPreviewNpub)}</div>
           <p class="small">Check this is the profile you expect — extensions can hold more than one. BitLogin never sees this identity's private key; your extension signs on its behalf. This session lasts until you log out or leave the page, and BitLogin account features (wallet connections, password rotation, recovery) stay with BitLogin accounts.</p>
           ${this.renderError()}
           <button class="primary" type="button" data-action="extension-continue">This is me — continue</button>
@@ -3294,11 +3499,11 @@ class te extends HTMLElement {
           try {
             const n = new URL(this.bunkerAuthUrl).hostname;
             e = `<div class="notice info">Your signer asks you to approve this connection first.
-               <a href="${m(this.bunkerAuthUrl)}" target="_blank" rel="noopener noreferrer">Open the approval page at ${m(n)}</a>, then return here.</div>`;
+               <a href="${b(this.bunkerAuthUrl)}" target="_blank" rel="noopener noreferrer">Open the approval page at ${b(n)}</a>, then return here.</div>`;
           } catch {
             e = "";
           }
-        const t = this.bunkerConnectUri ? `<div class="qr-wrap" aria-live="polite">${ct(this.bunkerConnectUri, "Nostr Connect QR code")}</div>
+        const t = this.bunkerConnectUri ? `<div class="qr-wrap" aria-live="polite">${ut(this.bunkerConnectUri, "Nostr Connect QR code")}</div>
              <button class="secondary" type="button" data-action="copy-bunker-uri">Copy connection code</button>
              <p class="small">Waiting for your signer to connect…</p>` : this.errorMessage ? '<button class="secondary" type="button" data-action="goto-bunker">Generate a new code</button>' : '<p class="sub"><span class="spinner"></span>Preparing connection code…</p>';
         return `
@@ -3321,17 +3526,45 @@ class te extends HTMLElement {
         return `
           ${this.renderScreenHead("Remote signer connected")}
           <p class="sub">Your signer reports this identity:</p>
-          <div class="credential-box">${m(this.pendingBunker?.npub ?? "")}</div>
+          <div class="credential-box">${b(this.pendingBunker?.npub ?? "")}</div>
           <p class="small">Check this is the profile you expect. Your private key stays in your signer — each signature is requested over relays, and your signer can require approval or be disconnected at any time. This session lasts until you log out or leave the page; BitLogin account features (wallet connections, password rotation, recovery) stay with BitLogin accounts.</p>
           ${this.renderError()}
           <button class="primary" type="button" data-action="bunker-continue">This is me — continue</button>
+        `;
+      case "restore-file":
+        return `
+          ${this.renderScreenHead("Restore from an export file")}
+          <p class="sub">Choose a file you saved from "Export identity". BitLogin reads it on this device and takes you to the next step.</p>
+          ${this.renderError()}
+          <label for="restoreFile">Export file</label>
+          <input type="file" name="restoreFile" id="restoreFile" accept=".json,.txt,application/json,text/plain" ${this.busy ? "disabled" : ""} />
+          <p class="small"><strong>Recovery export</strong> (bitlogin-recovery-export.json): restores the whole account, saved wallet connections included, even if no relay holds it any more. You will be asked for that account's 12-word recovery phrase: the file is sealed, and can't be opened without it.</p>
+          <p class="small"><strong>Key file</strong> (bitlogin-private-key.txt): holds your private key. BitLogin shows you the identity it belongs to, and you choose a new login name and password for it. It brings back the identity, not the old account's login name or saved wallet connections.</p>
         `;
       case "import-key": {
         const e = !!this.importPreviewNpub;
         return `
           ${this.renderScreenHead("Import an existing Nostr key")}
-          <p class="sub">Wrap a Nostr identity you already control in a BitLogin login name and password. Your key never changes — you just get a friendlier way in.</p>
-          <div class="notice warn">Pasting a private key into any web page is risky. Only do this on a BitLogin build you trust, and clear your clipboard afterward. BitLogin can't secure copies of this key that already exist elsewhere.</div>
+          <p class="sub">Use a Nostr identity you already have with a BitLogin login. Read this first: importing puts an encrypted copy of your private key on public relays.</p>
+          <div class="notice warn" data-import-risk>
+            <strong>What happens to your key if you import it</strong>
+            <ul class="risk-list">
+              <li><strong>It is stored on public Nostr relays, encrypted.</strong> BitLogin has no server. So that you can sign in from any device, it encrypts your private key and publishes it to relays as notes: one opened by your login (a generated password, or your passkey), and one opened by a 12-word recovery phrase.</li>
+              <li><strong>Anyone can download those notes.</strong> Nothing can limit how many guesses someone makes against them. What protects your key is the strength of the generated password and phrase, and the encryption itself.</li>
+              <li><strong>It can't be taken back.</strong> A relay may keep its copy for good, even after you change your password or stop using BitLogin. If that password or phrase ever leaks, or the encryption is one day broken, whoever kept a copy has your key.</li>
+              <li><strong>A Nostr key can't be changed.</strong> If this one is exposed, the identity is lost for good: its name, its followers and everything it signed.</li>
+              <li><strong>Pasting a key into a web page is a risk of its own.</strong> Only do it on a BitLogin address you trust, and clear your clipboard afterward. BitLogin can't protect copies of this key that already exist elsewhere.</li>
+            </ul>
+          </div>
+          <div class="notice info" data-import-instead>
+            <strong>If you don't want your key stored on relays, even encrypted, don't import it.</strong>
+            <ul class="risk-list">
+              <li><strong>Start a fresh account.</strong> BitLogin makes a new key for it, and your existing key is never involved. This is what we recommend for a key you care about.</li>
+              <li><strong>Keep your key where it is.</strong> Sign in with a browser extension or a remote signer: they sign for you, and BitLogin never holds or stores the key.</li>
+            </ul>
+            <button class="secondary" type="button" data-action="goto-create">Create a fresh account instead</button>
+            <button class="secondary" type="button" data-action="goto-welcome">Other ways to sign in</button>
+          </div>
           ${this.renderError()}
           <form data-form="import-key">
             <label for="importKey">Your nsec or hex private key</label>
@@ -3339,10 +3572,15 @@ class te extends HTMLElement {
             <button class="secondary" type="submit" ${this.busy ? "disabled" : ""}>
               ${this.busy ? '<span class="spinner"></span>Checking…' : "Check key"}
             </button>
+            <p class="small">Checking shows you which identity the key belongs to. Nothing is stored or sent until you finish setting up the account.</p>
           </form>
           ${e ? `<div class="notice info">This key's public identity:</div>
-                 <div class="credential-box">${m(this.importPreviewNpub)}</div>
-                 <button class="primary" type="button" data-action="import-continue">This is my identity — continue</button>` : ""}
+                 <div class="credential-box">${b(this.importPreviewNpub)}</div>
+                 <label class="checkbox-row">
+                   <input type="checkbox" id="import-ack-check" ${this.importAck ? "checked" : ""} />
+                   I understand that an encrypted copy of this private key will be published to public relays, that it can't be taken back, and that my login password and recovery phrase are all that protect it.
+                 </label>
+                 <button class="primary" type="button" data-action="import-continue">This is my identity. Import it</button>` : ""}
         `;
       }
       case "create-name":
@@ -3361,7 +3599,7 @@ class te extends HTMLElement {
         return `
           <h2>Your generated password</h2>
           <p class="sub">BitLogin generates your password because no server can rate-limit guesses against a downloadable encrypted file.</p>
-          <div class="credential-box" id="credential-box">${m(this.generatedCredential)}</div>
+          <div class="credential-box" id="credential-box">${b(this.generatedCredential)}</div>
           <button class="secondary" type="button" data-action="copy-credential">Copy</button>
           <button class="secondary" type="button" data-action="regenerate-credential">Generate a different one</button>
           ${this.renderError()}
@@ -3382,7 +3620,7 @@ class te extends HTMLElement {
           <p class="small">${this.registeredByImport ? "Because you imported your own key, it is not contained in these words. The phrase can only find your account on the relays that store it, so after this you'll also confirm your private key is saved." : "Your identity is derived from these words, so they are a complete backup of it: they work even if every relay drops your account."}</p>
           <p class="small">Do not enter a Bitcoin or other cryptocurrency-wallet recovery phrase into BitLogin. This is a BitLogin-only phrase.</p>
           <div class="phrase-grid">
-            ${this.recoveryPhrase.split(" ").map((e, t) => `<div class="phrase-word"><span>${t + 1}.</span>${m(e)}</div>`).join("")}
+            ${this.recoveryPhrase.split(" ").map((e, t) => `<div class="phrase-word"><span>${t + 1}.</span>${b(e)}</div>`).join("")}
           </div>
           ${this.renderError()}
           <button class="primary" type="button" data-action="goto-verify-phrase">I've saved my phrase — continue</button>
@@ -3408,7 +3646,7 @@ class te extends HTMLElement {
           <h2>Keep your private key safe</h2>
           <p class="sub">Imported accounts are different. An account BitLogin creates can be rebuilt from its recovery phrase alone. Yours can't: this key (your <strong>nsec</strong>) came from outside, so the phrase only works while relays still hold your encrypted account, and relays can drop it. If that happens, this key is the only way back.</p>
           <p class="small">It's the key you just imported. Make sure the copy you have is stored safely, or save it again here.</p>
-          <div class="credential-box" id="credential-box">${m(this.exportedNsec)}</div>
+          <div class="credential-box" id="credential-box">${b(this.exportedNsec)}</div>
           <button class="secondary" type="button" data-action="copy-credential">Copy</button>
           <button class="secondary" type="button" data-action="download-key-backup">Download key file</button>
           <div class="notice warn">Anyone with this key controls your identity. Store it like your password: in a password manager or offline. Never paste it into a site you don't trust.</div>
@@ -3452,7 +3690,7 @@ class te extends HTMLElement {
             <input type="file" name="offlineExportFile" id="offlineExportFile" accept=".json,application/json" />
             <p class="small">Needed if relays are unreachable or have dropped your account; the phrase above is still required either way. The file alone can never recover an account by itself.</p>
             <p class="small">If no relay holds your account any more, the phrase can still rebuild an identity BitLogin created. An imported key can't be rebuilt this way: go back and choose "Import a Nostr key" with your saved private key instead.</p>
-            ${this.offlineExportFileNotice ? `<div class="notice ${this.offlineExportFile ? "info" : "warn"}">${m(this.offlineExportFileNotice)}</div>` : ""}
+            ${this.offlineExportFileNotice ? `<div class="notice ${this.offlineExportFile ? "info" : "warn"}">${b(this.offlineExportFileNotice)}</div>` : ""}
             <button class="primary" type="submit" ${this.busy ? "disabled" : ""}>
               ${this.busy ? '<span class="spinner"></span>Recovering…' : "Continue"}
             </button>
@@ -3465,7 +3703,7 @@ class te extends HTMLElement {
         return `
           ${this.renderScreenHead("Rebuild your account", "goto-recover")}
           <p class="sub">The relays no longer hold an account for this phrase. Your phrase can still rebuild the identity BitLogin derived from it:</p>
-          <div class="credential-box">${m(e.npub)}</div>
+          <div class="credential-box">${b(e.npub)}</div>
           ${t}
           <div class="notice warn"><strong>Only continue if this is your npub.</strong> If you imported your own key, or created the account before phrase-derived keys, this is a new, empty identity and not yours. Go back and use "Import a Nostr key" with your saved private key instead.</div>
           <p class="small">Rebuilding restores your identity and lets you set a new login. Saved wallet connections are not restored.</p>
@@ -3476,13 +3714,13 @@ class te extends HTMLElement {
         `;
       }
       case "recover-new-credentials": {
-        const e = this.recoveredPreview?.chainWarning ? `<div class="notice warn">${m(this.recoveredPreview.chainWarning)}</div>` : "", t = this.busy ? '<span class="spinner"></span>Finishing recovery…' : "Finish recovery";
+        const e = this.recoveredPreview?.chainWarning ? `<div class="notice warn">${b(this.recoveredPreview.chainWarning)}</div>` : "", t = this.busy ? '<span class="spinner"></span>Finishing recovery…' : "Finish recovery";
         return `
           <h2>${this.recoveredByRebuild ? "Identity rebuilt" : "Identity recovered"}</h2>
           <p class="sub">${this.recoveredByRebuild ? "Rebuilt your identity from your phrase." : "Found your account."} Restored ${this.recoveredPreview?.generalRelaysCount ?? 0} general relay(s) and ${this.recoveredPreview?.dmRelaysCount ?? 0} DM relay(s) from your public events.</p>
           ${e}
           <p class="sub">Now set a new login name. BitLogin generated a new high-entropy password for this account.</p>
-          <div class="credential-box" id="credential-box">${m(this.newCredentialAfterRecovery)}</div>
+          <div class="credential-box" id="credential-box">${b(this.newCredentialAfterRecovery)}</div>
           <button class="secondary" type="button" data-action="copy-credential">Copy generated password</button>
           ${this.renderError()}
           <form data-form="recover-new-credentials" autocomplete="on">
@@ -3498,22 +3736,32 @@ class te extends HTMLElement {
           <button class="secondary" type="button" data-action="goto-vault-manage">Wallet connections</button>
           <button class="secondary" type="button" data-action="goto-health">Check account backup health</button>
           <button class="secondary" type="button" data-action="goto-change-password">Rotate password</button>
-          <button class="secondary" type="button" data-action="goto-export">Export identity</button>`, r = this.passkeySession ? `<p class="small">Signed in with a passkey — it unlocks this account from your device's password manager; your identity lives on the open Nostr network. Your recovery phrase works even if the passkey is lost.</p>` : "", a = e === "bitlogin" && !this.phraseRebuildsIdentity ? `<div class="notice warn" data-key-backup-notice>This account's key is not contained in its recovery phrase. If relays ever drop the account, only your private key can restore it. <button class="link-inline" type="button" data-action="goto-export">Save it from Export identity</button></div>` : "";
+          <button class="secondary" type="button" data-action="goto-export">Export identity</button>`, i = this.passkeySession ? `<p class="small">Signed in with a passkey — it unlocks this account from your device's password manager; your identity lives on the open Nostr network. Your recovery phrase works even if the passkey is lost.</p>` : "", a = e === "bitlogin" && !this.phraseRebuildsIdentity ? `<div class="notice warn" data-key-backup-notice>This account's key is not contained in its recovery phrase. If relays ever drop the account, only your private key can restore it. <button class="link-inline" type="button" data-action="goto-export">Save it from Export identity</button></div>` : "";
         return `
           <h2>Signed in</h2>
           ${this.renderWarnings()}
-          <p class="pubkey">${m(this.session?.npub ?? "")}</p>
+          ${this.renderWho()}
+          ${e === "bitlogin" ? `<button class="link" type="button" data-action="goto-accounts">${this.accounts.length > 1 ? "Switch account" : "Add another account"}</button>` : ""}
           ${a}
-          ${r}
+          ${i}
           ${this.renderError()}
           <button class="secondary" type="button" data-action="sign-test-event">Sign a test event</button>
-          ${this.lastSignedEventJson ? `<div class="credential-box" style="white-space:pre-wrap">${m(this.lastSignedEventJson)}</div>` : ""}
+          ${this.lastSignedEventJson ? `<div class="credential-box" style="white-space:pre-wrap">${b(this.lastSignedEventJson)}</div>` : ""}
           <div class="divider"></div>
           ${n}
           ${e === "bitlogin" ? this.renderLockButtons() : ""}
           <button class="secondary" type="button" data-action="logout">Log out</button>
         `;
       }
+      case "accounts":
+        return `
+          ${this.renderScreenHead("Accounts on this device", "goto-dashboard")}
+          <p class="sub">Each is a separate account, with its own password and recovery phrase. Switching needs no password: they are kept on this device.</p>
+          ${this.renderError()}
+          <div class="account-list">${this.renderAccountRows(!1)}</div>
+          <button class="secondary" type="button" data-action="account-add">Add another account</button>
+          <p class="small">To remove the account that is signed in, log out of it.</p>
+        `;
       case "unlock":
         return `
           <h2>Unlock BitLogin</h2>
@@ -3535,7 +3783,7 @@ class te extends HTMLElement {
         const e = this.lock?.on === !0;
         return `
           <h2>${e ? "Lock settings" : "Set up a lock"}</h2>
-          ${this.lockNote ? `<div class="notice info">${m(this.lockNote)}</div>` : ""}
+          ${this.lockNote ? `<div class="notice info">${b(this.lockNote)}</div>` : ""}
           ${this.renderError()}
           <p class="sub">A lock keeps what this browser remembers sealed until you open it, with a PIN or with this device's own unlock. It is off unless you turn it on.</p>
           <div class="notice info">
@@ -3564,14 +3812,14 @@ class te extends HTMLElement {
         if (!e || !t) return '<div class="notice error">No wallet request is in progress.</div>';
         const n = new Date(t.createdAt * 1e3).toLocaleDateString();
         return `
-          <h2>Share a wallet with ${m(e.appName)}?</h2>
-          ${e.reason ? `<p class="sub">Reason given: ${m(e.reason)}</p>` : ""}
+          <h2>Share a wallet with ${b(e.appName)}?</h2>
+          ${e.reason ? `<p class="sub">Reason given: ${b(e.reason)}</p>` : ""}
           ${this.renderError()}
           <div class="credential-box">
-            <strong>${m(t.label)}</strong><br />
-            Connected ${m(n)} · wallet ${m((t.walletPubkey ?? "").slice(0, 10))}…
+            <strong>${b(t.label)}</strong><br />
+            Connected ${b(n)} · wallet ${b((t.walletPubkey ?? "").slice(0, 10))}…
           </div>
-          <div class="notice info">${m(e.appName)} will receive this connection and can spend within the budget your wallet enforces, until you revoke it from Wallet connections.</div>
+          <div class="notice info">${b(e.appName)} will receive this connection and can spend within the budget your wallet enforces, until you revoke it from Wallet connections.</div>
           <button class="primary" type="button" data-action="vault-approve" ${this.busy ? "disabled" : ""}>
             ${this.busy ? '<span class="spinner"></span>Sharing…' : "Use this wallet"}
           </button>
@@ -3584,8 +3832,8 @@ class te extends HTMLElement {
         if (!e) return '<div class="notice error">No wallet request is in progress.</div>';
         const t = this.vaultUnsaved ? `<div class="notice warn">${this.vaultUnsavedReason === "no-vault" ? "This account predates the Connection Vault, so the connection will be handed to the app but not saved to your account. Enable the vault from your account manager (recovery phrase required) to make wallets portable." : "Sign in again to save connections to your account — until then the connection will be handed to the app but not saved."}</div>` : "";
         return `
-          <h2>Connect a wallet for ${m(e.appName)}</h2>
-          ${e.reason ? `<p class="sub">Reason given: ${m(e.reason)}</p>` : ""}
+          <h2>Connect a wallet for ${b(e.appName)}</h2>
+          ${e.reason ? `<p class="sub">Reason given: ${b(e.reason)}</p>` : ""}
           ${t}
           ${this.renderError()}
           <button class="primary" type="button" data-action="vault-bc" ${this.busy ? "disabled" : ""}>
@@ -3596,7 +3844,7 @@ class te extends HTMLElement {
             <label for="vaultUri">Or paste an NWC connection</label>
             <input type="password" name="vaultUri" id="vaultUri" autocomplete="off" placeholder="nostr+walletconnect://…" />
             <label for="vaultLabel">Name this connection</label>
-            <input type="text" name="vaultLabel" id="vaultLabel" autocomplete="off" maxlength="120" value="${m(`${e.appName} wallet`)}" />
+            <input type="text" name="vaultLabel" id="vaultLabel" autocomplete="off" maxlength="120" value="${b(`${e.appName} wallet`)}" />
             <button class="secondary" type="submit" ${this.busy ? "disabled" : ""}>
               ${this.vaultUnsaved ? "Share without saving" : "Save and share"}
             </button>
@@ -3609,26 +3857,26 @@ class te extends HTMLElement {
         const e = this.vaultOffer;
         return e ? `
           <h2>Save this wallet to your BitLogin?</h2>
-          <p class="sub">${m(e.appName)} just connected a wallet on this device. Saved to your BitLogin, the connection follows you — on a new device it's one tap instead of another paste.</p>
+          <p class="sub">${b(e.appName)} just connected a wallet on this device. Saved to your BitLogin, the connection follows you — on a new device it's one tap instead of another paste.</p>
           ${this.renderError()}
           <label for="vaultOfferLabel">Name this connection</label>
-          <input type="text" name="vaultOfferLabel" id="vaultOfferLabel" autocomplete="off" maxlength="120" value="${m(e.label)}" />
+          <input type="text" name="vaultOfferLabel" id="vaultOfferLabel" autocomplete="off" maxlength="120" value="${b(e.label)}" />
           <button class="primary" type="button" data-action="vault-offer-save" ${this.busy ? "disabled" : ""}>
             ${this.busy ? '<span class="spinner"></span>Saving…' : "Save to BitLogin"}
           </button>
           <button class="link" type="button" data-action="vault-offer-decline" ${this.busy ? "disabled" : ""}>No thanks — keep it on this device only</button>
-          <div class="notice info">Stored encrypted on your account; ${m(e.appName)} keeps working either way. Remove it any time from Wallet connections.</div>
+          <div class="notice info">Stored encrypted on your account; ${b(e.appName)} keeps working either way. Remove it any time from Wallet connections.</div>
         ` : '<div class="notice error">No wallet offer is in progress.</div>';
       }
       case "vault-manage": {
         const e = this.vaultConnections, t = e === null ? '<p class="sub">Loading…</p>' : e.length === 0 ? `<p class="sub">No connections stored yet. They're added when you connect a wallet inside an app.</p>` : e.map(
           (n) => `
           <div class="credential-box">
-            <strong>${m(n.label)}</strong> <span class="sub">(${m(n.connectionType)})</span><br />
-            ${n.origin ? `Linked to ${m(n.origin)}` : "Not linked to an app"}
+            <strong>${b(n.label)}</strong> <span class="sub">(${b(n.connectionType)})</span><br />
+            ${n.origin ? `Linked to ${b(n.origin)}` : "Not linked to an app"}
             <div>
-              ${n.origin ? `<button class="link" type="button" data-action="vault-unbind" data-id="${m(n.connectionId)}" ${this.busy ? "disabled" : ""}>Revoke app access</button>` : ""}
-              <button class="link" type="button" data-action="vault-delete" data-id="${m(n.connectionId)}" ${this.busy ? "disabled" : ""}>Remove from BitLogin</button>
+              ${n.origin ? `<button class="link" type="button" data-action="vault-unbind" data-id="${b(n.connectionId)}" ${this.busy ? "disabled" : ""}>Revoke app access</button>` : ""}
+              <button class="link" type="button" data-action="vault-delete" data-id="${b(n.connectionId)}" ${this.busy ? "disabled" : ""}>Remove from BitLogin</button>
             </div>
           </div>`
         ).join("");
@@ -3636,7 +3884,7 @@ class te extends HTMLElement {
           <h2>Wallet connections</h2>
           <p class="sub">Connections your apps use, stored encrypted on your account and restored on any device you sign in to.</p>
           ${this.renderError()}
-          ${this.vaultIntegrityWarnings.map((n) => `<div class="notice warn">${m(n)}</div>`).join("")}
+          ${this.vaultIntegrityWarnings.map((n) => `<div class="notice warn">${b(n)}</div>`).join("")}
           ${t}
           <div class="notice info">"Remove from BitLogin" deletes the stored copy only — the connection itself keeps working for any app that already has it. To revoke spending authority, delete the connection inside your wallet app.</div>
           <button class="link" data-action="goto-dashboard">Back</button>
@@ -3645,7 +3893,7 @@ class te extends HTMLElement {
       case "rollback-confirm":
         return `
           <h2>This looks like a stale or revoked credential</h2>
-          <div class="notice warn">${m(this.rollbackMessage)}</div>
+          <div class="notice warn">${b(this.rollbackMessage)}</div>
           <p class="sub">This usually means the password just entered was rotated away in an earlier session on this device, and a relay hasn't caught up with that change. If you rotated your password, use the new one instead. Only continue if you're confident this is relay lag, not a stale credential.</p>
           <button class="primary" type="button" data-action="rollback-retry">Try again</button>
           <button class="link" type="button" data-action="rollback-continue">I understand the risk — continue anyway</button>
@@ -3656,12 +3904,12 @@ class te extends HTMLElement {
           <h2>Rotate password</h2>
           ${this.passkeySession ? '<div class="notice info">This takes over from passkey sign-in: your passkey stops unlocking this account, and from then on you sign in with the new password below — you hold it, nobody else. This is the graduation step.</div>' : ""}
           <p class="sub">Your old password's capsule will be tombstoned and a deletion request issued. This does not erase copies an attacker may already have downloaded, and a relay that hasn't processed the deletion may keep serving the old password's capsule until a device that has already seen the new generation refuses it.</p>
-          <div class="credential-box" id="credential-box">${m(this.changePasswordNewCredential)}</div>
+          <div class="credential-box" id="credential-box">${b(this.changePasswordNewCredential)}</div>
           <button class="secondary" type="button" data-action="copy-credential">Copy generated password</button>
           ${this.renderError()}
           <form data-form="change-password" autocomplete="on">
             <label for="savedLoginName">Login name</label>
-            <input type="text" name="username" id="savedLoginName" autocomplete="username" value="${m(this.loginName)}" readonly />
+            <input type="text" name="username" id="savedLoginName" autocomplete="username" value="${b(this.loginName)}" readonly />
             <label for="oldPassword">Current password</label>
             <input type="password" name="oldPassword" id="oldPassword" autocomplete="current-password" required />
             ${this.renderSavablePassword(this.changePasswordNewCredential)}
@@ -3679,11 +3927,12 @@ class te extends HTMLElement {
           <p class="sub">Your public identity (npub) is safe to share. Your private key (nsec) is not.</p>
           <p class="small">${this.renderBackupAdvice()}</p>
           <label>Public key (npub)</label>
-          <div class="credential-box">${m(this.session?.npub ?? "")}</div>
+          <div class="credential-box">${b(this.session?.npub ?? "")}</div>
           <button class="secondary" type="button" data-action="download-recovery-export">Download recovery export</button>
+          <p class="small">To bring an account back with a file saved here: on the sign-in screen, open "More sign-in options" and choose "Restore from an export file". The recovery export needs your recovery phrase too; the key file does not.</p>
           ${this.renderError()}
           <button class="secondary" type="button" data-action="reveal-nsec">Reveal private key (nsec)</button>
-          ${this.exportedNsec ? `<div class="notice warn">Never share this. Anyone with it controls your identity.</div><div class="credential-box" id="credential-box">${m(
+          ${this.exportedNsec ? `<div class="notice warn">Never share this. Anyone with it controls your identity.</div><div class="credential-box" id="credential-box">${b(
           this.exportedNsec
         )}</div>
                 <button class="secondary" type="button" data-action="copy-credential">Copy</button>
@@ -3696,12 +3945,12 @@ class te extends HTMLElement {
   }
 }
 function fe(o, e) {
-  const t = Array.from({ length: o }, (r, a) => a), n = [];
-  for (let r = 0; r < e && t.length > 0; r++)
-    n.push(t.splice(ye(t.length), 1)[0]);
-  return n.sort((r, a) => r - a);
+  const t = Array.from({ length: o }, (i, a) => a), n = [];
+  for (let i = 0; i < e && t.length > 0; i++)
+    n.push(t.splice(ge(t.length), 1)[0]);
+  return n.sort((i, a) => i - a);
 }
-function m(o) {
+function b(o) {
   return o.replace(/[&<>"']/gu, (e) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[e]);
 }
 customElements.get("bitlogin-auth") || customElements.define("bitlogin-auth", te);
@@ -3720,12 +3969,12 @@ window.bitlogin = {
   activeSession() {
     return pe();
   },
-  readCachedSession: Be
+  readCachedSession: Ae
 };
 export {
   te as BitLoginAuthElement,
-  Qe as WorkerClient,
-  Ct as createHeadlessSigner,
-  kt as createNip07Provider,
-  Be as readCachedSession
+  Le as WorkerClient,
+  $t as createHeadlessSigner,
+  xt as createNip07Provider,
+  Ae as readCachedSession
 };

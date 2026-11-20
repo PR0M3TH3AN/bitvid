@@ -1,336 +1,18 @@
-import { h as Ve, k as Ye, e as Oe, u as pe } from "./bitlogin-shared-Cm1sH5zP.js";
-import { g as je, h as ne, l as te, s as oe, a as Fe } from "./bitlogin-shared-DfKVXHi6.js";
-import { v as he } from "./bitlogin-shared-C0qJoVBo.js";
-const E3 = 0, D3 = 5, F3 = 10002, S3 = 10050, U3 = 22242, x3 = 24133, G3 = 30078, J3 = "bitlogin:password:v1", K3 = "bitlogin:recovery:v1", H3 = "bitlogin:bootstrap-relays:v1", z3 = "bitlogin.credential.v1", N3 = "bitlogin.recovery.v1", Se = "bitlogin.recovery-export.v3";
-/*! scure-base - MIT License (c) 2022 Paul Miller (paulmillr.com) */
-function G(e) {
-  return e instanceof Uint8Array || ArrayBuffer.isView(e) && e.constructor.name === "Uint8Array";
+import { P as R, D as Ie, Q as me, h as L, I as T, J as _, c as ce, y as ye, C as fe, u as W, v as $ } from "./bitlogin-shared-Cj9s0_W_.js";
+const _e = 0, Ze = 5, We = 10002, $e = 10050, e3 = 22242, i3 = 24133, a3 = 30078, r3 = "bitlogin:password:v1", n3 = "bitlogin:recovery:v1", t3 = "bitlogin:bootstrap-relays:v1", s3 = "bitlogin.credential.v1", o3 = "bitlogin.recovery.v1", Ae = "bitlogin.recovery-export.v3";
+function l3(e) {
+  return R.encodeFromBytes("npub", Ie(e));
 }
-function Me(e, ...i) {
-  if (!G(e))
-    throw new Error("Uint8Array expected");
-  if (i.length > 0 && !i.includes(e.length))
-    throw new Error("Uint8Array expected of length " + i + ", got length=" + e.length);
+function g3(e) {
+  return R.encodeFromBytes("nsec", e);
 }
-function Ue(e, i) {
-  return Array.isArray(i) ? i.length === 0 ? !0 : e ? i.every((r) => typeof r == "string") : i.every((r) => Number.isSafeInteger(r)) : !1;
-}
-function xe(e) {
-  if (typeof e != "function")
-    throw new Error("function expected");
-  return !0;
-}
-function U(e, i) {
-  if (typeof i != "string")
-    throw new Error(`${e}: string expected`);
-  return !0;
-}
-function J(e) {
-  if (!Number.isSafeInteger(e))
-    throw new Error(`invalid integer: ${e}`);
-}
-function M(e) {
-  if (!Array.isArray(e))
-    throw new Error("array expected");
-}
-function P(e, i) {
-  if (!Ue(!0, i))
-    throw new Error(`${e}: array of strings expected`);
-}
-function se(e, i) {
-  if (!Ue(!1, i))
-    throw new Error(`${e}: array of numbers expected`);
-}
-// @__NO_SIDE_EFFECTS__
-function le(...e) {
-  const i = (a) => a, r = (a, o) => (s) => a(o(s)), n = e.map((a) => a.encode).reduceRight(r, i), t = e.map((a) => a.decode).reduce(r, i);
-  return { encode: n, decode: t };
-}
-// @__NO_SIDE_EFFECTS__
-function ce(e) {
-  const i = typeof e == "string" ? e.split("") : e, r = i.length;
-  P("alphabet", i);
-  const n = new Map(i.map((t, a) => [t, a]));
-  return {
-    encode: (t) => (M(t), t.map((a) => {
-      if (!Number.isSafeInteger(a) || a < 0 || a >= r)
-        throw new Error(`alphabet.encode: digit index outside alphabet "${a}". Allowed: ${e}`);
-      return i[a];
-    })),
-    decode: (t) => (M(t), t.map((a) => {
-      U("alphabet.decode", a);
-      const o = n.get(a);
-      if (o === void 0)
-        throw new Error(`Unknown letter: "${a}". Allowed: ${e}`);
-      return o;
-    }))
-  };
-}
-// @__NO_SIDE_EFFECTS__
-function ge(e = "") {
-  return U("join", e), {
-    encode: (i) => (P("join.decode", i), i.join(e)),
-    decode: (i) => (U("join.decode", i), i.split(e))
-  };
-}
-// @__NO_SIDE_EFFECTS__
-function Ge(e, i = "=") {
-  return J(e), U("padding", i), {
-    encode(r) {
-      for (P("padding.encode", r); r.length * e % 8; )
-        r.push(i);
-      return r;
-    },
-    decode(r) {
-      P("padding.decode", r);
-      let n = r.length;
-      if (n * e % 8)
-        throw new Error("padding: invalid, string should have whole number of bytes");
-      for (; n > 0 && r[n - 1] === i; n--)
-        if ((n - 1) * e % 8 === 0)
-          throw new Error("padding: invalid, string has too much padding");
-      return r.slice(0, n);
-    }
-  };
-}
-function $(e, i, r) {
-  if (i < 2)
-    throw new Error(`convertRadix: invalid from=${i}, base cannot be less than 2`);
-  if (r < 2)
-    throw new Error(`convertRadix: invalid to=${r}, base cannot be less than 2`);
-  if (M(e), !e.length)
-    return [];
-  let n = 0;
-  const t = [], a = Array.from(e, (s) => {
-    if (J(s), s < 0 || s >= i)
-      throw new Error(`invalid integer: ${s}`);
-    return s;
-  }), o = a.length;
-  for (; ; ) {
-    let s = 0, u = !0;
-    for (let d = n; d < o; d++) {
-      const I = a[d], A = i * s, c = A + I;
-      if (!Number.isSafeInteger(c) || A / i !== s || c - I !== A)
-        throw new Error("convertRadix: carry overflow");
-      const m = c / r;
-      s = c % r;
-      const p = Math.floor(m);
-      if (a[d] = p, !Number.isSafeInteger(p) || p * r + s !== c)
-        throw new Error("convertRadix: carry overflow");
-      if (u)
-        p ? u = !1 : n = d;
-      else continue;
-    }
-    if (t.push(s), u)
-      break;
-  }
-  for (let s = 0; s < e.length - 1 && e[s] === 0; s++)
-    t.push(0);
-  return t.reverse();
-}
-const Je = (e, i) => i === 0 ? e : Je(i, e % i), q = /* @__NO_SIDE_EFFECTS__ */ (e, i) => e + (i - Je(e, i)), j = /* @__PURE__ */ (() => {
-  let e = [];
-  for (let i = 0; i < 40; i++)
-    e.push(2 ** i);
-  return e;
-})();
-function X(e, i, r, n) {
-  if (M(e), i <= 0 || i > 32)
-    throw new Error(`convertRadix2: wrong from=${i}`);
-  if (r <= 0 || r > 32)
-    throw new Error(`convertRadix2: wrong to=${r}`);
-  if (/* @__PURE__ */ q(i, r) > 32)
-    throw new Error(`convertRadix2: carry overflow from=${i} to=${r} carryBits=${/* @__PURE__ */ q(i, r)}`);
-  let t = 0, a = 0;
-  const o = j[i], s = j[r] - 1, u = [];
-  for (const d of e) {
-    if (J(d), d >= o)
-      throw new Error(`convertRadix2: invalid data word=${d} from=${i}`);
-    if (t = t << i | d, a + i > 32)
-      throw new Error(`convertRadix2: carry overflow pos=${a} from=${i}`);
-    for (a += i; a >= r; a -= r)
-      u.push((t >> a - r & s) >>> 0);
-    const I = j[a];
-    if (I === void 0)
-      throw new Error("invalid carry");
-    t &= I - 1;
-  }
-  if (t = t << r - a & s, !n && a >= i)
-    throw new Error("Excess padding");
-  if (!n && t > 0)
-    throw new Error(`Non-zero padding: ${t}`);
-  return n && a > 0 && u.push(t >>> 0), u;
-}
-// @__NO_SIDE_EFFECTS__
-function Pe(e) {
-  J(e);
-  const i = 2 ** 8;
-  return {
-    encode: (r) => {
-      if (!G(r))
-        throw new Error("radix.encode input should be Uint8Array");
-      return $(Array.from(r), i, e);
-    },
-    decode: (r) => (se("radix.decode", r), Uint8Array.from($(r, e, i)))
-  };
-}
-// @__NO_SIDE_EFFECTS__
-function ue(e, i = !1) {
-  if (J(e), e <= 0 || e > 32)
-    throw new Error("radix2: bits should be in (0..32]");
-  if (/* @__PURE__ */ q(8, e) > 32 || /* @__PURE__ */ q(e, 8) > 32)
-    throw new Error("radix2: carry overflow");
-  return {
-    encode: (r) => {
-      if (!G(r))
-        throw new Error("radix2.encode input should be Uint8Array");
-      return X(Array.from(r), 8, e, !i);
-    },
-    decode: (r) => (se("radix2.decode", r), Uint8Array.from(X(r, e, 8, i)))
-  };
-}
-function Ie(e) {
-  return xe(e), function(...i) {
-    try {
-      return e.apply(null, i);
-    } catch {
-    }
-  };
-}
-function qe(e, i) {
-  return J(e), xe(i), {
-    encode(r) {
-      if (!G(r))
-        throw new Error("checksum.encode: input should be Uint8Array");
-      const n = i(r).slice(0, e), t = new Uint8Array(r.length + e);
-      return t.set(r), t.set(n, r.length), t;
-    },
-    decode(r) {
-      if (!G(r))
-        throw new Error("checksum.decode: input should be Uint8Array");
-      const n = r.slice(0, -e), t = r.slice(-e), a = i(n).slice(0, e);
-      for (let o = 0; o < e; o++)
-        if (a[o] !== t[o])
-          throw new Error("Invalid checksum");
-      return n;
-    }
-  };
-}
-const V3 = {
-  alphabet: ce,
-  chain: le,
-  checksum: qe,
-  convertRadix: $,
-  convertRadix2: X,
-  radix: Pe,
-  radix2: ue,
-  join: ge,
-  padding: Ge
-}, Xe = typeof Uint8Array.from([]).toBase64 == "function" && typeof Uint8Array.fromBase64 == "function", Re = (e, i) => {
-  U("base64", e);
-  const r = /^[A-Za-z0-9=+/]+$/, n = "base64";
-  if (e.length > 0 && !r.test(e))
-    throw new Error("invalid base64");
-  return Uint8Array.fromBase64(e, { alphabet: n, lastChunkHandling: "strict" });
-}, Y3 = Xe ? {
-  encode(e) {
-    return Me(e), e.toBase64();
-  },
-  decode(e) {
-    return Re(e);
-  }
-} : /* @__PURE__ */ le(/* @__PURE__ */ ue(6), /* @__PURE__ */ ce("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"), /* @__PURE__ */ Ge(6), /* @__PURE__ */ ge("")), ee = /* @__PURE__ */ le(/* @__PURE__ */ ce("qpzry9x8gf2tvdw0s3jn54khce6mua7l"), /* @__PURE__ */ ge("")), me = [996825010, 642813549, 513874426, 1027748829, 705979059];
-function H(e) {
-  const i = e >> 25;
-  let r = (e & 33554431) << 5;
-  for (let n = 0; n < me.length; n++)
-    (i >> n & 1) === 1 && (r ^= me[n]);
-  return r;
-}
-function fe(e, i, r = 1) {
-  const n = e.length;
-  let t = 1;
-  for (let a = 0; a < n; a++) {
-    const o = e.charCodeAt(a);
-    if (o < 33 || o > 126)
-      throw new Error(`Invalid prefix (${e})`);
-    t = H(t) ^ o >> 5;
-  }
-  t = H(t);
-  for (let a = 0; a < n; a++)
-    t = H(t) ^ e.charCodeAt(a) & 31;
-  for (let a of i)
-    t = H(t) ^ a;
-  for (let a = 0; a < 6; a++)
-    t = H(t);
-  return t ^= r, ee.encode(X([t % j[30]], 30, 5, !1));
-}
-// @__NO_SIDE_EFFECTS__
-function Le(e) {
-  const i = e === "bech32" ? 1 : 734539939, r = /* @__PURE__ */ ue(5), n = r.decode, t = r.encode, a = Ie(n);
-  function o(A, c, m = 90) {
-    U("bech32.encode prefix", A), G(c) && (c = Array.from(c)), se("bech32.encode", c);
-    const p = A.length;
-    if (p === 0)
-      throw new TypeError(`Invalid prefix length ${p}`);
-    const w = p + 7 + c.length;
-    if (m !== !1 && w > m)
-      throw new TypeError(`Length ${w} exceeds limit ${m}`);
-    const C = A.toLowerCase(), y = fe(C, c, i);
-    return `${C}1${ee.encode(c)}${y}`;
-  }
-  function s(A, c = 90) {
-    U("bech32.decode input", A);
-    const m = A.length;
-    if (m < 8 || c !== !1 && m > c)
-      throw new TypeError(`invalid string length: ${m} (${A}). Expected (8..${c})`);
-    const p = A.toLowerCase();
-    if (A !== p && A !== A.toUpperCase())
-      throw new Error("String must be lowercase or uppercase");
-    const w = p.lastIndexOf("1");
-    if (w === 0 || w === -1)
-      throw new Error('Letter "1" must be present between prefix and data only');
-    const C = p.slice(0, w), y = p.slice(w + 1);
-    if (y.length < 6)
-      throw new Error("Data must be at least 6 characters long");
-    const x = ee.decode(y).slice(0, -6), k = fe(C, x, i);
-    if (!y.endsWith(k))
-      throw new Error(`Invalid checksum in ${A}: expected "${k}"`);
-    return { prefix: C, words: x };
-  }
-  const u = Ie(s);
-  function d(A) {
-    const { prefix: c, words: m } = s(A, !1);
-    return { prefix: c, words: m, bytes: n(m) };
-  }
-  function I(A, c) {
-    return o(A, t(c));
-  }
-  return {
-    encode: o,
-    decode: s,
-    encodeFromBytes: I,
-    decodeToBytes: d,
-    decodeUnsafe: u,
-    fromWords: n,
-    fromWordsUnsafe: a,
-    toWords: t
-  };
-}
-const Ae = /* @__PURE__ */ Le("bech32");
-function O3(e) {
-  return Ae.encodeFromBytes("npub", Ve(e));
-}
-function j3(e) {
-  return Ae.encodeFromBytes("nsec", e);
-}
-function M3(e) {
-  const { prefix: i, bytes: r } = Ae.decodeToBytes(e);
-  if (i !== "nsec" || r.length !== 32)
+function c3(e) {
+  const { prefix: i, bytes: a } = R.decodeToBytes(e);
+  if (i !== "nsec" || a.length !== 32)
     throw new Error("Not a valid nsec.");
-  return r;
+  return a;
 }
-function de(...e) {
+function Z(...e) {
   for (const i of e)
     i && i.fill(0);
 }
@@ -339,156 +21,156 @@ function de(...e) {
  * (c) Dani Biro
  * @license MIT
  */
-function S(e, i, r, n) {
-  function t(a) {
-    return a instanceof r ? a : new r(function(o) {
-      o(a);
+function B(e, i, a, r) {
+  function t(n) {
+    return n instanceof a ? n : new a(function(o) {
+      o(n);
     });
   }
-  return new (r || (r = Promise))(function(a, o) {
-    function s(I) {
+  return new (a || (a = Promise))(function(n, o) {
+    function g(h) {
       try {
-        d(n.next(I));
-      } catch (A) {
-        o(A);
+        u(r.next(h));
+      } catch (I) {
+        o(I);
       }
     }
-    function u(I) {
+    function A(h) {
       try {
-        d(n.throw(I));
-      } catch (A) {
-        o(A);
+        u(r.throw(h));
+      } catch (I) {
+        o(I);
       }
     }
-    function d(I) {
-      I.done ? a(I.value) : t(I.value).then(s, u);
+    function u(h) {
+      h.done ? n(h.value) : t(h.value).then(g, A);
     }
-    d((n = n.apply(e, [])).next());
+    u((r = r.apply(e, [])).next());
   });
 }
-class h {
+class c {
   constructor() {
     this.mutex = Promise.resolve();
   }
   lock() {
     let i = () => {
     };
-    return this.mutex = this.mutex.then(() => new Promise(i)), new Promise((r) => {
-      i = r;
+    return this.mutex = this.mutex.then(() => new Promise(i)), new Promise((a) => {
+      i = a;
     });
   }
   dispatch(i) {
-    return S(this, void 0, void 0, function* () {
-      const r = yield this.lock();
+    return B(this, void 0, void 0, function* () {
+      const a = yield this.lock();
       try {
         return yield Promise.resolve(i());
       } finally {
-        r();
+        a();
       }
     });
   }
 }
-var L;
-function Te() {
+var V;
+function be() {
   return typeof globalThis < "u" ? globalThis : typeof self < "u" ? self : typeof window < "u" ? window : global;
 }
-const ie = Te(), T = (L = ie.Buffer) !== null && L !== void 0 ? L : null, _e = ie.TextEncoder ? new ie.TextEncoder() : null;
-function Ke(e, i) {
+const P = be(), Y = (V = P.Buffer) !== null && V !== void 0 ? V : null, we = P.TextEncoder ? new P.TextEncoder() : null;
+function ue(e, i) {
   return (e & 15) + (e >> 6 | e >> 3 & 8) << 4 | (i & 15) + (i >> 6 | i >> 3 & 8);
 }
-function He(e, i) {
-  const r = i.length >> 1;
-  for (let n = 0; n < r; n++) {
-    const t = n << 1;
-    e[n] = Ke(i.charCodeAt(t), i.charCodeAt(t + 1));
+function de(e, i) {
+  const a = i.length >> 1;
+  for (let r = 0; r < a; r++) {
+    const t = r << 1;
+    e[r] = ue(i.charCodeAt(t), i.charCodeAt(t + 1));
   }
 }
-function Ze(e, i) {
+function Ce(e, i) {
   if (e.length !== i.length * 2)
     return !1;
-  for (let r = 0; r < i.length; r++) {
-    const n = r << 1;
-    if (i[r] !== Ke(e.charCodeAt(n), e.charCodeAt(n + 1)))
+  for (let a = 0; a < i.length; a++) {
+    const r = a << 1;
+    if (i[a] !== ue(e.charCodeAt(r), e.charCodeAt(r + 1)))
       return !1;
   }
   return !0;
 }
-const ye = 87, we = 48;
-function re(e, i, r) {
-  let n = 0;
-  for (let t = 0; t < r; t++) {
-    let a = i[t] >>> 4;
-    e[n++] = a > 9 ? a + ye : a + we, a = i[t] & 15, e[n++] = a > 9 ? a + ye : a + we;
+const ee = 87, ie = 48;
+function q(e, i, a) {
+  let r = 0;
+  for (let t = 0; t < a; t++) {
+    let n = i[t] >>> 4;
+    e[r++] = n > 9 ? n + ee : n + ie, n = i[t] & 15, e[r++] = n > 9 ? n + ee : n + ie;
   }
   return String.fromCharCode.apply(null, e);
 }
-const E = T !== null ? (e) => {
+const C = Y !== null ? (e) => {
   if (typeof e == "string") {
-    const i = T.from(e, "utf8");
+    const i = Y.from(e, "utf8");
     return new Uint8Array(i.buffer, i.byteOffset, i.length);
   }
-  if (T.isBuffer(e))
+  if (Y.isBuffer(e))
     return new Uint8Array(e.buffer, e.byteOffset, e.length);
   if (ArrayBuffer.isView(e))
     return new Uint8Array(e.buffer, e.byteOffset, e.byteLength);
   throw new Error("Invalid data type!");
 } : (e) => {
   if (typeof e == "string")
-    return _e.encode(e);
+    return we.encode(e);
   if (ArrayBuffer.isView(e))
     return new Uint8Array(e.buffer, e.byteOffset, e.byteLength);
   throw new Error("Invalid data type!");
-}, b = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/", V = new Uint8Array(256);
-for (let e = 0; e < b.length; e++)
-  V[b.charCodeAt(e)] = e;
-function be(e, i = !0) {
-  const r = e.length, n = r % 3, t = [], a = r - n;
-  for (let o = 0; o < a; o += 3) {
-    const s = (e[o] << 16 & 16711680) + (e[o + 1] << 8 & 65280) + (e[o + 2] & 255), u = b.charAt(s >> 18 & 63) + b.charAt(s >> 12 & 63) + b.charAt(s >> 6 & 63) + b.charAt(s & 63);
-    t.push(u);
+}, m = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/", G = new Uint8Array(256);
+for (let e = 0; e < m.length; e++)
+  G[m.charCodeAt(e)] = e;
+function ae(e, i = !0) {
+  const a = e.length, r = a % 3, t = [], n = a - r;
+  for (let o = 0; o < n; o += 3) {
+    const g = (e[o] << 16 & 16711680) + (e[o + 1] << 8 & 65280) + (e[o + 2] & 255), A = m.charAt(g >> 18 & 63) + m.charAt(g >> 12 & 63) + m.charAt(g >> 6 & 63) + m.charAt(g & 63);
+    t.push(A);
   }
-  if (n === 1) {
-    const o = e[r - 1], s = b.charAt(o >> 2), u = b.charAt(o << 4 & 63);
-    t.push(`${s}${u}`), i && t.push("==");
-  } else if (n === 2) {
-    const o = (e[r - 2] << 8) + e[r - 1], s = b.charAt(o >> 10), u = b.charAt(o >> 4 & 63), d = b.charAt(o << 2 & 63);
-    t.push(`${s}${u}${d}`), i && t.push("=");
+  if (r === 1) {
+    const o = e[a - 1], g = m.charAt(o >> 2), A = m.charAt(o << 4 & 63);
+    t.push(`${g}${A}`), i && t.push("==");
+  } else if (r === 2) {
+    const o = (e[a - 2] << 8) + e[a - 1], g = m.charAt(o >> 10), A = m.charAt(o >> 4 & 63), u = m.charAt(o << 2 & 63);
+    t.push(`${g}${A}${u}`), i && t.push("=");
   }
   return t.join("");
 }
-function We(e) {
+function ke(e) {
   let i = Math.floor(e.length * 0.75);
-  const r = e.length;
-  return e[r - 1] === "=" && (i -= 1, e[r - 2] === "=" && (i -= 1)), i;
+  const a = e.length;
+  return e[a - 1] === "=" && (i -= 1, e[a - 2] === "=" && (i -= 1)), i;
 }
-function $e(e) {
-  const i = We(e), r = e.length, n = new Uint8Array(i);
+function ve(e) {
+  const i = ke(e), a = e.length, r = new Uint8Array(i);
   let t = 0;
-  for (let a = 0; a < r; a += 4) {
-    const o = V[e.charCodeAt(a)], s = V[e.charCodeAt(a + 1)], u = V[e.charCodeAt(a + 2)], d = V[e.charCodeAt(a + 3)];
-    n[t] = o << 2 | s >> 4, t += 1, n[t] = (s & 15) << 4 | u >> 2, t += 1, n[t] = (u & 3) << 6 | d & 63, t += 1;
+  for (let n = 0; n < a; n += 4) {
+    const o = G[e.charCodeAt(n)], g = G[e.charCodeAt(n + 1)], A = G[e.charCodeAt(n + 2)], u = G[e.charCodeAt(n + 3)];
+    r[t] = o << 2 | g >> 4, t += 1, r[t] = (g & 15) << 4 | A >> 2, t += 1, r[t] = (A & 3) << 6 | u & 63, t += 1;
   }
-  return n;
+  return r;
 }
-const Y = 16 * 1024, z = 4, e3 = new h(), _ = /* @__PURE__ */ new Map();
-function ze(e, i) {
-  return S(this, void 0, void 0, function* () {
-    let r = null, n = null, t = !1;
+const J = 16 * 1024, S = 4, Qe = new c(), O = /* @__PURE__ */ new Map();
+function pe(e, i) {
+  return B(this, void 0, void 0, function* () {
+    let a = null, r = null, t = !1;
     if (typeof WebAssembly > "u")
       throw new Error("WebAssembly is not supported in this environment!");
-    const a = (l, g = 0) => {
-      n.set(l, g);
-    }, o = () => n, s = () => r.exports, u = (l) => {
-      r.exports.Hash_SetMemorySize(l);
-      const g = r.exports.Hash_GetBuffer(), f = r.exports.memory.buffer;
-      n = new Uint8Array(f, g, l);
-    }, d = () => new DataView(r.exports.memory.buffer).getUint32(r.exports.STATE_SIZE, !0), I = e3.dispatch(() => S(this, void 0, void 0, function* () {
-      if (!_.has(e.name)) {
-        const g = $e(e.data), f = WebAssembly.compile(g);
-        _.set(e.name, f);
+    const n = (s, l = 0) => {
+      r.set(s, l);
+    }, o = () => r, g = () => a.exports, A = (s) => {
+      a.exports.Hash_SetMemorySize(s);
+      const l = a.exports.Hash_GetBuffer(), p = a.exports.memory.buffer;
+      r = new Uint8Array(p, l, s);
+    }, u = () => new DataView(a.exports.memory.buffer).getUint32(a.exports.STATE_SIZE, !0), h = Qe.dispatch(() => B(this, void 0, void 0, function* () {
+      if (!O.has(e.name)) {
+        const l = ve(e.data), p = WebAssembly.compile(l);
+        O.set(e.name, p);
       }
-      const l = yield _.get(e.name);
-      r = yield WebAssembly.instantiate(l, {
+      const s = yield O.get(e.name);
+      a = yield WebAssembly.instantiate(s, {
         // env: {
         //   emscripten_memcpy_big: (dest, src, num) => {
         //     const memoryBuffer = wasmInstance.exports.memory.buffer;
@@ -502,157 +184,157 @@ function ze(e, i) {
         //   },
         // },
       });
-    })), A = () => S(this, void 0, void 0, function* () {
-      r || (yield I);
-      const l = r.exports.Hash_GetBuffer(), g = r.exports.memory.buffer;
-      n = new Uint8Array(g, l, Y);
-    }), c = (l = null) => {
-      t = !0, r.exports.Hash_Init(l);
-    }, m = (l) => {
-      let g = 0;
-      for (; g < l.length; ) {
-        const f = l.subarray(g, g + Y);
-        g += f.length, n.set(f), r.exports.Hash_Update(f.length);
+    })), I = () => B(this, void 0, void 0, function* () {
+      a || (yield h);
+      const s = a.exports.Hash_GetBuffer(), l = a.exports.memory.buffer;
+      r = new Uint8Array(l, s, J);
+    }), d = (s = null) => {
+      t = !0, a.exports.Hash_Init(s);
+    }, D = (s) => {
+      let l = 0;
+      for (; l < s.length; ) {
+        const p = s.subarray(l, l + J);
+        l += p.length, r.set(p), a.exports.Hash_Update(p.length);
       }
-    }, p = (l) => {
+    }, y = (s) => {
       if (!t)
         throw new Error("update() called before init()");
-      const g = E(l);
-      m(g);
-    }, w = new Uint8Array(i * 2), C = (l, g = null) => {
+      const l = C(s);
+      D(l);
+    }, z = new Uint8Array(i * 2), x = (s, l = null) => {
       if (!t)
         throw new Error("digest() called before init()");
-      return t = !1, r.exports.Hash_Final(g), l === "binary" ? n.slice(0, i) : re(w, n, i);
-    }, y = () => {
+      return t = !1, a.exports.Hash_Final(l), s === "binary" ? r.slice(0, i) : q(z, r, i);
+    }, k = () => {
       if (!t)
         throw new Error("save() can only be called after init() and before digest()");
-      const l = r.exports.Hash_GetState(), g = d(), f = r.exports.memory.buffer, F = new Uint8Array(f, l, g), K = new Uint8Array(z + g);
-      return He(K, e.hash), K.set(F, z), K;
-    }, x = (l) => {
-      if (!(l instanceof Uint8Array))
+      const s = a.exports.Hash_GetState(), l = u(), p = a.exports.memory.buffer, Q = new Uint8Array(p, s, l), F = new Uint8Array(S + l);
+      return de(F, e.hash), F.set(Q, S), F;
+    }, N = (s) => {
+      if (!(s instanceof Uint8Array))
         throw new Error("load() expects an Uint8Array generated by save()");
-      const g = r.exports.Hash_GetState(), f = d(), F = z + f, K = r.exports.memory.buffer;
-      if (l.length !== F)
-        throw new Error(`Bad state length (expected ${F} bytes, got ${l.length})`);
-      if (!Ze(e.hash, l.subarray(0, z)))
+      const l = a.exports.Hash_GetState(), p = u(), Q = S + p, F = a.exports.memory.buffer;
+      if (s.length !== Q)
+        throw new Error(`Bad state length (expected ${Q} bytes, got ${s.length})`);
+      if (!Ce(e.hash, s.subarray(0, S)))
         throw new Error("This state was written by an incompatible hash implementation");
-      const Ne = l.subarray(z);
-      new Uint8Array(K, g, f).set(Ne), t = !0;
-    }, k = (l) => typeof l == "string" ? l.length < Y / 4 : l.byteLength < Y;
-    let v = k;
+      const he = s.subarray(S);
+      new Uint8Array(F, l, p).set(he), t = !0;
+    }, E = (s) => typeof s == "string" ? s.length < J / 4 : s.byteLength < J;
+    let f = E;
     switch (e.name) {
       case "argon2":
       case "scrypt":
-        v = () => !0;
+        f = () => !0;
         break;
       case "blake2b":
       case "blake2s":
-        v = (l, g) => g <= 512 && k(l);
+        f = (s, l) => l <= 512 && E(s);
         break;
       case "blake3":
-        v = (l, g) => g === 0 && k(l);
+        f = (s, l) => l === 0 && E(s);
         break;
       case "xxhash64":
       // cannot simplify
       case "xxhash3":
       case "xxhash128":
       case "crc64":
-        v = () => !1;
+        f = () => !1;
         break;
     }
-    const D = (l, g = null, f = null) => {
-      if (!v(l, g))
-        return c(g), p(l), C("hex", f);
-      const F = E(l);
-      return n.set(F), r.exports.Hash_Calculate(F.length, g, f), re(w, n, i);
+    const v = (s, l = null, p = null) => {
+      if (!f(s, l))
+        return d(l), y(s), x("hex", p);
+      const Q = C(s);
+      return r.set(Q), a.exports.Hash_Calculate(Q.length, l, p), q(z, r, i);
     };
-    return yield A(), {
+    return yield I(), {
       getMemory: o,
-      writeMemory: a,
-      getExports: s,
-      setMemorySize: u,
-      init: c,
-      update: p,
-      digest: C,
-      save: y,
-      load: x,
-      calculate: D,
+      writeMemory: n,
+      getExports: g,
+      setMemorySize: A,
+      init: d,
+      update: y,
+      digest: x,
+      save: k,
+      load: N,
+      calculate: v,
       hashLength: i
     };
   });
 }
-new h();
-var i3 = "argon2", r3 = "AGFzbQEAAAABKQVgAX8Bf2AAAX9gEH9/f39/f39/f39/f39/f38AYAR/f39/AGACf38AAwYFAAECAwQFBgEBAoCAAgYIAX8BQZCoBAsHQQQGbWVtb3J5AgASSGFzaF9TZXRNZW1vcnlTaXplAAAOSGFzaF9HZXRCdWZmZXIAAQ5IYXNoX0NhbGN1bGF0ZQAECvEyBVgBAn9BACEBAkAgAEEAKAKICCICRg0AAkAgACACayIAQRB2IABBgIB8cSAASWoiAEAAQX9HDQBB/wHADwtBACEBQQBBACkDiAggAEEQdK18NwOICAsgAcALcAECfwJAQQAoAoAIIgANAEEAPwBBEHQiADYCgAhBACgCiAgiAUGAgCBGDQACQEGAgCAgAWsiAEEQdiAAQYCAfHEgAElqIgBAAEF/Rw0AQQAPC0EAQQApA4gIIABBEHStfDcDiAhBACgCgAghAAsgAAvcDgECfiAAIAQpAwAiECAAKQMAIhF8IBFCAYZC/v///x+DIBBC/////w+DfnwiEDcDACAMIBAgDCkDAIVCIIkiEDcDACAIIBAgCCkDACIRfCARQgGGQv7///8fgyAQQv////8Pg358IhA3AwAgBCAQIAQpAwCFQiiJIhA3AwAgACAQIAApAwAiEXwgEEL/////D4MgEUIBhkL+////H4N+fCIQNwMAIAwgECAMKQMAhUIwiSIQNwMAIAggECAIKQMAIhF8IBBC/////w+DIBFCAYZC/v///x+DfnwiEDcDACAEIBAgBCkDAIVCAYk3AwAgASAFKQMAIhAgASkDACIRfCARQgGGQv7///8fgyAQQv////8Pg358IhA3AwAgDSAQIA0pAwCFQiCJIhA3AwAgCSAQIAkpAwAiEXwgEUIBhkL+////H4MgEEL/////D4N+fCIQNwMAIAUgECAFKQMAhUIoiSIQNwMAIAEgECABKQMAIhF8IBBC/////w+DIBFCAYZC/v///x+DfnwiEDcDACANIBAgDSkDAIVCMIkiEDcDACAJIBAgCSkDACIRfCAQQv////8PgyARQgGGQv7///8fg358IhA3AwAgBSAQIAUpAwCFQgGJNwMAIAIgBikDACIQIAIpAwAiEXwgEUIBhkL+////H4MgEEL/////D4N+fCIQNwMAIA4gECAOKQMAhUIgiSIQNwMAIAogECAKKQMAIhF8IBFCAYZC/v///x+DIBBC/////w+DfnwiEDcDACAGIBAgBikDAIVCKIkiEDcDACACIBAgAikDACIRfCAQQv////8PgyARQgGGQv7///8fg358IhA3AwAgDiAQIA4pAwCFQjCJIhA3AwAgCiAQIAopAwAiEXwgEEL/////D4MgEUIBhkL+////H4N+fCIQNwMAIAYgECAGKQMAhUIBiTcDACADIAcpAwAiECADKQMAIhF8IBFCAYZC/v///x+DIBBC/////w+DfnwiEDcDACAPIBAgDykDAIVCIIkiEDcDACALIBAgCykDACIRfCARQgGGQv7///8fgyAQQv////8Pg358IhA3AwAgByAQIAcpAwCFQiiJIhA3AwAgAyAQIAMpAwAiEXwgEEL/////D4MgEUIBhkL+////H4N+fCIQNwMAIA8gECAPKQMAhUIwiSIQNwMAIAsgECALKQMAIhF8IBBC/////w+DIBFCAYZC/v///x+DfnwiEDcDACAHIBAgBykDAIVCAYk3AwAgACAFKQMAIhAgACkDACIRfCARQgGGQv7///8fgyAQQv////8Pg358IhA3AwAgDyAQIA8pAwCFQiCJIhA3AwAgCiAQIAopAwAiEXwgEUIBhkL+////H4MgEEL/////D4N+fCIQNwMAIAUgECAFKQMAhUIoiSIQNwMAIAAgECAAKQMAIhF8IBBC/////w+DIBFCAYZC/v///x+DfnwiEDcDACAPIBAgDykDAIVCMIkiEDcDACAKIBAgCikDACIRfCAQQv////8PgyARQgGGQv7///8fg358IhA3AwAgBSAQIAUpAwCFQgGJNwMAIAEgBikDACIQIAEpAwAiEXwgEUIBhkL+////H4MgEEL/////D4N+fCIQNwMAIAwgECAMKQMAhUIgiSIQNwMAIAsgECALKQMAIhF8IBFCAYZC/v///x+DIBBC/////w+DfnwiEDcDACAGIBAgBikDAIVCKIkiEDcDACABIBAgASkDACIRfCAQQv////8PgyARQgGGQv7///8fg358IhA3AwAgDCAQIAwpAwCFQjCJIhA3AwAgCyAQIAspAwAiEXwgEEL/////D4MgEUIBhkL+////H4N+fCIQNwMAIAYgECAGKQMAhUIBiTcDACACIAcpAwAiECACKQMAIhF8IBFCAYZC/v///x+DIBBC/////w+DfnwiEDcDACANIBAgDSkDAIVCIIkiEDcDACAIIBAgCCkDACIRfCARQgGGQv7///8fgyAQQv////8Pg358IhA3AwAgByAQIAcpAwCFQiiJIhA3AwAgAiAQIAIpAwAiEXwgEEL/////D4MgEUIBhkL+////H4N+fCIQNwMAIA0gECANKQMAhUIwiSIQNwMAIAggECAIKQMAIhF8IBBC/////w+DIBFCAYZC/v///x+DfnwiEDcDACAHIBAgBykDAIVCAYk3AwAgAyAEKQMAIhAgAykDACIRfCARQgGGQv7///8fgyAQQv////8Pg358IhA3AwAgDiAQIA4pAwCFQiCJIhA3AwAgCSAQIAkpAwAiEXwgEUIBhkL+////H4MgEEL/////D4N+fCIQNwMAIAQgECAEKQMAhUIoiSIQNwMAIAMgECADKQMAIhF8IBBC/////w+DIBFCAYZC/v///x+DfnwiEDcDACAOIBAgDikDAIVCMIkiEDcDACAJIBAgCSkDACIRfCAQQv////8PgyARQgGGQv7///8fg358IhA3AwAgBCAQIAQpAwCFQgGJNwMAC98aAQN/QQAhBEEAIAIpAwAgASkDAIU3A5AIQQAgAikDCCABKQMIhTcDmAhBACACKQMQIAEpAxCFNwOgCEEAIAIpAxggASkDGIU3A6gIQQAgAikDICABKQMghTcDsAhBACACKQMoIAEpAyiFNwO4CEEAIAIpAzAgASkDMIU3A8AIQQAgAikDOCABKQM4hTcDyAhBACACKQNAIAEpA0CFNwPQCEEAIAIpA0ggASkDSIU3A9gIQQAgAikDUCABKQNQhTcD4AhBACACKQNYIAEpA1iFNwPoCEEAIAIpA2AgASkDYIU3A/AIQQAgAikDaCABKQNohTcD+AhBACACKQNwIAEpA3CFNwOACUEAIAIpA3ggASkDeIU3A4gJQQAgAikDgAEgASkDgAGFNwOQCUEAIAIpA4gBIAEpA4gBhTcDmAlBACACKQOQASABKQOQAYU3A6AJQQAgAikDmAEgASkDmAGFNwOoCUEAIAIpA6ABIAEpA6ABhTcDsAlBACACKQOoASABKQOoAYU3A7gJQQAgAikDsAEgASkDsAGFNwPACUEAIAIpA7gBIAEpA7gBhTcDyAlBACACKQPAASABKQPAAYU3A9AJQQAgAikDyAEgASkDyAGFNwPYCUEAIAIpA9ABIAEpA9ABhTcD4AlBACACKQPYASABKQPYAYU3A+gJQQAgAikD4AEgASkD4AGFNwPwCUEAIAIpA+gBIAEpA+gBhTcD+AlBACACKQPwASABKQPwAYU3A4AKQQAgAikD+AEgASkD+AGFNwOICkEAIAIpA4ACIAEpA4AChTcDkApBACACKQOIAiABKQOIAoU3A5gKQQAgAikDkAIgASkDkAKFNwOgCkEAIAIpA5gCIAEpA5gChTcDqApBACACKQOgAiABKQOgAoU3A7AKQQAgAikDqAIgASkDqAKFNwO4CkEAIAIpA7ACIAEpA7AChTcDwApBACACKQO4AiABKQO4AoU3A8gKQQAgAikDwAIgASkDwAKFNwPQCkEAIAIpA8gCIAEpA8gChTcD2ApBACACKQPQAiABKQPQAoU3A+AKQQAgAikD2AIgASkD2AKFNwPoCkEAIAIpA+ACIAEpA+AChTcD8ApBACACKQPoAiABKQPoAoU3A/gKQQAgAikD8AIgASkD8AKFNwOAC0EAIAIpA/gCIAEpA/gChTcDiAtBACACKQOAAyABKQOAA4U3A5ALQQAgAikDiAMgASkDiAOFNwOYC0EAIAIpA5ADIAEpA5ADhTcDoAtBACACKQOYAyABKQOYA4U3A6gLQQAgAikDoAMgASkDoAOFNwOwC0EAIAIpA6gDIAEpA6gDhTcDuAtBACACKQOwAyABKQOwA4U3A8ALQQAgAikDuAMgASkDuAOFNwPIC0EAIAIpA8ADIAEpA8ADhTcD0AtBACACKQPIAyABKQPIA4U3A9gLQQAgAikD0AMgASkD0AOFNwPgC0EAIAIpA9gDIAEpA9gDhTcD6AtBACACKQPgAyABKQPgA4U3A/ALQQAgAikD6AMgASkD6AOFNwP4C0EAIAIpA/ADIAEpA/ADhTcDgAxBACACKQP4AyABKQP4A4U3A4gMQQAgAikDgAQgASkDgASFNwOQDEEAIAIpA4gEIAEpA4gEhTcDmAxBACACKQOQBCABKQOQBIU3A6AMQQAgAikDmAQgASkDmASFNwOoDEEAIAIpA6AEIAEpA6AEhTcDsAxBACACKQOoBCABKQOoBIU3A7gMQQAgAikDsAQgASkDsASFNwPADEEAIAIpA7gEIAEpA7gEhTcDyAxBACACKQPABCABKQPABIU3A9AMQQAgAikDyAQgASkDyASFNwPYDEEAIAIpA9AEIAEpA9AEhTcD4AxBACACKQPYBCABKQPYBIU3A+gMQQAgAikD4AQgASkD4ASFNwPwDEEAIAIpA+gEIAEpA+gEhTcD+AxBACACKQPwBCABKQPwBIU3A4ANQQAgAikD+AQgASkD+ASFNwOIDUEAIAIpA4AFIAEpA4AFhTcDkA1BACACKQOIBSABKQOIBYU3A5gNQQAgAikDkAUgASkDkAWFNwOgDUEAIAIpA5gFIAEpA5gFhTcDqA1BACACKQOgBSABKQOgBYU3A7ANQQAgAikDqAUgASkDqAWFNwO4DUEAIAIpA7AFIAEpA7AFhTcDwA1BACACKQO4BSABKQO4BYU3A8gNQQAgAikDwAUgASkDwAWFNwPQDUEAIAIpA8gFIAEpA8gFhTcD2A1BACACKQPQBSABKQPQBYU3A+ANQQAgAikD2AUgASkD2AWFNwPoDUEAIAIpA+AFIAEpA+AFhTcD8A1BACACKQPoBSABKQPoBYU3A/gNQQAgAikD8AUgASkD8AWFNwOADkEAIAIpA/gFIAEpA/gFhTcDiA5BACACKQOABiABKQOABoU3A5AOQQAgAikDiAYgASkDiAaFNwOYDkEAIAIpA5AGIAEpA5AGhTcDoA5BACACKQOYBiABKQOYBoU3A6gOQQAgAikDoAYgASkDoAaFNwOwDkEAIAIpA6gGIAEpA6gGhTcDuA5BACACKQOwBiABKQOwBoU3A8AOQQAgAikDuAYgASkDuAaFNwPIDkEAIAIpA8AGIAEpA8AGhTcD0A5BACACKQPIBiABKQPIBoU3A9gOQQAgAikD0AYgASkD0AaFNwPgDkEAIAIpA9gGIAEpA9gGhTcD6A5BACACKQPgBiABKQPgBoU3A/AOQQAgAikD6AYgASkD6AaFNwP4DkEAIAIpA/AGIAEpA/AGhTcDgA9BACACKQP4BiABKQP4BoU3A4gPQQAgAikDgAcgASkDgAeFNwOQD0EAIAIpA4gHIAEpA4gHhTcDmA9BACACKQOQByABKQOQB4U3A6APQQAgAikDmAcgASkDmAeFNwOoD0EAIAIpA6AHIAEpA6AHhTcDsA9BACACKQOoByABKQOoB4U3A7gPQQAgAikDsAcgASkDsAeFNwPAD0EAIAIpA7gHIAEpA7gHhTcDyA9BACACKQPAByABKQPAB4U3A9APQQAgAikDyAcgASkDyAeFNwPYD0EAIAIpA9AHIAEpA9AHhTcD4A9BACACKQPYByABKQPYB4U3A+gPQQAgAikD4AcgASkD4AeFNwPwD0EAIAIpA+gHIAEpA+gHhTcD+A9BACACKQPwByABKQPwB4U3A4AQQQAgAikD+AcgASkD+AeFNwOIEEGQCEGYCEGgCEGoCEGwCEG4CEHACEHICEHQCEHYCEHgCEHoCEHwCEH4CEGACUGICRACQZAJQZgJQaAJQagJQbAJQbgJQcAJQcgJQdAJQdgJQeAJQegJQfAJQfgJQYAKQYgKEAJBkApBmApBoApBqApBsApBuApBwApByApB0ApB2ApB4ApB6ApB8ApB+ApBgAtBiAsQAkGQC0GYC0GgC0GoC0GwC0G4C0HAC0HIC0HQC0HYC0HgC0HoC0HwC0H4C0GADEGIDBACQZAMQZgMQaAMQagMQbAMQbgMQcAMQcgMQdAMQdgMQeAMQegMQfAMQfgMQYANQYgNEAJBkA1BmA1BoA1BqA1BsA1BuA1BwA1ByA1B0A1B2A1B4A1B6A1B8A1B+A1BgA5BiA4QAkGQDkGYDkGgDkGoDkGwDkG4DkHADkHIDkHQDkHYDkHgDkHoDkHwDkH4DkGAD0GIDxACQZAPQZgPQaAPQagPQbAPQbgPQcAPQcgPQdAPQdgPQeAPQegPQfAPQfgPQYAQQYgQEAJBkAhBmAhBkAlBmAlBkApBmApBkAtBmAtBkAxBmAxBkA1BmA1BkA5BmA5BkA9BmA8QAkGgCEGoCEGgCUGoCUGgCkGoCkGgC0GoC0GgDEGoDEGgDUGoDUGgDkGoDkGgD0GoDxACQbAIQbgIQbAJQbgJQbAKQbgKQbALQbgLQbAMQbgMQbANQbgNQbAOQbgOQbAPQbgPEAJBwAhByAhBwAlByAlBwApByApBwAtByAtBwAxByAxBwA1ByA1BwA5ByA5BwA9ByA8QAkHQCEHYCEHQCUHYCUHQCkHYCkHQC0HYC0HQDEHYDEHQDUHYDUHQDkHYDkHQD0HYDxACQeAIQegIQeAJQegJQeAKQegKQeALQegLQeAMQegMQeANQegNQeAOQegOQeAPQegPEAJB8AhB+AhB8AlB+AlB8ApB+ApB8AtB+AtB8AxB+AxB8A1B+A1B8A5B+A5B8A9B+A8QAkGACUGICUGACkGICkGAC0GIC0GADEGIDEGADUGIDUGADkGIDkGAD0GID0GAEEGIEBACAkACQCADRQ0AA0AgACAEaiIDIAIgBGoiBSkDACABIARqIgYpAwCFIARBkAhqKQMAhSADKQMAhTcDACADQQhqIgMgBUEIaikDACAGQQhqKQMAhSAEQZgIaikDAIUgAykDAIU3AwAgBEEQaiIEQYAIRw0ADAILC0EAIQQDQCAAIARqIgMgAiAEaiIFKQMAIAEgBGoiBikDAIUgBEGQCGopAwCFNwMAIANBCGogBUEIaikDACAGQQhqKQMAhSAEQZgIaikDAIU3AwAgBEEQaiIEQYAIRw0ACwsL5QcMBX8BfgR/An4BfwF+AX8Bfgd/AX4DfwF+AkBBACgCgAgiAiABQQp0aiIDKAIIIAFHDQAgAygCDCEEIAMoAgAhBUEAIAMoAhQiBq03A7gQQQAgBK0iBzcDsBBBACAFIAEgBUECdG4iCGwiCUECdK03A6gQAkACQAJAAkAgBEUNAEF/IQogBUUNASAIQQNsIQsgCEECdCIErSEMIAWtIQ0gBkF/akECSSEOQgAhDwNAQQAgDzcDkBAgD6chEEIAIRFBACEBA0BBACARNwOgECAPIBGEUCIDIA5xIRIgBkEBRiAPUCITIAZBAkYgEUICVHFxciEUQX8gAUEBakEDcSAIbEF/aiATGyEVIAEgEHIhFiABIAhsIRcgA0EBdCEYQgAhGQNAQQBCADcDwBBBACAZNwOYECAYIQECQCASRQ0AQQBCATcDwBBBkBhBkBBBkCBBABADQZAYQZAYQZAgQQAQA0ECIQELAkAgASAITw0AIAQgGaciGmwgF2ogAWohAwNAIANBACAEIAEbQQAgEVAiGxtqQX9qIRwCQAJAIBQNAEEAKAKACCICIBxBCnQiHGohCgwBCwJAIAFB/wBxIgINAEEAQQApA8AQQgF8NwPAEEGQGEGQEEGQIEEAEANBkBhBkBhBkCBBABADCyAcQQp0IRwgAkEDdEGQGGohCkEAKAKACCECCyACIANBCnRqIAIgHGogAiAKKQMAIh1CIIinIAVwIBogFhsiHCAEbCABIAFBACAZIBytUSIcGyIKIBsbIBdqIAogC2ogExsgAUUgHHJrIhsgFWqtIB1C/////w+DIh0gHX5CIIggG61+QiCIfSAMgqdqQQp0akEBEAMgA0EBaiEDIAggAUEBaiIBRw0ACwsgGUIBfCIZIA1SDQALIBFCAXwiEachASARQgRSDQALIA9CAXwiDyAHUg0AC0EAKAKACCECCyAJQQx0QYB4aiEXIAVBf2oiCkUNAgwBC0EAQgM3A6AQQQAgBEF/aq03A5AQQYB4IRcLIAIgF2ohGyAIQQx0IQhBACEcA0AgCCAcQQFqIhxsQYB4aiEEQQAhAQNAIBsgAWoiAyADKQMAIAIgBCABamopAwCFNwMAIANBCGoiAyADKQMAIAIgBCABQQhyamopAwCFNwMAIAFBCGohAyABQRBqIQEgA0H4B0kNAAsgHCAKRw0ACwsgAiAXaiEbQXghAQNAIAIgAWoiA0EIaiAbIAFqIgRBCGopAwA3AwAgA0EQaiAEQRBqKQMANwMAIANBGGogBEEYaikDADcDACADQSBqIARBIGopAwA3AwAgAUEgaiIBQfgHSQ0ACwsL", a3 = "e4cdc523", n3 = {
-  name: i3,
-  data: r3,
-  hash: a3
-}, t3 = "blake2b", o3 = "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", s3 = "c6f286e6", l3 = {
-  name: t3,
-  data: o3,
-  hash: s3
+new c();
+var Be = "argon2", Ee = "AGFzbQEAAAABKQVgAX8Bf2AAAX9gEH9/f39/f39/f39/f39/f38AYAR/f39/AGACf38AAwYFAAECAwQFBgEBAoCAAgYIAX8BQZCoBAsHQQQGbWVtb3J5AgASSGFzaF9TZXRNZW1vcnlTaXplAAAOSGFzaF9HZXRCdWZmZXIAAQ5IYXNoX0NhbGN1bGF0ZQAECvEyBVgBAn9BACEBAkAgAEEAKAKICCICRg0AAkAgACACayIAQRB2IABBgIB8cSAASWoiAEAAQX9HDQBB/wHADwtBACEBQQBBACkDiAggAEEQdK18NwOICAsgAcALcAECfwJAQQAoAoAIIgANAEEAPwBBEHQiADYCgAhBACgCiAgiAUGAgCBGDQACQEGAgCAgAWsiAEEQdiAAQYCAfHEgAElqIgBAAEF/Rw0AQQAPC0EAQQApA4gIIABBEHStfDcDiAhBACgCgAghAAsgAAvcDgECfiAAIAQpAwAiECAAKQMAIhF8IBFCAYZC/v///x+DIBBC/////w+DfnwiEDcDACAMIBAgDCkDAIVCIIkiEDcDACAIIBAgCCkDACIRfCARQgGGQv7///8fgyAQQv////8Pg358IhA3AwAgBCAQIAQpAwCFQiiJIhA3AwAgACAQIAApAwAiEXwgEEL/////D4MgEUIBhkL+////H4N+fCIQNwMAIAwgECAMKQMAhUIwiSIQNwMAIAggECAIKQMAIhF8IBBC/////w+DIBFCAYZC/v///x+DfnwiEDcDACAEIBAgBCkDAIVCAYk3AwAgASAFKQMAIhAgASkDACIRfCARQgGGQv7///8fgyAQQv////8Pg358IhA3AwAgDSAQIA0pAwCFQiCJIhA3AwAgCSAQIAkpAwAiEXwgEUIBhkL+////H4MgEEL/////D4N+fCIQNwMAIAUgECAFKQMAhUIoiSIQNwMAIAEgECABKQMAIhF8IBBC/////w+DIBFCAYZC/v///x+DfnwiEDcDACANIBAgDSkDAIVCMIkiEDcDACAJIBAgCSkDACIRfCAQQv////8PgyARQgGGQv7///8fg358IhA3AwAgBSAQIAUpAwCFQgGJNwMAIAIgBikDACIQIAIpAwAiEXwgEUIBhkL+////H4MgEEL/////D4N+fCIQNwMAIA4gECAOKQMAhUIgiSIQNwMAIAogECAKKQMAIhF8IBFCAYZC/v///x+DIBBC/////w+DfnwiEDcDACAGIBAgBikDAIVCKIkiEDcDACACIBAgAikDACIRfCAQQv////8PgyARQgGGQv7///8fg358IhA3AwAgDiAQIA4pAwCFQjCJIhA3AwAgCiAQIAopAwAiEXwgEEL/////D4MgEUIBhkL+////H4N+fCIQNwMAIAYgECAGKQMAhUIBiTcDACADIAcpAwAiECADKQMAIhF8IBFCAYZC/v///x+DIBBC/////w+DfnwiEDcDACAPIBAgDykDAIVCIIkiEDcDACALIBAgCykDACIRfCARQgGGQv7///8fgyAQQv////8Pg358IhA3AwAgByAQIAcpAwCFQiiJIhA3AwAgAyAQIAMpAwAiEXwgEEL/////D4MgEUIBhkL+////H4N+fCIQNwMAIA8gECAPKQMAhUIwiSIQNwMAIAsgECALKQMAIhF8IBBC/////w+DIBFCAYZC/v///x+DfnwiEDcDACAHIBAgBykDAIVCAYk3AwAgACAFKQMAIhAgACkDACIRfCARQgGGQv7///8fgyAQQv////8Pg358IhA3AwAgDyAQIA8pAwCFQiCJIhA3AwAgCiAQIAopAwAiEXwgEUIBhkL+////H4MgEEL/////D4N+fCIQNwMAIAUgECAFKQMAhUIoiSIQNwMAIAAgECAAKQMAIhF8IBBC/////w+DIBFCAYZC/v///x+DfnwiEDcDACAPIBAgDykDAIVCMIkiEDcDACAKIBAgCikDACIRfCAQQv////8PgyARQgGGQv7///8fg358IhA3AwAgBSAQIAUpAwCFQgGJNwMAIAEgBikDACIQIAEpAwAiEXwgEUIBhkL+////H4MgEEL/////D4N+fCIQNwMAIAwgECAMKQMAhUIgiSIQNwMAIAsgECALKQMAIhF8IBFCAYZC/v///x+DIBBC/////w+DfnwiEDcDACAGIBAgBikDAIVCKIkiEDcDACABIBAgASkDACIRfCAQQv////8PgyARQgGGQv7///8fg358IhA3AwAgDCAQIAwpAwCFQjCJIhA3AwAgCyAQIAspAwAiEXwgEEL/////D4MgEUIBhkL+////H4N+fCIQNwMAIAYgECAGKQMAhUIBiTcDACACIAcpAwAiECACKQMAIhF8IBFCAYZC/v///x+DIBBC/////w+DfnwiEDcDACANIBAgDSkDAIVCIIkiEDcDACAIIBAgCCkDACIRfCARQgGGQv7///8fgyAQQv////8Pg358IhA3AwAgByAQIAcpAwCFQiiJIhA3AwAgAiAQIAIpAwAiEXwgEEL/////D4MgEUIBhkL+////H4N+fCIQNwMAIA0gECANKQMAhUIwiSIQNwMAIAggECAIKQMAIhF8IBBC/////w+DIBFCAYZC/v///x+DfnwiEDcDACAHIBAgBykDAIVCAYk3AwAgAyAEKQMAIhAgAykDACIRfCARQgGGQv7///8fgyAQQv////8Pg358IhA3AwAgDiAQIA4pAwCFQiCJIhA3AwAgCSAQIAkpAwAiEXwgEUIBhkL+////H4MgEEL/////D4N+fCIQNwMAIAQgECAEKQMAhUIoiSIQNwMAIAMgECADKQMAIhF8IBBC/////w+DIBFCAYZC/v///x+DfnwiEDcDACAOIBAgDikDAIVCMIkiEDcDACAJIBAgCSkDACIRfCAQQv////8PgyARQgGGQv7///8fg358IhA3AwAgBCAQIAQpAwCFQgGJNwMAC98aAQN/QQAhBEEAIAIpAwAgASkDAIU3A5AIQQAgAikDCCABKQMIhTcDmAhBACACKQMQIAEpAxCFNwOgCEEAIAIpAxggASkDGIU3A6gIQQAgAikDICABKQMghTcDsAhBACACKQMoIAEpAyiFNwO4CEEAIAIpAzAgASkDMIU3A8AIQQAgAikDOCABKQM4hTcDyAhBACACKQNAIAEpA0CFNwPQCEEAIAIpA0ggASkDSIU3A9gIQQAgAikDUCABKQNQhTcD4AhBACACKQNYIAEpA1iFNwPoCEEAIAIpA2AgASkDYIU3A/AIQQAgAikDaCABKQNohTcD+AhBACACKQNwIAEpA3CFNwOACUEAIAIpA3ggASkDeIU3A4gJQQAgAikDgAEgASkDgAGFNwOQCUEAIAIpA4gBIAEpA4gBhTcDmAlBACACKQOQASABKQOQAYU3A6AJQQAgAikDmAEgASkDmAGFNwOoCUEAIAIpA6ABIAEpA6ABhTcDsAlBACACKQOoASABKQOoAYU3A7gJQQAgAikDsAEgASkDsAGFNwPACUEAIAIpA7gBIAEpA7gBhTcDyAlBACACKQPAASABKQPAAYU3A9AJQQAgAikDyAEgASkD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", De = "e4cdc523", Fe = {
+  name: Be,
+  data: Ee,
+  hash: De
+}, Se = "blake2b", Ue = "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", Ge = "c6f286e6", xe = {
+  name: Se,
+  data: Ue,
+  hash: Ge
 };
-new h();
-function Ce(e) {
+new c();
+function re(e) {
   return !Number.isInteger(e) || e < 8 || e > 512 || e % 8 !== 0 ? new Error("Invalid variant! Valid values: 8, 16, ..., 512") : null;
 }
-function c3(e, i) {
+function Je(e, i) {
   return e | i << 16;
 }
-function ae(e = 512, i = null) {
-  if (Ce(e))
-    return Promise.reject(Ce(e));
-  let r = null, n = e;
+function X(e = 512, i = null) {
+  if (re(e))
+    return Promise.reject(re(e));
+  let a = null, r = e;
   if (i !== null) {
-    if (r = E(i), r.length > 64)
+    if (a = C(i), a.length > 64)
       return Promise.reject(new Error("Max key length is 64 bytes"));
-    n = c3(e, r.length);
+    r = Je(e, a.length);
   }
   const t = e / 8;
-  return ze(l3, t).then((a) => {
-    n > 512 && a.writeMemory(r), a.init(n);
+  return pe(xe, t).then((n) => {
+    r > 512 && n.writeMemory(a), n.init(r);
     const o = {
-      init: n > 512 ? () => (a.writeMemory(r), a.init(n), o) : () => (a.init(n), o),
-      update: (s) => (a.update(s), o),
+      init: r > 512 ? () => (n.writeMemory(a), n.init(r), o) : () => (n.init(r), o),
+      update: (g) => (n.update(g), o),
       // biome-ignore lint/suspicious/noExplicitAny: Conflict with IHasher type
-      digest: (s) => a.digest(s),
-      save: () => a.save(),
-      load: (s) => (a.load(s), o),
+      digest: (g) => n.digest(g),
+      save: () => n.save(),
+      load: (g) => (n.load(g), o),
       blockSize: 128,
       digestSize: t
     };
     return o;
   });
 }
-function g3(e, i, r) {
-  const n = [
+function Ke(e, i, a) {
+  const r = [
     `m=${i.memorySize}`,
     `t=${i.iterations}`,
     `p=${i.parallelism}`
   ].join(",");
-  return `$argon2${i.hashType}$v=19$${n}$${be(e, !1)}$${be(r, !1)}`;
+  return `$argon2${i.hashType}$v=19$${r}$${ae(e, !1)}$${ae(a, !1)}`;
 }
-const ke = new DataView(new ArrayBuffer(4));
-function B(e) {
-  return ke.setInt32(0, e, !0), new Uint8Array(ke.buffer);
+const ne = new DataView(new ArrayBuffer(4));
+function w(e) {
+  return ne.setInt32(0, e, !0), new Uint8Array(ne.buffer);
 }
-function Z(e, i, r) {
-  return S(this, void 0, void 0, function* () {
-    if (r <= 64) {
-      const u = yield ae(r * 8);
-      return u.update(B(r)), u.update(i), u.digest("binary");
+function M(e, i, a) {
+  return B(this, void 0, void 0, function* () {
+    if (a <= 64) {
+      const A = yield X(a * 8);
+      return A.update(w(a)), A.update(i), A.digest("binary");
     }
-    const n = Math.ceil(r / 32) - 2, t = new Uint8Array(r);
-    e.init(), e.update(B(r)), e.update(i);
-    let a = e.digest("binary");
-    t.set(a.subarray(0, 32), 0);
-    for (let u = 1; u < n; u++)
-      e.init(), e.update(a), a = e.digest("binary"), t.set(a.subarray(0, 32), u * 32);
-    const o = r - 32 * n;
-    let s;
-    return o === 64 ? (s = e, s.init()) : s = yield ae(o * 8), s.update(a), a = s.digest("binary"), t.set(a.subarray(0, o), n * 32), t;
+    const r = Math.ceil(a / 32) - 2, t = new Uint8Array(a);
+    e.init(), e.update(w(a)), e.update(i);
+    let n = e.digest("binary");
+    t.set(n.subarray(0, 32), 0);
+    for (let A = 1; A < r; A++)
+      e.init(), e.update(n), n = e.digest("binary"), t.set(n.subarray(0, 32), A * 32);
+    const o = a - 32 * r;
+    let g;
+    return o === 64 ? (g = e, g.init()) : g = yield X(o * 8), g.update(n), n = g.digest("binary"), t.set(n.subarray(0, o), r * 32), t;
   });
 }
-function u3(e) {
+function He(e) {
   switch (e) {
     case "d":
       return 0;
@@ -662,46 +344,46 @@ function u3(e) {
       return 2;
   }
 }
-function A3(e) {
-  return S(this, void 0, void 0, function* () {
+function ze(e) {
+  return B(this, void 0, void 0, function* () {
     var i;
-    const { parallelism: r, iterations: n, hashLength: t } = e, a = E(e.password), o = E(e.salt), s = 19, u = u3(e.hashType), { memorySize: d } = e, I = E((i = e.secret) !== null && i !== void 0 ? i : ""), [A, c] = yield Promise.all([
-      ze(n3, 1024),
-      ae(512)
+    const { parallelism: a, iterations: r, hashLength: t } = e, n = C(e.password), o = C(e.salt), g = 19, A = He(e.hashType), { memorySize: u } = e, h = C((i = e.secret) !== null && i !== void 0 ? i : ""), [I, d] = yield Promise.all([
+      pe(Fe, 1024),
+      X(512)
     ]);
-    A.setMemorySize(d * 1024 + 1024);
-    const m = new Uint8Array(24), p = new DataView(m.buffer);
-    p.setInt32(0, r, !0), p.setInt32(4, t, !0), p.setInt32(8, d, !0), p.setInt32(12, n, !0), p.setInt32(16, s, !0), p.setInt32(20, u, !0), A.writeMemory(m, d * 1024), c.init(), c.update(m), c.update(B(a.length)), c.update(a), c.update(B(o.length)), c.update(o), c.update(B(I.length)), c.update(I), c.update(B(0));
-    const C = Math.floor(d / (r * 4)) * 4, y = new Uint8Array(72), x = c.digest("binary");
-    y.set(x);
-    for (let D = 0; D < r; D++) {
-      y.set(B(0), 64), y.set(B(D), 68);
-      let l = D * C, g = yield Z(c, y, 1024);
-      A.writeMemory(g, l * 1024), l += 1, y.set(B(1), 64), g = yield Z(c, y, 1024), A.writeMemory(g, l * 1024);
+    I.setMemorySize(u * 1024 + 1024);
+    const D = new Uint8Array(24), y = new DataView(D.buffer);
+    y.setInt32(0, a, !0), y.setInt32(4, t, !0), y.setInt32(8, u, !0), y.setInt32(12, r, !0), y.setInt32(16, g, !0), y.setInt32(20, A, !0), I.writeMemory(D, u * 1024), d.init(), d.update(D), d.update(w(n.length)), d.update(n), d.update(w(o.length)), d.update(o), d.update(w(h.length)), d.update(h), d.update(w(0));
+    const x = Math.floor(u / (a * 4)) * 4, k = new Uint8Array(72), N = d.digest("binary");
+    k.set(N);
+    for (let v = 0; v < a; v++) {
+      k.set(w(0), 64), k.set(w(v), 68);
+      let s = v * x, l = yield M(d, k, 1024);
+      I.writeMemory(l, s * 1024), s += 1, k.set(w(1), 64), l = yield M(d, k, 1024), I.writeMemory(l, s * 1024);
     }
-    const k = new Uint8Array(1024);
-    He(k, A.calculate(new Uint8Array([]), d));
-    const v = yield Z(c, k, t);
+    const E = new Uint8Array(1024);
+    de(E, I.calculate(new Uint8Array([]), u));
+    const f = yield M(d, E, t);
     if (e.outputType === "hex") {
-      const D = new Uint8Array(t * 2);
-      return re(D, v, t);
+      const v = new Uint8Array(t * 2);
+      return q(v, f, t);
     }
-    return e.outputType === "encoded" ? g3(o, e, v) : v;
+    return e.outputType === "encoded" ? Ke(o, e, f) : f;
   });
 }
-const d3 = (e) => {
+const Ne = (e) => {
   var i;
   if (!e || typeof e != "object")
     throw new Error("Invalid options parameter. It requires an object.");
   if (!e.password)
     throw new Error("Password must be specified");
-  if (e.password = E(e.password), e.password.length < 1)
+  if (e.password = C(e.password), e.password.length < 1)
     throw new Error("Password must be specified");
   if (!e.salt)
     throw new Error("Salt must be specified");
-  if (e.salt = E(e.salt), e.salt.length < 8)
+  if (e.salt = C(e.salt), e.salt.length < 8)
     throw new Error("Salt should be at least 8 bytes long");
-  if (e.secret = E((i = e.secret) !== null && i !== void 0 ? i : ""), !Number.isInteger(e.iterations) || e.iterations < 1)
+  if (e.secret = C((i = e.secret) !== null && i !== void 0 ? i : ""), !Number.isInteger(e.iterations) || e.iterations < 1)
     throw new Error("Iterations should be a positive number");
   if (!Number.isInteger(e.parallelism) || e.parallelism < 1)
     throw new Error("Parallelism should be a positive number");
@@ -714,58 +396,58 @@ const d3 = (e) => {
   if (e.outputType === void 0 && (e.outputType = "hex"), !["hex", "binary", "encoded"].includes(e.outputType))
     throw new Error(`Insupported output type ${e.outputType}. Valid values: ['hex', 'binary', 'encoded']`);
 };
-function p3(e) {
-  return S(this, void 0, void 0, function* () {
-    return d3(e), A3(Object.assign(Object.assign({}, e), { hashType: "id" }));
+function Ve(e) {
+  return B(this, void 0, void 0, function* () {
+    return Ne(e), ze(Object.assign(Object.assign({}, e), { hashType: "id" }));
   });
 }
-new h();
-new h();
-new h();
-new h();
-new h();
-new h();
-new h();
-new h();
-new h();
-new h();
-new h();
-new h();
-new h();
-new h();
-new h();
-new h();
-new h();
-new h();
-new h();
-new h();
-const O = {
+new c();
+new c();
+new c();
+new c();
+new c();
+new c();
+new c();
+new c();
+new c();
+new c();
+new c();
+new c();
+new c();
+new c();
+new c();
+new c();
+new c();
+new c();
+new c();
+new c();
+const K = {
   id: "bitlogin-argon2id-v1",
   memoryKiB: 64 * 1024,
   iterations: 3,
   parallelism: 1,
   hashLength: 32
 };
-async function h3(e, i) {
+async function Ye(e, i) {
   if (i.length < 8)
     throw new Error("Argon2id salt must be at least 8 bytes.");
-  const r = await p3({
+  const a = await Ve({
     password: e,
     salt: i,
-    parallelism: O.parallelism,
-    iterations: O.iterations,
-    memorySize: O.memoryKiB,
-    hashLength: O.hashLength,
+    parallelism: K.parallelism,
+    iterations: K.iterations,
+    memorySize: K.memoryKiB,
+    hashLength: K.hashLength,
     outputType: "binary"
   });
-  return r instanceof Uint8Array ? r : new Uint8Array(r);
+  return a instanceof Uint8Array ? a : new Uint8Array(a);
 }
-function I3(e) {
+function Oe(e) {
   return new TextEncoder().encode(e.normalize("NFKC"));
 }
-var W, ve;
-function m3() {
-  return ve || (ve = 1, W = {
+var j, te;
+function Me() {
+  return te || (te = 1, j = {
     11111: "abacus",
     11112: "abdomen",
     11113: "abdominal",
@@ -8542,62 +8224,62 @@ function m3() {
     66664: "zoologist",
     66665: "zoology",
     66666: "zoom"
-  }), W;
+  }), j;
 }
-var f3 = m3();
-const Qe = /* @__PURE__ */ je(f3), R = Object.keys(Qe).sort().map((e) => Qe[e]);
-if (R.length !== 7776)
-  throw new Error(`EFF long wordlist must contain 7776 entries, found ${R.length}.`);
-function P3() {
-  return R;
+var je = Me();
+const se = /* @__PURE__ */ me(je), H = Object.keys(se).sort().map((e) => se[e]);
+if (H.length !== 7776)
+  throw new Error(`EFF long wordlist must contain 7776 entries, found ${H.length}.`);
+function A3() {
+  return H;
 }
-const q3 = Math.log2(R.length);
-class N extends Error {
+const u3 = Math.log2(H.length);
+class U extends Error {
   constructor(i) {
     super(i), this.name = "LoginNameError";
   }
 }
-const Be = 3, Ee = 32, y3 = /^[\x00-\x7F]*$/u, w3 = /^[a-z0-9._-]+$/u, b3 = /[._-]{2,}/u, De = /[a-z0-9]/u;
-function C3(e) {
+const oe = 3, le = 32, Pe = /^[\x00-\x7F]*$/u, qe = /^[a-z0-9._-]+$/u, Xe = /[._-]{2,}/u, ge = /[a-z0-9]/u;
+function Re(e) {
   const i = e.trim().toLowerCase();
-  if (!y3.test(i))
-    throw new N("Login name must contain ASCII characters only.");
-  if (i.length < Be || i.length > Ee)
-    throw new N(`Login name must be between ${Be} and ${Ee} characters.`);
-  if (!w3.test(i))
-    throw new N("Login name may only contain a-z, 0-9, '.', '_', and '-'.");
-  const r = i[0], n = i[i.length - 1];
-  if (!De.test(r) || !De.test(n))
-    throw new N("Login name must not begin or end with punctuation.");
-  if (b3.test(i))
-    throw new N("Login name must not contain consecutive punctuation.");
+  if (!Pe.test(i))
+    throw new U("Login name must contain ASCII characters only.");
+  if (i.length < oe || i.length > le)
+    throw new U(`Login name must be between ${oe} and ${le} characters.`);
+  if (!qe.test(i))
+    throw new U("Login name may only contain a-z, 0-9, '.', '_', and '-'.");
+  const a = i[0], r = i[i.length - 1];
+  if (!ge.test(a) || !ge.test(r))
+    throw new U("Login name must not begin or end with punctuation.");
+  if (Xe.test(i))
+    throw new U("Login name must not contain consecutive punctuation.");
   return i;
 }
-function X3(e) {
+function d3(e) {
   try {
-    return C3(e), !0;
+    return Re(e), !0;
   } catch {
     return !1;
   }
 }
-function k3(e) {
-  return Ye(Oe(pe("bitlogin/password-salt/v1"), new Uint8Array([0]), pe(e))).slice(0, 16);
+function Le(e) {
+  return ye(fe(W("bitlogin/password-salt/v1"), new Uint8Array([0]), W(e))).slice(0, 16);
 }
-async function R3(e, i) {
-  const r = k3(i), n = I3(e), t = await h3(n, r), a = ne(te("bitlogin/password-root/v1"), t), o = oe(a, "bitlogin/password-locator-signing/v1"), s = Fe(a, "bitlogin/password-capsule-encryption/v1", 32);
-  return de(n, t, a), { locatorPrivateKey: o.scalar, capsuleKey: s };
+async function p3(e, i) {
+  const a = Le(i), r = Oe(e), t = await Ye(r, a), n = L(T("bitlogin/password-root/v1"), t), o = _(n, "bitlogin/password-locator-signing/v1"), g = ce(n, "bitlogin/password-capsule-encryption/v1", 32);
+  return Z(r, t, n), { locatorPrivateKey: o.scalar, capsuleKey: g };
 }
-function L3(e) {
-  const i = ne(te("bitlogin/recovery-root/v1"), e), r = oe(i, "bitlogin/everyday-identity/v1");
-  return de(i), r.scalar;
+function h3(e) {
+  const i = L(T("bitlogin/recovery-root/v1"), e), a = _(i, "bitlogin/everyday-identity/v1");
+  return Z(i), a.scalar;
 }
-function T3(e) {
-  const i = ne(te("bitlogin/recovery-root/v1"), e), r = oe(i, "bitlogin/recovery-signing/v1"), n = Fe(i, "bitlogin/recovery-capsule-encryption/v1", 32);
-  return de(i), { recoveryPrivateKey: r.scalar, capsuleKey: n };
+function I3(e) {
+  const i = L(T("bitlogin/recovery-root/v1"), e), a = _(i, "bitlogin/recovery-signing/v1"), r = ce(i, "bitlogin/recovery-capsule-encryption/v1", 32);
+  return Z(i), { recoveryPrivateKey: a.scalar, capsuleKey: r };
 }
-function _3(e) {
+function m3(e) {
   return {
-    schema: Se,
+    schema: Ae,
     recovery_public_key: e.recoveryPublicKeyHex,
     vault_relays: e.vaultRelayUrls,
     recovery_capsule_events: e.recoveryCapsuleEvents,
@@ -8605,64 +8287,62 @@ function _3(e) {
     created_at: e.now ?? Math.floor(Date.now() / 1e3)
   };
 }
-class Q extends Error {
+class b extends Error {
   constructor(i) {
     super(i), this.name = "RecoveryExportParseError";
   }
 }
-function Z3(e) {
+function y3(e) {
   if (typeof e != "object" || e === null)
-    throw new Q("Recovery export must be a JSON object.");
+    throw new b("Recovery export must be a JSON object.");
   const i = e;
-  if (i.schema !== Se)
-    throw new Q(`Unsupported recovery export schema: ${String(i.schema)}`);
+  if (i.schema !== Ae)
+    throw new b(`Unsupported recovery export schema: ${String(i.schema)}`);
   if (typeof i.recovery_public_key != "string" || !/^[0-9a-f]{64}$/u.test(i.recovery_public_key))
-    throw new Q("recovery_public_key must be lowercase 64-char hex.");
+    throw new b("recovery_public_key must be lowercase 64-char hex.");
   if (!Array.isArray(i.vault_relays))
-    throw new Q("vault_relays must be an array.");
+    throw new b("vault_relays must be an array.");
   if (!Array.isArray(i.recovery_capsule_events) || i.recovery_capsule_events.length === 0)
-    throw new Q("recovery_capsule_events must be a non-empty array.");
-  for (const r of i.recovery_capsule_events)
-    if (!he(r))
-      throw new Q("An embedded recovery_capsule_event has an invalid id or signature.");
+    throw new b("recovery_capsule_events must be a non-empty array.");
+  for (const a of i.recovery_capsule_events)
+    if (!$(a))
+      throw new b("An embedded recovery_capsule_event has an invalid id or signature.");
   if (!Array.isArray(i.relay_list_events))
-    throw new Q("relay_list_events must be an array.");
-  for (const r of i.relay_list_events)
-    if (!he(r))
-      throw new Q("An embedded relay_list_event has an invalid id or signature.");
+    throw new b("relay_list_events must be an array.");
+  for (const a of i.relay_list_events)
+    if (!$(a))
+      throw new b("An embedded relay_list_event has an invalid id or signature.");
   if (typeof i.created_at != "number")
-    throw new Q("created_at must be a number.");
+    throw new b("created_at must be a number.");
   return i;
 }
 export {
-  O as B,
-  H3 as D,
-  q3 as E,
-  D3 as K,
-  Q as R,
-  N3 as S,
-  O3 as a,
-  U3 as b,
-  G3 as c,
-  Y3 as d,
-  P3 as e,
-  x3 as f,
-  E3 as g,
-  F3 as h,
-  X3 as i,
-  S3 as j,
-  z3 as k,
-  J3 as l,
-  K3 as m,
-  M3 as n,
-  C3 as o,
-  Z3 as p,
-  R3 as q,
-  T3 as r,
-  L3 as s,
-  h3 as t,
-  V3 as u,
-  _3 as v,
-  de as w,
-  j3 as x
+  K as B,
+  t3 as D,
+  u3 as E,
+  Ze as K,
+  b as R,
+  o3 as S,
+  l3 as a,
+  e3 as b,
+  a3 as c,
+  i3 as d,
+  A3 as e,
+  _e as f,
+  We as g,
+  $e as h,
+  d3 as i,
+  s3 as j,
+  r3 as k,
+  n3 as l,
+  c3 as m,
+  Re as n,
+  p3 as o,
+  y3 as p,
+  I3 as q,
+  h3 as r,
+  Ye as s,
+  m3 as t,
+  g3 as u,
+  Z as w
 };
